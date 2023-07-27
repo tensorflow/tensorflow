@@ -176,6 +176,25 @@ class PjRtDevice {
   virtual absl::Span<PjRtMemorySpace* const> memory_spaces() const {
     return {};
   }
+
+  // Returns the default memory space attached to this device.
+  virtual StatusOr<PjRtMemorySpace*> default_memory_space() const = 0;
+
+  // Experimental: Poisons the earliest execution on this device with given
+  // launch_id if it's not finished yet, i.e. makes its output buffers error.
+  //
+  // Returns true if the output buffers have been successfully poisoned.
+  //
+  // Returns false if the output buffers were not successfully poisoned because
+  // launch_id is not in the list of executions that have not yet completed.
+  // This may happen either because the execution corresponding to launch_id has
+  // already completed, or because an incorrect launch_id was supplied.
+  //
+  // Returns error otherwise, including in the case that poisoning is not
+  // implemented by this client.
+  virtual StatusOr<bool> PoisonExecution(int32_t launch_id, Status error) {
+    return Unimplemented("PoisonExecution is not supported");
+  }
 };
 
 // Forward declaration.
@@ -869,7 +888,26 @@ class PjRtBuffer {
     return on_device_shape().dimensions();
   }
 
+  virtual const Layout& layout() const {
+    CHECK(on_device_shape().has_layout());
+    return on_device_shape().layout();
+  }
+
+  // PjRtBuffers can either represent a single array buffer or a tuple of array
+  // buffers. Returns true if this buffer represents a tuple, false if an array.
+  virtual bool IsTuple() const { return on_device_shape().IsTuple(); }
+
   virtual const Shape& on_device_shape() const = 0;
+
+  virtual bool has_dynamic_dimensions() const {
+    return on_device_shape().is_dynamic();
+  }
+
+  // Each returned element is true if the corresponding dimensions is dynamic,
+  // false if static.
+  virtual absl::Span<const bool> is_dynamic_dimension() const {
+    return on_device_shape().dynamic_dimensions();
+  }
 
   // Same as dimensions() when the shape is static. When the shape is dynamic,
   // it gathers the metadata from the device and returns a static shape
@@ -954,9 +992,28 @@ class PjRtBuffer {
   // Convenience synchronous overload that allocates a literal with a default
   // layout.
   StatusOr<std::shared_ptr<Literal>> ToLiteralSync() {
-    Shape device_shape = on_device_shape();
-    if (device_shape.is_dynamic()) {
-      TF_ASSIGN_OR_RETURN(device_shape, logical_on_device_shape());
+    Shape device_shape;
+    if (!IsTuple()) {
+      absl::Span<const int64_t> literal_dims;
+      std::optional<std::vector<int64_t>> logical_dims_storage;
+      if (has_dynamic_dimensions()) {
+        TF_ASSIGN_OR_RETURN(std::vector<int64_t> logical_dims,
+                            logical_dimensions());
+        logical_dims_storage.emplace(std::move(logical_dims));
+        literal_dims = *logical_dims_storage;
+      } else {
+        literal_dims = dimensions();
+      }
+      device_shape = ShapeUtil::MakeShape(element_type(), literal_dims);
+      *device_shape.mutable_layout() = layout();
+    } else {
+      // TODO(skyewm): does anything need to create tuple literals? The PJRT C
+      // API doesn't support tuples or {logical_}on_device_shape(), so we prefer
+      // to use the above non-tuple code path where possible.
+      device_shape = on_device_shape();
+      if (device_shape.is_dynamic()) {
+        TF_ASSIGN_OR_RETURN(device_shape, logical_on_device_shape());
+      }
     }
     auto literal = std::make_shared<Literal>(
         ShapeUtil::DeviceShapeToHostShape(device_shape));
@@ -1197,112 +1254,6 @@ class PjRtBuffer {
 
   // Whether this buffer is on CPU and thus allows for certain optimizations.
   virtual bool IsOnCpu() const = 0;
-};
-
-class ExecuteContext {
- public:
-  virtual ~ExecuteContext() = default;
-};
-
-struct PjRtTransferMetadata {
-  // May be invalid if
-  // ExecuteOptions::use_major_to_minor_data_layout_for_callbacks is true for
-  // this execution.
-  Shape device_shape;
-};
-
-struct SendCallback {
-  int64_t channel_id;
-  // The callback for retrieving the send value. It will be invoked once for
-  // each invocation of the corresponding Send op in the HLO program (So it can
-  // be invoked multiple times if it is in a loop). Currently there is no
-  // guarantee that the callback here will be invoked in the same order as their
-  // corresponding HLO Send ops. The callback can also return errors to indicate
-  // the execution should fail.
-  //
-  // IMPORTANT: the implementation might NOT signal the error to the execution,
-  // and the execution will run to completion with UNDEFINED DATA returned by
-  // the callback. If there is any potential control flow that depends on the
-  // value of the returned data, an error return is unsafe.
-  //
-  // TODO(chky): Currently the callback invocation order may not be consistent
-  // with the HLO send op invocation order, due to limitations in some PjRt
-  // implementation. Consider making it strictly the same order as HLO program.
-  std::function<Status(const PjRtTransferMetadata& metadata, PjRtChunk chunk,
-                       size_t total_size_in_bytes, bool done)>
-      callback;
-};
-
-struct RecvCallback {
-  int64_t channel_id;
-  // The callback for feeding the recv value. It will be invoked once for each
-  // invocation of the corresponding Recv op in the HLO program (So it can be
-  // invoked multiple times if it is in a loop). Currently there is no
-  // guarantee that the callback here will be invoked in the same order as their
-  // corresponding HLO Recv ops.
-  std::function<void(const PjRtTransferMetadata& metadata,
-                     std::unique_ptr<CopyToDeviceStream> stream)>
-      callback;
-};
-
-struct ExecuteOptions {
-  // If true, the client must pass a single PjRtBuffer which contains all of
-  // the arguments as a single XLA tuple, otherwise each argument must be
-  // passed in its own PjRtBuffer. May only be true if the executable was
-  // compiled with parameter_is_tupled_arguments==true.
-  bool arguments_are_tupled = false;
-  // If true, the computation must return a tuple, which will be destructured
-  // into its elements.
-  bool untuple_result = false;
-  // If non-zero, identifies this execution as part of a potentially
-  // multi-device launch. This can be used to detect scheduling errors, e.g. if
-  // multi-host programs are launched in different orders on different hosts,
-  // the launch IDs may be used by the runtime to detect the mismatch.
-  int32_t launch_id = 0;
-  // If non-null, an opaque context passed to an execution that may be used to
-  // supply additional arguments to a derived class of PjRtExecutable.
-  const ExecuteContext* context = nullptr;
-  // If true, check that the PjRtBuffer argument shapes match the compiled
-  // shapes. Otherwise, any shape with the right size on device may be passed.
-  bool strict_shape_checking = true;
-
-  // Set multi_slice_config when the computation spans multiple slices. The
-  // config should match what was used during compilation to generate this
-  // executable.
-  const MultiSliceConfig* multi_slice_config = nullptr;
-
-  // The send/recv callbacks for PjRt execution. The first level span is for
-  // multi-device parallel execution, the second level vector contains the
-  // callbacks for all send/recv ops in the executable. These callbacks can be
-  // stateful and the user code is responsible for managing the states here.
-  // These callbacks must outlive the execution.
-  absl::Span<const std::vector<SendCallback>> send_callbacks;
-  absl::Span<const std::vector<RecvCallback>> recv_callbacks;
-
-  // If true, send callbacks are passed PjRtChunks in major-to-minor layout, and
-  // recv functions should pass major-to-minor chunks to
-  // CopyToDeviceStream::AddChunk.
-  //
-  // If false, send callbacks are passed PjRtChunks in the on-device layout
-  // specified in the PjRtTransferMetadata, and recv functions should similarly
-  // pass device-layout chunks to CopyToDeviceStream::AddChunk.
-  bool use_major_to_minor_data_layout_for_callbacks = false;
-
-  // The `execution_mode` decides whether the execution will be invoked in the
-  // caller thread or launched to a separate thread. By default, the
-  // implementation may choose either strategy or use a heuristic to decide.
-  // Currently it is only applied to CPU implementations
-  enum class ExecutionMode { kDefault = 0, kSynchronous, kAsynchronous };
-  ExecutionMode execution_mode = ExecutionMode::kDefault;
-
-  // A set of indices denoting the input buffers that should not be donated.
-  // An input buffer may be non-donable, for example, if it is referenced more
-  // than once. Since such runtime information is not available at compile time,
-  // the compiler might mark the input as `may-alias`, which could lead PjRt to
-  // donate the input buffer when it should not. By defining this set of
-  // indices, a higher-level PjRt caller can instruct PjRtClient not to donate
-  // specific input buffers.
-  absl::flat_hash_set<int> non_donatable_input_indices;
 };
 
 // Represents a compiled computation that can be executed given handles to

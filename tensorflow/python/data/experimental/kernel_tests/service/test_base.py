@@ -48,6 +48,7 @@ def all_cluster_configurations():
 
 def _make_worker(
     dispatcher_address,
+    protocol,
     data_transfer_protocol,
     shutdown_quiet_period_ms=0,
     port=0,
@@ -61,7 +62,7 @@ def _make_worker(
       dispatcher_address=dispatcher_address,
       worker_address=defaults.worker_address,
       port=port,
-      protocol=PROTOCOL,
+      protocol=protocol,
       worker_tags=worker_tags,
       heartbeat_interval_ms=TEST_HEARTBEAT_INTERVAL_MS,
       dispatcher_timeout_ms=TEST_DISPATCHER_TIMEOUT_MS,
@@ -82,6 +83,7 @@ class TestWorker:
       self,
       dispatcher_address,
       shutdown_quiet_period_ms,
+      protocol=PROTOCOL,
       data_transfer_protocol=None,
       port=0,
       worker_tags=None,
@@ -92,6 +94,7 @@ class TestWorker:
     self._shutdown_quiet_period_ms = shutdown_quiet_period_ms
     self._server = _make_worker(
         dispatcher_address,
+        protocol,
         data_transfer_protocol,
         shutdown_quiet_period_ms,
         port=port,
@@ -100,6 +103,7 @@ class TestWorker:
         snapshot_max_chunk_size_bytes=snapshot_max_chunk_size_bytes,
     )
     self._running = False
+    self._protocol = protocol
     self._data_transfer_protocol = data_transfer_protocol
 
   def stop(self):
@@ -119,6 +123,7 @@ class TestWorker:
     if use_same_port:
       port = self._port
     self._server = _make_worker(self._dispatcher_address,
+                                self._protocol,
                                 self._data_transfer_protocol,
                                 self._shutdown_quiet_period_ms, port)
     self._server.start()
@@ -154,6 +159,7 @@ class TestCluster:
       snapshot_max_chunk_size_bytes=TEST_SNAPSHOT_MAX_CHUNK_SIZE_BYTES,
       worker_max_concurrent_snapshots=0,
       start=True,
+      protocol=PROTOCOL,
       data_transfer_protocol=None,
   ):
     """Creates a tf.data service test cluster.
@@ -182,6 +188,8 @@ class TestCluster:
       start: Whether to immediately start the servers in the cluster. If
         `False`, the servers can be started later by calling
         `start_dispatcher()` and `start_workers()`.
+      protocol: The protocol to use for communicating with the tf.data service,
+        e.g. "grpc".
       data_transfer_protocol: (Optional.) The protocol to use for transferring
         data with the tf.data service.
     """
@@ -189,6 +197,7 @@ class TestCluster:
       work_dir = tempfile.mkdtemp(dir=googletest.GetTempDir())
     self._worker_shutdown_quiet_period_ms = worker_shutdown_quiet_period_ms
     self._snapshot_max_chunk_size_bytes = snapshot_max_chunk_size_bytes
+    self._protocol = protocol
     self._data_transfer_protocol = data_transfer_protocol
     self._job_gc_check_interval_ms = job_gc_check_interval_ms
     self._job_gc_timeout_ms = job_gc_timeout_ms
@@ -198,7 +207,7 @@ class TestCluster:
         server_lib.DispatcherConfig(
             port=dispatcher_port,
             work_dir=work_dir,
-            protocol=PROTOCOL,
+            protocol=protocol,
             fault_tolerant_mode=fault_tolerant_mode,
             job_gc_check_interval_ms=job_gc_check_interval_ms,
             job_gc_timeout_ms=job_gc_timeout_ms,
@@ -219,6 +228,7 @@ class TestCluster:
     worker = TestWorker(
         self.dispatcher_address(),
         self._worker_shutdown_quiet_period_ms,
+        self._protocol,
         self._data_transfer_protocol,
         snapshot_max_chunk_size_bytes=self._snapshot_max_chunk_size_bytes,
     )
@@ -263,7 +273,7 @@ class TestCluster:
         server_lib.DispatcherConfig(
             port=port,
             work_dir=self.dispatcher._config.work_dir,
-            protocol=PROTOCOL,
+            protocol=self._protocol,
             fault_tolerant_mode=self.dispatcher._config.fault_tolerant_mode,
             job_gc_check_interval_ms=self._job_gc_check_interval_ms,
             job_gc_timeout_ms=self._job_gc_timeout_ms,

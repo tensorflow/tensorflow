@@ -35,6 +35,12 @@ namespace gpu {
 
 class GpuExecutable;
 
+enum AsyncStreamKind {
+  kAsyncStreamCollective = 0,  // Stream for asynchronous collective ops.
+  kAsyncStreamP2P = 1,         // Stream for P2P Send and Recv ops.
+};
+constexpr static int64_t kAsyncStreamTotal = kAsyncStreamP2P + 1;
+
 // Thunk acts as the bridge between IrEmitter and GpuExecutable. It stores the
 // metadata IrEmitter generates for GpuExecutable to invoke an HloInstruction.
 //
@@ -92,6 +98,8 @@ class Thunk {
     std::optional<int64_t> profile_index;
     std::string profile_annotation;
     mlir::Operation* op;
+
+    static ThunkInfo WithProfileAnnotation(mlir::Operation* op);
   };
 
   // The hlo_instruction argument is meant to be the instruction this thunk was
@@ -129,11 +137,12 @@ class Thunk {
   struct ExecuteParams {
     ExecuteParams(const ServiceExecutableRunOptions& run_options,
                   const BufferAllocations& buffer_allocations,
-                  se::Stream* stream, se::Stream* async_comms_stream);
+                  se::Stream* stream,
+                  absl::Span<se::Stream* const> async_streams);
 
     const BufferAllocations* buffer_allocations;  // never null
     se::Stream* stream;
-    se::Stream* async_comms_stream;
+    absl::InlinedVector<se::Stream*, kAsyncStreamTotal> async_comms_streams;
     NcclExecuteParams nccl_params;
   };
 

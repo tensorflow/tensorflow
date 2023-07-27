@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/dataset.pb.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/status.h"
 
@@ -94,6 +95,9 @@ class DataTransferClient {
       const std::string& compatibility_info) const {
     return OkStatus();
   }
+
+ protected:
+  Env* const env_ = Env::Default();
 };
 
 // Server for communicating with the tf.data service transfer client.

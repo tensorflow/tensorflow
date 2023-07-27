@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
-#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
@@ -207,6 +206,13 @@ PJRT_Error* PJRT_Error_GetCode(PJRT_Error_GetCode_Args* args) {
       args->struct_size));
   args->code = StatusCodeToPjrtErrorCode(
       static_cast<absl::StatusCode>(args->error->status.code()));
+  return nullptr;
+}
+
+// ---------------------------------- Plugin -----------------------------------
+
+PJRT_Error* PJRT_Plugin_Attributes(PJRT_Plugin_Attributes_Args* args) {
+  args->num_attributes = 0;
   return nullptr;
 }
 
@@ -471,7 +477,7 @@ PJRT_Error* PJRT_Client_BufferFromHostBuffer(
           PJRT_Buffer_MemoryLayout_Type_Strides: {
         PJRT_RETURN_IF_ERROR(absl::InvalidArgumentError(absl::StrCat(
             "PJRT_Buffer_MemoryLayout_Type_Strides in device_layout is not "
-            "supported in  PJRT_Client_BufferFromHostBuffer for platform '%s'",
+            "supported in  PJRT_Client_BufferFromHostBuffer for platform ",
             args->client->client->platform_name())));
         break;
       }
@@ -918,8 +924,11 @@ static xla::RecvCallback CRecvCallbackToCpp(
       [user_arg = c_callback.user_arg, callback = c_callback.recv_callback](
           const xla::PjRtTransferMetadata& unused_metadata,
           std::unique_ptr<xla::CopyToDeviceStream> stream) {
-        PJRT_CopyToDeviceStream c_stream{std::move(stream)};
-        callback(&c_stream, user_arg);
+        auto c_stream = std::make_unique<PJRT_CopyToDeviceStream>();
+        c_stream->stream = std::move(stream);
+        // The callback takes the ownership of the stream and will be
+        // responsible for calling its deleter.
+        callback(c_stream.release(), user_arg);
       }};
 }
 
@@ -1274,13 +1283,56 @@ PJRT_Error* PJRT_Buffer_UnpaddedDimensions(
 
   std::optional<std::vector<int64_t>>& unpadded_dims =
       args->buffer->unpadded_dims;
-  if (!unpadded_dims.has_value()) {
-    PJRT_ASSIGN_OR_RETURN(std::vector<int64_t> dims,
-                          args->buffer->buffer->logical_dimensions());
-    unpadded_dims.emplace(std::move(dims));
+  {
+    absl::MutexLock lock(&args->buffer->mu);
+    if (!unpadded_dims.has_value()) {
+      PJRT_ASSIGN_OR_RETURN(std::vector<int64_t> dims,
+                            args->buffer->buffer->logical_dimensions());
+      unpadded_dims.emplace(std::move(dims));
+    }
   }
   args->unpadded_dims = unpadded_dims->data();
   args->num_dims = unpadded_dims->size();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Buffer_DynamicDimensionIndices(
+    PJRT_Buffer_DynamicDimensionIndices_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Buffer_DynamicDimensionIndices_Args",
+      PJRT_Buffer_DynamicDimensionIndices_Args_STRUCT_SIZE, args->struct_size));
+  absl::Span<const bool> is_dyn_dim =
+      args->buffer->buffer->is_dynamic_dimension();
+  std::vector<size_t>& dyn_dim_indices =
+      args->buffer->dynamic_dim_indices.emplace();
+  for (int i = 0; i < is_dyn_dim.size(); ++i) {
+    if (is_dyn_dim[i]) {
+      dyn_dim_indices.push_back(i);
+    }
+  }
+  args->dynamic_dim_indices = dyn_dim_indices.data();
+  args->num_dynamic_dims = dyn_dim_indices.size();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Buffer_GetMemoryLayout(
+    PJRT_Buffer_GetMemoryLayout_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Buffer_GetMemoryLayout_Args",
+      PJRT_Buffer_GetMemoryLayout_Args_STRUCT_SIZE, args->struct_size));
+
+  std::optional<BufferMemoryLayoutData>& layout_data =
+      args->buffer->layout_data;
+  {
+    absl::MutexLock lock(&args->buffer->mu);
+    if (!layout_data.has_value()) {
+      PJRT_ASSIGN_OR_RETURN(
+          BufferMemoryLayoutData data,
+          ConvertToBufferMemoryLayoutData(args->buffer->buffer->layout()));
+      layout_data.emplace(std::move(data));
+    }
+  }
+  args->layout = layout_data->c_layout;
   return nullptr;
 }
 
@@ -1347,8 +1399,24 @@ PJRT_Error* PJRT_Buffer_ToHostBuffer(PJRT_Buffer_ToHostBuffer_Args* args) {
   } else {
     device_shape = args->src->buffer->on_device_shape();
   }
-  const xla::Shape& host_shape =
-      xla::ShapeUtil::DeviceShapeToHostShape(device_shape);
+  xla::Shape host_shape = xla::ShapeUtil::DeviceShapeToHostShape(device_shape);
+  if (args->host_layout != nullptr) {
+    if (args->host_layout->type ==
+        PJRT_Buffer_MemoryLayout_Type::PJRT_Buffer_MemoryLayout_Type_Strides) {
+      PJRT_RETURN_IF_ERROR(absl::InvalidArgumentError(
+          absl::StrCat("PJRT_Buffer_ToHostBuffer does not support host_layout "
+                       "with strides for platform ",
+                       args->src->buffer->client()->platform_name())));
+    }
+    if (args->host_layout->tiled.num_tiles > 0) {
+      PJRT_RETURN_IF_ERROR(absl::InvalidArgumentError(
+          absl::StrCat("PJRT_Buffer_ToHostBuffer does not support host_layout "
+                       "with tiled dimension for platform ",
+                       args->src->buffer->client()->platform_name())));
+    }
+    PJRT_ASSIGN_OR_RETURN(*host_shape.mutable_layout(),
+                          ConvertToLayout(args->host_layout->tiled));
+  }
 
   size_t host_buffer_size = xla::ShapeUtil::ByteSizeOfElements(host_shape);
 
@@ -1407,6 +1475,16 @@ PJRT_Error* PJRT_Buffer_UnsafePointer(PJRT_Buffer_UnsafePointer_Args* args) {
 }
 
 // ---------------------------- CopyToDeviceStream -----------------------------
+
+PJRT_Error* PJRT_CopyToDeviceStream_Destroy(
+    PJRT_CopyToDeviceStream_Destroy_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_CopyToDeviceStream_Destroy",
+      PJRT_CopyToDeviceStream_Destroy_Args_STRUCT_SIZE, args->struct_size));
+
+  delete args->stream;
+  return nullptr;
+}
 
 PJRT_Error* PJRT_CopyToDeviceStream_AddChunk(
     PJRT_CopyToDeviceStream_AddChunk_Args* args) {

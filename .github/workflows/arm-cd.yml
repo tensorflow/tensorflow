@@ -19,6 +19,8 @@ on:
   push:
     tags:
       - v2.**
+    branches:
+      - r2.**
   schedule:
     - cron: '0 8 * * *'
 
@@ -30,7 +32,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        pyver: ['3.8', '3.9', '3.10']
+        pyver: ['3.9', '3.10']
         experimental: [false]
         include:
           - pyver: '3.11'
@@ -66,5 +68,6 @@ jobs:
           CI_DOCKER_BUILD_EXTRA_PARAMS="--build-arg py_major_minor_version=${{ matrix.pyver }} --build-arg is_nightly=${is_nightly} --build-arg tf_project_name=${tf_project_name}" \
           ./tensorflow/tools/ci_build/ci_build.sh cpu.arm64 bash tensorflow/tools/ci_build/rel/ubuntu/cpu_arm64_pip.sh
       - name: Upload pip wheel to PyPI
+        if: github.event_name == 'schedule' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v2')) # only if it is a scheduled nightly or tagged
         shell: bash
         run: python3 -m twine upload --verbose /home/ubuntu/actions-runner/_work/tensorflow/tensorflow/whl/* -u "__token__" -p ${{ secrets.AWS_PYPI_ACCOUNT_TOKEN }}

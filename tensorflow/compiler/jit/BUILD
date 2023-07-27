@@ -1,7 +1,7 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "if_libtpu", "if_with_tpu_support", "tf_cc_test", "tf_copts", "tf_cuda_cc_test", "tf_cuda_only_cc_test")
 load("//tensorflow/compiler/xla/stream_executor:build_defs.bzl", "if_cuda_or_rocm")
-load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup", "tf_custom_op_py_library", "tf_jit_compilation_passes_extra_deps")
+load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup", "tf_custom_op_py_strict_library", "tf_jit_compilation_passes_extra_deps")
 load("//tensorflow/core/platform:build_config.bzl", "tf_additional_all_protos", "tf_proto_library")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
@@ -683,6 +683,7 @@ tf_cc_test(
     srcs = [
         "device_compiler_disable_test.cc",
     ],
+    tags = ["no_cuda_on_cpu_tap"],
     deps = [
         ":device_compilation_profiler",
         ":device_compiler",
@@ -1351,7 +1352,7 @@ tf_cc_test(
     ],
 )
 
-tf_custom_op_py_library(
+tf_custom_op_py_strict_library(
     name = "xla_ops_py",
     kernels = ["//tensorflow/compiler/jit/ops:xla_ops"],
     visibility = [
@@ -1550,6 +1551,7 @@ cc_library(
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/compiler/xla/pjrt:pjrt_stream_executor_client",
         "//tensorflow/core:framework",
+        "//tensorflow/core/common_runtime:dma_helper",
     ],
 )
 
@@ -1564,6 +1566,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":pjrt_tensor_buffer_util",
+        "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c/experimental/next_pluggable_device:tensor_pjrt_buffer_util",
         "//tensorflow/compiler/tf2xla:common",
@@ -1677,6 +1680,7 @@ tf_cc_test(
 tf_cc_test(
     name = "device_executable_persistor_test",
     srcs = ["device_executable_persistor_test.cc"],
+    tags = ["no_cuda_on_cpu_tap"],
     deps = [
         ":device_compiler_client",
         ":device_executable_persistor",

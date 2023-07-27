@@ -907,7 +907,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       inputs: Mapping[str, core.Tensor],
       outputs: Mapping[str, core.Tensor],
       init_op: Optional[ops.Operation] = None,
-      assets_collection: Optional[Sequence[ops.Tensor]] = None,
+      assets_collection: Optional[Sequence[core.Symbol]] = None,
   ) -> None:
     """Saves a TF1 model.
 

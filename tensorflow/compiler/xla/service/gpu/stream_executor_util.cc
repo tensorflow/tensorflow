@@ -505,6 +505,17 @@ StatusOr<se::dnn::FusedMHAKind> GetDNNFusedMHAKindFromCudnnfMHAKind(
       return se::dnn::FusedMHAKind::BMM1_OUTPUT_INPUT_TYPE;
     case CudnnfMHAKind::kSoftmax:
       return se::dnn::FusedMHAKind::BMM1_OUTPUT_FLOAT;
+    // backward
+    case CudnnfMHAKind::kBackwardScaleBiasMaskSoftmaxDropout:
+    case CudnnfMHAKind::kBackwardScaleMaskSoftmaxDropout:
+    case CudnnfMHAKind::kBackwardBmmBmm:
+    case CudnnfMHAKind::kBackwardScaleBiasMaskSoftmax:
+    case CudnnfMHAKind::kBackwardScaleMaskSoftmax:
+    case CudnnfMHAKind::kBackwardScaleBiasSoftmax:
+    case CudnnfMHAKind::kBackwardScaleBiasSoftmaxDropout:
+    case CudnnfMHAKind::kBackwardSoftmaxDropout:
+    case CudnnfMHAKind::kBackwardSoftmax:
+      return se::dnn::FusedMHAKind::BMM1_OUTPUT_INPUT_TYPE;
   }
   return InternalError("Unexpected fMHA kind");
 }

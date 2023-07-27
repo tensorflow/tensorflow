@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/c/common_internal.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/macros.h"
@@ -271,6 +272,10 @@ class Subgraph {
   // If you know that your sizes are not changing, you need not call this.
   // Returns status of success or failure.
   TfLiteStatus AllocateTensors();
+
+  // Returns the number of times each tensor is consumed. Subgraph output
+  // tensors are considered as consumed.
+  std::vector<int> GetInputTensorsCount();
 
   // Invoke the subgraph (run the whole graph in dependency order).
   //
@@ -527,6 +532,30 @@ class Subgraph {
   // NOTE: This function is expected to be called only when this subgraph will
   // be skipped by the interpreter.
   void MarkAsDelegationSkippable() { is_delegation_skippable_ = true; }
+
+  // Loads metadata of a TF Lite node's custom initialization data.
+  // Specifically:
+  // * Loads into the supplied 'fd' the file descriptor of the file that stores
+  //   the 'node's custom  initialization data.  This output parameter will be
+  //   loaded if the TF Lite runtime has access to the file descriptor, though
+  //   this is not always the case, e.g. if a client provides a tflite::Model
+  //   directly to the TF Lite runtime.  If 'fd' can be loaded then 'kTfLiteOk'
+  //   will be returned, otherwise 'kTfLiteError' is returned.
+  // * Loads into the supplied 'custom_initial_data_offset_in_file' pointer the
+  //   offset of the 'node's custom init data in the file associated with 'fd'.
+  //   This output parameter will be set to -1 if the 'node' does not have
+  //   custom init data set.
+  // * Loads into the supplied 'custom_initial_data_size' the size of the
+  //   custom initialization data.  This output parameter will be set to -1 if
+  //   the 'node' does not have custom init data set.
+  //
+  // Returns 'kTfLiteOk' when 'fd' has been loaded successfully and
+  // 'kTfLiteError' otherwise.  Note that this means that 'kTfLiteOk' can be
+  // returned, even if the 'node' does not have custom init data set.
+  TfLiteStatus GetNodeInitDataMmapInfo(
+      const TfLiteNode* node, int* fd,
+      int64_t* custom_initial_data_offset_in_file,
+      int64_t* custom_initial_data_size) const;
 
  private:
 #ifndef DOXYGEN_SKIP
@@ -922,11 +951,13 @@ class Subgraph {
   // the TfLiteRegistrationExternal objects contained in this fielld.
   //
   // LINT.IfChange
-  // Ideally we could include c_api.h and use
-  // 'TfLiteRegistrationExternalDelete' as the deleter,  but that would create a
-  // dependency cycle.
-  std::unordered_set<  // NOLINT
-      std::unique_ptr<const TfLiteRegistrationExternal>>
+  // The definition of RegistrationExternalsCache implicitly assumes that
+  // TfLiteRegistrationExternalDelete is the same as the standard C++ delete
+  // operator.
+  // TODO(b/238435088): in op_resolver, include registration_external.h and use
+  // 'TfLiteRegistrationExternalDelete' as the deleter, then we can eliminate
+  // the IfChange...ThenChange directive below.
+  std::shared_ptr<::tflite::internal::RegistrationExternalsCache>
       registration_externals_;
   // LINT.ThenChange(//tensorflow/lite/core/c/c_api.cc)
 
@@ -1094,6 +1125,10 @@ class Subgraph {
   // Initialized to 1 initially because SwitchToKernelContext() is called once
   // during the Subgraph initialization.
   int delegate_context_switch_count_ = 1;
+
+  /// The allocator used for holding memory of the model. Note that this will
+  /// be null if the client provides a tflite::Model directly.
+  const Allocation* allocation_ = nullptr;
 };
 
 }  // namespace tflite

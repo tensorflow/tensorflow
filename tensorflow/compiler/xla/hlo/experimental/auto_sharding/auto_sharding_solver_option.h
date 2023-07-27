@@ -100,6 +100,11 @@ struct AutoShardingSolverOption {
   // Enabling it can hurt the performance of dot ops, but can make the search
   // space more scalable. Therefore leaving it as an option.
   bool nd_sharding_iteratively_strict_search_space;
+
+  // Whether or not to generate replicated strategies for dot/conv
+  // ops. Generating these seems to be beneficial for LLM serving models, but
+  // can increase the search space, so this feature is exposed as an option.
+  bool allow_replicated_strategy_for_dot_and_conv;
 };
 }  // namespace spmd
 }  // namespace xla

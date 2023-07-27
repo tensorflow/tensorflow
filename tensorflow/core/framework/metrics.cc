@@ -103,6 +103,17 @@ auto* tf_data_experiment_counter = tsl::monitoring::Counter<1>::New(
 auto* tf_data_fingerprint_counter = tsl::monitoring::Counter<1>::New(
     "/tensorflow/data/fingerprint", "tf.data fingerprint", "name");
 
+auto* tf_data_service_get_element_duration_usecs_histogram =
+    tsl::monitoring::Sampler<1>::New(
+        {"/tensorflow/data/getelement_duration",
+         "Microseconds spent generating an element and transferring it over "
+         "the network for the given protocol.",
+         "data_transfer_protocol"},
+        // Power of 2 with bucket count 10 (1024 microseconds) and 10-1000 ms.
+        {tsl::monitoring::Buckets::Explicit({2., 4., 8., 16., 32., 64., 128.,
+                                             256., 512., 1024., 1e4, 1e5,
+                                             1e6})});
+
 auto* tf_data_get_next_duration_usecs_histogram =
     tsl::monitoring::Sampler<0>::New(
         {"/tensorflow/data/getnext_duration",
@@ -209,6 +220,12 @@ auto* tf_data_service_data_transfer_protocol_error =
         "of non-retriable error with this message when using this protocol.",
         "data_transfer_protocol", "error_type", "error_message");
 
+auto* tf_data_service_optimal_number_of_workers =
+    monitoring::Gauge<int64_t, 0>::New(
+        "/tensorflow/data/service/optimal_number_of_workers",
+        "Estimated optimal number of tf.data service workers based on the "
+        "current workload.");
+
 auto* tf_data_filename_counter = tsl::monitoring::Counter<2>::New(
     "/tensorflow/data/filename", "The file name read by a tf.data Dataset.",
     "name", "filename");
@@ -241,6 +258,11 @@ auto* tf_data_autotune_stopping_criteria_counter =
         "The number of times each tf.data autotune "
         "algorithm stopping criterion is met.",
         "name");
+
+auto* tf_data_error = tsl::monitoring::Counter<2>::New(
+    "/tensorflow/data/error",
+    "The number of times an error of this type occurred with this status code.",
+    "error_type", "status_code");
 
 auto* parse_dense_feature_counter = tsl::monitoring::Counter<0>::New(
     "/tensorflow/data/dense_feature",
@@ -419,6 +441,13 @@ void RecordTFDataFingerprint(const string& name) {
   tf_data_fingerprint_counter->GetCell(name)->IncrementBy(1);
 }
 
+void RecordTFDataServiceGetElementDuration(const string& data_transfer_protocol,
+                                           uint64 duration_us) {
+  tf_data_service_get_element_duration_usecs_histogram
+      ->GetCell(data_transfer_protocol)
+      ->Add(duration_us);
+}
+
 void RecordTFDataGetNextDuration(uint64 duration_us) {
   static auto* tf_data_get_next_duration_cell =
       tf_data_get_next_duration_usecs_histogram->GetCell();
@@ -530,6 +559,10 @@ void RecordTFDataServiceSnapshotBytesCommitted(int64_t bytes) {
   tf_data_service_snapshot_bytes_committed->GetCell()->IncrementBy(bytes);
 }
 
+void RecordTFDataServiceOptimalNumberOfWorkers(int64_t number_of_workers) {
+  tf_data_service_optimal_number_of_workers->GetCell()->Set(number_of_workers);
+}
+
 void RecordTFDataFilename(const string& name, const string& filename) {
   tf_data_filename_counter->GetCell(name, filename)->IncrementBy(1);
 }
@@ -554,6 +587,10 @@ void RecordTFDataAutoShardRewriteBatchSize(
 
 void RecordTFDataAutotuneStoppingCriteria(const string& name) {
   tf_data_autotune_stopping_criteria_counter->GetCell(name)->IncrementBy(1);
+}
+
+void RecordTFDataError(const string& error_type, const string& status_code) {
+  tf_data_error->GetCell(error_type, status_code)->IncrementBy(1);
 }
 
 void RecordParseDenseFeature(int64 num_features) {

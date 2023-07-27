@@ -9,7 +9,7 @@ load(
     "tf_cc_test",
     "tf_copts",
 )
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud", "tf_py_strict_test")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "tf_py_strict_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -25,7 +25,7 @@ cc_library(
     hdrs = [
         "transform_utils.h",
     ],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [

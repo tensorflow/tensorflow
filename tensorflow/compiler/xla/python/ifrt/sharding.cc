@@ -151,14 +151,18 @@ StatusOr<Shape> GetDisassembledShape(const ShardingParam& sharding_param,
 char Sharding::ID = 0;
 char SingleDeviceSharding::ID = 0;
 char OpaqueSharding::ID = 0;
+char ConcreteSharding::ID = 0;
+char ConcreteEvenSharding::ID = 0;
 char ShardingParamSharding::ID = 0;
 
 std::ostream& operator<<(std::ostream& os, const Sharding& sharding) {
   return os << sharding.DebugString();
 }
 
-std::unique_ptr<Sharding> SingleDeviceSharding::Create(Device* device) {
-  return std::unique_ptr<Sharding>(new SingleDeviceSharding(device));
+std::unique_ptr<SingleDeviceSharding> SingleDeviceSharding::Create(
+    Device* device) {
+  return std::unique_ptr<SingleDeviceSharding>(
+      new SingleDeviceSharding(device));
 }
 
 StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
@@ -185,55 +189,19 @@ std::string SingleDeviceSharding::DebugString() const {
                          devices_.front()->ToString());
 }
 
-std::unique_ptr<Sharding> OpaqueSharding::Create(DeviceList devices) {
-  return std::unique_ptr<Sharding>(new OpaqueSharding(
-      std::move(devices),
-      DisassembleFunc([](const OpaqueSharding& sharding,
-                         const Shape& shape) -> StatusOr<std::vector<Shape>> {
-        return FailedPrecondition(
-            "Using an opaque sharding that disallows disassembly: "
-            "sharding=%s; shape=%s",
-            sharding.DebugString(), shape.DebugString());
-      })));
+std::unique_ptr<OpaqueSharding> OpaqueSharding::Create(DeviceList devices) {
+  return std::unique_ptr<OpaqueSharding>(
+      new OpaqueSharding(std::move(devices)));
 }
 
-std::unique_ptr<Sharding> OpaqueSharding::Create(
-    DeviceList devices, DisassembleFunc disassemble_func) {
-  return std::unique_ptr<Sharding>(
-      new OpaqueSharding(std::move(devices), std::move(disassemble_func)));
-}
-
-OpaqueSharding::DisassembleFunc OpaqueSharding::MakeDisassembleFuncFromShapes(
-    std::vector<Shape> shapes) {
-  // Capture shapes in a shared_ptr so that the disassemble function can be
-  // copied cheaply.
-  return DisassembleFunc(
-      [shapes = std::make_shared<std::vector<Shape>>(std::move(shapes))](
-          const OpaqueSharding&, const Shape&) -> StatusOr<std::vector<Shape>> {
-        return *shapes;
-      });
-}
-
-OpaqueSharding::OpaqueSharding(DeviceList devices,
-                               DisassembleFunc disassemble_func)
-    : llvm::RTTIExtends<OpaqueSharding, Sharding>(std::move(devices)),
-      disassemble_func_(std::move(disassemble_func)) {}
+OpaqueSharding::OpaqueSharding(DeviceList devices)
+    : llvm::RTTIExtends<OpaqueSharding, Sharding>(std::move(devices)) {}
 
 StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
 OpaqueSharding::Disassemble(const Shape& shape) const {
   DCHECK(this);
-  TF_ASSIGN_OR_RETURN(auto shapes, disassemble_func_(*this, shape));
-  if (shapes.size() != devices_.size()) {
-    return FailedPrecondition(
-        "DisassembleFunc returned an incorrect number of shapes");
-  }
-  std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>> result;
-  result.reserve(shapes.size());
-  for (int i = 0; i < shapes.size(); ++i) {
-    result.push_back(
-        {std::move(shapes[i]), SingleDeviceSharding::Create(devices_[i])});
-  }
-  return result;
+  return InvalidArgument(
+      "OpaqueSharding does not have shard shape information");
 }
 
 StatusOr<std::vector<IndexDomain>> OpaqueSharding::IndexDomains(
@@ -246,13 +214,113 @@ StatusOr<std::vector<IndexDomain>> OpaqueSharding::IndexDomains(
 std::string OpaqueSharding::DebugString() const {
   DCHECK(this);
   return absl::StrFormat(
-      "OpaqueSharding(%s)",
+      "OpaqueSharding(devices: %s)",
       absl::StrJoin(devices_, ",", [](std::string* out, const Device* device) {
         absl::StrAppend(out, device->ToString());
       }));
 }
 
-StatusOr<std::unique_ptr<Sharding>> ShardingParamSharding::Create(
+std::unique_ptr<ConcreteSharding> ConcreteSharding::Create(
+    DeviceList devices, Shape shape, std::vector<Shape> shard_shapes) {
+  CHECK_EQ(devices.size(), shard_shapes.size());
+  return std::unique_ptr<ConcreteSharding>(new ConcreteSharding(
+      std::move(devices), std::move(shape), std::move(shard_shapes)));
+}
+
+ConcreteSharding::ConcreteSharding(DeviceList devices, Shape shape,
+                                   std::vector<Shape> shard_shapes)
+    : llvm::RTTIExtends<ConcreteSharding, Sharding>(std::move(devices)),
+      shape_(std::move(shape)),
+      shard_shapes_(std::move(shard_shapes)) {}
+
+StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
+ConcreteSharding::Disassemble(const Shape& shape) const {
+  DCHECK(this);
+  if (shape != shape_) {
+    return InvalidArgument(
+        "ConcreteSharding can only disassemble shape %s, but was asked "
+        "to disassemble shape %s",
+        shape_.DebugString(), shape.DebugString());
+  }
+  std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>> result;
+  result.reserve(devices_.size());
+  for (int i = 0; i < devices_.size(); ++i) {
+    result.push_back(
+        {shard_shapes_[i], SingleDeviceSharding::Create(devices_[i])});
+  }
+  return result;
+}
+
+StatusOr<std::vector<IndexDomain>> ConcreteSharding::IndexDomains(
+    const Shape& shape) const {
+  DCHECK(this);
+  return InvalidArgument(
+      "ConcreteSharding does not have index domain information");
+}
+
+std::string ConcreteSharding::DebugString() const {
+  DCHECK(this);
+  return absl::StrFormat(
+      "ConcreteSharding(devices: %s, shape: %s, shard_shapes: %s)",
+      absl::StrJoin(devices_, ",",
+                    [](std::string* out, const Device* device) {
+                      absl::StrAppend(out, device->ToString());
+                    }),
+      shape_.DebugString(),
+      absl::StrJoin(shard_shapes_, ",",
+                    [](std::string* out, const Shape& shard_shape) {
+                      absl::StrAppend(out, shard_shape.DebugString());
+                    }));
+}
+
+std::unique_ptr<ConcreteEvenSharding> ConcreteEvenSharding::Create(
+    DeviceList devices, Shape shape, Shape shard_shape) {
+  return std::unique_ptr<ConcreteEvenSharding>(new ConcreteEvenSharding(
+      std::move(devices), std::move(shape), std::move(shard_shape)));
+}
+
+ConcreteEvenSharding::ConcreteEvenSharding(DeviceList devices, Shape shape,
+                                           Shape shard_shape)
+    : llvm::RTTIExtends<ConcreteEvenSharding, Sharding>(std::move(devices)),
+      shape_(std::move(shape)),
+      shard_shape_(std::move(shard_shape)) {}
+
+StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
+ConcreteEvenSharding::Disassemble(const Shape& shape) const {
+  DCHECK(this);
+  if (shape != shape_) {
+    return InvalidArgument(
+        "ConcreteEvenSharding can only disassemble shape %s, but was asked "
+        "to disassemble shape %s",
+        shape_.DebugString(), shape.DebugString());
+  }
+  std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>> result;
+  result.reserve(devices_.size());
+  for (int i = 0; i < devices_.size(); ++i) {
+    result.push_back({shard_shape_, SingleDeviceSharding::Create(devices_[i])});
+  }
+  return result;
+}
+
+StatusOr<std::vector<IndexDomain>> ConcreteEvenSharding::IndexDomains(
+    const Shape& shape) const {
+  DCHECK(this);
+  return InvalidArgument(
+      "ConcreteEvenSharding does not have index domain information");
+}
+
+std::string ConcreteEvenSharding::DebugString() const {
+  DCHECK(this);
+  return absl::StrFormat(
+      "ConcreteEvenSharding(devices: %s, shape: %s, shard_shape: %s)",
+      absl::StrJoin(devices_, ",",
+                    [](std::string* out, const Device* device) {
+                      absl::StrAppend(out, device->ToString());
+                    }),
+      shape_.DebugString(), shard_shape_.DebugString());
+}
+
+StatusOr<std::unique_ptr<ShardingParamSharding>> ShardingParamSharding::Create(
     ShardingParam sharding_param, DeviceList devices) {
   int64_t device_count =
       absl::c_accumulate(sharding_param.minor_to_major().axis_sizes, 1,
@@ -263,7 +331,7 @@ StatusOr<std::unique_ptr<Sharding>> ShardingParamSharding::Create(
         "%d",
         device_count, devices.size());
   }
-  return std::unique_ptr<Sharding>(
+  return std::unique_ptr<ShardingParamSharding>(
       new ShardingParamSharding(std::move(sharding_param), std::move(devices)));
 }
 

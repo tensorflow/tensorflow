@@ -1305,7 +1305,7 @@ static LogicalResult ComputeConvWindowedOutputSize(
   int64_t pad_low;
   int64_t pad_high;
 
-  tensorflow::Status status = tensorflow::GetWindowedOutputSizeVerboseV2(
+  tensorflow::Status status = tensorflow::GetWindowedOutputSizeVerbose(
       input_size, filter_size, dilation_rate, stride, padding, output_size,
       &pad_low, &pad_high);
   // Return failure if expected_output_size could not be calculated.

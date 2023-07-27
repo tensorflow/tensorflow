@@ -77,24 +77,27 @@ TEST_F(WhileTest, TestWithXNNPACK) {
 TEST_F(WhileTest, TestInputIsOutput) {
   interpreter_ = std::make_unique<Interpreter>();
   AddSubgraphs(2);
-  builder_->BuildLargeLessEqualCondSubgraph(interpreter_->subgraph(1), 3, 2);
+  builder_->BuildLargeLessEqualCondSubgraph(interpreter_->subgraph(1), 3, 3);
   builder_->BuildInputIsOutputSubgraph(interpreter_->subgraph(2));
-  builder_->BuildMultiInputWhileSubgraph(&interpreter_->primary_subgraph(), 2);
+  builder_->BuildMultiInputWhileSubgraph(&interpreter_->primary_subgraph(), 3);
 
   ASSERT_EQ(interpreter_->ResizeInputTensor(interpreter_->inputs()[0], {1}),
             kTfLiteOk);
   ASSERT_EQ(interpreter_->ResizeInputTensor(interpreter_->inputs()[1], {1}),
             kTfLiteOk);
+  ASSERT_EQ(interpreter_->ResizeInputTensor(interpreter_->inputs()[2], {1}),
+            kTfLiteOk);
   ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
   FillIntTensor(interpreter_->tensor(interpreter_->inputs()[0]), {1});
   FillIntTensor(interpreter_->tensor(interpreter_->inputs()[1]), {1});
+  FillIntTensor(interpreter_->tensor(interpreter_->inputs()[2]), {1});
 
   ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
 
   TfLiteTensor* output0 = interpreter_->tensor(interpreter_->outputs()[0]);
   CheckIntTensor(output0, {1}, {4});
   TfLiteTensor* output1 = interpreter_->tensor(interpreter_->outputs()[1]);
-  CheckIntTensor(output1, {1}, {1});
+  CheckIntTensor(output1, {1}, {4});
 
   ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
   ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
@@ -213,6 +216,50 @@ TEST_F(WhileTest, TestAllCases) {
   ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
   ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
   ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
+}
+
+TEST_F(WhileTest, TestStaticUnconsumedOutputs) {
+  for (bool dynamic_tensors : {true, false}) {
+    interpreter_ = std::make_unique<Interpreter>();
+    AddSubgraphs(2);
+    builder_->BuildLargeLessEqualCondSubgraph(interpreter_->subgraph(1), 3, 3);
+    builder_->BuildInputIsOutputSubgraph(interpreter_->subgraph(2));
+    builder_->BuildMultiInputWhileSubgraphWithUnconsumedOutput(
+        &interpreter_->primary_subgraph(), 3);
+
+    InterpreterOptions options;
+    if (dynamic_tensors) {
+      options.OptimizeMemoryForLargeTensors(1);
+      interpreter_->ApplyOptions(&options);
+    }
+
+    ASSERT_EQ(interpreter_->ResizeInputTensor(interpreter_->inputs()[0], {1}),
+              kTfLiteOk);
+    ASSERT_EQ(interpreter_->ResizeInputTensor(interpreter_->inputs()[1], {1}),
+              kTfLiteOk);
+    ASSERT_EQ(interpreter_->ResizeInputTensor(interpreter_->inputs()[2], {1}),
+              kTfLiteOk);
+    ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+    FillIntTensor(interpreter_->tensor(interpreter_->inputs()[0]), {1});
+    FillIntTensor(interpreter_->tensor(interpreter_->inputs()[1]), {2});
+    FillIntTensor(interpreter_->tensor(interpreter_->inputs()[2]), {2});
+
+    ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
+    TfLiteTensor* output0 = interpreter_->tensor(interpreter_->outputs()[0]);
+    CheckIntTensor(output0, {1}, {4});
+    TfLiteTensor* output1 = interpreter_->tensor(interpreter_->outputs()[1]);
+    CheckIntTensor(output1, {1}, {8});
+
+    ASSERT_EQ(interpreter_->ResizeInputTensor(interpreter_->inputs()[2], {2}),
+              kTfLiteOk);
+    ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+    FillIntTensor(interpreter_->tensor(interpreter_->inputs()[2]), {2, 2});
+
+    ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
+    CheckIntTensor(output1, {2}, {8, 8});
+    ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
+    ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
+  }
 }
 
 // Test a body subgraph which triggers the reallocation of an inplace output

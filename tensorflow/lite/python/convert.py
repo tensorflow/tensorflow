@@ -558,7 +558,7 @@ def build_conversion_flags(
     select_user_tf_ops=None,
     allow_all_select_tf_ops=False,
     enable_tflite_resource_variables=True,
-    unfold_batchmatmul=True,
+    unfold_batchmatmul=False,
     legalize_custom_tensor_list_ops=False,
     lower_tensor_list_ops=True,
     default_to_single_batch_in_tensor_list_ops=False,
@@ -577,11 +577,14 @@ def build_conversion_flags(
     enable_mlir_variable_quantization=False,
     disable_fuse_mul_and_fc=False,
     quantization_options: Optional[quant_opts_pb2.QuantizationOptions] = None,
-    enable_hlo_to_tf_conversion=False,
     mlir_dump_dir=None,
     mlir_dump_pass_regex=None,
     mlir_dump_func_regex=None,
     mlir_enable_timing=None,
+    mlir_print_ir_before=None,
+    mlir_print_ir_after=None,
+    mlir_print_ir_module_scope=None,
+    mlir_elide_elementsattrs_if_larger=None,
     use_buffer_offset=False,
     **_
 ):
@@ -682,9 +685,6 @@ def build_conversion_flags(
       a custom method, and allows finer, modular control. This option will
       override any other existing quantization flags. We plan on gradually
       migrating all quantization-related specs into this option.
-    enable_hlo_to_tf_conversion: Enable HLO to TF conversion in the Converter.
-      Set this to False by default as this may increase the conversion time if
-      set otherwise.
     mlir_dump_dir: A string specifying the target directory to output MLIR dumps
       produced during conversion. If populated, enables MLIR dumps.
     mlir_dump_pass_regex: A string containing a regular expression for filtering
@@ -695,6 +695,15 @@ def build_conversion_flags(
       populated.
     mlir_enable_timing: A boolean, if set to true reports the execution time of
       each MLIR pass.
+    mlir_print_ir_before: A string containing a regular expression. If
+      specified, prints MLIR before passes which match.
+    mlir_print_ir_after: A string containing a regular expression. If specified,
+      prints MLIR after passes which match.
+    mlir_print_ir_module_scope: A boolean, if set to true always print the
+      top-level operation when printing IR for print_ir_[before|after].
+    mlir_elide_elementsattrs_if_larger: An int, if specified elides
+      ElementsAttrs with '...' that have more elements than the given upper
+      limit.
     use_buffer_offset: Force the model use buffer_offset & buffer_size fields
       instead of data. i.e. store the constant tensor and custom op binaries
       outside of Flatbuffers
@@ -784,8 +793,6 @@ def build_conversion_flags(
   if quantization_options:
     conversion_flags.quantization_options.CopyFrom(quantization_options)
 
-  conversion_flags.enable_hlo_to_tf_conversion = enable_hlo_to_tf_conversion
-
   # Transfer debug options. Check for existence before populating in order to
   # leverage defaults specified in proto definition.
   if mlir_dump_dir is not None:
@@ -796,6 +803,18 @@ def build_conversion_flags(
     conversion_flags.debug_options.mlir_dump_func_regex = mlir_dump_func_regex
   if mlir_enable_timing is not None:
     conversion_flags.debug_options.mlir_enable_timing = mlir_enable_timing
+  if mlir_print_ir_before is not None:
+    conversion_flags.debug_options.mlir_print_ir_before = mlir_print_ir_before
+  if mlir_print_ir_after is not None:
+    conversion_flags.debug_options.mlir_print_ir_after = mlir_print_ir_after
+  if mlir_print_ir_module_scope is not None:
+    conversion_flags.debug_options.mlir_print_ir_module_scope = (
+        mlir_print_ir_module_scope
+    )
+  if mlir_elide_elementsattrs_if_larger is not None:
+    conversion_flags.debug_options.mlir_elide_elementsattrs_if_larger = (
+        mlir_elide_elementsattrs_if_larger
+    )
 
   if use_buffer_offset is not None:
     conversion_flags.use_buffer_offset = use_buffer_offset

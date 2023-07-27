@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_SAVED_MODEL_SAVED_MODEL_AOT_COMPILE_H_
 #define TENSORFLOW_CORE_TFRT_SAVED_MODEL_SAVED_MODEL_AOT_COMPILE_H_
 
+#include <memory>
 #include <string>
 
 #include "tensorflow/compiler/xla/service/compiler.h"
@@ -23,8 +24,9 @@ limitations under the License.
 
 namespace tensorflow::tfrt_stub {
 struct AotOptions {
-  GraphExecutionOptions graph_execution_options;
   AotOptions();
+
+  std::unique_ptr<GraphExecutionOptions> graph_execution_options;
 };
 
 // AOT Compiles saved_model in input_model_dir, writing output

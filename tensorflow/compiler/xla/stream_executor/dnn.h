@@ -988,14 +988,16 @@ using FusedMatmulRunner = OpRunner<FusedMatmulSignature>;
 using FusedMHASoftmaxSignature = void(DeviceMemoryBase /*BMM1_inputA_data*/,
                                       DeviceMemoryBase /* BMM1_inputB_data */,
                                       DeviceMemoryBase /* BMM2_inputA_data */,
-                                      DeviceMemoryBase /* output_data */);
+                                      DeviceMemoryBase /* output_data */,
+                                      DeviceMemoryBase /* activation_data */);
 using FusedMHASoftmaxRunner = OpRunner<FusedMHASoftmaxSignature>;
 
 using FusedMHAMaskSignature = void(DeviceMemoryBase /*BMM1_inputA_data*/,
                                    DeviceMemoryBase /* BMM1_inputB_data */,
                                    DeviceMemoryBase /* mask_data */,
                                    DeviceMemoryBase /* BMM2_inputA_data */,
-                                   DeviceMemoryBase /* output_data */);
+                                   DeviceMemoryBase /* output_data */,
+                                   DeviceMemoryBase /* activation_data */);
 using FusedMHAMaskRunner = OpRunner<FusedMHAMaskSignature>;
 
 using FusedMHABiasMaskSignature = void(DeviceMemoryBase /*BMM1_inputA_data*/,
@@ -1003,15 +1005,42 @@ using FusedMHABiasMaskSignature = void(DeviceMemoryBase /*BMM1_inputA_data*/,
                                        DeviceMemoryBase /* mask_data */,
                                        DeviceMemoryBase /* bias_data */,
                                        DeviceMemoryBase /* BMM2_inputA_data */,
-                                       DeviceMemoryBase /* output_data */);
+                                       DeviceMemoryBase /* output_data */,
+                                       DeviceMemoryBase /* activation_data */);
 using FusedMHABiasMaskRunner = OpRunner<FusedMHABiasMaskSignature>;
 
 using FusedMHABiasSignature = void(DeviceMemoryBase /*BMM1_inputA_data*/,
                                    DeviceMemoryBase /* BMM1_inputB_data */,
                                    DeviceMemoryBase /* bias_data */,
                                    DeviceMemoryBase /* BMM2_inputA_data */,
-                                   DeviceMemoryBase /* output_data */);
+                                   DeviceMemoryBase /* output_data */,
+                                   DeviceMemoryBase /* activation_data */);
 using FusedMHABiasRunner = OpRunner<FusedMHABiasSignature>;
+
+using FusedMHASoftmaxBackwardSignature =
+    void(DeviceMemoryBase /* BMM1_GRAD_GEMM1_inputA_data */,
+         DeviceMemoryBase /* BMM1_GRAD_GEMM2_inputB_data */,
+         DeviceMemoryBase /* BMM2_GRAD_GEMM1_inputA_data */,
+         DeviceMemoryBase /* BMM2_GRAD_GEMM2_inputB_data */,
+         DeviceMemoryBase /* d_output_data */,
+         DeviceMemoryBase /* d_BMM1_inputA_data */,
+         DeviceMemoryBase /* d_BMM1_inputB_data */,
+         DeviceMemoryBase /* d_BMM2_inputB_data */,
+         DeviceMemoryBase /* d_S_data */, DeviceMemoryBase /* d_bias_data */);
+using FusedMHASoftmaxBackwardRunner =
+    OpRunner<FusedMHASoftmaxBackwardSignature>;
+
+using FusedMHAMaskBackwardSignature = void(
+    DeviceMemoryBase /* BMM1_GRAD_GEMM1_inputA_data */,
+    DeviceMemoryBase /* BMM1_GRAD_GEMM2_inputB_data */,
+    DeviceMemoryBase /* BMM2_GRAD_GEMM1_inputA_data */,
+    DeviceMemoryBase /* BMM2_GRAD_GEMM2_inputB_data */,
+    DeviceMemoryBase /* d_output_data */,
+    DeviceMemoryBase /* d_BMM1_inputA_data */,
+    DeviceMemoryBase /* d_BMM1_inputB_data */,
+    DeviceMemoryBase /* d_BMM2_inputB_data */, DeviceMemoryBase /* d_S_data */,
+    DeviceMemoryBase /* mask_data */, DeviceMemoryBase /* d_bias_data */);
+using FusedMHAMaskBackwardRunner = OpRunner<FusedMHAMaskBackwardSignature>;
 
 // Describes the configuration for the algorithms that will used.
 //
@@ -1643,6 +1672,7 @@ class DnnSupport {
       const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
       const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
       const dnn::TensorDescriptor& output_descriptor,
+      std::optional<dnn::TensorDescriptor> activation_descriptor,
       std::optional<double> dropout_rate, std::optional<int64_t> seed);
 
   virtual tsl::StatusOr<std::unique_ptr<const dnn::FusedMHAMaskRunner>>
@@ -1654,6 +1684,7 @@ class DnnSupport {
       const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
       const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
       const dnn::TensorDescriptor& output_descriptor,
+      std::optional<dnn::TensorDescriptor> activation_descriptor,
       const dnn::TensorDescriptor& mask_descriptor, double scale,
       std::optional<double> dropout_rate, std::optional<int64_t> seed);
 
@@ -1666,6 +1697,7 @@ class DnnSupport {
       const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
       const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
       const dnn::TensorDescriptor& output_descriptor,
+      std::optional<dnn::TensorDescriptor> activation_descriptor,
       const dnn::TensorDescriptor& mask_descriptor,
       const dnn::TensorDescriptor& bias_descriptor, double scale,
       std::optional<double> dropout_rate, std::optional<int64_t> seed);
@@ -1679,7 +1711,42 @@ class DnnSupport {
       const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
       const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
       const dnn::TensorDescriptor& output_descriptor,
+      std::optional<dnn::TensorDescriptor> activation_descriptor,
       const dnn::TensorDescriptor& bias_descriptor, double scale,
+      std::optional<double> dropout_rate, std::optional<int64_t> seed);
+
+  virtual tsl::StatusOr<
+      std::unique_ptr<const dnn::FusedMHASoftmaxBackwardRunner>>
+  FusedMHASoftmaxBackwardRunnerFromDesc(
+      Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+      dnn::FusedMHAKind kind,
+      const MatmulTensorDescriptor& bmm1_grad_gemm1_rhs_descriptor,
+      const MatmulTensorDescriptor& bmm1_grad_gemm2_rhs_descriptor,
+      const MatmulTensorDescriptor& bmm2_grad_gemm1_lhs_descriptor,
+      const MatmulTensorDescriptor& bmm2_grad_gemm2_rhs_descriptor,
+      const MatmulTensorDescriptor& d_output_descriptor,
+      const TensorDescriptor& d_bmm1_lhs_descriptor,
+      const TensorDescriptor& d_bmm1_rhs_descriptor,
+      const TensorDescriptor& d_bmm2_rhs_descriptor,
+      const TensorDescriptor& d_s_descriptor,
+      std::optional<dnn::TensorDescriptor> d_bias_descriptor, double scale,
+      std::optional<double> dropout_rate, std::optional<int64_t> seed);
+
+  virtual tsl::StatusOr<std::unique_ptr<const dnn::FusedMHAMaskBackwardRunner>>
+  FusedMHAScaleMaskSoftmaxBackwardRunnerFromDesc(
+      Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+      dnn::FusedMHAKind kind,
+      const MatmulTensorDescriptor& bmm1_grad_gemm1_rhs_descriptor,
+      const MatmulTensorDescriptor& bmm1_grad_gemm2_rhs_descriptor,
+      const MatmulTensorDescriptor& bmm2_grad_gemm1_lhs_descriptor,
+      const MatmulTensorDescriptor& bmm2_grad_gemm2_rhs_descriptor,
+      const MatmulTensorDescriptor& d_output_descriptor,
+      const TensorDescriptor& d_bmm1_lhs_descriptor,
+      const TensorDescriptor& d_bmm1_rhs_descriptor,
+      const TensorDescriptor& d_bmm2_rhs_descriptor,
+      const TensorDescriptor& d_s_descriptor,
+      const TensorDescriptor& mask_descriptor,
+      std::optional<dnn::TensorDescriptor> d_bias_descriptor, double scale,
       std::optional<double> dropout_rate, std::optional<int64_t> seed);
 
   virtual bool GetMIOpenConvolveAlgorithms(

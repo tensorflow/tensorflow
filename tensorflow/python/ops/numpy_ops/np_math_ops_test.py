@@ -20,6 +20,7 @@ import numpy as np
 
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.ops.numpy_ops import np_array_ops
 from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.numpy_ops import np_math_ops
@@ -377,8 +378,8 @@ class MathTest(test.TestCase, parameterized.TestCase):
     self.assertFalse(np_math_ops.isneginf(x2))
 
 if __name__ == '__main__':
-  ops.enable_tensor_equality()
+  tensor.enable_tensor_equality()
   ops.enable_eager_execution()
-  ops.enable_numpy_style_type_promotion()
+  ops.set_dtype_conversion_mode('legacy')
   np_math_ops.enable_numpy_methods_on_tensor()
   test.main()

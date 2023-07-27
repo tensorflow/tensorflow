@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
 #include "tfrt/host_context/resource_context.h"  // from @tf_runtime
-#include "util/task/status_macros.h"
 
 namespace tensorflow {
 namespace tfrt_stub {
@@ -72,6 +71,10 @@ class BatchFunctionFallbackKernelBase : public AsyncOpKernel {
   int32_t batch_timeout_micros_;
   int32_t max_enqueued_batches_;
   std::vector<int32_t> allowed_batch_sizes_;
+  int32 low_priority_max_batch_size_;
+  int32 low_priority_batch_timeout_micros_;
+  int32 low_priority_max_enqueued_batches_;
+  std::vector<int32> low_priority_allowed_batch_sizes_;
   bool enable_large_batch_splitting_;
   bool disable_padding_;
 

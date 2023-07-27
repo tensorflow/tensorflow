@@ -59,6 +59,8 @@ cc_library(
     deps = [
         ":auto_sharding_strategy",
         "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/tsl/platform:hash",
+        "//tensorflow/tsl/platform:types",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_ortools//ortools/linear_solver",
@@ -183,6 +185,7 @@ xla_cc_test(
     srcs = ["auto_sharding_solver_test.cc"],
     deps = [
         ":auto_sharding_solver",
+        ":auto_sharding_strategy",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "@com_google_googletest//:gtest",
     ],

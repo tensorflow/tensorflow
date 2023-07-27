@@ -41,7 +41,6 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "absl/types/variant.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_domain_metadata.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_input_output_alias_config.h"
@@ -235,6 +234,7 @@ class HloParserImpl : public HloParser {
   StatusOr<Shape> ParseShapeOnly();
   StatusOr<HloSharding> ParseShardingOnly();
   StatusOr<FrontendAttributes> ParseFrontendAttributesOnly();
+  StatusOr<StatisticsViz> ParseStatisticsVizOnly();
   StatusOr<std::vector<bool>> ParseParameterReplicationOnly();
   StatusOr<BoolList> ParseBooleanListOrSingleBooleanOnly();
   StatusOr<Window> ParseWindowOnly();
@@ -263,6 +263,7 @@ class HloParserImpl : public HloParser {
     kConvolutionDimensionNumbers,
     kSharding,
     kFrontendAttributes,
+    kStatisticsViz,
     kBracedBoolListOrBool,
     kParameterReplication,
     kInstructionList,
@@ -468,6 +469,7 @@ class HloParserImpl : public HloParser {
   bool ParseListShardingType(std::vector<OpSharding::Type>* types);
   bool ParseSharding(OpSharding* sharding);
   bool ParseFrontendAttributes(FrontendAttributes* frontend_attributes);
+  bool ParseStatisticsViz(StatisticsViz* statistics_viz);
   bool ParseSingleSharding(OpSharding* sharding, bool lbrace_pre_lexed);
   bool ParseParameterReplication(ParameterReplication* parameter_replication);
   bool ParseBooleanListOrSingleBoolean(BoolList* boolean_list);
@@ -1205,9 +1207,12 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
   absl::flat_hash_map<std::string, AttrConfig> attrs;
   optional<OpSharding> sharding;
   optional<FrontendAttributes> frontend_attributes;
+  optional<StatisticsViz> statistics_viz;
   attrs["sharding"] = {/*required=*/false, AttrTy::kSharding, &sharding};
   attrs["frontend_attributes"] = {
       /*required=*/false, AttrTy::kFrontendAttributes, &frontend_attributes};
+  attrs["statistics"] = {/*required=*/false, AttrTy::kStatisticsViz,
+                         &statistics_viz};
   optional<ParameterReplication> parameter_replication;
   attrs["parameter_replication"] = {/*required=*/false,
                                     AttrTy::kParameterReplication,
@@ -1290,6 +1295,9 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
   if (frontend_attributes) {
     instruction->set_frontend_attributes(*frontend_attributes);
   }
+  if (statistics_viz) {
+    instruction->set_statistics_viz(*statistics_viz);
+  }
   return AddInstruction(name, instruction, name_loc);
 }
 
@@ -1326,8 +1334,9 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           !ParseInt64(&parameter_number)) {
         return nullptr;
       }
+      const LocTy loc = lexer_.GetLoc();
       if (parameter_number < 0) {
-        Error(lexer_.GetLoc(), "parameter number must be >= 0");
+        Error(loc, "parameter number must be >= 0");
         return nullptr;
       }
       if (!ParseToken(TokKind::kRparen, "expects ')' after parameter number") ||
@@ -1335,8 +1344,13 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         return nullptr;
       }
       std::string param_name(name);
-      return builder->AddInstruction(HloInstruction::CreateParameter(
+      auto result = builder->AddParameter(HloInstruction::CreateParameter(
           parameter_number, *shape, param_name));
+      if (!result.ok()) {
+        Error(loc, result.status().message());
+        return nullptr;
+      }
+      return result.value();
     }
     case HloOpcode::kConstant: {
       Literal literal;
@@ -3104,6 +3118,52 @@ bool HloParserImpl::ParseFrontendAttributes(
                     "expects '}' at the end of frontend attributes");
 }
 
+// statistics
+//    ::= '{' /*empty*/ '}'
+//    ::= '{' index, single_statistic '}'
+// index ::= 'visualizing_index=' value
+// single_statistic ::= statistic '=' value (',' statistic '=' value)*
+bool HloParserImpl::ParseStatisticsViz(StatisticsViz* statistics_viz) {
+  CHECK(statistics_viz != nullptr);
+  if (!ParseToken(TokKind::kLbrace, "expected '{' to start statistics")) {
+    return false;
+  }
+  if (lexer_.GetKind() == TokKind::kRbrace) {
+    // empty
+  } else {
+    // index must exist
+    std::string visualizing_index_attr_name;
+    if (!ParseAttributeName(&visualizing_index_attr_name)) {
+      return false;
+    }
+    if (lexer_.GetKind() != TokKind::kInt) {
+      return false;
+    }
+    statistics_viz->set_stat_index_to_visualize(lexer_.GetInt64Val());
+    lexer_.Lex();
+
+    // then process statistics
+    while (EatIfPresent(TokKind::kComma)) {
+      std::string stat_name;
+      if (!ParseAttributeName(&stat_name)) {
+        return false;
+      }
+      if (lexer_.GetKind() != TokKind::kDecimal &&
+          lexer_.GetKind() != TokKind::kInt) {
+        return false;
+      }
+      Statistic statistic;
+      statistic.set_stat_name(stat_name);
+      statistic.set_stat_val(lexer_.GetKind() == TokKind::kDecimal
+                                 ? lexer_.GetDecimalVal()
+                                 : lexer_.GetInt64Val());
+      lexer_.Lex();
+      *statistics_viz->add_statistics() = std::move(statistic);
+    }
+  }
+  return ParseToken(TokKind::kRbrace, "expects '}' at the end of statistics");
+}
+
 // ::= '{' 'replicated'? 'manual'? 'maximal'? ('device=' int)? shape?
 //         ('devices=' ('[' dims ']')* device_list)?
 //         ('metadata=' metadata)* '}'
@@ -4453,6 +4513,15 @@ bool HloParserImpl::ParseAttributeHelper(
             ->emplace(frontend_attributes);
         return true;
       }
+      case AttrTy::kStatisticsViz: {
+        StatisticsViz statistics_viz;
+        if (!ParseStatisticsViz(&statistics_viz)) {
+          return false;
+        }
+        static_cast<optional<StatisticsViz>*>(attr_out_ptr)
+            ->emplace(statistics_viz);
+        return true;
+      }
       case AttrTy::kParameterReplication: {
         ParameterReplication parameter_replication;
         if (!ParseParameterReplication(&parameter_replication)) {
@@ -5766,6 +5835,7 @@ bool HloParserImpl::ParseMetadata(OpMetadata* metadata) {
   optional<int32_t> source_line;
   optional<std::vector<int64_t>> profile_type;
   optional<std::string> deduplicated_name;
+  optional<bool> preserve_layout;
   attrs["op_type"] = {/*required=*/false, AttrTy::kString, &op_type};
   attrs["op_name"] = {/*required=*/false, AttrTy::kString, &op_name};
   attrs["source_file"] = {/*required=*/false, AttrTy::kString, &source_file};
@@ -5774,6 +5844,8 @@ bool HloParserImpl::ParseMetadata(OpMetadata* metadata) {
                            &profile_type};
   attrs["deduplicated_name"] = {/*required=*/false, AttrTy::kString,
                                 &deduplicated_name};
+  attrs["preserve_layout"] = {/*required=*/false, AttrTy::kBool,
+                              &preserve_layout};
   if (!ParseSubAttributes(attrs)) {
     return false;
   }
@@ -5799,6 +5871,11 @@ bool HloParserImpl::ParseMetadata(OpMetadata* metadata) {
   }
   if (deduplicated_name) {
     metadata->set_deduplicated_name(*deduplicated_name);
+  }
+  if (preserve_layout) {
+    metadata->set_preserve_layout(*preserve_layout);
+  } else {
+    metadata->set_preserve_layout(false);
   }
   return true;
 }
@@ -6193,6 +6270,18 @@ StatusOr<FrontendAttributes> HloParserImpl::ParseFrontendAttributesOnly() {
   return attributes;
 }
 
+StatusOr<StatisticsViz> HloParserImpl::ParseStatisticsVizOnly() {
+  lexer_.Lex();
+  StatisticsViz statistics_viz;
+  if (!ParseStatisticsViz(&statistics_viz)) {
+    return InvalidArgument("Syntax error:\n%s", GetError());
+  }
+  if (lexer_.GetKind() != TokKind::kEof) {
+    return InvalidArgument("Syntax error:\nExtra content after statistics");
+  }
+  return statistics_viz;
+}
+
 StatusOr<std::vector<bool>> HloParserImpl::ParseParameterReplicationOnly() {
   lexer_.Lex();
   ParameterReplication parameter_replication;
@@ -6351,6 +6440,11 @@ StatusOr<HloSharding> ParseSharding(absl::string_view str) {
 StatusOr<FrontendAttributes> ParseFrontendAttributes(absl::string_view str) {
   HloParserImpl parser(str);
   return parser.ParseFrontendAttributesOnly();
+}
+
+StatusOr<StatisticsViz> ParseStatisticsViz(absl::string_view str) {
+  HloParserImpl parser(str);
+  return parser.ParseStatisticsVizOnly();
 }
 
 StatusOr<std::vector<bool>> ParseParameterReplication(absl::string_view str) {

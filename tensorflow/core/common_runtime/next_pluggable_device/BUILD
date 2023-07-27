@@ -67,13 +67,6 @@ cc_library(
 )
 
 cc_library(
-    name = "next_pluggable_device_c_api_flag",
-    srcs = ["next_pluggable_device_c_api_flag.cc"],
-    hdrs = ["next_pluggable_device_c_api_flag.h"],
-    visibility = ["//visibility:public"],
-)
-
-cc_library(
     name = "next_pluggable_device_factory",
     srcs = [
         "next_pluggable_device_factory.cc",
@@ -223,7 +216,6 @@ cc_library(
         ":c_plugin_op_kernel",
         ":direct_plugin_op_kernel",
         ":loose_headers",
-        ":next_pluggable_device_c_api_flag",
         ":plugin_op_kernel",
         "//tensorflow/c:kernels_hdrs",
         "//tensorflow/c:tf_status_helper",
@@ -290,7 +282,6 @@ cc_library(
     deps = [
         ":c_plugin_coordination_service_agent",
         ":direct_plugin_coordination_service_agent",
-        ":next_pluggable_device_c_api_flag",
         ":plugin_coordination_service_agent",
         "//tensorflow/c:kernels_hdrs",
         "//tensorflow/c:tf_status_helper",

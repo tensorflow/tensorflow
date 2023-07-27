@@ -1,4 +1,4 @@
-# Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,8 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-load("//tensorflow/lite/experimental/acceleration/mini_benchmark:build_defs.bzl", "cc_library_with_forced_in_process_benchmark_variant")
-load("//tensorflow/lite/experimental/acceleration/mini_benchmark:special_rules.bzl", "libjpeg_handle_deps", "minibenchmark_visibility_allowlist")
+load("//tensorflow/lite:build_def.bzl", "tflite_cc_library_with_c_headers_test")
+load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite_with_c_headers_test")
+load("//tensorflow/lite/experimental/acceleration/mini_benchmark:special_rules.bzl", "minibenchmark_visibility_allowlist")
 
 default_visibility_group = [
     "//tensorflow/lite/experimental/acceleration/mini_benchmark:__subpackages__",
@@ -25,44 +26,19 @@ package(
     licenses = ["notice"],
 )
 
-cc_library_with_forced_in_process_benchmark_variant(
+# This target runs MiniBenchmark in a separate processon Android, while it runs MiniBenchmark
+# in-process on all other platforms.
+cc_library_with_tflite_with_c_headers_test(
     name = "c_api",
-    srcs = ["c_api.cc"],
     hdrs = ["c_api.h"],
-    in_process_deps = [
-        "//tensorflow/lite/experimental/acceleration/mini_benchmark:blocking_validator_runner",
-    ],
-    deps = [
-        ":c_api_types",
-        "//tensorflow/lite/acceleration/configuration:configuration_fbs",
-        "//tensorflow/lite/acceleration/configuration/c:delegate_plugin",
-        "//tensorflow/lite/experimental/acceleration/mini_benchmark:benchmark_result_evaluator",
-        "//tensorflow/lite/experimental/acceleration/mini_benchmark:status_codes",
-        "//tensorflow/lite/experimental/acceleration/mini_benchmark:validator_runner_entrypoint",
-        "//tensorflow/lite/experimental/acceleration/mini_benchmark:validator_runner_options",
-        "@flatbuffers",
-    ],
+    deps = ["//tensorflow/lite/core/experimental/acceleration/mini_benchmark/c:c_api"],
 )
 
-cc_test(
-    name = "c_api_test",
-    srcs = ["c_api_test.cc"],
+# This target forces MiniBenchmark to run in-process on all platforms including Android.
+tflite_cc_library_with_c_headers_test(
+    name = "c_api_in_process",
+    hdrs = ["c_api.h"],
     deps = [
-        ":c_api",
-        "//tensorflow/lite/acceleration/configuration:configuration_fbs",
-        "//tensorflow/lite/experimental/acceleration/mini_benchmark:embedded_mobilenet_model",
-        "//tensorflow/lite/experimental/acceleration/mini_benchmark:embedded_mobilenet_validation_model",
-        "//tensorflow/lite/experimental/acceleration/mini_benchmark:embedded_simple_addition_model",
-        "//tensorflow/lite/experimental/acceleration/mini_benchmark:mini_benchmark_test_helper",
-        "//tensorflow/lite/experimental/acceleration/mini_benchmark:status_codes",
-        "@com_google_googletest//:gtest_main",
-        "@flatbuffers",
-        "@flatbuffers//:runtime_cc",
-    ] + libjpeg_handle_deps(),
-)
-
-cc_library(
-    name = "c_api_types",
-    hdrs = ["c_api_types.h"],
-    visibility = ["//visibility:private"],
+        "//tensorflow/lite/core/experimental/acceleration/mini_benchmark/c:c_api_in_process",
+    ],
 )

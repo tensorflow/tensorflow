@@ -12,14 +12,17 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #include "tensorflow/compiler/xla/service/gpu/amdgpu_compiler.h"
+
+#include <memory>
+#include <optional>
+#include <vector>
 
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
+#include "tensorflow/compiler/xla/service/gpu/conv_algorithm_picker.h"
 #include "tensorflow/compiler/xla/service/gpu/cusolver_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_padding_legalization.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
@@ -126,6 +129,82 @@ Status AMDGPUCompiler::OptimizeHloPostLayoutAssignment(
   return OkStatus();
 }
 
+bool AMDGPUCompiler::EnableCollectiveScheduleLinearizerForSpmd(
+    HloModule* hlo_module, se::StreamExecutor* stream_exec) {
+  return hlo_module->config().use_spmd_partitioning() &&
+         stream_exec != nullptr &&
+         GpuConvAlgorithmPicker::IsEnabled(hlo_module);
+}
+
+bool AMDGPUCompiler::RequiresCollectiveScheduleLinearizer(
+    const HloModule* module) {
+  for (const HloComputation* comp : module->MakeNonfusionComputations()) {
+    for (const HloInstruction* inst : comp->instructions()) {
+      if (GpuConvAlgorithmPicker::IsCandidate(inst)) {
+        return true;
+      }
+    }
+  }
+  // No convolution auto-tuning candidates found in the module.
+  return false;
+}
+
+Status AMDGPUCompiler::AddAutotuningPasses(
+    HloPassPipeline* pipeline, HloModule* hlo_module,
+    se::StreamExecutor* stream_exec, const DebugOptions& debug_options,
+    const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
+    const AutotuneResults* autotune_results,
+    tsl::thread::ThreadPool* thread_pool) {
+  AutotuneConfig autotune_config =
+      stream_exec
+          ? AutotuneConfig{DeviceConfig{stream_exec, options.device_allocator},
+                           debug_options}
+          : AutotuneConfig{
+                DevicelessConfig{gpu_target_config.device_description_str},
+                debug_options};
+  if (autotune_config.IsDeviceless()) {
+    AutotunerUtil::ClearAutotuneResults();
+    TF_RETURN_IF_ERROR(AutotunerUtil::LoadAutotuneResults(*autotune_results));
+  }
+  if (GpuConvAlgorithmPicker::IsEnabled(hlo_module)) {
+    pipeline->AddPass<GpuConvAlgorithmPicker>(autotune_config);
+  }
+  // TODO:
+  // pipeline->AddPass<GemmAlgorithmPicker>(autotune_config);
+  // pipeline->AddPass<TritonAutotuner>(autotune_config, thread_pool);
+  return OkStatus();
+}
+
+Status AMDGPUCompiler::LoadAutotuneResultsFromFile(
+    const DebugOptions& debug_options) {
+  // We are doing this before the timer is started.
+  if (absl::string_view file_path =
+          debug_options.xla_gpu_load_autotune_results_from();
+      !file_path.empty()) {
+    static absl::once_flag once;
+    Status status = OkStatus();
+    absl::call_once(once, [&file_path, &status] {
+      status = AutotunerUtil::LoadAutotuneResultsFromFile(file_path);
+    });
+    TF_RETURN_IF_ERROR(status);
+  }
+  return OkStatus();
+}
+
+Status AMDGPUCompiler::SerializeAutotuneResultsToFile(
+    const DebugOptions& debug_options) {
+  // We are doing this after the timer is finished.
+  if (absl::string_view file_path =
+          debug_options.xla_gpu_dump_autotune_results_to();
+      !file_path.empty()) {
+    // Warning: This writes the autotune results at every compilation, possibly
+    // multiple times per process.
+    TF_RETURN_IF_ERROR(
+        AutotunerUtil::SerializeAutotuneResultsToFile(file_path));
+  }
+  return OkStatus();
+}
+
 AMDGPUCompiler::AMDGPUCompiler()
     : GpuCompiler(stream_executor::rocm::kROCmPlatformId,
                   amdgpu::TargetTriple(), amdgpu::DataLayout()) {}
@@ -138,7 +217,8 @@ StatusOr<std::pair<std::string, std::vector<uint8_t>>>
 AMDGPUCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
                                     llvm::Module* llvm_module,
                                     GpuVersion gpu_version, bool relocatable,
-                                    const HloModule* debug_module) {
+                                    const HloModule* debug_module,
+                                    const CompileOptions& options) {
   if (rocdl_dir_.empty()) {
     // Compute rocdl_dir_ just once and cache it in this member.
     rocdl_dir_ = GetROCDLDir(module_config);
@@ -150,8 +230,11 @@ AMDGPUCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
 
   std::vector<uint8_t> hsaco;
   {
-    XLA_SCOPED_LOGGING_TIMER(
-        "AMDGPUCompiler::CompileTargetBinary - CompileToHsaco");
+    // This may print multiple lines per HLO compilation because of the
+    // parallelized compilation of LLVM modules.
+    XLA_SCOPED_LOGGING_TIMER_IF(
+        "AMDGPUCompiler::CompileTargetBinary - CompileToHsaco",
+        !options.is_autotuning_compilation);
     TF_ASSIGN_OR_RETURN(
         hsaco, amdgpu::CompileToHsaco(llvm_module, gpu_version,
                                       module_config.debug_options(), rocdl_dir_,

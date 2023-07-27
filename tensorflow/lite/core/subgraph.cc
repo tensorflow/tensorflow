@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/lite/c/common_internal.h"
 #include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/api/tensor_utils.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
@@ -252,6 +253,7 @@ Subgraph::Subgraph(ErrorReporter* error_reporter,
                    resource::InitializationStatusMap* initialization_status_map,
                    int subgraph_index)
     : external_contexts_(external_contexts),
+      registration_externals_(new internal::RegistrationExternalsCache),
       error_reporter_(error_reporter),
       next_execution_plan_index_to_prepare_(0),
       next_execution_plan_index_to_plan_allocation_(0),
@@ -509,8 +511,34 @@ TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
   // The subgraph is taking ownership of the external registration, in case the
   // user has supplied an opaque delegate.
   if (TfLiteDelegateHasValidOpaqueDelegateBuilder(delegate)) {
-    registration_externals_.insert(std::unique_ptr<TfLiteRegistrationExternal>(
-        registration.registration_external));
+    // If the user has supplied an opaque delegate, then they _must_ also use
+    // TfLiteRegistrationExternal.
+    if (!registration.registration_external) {
+      TFLITE_LOG(
+          tflite::TFLITE_LOG_WARNING,
+          "For a delegate with the 'opaque_delegate_builder' field set, the "
+          "delegate kernel's TfLiteRegistration object must have the "
+          "'registration_external' field set.");
+      return kTfLiteDelegateError;
+    }
+
+    // In this case, the subgraph takes ownership of the external registration.
+    OpResolver::OpId op_id{registration.registration_external->builtin_code,
+                           registration.registration_external->custom_name,
+                           registration.registration_external->version};
+    auto [it, inserted] = registration_externals_->emplace(
+        op_id, std::unique_ptr<TfLiteRegistrationExternal>(
+                   registration.registration_external));
+    // If there was already an entry for this op_id in the
+    // registration_externals_ cache, the statement above will have
+    // no effect on the registration_externals_ cache,
+    // but will deallocate registration.registration_externals.
+    // To ensure that registration remains valid, we need to use the
+    // registration_externals value that was previously in the cache.
+    if (!inserted) {
+      auto registration_external_from_cache = it->second.get();
+      registration.registration_external = registration_external_from_cache;
+    }
   }
 
   // Ignore empty node replacement sets.
@@ -706,6 +734,46 @@ TfLiteStatus Subgraph::MarkSubgraphAsDelegationSkippable(int subgraph_index) {
   return kTfLiteOk;
 }
 
+TfLiteStatus Subgraph::GetNodeInitDataMmapInfo(
+    const TfLiteNode* node, int* fd,
+    int64_t* custom_initial_data_offset_in_file,
+    int64_t* custom_initial_data_size) const {
+  if (!allocation_) {
+    return kTfLiteError;
+  }
+
+  if (allocation_->type() != tflite::Allocation::Type::kMMap) {
+    return kTfLiteError;
+  }
+
+  const MMAPAllocation* mmap_alloc =
+      static_cast<const MMAPAllocation*>(allocation_);
+  *fd = mmap_alloc->fd();
+  if (node->custom_initial_data == nullptr) {
+    *custom_initial_data_offset_in_file = -1;
+    *custom_initial_data_size = -1;
+    // The node does not have custom init data.  Deliberately return 'kTfLiteOk'
+    // so that clients can distinguish the following scenarios:
+    // - The TF Lite runtime does not have 'MMAPAllocation' available and
+    //   therefore can not possibly load the FD/offset/size tuple associcated
+    //   with a node's custom init data, return 'kTfLiteError' in this case.
+    // - The TF Lite runtime does have 'MMAPAllocation' available, but the
+    //   specific 'node' that has been supplied happens to have 'null' set as
+    //   its custom init data address.  Return 'kTfLiteOk' but set offset and
+    //   size to -1.
+    return kTfLiteOk;
+  }
+
+  const size_t custom_initial_data_offset =
+      reinterpret_cast<const uint8_t*>(node->custom_initial_data) -
+      reinterpret_cast<const uint8_t*>(mmap_alloc->mmapped_buffer());
+
+  *custom_initial_data_offset_in_file =
+      custom_initial_data_offset + mmap_alloc->mmapped_buffer_offset_in_file();
+  *custom_initial_data_size = node->custom_initial_data_size;
+  return kTfLiteOk;
+}
+
 TfLiteStatus Subgraph::PreviewDelegatePartitioning(
     const TfLiteIntArray* nodes_to_replace,
     TfLiteDelegateParams** partition_params_array, int* num_partitions) {
@@ -806,6 +874,7 @@ TfLiteStatus Subgraph::Cancel() {
   if (continue_invocation_) {
     // Sets cancellation flag to false so cancellation check between nodes will
     // cancel the invocation.
+
     continue_invocation_->clear();
     return kTfLiteOk;
   }
@@ -872,6 +941,26 @@ TfLiteStatus Subgraph::CheckInputAndOutputForOverlap(const int* input_indices,
     }
   }
   return kTfLiteOk;
+}
+
+std::vector<int> Subgraph::GetInputTensorsCount() {
+  std::vector<int> input_tensors_count(tensors_.size(), 0);
+  for (int execution_plan_index = 0;
+       execution_plan_index < execution_plan().size(); execution_plan_index++) {
+    int node_index = execution_plan()[execution_plan_index];
+    TfLiteNode& node = nodes_and_registration_[node_index].first;
+    if (node.inputs->size > 0) {
+      for (int i = 0; i < node.inputs->size; ++i) {
+        const int input_idx = node.inputs->data[i];
+        if (input_idx == kTfLiteOptionalTensor) continue;
+        input_tensors_count[input_idx]++;
+      }
+    }
+  }
+  for (int i = 0; i < outputs_.size(); ++i) {
+    input_tensors_count[outputs_[i]]++;
+  }
+  return input_tensors_count;
 }
 
 TfLiteStatus Subgraph::AllocateTensors() {
@@ -1346,6 +1435,7 @@ TfLiteStatus Subgraph::MayAllocateOpOutput(TfLiteNode* node) {
   if (ShouldOptimizeMemoryForLargeTensors()) {
     for (int i = 0; i < node->outputs->size; ++i) {
       int tensor_index = node->outputs->data[i];
+      if (tensor_index == kTfLiteOptionalTensor) continue;
       TfLiteTensor* tensor = &context_.tensors[tensor_index];
       if (tensor->data.raw == nullptr &&
           tensor->allocation_type == kTfLiteDynamic) {
@@ -1475,36 +1565,13 @@ TfLiteStatus Subgraph::PrepareOpsAndTensors() {
 }
 
 TfLiteStatus Subgraph::RemoveUnusedInputs() {
-  auto graph_info = CreateGraphInfo();
-  std::vector<int> refcounts(graph_info->num_tensors(), 0);
-
-  for (int tensor_index : graph_info->variables()) {
-    refcounts[tensor_index]++;
-  }
-  // Count references to node input tensors.
-  const size_t num_execution_nodes = graph_info->num_execution_nodes();
-  for (size_t i = 0; i < num_execution_nodes; ++i) {
-    const TfLiteNode& node = graph_info->node(i);
-    TfLiteIntArray* node_inputs = node.inputs;
-    for (int j = 0; j < node_inputs->size; ++j) {
-      int tensor_index = node_inputs->data[j];
-      if (tensor_index != kTfLiteOptionalTensor) {
-        refcounts[tensor_index]++;
-      }
-    }
-  }
-  // Count references to SubGraph output tensors.
-  for (auto iter = outputs_.begin(); iter != outputs_.end(); iter++) {
-    if (*iter == kTfLiteOptionalTensor) continue;
-    refcounts[*iter]++;
-  }
-
+  std::vector<int> input_tensors_count = GetInputTensorsCount();
   // Mark unused inputs as kTfLiteOptionalTensor.
-  for (auto iter = inputs_.begin(); iter != inputs_.end(); iter++) {
-    if (*iter == kTfLiteOptionalTensor) continue;
-    if (refcounts[*iter] == 0) {
-      tensor(*iter)->bytes = 0;  // To make it clearer for memory analysis.
-      *iter = kTfLiteOptionalTensor;
+  for (int& tensor_idx : inputs()) {
+    if (tensor_idx == kTfLiteOptionalTensor) continue;
+    if (input_tensors_count[tensor_idx] == 0) {
+      tensor(tensor_idx)->bytes = 0;  // To make it clearer for memory analysis.
+      tensor_idx = kTfLiteOptionalTensor;
     }
   }
   return kTfLiteOk;
@@ -1715,6 +1782,7 @@ TfLiteStatus Subgraph::AddTensors(int tensors_to_add,
                                   int* first_new_tensor_index) {
   const size_t base_index = tensors_.size();
   if (first_new_tensor_index) *first_new_tensor_index = base_index;
+  if (tensors_to_add < 0) return kTfLiteError;
   tensors_.resize(tensors_.size() + tensors_to_add);
   for (size_t i = base_index; i < tensors_.size(); i++) {
     memset(&tensors_[i], 0, sizeof(tensors_[i]));

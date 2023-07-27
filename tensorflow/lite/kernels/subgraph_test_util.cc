@@ -317,20 +317,32 @@ void SubgraphBuilder::BuildXNNPACKSubgraph(Subgraph* subgraph) {
 }
 
 void SubgraphBuilder::BuildInputIsOutputSubgraph(Subgraph* subgraph) {
-  enum { kInputCounter, kInputValue, kOutputCounter, kTensorCount };
+  enum {
+    kInputCounter,
+    kInputValue0,
+    kInputOutput,
+    kOutputCounter,
+    kOutputValue0,
+    kConstRhs,
+    kTensorCount
+  };
 
   int first_new_tensor_index;
   ASSERT_EQ(subgraph->AddTensors(kTensorCount, &first_new_tensor_index),
             kTfLiteOk);
   ASSERT_EQ(first_new_tensor_index, 0);
-  ASSERT_EQ(subgraph->SetInputs({kInputCounter, kInputValue}), kTfLiteOk);
-  ASSERT_EQ(subgraph->SetOutputs({kOutputCounter, kInputValue}), kTfLiteOk);
+  ASSERT_EQ(subgraph->SetInputs({kInputCounter, kInputValue0, kInputOutput}),
+            kTfLiteOk);
+  ASSERT_EQ(subgraph->SetOutputs({kOutputCounter, kOutputValue0, kInputOutput}),
+            kTfLiteOk);
 
   for (int i = 0; i < kTensorCount; ++i) {
     SetupTensor(subgraph, i, kTfLiteInt32);
   }
+  CreateConstantTensor(subgraph, kConstRhs, {1}, {1});
 
-  AddAddNode(subgraph, kInputCounter, kInputValue, kOutputCounter);
+  AddAddNode(subgraph, kInputCounter, kConstRhs, kOutputCounter);
+  AddAddNode(subgraph, kInputValue0, kInputOutput, kOutputValue0);
 }
 
 void SubgraphBuilder::BuildInputIsDifferentOutputSubgraph(Subgraph* subgraph) {
@@ -1327,6 +1339,43 @@ void SubgraphBuilder::BuildFloatWhileSubgraph(Subgraph* subgraph,
                                   params, while_reg, &node_index);
 }
 
+void SubgraphBuilder::BuildMultiInputWhileSubgraphWithUnconsumedOutput(
+    Subgraph* subgraph, int num_inputs) {
+  // kInput1(0) --> +-------+ --> kOutput1(2)
+  //                | WHILE |
+  // kInput2(1) --> +-------+ --> kOutput2(3)
+
+  int first_new_tensor_index;
+  ASSERT_EQ(subgraph->AddTensors(num_inputs * 2, &first_new_tensor_index),
+            kTfLiteOk);
+  ASSERT_EQ(first_new_tensor_index, 0);
+  std::vector<int> input_tensors(num_inputs);
+  std::vector<int> output_tensors(num_inputs);
+  for (int i = 0; i < num_inputs; ++i) {
+    input_tensors[i] = i;
+    output_tensors[i] = i + num_inputs;
+  }
+  for (int i = 0; i < num_inputs; ++i) {
+    SetupTensor(subgraph, input_tensors[i], kTfLiteInt32);
+    SetupTensor(subgraph, output_tensors[i], kTfLiteInt32);
+  }
+
+  TfLiteWhileParams* params =
+      reinterpret_cast<TfLiteWhileParams*>(malloc(sizeof(TfLiteWhileParams)));
+  params->cond_subgraph_index = 1;
+  params->body_subgraph_index = 2;
+  auto* while_reg = ops::builtin::Register_WHILE();
+  while_reg->builtin_code = kTfLiteBuiltinWhile;
+
+  int node_index;
+  subgraph->AddNodeWithParameters(input_tensors, output_tensors, {}, nullptr, 0,
+                                  params, while_reg, &node_index);
+
+  output_tensors.pop_back();
+  ASSERT_EQ(subgraph->SetInputs(input_tensors), kTfLiteOk);
+  ASSERT_EQ(subgraph->SetOutputs(output_tensors), kTfLiteOk);
+}
+
 void SubgraphBuilder::BuildMultiInputWhileSubgraph(Subgraph* subgraph,
                                                    int num_inputs) {
   // kInput1(0) --> +-------+ --> kOutput1(2)
@@ -1343,7 +1392,6 @@ void SubgraphBuilder::BuildMultiInputWhileSubgraph(Subgraph* subgraph,
     input_tensors[i] = i;
     output_tensors[i] = i + num_inputs;
   }
-  // input_tensors[4] = input_tensors[3];
   ASSERT_EQ(subgraph->SetInputs(input_tensors), kTfLiteOk);
   ASSERT_EQ(subgraph->SetOutputs(output_tensors), kTfLiteOk);
 

@@ -51,6 +51,7 @@ class RegisterSpan {
   using iterator = RegisterIterator;
   using const_iterator = ConstRegisterIterator;
 
+  RegisterSpan() = default;
   RegisterSpan(bc::Span<uint32_t> reg_indices, absl::Span<Value> regs)
       : reg_indices_(reg_indices), regs_(regs) {}
 

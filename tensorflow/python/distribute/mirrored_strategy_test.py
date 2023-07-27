@@ -46,6 +46,7 @@ from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util as util
@@ -1548,14 +1549,14 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
 def _replica_id():
   replica_id = distribute_lib.get_replica_context().replica_id_in_sync_group
-  if not isinstance(replica_id, ops.Tensor):
+  if not isinstance(replica_id, tensor_lib.Tensor):
     replica_id = constant_op.constant(replica_id)
   return array_ops.identity(replica_id)
 
 
 def _replica_id_as_int():
   replica_id = distribute_lib.get_replica_context().replica_id_in_sync_group
-  if isinstance(replica_id, ops.Tensor):
+  if isinstance(replica_id, tensor_lib.Tensor):
     replica_id = tensor_util.constant_value(replica_id)
   return replica_id
 

@@ -29,7 +29,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        pyver: ['3.8', '3.9', '3.10', '3.11']
+        pyver: ['3.9', '3.10', '3.11']
     steps:
       - name: Stop old running containers (if any)
         shell: bash

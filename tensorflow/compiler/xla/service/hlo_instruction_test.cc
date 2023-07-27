@@ -1582,6 +1582,88 @@ TEST_F(HloInstructionTest, Stringification) {
             "true_computation=%TransposeDot, false_computation=%TransposeDot");
 }
 
+TEST_F(HloInstructionTest, GetSetStatisticsViz) {
+  const Shape shape = ShapeUtil::MakeShape(F32, {5, 10});
+
+  HloComputation::Builder builder(TestName());
+  HloInstruction* x =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "x"));
+
+  StatisticsViz statistics_viz;
+  statistics_viz.set_stat_index_to_visualize(-1);
+
+  x->set_statistics_viz(statistics_viz);
+
+  EXPECT_FALSE(x->has_statistics());
+  EXPECT_EQ(x->statistics_viz().stat_index_to_visualize(), -1);
+
+  Statistic statistic;
+  statistic.set_stat_name("stat-1");
+  statistic.set_stat_val(30.0);
+
+  x->add_single_statistic(statistic);
+  x->set_stat_index_to_visualize(0);
+
+  EXPECT_TRUE(x->has_statistics());
+  EXPECT_TRUE(
+      protobuf_util::ProtobufEquals(x->statistic_to_visualize(), statistic));
+
+  statistic.set_stat_val(40.0);
+  *statistics_viz.add_statistics() = statistic;
+
+  x->set_statistics_viz(statistics_viz);
+
+  EXPECT_TRUE(
+      protobuf_util::ProtobufEquals(x->statistics_viz(), statistics_viz));
+}
+
+TEST_F(HloInstructionTest, StringifyStatisticsViz) {
+  const Shape shape = ShapeUtil::MakeShape(F32, {5, 10});
+
+  HloComputation::Builder builder(TestName());
+  HloInstruction* x =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "x"));
+  HloInstruction* y =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "y"));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, x, y));
+
+  // Empty statistics viz must not print "statistics={}"
+  add->set_statistics_viz({});
+  EXPECT_EQ(add->ToString(),
+            "%add = f32[5,10]{1,0} add(f32[5,10]{1,0} %x, f32[5,10]{1,0} %y)");
+
+  auto CreateStatisticsVizWithStatistics =
+      [](int64_t stat_index_to_visualize,
+         std::initializer_list<std::pair<absl::string_view, double>> statistics)
+      -> StatisticsViz {
+    StatisticsViz statistics_viz;
+    statistics_viz.set_stat_index_to_visualize(stat_index_to_visualize);
+
+    auto create_statistic = [](absl::string_view statistic_name,
+                               double statistic_value) {
+      Statistic statistic;
+      statistic.set_stat_name(std::string(statistic_name));
+      statistic.set_stat_val(statistic_value);
+      return statistic;
+    };
+
+    for (const auto& [statistic_name, statistic_value] : statistics) {
+      *statistics_viz.add_statistics() =
+          create_statistic(statistic_name, statistic_value);
+    }
+
+    return statistics_viz;
+  };
+
+  add->set_statistics_viz(CreateStatisticsVizWithStatistics(
+      1, {{"stat-1", 33.0}, {"stat-2", 44.0}}));
+
+  EXPECT_EQ(add->ToString(),
+            "%add = f32[5,10]{1,0} add(f32[5,10]{1,0} %x, f32[5,10]{1,0} %y), "
+            "statistics={visualizing_index=1,stat-1=33,stat-2=44}");
+}
+
 TEST_F(HloInstructionTest, StringifyGather_0) {
   Shape input_tensor_shape = ShapeUtil::MakeShape(F32, {50, 49, 48, 47, 46});
   Shape start_indices_tensor_shape =

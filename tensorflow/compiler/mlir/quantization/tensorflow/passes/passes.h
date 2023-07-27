@@ -123,11 +123,6 @@ std::unique_ptr<OperationPass<ModuleOp>> CreatePreprocessOpPass(
 // ops from the final quantized graph.
 std::unique_ptr<OperationPass<func::FuncOp>> CreatePostQuantizePass();
 
-// Creates an instance of the ConvertTFQuantOpsToMHLOPass pass, which will
-// convert TF uniform quantized ops to the corresponding quantized MHLO ops.
-std::unique_ptr<OperationPass<func::FuncOp>>
-CreateConvertTFQuantOpsToMHLOPass();
-
 // Applies optimization patterns after quantization.
 std::unique_ptr<OperationPass<mlir::func::FuncOp>> CreateOptimizePass();
 

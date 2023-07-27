@@ -45,6 +45,7 @@ cc_library(
         "//tensorflow/core/tpu/kernels:tpu_compile_op_support",
         "//tensorflow/core/tpu/kernels:tpu_compile_proto_cc",
         "//tensorflow/core/tpu/kernels:tpu_util_hdrs",
+        "//tensorflow/tsl/platform:error_logging",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/log",

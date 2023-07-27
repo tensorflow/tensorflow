@@ -3149,7 +3149,8 @@ Status IrEmitter::Preprocess(HloInstruction* hlo) {
   VLOG(3) << "Visiting: " << hlo->ToString();
   // When profiling is enabled, trace the same HLOs that the profiler does.
   if (instruction_to_profile_idx_.count(hlo) ||
-      (hlo_module_config_.cpu_traceme_enabled() && !IsHloVeryCheap(hlo))) {
+      (hlo_module_config_.cpu_traceme_enabled() && !IsHloVeryCheap(hlo) &&
+       hlo->parent()->IsEntryComputation())) {
     tracing_state_.EmitTracingStart(&b_, hlo,
                                     GetExecutableRunOptionsArgument());
     profiling_state_.RecordCycleStart(&b_, hlo);
@@ -3163,7 +3164,8 @@ Status IrEmitter::Postprocess(HloInstruction* hlo) {
   }
   // When profiling is enabled, trace the same HLOs that the profiler does.
   if (instruction_to_profile_idx_.count(hlo) ||
-      (hlo_module_config_.cpu_traceme_enabled() && !IsHloVeryCheap(hlo))) {
+      (hlo_module_config_.cpu_traceme_enabled() && !IsHloVeryCheap(hlo) &&
+       hlo->parent()->IsEntryComputation())) {
     tracing_state_.EmitTracingEnd(&b_, hlo, GetExecutableRunOptionsArgument());
   }
   return OkStatus();

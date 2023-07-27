@@ -36,13 +36,13 @@ jobs:
           exempt-pr-labels: "override-stale"
           #Limit the No. of API calls in one run default value is 30.
           operations-per-run: 1000
-          #Prevent to remove stale label when PRs or issues are updated.
-          remove-stale-when-updated: false
           days-before-issue-stale: 7
           days-before-issue-close: 7
           stale-issue-label: "stale"
           # reason for closed the issue default value is not_planned
           close-issue-reason: completed
+          # List of labels to remove when issues/PRs unstale. 
+          labels-to-remove-when-unstale: 'stat:awaiting response'
           only-labels: "stat:awaiting response"
           stale-issue-message: > 
             This issue is stale because it has been open for 7 days with no activity.
@@ -64,13 +64,13 @@ jobs:
           exempt-pr-labels: "override-stale"
           #Limit the No. of API calls in one run default value is 30.
           operations-per-run: 1000
-          #Prevent to remove stale label when PRs or issues are updated.
-          remove-stale-when-updated: false
           days-before-issue-stale: 180
           days-before-issue-close: 365
           stale-issue-label: "stale"
           # reason for closed the issue default value is not_planned
           close-issue-reason: completed
+          # List of labels to remove when issues/PRs unstale. 
+          labels-to-remove-when-unstale: "stat:contribution welcome,stat:good first issue"
           any-of-labels: "stat:contribution welcome,stat:good first issue"
           stale-issue-message: > 
             This issue is stale because it has been open for 180 days with no activity.

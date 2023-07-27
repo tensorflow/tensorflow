@@ -1,5 +1,5 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/tsl/platform:build_config.bzl", "if_llvm_x86_available")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 
@@ -11,7 +11,7 @@ package(
 
 gentbl_cc_library(
     name = "passes_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             [
@@ -33,7 +33,7 @@ cc_library(
         "math_optimization.cc",
     ],
     hdrs = ["passes.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     defines = if_llvm_x86_available(["TF_LLVM_X86_AVAILABLE=1"]),
     deps = [
         ":passes_inc_gen",

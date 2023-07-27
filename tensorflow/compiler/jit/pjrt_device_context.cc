@@ -198,4 +198,67 @@ void PjRtDeviceContext::CopyTensorInSameDevice(const Tensor* input_tensor,
   result_tensor->GetBuffer()->GetReadyFuture().OnReady(std::move(done));
 }
 
+void PjRtDeviceToDeviceCopy(DeviceContext* send_dev_context,
+                            DeviceContext* recv_dev_context, Device* src,
+                            Device* dst, AllocatorAttributes src_alloc_attr,
+                            AllocatorAttributes dst_alloc_attr,
+                            const Tensor* input, Tensor* output,
+                            int dev_to_dev_stream_index, StatusCallback done) {
+  profiler::TraceMe traceme("PjRtDevice_DeviceToDeviceCopy");
+  if (input->NumElements() == 0) {
+    VLOG(2) << "PjRtDevice_DeviceToDeviceCopy empty tensor";
+    done(OkStatus());
+    return;
+  }
+
+  StatusOr<xla::PjRtClient*> pjrt_dst_client =
+      GetOrCreatePjRtClient(DeviceType(dst->device_type()));
+
+  if (!pjrt_dst_client.ok()) {
+    done(pjrt_dst_client.status());
+    return;
+  }
+
+  xla::PjRtBuffer* src_device_buffer =
+      tensorflow::AsyncValueTensor::FromTensor(input)->GetBuffer().get();
+
+  // The device id should match the local_hardware_id in
+  // tensorflow/compiler/xla/pjrt/pjrt_client.h.
+  const int pjrt_dst_device_id =
+      tsl::GetDeviceIdFromDeviceParsedName(dst->parsed_name(),
+                                           DeviceType(dst->device_type()))
+          .value();
+  xla::PjRtDevice* pjrt_dst_device =
+      (*pjrt_dst_client)->LookupAddressableDevice(pjrt_dst_device_id).value();
+
+  StatusOr<std::unique_ptr<xla::PjRtBuffer>> buffer_or =
+      src_device_buffer->CopyToDevice(pjrt_dst_device);
+  if (!buffer_or.ok()) {
+    done(buffer_or.status());
+    return;
+  }
+
+  xla::PjRtBuffer* pjrt_buffer = (*buffer_or).get();
+
+  if (static_cast<PjRtDeviceContext*>(recv_dev_context)
+          ->use_pjrt_tensor_buffer()) {
+    // Copy the newly created tensor with PjRtTensorBuffer to output device
+    // tensor.
+    //
+    // We currently assume the PjRtBuffer is a PjRtStreamExecutorBuffer.
+    *output = MakeTensorFromPjRtStreamExecutorBuffer(
+        output->dtype(), output->shape(), std::move(*buffer_or));
+  } else {
+    AsyncValueTensor* output_tensor =
+        tensorflow::AsyncValueTensor::FromTensor(output);
+    // The result tensor should be newly allocated, which does not point to a
+    // valid buffer yet.
+    CHECK(!output_tensor->GetBuffer());  // Crash OK
+    output_tensor->SetBuffer(std::move(*buffer_or));
+  }
+  // TODO(b/244666476): evaluate the performance impact of marking ready when
+  // the data in device buffer is computed.
+  pjrt_buffer->GetReadyFuture().OnReady(std::move(done));
+}
+
 }  // namespace tensorflow

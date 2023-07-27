@@ -320,7 +320,7 @@ class DebugWrapperSessionTest(test_util.TensorFlowTestCase):
     with wrapper as sess:
       self.assertAllClose([[3.0], [4.0]], self._s)
       self.assertEqual(1, self._observer["on_run_start_count"])
-      self.assertEqual(self._s, self._observer["run_fetches"])
+      self.assertEqual([self._s], self._observer["run_fetches"])
       self.assertEqual(1, self._observer["on_run_end_count"])
 
       self.assertAllClose(
@@ -337,7 +337,7 @@ class DebugWrapperSessionTest(test_util.TensorFlowTestCase):
     with wrapper.as_default():
       foo = constant_op.constant(42, name="foo")
       self.assertEqual(42, self.evaluate(foo))
-      self.assertEqual(foo, self._observer["run_fetches"])
+      self.assertEqual([foo], self._observer["run_fetches"])
 
   def testWrapperShouldSupportSessionClose(self):
     wrapper = TestDebugWrapperSession(self._sess, self._dump_root,

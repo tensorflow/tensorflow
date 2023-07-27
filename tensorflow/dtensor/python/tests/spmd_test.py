@@ -44,6 +44,7 @@ from tensorflow.python.ops import gen_list_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gen_resource_variable_ops
+from tensorflow.python.ops import gen_spectral_ops
 from tensorflow.python.ops import gen_stateless_random_ops
 from tensorflow.python.ops import gen_string_ops
 from tensorflow.python.ops import math_ops
@@ -2161,7 +2162,9 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
         return array_ops.boolean_mask(t, m)
 
       result = boolean_mask_func(tensor, mask)
-      self.assertDTensorEqual(expected, expected_output_layout, result)
+      self.assertDTensorEqual(
+          expected, expected_output_layout.to_parted(), result
+      )
 
   def testRawWhere(self):
     if self.mesh.use_xla_spmd():
@@ -2170,8 +2173,6 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
     condition = constant_op.constant(
         np.array([True, True, False, False, True, False, True, True])
     )
-    expected = gen_array_ops.where(condition)
-
     condition = api.relayout(condition, self.first_dimension_sharded_layout_1d)
 
     @polymorphic_function.function
@@ -2179,8 +2180,14 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
       return gen_array_ops.where(c)
 
     result = func(condition)
+    # With parted layout, the raw where op will output local index instead of
+    # global index. So the second half of test expectation ([0], [2], [3]) has
+    # an offset of 4.
+    expected = constant_op.constant(
+        np.array([[0], [1], [0], [2], [3]]), dtype=dtypes.int64
+    )
     self.assertDTensorEqual(
-        expected, self.first_dimension_sharded_layout, result
+        expected, self.first_dimension_sharded_layout.to_parted(), result
     )
 
   @parameterized.named_parameters([
@@ -2683,6 +2690,1115 @@ class DTensorConvSPMDTest(test_util.DTensorBaseTest):
         expected_grad[0],
         Layout([self._dims[0]] + [layout_lib.UNSHARDED] * 3, self.mesh),
         dtensor_grad[0])
+
+
+class DTensorFFTSPMDTest(test_util.DTensorBaseTest):
+
+  def setUp(self):
+    super().setUp()
+
+    # Builds a 2x3x3 mesh.
+    self._mesh_dim_b = 'b'
+    self._mesh_dim_x = 'x'
+    self._mesh_dim_y = 'y'
+    self._dims = [self._mesh_dim_b, self._mesh_dim_x, self._mesh_dim_y]
+
+    global_ids = test_util.create_device_ids_array([1, 1, 2])
+    local_ids = np.ravel(global_ids).tolist()
+
+    mesh_dict = {
+        device: Mesh(self._dims, global_ids, local_ids,
+                     test_util.create_device_list([1, 1, 2], 'CPU'))
+        for device in ('CPU', 'GPU', 'TPU')
+    }
+    self.mesh = self.configTestMesh(mesh_dict)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='_unsharded_complex64',
+          input_layout_specs=[
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+          ],
+          expected_layout_specs=[
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+          ],
+          input_datatype=dtypes.complex64,
+      ),
+      dict(
+          testcase_name='_unsharded_complex128',
+          input_layout_specs=[
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+          ],
+          expected_layout_specs=[
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+          ],
+          input_datatype=dtypes.complex128,
+      ),
+      dict(
+          testcase_name='_fullySharded_complex64',
+          input_layout_specs=['b', 'x', 'y'],
+          expected_layout_specs=['b', 'x', layout_lib.UNSHARDED],
+          input_datatype=dtypes.complex64,
+      ),
+      dict(
+          testcase_name='_fullySharded_compelx128',
+          input_layout_specs=['b', 'x', 'y'],
+          expected_layout_specs=['b', 'x', layout_lib.UNSHARDED],
+          input_datatype=dtypes.complex128,
+      ),
+      dict(
+          testcase_name='_partiallySharded1_complex64',
+          input_layout_specs=['b', layout_lib.UNSHARDED, 'y'],
+          expected_layout_specs=['b', 'y', layout_lib.UNSHARDED],
+          input_datatype=dtypes.complex64,
+      ),
+      dict(
+          testcase_name='_partiallySharded1_complex128',
+          input_layout_specs=['b', layout_lib.UNSHARDED, 'y'],
+          expected_layout_specs=['b', 'y', layout_lib.UNSHARDED],
+          input_datatype=dtypes.complex128,
+      ),
+      dict(
+          testcase_name='_partiallySharded2_complex64',
+          input_layout_specs=['b', 'x', layout_lib.UNSHARDED],
+          expected_layout_specs=['b', 'x', layout_lib.UNSHARDED],
+          input_datatype=dtypes.complex64,
+      ),
+      dict(
+          testcase_name='_partiallySharded2_complex128',
+          input_layout_specs=['b', 'x', layout_lib.UNSHARDED],
+          expected_layout_specs=['b', 'x', layout_lib.UNSHARDED],
+          input_datatype=dtypes.complex128,
+      ),
+  )
+  def testFFT(self, input_layout_specs, expected_layout_specs, input_datatype):
+    a = np.random.normal(0, 10, 64).reshape([2, 4, 8])
+    b = np.random.normal(0, 10, 64).reshape([2, 4, 8])
+    x = constant_op.constant(
+        a + b * 1j,
+        dtype=input_datatype,
+    )
+    expected_result = np.fft.fft(x)
+    if input_datatype == dtypes.complex64:
+      expected_result = expected_result.astype(np.complex64)
+    x = api.copy_to_mesh(x, Layout(input_layout_specs, self.mesh))
+    result = gen_spectral_ops.fft(x)
+    self.assertDTensorEqual(
+        expected_result, Layout(expected_layout_specs, self.mesh), result
+    )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='_unsharded_complex64',
+          input_layout_specs=[
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+          ],
+          expected_layout_specs=[
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+          ],
+          input_datatype=dtypes.complex64,
+      ),
+      dict(
+          testcase_name='_unsharded_complex128',
+          input_layout_specs=[
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+          ],
+          expected_layout_specs=[
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+          ],
+          input_datatype=dtypes.complex128,
+      ),
+      dict(
+          testcase_name='_fullySharded_complex64',
+          input_layout_specs=['b', 'x', 'y'],
+          expected_layout_specs=['b', 'x', layout_lib.UNSHARDED],
+          input_datatype=dtypes.complex64,
+      ),
+      dict(
+          testcase_name='_fullySharded_compelx128',
+          input_layout_specs=['b', 'x', 'y'],
+          expected_layout_specs=['b', 'x', layout_lib.UNSHARDED],
+          input_datatype=dtypes.complex128,
+      ),
+      dict(
+          testcase_name='_partiallySharded1_complex64',
+          input_layout_specs=['b', layout_lib.UNSHARDED, 'y'],
+          expected_layout_specs=['b', 'y', layout_lib.UNSHARDED],
+          input_datatype=dtypes.complex64,
+      ),
+      dict(
+          testcase_name='_partiallySharded1_complex128',
+          input_layout_specs=['b', layout_lib.UNSHARDED, 'y'],
+          expected_layout_specs=['b', 'y', layout_lib.UNSHARDED],
+          input_datatype=dtypes.complex128,
+      ),
+      dict(
+          testcase_name='_partiallySharded2_complex64',
+          input_layout_specs=['b', 'x', layout_lib.UNSHARDED],
+          expected_layout_specs=['b', 'x', layout_lib.UNSHARDED],
+          input_datatype=dtypes.complex64,
+      ),
+      dict(
+          testcase_name='_partiallySharded2_complex128',
+          input_layout_specs=['b', 'x', layout_lib.UNSHARDED],
+          expected_layout_specs=['b', 'x', layout_lib.UNSHARDED],
+          input_datatype=dtypes.complex128,
+      ),
+  )
+  def testIFFT(self, input_layout_specs, expected_layout_specs, input_datatype):
+    a = np.random.normal(0, 10, 64).reshape([2, 4, 8])
+    b = np.random.normal(0, 10, 64).reshape([2, 4, 8])
+    x = constant_op.constant(
+        a + b * 1j,
+        dtype=input_datatype,
+    )
+    expected_result = np.fft.ifft(x)
+    if input_datatype == dtypes.complex64:
+      expected_result = expected_result.astype(np.complex64)
+    x = api.copy_to_mesh(x, Layout(input_layout_specs, self.mesh))
+    result = gen_spectral_ops.ifft(x)
+    self.assertDTensorEqual(
+        expected_result, Layout(expected_layout_specs, self.mesh), result
+    )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='_unsharded_complex64',
+          input_layout_specs=[
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+          ],
+          expected_layout_specs=[
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+          ],
+          input_datatype=dtypes.complex64,
+      ),
+      dict(
+          testcase_name='_unsharded_complex128',
+          input_layout_specs=[
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+          ],
+          expected_layout_specs=[
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+          ],
+          input_datatype=dtypes.complex128,
+      ),
+      dict(
+          testcase_name='_fullySharded_complex64',
+          input_layout_specs=['b', 'x', 'y'],
+          expected_layout_specs=['b', layout_lib.UNSHARDED, 'x'],
+          input_datatype=dtypes.complex64,
+      ),
+      dict(
+          testcase_name='_fullySharded_compelx128',
+          input_layout_specs=['b', 'x', 'y'],
+          expected_layout_specs=['b', layout_lib.UNSHARDED, 'x'],
+          input_datatype=dtypes.complex128,
+      ),
+      dict(
+          testcase_name='_partiallySharded1_complex64',
+          input_layout_specs=['b', layout_lib.UNSHARDED, 'y'],
+          expected_layout_specs=['b', layout_lib.UNSHARDED, 'y'],
+          input_datatype=dtypes.complex64,
+      ),
+      dict(
+          testcase_name='_partiallySharded1_complex128',
+          input_layout_specs=['b', layout_lib.UNSHARDED, 'y'],
+          expected_layout_specs=['b', layout_lib.UNSHARDED, 'y'],
+          input_datatype=dtypes.complex128,
+      ),
+      dict(
+          testcase_name='_partiallySharded2_complex64',
+          input_layout_specs=['b', 'x', layout_lib.UNSHARDED],
+          expected_layout_specs=['b', layout_lib.UNSHARDED, 'x'],
+          input_datatype=dtypes.complex64,
+      ),
+      dict(
+          testcase_name='_partiallySharded2_complex128',
+          input_layout_specs=['b', 'x', layout_lib.UNSHARDED],
+          expected_layout_specs=['b', layout_lib.UNSHARDED, 'x'],
+          input_datatype=dtypes.complex128,
+      ),
+  )
+  def testFFT2(self, input_layout_specs, expected_layout_specs, input_datatype):
+    a = np.random.normal(0, 10, 64).reshape([2, 4, 8])
+    b = np.random.normal(0, 10, 64).reshape([2, 4, 8])
+    x = constant_op.constant(
+        a + b * 1j,
+        dtype=input_datatype,
+    )
+    expected_result = np.fft.fft2(x)
+    if input_datatype == dtypes.complex64:
+      expected_result = expected_result.astype(np.complex64)
+    x = api.copy_to_mesh(x, Layout(input_layout_specs, self.mesh))
+    result = gen_spectral_ops.fft2d(x)
+    self.assertDTensorEqual(
+        expected_result, Layout(expected_layout_specs, self.mesh), result
+    )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='_unsharded_complex64',
+          input_layout_specs=[
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+          ],
+          expected_layout_specs=[
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+          ],
+          input_datatype=dtypes.complex64,
+      ),
+      dict(
+          testcase_name='_unsharded_complex128',
+          input_layout_specs=[
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+          ],
+          expected_layout_specs=[
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+          ],
+          input_datatype=dtypes.complex128,
+      ),
+      dict(
+          testcase_name='_fullySharded_complex64',
+          input_layout_specs=['b', 'x', 'y'],
+          expected_layout_specs=['b', 'y', layout_lib.UNSHARDED],
+          input_datatype=dtypes.complex64,
+      ),
+      dict(
+          testcase_name='_fullySharded_compelx128',
+          input_layout_specs=['b', 'x', 'y'],
+          expected_layout_specs=['b', 'y', layout_lib.UNSHARDED],
+          input_datatype=dtypes.complex128,
+      ),
+      dict(
+          testcase_name='_partiallySharded1_complex64',
+          input_layout_specs=['b', layout_lib.UNSHARDED, 'y'],
+          expected_layout_specs=['b', 'y', layout_lib.UNSHARDED],
+          input_datatype=dtypes.complex64,
+      ),
+      dict(
+          testcase_name='_partiallySharded1_complex128',
+          input_layout_specs=['b', layout_lib.UNSHARDED, 'y'],
+          expected_layout_specs=['b', 'y', layout_lib.UNSHARDED],
+          input_datatype=dtypes.complex128,
+      ),
+      dict(
+          testcase_name='_partiallySharded2_complex64',
+          input_layout_specs=['b', 'x', layout_lib.UNSHARDED],
+          expected_layout_specs=['b', 'x', layout_lib.UNSHARDED],
+          input_datatype=dtypes.complex64,
+      ),
+      dict(
+          testcase_name='_partiallySharded2_complex128',
+          input_layout_specs=['b', 'x', layout_lib.UNSHARDED],
+          expected_layout_specs=['b', 'x', layout_lib.UNSHARDED],
+          input_datatype=dtypes.complex128,
+      ),
+  )
+  def testIFFT2(
+      self, input_layout_specs, expected_layout_specs, input_datatype
+  ):
+    a = np.random.normal(0, 10, 64).reshape([2, 4, 8])
+    b = np.random.normal(0, 10, 64).reshape([2, 4, 8])
+    x = constant_op.constant(
+        a + b * 1j,
+        dtype=input_datatype,
+    )
+    expected_result = np.fft.ifft2(x)
+    if input_datatype == dtypes.complex64:
+      expected_result = expected_result.astype(np.complex64)
+    x = api.copy_to_mesh(x, Layout(input_layout_specs, self.mesh))
+    result = gen_spectral_ops.ifft2d(x)
+    self.assertDTensorEqual(
+        expected_result, Layout(expected_layout_specs, self.mesh), result
+    )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='_unsharded_complex64',
+          input_layout_specs=[
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+          ],
+          expected_layout_specs=[
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+          ],
+          input_datatype=dtypes.complex64,
+      ),
+      dict(
+          testcase_name='_unsharded_complex128',
+          input_layout_specs=[
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+          ],
+          expected_layout_specs=[
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+          ],
+          input_datatype=dtypes.complex128,
+      ),
+      dict(
+          testcase_name='_fullySharded_complex64',
+          input_layout_specs=['b', 'x', 'y'],
+          expected_layout_specs=[layout_lib.UNSHARDED, 'b', 'x'],
+          input_datatype=dtypes.complex64,
+      ),
+      dict(
+          testcase_name='_fullySharded_compelx128',
+          input_layout_specs=['b', 'x', 'y'],
+          expected_layout_specs=[layout_lib.UNSHARDED, 'b', 'x'],
+          input_datatype=dtypes.complex128,
+      ),
+      dict(
+          testcase_name='_partiallySharded1_complex64',
+          input_layout_specs=['b', layout_lib.UNSHARDED, 'y'],
+          expected_layout_specs=[layout_lib.UNSHARDED, 'b', 'y'],
+          input_datatype=dtypes.complex64,
+      ),
+      dict(
+          testcase_name='_partiallySharded1_complex128',
+          input_layout_specs=['b', layout_lib.UNSHARDED, 'y'],
+          expected_layout_specs=[layout_lib.UNSHARDED, 'b', 'y'],
+          input_datatype=dtypes.complex128,
+      ),
+      dict(
+          testcase_name='_partiallySharded2_complex64',
+          input_layout_specs=['b', 'x', layout_lib.UNSHARDED],
+          expected_layout_specs=[layout_lib.UNSHARDED, 'b', 'x'],
+          input_datatype=dtypes.complex64,
+      ),
+      dict(
+          testcase_name='_partiallySharded2_complex128',
+          input_layout_specs=['b', 'x', layout_lib.UNSHARDED],
+          expected_layout_specs=[layout_lib.UNSHARDED, 'b', 'x'],
+          input_datatype=dtypes.complex128,
+      ),
+  )
+  def testFFT3(self, input_layout_specs, expected_layout_specs, input_datatype):
+    a = np.random.normal(0, 10, 64).reshape([2, 4, 8])
+    b = np.random.normal(0, 10, 64).reshape([2, 4, 8])
+    x = constant_op.constant(
+        a + b * 1j,
+        dtype=input_datatype,
+    )
+    expected_result = np.fft.fftn(x)
+    if input_datatype == dtypes.complex64:
+      expected_result = expected_result.astype(np.complex64)
+    x = api.copy_to_mesh(x, Layout(input_layout_specs, self.mesh))
+    result = gen_spectral_ops.fft3d(x)
+    self.assertDTensorEqual(
+        expected_result, Layout(expected_layout_specs, self.mesh), result
+    )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='_unsharded_complex64',
+          input_layout_specs=[
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+          ],
+          expected_layout_specs=[
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+          ],
+          input_datatype=dtypes.complex64,
+      ),
+      dict(
+          testcase_name='_unsharded_complex128',
+          input_layout_specs=[
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+          ],
+          expected_layout_specs=[
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+          ],
+          input_datatype=dtypes.complex128,
+      ),
+      dict(
+          testcase_name='_fullySharded_complex64',
+          input_layout_specs=['b', 'x', 'y'],
+          expected_layout_specs=['x', 'y', layout_lib.UNSHARDED],
+          input_datatype=dtypes.complex64,
+      ),
+      dict(
+          testcase_name='_fullySharded_compelx128',
+          input_layout_specs=['b', 'x', 'y'],
+          expected_layout_specs=['x', 'y', layout_lib.UNSHARDED],
+          input_datatype=dtypes.complex128,
+      ),
+      dict(
+          testcase_name='_partiallySharded1_complex64',
+          input_layout_specs=['b', layout_lib.UNSHARDED, 'y'],
+          expected_layout_specs=['b', 'y', layout_lib.UNSHARDED],
+          input_datatype=dtypes.complex64,
+      ),
+      dict(
+          testcase_name='_partiallySharded1_complex128',
+          input_layout_specs=['b', layout_lib.UNSHARDED, 'y'],
+          expected_layout_specs=['b', 'y', layout_lib.UNSHARDED],
+          input_datatype=dtypes.complex128,
+      ),
+      dict(
+          testcase_name='_partiallySharded2_complex64',
+          input_layout_specs=['b', 'x', layout_lib.UNSHARDED],
+          expected_layout_specs=['x', 'b', layout_lib.UNSHARDED],
+          input_datatype=dtypes.complex64,
+      ),
+      dict(
+          testcase_name='_partiallySharded2_complex128',
+          input_layout_specs=['b', 'x', layout_lib.UNSHARDED],
+          expected_layout_specs=['x', 'b', layout_lib.UNSHARDED],
+          input_datatype=dtypes.complex128,
+      ),
+  )
+  def testIFFT3(
+      self, input_layout_specs, expected_layout_specs, input_datatype
+  ):
+    a = np.random.normal(0, 10, 64).reshape([2, 4, 8])
+    b = np.random.normal(0, 10, 64).reshape([2, 4, 8])
+    x = constant_op.constant(
+        a + b * 1j,
+        dtype=input_datatype,
+    )
+    expected_result = np.fft.ifftn(x)
+    if input_datatype == dtypes.complex64:
+      expected_result = expected_result.astype(np.complex64)
+    x = api.copy_to_mesh(x, Layout(input_layout_specs, self.mesh))
+    result = gen_spectral_ops.ifft3d(x)
+    self.assertDTensorEqual(
+        expected_result, Layout(expected_layout_specs, self.mesh), result
+    )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='unsharded_float32',
+          input_layout_specs=[
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+          ],
+          expected_layout_specs=[
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+          ],
+          input_datatype=dtypes.float32,
+          complex_type=np.complex64,
+      ),
+      dict(
+          testcase_name='unsharded_float64',
+          input_layout_specs=[
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+          ],
+          expected_layout_specs=[
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+          ],
+          input_datatype=dtypes.float64,
+          complex_type=np.complex128,
+      ),
+      dict(
+          testcase_name='fullySharded_float32',
+          input_layout_specs=['b', 'x', 'y'],
+          expected_layout_specs=['b', 'x', layout_lib.UNSHARDED],
+          input_datatype=dtypes.float32,
+          complex_type=np.complex64,
+      ),
+      dict(
+          testcase_name='fullySharded_float64',
+          input_layout_specs=['b', 'x', 'y'],
+          expected_layout_specs=['b', 'x', layout_lib.UNSHARDED],
+          input_datatype=dtypes.float64,
+          complex_type=np.complex128,
+      ),
+      dict(
+          testcase_name='partiallySharded1_float32',
+          input_layout_specs=['b', layout_lib.UNSHARDED, 'y'],
+          expected_layout_specs=['b', 'y', layout_lib.UNSHARDED],
+          input_datatype=dtypes.float32,
+          complex_type=np.complex64,
+      ),
+      dict(
+          testcase_name='partiallySharded1_float64',
+          input_layout_specs=['b', layout_lib.UNSHARDED, 'y'],
+          expected_layout_specs=['b', 'y', layout_lib.UNSHARDED],
+          input_datatype=dtypes.float64,
+          complex_type=np.complex128,
+      ),
+      dict(
+          testcase_name='partiallySharded2_float32',
+          input_layout_specs=['b', 'x', layout_lib.UNSHARDED],
+          expected_layout_specs=['b', 'x', layout_lib.UNSHARDED],
+          input_datatype=dtypes.float32,
+          complex_type=np.complex64,
+      ),
+      dict(
+          testcase_name='partiallySharded2_float64',
+          input_layout_specs=['b', 'x', layout_lib.UNSHARDED],
+          expected_layout_specs=['b', 'x', layout_lib.UNSHARDED],
+          input_datatype=dtypes.float64,
+          complex_type=np.complex128,
+      ),
+  )
+
+  # Each input dimension for RFFT must have length of at least fft_length[i].
+  def testRFFT(
+      self,
+      input_layout_specs,
+      expected_layout_specs,
+      input_datatype,
+      complex_type,
+  ):
+    x = constant_op.constant(
+        np.random.normal(0, 10, 80).reshape([2, 4, 10]),
+        dtype=input_datatype,
+    )
+    expected_result = np.fft.rfft(x, n=10)
+    if input_datatype == dtypes.float32:
+      expected_result = expected_result.astype(np.complex64)
+    x = api.copy_to_mesh(x, Layout(input_layout_specs, self.mesh))
+    length = constant_op.constant(
+        [10],
+        dtype=dtypes.int32,
+    )
+    result = gen_spectral_ops.rfft(x, fft_length=length, Tcomplex=complex_type)
+    self.assertDTensorEqual(
+        expected_result, Layout(expected_layout_specs, self.mesh), result
+    )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='_unsharded_complex64',
+          input_layout_specs=[
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+          ],
+          expected_layout_specs=[
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+          ],
+          input_datatype=dtypes.float32,
+          complex_type=np.complex64,
+      ),
+      dict(
+          testcase_name='_unsharded_complex128',
+          input_layout_specs=[
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+          ],
+          expected_layout_specs=[
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+          ],
+          input_datatype=dtypes.float64,
+          complex_type=np.complex128,
+      ),
+      dict(
+          testcase_name='_fullySharded_complex64',
+          input_layout_specs=['b', 'x', 'y'],
+          expected_layout_specs=['b', layout_lib.UNSHARDED, 'x'],
+          input_datatype=dtypes.float32,
+          complex_type=np.complex64,
+      ),
+      dict(
+          testcase_name='_fullySharded_compelx128',
+          input_layout_specs=['b', 'x', 'y'],
+          expected_layout_specs=['b', layout_lib.UNSHARDED, 'x'],
+          input_datatype=dtypes.float64,
+          complex_type=np.complex128,
+      ),
+      dict(
+          testcase_name='_partiallySharded1_complex64',
+          input_layout_specs=['b', layout_lib.UNSHARDED, 'y'],
+          expected_layout_specs=['b', layout_lib.UNSHARDED, 'y'],
+          input_datatype=dtypes.float32,
+          complex_type=np.complex64,
+      ),
+      dict(
+          testcase_name='_partiallySharded1_complex128',
+          input_layout_specs=['b', layout_lib.UNSHARDED, 'y'],
+          expected_layout_specs=['b', layout_lib.UNSHARDED, 'y'],
+          input_datatype=dtypes.float64,
+          complex_type=np.complex128,
+      ),
+      dict(
+          testcase_name='_partiallySharded2_complex64',
+          input_layout_specs=['b', 'x', layout_lib.UNSHARDED],
+          expected_layout_specs=['b', layout_lib.UNSHARDED, 'x'],
+          input_datatype=dtypes.float32,
+          complex_type=np.complex64,
+      ),
+      dict(
+          testcase_name='_partiallySharded2_complex128',
+          input_layout_specs=['b', 'x', layout_lib.UNSHARDED],
+          expected_layout_specs=['b', layout_lib.UNSHARDED, 'x'],
+          input_datatype=dtypes.float64,
+          complex_type=np.complex128,
+      ),
+  )
+  def testRFFT2(
+      self,
+      input_layout_specs,
+      expected_layout_specs,
+      input_datatype,
+      complex_type,
+  ):
+    x = constant_op.constant(
+        np.random.normal(0, 10, 96).reshape([2, 4, 12]),
+        dtype=input_datatype,
+    )
+    expected_result = np.fft.rfft2(x, s=[4, 10])
+    if input_datatype == dtypes.float32:
+      expected_result = expected_result.astype(np.complex64)
+    x = api.copy_to_mesh(x, Layout(input_layout_specs, self.mesh))
+    length = constant_op.constant(
+        [4, 10],
+        dtype=dtypes.int32,
+    )
+    result = gen_spectral_ops.rfft2d(
+        x, fft_length=length, Tcomplex=complex_type
+    )
+    self.assertDTensorEqual(
+        expected_result, Layout(expected_layout_specs, self.mesh), result
+    )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='_unsharded_complex64',
+          input_layout_specs=[
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+          ],
+          expected_layout_specs=[
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+          ],
+          input_datatype=dtypes.float32,
+          complex_type=np.complex64,
+      ),
+      dict(
+          testcase_name='_unsharded_complex128',
+          input_layout_specs=[
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+          ],
+          expected_layout_specs=[
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+          ],
+          input_datatype=dtypes.float64,
+          complex_type=np.complex128,
+      ),
+      dict(
+          testcase_name='_fullySharded_complex64',
+          input_layout_specs=['b', 'x', 'y'],
+          expected_layout_specs=[layout_lib.UNSHARDED, 'b', 'x'],
+          input_datatype=dtypes.float32,
+          complex_type=np.complex64,
+      ),
+      dict(
+          testcase_name='_fullySharded_compelx128',
+          input_layout_specs=['b', 'x', 'y'],
+          expected_layout_specs=[layout_lib.UNSHARDED, 'b', 'x'],
+          input_datatype=dtypes.float64,
+          complex_type=np.complex128,
+      ),
+      dict(
+          testcase_name='_partiallySharded1_complex64',
+          input_layout_specs=['b', layout_lib.UNSHARDED, 'y'],
+          expected_layout_specs=[layout_lib.UNSHARDED, 'b', 'y'],
+          input_datatype=dtypes.float32,
+          complex_type=np.complex64,
+      ),
+      dict(
+          testcase_name='_partiallySharded1_complex128',
+          input_layout_specs=['b', layout_lib.UNSHARDED, 'y'],
+          expected_layout_specs=[layout_lib.UNSHARDED, 'b', 'y'],
+          input_datatype=dtypes.float64,
+          complex_type=np.complex128,
+      ),
+      dict(
+          testcase_name='_partiallySharded2_complex64',
+          input_layout_specs=['b', 'x', layout_lib.UNSHARDED],
+          expected_layout_specs=[layout_lib.UNSHARDED, 'b', 'x'],
+          input_datatype=dtypes.float32,
+          complex_type=np.complex64,
+      ),
+      dict(
+          testcase_name='_partiallySharded2_complex128',
+          input_layout_specs=['b', 'x', layout_lib.UNSHARDED],
+          expected_layout_specs=[layout_lib.UNSHARDED, 'b', 'x'],
+          input_datatype=dtypes.float64,
+          complex_type=np.complex128,
+      ),
+  )
+  def testRFFT3(
+      self,
+      input_layout_specs,
+      expected_layout_specs,
+      input_datatype,
+      complex_type,
+  ):
+    x = constant_op.constant(
+        np.random.normal(0, 10, 80).reshape([2, 4, 10]),
+        dtype=input_datatype,
+    )
+    expected_result = np.fft.rfftn(x, s=[2, 4, 10])
+    if input_datatype == dtypes.float32:
+      expected_result = expected_result.astype(np.complex64)
+    x = api.copy_to_mesh(x, Layout(input_layout_specs, self.mesh))
+    length = constant_op.constant(
+        [2, 4, 10],
+        dtype=dtypes.int32,
+    )
+    result = gen_spectral_ops.rfft3d(
+        x, fft_length=length, Tcomplex=complex_type
+    )
+    self.assertDTensorEqual(
+        expected_result, Layout(expected_layout_specs, self.mesh), result
+    )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='_unsharded_complex64',
+          input_layout_specs=[
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+          ],
+          expected_layout_specs=[
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+          ],
+          input_datatype=dtypes.complex64,
+          real_type=dtypes.float32,
+      ),
+      dict(
+          testcase_name='_unsharded_complex128',
+          input_layout_specs=[
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+          ],
+          expected_layout_specs=[
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+          ],
+          input_datatype=dtypes.complex128,
+          real_type=dtypes.float64,
+      ),
+      dict(
+          testcase_name='_fullySharded_complex64',
+          input_layout_specs=['b', 'x', 'y'],
+          expected_layout_specs=['b', 'x', layout_lib.UNSHARDED],
+          input_datatype=dtypes.complex64,
+          real_type=dtypes.float32,
+      ),
+      dict(
+          testcase_name='_fullySharded_compelx128',
+          input_layout_specs=['b', 'x', 'y'],
+          expected_layout_specs=['b', 'x', layout_lib.UNSHARDED],
+          input_datatype=dtypes.complex128,
+          real_type=dtypes.float64,
+      ),
+      dict(
+          testcase_name='_partiallySharded1_complex64',
+          input_layout_specs=['b', layout_lib.UNSHARDED, 'y'],
+          expected_layout_specs=['b', 'y', layout_lib.UNSHARDED],
+          input_datatype=dtypes.complex64,
+          real_type=dtypes.float32,
+      ),
+      dict(
+          testcase_name='_partiallySharded1_complex128',
+          input_layout_specs=['b', layout_lib.UNSHARDED, 'y'],
+          expected_layout_specs=['b', 'y', layout_lib.UNSHARDED],
+          input_datatype=dtypes.complex128,
+          real_type=dtypes.float64,
+      ),
+      dict(
+          testcase_name='_partiallySharded2_complex64',
+          input_layout_specs=['b', 'x', layout_lib.UNSHARDED],
+          expected_layout_specs=['b', 'x', layout_lib.UNSHARDED],
+          input_datatype=dtypes.complex64,
+          real_type=dtypes.float32,
+      ),
+      dict(
+          testcase_name='_partiallySharded2_complex128',
+          input_layout_specs=['b', 'x', layout_lib.UNSHARDED],
+          expected_layout_specs=['b', 'x', layout_lib.UNSHARDED],
+          input_datatype=dtypes.complex128,
+          real_type=dtypes.float64,
+      ),
+  )
+
+  # Each input dimension for IRFFT must have length of at least fft_length[i].
+  # For the inner-most input dimension, it should >= fft_shape[i] / 2 + 1.
+  def testIRFFT(
+      self, input_layout_specs, expected_layout_specs, input_datatype, real_type
+  ):
+    a = np.random.normal(0, 10, 80).reshape([2, 4, 10])
+    b = np.random.normal(0, 10, 80).reshape([2, 4, 10])
+    x = constant_op.constant(
+        a + b * 1j,
+        dtype=input_datatype,
+    )
+    expected_result = np.fft.irfft(x, n=8)
+    if input_datatype == dtypes.complex64:
+      expected_result = expected_result.astype(np.float32)
+    x = api.copy_to_mesh(x, Layout(input_layout_specs, self.mesh))
+    length = constant_op.constant(
+        [8],
+        dtype=dtypes.int32,
+    )
+    result = gen_spectral_ops.irfft(x, fft_length=length, Treal=real_type)
+    self.assertDTensorEqual(
+        expected_result, Layout(expected_layout_specs, self.mesh), result
+    )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='_unsharded_complex64',
+          input_layout_specs=[
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+          ],
+          expected_layout_specs=[
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+          ],
+          input_datatype=dtypes.complex64,
+          real_type=dtypes.float32,
+      ),
+      dict(
+          testcase_name='_unsharded_complex128',
+          input_layout_specs=[
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+          ],
+          expected_layout_specs=[
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+          ],
+          input_datatype=dtypes.complex128,
+          real_type=dtypes.float64,
+      ),
+      dict(
+          testcase_name='_fullySharded_complex64',
+          input_layout_specs=['b', 'x', 'y'],
+          expected_layout_specs=['b', 'y', layout_lib.UNSHARDED],
+          input_datatype=dtypes.complex64,
+          real_type=dtypes.float32,
+      ),
+      dict(
+          testcase_name='_fullySharded_compelx128',
+          input_layout_specs=['b', 'x', 'y'],
+          expected_layout_specs=['b', 'y', layout_lib.UNSHARDED],
+          input_datatype=dtypes.complex128,
+          real_type=dtypes.float64,
+      ),
+      dict(
+          testcase_name='_partiallySharded1_complex64',
+          input_layout_specs=['b', layout_lib.UNSHARDED, 'y'],
+          expected_layout_specs=['b', 'y', layout_lib.UNSHARDED],
+          input_datatype=dtypes.complex64,
+          real_type=dtypes.float32,
+      ),
+      dict(
+          testcase_name='_partiallySharded1_complex128',
+          input_layout_specs=['b', layout_lib.UNSHARDED, 'y'],
+          expected_layout_specs=['b', 'y', layout_lib.UNSHARDED],
+          input_datatype=dtypes.complex128,
+          real_type=dtypes.float64,
+      ),
+      dict(
+          testcase_name='_partiallySharded2_complex64',
+          input_layout_specs=['b', 'x', layout_lib.UNSHARDED],
+          expected_layout_specs=['b', 'x', layout_lib.UNSHARDED],
+          input_datatype=dtypes.complex64,
+          real_type=dtypes.float32,
+      ),
+      dict(
+          testcase_name='_partiallySharded2_complex128',
+          input_layout_specs=['b', 'x', layout_lib.UNSHARDED],
+          expected_layout_specs=['b', 'x', layout_lib.UNSHARDED],
+          input_datatype=dtypes.complex128,
+          real_type=dtypes.float64,
+      ),
+  )
+  def testIRFFT2(
+      self, input_layout_specs, expected_layout_specs, input_datatype, real_type
+  ):
+    a = np.random.normal(0, 10, 64).reshape([2, 4, 8])
+    b = np.random.normal(0, 10, 64).reshape([2, 4, 8])
+    x = constant_op.constant(
+        a + b * 1j,
+        dtype=input_datatype,
+    )
+    expected_result = np.fft.irfft2(x, s=[4, 8])
+    if input_datatype == dtypes.complex64:
+      expected_result = expected_result.astype(np.float32)
+    x = api.copy_to_mesh(x, Layout(input_layout_specs, self.mesh))
+    length = constant_op.constant(
+        [4, 8],
+        dtype=dtypes.int32,
+    )
+    result = gen_spectral_ops.irfft2d(x, fft_length=length, Treal=real_type)
+    self.assertDTensorEqual(
+        expected_result, Layout(expected_layout_specs, self.mesh), result
+    )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='_unsharded_complex64',
+          input_layout_specs=[
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+          ],
+          expected_layout_specs=[
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+          ],
+          input_datatype=dtypes.complex64,
+          real_type=dtypes.float32,
+      ),
+      dict(
+          testcase_name='_unsharded_complex128',
+          input_layout_specs=[
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+          ],
+          expected_layout_specs=[
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+              layout_lib.UNSHARDED,
+          ],
+          input_datatype=dtypes.complex128,
+          real_type=dtypes.float64,
+      ),
+      dict(
+          testcase_name='_fullySharded_complex64',
+          input_layout_specs=['b', 'x', 'y'],
+          expected_layout_specs=['x', 'y', layout_lib.UNSHARDED],
+          input_datatype=dtypes.complex64,
+          real_type=dtypes.float32,
+      ),
+      dict(
+          testcase_name='_fullySharded_compelx128',
+          input_layout_specs=['b', 'x', 'y'],
+          expected_layout_specs=['x', 'y', layout_lib.UNSHARDED],
+          input_datatype=dtypes.complex128,
+          real_type=dtypes.float64,
+      ),
+      dict(
+          testcase_name='_partiallySharded1_complex64',
+          input_layout_specs=['b', layout_lib.UNSHARDED, 'y'],
+          expected_layout_specs=['b', 'y', layout_lib.UNSHARDED],
+          input_datatype=dtypes.complex64,
+          real_type=dtypes.float32,
+      ),
+      dict(
+          testcase_name='_partiallySharded1_complex128',
+          input_layout_specs=['b', layout_lib.UNSHARDED, 'y'],
+          expected_layout_specs=['b', 'y', layout_lib.UNSHARDED],
+          input_datatype=dtypes.complex128,
+          real_type=dtypes.float64,
+      ),
+      dict(
+          testcase_name='_partiallySharded2_complex64',
+          input_layout_specs=['b', 'x', layout_lib.UNSHARDED],
+          expected_layout_specs=['x', 'b', layout_lib.UNSHARDED],
+          input_datatype=dtypes.complex64,
+          real_type=dtypes.float32,
+      ),
+      dict(
+          testcase_name='_partiallySharded2_complex128',
+          input_layout_specs=['b', 'x', layout_lib.UNSHARDED],
+          expected_layout_specs=['x', 'b', layout_lib.UNSHARDED],
+          input_datatype=dtypes.complex128,
+          real_type=dtypes.float64,
+      ),
+  )
+  def testIRFFT3(
+      self, input_layout_specs, expected_layout_specs, input_datatype, real_type
+  ):
+    a = np.random.normal(0, 10, 48).reshape([2, 4, 6])
+    b = np.random.normal(0, 10, 48).reshape([2, 4, 6])
+    x = constant_op.constant(
+        a + b * 1j,
+        dtype=input_datatype,
+    )
+    expected_result = np.fft.irfftn(x, s=[2, 4, 8])
+    if input_datatype == dtypes.complex64:
+      expected_result = expected_result.astype(np.float32)
+    x = api.copy_to_mesh(x, Layout(input_layout_specs, self.mesh))
+    length = constant_op.constant(
+        [2, 4, 8],
+        dtype=dtypes.int32,
+    )
+    result = gen_spectral_ops.irfft3d(x, fft_length=length, Treal=real_type)
+    self.assertDTensorEqual(
+        expected_result, Layout(expected_layout_specs, self.mesh), result
+    )
 
 
 class DTensorLayoutPropSPMDTest(test_util.DTensorBaseTest):

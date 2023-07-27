@@ -1,6 +1,6 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
-load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -14,7 +14,7 @@ td_library(
         "xla_cpu_enums.td",
         "xla_cpu_ops.td",
     ],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/compiler/xla/mlir_hlo:hlo_ops_td_files",
         "@llvm-project//mlir:BufferizableOpInterfaceTdFiles",
@@ -25,7 +25,7 @@ td_library(
 
 gentbl_cc_library(
     name = "xla_cpu_dialect_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             ["-gen-dialect-decls"],
@@ -43,7 +43,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "xla_cpu_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             ["-gen-op-decls"],
@@ -61,7 +61,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "xla_cpu_enums_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             ["-gen-enum-decls"],

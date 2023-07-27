@@ -193,6 +193,7 @@ DECL_CONVERT_OP(While);
 DECL_CONVERT_OP(Real);
 DECL_CONVERT_OP(Imag);
 DECL_CONVERT_OP(RFFT2d);
+DECL_CONVERT_OP(BroadcastTo);
 
 #undef DECL_CONVERT_OP
 
@@ -4478,6 +4479,21 @@ LogicalResult ConvertTFLRFFT2dOp::matchAndRewrite(
   return success();
 }
 
+LogicalResult ConvertTFLBroadcastToOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto tfl_broadcast_to_op = cast<TFL::BroadcastToOp>(op);
+
+  std::optional<Value> result =
+      convertBroadcastToOp(rewriter, op, tfl_broadcast_to_op.getInput(),
+                           tfl_broadcast_to_op.getShape());
+
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.value()});
+
+  return success();
+}
+
 LogicalResult LegalizeTFL::initialize(MLIRContext* context) {
   RewritePatternSet patterns(context);
   mlir::tosa::populateLegalizeTFLPatterns(context, patterns);
@@ -4615,6 +4631,7 @@ void populateLegalizeTFLPatterns(MLIRContext* ctx,
   DEF_PATTERN_INSERT(TFLReal);
   DEF_PATTERN_INSERT(TFLImag);
   DEF_PATTERN_INSERT(TFLRFFT2d);
+  DEF_PATTERN_INSERT(TFLBroadcastTo);
 }
 
 // Creates an instance of the TensorFlow Lite dialect LegalizeTFL pass.

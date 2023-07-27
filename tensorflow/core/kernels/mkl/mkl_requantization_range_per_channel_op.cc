@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/meta_support.h"
 #include "tensorflow/core/kernels/no_op.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/util/mkl_threadpool.h"
 #include "tensorflow/core/util/mkl_util.h"
 
 namespace tensorflow {

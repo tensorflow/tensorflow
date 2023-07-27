@@ -48,6 +48,7 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 #include "tensorflow/core/tpu/kernels/tpu_util.h"
 #include "tensorflow/core/tpu/tpu_compile.h"
+#include "tensorflow/tsl/platform/error_logging.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
 
@@ -95,6 +96,9 @@ constexpr char kOldBridgeWithFallbackModeSuccess[] =
 // Old Bridge failed in fallback (was run because MLIR bridge failed first).
 constexpr char kOldBridgeWithFallbackModeFailure[] =
     "kOldBridgeWithFallbackModeFailure";
+// Name of component for error logging. This name is fixed and required to
+// enable logging.
+constexpr char kBridgeComponent[] = "TFXLABridge";
 
 // Time the execution of kernels (in CPU cycles). Meant to be used as RAII.
 struct CompilationTimer {
@@ -227,9 +231,19 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
   } else if (!enable_op_fallback) {
     // Don't fallback to the old bridge if op-by-op fallback isn't enabled.
     mlir_second_phase_count->GetCell(kMlirModeFailure)->IncrementBy(1);
+    if (!mlir_bridge_status.ok()) {
+      tsl::error_logging::Log(kBridgeComponent,
+                              "TFXLA_API_V1_BRIDGE_NO_FALLBACK",
+                              mlir_bridge_status.ToString())
+          .IgnoreError();
+    }
     return mlir_bridge_status;
+  } else {
+    tsl::error_logging::Log(kBridgeComponent,
+                            "TFXLA_API_V1_BRIDGE_WITH_FALLBACK_FAIL",
+                            mlir_bridge_status.ToString())
+        .IgnoreError();
   }
-
   bool filtered_graph = false;
   if (mlir_bridge_status == CompileToHloGraphAnalysisFailedError()) {
     VLOG(1) << "Filtered out MLIR computation to XLA HLO using MLIR tf2xla "
@@ -262,6 +276,11 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
     } else {
       mlir_second_phase_count->GetCell(kOldBridgeWithFallbackModeFailure)
           ->IncrementBy(1);
+    }
+    if (!old_bridge_status.ok()) {
+      tsl::error_logging::Log(kBridgeComponent, "TFXLA_API_V1_OLD_BRIDGE",
+                              mlir_bridge_status.ToString())
+          .IgnoreError();
     }
     return old_bridge_status;
   }

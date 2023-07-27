@@ -37,6 +37,7 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:indexed_slices",
         "//tensorflow/python/framework:kernels",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:collective_ops",
         "//tensorflow/python/ops:math_ops",

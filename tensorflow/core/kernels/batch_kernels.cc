@@ -157,6 +157,27 @@ class BatchResource : public serving::BatchResourceBase {
                        const std::vector<int32>& allowed_batch_sizes,
                        bool enable_large_batch_splitting,
                        std::unique_ptr<BatchResource>* resource) {
+    return Create(has_process_batch_function, num_batch_threads,
+                  max_execution_batch_size, batch_timeout_micros,
+                  max_enqueued_batches, allowed_batch_sizes,
+                  /*low_priority_max_batch_size=*/0,
+                  /*low_priority_batch_timeout_micros=*/0,
+                  /*low_priority_max_enqueued_batches=*/0,
+                  /*low_priority_allowed_batch_sizes=*/{},
+                  enable_large_batch_splitting, resource);
+  }
+
+  static Status Create(
+      bool has_process_batch_function, int32_t num_batch_threads,
+      int32_t max_execution_batch_size, int32_t batch_timeout_micros,
+      int32_t max_enqueued_batches,
+      const std::vector<int32>& allowed_batch_sizes,
+      int32_t low_priority_max_batch_size,
+      int32_t low_priority_batch_timeout_micros,
+      int32_t low_priority_max_enqueued_batches,
+      const std::vector<int32>& low_priority_allowed_batch_sizes,
+      bool enable_large_batch_splitting,
+      std::unique_ptr<BatchResource>* resource) {
     BatcherT::Options batcher_options;
     batcher_options.num_batch_threads = num_batch_threads;
     std::shared_ptr<BatcherT> batcher;
@@ -167,7 +188,11 @@ class BatchResource : public serving::BatchResourceBase {
         GetBatcherQueueOptions(
             num_batch_threads, max_execution_batch_size, batch_timeout_micros,
             max_enqueued_batches, allowed_batch_sizes,
-            enable_large_batch_splitting, /*disable_padding=*/false),
+            enable_large_batch_splitting,
+            /*disable_padding=*/false, low_priority_max_batch_size,
+            low_priority_batch_timeout_micros,
+            low_priority_max_enqueued_batches,
+            low_priority_allowed_batch_sizes),
         allowed_batch_sizes));
     return OkStatus();
   }
@@ -393,7 +418,10 @@ void BatchFunctionKernel::ComputeAsync(OpKernelContext* c, DoneCallback done) {
       TF_RETURN_IF_ERROR(BatchResource::Create(
           /*has_process_batch_function=*/true, num_batch_threads_,
           max_batch_size_, batch_timeout_micros_, max_enqueued_batches_,
-          allowed_batch_sizes_, enable_large_batch_splitting_, &new_resource));
+          allowed_batch_sizes_, low_priority_max_batch_size_,
+          low_priority_batch_timeout_micros_,
+          low_priority_max_enqueued_batches_, low_priority_allowed_batch_sizes_,
+          enable_large_batch_splitting_, &new_resource));
       if (session_metadata) {
         new_resource->set_session_metadata(*session_metadata);
       }

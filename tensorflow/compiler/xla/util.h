@@ -84,21 +84,24 @@ using DimLevelTypeVector = absl::InlinedVector<DimLevelType, InlineRank()>;
 //   XLA_SCOPED_LOGGING_TIMER_LEVEL("fooing bar", 2);  // nop if !VLOG_IS_ON(2)
 //
 #define XLA_SCOPED_LOGGING_TIMER(label) \
-  XLA_SCOPED_LOGGING_TIMER_HELPER(label, 1, __COUNTER__)
+  XLA_SCOPED_LOGGING_TIMER_HELPER(label, 1, __COUNTER__, /*condition=*/true)
 #define XLA_SCOPED_LOGGING_TIMER_LEVEL(label, level) \
-  XLA_SCOPED_LOGGING_TIMER_HELPER(label, level, __COUNTER__)
+  XLA_SCOPED_LOGGING_TIMER_HELPER(label, level, __COUNTER__, /*condition=*/true)
+// The timer trace is only printed if the condition is true.
+#define XLA_SCOPED_LOGGING_TIMER_IF(label, condition) \
+  XLA_SCOPED_LOGGING_TIMER_HELPER(label, 1, __COUNTER__, (condition))
 
 // Helper for implementing macros above.  Do not use directly.
 //
 // Forces the evaluation of "counter", which we expect is equal to __COUNTER__.
-#define XLA_SCOPED_LOGGING_TIMER_HELPER(label, level, counter) \
-  XLA_SCOPED_LOGGING_TIMER_HELPER2(label, level, counter)
+#define XLA_SCOPED_LOGGING_TIMER_HELPER(label, level, counter, condition) \
+  XLA_SCOPED_LOGGING_TIMER_HELPER2(label, level, counter, (condition))
 
 // Helper for macros above.  Don't use directly.
-#define XLA_SCOPED_LOGGING_TIMER_HELPER2(label, level, counter)      \
-  static ::xla::TimerStats XLA_TimerStats##counter;                  \
-  ::xla::ScopedLoggingTimer XLA_ScopedLoggingTimerInstance##counter( \
-      label, /*enabled=*/VLOG_IS_ON(level), __FILE__, __LINE__,      \
+#define XLA_SCOPED_LOGGING_TIMER_HELPER2(label, level, counter, condition)     \
+  static ::xla::TimerStats XLA_TimerStats##counter;                            \
+  ::xla::ScopedLoggingTimer XLA_ScopedLoggingTimerInstance##counter(           \
+      label, /*enabled=*/VLOG_IS_ON(level) && (condition), __FILE__, __LINE__, \
       &XLA_TimerStats##counter);
 
 struct TimerStats {

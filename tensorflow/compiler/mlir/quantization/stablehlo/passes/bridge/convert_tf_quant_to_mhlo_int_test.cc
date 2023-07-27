@@ -26,7 +26,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/xla/error_spec.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
@@ -62,7 +62,7 @@ class ConvertTfQuantToMhloIntTest : public ::testing::Test {
     CHECK(module_op);
     // Run the TF Quant -> MHLO Quant and MHLO Quant -> MHLO int passes.
     PassManager pm(module_op->getContext());
-    pm.addNestedPass<func::FuncOp>(quant::CreateConvertTFQuantOpsToMHLOPass());
+    pm.addNestedPass<func::FuncOp>(CreateConvertTFQuantOpsToMHLOPass());
     pm.addNestedPass<func::FuncOp>(
         stablehlo::createConvertMHLOQuantToIntPass(false));
     CHECK(succeeded(pm.run(module_op.get())));

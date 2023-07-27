@@ -14,10 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <iostream>
-#include <memory>
-#include <system_error>
 
-#include "absl/strings/string_view.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -36,21 +33,14 @@ static opt<std::string> inputFileName(llvm::cl::Positional,
 
 namespace mlir {
 namespace {
-TfLiteStatus QuantizeAnnotatedModel(llvm::StringRef buffer,
-                                    flatbuffers::FlatBufferBuilder* builder) {
-  auto model_ptr = tflite::FlatBufferModel::VerifyAndBuildFromBuffer(
-      buffer.data(), buffer.size());
-  if (nullptr == model_ptr) {
-    return TfLiteStatus::kTfLiteError;
-  }
-  std::unique_ptr<tflite::ModelT> model(model_ptr->GetModel()->UnPack());
 
+TfLiteStatus QuantizeAnnotatedModel(llvm::StringRef buffer,
+                                    std::string& output_buffer) {
   tflite::StderrReporter error_reporter;
   return mlir::lite::QuantizeModel(
-      *model, tflite::TensorType_INT8, tflite::TensorType_INT8,
-      tflite::TensorType_INT8, {},
-      /*disable_per_channel=*/false,
-      /*fully_quantize=*/true, builder, &error_reporter);
+      buffer, tflite::TensorType_INT8, tflite::TensorType_INT8,
+      tflite::TensorType_INT8, {}, /*disable_per_channel=*/false,
+      /*fully_quantize=*/true, output_buffer, &error_reporter);
 }
 
 }  // namespace
@@ -66,16 +56,13 @@ int main(int argc, char** argv) {
     return 1;
   }
   auto buffer = file_or_err->get();
-  flatbuffers::FlatBufferBuilder builder;
-  auto status =
-      mlir::QuantizeAnnotatedModel(buffer->getBuffer().str(), &builder);
-  if (status != kTfLiteOk) {
+  std::string output_buffer;
+  if (auto status = mlir::QuantizeAnnotatedModel(buffer->getBuffer().str(),
+                                                 output_buffer);
+      status != kTfLiteOk) {
     return 1;
   }
 
-  std::cout << std::string(
-                   reinterpret_cast<const char*>(builder.GetBufferPointer()),
-                   builder.GetSize())
-            << "\n";
+  std::cout << output_buffer << "\n";
   return 0;
 }

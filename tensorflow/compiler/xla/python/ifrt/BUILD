@@ -66,6 +66,7 @@ cc_library(
     ],
     deps = [
         ":serdes",
+        ":types_proto_cc",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
@@ -75,6 +76,7 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -146,6 +148,7 @@ xla_cc_test(
     srcs = ["sharding_test.cc"],
     deps = [
         ":ifrt",
+        ":sharding_test_util",
         "//tensorflow/compiler/xla/python/ifrt/ir",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:status_matchers",
@@ -157,7 +160,7 @@ xla_cc_test(
 
 cc_library(
     name = "test_util",
-    testonly = 1,
+    testonly = True,
     srcs = ["test_util.cc"],
     hdrs = ["test_util.h"],
     deps = [
@@ -174,8 +177,21 @@ cc_library(
 )
 
 cc_library(
+    name = "sharding_test_util",
+    testonly = True,
+    srcs = ["sharding_test_util.cc"],
+    hdrs = ["sharding_test_util.h"],
+    deps = [
+        ":ifrt",
+        ":mock",
+        ":test_util",
+        "//tensorflow/tsl/platform:test",
+    ],
+)
+
+cc_library(
     name = "no_impl_test_main",
-    testonly = 1,
+    testonly = True,
     srcs = ["no_impl_test_main.cc"],
     deps = [
         "@com_google_googletest//:gtest",
@@ -184,7 +200,7 @@ cc_library(
 
 cc_library(
     name = "array_impl_test_lib",
-    testonly = 1,
+    testonly = True,
     srcs = ["array_impl_test_lib.cc"],
     deps = [
         ":ifrt",
@@ -194,7 +210,7 @@ cc_library(
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
     ],
-    alwayslink = 1,
+    alwayslink = True,
 )
 
 xla_cc_test(
@@ -208,14 +224,14 @@ xla_cc_test(
 
 cc_library(
     name = "client_impl_test_lib",
-    testonly = 1,
+    testonly = True,
     srcs = ["client_impl_test_lib.cc"],
     deps = [
         ":ifrt",
         ":test_util",
         "//tensorflow/tsl/platform:test",
     ],
-    alwayslink = 1,
+    alwayslink = True,
 )
 
 xla_cc_test(
@@ -230,7 +246,7 @@ xla_cc_test(
 
 cc_library(
     name = "tuple_impl_test_lib",
-    testonly = 1,
+    testonly = True,
     srcs = ["tuple_impl_test_lib.cc"],
     deps = [
         ":ifrt",
@@ -241,7 +257,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@tf_runtime//:ref_count",
     ],
-    alwayslink = 1,
+    alwayslink = True,
 )
 
 xla_cc_test(
@@ -308,4 +324,43 @@ xla_cc_test(
 tf_proto_library(
     name = "serdes_proto",
     srcs = ["serdes.proto"],
+)
+
+cc_library(
+    name = "sharding_serdes",
+    srcs = ["sharding_serdes.cc"],
+    hdrs = ["sharding_serdes.h"],
+    deps = [
+        ":ifrt",
+        ":serdes",
+        ":sharding_proto_cc",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/tsl/platform:statusor",
+        "@llvm-project//llvm:Support",
+    ],
+    alwayslink = True,
+)
+
+xla_cc_test(
+    name = "sharding_serdes_test",
+    srcs = ["sharding_serdes_test.cc"],
+    deps = [
+        ":ifrt",
+        ":serdes",
+        ":sharding_serdes",
+        ":sharding_test_util",
+        "@com_google_absl//absl/functional:bind_front",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+tf_proto_library(
+    name = "types_proto",
+    srcs = ["types.proto"],
+)
+
+tf_proto_library(
+    name = "sharding_proto",
+    srcs = ["sharding.proto"],
+    protodeps = [":types_proto"],
 )

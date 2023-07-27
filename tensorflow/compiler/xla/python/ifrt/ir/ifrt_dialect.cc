@@ -130,6 +130,13 @@ mlir::LogicalResult IfrtArrayType::verify(
     return mlir::failure();
   }
 
+  if (shape.getRank() != sharding.dim_shards().size()) {
+    return emitError() << "Requires dim shards to have the same rank as the "
+                          "array. Array rank is "
+                       << shape.getRank() << " vs dim shards rank of "
+                       << sharding.dim_shards().size();
+  }
+
   int devices_in_mesh = 1;
   for (const int axis_size : sharding.minor_to_major().axis_sizes) {
     devices_in_mesh *= axis_size;

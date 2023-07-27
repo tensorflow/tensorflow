@@ -105,7 +105,7 @@ StatusOr<ncclDataType_t> ToNcclDataType(PrimitiveType element_type,
       // For collectives that just move data around, we can use ncclFloat16 for
       // 16-bit integer data types.
       return ncclFloat16;
-#if defined(__CUDA_BF16_TYPES_EXIST__)
+#if defined(__CUDA_BF16_TYPES_EXIST__) || TENSORFLOW_USE_ROCM
     case BF16:
       return ncclBfloat16;
 #endif

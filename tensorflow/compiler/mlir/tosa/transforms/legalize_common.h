@@ -306,6 +306,11 @@ std::optional<Value> convertSinOp(PatternRewriter& rewriter, Operation* op,
 std::optional<Value> convertSignOp(PatternRewriter& rewriter, Operation* op,
                                    Value input, RankedTensorType output_type);
 
+// Lowers BroadcastTo operator to a sequence of TOSA ops.
+std::optional<Value> convertBroadcastToOp(PatternRewriter& rewriter,
+                                          Operation* op, Value input,
+                                          Value shape);
+
 };  // namespace tosa
 };  // namespace mlir
 

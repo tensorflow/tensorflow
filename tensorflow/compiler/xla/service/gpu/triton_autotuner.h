@@ -39,8 +39,6 @@ class TritonAutotuner : public HloModulePass {
 
   absl::string_view name() const override { return "triton-autotuner"; }
 
-  static void ClearCompilationCache();
-
   using HloPassInterface::Run;
   StatusOr<bool> Run(
       HloModule* module,

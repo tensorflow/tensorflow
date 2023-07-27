@@ -34,6 +34,10 @@ std::string TranslateFileName(const std::string& fname);
 // user.
 std::string DefaultDataTransferProtocol();
 
+// Returns a path pointing to the same file as `path` with a potential locality
+// optimization.
+std::string LocalityOptimizedPath(const std::string& path);
+
 }  // namespace data
 }  // namespace tensorflow
 

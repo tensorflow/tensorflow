@@ -98,15 +98,6 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateDTensorUpdateTPUMetadata();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateDTensorEmbeddingPass();
-
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateDTensorEmbeddingPassV2();
-
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateDTensorEmbeddingCheckpointPass();
-
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateFunctionRenamingPass();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
@@ -164,6 +155,9 @@ CreateDTensorRemoveDTensorLayoutPass();
 // Creates a pass that replaces `tf.Relayout` with `tf.Identity`.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateDTensorReplaceRelayoutWithIdentityPass();
+
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+CreateDTensorCollectiveTypeLoweringPass();
 
 // Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION

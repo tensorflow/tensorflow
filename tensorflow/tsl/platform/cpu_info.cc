@@ -22,6 +22,13 @@ limitations under the License.
 #if defined(PLATFORM_IS_X86)
 #include <mutex>  // NOLINT
 #endif
+#if defined(PLATFORM_IS_ARM64)
+#include <sys/auxv.h>
+#ifndef HWCAP_CPUID
+#define HWCAP_CPUID (1 << 11)
+#endif
+#include <fstream>
+#endif
 
 // SIMD extension querying is only available on x86.
 #ifdef PLATFORM_IS_X86
@@ -345,6 +352,93 @@ void InitCPUIDInfo() {
 
 #endif  // PLATFORM_IS_X86
 
+#ifdef PLATFORM_IS_ARM64
+
+class CPUIDInfo;
+void InitCPUIDInfo();
+
+CPUIDInfo *cpuid = nullptr;
+
+// Structure for basic CPUID info.
+class CPUIDInfo {
+ public:
+  CPUIDInfo() : implementer_(0), variant_(0), cpunum_(0) {}
+
+  static void Initialize() {
+    // Initialize cpuid struct.
+    if (cpuid != nullptr) {
+      return;
+    }
+
+    cpuid = new CPUIDInfo;
+
+    if (!(getauxval(AT_HWCAP) & HWCAP_CPUID)) {
+      return;
+    }
+
+    int present_cpu = -1;
+#if !defined(PLATFORM_WINDOWS) && !defined(__APPLE__) && !defined(__OpenBSD__)
+    std::ifstream CPUspresent;
+    CPUspresent.open("/sys/devices/system/cpu/present", std::ios::in);
+    if (CPUspresent.is_open()) {
+      std::string line;
+      if (static_cast<bool>(getline(CPUspresent, line))) {
+        // We just need to find one CPU that is active
+        // from which we can read MIDR register to find
+        // implement, variant and revision information.
+        auto ending = line.end();
+        for (auto i = line.begin(); i < line.end(); ++i) {
+          if (*i == '-' || *i == ',') {
+            ending = i;
+            break;
+          }
+        }
+        line.erase(ending, line.end());
+        // That should be the fist number.
+        present_cpu = std::stoi(line);
+      }
+    }
+#endif
+
+    if (present_cpu == -1) {
+      return;
+    }
+
+#if !defined(PLATFORM_WINDOWS) && !defined(__APPLE__) && !defined(__OpenBSD__)
+    std::stringstream str;
+    str << "/sys/devices/system/cpu/cpu" << present_cpu
+        << "/regs/identification/midr_el1";
+    std::ifstream midr_el1_file(str.str(), std::ios::in);
+    if (midr_el1_file.is_open()) {
+      std::string line;
+      if (static_cast<bool>(getline(midr_el1_file, line))) {
+        uint32 midr_el1 = std::stoul(line, nullptr, 16);
+
+        // Unpack variant and CPU ID.
+        cpuid->implementer_ = (midr_el1 >> 24) & 0xFF;
+        cpuid->variant_ = (midr_el1 >> 20) & 0xF;
+        cpuid->cpunum_ = (midr_el1 >> 4) & 0xFFF;
+      }
+    }
+#endif
+  }
+
+  int implementer() const { return implementer_; }
+  int cpunum() const { return cpunum_; }
+
+ private:
+  int implementer_;
+  int variant_;
+  int cpunum_;
+};
+
+absl::once_flag cpuid_once_flag;
+
+void InitCPUIDInfo() {
+  absl::call_once(cpuid_once_flag, CPUIDInfo::Initialize);
+}
+
+#endif
 }  // namespace
 
 bool TestCPUFeature(CPUFeature feature) {
@@ -368,6 +462,9 @@ int CPUFamily() {
 #ifdef PLATFORM_IS_X86
   InitCPUIDInfo();
   return cpuid->family();
+#elif defined(PLATFORM_IS_ARM64)
+  InitCPUIDInfo();
+  return cpuid->implementer();
 #else
   return 0;
 #endif
@@ -377,6 +474,9 @@ int CPUModelNum() {
 #ifdef PLATFORM_IS_X86
   InitCPUIDInfo();
   return cpuid->model_num();
+#elif defined(PLATFORM_IS_ARM64)
+  InitCPUIDInfo();
+  return cpuid->cpunum();
 #else
   return 0;
 #endif

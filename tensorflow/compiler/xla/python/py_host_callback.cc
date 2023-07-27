@@ -86,7 +86,7 @@ StatusOr<std::vector<CpuCallback::Result>> CreateCallbackResults(
       callback_results[i].expected_dims.resize(shape.dimensions_size());
       absl::c_copy(shape.dimensions(),
                    callback_results[i].expected_dims.begin());
-      callback_results[i].expected_strides = ByteStridesForShapeInt64(shape);
+      callback_results[i].expected_strides = ByteStridesForShape(shape);
       callback_results[i].type = shape.element_type();
       callback_results[i].size_in_bytes = ShapeUtil::ByteSizeOf(shape);
       callback_results[i].reversed_layout.resize(shape.dimensions_size());

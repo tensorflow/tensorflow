@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/service/gpu/reduction_utils.h"
 #include "tensorflow/compiler/xla/service/instruction_fusion.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -737,6 +738,46 @@ size_t GetOutputSizeOfFusible(const HloInstruction& instr) {
   }
   const HloInstruction* root = instr.fused_expression_root();
   return ShapeUtil::TupleElementCount(root->shape());
+}
+
+// Recursive helper for GetFusionRoots below.
+static void GetFusionRootsRec(HloInstruction* root,
+                              std::vector<HloInstruction*>& out) {
+  if (root->opcode() == HloOpcode::kGetTupleElement) {
+    return GetFusionRootsRec(root->mutable_operand(0), out);
+  } else if (root->opcode() == HloOpcode::kTuple) {
+    for (int i = 0; i < root->operand_count(); i++) {
+      GetFusionRootsRec(root->mutable_operand(i), out);
+    }
+  } else {
+    if (!out.empty() && out.back() == root) {
+      return;
+    }
+    CHECK(!absl::c_linear_search(out, root))
+        << "Fusion root contains instruction " << root->ToString()
+        << " multiple times";
+    out.push_back(root);
+  }
+}
+
+std::vector<HloInstruction*> GetFusionRoots(HloComputation* computation) {
+  std::vector<HloInstruction*> out;
+  GetFusionRootsRec(computation->root_instruction(), out);
+  return out;
+}
+
+bool HasAnyTiledTransposeRoot(HloComputation* computation) {
+  return absl::c_any_of(GetFusionRoots(computation),
+                        [&](const HloInstruction* instr) {
+                          return FindAnyTiledTranspose(*instr);
+                        });
+}
+
+bool HasAnyUnnestedReductionRoot(HloComputation* computation) {
+  return absl::c_any_of(
+      GetFusionRoots(computation), [&](const HloInstruction* instr) {
+        return IsReductionFromOrToContiguousDimensions(*instr);
+      });
 }
 
 }  // namespace gpu

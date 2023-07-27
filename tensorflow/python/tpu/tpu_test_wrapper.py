@@ -195,11 +195,22 @@ if __name__ == '__main__':
   # it here. To do this, the outer test case stores the value in
   # SAVED_TESTBRIDGE_TEST_ONLY which we can use to set TESTBRIDGE_TEST_ONLY in
   # this local context.
+  # The same holds for test sharding which is enabled through the num_shards
+  # attribute in the test rule. For test sharding, the two key variables are
+  # TEST_SHARD_INDEX and TEST_TOTAL_SHARDS.
   saved_test_filter = os.getenv('SAVED_TESTBRIDGE_TEST_ONLY')
   existing_test_filter = os.getenv('TESTBRIDGE_TEST_ONLY')
   if saved_test_filter and not existing_test_filter:
     os.environ['TESTBRIDGE_TEST_ONLY'] = saved_test_filter
   user_module = import_user_module()
+  saved_shard_index = os.getenv('SAVED_TEST_SHARD_INDEX')
+  existing_shard_index = os.getenv('TEST_SHARD_INDEX')
+  if saved_shard_index and not existing_shard_index:
+    os.environ['TEST_SHARD_INDEX'] = saved_shard_index
+  saved_total_shards = os.getenv('SAVED_TEST_TOTAL_SHARDS')
+  existing_total_shards = os.getenv('TEST_TOTAL_SHARDS')
+  if saved_total_shards and not existing_total_shards:
+    os.environ['TEST_TOTAL_SHARDS'] = saved_total_shards
   maybe_define_flags()
   # Parse remaining flags.
   FLAGS(unparsed)

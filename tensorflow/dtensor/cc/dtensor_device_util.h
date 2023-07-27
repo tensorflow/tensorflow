@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_DTENSOR_CC_DTENSOR_DEVICE_UTIL_H_
 
 #include <atomic>
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <optional>
@@ -114,6 +115,8 @@ struct TranslatedFunction {
   std::vector<PartialTensorShape> local_output_shapes;
   // Output data types.
   std::vector<TF_DataType> output_dtypes;
+  // Number of local outputs for each layout.
+  std::vector<std::int64_t> num_local_outputs;
 };
 
 struct ExecutionFunctions {
@@ -307,18 +310,7 @@ class ResourceHandleWithLayout
     return tsl::OkStatus();
   }
 
-  // Updates the attributes for the tensors.
-  tsl::Status UpdateAttrs(const EmbeddingResourceAttrs& attrs);
-
   ConstValueNode* const_value_node() const override { return nullptr; }
-
-  void UpdateDirtyness(bool is_dirty, TF_Status* status) {
-    if (!attrs_.has_value()) {
-      TF_SetStatus(status, TF_INTERNAL,
-                   "Attempt to update dirtyness on non embedding resource");
-    }
-    attrs_.value().is_dirty = is_dirty;
-  }
 
   void set_dereferenced_shape(const TensorShapeProto& shape) {
     dereferenced_shape_.emplace(shape);
@@ -339,9 +331,6 @@ class ResourceHandleWithLayout
     return dereferenced_dtype_;
   }
 
-  // Gets the resource input attributes for embedding inputs.
-  const std::optional<EmbeddingResourceAttrs>& attrs() const { return attrs_; }
-
   // llvm::RTTIExtends ID.
   static char ID;  // NOLINT
 
@@ -360,9 +349,6 @@ class ResourceHandleWithLayout
   // The shape and dtype of the tensor pointed to by this resource tensor.
   std::optional<TensorShapeProto> dereferenced_shape_;
   std::optional<DataType> dereferenced_dtype_;
-
-  // Resource input attributes for embedding inputs.
-  std::optional<EmbeddingResourceAttrs> attrs_;  // NOLINT
 };
 
 // TensorWithLayout for SparseTensors.
@@ -445,6 +431,11 @@ std::unique_ptr<TensorWithLayoutTf> CreateDummyTensorWithLayout(
     const std::vector<int64_t>& local_shape, TF_DataType dtype,
     const Layout& layout);
 
+// Creates a DTensor from one or more tensor handles and a compatible
+// layout. Optionally accepts a `shape` argument that overrides the
+// actual shape of the underlying tensors; this argument should be
+// provided when there's a possibility of the inferred shape from
+// differing from the actual shape (like when it is dynamic).
 StatusOr<std::unique_ptr<TensorWithLayoutTf>> CreateTensorWithLayout(
     std::vector<TensorHandlePtr>&& tensor, const Layout& layout,
     std::optional<std::vector<int64_t>>&& shape = std::nullopt);
@@ -583,6 +574,10 @@ class ExecutableManager : public tsl::core::WeakRefCounted {
 };
 
 // Returns the shape of a given tensor.
+StatusOr<std::vector<int64_t>> GetTensorShapeAsVector(
+    const tensorflow::PartialTensorShape& shape);
+
+// Returns the shape of a given tensor.
 StatusOr<std::vector<int64_t>> GetTensorShapeAsVector(TFE_TensorHandle* tensor);
 
 Status InferOutputLayouts(const DTensorOperation& doperation,
@@ -617,15 +612,6 @@ Status MaybeInsertIdentityNodes(const FunctionDef* function_def, Graph* graph);
 
 // Add DTensor specific function attributes to be compatible with eager runtime.
 void AddDTensorFunctionAttr(FunctionDef& function_def);
-
-// Prepare inputs of embeddings for checkpoint functions.
-StatusOr<std::vector<std::vector<TFE_TensorHandle*>>> PrepareEmbeddingInputs(
-    const std::vector<TensorWithLayoutTf*>& inputs);
-
-Status InsertFunctionForTPUEmbeddingCheckpoint(
-    TF_Status* status, Graph* graph,
-    const std::vector<TensorWithLayout*>& inputs,
-    const std::string& checkpoint_fn_name);
 
 ////////////////////////////////////////////////////////////////////////////////
 // Implementation details for ExecutableManager<T>

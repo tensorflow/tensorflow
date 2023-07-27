@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/tfrt/saved_model/saved_model_aot_compile.h"
 
+#include <memory>
 #include <string>
 
 #include "absl/status/status.h"
@@ -33,7 +34,7 @@ limitations under the License.
 
 namespace tensorflow::tfrt_stub {
 
-AotOptions::AotOptions() : graph_execution_options(GetGlobalRuntime()) {}
+AotOptions::AotOptions() : graph_execution_options(nullptr) {}
 
 Status AotCompileSavedModel(absl::string_view input_model_dir,
                             const AotOptions& aot_options,

@@ -19,28 +19,43 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/btree_map.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "absl/strings/strip.h"
 #include "tensorflow/cc/saved_model/constants.h"
+// Placeholder for protosplitter riegeli includes.
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/regularization/simple_delete.h"
 #include "tensorflow/core/graph/regularization/util.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/file_system_helper.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/path.h"
-#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/fingerprint.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saved_model.pb.h"
 #include "tensorflow/core/protobuf/saved_object_graph.pb.h"
 #include "tensorflow/core/util/tensor_bundle/naming.h"
+// Placeholder for protosplitter util include.
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace tensorflow::saved_model::fingerprinting {
 
-// Version of the code that produced the fingerprint.
-const int kFingerprintProducer = 1;
 namespace {
+
+// TODO(b/290063184): remove when USM is GA
+uint64_t HashCheckpointIndexFile(absl::string_view model_dir) {
+  std::string meta_filename = MetaFilename(io::JoinPath(
+      model_dir, kSavedModelVariablesDirectory, kSavedModelVariablesFilename));
+  std::string data;
+  Status read_status = ReadFileToString(Env::Default(), meta_filename, &data);
+  if (read_status.ok()) {
+    return tensorflow::Fingerprint64(data);
+  } else {
+    return 0;
+  }
+}
 
 uint64 HashSavedModel(const SavedModel& saved_model) {
   std::string saved_model_serialized;
@@ -83,7 +98,7 @@ uint64 RegularizeAndHashSignatureDefs(
 
 // The SavedObjectGraph contains two parts: the list of nodes and the map of
 // concrete functions. Regularization treats these two parts separately.
-StatusOr<uint64> RegularizeAndHashSavedObjectGraph(
+absl::StatusOr<uint64> RegularizeAndHashSavedObjectGraph(
     const SavedObjectGraph& object_graph_def) {
   // Sort `concrete_functions`, which is an unordered map from function names to
   // SavedConcreteFunction, using the suffix UID of the function name. Assumes
@@ -119,35 +134,22 @@ StatusOr<uint64> RegularizeAndHashSavedObjectGraph(
   return result_hash;
 }
 
-// Returns the hash of the checkpoint .index file, 0 if there is none.
-uint64 HashCheckpointIndexFile(absl::string_view model_dir) {
-  std::string meta_filename = MetaFilename(io::JoinPath(
-      model_dir, kSavedModelVariablesDirectory, kSavedModelVariablesFilename));
-  std::string data;
-  Status read_status = ReadFileToString(Env::Default(), meta_filename, &data);
-  if (read_status.ok()) {
-    return tensorflow::Fingerprint64(data);
-  } else {
-    return 0;
-  }
-}
+// Creates a FingerprintDef proto from a SavedModel and the checkpoint meta file
+// (.index) in `export_dir`.
+absl::StatusOr<FingerprintDef> CreateFingerprintDefPb(
+    absl::string_view export_dir, std::string pb_file) {
+  // Version of the code that produced the fingerprint.
+  const int kFingerprintProducer = 1;
 
-}  // namespace
+  SavedModel saved_model;
+  TF_RETURN_IF_ERROR(ReadBinaryProto(Env::Default(), pb_file, &saved_model));
 
-StatusOr<FingerprintDef> CreateFingerprintDef(const SavedModel& saved_model,
-                                              absl::string_view export_dir) {
-  SavedModel copy = saved_model;
-  return CreateFingerprintDef(&copy, export_dir);
-}
-
-StatusOr<FingerprintDef> CreateFingerprintDef(SavedModel* saved_model,
-                                              absl::string_view export_dir) {
   // Create a copy of `metagraph` which will be used and mutated for fingerprint
   // computation.
   FingerprintDef fingerprint_def;
-  MetaGraphDef* metagraph = saved_model->mutable_meta_graphs(0);
+  MetaGraphDef* metagraph = saved_model.mutable_meta_graphs(0);
   // Set fingerprint field #1.
-  fingerprint_def.set_saved_model_checksum(HashSavedModel(*saved_model));
+  fingerprint_def.set_saved_model_checksum(HashSavedModel(saved_model));
   // Set fingerprint field #2.
   graph_regularization::SimpleDelete(*metagraph->mutable_graph_def());
   fingerprint_def.set_graph_def_program_hash(
@@ -169,7 +171,18 @@ StatusOr<FingerprintDef> CreateFingerprintDef(SavedModel* saved_model,
   return fingerprint_def;
 }
 
-StatusOr<FingerprintDef> ReadSavedModelFingerprint(
+}  // namespace
+
+absl::StatusOr<FingerprintDef> CreateFingerprintDef(
+    absl::string_view export_dir) {
+  std::string prefix = io::JoinPath(export_dir, kSavedModelFilenamePrefix);
+
+  return CreateFingerprintDefPb(export_dir, absl::StrCat(prefix, ".pb"));
+
+  return absl::PermissionDeniedError("Chunked proto format is not available in OSS.");
+}
+
+absl::StatusOr<FingerprintDef> ReadSavedModelFingerprint(
     absl::string_view export_dir) {
   const string fingerprint_pb_path =
       io::JoinPath(export_dir, kFingerprintFilenamePb);
@@ -184,10 +197,10 @@ StatusOr<FingerprintDef> ReadSavedModelFingerprint(
   return fingerprint_proto;
 }
 
-std::string Singleprint(uint64 graph_def_program_hash,
-                        uint64 signature_def_hash,
-                        uint64 saved_object_graph_hash,
-                        uint64 checkpoint_hash) {
+std::string Singleprint(uint64_t graph_def_program_hash,
+                        uint64_t signature_def_hash,
+                        uint64_t saved_object_graph_hash,
+                        uint64_t checkpoint_hash) {
   return std::to_string(graph_def_program_hash) + "/" +
          std::to_string(signature_def_hash) + "/" +
          std::to_string(saved_object_graph_hash) + "/" +

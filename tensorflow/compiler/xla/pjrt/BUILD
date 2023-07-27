@@ -81,8 +81,10 @@ cc_library(
     deps = [
         ":event_pool",
         ":local_device_state",
+        ":utils",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla/runtime:async_runtime",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service:transfer_manager",
         "//tensorflow/compiler/xla/stream_executor:device_memory",
@@ -220,6 +222,7 @@ cc_library(
     hdrs = ["pjrt_executable.h"],
     visibility = [":friends"],
     deps = [
+        ":execute_options_proto_cc",
         ":pjrt_common",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
@@ -229,6 +232,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_cost_analysis",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -242,6 +246,7 @@ xla_cc_test(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:executable_build_options",
+        "//tensorflow/tsl/platform:status_matchers",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -490,6 +495,7 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/runtime:cpu_event",
+        "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:platform_port",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:inlined_vector",
@@ -717,13 +723,20 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",
+        "//tensorflow/compiler/xla/mlir_hlo:mhlo_passes",
         "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_hdrs",
         "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_helpers",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
+        "//tensorflow/compiler/xla/translate/mhlo_to_hlo:mlir_hlo_to_hlo",
         "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:BytecodeWriter",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Pass",
+        "@stablehlo//:register",
     ],
 )
 
@@ -759,7 +772,10 @@ cc_library(
     srcs = ["host_callback.cc"],
     hdrs = ["host_callback.h"],
     visibility = [":friends"],
-    deps = [":pjrt_client"],
+    deps = [
+        ":pjrt_client",
+        ":pjrt_future",
+    ],
 )
 
 xla_cc_test(
@@ -793,3 +809,9 @@ tf_proto_library(
 #     deps = [":compile_options_proto"],
 # )
 # copybara:uncomment_end
+
+tf_proto_library(
+    name = "execute_options_proto",
+    srcs = ["execute_options.proto"],
+    visibility = ["//visibility:public"],
+)

@@ -4,7 +4,7 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/tsl/platform:build_config_root.bzl", "if_static")
 
 package(
@@ -15,7 +15,7 @@ package(
 
 gentbl_cc_library(
     name = "legalize_tf_patterns_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             ["-gen-rewriters"],
@@ -35,7 +35,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "xla_legalize_tf_passes_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             [
@@ -54,7 +54,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "tf_xla_passes_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             [
@@ -260,6 +260,7 @@ cc_library(
         ":xla_legalize_tf_no_fallback",
         ":xla_legalize_tf_passes_inc_gen",
         ":xla_legalize_tf_with_tf2xla",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:bridge_passes",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:lower_tf_lib",
         "//tensorflow/compiler/mlir/tensorflow:mangling_util",
@@ -329,6 +330,27 @@ cc_library(
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:Transforms",
         "@stablehlo//:chlo_ops",
+    ],
+)
+
+tf_cc_test(
+    name = "legalize_tf_types_test",
+    srcs = ["legalize_tf_types_test.cc"],
+    deps = [
+        ":test_utils",
+        ":xla_legalize_tf",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:serialize_mlir_module_utils",
+        "//tensorflow/core:test",
+        "//tensorflow/core/lib/monitoring:cell_reader",
+        "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
     ],
 )
 

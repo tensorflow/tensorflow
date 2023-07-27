@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_types.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
+#include "tensorflow/compiler/xla/service/instruction_fusion.h"
 
 namespace xla {
 namespace gpu {
@@ -42,6 +43,9 @@ std::vector<HloOpcode> TritonSupportedBinaryElementwise(PrimitiveType);
 // Allowlist of ternary elementwise operations supported by Triton GEMM codegen.
 std::vector<HloOpcode> TritonSupportedTernaryElementwise(PrimitiveType);
 
+// Data types that are supported by the Triton emitters.
+bool IsTritonSupportedDataType(PrimitiveType, GpuVersion);
+
 // Checks elementwise operation against all supported by Triton GEMM codegen.
 bool IsTritonSupportedElementwise(HloOpcode, PrimitiveType);
 
@@ -51,11 +55,14 @@ bool IsTritonSupportedElementwise(HloOpcode, PrimitiveType);
 Status MakeDotSplitKBatch(HloInstruction* dot_fusion,
                           const AutotuneResult::TritonGemmKey& tiling);
 
-// Filters GEMMs which are better to handle using Triton.
-bool IsTritonHandledGEMM(const HloInstruction&, GpuVersion gpu_version);
+// Filters GEMMs which can be handled using Triton.
+FusionDecision CanTritonHandleGEMM(const HloInstruction&,
+                                   GpuVersion gpu_version);
 
-// Analysis of iteration of HLO shapes within a fusion around dot().
-class DotFusionAnalysis {
+// Filters GEMMs which are better to handle using Triton.
+bool ShouldTritonHandleGEMM(HloInstruction&, GpuVersion gpu_version);
+
+class TensorIterationSpec {
  public:
   // Description of basic iteration: `count` elements separated by `stride`.
   struct IterationSpecFragment {
@@ -65,29 +72,67 @@ class DotFusionAnalysis {
     // of several HLO dimensions. Product of subfragments equals `count`.
     std::vector<int64_t> subfragments;
   };
-
   // Description of complex iteration over a sequence of several strides.
   // Describes a logically contiguous dimension of a tensor physically
   // separated into multiple fragments by other dimensions.
   using DimIterationSpec = std::vector<IterationSpecFragment>;
 
   // At most: contracting, non-contracting, split-K, another batch.
-  static const int kMaxDimsPerTensor = 4;
-  using TensorIterationSpec = std::array<DimIterationSpec, kMaxDimsPerTensor>;
+  static constexpr int kMaxDimsPerTensor = 4;
+  using StorageType = std::array<DimIterationSpec, kMaxDimsPerTensor>;
 
-  // Execute analysis of dot fusion computation.
-  // split_k indicates whether this operation was converted to the split-K
+  const DimIterationSpec& operator[](int dimension) const {
+    return dim_iteration_specs_[dimension];
+  }
+
+  DimIterationSpec& operator[](int dimension) {
+    return dim_iteration_specs_[dimension];
+  }
+
+  // Compares physical layouts of tensors ignoring subfragments of dimensions.
+  bool operator==(const TensorIterationSpec& other) const;
+
+  StorageType::iterator begin() { return dim_iteration_specs_.begin(); }
+  StorageType::iterator end() { return dim_iteration_specs_.end(); }
+  StorageType::const_iterator cbegin() const {
+    return dim_iteration_specs_.cbegin();
+  }
+  StorageType::const_iterator cend() const {
+    return dim_iteration_specs_.cend();
+  }
+
+ private:
+  StorageType dim_iteration_specs_;
+};
+
+// Analysis of iteration of HLO shapes within a fusion around dot().
+class DotFusionAnalysis {
+  DotFusionAnalysis() {}
+
+  Status ExecuteImpl(const HloComputation* computation, int64_t split_k = 1);
+
+ public:
+  // Execute the analysis of a dot fusion computation.
+  // `computation` is a computation of a dot fusion to analyze.
+  // `split_k` indicates whether this operation was converted to the split-K
   // form and tells the analysis how to interpret the batch dimensions.
-  explicit DotFusionAnalysis(const HloComputation*, int64_t split_k = 1);
+  static StatusOr<DotFusionAnalysis> Execute(const HloComputation* computation,
+                                             int64_t split_k = 1);
 
   // A scope is an HLO graph that can be tiled efficiently using same or
   // compatible tile shapes on all operations. GEMM fusion has 3 scopes
   // defined by left operand, right operand and output.
   enum class Scope { LHS = 0, RHS = 1, OUTPUT = 2 };
 
+  // Every parameter requires a separate piece of shared memory for asynchronous
+  // loads. Multiple parameters are approximately equivalent to multiple
+  // pipeline stages.
+  static constexpr int kMaxParameterPerScope = 4;
+
   // Scope -> HLO -> dot dimension number -> iteration spec at the HLO's output.
-  const DimIterationSpec* IterSpec(Scope scope, const HloInstruction*,
-                                   int dimension) const;
+  const TensorIterationSpec::DimIterationSpec* IterSpec(Scope scope,
+                                                        const HloInstruction*,
+                                                        int dimension) const;
   // Parameter HLO instructions used in a scope of `dot`.
   const absl::flat_hash_set<const HloInstruction*>& ScopeParameters(
       const Scope scope) const {

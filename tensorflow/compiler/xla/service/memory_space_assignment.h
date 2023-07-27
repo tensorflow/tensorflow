@@ -1488,6 +1488,12 @@ struct Options {
   //     case copy_bytes would be twice the size of the tensor.
   float inefficient_use_to_copy_ratio = 0.0;
 
+  // This is mostly used for testing, it allows a test case to inject its own
+  // logic for AlternateMemoryBestFitHeap::GetInefficientAllocationSites.
+  std::function<std::vector<std::variant<HloPosition, HloUse>>(
+      absl::Span<HloPosition>)>
+      get_inefficient_allocation_sites_fn = nullptr;
+
   // The window size used to calculate the pipeline overhead when HLO accesses
   // the default memory, in MiB.
   float pipeline_overhead_window_size_mib = 0;
@@ -2387,12 +2393,15 @@ class AlternateMemoryBestFitHeap
                              bool add_to_pending = true);
   void AddRequiredAssignment(const HloInstruction* instruction,
                              ShapeIndex index, MemorySpace memory_space,
-                             AliasedOffset* offset = nullptr);
+                             AliasedOffset* offset = nullptr,
+                             bool add_to_pending = true);
   void AddRequiredAssignment(const HloPosition& position,
                              MemorySpace memory_space,
-                             AliasedOffset* offset = nullptr);
+                             AliasedOffset* offset = nullptr,
+                             bool add_to_pending = true);
   void AddRequiredAssignment(const HloUse& use, MemorySpace memory_space,
-                             AliasedOffset* offset = nullptr);
+                             AliasedOffset* offset = nullptr,
+                             bool add_to_pending = true);
 
   // Adds input and outputs as required assignments.
   void AddInputAndOutputRequiredAssignments();

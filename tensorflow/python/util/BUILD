@@ -253,7 +253,8 @@ tf_py_strict_test(
         ":tf_inspect",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:strict_mode",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
@@ -275,6 +276,7 @@ tf_py_strict_test(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:extension_type",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
@@ -513,7 +515,9 @@ tf_py_strict_test(
     srcs = ["nest_test.py"],
     main = "nest_test.py",
     python_version = "PY3",
-    deps = [":nest_test_main_lib"],
+    deps = [
+        ":nest_test_main_lib",
+    ],
 )
 
 py_strict_library(
@@ -531,6 +535,7 @@ py_strict_library(
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/util:nest_util",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -641,6 +646,7 @@ py_strict_library(
     deps = [
         ":decorator_utils",
         ":is_in_graph_mode",
+        "//tensorflow/python/framework:strict_mode",
         "//tensorflow/python/platform:tf_logging",
         # global_test_configuration is added here because all major tests depend on this
         # library. It isn't possible to add these test dependencies via tensorflow.bzl's
@@ -1110,6 +1116,7 @@ tf_py_strict_test(
         "//tensorflow/python/framework:composite_tensor",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:variables",

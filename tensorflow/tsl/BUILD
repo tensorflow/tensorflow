@@ -278,24 +278,6 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
-selects.config_setting_group(
-    name = "linux_x86_64_with_onednn_v2",
-    match_all = [
-        ":linux_x86_64",
-        "@org_tensorflow//third_party/mkl_dnn:build_with_onednn_v2",
-    ],
-    visibility = ["//visibility:public"],
-)
-
-selects.config_setting_group(
-    name = "linux_x86_64_with_onednn_v3",
-    match_all = [
-        ":linux_x86_64",
-        "@org_tensorflow//third_party/mkl_dnn:build_with_onednn_v3",
-    ],
-    visibility = ["//visibility:public"],
-)
-
 config_setting(
     name = "ios_x86_64",
     flag_values = if_google(
@@ -497,7 +479,6 @@ cc_library(
     name = "grpc++",
     visibility = ["//visibility:public"],
     deps = select({
-        ":linux_s390x": ["@com_github_grpc_grpc//:grpc++_unsecure"],
         "//conditions:default": ["@com_github_grpc_grpc//:grpc++"],
     }),
 )

@@ -27,6 +27,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -98,7 +99,7 @@ def _convert_to_sparse_tensors(sp_inputs):
 def _make_int64_tensor(value, name):
   if isinstance(value, compat.integral_types):
     return ops.convert_to_tensor(value, name=name, dtype=dtypes.int64)
-  if not isinstance(value, ops.Tensor):
+  if not isinstance(value, tensor_lib.Tensor):
     raise TypeError("{} must be an integer value".format(name))
   if value.dtype == dtypes.int64:
     return value
@@ -215,7 +216,7 @@ def sparse_expand_dims(sp_input, axis=None, name=None):
   with ops.name_scope(name, default_name="expand_dims", values=[sp_input]):
     if isinstance(axis, compat.integral_types):
       axis = ops.convert_to_tensor(axis, name="axis", dtype=dtypes.int32)
-    elif not isinstance(axis, ops.Tensor):
+    elif not isinstance(axis, tensor_lib.Tensor):
       raise TypeError("axis must be an integer value in range [-rank(sp_input)"
                       " - 1, rank(sp_input)]")
 
@@ -717,7 +718,8 @@ def _sparse_cross_internal_v2(inputs):
   if not isinstance(inputs, (tuple, list)):
     raise TypeError("Inputs must be a list")
   if not all(
-      isinstance(i, sparse_tensor.SparseTensor) or isinstance(i, ops.Tensor)
+      isinstance(
+          i, sparse_tensor.SparseTensor) or isinstance(i, tensor_lib.Tensor)
       for i in inputs):
     raise TypeError("All inputs must be Tensor or SparseTensor.")
   sparse_inputs = [
@@ -747,7 +749,8 @@ def _sparse_cross_internal(inputs,
   if not isinstance(inputs, (tuple, list)):
     raise TypeError("Inputs must be a list")
   if not all(
-      isinstance(i, sparse_tensor.SparseTensor) or isinstance(i, ops.Tensor)
+      isinstance(
+          i, sparse_tensor.SparseTensor) or isinstance(i, tensor_lib.Tensor)
       for i in inputs):
     raise TypeError("All inputs must be SparseTensors")
 
@@ -1901,7 +1904,7 @@ def sparse_merge_impl(sp_ids,
   if isinstance(sp_ids, sparse_tensor.SparseTensorValue) or isinstance(
       sp_ids, sparse_tensor.SparseTensor):
     sp_ids = [sp_ids]
-    if not (isinstance(vocab_size, ops.Tensor) or
+    if not (isinstance(vocab_size, tensor_lib.Tensor) or
             isinstance(vocab_size, numbers.Integral)):
       raise TypeError("vocab_size has to be a Tensor or Python int. Found %s" %
                       type(vocab_size))
@@ -1914,7 +1917,8 @@ def sparse_merge_impl(sp_ids,
       raise TypeError("vocab_size has to be a list of Tensors or Python ints. "
                       "Found %s" % type(vocab_size))
     for dim in vocab_size:
-      if not (isinstance(dim, ops.Tensor) or isinstance(dim, numbers.Integral)):
+      if not (isinstance(
+          dim, tensor_lib.Tensor) or isinstance(dim, numbers.Integral)):
         raise TypeError(
             "vocab_size has to be a list of Tensors or Python ints. Found %s" %
             type(dim))
@@ -3050,6 +3054,20 @@ def bincount(arr: sparse_tensor.SparseTensor,
     array([[1, 1, 1, 1],
            [1, 1, 1, 0]], dtype=int32)>
 
+  **Missing zeros in SparseTensor**
+
+  Note that missing zeros (implict zeros) in SparseTensor are **NOT** counted.
+  This supports cases such as `0` in the values tensor indicates that index/id
+  `0`is present and a missing zero indicates that no index/id is present.
+
+  If counting missing zeros is desired, there are workarounds.
+  For the `axis=0` case, the number of missing zeros can computed by subtracting
+  the number of elements in the SparseTensor's `values` tensor from the
+  number of elements in the dense shape, and this difference can be added to the
+  first element of the output of `bincount`. For all cases, the SparseTensor
+  can be converted to a dense Tensor with `tf.sparse.to_dense` before calling
+  `tf.math.bincount`.
+
   Args:
     arr: A SparseTensor whose values should be counted.
       These tensors must have a rank of 2 if `axis=-1`.
@@ -3079,29 +3097,6 @@ def bincount(arr: sparse_tensor.SparseTensor,
   """
   name = "bincount" if name is None else name
   with ops.name_scope(name):
-    # TODO(b/255381064) Remove the following block which uses older kernels for
-    # backwards compatibility for certain cases once all tests pass with the
-    # newer (dense_bincount, ragged_bincount and sparse_bincount) kernels.
-    if not binary_output and axis is None:
-      arr = ops.convert_to_tensor(arr, name="arr", dtype=dtypes.int32)
-      array_is_nonempty = math_ops.reduce_prod(array_ops.shape(arr)) > 0
-      output_size = math_ops.cast(array_is_nonempty, dtypes.int32) * (
-          math_ops.reduce_max(arr) + 1)
-      if minlength is not None:
-        minlength = ops.convert_to_tensor(
-            minlength, name="minlength", dtype=dtypes.int32)
-        output_size = gen_math_ops.maximum(minlength, output_size)
-      if maxlength is not None:
-        maxlength = ops.convert_to_tensor(
-            maxlength, name="maxlength", dtype=dtypes.int32)
-        output_size = gen_math_ops.minimum(maxlength, output_size)
-      if weights is not None:
-        weights = ops.convert_to_tensor(weights, name="weights")
-        return gen_math_ops.unsorted_segment_sum(weights, arr, output_size)
-      weights = constant_op.constant([], dtype)
-      arr = array_ops.reshape(arr, [-1])
-      return gen_math_ops.bincount(arr, output_size, weights)
-
     if weights is not None and binary_output:
       raise ValueError("Arguments `binary_output` and `weights` are mutually "
                        "exclusive. Please specify only one.")
@@ -3115,9 +3110,12 @@ def bincount(arr: sparse_tensor.SparseTensor,
       raise ValueError(f"Unsupported value for argument axis={axis}. Only 0 and"
                        " -1 are currently supported.")
 
-    array_is_nonempty = array_ops.size(arr) > 0
-    output_size = math_ops.cast(array_is_nonempty, arr.dtype) * (
-        math_ops.reduce_max(arr.values) + 1)
+    total_size = array_ops.size(arr)
+    array_is_nonempty = total_size > 0
+    # For the case where all values are implicit zeros, reduce_max
+    # returns the integer closest to negative infinity.
+    max_value = math_ops.maximum(math_ops.reduce_max(arr.values), -1)
+    output_size = math_ops.cast(array_is_nonempty, arr.dtype) * (max_value + 1)
     if minlength is not None:
       minlength = ops.convert_to_tensor(
           minlength, name="minlength", dtype=arr.dtype)
@@ -3133,6 +3131,7 @@ def bincount(arr: sparse_tensor.SparseTensor,
       arr = arr.values
 
     if isinstance(arr, sparse_tensor.SparseTensor):
+      # axis != 0 case
       weights = validate_sparse_weights(arr, weights, dtype)
       return gen_math_ops.sparse_bincount(
           indices=arr.indices,
@@ -3142,6 +3141,7 @@ def bincount(arr: sparse_tensor.SparseTensor,
           weights=weights,
           binary_output=binary_output)
     else:
+      # axis == 0 case
       weights = bincount_ops.validate_dense_weights(arr, weights, dtype)
       return gen_math_ops.dense_bincount(
           input=arr,

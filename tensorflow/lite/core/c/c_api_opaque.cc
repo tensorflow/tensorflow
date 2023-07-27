@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/string_util.h"
 
 namespace {
 
@@ -34,6 +35,13 @@ const TfLiteTensor* Convert(const TfLiteOpaqueTensor* opaque_tensor) {
   // TF Lite runtime implementation.  Apps using TF Lite should not rely on
   // TfLiteOpaqueTensor and TfLiteTensor being equivalent.
   return reinterpret_cast<const TfLiteTensor*>(opaque_tensor);
+}
+
+TfLiteTensor* Convert(TfLiteOpaqueTensor* opaque_tensor) {
+  // The following cast is safe only because this code is part of the
+  // TF Lite runtime implementation.  Apps using TF Lite should not rely on
+  // TfLiteOpaqueTensor and TfLiteTensor being equivalent.
+  return reinterpret_cast<TfLiteTensor*>(opaque_tensor);
 }
 
 const TfLiteNode* Convert(const TfLiteOpaqueNode* opaque_node) {
@@ -166,6 +174,37 @@ TfLiteStatus TfLiteOpaqueTensorCopyToBuffer(
   return TfLiteTensorCopyToBuffer(
       reinterpret_cast<const TfLiteTensor*>(opaque_tensor), output_data,
       output_data_size);
+}
+
+int TfLiteOpaqueTensorGetStringCount(const TfLiteOpaqueTensor* tensor) {
+  return tflite::GetStringCount(Convert(tensor));
+}
+
+TfLiteStatus TfLiteOpaqueTensorGetString(const TfLiteOpaqueTensor* tensor,
+                                         int index, const char** str,
+                                         int* len) {
+  tflite::StringRef str_ref = tflite::GetString(Convert(tensor), index);
+  *str = str_ref.str;
+  *len = str_ref.len;
+  return kTfLiteOk;
+}
+
+TfLiteStatus TfLiteOpaqueTensorWriteStrings(TfLiteOpaqueTensor* tensor,
+                                            const char* const* str_array,
+                                            int str_array_len,
+                                            const int* str_n_len) {
+  tflite::DynamicBuffer buf;
+  for (int i = 0; i < str_array_len; ++i) {
+    buf.AddString(str_array[i], str_n_len[i]);
+  }
+  buf.WriteToTensorAsVector(Convert(tensor));
+  return kTfLiteOk;
+}
+
+TfLiteStatus TfLiteOpaqueTensorWriteString(TfLiteOpaqueTensor* tensor,
+                                           const char* str, const int len) {
+  TfLiteOpaqueTensorWriteStrings(tensor, &str, 1, &len);
+  return kTfLiteOk;
 }
 
 const TfLiteOpaqueTensor* TfLiteOpaqueNodeGetInput(
@@ -405,6 +444,16 @@ TfLiteStatus TfLiteOpaqueContextMarkSubgraphAsDelegationSkippable(
     TfLiteOpaqueContext* opaque_context, int subgraph_index) {
   auto* subgraph = GetSubgraph(opaque_context);
   return subgraph->MarkSubgraphAsDelegationSkippable(subgraph_index);
+}
+
+TfLiteStatus TfLiteOpaqueContextGetNodeInitDataMmapInfo(
+    const TfLiteOpaqueContext* context, const TfLiteOpaqueNode* node, int* fd,
+    int64_t* custom_initial_data_offset_in_file,
+    int64_t* custom_initial_data_size) {
+  auto* subgraph = GetSubgraph(context);
+  return subgraph->GetNodeInitDataMmapInfo(Convert(node), fd,
+                                           custom_initial_data_offset_in_file,
+                                           custom_initial_data_size);
 }
 
 void TfLiteOpaqueContextReportError(struct TfLiteOpaqueContext* opaque_context,

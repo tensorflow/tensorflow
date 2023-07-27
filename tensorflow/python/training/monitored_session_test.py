@@ -33,6 +33,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_assert
@@ -84,8 +85,9 @@ class ScaffoldTest(test.TestCase):
       self.assertTrue(isinstance(scaffold.init_op, ops.Operation))
       self.assertEqual(None, scaffold.init_feed_dict)
       self.assertEqual(None, scaffold.init_fn)
-      self.assertTrue(isinstance(scaffold.ready_op, ops.Tensor))
-      self.assertTrue(isinstance(scaffold.ready_for_local_init_op, ops.Tensor))
+      self.assertTrue(isinstance(scaffold.ready_op, tensor.Tensor))
+      self.assertTrue(isinstance(
+          scaffold.ready_for_local_init_op, tensor.Tensor))
       self.assertTrue(isinstance(scaffold.local_init_op, ops.Operation))
       self.assertEqual(None, scaffold.local_init_feed_dict)
       self.assertTrue(isinstance(scaffold.saver, saver_lib.Saver))
@@ -107,8 +109,9 @@ class ScaffoldTest(test.TestCase):
       self.assertTrue(isinstance(scaffold.init_op, ops.Operation))
       self.assertEqual(None, scaffold.init_feed_dict)
       self.assertEqual(None, scaffold.init_fn)
-      self.assertTrue(isinstance(scaffold.ready_op, ops.Tensor))
-      self.assertTrue(isinstance(scaffold.ready_for_local_init_op, ops.Tensor))
+      self.assertTrue(isinstance(scaffold.ready_op, tensor.Tensor))
+      self.assertTrue(isinstance(
+          scaffold.ready_for_local_init_op, tensor.Tensor))
       self.assertTrue(isinstance(scaffold.local_init_op, ops.Operation))
       self.assertEqual(None, scaffold.local_init_feed_dict)
       self.assertTrue(isinstance(scaffold.saver, saver_lib.Saver))

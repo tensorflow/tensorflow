@@ -50,14 +50,12 @@ class IfrtIrExecutableImplTest
 
 TEST_F(IfrtIrExecutableImplTest, CallXla) {
   std::string source = R"(
+!array = !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
 module {
-  func.func @main(%arg0: !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>)
-      -> !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
-      attributes {ifrt.function} {
+  func.func @main(%arg0: !array) -> !array attributes {ifrt.function} {
     %0, %ctrl_0 = ifrt.Call @add_one(%arg0) on devices [0,1]
-        : (!ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>)
-        -> !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
-    return %0 : !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
+        : (!array) -> !array
+    return %0 : !array
   }
 
   func.func private @add_one(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
@@ -139,12 +137,11 @@ module {
 
 TEST_F(IfrtIrExecutableImplTest, ZeroInput) {
   std::string source = R"(
+!array = !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
 module {
-  func.func @main() -> !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
-      attributes {ifrt.function} {
-    %0, %ctrl_0 = ifrt.Call @one() on devices [0,1]
-        : () -> !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
-    return %0 : !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
+  func.func @main() -> !array attributes {ifrt.function} {
+    %0, %ctrl_0 = ifrt.Call @one() on devices [0,1] : () -> !array
+    return %0 : !array
   }
 
   func.func private @one() -> tensor<2x2xi32> {
@@ -175,11 +172,10 @@ module {
 
 TEST_F(IfrtIrExecutableImplTest, ZeroOutput) {
   std::string source = R"(
+!array = !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
 module {
-  func.func @main(%arg0: !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>)
-      attributes {ifrt.function} {
-    %ctrl_0 = ifrt.Call @add_one(%arg0) on devices [0,1]
-        : (!ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>) -> ()
+  func.func @main(%arg0: !array) attributes {ifrt.function} {
+    %ctrl_0 = ifrt.Call @add_one(%arg0) on devices [0,1] : (!array) -> ()
     return
   }
 
@@ -218,16 +214,13 @@ module {
 
 TEST_F(IfrtIrExecutableImplTest, BufferDonation) {
   std::string source = R"(
+!array = !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
 module {
-  func.func @main(%arg0: !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
-          {ifrt.donated})
-      -> !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
+  func.func @main(%arg0: !array {ifrt.donated}) -> !array
       attributes {ifrt.function} {
     %0, %ctrl_0 = ifrt.Call @add_one(%arg0) on devices [0,1]
-        {io_aliases=[array<i32: 0, 0>]}
-        : (!ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>)
-        -> !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
-    return %0 : !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
+        {io_aliases=[array<i32: 0, 0>]} : (!array) -> !array
+    return %0 : !array
   }
 
   func.func private @add_one(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
@@ -306,19 +299,15 @@ module {
           std::make_unique<XlaCompileOptions>(std::move(xla_options))));
 
   std::string source = R"(
+!array = !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
 module {
-  func.func @main(%arg0: !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>)
-      -> !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
-      attributes {ifrt.function} {
+  func.func @main(%arg0: !array) -> !array attributes {ifrt.function} {
     %0, %ctrl_0 = ifrt.CallLoadedExecutable @add_one(%arg0)
-        : (!ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>)
-        -> !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
-    return %0 : !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
+        : (!array) -> !array
+    return %0 : !array
   }
 
-  ifrt.LoadedExecutable @add_one on devices [0,1]
-      : (!ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>)
-      -> !ifrt.array<tensor<2x2xi32>, 2x1 to [0] on 2, [0,1]>
+  ifrt.LoadedExecutable @add_one on devices [0,1] : (!array) -> !array
 }
   )";
   TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,

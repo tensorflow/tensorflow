@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "CopyToMesh"
   input_arg {
     name: "input"
@@ -9,7 +9,7 @@ op 	 {
     type_attr: "T"
   }
   attr {
-    name: "layout"
+    name: "mesh"
     type: "string"
   }
   attr {

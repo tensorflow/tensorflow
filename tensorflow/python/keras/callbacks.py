@@ -41,6 +41,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.distribute import distributed_file_utils
 from tensorflow.python.keras.distribute import worker_training_state
@@ -1965,10 +1966,10 @@ class LearningRateScheduler(Callback):
       lr = self.schedule(epoch, lr)
     except TypeError:  # Support for old API for backward compatibility
       lr = self.schedule(epoch)
-    if not isinstance(lr, (ops.Tensor, float, np.float32, np.float64)):
+    if not isinstance(lr, (tensor_lib.Tensor, float, np.float32, np.float64)):
       raise ValueError('The output of the "schedule" function '
                        'should be float.')
-    if isinstance(lr, ops.Tensor) and not lr.dtype.is_floating:
+    if isinstance(lr, tensor_lib.Tensor) and not lr.dtype.is_floating:
       raise ValueError('The dtype of Tensor should be float')
     backend.set_value(self.model.optimizer.lr, backend.get_value(lr))
     if self.verbose > 0:

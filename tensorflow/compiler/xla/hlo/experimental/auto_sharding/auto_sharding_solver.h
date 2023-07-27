@@ -44,6 +44,7 @@ struct AutoShardingSolverRequest {
   std::vector<std::string> instruction_names;
   std::optional<int64_t> solver_timeout_in_seconds;
   bool crash_at_infinity_costs_check = false;
+  double saltiplier = 0.0001;  // Modifies each objective term by at most 0.01%
 };
 
 struct AutoShardingSolverResult {
@@ -53,6 +54,7 @@ struct AutoShardingSolverResult {
           status,
       bool skip_auto_sharding)
       : status(status), skip_auto_sharding(skip_auto_sharding) {}
+  bool operator==(const AutoShardingSolverResult& other) const;
   StatusOr<std::tuple<std::vector<int64_t>, std::vector<int64_t>, double>>
       status;
   bool skip_auto_sharding;
@@ -64,10 +66,12 @@ AutoShardingSolverResult CallORToolsSolver(
 enum AutoShardingViolationCode {
   kAliasViolationCode,     // Some node's strategy does not match its alias
   kFollowerViolationCode,  // Some node's strategy does not match its follower
-  kMemoryViolationCode,    // The solution eclipses the memory budget
+  kInfiniteCostViolationCode,  // Some node or edge incurs infinite cost
+  kMemoryViolationCode,        // The solution eclipses the memory budget
 };
 
-// Captures the metrics and constraint violations for the sharding result.
+// Captures the metrics, lower bounds, and constraint violations for the
+// sharding result.
 struct AutoShardingEvaluation {
   // A set of constraint violations; should be empty for any viable solution.
   absl::flat_hash_set<AutoShardingViolationCode> violation_codes;
@@ -80,6 +84,14 @@ struct AutoShardingEvaluation {
   // The total (global) objective cost.
   double total_cost = 0.0;
 
+  // A lower bound for each individual cost component.
+  double lower_bound_communication_cost = 0.0;
+  double lower_bound_computation_cost = 0.0;
+  double lower_bound_resharding_cost = 0.0;
+
+  // A lower bound on the total (global) objective cost.
+  double lower_bound_cost = 0.0;
+
   bool operator==(const AutoShardingEvaluation& other) const;
 };
 
@@ -87,6 +99,11 @@ struct AutoShardingEvaluation {
 // solution quality metrics and validating the consistency of hard constraints.
 AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
                                 const AutoShardingSolverResult& result);
+
+// Produces a list of rationales for why an alternate result may be suboptimal.
+std::vector<std::string> Rationalize(const AutoShardingSolverRequest& request,
+                                     const AutoShardingSolverResult& result,
+                                     const AutoShardingSolverResult& subopt);
 
 }  // namespace spmd
 }  // namespace xla

@@ -35,19 +35,25 @@ cc_library(
     name = "xla_ifrt",
     srcs = [
         "xla_compiler.cc",
+        "xla_sharding.cc",
     ],
     hdrs = [
         "xla_compiler.h",
+        "xla_sharding.h",
     ],
     deps = [
         ":xla_compiler_proto_cc",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/pjrt:pjrt_executable",
         "//tensorflow/compiler/xla/python/ifrt",
         "//tensorflow/compiler/xla/python/ifrt:serdes",
         "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
     ],
@@ -84,7 +90,7 @@ cc_library(
         "@stablehlo//:stablehlo_portable_api",
         "@stablehlo//:stablehlo_serialization",
     ],
-    alwayslink = 1,
+    alwayslink = True,
 )
 
 xla_cc_test(
@@ -104,10 +110,46 @@ xla_cc_test(
     ],
 )
 
+tf_proto_library(
+    name = "xla_sharding_proto",
+    srcs = ["xla_sharding.proto"],
+    protodeps = [
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/python/ifrt:types_proto",
+    ],
+)
+
+cc_library(
+    name = "xla_sharding_serdes",
+    srcs = ["xla_sharding_serdes.cc"],
+    deps = [
+        ":xla_ifrt",
+        ":xla_sharding_proto_cc",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/python/ifrt:serdes",
+        "//tensorflow/compiler/xla/python/ifrt:sharding_serdes",
+    ],
+    alwayslink = True,
+)
+
+xla_cc_test(
+    name = "xla_sharding_serdes_test",
+    srcs = ["xla_sharding_serdes_test.cc"],
+    deps = [
+        ":xla_ifrt",
+        ":xla_sharding_serdes",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/python/ifrt:sharding_serdes",
+        "//tensorflow/compiler/xla/python/ifrt:sharding_test_util",
+        "@com_google_absl//absl/functional:bind_front",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 # TODO(hyeontaek): Move this target out of pjrt_ifrt.
 cc_library(
     name = "xla_executable_impl_test_lib",
-    testonly = 1,
+    testonly = True,
     srcs = ["xla_executable_impl_test_lib.cc"],
     deps = [
         ":xla_ifrt",
@@ -118,7 +160,7 @@ cc_library(
         "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/strings",
     ],
-    alwayslink = 1,
+    alwayslink = True,
 )
 
 # TODO(hyeontaek): Move this target out of pjrt_ifrt.
@@ -129,6 +171,23 @@ xla_cc_test(
         ":xla_executable_impl_test_lib",
         "//tensorflow/compiler/xla/python/ifrt:no_impl_test_main",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+# TODO(hyeontaek): Move this target out of pjrt_ifrt.
+xla_cc_test(
+    name = "xla_sharding_test",
+    size = "small",
+    srcs = ["xla_sharding_test.cc"],
+    deps = [
+        ":tfrt_cpu_client_test_lib",
+        ":xla_ifrt",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/python/ifrt:sharding_test_util",
+        "//tensorflow/compiler/xla/python/ifrt:tuple_impl_test_lib",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:status_matchers",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -179,14 +238,14 @@ cc_library(
 
 cc_library(
     name = "tfrt_cpu_client_test_lib",
-    testonly = 1,
+    testonly = True,
     srcs = ["tfrt_cpu_client_test_lib.cc"],
     deps = [
         ":pjrt_ifrt",
         "//tensorflow/compiler/xla/pjrt:tfrt_cpu_pjrt_client",
         "//tensorflow/compiler/xla/python/ifrt:test_util",
     ],
-    alwayslink = 1,
+    alwayslink = True,
 )
 
 xla_cc_test(

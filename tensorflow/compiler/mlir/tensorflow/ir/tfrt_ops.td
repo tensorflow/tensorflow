@@ -63,4 +63,37 @@ def TF__TfrtGetResourceOp : TF_Op<"_TfrtGetResource",
   let hasVerifier = 1;
 }
 
+// TODO(chky): Consider adding this op to tensorflow core ops.
+def TF_PwStreamResultsOp : TF_Op<"PwStreamResults"> {
+  let summary = "Streams results back to the controller";
+
+  let description = [{
+    This op is a TensorFlow op that represents "streamed outputs", where
+    intermediate results can be returned immediately without waiting for the
+    entire signature computation to complete.
+
+    This op takes `args` with their `names` (their cardinality must match) and
+    sends the given argument tensors back to the serving controller. This
+    triggers a controller-side stream callback (see `ScopedStreamCallback`).
+
+    In addition to the listed attributes, this op has two "hidden" attributes
+    that do not exist in SavedModel but are dynamically populated by the serving
+    runtime:
+
+    * `_controller_address`: Address of the remote instance to which tensors
+      will be sent via e.g. RPC.
+    * `_callback_id`: Identifier for the callback to be called from the
+      controller. See `ScopedStreamCallback`.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor> : $args,
+    StrArrayAttr : $names
+  );
+
+  TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<0>;
+
+  let hasVerifier = 1;
+}
+
 #endif // TFRT_OPS

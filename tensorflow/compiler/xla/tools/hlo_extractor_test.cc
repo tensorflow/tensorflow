@@ -325,30 +325,67 @@ HloModule test
 
 ENTRY %entry {
   param.0 = f32[4]{0} parameter(0)
+  tuple.0 = (f32[4]{0}, f32[4]{0}) rng-bit-generator(f32[4]{0} param.0), algorithm=rng_default
   negate = f32[4]{0} negate(f32[4]{0} param.0)
-  tuple = (f32[4]{0}, f32[4]{0}) tuple(param.0, negate)
-  element = f32[4]{0} get-tuple-element((f32[4]{0}, f32[4]{0}) tuple), index=1
-  ROOT exp = f32[4]{0} exponential(f32[4]{0} element)
+  tuple.1 = ((f32[4]{0}, f32[4]{0}), f32[4]{0}) tuple(tuple.0, negate)
+  element = f32[4]{0} get-tuple-element(((f32[4]{0}, f32[4]{0}), f32[4]{0}) tuple.1), index=1
+  ROOT add = f32[4]{0} add(element, param.0)
 }
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
+  // Testing kReplaceConst.
   {
     auto hlo_selector = [](const HloInstruction* hlo_inst) -> bool {
       return hlo_inst->opcode() != HloOpcode::kTuple;
     };
-
     auto replace_type_selector =
         [](const HloInstruction* hlo_inst) -> ReplaceType {
       return ReplaceType::kReplaceConst;
     };
     auto extracted_module =
-        ExtractModule(FindInstruction(hlo_module.get(), "exp"), /*height=*/-1,
-                      hlo_selector, replace_type_selector);
+        ExtractModule(FindInstruction(hlo_module.get(), "add"),
+                      /*height=*/-1, hlo_selector, replace_type_selector);
     EXPECT_THAT(extracted_module->entry_computation()->root_instruction(),
-                op::Exp(op::GetTupleElement(op::Constant())));
+                op::Add(op::GetTupleElement(op::Constant()), op::Parameter()));
+  }
+
+  // Testing kReplaceZeroBroadcast -- replace a scalar (`element`) with a
+  // constant.
+  {
+    auto hlo_selector = [](const HloInstruction* hlo_inst) -> bool {
+      return hlo_inst->opcode() != HloOpcode::kGetTupleElement;
+    };
+    auto replace_type_selector =
+        [](const HloInstruction* hlo_inst) -> ReplaceType {
+      return ReplaceType::kReplaceZeroBroadcast;
+    };
+    auto extracted_module =
+        ExtractModule(FindInstruction(hlo_module.get(), "add"),
+                      /*height=*/-1, hlo_selector, replace_type_selector);
+    EXPECT_THAT(extracted_module->entry_computation()->root_instruction(),
+                op::Add(op::Broadcast(), op::Parameter()));
+  }
+
+  // Testing kReplaceZeroBroadcast -- replace a tuple op (`tuple.1`) with a
+  // constant.
+  {
+    auto hlo_selector = [](const HloInstruction* hlo_inst) -> bool {
+      return hlo_inst->opcode() != HloOpcode::kTuple;
+    };
+    auto replace_type_selector =
+        [](const HloInstruction* hlo_inst) -> ReplaceType {
+      return ReplaceType::kReplaceZeroBroadcast;
+    };
+    auto extracted_module =
+        ExtractModule(FindInstruction(hlo_module.get(), "add"),
+                      /*height=*/-1, hlo_selector, replace_type_selector);
+    EXPECT_THAT(
+        extracted_module->entry_computation()->root_instruction(),
+        op::Add(op::GetTupleElement(op::Tuple(op::Tuple(), op::Broadcast())),
+                op::Parameter()));
   }
 }
 

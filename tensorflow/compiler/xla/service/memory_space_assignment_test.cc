@@ -27,6 +27,7 @@ limitations under the License.
 #include <string_view>
 #include <tuple>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -5390,6 +5391,114 @@ TEST_P(MemorySpaceAssignmentTest,
   }
 }
 
+TEST_P(MemorySpaceAssignmentTest,
+       WhileRedundantEvictionWithInefficientAllocationBug) {
+  absl::string_view hlo_string = R"(
+  HloModule module, is_scheduled=true
+
+  while_cond {
+    p0 = (f32[3]{0}, f32[3]{0}, pred[]) parameter(0)
+    ROOT gte = pred[] get-tuple-element(p0), index=2
+  }
+
+  while_body {
+    p0 = (f32[3]{0}, f32[3]{0}, pred[]) parameter(0)
+    gte0 = f32[3]{0} get-tuple-element(p0), index=0
+    gte1 = f32[3]{0} get-tuple-element(p0), index=1
+    tanh = f32[3]{0} tanh(gte1)
+    gte2 = pred[] get-tuple-element(p0), index=2
+    negate0 = f32[3]{0} negate(gte0)
+    negate1 = f32[3]{0} negate(negate0)
+    add = f32[3]{0} add(negate1, tanh)
+    ROOT tuple = (f32[3]{0}, f32[3]{0}, pred[]) tuple(add, gte1, gte2)
+  }
+
+  while_cond1 {
+    p0 = (f32[3]{0}, f32[3]{0}, pred[]) parameter(0)
+    ROOT gte = pred[] get-tuple-element(p0), index=2
+  }
+
+  while_body1 {
+    p0 = (f32[3]{0}, f32[3]{0}, pred[]) parameter(0)
+    gte0 = f32[3]{0} get-tuple-element(p0), index=0
+    gte2 = pred[] get-tuple-element(p0), index=2
+    negate0 = f32[3]{0} negate(gte0)
+    negate1 = f32[3]{0} negate(negate0)
+    negate2 = f32[3]{0} negate(negate1)
+    negate3 = f32[3]{0} negate(negate2)
+    negate4 = f32[3]{0} negate(negate3)
+    negate5 = f32[3]{0} negate(negate4)
+    negate6 = f32[3]{0} negate(negate5)
+    negate7 = f32[3]{0} negate(negate6)
+    negate8 = f32[3]{0} negate(negate7)
+    negate9 = f32[3]{0} negate(negate8)
+    negate10 = f32[3]{0} negate(negate9)
+    negate11 = f32[3]{0} negate(negate10)
+    negate12 = f32[3]{0} negate(negate11)
+    negate13 = f32[3]{0} negate(negate12)
+    negate14 = f32[3]{0} negate(negate13)
+    gte1 = f32[3]{0} get-tuple-element(p0), index=1
+    tanh = f32[3]{0} tanh(gte1)
+    add = f32[3]{0} add(negate14, tanh)
+    ROOT tuple = (f32[3]{0}, f32[3]{0}, pred[]) tuple(add, gte1, gte2)
+  }
+
+  ENTRY entry {
+    p0 = f32[3]{0} parameter(0)
+    p1 = pred[] parameter(1)
+    p2 = f32[3]{0} parameter(2)
+    copy = f32[3]{0} copy(p0)
+    tuple1 = (f32[3]{0}, f32[3]{0}, pred[]) tuple(copy, p0, p1)
+    while1 = (f32[3]{0}, f32[3]{0}, pred[]) while(tuple1), condition=while_cond, body=while_body
+    gte0 = f32[3]{0} get-tuple-element(while1), index=0
+    gte1 = f32[3]{0} get-tuple-element(while1), index=1
+    negate0_entry = f32[3]{0} negate(gte1)
+    gte2 = pred[] get-tuple-element(while1), index=2
+    tuple2 = (f32[3]{0}, f32[3]{0}, pred[]) tuple(gte0, gte1, gte2)
+    while2 = (f32[3]{0}, f32[3]{0}, pred[]) while(tuple2), condition=while_cond1, body=while_body1
+    negate1 = f32[3]{0} negate(negate0_entry)
+    negate2 = f32[3]{0} negate(negate1)
+    negate3 = f32[3]{0} negate(negate2)
+    negate4 = f32[3]{0} negate(negate3)
+    negate5 = f32[3]{0} negate(negate4)
+    negate6 = f32[3]{0} negate(negate5)
+    negate7 = f32[3]{0} negate(negate6)
+    negate8 = f32[3]{0} negate(negate7)
+    negate9 = f32[3]{0} negate(negate8)
+    negate10 = f32[3]{0} negate(negate9)
+    negate11 = f32[3]{0} negate(negate10)
+    negate12 = f32[3]{0} negate(negate11)
+    negate13 = f32[3]{0} negate(negate12)
+    negate14 = f32[3]{0} negate(negate13)
+    gte = f32[3]{0} get-tuple-element(while2), index=1
+    ROOT add = f32[3]{0} add(gte, negate14)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options options = DefaultMemorySpaceOptions();
+  // Inject GetInefficientAllocationSites to mark negate0_entry use as
+  // inefficient. This triggers a corner case bug where allocating for while2{1}
+  // in the retry allocation fails to find the previous required allocation in
+  // default memory, and creates a new one which is wrong.
+  bool marked_inefficient = false;
+  options.get_inefficient_allocation_sites_fn =
+      [&](absl::Span<HloPosition> defining_positions)
+      -> std::vector<std::variant<HloPosition, HloUse>> {
+    if (absl::c_find(defining_positions,
+                     HloPosition{FindInstruction(module.get(), "while1"),
+                                 {1}}) != defining_positions.end() &&
+        !marked_inefficient) {
+      LOG(INFO) << "Marking the use inefficient.";
+      marked_inefficient = true;
+      return {HloUse{FindInstruction(module.get(), "negate0_entry"), 0}};
+    }
+    return {};
+  };
+  AssignMemorySpace(module.get(), options);
+}
+
 TEST_P(MemorySpaceAssignmentTest, BitcastRoot) {
   // Tests against a bug where the root of entry computation is a bitcast
   // instruction and it ends up getting an allocation in the alternate memory.
@@ -6644,6 +6753,77 @@ ENTRY entry {
               op::Tuple(op::Fusion(op::Parameter()), op::Negate()));
 }
 
+TEST_P(MemorySpaceAssignmentTest, InefficientAllocationLivelockBug) {
+  // This is a carefully crafted test where two in-place operations on the same
+  // buffer (fusion.1 and fusion.2) have a single very long executing operation
+  // between them. This test deliberately sets a very low transcendentals per
+  // second value to ensure the tanh op takes longer than what is allowed for a
+  // no-copy allocation. A quirk of the prefetch interval picker allows a
+  // prefetch to be scheduled during this tanh operation even though a no-copy
+  // allocation isn't allowed. Because of this, the first time this buffer is
+  // allocated, fusion.1 will be put in the alternate memory, but not fusion.2
+  // because tanh executes for too long to allow a no-copy allocation. Then, we
+  // check for inefficient allocations, and consider fusion.1 to be inefficient,
+  // and add a required assignment in default memory for fusion.1 and
+  // reallocate. When we reallocate, we aren't allowed to prefetch into
+  // fusion.1, but fusion.2 succeeds. We then find fusion.2 to be inefficient,
+  // so we throw away the required assignment on fusion.1 and reallocate.
+  // Without the appropriate fix, this will go on forever, causing a livelock.
+  absl::string_view hlo_string = R"(
+HloModule Module, is_scheduled=true
+
+fused_computation_1 {
+  param0 = f32[5,4] parameter(0)
+  constant.1 = f32[] constant(0)
+  broadcast = f32[5,1] broadcast(constant.1), dimensions={}
+  constant.3 = s32[] constant(0)
+  ROOT dynamic-update-slice.5 = f32[5,4] dynamic-update-slice(param0, broadcast, constant.3, constant.3)
+}
+
+fused_computation_2 {
+  param0 = f32[5,4] parameter(0)
+  constant.1 = f32[] constant(0)
+  broadcast = f32[5,1] broadcast(constant.1), dimensions={}
+  constant.3 = s32[] constant(0)
+  ROOT dynamic-update-slice.5 = f32[5,4] dynamic-update-slice(param0, broadcast, constant.3, constant.3)
+}
+
+ENTRY entry {
+  p0 = f32[5,4] parameter(0)
+  p1 = pred[] parameter(1)
+  p2 = f32[2,3] parameter(2)
+  neg0 = f32[2,3] negate(p2)
+  neg1 = f32[2,3] negate(neg0)
+  neg2 = f32[2,3] negate(neg1)
+  neg3 = f32[2,3] negate(neg2)
+  neg4 = f32[2,3] negate(neg3)
+  neg5 = f32[2,3] negate(neg4)
+  neg6 = f32[2,3] negate(neg5)
+  neg7 = f32[2,3] negate(neg6)
+  fusion.1 = f32[5,4] fusion(p0), kind=kLoop, calls=fused_computation_1
+  tanh = f32[2,3] tanh(neg7)
+  fusion.2 = f32[5,4] fusion(fusion.1), kind=kLoop, calls=fused_computation_2
+  neg8 = f32[2,3] negate(tanh)
+  neg9 = f32[2,3] negate(neg8)
+  neg10 = f32[2,3] negate(neg0)
+  neg11 = f32[2,3] negate(neg10)
+  neg12 = f32[2,3] negate(neg11)
+  ROOT tuple = (f32[5,4], f32[2,3]) tuple(fusion.2, neg12)
+}
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  Options options = DefaultMemorySpaceOptions();
+  options.enable_cross_program_prefetch = false;
+  options.inefficient_use_to_copy_ratio = 0.5;
+  HloCostAnalysis::Options cost_options = DefaultHloCostAnalysisOptions();
+  cost_options.set_transcendentals_per_second(0.4);
+
+  AssignMemorySpaceUsingCostAnalysis(module.get(), options, cost_options);
+}
+
 INSTANTIATE_TEST_SUITE_P(MemorySpaceAssignmentInstantiation,
                          MemorySpaceAssignmentTest,
                          ::testing::Values(false, true));
@@ -7820,6 +8000,46 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramRootDotMayAlias) {
   EXPECT_THAT(FindInstruction(module.get(), "dot")->operand(1),
               op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
                             op::Parameter(0)));
+}
+
+TEST_P(MemorySpaceAssignmentTest, CrossProgramRootLiveOutBug) {
+  // An in-place fusion that lives out should not be included as a use to the
+  // cross-program prefetch allocation. Due to a bug, we considered in-place
+  // update that feeds the ROOT of the entry computation as a valid use of the
+  // cross-program prefetch. This then would cause this live-out buffer to be
+  // placed in the alternate memory. We expect p0 to be cross-program prefetched
+  // but only for the dot operand and not the fusion operand.
+  absl::string_view hlo_string = R"(
+  HloModule cross_program_prefetch, is_scheduled=true, input_output_alias={ {0}: (0, {}, may-alias) }
+    fused_computation {
+      p0 = s32[2,2] parameter(0)
+      p1 = s32[2,2] parameter(1)
+      slice = s32[1,2] slice(p1), slice={[0:1], [0:2]}
+      c1 = s32[] constant(0)
+      ROOT dus = s32[2,2] dynamic-update-slice(s32[2,2] p0, s32[1,2] slice, s32[] c1, s32[] c1)
+    }
+
+    ENTRY CrossProgramPrefetch {
+      p0 = s32[2,2] parameter(0)
+      p1 = s32[2,2] parameter(1)
+      dot = s32[2,2] dot(p1, p0), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+      fusion = s32[2,2] fusion(p0, dot), kind=kLoop, calls=fused_computation
+      ROOT root = (s32[2,2], s32[2,2]) tuple(fusion, dot)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  auto preset_assignments = AssignMemorySpace(
+      module.get(), DefaultMemorySpaceOptions(),
+      /*max_prefetch_interval=*/5, /*min_prefetch_interval=*/2);
+
+  auto cross_program_prefetches = module->CrossProgramPrefetches();
+  EXPECT_EQ(cross_program_prefetches.size(), 1);
+  EXPECT_THAT(FindInstruction(module.get(), "dot")->operand(1),
+              op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
+                            op::Parameter(0)));
+  EXPECT_THAT(FindInstruction(module.get(), "fusion")->operand(0),
+              op::Parameter(0));
 }
 
 TEST_P(MemorySpaceAssignmentTest, CrossProgramRootParameter) {

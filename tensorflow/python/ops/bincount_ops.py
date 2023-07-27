@@ -17,6 +17,7 @@
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_math_ops
@@ -85,6 +86,20 @@ def bincount(arr,
   <tf.Tensor: shape=(2, 4), dtype=int32, numpy=
     array([[1, 1, 1, 1],
            [1, 1, 1, 0]], dtype=int32)>
+
+  **Missing zeros in SparseTensor**
+
+  Note that missing zeros (implict zeros) in SparseTensor are **NOT** counted.
+  This supports cases such as `0` in the values tensor indicates that index/id
+  `0`is present and a missing zero indicates that no index/id is present.
+
+  If counting missing zeros is desired, there are workarounds.
+  For the `axis=0` case, the number of missing zeros can computed by subtracting
+  the number of elements in the SparseTensor's `values` tensor from the
+  number of elements in the dense shape, and this difference can be added to the
+  first element of the output of `bincount`. For all cases, the SparseTensor
+  can be converted to a dense Tensor with `tf.sparse.to_dense` before calling
+  `tf.math.bincount`.
 
   Args:
     arr: A Tensor, RaggedTensor, or SparseTensor whose values should be counted.
@@ -221,7 +236,7 @@ def validate_dense_weights(values, weights, dtype=None):
       return array_ops.constant([], dtype=dtype)
     return array_ops.constant([], dtype=values.dtype)
 
-  if not isinstance(weights, ops.Tensor):
+  if not isinstance(weights, tensor.Tensor):
     raise ValueError(
         "Argument `weights` must be a tf.Tensor if `values` is a tf.Tensor. "
         f"Received weights={weights} of type: {type(weights).__name__}")

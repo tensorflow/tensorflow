@@ -24,12 +24,17 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
+#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_test.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 
 namespace xla {
 namespace pjrt {
 namespace {
+
+const bool kUnused = (RegisterPjRtCApiTestFactory([]() { return GetPjrtApi(); },
+                                                  /*platform_name=*/"gpu"),
+                      true);
 
 class PjrtCApiGpuTest : public ::testing::Test {
  protected:
@@ -70,37 +75,6 @@ class PjrtCApiGpuTest : public ::testing::Test {
   }
 };
 
-TEST_F(PjrtCApiGpuTest, ClientProcessIndex) {
-  PJRT_Client_ProcessIndex_Args process_index_args =
-      PJRT_Client_ProcessIndex_Args{
-          .struct_size = PJRT_Client_ProcessIndex_Args_STRUCT_SIZE,
-          .priv = nullptr,
-          .client = client_,
-          .process_index = -1,
-      };
-  PJRT_Error* error = api_->PJRT_Client_ProcessIndex(&process_index_args);
-  CHECK_EQ(error, nullptr);
-
-  // Single-process test should return 0
-  CHECK_EQ(process_index_args.process_index, 0);
-}
-
-TEST_F(PjrtCApiGpuTest, PlatformName) {
-  PJRT_Client_PlatformName_Args args;
-  args.client = client_;
-  args.struct_size = PJRT_Client_PlatformName_Args_STRUCT_SIZE;
-  args.priv = nullptr;
-  PJRT_Error* error = api_->PJRT_Client_PlatformName(&args);
-  ASSERT_EQ(error, nullptr);
-  absl::string_view platform_name(args.platform_name, args.platform_name_size);
-  ASSERT_EQ("gpu", platform_name);
-}
-
-TEST_F(PjrtCApiGpuTest, ApiVersion) {
-  CHECK_EQ(api_->pjrt_api_version.major_version, PJRT_API_MAJOR);
-  CHECK_EQ(api_->pjrt_api_version.minor_version, PJRT_API_MINOR);
-}
-
 std::unique_ptr<::pjrt::PJRT_KeyValueCallbackData> CreateTestCKVCallback(
     absl::flat_hash_map<std::string, std::string>* kv_store, absl::Mutex& mu) {
   PjRtClient::KeyValueGetCallback kv_get =
@@ -135,9 +109,7 @@ std::unique_ptr<::pjrt::PJRT_KeyValueCallbackData> CreateTestCKVCallback(
 
 absl::StatusOr<PJRT_Client_Create_Args> BuildCreateArg(
     ::pjrt::PJRT_KeyValueCallbackData* kv_callback_data,
-    const absl::flat_hash_map<std::string, xla::PjRtValueType>& options) {
-  TF_ASSIGN_OR_RETURN(std::vector<PJRT_NamedValue> c_options,
-                      ::pjrt::ConvertToPjRtNamedValueList(options));
+    std::vector<PJRT_NamedValue>& c_options) {
   PJRT_Client_Create_Args args;
   args.struct_size = PJRT_Client_Create_Args_STRUCT_SIZE;
   args.priv = nullptr;
@@ -169,8 +141,11 @@ TEST(PjrtCApiGpuKVStoreTest, CreateClientWithKVCallback) {
       absl::flat_hash_map<std::string, xla::PjRtValueType> options = {
           {"num_nodes", static_cast<int64_t>(num_nodes)},
           {"node_id", static_cast<int64_t>(i)}};
-      TF_ASSERT_OK_AND_ASSIGN(PJRT_Client_Create_Args create_arg,
-                              BuildCreateArg(kv_callback_data.get(), options));
+      TF_ASSERT_OK_AND_ASSIGN(std::vector<PJRT_NamedValue> c_options,
+                              ::pjrt::ConvertToPjRtNamedValueList(options));
+      TF_ASSERT_OK_AND_ASSIGN(
+          PJRT_Client_Create_Args create_arg,
+          BuildCreateArg(kv_callback_data.get(), c_options));
       PJRT_Error* error = api->PJRT_Client_Create(&create_arg);
       EXPECT_EQ(error, nullptr) << error->status.message();
 

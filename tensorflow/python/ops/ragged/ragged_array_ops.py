@@ -20,6 +20,7 @@ from typing import Union
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
@@ -704,7 +705,7 @@ def reverse(tensor: ragged_tensor.Ragged, axis, name=None):
                     'when reversing axes in a ragged tensor')
 
   with ops.name_scope(name, 'Reverse', [tensor, axis]):
-    if isinstance(axis, ops.Tensor):
+    if isinstance(axis, tensor_lib.Tensor):
       axis = tensor_util.constant_value(axis)
       if axis is None:
         raise TypeError(type_error_msg)
@@ -1135,7 +1136,7 @@ def split(value: ragged_tensor.Ragged,
 def ragged_reshape(
     tensor: ragged_tensor.RaggedOrDense,
     shape: dynamic_ragged_shape.DenseOrRaggedShape
-) -> Union[ragged_tensor.RaggedTensor, ops.Tensor]:
+) -> Union[ragged_tensor.RaggedTensor, tensor_lib.Tensor]:
   """Reshapes a tensor or ragged tensor."""
   tensor = ragged_tensor.convert_to_tensor_or_ragged_tensor(
       tensor, name='tensor')
@@ -1157,7 +1158,7 @@ def ragged_reshape(
 def broadcast_to(
     input: ragged_tensor.RaggedOrDense,  # pylint: disable=redefined-builtin
     shape: dynamic_ragged_shape.DynamicRaggedShape
-) -> Union[ragged_tensor.RaggedTensor, ops.Tensor]:
+) -> Union[ragged_tensor.RaggedTensor, tensor_lib.Tensor]:
   """Broadcasts a potentially ragged tensor to a ragged shape.
 
   Tiles `input` as necessary to match the given shape.
@@ -1226,29 +1227,56 @@ def broadcast_dynamic_shape(
 
 
 @dispatch.dispatch_for_api(array_ops.ones)
-def ones(shape: dynamic_ragged_shape.DynamicRaggedShape,
-         dtype=dtypes.float32,
-         name=None) -> ragged_tensor.RaggedOrDense:
+def ones(
+    shape: dynamic_ragged_shape.DynamicRaggedShape,
+    dtype=dtypes.float32,
+    name=None,
+    layout=None,
+) -> ragged_tensor.RaggedOrDense:
   """Returns ones shaped like x."""
-  flat_values = array_ops.ones(shape.inner_shape, dtype=dtype, name=name)
+  if layout is not None and not layout.is_fully_replicated():
+    raise ValueError(
+        f'RaggedTensor only allows replicated layout. got {layout}'
+    )
+  flat_values = array_ops.ones(
+      shape.inner_shape, dtype=dtype, name=name, layout=layout
+  )
   return shape._add_row_partitions(flat_values)  # pylint: disable=protected-access
 
 
 @dispatch.dispatch_for_api(array_ops.zeros)
-def zeros(shape: dynamic_ragged_shape.DynamicRaggedShape,
-          dtype=dtypes.float32,
-          name=None) -> ragged_tensor.RaggedOrDense:
+def zeros(
+    shape: dynamic_ragged_shape.DynamicRaggedShape,
+    dtype=dtypes.float32,
+    name=None,
+    layout=None,
+) -> ragged_tensor.RaggedOrDense:
   """Returns ones shaped like x."""
-  flat_values = array_ops.zeros(shape.inner_shape, dtype=dtype, name=name)
+  if layout is not None and not layout.is_fully_replicated():
+    raise ValueError(
+        f'RaggedTensor only allows replicated layout. got {layout}'
+    )
+  flat_values = array_ops.zeros(
+      shape.inner_shape, dtype=dtype, name=name, layout=layout
+  )
   return shape._add_row_partitions(flat_values)  # pylint: disable=protected-access
 
 
 @dispatch.dispatch_for_api(array_ops.fill)
-def fill(dims: dynamic_ragged_shape.DynamicRaggedShape,
-         value: core_types.TensorLike,
-         name: Optional[str] = None) -> ragged_tensor.RaggedOrDense:
+def fill(
+    dims: dynamic_ragged_shape.DynamicRaggedShape,
+    value: core_types.TensorLike,
+    name: Optional[str] = None,
+    layout=None,
+) -> ragged_tensor.RaggedOrDense:
   """Creates a tensor with shape `dims` and fills it with `value`."""
-  flat_values = array_ops.fill(dims.inner_shape, value, name=name)
+  if layout is not None and not layout.is_fully_replicated():
+    raise ValueError(
+        f'RaggedTensor only allows replicated layout. got {layout}'
+    )
+  flat_values = array_ops.fill(
+      dims.inner_shape, value, name=name, layout=layout
+  )
   return dims._add_row_partitions(flat_values)  # pylint: disable=protected-access
 
 

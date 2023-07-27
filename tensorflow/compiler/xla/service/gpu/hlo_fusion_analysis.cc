@@ -48,41 +48,6 @@ const auto kDimX = TilingScheme::DimX;
 const auto kLinearIndexingX = TilingScheme::LinearIndexingX;
 const auto kStridedIndexingX = TilingScheme::StridedIndexingX;
 
-// Returns true if the fusion has consistent transpose heros.
-bool HasConsistentTransposeHeros(HloComputation* fusion) {
-  std::vector<HloInstruction*> hlo_roots = GetFusionRoots(fusion);
-  if (!HasAnyTiledTransposeRoot(fusion)) {
-    return false;
-  }
-  const HloInstruction* first_transpose = &FindNonTrivialHero(**absl::c_find_if(
-      hlo_roots,
-      [](HloInstruction* instr) { return FindAnyTiledTranspose(*instr); }));
-  const Shape& transpose_in_shape = first_transpose->operand(0)->shape();
-  std::optional<TransposeDescription> first_tiled_transpose =
-      FindAnyTiledTranspose(*first_transpose);
-
-  // We need the following invariant:
-  // For every tuple element:
-  //  -> EITHER it's a kCopy: S{L} -> S{L'}
-  //  -> OR it's an elementwise op of shape S{L}
-  for (HloInstruction* root : hlo_roots) {
-    std::optional<TransposeDescription> tiled_transpose =
-        FindAnyTiledTranspose(*root);
-    if (tiled_transpose) {
-      if (*tiled_transpose != *first_tiled_transpose) {
-        return false;
-      }
-    } else {
-      if (!ShapeUtil::IsReshapeOrTransposeBitcast(
-              root->shape(), transpose_in_shape,
-              /*ignore_element_type=*/true)) {
-        return false;
-      }
-    }
-  }
-  return true;
-}
-
 // Returns true if the fusion output contains non-strided slices only.
 bool IsInputFusibleNonStridedSlices(const HloInstruction* root) {
   if (root->opcode() == HloOpcode::kTuple) {
@@ -258,13 +223,47 @@ int64_t NearestPowerOfTwo(int64_t v) {
 
 }  // namespace
 
-StatusOr<HloFusionAnalysis::EmitterFusionKind>
-HloFusionAnalysis::GetEmitterFusionKind() const {
+// Returns true if the fusion has consistent transpose heros.
+bool HloFusionAnalysis::HasConsistentTransposeHeros() const {
+  if (!tiled_transpose_) {
+    return false;
+  }
+
+  auto* fusion = fusion_->fused_instructions_computation();
+  std::vector<HloInstruction*> hlo_roots = GetFusionRoots(fusion);
+  const HloInstruction* first_transpose =
+      &FindNonTrivialHero(*root_with_tiled_transpose_);
+  const Shape& transpose_in_shape = first_transpose->operand(0)->shape();
+  std::optional<TransposeDescription> first_tiled_transpose =
+      FindAnyTiledTranspose(*first_transpose);
+
+  // We need the following invariant:
+  // For every tuple element:
+  //  -> EITHER it's a kCopy: S{L} -> S{L'}
+  //  -> OR it's an elementwise op of shape S{L}
+  for (HloInstruction* root : hlo_roots) {
+    std::optional<TransposeDescription> tiled_transpose =
+        FindAnyTiledTranspose(*root);
+    if (tiled_transpose) {
+      if (*tiled_transpose != *first_tiled_transpose) {
+        return false;
+      }
+    } else {
+      if (!ShapeUtil::IsReshapeOrTransposeBitcast(
+              root->shape(), transpose_in_shape,
+              /*ignore_element_type=*/true)) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+HloFusionAnalysis::EmitterFusionKind HloFusionAnalysis::GetEmitterFusionKind()
+    const {
 #if GOOGLE_CUDA
-  TF_ASSIGN_OR_RETURN(auto backend_config,
-                      fusion_->backend_config<FusionBackendConfig>());
-  if (backend_config.kind() == kTritonGemmFusionKind ||
-      backend_config.kind() == kTritonSoftmaxFusionKind) {
+  if (fusion_backend_config_.kind() == kTritonGemmFusionKind ||
+      fusion_backend_config_.kind() == kTritonSoftmaxFusionKind) {
     return EmitterFusionKind::kTriton;
   }
 #endif
@@ -273,7 +272,8 @@ HloFusionAnalysis::GetEmitterFusionKind() const {
   if (HasAnyUnnestedReductionRoot(fused_computation)) {
     return EmitterFusionKind::kReduction;
   }
-  if (HasConsistentTransposeHeros(fused_computation)) {
+  // We expect that the last dimension is swapped with a different dimension.
+  if (HasConsistentTransposeHeros() && tiled_transpose_->permutation[2] != 2) {
     return EmitterFusionKind::kTranspose;
   }
 
@@ -296,24 +296,23 @@ HloFusionAnalysis::GetEmitterFusionKind() const {
 }
 
 StatusOr<LaunchDimensions> HloFusionAnalysis::GetLaunchDimensions(
-    bool use_experimental_block_size) const {
-  TF_ASSIGN_OR_RETURN(auto emitter_fusion_kind, GetEmitterFusionKind());
+    bool use_experimental_block_size) {
+  auto emitter_fusion_kind = GetEmitterFusionKind();
   switch (emitter_fusion_kind) {
     case EmitterFusionKind::kLoop: {
       // Disable experimental block size if few_waves or row_vectorized enabled.
       auto loop_fusion_config = GetLoopFusionConfig();
-      use_experimental_block_size &= !(loop_fusion_config.row_vectorized) &&
-                                     !(loop_fusion_config.few_waves);
+      use_experimental_block_size &= !(loop_fusion_config->row_vectorized) &&
+                                     !(loop_fusion_config->few_waves);
       return CalculateLaunchDimensions(GetElementShape(), *device_info_,
                                        use_experimental_block_size,
-                                       loop_fusion_config);
+                                       *loop_fusion_config);
     }
     case EmitterFusionKind::kReduction: {
-      TF_ASSIGN_OR_RETURN(auto reduction_codegen_info,
-                          GetReductionCodegenInfo());
+      auto* reduction_codegen_info = GetReductionCodegenInfo();
       const TilingScheme& tiling_scheme =
-          reduction_codegen_info.GetTilingScheme();
-      size_t blocks_y = reduction_codegen_info.GetIndexGroups().size();
+          reduction_codegen_info->GetTilingScheme();
+      size_t blocks_y = reduction_codegen_info->GetIndexGroups().size();
       return LaunchDimensions(
           {/*x=*/tiling_scheme.GetNumberOfBlocksPhysical(),
            /*y=*/static_cast<int64_t>(blocks_y), /*z=*/1},
@@ -321,53 +320,96 @@ StatusOr<LaunchDimensions> HloFusionAnalysis::GetLaunchDimensions(
            /*y=*/1, /*z=*/1});
     }
     case EmitterFusionKind::kTranspose: {
-      TF_ASSIGN_OR_RETURN(auto tiling_scheme, GetTransposeTilingScheme());
-      return LaunchDimensions(tiling_scheme.GetNumberOfBlocksPhysical(),
-                              tiling_scheme.GetNumThreadsPerBlockPhysical());
+      auto* tiling_scheme = GetTransposeTilingScheme();
+      return LaunchDimensions(tiling_scheme->GetNumberOfBlocksPhysical(),
+                              tiling_scheme->GetNumThreadsPerBlockPhysical());
     }
-    default:
+    case EmitterFusionKind::kInputSlices: {
+      auto* root =
+          fusion_->fused_instructions_computation()->root_instruction();
+      xla::Shape shape;
+      if (root->opcode() == HloOpcode::kSlice) {
+        shape = root->operands()[0]->shape();
+      } else {
+        CHECK_EQ(root->opcode(), HloOpcode::kTuple);
+        // We already verified that the shapes are compatible in
+        // `GetEmitterFusionKind`.
+        shape = root->operands()[0]->operands()[0]->shape();
+      }
+      constexpr int kUnrollFactor = 1;
+      return CalculateLaunchDimensions(
+          shape, *device_info_, use_experimental_block_size, {kUnrollFactor});
+    }
+    case EmitterFusionKind::kScatter: {
+      const auto& root_shape = fusion_->fused_instructions_computation()
+                                   ->root_instruction()
+                                   ->shape();
+      int64_t num_elements = ShapeUtil::ElementsIn(root_shape);
+      int unroll_factor = num_elements % 4 == 0   ? 4
+                          : num_elements % 2 == 0 ? 2
+                                                  : 1;
+      return CalculateLaunchDimensions(root_shape, *device_info_,
+                                       use_experimental_block_size,
+                                       {unroll_factor, /*few_waves=*/false});
+    }
+    case EmitterFusionKind::kTriton:
       return Unimplemented("GetLaunchDimensions");
   }
 }
 
-StatusOr<ReductionCodegenInfo> HloFusionAnalysis::GetReductionCodegenInfo()
-    const {
-  HloInstruction* first_reduce =
-      *absl::c_find_if(fusion_roots_, [](HloInstruction* instr) {
-        return IsReductionFromOrToContiguousDimensions(*instr);
-      });
+namespace {
+// Returns the hero reduction of the computation.
+// We always use the first reduce root that triggers unnested reduction emitter
+// as the hero reduction, since all the reductions are required to have the same
+// shape and layout as verified by `IsFusedReductionOutputConsistent()`.
+HloInstruction* FindHeroReduction(absl::Span<HloInstruction*> roots) {
+  auto it = absl::c_find_if(roots, [](HloInstruction* instr) {
+    return IsReductionFromOrToContiguousDimensions(*instr);
+  });
+  if (it == roots.end()) {
+    return nullptr;
+  }
+  return *it;
+}
+}  // namespace
 
-  // We always use the first reduce as representative to construct
-  // ReductionCodegenInfo, since all the reductions are required to have the
-  // same shape and layout as verified by `IsFusedReductionOutputConsistent()`.
-  return ComputeReductionCodegenInfo(first_reduce);
+const ReductionCodegenInfo* HloFusionAnalysis::GetReductionCodegenInfo() {
+  if (reduction_codegen_info_.has_value()) {
+    return &reduction_codegen_info_.value();
+  }
+
+  HloInstruction* hero_reduction =
+      FindHeroReduction(absl::Span<HloInstruction*>(fusion_roots_));
+  CHECK_NE(hero_reduction, nullptr);
+
+  auto reduction_codegen_info = ComputeReductionCodegenInfo(hero_reduction);
+  reduction_codegen_info_.emplace(std::move(reduction_codegen_info));
+  return &reduction_codegen_info_.value();
 }
 
-StatusOr<TilingScheme> HloFusionAnalysis::GetTransposeTilingScheme() const {
-  std::optional<TransposeDescription> dims_and_order = FindAnyTiledTranspose(
-      **absl::c_find_if(fusion_roots_, [](HloInstruction* instr) {
-        return FindAnyTiledTranspose(*instr);
-      }));
+const TilingScheme* HloFusionAnalysis::GetTransposeTilingScheme() {
+  if (transpose_tiling_scheme_.has_value()) {
+    return &transpose_tiling_scheme_.value();
+  }
 
-  // TODO(cheshire): have a more robust way of checking this.
-  TF_RET_CHECK(dims_and_order.has_value());
+  if (!tiled_transpose_) {
+    return nullptr;
+  }
 
   constexpr int kNumRows = 4;
-  TF_RET_CHECK(WarpSize() % kNumRows == 0);
+  static_assert(WarpSize() % kNumRows == 0);
 
   // 3D view over the input shape.
-  Vector3 dims = dims_and_order->dimensions;
-  Vector3 order = dims_and_order->permutation;
+  Vector3 dims = tiled_transpose_->dimensions;
+  Vector3 order = tiled_transpose_->permutation;
 
-  // We expect that the last dimension is swapped with a different dimension.
-  TF_RET_CHECK(order[2] != 2);
   Vector3 permuted_dims = {dims[order[0]], dims[order[1]], dims[order[2]]};
   Vector3 tile_sizes{1, 1, 1};
   tile_sizes[order[2]] = WarpSize() / kNumRows;
   Vector3 num_threads{1, 1, WarpSize()};
   num_threads[order[2]] = kNumRows;
 
-  return TilingScheme(
+  TilingScheme tiling_scheme(
       /*permuted_dims*/ permuted_dims,
       /*tile_sizes=*/tile_sizes,
       /*num_threads=*/num_threads,
@@ -375,9 +417,15 @@ StatusOr<TilingScheme> HloFusionAnalysis::GetTransposeTilingScheme() const {
       /*vector_size=*/1,
       /*scaling_factor=*/1,
       /*tiling_dimensions=*/{order[2], 2});
+  transpose_tiling_scheme_.emplace(std::move(tiling_scheme));
+  return &transpose_tiling_scheme_.value();
 }
 
-LaunchDimensionsConfig HloFusionAnalysis::GetLoopFusionConfig() const {
+const LaunchDimensionsConfig* HloFusionAnalysis::GetLoopFusionConfig() {
+  if (loop_fusion_config_.has_value()) {
+    return &loop_fusion_config_.value();
+  }
+
   int unroll_factor = 1;
   // Unrolling is good to read large inputs with small elements
   // due to vector loads, but increases the register pressure when one
@@ -393,6 +441,12 @@ LaunchDimensionsConfig HloFusionAnalysis::GetLoopFusionConfig() const {
     unroll_factor = ComputeMaxUnrollFactor(num_elements);
   }
   VLOG(2) << "Unroll factor: " << unroll_factor;
+
+  if (GetEmitterFusionKind() == EmitterFusionKind::kScatter) {
+    // Only the unroll factor is used for scatter.
+    loop_fusion_config_.emplace(LaunchDimensionsConfig{unroll_factor});
+    return &loop_fusion_config_.value();
+  }
 
   bool row_vectorized;
   int num_big_inputs;
@@ -428,7 +482,8 @@ LaunchDimensionsConfig HloFusionAnalysis::GetLoopFusionConfig() const {
     launch_config.row_vectorized = false;
     launch_config.few_waves = false;
   }
-  return launch_config;
+  loop_fusion_config_.emplace(std::move(launch_config));
+  return &loop_fusion_config_.value();
 }
 
 const Shape& HloFusionAnalysis::GetElementShape() const {
@@ -652,11 +707,11 @@ int HloFusionAnalysis::CalculateVirtualThreadScalingFactorForReduction(
   return 1;
 }
 
-StatusOr<ReductionCodegenInfo> HloFusionAnalysis::ComputeReductionCodegenInfo(
-    HloInstruction* first_reduce) const {
-  Shape input_shape = first_reduce->operand(0)->shape();
+ReductionCodegenInfo HloFusionAnalysis::ComputeReductionCodegenInfo(
+    HloInstruction* hero_reduction) const {
+  Shape input_shape = hero_reduction->operand(0)->shape();
   ReductionDimensions reduction_dimensions =
-      GetReductionKindAndContiguousComponents(*first_reduce);
+      GetReductionKindAndContiguousComponents(*hero_reduction);
   VLOG(10) << "is_row_reduction " << reduction_dimensions.is_row_reduction
            << " " << reduction_dimensions.dimensions[0] << " "
            << reduction_dimensions.dimensions[1] << " "
@@ -674,9 +729,9 @@ StatusOr<ReductionCodegenInfo> HloFusionAnalysis::ComputeReductionCodegenInfo(
       // Use 512 as default block size (threads per block) for row reductions.
       // For multi-output fusions, reduce the block size further to decrease
       // register pressure when multiple outputs are computed by each thread.
-      int64_t max_block_size =
-          std::max(MinThreadsXRowReduction(),
-                   static_cast<int64_t>(512LL / NearestPowerOfTwo(fan_out)));
+      int64_t max_block_size = std::max(
+          MinThreadsXRowReduction(hero_reduction->GetModule()->config()),
+          static_cast<int64_t>(512LL / NearestPowerOfTwo(fan_out)));
       return std::min(max_block_size,
                       RoundUpTo(CeilOfRatio(reduction_dimensions.dimensions[2],
                                             reduction_tiling[2]),
@@ -692,7 +747,8 @@ StatusOr<ReductionCodegenInfo> HloFusionAnalysis::ComputeReductionCodegenInfo(
   int64_t shmem_usage =
       ProjectedShmemUsageBytes(reduction_dimensions, instr_index_groups);
   const int64_t shmem_budget = device_info_->shared_memory_per_block;
-  bool reduction_is_race_free = ReductionIsRaceFree(reduction_dimensions);
+  bool reduction_is_race_free = ReductionIsRaceFree(
+      hero_reduction->GetModule()->config(), reduction_dimensions);
   bool vectorize =
       // Vectorization might cause us to run out of budget.
       (shmem_usage * 2 <= shmem_budget) &&
@@ -716,19 +772,11 @@ StatusOr<ReductionCodegenInfo> HloFusionAnalysis::ComputeReductionCodegenInfo(
 
       // Limit register pressure for MOF, but still use a minimum of 2.
       num_partial_results /= fan_out;
+      // We can't go below 2 for the unroll factor -- if we wanted to use 1 as
+      // the unroll factor, we should have set this reduction as unvectorized.
       num_partial_results = std::max(num_partial_results, 2);
     } else {
       num_partial_results = 2;
-    }
-
-    // Take into account MaxBeneficialColumnReductionUnrollBasedOnBlockSize.
-    // (We can't go below 2 for the unroll factor -- if we wanted to use 1 as
-    // the unroll factor, we should have set this reduction as unvectorized.)
-    num_partial_results =
-        std::clamp<int>(num_partial_results, 2,
-                        MaxBeneficialColumnReductionUnrollBasedOnBlockSize());
-    if (num_partial_results % 2 != 0) {
-      --num_partial_results;
     }
   }
 
@@ -762,7 +810,7 @@ StatusOr<ReductionCodegenInfo> HloFusionAnalysis::ComputeReductionCodegenInfo(
                              virtual_thread_scaling_factor);
   return ReductionCodegenInfo(
       tiling_scheme, num_partial_results, reduction_dimensions.is_row_reduction,
-      reduction_is_race_free, std::move(instr_index_groups));
+      reduction_is_race_free, std::move(instr_index_groups), hero_reduction);
 }
 
 }  // namespace gpu

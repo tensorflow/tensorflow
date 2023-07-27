@@ -12,27 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =============================================================================
-"""JAX-NumPy like dtype promotion semantics for TF."""
-
-import enum
+"""Auto dtype conversion semantics for TF."""
 
 import numpy as np
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import extension_type
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import weak_tensor
 from tensorflow.python.util import nest
 
 
-# ALL mode allows all conversions while SAFE mode disallows “risky” promotions
-# that can result in dtype widening or potential precision loss.
-class PromoSafety(enum.Enum):
-  SAFE = 0
-  ALL = 1
-
-
-# Enable ALL mode by default to ensure consistency with JAX-NumPy.
-_PROMO_SAFETY_MODE = PromoSafety.ALL
+# PromoMode Enum that denotes safe and all mode.
+PromoMode = ops.PromoMode
 
 # Namings are similar to third_party/py/jax/_src/dtypes.py.
 _b8 = (dtypes.bool, False)
@@ -95,254 +87,254 @@ _NP_TO_TF = dtypes._NP_TO_TF  # pylint: disable=protected-access
 # _BINARY_DTYPE_RES_FULL.
 _BINARY_DTYPE_RES_HALF = {
     _b8: {
-        _b8: (_b8, PromoSafety.SAFE),
-        _u8: (_u8, PromoSafety.SAFE),
-        _u16: (_u16, PromoSafety.SAFE),
-        _u32: (_u32, PromoSafety.SAFE),
-        _u64: (_u64, PromoSafety.SAFE),
-        _i8: (_i8, PromoSafety.SAFE),
-        _i16: (_i16, PromoSafety.SAFE),
-        _i32: (_i32, PromoSafety.SAFE),
-        _i64: (_i64, PromoSafety.SAFE),
-        _bf16: (_bf16, PromoSafety.SAFE),
-        _f16: (_f16, PromoSafety.SAFE),
-        _f32: (_f32, PromoSafety.SAFE),
-        _f64: (_f64, PromoSafety.SAFE),
-        _c64: (_c64, PromoSafety.SAFE),
-        _c128: (_c128, PromoSafety.SAFE),
-        _i32w: (_i32w, PromoSafety.SAFE),
-        _i64w: (_i64w, PromoSafety.SAFE),
-        _f32w: (_f32w, PromoSafety.SAFE),
-        _f64w: (_f64w, PromoSafety.SAFE),
-        _c128w: (_c128w, PromoSafety.SAFE),
+        _b8: (_b8, PromoMode.SAFE),
+        _u8: (_u8, PromoMode.SAFE),
+        _u16: (_u16, PromoMode.SAFE),
+        _u32: (_u32, PromoMode.SAFE),
+        _u64: (_u64, PromoMode.SAFE),
+        _i8: (_i8, PromoMode.SAFE),
+        _i16: (_i16, PromoMode.SAFE),
+        _i32: (_i32, PromoMode.SAFE),
+        _i64: (_i64, PromoMode.SAFE),
+        _bf16: (_bf16, PromoMode.SAFE),
+        _f16: (_f16, PromoMode.SAFE),
+        _f32: (_f32, PromoMode.SAFE),
+        _f64: (_f64, PromoMode.SAFE),
+        _c64: (_c64, PromoMode.SAFE),
+        _c128: (_c128, PromoMode.SAFE),
+        _i32w: (_i32w, PromoMode.SAFE),
+        _i64w: (_i64w, PromoMode.SAFE),
+        _f32w: (_f32w, PromoMode.SAFE),
+        _f64w: (_f64w, PromoMode.SAFE),
+        _c128w: (_c128w, PromoMode.SAFE),
     },
     _u8: {
-        _u8: (_u8, PromoSafety.SAFE),
-        _u16: (_u16, PromoSafety.SAFE),
-        _u32: (_u32, PromoSafety.SAFE),
-        _u64: (_u64, PromoSafety.SAFE),
-        _i8: (_i16, PromoSafety.ALL),
-        _i16: (_i16, PromoSafety.SAFE),
-        _i32: (_i32, PromoSafety.SAFE),
-        _i64: (_i64, PromoSafety.SAFE),
-        _bf16: (_bf16, PromoSafety.SAFE),
-        _f16: (_f16, PromoSafety.SAFE),
-        _f32: (_f32, PromoSafety.SAFE),
-        _f64: (_f64, PromoSafety.SAFE),
-        _c64: (_c64, PromoSafety.SAFE),
-        _c128: (_c128, PromoSafety.SAFE),
-        _i32w: (_u8, PromoSafety.SAFE),
-        _i64w: (_u8, PromoSafety.SAFE),
-        _f32w: (_f64w, PromoSafety.ALL),
-        _f64w: (_f64w, PromoSafety.SAFE),
-        _c128w: (_c128w, PromoSafety.SAFE),
+        _u8: (_u8, PromoMode.SAFE),
+        _u16: (_u16, PromoMode.SAFE),
+        _u32: (_u32, PromoMode.SAFE),
+        _u64: (_u64, PromoMode.SAFE),
+        _i8: (_i16, PromoMode.ALL),
+        _i16: (_i16, PromoMode.SAFE),
+        _i32: (_i32, PromoMode.SAFE),
+        _i64: (_i64, PromoMode.SAFE),
+        _bf16: (_bf16, PromoMode.SAFE),
+        _f16: (_f16, PromoMode.SAFE),
+        _f32: (_f32, PromoMode.SAFE),
+        _f64: (_f64, PromoMode.SAFE),
+        _c64: (_c64, PromoMode.SAFE),
+        _c128: (_c128, PromoMode.SAFE),
+        _i32w: (_u8, PromoMode.SAFE),
+        _i64w: (_u8, PromoMode.SAFE),
+        _f32w: (_f64w, PromoMode.ALL),
+        _f64w: (_f64w, PromoMode.SAFE),
+        _c128w: (_c128w, PromoMode.SAFE),
     },
     _u16: {
-        _u16: (_u16, PromoSafety.SAFE),
-        _u32: (_u32, PromoSafety.SAFE),
-        _u64: (_u64, PromoSafety.SAFE),
-        _i8: (_i32, PromoSafety.ALL),
-        _i16: (_i32, PromoSafety.ALL),
-        _i32: (_i32, PromoSafety.SAFE),
-        _i64: (_i64, PromoSafety.SAFE),
-        _bf16: (_bf16, PromoSafety.ALL),
-        _f16: (_f16, PromoSafety.ALL),
-        _f32: (_f32, PromoSafety.SAFE),
-        _f64: (_f64, PromoSafety.SAFE),
-        _c64: (_c64, PromoSafety.SAFE),
-        _c128: (_c128, PromoSafety.SAFE),
-        _i32w: (_u16, PromoSafety.SAFE),
-        _i64w: (_u16, PromoSafety.SAFE),
-        _f32w: (_f64w, PromoSafety.ALL),
-        _f64w: (_f64w, PromoSafety.SAFE),
-        _c128w: (_c128w, PromoSafety.SAFE),
+        _u16: (_u16, PromoMode.SAFE),
+        _u32: (_u32, PromoMode.SAFE),
+        _u64: (_u64, PromoMode.SAFE),
+        _i8: (_i32, PromoMode.ALL),
+        _i16: (_i32, PromoMode.ALL),
+        _i32: (_i32, PromoMode.SAFE),
+        _i64: (_i64, PromoMode.SAFE),
+        _bf16: (_bf16, PromoMode.ALL),
+        _f16: (_f16, PromoMode.ALL),
+        _f32: (_f32, PromoMode.SAFE),
+        _f64: (_f64, PromoMode.SAFE),
+        _c64: (_c64, PromoMode.SAFE),
+        _c128: (_c128, PromoMode.SAFE),
+        _i32w: (_u16, PromoMode.SAFE),
+        _i64w: (_u16, PromoMode.SAFE),
+        _f32w: (_f64w, PromoMode.ALL),
+        _f64w: (_f64w, PromoMode.SAFE),
+        _c128w: (_c128w, PromoMode.SAFE),
     },
     _u32: {
-        _u32: (_u32, PromoSafety.SAFE),
-        _u64: (_u64, PromoSafety.SAFE),
-        _i8: (_i64, PromoSafety.ALL),
-        _i16: (_i64, PromoSafety.ALL),
-        _i32: (_i64, PromoSafety.ALL),
-        _i64: (_i64, PromoSafety.SAFE),
-        _bf16: (_bf16, PromoSafety.ALL),
-        _f16: (_f16, PromoSafety.ALL),
-        _f32: (_f32, PromoSafety.ALL),
-        _f64: (_f64, PromoSafety.SAFE),
-        _c64: (_c64, PromoSafety.ALL),
-        _c128: (_c128, PromoSafety.SAFE),
-        _i32w: (_u32, PromoSafety.SAFE),
-        _i64w: (_u32, PromoSafety.SAFE),
-        _f32w: (_f64w, PromoSafety.ALL),
-        _f64w: (_f64w, PromoSafety.SAFE),
-        _c128w: (_c128w, PromoSafety.SAFE),
+        _u32: (_u32, PromoMode.SAFE),
+        _u64: (_u64, PromoMode.SAFE),
+        _i8: (_i64, PromoMode.ALL),
+        _i16: (_i64, PromoMode.ALL),
+        _i32: (_i64, PromoMode.ALL),
+        _i64: (_i64, PromoMode.SAFE),
+        _bf16: (_bf16, PromoMode.ALL),
+        _f16: (_f16, PromoMode.ALL),
+        _f32: (_f32, PromoMode.ALL),
+        _f64: (_f64, PromoMode.SAFE),
+        _c64: (_c64, PromoMode.ALL),
+        _c128: (_c128, PromoMode.SAFE),
+        _i32w: (_u32, PromoMode.SAFE),
+        _i64w: (_u32, PromoMode.SAFE),
+        _f32w: (_f64w, PromoMode.ALL),
+        _f64w: (_f64w, PromoMode.SAFE),
+        _c128w: (_c128w, PromoMode.SAFE),
     },
     _u64: {
-        _u64: (_u64, PromoSafety.SAFE),
-        _i8: (_f64w, PromoSafety.ALL),
-        _i16: (_f64w, PromoSafety.ALL),
-        _i32: (_f64w, PromoSafety.ALL),
-        _i64: (_f64w, PromoSafety.ALL),
-        _bf16: (_bf16, PromoSafety.ALL),
-        _f16: (_f16, PromoSafety.ALL),
-        _f32: (_f32, PromoSafety.ALL),
-        _f64: (_f64, PromoSafety.ALL),
-        _c64: (_c64, PromoSafety.ALL),
-        _c128: (_c128, PromoSafety.ALL),
-        _i32w: (_u64, PromoSafety.SAFE),
-        _i64w: (_u64, PromoSafety.SAFE),
-        _f32w: (_f64w, PromoSafety.ALL),
-        _f64w: (_f64w, PromoSafety.ALL),
-        _c128w: (_c128w, PromoSafety.ALL),
+        _u64: (_u64, PromoMode.SAFE),
+        _i8: (_f64w, PromoMode.ALL),
+        _i16: (_f64w, PromoMode.ALL),
+        _i32: (_f64w, PromoMode.ALL),
+        _i64: (_f64w, PromoMode.ALL),
+        _bf16: (_bf16, PromoMode.ALL),
+        _f16: (_f16, PromoMode.ALL),
+        _f32: (_f32, PromoMode.ALL),
+        _f64: (_f64, PromoMode.ALL),
+        _c64: (_c64, PromoMode.ALL),
+        _c128: (_c128, PromoMode.ALL),
+        _i32w: (_u64, PromoMode.SAFE),
+        _i64w: (_u64, PromoMode.SAFE),
+        _f32w: (_f64w, PromoMode.ALL),
+        _f64w: (_f64w, PromoMode.ALL),
+        _c128w: (_c128w, PromoMode.ALL),
     },
     _i8: {
-        _i8: (_i8, PromoSafety.SAFE),
-        _i16: (_i16, PromoSafety.SAFE),
-        _i32: (_i32, PromoSafety.SAFE),
-        _i64: (_i64, PromoSafety.SAFE),
-        _bf16: (_bf16, PromoSafety.SAFE),
-        _f16: (_f16, PromoSafety.SAFE),
-        _f32: (_f32, PromoSafety.SAFE),
-        _f64: (_f64, PromoSafety.SAFE),
-        _c64: (_c64, PromoSafety.SAFE),
-        _c128: (_c128, PromoSafety.SAFE),
-        _i32w: (_i8, PromoSafety.SAFE),
-        _i64w: (_i8, PromoSafety.SAFE),
-        _f32w: (_f64w, PromoSafety.ALL),
-        _f64w: (_f64w, PromoSafety.SAFE),
-        _c128w: (_c128w, PromoSafety.SAFE),
+        _i8: (_i8, PromoMode.SAFE),
+        _i16: (_i16, PromoMode.SAFE),
+        _i32: (_i32, PromoMode.SAFE),
+        _i64: (_i64, PromoMode.SAFE),
+        _bf16: (_bf16, PromoMode.SAFE),
+        _f16: (_f16, PromoMode.SAFE),
+        _f32: (_f32, PromoMode.SAFE),
+        _f64: (_f64, PromoMode.SAFE),
+        _c64: (_c64, PromoMode.SAFE),
+        _c128: (_c128, PromoMode.SAFE),
+        _i32w: (_i8, PromoMode.SAFE),
+        _i64w: (_i8, PromoMode.SAFE),
+        _f32w: (_f64w, PromoMode.ALL),
+        _f64w: (_f64w, PromoMode.SAFE),
+        _c128w: (_c128w, PromoMode.SAFE),
     },
     _i16: {
-        _i16: (_i16, PromoSafety.SAFE),
-        _i32: (_i32, PromoSafety.SAFE),
-        _i64: (_i64, PromoSafety.SAFE),
-        _bf16: (_bf16, PromoSafety.ALL),
-        _f16: (_f16, PromoSafety.ALL),
-        _f32: (_f32, PromoSafety.SAFE),
-        _f64: (_f64, PromoSafety.SAFE),
-        _c64: (_c64, PromoSafety.SAFE),
-        _c128: (_c128, PromoSafety.SAFE),
-        _i32w: (_i16, PromoSafety.SAFE),
-        _i64w: (_i16, PromoSafety.SAFE),
-        _f32w: (_f64w, PromoSafety.ALL),
-        _f64w: (_f64w, PromoSafety.SAFE),
-        _c128w: (_c128w, PromoSafety.SAFE),
+        _i16: (_i16, PromoMode.SAFE),
+        _i32: (_i32, PromoMode.SAFE),
+        _i64: (_i64, PromoMode.SAFE),
+        _bf16: (_bf16, PromoMode.ALL),
+        _f16: (_f16, PromoMode.ALL),
+        _f32: (_f32, PromoMode.SAFE),
+        _f64: (_f64, PromoMode.SAFE),
+        _c64: (_c64, PromoMode.SAFE),
+        _c128: (_c128, PromoMode.SAFE),
+        _i32w: (_i16, PromoMode.SAFE),
+        _i64w: (_i16, PromoMode.SAFE),
+        _f32w: (_f64w, PromoMode.ALL),
+        _f64w: (_f64w, PromoMode.SAFE),
+        _c128w: (_c128w, PromoMode.SAFE),
     },
     _i32: {
-        _i32: (_i32, PromoSafety.SAFE),
-        _i64: (_i64, PromoSafety.SAFE),
-        _bf16: (_bf16, PromoSafety.ALL),
-        _f16: (_f16, PromoSafety.ALL),
-        _f32: (_f32, PromoSafety.ALL),
-        _f64: (_f64, PromoSafety.SAFE),
-        _c64: (_c64, PromoSafety.ALL),
-        _c128: (_c128, PromoSafety.SAFE),
-        _i32w: (_i32, PromoSafety.SAFE),
-        _i64w: (_i32, PromoSafety.SAFE),
-        _f32w: (_f64w, PromoSafety.ALL),
-        _f64w: (_f64w, PromoSafety.SAFE),
-        _c128w: (_c128w, PromoSafety.SAFE),
+        _i32: (_i32, PromoMode.SAFE),
+        _i64: (_i64, PromoMode.SAFE),
+        _bf16: (_bf16, PromoMode.ALL),
+        _f16: (_f16, PromoMode.ALL),
+        _f32: (_f32, PromoMode.ALL),
+        _f64: (_f64, PromoMode.SAFE),
+        _c64: (_c64, PromoMode.ALL),
+        _c128: (_c128, PromoMode.SAFE),
+        _i32w: (_i32, PromoMode.SAFE),
+        _i64w: (_i32, PromoMode.SAFE),
+        _f32w: (_f64w, PromoMode.ALL),
+        _f64w: (_f64w, PromoMode.SAFE),
+        _c128w: (_c128w, PromoMode.SAFE),
     },
     _i64: {
-        _i64: (_i64, PromoSafety.SAFE),
-        _bf16: (_bf16, PromoSafety.ALL),
-        _f16: (_f16, PromoSafety.ALL),
-        _f32: (_f32, PromoSafety.ALL),
-        _f64: (_f64, PromoSafety.ALL),
-        _c64: (_c64, PromoSafety.ALL),
-        _c128: (_c128, PromoSafety.ALL),
-        _i32w: (_i64, PromoSafety.SAFE),
-        _i64w: (_i64, PromoSafety.SAFE),
-        _f32w: (_f64w, PromoSafety.ALL),
-        _f64w: (_f64w, PromoSafety.ALL),
-        _c128w: (_c128w, PromoSafety.ALL),
+        _i64: (_i64, PromoMode.SAFE),
+        _bf16: (_bf16, PromoMode.ALL),
+        _f16: (_f16, PromoMode.ALL),
+        _f32: (_f32, PromoMode.ALL),
+        _f64: (_f64, PromoMode.ALL),
+        _c64: (_c64, PromoMode.ALL),
+        _c128: (_c128, PromoMode.ALL),
+        _i32w: (_i64, PromoMode.SAFE),
+        _i64w: (_i64, PromoMode.SAFE),
+        _f32w: (_f64w, PromoMode.ALL),
+        _f64w: (_f64w, PromoMode.ALL),
+        _c128w: (_c128w, PromoMode.ALL),
     },
     _bf16: {
-        _bf16: (_bf16, PromoSafety.SAFE),
-        _f16: (_f32, PromoSafety.ALL),
-        _f32: (_f32, PromoSafety.SAFE),
-        _f64: (_f64, PromoSafety.SAFE),
-        _c64: (_c64, PromoSafety.SAFE),
-        _c128: (_c128, PromoSafety.SAFE),
-        _i32w: (_bf16, PromoSafety.SAFE),
-        _i64w: (_bf16, PromoSafety.SAFE),
-        _f32w: (_bf16, PromoSafety.SAFE),
-        _f64w: (_bf16, PromoSafety.SAFE),
-        _c128w: (_c64, PromoSafety.ALL),
+        _bf16: (_bf16, PromoMode.SAFE),
+        _f16: (_f32, PromoMode.ALL),
+        _f32: (_f32, PromoMode.SAFE),
+        _f64: (_f64, PromoMode.SAFE),
+        _c64: (_c64, PromoMode.SAFE),
+        _c128: (_c128, PromoMode.SAFE),
+        _i32w: (_bf16, PromoMode.SAFE),
+        _i64w: (_bf16, PromoMode.SAFE),
+        _f32w: (_bf16, PromoMode.SAFE),
+        _f64w: (_bf16, PromoMode.SAFE),
+        _c128w: (_c64, PromoMode.ALL),
     },
     _f16: {
-        _f16: (_f16, PromoSafety.SAFE),
-        _f32: (_f32, PromoSafety.SAFE),
-        _f64: (_f64, PromoSafety.SAFE),
-        _c64: (_c64, PromoSafety.SAFE),
-        _c128: (_c128, PromoSafety.SAFE),
-        _i32w: (_f16, PromoSafety.SAFE),
-        _i64w: (_f16, PromoSafety.SAFE),
-        _f32w: (_f16, PromoSafety.SAFE),
-        _f64w: (_f16, PromoSafety.SAFE),
-        _c128w: (_c64, PromoSafety.ALL),
+        _f16: (_f16, PromoMode.SAFE),
+        _f32: (_f32, PromoMode.SAFE),
+        _f64: (_f64, PromoMode.SAFE),
+        _c64: (_c64, PromoMode.SAFE),
+        _c128: (_c128, PromoMode.SAFE),
+        _i32w: (_f16, PromoMode.SAFE),
+        _i64w: (_f16, PromoMode.SAFE),
+        _f32w: (_f16, PromoMode.SAFE),
+        _f64w: (_f16, PromoMode.SAFE),
+        _c128w: (_c64, PromoMode.ALL),
     },
     _f32: {
-        _f32: (_f32, PromoSafety.SAFE),
-        _f64: (_f64, PromoSafety.SAFE),
-        _c64: (_c64, PromoSafety.SAFE),
-        _c128: (_c128, PromoSafety.SAFE),
-        _i32w: (_f32, PromoSafety.SAFE),
-        _i64w: (_f32, PromoSafety.SAFE),
-        _f32w: (_f32, PromoSafety.SAFE),
-        _f64w: (_f32, PromoSafety.SAFE),
-        _c128w: (_c64, PromoSafety.ALL),
+        _f32: (_f32, PromoMode.SAFE),
+        _f64: (_f64, PromoMode.SAFE),
+        _c64: (_c64, PromoMode.SAFE),
+        _c128: (_c128, PromoMode.SAFE),
+        _i32w: (_f32, PromoMode.SAFE),
+        _i64w: (_f32, PromoMode.SAFE),
+        _f32w: (_f32, PromoMode.SAFE),
+        _f64w: (_f32, PromoMode.SAFE),
+        _c128w: (_c64, PromoMode.ALL),
     },
     _f64: {
-        _f64: (_f64, PromoSafety.SAFE),
-        _c64: (_c128, PromoSafety.ALL),
-        _c128: (_c128, PromoSafety.SAFE),
-        _i32w: (_f64, PromoSafety.SAFE),
-        _i64w: (_f64, PromoSafety.SAFE),
-        _f32w: (_f64, PromoSafety.SAFE),
-        _f64w: (_f64, PromoSafety.SAFE),
-        _c128w: (_c128, PromoSafety.SAFE),
+        _f64: (_f64, PromoMode.SAFE),
+        _c64: (_c128, PromoMode.ALL),
+        _c128: (_c128, PromoMode.SAFE),
+        _i32w: (_f64, PromoMode.SAFE),
+        _i64w: (_f64, PromoMode.SAFE),
+        _f32w: (_f64, PromoMode.SAFE),
+        _f64w: (_f64, PromoMode.SAFE),
+        _c128w: (_c128, PromoMode.SAFE),
     },
     _c64: {
-        _c64: (_c64, PromoSafety.SAFE),
-        _c128: (_c128, PromoSafety.SAFE),
-        _i32w: (_c64, PromoSafety.SAFE),
-        _i64w: (_c64, PromoSafety.SAFE),
-        _f32w: (_c64, PromoSafety.SAFE),
-        _f64w: (_c64, PromoSafety.SAFE),
-        _c128w: (_c64, PromoSafety.SAFE),
+        _c64: (_c64, PromoMode.SAFE),
+        _c128: (_c128, PromoMode.SAFE),
+        _i32w: (_c64, PromoMode.SAFE),
+        _i64w: (_c64, PromoMode.SAFE),
+        _f32w: (_c64, PromoMode.SAFE),
+        _f64w: (_c64, PromoMode.SAFE),
+        _c128w: (_c64, PromoMode.SAFE),
     },
     _c128: {
-        _c128: (_c128, PromoSafety.SAFE),
-        _i32w: (_c128, PromoSafety.SAFE),
-        _i64w: (_c128, PromoSafety.SAFE),
-        _f32w: (_c128, PromoSafety.SAFE),
-        _f64w: (_c128, PromoSafety.SAFE),
-        _c128w: (_c128, PromoSafety.SAFE),
+        _c128: (_c128, PromoMode.SAFE),
+        _i32w: (_c128, PromoMode.SAFE),
+        _i64w: (_c128, PromoMode.SAFE),
+        _f32w: (_c128, PromoMode.SAFE),
+        _f64w: (_c128, PromoMode.SAFE),
+        _c128w: (_c128, PromoMode.SAFE),
     },
     _i32w: {
-        _i32w: (_i32w, PromoSafety.SAFE),
-        _i64w: (_i64w, PromoSafety.SAFE),
-        _f32w: (_f32w, PromoSafety.SAFE),
-        _f64w: (_f64w, PromoSafety.SAFE),
-        _c128w: (_c128w, PromoSafety.SAFE),
+        _i32w: (_i32w, PromoMode.SAFE),
+        _i64w: (_i64w, PromoMode.SAFE),
+        _f32w: (_f32w, PromoMode.SAFE),
+        _f64w: (_f64w, PromoMode.SAFE),
+        _c128w: (_c128w, PromoMode.SAFE),
     },
     _i64w: {
-        _i64w: (_i64w, PromoSafety.SAFE),
-        _f32w: (_f32w, PromoSafety.SAFE),
-        _f64w: (_f64w, PromoSafety.SAFE),
-        _c128w: (_c128w, PromoSafety.SAFE),
+        _i64w: (_i64w, PromoMode.SAFE),
+        _f32w: (_f32w, PromoMode.SAFE),
+        _f64w: (_f64w, PromoMode.SAFE),
+        _c128w: (_c128w, PromoMode.SAFE),
     },
     _f32w: {
-        _f32w: (_f32w, PromoSafety.SAFE),
-        _f64w: (_f64w, PromoSafety.SAFE),
-        _c128w: (_c128w, PromoSafety.SAFE),
+        _f32w: (_f32w, PromoMode.SAFE),
+        _f64w: (_f64w, PromoMode.SAFE),
+        _c128w: (_c128w, PromoMode.SAFE),
     },
     _f64w: {
-        _f64w: (_f64w, PromoSafety.SAFE),
-        _c128w: (_c128w, PromoSafety.SAFE),
+        _f64w: (_f64w, PromoMode.SAFE),
+        _c128w: (_c128w, PromoMode.SAFE),
     },
     _c128w: {
-        _c128w: (_c128w, PromoSafety.SAFE),
+        _c128w: (_c128w, PromoMode.SAFE),
     },
 }
 
@@ -368,7 +360,7 @@ def _initialize():
       _BINARY_DTYPE_RES_FULL[dtype1][dtype2] = res
 
   # We do not support any conversions between string and others dtypes.
-  _BINARY_DTYPE_RES_FULL[_str] = {_str: (_str, PromoSafety.SAFE)}
+  _BINARY_DTYPE_RES_FULL[_str] = {_str: (_str, PromoMode.SAFE)}
 
 
 _initialize()
@@ -380,6 +372,13 @@ _all_str_dtypes = (
     np.dtype('unicode_'),
     dtypes.string,
 )
+
+
+def _is_acceptable_input_type(x):
+  """Determines if x is an acceptable input type for auto dtype conversion semantics."""
+  return isinstance(x, weak_tensor.WeakTensor) or not isinstance(
+      x, extension_type.ExtensionType
+  )
 
 
 def _get_dtype_and_weakness(x):
@@ -395,13 +394,14 @@ def _get_dtype_and_weakness(x):
     TF type and weak type information inferred from x in the form of
     (dtype, bool).
   """
-
   if isinstance(x, weak_tensor.WeakTensor):
     return (x.dtype, True)
   if isinstance(x, dtypes.DType):
     return (x, False)
   # TODO(b/286585200): Add support for `AutoCastVariable` in Keras.
   tf_dtype = getattr(x, 'dtype', None)
+  if isinstance(tf_dtype, dtypes.DType):
+    return (tf_dtype, False)
   # `isinstance(tf_dtype, np.dtype)` handles classes that implement `dtype`
   # using `np.dtype` (e.g. `xla_extension.Array`).
   # This condition is put before e.g. python int/float because
@@ -413,10 +413,11 @@ def _get_dtype_and_weakness(x):
     return (infer_dtype, False)
   if isinstance(x, (bytes, str)) or tf_dtype in _all_str_dtypes:
     return _str
-  if tf_dtype is not None:
-    return (tf_dtype, False)
-  if x in _NP_TO_TF:
-    return (_NP_TO_TF[x], False)
+  try:
+    if x in _NP_TO_TF:
+      return (_NP_TO_TF[x], False)
+  except TypeError:
+    pass
   # TODO(b/286585058): Update implementation depending on whether Python
   # scalars are inferred to 32 bit or 64 bit.
   if isinstance(x, _pi):
@@ -429,6 +430,8 @@ def _get_dtype_and_weakness(x):
     return _f32w
   if isinstance(x, _pc) or x == complex:
     return _c128w
+  if isinstance(x, bool) or x == bool:
+    return _b8
   infer_result = ops.convert_to_tensor(x)
   return (infer_result.dtype, False)
 
@@ -448,12 +451,22 @@ def _result_type_impl(*arrays_and_dtypes):
 
     TypeError: when the promotion between the input dtypes is disabled in the
     current mode
-  """
 
-  # Drop None inputs.
-  valid_arrays_and_dtypes = [
-      inp for inp in arrays_and_dtypes if inp is not None
-  ]
+    NotImplementedError: when arrays_and_dtypes contains an unsupported input
+    type (e.g. CompositeTensor).
+  """
+  promo_safety_mode = ops.get_dtype_conversion_mode()
+  # Drop None inputs and check if input type is supported.
+  valid_arrays_and_dtypes = []
+  for inp in arrays_and_dtypes:
+    if inp is not None:
+      if _is_acceptable_input_type(inp):
+        valid_arrays_and_dtypes.append(inp)
+      else:
+        raise NotImplementedError(
+            'Auto dtype conversion semantics does not support'
+            f' {type(inp)} type.'
+        )
 
   dtypes_and_is_weak = [
       _get_dtype_and_weakness(x) for x in nest.flatten(valid_arrays_and_dtypes)
@@ -478,9 +491,9 @@ def _result_type_impl(*arrays_and_dtypes):
           'need to.'
       ) from exc
 
-    if allowed_mode.value > _PROMO_SAFETY_MODE.value:
+    if allowed_mode.value > promo_safety_mode.value:
       raise TypeError(
-          f'In promotion mode {_PROMO_SAFETY_MODE}, implicit dtype '
+          f'In promotion mode {promo_safety_mode}, implicit dtype '
           f'promotion between ({res[0]}, weak={res[1]}) and '
           f'({arg[0]}, weak={arg[1]}) is disallowed. '
           'You need to explicitly specify the dtype in your op, '
@@ -503,13 +516,3 @@ def result_type(*arrays_and_dtypes):
     The result promotion type from all the inputs.
   """
   return _result_type_impl(*arrays_and_dtypes)
-
-
-def enable_safe_mode():
-  global _PROMO_SAFETY_MODE
-  _PROMO_SAFETY_MODE = PromoSafety.SAFE
-
-
-def enable_all_mode():
-  global _PROMO_SAFETY_MODE
-  _PROMO_SAFETY_MODE = PromoSafety.ALL

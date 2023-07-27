@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/Timing.h"  // from @llvm-project
@@ -52,8 +53,9 @@ namespace tensorflow {
 // which the IR dumping was skipped because of a filter.
 class BridgeLoggerConfig : public mlir::PassManager::IRPrinterConfig {
  public:
-  explicit BridgeLoggerConfig(bool print_module_scope = false,
-                              bool print_after_only_on_change = true);
+  explicit BridgeLoggerConfig(
+      bool print_module_scope = false, bool print_after_only_on_change = true,
+      mlir::OpPrintingFlags op_printing_flags = mlir::OpPrintingFlags());
 
   // A hook that may be overridden by a derived config that checks if the IR
   // of 'operation' should be dumped *before* the pass 'pass' has been

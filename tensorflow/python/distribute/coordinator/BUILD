@@ -96,6 +96,7 @@ distribute_py_strict_test(
         "notpu",
         "notsan",  # TODO(b/171040359): Flaky timeout, even if maximum shards
     ],
+    xla_enable_strict_auto_jit = False,  # TODO(b/291174864)
     xla_tags = [
         "no_cuda_asan",  # Race condition on async test
     ],
@@ -152,6 +153,7 @@ py_strict_library(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:check_ops",
         "//tensorflow/python/ops:math_ops",
@@ -192,6 +194,7 @@ tf_py_strict_test(
         "no_oss",  # TODO(b/219580021)
         "noasan",  # Multi-process runner does not work with test sanitizers
         "nomac",  # TODO(b/177065434)
+        "nomsan",  # TODO(b/290211396)
     ],
     deps = [
         ":cluster_coordinator",

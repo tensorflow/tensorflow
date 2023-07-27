@@ -267,7 +267,12 @@ Status SetUpKernelFallbackCompatRequestContextForBatch(
 
   return SetUpKernelFallbackCompatRequestContext(
       builder, device_manager, pflr, runner_table, resource_array,
-      intra_op_threadpool, session_metadata, /*runner=*/nullptr);
+      intra_op_threadpool, session_metadata,
+      src_fallback_request_state->runner(),
+      src_fallback_request_state->cost_recorder(),
+      src_fallback_request_state->client_graph_resource_context(),
+      src_fallback_request_state->cancellation_manager(),
+      src_fallback_request_state->runtime_config());
 }
 
 StatusOr<RCReference<tfrt::RequestContext>> SetUpRequestContext(
@@ -401,6 +406,12 @@ REGISTER_OP("_BatchFunctionFallback")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .Attr("batching_queue: string = ''")
+    // A separate set of batch options for the low priority requests, which is
+    // used for priority queue batching.
+    .Attr("low_priority_max_batch_size: int = 0")
+    .Attr("low_priority_batch_timeout_micros: int = 0")
+    .Attr("low_priority_allowed_batch_sizes: list(int) = []")
+    .Attr("low_priority_max_enqueued_batches: int = 0")
     .Attr("Tin: list(type)")
     .Attr("Tcaptured: list(type) >= 0")
     .Attr("Tout: list(type)")
