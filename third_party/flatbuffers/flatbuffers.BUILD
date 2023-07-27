@@ -88,7 +88,7 @@ cc_binary(
         ":platform_freebsd": [
             "-lm",
         ],
-        ":windows": [],
+        ":windows": ["/DEFAULTLIB:msvcrt.lib"],
         "//conditions:default": [
             "-lm",
             "-ldl",
