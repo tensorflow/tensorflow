@@ -259,11 +259,15 @@ struct AutoShardingOption {
       return absl::OutOfRangeError(
           "device_mesh_shape is empty and it needs to be specified.");
     }
-    if (device_mesh_shape.size() > 3) {
-      return absl::OutOfRangeError(
-          absl::StrCat("Not supported: the length of device_mesh_shape is "
-                       "greater than 3, actual length: ",
-                       device_mesh_shape.size()));
+    std::vector<int64_t> mesh_dims_greater_than_one_indices =
+        spmd::VectorGreaterThanOneElementIndices(device_mesh_shape);
+
+    if (mesh_dims_greater_than_one_indices.size() > 3) {
+      return absl::OutOfRangeError(absl::StrCat(
+          "Not supported: only device_mesh_shapes with 3 or less "
+          "dimensions larger than 1 are supported. Instead we have ",
+          mesh_dims_greater_than_one_indices.size(),
+          " dimensions greater than 1."));
     }
     // All values in device_mesh_shape must be greater than 0.
     if (absl::c_any_of(device_mesh_shape,
@@ -313,6 +317,26 @@ struct AutoShardingOption {
           "device_mesh_beta, "
           "please leave them empty and default values will be used."));
     }
+
+    if (device_mesh_shape.size() > 3) {
+      std::vector<int64_t> compressed_device_mesh_shape;
+      std::vector<double> compressed_device_mesh_alpha;
+      std::vector<double> compressed_device_mesh_beta;
+      int non_zero_counter = 0;
+      for (size_t i = 0; i < device_mesh_shape.size(); ++i) {
+        if (non_zero_counter < mesh_dims_greater_than_one_indices.size() &&
+            i == mesh_dims_greater_than_one_indices[non_zero_counter]) {
+          non_zero_counter++;
+          compressed_device_mesh_shape.push_back(device_mesh_shape[i]);
+          compressed_device_mesh_alpha.push_back(device_mesh_alpha[i]);
+          compressed_device_mesh_beta.push_back(device_mesh_beta[i]);
+        }
+      }
+      this->device_mesh_shape = compressed_device_mesh_shape;
+      this->device_mesh_alpha = compressed_device_mesh_alpha;
+      this->device_mesh_beta = compressed_device_mesh_beta;
+    }
+
     int64_t total_devices = 1;
     for (auto i : device_mesh_shape) {
       total_devices *= i;
