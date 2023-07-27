@@ -879,7 +879,10 @@ Status GpuCompiler::PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
     pipeline.AddPass<AliasPassthroughParams>();
   }
   pipeline.AddPass<LoopScheduleLinearizer>(GetCanShareBuffer());
-  pipeline.AddPass<CopyInsertion>(GetCanShareBuffer());
+
+  constexpr int64_t kNoRegionBasedLiveRangeAnalysisLimit = -1;
+  pipeline.AddPass<CopyInsertion>(GetCanShareBuffer(),
+                                  kNoRegionBasedLiveRangeAnalysisLimit);
   // We are using a sub-pipeline here, so that the verifier only runs after both
   // GpuHorizontalLoopFusion and HloDCE.
   auto& sub_pipeline =
