@@ -116,12 +116,13 @@ class GpuPriorityFusionQueue : public FusionQueue {
     }
 
     auto next_consumer = current_consumers_.back();
+    int64_t producer_operand_index =
+        next_consumer->operand_index(current_producer_);
     current_consumers_.pop_back();
     VLOG(5) << "next: " << next_consumer->name() << "(" << next_consumer
             << ") + " << current_producer_->name() << "(" << current_producer_
             << ")";
-    auto indices = next_consumer->OperandIndices(current_producer_);
-    return {next_consumer, {indices.begin(), indices.end()}};
+    return {next_consumer, {producer_operand_index}};
   }
 
   // Calculates the compute cost and free computation of the new fusion in the
@@ -248,18 +249,11 @@ class GpuPriorityFusionQueue : public FusionQueue {
   }
 
   std::vector<HloInstruction*> GetFusibleUsers(HloInstruction* producer) const {
-    auto is_fusible = [&](HloInstruction* user) {
-      for (int64_t i = 0; i < user->operand_count(); ++i) {
-        if (user->operand(i) == producer && can_fuse_(user, i)) {
-          return true;
-        }
-      }
-      return false;
-    };
     std::vector<HloInstruction*> fusible_users;
-    std::vector<HloInstruction*> prod_users(producer->users());
-    for (auto user : prod_users) {
-      if (is_fusible(user)) {
+    for (auto user : producer->users()) {
+      int64_t operand_index = user->operand_index(producer);
+
+      if (can_fuse_(user, operand_index)) {
         fusible_users.push_back(user);
       }
     }
