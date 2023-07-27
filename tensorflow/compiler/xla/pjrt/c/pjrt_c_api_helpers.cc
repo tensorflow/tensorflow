@@ -119,14 +119,18 @@ PJRT_TopologyDescriptionDeleter MakeTopologyDescriptionDeleter(
   };
 }
 
-absl::StatusCode PjrtErrorToStatusCode(const PJRT_Error* error,
-                                       const PJRT_Api* api) {
+PJRT_Error_Code GetErrorCode(const PJRT_Error* error, const PJRT_Api* api) {
   PJRT_Error_GetCode_Args args;
   args.struct_size = PJRT_Error_GetCode_Args_STRUCT_SIZE;
   args.priv = nullptr;
   args.error = error;
-  api->PJRT_Error_GetCode(&args);
-  PJRT_Error_Code code = args.code;
+  pjrt::LogFatalIfPjrtError(api->PJRT_Error_GetCode(&args), api);
+  return args.code;
+}
+
+absl::StatusCode PjrtErrorToStatusCode(const PJRT_Error* error,
+                                       const PJRT_Api* api) {
+  PJRT_Error_Code code = GetErrorCode(error, api);
   switch (code) {
     case PJRT_Error_Code_CANCELLED:
     case PJRT_Error_Code_UNKNOWN:

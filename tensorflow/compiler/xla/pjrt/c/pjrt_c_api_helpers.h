@@ -110,6 +110,8 @@ void LogFatalIfPjrtError(PJRT_Error* error, const PJRT_Api* api);
 absl::string_view GetPjrtErrorMessage(const PJRT_Error* error,
                                       const PJRT_Api* api);
 
+PJRT_Error_Code GetErrorCode(const PJRT_Error* error, const PJRT_Api* api);
+
 xla::Status PjrtErrorToStatus(const PJRT_Error* error, const PJRT_Api* api);
 
 absl::StatusCode PjrtErrorToStatusCode(const PJRT_Error* error,

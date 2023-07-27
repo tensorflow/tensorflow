@@ -1349,8 +1349,16 @@ bool PjRtCApiBuffer::has_dynamic_dimensions() const {
   args.struct_size = PJRT_Buffer_DynamicDimensionIndices_Args_STRUCT_SIZE;
   args.priv = nullptr;
   args.buffer = buffer_.get();
-  pjrt::LogFatalIfPjrtError(
-      pjrt_c_api()->PJRT_Buffer_DynamicDimensionIndices(&args), pjrt_c_api());
+
+  const PJRT_Api* api = pjrt_c_api();
+  std::unique_ptr<PJRT_Error, pjrt::PJRT_ErrorDeleter> error(
+      api->PJRT_Buffer_DynamicDimensionIndices(&args),
+      pjrt::MakeErrorDeleter(api));
+
+  if (error &&
+      pjrt::GetErrorCode(error.get(), api) == PJRT_Error_Code_UNIMPLEMENTED) {
+    return false;
+  }
   return args.num_dynamic_dims > 0;
 }
 
