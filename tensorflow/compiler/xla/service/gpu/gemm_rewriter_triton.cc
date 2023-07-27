@@ -590,13 +590,14 @@ bool IsOutputWorthFusing(const HloInstruction& hlo) {
 }
 
 // Checks if the instruction is possible and profitable to fuse.
-// If so tries to transform dim_order describing one side of `hlo` into a
-// description of its other side if it is supported by the triton GEMM emitter.
+// If so tries to transform dim_order describing one side of `hlo` into
+// description(s) of its other side if it is supported.
 FusionDecision CanFuse(const HloInstruction& hlo, bool as_input,
-                       DimensionOrder& dim_order,
+                       const DimensionOrder& dim_order,
                        absl::flat_hash_map<const HloInstruction*,
                                            HloInstruction*>& old_to_new_mapping,
-                       const GpuVersion gpu_version) {
+                       const GpuVersion gpu_version,
+                       std::vector<DimensionOrder>& result_dim_orders) {
   if (hlo.opcode() == HloOpcode::kTuple ||
       hlo.opcode() == HloOpcode::kGetTupleElement) {
     return "Unsupported instruction.";
@@ -659,14 +660,30 @@ FusionDecision CanFuse(const HloInstruction& hlo, bool as_input,
     }
   }
 
-  if (FusionDecision decision = dim_order.HandleInstruction(
+  DimensionOrder new_dim_order = DimensionOrder(dim_order);
+  if (FusionDecision decision = new_dim_order.HandleInstruction(
           &hlo, as_input ? DimensionOrder::TransformDirection::kOutputToInput
                          : DimensionOrder::TransformDirection::kInputToOutput);
       !decision) {
     return decision;
   }
 
-  return RequireTritonGemmSupportedDimOrder(dim_order);
+  if (FusionDecision result = RequireTritonGemmSupportedDimOrder(new_dim_order);
+      !result) {
+    return result;
+  }
+  result_dim_orders.clear();
+  if (as_input) {
+    result_dim_orders.reserve(hlo.operand_count());
+    for (int i = 0; i < hlo.operand_count(); ++i) {
+      // All currently supported instructions with multiple operands are
+      // elementwise = have the same dimension orders for all operands.
+      result_dim_orders.push_back(new_dim_order);
+    }
+  } else {
+    result_dim_orders.push_back(new_dim_order);
+  }
+  return FusionDecision{};
 }
 
 // Clone an instruction into the fusion.
@@ -720,9 +737,9 @@ int64_t NumAddedParameters(const HloInstruction& hlo) {
 // Fuse an instruction with all its fusible inputs.
 // If an input is not fusible stop there and make a parameter of the new
 // fusion, otherwise put it onto stack and check its own inputs first.
-void FuseWithInputsRecursively(
-    HloInstruction* root, DimensionOrder root_dim_order,
-    // Dimension orders describing inputs of corresponding instructions.
+void TryToFuseWithInputsRecursively(
+    HloInstruction& root,
+    // Dimension orders describing outputs of corresponding instructions.
     absl::flat_hash_map<const HloInstruction*, DimensionOrder>& dim_orders,
     const GpuVersion gpu_version,
     absl::flat_hash_map<const HloInstruction*, HloInstruction*>&
@@ -739,14 +756,31 @@ void FuseWithInputsRecursively(
   // Let it change while the scope has one input; afterwards require all
   // of them to be physically compatible.
   const HloInstruction* reference_dim_order_hlo = nullptr;
-  if (CanFuse(*root, /*as_input=*/true, root_dim_order, old_to_new_mapping,
-              gpu_version)) {
-    to_fuse.push(root);
-    inputs.insert(root->operands().begin(), root->operands().end());
-    // root_dim_order went through output -> input transformation here.
-    CHECK(dim_orders.insert({root, root_dim_order}).second) << root->ToString();
-  }
-  visited.insert(root);
+  auto try_fuse_one = [&](HloInstruction& hlo) {
+    std::vector<DimensionOrder> operand_dim_orders;
+    if (!CanFuse(hlo, /*as_input=*/true, dim_orders.at(&hlo),
+                 old_to_new_mapping, gpu_version, operand_dim_orders)) {
+      return false;
+    }
+    for (const DimensionOrder& dim_order : operand_dim_orders) {
+      if (reference_dim_order_hlo != nullptr &&
+          !dim_order.IsPhysicallyEquivalent(
+              dim_orders.at(reference_dim_order_hlo))) {
+        return false;
+      }
+    }
+    to_fuse.push(&hlo);
+    if (hlo.opcode() != HloOpcode::kParameter) {
+      inputs.erase(&hlo);
+    }
+    for (int i = 0; i < hlo.operand_count(); ++i) {
+      inputs.insert(hlo.operand(i));
+      dim_orders.insert({hlo.operand(i), operand_dim_orders[i]});
+    }
+    return true;
+  };
+  try_fuse_one(root);
+  visited.insert(&root);
   while (!to_fuse.empty()) {
     bool top_is_ready_to_fuse = true;
     HloInstruction* hlo = to_fuse.top();
@@ -760,27 +794,9 @@ void FuseWithInputsRecursively(
             NumAddedParameters(*operand) > 0) {
           continue;
         }
-        // Operand's output is described by its consumer's input.
-        DimensionOrder operand_dim_order(dim_orders.at(hlo));
-        // CanFuse() makes output -> input transformation of
-        // operand_dim_order if succeeds.
-        if (CanFuse(*operand, /*as_input=*/true, operand_dim_order,
-                    old_to_new_mapping, gpu_version)) {
-          if (reference_dim_order_hlo != nullptr &&
-              !operand_dim_order.IsPhysicallyEquivalent(
-                  dim_orders.at(reference_dim_order_hlo))) {
-            continue;
-          }
-          to_fuse.push(operand);
-          if (operand->opcode() != HloOpcode::kParameter) {
-            inputs.erase(operand);
-          }
-          inputs.insert(operand->operands().begin(), operand->operands().end());
+        if (try_fuse_one(*operand)) {
           top_is_ready_to_fuse = false;
         }
-        // Save the dimension order description of operand's input.
-        CHECK(dim_orders.insert({operand, operand_dim_order}).second)
-            << operand->ToString();
       }
     }
     if (top_is_ready_to_fuse) {
@@ -817,13 +833,14 @@ StatusOr<FusionDecision> FuseDot(HloInstruction& dot,
 
   auto fuse_inputs = [&](int operand_number)
       -> StatusOr<absl::flat_hash_map<const HloInstruction*, DimensionOrder>> {
+    const int operand_count_before = fusion_inputs.size();
     absl::flat_hash_map<const HloInstruction*, DimensionOrder> dim_orders;
-    int operand_count_before = fusion_inputs.size();
     // Direct dot inputs have well defined dimension orders.
-    FuseWithInputsRecursively(
-        dot.mutable_operand(operand_number),
-        DimensionOrder::FromDotOperand(dot, operand_number), dim_orders,
-        gpu_version, old_to_new_mapping, fusion_inputs, builder);
+    dim_orders.insert({dot.operand(operand_number),
+                       DimensionOrder::FromDotOperand(dot, operand_number)});
+    TryToFuseWithInputsRecursively(*dot.mutable_operand(operand_number),
+                                   dim_orders, gpu_version, old_to_new_mapping,
+                                   fusion_inputs, builder);
     TF_RET_CHECK(fusion_inputs.size() - operand_count_before <=
                  DotFusionAnalysis::kMaxParameterPerScope);
     return dim_orders;
@@ -839,8 +856,9 @@ StatusOr<FusionDecision> FuseDot(HloInstruction& dot,
     // the same tiling.
     auto first_lhs_parameter_it = lhs_dim_orders.cbegin();
     while (first_lhs_parameter_it != lhs_dim_orders.cend()) {
-      if (old_to_new_mapping[first_lhs_parameter_it->first]->opcode() ==
-          HloOpcode::kParameter) {
+      if (auto it = old_to_new_mapping.find(first_lhs_parameter_it->first);
+          it != old_to_new_mapping.cend() &&
+          it->second->opcode() == HloOpcode::kParameter) {
         break;
       }
       ++first_lhs_parameter_it;
@@ -877,19 +895,19 @@ StatusOr<FusionDecision> FuseDot(HloInstruction& dot,
     if (!IsDistributiveOverAddition(*user)) {
       break;
     }
-    // Describes the output of `current_output` = input of `user`.
-    DimensionOrder dim_order(out_dim_orders.at(fusion_output));
-    if (CanFuse(*user, /*as_input=*/false, dim_order, old_to_new_mapping,
-                gpu_version)) {
-      // Now it describes the output of the user.
-      CHECK(out_dim_orders.insert({user, dim_order}).second);
+    if (std::vector<DimensionOrder> output_dim_order;
+        CanFuse(*user, /*as_input=*/false, out_dim_orders.at(fusion_output),
+                old_to_new_mapping, gpu_version, output_dim_order)) {
+      CHECK(out_dim_orders.insert({user, output_dim_order[0]}).second);
       for (HloInstruction* operand : user->operands()) {
         if (!old_to_new_mapping.contains(operand)) {
-          // Here we need again a dim order describing inputs of the user.
-          FuseWithInputsRecursively(
-              operand, DimensionOrder(out_dim_orders.at(fusion_output)),
-              out_dim_orders, gpu_version, old_to_new_mapping, fusion_inputs,
-              builder);
+          // Here using a dimension order of one known operand of `user` for
+          // the other operand. This is fine for now because all supported
+          // multi-operand instructions are elementwise.
+          out_dim_orders.insert({operand, out_dim_orders.at(fusion_output)});
+          TryToFuseWithInputsRecursively(*operand, out_dim_orders, gpu_version,
+                                         old_to_new_mapping, fusion_inputs,
+                                         builder);
         }
       }
       Fuse(*user, old_to_new_mapping, fusion_inputs, builder);
@@ -1194,16 +1212,16 @@ Status MakeDotComputationSplitKBatch(
 }
 
 // Propagate dimension orders in consumer->producer direction starting at
-// `origin` with input `origin_dim_order` till parameters of the computation.
+// `origin` with output `origin_dim_order` till parameters of the computation.
 // Store the found parameters and their iteration specs.
 Status PropagateDimensionOrdersToParameters(
-    const HloInstruction& origin, const DimensionOrder& origin_dim_order,
+    const HloInstruction& origin, DimensionOrder origin_dim_order,
     absl::flat_hash_set<const HloInstruction*>& parameters,
     absl::flat_hash_map<const HloInstruction*, TensorIterationSpec>&
         iter_specs) {
   absl::flat_hash_set<const HloInstruction*> visited;
   std::queue<const HloInstruction*> to_process;
-  // Dimension orders describing inputs of corresponding instructions.
+  // Dimension orders describing outputs of corresponding instructions.
   absl::flat_hash_map<const HloInstruction*, DimensionOrder> dim_orders;
   TF_RET_CHECK(RequireTritonGemmSupportedDimOrder(origin_dim_order));
   dim_orders.insert({&origin, origin_dim_order});
@@ -1231,14 +1249,12 @@ Status PropagateDimensionOrdersToParameters(
         continue;
       }
       // Operand's output is described by its consumer's input.
-      auto [it, inserted] =
-          dim_orders.insert({operand, DimensionOrder(dim_orders.at(hlo))});
-      TF_RET_CHECK(inserted);
-      DimensionOrder& hlo_operand_dim_order = it->second;
-      TF_RET_CHECK(hlo_operand_dim_order.HandleInstruction(
-          operand, DimensionOrder::TransformDirection::kOutputToInput))
+      DimensionOrder operand_dim_order(dim_orders.at(hlo));
+      TF_RET_CHECK(operand_dim_order.HandleInstruction(
+          hlo, DimensionOrder::TransformDirection::kOutputToInput))
           << operand->ToString();
-      TF_RET_CHECK(RequireTritonGemmSupportedDimOrder(hlo_operand_dim_order));
+      TF_RET_CHECK(RequireTritonGemmSupportedDimOrder(operand_dim_order));
+      TF_RET_CHECK(dim_orders.insert({operand, operand_dim_order}).second);
       to_process.push(operand);
     }
   }
@@ -1405,13 +1421,9 @@ Status DotFusionAnalysis::ExecuteImpl(const HloComputation* computation,
   for (const Scope scope : {Scope::LHS, Scope::RHS}) {
     const int operand_number = static_cast<int>(scope);
     const HloInstruction* operand = dot->operand(operand_number);
-    DimensionOrder dot_operand_dim_order =
-        DimensionOrder::FromDotOperand(*dot, operand_number, split_k);
-    TF_RET_CHECK(dot_operand_dim_order.HandleInstruction(
-        operand, DimensionOrder::TransformDirection::kOutputToInput));
     TF_RETURN_IF_ERROR(PropagateDimensionOrdersToParameters(
-        *operand, dot_operand_dim_order, parameters_[scope],
-        iter_specs_[scope]));
+        *operand, DimensionOrder::FromDotOperand(*dot, operand_number, split_k),
+        parameters_[scope], iter_specs_[scope]));
   }
 
   int64_t lhs_nc_split_major_part_size = -1;
@@ -1441,8 +1453,6 @@ Status DotFusionAnalysis::ExecuteImpl(const HloComputation* computation,
           .second);
   if (output != dot) {
     // Propagate back to parameters of the output fusion.
-    TF_RET_CHECK(dim_order.HandleInstruction(
-        output, DimensionOrder::TransformDirection::kOutputToInput));
     TF_RETURN_IF_ERROR(PropagateDimensionOrdersToParameters(
         *output, dim_order, parameters_[Scope::OUTPUT],
         iter_specs_[Scope::OUTPUT]));
