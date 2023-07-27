@@ -2984,8 +2984,8 @@ class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
     ShapedType operand_type = operand.getType().cast<ShapedType>();
     ShapedType start_indices_type = start_indices.getType().cast<ShapedType>();
     ShapedType result_type = gather_op.getResult().getType().cast<ShapedType>();
-    if (!operand_type.hasStaticShape() ||
-        !start_indices_type.hasStaticShape() || !result_type.hasStaticShape()) {
+    if (!operand_type.hasStaticShape()) {
+      gather_op.emitOpError() << "Dynamic shaped operand is not supported.";
       return failure();
     }
 
@@ -3113,8 +3113,10 @@ class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
     ShapedType result_type = gather_op.getResult().getType().cast<ShapedType>();
     if (!operand_type.hasStaticShape() ||
         !start_indices_type.hasStaticShape() || !result_type.hasStaticShape()) {
-      gather_op.emitOpError() << "Dynamic shaped inputs are not supported.";
-      return failure();
+      return rewriter.notifyMatchFailure(
+          gather_op,
+          "Dynamic shaped inputs are not supported when legalizing mhlo.gather "
+          "op to tf.slice.");
     }
 
     auto start_index_map = gather_op.getDimensionNumbers().getStartIndexMap();

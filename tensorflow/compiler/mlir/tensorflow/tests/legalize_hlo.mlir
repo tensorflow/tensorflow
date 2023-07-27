@@ -2769,6 +2769,43 @@ func.func @convert_gather_to_slice_batch_size_1(%arg0: tensor<1x2944xi32>, %arg1
   func.return %0 : tensor<1x1504xi32>
 }
 
+// CHECK-LABEL:   func @convert_gather_slice_dynamic_indices(
+// CHECK-SAME:                         %[[ARG_0:.*]]: tensor<256000x1024xi8>,
+// CHECK-SAME:                         %[[ARG_1:.*]]: tensor<?x?x1xi32>) -> tensor<?x?x1024xi8> {
+// CHECK:            %[[VAL_0:.*]] = "tf.GatherNd"(%[[ARG_0]], %[[ARG_1]]) : (tensor<256000x1024xi8>, tensor<?x?x1xi32>) -> tensor<?x?x1024xi8>
+// CHECK:            return %[[VAL_0]] : tensor<?x?x1024xi8>
+// CHECK:         }
+func.func @convert_gather_slice_dynamic_indices(%arg0: tensor<256000x1024xi8>, %arg1: tensor<?x?x1xi32>) -> tensor<?x?x1024xi8> {
+  %0 = "mhlo.gather"(%arg0, %arg1) {
+    dimension_numbers = #mhlo.gather<
+      offset_dims = [2],
+      collapsed_slice_dims = [0],
+      start_index_map = [0],
+      index_vector_dim = 2
+    >,
+    slice_sizes = dense<[1, 1024]> : tensor<2xi64>
+  } : (tensor<256000x1024xi8>, tensor<?x?x1xi32>) -> tensor<?x?x1024xi8>
+  func.return %0 : tensor<?x?x1024xi8>
+}
+
+// CHECK-LABEL:   func @convert_gather_scalar_dynamic_indices(
+// CHECK-SAME:                         %[[ARG_0:.*]]: tensor<256000xf32>,
+// CHECK-SAME:                         %[[ARG_1:.*]]: tensor<?x?x1xi32>) -> tensor<?x?xf32> {
+// CHECK:            %[[VAL_0:.*]] = "tf.GatherNd"(%[[ARG_0]], %[[ARG_1]]) : (tensor<256000xf32>, tensor<?x?x1xi32>) -> tensor<?x?xf32>
+// CHECK:            return %[[VAL_0]] : tensor<?x?xf32>
+// CHECK:         }
+func.func @convert_gather_scalar_dynamic_indices(%arg0: tensor<256000xf32>, %arg1: tensor<?x?x1xi32>) -> tensor<?x?xf32> {
+  %0 = "mhlo.gather"(%arg0, %arg1) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [0],
+      start_index_map = [0],
+      index_vector_dim = 2
+    >,
+    slice_sizes = dense<1> : tensor<1xi64>
+  } : (tensor<256000xf32>, tensor<?x?x1xi32>) -> tensor<?x?xf32>
+  func.return %0 : tensor<?x?xf32>
+}
+
 // CHECK-LABEL:   func @convert_gather_to_slice(
 // CHECK-SAME:                         %[[ARG_0:.*]]: tensor<3x2944xi32>,
 // CHECK-SAME:                         %[[ARG_1:.*]]: tensor<3x2xi32>)
@@ -2812,7 +2849,7 @@ func.func @convert_gather_to_slice(%arg0: tensor<3x2944xi32>, %arg1: tensor<3x2x
 
 // CHECK-LABEL:   func @convert_gather_to_slice_dynamic_error
 func.func @convert_gather_to_slice_dynamic_error(%arg0: tensor<3x?xi32>, %arg1: tensor<3x2xi32>) -> tensor<3x1504xi32> {
-  // expected-error @+1 {{Dynamic shaped inputs are not supported.}}
+  // expected-error @+1 {{Dynamic shaped operand is not supported.}}
   %0 = "mhlo.gather"(%arg0, %arg1) {
     dimension_numbers = #mhlo.gather<
       offset_dims = [1],
