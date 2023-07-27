@@ -40,6 +40,7 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnMatMul(
     void* config) {
   const xla::ExecutableRunOptions* run_options =
       static_cast<const xla::ExecutableRunOptions*>(run_options_ptr);
+  XLA_LIGHTWEIGHT_CHECK(run_options != nullptr);
   XLA_LIGHTWEIGHT_CHECK(run_options->intra_op_thread_pool() != nullptr);
   // TODO(inte-tf): Update the namespace scope of threadpool once the
   // threadpool interface wrapper is moved as tsl::OneDnnThreadPool.
@@ -68,20 +69,16 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnMatMul(
   auto weights_mem = memory(weights_md, cpu_engine, rhs_minfo.Data());
   auto dst_mem = memory(dst_md, cpu_engine, result_minfo.Data());
 
-  // Create primitive descriptor.
   auto matmul_pd =
       matmul::primitive_desc(cpu_engine, src_md, weights_md, dst_md);
 
-  // Create the primitive.
   auto matmul_prim = matmul(matmul_pd);
 
-  // Primitive arguments.
   std::unordered_map<int, memory> matmul_args;
   matmul_args.insert({DNNL_ARG_SRC, src_mem});
   matmul_args.insert({DNNL_ARG_WEIGHTS, weights_mem});
   matmul_args.insert({DNNL_ARG_DST, dst_mem});
 
-  // Primitive execution: matrix multiplication with ReLU.
   matmul_prim.execute(tp_stream, matmul_args);
 }
 
