@@ -216,9 +216,8 @@ tsl::Status MultipleIterationsAutoScaler::UpdateOptimalNumberOfWorkersMetric()
         "no reported processing and target processing times for at least one "
         "iteration");
 
-  constexpr float FIVE_MINUTES = 60.0 * 5.0;
-  LOG_EVERY_N_SEC(INFO, FIVE_MINUTES) << "Estimated optimal number of workers: "
-                                      << optimal_number_of_workers.value();
+  VLOG(3) << "Estimated optimal number of workers: "
+          << optimal_number_of_workers.value();
   metrics::RecordTFDataServiceOptimalNumberOfWorkers(
       optimal_number_of_workers.value());
 
