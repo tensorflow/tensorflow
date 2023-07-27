@@ -147,6 +147,33 @@ TEST(DeviceIdUtilsTest, GetNumberTfDevicesWithSessionOptionDeviceCount) {
   DeviceIdManager::TestOnlyReset();
 }
 
+TEST(DeviceIdUtilsTest, GetPlatformDeviceId) {
+  TfDeviceId tf_device_id(0);
+  PlatformDeviceId platform_device_id(1);
+  TF_EXPECT_OK(DeviceIdManager::InsertTfPlatformDeviceIdPair(
+      DeviceType(kTestDeviceType), tf_device_id, platform_device_id));
+  DeviceNameUtils::ParsedName device_name;
+  device_name.id = 0;
+
+  TF_ASSERT_OK_AND_ASSIGN(int device_id,
+                          GetPlatformDeviceIdFromDeviceParsedName(
+                              device_name, DeviceType(kTestDeviceType)));
+
+  EXPECT_EQ(device_id, 1);
+  DeviceIdManager::TestOnlyReset();
+}
+
+TEST(DeviceIdUtilsTest, GetPlatformDeviceIdNotFound) {
+  DeviceNameUtils::ParsedName device_name;
+  device_name.id = 0;
+
+  EXPECT_THAT(
+      GetPlatformDeviceIdFromDeviceParsedName(device_name,
+                                              DeviceType(kTestDeviceType)),
+      StatusIs(tensorflow::error::NOT_FOUND,
+               HasSubstr("TensorFlow device CPU:0 was not registered")));
+}
+
 TEST(DeviceIdUtilsTest, GetDeviceIdWithPlatformDeviceId) {
   TfDeviceId tf_device_id(0);
   PlatformDeviceId platform_device_id(1);
