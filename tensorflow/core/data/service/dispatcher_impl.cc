@@ -836,11 +836,6 @@ Status DataServiceDispatcherImpl::CreateIteration(
   TF_RETURN_IF_ERROR(Apply(update));
   TF_RETURN_IF_ERROR(state_.IterationFromId(iteration_id, iteration));
 
-  Status auto_scaler_status = auto_scaler_.RegisterIteration(iteration_id);
-  if (!auto_scaler_status.ok()) {
-    LOG(WARNING) << "Failed to register Iteration " << iteration_id
-                 << " with tf.data service AutoScaler: " << auto_scaler_status;
-  }
   return OkStatus();
 }
 
