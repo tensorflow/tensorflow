@@ -24,12 +24,13 @@ limitations under the License.
 // clang-format off
 // These headers must be at the top, before including Python.h header
 // Otherwise, we get C2039 on MSVC due to 'copysign'
+#include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
+#include "pybind11_abseil/status_casters.h"  // from @pybind11_abseil
 #include "pybind11/complex.h"  // from @pybind11
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/stl.h"  // from @pybind11
 #include "pybind11/stl_bind.h"  // from @pybind11
 // clang-format on
-
 #include <frameobject.h>
 
 #include <algorithm>
@@ -45,6 +46,7 @@ limitations under the License.
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/graph/graph_debug_info_builder.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/status.h"
@@ -181,6 +183,8 @@ class StackTraceWrapper : public AbstractStackTrace {
 }  // namespace
 
 PYBIND11_MODULE(_tf_stack, m) {
+  pybind11::google::ImportStatusModule();
+
   py::class_<PyBindSourceMap>(m, "PyBindSourceMap")
       .def(py::init())
       .def("update_to",
@@ -215,6 +219,28 @@ PYBIND11_MODULE(_tf_stack, m) {
         for (const auto& item : file_set) {
           self.file_set_->insert(py::cast<std::string>(item));
         }
+      });
+
+  py::class_<GraphDebugInfoBuilder>(m, "GraphDebugInfoBuilder")
+      .def(py::init())
+      .def(
+          "AppendGraphDebugInfo",
+          [](GraphDebugInfoBuilder& self, std::string fn_name,
+             py::bytes debug_info_str) {
+            return self.AppendGraphDebugInfoStr(fn_name, debug_info_str);
+          },
+          py::arg("prefix"), py::arg("debug_info"))
+      .def(
+          "AccumulateStackTrace",
+          [](GraphDebugInfoBuilder& self, std::string function, std::string op,
+             const AbstractStackTrace& trace) {
+            std::string key = absl::StrCat(op, "@", function);
+            self.AccumulateStackTrace(
+                std::make_shared<FrozenStackTrace>(trace.ToFrames()), key);
+          },
+          py::arg("function"), py::arg("op"), py::arg("trace"))
+      .def("Build", [](GraphDebugInfoBuilder& self) -> py::bytes {
+        return py::bytes(self.ToGraphDebugInfoStr());
       });
 
   py::class_<StackFrame>(m, "StackFrame")
@@ -327,6 +353,11 @@ PYBIND11_MODULE(_tf_stack, m) {
       },
       py::arg("source_map"), py::arg("file_set"), py::arg("stacklevel") = 1,
       py::return_value_policy::take_ownership);
+
+  m.def(
+      "LoadTracesFromDebugInfo",
+      [](py::bytes data) { return LoadTracesFromDebugInfoStr(data); },
+      py::arg("debug_info_proto"));
 }
 
 }  // namespace tensorflow

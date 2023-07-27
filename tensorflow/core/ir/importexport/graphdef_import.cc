@@ -49,6 +49,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/graph/graph_debug_info_builder.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/importexport/convert_attributes.h"
@@ -72,6 +73,7 @@ using tensorflow::NodeDef;
 using tensorflow::OpDef;
 using tensorflow::OpRegistrationData;
 using tensorflow::OpRegistry;
+using tensorflow::StackTracesMap;
 using tensorflow::Status;
 using tensorflow::StatusOr;
 using tensorflow::StringPiece;
@@ -97,6 +99,7 @@ class GraphDefImporter {
         unknown_loc_(UnknownLoc::get(ctx_)),
         placeholder_state_(unknown_loc_, "tfg._mlir_placeholder") {
     placeholder_state_.addTypes(dialect_->getControlType());
+    stack_traces_ = LoadTracesFromDebugInfo(debug_info);
   }
 
   // Convert a GraphDef to MLIR module.
@@ -234,6 +237,8 @@ class GraphDefImporter {
   Location unknown_loc_;
   // Operation state for creating placeholder ops.
   OperationState placeholder_state_;
+
+  StackTracesMap stack_traces_;
 
   // Map of function OpDefs.
   absl::flat_hash_map<StringPiece, const OpDef *> function_op_defs_;
@@ -463,15 +468,19 @@ Location GraphDefImporter::ConvertLocation(StringRef node_name,
   auto name_loc_id = b_.getStringAttr(name_loc);
 
   SmallVector<Location> locs;
-  const auto &traces = debug_info_.traces();
+
   // Try to find a stack trace to convert to locations.
-  auto it = traces.find(debug_info_key);
-  if (it != traces.end()) {
-    const auto &trace = it->second;
-    locs.reserve(trace.file_line_cols_size());
-    for (const auto &loc : trace.file_line_cols()) {
-      auto file_name = b_.getStringAttr(debug_info_.files(loc.file_index()));
-      locs.push_back(FileLineColLoc::get(file_name, loc.line(), loc.col()));
+  auto it = stack_traces_.find(name_loc);
+  if (it == stack_traces_.end()) {
+    it = stack_traces_.find(debug_info_key);
+  }
+  if (it != stack_traces_.end()) {
+    std::shared_ptr<tensorflow::AbstractStackTrace> trace = it->second;
+    auto frames = trace->ToFrames();
+    locs.reserve(frames.size());
+    for (const auto &frame : frames) {
+      auto file_attr = b_.getStringAttr(frame.file_name);
+      locs.push_back(FileLineColLoc::get(file_attr, frame.line_number, 1));
     }
   }
 

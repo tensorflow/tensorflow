@@ -366,8 +366,6 @@ py_strict_library(
     ],
 )
 
-# Note: this is a heavyweight library specialized for TensorFlow graphs. Do not use for
-# other purposes.
 py_strict_library(
     name = "tf_stack",
     srcs = ["tf_stack.py"],
@@ -376,6 +374,7 @@ py_strict_library(
     visibility = ["//visibility:public"],
     deps = [
         ":_tf_stack",
+        "//tensorflow/core:protos_all_py",
         "@six_archive//:six",
     ],
 )
@@ -400,6 +399,8 @@ tf_python_pybind_extension(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@pybind11",
+        "@pybind11_abseil//pybind11_abseil:absl_casters",
+        "@pybind11_abseil//pybind11_abseil:status_casters",
     ] + if_static([
         ":stack_trace",
     ]),
