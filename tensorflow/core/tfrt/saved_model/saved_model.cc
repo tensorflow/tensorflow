@@ -65,6 +65,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/mlrt/kernel/kernel.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_import_input.h"
+#include "tensorflow/core/tfrt/saved_model/utils/serialize_bef_utils.h"
 #include "tensorflow/core/tfrt/utils/error_util.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tensorflow/core/tfrt/utils/utils.h"
@@ -86,20 +87,6 @@ namespace tfrt_stub {
 namespace {
 
 constexpr absl::string_view kSignatureJoiningDelimiter = "+";
-
-using SignatureMap = absl::flat_hash_map<std::string, internal::Signature>;
-using ::tensorflow::StatusOr;
-
-struct Initializer {
-  std::string name;
-};
-
-struct InitializersAndSignatures {
-  // Initializers are kept in a certain order as they need to be executed in
-  // that order.
-  std::vector<Initializer> initializers;
-  SignatureMap signature_map;
-};
 
 auto* saved_model_read_meta_graph_time_seconds =
     tensorflow::monitoring::Gauge<int64_t, 1>::New(
@@ -142,50 +129,6 @@ auto* saved_model_input_spec_validation_failure =
     tensorflow::monitoring::Gauge<bool, 1>::New(
         "/tensorflow/tfrt/saved_model/input_spec_validation_failure",
         "Record the models that failed input spec validation.", "model_name");
-
-StatusOr<InitializersAndSignatures> GetInitializersAndSignatures(
-    mlir::ModuleOp module) {
-  InitializersAndSignatures result;
-
-  // Create placeholders for initializers.
-  for (auto session_initializer_name :
-       mlir::tf_saved_model::GetSessionInitializerExportedName(module)) {
-    Initializer initializer;
-    initializer.name = session_initializer_name.str();
-    result.initializers.push_back(std::move(initializer));
-  }
-
-  auto& signatures = result.signature_map;
-  TF_RETURN_IF_ERROR(tensorflow::MapFunctionSignaturesFromTFSavedModelMLIR(
-      module,
-      [&signatures](const tensorflow::TFRTSavedModelSignatureInfo& sig_info) {
-        auto signature_name = std::string(sig_info.func_name);
-        auto& signature = signatures[signature_name];
-
-        auto copy = [](llvm::ArrayRef<llvm::StringRef> src,
-                       std::vector<std::string>* dst) {
-          transform(src, std::back_inserter(*dst),
-                    [](llvm::StringRef x) { return x.str(); });
-        };
-        copy(sig_info.input_names, &signature.input_names);
-        copy(sig_info.output_names, &signature.output_names);
-        copy(sig_info.input_devices, &signature.input_devices);
-
-        DCHECK(signature.input_specs.empty());
-        signature.input_specs.reserve(sig_info.input_specs.size());
-        for (auto& spec : sig_info.input_specs) {
-          signature.input_specs.push_back(TensorSpec(spec.first, spec.second));
-        }
-
-        DCHECK(signature.output_specs.empty());
-        signature.output_specs.reserve(sig_info.output_specs.size());
-        for (auto& spec : sig_info.output_specs) {
-          signature.output_specs.push_back(TensorSpec(spec.first, spec.second));
-        }
-      }));
-
-  return result;
-}
 
 tensorflow::Status RunBytecodeInitializers(
     const GraphExecutionOptions& options,
@@ -314,52 +257,6 @@ std::vector<std::string> FindNamesForValidSignatures(
     valid_signature_names.push_back(sig_key);
   }
   return valid_signature_names;
-}
-
-StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
-    mlir::MLIRContext* context, const tensorflow::MetaGraphDef& meta_graph_def,
-    const FallbackState& fallback_state, std::string saved_model_dir,
-    bool import_user_signatures, bool run_placer_grappler_on_functions) {
-  std::vector<std::string> signature_names;
-  if (import_user_signatures) {
-    signature_names = FindNamesForValidSignatures(meta_graph_def);
-    if (signature_names.empty())
-      LOG(WARNING) << "No valid signature found for model: " << saved_model_dir;
-  }
-
-  // TfrtSavedModelMLIRImportInput basically implements the graph processing
-  // logic (eg. Placer and Grappler) used in DirectSession, which apply graph
-  // transformations on each subgraphs (ie. signatures). It is reusing the
-  // code path in DirectSession to avoid problems caused by different behavior
-  // in a different code path. And it is injected to the MLIR importer so that
-  // the importer can import the transformed graph instead of the original
-  // graph.
-  TF_ASSIGN_OR_RETURN(auto import_input,
-                      TfrtSavedModelMLIRImportInput::Create(
-                          fallback_state, &meta_graph_def, /*debug_info=*/{},
-                          run_placer_grappler_on_functions));
-
-  TF_ASSIGN_OR_RETURN(
-      auto module,
-      tensorflow::ConvertSavedModelV1ToMlirLite(
-          import_input,
-          /*exported_names=*/absl::MakeSpan(signature_names), context));
-
-  LOG(INFO) << "TFRT ImportSavedModel: Functionalization took "
-            << absl::ToInt64Milliseconds(
-                   import_input.GetFunctionalizationDuration())
-            << " ms.";
-  LOG(INFO) << "TFRT ImportSavedModel: Grappler took "
-            << absl::ToInt64Milliseconds(import_input.GetGrapplerDuration())
-            << " ms.";
-
-  saved_model_functionalization_time_seconds->GetCell(saved_model_dir)
-      ->Set(absl::ToInt64Seconds(import_input.GetFunctionalizationDuration()));
-
-  saved_model_grappler_time_seconds->GetCell(saved_model_dir)
-      ->Set(absl::ToInt64Seconds(import_input.GetGrapplerDuration()));
-
-  return module;
 }
 
 tensorflow::Status IsInputSpecsCorrect(
@@ -541,6 +438,98 @@ void UpdateCompileOptions(SavedModel::Options& options) {
   }
 }
 
+}  // namespace
+
+StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
+    mlir::MLIRContext* context, const tensorflow::MetaGraphDef& meta_graph_def,
+    const FallbackState& fallback_state, std::string saved_model_dir,
+    bool import_user_signatures, bool run_placer_grappler_on_functions) {
+  std::vector<std::string> signature_names;
+  if (import_user_signatures) {
+    signature_names = FindNamesForValidSignatures(meta_graph_def);
+    if (signature_names.empty())
+      LOG(WARNING) << "No valid signature found for model: " << saved_model_dir;
+  }
+
+  // TfrtSavedModelMLIRImportInput basically implements the graph processing
+  // logic (eg. Placer and Grappler) used in DirectSession, which apply graph
+  // transformations on each subgraphs (ie. signatures). It is reusing the
+  // code path in DirectSession to avoid problems caused by different behavior
+  // in a different code path. And it is injected to the MLIR importer so that
+  // the importer can import the transformed graph instead of the original
+  // graph.
+  TF_ASSIGN_OR_RETURN(auto import_input,
+                      TfrtSavedModelMLIRImportInput::Create(
+                          fallback_state, &meta_graph_def, /*debug_info=*/{},
+                          run_placer_grappler_on_functions));
+
+  TF_ASSIGN_OR_RETURN(
+      auto module,
+      tensorflow::ConvertSavedModelV1ToMlirLite(
+          import_input,
+          /*exported_names=*/absl::MakeSpan(signature_names), context));
+
+  LOG(INFO) << "TFRT ImportSavedModel: Functionalization took "
+            << absl::ToInt64Milliseconds(
+                   import_input.GetFunctionalizationDuration())
+            << " ms.";
+  LOG(INFO) << "TFRT ImportSavedModel: Grappler took "
+            << absl::ToInt64Milliseconds(import_input.GetGrapplerDuration())
+            << " ms.";
+
+  saved_model_functionalization_time_seconds->GetCell(saved_model_dir)
+      ->Set(absl::ToInt64Seconds(import_input.GetFunctionalizationDuration()));
+
+  saved_model_grappler_time_seconds->GetCell(saved_model_dir)
+      ->Set(absl::ToInt64Seconds(import_input.GetGrapplerDuration()));
+
+  return module;
+}
+
+StatusOr<InitializersAndSignatures> GetInitializersAndSignatures(
+    mlir::ModuleOp module) {
+  InitializersAndSignatures result;
+
+  // Create placeholders for initializers.
+  for (auto session_initializer_name :
+       mlir::tf_saved_model::GetSessionInitializerExportedName(module)) {
+    Initializer initializer;
+    initializer.name = session_initializer_name.str();
+    result.initializers.push_back(std::move(initializer));
+  }
+
+  auto& signatures = result.signature_map;
+  TF_RETURN_IF_ERROR(tensorflow::MapFunctionSignaturesFromTFSavedModelMLIR(
+      module,
+      [&signatures](const tensorflow::TFRTSavedModelSignatureInfo& sig_info) {
+        auto signature_name = std::string(sig_info.func_name);
+        auto& signature = signatures[signature_name];
+
+        auto copy = [](llvm::ArrayRef<llvm::StringRef> src,
+                       std::vector<std::string>* dst) {
+          transform(src, std::back_inserter(*dst),
+                    [](llvm::StringRef x) { return x.str(); });
+        };
+        copy(sig_info.input_names, &signature.input_names);
+        copy(sig_info.output_names, &signature.output_names);
+        copy(sig_info.input_devices, &signature.input_devices);
+
+        DCHECK(signature.input_specs.empty());
+        signature.input_specs.reserve(sig_info.input_specs.size());
+        for (auto& spec : sig_info.input_specs) {
+          signature.input_specs.push_back(TensorSpec(spec.first, spec.second));
+        }
+
+        DCHECK(signature.output_specs.empty());
+        signature.output_specs.reserve(sig_info.output_specs.size());
+        for (auto& spec : sig_info.output_specs) {
+          signature.output_specs.push_back(TensorSpec(spec.first, spec.second));
+        }
+      }));
+
+  return result;
+}
+
 StatusOr<tensorflow::MetaGraphDef> ReadSavedModel(
     absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags) {
@@ -560,7 +549,6 @@ StatusOr<tensorflow::MetaGraphDef> ReadSavedModel(
   return std::move(meta_graph_def);
 }
 
-}  // namespace
 
 tensorflow::StatusOr<std::unique_ptr<SavedModel>>
 SavedModelImpl::LoadSavedModel(Options options,
@@ -699,6 +687,13 @@ SavedModelImpl::LoadSavedModel(Options options,
                               graph_executor->kernel_registry());
   } else {
     DCHECK(!bef.empty());
+    // TODO(cesarmagana)
+    // Call code if bef exists, make into its own util
+    // Deserialization is only called if BEF is found
+
+    // and if bef file exists this will be called
+    // Create another function where we first detect if bef_file exists in
+    // saved_model dir then we run code below if not we call original code.
     ASSIGN_OR_RETURN_IN_INIT(
         bef_file, tfrt::CreateBefFileFromBefBuffer(
                       *options.graph_execution_options.runtime, bef));
