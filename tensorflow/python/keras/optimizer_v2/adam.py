@@ -440,7 +440,7 @@ class NonFusedAdam(optimizer_v2.OptimizerV2):
       vhat.assign(math_ops.maximum(vhat, v))
       v = vhat
     var.assign_sub(
-        (m * alpha) / (math_ops.sqrt(v) - coefficients['epsilon']))
+        (m * alpha) / (math_ops.sqrt(v) + coefficients['epsilon']))
 
   @def_function.function(jit_compile=True)
   def _resource_apply_sparse(self, grad, var, indices, apply_state=None):
