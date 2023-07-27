@@ -347,6 +347,7 @@ cc_library(
         "//tensorflow/core/kernels:conv_grad_shape_utils",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/tsl/platform:tensor_float_32_hdr_lib",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
     ] + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )

@@ -178,6 +178,7 @@ bool IsOpTypeAllowedTf2XlaFallback(const TypeID& type_id) {
             TypeID::get<TF::CholeskyOp>(),
             TypeID::get<TF::ComplexAbsOp>(),
             TypeID::get<TF::ConjugateTransposeOp>(),
+            TypeID::get<TF::ConvOp>(),
             TypeID::get<TF::CoshOp>(),
             TypeID::get<TF::CrossOp>(),
             TypeID::get<TF::CumulativeLogsumexpOp>(),
