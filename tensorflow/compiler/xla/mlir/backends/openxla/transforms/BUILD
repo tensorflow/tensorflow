@@ -1,6 +1,7 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
+load("//tensorflow/compiler/xla/mlir/backends/openxla:build_config.bzl", "if_not_openxla", "if_openxla")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -26,17 +27,17 @@ package(
 #
 # cc_library(
 #     name = "passes",
-#     srcs = [
+#     srcs = if_openxla([
 #         "convert_to_openxla.cc",
 #         "passes.cc",
-#     ],
+#     ]),
 #     hdrs = ["passes.h"],
 #     # TODO(ezhulenev): Override cc_library()'s default compatibility because IREE targets are not
 #     # compatible with `non_prod` constraint.
 #     compatible_with = [],
+#     defines = if_not_openxla(["XLA_DISABLE_OPENXLA_COMPILER=1"]),
 #     deps = [
 #         ":passes_inc_gen",
-#         "//third_party/iree/llvm-external-projects/iree-dialects:IREEInputDialect",
 #         "@llvm-project//llvm:Support",
 #         "@llvm-project//mlir:ArithDialect",
 #         "@llvm-project//mlir:FuncDialect",
@@ -51,7 +52,7 @@ package(
 #         "//tensorflow/compiler/xla/mlir/backends/openxla/conversion:convert_memref_ops",
 #         "//tensorflow/compiler/xla/mlir/backends/openxla/conversion:convert_while_op",
 #         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
-#     ],
+#     ] + if_openxla(["//third_party/iree/llvm-external-projects/iree-dialects:IREEInputDialect"]),
 # )
 #
 # copybara:uncomment_end_and_comment_begin

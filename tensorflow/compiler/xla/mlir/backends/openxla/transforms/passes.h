@@ -30,6 +30,8 @@ namespace xla::gpu {
 class ThunkSequence;
 inline void populateOpenXlaRuntimePasses(mlir::OpPassManager&, ThunkSequence*) {
 }
+
+inline void registerOpenXlaPases() {}
 }  // namespace xla::gpu
 
 //===----------------------------------------------------------------------===//
