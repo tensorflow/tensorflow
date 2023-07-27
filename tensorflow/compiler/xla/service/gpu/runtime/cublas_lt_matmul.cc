@@ -32,7 +32,6 @@ limitations under the License.1
 #include "tensorflow/compiler/xla/stream_executor/scratch_allocator.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/tsl/platform/status.h"
-#include "rocm/rocm_config.h"
 
 #if GOOGLE_CUDA || TF_HIPBLASLT
 #if GOOGLE_CUDA
