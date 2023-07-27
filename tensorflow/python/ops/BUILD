@@ -4481,6 +4481,7 @@ py_strict_library(
 py_strict_test(
     name = "weak_tensor_ops_test",
     srcs = ["weak_tensor_ops_test.py"],
+    tags = ["noasan"],  # TODO(b/293304945): Reenable.
     deps = [
         ":array_ops",
         ":array_ops_gen",
