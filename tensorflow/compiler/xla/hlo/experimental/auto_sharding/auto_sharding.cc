@@ -524,7 +524,6 @@ void AddReplicatedStrategy(const HloInstruction* ins, const Shape& shape,
       if (ins->opcode() == HloOpcode::kConditional) {
         resharding_costs.push_back(std::vector<double>(
             strategy_map.at(operand)->leaf_vector.size(), 0));
-        input_shardings.push_back(output_spec);
       } else {
         resharding_costs.push_back(ReshardingCostVector(
             strategy_map.at(operand).get(), ins->operand(k)->shape(),
@@ -2582,6 +2581,7 @@ void SetHloShardingPostProcessing(
       } else {
         const ShardingStrategy& stra =
             GetShardingStrategy(inst, strategy_map, cost_graph, s_val);
+
         if (stra.input_shardings.empty()) {
           continue;
         }
