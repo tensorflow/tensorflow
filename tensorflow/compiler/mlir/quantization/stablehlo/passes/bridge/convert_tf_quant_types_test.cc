@@ -19,22 +19,25 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tf2xla/transforms/test_utils.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h"
+#include "tensorflow/compiler/mlir/register_common_dialects.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tensorflow/tsl/platform/statusor.h"
 
-namespace tensorflow {
+namespace mlir {
+namespace stablehlo {
 namespace {
 
+using ::mlir::DialectRegistry;
 using ::mlir::MLIRContext;
 using ::mlir::ModuleOp;
 using ::mlir::OwningOpRef;
-using ::mlir::mhlo::test::GetMlirModuleFromString;
 using ::tensorflow::monitoring::testing::CellReader;
 
 static constexpr char kMetricsName[] =
@@ -43,12 +46,15 @@ static constexpr char kMetricsName[] =
 class LegalizeTfTypesTest : public ::testing::Test {
  protected:
   void CreateModule(const char* module_string) {
-    TF_ASSERT_OK_AND_ASSIGN(module_,
-                            GetMlirModuleFromString(module_string, &context_));
+    DialectRegistry mlir_registry;
+    RegisterCommonToolingDialects(mlir_registry);
+    context_.appendDialectRegistry(mlir_registry);
+    TF_ASSERT_OK(
+        tensorflow::DeserializeMlirModule(module_string, &context_, &module_));
 
     pm_ = std::make_unique<mlir::PassManager>(&context_);
     pm_->addNestedPass<mlir::func::FuncOp>(
-        mlir::mhlo::CreateLegalizeTfTypesPass());
+        mlir::stablehlo::CreateConvertTFQuantTypesPass());
   }
   mlir::LogicalResult Run() { return pm_->run(module_.get()); }
 
@@ -99,4 +105,5 @@ TEST_F(LegalizeTfTypesTest, RecordsStreamzNoQuantOps) {
 }
 
 }  // namespace
-}  // namespace tensorflow
+}  // namespace stablehlo
+}  // namespace mlir

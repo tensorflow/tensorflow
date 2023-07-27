@@ -113,14 +113,14 @@ cc_library(
     srcs = [
         "passes/bridge/convert_mhlo_quant_to_int.cc",
         "passes/bridge/convert_tf_quant_ops_to_mhlo.cc",
+        "passes/bridge/convert_tf_quant_types.cc",
     ],
     hdrs = [
         "passes/bridge/passes.h",
     ],
     compatible_with = get_compatible_with_portable(),
     visibility = [
-        "//tensorflow/compiler/mlir/lite:__subpackages__",
-        "//tensorflow/compiler/mlir/tf2xla:__subpackages__",
+        "//tensorflow/compiler/mlir:__subpackages__",
     ],
     deps = [
         ":bridge_passes_inc_gen",
@@ -135,6 +135,7 @@ cc_library(
         "//tensorflow/compiler/xla/mlir_hlo:chlo_legalize_to_hlo",
         "//tensorflow/compiler/xla/translate/hlo_to_mhlo:attribute_importer",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/framework:numeric_types",
         "//tensorflow/core/util/quantization:uniform_quant_ops_attr_proto_cc",
@@ -179,6 +180,27 @@ tf_cc_test(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",
         "@stablehlo//:chlo_ops",
+    ],
+)
+
+tf_cc_test(
+    name = "convert_tf_quant_types_test",
+    srcs = ["passes/bridge/convert_tf_quant_types_test.cc"],
+    deps = [
+        ":bridge_passes",
+        "//tensorflow/compiler/mlir:register_common_dialects",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:serialize_mlir_module_utils",
+        "//tensorflow/core:test",
+        "//tensorflow/core/lib/monitoring:cell_reader",
+        "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
     ],
 )
 

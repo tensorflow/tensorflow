@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,8 +17,6 @@ limitations under the License.
 // some generic types that are legal in MHLO. This pass legalizes TF types into
 // types that are legal in MHLO. For example, TF::Qint8Type is converted to i8.
 // Rewrites here should run before TF to MHLO op legalizations are run.
-// TODO(b/180234029): The rewrite here should be part of the LegalizeTF pass
-// rather than its own pass.
 
 #include <memory>
 #include <string>
@@ -39,11 +37,12 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 
-#define DEBUG_TYPE "xla-legalize-tf-types"
-
 namespace mlir {
-namespace mhlo {
+namespace stablehlo {
 namespace {
+
+#define GEN_PASS_DEF_CONVERTTFQUANTTYPES
+#include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h.inc"
 
 // TODO: b/290366702 - Temporarily added metrics for debugging.
 auto *mlir_tf_quant_op_count = tensorflow::monitoring::Counter<1>::New(
@@ -101,9 +100,6 @@ bool IsUnSupportedOp(Operation *op) {
       >(op);
 }
 
-// TODO(b/180234863): What's below this line is generic so convert it to a
-// utility.
-
 bool IsIllegalType(Type type) {
   return IsIllegalElementType(getElementTypeOrSelf(type));
 }
@@ -117,22 +113,20 @@ Type ToLegalType(Type type) {
   return type;
 }
 
-class TfTypeConverter : public TypeConverter {
+class TFQuantTypeConverter : public TypeConverter {
  public:
-  TfTypeConverter() {
+  TFQuantTypeConverter() {
     addConversion([](Type type) -> Type {
       return IsIllegalType(type) ? ToLegalType(type) : type;
     });
   }
 };
 
-// An Op is illegal iff it contains an illegalType.
-// TODO: b/289560952 - Move quantization related passes to MOT directories. Also
-// reconsider the correct way to handle conversions of quantized types without
-// quantization ops.
-class TfTypeConversionTarget : public ConversionTarget {
+// An Op is illegal iff it is non-UQ op and it contains qint types.
+class TFQuantTypeConversionTarget : public ConversionTarget {
  public:
-  explicit TfTypeConversionTarget(MLIRContext &ctx, TfTypeConverter &converter)
+  explicit TFQuantTypeConversionTarget(MLIRContext &ctx,
+                                       TFQuantTypeConverter &converter)
       : ConversionTarget(ctx), converter_(converter) {
     markUnknownOpDynamicallyLegal([this](Operation *op) {
       // Do not convert UnifromQuantized ops.
@@ -149,12 +143,12 @@ class TfTypeConversionTarget : public ConversionTarget {
   }
 
  private:
-  TfTypeConverter &converter_;
+  TFQuantTypeConverter &converter_;
 };
 
-class TfTypePattern : public ConversionPattern {
+class TFQuantTypePattern : public ConversionPattern {
  public:
-  TfTypePattern(MLIRContext *ctx, TypeConverter &converter)
+  TFQuantTypePattern(MLIRContext *ctx, TypeConverter &converter)
       : ConversionPattern(converter, MatchAnyOpTypeTag(), 1, ctx) {}
 
   // The dialect conversion framework will call this matchAndRewrite on each
@@ -189,30 +183,28 @@ class TfTypePattern : public ConversionPattern {
   }
 };
 
-#define GEN_PASS_DEF_LEGALIZETFTYPESPASS
-#include "tensorflow/compiler/mlir/tf2xla/transforms/xla_legalize_tf_passes.h.inc"
-
-struct LegalizeTfTypesPass
-    : public impl::LegalizeTfTypesPassBase<LegalizeTfTypesPass> {
+struct ConvertTFQuantTypes
+    : public impl::ConvertTFQuantTypesBase<ConvertTFQuantTypes> {
   void runOnOperation() override;
 };
 
-void LegalizeTfTypesPass::runOnOperation() {
-  TfTypeConverter converter;
+// TODO: b/289560952 - add qint <-> int casts around TF UQ ops.
+void ConvertTFQuantTypes::runOnOperation() {
+  TFQuantTypeConverter converter;
   RewritePatternSet patterns(&getContext());
-  patterns.add<TfTypePattern>(&getContext(), converter);
+  patterns.add<TFQuantTypePattern>(&getContext(), converter);
   populateFunctionOpInterfaceTypeConversionPattern<func::FuncOp>(patterns,
                                                                  converter);
-  TfTypeConversionTarget target(getContext(), converter);
+  TFQuantTypeConversionTarget target(getContext(), converter);
   if (failed(applyFullConversion(getOperation(), target, std::move(patterns))))
     return signalPassFailure();
 }
 
 }  // namespace
 
-std::unique_ptr<OperationPass<>> CreateLegalizeTfTypesPass() {
-  return std::make_unique<LegalizeTfTypesPass>();
+std::unique_ptr<OperationPass<func::FuncOp>> CreateConvertTFQuantTypesPass() {
+  return std::make_unique<ConvertTFQuantTypes>();
 }
 
-}  // namespace mhlo
+}  // namespace stablehlo
 }  // namespace mlir
