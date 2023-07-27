@@ -153,7 +153,8 @@ GenerateReshardingCostsAndMissingShardingsForAllOperands(
       }
       if (!cur_input_sharding.has_value() &&
           ((ins->opcode() == HloOpcode::kGather && k == 0) ||
-           (ins->opcode() == HloOpcode::kScatter && k != 0))) {
+           (ins->opcode() == HloOpcode::kScatter && k != 0) ||
+           ins->opcode() == HloOpcode::kCustomCall)) {
         cur_input_sharding = HloSharding::Replicate();
       }
       CHECK(cur_input_sharding.has_value());
