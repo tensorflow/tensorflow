@@ -44,7 +44,7 @@ namespace {
 constexpr llvm::StringRef shapeAssertionName = "shape_assertion";
 constexpr llvm::StringRef errorMessageAttrName = "error_message";
 // We bound the number of error_message_inputs for using llvm::formatv
-constexpr int maxErrorMessageInputs = 4;
+constexpr int maxErrorMessageInputs = 32;  // TODO(necula): Remove this bound
 
 // This pass is needed when we have shape assertions. A shape assertion is
 // represented via the `stablehlo.custom_call @shape_assertion`
@@ -198,24 +198,18 @@ struct CheckShapeAssertionsPass
       const mlir::SmallVector<int64_t> &errorMessageInputs) const {
     int nrErrorMessageInputs = errorMessageInputs.size();
     auto errorMessageFormat = errorMessage.data();
-    switch (nrErrorMessageInputs) {
-      case 0:
-        return errorMessageFormat;
-      case 1:
-        return llvm::formatv(errorMessageFormat, errorMessageInputs[0]);
-      case 2:
-        return llvm::formatv(errorMessageFormat, errorMessageInputs[0],
-                             errorMessageInputs[1]);
-      case 3:
-        return llvm::formatv(errorMessageFormat, errorMessageInputs[0],
-                             errorMessageInputs[1], errorMessageInputs[2]);
-      case 4:
-        return llvm::formatv(errorMessageFormat, errorMessageInputs[0],
-                             errorMessageInputs[1], errorMessageInputs[2],
-                             errorMessageInputs[3]);
-      default:
-        return errorMessageFormat;
-    }
+    if (nrErrorMessageInputs == 0) return errorMessageFormat;
+    auto errInput = [nrErrorMessageInputs, &errorMessageInputs](int idx) {
+      return (idx < nrErrorMessageInputs ? errorMessageInputs[idx] : -1);
+    };
+    return llvm::formatv(
+        errorMessageFormat, errInput(0), errInput(1), errInput(2), errInput(3),
+        errInput(4), errInput(5), errInput(6), errInput(7), errInput(8),
+        errInput(9), errInput(10), errInput(11), errInput(12), errInput(13),
+        errInput(14), errInput(15), errInput(16), errInput(17), errInput(18),
+        errInput(19), errInput(20), errInput(21), errInput(22), errInput(23),
+        errInput(24), errInput(25), errInput(26), errInput(27), errInput(28),
+        errInput(29), errInput(30), errInput(31));
   }
 
   mlir::StringRef getArgument() const override {

@@ -14,6 +14,7 @@
 # ==============================================================================
 """Tests for XLA call module op wrapper."""
 import os
+import re
 from typing import Tuple
 import unittest
 
@@ -472,11 +473,13 @@ module @jit_fun.1 attributes {jax.uses_shape_polymorphism = true} {
   func.func public @main(%arg1: tensor<?x5xi32>) -> tensor<i32> {
     %b = "stablehlo.get_dimension_size"(%arg1) {dimension = 0 : i64} : (tensor<?x5xi32>) -> tensor<i32>
     %4 = stablehlo.constant dense<4> : tensor<i32>
+    %5 = stablehlo.constant dense<5> : tensor<i32>
+    %11 = stablehlo.constant dense<11> : tensor<i32>
     %ok = stablehlo.compare  EQ, %b, %4,  SIGNED : (tensor<i32>, tensor<i32>) -> tensor<i1>
-    stablehlo.custom_call @shape_assertion(%ok, %b, %4) {
-      error_message = "Expecting {0} == {1}",
+    stablehlo.custom_call @shape_assertion(%ok, %b, %4, %5, %4, %5, %4, %5, %4, %5, %4, %5, %11) {
+      error_message = "Expecting {0} == {1}. Extra {2,=5}, {3}, {{0}, {4}, {5}, {6}, {7}, {11}.",
       has_side_effect = true
-    } : (tensor<i1>, tensor<i32>, tensor<i32>) -> ()
+    } : (tensor<i1>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>) -> ()
     return %b : tensor<i32>
   }
 }
@@ -498,7 +501,7 @@ module @jit_fun.1 attributes {jax.uses_shape_polymorphism = true} {
     else:
       with self.assertRaisesRegex(
           errors.InvalidArgumentError,
-          'Expecting 3 == 4'):
+          re.escape('Expecting 3 == 4. Extra   5  , 4, {0}, 5, 4, 5, 4, 11.')):
         self._assertOpOutputMatchesExpected(f, (x,), (res,))
 
   def test_invalid_shape_assertion(self):
