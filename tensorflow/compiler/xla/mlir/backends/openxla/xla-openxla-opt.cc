@@ -20,10 +20,17 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/backends/openxla/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
+#include "tensorflow/tsl/platform/init_main.h"
 
 using namespace mlir;  // NOLINT
 
 int main(int argc, char **argv) {
+  // Initialize the process. On OSS this is a no-op.
+  // Note: we do not parse any flags here; all flags are parsed by
+  // `MlirOptMain` below.
+  int32_t argc1 = 1;
+  tsl::port::InitMain("Xla OpenXLA Pass Driver", &argc1, &argv);
+
   DialectRegistry registry;
   registry.insert<arith::ArithDialect, memref::MemRefDialect, func::FuncDialect,
                   mhlo::MhloDialect, bufferization::BufferizationDialect,

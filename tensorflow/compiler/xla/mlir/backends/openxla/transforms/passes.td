@@ -32,6 +32,11 @@ def ConvertToOpenXla : Pass<"xla-gpu-to-openxla", "mlir::ModuleOp"> {
     "mlir::scf::SCFDialect",
     "xla::gpu::XlaGpuDialect",
   ];
+
+  let options = [
+    Option<"backend", "backend", "std::string", "\"hal\"",
+           "The backend for launching kernels: hal or streamexecutor">,
+  ];
 }
 
 #endif  // XLA_GPU_OPENXLA_PASSES

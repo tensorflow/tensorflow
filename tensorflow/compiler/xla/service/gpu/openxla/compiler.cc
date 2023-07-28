@@ -38,7 +38,6 @@ limitations under the License.
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/status.h"
-#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/platform/platform.h"
 
 #if defined(PLATFORM_GOOGLE)
@@ -225,7 +224,10 @@ Status BindXlaDeviceKernels(mlir::ModuleOp module, std::string_view asm_text,
 
   auto src =
       sym_table.lookup<IREE::Input::ExecutableSourceOp>("xla.module.ptx");
-  if (!src) return InternalError("failed to find XLA executable source");
+
+  // If we are running with StreamExecutor backend we might not have executable
+  // source for kernels.
+  if (!src) return OkStatus();
 
   // Bind XLA device kernels to an executable source.
   auto objects = getExecutableObjects(getExecutableTarget(ctx),

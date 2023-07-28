@@ -17,9 +17,10 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_OPENXLA_VM_H_
 
 #include <string>
-#include <vector>
 
-#include "third_party/iree/runtime/src/iree/vm/api.h"  // IWYU pragma: keep
+#include "absl/container/inlined_vector.h"
+#include "third_party/iree/runtime/src/iree/hal/api.h"  // IWYU pragma: keep
+#include "third_party/iree/runtime/src/iree/vm/api.h"   // IWYU pragma: keep
 
 namespace xla {
 
@@ -36,12 +37,22 @@ namespace gpu::vm {
 // runtime APIs. For example through `run_options` pointer we get access to
 // the current compute stream, stream borrower, parent executor, etc.
 struct ExecutionContext : public iree::vm::RefObject<ExecutionContext> {
+  // XLA:GPU kernels compiled to PTX/CUBIN (for NVIDIA platform).
+  struct ExecutableSource {
+    const std::string_view ptx;
+    const absl::Span<const uint8_t> cubin;
+  };
+
   ExecutionContext(const ServiceExecutableRunOptions* run_options,
-                   const DebugOptions* debug_options)
-      : run_options(run_options), debug_options(debug_options) {}
+                   const DebugOptions* debug_options,
+                   ExecutableSource executable_source)
+      : run_options(run_options),
+        debug_options(debug_options),
+        executable_source(executable_source) {}
 
   const ServiceExecutableRunOptions* run_options;
   const DebugOptions* debug_options;
+  ExecutableSource executable_source;
 };
 
 //===----------------------------------------------------------------------===//
@@ -64,7 +75,11 @@ struct TraceAPI {
 // Helper functions to work with VM lists
 //===----------------------------------------------------------------------===//
 
-iree::StatusOr<std::vector<int64_t>> GetI64Vector(const iree_vm_list_t* list);
+iree::StatusOr<absl::InlinedVector<iree_hal_buffer_view_t*, 4>>
+GetBufferViewVector(iree_vm_list_t* list);
+
+iree::StatusOr<absl::InlinedVector<int64_t, 4>> GetI64Vector(
+    iree_vm_list_t* list);
 
 }  // namespace gpu::vm
 }  // namespace xla

@@ -137,7 +137,11 @@ static Status LowerToOpenXlaRuntime(mlir::ModuleOp module,
                                     ThunkSequence* thunk_sequence,
                                     const DebugOptions& debug_options) {
   mlir::PassManager pm(module->getName(), mlir::PassManager::Nesting::Implicit);
-  populateOpenXlaRuntimePasses(pm, thunk_sequence);
+
+  OpenXlaBackend backend = debug_options.xla_gpu_enable_openxla_hal()
+                               ? OpenXlaBackend::kHAL
+                               : OpenXlaBackend::kStreamExecutor;
+  populateOpenXlaRuntimePasses(pm, thunk_sequence, backend);
 
   if (pm.run(module).failed()) {
     return InternalError("Failed to lower LMHLO to OpenXLA input dialects.");

@@ -16,6 +16,18 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_MLIR_BACKENDS_OPENXLA_TRANSFORMS_PASSES_H_
 #define TENSORFLOW_COMPILER_XLA_MLIR_BACKENDS_OPENXLA_TRANSFORMS_PASSES_H_
 
+namespace xla::gpu {
+
+class ThunkSequence;  // forward declare
+
+// We have two options for lowering executing compiled device kernels:
+// (1) Use IREEs HAL, export all device kernels as executable source, and
+//     dispatch them using `iree_input.dispatch` (later lowered to Flow)
+// (2) Use XLA:GPU StreamExecutor APIs to load and dispatch device kernels
+enum class OpenXlaBackend { kHAL, kStreamExecutor };
+
+}  // namespace xla::gpu
+
 //===----------------------------------------------------------------------===//
 // TODO(ezhulenev): We currently do not build with OpenXLA runtime in open
 // source because we do not have bazel dependency from XLA to IREE.
@@ -27,10 +39,8 @@ class OpPassManager;
 }  // namespace mlir
 
 namespace xla::gpu {
-class ThunkSequence;
-inline void populateOpenXlaRuntimePasses(mlir::OpPassManager&, ThunkSequence*) {
-}
-
+inline void populateOpenXlaRuntimePasses(mlir::OpPassManager&, ThunkSequence*,
+                                         OpenXlaBackend backend) {}
 inline void registerOpenXlaPases() {}
 }  // namespace xla::gpu
 
@@ -39,26 +49,28 @@ inline void registerOpenXlaPases() {}
 //===----------------------------------------------------------------------===//
 
 #include <memory>
+#include <optional>
 
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 
 namespace xla::gpu {
 
-class ThunkSequence;  // forward declare
-
 // Populate passes that lower MLIR modules from a combination of LMHLO and
 // LMHLO_GPU dialects to the OpenXLA runtime (aka IREE input dialects + OpenXLA
 // custom calls implementing library integration).
 void populateOpenXlaRuntimePasses(mlir::OpPassManager& pm,
-                                  ThunkSequence* thunk_sequence);
+                                  ThunkSequence* thunk_sequence,
+                                  OpenXlaBackend backend);
 
 //===----------------------------------------------------------------------===//
 // Conversion from LMHLO dialects to OpenXLA runtime
 //===----------------------------------------------------------------------===//
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp> >
-createConvertToOpenXlaPass(ThunkSequence* thunk_sequence = nullptr);
+createConvertToOpenXlaPass(
+    ThunkSequence* thunk_sequence = nullptr,
+    std::optional<OpenXlaBackend> backend = std::nullopt);
 
 //===----------------------------------------------------------------------===//
 // OpenXLA passes registration

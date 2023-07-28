@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <optional>
+#include <string>
+#include <string_view>
 #include <utility>
 
 #include "third_party/iree/llvm-external-projects/iree-dialects/include/iree-dialects/Dialect/Input/InputDialect.h"
@@ -30,12 +33,14 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/backends/openxla/conversion/convert_compiled_ops.h"
 #include "tensorflow/compiler/xla/mlir/backends/openxla/conversion/convert_library_ops.h"
 #include "tensorflow/compiler/xla/mlir/backends/openxla/conversion/convert_memref_ops.h"
 #include "tensorflow/compiler/xla/mlir/backends/openxla/conversion/convert_while_op.h"
 #include "tensorflow/compiler/xla/mlir/backends/openxla/ir/xla_gpu_dialect.h"
+#include "tensorflow/compiler/xla/mlir/backends/openxla/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 
 #define GEN_PASS_DECL_CONVERTTOOPENXLA
@@ -76,6 +81,24 @@ IREE::Input::ExecutableSourceOp createXlaExecutableSource(ModuleOp module) {
 
 //===----------------------------------------------------------------------===//
 
+static std::string toString(OpenXlaBackend backend) {
+  switch (backend) {
+    case OpenXlaBackend::kHAL:
+      return "hal";
+    case OpenXlaBackend::kStreamExecutor:
+      return "streamexecutor";
+  }
+}
+
+static FailureOr<OpenXlaBackend> parseOpenXlaBackend(std::string_view str) {
+  if (str == "hal") {
+    return OpenXlaBackend::kHAL;
+  } else if (str == "streamexecutor") {
+    return OpenXlaBackend::kStreamExecutor;
+  }
+  return failure();
+}
+
 // Adds `xla_gpu.execution_context` argument to all functions in the module.
 static void addExecutionContextArgument(ModuleOp module) {
   MLIRContext *ctx = module.getContext();
@@ -91,17 +114,26 @@ static void addExecutionContextArgument(ModuleOp module) {
 class ConvertToOpenXlaPass
     : public ::impl::ConvertToOpenXlaBase<ConvertToOpenXlaPass> {
  public:
-  explicit ConvertToOpenXlaPass(ThunkSequence *thunk_sequence)
-      : thunk_sequence_(thunk_sequence) {}
+  ConvertToOpenXlaPass(ThunkSequence *thunk_sequence,
+                       std::optional<OpenXlaBackend> backend)
+      : thunk_sequence_(thunk_sequence) {
+    if (backend.has_value()) {
+      this->backend = toString(*backend);
+    }
+  }
 
   void runOnOperation() override {
     auto *ctx = &getContext();
 
+    // Lower compiled operations to HAL or SE runtime.
+    auto compiled_ops_backend = parseOpenXlaBackend(backend);
+    if (failed(compiled_ops_backend)) {
+      getOperation().emitError() << "unsupported backend: " << backend;
+      return signalPassFailure();
+    }
+
     // Add execution context argument to all functions in the module.
     addExecutionContextArgument(getOperation());
-
-    // Add all pre-compiled XLA fusions to the module as an executable source.
-    auto executable_source = createXlaExecutableSource(getOperation());
 
     TypeConverter converter;
     converter.addConversion([](Type type) { return type; });
@@ -129,8 +161,16 @@ class ConvertToOpenXlaPass
     populateLibraryOpsConversionPatterns(patterns, converter, state);
     populateMemrefConversionPatterns(patterns, converter, state);
     populateWhileOpConversionPatterns(patterns, converter, state);
-    populateCompiledOpsConversionPatterns(
-        patterns, converter, executable_source, thunk_sequence_, state);
+
+    if (*compiled_ops_backend == OpenXlaBackend::kHAL) {
+      auto executable_source = createXlaExecutableSource(getOperation());
+      populateCompiledOpsConversionPatterns(
+          patterns, converter, executable_source, thunk_sequence_, state);
+
+    } else if (*compiled_ops_backend == OpenXlaBackend::kStreamExecutor) {
+      populateCompiledOpsConversionPatterns(patterns, converter,
+                                            thunk_sequence_, state);
+    }
 
     // Ensure all HLO and memref operations get lowered to IREEInput and OpenXLA
     // runtime. For this we have to de-bufferize the IR and correctly tie
@@ -157,8 +197,8 @@ class ConvertToOpenXlaPass
 };
 
 std::unique_ptr<OperationPass<ModuleOp>> createConvertToOpenXlaPass(
-    ThunkSequence *thunk_sequence) {
-  return std::make_unique<ConvertToOpenXlaPass>(thunk_sequence);
+    ThunkSequence *thunk_sequence, std::optional<OpenXlaBackend> backend) {
+  return std::make_unique<ConvertToOpenXlaPass>(thunk_sequence, backend);
 }
 
 }  // namespace xla::gpu

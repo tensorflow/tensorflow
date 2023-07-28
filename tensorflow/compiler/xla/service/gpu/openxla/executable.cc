@@ -168,13 +168,14 @@ OpenXlaRuntimeExecutable::Create(std::unique_ptr<OpenXlaRuntimeProgram> program,
 
   return std::unique_ptr<OpenXlaRuntimeExecutable>(new OpenXlaRuntimeExecutable(
       std::move(device), std::move(bytecode), std::move(program->buffer_sizes),
-      std::move(program->debug_options), context, instance, std::move(modules),
-      function));
+      std::move(program->debug_options), asm_text, binary, context, instance,
+      std::move(modules), function));
 }
 
 OpenXlaRuntimeExecutable::OpenXlaRuntimeExecutable(
     std::unique_ptr<OpenXlaDevice> device, std::unique_ptr<Bytecode> bytecode,
     std::vector<int64_t> buffer_sizes, DebugOptions debug_options,
+    std::string_view asm_text, absl::Span<const uint8_t> binary,
     iree::vm::ref<iree_vm_context_t> context,
     iree::vm::ref<iree_vm_instance_t> instance,
     std::unique_ptr<std::vector<iree_vm_module_t*>> modules,
@@ -183,6 +184,8 @@ OpenXlaRuntimeExecutable::OpenXlaRuntimeExecutable(
       bytecode_(std::move(bytecode)),
       buffer_sizes_(std::move(buffer_sizes)),
       debug_options_(std::move(debug_options)),
+      asm_text_(asm_text),
+      binary_(binary),
       context_(std::move(context)),
       instance_(std::move(instance)),
       modules_(std::move(modules)),
@@ -212,8 +215,10 @@ Status OpenXlaRuntimeExecutable::Execute(
                                     &inputs));
 
   // Add execution context as the first arguments.
-  auto execution_context =
-      iree::vm::make_ref<vm::ExecutionContext>(run_options, &debug_options_);
+  auto execution_context = iree::vm::make_ref<vm::ExecutionContext>(
+      run_options, &debug_options_,
+      vm::ExecutionContext::ExecutableSource{asm_text_, binary_});
+
   // TODO(ezhulenev): Can we do ref_move here?
   IREE_CHECK_OK(iree_vm_list_push_ref_retain(inputs.get(), execution_context));
 

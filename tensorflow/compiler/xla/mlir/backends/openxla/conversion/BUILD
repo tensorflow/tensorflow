@@ -37,6 +37,7 @@ package(
 #         "@llvm-project//mlir:Support",
 #         "@llvm-project//mlir:TensorDialect",
 #         "@llvm-project//mlir:Transforms",
+#         "//tensorflow/compiler/xla/mlir/backends/openxla/ir:xla_gpu",
 #         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
 #         "//tensorflow/compiler/xla/service/gpu:gpu_executable",
 #         "//tensorflow/compiler/xla/service/gpu:launch_dimensions",

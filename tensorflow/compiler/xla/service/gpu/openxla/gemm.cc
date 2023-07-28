@@ -33,9 +33,9 @@ using tsl::profiler::ScopedAnnotation;
 // XLA:GPU gemm API
 //===-----------------------------------------------------------------------===/
 
-static StatusOr<GemmConfig> GetGemmConfig(const iree_hal_buffer_view_t* lhs,
-                                          const iree_hal_buffer_view_t* rhs,
-                                          const iree_hal_buffer_view_t* out,
+static StatusOr<GemmConfig> GetGemmConfig(iree_hal_buffer_view_t* lhs,
+                                          iree_hal_buffer_view_t* rhs,
+                                          iree_hal_buffer_view_t* out,
                                           const vm::DotConfig& config) {
   int64_t compute_precision =
       config.dot_precision->precision.empty()
@@ -43,11 +43,11 @@ static StatusOr<GemmConfig> GetGemmConfig(const iree_hal_buffer_view_t* lhs,
           : *absl::c_max_element(config.dot_precision->precision);
 
   return GemmConfig::For(
-      GetShape(lhs), config.dot_dimension_numbers->lhs_batch_dims,
+      GetBufferShape(lhs), config.dot_dimension_numbers->lhs_batch_dims,
       config.dot_dimension_numbers->lhs_contracting_dims,  // lhs
-      GetShape(rhs), config.dot_dimension_numbers->rhs_batch_dims,
+      GetBufferShape(rhs), config.dot_dimension_numbers->rhs_batch_dims,
       config.dot_dimension_numbers->rhs_contracting_dims,  // rhs
-      GetShape(out),                                       // out
+      GetBufferShape(out),                                 // out
       config.alpha_real, config.alpha_imag, config.beta, config.algorithm,
       compute_precision);
 }

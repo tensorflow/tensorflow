@@ -17,8 +17,8 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_OPENXLA_GEMM_H_
 
 #include <cstdint>
-#include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "third_party/iree/runtime/src/iree/hal/api.h"  // IWYU pragma: keep
 #include "third_party/iree/runtime/src/iree/vm/api.h"   // IWYU pragma: keep
 #include "tensorflow/compiler/xla/service/gpu/openxla/vm.h"
@@ -27,20 +27,20 @@ limitations under the License.
 namespace xla::gpu {
 
 //===-----------------------------------------------------------------------===/
-// XLA:GPU custom module module types
+// XLA:GPU gemm API custom types
 //===-----------------------------------------------------------------------===/
 
 namespace vm {
 
 struct DotDimensionNumbers : public iree::vm::RefObject<DotDimensionNumbers> {
-  std::vector<int64_t> lhs_batch_dims;
-  std::vector<int64_t> rhs_batch_dims;
-  std::vector<int64_t> lhs_contracting_dims;
-  std::vector<int64_t> rhs_contracting_dims;
+  absl::InlinedVector<int64_t, 4> lhs_batch_dims;
+  absl::InlinedVector<int64_t, 4> rhs_batch_dims;
+  absl::InlinedVector<int64_t, 4> lhs_contracting_dims;
+  absl::InlinedVector<int64_t, 4> rhs_contracting_dims;
 };
 
 struct DotPrecision : public iree::vm::RefObject<DotPrecision> {
-  std::vector<int64_t> precision;
+  absl::InlinedVector<int64_t, 4> precision;
 };
 
 struct DotConfig : public iree::vm::RefObject<DotConfig> {

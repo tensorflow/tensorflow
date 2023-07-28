@@ -27,7 +27,7 @@ namespace xla::gpu {
 //===----------------------------------------------------------------------===//
 
 // TODO(ezhulenev): Add support for all element types.
-static PrimitiveType GetElementType(const iree_hal_buffer_view_t* view) {
+static PrimitiveType GetElementType(iree_hal_buffer_view_t* view) {
   switch (iree_hal_buffer_view_element_type(view)) {
     case IREE_HAL_ELEMENT_TYPE_FLOAT_32:
       return PrimitiveType::F32;
@@ -37,14 +37,13 @@ static PrimitiveType GetElementType(const iree_hal_buffer_view_t* view) {
   }
 }
 
-static absl::InlinedVector<int64_t, 4> GetDims(
-    const iree_hal_buffer_view_t* view) {
+static absl::InlinedVector<int64_t, 4> GetDims(iree_hal_buffer_view_t* view) {
   const iree_host_size_t* dims = iree_hal_buffer_view_shape_dims(view);
   iree_host_size_t rank = iree_hal_buffer_view_shape_rank(view);
   return absl::InlinedVector<int64_t, 4>(dims, dims + rank);
 }
 
-Shape GetShape(const iree_hal_buffer_view_t* view) {
+Shape GetBufferShape(iree_hal_buffer_view_t* view) {
   return ShapeUtil::MakeShape(GetElementType(view), GetDims(view));
 }
 
@@ -53,7 +52,7 @@ StatusOr<se::DeviceMemoryBase> GetDeviceMemory(
   // Get original allocation behind a buffer subspan.
   iree_hal_buffer_t* allocated = iree_hal_buffer_allocated_buffer(buffer);
 
-  // Export original allocation as a device allocation.
+  // Export allocated buffer as an external device allocation.
   iree_hal_external_buffer_t external_buffer;
   iree::Status exported = iree_hal_allocator_export_buffer(
       device_allocator, allocated,

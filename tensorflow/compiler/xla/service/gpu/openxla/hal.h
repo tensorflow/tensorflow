@@ -26,7 +26,7 @@ namespace xla::gpu {
 // Helper functions to work with IREE buffers and buffer views
 //===----------------------------------------------------------------------===//
 
-Shape GetShape(const iree_hal_buffer_view_t* view);
+Shape GetBufferShape(iree_hal_buffer_view_t* view);
 
 StatusOr<se::DeviceMemoryBase> GetDeviceMemory(
     iree_hal_allocator_t* device_allocator, iree_hal_buffer_t* buffer);

@@ -134,6 +134,7 @@ class OpenXlaRuntimeExecutable {
   OpenXlaRuntimeExecutable(
       std::unique_ptr<OpenXlaDevice> device, std::unique_ptr<Bytecode> bytecode,
       std::vector<int64_t> buffer_sizes, DebugOptions debug_options,
+      std::string_view asm_text, absl::Span<const uint8_t> binary,
       iree::vm::ref<iree_vm_context_t> context,
       iree::vm::ref<iree_vm_instance_t> instance,
       std::unique_ptr<std::vector<iree_vm_module_t*>> modules,
@@ -149,6 +150,9 @@ class OpenXlaRuntimeExecutable {
 
   std::vector<int64_t> buffer_sizes_;
   const DebugOptions debug_options_;
+
+  std::string_view asm_text_;
+  absl::Span<const uint8_t> binary_;
 
   // TODO(ezhulenev): VM context and instance should be shared between multiple
   // executables. Also HAL module should be loaded just once. This has to be

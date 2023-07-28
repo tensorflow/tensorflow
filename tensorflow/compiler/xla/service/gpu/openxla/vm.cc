@@ -16,9 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/openxla/vm.h"
 
 #include <string>
-#include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/strings/str_format.h"
+#include "third_party/iree/runtime/src/iree/modules/hal/types.h"
 
 namespace xla::gpu::vm {
 
@@ -41,16 +42,30 @@ iree::StatusOr<iree::vm::ref<vm::Trace>> TraceAPI::TraceCreate(
 // Helper functions to work with VM lists
 //===----------------------------------------------------------------------===//
 
-iree::StatusOr<std::vector<int64_t>> GetI64Vector(const iree_vm_list_t* list) {
+iree::StatusOr<absl::InlinedVector<iree_hal_buffer_view_t*, 4>>
+GetBufferViewVector(iree_vm_list_t* list) {
   iree_host_size_t size = iree_vm_list_size(list);
-  std::vector<int64_t> values(size);
+  absl::InlinedVector<iree_hal_buffer_view_t*, 4> vector(size);
+
+  for (iree_host_size_t i = 0; i < size; ++i) {
+    iree_vm_ref_t ref{nullptr};
+    IREE_RETURN_IF_ERROR(iree_vm_list_get_ref_assign(list, i, &ref));
+    IREE_RETURN_IF_ERROR(iree_hal_buffer_view_check_deref(ref, &vector[i]));
+  }
+  return vector;
+}
+
+iree::StatusOr<absl::InlinedVector<int64_t, 4>> GetI64Vector(
+    iree_vm_list_t* list) {
+  iree_host_size_t size = iree_vm_list_size(list);
+  absl::InlinedVector<int64_t, 4> vector(size);
   for (iree_host_size_t i = 0; i < size; ++i) {
     iree_vm_value_t value;
     IREE_RETURN_IF_ERROR(
         iree_vm_list_get_value_as(list, i, IREE_VM_VALUE_TYPE_I64, &value));
-    values[i] = value.i64;
+    vector[i] = value.i64;
   }
-  return values;
+  return vector;
 }
 
 }  // namespace xla::gpu::vm

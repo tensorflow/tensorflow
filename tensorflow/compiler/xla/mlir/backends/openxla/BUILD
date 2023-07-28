@@ -34,6 +34,7 @@ config_setting(
 #         "//tensorflow/compiler/xla/mlir/backends/openxla/transforms:passes",
 #         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
 #         "//tensorflow/compiler/xla/mlir_hlo:lhlo_gpu",
+#         "//tensorflow/tsl/platform:platform_port",
 #     ],
 # )
 #
