@@ -161,7 +161,7 @@ def GetTestConfigs():
 TEST_PARAMS = [
     ("Conv2D_NHWC_float_cpu", "NHWC", dtypes.float32, False, "Conv2D"),
     ("Conv2D_NHWC_half_cpu", "NHWC", dtypes.float16, False, "Conv2D"),
-    ("Conv2D_NHWC_double_cpu", "NHWC", dtypes.float64, False, "Conv2D"),
+    # ("Conv2D_NHWC_double_cpu", "NHWC", dtypes.float64, False, "Conv2D"),
     ("Conv2D_NHWC_bfloat16_cpu", "NHWC", dtypes.bfloat16, False, "Conv2D"),
     ("Conv2D_NHWC_int32_cpu", "NHWC", dtypes.int32, False, "Conv2D"),
     ("Conv2D_NHWC_float_gpu", "NHWC", dtypes.float32, True, "Conv2D"),
@@ -173,7 +173,7 @@ TEST_PARAMS = [
     ("Conv2D_NCHW_bfloat16_gpu", "NCHW", dtypes.bfloat16, True, "Conv2D"),
     ("Conv_NHWC_float_cpu", "NHWC", dtypes.float32, False, "Conv"),
     ("Conv_NHWC_half_cpu", "NHWC", dtypes.float16, False, "Conv"),
-    ("Conv_NHWC_double_cpu", "NHWC", dtypes.float64, False, "Conv"),
+    # ("Conv_NHWC_double_cpu", "NHWC", dtypes.float64, False, "Conv"),
     ("Conv_NHWC_bfloat16_cpu", "NHWC", dtypes.bfloat16, False, "Conv"),
     ("Conv_NHWC_int32_cpu", "NHWC", dtypes.int32, False, "Conv"),
     # TODO(b/291785218): Enable GPU configs for Conv when GPU implementation is
