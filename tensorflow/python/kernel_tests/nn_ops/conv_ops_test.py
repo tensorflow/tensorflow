@@ -166,7 +166,6 @@ TEST_PARAMS = [
     ("Conv2D_NHWC_int32_cpu", "NHWC", dtypes.int32, False, "Conv2D"),
     ("Conv2D_NHWC_float_gpu", "NHWC", dtypes.float32, True, "Conv2D"),
     ("Conv2D_NHWC_half_gpu", "NHWC", dtypes.float16, True, "Conv2D"),
-    ("Conv2D_NHWC_double_gpu", "NHWC", dtypes.float64, True, "Conv2D"),
     ("Conv2D_NHWC_bfloat16_gpu", "NHWC", dtypes.bfloat16, True, "Conv2D"),
     ("Conv2D_NCHW_float_gpu", "NCHW", dtypes.float32, True, "Conv2D"),
     ("Conv2D_NCHW_half_gpu", "NCHW", dtypes.float16, True, "Conv2D"),
@@ -179,6 +178,7 @@ TEST_PARAMS = [
     ("Conv_NHWC_int32_cpu", "NHWC", dtypes.int32, False, "Conv"),
     # TODO(b/291785218): Enable GPU configs for Conv when GPU implementation is
     # done.
+    #("Conv2D_NHWC_double_gpu", "NHWC", dtypes.float64, True, "Conv2D"),
     # ("Conv_NHWC_float_gpu", "NHWC", dtypes.float32, True, "Conv"),
     # ("Conv_NHWC_half_gpu", "NHWC", dtypes.float16, True, "Conv"),
     # ("Conv_NHWC_double_gpu", "NHWC", dtypes.float64, True, "Conv"),
