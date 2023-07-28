@@ -1119,7 +1119,7 @@ TEST_F(NaryGradTest, UnsortedSegmentMaxGrad) {
   Tensor x_init_value =
       test::AsTensor<float>(kUnsortedSegmentMinMaxTestValue, shape);
   TensorShape y_shape({2, 1, 5});
-  RunTest({x}, x_init_value, {y}, {y_shape});
+  RunTest(x, x_init_value, y, y_shape);
 }
 
 TEST_F(NaryGradTest, UnsortedSegmentMaxGrad_Int64Ids) {
@@ -1130,7 +1130,7 @@ TEST_F(NaryGradTest, UnsortedSegmentMaxGrad_Int64Ids) {
   TensorShape y_shape({2, 1, 5});
   Tensor x_init_value =
       test::AsTensor<float>(kUnsortedSegmentMinMaxTestValue, shape);
-  RunTest({x}, x_init_value, {y}, {y_shape});
+  RunTest(x, x_init_value, y, y_shape);
 }
 
 TEST_F(NaryGradTest, UnsortedSegmentMaxGrad_NegativeIds) {
@@ -1141,7 +1141,7 @@ TEST_F(NaryGradTest, UnsortedSegmentMaxGrad_NegativeIds) {
   TensorShape y_shape({1, 1, 5});
   Tensor x_init_value =
       test::AsTensor<float>(kUnsortedSegmentMinMaxTestValue, shape);
-  RunTest({x}, x_init_value, {y}, {y_shape});
+  RunTest(x, x_init_value, y, y_shape);
 }
 
 TEST_F(NaryGradTest, UnsortedSegmentMinGrad) {
@@ -1152,7 +1152,7 @@ TEST_F(NaryGradTest, UnsortedSegmentMinGrad) {
   TensorShape y_shape({2, 1, 5});
   Tensor x_init_value =
       test::AsTensor<float>(kUnsortedSegmentMinMaxTestValue, shape);
-  RunTest({x}, x_init_value, {y}, {y_shape});
+  RunTest(x, x_init_value, y, y_shape);
 }
 
 TEST_F(NaryGradTest, UnsortedSegmentSumGrad) {
