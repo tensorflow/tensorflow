@@ -15,7 +15,8 @@ Before sending your pull requests, make sure you do the following:
 
 ## How to become a contributor and submit your own code
 
-![Screen Shot 2022-08-30 at 7 27 04 PM](https://user-images.githubusercontent.com/42785357/187579207-9924eb32-da31-47bb-99f9-d8bf1aa238ad.png)
+![not working](http://Users/jacksonwilliams/Downloads/guidelines2.jpg)
+
 
 ### Typical Pull Request Workflow -
 
