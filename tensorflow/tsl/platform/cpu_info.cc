@@ -465,7 +465,7 @@ void InitCPUIDInfo() {
   absl::call_once(cpuid_once_flag, CPUIDInfo::Initialize);
 }
 
-#endif  // PLATFORM_IS_ARM64
+#endif  // PLATFORM_IS_ARM64 && !__APPLE__ && !__OpenBSD__
 }  // namespace
 
 bool TestCPUFeature(CPUFeature feature) {
