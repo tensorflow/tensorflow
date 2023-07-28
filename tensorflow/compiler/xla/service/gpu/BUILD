@@ -984,7 +984,6 @@ cc_library(
     ]) + if_rocm_is_configured([
         "//tensorflow/compiler/xla/stream_executor/rocm:stream_executor_rocm",
         "@local_config_rocm//rocm:rocm_headers",
-        "//tensorflow/tsl/platform:random",
     ]),
 )
 
