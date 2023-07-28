@@ -206,35 +206,37 @@ void AddSynchronization(runtime::CustomCallDeclarations custom_calls,
 //===----------------------------------------------------------------------===//
 
 void StreamAssignmentPass::runOnOperation() {
-  FuncOp func_op = getOperation();
-
-  if (!absl::StrContains(func_op.getSymNameAttr().str(),
-                         "xla.gpu.cuda.graph.capture")) {
-    return;
-  }
-
-  SymbolTable sym_table(func_op->getParentOfType<mlir::ModuleOp>());
-
-  DataflowAnalysis dataflow_analysis(func_op);
-  DataflowGraph graph = dataflow_analysis.GetDataflowGraph(func_op);
-  std::vector<size_t> stream_assignment = AssignStreams(graph, kNumStreams);
-
-  for (auto [index, stream] : llvm::enumerate(stream_assignment)) {
-    Node node = graph[index];
-    Operation* op = node.operation;
-    ImplicitLocOpBuilder b(op->getLoc(), sym_table.getOp());
-    if (stream != -1) {
-      op->setAttr(b.getStringAttr("stream"), b.getI64IntegerAttr(stream));
-    }
-  }
-
+  ModuleOp module = getOperation();
+  SymbolTable sym_table(module);
   runtime::CustomCallDeclarations custom_calls(std::move(sym_table));
-  AddSynchronization(custom_calls, graph);
+
+  auto func_ops = llvm::to_vector(module.getOps<FuncOp>());
+  for (auto func_op : func_ops) {
+    if (!absl::StrContains(func_op.getSymNameAttr().str(),
+                           "xla.gpu.graph.capture")) {
+      continue;
+    }
+
+    DataflowAnalysis dataflow_analysis(func_op);
+    DataflowGraph graph = dataflow_analysis.GetDataflowGraph(func_op);
+    std::vector<size_t> stream_assignment = AssignStreams(graph, kNumStreams);
+
+    for (auto [index, stream] : llvm::enumerate(stream_assignment)) {
+      Node node = graph[index];
+      Operation* op = node.operation;
+      ImplicitLocOpBuilder b(op->getLoc(), custom_calls.sym_table().getOp());
+      if (stream != -1) {
+        op->setAttr(b.getStringAttr("stream"), b.getI64IntegerAttr(stream));
+      }
+    }
+
+    AddSynchronization(custom_calls, graph);
+  }
 }
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createStreamAssignmentPass() {
+std::unique_ptr<OperationPass<ModuleOp>> createStreamAssignmentPass() {
   return std::make_unique<StreamAssignmentPass>();
 }
 

@@ -117,7 +117,7 @@ createAddConcurrentRegionsPass();
 // Passes for assigning kernels to streams in CUDA graph capture function.
 //===----------------------------------------------------------------------===//
 
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createStreamAssignmentPass();
 
 //===-----------------------------------------------------------------------===/
