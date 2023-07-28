@@ -137,7 +137,6 @@ TEST_F(WhileTest, TestFlexOutput) {
   builder_->BuildFlexOutputSubgraph(interpreter_->subgraph(2));
   builder_->BuildMultiInputWhileSubgraph(&interpreter_->primary_subgraph(), 2);
 
-  // ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
   ASSERT_EQ(interpreter_->ResizeInputTensor(interpreter_->inputs()[0], {1}),
             kTfLiteOk);
   ASSERT_EQ(interpreter_->ResizeInputTensor(interpreter_->inputs()[1], {2}),
@@ -164,7 +163,6 @@ TEST_F(WhileTest, TestCounterOnly) {
   builder_->BuildCounterOnlySubgraph(interpreter_->subgraph(2));
   builder_->BuildMultiInputWhileSubgraph(&interpreter_->primary_subgraph(), 1);
 
-  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
   ASSERT_EQ(interpreter_->ResizeInputTensor(interpreter_->inputs()[0], {1}),
             kTfLiteOk);
   ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
@@ -684,7 +682,7 @@ TEST_F(WhileTest, TestWhileLoopWithDynamicTensor) {
 
   ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
   TfLiteTensor* string_output1 =
-      interpreter_->tensor(interpreter_->inputs()[0]);
+      interpreter_->tensor(interpreter_->outputs()[0]);
   CheckScalarStringTensor(string_output1, "A");
   TfLiteTensor* string_output2 =
       interpreter_->tensor(interpreter_->outputs()[1]);
