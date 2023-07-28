@@ -84,10 +84,10 @@ using ConvertedWhileOps = llvm::DenseMap<scf::WhileOp, ConvertedWhileOp>;
 // scf.for loops (see `op.getTripCount()` attribute).
 struct ConvertWhileOp : public OpConversionPattern<lmhlo::WhileOp> {
   ConvertWhileOp(TypeConverter &converter, MLIRContext *ctx,
-                 std::shared_ptr<DeBufferization> state,
+                 DeBufferization &state,
                  std::shared_ptr<ConvertedWhileOps> converted)
       : OpConversionPattern(converter, ctx),
-        state(std::move(state)),
+        state(state),
         converted(std::move(converted)) {}
 
   LogicalResult matchAndRewrite(
@@ -103,18 +103,18 @@ struct ConvertWhileOp : public OpConversionPattern<lmhlo::WhileOp> {
     // Pass updated tensors as loop iteration argument.
     SmallVector<Value> iter_args =
         llvm::to_vector(llvm::map_range(bufs.write, [&](auto memref) -> Value {
-          return state->remapped[block][memref];
+          return state.remapped[block][memref];
         }));
 
     // Set up buffer to tensor remapping inside nested regions.
     auto remap_iteration_args = [&](Block *nested_block, ValueRange iter_args) {
       // Read-only buffers remapped to tensors defined in the parent block.
       for (auto r : bufs.read)
-        state->remapped[nested_block][r] = state->remapped[block][r];
+        state.remapped[nested_block][r] = state.remapped[block][r];
 
       // Written-to buffers remapped to iteration arguments.
       for (auto tuple : llvm::zip_equal(bufs.write, iter_args))
-        state->remapped[nested_block][std::get<0>(tuple)] =
+        state.remapped[nested_block][std::get<0>(tuple)] =
             cast<TypedValue<TensorType>>(std::get<1>(tuple));
     };
 
@@ -134,7 +134,7 @@ struct ConvertWhileOp : public OpConversionPattern<lmhlo::WhileOp> {
 
     // Use loop results to remap buffers in the parent block.
     for (auto tuple : llvm::zip_equal(bufs.write, loop.getResults()))
-      state->remapped[block][std::get<0>(tuple)] =
+      state.remapped[block][std::get<0>(tuple)] =
           cast<TypedValue<TensorType>>(std::get<1>(tuple));
 
     // Predicate buffer placed on the device.
@@ -147,7 +147,7 @@ struct ConvertWhileOp : public OpConversionPattern<lmhlo::WhileOp> {
     return success();
   }
 
-  std::shared_ptr<DeBufferization> state;
+  DeBufferization &state;
   std::shared_ptr<ConvertedWhileOps> converted;
 };
 
@@ -157,10 +157,10 @@ struct ConvertWhileOp : public OpConversionPattern<lmhlo::WhileOp> {
 
 struct ConvertTerminatorOp : public OpConversionPattern<lmhlo::TerminatorOp> {
   ConvertTerminatorOp(TypeConverter &converter, MLIRContext *ctx,
-                      std::shared_ptr<DeBufferization> state,
+                      DeBufferization &state,
                       std::shared_ptr<ConvertedWhileOps> converted)
       : OpConversionPattern(converter, ctx),
-        state(std::move(state)),
+        state(state),
         converted(std::move(converted)) {}
 
   LogicalResult matchAndRewrite(
@@ -174,14 +174,14 @@ struct ConvertTerminatorOp : public OpConversionPattern<lmhlo::TerminatorOp> {
 
     auto iter_args = llvm::to_vector(llvm::map_range(
         (*converted)[loop].buffers.write, [&](auto memref) -> Value {
-          return state->remapped[op->getBlock()][memref];
+          return state.remapped[op->getBlock()][memref];
         }));
 
     // Convert lmhlo.terminator in the before block to scf.condition operation
     if (auto *cond = op->getBlock(); cond == &loop.getBefore().front()) {
       Value offset = b.create<arith::ConstantIndexOp>(0);
       auto predicate = b.create<IREE::Input::TensorLoadOp>(
-          state->remapped[cond][(*converted)[loop].predicate],
+          state.remapped[cond][(*converted)[loop].predicate],
           /*source_dims=*/ValueRange(), /*indices=*/offset);
 
       rewriter.replaceOpWithNewOp<scf::ConditionOp>(op, predicate, iter_args);
@@ -197,7 +197,7 @@ struct ConvertTerminatorOp : public OpConversionPattern<lmhlo::TerminatorOp> {
     return failure();
   }
 
-  std::shared_ptr<DeBufferization> state;
+  DeBufferization &state;
   std::shared_ptr<ConvertedWhileOps> converted;
 };
 
@@ -207,7 +207,7 @@ struct ConvertTerminatorOp : public OpConversionPattern<lmhlo::TerminatorOp> {
 
 void populateWhileOpConversionPatterns(mlir::RewritePatternSet &patterns,
                                        mlir::TypeConverter &converter,
-                                       std::shared_ptr<DeBufferization> state) {
+                                       DeBufferization &state) {
   auto *ctx = patterns.getContext();
   auto converted = std::make_shared<ConvertedWhileOps>();
   patterns.insert<ConvertWhileOp, ConvertTerminatorOp>(converter, ctx, state,

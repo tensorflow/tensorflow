@@ -16,20 +16,20 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_MLIR_BACKENDS_OPENXLA_CONVERSION_CONVERT_LIBRARY_OPS_H_
 #define TENSORFLOW_COMPILER_XLA_MLIR_BACKENDS_OPENXLA_CONVERSION_CONVERT_LIBRARY_OPS_H_
 
-#include <memory>
-
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/backends/openxla/conversion/de_bufferization.h"
+#include "tensorflow/compiler/xla/mlir/backends/openxla/conversion/xla_gpu_api.h"
 
 namespace xla {
 namespace gpu {
 
 // Appends patterns to convert `lmhlo_gpu` operations corresponding to library
 // calls (cuBLAS, cuDNN, etc. operations).
-void populateLibraryOpsConversionPatterns(
-    mlir::RewritePatternSet &patterns, mlir::TypeConverter &converter,
-    std::shared_ptr<DeBufferization> state);
+void populateLibraryOpsConversionPatterns(mlir::RewritePatternSet &patterns,
+                                          mlir::TypeConverter &converter,
+                                          DeBufferization &state,
+                                          XlaGpuApi &api);
 
 }  // namespace gpu
 }  // namespace xla

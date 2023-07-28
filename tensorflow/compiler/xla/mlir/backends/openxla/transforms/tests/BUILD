@@ -10,10 +10,7 @@ package(
 #
 # glob_lit_tests(
 #     data = [":test_utilities"],
-#     default_tags = [
-#         "manual",
-#         "notap",
-#     ],
+#     default_tags = ["notap"],
 #     driver = "//tensorflow/compiler/xla:run_lit.sh",
 #     test_file_exts = ["mlir"],
 # )

@@ -39,6 +39,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/backends/openxla/conversion/convert_library_ops.h"
 #include "tensorflow/compiler/xla/mlir/backends/openxla/conversion/convert_memref_ops.h"
 #include "tensorflow/compiler/xla/mlir/backends/openxla/conversion/convert_while_op.h"
+#include "tensorflow/compiler/xla/mlir/backends/openxla/conversion/de_bufferization.h"
+#include "tensorflow/compiler/xla/mlir/backends/openxla/conversion/xla_gpu_api.h"
 #include "tensorflow/compiler/xla/mlir/backends/openxla/ir/xla_gpu_dialect.h"
 #include "tensorflow/compiler/xla/mlir/backends/openxla/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
@@ -154,11 +156,14 @@ class ConvertToOpenXlaPass
 
     // De-bufferization state shared between lowering patterns required for
     // threading tied operands starting from arguments to terminator.
-    auto state = std::make_shared<DeBufferization>();
+    DeBufferization state;
+
+    // XLA:GPU API declarations for the custom module.
+    XlaGpuApi api;
 
     RewritePatternSet patterns(&getContext());
     populateAnyFunctionOpInterfaceTypeConversionPattern(patterns, converter);
-    populateLibraryOpsConversionPatterns(patterns, converter, state);
+    populateLibraryOpsConversionPatterns(patterns, converter, state, api);
     populateMemrefConversionPatterns(patterns, converter, state);
     populateWhileOpConversionPatterns(patterns, converter, state);
 
@@ -169,7 +174,7 @@ class ConvertToOpenXlaPass
 
     } else if (*compiled_ops_backend == OpenXlaBackend::kStreamExecutor) {
       populateCompiledOpsConversionPatterns(patterns, converter,
-                                            thunk_sequence_, state);
+                                            thunk_sequence_, state, api);
     }
 
     // Ensure all HLO and memref operations get lowered to IREEInput and OpenXLA

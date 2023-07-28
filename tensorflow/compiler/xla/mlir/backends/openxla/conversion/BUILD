@@ -10,16 +10,6 @@ package(
 # copybara:uncomment_begin(not supported in OSS build)
 #
 # cc_library(
-#     name = "de_bufferization",
-#     hdrs = ["de_bufferization.h"],
-#     deps = [
-#         "@llvm-project//llvm:Support",
-#         "@llvm-project//mlir:IR",
-#         "@llvm-project//mlir:MemRefDialect",
-#     ],
-# )
-#
-# cc_library(
 #     name = "convert_compiled_ops",
 #     srcs = if_openxla(["convert_compiled_ops.cc"]),
 #     hdrs = if_openxla(["convert_compiled_ops.h"]),
@@ -28,6 +18,7 @@ package(
 #     compatible_with = [],
 #     deps = [
 #         ":de_bufferization",
+#         ":xla_gpu_api",
 #         "@llvm-project//llvm:Support",
 #         "@llvm-project//mlir:ArithDialect",
 #         "@llvm-project//mlir:BufferizationDialect",
@@ -54,6 +45,7 @@ package(
 #     compatible_with = [],
 #     deps = [
 #         ":de_bufferization",
+#         ":xla_gpu_api",
 #         "@llvm-project//llvm:Support",
 #         "@llvm-project//mlir:ArithDialect",
 #         "@llvm-project//mlir:FuncDialect",
@@ -105,6 +97,29 @@ package(
 #         "@llvm-project//mlir:TensorDialect",
 #         "@llvm-project//mlir:Transforms",
 #         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
+#     ] + if_openxla(["//third_party/iree/llvm-external-projects/iree-dialects:IREEInputDialect"]),
+# )
+#
+# cc_library(
+#     name = "de_bufferization",
+#     hdrs = ["de_bufferization.h"],
+#     deps = [
+#         "@llvm-project//llvm:Support",
+#         "@llvm-project//mlir:IR",
+#         "@llvm-project//mlir:MemRefDialect",
+#     ],
+# )
+#
+# cc_library(
+#     name = "xla_gpu_api",
+#     srcs = if_openxla(["xla_gpu_api.cc"]),
+#     hdrs = if_openxla(["xla_gpu_api.h"]),
+#     deps = [
+#         "@llvm-project//llvm:Support",
+#         "@llvm-project//mlir:FuncDialect",
+#         "@llvm-project//mlir:IR",
+#         "@llvm-project//mlir:MemRefDialect",
+#         "//tensorflow/compiler/xla/mlir/backends/openxla/ir:xla_gpu",
 #     ] + if_openxla(["//third_party/iree/llvm-external-projects/iree-dialects:IREEInputDialect"]),
 # )
 #

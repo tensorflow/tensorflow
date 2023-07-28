@@ -52,6 +52,8 @@ package(
 #         "//tensorflow/compiler/xla/mlir/backends/openxla/conversion:convert_library_ops",
 #         "//tensorflow/compiler/xla/mlir/backends/openxla/conversion:convert_memref_ops",
 #         "//tensorflow/compiler/xla/mlir/backends/openxla/conversion:convert_while_op",
+#         "//tensorflow/compiler/xla/mlir/backends/openxla/conversion:de_bufferization",
+#         "//tensorflow/compiler/xla/mlir/backends/openxla/conversion:xla_gpu_api",
 #         "//tensorflow/compiler/xla/mlir/backends/openxla/ir:xla_gpu",
 #         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
 #     ] + if_openxla(["//third_party/iree/llvm-external-projects/iree-dialects:IREEInputDialect"]),
