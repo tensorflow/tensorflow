@@ -477,7 +477,7 @@ bool TestCPUFeature(CPUFeature feature) {
 }
 
 bool TestAarch64CPU(Aarch64CPU cpu) {
-#ifdef PLATFORM_IS_ARM64
+#if defined(PLATFORM_IS_ARM64) && !defined(__APPLE__) && !defined(__OpenBSD__)
   return CPUIDInfo::TestAarch64CPU(cpu);
 #else
   return false;
