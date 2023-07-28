@@ -222,7 +222,10 @@ TEST_F(TritonAutotunerTest, VoltaUsesNoMoreThanTwoStages) {
   const se::CudaComputeCapability compute_capability{
       se::CudaComputeCapability::VOLTA, /*minor=*/0};
   const std::vector<AutotuneResult::TritonGemmKey> configs =
-      GetPossibleMatmulAutotuneConfigs(compute_capability);
+      GetPossibleMatmulAutotuneConfigs(
+          *HloInstruction::CreateParameter(
+              0, ShapeUtil::MakeShape(F32, {1024, 1024}), ""),
+          compute_capability);
   EXPECT_FALSE(std::any_of(configs.begin(), configs.end(),
                            [](const AutotuneResult::TritonGemmKey& key) {
                              return key.num_stages() > 2;
@@ -233,11 +236,42 @@ TEST_F(TritonAutotunerTest, AmpereUsesMoreThanTwoStages) {
   const se::CudaComputeCapability compute_capability{
       se::CudaComputeCapability::AMPERE, /*minor=*/0};
   const std::vector<AutotuneResult::TritonGemmKey> configs =
-      GetPossibleMatmulAutotuneConfigs(compute_capability);
+      GetPossibleMatmulAutotuneConfigs(
+          *HloInstruction::CreateParameter(
+              0, ShapeUtil::MakeShape(F32, {1024, 1024}), ""),
+          compute_capability);
   EXPECT_TRUE(std::any_of(configs.begin(), configs.end(),
                           [](const AutotuneResult::TritonGemmKey& key) {
                             return key.num_stages() > 2;
                           }));
+}
+
+TEST_F(TritonAutotunerTest, SmallOutputCanUseLargeSplitK) {
+  const se::CudaComputeCapability compute_capability{
+      se::CudaComputeCapability::AMPERE, /*minor=*/0};
+  const std::vector<AutotuneResult::TritonGemmKey> configs =
+      GetPossibleMatmulAutotuneConfigs(
+          *HloInstruction::CreateParameter(
+              0, ShapeUtil::MakeShape(F32, {1024, 1024}), ""),
+          compute_capability);
+  EXPECT_TRUE(std::any_of(configs.begin(), configs.end(),
+                          [](const AutotuneResult::TritonGemmKey& key) {
+                            return key.split_k() >= 16;
+                          }));
+}
+
+TEST_F(TritonAutotunerTest, LargeOutputDoesNotUseLargeSplitK) {
+  const se::CudaComputeCapability compute_capability{
+      se::CudaComputeCapability::AMPERE, /*minor=*/0};
+  const std::vector<AutotuneResult::TritonGemmKey> configs =
+      GetPossibleMatmulAutotuneConfigs(
+          *HloInstruction::CreateParameter(
+              0, ShapeUtil::MakeShape(F32, {20480, 20480}), ""),
+          compute_capability);
+  EXPECT_FALSE(std::any_of(configs.begin(), configs.end(),
+                           [](const AutotuneResult::TritonGemmKey& key) {
+                             return key.split_k() > 1;
+                           }));
 }
 
 TEST_F(TritonAutotunerTest, Int8FusedGemm) {

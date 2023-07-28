@@ -54,6 +54,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
@@ -88,6 +89,9 @@ static AutotuneResult::TritonGemmKey GemmKey(int64_t block_m, int64_t block_n,
   key.set_num_warps(num_warps);
   return key;
 }
+
+// Not a hard limit, just an assumption that should stay valid.
+constexpr int kMaxTileSize = 512;
 
 struct CompilationKey {
   template <typename H>
@@ -156,7 +160,6 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
       allocator = stream_exec->GetAllocator();
     }
 
-    HloInstruction* root = fusion.root_instruction();
     TF_ASSIGN_OR_RETURN(se::Stream* const stream,
                         allocator->GetStream(stream_exec->device_ordinal()));
 
@@ -167,11 +170,12 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
         AutotunerUtil::CreateRedzoneAllocator(config_, debug_opts));
 
     std::optional<ScopedShapedBuffer> reference_buffer;
-    BufferComparator comparator(root->shape(), fusion.parent()->config());
+    const HloInstruction& root = *fusion.root_instruction();
+    BufferComparator comparator(root.shape(), fusion.parent()->config());
 
     const std::vector<AutotuneResult::TritonGemmKey> configurations =
         GetPossibleMatmulAutotuneConfigs(
-            stream_exec->GetDeviceDescription().cuda_compute_capability(),
+            root, stream_exec->GetDeviceDescription().cuda_compute_capability(),
             config_.ExhaustiveTilingSearch());
 
     GpuDeviceInfo gpu_device_info = GetGpuDeviceInfo(config_.GetExecutor());
@@ -181,6 +185,9 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
         executables;
 
     auto compile = [&](const AutotuneResult::TritonGemmKey& conf) {
+      CHECK(conf.block_m() <= kMaxTileSize);
+      CHECK(conf.block_n() <= kMaxTileSize);
+      CHECK(conf.block_k() <= kMaxTileSize);
       TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
                           autotuner_compile_util_->Compile([&] {
                             return TritonGemmAutotuneExtractor(
@@ -285,7 +292,7 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
 
     TF_ASSIGN_OR_RETURN(
         AutotuneResult best,
-        PickBestResult(results, root->ToString(), root->GetModule()->config()));
+        PickBestResult(results, root.ToString(), root.GetModule()->config()));
 
     if (debug_opts.xla_gpu_dump_autotuned_triton_fusions()) {
       TF_ASSIGN_OR_RETURN(
@@ -392,7 +399,7 @@ constexpr std::array<int, 4> NUM_WARPS = {2, 4, 8, 16};
 constexpr std::array<int, 5> SPLIT_K = {1, 2, 4, 8, 16};
 
 std::vector<AutotuneResult::TritonGemmKey> GetExhaustiveMatmulAutotuneConfigs(
-    const se::CudaComputeCapability compute_capability) {
+    const se::CudaComputeCapability compute_capability, const int max_split_k) {
   std::vector<AutotuneResult::TritonGemmKey> configs;
   bool mma_layout_v2 =
       compute_capability.IsAtLeast(se::CudaComputeCapability::AMPERE);
@@ -410,6 +417,9 @@ std::vector<AutotuneResult::TritonGemmKey> GetExhaustiveMatmulAutotuneConfigs(
           }
           for (int block_k : BLOCK_SIZES) {
             for (int split_k : SPLIT_K) {
+              if (split_k > max_split_k) {
+                continue;
+              }
               auto config = GemmKey(block_m, block_n, block_k, split_k,
                                     num_stages, num_warps);
               configs.push_back(std::move(config));
@@ -423,7 +433,7 @@ std::vector<AutotuneResult::TritonGemmKey> GetExhaustiveMatmulAutotuneConfigs(
 }
 
 std::vector<AutotuneResult::TritonGemmKey> GetFixedMatmulAutotuneConfigs(
-    const se::CudaComputeCapability compute_capability) {
+    const se::CudaComputeCapability compute_capability, const int max_split_k) {
   std::vector<AutotuneResult::TritonGemmKey> configs = {
       GemmKey(32, 32, 256, 1, 1, 4), GemmKey(64, 32, 32, 16, 1, 4),
       GemmKey(32, 64, 64, 4, 1, 4),  GemmKey(128, 128, 64, 4, 1, 4),
@@ -457,17 +467,38 @@ std::vector<AutotuneResult::TritonGemmKey> GetFixedMatmulAutotuneConfigs(
                        }),
         configs.end());
   }
+  configs.erase(
+      std::remove_if(configs.begin(), configs.end(),
+                     [&](const AutotuneResult::TritonGemmKey& config) {
+                       return config.split_k() > max_split_k;
+                     }),
+      configs.end());
   return configs;
 }
 
 }  // anonymous namespace
 
 std::vector<AutotuneResult::TritonGemmKey> GetPossibleMatmulAutotuneConfigs(
+    const HloInstruction& instr,
     const se::CudaComputeCapability compute_capability,
     bool exhaustive_tiling_search) {
+  // Split-K optimization enables more even utilization of a GPU in cases
+  // where tiling just the non-contracting dimensions of a GEMM does not create
+  // a sufficient number of thread block programs to occupy all available cores.
+  // Given the typical ~100 cores per GPU 500 tiles make around 5 full
+  // waves that completely avoid the need for split-K. The formula below is
+  // n_tiles = split_k * (M * N) / (block_m * block_n)
+  // with pessimistically assumed maximum block_m and block_n.
+  // Most likely there is no need for split-K already at much smaller output
+  // tensor sizes.
+  constexpr int kSufficientNumberOfTiles = 500;
+  const int max_split_k =
+      std::max(1L, kSufficientNumberOfTiles * kMaxTileSize * kMaxTileSize /
+                       ShapeUtil::ElementsIn(instr.shape()));
   return exhaustive_tiling_search
-             ? GetExhaustiveMatmulAutotuneConfigs(compute_capability)
-             : GetFixedMatmulAutotuneConfigs(compute_capability);
+             ? GetExhaustiveMatmulAutotuneConfigs(compute_capability,
+                                                  max_split_k)
+             : GetFixedMatmulAutotuneConfigs(compute_capability, max_split_k);
 }
 
 StatusOr<bool> TritonAutotuner::Run(
