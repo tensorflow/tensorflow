@@ -129,8 +129,10 @@ pybind11::dtype IfrtHelpers::python_dtype(ifrt::Array* ifrt_array) {
 
   GlobalPyRefManager()->CollectGarbage();
   py::gil_scoped_release gil_release;
-  return ifrt_array->Reshard(ifrt::SingleDeviceSharding::Create(dst_device),
-                             ifrt::ArrayCopySemantics::kReuseInput);
+  // TODO(yashkatariya): Plumb sharding or memory_kind here.
+  return ifrt_array->Reshard(
+      ifrt::SingleDeviceSharding::Create(dst_device, ifrt::MemoryKind()),
+      ifrt::ArrayCopySemantics::kReuseInput);
 }
 
 /* static */ StatusOr<pybind11::object> PyHostValue::AsNumPyArray(

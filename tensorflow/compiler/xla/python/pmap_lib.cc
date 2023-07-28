@@ -144,8 +144,10 @@ xla::StatusOr<ShardArgResult> ShardArg(
             ifrt_devices.reserve(devices.size());
             ifrt_devices.insert(ifrt_devices.end(), devices.begin(),
                                 devices.end());
+            // pmap does not support memory_kind for now.
             auto sharding = xla::ifrt::OpaqueSharding::Create(
-                xla::ifrt::DeviceList(std::move(ifrt_devices)));
+                xla::ifrt::DeviceList(std::move(ifrt_devices)),
+                xla::ifrt::MemoryKind());
             TF_ASSIGN_OR_RETURN(
                 auto copied_ifrt_array,
                 result.ifrt_array->Reshard(
@@ -213,8 +215,9 @@ xla::StatusOr<ShardArgResult> ShardArg(
     // may want to avoid creating a new Array or specialize Array
     // to disallow access to the logical shape.
     xla::ifrt::Shape shape = per_device_arrays.front()->shape();
+    // pmap does not support memory_kind for now.
     auto ifrt_sharding = xla::ifrt::ConcreteSharding::Create(
-        xla::ifrt::DeviceList(std::move(devices)),
+        xla::ifrt::DeviceList(std::move(devices)), xla::ifrt::MemoryKind(),
         /*shape=*/shape,
         /*shard_shapes=*/std::move(shapes));
     TF_ASSIGN_OR_RETURN(result.ifrt_array,

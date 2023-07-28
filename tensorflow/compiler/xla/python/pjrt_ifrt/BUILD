@@ -126,6 +126,7 @@ cc_library(
         ":xla_ifrt",
         ":xla_sharding_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/python/ifrt",
         "//tensorflow/compiler/xla/python/ifrt:serdes",
         "//tensorflow/compiler/xla/python/ifrt:sharding_serdes",
     ],

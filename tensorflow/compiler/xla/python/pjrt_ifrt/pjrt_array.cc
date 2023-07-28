@@ -122,7 +122,10 @@ StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
     PjRtCompatibleClient* client, std::shared_ptr<PjRtBuffer> pjrt_buffer) {
   TF_ASSIGN_OR_RETURN(auto dtype, ToDType(pjrt_buffer->element_type()));
   Shape shape(pjrt_buffer->dimensions());
-  auto sharding = SingleDeviceSharding::Create(pjrt_buffer->device());
+  // TODO(hyeontaek): Extract memory_kind from pjrt_buffer, and check if they
+  // have the same memory_kind.
+  auto sharding =
+      SingleDeviceSharding::Create(pjrt_buffer->device(), MemoryKind());
   return tsl::MakeRef<PjRtArray>(client, dtype, std::move(shape),
                                  std::move(sharding),
                                  PjRtBuffers({std::move(pjrt_buffer)}));
@@ -162,10 +165,12 @@ StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
     devices.push_back(pjrt_buffer->device());
     shapes.push_back(Shape(pjrt_buffer->dimensions()));
   }
-  auto sharding =
-      ifrt::ConcreteSharding::Create(xla::ifrt::DeviceList(std::move(devices)),
-                                     /*shape=*/shape,
-                                     /*shard_shapes=*/shapes);
+  // TODO(hyeontaek): Extract memory_kind from pjrt_buffer, and check if they
+  // have the same memory_kind.
+  auto sharding = ifrt::ConcreteSharding::Create(
+      ifrt::DeviceList(std::move(devices)), ifrt::MemoryKind(),
+      /*shape=*/shape,
+      /*shard_shapes=*/shapes);
   return PjRtArray::Create(client, dtype, std::move(shape), std::move(sharding),
                            std::move(pjrt_buffers));
 }

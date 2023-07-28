@@ -88,11 +88,12 @@ StatusOr<DevicePutResult> HandlePythonScalar(py::handle obj,
   // decide to block/sleep for device buffer allocation.
   py::gil_scoped_release gil_release;
   TF_ASSIGN_OR_RETURN(auto ifrt_dtype, xla::ifrt::ToDType(type));
+  // TODO(yashkatariya): Plumb sharding or memory_kind here.
   TF_ASSIGN_OR_RETURN(
       auto ifrt_array,
       client->MakeArrayFromHostBuffer(
           ptr, ifrt_dtype, /*shape=*/ifrt::Shape({}), /*byte_strides=*/{},
-          ifrt::SingleDeviceSharding::Create(to_device),
+          ifrt::SingleDeviceSharding::Create(to_device, ifrt::MemoryKind()),
           ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall,
           /*on_done_with_host_buffer=*/{}));
   return DevicePutResult(std::move(ifrt_array), /*weak_type=*/true);
@@ -135,11 +136,12 @@ StatusOr<DevicePutResult> HandlePythonInt(py::handle obj, ifrt::Client* client,
   // decide to block/sleep for device buffer allocation.
   py::gil_scoped_release gil_release;
   TF_ASSIGN_OR_RETURN(auto ifrt_dtype, xla::ifrt::ToDType(type));
+  // TODO(yashkatariya): Plumb sharding or memory_kind here.
   TF_ASSIGN_OR_RETURN(
       auto ifrt_array,
       client->MakeArrayFromHostBuffer(
           ptr, ifrt_dtype, /*shape=*/xla::ifrt::Shape({}), /*byte_strides=*/{},
-          ifrt::SingleDeviceSharding::Create(to_device),
+          ifrt::SingleDeviceSharding::Create(to_device, ifrt::MemoryKind()),
           ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall,
           /*on_done_with_host_buffer=*/nullptr));
   return DevicePutResult(std::move(ifrt_array), /*weak_type=*/true);
@@ -192,11 +194,12 @@ StatusOr<DevicePutResult> HandleNumpyScalar(py::handle h, ifrt::Client* client,
   // decide to block/sleep for device buffer allocation.
   py::gil_scoped_release gil_release;
   TF_ASSIGN_OR_RETURN(auto ifrt_dtype, xla::ifrt::ToDType(type));
+  // TODO(yashkatariya): Plumb sharding or memory_kind here.
   TF_ASSIGN_OR_RETURN(
       auto ifrt_array,
       client->MakeArrayFromHostBuffer(
           ptr, ifrt_dtype, /*shape=*/xla::ifrt::Shape({}), /*byte_strides=*/{},
-          ifrt::SingleDeviceSharding::Create(to_device),
+          ifrt::SingleDeviceSharding::Create(to_device, ifrt::MemoryKind()),
           ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall,
           /*on_done_with_host_buffer=*/nullptr));
   return DevicePutResult(std::move(ifrt_array), /*weak_type=*/false);
@@ -245,11 +248,13 @@ StatusOr<DevicePutResult> HandleNumpyArray(py::handle h, ifrt::Client* client,
   // decide to block/sleep for device buffer allocation.
   py::gil_scoped_release gil_release;
   TF_ASSIGN_OR_RETURN(auto ifrt_dtype, xla::ifrt::ToDType(squashed_type));
+  // TODO(yashkatariya): Plumb sharding or memory_kind here.
   TF_ASSIGN_OR_RETURN(
       auto ifrt_array,
       client->MakeArrayFromHostBuffer(
           data, ifrt_dtype, ifrt::Shape(dims), byte_strides,
-          xla::ifrt::SingleDeviceSharding::Create(to_device),
+          xla::ifrt::SingleDeviceSharding::Create(to_device,
+                                                  ifrt::MemoryKind()),
           host_buffer_semantics, std::move(on_done_with_host_buffer)));
   return DevicePutResult(std::move(ifrt_array), /*weak_type=*/false);
 }
@@ -282,10 +287,12 @@ StatusOr<DevicePutResult> HandlePyArray(py::handle obj, ifrt::Client* client,
         tsl::FormRef(ifrt_array), py_array.weak_type(),
         /*owning_pybuffer=*/py::reinterpret_borrow<py::object>(obj));
   } else {
+    // TODO(yashkatariya): Plumb sharding or memory_kind here.
     TF_ASSIGN_OR_RETURN(
         tsl::RCReference<ifrt::Array> copied_ifrt_array,
-        ifrt_array->Reshard(ifrt::SingleDeviceSharding::Create(to_device),
-                            ifrt::ArrayCopySemantics::kReuseInput));
+        ifrt_array->Reshard(
+            ifrt::SingleDeviceSharding::Create(to_device, ifrt::MemoryKind()),
+            ifrt::ArrayCopySemantics::kReuseInput));
     return DevicePutResult(std::move(copied_ifrt_array), py_array.weak_type());
   }
 }

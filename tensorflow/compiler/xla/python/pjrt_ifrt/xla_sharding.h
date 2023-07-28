@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/python/ifrt/memory.h"
 #include "tensorflow/compiler/xla/python/ifrt/sharding.h"
 
 namespace xla {
@@ -45,6 +46,7 @@ class HloSharding final
   // lower-level runtime. It is instead validated when the information in the
   // sharding is used within IFRT, e.g., in `Disassemble()`.
   static std::unique_ptr<HloSharding> Create(DeviceList devices,
+                                             MemoryKind memory_kind,
                                              xla::HloSharding xla_hlo_sharding);
 
   // Returns the wrapped XLA `HloSharding`.
@@ -65,9 +67,10 @@ class HloSharding final
   static char ID;  // NOLINT
 
  private:
-  explicit HloSharding(DeviceList devices, xla::HloSharding xla_hlo_sharding)
+  explicit HloSharding(DeviceList devices, MemoryKind memory_kind,
+                       xla::HloSharding xla_hlo_sharding)
       : llvm::RTTIExtends<HloSharding, XlaCompatibleSharding>(
-            std::move(devices)),
+            std::move(devices), memory_kind),
         xla_hlo_sharding_(std::move(xla_hlo_sharding)) {}
 
   xla::HloSharding xla_hlo_sharding_;
