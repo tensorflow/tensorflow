@@ -2,12 +2,12 @@
 
 def if_openxla(then, otherwise = []):
     return select({
-        "//tensorflow/compiler/xla/mlir/backends/openxla:with_openxla_compiler": then,
+        "//tensorflow/compiler/xla/mlir/backends/openxla:enabled": then,
         "//conditions:default": otherwise,
     })
 
 def if_not_openxla(then, otherwise = []):
     return select({
-        "//tensorflow/compiler/xla/mlir/backends/openxla:with_openxla_compiler": otherwise,
+        "//tensorflow/compiler/xla/mlir/backends/openxla:enabled": otherwise,
         "//conditions:default": then,
     })
