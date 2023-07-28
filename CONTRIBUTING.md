@@ -15,8 +15,7 @@ Before sending your pull requests, make sure you do the following:
 
 ## How to become a contributor and submit your own code
 
-![not working](http://Users/jacksonwilliams/Downloads/guidelines2.jpg)
-
+![guidelines2](https://github.com/rivalavocado/tensorflow/assets/56943827/f85a419e-968e-416b-8025-7a748fa23582)
 
 ### Typical Pull Request Workflow -
 
