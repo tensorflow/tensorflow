@@ -87,6 +87,11 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
     return kAllNHWC;
   }
 
+  if (primitive_util::IsF8Type(input_ty)) {
+    VLOG(2) << "Using NHWC for FP8 conv " << instr->ToString();
+    return kAllNHWC;
+  }
+
   const DebugOptions& debug_options =
       instr->GetModule()->config().debug_options();
 
@@ -158,6 +163,7 @@ Status GpuLayoutAssignment::AddBackendConstraintsToDnnConvCustomCall(
   switch (kind) {
     case CudnnConvKind::kForward:
     case CudnnConvKind::kForwardActivation:
+    case CudnnConvKind::kForwardGraph:
       input_shape = &lhs_shape;
       filter_shape = &rhs_shape;
       output_shape = &result_shape;
@@ -200,20 +206,33 @@ Status GpuLayoutAssignment::AddBackendConstraintsToDnnConvCustomCall(
   TF_RETURN_IF_ERROR(SetOperandLayout(lhs_shape, instr, 0));
   TF_RETURN_IF_ERROR(SetOperandLayout(rhs_shape, instr, 1));
   TF_RETURN_IF_ERROR(SetBufferLayout(result_shape.layout(), *call_result_buf));
-  // instr->operand(2), if exists, is the bias buffer. There is no need to
-  // assign layout to it, as it has only one dimension.
-
+  // For fused convolutions, instr->operand(2), if exists, is the bias buffer.
+  // There is no need to assign layout to it, as it has only one dimension.
   // instr->operand(3), if exists, is the side input buffer.
-  if (instr->operand_count() == 4) {
-    if (kind != CudnnConvKind::kForwardActivation) {
-      return InternalError(
-          "Invalid convolution. Conv has a side input, but kind is not fused "
-          "conv forward: %s",
-          instr->ToString());
-    }
+  if (kind == CudnnConvKind::kForwardActivation &&
+      instr->operand_count() == 4) {
     // The side input layout must match the output layout.
     TF_RETURN_IF_ERROR(SetOperandLayout(*output_shape, instr, 3));
   }
+
+  // For graph convolutions, align the layouts of the non-scalar inputs to any
+  // pointwise ops with the output layout.
+  if (kind == CudnnConvKind::kForwardGraph) {
+    for (int k = 2; k < instr->operand_count(); ++k) {
+      if (!ShapeUtil::IsScalar(instr->operand(k)->shape())) {
+        TF_RETURN_IF_ERROR(SetOperandLayout(*output_shape, instr, k));
+      }
+    }
+  }
+
+  if (instr->operand_count() > 2 && kind != CudnnConvKind::kForwardActivation &&
+      kind != CudnnConvKind::kForwardGraph) {
+    return InternalError(
+        "Invalid convolution. Conv has a side input, but kind is not fused "
+        "conv forward or graph conv foward: %s",
+        instr->ToString());
+  }
+
   return OkStatus();
 }
 

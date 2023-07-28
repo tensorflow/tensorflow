@@ -17,6 +17,8 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_CONV_RUNNER_H_
 
 #include <optional>
+#include <string>
+#include <vector>
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
@@ -69,6 +71,11 @@ struct GpuConvConfig {
   Shape filter_shape;
   Shape output_shape;
   std::optional<FusionConfig> fusion;
+
+  // String serialization of the subgraph of adjacent ops to be fused into the
+  // cuDNN convolution Custom Call. Currently used for FP8 convolutions only.
+  // Additional information is provided in gpu_fused_conv_rewriter.cc.
+  std::string serialized_graph;
 };
 
 // Implementation struct exposed for debugging and log analysis.
@@ -83,6 +90,10 @@ struct GpuConvParams {
   se::DeviceMemoryBase filter_buf;
   se::DeviceMemoryBase output_buf;
 
+  // Buffers for operands of pointwise ops to be fused into the cuDNN
+  // convolution Custom Call.
+  std::vector<se::DeviceMemoryBase> operand_bufs;
+
   std::optional<FusionParams> fusion;
 };
 
@@ -90,29 +101,41 @@ struct GpuConvParams {
 // convolution is fused (and has extra arguments) or unfused, which doesn't
 // naturally play well with the typed APIs provided by StreamExecutor; rather
 // than rewriting everything here, just propagate the dynamic typing to one more
-// place by having either a FusedConvRunner or a ConvRunner.
-class MaybeFusedConvRunner {
+// place by having a ConvRunner, FusedConvRunner or GraphConvRunner.
+class GenericConvRunner {
  public:
-  MaybeFusedConvRunner() = default;
+  GenericConvRunner() = default;
 
-  explicit MaybeFusedConvRunner(
+  explicit GenericConvRunner(
       std::unique_ptr<se::dnn::LazyOpRunner<se::dnn::FusedConvOp>> runner)
       : repr_(std::move(runner)) {}
 
-  explicit MaybeFusedConvRunner(
+  explicit GenericConvRunner(
+      std::unique_ptr<se::dnn::LazyOpRunner<se::dnn::GraphConvOp>> runner)
+      : repr_(std::move(runner)) {}
+
+  explicit GenericConvRunner(
       std::unique_ptr<se::dnn::LazyOpRunner<se::dnn::ConvOp>> runner)
       : repr_(std::move(runner)) {}
 
-  explicit MaybeFusedConvRunner(const GpuConvConfig& config)
-      : MaybeFusedConvRunner(
-            config.kind == CudnnConvKind::kForwardActivation
-                ? MaybeFusedConvRunner(
-                      std::make_unique<
-                          se::dnn::LazyOpRunner<se::dnn::FusedConvOp>>(
-                          config.algorithm))
-                : MaybeFusedConvRunner(
-                      std::make_unique<se::dnn::LazyOpRunner<se::dnn::ConvOp>>(
-                          config.algorithm))) {}
+  explicit GenericConvRunner(const GpuConvConfig& config)
+      : GenericConvRunner(FromGpuConvConfig(config)) {}
+
+  static GenericConvRunner FromGpuConvConfig(const GpuConvConfig& config) {
+    if (config.kind == CudnnConvKind::kForwardGraph) {
+      return GenericConvRunner(
+          std::make_unique<se::dnn::LazyOpRunner<se::dnn::GraphConvOp>>(
+              config.algorithm));
+    } else if (config.kind == CudnnConvKind::kForwardActivation) {
+      return GenericConvRunner(
+          std::make_unique<se::dnn::LazyOpRunner<se::dnn::FusedConvOp>>(
+              config.algorithm));
+    } else {
+      return GenericConvRunner(
+          std::make_unique<se::dnn::LazyOpRunner<se::dnn::ConvOp>>(
+              config.algorithm));
+    }
+  }
 
   se::dnn::AlgorithmDesc ToAlgorithmDesc() const {
     return std::visit(ToAlgorithmDescVisitor{}, repr_);
@@ -122,6 +145,15 @@ class MaybeFusedConvRunner {
     CHECK(std::holds_alternative<
           std::unique_ptr<se::dnn::LazyOpRunner<se::dnn::ConvOp>>>(repr_));
     return std::get<std::unique_ptr<se::dnn::LazyOpRunner<se::dnn::ConvOp>>>(
+               repr_)
+        .get();
+  }
+
+  se::dnn::LazyOpRunner<se::dnn::GraphConvOp>* AsGraphConvRunner() {
+    CHECK(std::holds_alternative<
+          std::unique_ptr<se::dnn::LazyOpRunner<se::dnn::GraphConvOp>>>(repr_));
+    return std::get<
+               std::unique_ptr<se::dnn::LazyOpRunner<se::dnn::GraphConvOp>>>(
                repr_)
         .get();
   }
@@ -150,6 +182,7 @@ class MaybeFusedConvRunner {
   using Repr =
       std::variant<std::monostate,  // To allow GpuConvConfig default ctor
                    std::unique_ptr<se::dnn::LazyOpRunner<se::dnn::FusedConvOp>>,
+                   std::unique_ptr<se::dnn::LazyOpRunner<se::dnn::GraphConvOp>>,
                    std::unique_ptr<se::dnn::LazyOpRunner<se::dnn::ConvOp>>>;
   Repr repr_;
 };
@@ -160,7 +193,7 @@ struct RunConvOptions {
 
   // Use this runner cache (and its configured algorithm), instead of the one
   // from the instruction.
-  MaybeFusedConvRunner* runner_cache;
+  GenericConvRunner* runner_cache;
 };
 
 // This file contains low-level routines for running cudnn convolutions.
