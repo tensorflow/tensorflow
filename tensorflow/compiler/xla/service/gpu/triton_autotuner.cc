@@ -258,8 +258,7 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
         if (!rz_check_status.ok()) {
           LOG(ERROR) << "Red zone modified";
           res.mutable_failure()->set_kind(AutotuneResult::REDZONE_MODIFIED);
-          *res.mutable_failure()->mutable_msg() =
-              rz_check_status.RedzoneFailureMsg();
+          res.mutable_failure()->set_msg(rz_check_status.RedzoneFailureMsg());
           CHECK(!config_.should_crash_on_check_failure());
           continue;
         }
@@ -270,12 +269,15 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
                 stream, /*current=*/profiling_output->output.root_buffer(),
                 /*expected=*/reference_buffer->root_buffer()));
         if (!outputs_match) {
-          LOG(ERROR) << "Results do not match the reference. "
-                     << "This is likely a bug/unexpected loss of precision.";
+          const char kMessage[] =
+              "Results do not match the reference. This is likely a "
+              "bug/unexpected loss of precision.";
+          LOG(ERROR) << kMessage;
           CHECK(!config_.should_crash_on_check_failure());
           // WRONG_RESULT is not taken seriously by PickBestResult(), so
           // use DISQUALIFIED.
           res.mutable_failure()->set_kind(AutotuneResult::DISQUALIFIED);
+          res.mutable_failure()->set_msg(kMessage);
         }
       }
       results.push_back(res);
