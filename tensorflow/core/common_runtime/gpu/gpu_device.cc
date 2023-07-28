@@ -1792,6 +1792,7 @@ Status BaseGPUDeviceFactory::CreateDevices(
 
     auto& pjrt_rollout_config = GetXlaOpsCommonFlags()->tf_xla_use_device_api;
     pjrt_rollout_config.AllowForDeviceInXlaLaunch(DEVICE_GPU);
+    pjrt_rollout_config.AllowForDeviceInXlaCompileAndRun(DEVICE_GPU);
 
     // Creates PJRT GPU client and places it into a TF global resource manager.
     auto gpu_run_options =
