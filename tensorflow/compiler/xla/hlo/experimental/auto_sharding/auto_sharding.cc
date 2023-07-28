@@ -2101,6 +2101,8 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
     if (instruction_execution_counts.contains(ins)) {
       ScaleCostsWithExecutionCounts(strategies.get(),
                                     instruction_execution_counts.at(ins));
+    } else {
+      VLOG(5) << "No execution count available for " << ins->name();
     }
     XLA_VLOG_LINES(2, absl::StrCat("strategies:\n", strategies->ToString()));
 
@@ -3739,10 +3741,6 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
   solver_option.allow_replicated_strategy_for_dot_and_conv =
       option_.allow_replicated_strategy_for_dot_and_conv;
 
-  absl::flat_hash_map<const HloInstruction*, int64_t>
-      instruction_execution_counts = spmd::ComputeInstructionExecutionCounts(
-          module, option_.loop_iteration_count_estimate);
-
   // Remove CustomCalls with custom_call_target="Sharding" and move their
   // shardings to their input ops.
   absl::flat_hash_map<const HloInstruction*, std::vector<int64_t>>
@@ -3813,6 +3811,10 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
   XLA_VLOG_LINES(10, spmd::PrintLivenessSet(liveness_set));
   const HloInstructionSequence& sequence =
       hlo_live_range->flattened_instruction_sequence();
+
+  absl::flat_hash_map<const HloInstruction*, int64_t>
+      instruction_execution_counts = spmd::ComputeInstructionExecutionCounts(
+          module, option_.loop_iteration_count_estimate);
 
   // ----- Analyze the batch dim -----
   spmd::InstructionBatchDimMap batch_dim_map;
