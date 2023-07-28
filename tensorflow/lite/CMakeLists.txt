@@ -158,8 +158,10 @@ find_package(ml_dtypes REQUIRED)
 find_package(ruy REQUIRED)
 # Download necessary dependencies.
 # Download pthreadpool source package if it doesn't exist.
-if(NOT DEFINED PTHREADPOOL_SOURCE_DIR)
-    message(STATUS "Downloading pthreadpool to ${CMAKE_BINARY_DIR}/pthreadpool-source (define PTHREADPOOL_SOURCE_DIR to avoid it)")
+if(SYSTEM_PTHREADPOOL)
+  find_library(PTHREADPOOL_LIB pthreadpool REQUIRED)
+elseif(NOT DEFINED PTHREADPOOL_SOURCE_DIR)
+    message(STATUS "Downloading pthreadpool to ${CMAKE_BINARY_DIR}/pthreadpool-source (define SYSTEM_PTHREADPOOL or PTHREADPOOL_SOURCE_DIR to avoid it)")
     configure_file(cmake/DownloadPThreadPool.cmake "${CMAKE_BINARY_DIR}/pthreadpool-download/CMakeLists.txt")
     execute_process(COMMAND "${CMAKE_COMMAND}" -G "${CMAKE_GENERATOR}" .
       WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/pthreadpool-download")
@@ -168,7 +170,7 @@ if(NOT DEFINED PTHREADPOOL_SOURCE_DIR)
     set(PTHREADPOOL_SOURCE_DIR "${CMAKE_BINARY_DIR}/pthreadpool-source" CACHE STRING "pthreadpool source directory")
 endif()
 # Configure pthreadpool
-if(NOT TARGET pthreadpool)
+if(NOT SYSTEM_PTHREADPOOL AND NOT TARGET pthreadpool)
   set(PTHREADPOOL_BUILD_TESTS OFF CACHE BOOL "")
   set(PTHREADPOOL_BUILD_BENCHMARKS OFF CACHE BOOL "")
   set(PTHREADPOOL_ALLOW_DEPRECATED_API OFF CACHE BOOL "")
