@@ -1550,42 +1550,6 @@ Status AlgebraicSimplifierVisitor::HandleCopy(HloInstruction* copy) {
         }
       }
     }
-
-    // Convert copy(elementwise(copy(x), broadcast(y))) ->
-    // elementwise(x,copy(broadcast(y))
-    if (copy->operand(0)->IsElementwiseBinary() &&
-        // Compare needs direction too, hence skipping.
-        copy->operand(0)->opcode() != HloOpcode::kCompare) {
-      auto ew_binary = copy->mutable_operand(0);
-      auto computation = copy->parent();
-      HloInstruction* inner_op = nullptr;
-      HloInstruction* broadcast_input = nullptr;
-      HloInstruction* broadcast = nullptr;
-      HloInstruction* inner_copy = nullptr;
-      if ((Match(ew_binary->mutable_operand(0),
-                 m::Copy(&inner_copy, m::Op(&inner_op))) &&
-           Match(ew_binary->mutable_operand(1),
-                 m::Broadcast(&broadcast, m::Op(&broadcast_input)))) ||
-          (Match(ew_binary->mutable_operand(1),
-                 m::Copy(&inner_copy, m::Op(&inner_op))) &&
-           Match(ew_binary->mutable_operand(0),
-                 m::Broadcast(&broadcast, m::Op(&broadcast_input))))) {
-        if (Shape::Equal().IgnoreMemorySpaceInLayout()(
-                copy->shape(), inner_copy->operand(0)->shape())) {
-          HloInstruction* new_broadcast =
-              computation->AddInstruction(HloInstruction::CreateBroadcast(
-                  broadcast->shape(), broadcast_input,
-                  broadcast->dimensions()));
-          HloInstruction* broadcast_copy =
-              computation->AddInstruction(HloInstruction::CreateUnary(
-                  inner_op->shape(), HloOpcode::kCopy, new_broadcast));
-          HloInstruction* new_ew_binary = computation->AddInstruction(
-              HloInstruction::CreateBinary(copy->shape(), ew_binary->opcode(),
-                                           inner_op, broadcast_copy));
-          return ReplaceInstruction(copy, new_ew_binary);
-        }
-      }
-    }
   }
 
   return OkStatus();
