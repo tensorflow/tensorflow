@@ -48,7 +48,9 @@ else
 	rm -f $TF_PKG_LOC/tensorflow*.whl
 fi
 
-yes "" | ROCM_PATH=$ROCM_INSTALL_DIR TF_NEED_ROCM=1 PYTHON_BIN_PATH=/usr/bin/python3 ./configure
+PYTHON_VERSION=`python3 -c "import sys;print(f'{sys.version_info.major}.{sys.version_info.minor}')"`
+export TF_PYTHON_VERSION=$PYTHON_VERSION
+yes "" | TF_NEED_CLANG=0 ROCM_PATH=$ROCM_INSTALL_DIR TF_NEED_ROCM=1 PYTHON_BIN_PATH=/usr/bin/python3 ./configure
 # Explicitly define resource constraints on bazel to avoid overload on rocm-ci
 if [[ -n $restriction ]]; then
     RESOURCE_OPTION="--local_ram_resources=60000 --local_cpu_resources=35 --jobs=70"

@@ -35,6 +35,8 @@ fi
 # Run configure.
 export PYTHON_BIN_PATH=`which python3`
 
+PYTHON_VERSION=`python3 -c "import sys;print(f'{sys.version_info.major}.{sys.version_info.minor}')"`
+export TF_PYTHON_VERSION=$PYTHON_VERSION
 export TF_NEED_ROCM=1
 export TF_NEED_CLANG=0
 export ROCM_PATH=$ROCM_INSTALL_DIR
@@ -51,6 +53,7 @@ bazel test \
       --test_env=TF_GPU_COUNT=$TF_GPU_COUNT \
       --test_env=TF_TESTS_PER_GPU=$TF_TESTS_PER_GPU \
       --test_env=HSA_TOOLS_LIB=libroctracer64.so \
+      --test_env=TF_PYTHON_VERSION=$PYTHON_VERSION \
       --test_timeout 920,2400,7200,9600 \
       --build_tests_only \
       --test_output=errors \

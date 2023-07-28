@@ -97,10 +97,6 @@ def _rocm_version(rocm_install_path):
     version_numbers = version_string.split(".")
   return str(version_numbers[0] + "." + version_numbers[1] + "." + version_numbers[2].split("-")[0])
 
-# Append the ROCM version to the version string
-if project_name.endswith('_rocm'):
-  _VERSION = _VERSION + "." + str(_rocm_version(_get_rocm_install_path()).replace('.', ''))
-
 
 # All versions of TF need these packages. We indicate the widest possible range
 # of package releases possible to be as up-to-date as possible as well as to
@@ -192,6 +188,10 @@ if collaborator_build:
       standard_or_nightly('tensorflow-macos', 'tf-nightly-macos') + '==' +
       _VERSION + ';platform_system=="Darwin" and platform_machine=="arm64"',
   ]
+
+# Append the ROCM version to the version string
+if project_name.endswith('_rocm'):
+  _VERSION = _VERSION + "." + str(_rocm_version(_get_rocm_install_path()).replace('.', ''))
 
 # Set up extra packages, which are optional sets of other Python package deps.
 # E.g. "pip install tensorflow[and-cuda]" below installs the normal TF deps

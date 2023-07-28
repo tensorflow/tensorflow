@@ -126,6 +126,8 @@ RUN /install/install_golang.sh
 COPY install/.bazelrc /etc/bazel.bazelrc
 # Configure the build for our ROCm configuration.
 ENV TF_NEED_ROCM 1
+# TF_PYTHON_VERSION is required now
+ENV TF_PYTHON_VERSION 3.9
 
 # This is a temporary workaround to fix Out-Of-Memory errors we are running into with XLA perf tests
 # By default, HIP runtime "hides" 256MB from the TF Runtime, but with recent changes (update to ROCm2.3, dynamic loading of roc* libs, et al)

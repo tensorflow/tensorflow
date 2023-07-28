@@ -32,6 +32,8 @@ fi
 
 # Run configure.
 export PYTHON_BIN_PATH=`which python3`
+PYTHON_VERSION=`python3 -c "import sys;print(f'{sys.version_info.major}.{sys.version_info.minor}')"`
+export TF_PYTHON_VERSION=$PYTHON_VERSION
 
 export TF_NEED_ROCM=1
 export TF_NEED_CLANG=0
@@ -53,6 +55,7 @@ bazel test \
       --test_size_filters=small,medium,large \
       --cache_test_results=no \
       --test_env=TF_PER_DEVICE_MEMORY_LIMIT_MB=2048 \
+      --test_env=TF_PYTHON_VERSION=$PYTHON_VERSION \
       -- \
 //tensorflow/core/common_runtime/gpu:gpu_device_unified_memory_test_2gpu \
 //tensorflow/core/nccl:nccl_manager_test_2gpu \

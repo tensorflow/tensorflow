@@ -25,6 +25,8 @@ echo ""
 
 # Run configure.
 export PYTHON_BIN_PATH=`which python3`
+PYTHON_VERSION=`python3 -c "import sys;print(f'{sys.version_info.major}.{sys.version_info.minor}')"`
+export TF_PYTHON_VERSION=$PYTHON_VERSION
 
 export TF_NEED_ROCM=0
 export TF_NEED_CLANG=0
@@ -44,6 +46,7 @@ bazel test \
       --test_output=errors \
       --test_sharding_strategy=disabled \
       --test_size_filters=small,medium \
+      --test_env=TF_PYTHON_VERSION=$PYTHON_VERSION \
       -- \
       //tensorflow/... \
       -//tensorflow/python/integration_testing/... \
