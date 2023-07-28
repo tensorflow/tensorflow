@@ -221,8 +221,8 @@ Future<Status> PjRtArray::CopyToHostBuffer(
 
   PjRtBuffer* pjrt_buffer = pjrt_buffers_.front().get();
   absl::Span<const int64_t> dims;
-  StatusOr<xla::Shape> dynamic_shape;
-  if (pjrt_buffer->on_device_shape().is_static()) {
+  StatusOr<std::vector<int64_t>> logical_dims;
+  if (!pjrt_buffer->has_dynamic_dimensions()) {
     dims = shape_.dims();
   } else {
     // TODO(b/182461453): This is a blocking call. If we further implemented
@@ -230,11 +230,11 @@ Future<Status> PjRtArray::CopyToHostBuffer(
     // need this static approach.
     // TODO(hyeontaek): Clean up this dynamic shape access once we formalize
     // dynamic shape support in IFRT.
-    dynamic_shape = pjrt_buffer->logical_on_device_shape();
-    if (!dynamic_shape.ok()) {
-      return Future<Status>(std::move(dynamic_shape).status());
+    logical_dims = pjrt_buffer->logical_dimensions();
+    if (!logical_dims.ok()) {
+      return Future<Status>(std::move(logical_dims).status());
     }
-    dims = dynamic_shape->dimensions();
+    dims = *logical_dims;
   }
 
   std::unique_ptr<xla::MutableBorrowingLiteral> literal;
