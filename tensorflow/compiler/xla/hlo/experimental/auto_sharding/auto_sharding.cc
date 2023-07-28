@@ -3989,10 +3989,6 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
 
   // ----- Canonicalize layouts based on LayoutCanonicalizationCallback. -----
   TF_RETURN_IF_ERROR(CanonicalizeLayouts(module));
-  XLA_VLOG_LINES(7, absl::StrCat("After auto sharding for mesh ",
-                                 spmd::ToString(option_.device_mesh_shape),
-                                 ":\n", module->ToString()));
-  DumpHloModuleIfEnabled(*module, "after_auto_spmd_sharding");
 
   return module_is_changed ? AutoShardingResult::kModuleChangedShardingPerformed
                            : AutoShardingResult::kModuleUnchanged;
