@@ -87,19 +87,23 @@ std::optional<std::vector<int64_t>> ByteStridesOrDefaultForShapeInt64(
     ifrt::Array* ifrt_array, std::optional<Shape>& scratch) {
   auto* pjrt_buffer = IfrtHelpers::pjrt_buffer(ifrt_array);
 
-  if (pjrt_buffer->on_device_shape().is_static()) {
-    return &pjrt_buffer->on_device_shape();
-  }
-  // Python buffer protocol references shape data by pointer, therefore we must
-  // store a valid copy of the shape.
   if (!scratch) {
-    Shape dynamic_shape;
-    {
-      py::gil_scoped_release gil_release;
-      TF_ASSIGN_OR_RETURN(dynamic_shape,
-                          pjrt_buffer->logical_on_device_shape());
+    absl::Span<const int64_t> dims;
+    std::optional<std::vector<int64_t>> logical_dims_storage;
+    if (pjrt_buffer->has_dynamic_dimensions()) {
+      {
+        py::gil_scoped_release gil_release;
+        TF_ASSIGN_OR_RETURN(std::vector<int64_t> logical_dims,
+                            pjrt_buffer->logical_dimensions());
+        logical_dims_storage.emplace(std::move(logical_dims));
+      }
+      dims = *logical_dims_storage;
+    } else {
+      dims = pjrt_buffer->dimensions();
     }
-    scratch = dynamic_shape;
+    Shape shape = ShapeUtil::MakeShape(pjrt_buffer->element_type(), dims);
+    *shape.mutable_layout() = pjrt_buffer->layout();
+    scratch = std::move(shape);
   }
   return &scratch.value();
 }
