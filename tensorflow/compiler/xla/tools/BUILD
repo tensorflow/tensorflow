@@ -284,7 +284,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:call_graph",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
