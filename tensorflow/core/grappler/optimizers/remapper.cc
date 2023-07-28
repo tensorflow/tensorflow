@@ -2909,7 +2909,7 @@ void CopyMatMulAttributes(const NodeDef& matmul, NodeDef* fused_matmul,
     auto& activation_attr = activation->attr();
     (*attr)["leakyrelu_alpha"] = activation_attr.at("alpha");
   }
-  if (IsMKLEnabled()) {
+  if (IsMKLEnabled() && src_attr.find("_input_shapes") != src_attr.end()) {
     (*attr)["_input_shapes"] = src_attr.at("_input_shapes");
   }
 }
@@ -2924,7 +2924,7 @@ void CopyBatchMatMulAttributes(const NodeDef& batchmatmul,
   (*attr)["T"] = src_attr.at("T");
   (*attr)["adj_x"] = src_attr.at("adj_x");
   (*attr)["adj_y"] = src_attr.at("adj_y");
-  if (IsMKLEnabled()) {
+  if (IsMKLEnabled() && src_attr.find("_input_shapes") != src_attr.end()) {
     (*attr)["_input_shapes"] = src_attr.at("_input_shapes");
   }
 }
