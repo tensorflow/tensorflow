@@ -15,17 +15,33 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/openxla/vm.h"
 
+#include <string>
 #include <vector>
+
+#include "absl/strings/str_format.h"
 
 namespace xla::gpu::vm {
 
-using iree::StatusOr;
+//===----------------------------------------------------------------------===//
+// Trace annotations derived from HLO operations
+//===----------------------------------------------------------------------===//
+
+std::string ToScopedAnnotationName(const Trace& trace) {
+  return absl::StrFormat("Thunk:#hlo_op=%s#", trace.hlo_op);
+}
+
+iree::StatusOr<iree::vm::ref<vm::Trace>> TraceAPI::TraceCreate(
+    iree_string_view_t trace) {
+  auto ref = iree::vm::make_ref<Trace>();
+  ref->hlo_op = std::string(trace.data, trace.size);
+  return ref;
+}
 
 //===----------------------------------------------------------------------===//
 // Helper functions to work with VM lists
 //===----------------------------------------------------------------------===//
 
-StatusOr<std::vector<int64_t>> GetI64Vector(const iree_vm_list_t* list) {
+iree::StatusOr<std::vector<int64_t>> GetI64Vector(const iree_vm_list_t* list) {
   iree_host_size_t size = iree_vm_list_size(list);
   std::vector<int64_t> values(size);
   for (iree_host_size_t i = 0; i < size; ++i) {
@@ -44,3 +60,4 @@ StatusOr<std::vector<int64_t>> GetI64Vector(const iree_vm_list_t* list) {
 //===----------------------------------------------------------------------===//
 
 IREE_VM_DEFINE_TYPE_ADAPTERS(execution_context, xla::gpu::vm::ExecutionContext);
+IREE_VM_DEFINE_TYPE_ADAPTERS(trace, xla::gpu::vm::Trace);

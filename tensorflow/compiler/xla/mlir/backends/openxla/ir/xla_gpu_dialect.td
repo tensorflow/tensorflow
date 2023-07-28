@@ -65,5 +65,8 @@ def DotPrecisionType : XLA_GPU_Type<"DotPrecision", "dot_precision"> {
   let summary = "Precision for dot operation";
 }
 
+def TraceType : XLA_GPU_Type<"Trace", "trace"> {
+  let summary = "XLA:GPU trace annotation";
+}
 
 #endif // XLA_GPU_DIALECT

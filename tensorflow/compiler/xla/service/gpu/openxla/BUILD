@@ -94,6 +94,7 @@ config_setting(
 #         "//tensorflow/compiler/xla:xla_data_proto_cc",
 #         "//tensorflow/compiler/xla/service:executable",
 #         "//tensorflow/compiler/xla/service/gpu:matmul_utils",
+#         "//tensorflow/tsl/profiler/lib:scoped_annotation",
 #     ] + if_openxla([
 #         ":hal",
 #         ":vm",
@@ -141,7 +142,7 @@ config_setting(
 #     srcs = if_openxla(["vm.cc"]),
 #     hdrs = if_openxla(["vm.h"]),
 #     compatible_with = [],
-#     deps = if_openxla([
+#     deps = ["@com_google_absl//absl/strings:str_format"] + if_openxla([
 #         "//third_party/iree/runtime/src/iree/vm",
 #         "//third_party/iree/runtime/src/iree/vm:cc",
 #     ]),

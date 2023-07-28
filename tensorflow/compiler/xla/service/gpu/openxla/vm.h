@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_OPENXLA_VM_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_OPENXLA_VM_H_
 
+#include <string>
 #include <vector>
 
 #include "third_party/iree/runtime/src/iree/vm/api.h"  // IWYU pragma: keep
@@ -44,6 +45,22 @@ struct ExecutionContext : public iree::vm::RefObject<ExecutionContext> {
 };
 
 //===----------------------------------------------------------------------===//
+// Trace annotations derived from HLO operations
+//===----------------------------------------------------------------------===//
+
+struct Trace : public iree::vm::RefObject<Trace> {
+  std::string hlo_op;
+};
+
+std::string ToScopedAnnotationName(const Trace& trace);
+
+struct TraceAPI {
+  // Creates `xla_gpu.trace` value.
+  iree::StatusOr<iree::vm::ref<vm::Trace>> TraceCreate(
+      iree_string_view_t trace);
+};
+
+//===----------------------------------------------------------------------===//
 // Helper functions to work with VM lists
 //===----------------------------------------------------------------------===//
 
@@ -58,5 +75,6 @@ iree::StatusOr<std::vector<int64_t>> GetI64Vector(const iree_vm_list_t* list);
 
 IREE_VM_DECLARE_TYPE_ADAPTERS(execution_context,
                               xla::gpu::vm::ExecutionContext);
+IREE_VM_DECLARE_TYPE_ADAPTERS(trace, xla::gpu::vm::Trace);
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_OPENXLA_VM_H_

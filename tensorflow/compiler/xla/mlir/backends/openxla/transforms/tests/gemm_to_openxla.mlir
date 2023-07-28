@@ -2,6 +2,8 @@
 // RUN: xla-openxla-opt %s --xla-gpu-to-openxla --split-input-file             \
 // RUN:   | FileCheck %s
 
+#loc = loc("custom-call")
+
 func.func @gemm(
     %arg0: memref<128xi8>, %arg1: memref<64xi8>,
     %arg2: memref<32xi8> {lmhlo.output_index = dense<> : tensor<0xi64>}
@@ -18,7 +20,7 @@ func.func @gemm(
     dot_dimension_numbers = #mhlo.dot<lhs_contracting_dimensions = [0],
                                       rhs_contracting_dimensions = [0]>,
     precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
-  } : (memref<4x8xf32>, memref<8x2xf32>, memref<4x2xf32>) -> ()
+  } : (memref<4x8xf32>, memref<8x2xf32>, memref<4x2xf32>) -> () loc(#loc)
 
   return
 }
@@ -35,10 +37,13 @@ func.func @gemm(
 // CHECK:   %[[DIMS:.*]] = call @xla_gpu.dot_dimension_numbers.create
 // CHECK:   %[[PRECISION:.*]] = call @xla_gpu.dot_precision.create
 // CHECK:   %[[CONFIG:.*]] = call @xla_gpu.dot_config.create
+// CHECK:   %[[HLO:.*]] = iree_input.byte_buffer.constant {{.*}} = "custom-call"
+// CHECK:   %[[TRACE:.*]] = call @xla_gpu.trace.create(%[[HLO]])
 // CHECK:   %[[LHS_BUF:.*]] = iree_input.tensor.export %[[LHS]]
 // CHECK:   %[[RHS_BUF:.*]] = iree_input.tensor.export %[[RHS]]
 // CHECK:   %[[OUT_BUF:.*]] = iree_input.tensor.export %[[OUT]]
 // CHECK:   call @xla_gpu.gemm.dispatch(
-// CHECK:     %[[CTX]], %[[LHS_BUF]], %[[RHS_BUF]], %[[OUT_BUF]], %[[CONFIG]]
+// CHECK:     %[[CTX]], %[[LHS_BUF]], %[[RHS_BUF]], %[[OUT_BUF]],
+// CHECK:     %[[CONFIG]], %[[TRACE]]
 // CHECK:   )
 // CHECK: }

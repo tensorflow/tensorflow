@@ -37,6 +37,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/backends/openxla/ir/xla_gpu_dialect.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
+#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/location_exporter.h"
 
 namespace xla::gpu {
 
@@ -66,6 +67,9 @@ class XlaGpuApi {
 
   // Imports `@xla_gpu.gemm.dispatch` into the module.
   func::FuncOp getDispatchGemm(OpBuilder &b, ModuleOp module);
+
+  // Imports `@xla_gpu.trace.create` into the module.
+  func::FuncOp getCreateTrace(OpBuilder &b, ModuleOp module);
 
  private:
   SymbolTable &symTable(ModuleOp module);
@@ -114,10 +118,21 @@ func::FuncOp XlaGpuApi::getCreateDotConfig(OpBuilder &b, ModuleOp module) {
 func::FuncOp XlaGpuApi::getDispatchGemm(OpBuilder &b, ModuleOp module) {
   auto execution_context = b.getType<ExecutionContextType>();
   auto buffer_view = b.getType<IREE::Input::BufferViewType>();
-  SmallVector<Type> args = {execution_context, buffer_view, buffer_view,
-                            buffer_view, b.getType<DotConfigType>()};
+  SmallVector<Type> args = {execution_context,
+                            buffer_view,  // lhs
+                            buffer_view,  // rhs
+                            buffer_view,  // out
+                            b.getType<DotConfigType>(),
+                            b.getType<TraceType>()};
   return addDecl(b, module, "xla_gpu.gemm.dispatch",
                  FunctionType::get(b.getContext(), args, /*rets=*/TypeRange()));
+}
+
+func::FuncOp XlaGpuApi::getCreateTrace(OpBuilder &b, ModuleOp module) {
+  SmallVector<Type> args = {b.getType<IREE::Input::ByteBufferType>()};
+  SmallVector<Type> rets = {b.getType<TraceType>()};
+  return addDecl(b, module, "xla_gpu.trace.create",
+                 FunctionType::get(b.getContext(), args, rets));
 }
 
 SymbolTable &XlaGpuApi::symTable(ModuleOp module) {
@@ -221,6 +236,22 @@ TypedValue<DotConfigType> getDotConfig(XlaGpuApi &api, ImplicitLocOpBuilder &b,
   return call.getResult(0).cast<TypedValue<DotConfigType>>();
 }
 
+TypedValue<TraceType> getTrace(XlaGpuApi &api, ImplicitLocOpBuilder &b,
+                               ModuleOp module, lmhlo_gpu::GEMMOp op) {
+  // Get original HLO operation name from the location.
+  Value hlo_op = b.create<IREE::Input::ByteBufferConstantOp>(
+      b.getType<IREE::Input::ByteBufferType>(),
+      /*name=*/b.getStringAttr("hlo_op"),
+      /*value=*/mhlo::GetDebugNameFromLocation(op.getLoc()),
+      /*alignment=*/nullptr, /*mime_type=*/nullptr);
+
+  auto api_func = api.getCreateTrace(b, module);
+  auto call = b.create<func::CallOp>(
+      api_func.getSymName(), api_func.getResultTypes(), ValueRange(hlo_op));
+
+  return call.getResult(0).cast<TypedValue<TraceType>>();
+}
+
 TypedValue<ExecutionContextType> getExecutionContext(Operation *op) {
   auto func = op->getParentOfType<func::FuncOp>();
   return func.getArguments().front().cast<TypedValue<ExecutionContextType>>();
@@ -243,6 +274,7 @@ struct ConvertGemmOp : public OpConversionPattern<lmhlo_gpu::GEMMOp> {
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
 
     auto dot_config = getDotConfig(*api, b, module, op);
+    auto trace = getTrace(*api, b, module, op);
 
     // Export arguments to buffer views.
     auto lhs = state->remapped[block][op.getA()];
@@ -263,6 +295,7 @@ struct ConvertGemmOp : public OpConversionPattern<lmhlo_gpu::GEMMOp> {
       args.push_back(export_op.getResult());
     }
     args.push_back(dot_config);
+    args.push_back(trace);
 
     // TODO(ezhulenev): Should we import buffer view back and update remapping?
     auto api_func = api->getDispatchGemm(b, module);

@@ -67,6 +67,8 @@ Status DispatchGemm(const vm::ExecutionContext& ctx,
 // XLA:GPU gemm custom module API
 //===-----------------------------------------------------------------------===/
 
+namespace vm {
+
 class GemmAPI {
  public:
   explicit GemmAPI(iree_hal_allocator_t* device_allocator);
@@ -89,16 +91,18 @@ class GemmAPI {
       iree::vm::ref<vm::DotPrecision> dot_precision);
 
   // Dispatches gemm operation with given buffers and config.
-  iree::Status GemmDispatch(iree::vm::ref<vm::ExecutionContext> ctx,
+  iree::Status GemmDispatch(iree::vm::ref<ExecutionContext> ctx,
                             iree::vm::ref<iree_hal_buffer_view_t> lhs,
                             iree::vm::ref<iree_hal_buffer_view_t> rhs,
                             iree::vm::ref<iree_hal_buffer_view_t> out,
-                            iree::vm::ref<vm::DotConfig> config);
+                            iree::vm::ref<vm::DotConfig> config,
+                            iree::vm::ref<Trace> trace);
 
  private:
   iree_hal_allocator_t* device_allocator_;
 };
 
+}  // namespace vm
 }  // namespace xla::gpu
 
 //===----------------------------------------------------------------------===//

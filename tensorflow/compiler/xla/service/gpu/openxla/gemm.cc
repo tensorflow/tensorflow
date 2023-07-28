@@ -20,10 +20,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/openxla/hal.h"
+#include "tensorflow/compiler/xla/service/gpu/openxla/vm.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/tsl/profiler/lib/scoped_annotation.h"
 
 namespace xla::gpu {
+
+using tsl::profiler::ScopedAnnotation;
 
 //===-----------------------------------------------------------------------===/
 // XLA:GPU gemm API
@@ -71,6 +75,8 @@ Status DispatchGemm(const vm::ExecutionContext& ctx,
 //===-----------------------------------------------------------------------===/
 // XLA:GPU gemm custom module API
 //===-----------------------------------------------------------------------===/
+
+namespace vm {
 
 // TODO(ezhulenev): We need to find a way to pass original Status back to the
 // caller preserving the location and stack frame. Can we use some diagnostic
@@ -128,14 +134,18 @@ iree::StatusOr<iree::vm::ref<vm::DotConfig>> GemmAPI::DotConfigCreate(
   return ref;
 }
 
-iree::Status GemmAPI::GemmDispatch(iree::vm::ref<vm::ExecutionContext> ctx,
+iree::Status GemmAPI::GemmDispatch(iree::vm::ref<ExecutionContext> ctx,
                                    iree::vm::ref<iree_hal_buffer_view_t> lhs,
                                    iree::vm::ref<iree_hal_buffer_view_t> rhs,
                                    iree::vm::ref<iree_hal_buffer_view_t> out,
-                                   iree::vm::ref<vm::DotConfig> config) {
+                                   iree::vm::ref<vm::DotConfig> config,
+                                   iree::vm::ref<Trace> trace) {
+  ScopedAnnotation annotation([&] { return ToScopedAnnotationName(*trace); });
   return FromStatus(DispatchGemm(*ctx, device_allocator_, lhs.get(), rhs.get(),
                                  out.get(), *config));
 }
+
+}  // namespace vm
 }  // namespace xla::gpu
 
 //===----------------------------------------------------------------------===//

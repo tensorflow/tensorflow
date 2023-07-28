@@ -32,7 +32,10 @@ namespace xla::gpu {
 // XLA:GPU custom module state
 //===-----------------------------------------------------------------------===/
 
-class XlaGpuModuleState : public GemmAPI {
+using vm::GemmAPI;
+using vm::TraceAPI;
+
+class XlaGpuModuleState : public GemmAPI, public TraceAPI {
  public:
   explicit XlaGpuModuleState(iree_hal_allocator_t* device_allocator)
       : GemmAPI(device_allocator) {}
@@ -77,6 +80,9 @@ static const iree::vm::NativeFunction<XlaGpuModuleState> kXlaGpuFunctions[] = {
     MakeApiFunction("dot_precision.create", &GemmAPI::DotPrecisionCreate),
     MakeApiFunction("dot_config.create", &GemmAPI::DotConfigCreate),
     MakeApiFunction("gemm.dispatch", &GemmAPI::GemmDispatch),
+
+    // XLA:GPU tracing APIs
+    MakeApiFunction("trace.create", &TraceAPI::TraceCreate),
 };
 
 class XlaGpuModule : public iree::vm::NativeModule<XlaGpuModuleState> {
@@ -154,6 +160,10 @@ iree_status_t RegisterXlaGpuTypes(iree_vm_instance_t* instance) {
       instance, "xla_gpu.dot_precision", &dot_precision_registration));
   IREE_RETURN_IF_ERROR(RegisterType<vm::DotConfig>(
       instance, "xla_gpu.dot_config", &dot_config_registration));
+
+  // XLA:GPU tracing types
+  IREE_RETURN_IF_ERROR(
+      RegisterType<vm::Trace>(instance, "xla_gpu.trace", &trace_registration));
 
   return iree_ok_status();
 }

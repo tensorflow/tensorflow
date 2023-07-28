@@ -63,6 +63,7 @@ package(
 #         "@llvm-project//mlir:Transforms",
 #         "//tensorflow/compiler/xla/mlir/backends/openxla/ir:xla_gpu",
 #         "//tensorflow/compiler/xla/mlir_hlo:lhlo_gpu",
+#         "//tensorflow/compiler/xla/translate/mhlo_to_hlo:location_exporter",
 #     ] + if_openxla(["//third_party/iree/llvm-external-projects/iree-dialects:IREEInputDialect"]),
 # )
 #
