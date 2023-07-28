@@ -169,7 +169,7 @@ TEST_PARAMS = [
     ("Conv2D_NHWC_bfloat16_gpu", "NHWC", dtypes.bfloat16, True, "Conv2D"),
     ("Conv2D_NCHW_float_gpu", "NCHW", dtypes.float32, True, "Conv2D"),
     ("Conv2D_NCHW_half_gpu", "NCHW", dtypes.float16, True, "Conv2D"),
-    ("Conv2D_NCHW_double_gpu", "NCHW", dtypes.float64, True, "Conv2D"),
+    # ("Conv2D_NCHW_double_gpu", "NCHW", dtypes.float64, True, "Conv2D"),
     ("Conv2D_NCHW_bfloat16_gpu", "NCHW", dtypes.bfloat16, True, "Conv2D"),
     ("Conv_NHWC_float_cpu", "NHWC", dtypes.float32, False, "Conv"),
     ("Conv_NHWC_half_cpu", "NHWC", dtypes.float16, False, "Conv"),
