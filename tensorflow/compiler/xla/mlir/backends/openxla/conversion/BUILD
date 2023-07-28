@@ -11,7 +11,7 @@ package(
 #
 # cc_library(
 #     name = "de_bufferization",
-#     hdrs = if_openxla(["de_bufferization.h"]),
+#     hdrs = ["de_bufferization.h"],
 #     deps = [
 #         "@llvm-project//llvm:Support",
 #         "@llvm-project//mlir:IR",
@@ -24,7 +24,7 @@ package(
 #     srcs = if_openxla(["convert_compiled_ops.cc"]),
 #     hdrs = if_openxla(["convert_compiled_ops.h"]),
 #     # TODO(ezhulenev): Override cc_library()'s internal default value of ["//buildenv/target:gce"]
-#     # because IREE targets are not compatible with `non_prod` constraint.
+#     # because IREE targets are not compatible with the `non_prod` constraint.
 #     compatible_with = [],
 #     deps = [
 #         ":de_bufferization",
@@ -45,11 +45,33 @@ package(
 # )
 #
 # cc_library(
+#     name = "convert_library_ops",
+#     srcs = if_openxla(["convert_library_ops.cc"]),
+#     hdrs = if_openxla(["convert_library_ops.h"]),
+#     # TODO(ezhulenev): Override cc_library()'s internal default value of ["//buildenv/target:gce"]
+#     # because IREE targets are not compatible with the `non_prod` constraint.
+#     compatible_with = [],
+#     deps = [
+#         ":de_bufferization",
+#         "@llvm-project//llvm:Support",
+#         "@llvm-project//mlir:ArithDialect",
+#         "@llvm-project//mlir:FuncDialect",
+#         "@llvm-project//mlir:IR",
+#         "@llvm-project//mlir:MemRefDialect",
+#         "@llvm-project//mlir:Support",
+#         "@llvm-project//mlir:TensorDialect",
+#         "@llvm-project//mlir:Transforms",
+#         "//tensorflow/compiler/xla/mlir/backends/openxla/ir:xla_gpu",
+#         "//tensorflow/compiler/xla/mlir_hlo:lhlo_gpu",
+#     ] + if_openxla(["//third_party/iree/llvm-external-projects/iree-dialects:IREEInputDialect"]),
+# )
+#
+# cc_library(
 #     name = "convert_memref_ops",
 #     srcs = if_openxla(["convert_memref_ops.cc"]),
 #     hdrs = if_openxla(["convert_memref_ops.h"]),
 #     # TODO(ezhulenev): Override cc_library()'s internal default value of ["//buildenv/target:gce"]
-#     # because IREE targets are not compatible with `non_prod` constraint.
+#     # because IREE targets are not compatible with the `non_prod` constraint.
 #     compatible_with = [],
 #     deps = [
 #         ":de_bufferization",
@@ -67,7 +89,7 @@ package(
 #     srcs = if_openxla(["convert_while_op.cc"]),
 #     hdrs = if_openxla(["convert_while_op.h"]),
 #     # TODO(ezhulenev): Override cc_library()'s internal default value of ["//buildenv/target:gce"]
-#     # because IREE targets are not compatible with `non_prod` constraint.
+#     # because IREE targets are not compatible with the `non_prod` constraint.
 #     compatible_with = [],
 #     deps = [
 #         ":de_bufferization",

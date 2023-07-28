@@ -13,25 +13,27 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_GPU_OPENXLA_PASSES
-#define XLA_GPU_OPENXLA_PASSES
+#include "tensorflow/compiler/xla/mlir/backends/openxla/ir/xla_gpu_dialect.h"
 
-include "mlir/Pass/PassBase.td"
+#include "llvm/ADT/TypeSwitch.h"  // IWYU pragma: keep
+#include "mlir/IR/DialectImplementation.h"  // from @llvm-project  // IWYU pragma: keep
 
 //===----------------------------------------------------------------------===//
-// Conversion from LMHLO dialects to OpenXLA runtime
+// XLA GPU Dialect
 //===----------------------------------------------------------------------===//
 
-def ConvertToOpenXla : Pass<"xla-gpu-to-openxla", "mlir::ModuleOp"> {
-  let summary = "Converts LMHLO operations to OpenXLA runtime";
+#include "tensorflow/compiler/xla/mlir/backends/openxla/ir/xla_gpu_dialect.cc.inc"
 
-  let constructor = "xla::gpu::createConvertToOpenXlaPass()";
+namespace xla::gpu {
 
-  let dependentDialects = [
-    "mlir::iree_compiler::IREE::Input::IREEInputDialect",
-    "mlir::scf::SCFDialect",
-    "xla::gpu::XlaGpuDialect",
-  ];
+void XlaGpuDialect::initialize() {
+  addTypes<
+#define GET_TYPEDEF_LIST
+#include "tensorflow/compiler/xla/mlir/backends/openxla/ir/xla_gpu_types.cc.inc"
+      >();
 }
 
-#endif  // XLA_GPU_OPENXLA_PASSES
+}  // namespace xla::gpu
+
+#define GET_TYPEDEF_CLASSES
+#include "tensorflow/compiler/xla/mlir/backends/openxla/ir/xla_gpu_types.cc.inc"

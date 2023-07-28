@@ -16,6 +16,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"  // from @llvm-project
+#include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/backends/openxla/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
@@ -27,6 +28,11 @@ int main(int argc, char **argv) {
   registry.insert<arith::ArithDialect, memref::MemRefDialect, func::FuncDialect,
                   mhlo::MhloDialect, bufferization::BufferizationDialect,
                   lmhlo::LmhloDialect, lmhlo_gpu::LmhloGpuDialect>();
+
+  // General MLIR passes like `-cse` and `-canonicalize`.
+  registerTransformsPasses();
+
+  // Lowering to OpenXLA runtime.
   xla::gpu::registerOpenXlaPases();
 
   return failed(MlirOptMain(argc, argv, "Xla OpenXLA Pass Driver\n", registry));

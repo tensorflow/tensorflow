@@ -30,6 +30,7 @@ config_setting(
 #         "@llvm-project//mlir:FuncDialect",
 #         "@llvm-project//mlir:MemRefDialect",
 #         "@llvm-project//mlir:MlirOptLib",
+#         "@llvm-project//mlir:Transforms",
 #         "//tensorflow/compiler/xla/mlir/backends/openxla/transforms:passes",
 #         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
 #         "//tensorflow/compiler/xla/mlir_hlo:lhlo_gpu",

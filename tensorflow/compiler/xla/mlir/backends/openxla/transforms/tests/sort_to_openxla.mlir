@@ -26,6 +26,7 @@ func.func @main(%arg0: memref<16xi8>, %arg1: memref<16xi8>,
 }
 
 // CHECK-LABEL: func @main(
+// CHECK:   %[[CTX:.*]]: !xla_gpu.execution_context,
 // CHECK:   %[[ARG0:.*]]: tensor<16xi8>, %[[ARG1:.*]]: tensor<16xi8>,
 // CHECK:   %[[ARG2:.*]]: tensor<16xi8>
 // CHECK: ) {

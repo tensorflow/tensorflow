@@ -183,7 +183,7 @@ using namespace mlir::iree_compiler;  // NOLINT
 
 // TODO(ezhulenev): Query compute capability from the XLA module and set it up
 // at the module level.
-static constexpr int kComputeCapability = 60;
+static constexpr int kComputeCapability = 35;
 
 static IREE::Input::ExecutableTargetAttr getExecutableTarget(MLIRContext* ctx) {
   Builder b(ctx);

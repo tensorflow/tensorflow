@@ -32,8 +32,10 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/backends/openxla/conversion/convert_compiled_ops.h"
+#include "tensorflow/compiler/xla/mlir/backends/openxla/conversion/convert_library_ops.h"
 #include "tensorflow/compiler/xla/mlir/backends/openxla/conversion/convert_memref_ops.h"
 #include "tensorflow/compiler/xla/mlir/backends/openxla/conversion/convert_while_op.h"
+#include "tensorflow/compiler/xla/mlir/backends/openxla/ir/xla_gpu_dialect.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 
 #define GEN_PASS_DECL_CONVERTTOOPENXLA
@@ -74,6 +76,18 @@ IREE::Input::ExecutableSourceOp createXlaExecutableSource(ModuleOp module) {
 
 //===----------------------------------------------------------------------===//
 
+// Adds `xla_gpu.execution_context` argument to all functions in the module.
+static void addExecutionContextArgument(ModuleOp module) {
+  MLIRContext *ctx = module.getContext();
+
+  Type arg = ExecutionContextType::get(ctx);
+  DictionaryAttr attrs = DictionaryAttr::get(ctx);
+
+  for (func::FuncOp func : module.getOps<func::FuncOp>()) {
+    func.insertArguments({0}, {arg}, {attrs}, {func.getLoc()});
+  }
+}
+
 class ConvertToOpenXlaPass
     : public ::impl::ConvertToOpenXlaBase<ConvertToOpenXlaPass> {
  public:
@@ -82,6 +96,9 @@ class ConvertToOpenXlaPass
 
   void runOnOperation() override {
     auto *ctx = &getContext();
+
+    // Add execution context argument to all functions in the module.
+    addExecutionContextArgument(getOperation());
 
     // Add all pre-compiled XLA fusions to the module as an executable source.
     auto executable_source = createXlaExecutableSource(getOperation());
@@ -109,6 +126,7 @@ class ConvertToOpenXlaPass
 
     RewritePatternSet patterns(&getContext());
     populateAnyFunctionOpInterfaceTypeConversionPattern(patterns, converter);
+    populateLibraryOpsConversionPatterns(patterns, converter, state);
     populateMemrefConversionPatterns(patterns, converter, state);
     populateWhileOpConversionPatterns(patterns, converter, state);
     populateCompiledOpsConversionPatterns(

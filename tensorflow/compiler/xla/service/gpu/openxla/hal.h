@@ -13,25 +13,26 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_GPU_OPENXLA_PASSES
-#define XLA_GPU_OPENXLA_PASSES
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_OPENXLA_HAL_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_OPENXLA_HAL_H_
 
-include "mlir/Pass/PassBase.td"
+#include "third_party/iree/runtime/src/iree/hal/api.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory.h"
+
+namespace xla::gpu {
 
 //===----------------------------------------------------------------------===//
-// Conversion from LMHLO dialects to OpenXLA runtime
+// Helper functions to work with IREE buffers and buffer views
 //===----------------------------------------------------------------------===//
 
-def ConvertToOpenXla : Pass<"xla-gpu-to-openxla", "mlir::ModuleOp"> {
-  let summary = "Converts LMHLO operations to OpenXLA runtime";
+Shape GetShape(const iree_hal_buffer_view_t* view);
 
-  let constructor = "xla::gpu::createConvertToOpenXlaPass()";
+StatusOr<se::DeviceMemoryBase> GetDeviceMemory(
+    iree_hal_allocator_t* device_allocator, iree_hal_buffer_t* buffer);
+StatusOr<se::DeviceMemoryBase> GetDeviceMemory(
+    iree_hal_allocator_t* device_allocator, iree_hal_buffer_view_t* view);
 
-  let dependentDialects = [
-    "mlir::iree_compiler::IREE::Input::IREEInputDialect",
-    "mlir::scf::SCFDialect",
-    "xla::gpu::XlaGpuDialect",
-  ];
-}
+}  // namespace xla::gpu
 
-#endif  // XLA_GPU_OPENXLA_PASSES
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_OPENXLA_HAL_H_

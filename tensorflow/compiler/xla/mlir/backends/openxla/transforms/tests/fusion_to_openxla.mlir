@@ -21,6 +21,7 @@ func.func @fusion(
 }
 
 // CHECK-LABEL: func @fusion(
+// CHECK:   %[[CTX:.*]]: !xla_gpu.execution_context,
 // CHECK:   %[[ARG0:.*]]: tensor<12xi8>, %[[ARG1:.*]]: tensor<12xi8>,
 // CHECK:   %[[ARG2:.*]]: tensor<12xi8> {lmhlo.output_index = {{.*}}}
 // CHECK: ) {
@@ -74,6 +75,7 @@ func.func @fusions(
 // with tied operands.
 
 // CHECK-LABEL: func @fusions(
+// CHECK:   %[[CTX:.*]]: !xla_gpu.execution_context,
 // CHECK:   %[[ARG0:.*]]: tensor<12xi8>, %[[ARG1:.*]]: tensor<12xi8>,
 // CHECK:   %[[ARG2:.*]]: tensor<12xi8> {lmhlo.output_index = {{.*}}}
 // CHECK: ) {
@@ -116,6 +118,7 @@ func.func @reinterpret_cast(
 // it when lowering fustions to dispatches.
 
 // CHECK-LABEL: func @reinterpret_cast(
+// CHECK:   %[[CTX:.*]]: !xla_gpu.execution_context,
 // CHECK:   %[[ARG0:.*]]: tensor<66560xi8> {lmhlo.output_index = {{.*}}}
 // CHECK: ) {
 // CHECK:   %[[T:.*]] = iree_input.tensor.import {{.*}} tensor<1x4x128x65xbf16>
