@@ -208,12 +208,7 @@ PrimitiveType = _xla.PrimitiveType
 
 bfloat16 = ml_dtypes.bfloat16
 float8_e4m3fn = ml_dtypes.float8_e4m3fn
-# TODO(vanderplas): remove this conditional when min ml_dtypes >= 0.2
-float8_e4m3b11fnuz = (
-    ml_dtypes.float8_e4m3b11fnuz
-    if hasattr(ml_dtypes, 'float8_e4m3b11fnuz')
-    else ml_dtypes.float8_e4m3fn
-)
+float8_e4m3b11fnuz = ml_dtypes.float8_e4m3b11fnuz
 float8_e4m3fnuz = ml_dtypes.float8_e4m3fnuz
 float8_e5m2 = ml_dtypes.float8_e5m2
 float8_e5m2fnuz = ml_dtypes.float8_e5m2fnuz
