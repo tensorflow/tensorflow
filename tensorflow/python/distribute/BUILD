@@ -2520,7 +2520,7 @@ pytype_strict_library(
         ":sharded_variable",
         ":values",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/distribute/cluster_resolver:base_cluster_resolver_py",
         "//tensorflow/python/distribute/coordinator:cluster_coordinator",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:remote",
