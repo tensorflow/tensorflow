@@ -575,6 +575,20 @@ func.func @lower_rfft_to_rfft2d(%input: tensor<10x20x30xf32>, %fft_len: tensor<1
 // CHECK:  %[[SQE:.*]] = "tf.Squeeze"(%[[RFF]]) {squeeze_dims = [-2]} : (tensor<10x20x1x30xcomplex<f64>>) -> tensor<10x20x30xcomplex<f64>>
 }
 
+// CHECK-LABEL: lower_irfft_to_irfft2d
+func.func @lower_irfft_to_irfft2d(%input: tensor<10x20x30xcomplex<f64>>, %fft_len: tensor<1xi32>) -> tensor<10x20x30xf64> {
+  %0 = "tf.IRFFT"(%input, %fft_len) : (tensor<10x20x30xcomplex<f64>>, tensor<1xi32>) -> tensor<10x20x30xf64>
+  func.return %0: tensor<10x20x30xf64>
+
+// CHECK-DAG:  %[[CST:.*]] = arith.constant dense<-2> : tensor<i32>
+// CHECK-DAG:  %[[CST0:.*]] = arith.constant dense<1> : tensor<1xi32>
+// CHECK-DAG:  %[[CST1:.*]] = arith.constant dense<0> : tensor<i32>
+// CHECK:  %[[EXP:.*]] = "tf.ExpandDims"(%arg0, %[[CST]]) : (tensor<10x20x30xcomplex<f64>>, tensor<i32>) -> tensor<10x20x1x30xcomplex<f64>>
+// CHECK:  %[[CON:.*]] = "tf.ConcatV2"(%[[CST0]], %arg1, %[[CST1]]) : (tensor<1xi32>, tensor<1xi32>, tensor<i32>) -> tensor<2xi32>
+// CHECK:  %[[RFF:.*]] = "tf.IRFFT2D"(%[[EXP]], %[[CON]]) : (tensor<10x20x1x30xcomplex<f64>>, tensor<2xi32>) -> tensor<10x20x1x30xf64>
+// CHECK:  %[[SQE:.*]] = "tf.Squeeze"(%[[RFF]]) {squeeze_dims = [-2]} : (tensor<10x20x1x30xf64>) -> tensor<10x20x30xf64>
+}
+
 // CHECK-LABEL: xla_gather_to_strided_slice
 func.func @xla_gather_to_strided_slice(%arg0 : tensor<1x9x104x768xf32>) -> tensor<*xf32> {
   %0 = "tf.Const"() {value = dense<0> : tensor<1xi32>} : () -> tensor<1xi32>

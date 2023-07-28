@@ -1499,6 +1499,103 @@ struct ConvertRfftToRfft2d : public RewritePattern {
   }
 };
 
+// TODO: Combine with ConvertRfftToRfft2d
+// Convert irfft to irfft2d.
+// The transformation pattern looks like below:
+//
+//    input     fft_len
+//     \      /
+//     irfft
+//
+//     ||
+//     \/
+//
+//   input       fft_len
+//    \            /
+//   expand_dim    concat with [1] at the front
+//      \         /
+//     irfft_2d
+//       |
+//     squeeze
+struct ConvertIrfftToIrfft2d : public RewritePattern {
+  explicit ConvertIrfftToIrfft2d(MLIRContext *context)
+      : RewritePattern(TF::IRFFTOp::getOperationName(), 1, context) {}
+
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
+    auto irfft_op = dyn_cast<TF::IRFFTOp>(op);
+
+    auto input = irfft_op.getInput();
+    auto input_type = input.getType().dyn_cast_or_null<RankedTensorType>();
+    if (!input_type) return failure();
+    auto fft_len = irfft_op.getFftLength();
+    auto fft_len_type = fft_len.getType().dyn_cast_or_null<ShapedType>();
+    if (!fft_len_type) return failure();
+
+    auto output_type =
+        irfft_op.getResult().getType().dyn_cast_or_null<RankedTensorType>();
+    if (!output_type) return failure();
+
+    // Expanded inputs.
+    // Insert at -2 location.
+    auto one_ele_type =
+        tensorflow::GetTypeFromTFTensorShape({1}, rewriter.getIntegerType(32));
+    auto minus_two = CreateConstOpWithSingleValue(&rewriter, irfft_op.getLoc(),
+                                                  one_ele_type, -2);
+
+    SmallVector<int64_t, 4> expanded_input_shape;
+    SmallVector<int64_t, 4> expanded_output_shape;
+    int expanded_rank = input_type.getRank() + 1;
+    int r = 0;
+    for (int i = 0; i < expanded_rank; ++i) {
+      if (i == expanded_rank - 2) {
+        expanded_input_shape.push_back(1);
+        expanded_output_shape.push_back(1);
+      } else {
+        expanded_input_shape.push_back(input_type.getDimSize(r));
+        expanded_output_shape.push_back(output_type.getDimSize(r));
+        r++;
+      }
+    }
+
+    auto expaned_input_type = tensorflow::GetTypeFromTFTensorShape(
+        expanded_input_shape, input_type.getElementType());
+    TF::ExpandDimsOp expanded_input = rewriter.create<TF::ExpandDimsOp>(
+        irfft_op.getLoc(), expaned_input_type, input, minus_two->getResult());
+
+    // Expanded fft_len.
+    auto one_attr = mlir::DenseIntElementsAttr::get(one_ele_type, {1});
+
+    auto one = rewriter.create<TF::ConstOp>(irfft_op.getLoc(), one_attr);
+
+    auto zero = CreateConstOpWithSingleValue(&rewriter, irfft_op.getLoc(),
+                                             one_ele_type, 0);
+
+    auto expanded_fft_len_type = tensorflow::GetTypeFromTFTensorShape(
+        {2}, fft_len_type.getElementType());
+
+    TF::ConcatV2Op expanded_fft_len = rewriter.create<TF::ConcatV2Op>(
+        irfft_op.getLoc(), expanded_fft_len_type,
+        SmallVector<Value, 2>({one.getResult(), fft_len}), zero->getResult());
+
+    // Insert the irfft_2d.
+    auto irfft2d_out_type = tensorflow::GetTypeFromTFTensorShape(
+        expanded_output_shape, output_type.getElementType());
+    TF::IRFFT2DOp irfft2d = rewriter.create<TF::IRFFT2DOp>(
+        irfft_op.getLoc(), irfft2d_out_type, expanded_input.getResult(),
+        expanded_fft_len.getResult());
+
+    // Insert the squeeze op.
+    auto squeeze_dim = rewriter.getI64ArrayAttr({-2});
+    TF::SqueezeOp squeeze = rewriter.create<TF::SqueezeOp>(
+        irfft_op.getLoc(), output_type, irfft2d.getResult(), squeeze_dim);
+
+    rewriter.replaceOp(op, squeeze.getResult());
+
+    return success();
+  }
+};
+
 // Replaces the Identity op with its input in either of the following scenarios
 // : 1) The Identity op's input and output have same types/shapes. 2) The result
 // of Identity op is only used by TF ops.
@@ -1593,7 +1690,7 @@ void PrepareTFPass::runOnOperation() {
   }
   phase_2_patterns
       .add<TF::ConvertTFEinsumOp, ConvertTFBroadcastTo, ConvertTFStridedSlice,
-           ConvertRfftToRfft2d, RemoveIdentity>(ctx);
+           ConvertRfftToRfft2d, ConvertIrfftToIrfft2d, RemoveIdentity>(ctx);
   phase_2_patterns.add<ConvertTFConv2D, ConvertTFDepthwiseConv2dNative>(
       ctx, allow_bf16_and_f16_type_legalization_);
   // Remove redundant reshape ops.

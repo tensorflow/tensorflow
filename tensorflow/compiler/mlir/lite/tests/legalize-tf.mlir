@@ -2233,6 +2233,20 @@ func.func @rfft2d_invalid(%arg0: tensor<10x20x10x30xf64>, %arg1: tensor<2xi32>) 
   // CHECK-NOT: "tfl.rfft2d"
 }
 
+func.func @irfft2d(%arg0: tensor<10x20x10x30xcomplex<f32>>, %arg1: tensor<2xi32>) -> tensor<10x20x10x30xf32> {
+  %0 = "tf.IRFFT2D"(%arg0, %arg1) : (tensor<10x20x10x30xcomplex<f32>>, tensor<2xi32>) -> tensor<10x20x10x30xf32>
+  func.return %0 : tensor<10x20x10x30xf32>
+  // CHECK-LABEL: irfft2d
+  // CHECK: "tfl.irfft2d"(%arg0, %arg1) : (tensor<10x20x10x30xcomplex<f32>>, tensor<2xi32>) -> tensor<10x20x10x30xf32>
+}
+
+func.func @irfft2d_invalid(%arg0: tensor<10x20x10x30xcomplex<f64>>, %arg1: tensor<2xi32>) -> tensor<10x20x10x30xf64> {
+  %0 = "tf.IRFFT2D"(%arg0, %arg1) : (tensor<10x20x10x30xcomplex<f64>>, tensor<2xi32>) -> tensor<10x20x10x30xf64>
+  func.return %0 : tensor<10x20x10x30xf64>
+  // CHECK-LABEL: irfft2d_invalid
+  // CHECK-NOT: "tfl.irfft2d"
+}
+
 
 func.func @conv3d_valid(%arg0: tensor<?x?x?x?x?xf32>,%arg1:  tensor<?x?x?x?x?xf32>) -> tensor<?x?x?x?x?xf32> {
   %0 = "tf.Conv3D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1, 1]} : (tensor<?x?x?x?x?xf32>, tensor<?x?x?x?x?xf32>) -> tensor<?x?x?x?x?xf32>
