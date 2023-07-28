@@ -1195,6 +1195,31 @@ TEST_F(AlgebraicSimplifierTest, ArrayOvershootTest) {
   ASSERT_FALSE(simplifier.Run(m.get()).value());
 }
 
+TEST_F(AlgebraicSimplifierTest, CopyEwCopyBroadcast) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      param0 = f32[32,32,8,32]{3,1,2,0} parameter(0)
+      param1 = f32[8,32]{1,0} parameter(1)
+      brd = f32[32,32,8,32]{3,2,1,0} broadcast(param1), dimensions={2,3}
+      cpy = f32[32,32,8,32]{3,2,1,0} copy(param0)
+      add = f32[32,32,8,32]{3,2,1,0} add(cpy, brd)
+      ROOT cpy2 = f32[32,32,8,32]{3,1,2,0} copy(add)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(true);
+  SCOPED_TRACE(m->ToString());
+  AlgebraicSimplifier simplifier(options);
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Add(m::Parameter(0),
+                                m::Copy(m::Broadcast(m::Parameter(1))))));
+  SCOPED_TRACE(m->ToString());
+}
+
 // Test that (A/B)/C is simplified to A/(B*C).
 TEST_F(AlgebraicSimplifierTest, LhsDivOfDiv) {
   auto m = CreateNewVerifiedModule();
