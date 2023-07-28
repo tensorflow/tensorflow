@@ -37,7 +37,10 @@ package_group(
 #     # compatible with `non_prod` constraint.
 #     compatible_with = [],
 #     data = select({
-#         ":with_openxla_runtime": ["//third_party/iree/lib:libIREECompiler.so"],
+#         ":with_openxla_runtime": [
+#             # IREE build is currently broken
+#             # "//third_party/iree/lib:libIREECompiler.so",
+#         ],
 #         "//conditions:default": [],
 #     }),
 #     deps = [
@@ -55,7 +58,8 @@ package_group(
 #         ":with_openxla_runtime": [
 #             "//third_party/iree/compiler/bindings/c:headers",
 #             "//third_party/iree/compiler/bindings/c:loader",
-#             "//third_party/iree/llvm-external-projects/iree-dialects:IREEInputDialect",
+#             # IREE build is currently broken
+#             # "//third_party/iree/llvm-external-projects/iree-dialects:IREEInputDialect",
 #         ],
 #         "//conditions:default": [],
 #     }),
