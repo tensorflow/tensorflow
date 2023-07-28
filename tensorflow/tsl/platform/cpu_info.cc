@@ -28,7 +28,7 @@ limitations under the License.
 #define HWCAP_CPUID (1 << 11)
 #endif
 #include <fstream>
-#endif  // defined(PLATFORM_IS_ARM64)
+#endif  // PLATFORM_IS_ARM64 && !__APPLE__ && !__OpenBSD__
 
 // SIMD extension querying is only available on x86.
 #ifdef PLATFORM_IS_X86
