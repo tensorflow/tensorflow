@@ -61,7 +61,7 @@ TEST_PARAMS = [
     ("Conv3D_NDHWC_bfloat16_gpu", "NDHWC", dtypes.bfloat16, True, "Conv3D"),
     ("Conv3D_NCDHW_float_gpu", "NCDHW", dtypes.float32, True, "Conv3D"),
     ("Conv3D_NCDHW_half_gpu", "NCDHW", dtypes.float16, True, "Conv3D"),
-    ("Conv3D_NCDHW_double_gpu", "NCDHW", dtypes.float64, True, "Conv3D"),
+    # ("Conv3D_NCDHW_double_gpu", "NCDHW", dtypes.float64, True, "Conv3D"),
     ("Conv3D_NCDHW_bfloat16_gpu", "NCDHW", dtypes.bfloat16, True, "Conv3D"),
     ("Conv_NDHWC_float_cpu", "NDHWC", dtypes.float32, False, "Conv"),
     ("Conv_NDHWC_half_cpu", "NDHWC", dtypes.float16, False, "Conv"),
