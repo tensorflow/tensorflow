@@ -568,5 +568,6 @@ tf_cc_test(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:framework",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:FuncDialect",
     ],
 )
