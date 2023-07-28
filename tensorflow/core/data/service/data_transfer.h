@@ -113,7 +113,7 @@ class DataTransferServer {
   virtual Status Start() = 0;
 
   // Return the port that this server is listening on.
-  virtual int get_port() = 0;
+  virtual int Port() const = 0;
 
   // Register a DataTransferServer factory under `name`.
   static void Register(std::string name, ServerFactoryT factory);
