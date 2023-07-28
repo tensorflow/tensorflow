@@ -101,7 +101,7 @@ source tensorflow/tools/ci_build/build_scripts/ARM_SKIP_TESTS_EXTENDED.sh
 
 # Export optional variables for running the tests
 export TF_BUILD_FLAGS="--config=mkl_aarch64_threadpool --copt=-flax-vector-conversions"
-export TF_TEST_FLAGS="${TF_BUILD_FLAGS} \
+export TF_TEST_FLAGS="${TF_BUILD_FLAGS} --flaky_test_attempts=3 \
     --test_env=TF_ENABLE_ONEDNN_OPTS=1 --test_env=TF2_BEHAVIOR=1 --define=tf_api_version=2 \
     --test_lang_filters=py --flaky_test_attempts=3 --test_size_filters=small,medium \
     --test_output=errors --verbose_failures=true --test_keep_going --notest_verbose_timeout_warnings"
