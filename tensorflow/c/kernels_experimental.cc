@@ -331,15 +331,15 @@ void TF_TemporaryVariable(TF_OpKernelContext* ctx, TF_DataType dtype,
   tmp_var->name = unique_name;
 
   Status s;
-  TF_Tensor* tmp_var_tf;
-  tmp_var_tf = tensorflow::TF_TensorFromTensor(tmp_var->val, &s);
+  std::unique_ptr<TF_Tensor, decltype(&TF_DeleteTensor)> tmp_var_tf(
+      tensorflow::TF_TensorFromTensor(tmp_var->val, &s), TF_DeleteTensor);
   OP_REQUIRES_OK(context, s);
-  allocFunc(ctx, tmp_var_tf, dtype, dims, num_dims, tf_status);
+  allocFunc(ctx, tmp_var_tf.get(), dtype, dims, num_dims, tf_status);
   s = tensorflow::StatusFromTF_Status(tf_status);
   if (!s.ok()) tmp_var->Unref();
   OP_REQUIRES_OK(context, s);
 
-  OP_REQUIRES_OK(context, TF_TensorToTensor(tmp_var_tf, &tmp_var->val));
+  OP_REQUIRES_OK(context, TF_TensorToTensor(tmp_var_tf.get(), &tmp_var->val));
   OP_REQUIRES_OK(context,
                  context->step_container()->Create(rm, unique_name, tmp_var));
   context->set_output_ref(0, &tmp_var->mu, &tmp_var->val);
@@ -349,7 +349,6 @@ void TF_TemporaryVariable(TF_OpKernelContext* ctx, TF_DataType dtype,
   }
 
   TF_SetStatus(tf_status, TF_OK, "");
-  TF_DeleteTensor(tmp_var_tf);
 }
 
 void TF_DestroyTemporaryVariable(TF_OpKernelContext* ctx, const int index,
