@@ -60,14 +60,6 @@ tsl::Status SetExecutorStructFn(void* library_handle) {  // TENSORFLOW_STATUS_OK
   TFTPU_SET_FN(executor_fn, TpuEvent_New);
   TFTPU_SET_FN(executor_fn, TpuEvent_Free);
 
-  TFTPU_SET_FN(executor_fn, TpuStatus_New);
-  TFTPU_SET_FN(executor_fn, TpuStatus_Create);
-  TFTPU_SET_FN(executor_fn, TpuStatus_Set);
-  TFTPU_SET_FN(executor_fn, TpuStatus_Free);
-  TFTPU_SET_FN(executor_fn, TpuStatus_Message);
-  TFTPU_SET_FN(executor_fn, TpuStatus_Code);
-  TFTPU_SET_FN(executor_fn, TpuStatus_Ok);
-
   TFTPU_SET_FN(executor_fn, TpuStreamExecutorConfig_Default);
   TFTPU_SET_FN(executor_fn, TpuStreamExecutorConfig_SetOrdinal);
   TFTPU_SET_FN(executor_fn, TpuStreamExecutorConfig_Free);

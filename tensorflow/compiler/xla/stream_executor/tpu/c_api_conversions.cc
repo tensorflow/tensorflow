@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_c_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
+#include "tensorflow/tsl/c/tsl_status.h"
 
 namespace ApiConverter {
 
@@ -191,9 +192,8 @@ SE_DeviceMemoryAllocator ToC(
             ->Allocate(device_ordinal, size, retry_on_failure, memory_space);
     if (!allocation.ok()) {
       auto status = allocation.status();
-      auto message = status.message();
-      stream_executor::tpu::ExecutorApiFn()->TpuStatus_SetFn(
-          se_status, status.raw_code(), message.data(), message.size());
+      TSL_SetStatus(se_status, static_cast<TSL_Code>(status.raw_code()),
+                    status.message().data());
     } else {
       auto& scoped_memory = allocation.value();
       memory->wrapped = ApiConverter::ToC(scoped_memory.Release());
@@ -206,9 +206,8 @@ SE_DeviceMemoryAllocator ToC(
     auto status = reinterpret_cast<stream_executor::DeviceMemoryAllocator*>(ctx)
                       ->Deallocate(device_ordinal, ApiConverter::FromC(*base));
     if (!status.ok()) {
-      auto message = status.message();
-      stream_executor::tpu::ExecutorApiFn()->TpuStatus_SetFn(
-          se_status, status.raw_code(), message.data(), message.size());
+      TSL_SetStatus(se_status, static_cast<TSL_Code>(status.raw_code()),
+                    status.message().data());
     }
   };
   return se_allocator;

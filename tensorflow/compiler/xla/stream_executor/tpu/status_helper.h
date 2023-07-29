@@ -16,42 +16,32 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_STATUS_HELPER_H_
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_STATUS_HELPER_H_
 
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_c_api.h"
+#include "tensorflow/tsl/c/tsl_status.h"
 #include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/protobuf/error_codes.pb.h"
 
 class StatusHelper {
  public:
-  StatusHelper()
-      : c_status(stream_executor::tpu::ExecutorApiFn()->TpuStatus_NewFn()) {}
+  StatusHelper() : c_status(TSL_NewStatus()) {}
 
-  ~StatusHelper() {
-    stream_executor::tpu::ExecutorApiFn()->TpuStatus_FreeFn(c_status);
-  }
+  ~StatusHelper() { TSL_DeleteStatus(c_status); }
 
   static tsl::Status FromC(  // TENSORFLOW_STATUS_OK
-      TF_Status* const c_status) {
-    if (stream_executor::tpu::ExecutorApiFn()->TpuStatus_OkFn(c_status)) {
+      TSL_Status* const c_status) {
+    if (TSL_GetCode(c_status) == TSL_Code::TSL_OK) {
       return ::tsl::OkStatus();
     } else {
       return tsl::Status(  // TENSORFLOW_STATUS_OK
-          absl::StatusCode(
-              stream_executor::tpu::ExecutorApiFn()->TpuStatus_CodeFn(
-                  c_status)),
-          stream_executor::tpu::ExecutorApiFn()->TpuStatus_MessageFn(c_status));
+          absl::StatusCode(TSL_GetCode(c_status)), TSL_Message(c_status));
     }
   }
 
-  bool ok() const {
-    return stream_executor::tpu::ExecutorApiFn()->TpuStatus_OkFn(c_status);
-  }
+  bool ok() const { return (TSL_GetCode(c_status) == TSL_Code::TSL_OK); }
 
   tsl::Status status() const {  // TENSORFLOW_STATUS_OK
     return FromC(c_status);
   }
 
-  TF_Status* const c_status;  // NOLINT
+  TSL_Status* const c_status;  // NOLINT
 };
 
 #endif  // TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_STATUS_HELPER_H_
