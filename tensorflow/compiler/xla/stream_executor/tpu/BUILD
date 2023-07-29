@@ -67,7 +67,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/stream_executor:device_memory",
         "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",
-        "//tensorflow/tsl/c:tsl_status",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -119,8 +118,10 @@ cc_library(
     name = "status_helper",
     hdrs = ["status_helper.h"],
     deps = [
-        "//tensorflow/tsl/c:tsl_status",
+        ":tpu_api",
+        ":tpu_executor_c_api_hdrs",
         "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
 
@@ -368,7 +369,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service:transfer_manager",
         "//tensorflow/compiler/xla/stream_executor",
-        "//tensorflow/tsl/c:tsl_status",
         "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/cleanup",
     ],

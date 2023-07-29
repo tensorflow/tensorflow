@@ -34,7 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_id.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/tsl/c/tsl_status.h"
 #include "tensorflow/tsl/platform/status.h"
 
 namespace tensorflow {
@@ -179,19 +178,20 @@ tsl::Status TpuTransferManager::ResetDevices(
 
 struct TransferFromDeviceState {
   std::atomic<int64_t> remaining_transfers;
-  TF_Status* overall_status = TSL_NewStatus();  // OK or the first error
+  TF_Status* overall_status = stream_executor::tpu::ExecutorApiFn()
+                                  ->TpuStatus_NewFn();  // OK or the first error
   std::function<void(tsl::Status)> done;
 
   void TransferFinished(TF_Status* status) {
-    if ((TSL_GetCode(status) != TSL_OK) &&
-        (TSL_GetCode(overall_status) == TSL_OK)) {
+    if (!stream_executor::tpu::ExecutorApiFn()->TpuStatus_OkFn(status) &&
+        stream_executor::tpu::ExecutorApiFn()->TpuStatus_OkFn(overall_status)) {
       std::swap(overall_status, status);
     }
-    TSL_DeleteStatus(status);
+    stream_executor::tpu::ExecutorApiFn()->TpuStatus_FreeFn(status);
 
     if (--remaining_transfers == 0) {
       done(StatusHelper::FromC(overall_status));
-      TSL_DeleteStatus(overall_status);
+      stream_executor::tpu::ExecutorApiFn()->TpuStatus_FreeFn(overall_status);
       delete this;
     }
   }

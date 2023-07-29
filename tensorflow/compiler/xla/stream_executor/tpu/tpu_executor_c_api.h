@@ -141,6 +141,15 @@ void TpuStream_TpuEnqueueOnDeviceSendRecvLocal(SE_Stream* stream,
 SE_Event* TpuEvent_New(SE_StreamExecutor* parent);
 void TpuEvent_Free(SE_Event*);
 
+TF_Status* TpuStatus_New();
+TF_Status* TpuStatus_Create(int32_t code, const char* msg);
+void TpuStatus_Set(TF_Status* status, int32_t code, const char* msg,
+                   int32_t len);
+void TpuStatus_Free(TF_Status* status);
+const char* TpuStatus_Message(TF_Status* status);
+int TpuStatus_Code(TF_Status* status);
+bool TpuStatus_Ok(TF_Status* status);
+
 SE_StreamExecutorConfig* TpuStreamExecutorConfig_Default();
 void TpuStreamExecutorConfig_SetOrdinal(SE_StreamExecutorConfig*, int ordinal);
 void TpuStreamExecutorConfig_Free(SE_StreamExecutorConfig*);
@@ -427,6 +436,14 @@ struct TfTpu_ExecutorApiFn {
 
   TFTPU_ADD_FN_IN_STRUCT(TpuEvent_New);
   TFTPU_ADD_FN_IN_STRUCT(TpuEvent_Free);
+
+  TFTPU_ADD_FN_IN_STRUCT(TpuStatus_New);
+  TFTPU_ADD_FN_IN_STRUCT(TpuStatus_Create);
+  TFTPU_ADD_FN_IN_STRUCT(TpuStatus_Set);
+  TFTPU_ADD_FN_IN_STRUCT(TpuStatus_Free);
+  TFTPU_ADD_FN_IN_STRUCT(TpuStatus_Message);
+  TFTPU_ADD_FN_IN_STRUCT(TpuStatus_Code);
+  TFTPU_ADD_FN_IN_STRUCT(TpuStatus_Ok);
 
   TFTPU_ADD_FN_IN_STRUCT(TpuStreamExecutorConfig_Default);
   TFTPU_ADD_FN_IN_STRUCT(TpuStreamExecutorConfig_SetOrdinal);

@@ -322,9 +322,8 @@ struct HostCallbackContext {
 TSL_Status* HostCallbackTrampoline(void* ctx) {
   HostCallbackContext* host_ctx = reinterpret_cast<HostCallbackContext*>(ctx);
   Status status = std::move(host_ctx->callback)();
-  TSL_Status* c_status = TSL_NewStatus();
-  TSL_SetStatus(c_status, static_cast<TSL_Code>(status.raw_code()),
-                tsl::NullTerminatedMessage(status));
+  TSL_Status* c_status = ExecutorApiFn()->TpuStatus_CreateFn(
+      status.raw_code(), tsl::NullTerminatedMessage(status));
   delete host_ctx;
   return c_status;
 }
