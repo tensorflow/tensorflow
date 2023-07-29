@@ -1567,8 +1567,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":pjrt_tensor_buffer_util",
-        "//tensorflow/c:tf_status",
-        "//tensorflow/c:tf_status_helper",
         "//tensorflow/c/experimental/next_pluggable_device:tensor_pjrt_buffer_util",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:layout_util",
@@ -1579,6 +1577,7 @@ cc_library(
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/tfrt/common:async_value_tensor",
         "//tensorflow/core/tfrt/common:create_pjrt_client_util",
+        "//tensorflow/tsl/c:tsl_status_internal",
         "//tensorflow/tsl/framework:device_id_utils",
         "@com_google_absl//absl/status",
     ],

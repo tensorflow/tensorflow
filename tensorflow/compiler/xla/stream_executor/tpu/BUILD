@@ -269,6 +269,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/tsl/c:tsl_status",
         "//tensorflow/tsl/c:tsl_status_helper",
+        "//tensorflow/tsl/c:tsl_status_internal",
         "//tensorflow/tsl/platform:casts",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
