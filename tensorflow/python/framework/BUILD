@@ -2459,8 +2459,16 @@ tf_kernel_library(
 tf_gen_op_wrapper_py(
     name = "test_ops_2",
     out = "test_ops_2.py",
+    extra_py_deps = [
+        "//tensorflow/python:pywrap_tfe",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:dispatch",
+        "//tensorflow/python/util:tf_export",
+    ],
     py_lib_rule = py_strict_library,
-    deps = [":test_ops_2_kernels"],
+    deps = [
+        ":test_ops_2_kernels",
+    ],
 )
 
 cc_library(
