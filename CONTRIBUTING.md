@@ -1,6 +1,6 @@
 # Contributing guidelines
 
-## Pull Request Checklist
+## Pull Request (PR) Checklist
 
 Before sending your pull requests, make sure you do the following:
 
@@ -15,7 +15,9 @@ Before sending your pull requests, make sure you do the following:
 
 ## How to become a contributor and submit your own code
 
-![guidelines2](https://github.com/rivalavocado/tensorflow/assets/56943827/f85a419e-968e-416b-8025-7a748fa23582)
+![guidelines1](https://github.com/rivalavocado/tensorflow/assets/56943827/3fea1abf-e5bb-4747-be72-8f6449868b84)
+
+[What is G3?](https://github.com/Xtra-Computing/G3)
 
 ### Typical Pull Request Workflow -
 
@@ -51,6 +53,7 @@ Before sending your pull requests, make sure you do the following:
 
 - Once the PR is approved, it gets `kokoro:force-run` label applied and it
   initiates CI/CD tests.
+  - CI can be considered as the first stage in producing and delivering code, and CD as the second. CI focuses on preparing code for release (build/test), whereas CD involves the actual release of code (release/deploy).
 - We can't move forward if these tests fail.
 - In such situations, we may request you to make further changes to your PR for
   the tests to pass.
@@ -105,7 +108,7 @@ looking through interesting issues. If you are not sure of where to start, then
 start by trying one of the smaller/easier issues here i.e.
 [issues with the "good first issue" label](https://github.com/tensorflow/tensorflow/labels/good%20first%20issue)
 and then take a look at the
-[issues with the "contributions welcome" label](https://github.com/tensorflow/tensorflow/labels/stat%3Acontributions%20welcome).
+[issues with the "contribution welcome" label](https://github.com/tensorflow/tensorflow/labels/stat%3Acontribution%20welcome).
 These are issues that we believe are particularly well suited for outside
 contributions, often because we probably won't get to them right now. If you
 decide to start on an issue, leave a comment so that other people know that
