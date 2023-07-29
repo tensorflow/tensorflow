@@ -14,6 +14,7 @@
 # ==============================================================================
 """Tests for tensorflow.ops.math_ops on WeakTensor."""
 
+import itertools
 from absl.testing import parameterized
 import numpy as np
 
@@ -550,6 +551,184 @@ class ScalarMulTest(test_util.TensorFlowTestCase):
           self.evaluate(x.values), [[-6, -9], [-15, -21], [0, 3]]
       )
       self.assertAllEqual(self.evaluate(x.indices), [0, 2, 5])
+
+
+allowed_var_op_input_combinations = [
+    (dtypes.uint8, 10),
+    (dtypes.uint8, "weak_i64"),
+    (dtypes.uint8, dtypes.uint8),
+    (dtypes.uint16, 10),
+    (dtypes.uint16, "weak_i64"),
+    (dtypes.uint16, dtypes.uint8),
+    (dtypes.uint16, dtypes.uint16),
+    (dtypes.uint32, 10),
+    (dtypes.uint32, "weak_i64"),
+    (dtypes.uint32, dtypes.uint8),
+    (dtypes.uint32, dtypes.uint32),
+    (dtypes.uint64, 10),
+    (dtypes.uint64, "weak_i64"),
+    (dtypes.uint64, dtypes.uint32),
+    (dtypes.uint64, dtypes.uint64),
+    (dtypes.int8, 10),
+    (dtypes.int8, "weak_i64"),
+    (dtypes.int8, dtypes.int8),
+    (dtypes.int16, 10),
+    (dtypes.int16, "weak_i64"),
+    (dtypes.int16, dtypes.uint8),
+    (dtypes.int16, dtypes.int8),
+    (dtypes.int16, dtypes.int16),
+    (dtypes.int32, 10),
+    (dtypes.int32, "weak_i64"),
+    (dtypes.int32, dtypes.uint16),
+    (dtypes.int32, dtypes.int16),
+    (dtypes.int32, dtypes.int32),
+    (dtypes.int64, 10),
+    (dtypes.int64, "weak_i64"),
+    (dtypes.int64, dtypes.uint32),
+    (dtypes.int64, dtypes.int32),
+    (dtypes.int64, dtypes.int64),
+    (dtypes.bfloat16, 10),
+    (dtypes.bfloat16, "weak_i64"),
+    (dtypes.bfloat16, 1.0),
+    (dtypes.bfloat16, "weak_f64"),
+    (dtypes.bfloat16, dtypes.int32),
+    (dtypes.bfloat16, dtypes.bfloat16),
+    (dtypes.float16, 10),
+    (dtypes.float16, "weak_i64"),
+    (dtypes.float16, 1.0),
+    (dtypes.float16, "weak_f64"),
+    (dtypes.float16, dtypes.int32),
+    (dtypes.float16, dtypes.float16),
+    (dtypes.float32, 10),
+    (dtypes.float32, "weak_i64"),
+    (dtypes.float32, 1.0),
+    (dtypes.float32, "weak_f64"),
+    (dtypes.float32, dtypes.int32),
+    (dtypes.float32, dtypes.float32),
+    (dtypes.float64, 10),
+    (dtypes.float64, "weak_i64"),
+    (dtypes.float64, 1.0),
+    (dtypes.float64, "weak_f64"),
+    (dtypes.float64, dtypes.int32),
+    (dtypes.float64, dtypes.float64),
+    (dtypes.complex64, 10),
+    (dtypes.complex64, "weak_i64"),
+    (dtypes.complex64, 1.0),
+    (dtypes.complex64, "weak_f64"),
+    (dtypes.complex64, 1.0 + 2.0j),
+    (dtypes.complex64, "weak_c128"),
+    (dtypes.complex64, dtypes.int32),
+    (dtypes.complex64, dtypes.complex64),
+    (dtypes.complex128, 10),
+    (dtypes.complex128, "weak_i64"),
+    (dtypes.complex128, 1.0),
+    (dtypes.complex128, "weak_f64"),
+    (dtypes.complex128, 1.0 + 2.0j),
+    (dtypes.complex128, "weak_c128"),
+    (dtypes.complex128, dtypes.int32),
+    (dtypes.complex128, dtypes.float64),
+    (dtypes.complex128, dtypes.complex128),
+]
+
+
+disallowed_var_op_input_combinations = [
+    (dtypes.uint8, 1.0),
+    (dtypes.uint8, "weak_f64"),
+    (dtypes.uint8, dtypes.int8),
+    (dtypes.uint8, dtypes.uint16),
+    (dtypes.uint16, 1.0),
+    (dtypes.uint16, "weak_f64"),
+    (dtypes.uint16, dtypes.int8),
+    (dtypes.uint16, dtypes.uint32),
+    (dtypes.uint32, 1.0),
+    (dtypes.uint32, "weak_f64"),
+    (dtypes.uint32, dtypes.int32),
+    (dtypes.uint32, dtypes.uint64),
+    (dtypes.uint64, 1.0),
+    (dtypes.uint64, "weak_f64"),
+    (dtypes.uint64, dtypes.int8),
+    (dtypes.uint64, dtypes.float16),
+    (dtypes.int8, 1.0),
+    (dtypes.int8, "weak_f64"),
+    (dtypes.int8, dtypes.int16),
+    (dtypes.int8, dtypes.float32),
+    (dtypes.int8, dtypes.complex64),
+    (dtypes.int16, 1.0),
+    (dtypes.int16, "weak_f64"),
+    (dtypes.int16, dtypes.int32),
+    (dtypes.int16, dtypes.float32),
+    (dtypes.int16, dtypes.complex64),
+    (dtypes.int32, 1.0),
+    (dtypes.int32, "weak_f64"),
+    (dtypes.int32, dtypes.int64),
+    (dtypes.int32, dtypes.float16),
+    (dtypes.int32, dtypes.complex64),
+    (dtypes.int64, 1.0),
+    (dtypes.int64, "weak_f64"),
+    (dtypes.int64, dtypes.uint64),
+    (dtypes.int64, dtypes.float16),
+    (dtypes.int64, dtypes.complex64),
+    (dtypes.bfloat16, 1.0 + 2.0j),
+    (dtypes.bfloat16, "weak_c128"),
+    (dtypes.bfloat16, dtypes.float16),
+    (dtypes.bfloat16, dtypes.float32),
+    (dtypes.float16, 1.0 + 2.0j),
+    (dtypes.float16, "weak_c128"),
+    (dtypes.float16, dtypes.bfloat16),
+    (dtypes.float16, dtypes.float32),
+    (dtypes.float64, 1.0 + 2.0j),
+    (dtypes.float64, "weak_c128"),
+    (dtypes.float64, dtypes.complex64),
+    (dtypes.complex64, dtypes.float64),
+    (dtypes.complex64, dtypes.complex128),
+]
+
+
+def _weak_tensor_from_str(s):
+  if s == "weak_i64":
+    return _get_weak_tensor(1, dtype=dtypes.int64)
+  elif s == "weak_f64":
+    return _get_weak_tensor(1.0, dtype=dtypes.float64)
+  elif s == "weak_c128":
+    return _get_weak_tensor(1.0 + 2.0j, dtype=dtypes.complex128)
+  else:
+    raise ValueError(f"Unsupported str: {s}")
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class VariableInplaceOpsTest(
+    parameterized.TestCase, test_util.TensorFlowTestCase):
+
+  @parameterized.parameters(
+      itertools.product(
+          allowed_var_op_input_combinations,
+          ("assign", "assign_add", "assign_sub")))
+  def testAllowedDtypes(self, v_dtype_and_delta, op):
+    v_dtype, delta = v_dtype_and_delta
+    if isinstance(delta, dtypes.DType):
+      delta = constant_op.constant(1, delta)
+    elif isinstance(delta, str):
+      delta = _weak_tensor_from_str(delta)
+
+    var = resource_variable_ops.ResourceVariable(10, dtype=v_dtype)
+    result = getattr(var, op)(delta)
+    with test_util.device(use_gpu=True):
+      self.assertEqual(result.dtype, v_dtype)
+
+  @parameterized.parameters(
+      itertools.product(
+          disallowed_var_op_input_combinations,
+          ("assign", "assign_add", "assign_sub")))
+  def testDisallowedDtypes(self, v_dtype_and_delta, op):
+    v_dtype, delta = v_dtype_and_delta
+    if isinstance(delta, dtypes.DType):
+      delta = constant_op.constant(1, delta)
+    elif isinstance(delta, str):
+      delta = _weak_tensor_from_str(delta)
+
+    var = resource_variable_ops.ResourceVariable(10, dtype=v_dtype)
+    with self.assertRaises(TypeError):
+      _ = getattr(var, op)(delta)
 
 
 @test_util.run_all_in_graph_and_eager_modes

@@ -4474,6 +4474,7 @@ py_strict_library(
         ":math_ops_gen",
         ":nn_impl",
         ":nn_ops",
+        ":resource_variable_ops",
         ":special_math_ops",
         "//tensorflow/python/framework:flexible_dtypes",
         "//tensorflow/python/framework:ops",
