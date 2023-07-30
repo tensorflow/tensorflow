@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
 
 #include "tensorflow/compiler/xla/service/cpu/onednn_rewriter.h"
@@ -56,15 +57,16 @@ class OneDnnRewriterVisitor : public DfsHloRewriteVisitor {
     auto pattern = m::Op(&dot_instr).WithOpcode(HloOpcode::kDot);
     if (!Match(instr, pattern)) return OkStatus();
 
-    // The rewrite pass runs after dot-decomposition pass. Adjust
-    // the rewrite condition when the rewrite pass is moved before
-    // dot-decomposition pass.
+    // TODO(intel-tf): The rewrite pass runs after dot-decomposition pass.
+    // Adjust the rewrite condition when the rewrite pass is moved to a
+    // different point in the pass-pipeline.
 
     // Currently, we rewrite when the data type is F32 or BF16. Note we do not
     // need to check equality of contraction dim-size of the operands. HLO
-    // verifier already does the job. We however, need to check if contraction
+    // verifier already does the job. We, however, need to check if contraction
     // is over only 1 dimension (a.k.a. K dimension in matrix-multiplication
-    // parlance). We also restrict batch dimensions of the operands mathces.
+    // parlance). We also restrict that batch dimensions of the operands
+    // matches.
     if (auto dtype = dot_instr->shape().element_type();
         !(dtype == F32 || dtype == BF16))
       return OkStatus();
@@ -74,9 +76,13 @@ class OneDnnRewriterVisitor : public DfsHloRewriteVisitor {
     const Shape& rhs_shape = dot_instr->operand(1)->shape();
     const Shape& output_shape = dot_instr->shape();
     bool should_rewrite = true;
+    // None of the operands and result should be ZeroElementArray.
+    should_rewrite &= !ShapeUtil::IsZeroElementArray(lhs_shape);
+    should_rewrite &= !ShapeUtil::IsZeroElementArray(rhs_shape);
+    should_rewrite &= !ShapeUtil::IsZeroElementArray(output_shape);
+    // OneDNN only supports 2 <= rank <= kOneDnnMaxNDims.
     should_rewrite &= (lhs_shape.rank() == rhs_shape.rank());
     should_rewrite &= (rhs_shape.rank() == output_shape.rank());
-    // OneDNN only  supports rank >=2 and <= kOneDnnMaxNDims.
     should_rewrite &=
         (lhs_shape.rank() >= 2 && lhs_shape.rank() <= kOneDnnMaxNDims);
     if (!should_rewrite) return OkStatus();
@@ -104,9 +110,9 @@ class OneDnnRewriterVisitor : public DfsHloRewriteVisitor {
             {dot_instr->mutable_operand(0), dot_instr->mutable_operand(1)},
             "__onednn$matmul"));
     // Set additional info via config, e.g., fusion info.
-    OneDnnMatMulConfig matmul_config;
+    BackendConfig backend_config;
     // No fusion is supported now, so nothing to add to the config.
-    TF_RETURN_IF_ERROR(matmul_call->set_backend_config(matmul_config));
+    TF_RETURN_IF_ERROR(matmul_call->set_backend_config(backend_config));
     TF_RETURN_IF_ERROR(ReplaceInstruction(dot_instr, matmul_call));
     return OkStatus();
   }

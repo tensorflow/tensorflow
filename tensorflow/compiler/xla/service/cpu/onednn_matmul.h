@@ -30,7 +30,7 @@ extern "C" {
 //        args[3...]: Actual Operands
 // so that it can take variable number of arguments.
 //
-// For now, we are using fix number of arguments.
+// For now, we are using a fixed number of arguments.
 extern void __xla_cpu_runtime_OneDnnMatMul(const void* run_options_ptr,
                                            void* lhs, void* rhs, void* result,
                                            void* config);
