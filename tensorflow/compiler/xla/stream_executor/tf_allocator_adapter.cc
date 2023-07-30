@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
+#include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/tsl/platform/errors.h"
 
 namespace stream_executor {
@@ -46,6 +47,10 @@ tsl::StatusOr<OwningDeviceMemory> TfAllocatorAdapter::Allocate(
     if (data == nullptr) {
       return tsl::errors::ResourceExhausted(
           "Out of memory while trying to allocate ", size, " bytes.");
+    }
+    if (tensorflow::LogMemory::IsEnabled()) {
+      tensorflow::LogMemory::RecordRawAllocation(
+          /*operation=*/"", /*step_id=*/0, size, data, wrapped_);
     }
   }
   return OwningDeviceMemory(DeviceMemoryBase(data, size), device_ordinal, this);

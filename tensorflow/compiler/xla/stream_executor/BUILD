@@ -833,6 +833,7 @@ cc_library(
         ":device_memory_allocator",
         ":platform",
         ":stream_executor_headers",
+        "//tensorflow/core:framework",
         "//tensorflow/tsl/framework:allocator",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:statusor",
