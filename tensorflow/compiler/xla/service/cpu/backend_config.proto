@@ -8,9 +8,10 @@ message BackendConfig {
   // outer-most dimension first). Used by the parallel cpu backend to partition
   // HLOs into parallel tasks.
   repeated int64 outer_dimension_partitions = 1;
+  // Configuration to be used by oneDNN matmul
+  OneDnnMatMulConfig onednn_matmul_config = 2;
 }
 
-// Configuration to be used by oneDNN matmul
 message OneDnnMatMulConfig {
   // These enum needs to be mapped to oneDNN enum for post_op algorithm.
   // TODO(intel-tf): Add kinds supported by oneDNN.

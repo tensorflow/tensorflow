@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
 
 #include "tensorflow/compiler/xla/service/cpu/onednn_matmul.h"
@@ -42,8 +43,6 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnMatMul(
       static_cast<const xla::ExecutableRunOptions*>(run_options_ptr);
   XLA_LIGHTWEIGHT_CHECK(run_options != nullptr);
   XLA_LIGHTWEIGHT_CHECK(run_options->intra_op_thread_pool() != nullptr);
-  // TODO(inte-tf): Update the namespace scope of threadpool once the
-  // threadpool interface wrapper is moved as tsl::OneDnnThreadPool.
   tsl::OneDnnThreadPool thread_pool(
       run_options->intra_op_thread_pool()->getPool(), false);
   engine cpu_engine(engine::kind::cpu, 0);

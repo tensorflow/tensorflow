@@ -2444,9 +2444,11 @@ Status IrEmitter::HandleOneDnnMatMul(HloInstruction* custom_call) {
   auto result_stack_alloca = GetAllocaAndEmitMemrefInfo(b_, result_array);
 
   auto typed_custom_call = Cast<HloCustomCallInstruction>(custom_call);
-  auto matmul_config = typed_custom_call->backend_config<OneDnnMatMulConfig>();
+  auto backend_config = typed_custom_call->backend_config<BackendConfig>();
+  OneDnnMatMulConfig matmul_config;
+  matmul_config.CopyFrom(backend_config->onednn_matmul_config());
   std::string str_config;
-  matmul_config->SerializeToString(&str_config);
+  matmul_config.SerializeToString(&str_config);
 
   EmitCallToFunc(runtime::kOneDnnMatMulSymbolName,
                  {
