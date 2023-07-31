@@ -320,6 +320,9 @@ Status HloControlFlowFlattening::RemoveOutfeed(
           outfeed_hlo->shape(), outfeed_hlo->operands(), "NopReturnToken"));
   Cast<HloCustomCallInstruction>(custom_call)
       ->set_custom_call_has_side_effect(true);
+  // For SPMD graphs, partitioner requires that side-effecting custom calls have
+  // a sharding that is non-replicated.
+  custom_call->set_sharding(HloSharding::Manual());
   TF_RETURN_IF_ERROR(computation->ReplaceInstruction(outfeed_hlo, custom_call));
   custom_call->SetAndSanitizeName(outfeed_hlo->name());
 
