@@ -69,6 +69,15 @@ using arith::ConstantIntOp;
 // Helper functions to build arguments to API functions.
 //===----------------------------------------------------------------------===//
 
+// Exports tensor as `!iree_input.buffer_view`.
+TypedValue<IREE::Input::BufferViewType> getBufferView(
+    ImplicitLocOpBuilder &b, TypedValue<TensorType> tensor) {
+  Value view = b.create<IREE::Input::TensorExportOp>(
+      b.getType<IREE::Input::BufferViewType>(), tensor,
+      /*source_dims=*/ValueRange());
+  return cast<TypedValue<IREE::Input::BufferViewType>>(view);
+}
+
 // Creates `iree_input.list<!iree_input.buffer_view>` list.
 TypedValue<IREE::Input::ListType> getBufferViewList(
     ImplicitLocOpBuilder &b, ArrayRef<TypedValue<TensorType>> values) {
@@ -79,9 +88,7 @@ TypedValue<IREE::Input::ListType> getBufferViewList(
   if (!values.empty()) b.create<IREE::Input::ListResizeOp>(list, size);
   for (auto indexed : llvm::enumerate(values)) {
     Value index = b.create<ConstantIndexOp>(indexed.index());
-    Value view = b.create<IREE::Input::TensorExportOp>(
-        b.getType<IREE::Input::BufferViewType>(), indexed.value(),
-        /*source_dims=*/ValueRange());
+    Value view = getBufferView(b, indexed.value());
     b.create<IREE::Input::ListSetOp>(list, index, view);
   }
 
@@ -93,12 +100,13 @@ TypedValue<IREE::Input::ListType> getBufferViewList(
 //===----------------------------------------------------------------------===//
 
 // A helper class to extract thunks compiled from the given operation. It is
-// typically a combination of memory copy thunks plus a single device kernel.
+// typically a combination of memory copy thunks plus device kernels. Memory
+// copy operations initialize buffers, and always go before kernels.
 template <typename OpTy>
 struct CompiledOp {
   OpTy op;
   std::vector<std::unique_ptr<DeviceToDeviceCopyThunk>> memcpy;
-  std::unique_ptr<KernelThunk> kernel;
+  std::vector<std::unique_ptr<KernelThunk>> kernels;
 };
 
 // Extracts from a Thunk sequence thunks that are corresponding to the given
@@ -145,23 +153,23 @@ FailureOr<CompiledOp<T>> extractCompiledOp(
 
   for (std::unique_ptr<Thunk> &thunk : thunks) {
     if (thunk->kind() == Thunk::Kind::kCopy) {
-      assert(!compiled_op.kernel && "copy after kernel is not suppported");
+      assert(compiled_op.kernels.empty() &&
+             "copy after kernel is not suppported");
       compiled_op.memcpy.push_back(std::unique_ptr<DeviceToDeviceCopyThunk>(
           static_cast<DeviceToDeviceCopyThunk *>(thunk.release())));
       continue;
     }
 
     if (thunk->kind() == Thunk::Kind::kKernel) {
-      assert(!compiled_op.kernel && "multiple kernels are not supported");
-      compiled_op.kernel = std::unique_ptr<KernelThunk>(
-          static_cast<KernelThunk *>(thunk.release()));
+      compiled_op.kernels.push_back(std::unique_ptr<KernelThunk>(
+          static_cast<KernelThunk *>(thunk.release())));
       continue;
     }
 
     return rewriter.notifyMatchFailure(op, "unsupported thunk kind");
   }
 
-  assert(!compiled_op.memcpy.empty() || compiled_op.kernel);
+  assert(!compiled_op.memcpy.empty() || !compiled_op.kernels.empty());
   return compiled_op;
 }
 
@@ -190,18 +198,16 @@ DispatchArguments getDispatchArguments(lmhlo::SortOp, DeBufferization &);
 // names by incrementing a global counter.
 std::atomic<int64_t> unknown_kernel_counter{0};
 
-template <typename T>
-KernelLaunchParams getKernelLaunchParams(CompiledOp<T> &compiled) {
+KernelLaunchParams getKernelLaunchParams(KernelThunk *kernel) {
   // Return fake kernel launch parameters when we do not have thunk sequence. We
   // use it only for writing MLIR tests when we do not have thunks.
-  if (!compiled.kernel) {
+  if (kernel == nullptr) {
     return KernelLaunchParams(
         "unknown." + std::to_string(unknown_kernel_counter.fetch_add(1)),
         LaunchDimensions(1, 1));
   }
 
-  return KernelLaunchParams(compiled.kernel->kernel_name(),
-                            compiled.kernel->launch_dimensions());
+  return KernelLaunchParams(kernel->kernel_name(), kernel->launch_dimensions());
 }
 
 DispatchArguments getDispatchArguments(KernelThunk *kernel,
@@ -270,22 +276,23 @@ IREE::Input::PipelineLayoutAttr getPipelineLayout(MLIRContext *ctx,
       IREE::Input::DescriptorSetLayoutAttr::get(ctx, /*ordinal=*/0, bindings));
 }
 
-template <typename T>
-DispatchArguments getDispatchArguments(CompiledOp<T> &op,
+template <typename OpTy>
+DispatchArguments getDispatchArguments(OpTy op, KernelThunk *kernel,
                                        DeBufferization &state) {
-  return op.kernel ? getDispatchArguments(op.kernel.get(), state)
-                   : getDispatchArguments(op.op, state);
+  return kernel ? getDispatchArguments(kernel, state)
+                : getDispatchArguments(op, state);
 }
 
-template <typename T>
-SmallVector<int64_t> getTiedOperands(CompiledOp<T> &op) {
-  return op.kernel ? getTiedOperands(op.kernel.get()) : getTiedOperands(op.op);
+template <typename OpTy>
+SmallVector<int64_t> getTiedOperands(OpTy op, KernelThunk *kernel) {
+  return kernel ? getTiedOperands(kernel) : getTiedOperands(op);
 }
 
-template <typename T>
-IREE::Input::PipelineLayoutAttr getPipelineLayout(CompiledOp<T> &op) {
-  return op.kernel ? getPipelineLayout(op.op.getContext(), op.kernel.get())
-                   : getPipelineLayout(op.op);
+template <typename OpTy>
+IREE::Input::PipelineLayoutAttr getPipelineLayout(OpTy op,
+                                                  KernelThunk *kernel) {
+  return kernel ? getPipelineLayout(op.getContext(), kernel)
+                : getPipelineLayout(op);
 }
 
 //===----------------------------------------------------------------------===//
@@ -372,78 +379,86 @@ LogicalResult ConvertCompiledOpToHal<OpTy>::matchAndRewrite(
     state.remapped[block][dst_memref] = cast<TypedValue<TensorType>>(updated);
   }
 
-  // Compiled fusion was a plain copy operation.
-  if (thunk_sequence != nullptr && !compiled_op->kernel) {
+  // Compiled operation was a plain copy.
+  if (thunk_sequence && compiled_op->kernels.empty()) {
     rewriter.eraseOp(op);
     return success();
   }
 
-  // Get kernel launch parameters from a compiled fusion.
-  auto [kernel_name, dims] = getKernelLaunchParams(*compiled_op);
+  SmallVector<KernelThunk *> kernels = llvm::to_vector(llvm::map_range(
+      compiled_op->kernels, [&](auto &kernel) { return kernel.get(); }));
+  // Always add a fake kernel if we are running without thunk sequence.
+  if (!thunk_sequence) kernels.push_back(nullptr);
 
-  SmallVector<int64_t> workgroup_size = {
-      dims.thread_counts_per_block().x,
-      dims.thread_counts_per_block().y,
-      dims.thread_counts_per_block().z,
-  };
+  // Dispatch all kernels defined by thunks.
+  for (KernelThunk *kernel : kernels) {
+    // Get kernel launch parameters from a kernel thunk.
+    auto [kernel_name, dims] = getKernelLaunchParams(kernel);
 
-  SmallVector<int64_t> workload_size = {
-      dims.block_counts().x,
-      dims.block_counts().y,
-      dims.block_counts().z,
-  };
+    SmallVector<int64_t> workgroup_size = {
+        dims.thread_counts_per_block().x,
+        dims.thread_counts_per_block().y,
+        dims.thread_counts_per_block().z,
+    };
 
-  int64_t shmem = dims.SharedMemBytes();
+    SmallVector<int64_t> workload_size = {
+        dims.block_counts().x,
+        dims.block_counts().y,
+        dims.block_counts().z,
+    };
 
-  // Pop trailing ones from workload sizes to keep IR small.
-  while (workload_size.size() > 1 && workload_size.back() == 1)
-    workload_size.pop_back();
+    int64_t shmem = dims.SharedMemBytes();
 
-  // Create `iree_input.executable.export` operation to export device function.
-  b.setInsertionPoint(executable_source_body->getTerminator());
-  auto &executable_export = exported[kernel_name];
-  if (!executable_export) {
-    executable_export = b.create<IREE::Input::ExecutableExportOp>(
-        /*sym_name=*/b.getStringAttr(kernel_name),
-        /*ordinal=*/b.getIndexAttr((*ordinal)++),
-        /*layout=*/getPipelineLayout(*compiled_op),
-        /*workgroup_size=*/b.getIndexArrayAttr(workgroup_size),
-        /*subgroup_size=*/nullptr,
-        /*workgroup_local_memory=*/shmem ? b.getIndexAttr(shmem) : nullptr);
-  }
+    // Pop trailing ones from workload sizes to keep IR small.
+    while (workload_size.size() > 1 && workload_size.back() == 1)
+      workload_size.pop_back();
 
-  // Replace `lmhlo.fusion` with a `iree_input.dispatch` operation.
-  b.setInsertionPoint(op);
+    // Create `iree_input.executable.export` operation to export device
+    // function.
+    b.setInsertionPoint(executable_source_body->getTerminator());
+    auto &executable_export = exported[kernel_name];
+    if (!executable_export) {
+      executable_export = b.create<IREE::Input::ExecutableExportOp>(
+          /*sym_name=*/b.getStringAttr(kernel_name),
+          /*ordinal=*/b.getIndexAttr((*ordinal)++),
+          /*layout=*/getPipelineLayout(op, kernel),
+          /*workgroup_size=*/b.getIndexArrayAttr(workgroup_size),
+          /*subgroup_size=*/nullptr,
+          /*workgroup_local_memory=*/shmem ? b.getIndexAttr(shmem) : nullptr);
+    }
 
-  // Materialize workload size as constants in the IR.
-  SmallVector<Value> workload = llvm::to_vector(
-      llvm::map_range(workload_size, [&](int64_t size) -> Value {
-        return b.create<arith::ConstantIndexOp>(size);
-      }));
+    // Replace `lmhlo.fusion` with a `iree_input.dispatch` operation.
+    b.setInsertionPoint(op);
 
-  auto dispatch_args = getDispatchArguments(*compiled_op, state);
-  auto &memrefs = dispatch_args.first;
-  auto &tensors = dispatch_args.second;
+    // Materialize workload size as constants in the IR.
+    SmallVector<Value> workload = llvm::to_vector(
+        llvm::map_range(workload_size, [&](int64_t size) -> Value {
+          return b.create<arith::ConstantIndexOp>(size);
+        }));
 
-  // Prepare tied operands and corresponding result types.
-  SmallVector<int64_t> tied_operands = getTiedOperands(*compiled_op);
-  SmallVector<Type> results =
-      llvm::to_vector(llvm::map_range(tied_operands, [&](int64_t idx) -> Type {
-        return tensors[idx].getType();
-      }));
+    auto dispatch_args = getDispatchArguments(op, kernel, state);
+    auto &memrefs = dispatch_args.first;
+    auto &tensors = dispatch_args.second;
 
-  SmallVector<Value> tensor_vs = llvm::to_vector(
-      llvm::map_range(tensors, [&](auto tensor) -> Value { return tensor; }));
+    // Prepare tied operands and corresponding result types.
+    SmallVector<int64_t> tied_operands = getTiedOperands(op, kernel);
+    SmallVector<Type> results = llvm::to_vector(llvm::map_range(
+        tied_operands,
+        [&](int64_t idx) -> Type { return tensors[idx].getType(); }));
 
-  auto dispatch = b.create<IREE::Input::DispatchOp>(
-      executable_export, workload, results,
-      /*resultDims=*/ValueRange(), tensor_vs,
-      /*argumentDims=*/ValueRange(), b.getIndexArrayAttr(tied_operands));
+    SmallVector<Value> tensor_vs = llvm::to_vector(
+        llvm::map_range(tensors, [&](auto tensor) -> Value { return tensor; }));
 
-  // Keep track of all tensors updated inplace.
-  for (auto result : llvm::enumerate(dispatch.getResults())) {
-    auto arg = memrefs[tied_operands[result.index()]];
-    state.remapped[block][arg] = cast<TypedValue<TensorType>>(result.value());
+    auto dispatch = b.create<IREE::Input::DispatchOp>(
+        executable_export, workload, results,
+        /*resultDims=*/ValueRange(), tensor_vs,
+        /*argumentDims=*/ValueRange(), b.getIndexArrayAttr(tied_operands));
+
+    // Keep track of all tensors updated inplace.
+    for (auto result : llvm::enumerate(dispatch.getResults())) {
+      auto arg = memrefs[tied_operands[result.index()]];
+      state.remapped[block][arg] = cast<TypedValue<TensorType>>(result.value());
+    }
   }
 
   rewriter.eraseOp(op);
@@ -485,6 +500,7 @@ LogicalResult ConvertCompiledOpToApiCall<OpTy>::matchAndRewrite(
     OpTy op, OpAdaptor adaptor, ConversionPatternRewriter &rewriter) const {
   ImplicitLocOpBuilder b(op.getLoc(), rewriter);
 
+  auto *block = op->getBlock();
   auto module = op->template getParentOfType<ModuleOp>();
 
   // Extract compiled operation from the thunk sequence.
@@ -493,53 +509,84 @@ LogicalResult ConvertCompiledOpToApiCall<OpTy>::matchAndRewrite(
     return rewriter.notifyMatchFailure(
         op, "failed to extract device compilation result for an operation");
 
-  // TODO(ezhulenev): Add support for memcpy thunks.
-  if (!compiled_op->memcpy.empty())
-    return rewriter.notifyMatchFailure(op, "memcpy thunks are not supported");
+  // Handle copy operations first, before handling kernel launch.
+  for (auto &copy : compiled_op->memcpy) {
+    auto src_memref = cast<TypedValue<MemRefType>>(copy->source_value());
+    auto dst_memref = cast<TypedValue<MemRefType>>(copy->destination_value());
 
-  // Get kernel launch parameters from a compiled fusion.
-  auto [kernel_name, dims] = getKernelLaunchParams(*compiled_op);
+    auto src = state.remapped[block][stripReinterpretCast(src_memref)];
+    auto dst = state.remapped[block][stripReinterpretCast(dst_memref)];
 
-  // Create XLA:GPU device kernel (it will own loaded PTX/CUBIN at run time).
-  Value name = b.create<IREE::Input::ByteBufferConstantOp>(
-      b.getType<IREE::Input::ByteBufferType>(),
-      /*name=*/b.getStringAttr("kernel_name"), /*value=*/kernel_name,
-      /*alignment=*/nullptr, /*mime_type=*/nullptr);
-  Value shmem = b.create<ConstantIntOp>(dims.SharedMemBytes(), 32);
+    assert(src && "unknown mapping from `src` memref to a tensor");
+    assert(dst && "unknown mapping from `dst` memref to a tensor");
 
-  func::FuncOp create_kernel = api.getCreateKernel(b, module);
-  Value kernel = b.create<func::CallOp>(create_kernel.getSymName(),
-                                        create_kernel.getResultTypes(),
-                                        ValueRange({name, shmem}))
-                     .getResult(0);
+    auto src_view = getBufferView(b, src);
+    auto dst_view = getBufferView(b, dst);
+    SmallVector<Value> args = {getExecutionContext(op), dst_view, src_view};
 
-  // Prepare arguments for kernel dispatch.
-  SmallVector<Value> workgroup_size = {
-      b.create<ConstantIntOp>(dims.thread_counts_per_block().x, 32),
-      b.create<ConstantIntOp>(dims.thread_counts_per_block().y, 32),
-      b.create<ConstantIntOp>(dims.thread_counts_per_block().z, 32),
-  };
+    func::FuncOp memcpy = api.getD2DMemcpy(b, module);
+    // TODO(ezhulenev): Should we import buffer view back and update remapping?
+    b.create<func::CallOp>(memcpy.getSymName(), memcpy.getResultTypes(), args);
+  }
 
-  SmallVector<Value> workload_size = {
-      b.create<ConstantIntOp>(dims.block_counts().x, 32),
-      b.create<ConstantIntOp>(dims.block_counts().y, 32),
-      b.create<ConstantIntOp>(dims.block_counts().z, 32),
-  };
+  // Compiled operation was a plain copy.
+  if (thunk_sequence && compiled_op->kernels.empty()) {
+    rewriter.eraseOp(op);
+    return success();
+  }
 
-  auto dispatch_args = getDispatchArguments(*compiled_op, state);
-  auto &tensors = dispatch_args.second;
+  SmallVector<KernelThunk *> kernels = llvm::to_vector(llvm::map_range(
+      compiled_op->kernels, [&](auto &kernel) { return kernel.get(); }));
+  // Always add a fake kernel if we are running without thunk sequence.
+  if (!thunk_sequence) kernels.push_back(nullptr);
 
-  Value buffer_views = getBufferViewList(b, tensors);
+  // Dispatch all kernels defined by thunks.
+  for (KernelThunk *kernel : kernels) {
+    // Get kernel launch parameters from a compiled fusion.
+    auto [kernel_name, dims] = getKernelLaunchParams(kernel);
 
-  // Prepare arguments for the kernel dispatch API call.
-  SmallVector<Value> args = {getExecutionContext(op), kernel, buffer_views};
-  args.append(workgroup_size.begin(), workgroup_size.end());
-  args.append(workload_size.begin(), workload_size.end());
+    // Create XLA:GPU device kernel (it will own loaded PTX/CUBIN at run time).
+    Value name = b.create<IREE::Input::ByteBufferConstantOp>(
+        b.getType<IREE::Input::ByteBufferType>(),
+        /*name=*/b.getStringAttr("kernel_name"), /*value=*/kernel_name,
+        /*alignment=*/nullptr, /*mime_type=*/nullptr);
+    Value shmem = b.create<ConstantIntOp>(dims.SharedMemBytes(), 32);
 
-  func::FuncOp dispatch_kernel = api.getDispatchKernel(b, module);
-  // TODO(ezhulenev): Should we import buffer view back and update remapping?
-  b.create<func::CallOp>(dispatch_kernel.getSymName(),
-                         dispatch_kernel.getResultTypes(), args);
+    func::FuncOp create_kernel = api.getCreateKernel(b, module);
+    Value loaded_kernel = b.create<func::CallOp>(create_kernel.getSymName(),
+                                                 create_kernel.getResultTypes(),
+                                                 ValueRange({name, shmem}))
+                              .getResult(0);
+
+    // Prepare arguments for kernel dispatch.
+    SmallVector<Value> workgroup_size = {
+        b.create<ConstantIntOp>(dims.thread_counts_per_block().x, 32),
+        b.create<ConstantIntOp>(dims.thread_counts_per_block().y, 32),
+        b.create<ConstantIntOp>(dims.thread_counts_per_block().z, 32),
+    };
+
+    SmallVector<Value> workload_size = {
+        b.create<ConstantIntOp>(dims.block_counts().x, 32),
+        b.create<ConstantIntOp>(dims.block_counts().y, 32),
+        b.create<ConstantIntOp>(dims.block_counts().z, 32),
+    };
+
+    auto dispatch_args = getDispatchArguments(op, kernel, state);
+    auto &tensors = dispatch_args.second;
+
+    Value buffer_views = getBufferViewList(b, tensors);
+
+    // Prepare arguments for the kernel dispatch API call.
+    SmallVector<Value> args = {getExecutionContext(op), loaded_kernel,
+                               buffer_views};
+    args.append(workgroup_size.begin(), workgroup_size.end());
+    args.append(workload_size.begin(), workload_size.end());
+
+    func::FuncOp dispatch_kernel = api.getDispatchKernel(b, module);
+    // TODO(ezhulenev): Should we import buffer view back and update remapping?
+    b.create<func::CallOp>(dispatch_kernel.getSymName(),
+                           dispatch_kernel.getResultTypes(), args);
+  }
 
   rewriter.eraseOp(op);
   return success();
@@ -610,6 +657,7 @@ SmallVector<int64_t> getTiedOperands(lmhlo::FusionOp op) {
 //===----------------------------------------------------------------------===//
 
 using ConvertSortOpToHal = ConvertCompiledOpToHal<lmhlo::SortOp>;
+using ConvertSortOpToApiCall = ConvertCompiledOpToApiCall<lmhlo::SortOp>;
 
 IREE::Input::PipelineLayoutAttr getPipelineLayout(lmhlo::SortOp op) {
   auto n_args = op.getInputs().size();
@@ -717,8 +765,8 @@ void populateCompiledOpsConversionPatterns(mlir::RewritePatternSet &patterns,
                                            DeBufferization &state,
                                            XlaGpuApi &api) {
   auto *ctx = patterns.getContext();
-  patterns.insert<ConvertFusionOpToApiCall>(converter, ctx, thunk_sequence,
-                                            state, api);
+  patterns.insert<ConvertFusionOpToApiCall, ConvertSortOpToApiCall>(
+      converter, ctx, thunk_sequence, state, api);
   patterns.insert<TerminatorOpLowering>(converter, ctx, state);
 }
 

@@ -119,6 +119,29 @@ package_group(
 # )
 #
 # cc_library(
+#     name = "memcpy",
+#     srcs = if_openxla(["memcpy.cc"]),
+#     hdrs = if_openxla(["memcpy.h"]),
+#     compatible_with = [],
+#     deps = [
+#         ":hal",
+#         ":vm",
+#         "@com_google_absl//absl/container:inlined_vector",
+#         "@com_google_absl//absl/log",
+#         "//tensorflow/compiler/xla:status",
+#         "//tensorflow/compiler/xla:statusor",
+#         "//tensorflow/compiler/xla/service:executable",
+#         "//tensorflow/compiler/xla/service/gpu:launch_dimensions",
+#         "//tensorflow/compiler/xla/service/gpu:stream_executor_util",
+#         "//tensorflow/compiler/xla/stream_executor:device_memory",
+#         "//tensorflow/tsl/profiler/lib:scoped_annotation",
+#     ] + if_openxla([
+#         "//third_party/iree/runtime/src/iree/hal",
+#         "//third_party/iree/runtime/src/iree/vm",
+#     ]),
+# )
+#
+# cc_library(
 #     name = "module",
 #     srcs = if_openxla(["module.cc"]),
 #     hdrs = if_openxla(["module.h"]),
@@ -127,6 +150,7 @@ package_group(
 #         ":gemm",
 #         ":hal",
 #         ":kernel",
+#         ":memcpy",
 #         ":vm",
 #         "@com_google_absl//absl/log",
 #     ] + if_openxla([

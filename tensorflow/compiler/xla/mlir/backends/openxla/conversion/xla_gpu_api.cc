@@ -131,6 +131,19 @@ func::FuncOp XlaGpuApi::getDispatchGemm(OpBuilder &b, ModuleOp module) {
                  FunctionType::get(b.getContext(), args, /*rets=*/TypeRange()));
 }
 
+//===--------------------------------------------------------------------===//
+// XLA:GPU memcpy APIs
+//===--------------------------------------------------------------------===//
+
+mlir::func::FuncOp XlaGpuApi::getD2DMemcpy(mlir::OpBuilder &b,
+                                           mlir::ModuleOp module) {
+  auto execution_context = b.getType<ExecutionContextType>();
+  auto buffer_view = b.getType<IREE::Input::BufferViewType>();
+  SmallVector<Type> args = {execution_context, buffer_view, buffer_view};
+  return addDecl(b, module, "xla_gpu.memcpy.d2d",
+                 FunctionType::get(b.getContext(), args, /*rets=*/TypeRange()));
+}
+
 //===----------------------------------------------------------------------===//
 // XLA:GPU tracing APIs
 //===----------------------------------------------------------------------===//

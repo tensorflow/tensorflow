@@ -66,6 +66,13 @@ class XlaGpuApi {
   mlir::func::FuncOp getDispatchGemm(mlir::OpBuilder &b, mlir::ModuleOp module);
 
   //===--------------------------------------------------------------------===//
+  // XLA:GPU memcpy APIs
+  //===--------------------------------------------------------------------===//
+
+  // Imports `@xla_gpu.memcpy.d2d` into the module.
+  mlir::func::FuncOp getD2DMemcpy(mlir::OpBuilder &b, mlir::ModuleOp module);
+
+  //===--------------------------------------------------------------------===//
   // XLA:GPU tracing APIs
   //===--------------------------------------------------------------------===//
 
