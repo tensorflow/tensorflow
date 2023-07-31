@@ -39,7 +39,6 @@ from tensorflow.python import pywrap_tensorflow as _pywrap_tensorflow
 
 # from tensorflow.python import keras
 # from tensorflow.python.layers import layers
-from tensorflow.python.module import module
 from tensorflow.python.saved_model import saved_model
 from tensorflow.python.tpu import api
 from tensorflow.python.user_ops import user_ops

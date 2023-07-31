@@ -78,8 +78,8 @@ from tensorflow.python.framework import ops
 # Function
 from tensorflow.core.function.trace_type import *
 
-# Session
-from tensorflow.python.client.client_lib import *
+# Module
+from tensorflow.python.module import module
 
 # Ops
 from tensorflow.python.ops.standard_ops import *  # pylint: disable=redefined-builtin
@@ -148,6 +148,9 @@ from tensorflow.python.profiler import profiler
 from tensorflow.python.profiler import profiler_client
 from tensorflow.python.profiler import profiler_v2
 from tensorflow.python.profiler import trace
+
+# Session
+from tensorflow.python.client.client_lib import *
 
 # Summary
 from tensorflow.python.summary import summary
