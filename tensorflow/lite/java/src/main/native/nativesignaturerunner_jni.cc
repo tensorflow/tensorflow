@@ -23,11 +23,12 @@ using tflite::Interpreter;
 using tflite::jni::ThrowException;
 
 #ifndef TFLITE_DISABLE_SELECT_JAVA_APIS
+
 namespace tflite {
 // A helper class to access private information of SignatureRunner class.
 class SignatureRunnerJNIHelper {
  public:
-  explicit SignatureRunnerJNIHelper(SignatureRunner* runner)
+  explicit SignatureRunnerJNIHelper(impl::SignatureRunner* runner)
       : signature_runner_(runner) {}
 
   // Gets the subgraph index associated with this SignatureRunner.
@@ -83,13 +84,13 @@ class SignatureRunnerJNIHelper {
   }
 
  private:
-  SignatureRunner* signature_runner_;
+  impl::SignatureRunner* signature_runner_;
 };
 }  // namespace tflite
 
 using tflite::Interpreter;
-using tflite::SignatureRunner;
 using tflite::SignatureRunnerJNIHelper;
+using tflite::impl::SignatureRunner;
 using tflite::jni::BufferErrorReporter;
 using tflite::jni::CastLongToPointer;
 #endif  // TFLITE_DISABLE_SELECT_JAVA_APIS

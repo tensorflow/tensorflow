@@ -13,11 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/signature_runner.h"
+#include "tensorflow/lite/core/signature_runner.h"
+
+#include <vector>
 
 #include "tensorflow/lite/core/c/c_api_types.h"
 
 namespace tflite {
+namespace impl {
 
 SignatureRunner::SignatureRunner(const internal::SignatureDef* signature_def,
                                  Subgraph* subgraph)
@@ -110,4 +113,5 @@ TfLiteStatus SignatureRunner::SetCustomAllocationForOutputTensor(
   return subgraph_->SetCustomAllocationForTensor(it->second, allocation, flags);
 }
 
+}  // namespace impl
 }  // namespace tflite

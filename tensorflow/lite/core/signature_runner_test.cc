@@ -12,9 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/signature_runner.h"
+#include "tensorflow/lite/core/signature_runner.h"
 
+#include <memory>
 #include <string>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -24,12 +26,13 @@ limitations under the License.
 #include "tensorflow/lite/testing/util.h"
 
 namespace tflite {
+namespace impl {
 namespace {
 
 TEST(SignatureRunnerTest, TestMultiSignatures) {
   TestErrorReporter reporter;
   auto model = FlatBufferModel::BuildFromFile(
-      "tensorflow/lite/testdata/multi_signatures.bin", &reporter);
+      "third_party/tensorflow/lite/testdata/multi_signatures.bin", &reporter);
   ASSERT_TRUE(model);
   ops::builtin::BuiltinOpResolver resolver;
   InterpreterBuilder builder(*model, resolver);
@@ -94,4 +97,5 @@ TEST(SignatureRunnerTest, TestMultiSignatures) {
 }
 
 }  // namespace
+}  // namespace impl
 }  // namespace tflite
