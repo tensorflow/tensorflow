@@ -1302,12 +1302,13 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+pytype_strict_library(
     name = "tensor_conversion",
     srcs = ["tensor_conversion.py"],
     srcs_version = "PY3",
     deps = [
         ":tensor_conversion_registry",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:dispatch",
         "//tensorflow/python/util:tf_export",
