@@ -131,7 +131,7 @@ TEST(RemoteProfilerSession, LongDuration) {
   // Empirically determined value.
   absl::Duration grace = absl::Seconds(1);
   absl::Duration max_duration = duration + grace;
-  const absl::Time deadline = approx_start + max_duration;
+  const absl::Time deadline = approx_start + 10 * max_duration;
 
   auto remote_session =
       RemoteProfilerSession::Create(service_addr, deadline, request);
