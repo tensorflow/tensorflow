@@ -122,22 +122,24 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
       return OkStatus();
     }
 
-    VLOG(1) << "Tuning " << hlo->ToString();
-    TF_ASSIGN_OR_RETURN(AutotuneResult autotune_result,
-                        AutotunerUtil::Autotune(hlo, config_, [&] {
-                          return AutotuneMatmulNoCache(hlo);
-                        }));
-    VLOG(1) << "Result: " << autotune_result.ShortDebugString();
+    VLOG(1) << "Processing " << hlo->ToString();
+    if (!backend_config.has_triton_gemm_config()) {
+      TF_ASSIGN_OR_RETURN(AutotuneResult autotune_result,
+                          AutotunerUtil::Autotune(hlo, config_, [&] {
+                            return AutotuneMatmulNoCache(hlo);
+                          }));
+      VLOG(1) << "Result: " << autotune_result.ShortDebugString();
 
-    TF_RET_CHECK(autotune_result.has_triton());
-    AutotuneResult::TritonGemmKey tiling = autotune_result.triton();
-
+      TF_RET_CHECK(autotune_result.has_triton());
+      *backend_config.mutable_triton_gemm_config() = autotune_result.triton();
+      TF_RETURN_IF_ERROR(hlo->set_backend_config(backend_config));
+    }
+    const AutotuneResult::TritonGemmKey& tiling =
+        backend_config.triton_gemm_config();
     if (tiling.split_k() > 1) {
       TF_RETURN_IF_ERROR(MakeDotSplitKBatch(hlo, tiling));
     }
 
-    *backend_config.mutable_triton_gemm_config() = tiling;
-    TF_RETURN_IF_ERROR(hlo->set_backend_config(backend_config));
     MarkAsChanged();
     return OkStatus();
   }

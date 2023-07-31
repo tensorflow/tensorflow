@@ -379,6 +379,31 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
 }
 
+TEST_F(TritonAutotunerTest, ApplySplitKWithoutAlteringTiling) {
+  const std::string kHloText = R"(
+triton_dot {
+  p0 = f16[55,120] parameter(0)
+  p1 = f16[120,20] parameter(1)
+  ROOT dot = f16[55,20] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = f16[55,120]{1,0} parameter(0)
+  p1 = f16[120,20]{1,0} parameter(1)
+  ROOT _ = f16[55,20] fusion(p0, p1), kind=kCustom, calls=triton_dot,
+    backend_config={kind: "__triton_gemm", triton_gemm_config: {"block_m":16,"block_n":64,"block_k":32,"split_k":3,"num_stages":1,"num_warps":2}}
+})";
+
+  MatchOptimizedHlo(kHloText, R"(
+; CHECK: f16[3,55,20]
+; CHECK: {"block_m":16,"block_n":64,"block_k":32,"split_k":3,"num_stages":1,"num_warps":2}
+; CHECK: reduce
+)");
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
 // TODO(b/281489442): Write a testcase called
 // `SkipConfigsProducingDeviantResults` or similar.
 
