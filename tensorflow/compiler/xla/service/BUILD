@@ -395,15 +395,10 @@ cc_library(
     deps = [
         ":collective_ops_utils",
         ":hlo_pass",
-        "//tensorflow/compiler/xla:literal_util",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service/gpu:backend_configs_cc",
         "//tensorflow/compiler/xla/service/graphcycles",
-        "//tensorflow/tsl/platform:logging",
-        "@com_google_absl//absl/algorithm:container",
+        "//tensorflow/tsl/platform:errors",
         "@com_google_absl//absl/strings",
     ],
 )
