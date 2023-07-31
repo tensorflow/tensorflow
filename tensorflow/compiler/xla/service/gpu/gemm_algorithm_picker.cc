@@ -80,7 +80,8 @@ StatusOr<AutotuneResult> GetBestAlgorithm(
   std::vector<AutotuneResult> results;
   std::optional<int64_t> reference_algorithm;
 
-  for (const AlgoT& algorithm : algorithms) {
+  for (int i = 0; i < algorithms.size(); ++i) {
+    const AlgoT& algorithm = algorithms[i];
     // Make sure the output buffer always has the same value if we use
     // the bias parameter.
     if (autotune_config.should_reinit_output_buffer() && beta != 0) {
@@ -91,6 +92,9 @@ StatusOr<AutotuneResult> GetBestAlgorithm(
 
     TF_ASSIGN_OR_RETURN(se::blas::ProfileResult profile_result,
                         run_benchmark(algorithm));
+    if (std::is_same<AlgoT, se::cuda::BlasLt::MatmulAlgorithm>::value) {
+      profile_result.set_algorithm(i);
+    }
 
     results.emplace_back();
     AutotuneResult& result = results.back();
@@ -376,7 +380,8 @@ StatusOr<bool> RunOnInstruction(HloInstruction* gemm,
 
   // We only set the 'algorithm' field on non-Ampere architectures, as for
   // Ampere it's ignored in any case.
-  if (!capability.IsAtLeast(se::CudaComputeCapability::AMPERE)) {
+  if (!capability.IsAtLeast(se::CudaComputeCapability::AMPERE) ||
+      IsCublasLtMatmul(*gemm)) {
     if (algorithm.has_gemm()) {
       updated_config.set_selected_algorithm(algorithm.gemm().algorithm());
     } else {
