@@ -86,6 +86,7 @@ cmake ../tensorflow_src/tensorflow/lite -DTFLITE_ENABLE_INSTALL=ON \
   -Dabsl_DIR=<install path>/lib/cmake/absl \
   -DEigen3_DIR=<install path>/share/eigen3/cmake \
   -DFlatBuffers_DIR=<install path>/lib/cmake/flatbuffers \
+  -Dgemmlowp_DIR=<install path>/lib/cmake/gemmlowp \
   -DNEON_2_SSE_DIR=<install path>/lib/cmake/NEON_2_SSE \
   -Dcpuinfo_DIR=<install path>/share/cpuinfo \
   -Druy_DIR=<install path>/lib/cmake/ruy
