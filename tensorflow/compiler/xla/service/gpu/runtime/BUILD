@@ -359,7 +359,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:non_atomically_upgradeable_rw_lock",
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_graph",
-        "//tensorflow/tsl/profiler/lib:scoped_annotation_stack",
+        "//tensorflow/tsl/profiler/lib:profiler_lock",
         "//tensorflow/tsl/profiler/lib:traceme",
         "//tensorflow/tsl/profiler/lib:traceme_encode",
         "@com_google_absl//absl/container:node_hash_map",
