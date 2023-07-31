@@ -93,7 +93,7 @@ cc_library(
         ":outside_compilation_params",
         ":tf_rendezvous_c_api",
         ":tf_rendezvous_c_api_defn",
-        "//tensorflow/c:tf_status",
+        "//tensorflow/c:tf_status_headers",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/compiler/xla/stream_executor/tpu:proto_helper",
         "//tensorflow/core:framework_internal",
