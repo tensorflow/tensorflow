@@ -37,18 +37,12 @@ void FuzzFileRead(std::string data) {
   if (!tsl::WriteStringToFile(tsl::Env::Default(), fname, data.c_str()).ok()) {
     return;
   }
-
-  if (TextLiteralReader::ReadPath(fname).ok()) {
-    return;
-  }
+  TextLiteralReader::ReadPath(fname).IgnoreError();
 }
 FUZZ_TEST(TextReaderFuzzer, FuzzFileRead);
 
 void FuzzHLOParseUnverified(std::string data) {
-  auto result = xla::ParseAndReturnUnverifiedModule(data);
-  if (OkStatus() == result.status()) {
-    return;
-  }
+  xla::ParseAndReturnUnverifiedModule(data).IgnoreError();
   return;
 }
 FUZZ_TEST(TextReaderFuzzer, FuzzHLOParseUnverified);
