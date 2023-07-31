@@ -53,7 +53,7 @@ extern "C" {
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 10
+#define PJRT_API_MINOR 13
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -167,6 +167,15 @@ struct PJRT_NamedValue {
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_NamedValue, value_size);
 
 // ---------------------------------- Plugin -----------------------------------
+
+struct PJRT_Plugin_Initialize_Args {
+  size_t struct_size;
+  void* priv;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Plugin_Initialize_Args, priv);
+
+// One-time plugin setup. Must be called before any other functions are called.
+typedef PJRT_Error* PJRT_Plugin_Initialize(PJRT_Plugin_Initialize_Args* args);
 
 struct PJRT_Plugin_Attributes_Args {
   size_t struct_size;
@@ -1046,6 +1055,8 @@ typedef PJRT_Error* (*PJRT_SendCallback)(PJRT_Chunk* chunk,
                                          PJRT_CallbackError* callback_error,
                                          size_t total_size_in_bytes, bool done,
                                          void* user_arg);
+// The callback takes the ownership of the stream object. The callback must call
+// `PJRT_CopyToDeviceStream_Destroy` when it is done with the stream.
 typedef void (*PJRT_RecvCallback)(PJRT_CopyToDeviceStream* stream,
                                   void* user_arg);
 
@@ -1289,6 +1300,24 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_UnpaddedDimensions_Args, num_dims);
 typedef PJRT_Error* PJRT_Buffer_UnpaddedDimensions(
     PJRT_Buffer_UnpaddedDimensions_Args* args);
 
+struct PJRT_Buffer_DynamicDimensionIndices_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_Buffer* buffer;
+  // Has the lifetime of `buffer` and length `num_dynamic_dims`.
+  const size_t* dynamic_dim_indices;  // out
+  size_t num_dynamic_dims;            // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_DynamicDimensionIndices_Args,
+                          num_dynamic_dims);
+
+// Returns the indices of dynamically-sized dimensions, or an empty list if all
+// dimensions are static. ("Dynamic" dimensions are those whose length is
+// only known at runtime, vs. "static" dimensions whose size is fixed at compile
+// time.)
+typedef PJRT_Error* PJRT_Buffer_DynamicDimensionIndices(
+    PJRT_Buffer_DynamicDimensionIndices_Args* args);
+
 struct PJRT_Buffer_GetMemoryLayout_Args {
   size_t struct_size;
   void* priv;
@@ -1512,6 +1541,17 @@ typedef PJRT_Error* PJRT_Buffer_UnsafePointer(
 
 // ---------------------------- CopyToDeviceStream -----------------------------
 
+struct PJRT_CopyToDeviceStream_Destroy_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_CopyToDeviceStream* stream;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_CopyToDeviceStream_Destroy_Args, stream);
+
+// Frees `stream`. `stream` can be nullptr.
+typedef PJRT_Error* PJRT_CopyToDeviceStream_Destroy(
+    PJRT_CopyToDeviceStream_Destroy_Args* args);
+
 struct PJRT_CopyToDeviceStream_AddChunk_Args {
   size_t struct_size;
   void* priv;
@@ -1693,6 +1733,7 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Error_Message);
   _PJRT_API_STRUCT_FIELD(PJRT_Error_GetCode);
 
+  _PJRT_API_STRUCT_FIELD(PJRT_Plugin_Initialize);
   _PJRT_API_STRUCT_FIELD(PJRT_Plugin_Attributes);
 
   _PJRT_API_STRUCT_FIELD(PJRT_Event_Destroy);
@@ -1751,6 +1792,7 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_ElementType);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Dimensions);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_UnpaddedDimensions);
+  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_DynamicDimensionIndices);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_GetMemoryLayout);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_OnDeviceTrimmedShape);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_OnDeviceSizeInBytes);
@@ -1763,6 +1805,7 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_ReadyEvent);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_UnsafePointer);
 
+  _PJRT_API_STRUCT_FIELD(PJRT_CopyToDeviceStream_Destroy);
   _PJRT_API_STRUCT_FIELD(PJRT_CopyToDeviceStream_AddChunk);
   _PJRT_API_STRUCT_FIELD(PJRT_CopyToDeviceStream_TotalBytes);
   _PJRT_API_STRUCT_FIELD(PJRT_CopyToDeviceStream_GranuleSize);

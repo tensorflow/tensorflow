@@ -428,6 +428,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   for (int i = 0; i < shape.dimensions_size(); ++i) {
     new_shape.set_dynamic_dimension(i, shape.is_dynamic_dimension(i));
   }
+  new_shape.mutable_layout()->set_memory_space(shape.layout().memory_space());
   return new_shape;
 }
 
@@ -2122,27 +2123,4 @@ int64_t ShapeUtil::ForEachState::CalculateNumSteps() const {
   }
   return size;
 }
-
-Shape ShapeUtil::GetUnshardedShape(const Shape& sharded_shape,
-                                   int64_t num_shards) {
-  if (ShapeUtil::IsScalar(sharded_shape)) {
-    return sharded_shape;
-  }
-
-  Shape unsharded_shape = sharded_shape;
-
-  ShapeUtil::ForEachMutableSubshape(
-      &unsharded_shape,
-      [sharded_shape, num_shards](Shape* subshape, const ShapeIndex& index) {
-        if (subshape->IsArray() && subshape->rank() >= 1 &&
-            !subshape->is_dynamic()) {
-          const Shape& sharded_subshape =
-              ShapeUtil::GetSubshape(sharded_shape, index);
-          subshape->set_dimensions(0,
-                                   sharded_subshape.dimensions(0) * num_shards);
-        }
-      });
-  return unsharded_shape;
-}
-
 }  // namespace xla

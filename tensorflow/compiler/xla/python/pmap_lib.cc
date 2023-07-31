@@ -46,6 +46,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/py_executable.h"
 #include "tensorflow/compiler/xla/python/py_values.h"
 #include "tensorflow/compiler/xla/python/python_utils.h"
+#include "tensorflow/compiler/xla/python/pytree.h"
 #include "tensorflow/compiler/xla/python/sharded_device_array.h"
 #include "tensorflow/compiler/xla/python/sharding.h"
 #include "tensorflow/compiler/xla/python/status_casters.h"
@@ -143,8 +144,10 @@ xla::StatusOr<ShardArgResult> ShardArg(
             ifrt_devices.reserve(devices.size());
             ifrt_devices.insert(ifrt_devices.end(), devices.begin(),
                                 devices.end());
+            // pmap does not support memory_kind for now.
             auto sharding = xla::ifrt::OpaqueSharding::Create(
-                xla::ifrt::DeviceList(std::move(ifrt_devices)));
+                xla::ifrt::DeviceList(std::move(ifrt_devices)),
+                xla::ifrt::MemoryKind());
             TF_ASSIGN_OR_RETURN(
                 auto copied_ifrt_array,
                 result.ifrt_array->Reshard(
@@ -212,8 +215,9 @@ xla::StatusOr<ShardArgResult> ShardArg(
     // may want to avoid creating a new Array or specialize Array
     // to disallow access to the logical shape.
     xla::ifrt::Shape shape = per_device_arrays.front()->shape();
+    // pmap does not support memory_kind for now.
     auto ifrt_sharding = xla::ifrt::ConcreteSharding::Create(
-        xla::ifrt::DeviceList(std::move(devices)),
+        xla::ifrt::DeviceList(std::move(devices)), xla::ifrt::MemoryKind(),
         /*shape=*/shape,
         /*shard_shapes=*/std::move(shapes));
     TF_ASSIGN_OR_RETURN(result.ifrt_array,
@@ -237,6 +241,8 @@ xla::StatusOr<ShardArgResult> ShardArg(
 }
 
 struct PmapCacheEntry {
+  explicit PmapCacheEntry(xla::PyTreeRegistry* registry)
+      : out_pytree_def(registry) {}
   std::shared_ptr<xla::PyLoadedExecutable> executable;
   // The value `backend.local_devices()`.
   py::object py_devices;  // To pass back to Python.
@@ -270,10 +276,12 @@ class PmapFunction {
  public:
   PmapFunction(py::function fun, py::function cache_miss,
                std::vector<int> static_argnums,
-               py::function python_shard_arg_fallback)
+               py::function python_shard_arg_fallback,
+               std::shared_ptr<xla::PyTreeRegistry> pytree_registry)
       : fun_(std::move(fun)),
         cache_miss_(std::move(cache_miss)),
         static_argnums_(std::move(static_argnums)),
+        pytree_registry_(std::move(pytree_registry)),
         python_shard_arg_fallback_(std::move(python_shard_arg_fallback)) {
     std::sort(static_argnums_.begin(), static_argnums_.end());
 
@@ -303,6 +311,9 @@ class PmapFunction {
   const py::function& fun() const { return fun_; }
   const py::function& cache_miss() const { return cache_miss_; }
   const std::string& function_name() const { return function_name_; }
+  const std::shared_ptr<xla::PyTreeRegistry>& pytree_registry() const {
+    return pytree_registry_;
+  }
   const py::function& python_shard_arg_fallback() const {
     return python_shard_arg_fallback_;
   }
@@ -407,6 +418,7 @@ class PmapFunction {
   // We need to know the static arguments to remove them from the arguments
   // passed to the underlying PyLoadedExecutable. In sorted order.
   std::vector<int> static_argnums_;
+  std::shared_ptr<xla::PyTreeRegistry> pytree_registry_;
   // We need a `unique_ptr` here to ensure value pointer stability.
   absl::flat_hash_map<CallSignature, std::unique_ptr<PmapCacheEntry>>
       executables_;
@@ -559,7 +571,7 @@ xla::StatusOr<py::object> PmapFunction::Call(py::handle callable,
   ParsedArgumentsAsBuffers arguments;
   xla::Status status =
       ParseArguments(positional_args, keyword_args, kwnames, static_argnums_,
-                     /*static_argnames=*/{}, arguments);
+                     /*static_argnames=*/{}, pytree_registry_.get(), arguments);
   if (!status.ok()) {
     VLOG(2) << "ParseArguments failed: " << status;
     return fallback_to_cache_miss();
@@ -577,7 +589,7 @@ xla::StatusOr<py::object> PmapFunction::Call(py::handle callable,
   std::tie(it, inserted) = executables_.try_emplace(
       arguments.signature, std::unique_ptr<PmapCacheEntry>());
   if (inserted) {
-    it->second = std::make_unique<PmapCacheEntry>();
+    it->second = std::make_unique<PmapCacheEntry>(pytree_registry_.get());
   }
   PmapCacheEntry& cache_entry = *(it->second);
 
@@ -842,27 +854,19 @@ static PyGetSetDef JaxPmapFunction_tp_getset[] = {
      JaxPmapFunction_set_dict, nullptr, nullptr},
     {nullptr, nullptr, nullptr, nullptr, nullptr}};
 
-void InitializePmapFunction(JaxPmapFunctionObject* cfun, py::function fun,
-                            py::function cache_miss,
-                            std::vector<int> static_argnums,
-                            py::function python_shard_arg_fallback) {
-  new (&cfun->fun) PmapFunction(std::move(fun), std::move(cache_miss),
-                                std::move(static_argnums),
-                                std::move(python_shard_arg_fallback));
-}
-
 }  // extern "C"
 
-py::object MakePmapFunction(py::function fun, py::function cache_miss,
-                            std::vector<int> static_argnums,
-                            py::function python_shard_arg_fallback) {
+py::object MakePmapFunction(
+    py::function fun, py::function cache_miss, std::vector<int> static_argnums,
+    py::function python_shard_arg_fallback,
+    std::shared_ptr<xla::PyTreeRegistry> pytree_registry) {
   py::object obj = py::reinterpret_steal<py::object>(JaxPmapFunction_tp_new(
       reinterpret_cast<PyTypeObject*>(JaxPmapFunction_Type), nullptr, nullptr));
   JaxPmapFunctionObject* buf =
       reinterpret_cast<JaxPmapFunctionObject*>(obj.ptr());
-  InitializePmapFunction(buf, std::move(fun), std::move(cache_miss),
-                         std::move(static_argnums),
-                         std::move(python_shard_arg_fallback));
+  new (&buf->fun) PmapFunction(
+      std::move(fun), std::move(cache_miss), std::move(static_argnums),
+      std::move(python_shard_arg_fallback), std::move(pytree_registry));
   return obj;
 }
 
@@ -1045,6 +1049,7 @@ void BuildPmapSubmodule(py::module& m) {
         pickle["cache_miss"] = fn->cache_miss();
         pickle["static_argnums"] = fn->static_argnums();
         pickle["python_shard_arg_fallback"] = fn->python_shard_arg_fallback();
+        pickle["pytree_registry"] = fn->pytree_registry();
         return pickle;
       },
       py::is_method(cfun_type));
@@ -1064,11 +1069,14 @@ void BuildPmapSubmodule(py::module& m) {
             py::cast<std::vector<int>>(pickle["static_argnums"]);
         py::function python_shard_arg_fallback =
             py::cast<py::function>(pickle["python_shard_arg_fallback"]);
-
-        InitializePmapFunction(
-            reinterpret_cast<JaxPmapFunctionObject*>(self.ptr()),
-            std::move(fun), std::move(cache_miss), std::move(static_argnums),
-            std::move(python_shard_arg_fallback));
+        auto pytree_registry =
+            pickle["pytree_registry"]
+                .cast<std::shared_ptr<xla::PyTreeRegistry>>();
+        new (&(reinterpret_cast<JaxPmapFunctionObject*>(self.ptr())->fun))
+            PmapFunction(std::move(fun), std::move(cache_miss),
+                         std::move(static_argnums),
+                         std::move(python_shard_arg_fallback),
+                         std::move(pytree_registry));
       },
       py::is_method(cfun_type));
 
@@ -1093,14 +1101,17 @@ void BuildPmapSubmodule(py::module& m) {
       },
       py::is_method(cfun_type));
 
-  pmap_lib.def("pmap",
-               [](py::function fun, py::function cache_miss,
-                  std::vector<int> static_argnums,
-                  py::function python_shard_arg_fallback) -> py::object {
-                 return MakePmapFunction(std::move(fun), std::move(cache_miss),
-                                         std::move(static_argnums),
-                                         std::move(python_shard_arg_fallback));
-               });
+  pmap_lib.def(
+      "pmap",
+      [](py::function fun, py::function cache_miss,
+         std::vector<int> static_argnums, py::function shard_arg_fallback,
+         std::shared_ptr<xla::PyTreeRegistry> pytree_registry) -> py::object {
+        return MakePmapFunction(
+            std::move(fun), std::move(cache_miss), std::move(static_argnums),
+            std::move(shard_arg_fallback), std::move(pytree_registry));
+      },
+      py::arg("fun"), py::arg("cache_miss"), py::arg("static_argnums"),
+      py::arg("shard_arg_fallback"), py::arg("pytree_registry"));
 }
 
 }  // namespace jax

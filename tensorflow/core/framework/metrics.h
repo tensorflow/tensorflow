@@ -83,6 +83,11 @@ void RecordTFDataBytesFetched(int64_t num_bytes);
 // Records the number of times tf.data experiment is applied to input pipelines.
 void RecordTFDataExperiment(const string& name);
 
+// Records the time (in microseconds) spent generating an element and
+// transferring it over the network for the given protocol.
+void RecordTFDataServiceGetElementDuration(const string& data_transfer_protocol,
+                                           uint64 duration_us);
+
 // Records the time (in microseconds) spent in a single invocation of
 // `ItertatorResource::GetNext()`.
 void RecordTFDataGetNextDuration(uint64 duration_us);

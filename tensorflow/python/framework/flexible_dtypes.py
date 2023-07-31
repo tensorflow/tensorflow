@@ -17,11 +17,11 @@
 import numpy as np
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import extension_type
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import weak_tensor
-from tensorflow.python.framework.tensor_shape import TensorShape
-from tensorflow.python.types import core as core_types
 from tensorflow.python.util import nest
+
 
 # PromoMode Enum that denotes safe and all mode.
 PromoMode = ops.PromoMode
@@ -376,28 +376,9 @@ _all_str_dtypes = (
 
 def _is_acceptable_input_type(x):
   """Determines if x is an acceptable input type for auto dtype conversion semantics."""
-  acceptable_types = [
-      core_types.Tensor,
-      core_types.TensorProtocol,
-      int,
-      float,
-      bool,
-      str,
-      bytes,
-      complex,
-      tuple,
-      list,
-      np.ndarray,
-      np.generic,
-      dtypes.DType,
-      np.dtype,
-      TensorShape,
-      weak_tensor.WeakTensor,
-  ]
-  for t in acceptable_types:
-    if isinstance(x, t):
-      return True
-  return False
+  return isinstance(x, weak_tensor.WeakTensor) or not isinstance(
+      x, extension_type.ExtensionType
+  )
 
 
 def _get_dtype_and_weakness(x):
@@ -413,13 +394,14 @@ def _get_dtype_and_weakness(x):
     TF type and weak type information inferred from x in the form of
     (dtype, bool).
   """
-
   if isinstance(x, weak_tensor.WeakTensor):
     return (x.dtype, True)
   if isinstance(x, dtypes.DType):
     return (x, False)
   # TODO(b/286585200): Add support for `AutoCastVariable` in Keras.
   tf_dtype = getattr(x, 'dtype', None)
+  if isinstance(tf_dtype, dtypes.DType):
+    return (tf_dtype, False)
   # `isinstance(tf_dtype, np.dtype)` handles classes that implement `dtype`
   # using `np.dtype` (e.g. `xla_extension.Array`).
   # This condition is put before e.g. python int/float because
@@ -431,10 +413,11 @@ def _get_dtype_and_weakness(x):
     return (infer_dtype, False)
   if isinstance(x, (bytes, str)) or tf_dtype in _all_str_dtypes:
     return _str
-  if tf_dtype is not None:
-    return (tf_dtype, False)
-  if x in _NP_TO_TF:
-    return (_NP_TO_TF[x], False)
+  try:
+    if x in _NP_TO_TF:
+      return (_NP_TO_TF[x], False)
+  except TypeError:
+    pass
   # TODO(b/286585058): Update implementation depending on whether Python
   # scalars are inferred to 32 bit or 64 bit.
   if isinstance(x, _pi):
@@ -447,6 +430,8 @@ def _get_dtype_and_weakness(x):
     return _f32w
   if isinstance(x, _pc) or x == complex:
     return _c128w
+  if isinstance(x, bool) or x == bool:
+    return _b8
   infer_result = ops.convert_to_tensor(x)
   return (infer_result.dtype, False)
 

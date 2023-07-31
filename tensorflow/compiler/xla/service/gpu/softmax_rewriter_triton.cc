@@ -45,15 +45,23 @@ bool HasDefaultLayout(const Shape& shape) {
 
 bool IsTritonSupportedInstruction(const HloInstruction* instr,
                                   const GpuVersion& gpu_version) {
-  // TODO(bchetioui): expand with non-trivial instructions.
-  if (instr->IsElementwise()) {
-    if (instr->opcode() == HloOpcode::kConvert &&
-        (instr->operand(0)->shape().element_type() == BF16 ||
-         instr->shape().element_type() == BF16) &&
-        !std::get<se::CudaComputeCapability>(gpu_version)
-             .IsAtLeast(stream_executor::CudaComputeCapability::AMPERE)) {
+  if (!instr->shape().IsArray()) {
+    return false;
+  }
+
+  if (!IsTritonSupportedDataType(instr->shape().element_type(), gpu_version)) {
+    return false;
+  }
+
+  for (const HloInstruction* operand : instr->operands()) {
+    if (!IsTritonSupportedDataType(operand->shape().element_type(),
+                                   gpu_version)) {
       return false;
     }
+  }
+
+  // TODO(bchetioui): expand with non-trivial instructions.
+  if (instr->IsElementwise()) {
     return IsTritonSupportedElementwise(instr->opcode(),
                                         instr->shape().element_type());
   }
@@ -354,7 +362,7 @@ StatusOr<bool> SoftmaxRewriterTriton::Run(
       // TODO(b/281980675): ensure that code generation also works well for FP8
       // and BF16. This fails for the moment due to these data types requiring
       // float normalization.
-      if (element_ty != F16 && element_ty != F32 && element_ty != F64) {
+      if (element_ty != F16 && element_ty != F32) {
         continue;
       }
 

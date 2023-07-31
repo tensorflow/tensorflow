@@ -212,7 +212,17 @@ PJRT_Error* PJRT_Error_GetCode(PJRT_Error_GetCode_Args* args) {
 // ---------------------------------- Plugin -----------------------------------
 
 PJRT_Error* PJRT_Plugin_Attributes(PJRT_Plugin_Attributes_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Plugin_Attributes_Args", PJRT_Plugin_Attributes_Args_STRUCT_SIZE,
+      args->struct_size));
   args->num_attributes = 0;
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Plugin_Initialize_NoOp(PJRT_Plugin_Initialize_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Plugin_Initialize_Args", PJRT_Plugin_Initialize_Args_STRUCT_SIZE,
+      args->struct_size));
   return nullptr;
 }
 
@@ -924,8 +934,11 @@ static xla::RecvCallback CRecvCallbackToCpp(
       [user_arg = c_callback.user_arg, callback = c_callback.recv_callback](
           const xla::PjRtTransferMetadata& unused_metadata,
           std::unique_ptr<xla::CopyToDeviceStream> stream) {
-        PJRT_CopyToDeviceStream c_stream{std::move(stream)};
-        callback(&c_stream, user_arg);
+        auto c_stream = std::make_unique<PJRT_CopyToDeviceStream>();
+        c_stream->stream = std::move(stream);
+        // The callback takes the ownership of the stream and will be
+        // responsible for calling its deleter.
+        callback(c_stream.release(), user_arg);
       }};
 }
 
@@ -1293,6 +1306,25 @@ PJRT_Error* PJRT_Buffer_UnpaddedDimensions(
   return nullptr;
 }
 
+PJRT_Error* PJRT_Buffer_DynamicDimensionIndices(
+    PJRT_Buffer_DynamicDimensionIndices_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Buffer_DynamicDimensionIndices_Args",
+      PJRT_Buffer_DynamicDimensionIndices_Args_STRUCT_SIZE, args->struct_size));
+  absl::Span<const bool> is_dyn_dim =
+      args->buffer->buffer->is_dynamic_dimension();
+  std::vector<size_t>& dyn_dim_indices =
+      args->buffer->dynamic_dim_indices.emplace();
+  for (int i = 0; i < is_dyn_dim.size(); ++i) {
+    if (is_dyn_dim[i]) {
+      dyn_dim_indices.push_back(i);
+    }
+  }
+  args->dynamic_dim_indices = dyn_dim_indices.data();
+  args->num_dynamic_dims = dyn_dim_indices.size();
+  return nullptr;
+}
+
 PJRT_Error* PJRT_Buffer_GetMemoryLayout(
     PJRT_Buffer_GetMemoryLayout_Args* args) {
   PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
@@ -1453,6 +1485,16 @@ PJRT_Error* PJRT_Buffer_UnsafePointer(PJRT_Buffer_UnsafePointer_Args* args) {
 }
 
 // ---------------------------- CopyToDeviceStream -----------------------------
+
+PJRT_Error* PJRT_CopyToDeviceStream_Destroy(
+    PJRT_CopyToDeviceStream_Destroy_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_CopyToDeviceStream_Destroy",
+      PJRT_CopyToDeviceStream_Destroy_Args_STRUCT_SIZE, args->struct_size));
+
+  delete args->stream;
+  return nullptr;
+}
 
 PJRT_Error* PJRT_CopyToDeviceStream_AddChunk(
     PJRT_CopyToDeviceStream_AddChunk_Args* args) {

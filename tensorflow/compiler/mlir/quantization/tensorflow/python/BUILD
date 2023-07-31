@@ -189,6 +189,9 @@ tf_py_test(
     size = "medium",
     srcs = ["integration_test/quantize_model_test.py"],
     shard_count = 50,  # Parallelize the test to avoid timeouts.
+    tags = [
+        "no_mac",  # TODO(b/292100835): Reenable
+    ],
     deps = [
         ":quantize_model",
         ":quantize_model_test_base",

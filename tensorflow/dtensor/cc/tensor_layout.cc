@@ -170,7 +170,7 @@ bool IsDynamicSize(int64_t size) {
   return mlir::ShapedType::isDynamic(size) || size == -1;
 }
 
-bool IsDynamicShape(const std::vector<int64_t>& shape) {
+bool IsDynamicShape(absl::Span<const int64_t> shape) {
   for (int64_t size : shape) {
     if (IsDynamicSize(size)) return true;
   }
@@ -1093,8 +1093,8 @@ StatusOr<LayoutProto> Layout::ToProto() const {
       case LayoutType::kStatic:
         proto.set_type(LayoutProto::STATIC);
         break;
-      case LayoutType::kRagged:
-        proto.set_type(LayoutProto::RAGGED);
+      case LayoutType::kParted:
+        proto.set_type(LayoutProto::PARTED);
         break;
       default:
         proto.set_type(LayoutProto::UNKNOWN);
@@ -1105,6 +1105,11 @@ StatusOr<LayoutProto> Layout::ToProto() const {
 }
 
 bool Layout::IsEquivalent(const Layout& b) const {
+  if (this->type() != b.type()) return false;
+  return IsEquivalentIgnoringType(b);
+}
+
+bool Layout::IsEquivalentIgnoringType(const Layout& b) const {
   if (this->rank() != b.rank()) return false;
   if (this->mesh() != b.mesh()) return false;
   for (int i = 0; i < this->rank(); ++i) {
@@ -1129,7 +1134,11 @@ std::vector<int64_t> Layout::GlobalShapeFromLocalShape(
     absl::Span<const int64_t> local_shape,
     const std::vector<std::vector<int64_t>>* local_shapes) const {
   if (IsSingleDevice() || IsFullyReplicated()) {
-    return std::vector<int64_t>(local_shape.begin(), local_shape.end());
+    if (IsDynamicShape(local_shape) && local_shapes) {
+      return local_shapes->at(0);
+    } else {
+      return std::vector<int64_t>(local_shape.begin(), local_shape.end());
+    }
   }
 
   std::vector<int64_t> stride_for_dim;
@@ -1216,8 +1225,8 @@ StatusOr<Layout> Layout::FromProto(const LayoutProto& proto) {
     case LayoutProto::STATIC:
       type = LayoutType::kStatic;
       break;
-    case LayoutProto::RAGGED:
-      type = LayoutType::kRagged;
+    case LayoutProto::PARTED:
+      type = LayoutType::kParted;
       break;
     default:
       return absl::InvalidArgumentError(absl::StrCat(
@@ -1286,8 +1295,8 @@ StatusOr<Layout> Layout::FromString(absl::string_view layout_str) {
   absl::string_view sharding_spec_str = layout_parts[0];
   if (absl::ConsumePrefix(&sharding_spec_str, kSingleDevicePrefix)) {
     type = LayoutType::kSingleDevice;
-  } else if (absl::ConsumePrefix(&sharding_spec_str, kRaggedPrefix)) {
-    type = LayoutType::kRagged;
+  } else if (absl::ConsumePrefix(&sharding_spec_str, kPartedPrefix)) {
+    type = LayoutType::kParted;
   } else if (absl::ConsumePrefix(&sharding_spec_str, kStaticPrefix)) {
     type = LayoutType::kStatic;
   } else {
@@ -1296,7 +1305,7 @@ StatusOr<Layout> Layout::FromString(absl::string_view layout_str) {
   }
 
   const bool has_sharding_spec =
-      (type == LayoutType::kRagged) || (type == LayoutType::kStatic);
+      (type == LayoutType::kParted) || (type == LayoutType::kStatic);
 
   std::vector<std::string> sharding_spec_strs;
   // Parse sharding specs.
@@ -1325,8 +1334,8 @@ std::string Layout::ToString() const {
     case LayoutType::kStatic:
       absl::StrAppend(&layout_str, kStaticPrefix);
       break;
-    case LayoutType::kRagged:
-      absl::StrAppend(&layout_str, kRaggedPrefix);
+    case LayoutType::kParted:
+      absl::StrAppend(&layout_str, kPartedPrefix);
       break;
   }
   // Serialize sharding specs.

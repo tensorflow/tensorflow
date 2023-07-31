@@ -92,9 +92,9 @@ class MeshTest(test_util.DTensorBaseTest, parameterized.TestCase):
     mesh = layout.Mesh([_MESH_DIM_BATCH, _MESH_DIM_X], device_ids,
                        np.ravel(device_ids).tolist(),
                        test_util.create_device_list((4, 2), 'CPU'))
-    self.assertIn(
-        '<Mesh object with dims=[(\'batch\', 4), (\'x\', 2)], '
-        'device_type="CPU", num_local_devices=8), size=8', repr(mesh))
+    self.assertIn('batch=4,x=2', repr(mesh))
+    self.assertIn('CPU:0', repr(mesh))
+    self.assertIn('CPU:7', repr(mesh))
 
   def test_mesh_contains_dim(self):
     self.assertTrue(_2D_MESH.contains_dim('batch'))
@@ -364,8 +364,7 @@ class LayoutTest(test_util.DTensorBaseTest, parameterized.TestCase):
   def test_layout_repr(self):
     tensor_layout = layout.Layout.batch_sharded(
         _2D_MESH, _MESH_DIM_BATCH, rank=2)
-    self.assertIn('Layout(sharding_specs=[\'batch\', \'unsharded\'], mesh=',
-                  repr(tensor_layout))
+    self.assertIn('batch,unsharded', repr(tensor_layout))
 
   def test_throws_for_non_mesh(self):
     with self.assertRaisesRegex(ValueError, 'mesh is not a valid Mesh object'):
@@ -407,6 +406,13 @@ class LayoutTest(test_util.DTensorBaseTest, parameterized.TestCase):
     tensor_layout = layout.Layout.from_single_device_mesh(_SINGLE_DEVICE_MESH)
     roundtrip = layout.Layout.from_proto(tensor_layout.as_proto())
     self.assertEqual(roundtrip, tensor_layout)
+
+  def test_parted_layout(self):
+    tensor_layout = layout.Layout.batch_sharded(
+        _2D_MESH, _MESH_DIM_BATCH, rank=2
+    )
+    parted_layout = tensor_layout.to_parted()
+    self.assertEqual(parted_layout.type, layout.LayoutType.PARTED)
 
 
 class RelayoutTest(test_util.DTensorBaseTest):
@@ -461,6 +467,22 @@ class RelayoutTest(test_util.DTensorBaseTest):
       )
     else:
       self.assertDTensorEqual(inp, to_layout, do_relayout())
+
+  @combinations.generate(combinations.combine(is_graph=[False, True]))
+  def test_relayout_to_parted(self, is_graph):
+    data = np.array([1, 2, 3, 4.0], dtype='f4')
+    inp = api.relayout(data, self.y_layout)
+
+    def do_relayout():
+      return api.relayout(inp, self.y_layout.to_parted())
+
+    if is_graph:
+      do_relayout = polymorphic_function.function(do_relayout)
+
+    with api.default_mesh(self.mesh):
+      result = do_relayout()
+
+    self.assertDTensorEqual(data, self.y_layout.to_parted(), result)
 
   @combinations.generate(combinations.combine(is_graph=[False, True]))
   def test_relayout_like_simple(self, is_graph):

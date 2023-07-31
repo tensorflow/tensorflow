@@ -357,6 +357,22 @@ StatusOr<LaunchDimensions> HloFusionAnalysis::GetLaunchDimensions(
   }
 }
 
+namespace {
+// Returns the hero reduction of the computation.
+// We always use the first reduce root that triggers unnested reduction emitter
+// as the hero reduction, since all the reductions are required to have the same
+// shape and layout as verified by `IsFusedReductionOutputConsistent()`.
+HloInstruction* FindHeroReduction(absl::Span<HloInstruction*> roots) {
+  auto it = absl::c_find_if(roots, [](HloInstruction* instr) {
+    return IsReductionFromOrToContiguousDimensions(*instr);
+  });
+  if (it == roots.end()) {
+    return nullptr;
+  }
+  return *it;
+}
+}  // namespace
+
 const ReductionCodegenInfo* HloFusionAnalysis::GetReductionCodegenInfo() {
   if (reduction_codegen_info_.has_value()) {
     return &reduction_codegen_info_.value();
@@ -425,6 +441,12 @@ const LaunchDimensionsConfig* HloFusionAnalysis::GetLoopFusionConfig() {
     unroll_factor = ComputeMaxUnrollFactor(num_elements);
   }
   VLOG(2) << "Unroll factor: " << unroll_factor;
+
+  if (GetEmitterFusionKind() == EmitterFusionKind::kScatter) {
+    // Only the unroll factor is used for scatter.
+    loop_fusion_config_.emplace(LaunchDimensionsConfig{unroll_factor});
+    return &loop_fusion_config_.value();
+  }
 
   bool row_vectorized;
   int num_big_inputs;

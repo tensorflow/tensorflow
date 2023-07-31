@@ -24,6 +24,7 @@ limitations under the License.
 #include "learning/brain/experimental/tfrt/native_lowering/kernels/sync_fallback_kernels.h"
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/time/time.h"
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -39,7 +40,7 @@ limitations under the License.
 #include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
-#include "tfrt/cpp_tests/test_util.h""  // from @tf_runtime
+#include "tfrt/cpp_tests/test_util.h"  // from @tf_runtime
 #include "tfrt/tensor/dense_host_tensor.h"  // from @tf_runtime
 
 namespace tensorflow {
@@ -47,6 +48,18 @@ namespace tfrt_stub {
 namespace {
 
 using ::testing::status::StatusIs;
+
+class GraphExecutorForTestingCostAnalysis : public GraphExecutor {
+ public:
+  int num_recompilations() {
+    tensorflow::mutex_lock lock(num_recompilations_mu_);
+    return num_recompilations_;
+  }
+  // This method is not thread safe.
+  void AdvanceTime(absl::Duration duration) {
+    simulated_duration_ = simulated_duration_ + duration;
+  }
+};
 
 class GraphExecutorTest : public ::testing::TestWithParam<bool> {};
 
@@ -103,13 +116,17 @@ TEST_P(GraphExecutorTest, Vanilla) {
               ::testing::ElementsAreArray({2}));
 }
 
-TEST_P(GraphExecutorTest, BasicWithOnlineCostAnalysis) {
+TEST_P(GraphExecutorTest, OnlineCostAnalysisOptionsOverrideToOnce) {
   GraphDef graph_def;
   TF_ASSERT_OK(GetSimpleGraphDef(graph_def));
 
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   GraphExecutor::Options options(runtime.get());
+  // Make sure `CostAnalysisOptions` is overriden when
+  // `enable_online_cost_analysis` = true.
   options.enable_online_cost_analysis = true;
+  options.cost_analysis_options.version =
+      GraphExecutionOptions::CostAnalysisOptions::kDisabled;
   options.enable_mlrt = GetParam();
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -118,10 +135,13 @@ TEST_P(GraphExecutorTest, BasicWithOnlineCostAnalysis) {
           CreateDefaultSessionOptions(options), graph_def.library()));
   auto resource_context = std::make_unique<tfrt::ResourceContext>();
   TF_ASSERT_OK_AND_ASSIGN(
-      auto graph_executor,
+      auto graph_executor_base,
       GraphExecutor::Create(std::move(options), *fallback_state,
                             std::move(resource_context), graph_def,
                             GetKernelRegistry()));
+  auto graph_executor = std::unique_ptr<GraphExecutorForTestingCostAnalysis>(
+      static_cast<GraphExecutorForTestingCostAnalysis*>(
+          graph_executor_base.release()));
 
   // Set input 'x' to [[1, 1, 1]]
   std::vector<std::pair<std::string, tensorflow::Tensor>> inputs;
@@ -131,22 +151,184 @@ TEST_P(GraphExecutorTest, BasicWithOnlineCostAnalysis) {
   std::vector<tensorflow::Tensor> outputs;
 
   // A first run should trigger online cost analysis.
+  EXPECT_EQ(graph_executor->num_recompilations(), 0);
   TF_ASSERT_OK(graph_executor->Run(/*run_options=*/{}, inputs,
                                    /*output_tensor_names=*/{"rank"},
                                    /*target_tensor_names=*/{}, &outputs));
   ASSERT_EQ(outputs.size(), 1);
-
   EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]),
               ::testing::ElementsAreArray({2}));
+  EXPECT_EQ(graph_executor->num_recompilations(), 1);
 
   // A second run should use re-compiled graph with online profiled costs.
+  // A reset does not occur again.
   TF_ASSERT_OK(graph_executor->Run(/*run_options=*/{}, inputs,
                                    /*output_tensor_names=*/{"rank"},
                                    /*target_tensor_names=*/{}, &outputs));
   ASSERT_EQ(outputs.size(), 1);
-
   EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]),
               ::testing::ElementsAreArray({2}));
+  EXPECT_EQ(graph_executor->num_recompilations(), 1);
+}
+
+TEST_P(GraphExecutorTest, OnlineCostAnalysisEveryTime) {
+  GraphDef graph_def;
+  TF_ASSERT_OK(GetSimpleGraphDef(graph_def));
+
+  auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
+  GraphExecutor::Options options(runtime.get());
+  options.cost_analysis_options.version =
+      GraphExecutionOptions::CostAnalysisOptions::kPeriodic;
+  options.cost_analysis_options.reset_interval = absl::ZeroDuration();
+  options.cost_analysis_options.updates_per_interval = 1;
+  options.enable_mlrt = GetParam();
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto fallback_state,
+      tensorflow::tfrt_stub::FallbackState::Create(
+          CreateDefaultSessionOptions(options), graph_def.library()));
+  auto resource_context = std::make_unique<tfrt::ResourceContext>();
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto graph_executor_base,
+      GraphExecutor::Create(std::move(options), *fallback_state,
+                            std::move(resource_context), graph_def,
+                            GetKernelRegistry()));
+  auto graph_executor = std::unique_ptr<GraphExecutorForTestingCostAnalysis>(
+      static_cast<GraphExecutorForTestingCostAnalysis*>(
+          graph_executor_base.release()));
+
+  // Set input 'x' to [[1, 1, 1]]
+  std::vector<std::pair<std::string, tensorflow::Tensor>> inputs;
+  inputs.push_back({"input", CreateTfTensor<int32_t>(
+                                 /*shape=*/{1, 3}, /*data=*/{1, 1, 1})});
+
+  std::vector<tensorflow::Tensor> outputs;
+
+  for (int i = 0; i < 10; ++i) {
+    TF_ASSERT_OK(graph_executor->Run(/*run_options=*/{}, inputs,
+                                     /*output_tensor_names=*/{"rank"},
+                                     /*target_tensor_names=*/{}, &outputs));
+    ASSERT_EQ(outputs.size(), 1);
+    EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]),
+                ::testing::ElementsAreArray({2}));
+    EXPECT_EQ(graph_executor->num_recompilations(), i + 1);
+  }
+}
+
+TEST_P(GraphExecutorTest, OnlineCostAnalysisDisabled) {
+  GraphDef graph_def;
+  TF_ASSERT_OK(GetSimpleGraphDef(graph_def));
+
+  auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
+  GraphExecutor::Options options(runtime.get());
+  options.cost_analysis_options.version =
+      GraphExecutionOptions::CostAnalysisOptions::kDisabled;
+  options.cost_analysis_options.reset_interval = absl::ZeroDuration();
+  options.cost_analysis_options.updates_per_interval = 1;
+  options.enable_mlrt = GetParam();
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto fallback_state,
+      tensorflow::tfrt_stub::FallbackState::Create(
+          CreateDefaultSessionOptions(options), graph_def.library()));
+  auto resource_context = std::make_unique<tfrt::ResourceContext>();
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto graph_executor_base,
+      GraphExecutor::Create(std::move(options), *fallback_state,
+                            std::move(resource_context), graph_def,
+                            GetKernelRegistry()));
+  auto graph_executor = std::unique_ptr<GraphExecutorForTestingCostAnalysis>(
+      static_cast<GraphExecutorForTestingCostAnalysis*>(
+          graph_executor_base.release()));
+
+  // Set input 'x' to [[1, 1, 1]]
+  std::vector<std::pair<std::string, tensorflow::Tensor>> inputs;
+  inputs.push_back({"input", CreateTfTensor<int32_t>(
+                                 /*shape=*/{1, 3}, /*data=*/{1, 1, 1})});
+
+  std::vector<tensorflow::Tensor> outputs;
+
+  TF_ASSERT_OK(graph_executor->Run(/*run_options=*/{}, inputs,
+                                   /*output_tensor_names=*/{"rank"},
+                                   /*target_tensor_names=*/{}, &outputs));
+  EXPECT_EQ(graph_executor->num_recompilations(), 0);
+}
+
+TEST_P(GraphExecutorTest, OnlineCostAnalysisPeriodic) {
+  GraphDef graph_def;
+  TF_ASSERT_OK(GetSimpleGraphDef(graph_def));
+
+  auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
+  GraphExecutor::Options options(runtime.get());
+  options.cost_analysis_options.version =
+      GraphExecutionOptions::CostAnalysisOptions::kPeriodic;
+  options.cost_analysis_options.reset_interval = absl::Minutes(10);
+  options.cost_analysis_options.updates_per_interval = 5;
+  options.enable_mlrt = GetParam();
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto fallback_state,
+      tensorflow::tfrt_stub::FallbackState::Create(
+          CreateDefaultSessionOptions(options), graph_def.library()));
+  auto resource_context = std::make_unique<tfrt::ResourceContext>();
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto graph_executor_base,
+      GraphExecutor::Create(std::move(options), *fallback_state,
+                            std::move(resource_context), graph_def,
+                            GetKernelRegistry()));
+  auto graph_executor = std::unique_ptr<GraphExecutorForTestingCostAnalysis>(
+      static_cast<GraphExecutorForTestingCostAnalysis*>(
+          graph_executor_base.release()));
+
+  // Set input 'x' to [[1, 1, 1]]
+  std::vector<std::pair<std::string, tensorflow::Tensor>> inputs;
+  inputs.push_back({"input", CreateTfTensor<int32_t>(
+                                 /*shape=*/{1, 3}, /*data=*/{1, 1, 1})});
+
+  std::vector<tensorflow::Tensor> outputs;
+  // First run always initiates a recompilation.
+  TF_ASSERT_OK(graph_executor->Run(/*run_options=*/{}, inputs,
+                                   /*output_tensor_names=*/{"rank"},
+                                   /*target_tensor_names=*/{}, &outputs));
+  EXPECT_EQ(graph_executor->num_recompilations(), 1);
+
+  // We have specified that the costs should only update every
+  // `reset_interval` / `updates_per_interval` = 2
+  // minutes. So no cost update occurs here.
+  for (int i = 0; i < 10; ++i) {
+    TF_ASSERT_OK(graph_executor->Run(/*run_options=*/{}, inputs,
+                                     /*output_tensor_names=*/{"rank"},
+                                     /*target_tensor_names=*/{}, &outputs));
+    EXPECT_EQ(graph_executor->num_recompilations(), 1);
+  }
+  // With 2 minute breaks in-between, 4 runs = 4 cost updates.
+  for (int i = 0; i < 4; ++i) {
+    graph_executor->AdvanceTime(absl::Minutes(2));
+    TF_ASSERT_OK(graph_executor->Run(/*run_options=*/{}, inputs,
+                                     /*output_tensor_names=*/{"rank"},
+                                     /*target_tensor_names=*/{}, &outputs));
+    EXPECT_EQ(graph_executor->num_recompilations(), 1);
+  }
+  // A reset occurs on the 5th run.
+  graph_executor->AdvanceTime(absl::Minutes(2));
+  TF_ASSERT_OK(graph_executor->Run(/*run_options=*/{}, inputs,
+                                   /*output_tensor_names=*/{"rank"},
+                                   /*target_tensor_names=*/{}, &outputs));
+  EXPECT_EQ(graph_executor->num_recompilations(), 2);
+
+  // Demonstrate one more reset.
+  for (int i = 0; i < 4; ++i) {
+    graph_executor->AdvanceTime(absl::Minutes(1000));
+    TF_ASSERT_OK(graph_executor->Run(/*run_options=*/{}, inputs,
+                                     /*output_tensor_names=*/{"rank"},
+                                     /*target_tensor_names=*/{}, &outputs));
+    EXPECT_EQ(graph_executor->num_recompilations(), 2);
+  }
+  graph_executor->AdvanceTime(absl::Minutes(1000));
+  TF_ASSERT_OK(graph_executor->Run(/*run_options=*/{}, inputs,
+                                   /*output_tensor_names=*/{"rank"},
+                                   /*target_tensor_names=*/{}, &outputs));
+  EXPECT_EQ(graph_executor->num_recompilations(), 3);
 }
 
 REGISTER_OP("TestCancel")
@@ -249,32 +431,6 @@ TEST_P(GraphExecutorTest, Cancellation) {
 
 INSTANTIATE_TEST_SUITE_P(GraphExecutorTestSuite, GraphExecutorTest,
                          ::testing::Bool());
-
-TEST_F(GraphExecutorTest, DoOnlineCostAnalysisExactlyOnce) {
-  GraphExecutor::LoadedClientGraph loaded_client_graph_0(
-      "name0", /*symbol_uids=*/{},
-      /*graph_executor=*/nullptr,
-      /*mlir_context=*/nullptr,
-      /*tf_mlir_with_op_keys=*/{}, /*tfrt_mlir=*/{},
-      /*executable_context=*/nullptr,
-      /*enable_online_cost_analysis=*/true,
-      /*stream_callback_id=*/std::nullopt);
-  GraphExecutor::LoadedClientGraph loaded_client_graph_1(
-      "name1", /*symbol_uids=*/{},
-      /*graph_executor=*/nullptr,
-      /*mlir_context=*/nullptr,
-      /*tf_mlir_with_op_keys=*/{}, /*tfrt_mlir=*/{},
-      /*executable_context=*/nullptr,
-      /*enable_online_cost_analysis=*/true,
-      /*stream_callback_id=*/std::nullopt);
-
-  // For each `LoadedClientGraph`, `MaybeCreateCostRecorder()` only returns a
-  // cost recorder for once.
-  EXPECT_TRUE(loaded_client_graph_0.MaybeCreateCostRecorder() != nullptr);
-  EXPECT_TRUE(loaded_client_graph_1.MaybeCreateCostRecorder() != nullptr);
-  EXPECT_TRUE(loaded_client_graph_0.MaybeCreateCostRecorder() == nullptr);
-  EXPECT_TRUE(loaded_client_graph_1.MaybeCreateCostRecorder() == nullptr);
-}
 
 TEST_F(GraphExecutorTest, Extend) {
   GraphDef graph_def;

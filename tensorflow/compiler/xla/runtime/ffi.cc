@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/status/status.h"
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/ffi/ffi_c_api.h"
 #include "tensorflow/compiler/xla/runtime/module.h"
@@ -125,17 +126,30 @@ absl::StatusCode ConvertErrorCode(XLA_FFI_Error_Code errc) {
 using StreamProvider = XLA_FFI_Stream* (*)(const CustomCall::UserData*,
                                            const DiagnosticEngine*);
 
-static std::vector<StreamProvider>& GetStreamProviders() {
+namespace {
+// For protecting GetStreamProviders().
+ABSL_CONST_INIT absl::Mutex stream_providers_mu(absl::kConstInit);
+}  // namespace
+
+static std::vector<StreamProvider>& GetStreamProviders()
+    ABSL_EXCLUSIVE_LOCKS_REQUIRED(stream_providers_mu) {
   static auto* stream_providers = new std::vector<StreamProvider>();
   return *stream_providers;
 }
 
 void RegisterXlaFfiStreamProvider(StreamProvider provider) {
-  GetStreamProviders().push_back(provider);
+  absl::MutexLock lock(&stream_providers_mu);
+  std::vector<StreamProvider>& stream_providers = GetStreamProviders();
+  // AFAIK there is only one stream provider now, so this count operation is not
+  // slow.
+  if (absl::c_count(stream_providers, provider) == 0) {
+    stream_providers.push_back(provider);
+  }
 }
 
 XLA_FFI_Stream* GetXlaFfiStream(const CustomCall::UserData* user_data,
                                 const DiagnosticEngine* diagnostic) {
+  absl::MutexLock lock(&stream_providers_mu);
   for (auto provider : GetStreamProviders()) {
     if (XLA_FFI_Stream* stream = provider(user_data, diagnostic)) {
       return stream;
@@ -336,12 +350,20 @@ static XLA_FFI_Error* CreateError(XLA_FFI_Error_Create_Args* args) {
 // XLA runtime FFI backend implementation.
 //===----------------------------------------------------------------------===//
 
-static std::vector<FfiModule>& OwnedFfiModules() {
+namespace {
+// For protecting OwnedFfiModules().
+ABSL_CONST_INIT absl::Mutex modules_mu(absl::kConstInit);
+}  // namespace
+
+static std::vector<FfiModule>& OwnedFfiModules()
+    ABSL_EXCLUSIVE_LOCKS_REQUIRED(modules_mu) {
   static auto* modules = new std::vector<FfiModule>();
   return *modules;
 }
 
 std::vector<const runtime::Module*> FfiModules() {
+  absl::MutexLock lock(&modules_mu);
+
   std::vector<const runtime::Module*> modules;
   absl::c_transform(OwnedFfiModules(), std::back_inserter(modules),
                     [](const FfiModule& module) { return &module; });
@@ -420,6 +442,7 @@ static void RegisterXlaFfiModule(XLA_FFI_Module_Register_Args* args) {
     exported_functions.push_back(fn);
   }
 
+  absl::MutexLock lock(&modules_mu);
   auto& modules = OwnedFfiModules();
   modules.emplace_back(api(), /*id=*/modules.size(), args->name, args->module,
                        args->state_type, args->create_state,

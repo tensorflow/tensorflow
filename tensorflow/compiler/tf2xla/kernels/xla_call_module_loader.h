@@ -37,7 +37,8 @@ class XlaCallModuleLoader {
       mlir::MLIRContext* context, int version, std::string module_str,
       std::vector<std::string> dim_args_spec,
       std::vector<std::string> disabled_checks,
-      std::vector<std::string> platforms, std::string loading_platform);
+      std::vector<std::string> platforms, std::string loading_platform,
+      int num_invocation_args, bool main_has_token_input_output);
 
   int nr_outputs() { return main_.getNumResults(); }
   mlir::TypeRange output_types() { return main_.getResultTypes(); }
@@ -84,7 +85,9 @@ class XlaCallModuleLoader {
                                       std::vector<std::string> dim_args_spec,
                                       std::vector<std::string> disabled_checks,
                                       std::vector<std::string> platforms,
-                                      std::string loading_platform);
+                                      std::string loading_platform,
+                                      int num_invocation_args,
+                                      bool main_has_token_input_output);
 
   // Adds a wrapper for the "main" function to compute the platform index and
   // the dimension arguments.

@@ -31,7 +31,7 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
-std::vector<std::pair<uint64_t /*program_id*/, std::unique_ptr<xla::HloProto>>>
+absl::flat_hash_map<uint64_t /*program_id*/, std::unique_ptr<xla::HloProto>>
 ParseHloProtosFromXSpace(const XSpace& space);
 
 class HloProtoMap {

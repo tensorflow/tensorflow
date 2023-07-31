@@ -8002,6 +8002,46 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramRootDotMayAlias) {
                             op::Parameter(0)));
 }
 
+TEST_P(MemorySpaceAssignmentTest, CrossProgramRootLiveOutBug) {
+  // An in-place fusion that lives out should not be included as a use to the
+  // cross-program prefetch allocation. Due to a bug, we considered in-place
+  // update that feeds the ROOT of the entry computation as a valid use of the
+  // cross-program prefetch. This then would cause this live-out buffer to be
+  // placed in the alternate memory. We expect p0 to be cross-program prefetched
+  // but only for the dot operand and not the fusion operand.
+  absl::string_view hlo_string = R"(
+  HloModule cross_program_prefetch, is_scheduled=true, input_output_alias={ {0}: (0, {}, may-alias) }
+    fused_computation {
+      p0 = s32[2,2] parameter(0)
+      p1 = s32[2,2] parameter(1)
+      slice = s32[1,2] slice(p1), slice={[0:1], [0:2]}
+      c1 = s32[] constant(0)
+      ROOT dus = s32[2,2] dynamic-update-slice(s32[2,2] p0, s32[1,2] slice, s32[] c1, s32[] c1)
+    }
+
+    ENTRY CrossProgramPrefetch {
+      p0 = s32[2,2] parameter(0)
+      p1 = s32[2,2] parameter(1)
+      dot = s32[2,2] dot(p1, p0), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+      fusion = s32[2,2] fusion(p0, dot), kind=kLoop, calls=fused_computation
+      ROOT root = (s32[2,2], s32[2,2]) tuple(fusion, dot)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  auto preset_assignments = AssignMemorySpace(
+      module.get(), DefaultMemorySpaceOptions(),
+      /*max_prefetch_interval=*/5, /*min_prefetch_interval=*/2);
+
+  auto cross_program_prefetches = module->CrossProgramPrefetches();
+  EXPECT_EQ(cross_program_prefetches.size(), 1);
+  EXPECT_THAT(FindInstruction(module.get(), "dot")->operand(1),
+              op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
+                            op::Parameter(0)));
+  EXPECT_THAT(FindInstruction(module.get(), "fusion")->operand(0),
+              op::Parameter(0));
+}
+
 TEST_P(MemorySpaceAssignmentTest, CrossProgramRootParameter) {
   absl::string_view hlo_string = R"(
   HloModule cross_program_prefetch, is_scheduled=true

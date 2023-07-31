@@ -43,13 +43,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/tsl/platform/protobuf.h"
 
 namespace xla {
 namespace {
@@ -2174,14 +2172,14 @@ HloFusionInstruction::fused_parameters() const {
   return fused_instructions_computation()->parameter_instructions();
 }
 
-const tsl::gtl::iterator_range<UnwrappingIterator<
+tsl::gtl::iterator_range<UnwrappingIterator<
     std::list<std::unique_ptr<HloInstruction>>::const_iterator>>
 HloFusionInstruction::fused_instructions() const {
   const HloComputation* subcomp = fused_instructions_computation();
   return subcomp->instructions();
 }
 
-const tsl::gtl::iterator_range<
+tsl::gtl::iterator_range<
     UnwrappingIterator<std::list<std::unique_ptr<HloInstruction>>::iterator>>
 HloFusionInstruction::fused_instructions() {
   return fused_instructions_computation()->instructions();

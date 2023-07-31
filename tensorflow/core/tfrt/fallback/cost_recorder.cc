@@ -14,8 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/fallback/cost_recorder.h"
 
-#include <algorithm>
-#include <cstdint>
 #include <limits>
 #include <string>
 
@@ -25,7 +23,6 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tfrt/fallback/op_cost_map.pb.h"
 #include "tensorflow/core/util/env_var.h"
-#include "tensorflow/tsl/platform/mutex.h"
 
 namespace tensorflow {
 namespace tfrt_stub {
@@ -47,7 +44,7 @@ uint64_t CostRecorder::GetCost(int64_t op_key) const {
 
   auto r =
       std::max(static_cast<uint64_t>(1),
-               static_cast<uint64_t>(total_cost / num_ops / normalize_ratio_));
+               static_cast<uint64_t>(total_cost / num_ops));
 
   VLOG(2) << "Get cost for op_key=" << op_key << ", cost=" << r;
 

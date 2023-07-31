@@ -176,7 +176,7 @@ FusionDecision OperandReachableFromProducer(
 std::vector<HloInstruction*> GetProducerConsumerMultiOutputFusionCandidates(
     const HloInstruction* producer, const HloReachabilityMap& reachability,
     FusionInfoCache* fusion_info_cache, GpuHloCostAnalysis* cost_analysis,
-    const GpuDeviceInfo& device_info, se::CudaComputeCapability cc) {
+    se::CudaComputeCapability cc) {
   std::vector<HloInstruction*> fusion_candidates;
   const HloComputation* computation = producer->parent();
   const HloModule* module = computation->parent();
@@ -206,7 +206,8 @@ std::vector<HloInstruction*> GetProducerConsumerMultiOutputFusionCandidates(
       },
       &ShapesCompatibleForMultiOutputFusion,
       std::bind(OperandReachableFromProducer, _1, _2, std::cref(reachability)),
-      std::bind(FusionFitsInBudget, _1, _2, std::cref(device_info),
+      std::bind(FusionFitsInBudget, _1, _2,
+                std::cref(*cost_analysis->device_info_),
                 /*is_consumer_producer_fusion=*/false, fusion_info_cache),
       [&](const HloInstruction& producer,
           const HloInstruction& consumer) -> FusionDecision {
@@ -222,8 +223,7 @@ std::vector<HloInstruction*> GetProducerConsumerMultiOutputFusionCandidates(
                 .debug_options()
                 .xla_gpu_enable_experimental_block_size();
         GpuPerformanceModel::RunTimes t = GpuPerformanceModel::EstimateRunTimes(
-            &producer, cost_analysis, device_info, use_experimental_block_size,
-            cc,
+            &producer, cost_analysis, use_experimental_block_size, cc,
             // `EstimateRunTimes`'s interface violates const correctness, so we
             // need the const cast here.
             {const_cast<HloInstruction*>(&consumer)},
@@ -312,7 +312,7 @@ bool GpuMultiOutputFusion::FuseSiblings(HloInstruction* parent,
       // practice.
       std::bind(ParameterSlicesAreNonOverlapping, _1, _2, parent),
       // This check should be last, as it may be expensive.
-      std::bind(LegalToFuse, _1, _2, std::cref(device_info_),
+      std::bind(LegalToFuse, _1, _2, std::cref(*cost_analysis->device_info_),
                 fusion_info_cache)};
   for (auto i = siblings.begin(); i != siblings.end(); ++i) {
     VLOG(3) << "Considering " << (*i)->name();
@@ -385,7 +385,8 @@ StatusOr<bool> GpuMultiOutputFusion::DoMultiOutputFusion() {
   RecomputeReachability();
   GpuHloCostAnalysis cost_analysis({shape_size_function_,
                                     /*per_second_rates=*/{},
-                                    /*count_multiple_input_accesses=*/true});
+                                    /*count_multiple_input_accesses=*/true},
+                                   &device_info_);
   TF_RETURN_IF_ERROR(computation_->Accept(&cost_analysis));
   std::vector<HloInstruction*> defs_before_uses =
       computation_->MakeInstructionPostOrder();
@@ -415,7 +416,7 @@ StatusOr<bool> GpuMultiOutputFusion::DoMultiOutputFusion() {
     // traversal, and hence, not get into the way of subsequent fusion attempts.
     const auto candidates = GetProducerConsumerMultiOutputFusionCandidates(
         producer, *reachability_, &fusion_info_cache, &cost_analysis,
-        device_info_, compute_capability_);
+        compute_capability_);
     auto* consumer_for_fusion = SelectPreferredFusionCandidate(candidates);
     if (consumer_for_fusion == nullptr) {
       continue;
@@ -432,48 +433,23 @@ StatusOr<bool> GpuMultiOutputFusion::DoMultiOutputFusion() {
     TF_RETURN_IF_ERROR(cost_analysis.RemoveInstruction(producer));
     TF_RETURN_IF_ERROR(cost_analysis.RemoveInstruction(consumer_for_fusion));
 
+    HloInstruction* input_fusion;
     if (consumer_for_fusion->opcode() == HloOpcode::kFusion) {
+      input_fusion = consumer_for_fusion;
       VLOG(2) << "Fuse producer " << producer->name() << " into its consumer "
               << consumer_for_fusion->name();
-      DumpFusionState(
-          *consumer_for_fusion,
-          absl::StrCat("About to fuse producer |", producer_name,
-                       "| into consumer |", consumer_for_fusion->name(),
-                       "| inside GPU multi-output fusion"),
-          /*producer=*/producer);
-      if (producer->opcode() == HloOpcode::kFusion) {
-        consumer_for_fusion->MergeFusionInstructionIntoMultiOutput(producer);
-      } else {
-        consumer_for_fusion->FuseInstructionIntoMultiOutput(producer);
-        CHECK_EQ(0, producer->user_count());
-        TF_CHECK_OK(computation_->RemoveInstruction(producer));
-      }
-      TF_RETURN_IF_ERROR(cost_analysis.RevisitInstruction(consumer_for_fusion));
-
-      DumpFusionState(
-          *consumer_for_fusion,
-          absl::StrCat("Fusing producer |", producer_name, "| into consumer |",
-                       consumer_for_fusion->name(),
-                       "| inside GPU multi-output fusion"));
-      RecomputeReachability();
-      GpuPerformanceModel::RecordEstimatedRunTime(consumer_for_fusion,
-                                                  &cost_analysis, device_info_);
-      continue;
+    } else {
+      input_fusion = computation_->AddInstruction(HloInstruction::CreateFusion(
+          consumer_for_fusion->shape(),
+          ChooseFusionKind(*producer, *consumer_for_fusion),
+          consumer_for_fusion));
+      VLOG(2) << "Fuse producer " << producer->name() << " and its consumer "
+              << consumer_for_fusion->name() << " into "
+              << input_fusion->name();
+      TF_CHECK_OK(
+          computation_->ReplaceInstruction(consumer_for_fusion, input_fusion));
     }
-    HloInstruction* input_fusion =
-        computation_->AddInstruction(HloInstruction::CreateFusion(
-            consumer_for_fusion->shape(),
-            ChooseFusionKind(*producer, *consumer_for_fusion),
-            consumer_for_fusion));
-    VLOG(2) << "Fuse producer " << producer->name() << " and its consumer "
-            << consumer_for_fusion->name() << " into " << input_fusion->name();
-    DumpFusionState(
-        *input_fusion,
-        absl::StrCat("About to fuse |", producer_name, "| into consumer |",
-                     input_fusion->name(), "| inside GPU multi-output fusion"),
-        /*producer=*/input_fusion);
-    TF_CHECK_OK(
-        computation_->ReplaceInstruction(consumer_for_fusion, input_fusion));
+
     if (producer->opcode() == HloOpcode::kFusion) {
       input_fusion->MergeFusionInstructionIntoMultiOutput(producer);
     } else {
@@ -488,8 +464,7 @@ StatusOr<bool> GpuMultiOutputFusion::DoMultiOutputFusion() {
         absl::StrCat("Fusing producer |", producer_name, "| into consumer |",
                      input_fusion->name(), "| inside GPU multi-output fusion"));
     RecomputeReachability();
-    GpuPerformanceModel::RecordEstimatedRunTime(input_fusion, &cost_analysis,
-                                                device_info_);
+    GpuPerformanceModel::RecordEstimatedRunTime(input_fusion, &cost_analysis);
   }
   return changed;
 }

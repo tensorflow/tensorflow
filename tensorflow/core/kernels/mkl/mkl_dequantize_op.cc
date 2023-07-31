@@ -156,9 +156,10 @@ class MklDequantizeOp : public OpKernel {
       attr.set_output_scales(0, scales);
 #else
       attr.set_scales_mask(DNNL_ARG_SRC, 0);
-      auto scale_mem =
-          memory({{scales.size()}, MklDnnType<float>(), memory::format_tag::x},
-                 cpu_engine, scales.data());
+      auto scale_mem = memory({{static_cast<int64_t>(scales.size())},
+                               MklDnnType<float>(),
+                               memory::format_tag::x},
+                              cpu_engine, scales.data());
 #endif  // !ENABLE_ONEDNN_V3
       std::vector<primitive> net;
 

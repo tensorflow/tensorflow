@@ -25,6 +25,7 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+namespace {
 
 // Calculates a fingerprint of the kernel arguments, which can be used for
 // checking reusability.
@@ -56,17 +57,12 @@ std::string GetArgumentFingerprint(
       });
 }
 
-// Calculates the fingerprint of a (fused_computation, kernel_arguments,
-// discriminator) tuple.
-//
-// If a given fusion is implemented using multiple kernels, then for each
-// kernel we should provide a discriminator, such as "init" and "impl".
-//
-// If the same fingerprint is returned twice, then we can reuse the kernel
-// generated for the first computation.
-std::string GetFingerprint(const HloComputation* fused_computation,
-                           absl::Span<const KernelArgument> kernel_arguments,
-                           absl::string_view discriminator = "") {
+}  // namespace
+
+std::string GetComputationFingerprint(
+    const HloComputation* fused_computation,
+    absl::Span<const KernelArgument> kernel_arguments,
+    absl::string_view discriminator) {
   // We have to print constants, because otherwise we would accidentally reuse
   // kernels which have different builtin constants.
   //
@@ -97,8 +93,8 @@ KernelReuseCache::GetWithStatus(
     absl::Span<const KernelArgument> kernel_arguments,
     absl::string_view discriminator,
     const std::function<StatusOr<KernelReuseCache::Entry>()>& generator) {
-  std::string fingerprint =
-      GetFingerprint(fused_computation, kernel_arguments, discriminator);
+  std::string fingerprint = GetComputationFingerprint(
+      fused_computation, kernel_arguments, discriminator);
   VLOG(4) << "Fingerprint: ";
   XLA_VLOG_LINES(4, fingerprint);
 

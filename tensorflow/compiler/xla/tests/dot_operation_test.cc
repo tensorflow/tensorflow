@@ -18,6 +18,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+#if TENSORFLOW_USE_ROCM
+#include "rocm/rocm_config.h"
+#endif
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
@@ -686,14 +689,13 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMul) {
       {x_data.get(), y_data.get()}, this->error_spec_);
 }
 
+#if GOOGLE_CUDA || TF_HIPBLASLT
 template <typename T>
 class DotOperationTestWithCublasLt_F16F32F64CF64 : public DotOperationTest {
  public:
   DotOperationTestWithCublasLt_F16F32F64CF64() {
-    bool enable_cublas_lt = false;
-#if GOOGLE_CUDA
-    enable_cublas_lt = true;
-#endif
+    bool enable_cublas_lt = true;
+
     execution_options_.mutable_debug_options()->set_xla_gpu_enable_cublaslt(
         enable_cublas_lt);
   }
@@ -741,7 +743,9 @@ XLA_TYPED_TEST(DotOperationTestWithCublasLt_F16F32F64CF64,
   this->template ComputeAndCompareR3<T>(
       &builder, expected, {x_data.get(), y_data.get()}, this->error_spec_);
 }
+#endif  // GOOGLE_CUDA || TF_HIPBLASLT
 
+#if GOOGLE_CUDA
 template <typename T>
 class DotOperationTestWithCublasLt_F8 : public DotOperationTest {
  public:
@@ -1063,6 +1067,7 @@ XLA_TYPED_TEST(DotOperationTestWithCublasLt_F8, ScaledABScaledDWithDAmaxF8) {
                                 b_scale_data.get(), d_scale_data.get()},
                                this->error_spec_);
 }
+#endif  // GOOGLE_CUDA
 
 XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMulR3LhsR2Rhs) {
   using T = TypeParam;

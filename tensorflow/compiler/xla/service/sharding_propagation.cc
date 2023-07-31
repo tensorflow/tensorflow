@@ -2557,7 +2557,7 @@ StatusOr<bool> ShardingPropagation::Run(
 
   // Instructions that are related through a computation and need to share the
   // same sharding.
-  auto get_related_instructions = [](HloInstruction* inst) {
+  auto get_related_instructions = [this](HloInstruction* inst) {
     if (inst->opcode() == HloOpcode::kWhile) {
       return std::vector<HloInstruction*>{
           inst, inst->while_body()->root_instruction(),
@@ -2572,6 +2572,12 @@ StatusOr<bool> ShardingPropagation::Run(
         comps.push_back(c->root_instruction());
       }
       return comps;
+    } else if (inst->opcode() == HloOpcode::kCustomCall) {
+      if (sharding_helper_ && sharding_helper_->IsCustomCallShardable(inst)) {
+        return sharding_helper_->GetRelatedInstructions(inst);
+      } else {
+        return std::vector<HloInstruction*>{};
+      }
     } else {
       CHECK(false);
     }
@@ -2601,7 +2607,8 @@ StatusOr<bool> ShardingPropagation::Run(
             };
 
             if (instruction->opcode() == HloOpcode::kConditional ||
-                instruction->opcode() == HloOpcode::kWhile) {
+                instruction->opcode() == HloOpcode::kWhile ||
+                instruction->opcode() == HloOpcode::kCustomCall) {
               propagate_to_instruction(instruction);
             }
 

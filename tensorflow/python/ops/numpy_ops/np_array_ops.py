@@ -524,14 +524,23 @@ def _reduce(tf_fn,
           width = np.iinfo(dtype).bits
         # Numpy int_ and uint are defined as 'long' and 'unsigned long', so
         # should have the same bit width.
-        if width < np.iinfo(np.int_).bits:
-          if is_signed:
-            dtype = np.int_
-          else:
-            dtype = np.uint
-          a = math_ops.cast(a, dtype)
+        if ops.is_auto_dtype_conversion_enabled():
+          # We default to 32 bits when using auto dtype conversion semantics.
+          if width < np.iinfo(np.int32).bits:
+            if is_signed:
+              dtype = np.int32
+            else:
+              dtype = np.uint32
+        else:
+          if width < np.iinfo(np.int_).bits:
+            if is_signed:
+              dtype = np.int_
+            else:
+              dtype = np.uint
+        a = math_ops.cast(a, dtype)
       elif promote_int == _TO_FLOAT:
-        a = math_ops.cast(a, np_dtypes.default_float_type())
+        # Use a default float type.
+        a = math_ops.cast(a, np_utils.result_type(float))
 
   if isinstance(axis, tensor_lib.Tensor) and axis.dtype not in (
       dtypes.int32, dtypes.int64):
@@ -733,7 +742,7 @@ def around(a, decimals=0):  # pylint: disable=missing-docstring
   else:
     # Use float as the working dtype when a.dtype is exact (e.g. integer),
     # because `decimals` can be negative.
-    float_dtype = np_dtypes.default_float_type()
+    float_dtype = np_utils.result_type(float)
     a = a.astype(float_dtype)
     factor = math_ops.cast(factor, float_dtype)
   a = math_ops.multiply(a, factor)
@@ -1206,7 +1215,8 @@ def tri(N, M=None, k=0, dtype=None):  # pylint: disable=invalid-name,missing-doc
   if dtype is not None:
     dtype = np_utils.result_type(dtype)
   else:
-    dtype = np_dtypes.default_float_type()
+    # Use a default float type.
+    dtype = np_utils.result_type(float)
 
   if k < 0:
     lower = -k - 1

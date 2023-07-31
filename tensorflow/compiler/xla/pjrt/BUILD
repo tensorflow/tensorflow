@@ -510,6 +510,7 @@ xla_cc_test(
     srcs = ["tracked_tfrt_cpu_device_buffer_test.cc"],
     deps = [
         ":tracked_tfrt_cpu_device_buffer",
+        "//tensorflow/tsl/platform:env",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -772,7 +773,10 @@ cc_library(
     srcs = ["host_callback.cc"],
     hdrs = ["host_callback.h"],
     visibility = [":friends"],
-    deps = [":pjrt_client"],
+    deps = [
+        ":pjrt_client",
+        ":pjrt_future",
+    ],
 )
 
 xla_cc_test(

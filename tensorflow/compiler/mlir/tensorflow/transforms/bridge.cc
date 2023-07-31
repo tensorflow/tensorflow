@@ -149,12 +149,13 @@ void CreateTPUBridgePipelineImpl(
   pm.addNestedPass<func::FuncOp>(
       CreateTPUReorderReplicateAndPartitionedInputsPass());
   pm.addNestedPass<func::FuncOp>(TF::CreateDecomposeReduceDatasetPass());
-  if (tensorflow::GetBuildXlaOpsPassFlags()
-          ->tf_xla_disable_full_embedding_pipelining) {
-    pm.addPass(TFDevice::CreateEmbeddingSequencingPass());
-  } else {
-    pm.addPass(TFDevice::CreateEmbeddingPipeliningPass());
-  }
+  // Only one of EmbeddingSequencing and EmbeddingPipelining will actually
+  // run and the logic is in EmbeddingPipeliningPass. If the pipelining pass
+  // runs, embedding attributes are stripped and the sequencing pass will have
+  // no effect. If the pipelining pass doesn't run, embedding attributes are
+  // preserved and the sequencing rewrite will trigger.
+  pm.addPass(TFDevice::CreateEmbeddingPipeliningPass());
+  pm.addPass(TFDevice::CreateEmbeddingSequencingPass());
   pm.addPass(CreateTPUClusterFormationPass());
   // CreateEmbeddingPipeliningPass may have created more functions, but
   // TPUClusterCleanup and OutsideCompiledToHostLaunch need every function to be

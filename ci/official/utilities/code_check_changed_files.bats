@@ -16,10 +16,9 @@
 # ==============================================================================
 
 setup_file() {
-    cd "$TFCI_GIT_DIR"
     bazel version  # Start the bazel server
     # Without this, git errors if /tf/tensorflow directory owner is different
-    git config --global --add safe.directory "$TFCI_GIT_DIR"
+    git config --global --add safe.directory .
     # Note that you could generate a list of all the affected targets with e.g.:
     # bazel query $(paste -sd "+" $BATS_FILE_TMPDIR/changed_files) --keep_going
     # Only shows Added, Changed, Modified, Renamed, and Type-changed files

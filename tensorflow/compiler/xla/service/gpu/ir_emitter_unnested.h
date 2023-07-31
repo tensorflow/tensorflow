@@ -29,11 +29,13 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/autotuning.pb.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/service/gpu/elemental_ir_emitter.h"
+#include "tensorflow/compiler/xla/service/gpu/fusions/tiling_util.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_fusion_analysis.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/kernel_mapping_scheme.h"
 #include "tensorflow/compiler/xla/service/gpu/kernel_reuse_cache.h"
-#include "tensorflow/compiler/xla/service/gpu/kernel_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_collective_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
@@ -77,55 +79,6 @@ struct BufferSlice {
 //
 class IrEmitterUnnested : public IrEmitter {
  public:
-  // Contains threading information. Note that for performance we might apply
-  // thread id "scaling" where the physical thread id (to achieve good SM
-  // occupancy) will differ from logical thread id. This struct contains
-  // logical thread ids, along with meta-information about the scaling applied.
-  struct ThreadIdInfo {
-    ThreadIdInfo(llvm::Value* thread_id, llvm::Value* thread_id_x,
-                 llvm::Value* thread_id_y, llvm::Value* lane_id,
-                 llvm::Value* block_id, llvm::Value* scaling)
-        : thread_id(thread_id),
-          thread_id_x(thread_id_x),
-          thread_id_y(thread_id_y),
-          lane_id(lane_id),
-          block_id(block_id),
-          scaling(scaling) {}
-
-    llvm::Value* thread_id;
-
-    // X-coordinate calculated from thread id: `thread_id % num_threads_x`
-    llvm::Value* thread_id_x;
-
-    // Y-coordinate calculated from thread id: `thread_id / num_threads_x`
-    llvm::Value* thread_id_y;
-
-    // Lane id: `thread_id % WarpSize`
-    llvm::Value* lane_id;
-
-    // Block id.
-    llvm::Value* block_id;
-
-    // Emits GEP into a shared memory, taking virtual thread scaling into
-    // account. Automatically inserts the first zero required by LLVM GEP.
-    // Defined on ThreadIdInfo to keep `scaling` private.
-    //
-    // Same semantics as CreateInBoundsGEP.
-    llvm::Value* GEPIntoSharedMemory(
-        llvm::IRBuilder<>* b, llvm::GlobalVariable* shared,
-        absl::Span<llvm::Value* const> idx_major_to_minor,
-        const llvm::Twine& name = "") const;
-
-    // Calculuate the pointee type of the llvm::Value returned by
-    // GEPIntoSharedMemory
-    llvm::Type* GEPIntoSharedMemoryType(
-        llvm::GlobalVariable* shared,
-        absl::Span<llvm::Value* const> idx_major_to_minor) const;
-
-   private:
-    llvm::Value* scaling;
-  };
-
   absl::string_view platform_name() const {
     return ir_emitter_context_->platform_name();
   }
@@ -133,24 +86,7 @@ class IrEmitterUnnested : public IrEmitter {
   using ValueVector3 = std::array<llvm::Value*, 3>;
   using ValueVector2 = std::array<llvm::Value*, 2>;
 
-  // A function object to generate code to process one element in a tile.
-  //
-  // index: the index for the first output element of the current thread.
-  // y_loc: The y coordinate within a tile.
-  // x_loc: The x coordinate within a tile.
-  using EmitElementFunction = std::function<void(
-      const ThreadIdInfo& thread_id_info, const llvm_ir::IrArray::Index& index,
-      llvm::Value* y_loc, llvm::Value* x_loc)>;
-
   using ConstantGenerator = std::function<llvm::Value*(int64_t)>;
-
-  // A function to generate the code to emit the entire tile.
-  //
-  // index: Absolute coordinate of the start of the tile in input.
-  // tile_dimensions: Size of the tile
-  using TileElementGenerator = std::function<void(
-      const ThreadIdInfo& thread_id_info, const llvm_ir::IrArray::Index& index,
-      ValueVector2 tile_dimensions)>;
 
   // Fusion root -> array of indexes, one per reduction output.
   using ReductionOutputMap =
@@ -161,8 +97,7 @@ class IrEmitterUnnested : public IrEmitter {
   IrEmitterUnnested(const IrEmitterUnnested&) = delete;
   IrEmitterUnnested& operator=(const IrEmitterUnnested&) = delete;
 
-  static StatusOr<std::unique_ptr<IrEmitterUnnested>> Create(
-      const HloModuleConfig& hlo_module_config,
+  static std::unique_ptr<IrEmitterUnnested> Create(
       IrEmitterContext* ir_emitter_context);
 
   // Transfers the ownship of thunk_sequence_ out.
@@ -182,8 +117,7 @@ class IrEmitterUnnested : public IrEmitter {
   static void GetDependentDialects(mlir::DialectRegistry& registry);
 
  private:
-  IrEmitterUnnested(const HloModuleConfig& hlo_module_config,
-                    IrEmitterContext* ir_emitter_context);
+  explicit IrEmitterUnnested(IrEmitterContext* ir_emitter_context);
 
   Status EmitUnreachable(mlir::Operation* op, std::string error_message);
 
@@ -195,13 +129,16 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitConditional(mlir::Operation* op);
   Status EmitConvolutionThunk(mlir::Operation* op);
   Status EmitGemmThunk(mlir::Operation* op);
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TF_HIPBLASLT
   Status EmitCublasLtMatmulThunk(mlir::Operation* op);
+#endif  // GOOGLE_CUDA || TF_HIPBLASLT
+#if GOOGLE_CUDA
   Status EmitCublasLtMatmulThunkF8(mlir::Operation* op);
   Status EmitConvolutionReorderThunk(mlir::Operation* op);
   Status EmitTritonFusion(mlir::Operation* op,
                           const AutotuneResult::TritonGemmKey& config);
   Status EmitFusedMHAThunk(mlir::Operation* op);
+  Status EmitFusedMHABackwardThunk(mlir::Operation* op);
 #endif  // GOOGLE_CUDA
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   Status EmitCholeskyThunk(mlir::Operation* op);
@@ -210,8 +147,6 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitFftThunk(mlir::Operation* op);
   Status EmitFusion(mlir::Operation* op);
   Status EmitLaunchFunc(mlir::Operation* op);
-  Status EmitLoopFusion(mlir::lmhlo::FusionOp fusion,
-                        HloFusionAnalysis& fusion_analysis);
   Status EmitReduce(mlir::Operation* op);
   Status EmitSelectAndScatter(mlir::Operation* op);
   Status EmitWhile(mlir::Operation* op);
@@ -547,56 +482,6 @@ class IrEmitterUnnested : public IrEmitter {
                      const HloComputation* fused_computation,
                      HloFusionAnalysis& fusion_analysis);
 
-  Status EmitDynamicUpdateSlice(mlir::lmhlo::FusionOp fusion_op,
-                                const HloComputation* fused_computation);
-
-  struct TilingKernelInfo {
-    // Tiling bounds.
-    ValueVector2 output_tile_bounds;
-
-    // Starting tile, as calculated from block id only.
-    llvm_ir::IrArray::Index tile_origin;
-
-    // Thread meta-info.
-    ThreadIdInfo thread_id_info;
-  };
-
-  // Emits a kernel for the hlo instruction using the given kernel mapping
-  // scheme.
-  StatusOr<TilingKernelInfo> EmitTilingKernel(
-      const TilingScheme& tiling_scheme, llvm::Type* index_ty,
-      const TileElementGenerator& tile_element_generator);
-
-  // Emits code to iterate through a 2-dimensional tile with a given tile
-  // dimensions and given strides, and call the callback at each iteration.,
-  //
-  // thread_id_y` and `thread_id_x` are the intra-tile coordinates for
-  // the first element to process, and `index` is the index for the origin of
-  // the tile. Emits bounds check to ensure that each processed element
-  // is within the boundary defined by `tile_dimensions`.
-  //
-  // Rough pseudocode:
-  //
-  // Given: tile_dimensions, x_offset, y_offset
-  //
-  // for (y = 0; y < tile_dimensions[0]; y += num_threads_y) {
-  //   for (x = 0; x < tile_dimensions[1]; x++) {
-  //
-  //     y_pos = y_offset + y
-  //     x_pos = x_offset + x * stride
-  //
-  //     if (x_loc < tile_width) {
-  //       emit_elem_function(y_offset + y, x_loc);
-  //     }
-  //   }
-  // }
-  //
-  void EmitTile(const TilingScheme& tiling_scheme,
-                const llvm_ir::IrArray::Index& tile_origin_index,
-                const ThreadIdInfo& thread_id_info,
-                ValueVector2 tile_dimensions,
-                const EmitElementFunction& emit_elem_function);
-
   // Creates accumulator alloca's, populates them with initial values, generates
   // __shared__ caches and returns the populated object.
   ReductionCodegenState GenerateReductionCodegenState(
@@ -685,12 +570,6 @@ class IrEmitterUnnested : public IrEmitter {
   // before passing it to a KernelThunk.
   static StatusOr<mlir::Value> RemoveTransformingOperations(mlir::Value value);
 
-  // Creates a KernelThunk and adds it to the thunk sequence.
-  Status BuildKernelThunkImpl(absl::string_view kernel_name,
-                              absl::Span<const KernelArgument> kernel_arguments,
-                              Thunk::ThunkInfo thunk_info,
-                              const LaunchDimensions& launch_dimensions);
-
   // Builds a thunk that calls a new or reused kernel for a fusion operation.
   //
   // The caller must specify the same launch dimensions for fusions which have
@@ -771,42 +650,8 @@ class IrEmitterUnnested : public IrEmitter {
   StatusOr<std::unique_ptr<Thunk>> BuildConditionalThunk(
       const HloInstruction* conditional);
 
-  // Emits the LLVM values for thread_id, thread_id.x, thread_id.y and lane
-  // id.
-  //
-  // Returns a struct containting these values.
-  //
-  // In the presence of thread scaling in tiling scheme may return early if the
-  // combination of thread_id/block_id does not correspond to a real block.
-  // Assumes the current function returns void.
-  StatusOr<ThreadIdInfo> EmitThreadIdInfo(const TilingScheme& tiling_scheme,
-                                          llvm::Type* index_ty);
   // Emit __syncthreads(), synchronization barrier for all threads in a block.
   llvm::CallInst* EmitSyncThreads();
-
-  // Emits current thread id with the given type.
-  //
-  // Sets the return value range to [0, threads_per_block).
-  llvm::Value* EmitThreadId(int64_t threads_per_block, llvm::Type* index_ty);
-
-  // Emits current block id.
-  llvm::Value* EmitBlockId(int32_t num_blocks, llvm::Type* index_ty);
-
-  // Prints a given format string with the given arguments, prefixed with
-  // thread id and block id, and postfixed with a newline.
-  //
-  // `thread_id_filter` and `block_id_filter`: if provided, restrict printing
-  // to only given thread and/or block id.
-  void EmitPrintfWithThreadId(
-      absl::string_view fmt, absl::Span<llvm::Value* const> arguments,
-      std::optional<int64_t> thread_id_filter = std::nullopt,
-      std::optional<int64_t> block_id_filter = std::nullopt);
-
-  // Prints the given index.
-  void EmitPrintfForIndex(
-      absl::string_view fmt, const llvm_ir::IrArray::Index& index,
-      std::optional<int64_t> thread_id_filter = std::nullopt,
-      std::optional<int64_t> block_id_filter = std::nullopt);
 
   StatusOr<HloComputation*> GetOrCreateSubComputationFromRegion(
       mlir::Region* region, bool is_fusion);

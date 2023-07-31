@@ -719,17 +719,17 @@ TEST_F(LayoutTest, LayoutType) {
       Layout::FromString(
           "maximal:true, mesh:/job:localhost/task:1/device:CPU:0"));
   EXPECT_EQ(maximal.type(), Layout::LayoutType::kSingleDevice);
-  TF_ASSERT_OK_AND_ASSIGN(auto ragged,
-                          Layout::FromString("ragged:x, mesh:|x=2|*TPU"));
-  EXPECT_EQ(ragged.type(), Layout::LayoutType::kRagged);
+  TF_ASSERT_OK_AND_ASSIGN(auto parted,
+                          Layout::FromString("parted:x, mesh:|x=2|*TPU"));
+  EXPECT_EQ(parted.type(), Layout::LayoutType::kParted);
   TF_ASSERT_OK_AND_ASSIGN(
       auto static_layout,
       Layout::FromString("sharding_specs:x, mesh:|x=2|*TPU"));
   EXPECT_EQ(static_layout.type(), Layout::LayoutType::kStatic);
 }
 
-TEST_F(LayoutTest, RaggedLayoutToFromString) {
-  TF_ASSERT_OK_AND_ASSIGN(Layout layout, BatchLayout().ToRagged());
+TEST_F(LayoutTest, PartedLayoutToFromString) {
+  TF_ASSERT_OK_AND_ASSIGN(Layout layout, BatchLayout().ToParted());
   std::string layout_str = layout.ToString();
   TF_ASSERT_OK_AND_ASSIGN(Layout layout_from_str,
                           Layout::FromString(layout_str));
@@ -738,6 +738,29 @@ TEST_F(LayoutTest, RaggedLayoutToFromString) {
   EXPECT_THAT(layout.ToProto(),
               IsOkAndHolds(EqualsProto(layout_from_str_proto)));
 }
+
+TEST_F(LayoutTest, RaggedLayoutEqual) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      Layout fully_sharded,
+      Layout::FromString("sharding_specs:x,y, mesh:|x=2,y=1|*TPU"));
+  TF_ASSERT_OK_AND_ASSIGN(
+      Layout x_sharded,
+      Layout::FromString("sharding_specs:x,unsharded, mesh:|x=2,y=1|*TPU"));
+  TF_ASSERT_OK_AND_ASSIGN(
+      Layout x_parted,
+      Layout::FromString("parted:x,unsharded, mesh:|x=2,y=1|*TPU"));
+  TF_ASSERT_OK_AND_ASSIGN(Layout x_y_parted,
+                          Layout::FromString("parted:x,y, mesh:|x=2,y=1|*TPU"));
+
+  // Test that 'IsEquivalent' and '==' take layout type into account.
+  EXPECT_TRUE(x_parted.IsEquivalent(x_y_parted));
+  EXPECT_TRUE(x_y_parted.IsEquivalent(x_parted));
+  EXPECT_FALSE(x_sharded.IsEquivalent(x_parted));
+  EXPECT_FALSE(fully_sharded.IsEquivalent(x_y_parted));
+  EXPECT_FALSE(x_sharded == x_parted);
+  EXPECT_FALSE(fully_sharded == x_y_parted);
+}
+
 }  // namespace
 }  // namespace dtensor
 }  // namespace tensorflow

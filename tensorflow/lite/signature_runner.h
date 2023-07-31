@@ -195,6 +195,18 @@ class SignatureRunner {
       const char* output_name, const TfLiteCustomAllocation& allocation,
       int64_t flags = kTfLiteCustomAllocationFlagsNone);
 
+  /// \brief Set if buffer handle output is allowed.
+  ///
+  /// When using hardware delegation, Interpreter will make the data of output
+  /// tensors available in `tensor->data` by default. If the application can
+  /// consume the buffer handle directly (e.g. reading output from OpenGL
+  /// texture), it can set this flag to true, so Interpreter won't copy the
+  /// data from buffer handle to CPU memory.
+  /// \warning This is an experimental API and subject to change. \n
+  void SetAllowBufferHandleOutput(bool allow_buffer_handle_output) {
+    allow_buffer_handle_output_ = allow_buffer_handle_output;
+  }
+
  private:
   // The life cycle of SignatureRunner depends on the life cycle of Subgraph,
   // which is owned by an Interpreter. Therefore, the Interpreter will takes the
@@ -215,6 +227,8 @@ class SignatureRunner {
   std::vector<const char*> input_names_;
   // The list of output tensor names.
   std::vector<const char*> output_names_;
+
+  bool allow_buffer_handle_output_ = false;
 };
 
 }  // namespace tflite

@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/core/graph/mkl_graph_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/mkl_util.h"
-#ifdef DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
 #include "tensorflow/core/platform/mutex.h"
 #endif
 
@@ -111,7 +111,7 @@ class MklReorderWithScalePrimitive : public MklPrimitive {
                void* scale_data,
 #endif  // ENABLE_ONEDNN_V3
                std::shared_ptr<stream> reorder_stream) {
-#ifdef DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
     mutex_lock lock(primitive_execution_mu_);
 #endif
 #if !defined(ENABLE_ONEDNN_OPENMP) && !defined(ENABLE_ONEDNN_V3)
@@ -202,7 +202,7 @@ class MklReorderWithScalePrimitive : public MklPrimitive {
 #endif  // ENABLE_ONEDNN_V3
   }
 
-#ifdef DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
   mutex primitive_execution_mu_;
 #endif
 };
@@ -213,7 +213,6 @@ class MklReorderWithScalePrimitiveFactory : public MklPrimitiveFactory<T> {
   static MklReorderWithScalePrimitive* Get(
       const memory* from, const memory* to,
       const MklReorderWithScaleFwdParams& fwdParams) {
-#ifndef ENABLE_ONEDNN_V3
     // Try to find a suitable primitive from the cached pool
     auto reorderPrim = static_cast<MklReorderWithScalePrimitive*>(
         MklReorderWithScalePrimitiveFactory<T>::GetInstance().GetReorder(
@@ -224,25 +223,17 @@ class MklReorderWithScalePrimitiveFactory : public MklPrimitiveFactory<T> {
           from, to, reorderPrim, fwdParams);
     }
     return reorderPrim;
-#else
-    // TODO(intel-tf): enable ReorderWithScale primitive cache for v3.x
-    auto reorderPrim = new MklReorderWithScalePrimitive(fwdParams);
-    return reorderPrim;
-#endif  // !ENABLE_ONEDNN_V3
   }
 
-#ifndef ENABLE_ONEDNN_V3
   static MklReorderWithScalePrimitiveFactory& GetInstance() {
     static MklReorderWithScalePrimitiveFactory instance_;
     return instance_;
   }
-#endif  // !ENABLE_ONEDNN_V3
 
  private:
   MklReorderWithScalePrimitiveFactory() {}
   ~MklReorderWithScalePrimitiveFactory() {}
 
-#ifndef ENABLE_ONEDNN_V3
   static string CreateKey(const memory* from, const memory* to,
                           const MklReorderWithScaleFwdParams& fwdParams) {
     FactoryKeyCreator key_creator;
@@ -270,7 +261,6 @@ class MklReorderWithScalePrimitiveFactory : public MklPrimitiveFactory<T> {
     string key = CreateKey(from, to, fwdParams);
     this->SetOp(key, op);
   }
-#endif  // !ENABLE_ONEDNN_V3
 };
 
 // Quantizes a tensor from float to T, with user-specified min_range and
@@ -284,9 +274,10 @@ class MklQuantizeV2Op : public OpKernel {
     OP_REQUIRES(ctx,
                 (mode_string == "MIN_COMBINED" || mode_string == "MIN_FIRST" ||
                  mode_string == "SCALED"),
-                errors::InvalidArgument("Mode string must be 'MIN_COMBINED',"
-                                        " 'MIN_FIRST', or 'SCALED', is '" +
-                                        mode_string + "'"));
+                absl::InvalidArgumentError(
+                    absl::StrCat("Mode string must be 'MIN_COMBINED',"
+                                 " 'MIN_FIRST', or 'SCALED', is '" +
+                                 mode_string + "'")));
     if (mode_string == "MIN_COMBINED") {
       mode_ = QUANTIZE_MODE_MIN_COMBINED;
     } else if (mode_string == "MIN_FIRST") {
@@ -297,21 +288,23 @@ class MklQuantizeV2Op : public OpKernel {
 
     string round_mode_string;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("round_mode", &round_mode_string));
-    OP_REQUIRES(ctx,
-                (round_mode_string == "HALF_AWAY_FROM_ZERO" ||
-                 round_mode_string == "HALF_TO_EVEN"),
-                errors::InvalidArgument("Round mode string must be "
-                                        "'HALF_AWAY_FROM_ZERO' or "
-                                        "'HALF_TO_EVEN', is '" +
-                                        round_mode_string + "'"));
+    OP_REQUIRES(
+        ctx,
+        (round_mode_string == "HALF_AWAY_FROM_ZERO" ||
+         round_mode_string == "HALF_TO_EVEN"),
+        absl::InvalidArgumentError(absl::StrCat("Round mode string must be "
+                                                "'HALF_AWAY_FROM_ZERO' or "
+                                                "'HALF_TO_EVEN', is '" +
+                                                round_mode_string + "'")));
     if (round_mode_string == "HALF_AWAY_FROM_ZERO") {
       round_mode_ = ROUND_HALF_AWAY_FROM_ZERO;
     } else if (round_mode_string == "HALF_TO_EVEN") {
       OP_REQUIRES(ctx, mode_string == "SCALED",
-                  errors::InvalidArgument("Round mode 'HALF_TO_EVEN' "
-                                          "only supported for mode 'SCALED', "
-                                          "but mode is '" +
-                                          mode_string + "'."));
+                  absl::InvalidArgumentError(
+                      absl::StrCat("Round mode 'HALF_TO_EVEN' "
+                                   "only supported for mode 'SCALED', "
+                                   "but mode is '" +
+                                   mode_string + "'.")));
       round_mode_ = ROUND_HALF_TO_EVEN;
     }
     OP_REQUIRES_OK(ctx, ctx->GetAttr("narrow_range", &narrow_range_));
@@ -323,7 +316,7 @@ class MklQuantizeV2Op : public OpKernel {
   void ComputeScalar(OpKernelContext* ctx, float min_range, float max_range) {
     // TODO(intel-tf): Scalar support has to be added for SCALE mode
     OP_REQUIRES(ctx, (mode_ == QUANTIZE_MODE_MIN_FIRST),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Scalar calculation in MKL is supported only for"
                     "MIN_FIRST mode for now."));
 
@@ -332,12 +325,12 @@ class MklQuantizeV2Op : public OpKernel {
     const Tensor& max_tensor = ctx->input(2);
     OP_REQUIRES(
         ctx, TensorShapeUtils::IsScalar(min_tensor.shape()),
-        errors::InvalidArgument("`min_input` must be rank 0 but is rank ",
-                                min_tensor.dims()));
+        absl::InvalidArgumentError(absl::StrCat(
+            "`min_input` must be rank 0 but is rank ", min_tensor.dims())));
     OP_REQUIRES(
         ctx, TensorShapeUtils::IsScalar(max_tensor.shape()),
-        errors::InvalidArgument("`max_input` must be rank 0 but is rank ",
-                                max_tensor.dims()));
+        absl::InvalidArgumentError(absl::StrCat(
+            "`max_input` must be rank 0 but is rank ", max_tensor.dims())));
 
     auto cpu_engine = engine(engine::kind::cpu, 0);
     const unsigned int src_idx = 0;
@@ -386,7 +379,7 @@ class MklQuantizeV2Op : public OpKernel {
     float min_range = std::min(0.0f, input_min_range);
     float max_range;
     OP_REQUIRES(ctx, (input_max_range >= input_min_range),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "input_max_range must be larger than input_min_range."));
 
     // When the minimum and maximum ranges are too close together, nudge them
@@ -437,7 +430,7 @@ class MklQuantizeV2Op : public OpKernel {
         break;
       default:
         OP_REQUIRES_OK(ctx,
-                       errors::Aborted("Input dims must be <= 5 and >= 1"));
+                       absl::AbortedError("Input dims must be <= 5 and >= 1"));
         return;
     }
     // Create reorder memory for src, dst: both are defined in mkl_util.h,
@@ -556,9 +549,9 @@ class MklQuantizeV2Op : public OpKernel {
 #else
     MklReorderWithScaleFwdParams fwdParams(src_dims, src_md, dst_md);
     fwdParams.dtypes.append(typeid(T).name());
+#endif  // ENABLE_ONEDNN_V3
     fwdParams.post_op_params.name = "scale";
     fwdParams.post_op_params.param.push_back(scale_factor);
-#endif  // ENABLE_ONEDNN_V3
 
     // Create the oneDNN wrapper over Eigen threadpool and set max threads
     // in oneDNN.

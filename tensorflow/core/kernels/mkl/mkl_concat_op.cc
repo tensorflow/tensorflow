@@ -32,7 +32,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/mkl_util.h"
-#ifdef DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
 #include "tensorflow/core/platform/mutex.h"
 #endif
 
@@ -297,7 +297,7 @@ class MklConcatFwdPrimitive : public MklPrimitive {
                const dnnl::memory& dst_data,
                const MklConcatFwdParams& concat_fwd_dims,
                std::shared_ptr<stream> fwd_stream) {
-#ifdef DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
     mutex_lock lock(primitive_execution_mu_);
 #endif
     DCHECK_EQ(in_data.size(), context_.data_mem.size());
@@ -364,7 +364,7 @@ class MklConcatFwdPrimitive : public MklPrimitive {
              const std::vector<memory::desc>& srcs_md) {
     // Create memory descriptors for concat with specified srcs format
     for (size_t i = 0; i < concat_fwd_dims.num_inputs; i++) {
-      dnnl::memory::desc source_md(memory::desc(GET_MEMORY_DESC(srcs_md[i])));
+      dnnl::memory::desc source_md((memory::desc(GET_MEMORY_DESC(srcs_md[i]))));
       context_.src_md.push_back(source_md);
       std::shared_ptr<dnnl::memory> src_mem(
           new dnnl::memory(source_md, cpu_engine_, DummyData));
@@ -397,7 +397,7 @@ class MklConcatFwdPrimitive : public MklPrimitive {
 
   struct ConcatFwdContext context_;
 
-#ifdef DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
   mutex primitive_execution_mu_;
 #endif
 };

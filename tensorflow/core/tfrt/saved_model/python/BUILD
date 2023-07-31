@@ -1,5 +1,5 @@
 load("//tensorflow:tensorflow.default.bzl", "tf_python_pybind_extension")
-load("//tensorflow:pytype.default.bzl", "pytype_strict_binary", "pytype_strict_contrib_test")
+load("//tensorflow:pytype.default.bzl", "pytype_strict_binary")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -13,19 +13,23 @@ package_group(
         # Authorized users go here.
         "//tensorflow/core/tfrt/saved_model/...",
         "//tensorflow/core/tfrt/graph_executor/...",
+        "//learning/brain/tfrt/cpp_tests/gpu_inference/...",
     ],
 )
 
 pytype_strict_binary(
     name = "saved_model_load_and_run_py",
-    srcs = ["saved_model_load_and_run.py"],
+    srcs = [
+        "saved_model_load_and_run.py",
+    ],
+    data = ["//tensorflow/core/tfrt/graph_executor:graph_execution_options.so"],  # copybara:comment
     main = "saved_model_load_and_run.py",
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
         ":_pywrap_saved_model",
-        "//tensorflow/core/tfrt/graph_executor:graph_execution_options",
         "@absl_py//absl:app",
+        # copybara:uncomment "//tensorflow/core/tfrt/graph_executor:graph_execution_options",
     ],
 )
 
@@ -74,24 +78,5 @@ tf_python_pybind_extension(
         "@pybind11",
         "@pybind11_abseil//pybind11_abseil:absl_casters",
         "@pybind11_abseil//pybind11_abseil:status_casters",
-    ],
-)
-
-pytype_strict_contrib_test(
-    name = "saved_model_aot_compile_test",
-    size = "small",
-    srcs = [
-        "saved_model_aot_compile_test.py",
-    ],
-    data = [
-        "//learning/brain/tfrt/cpp_tests/gpu_inference:testdata",
-    ],
-    python_version = "PY3",
-    deps = [
-        ":_pywrap_saved_model_aot_compile",
-        "//base/python:pywrapbase",
-        "//tensorflow/python/platform:client_testlib",
-        "//testing/pybase",
-        "//third_party/py/lingvo:compat",
     ],
 )

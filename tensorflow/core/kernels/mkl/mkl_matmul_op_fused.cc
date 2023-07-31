@@ -99,10 +99,10 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, void, T> {
     // Get dimension size of each matrix, dim_pair[] is the location of k
     // in the inputs, we have constraint that k of the two inputs are
     // the same
-    const int dim_pair[] = {1, transpose_b_ ? 1 : 0};
-    const int batch = src_tf_shape.dim_size(1 - dim_pair[0]);
-    const int k = src_tf_shape.dim_size(dim_pair[0]);
-    const int channel = weight_tf_shape.dim_size(1 - dim_pair[1]);
+    const int64_t dim_pair[] = {1, transpose_b_ ? 1 : 0};
+    const int64_t batch = src_tf_shape.dim_size(1 - dim_pair[0]);
+    const int64_t k = src_tf_shape.dim_size(dim_pair[0]);
+    const int64_t channel = weight_tf_shape.dim_size(1 - dim_pair[1]);
 
     OP_REQUIRES(
         ctx, k == weight_tf_shape.dim_size(dim_pair[1]),
@@ -244,9 +244,12 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, void, T> {
       if (weight_md != matmul_pd->weights_desc()) {
         T* cached_weight_data = nullptr;
 
-#ifndef ENABLE_ONEDNN_V3
-        // TODO(intel-tf): Enable weight caching for oneDNN v3.x
         if (this->is_weight_const_) {
+          // TODO(intel-tf): When oneDNN major version changes to v4.x, weight
+          // caching may not work as expected if the underlying memory
+          // descriptor has changed (i.e. compared to v3.x). We have to return
+          // a status here to catch oneDNN major version change to avoid
+          // unexpected results.
           if (this->IsWeightCacheEmpty(ctx)) {
             this->CacheWeight(ctx, matmul_pd, cached_weight_data, weight_tensor,
                               weight_mkl, weight_md);
@@ -254,7 +257,6 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, void, T> {
           cached_weight_data =
               this->GetCachedWeight(ctx, matmul_pd->weights_desc());
         }
-#endif  // !ENABLE_ONEDNN_V3
 
         // Cache weight may fail when it gets different format in different
         // iteration. Fallback to reoder if it happens.

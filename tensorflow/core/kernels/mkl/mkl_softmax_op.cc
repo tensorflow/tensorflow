@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/tensor_format.h"
-#ifdef DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
 #include "tensorflow/core/platform/mutex.h"
 #endif
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
@@ -64,10 +64,10 @@ class MklSoftmaxPrimitive : public MklPrimitive {
   //   dst_data:  output data buffer of dst
   void Execute(const T* src_data, T* dst_data,
                std::shared_ptr<stream> fwd_cpu_stream) {
-#ifdef DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
     mutex_lock lock(primitive_execution_mu_);
 #endif
-#ifndef ENABLE_ONEDNN_OPENMP
+#if !defined(ENABLE_ONEDNN_OPENMP) && !defined(ENABLE_ONEDNN_V3)
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(src_data)), *fwd_cpu_stream);
     context_.dst_mem->set_data_handle(static_cast<void*>(dst_data),
@@ -76,7 +76,7 @@ class MklSoftmaxPrimitive : public MklPrimitive {
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(src_data)));
     context_.dst_mem->set_data_handle(static_cast<void*>(dst_data));
-#endif  // !ENABLE_ONEDNN_OPENMP
+#endif  // !ENABLE_ONEDNN_OPENMP && !ENABLE_ONEDNN_V3
 
     DCHECK_EQ(context_.fwd_primitives.size(), context_.fwd_net_args.size());
     execute_primitives(context_.fwd_primitives, fwd_cpu_stream,
@@ -160,7 +160,7 @@ class MklSoftmaxPrimitive : public MklPrimitive {
 
   struct SoftmaxFwdContext context_;
 
-#ifdef DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
   mutex primitive_execution_mu_;
 #endif
 };
@@ -249,7 +249,7 @@ class MklSoftmaxOp : public OpKernel {
           break;
         default:
           OP_REQUIRES_OK(context,
-                         errors::Aborted("Input dims must be <= 5 and >=1"));
+                         absl::AbortedError("Input dims must be <= 5 and >=1"));
           return;
       }
 
@@ -288,9 +288,9 @@ class MklSoftmaxOp : public OpKernel {
       string error_msg = "Status: " + std::to_string(e.status) +
                          ", message: " + string(e.message) + ", in file " +
                          string(__FILE__) + ":" + std::to_string(__LINE__);
-      OP_REQUIRES_OK(
-          context,
-          errors::Aborted("Operation received an exception:", error_msg));
+      OP_REQUIRES_OK(context,
+                     absl::AbortedError(absl::StrCat(
+                         "Operation received an exception:", error_msg)));
     }
   }
 };

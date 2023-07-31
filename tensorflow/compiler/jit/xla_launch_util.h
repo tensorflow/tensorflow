@@ -105,6 +105,7 @@ Status PopulateCtxOutputsFromPjRtExecutableOutputs(
 
 // Returns the options used for executing a PjRtLoadedExecutable.
 xla::ExecuteOptions GetPjRtExecuteOptions(
+    const DeviceType& device_type,
     absl::flat_hash_set<int> non_donatable_input_indices);
 
 // Returns the device ordinal from the parsed name of the device.

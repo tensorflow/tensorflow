@@ -18,7 +18,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_FALLBACK_COST_RECORDER_H_
 #define TENSORFLOW_CORE_TFRT_FALLBACK_COST_RECORDER_H_
 
-#include <cstdint>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
@@ -34,9 +33,6 @@ namespace tfrt_stub {
 // unique within a model.
 class CostRecorder {
  public:
-  explicit CostRecorder(uint64_t normalize_ratio = 1)
-      : normalize_ratio_(normalize_ratio) {}
-
   // Records an execution duration for the op keyed by `op_key`.
   void RecordCost(int64_t op_key, uint64_t execution_time);
 
@@ -58,9 +54,6 @@ class CostRecorder {
   }
 
  private:
-  // Normalize the cost values by dividing by this.
-  uint64_t normalize_ratio_;
-
   mutable tensorflow::mutex op_cost_map_mutex_;
   // Map op key to {sum of op execution duration, #occurences of the op}.
   absl::flat_hash_map<int64_t, std::pair<uint64_t, uint64_t>> op_cost_map_

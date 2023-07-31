@@ -45,7 +45,7 @@ struct ConvRunner {
   explicit ConvRunner(GpuConvConfig config)
       : config(std::move(config)), runner(this->config) {}
   GpuConvConfig config;
-  MaybeFusedConvRunner runner;
+  GenericConvRunner runner;
 };
 
 class StreamExecutorConvRunners : public runtime::StateVector<ConvRunner> {};

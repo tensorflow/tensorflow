@@ -149,6 +149,32 @@ DnnSupport::ConvolveRunnerFromDesc(
   return tsl::errors::Unimplemented("ConvolveRunnerFromDesc not implemented.");
 }
 
+tsl::Status DnnSupport::GetGraphConvolveRunners(
+    dnn::ConvolutionKind /*kind*/, dnn::DataType /*input_type*/,
+    dnn::DataType /*output_type*/, Stream* /*stream*/,
+    const dnn::BatchDescriptor& /*input_descriptor*/,
+    const dnn::FilterDescriptor& /*filter_descriptor*/,
+    const dnn::BatchDescriptor& /*output_descriptor*/,
+    const dnn::ConvolutionDescriptor& /*convolution_descriptor*/,
+    bool /*use_fallback*/, const NumericOptions& /*numeric_options*/,
+    std::vector<std::unique_ptr<const dnn::GraphConvRunner>>* /*exec_plans*/,
+    std::string serialized_graph) {
+  return tsl::errors::Unimplemented("GetGraphConvolveRunners not implemented.");
+}
+
+tsl::StatusOr<std::unique_ptr<const dnn::GraphConvRunner>>
+DnnSupport::GraphConvolveRunnerFromDesc(
+    Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+    dnn::ConvolutionKind kind, dnn::DataType element_type,
+    dnn::DataType output_type, const dnn::BatchDescriptor& input_descriptor,
+    const dnn::FilterDescriptor& filter_descriptor,
+    const dnn::BatchDescriptor& output_descriptor,
+    const dnn::ConvolutionDescriptor& convolution_descriptor,
+    std::string serialized_graph) {
+  return tsl::errors::Unimplemented(
+      "GraphConvolveRunnerFromDesc not implemented.");
+}
+
 tsl::Status DnnSupport::GetFusedConvolveRunners(
     bool use_cudnn_frontend, dnn::ConvolutionKind kind,
     dnn::DataType element_type, dnn::DataType bias_type,
@@ -200,6 +226,7 @@ DnnSupport::FusedMHASoftmaxRunnerFromDesc(
     const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
     const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
     const dnn::TensorDescriptor& output_descriptor,
+    std::optional<dnn::TensorDescriptor> activation_descriptor,
     std::optional<double> dropout_rate, std::optional<int64_t> seed) {
   return absl::UnimplementedError(
       "FusedMHASoftmaxRunnerFromDesc not implemented.");
@@ -214,6 +241,7 @@ DnnSupport::FusedMHAScaleMaskSoftmaxRunnerFromDesc(
     const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
     const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
     const dnn::TensorDescriptor& output_descriptor,
+    std::optional<dnn::TensorDescriptor> activation_descriptor,
     const dnn::TensorDescriptor& mask_descriptor, double scale,
     std::optional<double> dropout_rate, std::optional<int64_t> seed) {
   return absl::UnimplementedError(
@@ -229,6 +257,7 @@ DnnSupport::FusedMHAScaleBiasMaskSoftmaxRunnerFromDesc(
     const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
     const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
     const dnn::TensorDescriptor& output_descriptor,
+    std::optional<dnn::TensorDescriptor> activation_descriptor,
     const dnn::TensorDescriptor& mask_descriptor,
     const dnn::TensorDescriptor& bias_descriptor, double scale,
     std::optional<double> dropout_rate, std::optional<int64_t> seed) {
@@ -245,6 +274,7 @@ DnnSupport::FusedMHAScaleBiasSoftmaxRunnerFromDesc(
     const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
     const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
     const dnn::TensorDescriptor& output_descriptor,
+    std::optional<dnn::TensorDescriptor> activation_descriptor,
     const dnn::TensorDescriptor& bias_descriptor, double scale,
     std::optional<double> dropout_rate, std::optional<int64_t> seed) {
   return absl::UnimplementedError(

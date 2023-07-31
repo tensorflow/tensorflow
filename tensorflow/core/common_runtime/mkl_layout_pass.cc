@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/base/call_once.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
+#include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
@@ -44,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/util/mkl_heuristics.h"
 #include "tensorflow/core/util/tensor_format.h"
 #include "tensorflow/core/util/util.h"
 
@@ -239,7 +241,7 @@ namespace tensorflow {
 //
 class MklLayoutRewritePass : public GraphOptimizationPass {
  public:
-  MklLayoutRewritePass() {
+  MklLayoutRewritePass() : num_intra_threads_(port::MaxParallelism()) {
     // NOTE: names are alphabetically sorted.
     csinfo_.addn = "AddN";
     csinfo_.avg_pool = "AvgPool";
@@ -317,6 +319,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.mkl_native_pad_with_fused_conv2d = "_MklNativePadWithFusedConv2D";
     csinfo_.mkl_pad_with_conv2d = "_MklPadWithConv2D";
     csinfo_.mkl_pad_with_fused_conv2d = "_MklPadWithFusedConv2D";
+    csinfo_.mkl_swish = "_MklSwish";
     csinfo_.pad = "Pad";
     csinfo_.pad_with_conv2d = "__MklDummyPadWithConv2D";
     csinfo_.pad_with_fused_conv2d = "__MklDummyPadWithFusedConv2D";
@@ -380,11 +383,11 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.mul = "Mul";
     csinfo_.squared_difference = "SquaredDifference";
     csinfo_.sub = "Sub";
+    csinfo_.sigmoid = "Sigmoid";
     // End - element-wise ops. See note above.
 
     const bool native_fmt = NativeFormatEnabled();
     // NOTE: names are alphabetically sorted.
-#ifndef ENABLE_ONEDNN_V3
     rinfo_.push_back({csinfo_.addn, mkl_op_registry::GetMklOpName(csinfo_.addn),
                       CopyAttrsAll, AlwaysRewrite, GetRewriteCause()});
     rinfo_.push_back({csinfo_.add, mkl_op_registry::GetMklOpName(csinfo_.add),
@@ -393,7 +396,6 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back(
         {csinfo_.add_v2, mkl_op_registry::GetMklOpName(csinfo_.add_v2),
          CopyAttrsAll, RewriteIfAtleastOneMklInput, GetRewriteCause()});
-#endif  // !ENABLE_ONEDNN_V3
     rinfo_.push_back({csinfo_.avg_pool,
                       mkl_op_registry::GetMklOpName(csinfo_.avg_pool),
                       CopyAttrsAll, RewriteIfX86, GetRewriteCause()});
@@ -425,9 +427,12 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
         {csinfo_.conjugate_transpose,
          mkl_op_registry::GetMklOpName(csinfo_.conjugate_transpose),
          CopyAttrsAll, AlwaysRewrite, kRewriteForOpNameChange});
-    rinfo_.push_back(
-        {csinfo_.conv2d, mkl_op_registry::GetMklOpName(csinfo_.conv2d),
-         CopyAttrsConvCheckConstFilter, AlwaysRewrite, GetRewriteCause()});
+    rinfothr_.push_back(
+        {{csinfo_.conv2d, mkl_op_registry::GetMklOpName(csinfo_.conv2d),
+          CopyAttrsConvCheckConstFilter,
+          std::function<bool(const Node*)>(),  // We set this function to empty.
+          GetRewriteCause()},
+         Conv2DRewrite});
     rinfo_.push_back({csinfo_.conv2d_with_bias,
                       native_fmt ? csinfo_.mkl_native_conv2d_with_bias
                                  : csinfo_.mkl_conv2d_with_bias,
@@ -465,7 +470,6 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
         {csinfo_.depthwise_conv2d_grad_filter,
          mkl_op_registry::GetMklOpName(csinfo_.depthwise_conv2d_grad_filter),
          CopyAttrsAll, AlwaysRewrite, GetRewriteCause()});
-#ifndef ENABLE_ONEDNN_V3
     rinfo_.push_back(
         {csinfo_.dequantize, mkl_op_registry::GetMklOpName(csinfo_.dequantize),
          CopyAttrsAll, DequantizeRewrite, kRewriteForOpNameChange});
@@ -487,10 +491,11 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
 
     // Using CopyAttrsAll for V3 on CPU, as there are no additional
     // attributes.
-    rinfo_.push_back(
-        {csinfo_.fused_batch_norm_v3,
-         mkl_op_registry::GetMklOpName(csinfo_.fused_batch_norm_v3),
-         CopyAttrsAll, FusedBatchNormV3Rewrite, GetRewriteCause()});
+    rinfothr_.push_back(
+        {{csinfo_.fused_batch_norm_v3,
+          mkl_op_registry::GetMklOpName(csinfo_.fused_batch_norm_v3),
+          CopyAttrsAll, std::function<bool(const Node*)>(), GetRewriteCause()},
+         FusedBatchNormV3RewriteWithThreads});
     rinfo_.push_back(
         {csinfo_.fused_batch_norm_grad_v3,
          mkl_op_registry::GetMklOpName(csinfo_.fused_batch_norm_grad_v3),
@@ -500,12 +505,14 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                                  : csinfo_.mkl_fused_batch_norm_ex,
                       CopyAttrsAll, FusedBatchNormExRewrite,
                       GetRewriteCause()});
-#endif  // !ENABLE_ONEDNN_V3
-    rinfo_.push_back({csinfo_.fused_conv2d,
-                      native_fmt ? csinfo_.mkl_native_fused_conv2d
-                                 : csinfo_.mkl_fused_conv2d,
-                      CopyAttrsAllCheckConstFilter, FusedConv2DRewrite,
-                      GetRewriteCause()});
+    rinfothr_.push_back(
+        {{csinfo_.fused_conv2d,
+          native_fmt ? csinfo_.mkl_native_fused_conv2d
+                     : csinfo_.mkl_fused_conv2d,
+          CopyAttrsAllCheckConstFilter,
+          std::function<bool(const Node*)>(),  // we set this function to empty
+          GetRewriteCause()},
+         FusedConv2DRewrite});
     rinfo_.push_back({csinfo_.fused_conv3d, csinfo_.mkl_native_fused_conv3d,
                       CopyAttrsAllCheckConstFilter, AlwaysRewrite,
                       kRewriteForOpNameChange});
@@ -519,7 +526,6 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                                  : csinfo_.mkl_fused_matmul,
                       CopyAttrsAllCheckConstFilter, FusedMatMulRewrite,
                       GetRewriteCause()});
-#ifndef ENABLE_ONEDNN_V3
     rinfo_.push_back(
         {csinfo_.fused_pad_conv2d, csinfo_.mkl_native_pad_with_conv2d,
          CopyAttrsAllCheckConstFilter, AlwaysRewrite, kRewriteForOpNameChange});
@@ -531,18 +537,15 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back({csinfo_.lrn_grad,
                       mkl_op_registry::GetMklOpName(csinfo_.lrn_grad),
                       CopyAttrsAll, LrnGradRewrite, GetRewriteCause()});
-#endif  // !ENABLE_ONEDNN_V3
     rinfo_.push_back({csinfo_.matmul,
                       mkl_op_registry::GetMklOpName(csinfo_.matmul),
                       CopyAttrsAll, MatMulRewrite, kRewriteForOpNameChange});
-#ifndef ENABLE_ONEDNN_V3
     rinfo_.push_back({csinfo_.leakyrelu,
                       mkl_op_registry::GetMklOpName(csinfo_.leakyrelu),
                       CopyAttrsAll, LeakyReluRewrite, GetRewriteCause()});
     rinfo_.push_back({csinfo_.leakyrelu_grad,
                       mkl_op_registry::GetMklOpName(csinfo_.leakyrelu_grad),
                       CopyAttrsAll, LeakyReluRewrite, GetRewriteCause()});
-#endif  // !ENABLE_ONEDNN_V3
     rinfo_.push_back(
         {csinfo_.max_pool, mkl_op_registry::GetMklOpName(csinfo_.max_pool),
          CopyAttrsAll, NonDepthBatchWisePoolRewrite, GetRewriteCause()});
@@ -555,14 +558,12 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back({csinfo_.max_pool3d_grad,
                       mkl_op_registry::GetMklOpName(csinfo_.max_pool3d_grad),
                       CopyAttrsAll, Maxpool3DGradRewrite, GetRewriteCause()});
-#ifndef ENABLE_ONEDNN_V3
     rinfo_.push_back(
         {csinfo_.maximum, mkl_op_registry::GetMklOpName(csinfo_.maximum),
          CopyAttrsAll, RewriteIfAtleastOneMklInput, GetRewriteCause()});
     rinfo_.push_back({csinfo_.mul, mkl_op_registry::GetMklOpName(csinfo_.mul),
                       CopyAttrsAll, RewriteIfAtleastOneMklInput,
                       GetRewriteCause()});
-#endif  // !ENABLE_ONEDNN_V3
     rinfo_.push_back({csinfo_.pad_with_conv2d,
                       native_fmt ? csinfo_.mkl_native_pad_with_conv2d
                                  : csinfo_.mkl_pad_with_conv2d,
@@ -573,7 +574,6 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                                  : csinfo_.mkl_pad_with_fused_conv2d,
                       CopyAttrsAllCheckConstFilter, AlwaysRewrite,
                       GetRewriteCause()});
-#ifndef ENABLE_ONEDNN_V3
     rinfo_.push_back({csinfo_.quantized_avg_pool,
                       mkl_op_registry::GetMklOpName(csinfo_.quantized_avg_pool),
                       CopyAttrsAll, AlwaysRewrite, kRewriteForOpNameChange});
@@ -639,7 +639,6 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
          mkl_op_registry::GetMklOpName(
              csinfo_.quant_conv2d_with_bias_signed_sum_and_relu_and_requantize),
          CopyAttrsQuantizedConv2D, AlwaysRewrite, kRewriteForOpNameChange});
-#endif  // !ENABLE_ONEDNN_V3
     rinfo_.push_back(
         {csinfo_.quantized_matmul_with_bias,
          mkl_op_registry::GetMklOpName(csinfo_.quantized_matmul_with_bias),
@@ -666,7 +665,6 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                           csinfo_.quantized_matmul_with_bias_and_dequantize),
                       CopyAttrsQuantizedMatMulWithBiasAndDequantize,
                       AlwaysRewrite, kRewriteForOpNameChange});
-#ifndef ENABLE_ONEDNN_V3
     rinfo_.push_back(
         {csinfo_.quantized_depthwise_conv2d,
          mkl_op_registry::GetMklOpName(csinfo_.quantized_depthwise_conv2d),
@@ -687,12 +685,10 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
              csinfo_
                  .quantized_depthwise_conv2d_with_bias_and_relu_and_requantize),
          CopyAttrsQuantizedConv2D, AlwaysRewrite, kRewriteForOpNameChange});
-#endif  // !ENABLE_ONEDNN_V3
     rinfo_.push_back({csinfo_.quantize_v2,
                       mkl_op_registry::GetMklOpName(csinfo_.quantize_v2),
                       CopyAttrsAll, QuantizeOpRewrite,
                       kRewriteForOpNameChange});
-#ifndef ENABLE_ONEDNN_V3
     rinfo_.push_back({csinfo_.relu, mkl_op_registry::GetMklOpName(csinfo_.relu),
                       CopyAttrsAll, AlwaysRewrite, GetRewriteCause()});
     rinfo_.push_back({csinfo_.relu_grad,
@@ -719,12 +715,10 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back(
         {csinfo_.slice, mkl_op_registry::GetMklOpName(csinfo_.slice),
          CopyAttrsAll, RewriteIfAtleastOneMklInput, GetRewriteCause()});
-#endif  // !ENABLE_ONEDNN_V3
     rinfo_.push_back({csinfo_.softmax,
                       mkl_op_registry::GetMklOpName(csinfo_.softmax),
                       CopyAttrsAll, RewriteIfX86, GetRewriteCause()});
 
-#ifndef ENABLE_ONEDNN_V3
     rinfo_.push_back({csinfo_.squared_difference,
                       mkl_op_registry::GetMklOpName(csinfo_.squared_difference),
                       CopyAttrsAll, RewriteIfAtleastOneMklInput,
@@ -732,7 +726,6 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back({csinfo_.sub, mkl_op_registry::GetMklOpName(csinfo_.sub),
                       CopyAttrsAll, RewriteIfAtleastOneMklInput,
                       GetRewriteCause()});
-#endif  // !ENABLE_ONEDNN_V3
     rinfo_.push_back({csinfo_.transpose,
                       mkl_op_registry::GetMklOpName(csinfo_.transpose),
                       CopyAttrsAll, RewriteIfX86, kRewriteForOpNameChange});
@@ -807,6 +800,15 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     // Why are we rewriting?
     RewriteCause rewrite_cause;
   } RewriteInfo;
+
+  /// Structure that carries the original rewrite info, but
+  /// in this case it is using the function that can accept
+  /// what is number of threads that will be used to run
+  /// the operation in parallel.
+  typedef struct {
+    RewriteInfo rinfo;
+    std::function<bool(const Node*, const int)> rewrite_rule;
+  } RewriteInfoThreadCount;
 
   /// Structure to specify a forward op, a backward op, and the slot numbers
   /// in the forward and backward ops where we will add a workspace edge.
@@ -943,6 +945,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string mkl_native_pad_with_fused_conv2d;
     string mkl_pad_with_conv2d;
     string mkl_pad_with_fused_conv2d;
+    string mkl_swish;
     string mul;
     string pad;
     string pad_with_conv2d;
@@ -977,6 +980,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string relu6;
     string relu6_grad;
     string requantize;
+    string sigmoid;
     string tanh;
     string tanh_grad;
     string transpose;
@@ -991,6 +995,11 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
  private:
   /// Maintain info about nodes to rewrite
   std::vector<RewriteInfo> rinfo_;
+  /// Maintain info about nodes to rewrite with additional
+  /// information that holds number of threads that should
+  /// be used to parallelise the kernel so that we can decide
+  /// whether it is worth rewriting op to run with oneDNN.
+  std::vector<RewriteInfoThreadCount> rinfothr_;
 
   /// Maintain info about nodes to add workspace edge
   std::vector<WorkSpaceInfo> wsinfo_;
@@ -1003,6 +1012,9 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
 
   /// Maintain structure of constant strings
   static ConstStringsInfo csinfo_;
+
+  /// Number of threads used for intra-parallelism.
+  int num_intra_threads_;
 
  private:
   // Is OpDef::ArgDef a list type? It could be N * T or list(type).
@@ -1508,7 +1520,11 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     TF_CHECK_OK(GetNodeAttr(n->def(), "T", &T));
     if ((T == DT_FLOAT) || (T == DT_BFLOAT16)) {
       VLOG(2) << "Rewriting MatMul to _MklMatMul";
+#ifdef DNNL_AARCH64_USE_ACL
+      return MatMulHeuristic(n);
+#else
       return true;
+#endif
     }
     return false;
   }
@@ -1751,6 +1767,16 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     return true;
   }
 
+  static bool FusedBatchNormV3RewriteWithThreads(const Node* n, int threads) {
+    double mflops = CalculateNodeMFlops(n->attrs(), n->type_string());
+    double thr = FindRewriteThreshold(n->type_string(), threads);
+    if (mflops > 0 && mflops < thr) {
+      return false;
+    }
+
+    return FusedBatchNormV3Rewrite(n);
+  }
+
   static bool FusedBatchNormExRewrite(const Node* n) {
     DCHECK(n);
 
@@ -1776,7 +1802,25 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     return true;
   }
 
-  static bool FusedConv2DRewrite(const Node* n) {
+  static bool Conv2DRewrite(const Node* n, int threads) {
+    // Find out what are dimensions of the convolution,
+    // if dimensions are small we will not rewrite node
+    // to use oneDNN operations as overhead to call into oneDNN
+    // as data setup is higher then actual useful work we
+    // might end up doing.
+    double total_mflops = CalculateNodeMFlops(n->attrs(), n->type_string());
+    double thr = FindRewriteThreshold(n->type_string(), threads);
+
+    return (total_mflops < 0 || total_mflops >= thr);
+  }
+
+  static bool FusedConv2DRewrite(const Node* n, int threads) {
+    // Decide whether it is worth rewriting it to oneDNN operation
+    // due to overheads as they will dominate for small shapes.
+    if (!Conv2DRewrite(n, threads)) {
+      return false;
+    }
+
     // MKL DNN currently doesn't support all fusions that grappler fuses
     // together with Conv2D (ex. batchnorm). We rewrite _FusedConv2D only if
     // it includes those we support.
@@ -2832,6 +2876,9 @@ void MklLayoutRewritePass::CopyAttrsQuantizedMatMulWithBiasAndDequantize(
   Node* filter_node = nullptr;
   TF_CHECK_OK(orig_node->input_node(1, &filter_node));
   nb->Attr("is_weight_const", filter_node->IsConstant());
+  Node* bias_node = nullptr;
+  TF_CHECK_OK(orig_node->input_node(2, &bias_node));
+  nb->Attr("is_bias_const", bias_node->IsConstant());
 }
 
 void MklLayoutRewritePass::CopyAttrsQuantizedMatMulWithBias(
@@ -2845,12 +2892,15 @@ void MklLayoutRewritePass::CopyAttrsQuantizedMatMulWithBias(
 
   Node* weight_node = nullptr;
   TF_CHECK_OK(orig_node->input_node(1, &weight_node));
+  Node* bias_node = nullptr;
+  TF_CHECK_OK(orig_node->input_node(2, &bias_node));
 
   // Add attributes to new node.
   nb->Attr("T1", T1);
   nb->Attr("T2", T2);
   nb->Attr("Toutput", Toutput);
   nb->Attr("is_weight_const", weight_node->IsConstant());
+  nb->Attr("is_bias_const", bias_node->IsConstant());
 
   // Requantization attr Tbias
   DataType Tbias;
@@ -3489,10 +3539,12 @@ Status MklLayoutRewritePass::MergeNode(std::unique_ptr<Graph>* g, Node* m,
   }
   if ((m->type_string() == csinfo_.pad &&
        (n->type_string() == csinfo_.conv2d ||
-        (n->type_string() == csinfo_.fused_conv2d && FusedConv2DRewrite(n)))) ||
+        (n->type_string() == csinfo_.fused_conv2d &&
+         FusedConv2DRewrite(n, num_intra_threads_)))) ||
       (n->type_string() == csinfo_.pad &&
        (m->type_string() == csinfo_.conv2d ||
-        (m->type_string() == csinfo_.fused_conv2d && FusedConv2DRewrite(m))))) {
+        (m->type_string() == csinfo_.fused_conv2d &&
+         FusedConv2DRewrite(m, num_intra_threads_))))) {
     return this->MergePadWithConv2D(g, m, n);
   }
 
@@ -3808,6 +3860,13 @@ MklLayoutRewritePass::CheckForNodeRewrite(const Node* n) const {
   for (auto ri = rinfo_.cbegin(); ri != rinfo_.cend(); ++ri) {
     if (n->type_string().compare(ri->name) == 0 && ri->rewrite_rule(n)) {
       return &*ri;
+    }
+  }
+
+  for (auto rit = rinfothr_.cbegin(); rit != rinfothr_.cend(); ++rit) {
+    if (n->type_string().compare(rit->rinfo.name) == 0 &&
+        rit->rewrite_rule(n, num_intra_threads_)) {
+      return &(rit->rinfo);
     }
   }
 
@@ -4167,6 +4226,10 @@ Status MklLayoutRewritePass::Run(const GraphOptimizationPassOptions& options) {
     return OkStatus();
   }
 
+  if (options.session_options != nullptr) {
+    num_intra_threads_ =
+        options.session_options->config.intra_op_parallelism_threads();
+  }
   auto process_graph = [&](std::unique_ptr<Graph>* g) {
     // Get the ownership of a graph
     std::unique_ptr<Graph>* ng = std::move(g);

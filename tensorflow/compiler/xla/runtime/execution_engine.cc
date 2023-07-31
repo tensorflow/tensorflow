@@ -318,6 +318,7 @@ ExecutionEngine::CreateFromModule(std::unique_ptr<llvm::LLVMContext> ctx,
                  .setCompileFunctionCreator(compile_function_creator)
                  .setObjectLinkingLayerCreator(obj_layer_creator)
                  .setExecutorProcessControl(std::move(*executorProcessControl))
+                 .setNumCompileThreads(0)  // disable multi-threading
                  .create();
 
   if (auto err = jit.takeError())

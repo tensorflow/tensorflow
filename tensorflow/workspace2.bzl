@@ -192,11 +192,11 @@ def _tf_repositories():
     )
 
     tf_http_archive(
-        name = "onednn_v3",
+        name = "onednn",
         build_file = "//third_party/mkl_dnn:mkldnn_v1.BUILD",
-        sha256 = "28e31f2d576e1a7e3a796f5c33c1d733c256078cff1c48b9e2a692d5975e1401",
-        strip_prefix = "oneDNN-3.1",
-        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/refs/tags/v3.1.tar.gz"),
+        sha256 = "8b1db9cc5799ae39c2a567eb836962de0346d79fbc3d8e6f7090a3d9f8729129",
+        strip_prefix = "oneDNN-3.2",
+        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/refs/tags/v3.2.tar.gz"),
     )
 
     tf_http_archive(
@@ -204,9 +204,14 @@ def _tf_repositories():
         build_file = "//third_party/mkl_dnn:mkldnn_acl.BUILD",
         patch_file = [
             "//third_party/mkl_dnn:onednn_acl_threadcap.patch",
+            "//third_party/mkl_dnn:onednn_acl_remove_winograd.patch",
             "//third_party/mkl_dnn:onednn_acl_fixed_format_kernels.patch",
             "//third_party/mkl_dnn:onednn_acl_depthwise_convolution.patch",
             "//third_party/mkl_dnn:onednn_acl_threadpool_scheduler.patch",
+            "//third_party/mkl_dnn:onednn_acl_reorder_padded.patch",
+            "//third_party/mkl_dnn:onednn_acl_reorder_update.patch",
+            "//third_party/mkl_dnn:onednn_acl_reorder.patch",
+            "//third_party/mkl_dnn:onednn_acl_thread_local_scheduler.patch",
         ],
         sha256 = "a50993aa6265b799b040fe745e0010502f9f7103cc53a9525d59646aef006633",
         strip_prefix = "oneDNN-2.7.3",
@@ -215,15 +220,13 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "compute_library",
-        sha256 = "e20a060d3c4f803889d96c2f0b865004ba3ef4e228299a44339ea1c1ba827c85",
-        strip_prefix = "ComputeLibrary-22.11",
-        build_file = "//third_party/compute_library:BUILD",
         patch_file = [
             "//third_party/compute_library:compute_library.patch",
-            "//third_party/compute_library:acl_fixed_format_kernels_striding.patch",
-            "//third_party/compute_library:acl_openmp_fix.patch",
+            "//third_party/compute_library:acl_thread_local_scheduler.patch",
         ],
-        urls = tf_mirror_urls("https://github.com/ARM-software/ComputeLibrary/archive/v22.11.tar.gz"),
+        sha256 = "c4ca329a78da380163b2d86e91ba728349b6f0ee97d66e260a694ef37f0b0d93",
+        strip_prefix = "ComputeLibrary-23.05.1",
+        urls = tf_mirror_urls("https://github.com/ARM-software/ComputeLibrary/archive/v23.05.1.tar.gz"),
     )
 
     tf_http_archive(
@@ -510,10 +513,10 @@ def _tf_repositories():
     tf_http_archive(
         name = "curl",
         build_file = "//third_party:curl.BUILD",
-        sha256 = "5fd29000a4089934f121eff456101f0a5d09e2a3e89da1d714adf06c4be887cb",
-        strip_prefix = "curl-8.0.1",
+        sha256 = "2e5a9b8fcdc095bdd2f079561f369de71c5eb3b80f00a702fbe9a8b8d9897891",
+        strip_prefix = "curl-8.1.2",
         system_build_file = "//third_party/systemlibs:curl.BUILD",
-        urls = tf_mirror_urls("https://curl.haxx.se/download/curl-8.0.1.tar.gz"),
+        urls = tf_mirror_urls("https://curl.haxx.se/download/curl-8.1.2.tar.gz"),
     )
 
     # WARNING: make sure ncteisen@ and vpai@ are cc-ed on any CL to change the below rule
@@ -953,6 +956,40 @@ def _tf_repositories():
         sha256 = "f57bf32804140cad58b1240b804e0dbd68f7e6bf67eba8e0c0fa3a62fd7f0f84",
         urls = tf_mirror_urls("https://github.com/google/or-tools/releases/download/v9.0/bliss-0.73.zip"),
         #url = "http://www.tcs.hut.fi/Software/bliss/bliss-0.73.zip",
+    )
+
+    # Riegeli is imported twice since there are two targets (third_party/riegeli and
+    # third_party/py/riegeli) that are used in TF.
+    tf_http_archive(
+        name = "riegeli",
+        sha256 = "870ca080cdfc5eba696a72ccc3a54cbf0f2271befc0d459eafa8f065edfaadb2",
+        strip_prefix = "riegeli-264ef7b4a1314d97265b37544b27cd3923ea72d2",
+        urls = tf_mirror_urls("https://github.com/google/riegeli/archive/264ef7b4a1314d97265b37544b27cd3923ea72d2.zip"),
+    )
+
+    tf_http_archive(
+        name = "riegeli_py",
+        sha256 = "870ca080cdfc5eba696a72ccc3a54cbf0f2271befc0d459eafa8f065edfaadb2",
+        patch_file = ["//third_party:riegeli_fix.patch"],
+        strip_prefix = "riegeli-264ef7b4a1314d97265b37544b27cd3923ea72d2",
+        urls = tf_mirror_urls("https://github.com/google/riegeli/archive/264ef7b4a1314d97265b37544b27cd3923ea72d2.zip"),
+    )
+
+    # Required by riegeli.
+    tf_http_archive(
+        name = "org_brotli",
+        sha256 = "84a9a68ada813a59db94d83ea10c54155f1d34399baf377842ff3ab9b3b3256e",
+        strip_prefix = "brotli-3914999fcc1fda92e750ef9190aa6db9bf7bdb07",
+        urls = tf_mirror_urls("https://github.com/google/brotli/archive/3914999fcc1fda92e750ef9190aa6db9bf7bdb07.zip"),  # 2022-11-17
+    )
+
+    # Required by riegeli.
+    tf_http_archive(
+        name = "net_zstd",
+        build_file = "//third_party:net_zstd.BUILD",
+        sha256 = "b6c537b53356a3af3ca3e621457751fa9a6ba96daf3aebb3526ae0f610863532",
+        strip_prefix = "zstd-1.4.5/lib",
+        urls = tf_mirror_urls("https://github.com/facebook/zstd/archive/v1.4.5.zip"),  # 2020-05-22
     )
 
     # used for adding androidx.annotation dependencies in tflite android jni.

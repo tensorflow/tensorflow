@@ -1,6 +1,5 @@
 # DTensor Internal experimental code.
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "if_google")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -16,12 +15,7 @@ cc_library(
         "collective_lowering.cc",
         "dtensor_mlir_passes_internal.cc",
         "update_tpu_metadata.cc",
-    ] + if_google(
-        [
-            "collective_lowering_google.cc",
-            "update_tpu_metadata_google.cc",
-        ],
-    ),
+    ],
     hdrs = ["dtensor_mlir_passes_internal.h"],
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
@@ -36,12 +30,12 @@ cc_library(
         "//tensorflow/dtensor/cc:dtensor_utils",
         "//tensorflow/dtensor/cc:layout_to_xla_sharding",
         "//tensorflow/dtensor/cc:tensor_layout",
+        "//tensorflow/dtensor/mlir:collectives",
         "//tensorflow/dtensor/mlir:collectives_common",
         "//tensorflow/dtensor/mlir:create_dtensor_mlir_passes",
         "//tensorflow/dtensor/mlir:device_utils",
         "//tensorflow/dtensor/mlir:dtensor_location",
         "//tensorflow/dtensor/mlir:dtensor_passes_inc_gen",
-        "//tensorflow/dtensor/mlir:group_assignment",
         "//tensorflow/dtensor/mlir:layout_parsing",
         "//tensorflow/dtensor/mlir:op_utils",
         "//tensorflow/dtensor/mlir:shape_utils",

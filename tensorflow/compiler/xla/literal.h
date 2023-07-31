@@ -276,6 +276,18 @@ class LiteralBase {
   // Returns false if this literal is not an array.
   bool IsAllFirst() const;
 
+  // Returns the number of elements that have value equal to the given value.
+  // Returns 0 if value does not fit in this literal's type or if the literal
+  // is not an array.
+  template <typename T>
+  int64_t CountEqual(T value) const;
+
+  // Returns the number of elements that have value equal to the given complex
+  // value. Returns 0 if value does not fit in this literal's type or if the
+  // literal is not an array.
+  template <typename T>
+  int64_t CountEqual(std::complex<T> value) const;
+
   // Literal consists entirely of an iota.
   bool IsR1Iota() const;
 
@@ -641,6 +653,10 @@ class LiteralBase {
     //  - `scalar` is a scalar.
     //  - `scalar`'s type matches that of `this`.
     bool IsAll(const Literal& scalar) const;
+
+    // Returns the number of elements with equal value to the given literal.
+    // Returns 0 if this Piece is not an array.
+    int64_t CountAll(const Literal& scalar) const;
 
     // Returns true if this piece and 'other' contain the same data. This piece
     // and 'other' must be array-shaped and compatible. If a literal has dynamic
@@ -1311,6 +1327,44 @@ NativeT LiteralBase::GetFirstElement() const {
   CHECK(LayoutUtil::IsDenseArray(shape()))
       << __func__ << " is only supported for dense arrays: " << shape();
   return data<NativeT>().at(0);
+}
+
+template <typename T>
+int64_t LiteralBase::CountEqual(T value) const {
+  if (!shape().IsArray()) {
+    return 0;
+  }
+  PrimitiveType ty = shape().element_type();
+  Literal scalar(ShapeUtil::MakeScalarShape(ty));
+  return primitive_util::PrimitiveTypeSwitch<int64_t>(
+      [&](auto primitive_type_constant) -> int64_t {
+        if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
+          using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
+          scalar.Set<NativeT>({}, static_cast<NativeT>(value));
+          return root_piece().CountAll(scalar);
+        }
+        return 0;
+      },
+      ty);
+}
+
+template <typename T>
+int64_t LiteralBase::CountEqual(std::complex<T> value) const {
+  if (!shape().IsArray()) {
+    return 0;
+  }
+  PrimitiveType ty = shape().element_type();
+  Literal scalar(ShapeUtil::MakeScalarShape(ty));
+  return primitive_util::PrimitiveTypeSwitch<int64_t>(
+      [&](auto primitive_type_constant) -> int64_t {
+        if constexpr (primitive_util::IsComplexType(primitive_type_constant)) {
+          using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
+          scalar.Set<NativeT>({}, static_cast<NativeT>(value));
+          return root_piece().CountAll(scalar);
+        }
+        return 0;
+      },
+      ty);
 }
 
 template <typename NativeT>

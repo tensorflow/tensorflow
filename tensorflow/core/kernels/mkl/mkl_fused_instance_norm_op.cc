@@ -80,7 +80,7 @@ class MklFusedInstanceNormOp : public OpKernel {
       std::shared_ptr<stream> engine_stream_ptr;
       engine_stream_ptr.reset(CreateStream(&eigen_tp, cpu_engine_));
 
-      const int batch_size = src_tensor.shape().dim_size(0);
+      const int64_t batch_size = src_tensor.shape().dim_size(0);
       const int64_t elems_per_batch =
           src_tensor.shape().num_elements() / batch_size;
 
@@ -103,9 +103,6 @@ class MklFusedInstanceNormOp : public OpKernel {
                                      : memory::format_tag::nhwc;
       }
       auto src_md = memory::desc(src_dims, MklDnnType<T>(), tag);
-
-      void* src_buf =
-          static_cast<void*>(const_cast<T*>(src_tensor.flat<T>().data()));
 
 #ifndef ENABLE_ONEDNN_V3
 #define NUM_DUPLICATE 2
@@ -189,8 +186,6 @@ class MklFusedInstanceNormOp : public OpKernel {
       Tensor* output_tensor = nullptr;
       OP_REQUIRES_OK(ctx, ctx->forward_input_or_allocate_output(
                               {0}, 0, src_tensor.shape(), &output_tensor));
-      void* dst_buf =
-          static_cast<void*>(const_cast<T*>(output_tensor->flat<T>().data()));
 
       std::unique_ptr<dnnl::memory> dst_mem_ptr(
           new memory(src_md, cpu_engine_, (char*)nullptr));

@@ -53,6 +53,9 @@ class PjRtCompileOnlyDevice : public PjRtDevice {
   Status TransferFromOutfeed(MutableBorrowingLiteral literal) override {
     return Unimplemented("TransferFromOutfeed is not supported");
   }
+  StatusOr<PjRtMemorySpace*> default_memory_space() const override {
+    return Unimplemented("default_memory_space is not supported");
+  }
 
  private:
   const PjRtDeviceDescription* description_;

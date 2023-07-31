@@ -419,6 +419,11 @@ class DTensorDataset(dataset_ops.UnaryUnchangedStructureDataset):
     For a DTensor mesh, the number of replicas is equal to the size of the
     mesh's batch dimension.
 
+    Note: `tf.experimental.dtensor.DTensorDataset` instances do *not* implement
+    the full interface of `tf.data.Dataset`. It only supports two usages we will
+    mention below: iteration and `element_spec`. We don't support any other APIs
+    to transform or inspect the dataset.
+
     TODO(b/223275517): add support for input datasets that are already batched
     to the global batch size.
 

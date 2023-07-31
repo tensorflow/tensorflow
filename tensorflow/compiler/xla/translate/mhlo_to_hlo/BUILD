@@ -47,8 +47,20 @@ cc_library(
     srcs = ["location_exporter.cc"],
     hdrs = ["location_exporter.h"],
     deps = [
+        ":stack_frame_index_builder",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
+    name = "stack_frame_index_builder",
+    srcs = ["stack_frame_index_builder.cc"],
+    hdrs = ["stack_frame_index_builder.h"],
+    deps = [
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@llvm-project//mlir:IR",
     ],
 )
@@ -65,6 +77,7 @@ cc_library(
         ":layout_util",
         ":location_exporter",
         ":operator_writer_inc",
+        ":stack_frame_index_builder",
         ":type_to_shape",
         "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:literal",
@@ -84,6 +97,7 @@ cc_library(
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/xla/mlir_hlo:mhlo_passes",
         "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/compiler/xla/service/gpu:backend_configs_cc",
         "//tensorflow/tsl/platform:float8",
         "//tensorflow/tsl/platform:statusor",
@@ -115,7 +129,6 @@ cc_binary(
     deps = [
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:TableGen",
-        "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TableGen",
     ],
 )

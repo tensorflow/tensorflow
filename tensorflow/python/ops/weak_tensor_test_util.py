@@ -17,16 +17,18 @@
 import numpy as np
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework.weak_tensor import WeakTensor
 
 
 def convert_to_input_type(base_input, input_type, dtype=None):
   if input_type == "WeakTensor":
-    return WeakTensor(constant_op.constant(base_input, dtype=dtype))
+    return WeakTensor.from_tensor(constant_op.constant(base_input, dtype=dtype))
   elif input_type == "Tensor":
     return constant_op.constant(base_input, dtype=dtype)
   elif input_type == "NumPy":
+    dtype = dtype.as_numpy_dtype if isinstance(dtype, dtypes.DType) else dtype
     return np.array(base_input, dtype=dtype)
   elif input_type == "Python":
     return base_input
@@ -35,7 +37,7 @@ def convert_to_input_type(base_input, input_type, dtype=None):
 
 
 def get_weak_tensor(*args, **kwargs):
-  return WeakTensor(constant_op.constant(*args, **kwargs))
+  return WeakTensor.from_tensor(constant_op.constant(*args, **kwargs))
 
 
 class DtypeConversionTestEnv:

@@ -44,7 +44,6 @@ class CollectivePipelinerTest : public HloTestBase {
   }
 
  protected:
-  const HloPredicate IsAllGather = HloPredicateIsOp<HloOpcode::kAllGather>;
   HloModuleConfig config_;
 };
 
@@ -53,8 +52,9 @@ StatusOr<bool> RunOptimizer(
     bool process_different_sized_ops = true,
     CollectivePipeliner::PipeliningDirection direction =
         CollectivePipeliner::PipeliningDirection::kForward,
-    HloPredicate should_process = HloPredicateIsOp<HloOpcode::kAllReduce>) {
+    HloOpcode op = HloOpcode::kAllReduce) {
   CollectivePipeliner::Config config = {
+      /*op=*/op,
       /*level_to_operate_on=*/level_to_operate_on,
       /*max_pipelining_per_loop=*/INT64_MAX,
       /*last_run=*/last_run,
@@ -62,7 +62,7 @@ StatusOr<bool> RunOptimizer(
       /*/
       /*direction=*/
       direction,
-      /*should_process=*/should_process,
+      /*should_process=*/HloPredicateTrue,
   };
   HloPassPipeline pass("optimizer");
   pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
@@ -528,7 +528,7 @@ ENTRY entry {
   EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/true, 0,
                            /*process_different_sized_ops=*/true,
                            CollectivePipeliner::PipeliningDirection::kForward,
-                           IsAllGather)
+                           HloOpcode::kAllGather)
                   .value());
   XLA_VLOG_LINES(1, module->ToString());
   auto* root = module->entry_computation()->root_instruction();
@@ -593,7 +593,7 @@ ENTRY entry {
   EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/true, 0,
                            /*process_different_sized_ops=*/true,
                            CollectivePipeliner::PipeliningDirection::kForward,
-                           IsAllGather)
+                           HloOpcode::kAllGather)
                   .value());
   XLA_VLOG_LINES(1, module->ToString());
   auto* root = module->entry_computation()->root_instruction();
@@ -648,7 +648,7 @@ ENTRY entry {
   EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/false, 0,
                            /*process_different_sized_ops=*/true,
                            CollectivePipeliner::PipeliningDirection::kForward,
-                           IsAllGather)
+                           HloOpcode::kAllGather)
                   .value());
   XLA_VLOG_LINES(1, module->ToString());
   RunOptimizer(module.get(), /*last_run=*/true, 1).value();
@@ -727,7 +727,7 @@ ENTRY %entry (p0: bf16[3,8,128]) -> bf16[3,8,128] {
   EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/true, 1,
                            /*process_different_sized_ops=*/true,
                            CollectivePipeliner::PipeliningDirection::kForward,
-                           IsAllGather)
+                           HloOpcode::kAllGather)
                   .value());
   XLA_VLOG_LINES(1, module->ToString());
   auto* root = module->entry_computation()->root_instruction();
@@ -807,7 +807,7 @@ ENTRY %entry (p0: bf16[3,8,128]) -> bf16[3,8,128] {
   EXPECT_FALSE(RunOptimizer(module.get(), /*last_run=*/false, 1,
                             /*process_different_sized_ops=*/false,
                             CollectivePipeliner::PipeliningDirection::kForward,
-                            IsAllGather)
+                            HloOpcode::kAllGather)
                    .value());
   XLA_VLOG_LINES(1, module->ToString());
 }
@@ -995,7 +995,7 @@ ENTRY entry {
   EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/true, 0,
                            /*process_different_sized_ops=*/false,
                            CollectivePipeliner::PipeliningDirection::kBackward,
-                           IsAllGather)
+                           HloOpcode::kAllGather)
                   .value());
   XLA_VLOG_LINES(1, module->ToString());
   const int64_t while_count = absl::c_count_if(
@@ -1066,7 +1066,7 @@ ENTRY entry {
   EXPECT_FALSE(RunOptimizer(module.get(), /*last_run=*/true, 0,
                             /*process_different_sized_ops=*/false,
                             CollectivePipeliner::PipeliningDirection::kBackward,
-                            IsAllGather)
+                            HloOpcode::kAllGather)
                    .value());
   XLA_VLOG_LINES(1, module->ToString());
 }
@@ -1129,7 +1129,7 @@ ENTRY entry {
   EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/false, 0,
                            /*process_different_sized_ops=*/true,
                            CollectivePipeliner::PipeliningDirection::kBackward,
-                           IsAllGather)
+                           HloOpcode::kAllGather)
                   .value());
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/true, 0,
@@ -1199,7 +1199,7 @@ ENTRY entry {
   EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/false, 0,
                            /*process_different_sized_ops=*/true,
                            CollectivePipeliner::PipeliningDirection::kBackward,
-                           IsAllGather)
+                           HloOpcode::kAllGather)
                   .value());
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/true, 0,

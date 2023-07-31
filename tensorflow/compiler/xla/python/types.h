@@ -53,19 +53,19 @@ StatusOr<pybind11::str> TypeDescriptorForPrimitiveType(PrimitiveType type);
 
 struct NumpyScalarTypes {
   pybind11::object np_bool;
-  std::optional<pybind11::object> np_int4;
+  pybind11::object np_int4;
   pybind11::object np_int8;
   pybind11::object np_int16;
   pybind11::object np_int32;
   pybind11::object np_int64;
-  std::optional<pybind11::object> np_uint4;
+  pybind11::object np_uint4;
   pybind11::object np_uint8;
   pybind11::object np_uint16;
   pybind11::object np_uint32;
   pybind11::object np_uint64;
   pybind11::object np_bfloat16;
   pybind11::object np_float8_e4m3fn;
-  std::optional<pybind11::object> np_float8_e4m3b11fnuz;
+  pybind11::object np_float8_e4m3b11fnuz;
   pybind11::object np_float8_e4m3fnuz;
   pybind11::object np_float8_e5m2;
   pybind11::object np_float8_e5m2fnuz;
@@ -83,8 +83,13 @@ const NumpyScalarTypes& GetNumpyScalarTypes();
 PrimitiveType Squash64BitTypes(PrimitiveType type);
 
 // Returns the strides for `shape`.
-std::vector<ssize_t> ByteStridesForShape(const Shape& shape);
-std::vector<int64_t> ByteStridesForShapeInt64(const Shape& shape);
+std::vector<int64_t> ByteStridesForShape(const Shape& shape);
+std::vector<int64_t> ByteStridesForShape(PrimitiveType element_type,
+                                         absl::Span<const int64_t> dimensions,
+                                         const xla::Layout& layout);
+std::vector<int64_t> StridesForShape(PrimitiveType element_type,
+                                     absl::Span<const int64_t> dimensions,
+                                     const xla::Layout& layout);
 
 // Converts a literal to (possibly-nested tuples of) NumPy arrays.
 // The literal's leaf arrays are not copied; instead the NumPy arrays share

@@ -4,7 +4,7 @@ Can be set via build parameter "--repo_env=TF_PYTHON_VERSION=3.10"
 Defaults to 3.10.
 """
 
-VERSIONS = ["3.8", "3.9", "3.10", "3.11"]
+VERSIONS = ["3.9", "3.10", "3.11"]
 DEFAULT_VERSION = "3.10"
 WARNING = """
 TF_PYTHON_VERSION variable was not set correctly, using default version. {} Python

@@ -431,7 +431,8 @@ void CreateConvertMlirToXlaHloPipeline(
   pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
 
   pm.addNestedPass<mlir::func::FuncOp>(mlir::TF::CreateLowerQuantizedPass());
-  pm.addPass(mlir::mhlo::CreateLegalizeTfTypesPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::stablehlo::CreateConvertTFQuantTypesPass());
 
   for (auto& target_pass : custom_legalization_passes) {
     pm.addNestedPass<mlir::func::FuncOp>(std::move(target_pass));

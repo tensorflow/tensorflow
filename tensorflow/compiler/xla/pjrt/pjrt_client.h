@@ -176,6 +176,25 @@ class PjRtDevice {
   virtual absl::Span<PjRtMemorySpace* const> memory_spaces() const {
     return {};
   }
+
+  // Returns the default memory space attached to this device.
+  virtual StatusOr<PjRtMemorySpace*> default_memory_space() const = 0;
+
+  // Experimental: Poisons the earliest execution on this device with given
+  // launch_id if it's not finished yet, i.e. makes its output buffers error.
+  //
+  // Returns true if the output buffers have been successfully poisoned.
+  //
+  // Returns false if the output buffers were not successfully poisoned because
+  // launch_id is not in the list of executions that have not yet completed.
+  // This may happen either because the execution corresponding to launch_id has
+  // already completed, or because an incorrect launch_id was supplied.
+  //
+  // Returns error otherwise, including in the case that poisoning is not
+  // implemented by this client.
+  virtual StatusOr<bool> PoisonExecution(int32_t launch_id, Status error) {
+    return Unimplemented("PoisonExecution is not supported");
+  }
 };
 
 // Forward declaration.
@@ -880,6 +899,16 @@ class PjRtBuffer {
 
   virtual const Shape& on_device_shape() const = 0;
 
+  virtual bool has_dynamic_dimensions() const {
+    return on_device_shape().is_dynamic();
+  }
+
+  // Each returned element is true if the corresponding dimensions is dynamic,
+  // false if static.
+  virtual absl::Span<const bool> is_dynamic_dimension() const {
+    return on_device_shape().dynamic_dimensions();
+  }
+
   // Same as dimensions() when the shape is static. When the shape is dynamic,
   // it gathers the metadata from the device and returns a static shape
   // representing the logical shape of the data. This approach is identical to
@@ -963,9 +992,28 @@ class PjRtBuffer {
   // Convenience synchronous overload that allocates a literal with a default
   // layout.
   StatusOr<std::shared_ptr<Literal>> ToLiteralSync() {
-    Shape device_shape = on_device_shape();
-    if (device_shape.is_dynamic()) {
-      TF_ASSIGN_OR_RETURN(device_shape, logical_on_device_shape());
+    Shape device_shape;
+    if (!IsTuple()) {
+      absl::Span<const int64_t> literal_dims;
+      std::optional<std::vector<int64_t>> logical_dims_storage;
+      if (has_dynamic_dimensions()) {
+        TF_ASSIGN_OR_RETURN(std::vector<int64_t> logical_dims,
+                            logical_dimensions());
+        logical_dims_storage.emplace(std::move(logical_dims));
+        literal_dims = *logical_dims_storage;
+      } else {
+        literal_dims = dimensions();
+      }
+      device_shape = ShapeUtil::MakeShape(element_type(), literal_dims);
+      *device_shape.mutable_layout() = layout();
+    } else {
+      // TODO(skyewm): does anything need to create tuple literals? The PJRT C
+      // API doesn't support tuples or {logical_}on_device_shape(), so we prefer
+      // to use the above non-tuple code path where possible.
+      device_shape = on_device_shape();
+      if (device_shape.is_dynamic()) {
+        TF_ASSIGN_OR_RETURN(device_shape, logical_on_device_shape());
+      }
     }
     auto literal = std::make_shared<Literal>(
         ShapeUtil::DeviceShapeToHostShape(device_shape));

@@ -56,6 +56,20 @@ struct ConvOpAttrs {
   TensorFormat data_format;
 };
 
+// Helper for the general Conv Op.
+struct ConvNDOpAttrs {
+  // Constructs a ConvOpAttrs, reading most of the attributes from `ctx`.
+  static StatusOr<ConvNDOpAttrs> Create(OpKernelConstruction* ctx);
+
+  int groups;
+  int batch_dims;
+  std::vector<int32> dilations;
+  std::vector<int32> strides;
+  Padding padding;
+  std::vector<int64_t> explicit_paddings;
+  TensorFormat data_format;
+};
+
 // Creates a new XLA forward or backward convolution with the given inputs and
 // attributes.
 StatusOr<xla::XlaOp> MakeXlaForwardConvOp(StringPiece type_string,

@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/ifrt/support/sharding_param_to_op_sharding.h"
 
 #include <memory>
-#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -110,9 +109,9 @@ class ShardingParamToOpShardingEquivalentTest : public test_util::ShardingTest {
   void AssertSameTiling(const ShardingParam& sharding_param,
                         const HloSharding& hlo_sharding, const Shape& shape) {
     auto device_list = GetDevices({0, 1, 2, 3, 4, 5});
-    TF_ASSERT_OK_AND_ASSIGN(
-        std::shared_ptr<const Sharding> sharding,
-        ShardingParamSharding::Create(sharding_param, device_list));
+    TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<const Sharding> sharding,
+                            ShardingParamSharding::Create(
+                                sharding_param, device_list, MemoryKind()));
     const xla::Shape xla_shape(PrimitiveType::F16, shape.dims(), {}, {});
 
     TF_ASSERT_OK_AND_ASSIGN(const std::vector<IndexDomain> index_domains,

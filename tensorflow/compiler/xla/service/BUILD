@@ -884,14 +884,14 @@ cc_library(
     srcs = ["call_graph.cc"],
     hdrs = ["call_graph.h"],
     deps = [
-        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/tsl/platform:errors",
-        "//tensorflow/tsl/platform:status",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
     ],
@@ -902,18 +902,17 @@ xla_cc_test(
     srcs = ["call_graph_test.cc"],
     deps = [
         ":call_graph",
-        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:test",
-        "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/hlo/utils:hlo_matchers",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -1187,6 +1186,39 @@ xla_cc_test(
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/algorithm:container",
+    ],
+)
+
+cc_library(
+    name = "latency_hiding_scheduler_preparation",
+    srcs = ["latency_hiding_scheduler_preparation.cc"],
+    hdrs = ["latency_hiding_scheduler_preparation.h"],
+    deps = [
+        ":collective_ops_utils",
+        ":hlo_pass",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/hlo/ir:hlo_reachability",
+        "//tensorflow/compiler/xla/service/gpu:backend_configs_cc",
+        "//tensorflow/compiler/xla/service/graphcycles",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_cc_test(
+    name = "latency_hiding_scheduler_preparation_test",
+    srcs = ["latency_hiding_scheduler_preparation_test.cc"],
+    deps = [
+        ":hlo_parser",
+        ":latency_hiding_scheduler_preparation",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/hlo/utils:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:test_utils",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:test_main",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -1481,17 +1513,10 @@ cc_library(
     srcs = ["channel_tracker.cc"],
     hdrs = ["channel_tracker.h"],
     deps = [
-        "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/compiler/xla/hlo/ir:hlo",
-        "//tensorflow/tsl/platform:logging",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -4904,10 +4929,7 @@ cc_library(
     hdrs = ["hlo_domain_isolator.h"],
     deps = [
         ":hlo_domain_remover",
-        ":hlo_graph_dumper",
         ":hlo_pass",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/tsl/platform:statusor",
     ],
@@ -6751,6 +6773,7 @@ build_test(
 xla_cc_binary(
     name = "xla_compile",
     srcs = ["xla_compile_main.cc"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured(["TENSORFLOW_USE_ROCM"]),
     visibility = ["//visibility:public"],
     deps = [
         ":compiler",

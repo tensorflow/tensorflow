@@ -14,6 +14,7 @@
 # ==============================================================================
 """Tests for XLA call module op wrapper."""
 import os
+import re
 from typing import Tuple
 import unittest
 
@@ -222,7 +223,7 @@ module @jit_f.0 {
     def f(x):  # x: f32[2, b]
       # (sin(x), x.shape[1])
       module, version = serialize("""
-module @jit_f.0 {
+module @jit_f.0 attributes {jax.uses_shape_polymorphism = true} {
   func.func public @main(%arg1: tensor<2x?xf32>) -> (tensor<2x?xf32>, tensor<i32>) {
     %arg0_new = "stablehlo.get_dimension_size"(%arg1) {dimension = 1 : i64} : (tensor<2x?xf32>) -> tensor<i32>
     %0, %1 = call @dyn_main(%arg0_new, %arg1) : (tensor<i32>, tensor<2x?xf32>) -> (tensor<2x?xf32>, tensor<i32>)
@@ -248,7 +249,7 @@ module @jit_f.0 {
 
     # x: f32[a, 2], return x
     module, version = serialize("""
-module @jit_f.0 {
+module @jit_f.0 attributes {jax.uses_shape_polymorphism = true} {
   func.func public @main(%arg0: tensor<?x2xf32>, %arg1: tensor<*xi32>) -> tensor<?x2xf32> {
     return %arg0 : tensor<?x2xf32>
   }
@@ -360,8 +361,8 @@ module @jit_f.0 {
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
         'Incorrect number of arguments passed to XlaCallModule: 1. '
-        'The module takes 2 arguments of which 0 platform index arguments '
-        'and 0 dimension arguments.'):
+        'The module takes 2 arguments of which 0 platform index arguments, '
+        '0 dimension arguments and 0 token arguments.'):
       self._assertOpOutputMatchesExpected(f, (x,), (x,))
 
     platform_check_disabled_by_flags = (
@@ -439,7 +440,7 @@ module @jit_f.0 {
     def f(x):  # x: f32[b, 5] and b = 3
       # return x.shape[0]
       module, version = serialize("""
-module @jit_fun.1 {
+module @jit_fun.1 attributes {jax.uses_shape_polymorphism = true} {
   func.func public @main(%arg1: tensor<?x5xi32>) -> tensor<i32> {
     %b = "stablehlo.get_dimension_size"(%arg1) {dimension = 0 : i64} : (tensor<?x5xi32>) -> tensor<i32>
     %3 = stablehlo.constant dense<3> : tensor<i32>
@@ -468,15 +469,17 @@ module @jit_fun.1 {
     def f(x):  # x: f32[b, 5] and b = 3, with a constraint b == 4.
       # return x.shape[0]
       module, version = serialize("""
-module @jit_fun.1 {
+module @jit_fun.1 attributes {jax.uses_shape_polymorphism = true} {
   func.func public @main(%arg1: tensor<?x5xi32>) -> tensor<i32> {
     %b = "stablehlo.get_dimension_size"(%arg1) {dimension = 0 : i64} : (tensor<?x5xi32>) -> tensor<i32>
     %4 = stablehlo.constant dense<4> : tensor<i32>
+    %5 = stablehlo.constant dense<5> : tensor<i32>
+    %11 = stablehlo.constant dense<11> : tensor<i32>
     %ok = stablehlo.compare  EQ, %b, %4,  SIGNED : (tensor<i32>, tensor<i32>) -> tensor<i1>
-    stablehlo.custom_call @shape_assertion(%ok, %b, %4) {
-      error_message = "Expecting {0} == {1}",
+    stablehlo.custom_call @shape_assertion(%ok, %b, %4, %5, %4, %5, %4, %5, %4, %5, %4, %5, %11) {
+      error_message = "Expecting {0} == {1}. Extra {2,=5}, {3}, {{0}, {4}, {5}, {6}, {7}, {11}.",
       has_side_effect = true
-    } : (tensor<i1>, tensor<i32>, tensor<i32>) -> ()
+    } : (tensor<i1>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>) -> ()
     return %b : tensor<i32>
   }
 }
@@ -498,7 +501,7 @@ module @jit_fun.1 {
     else:
       with self.assertRaisesRegex(
           errors.InvalidArgumentError,
-          'Expecting 3 == 4'):
+          re.escape('Expecting 3 == 4. Extra   5  , 4, {0}, 5, 4, 5, 4, 11.')):
         self._assertOpOutputMatchesExpected(f, (x,), (res,))
 
   def test_invalid_shape_assertion(self):
@@ -536,7 +539,7 @@ module @jit_fun.1 {
     one_subtest(
         'expects assert_what .* to be a constant of type tensor<i1>',
         """
-module @jit_fun.1 {
+module @jit_fun.1 attributes {jax.uses_shape_polymorphism = true} {
   func.func public @main(%arg_i1: tensor<i1>, %arg_i32: tensor<i32>) -> tensor<i32> {
     %ok = stablehlo.constant dense<0> : tensor<i32>
     stablehlo.custom_call @shape_assertion(%ok) {
@@ -552,7 +555,7 @@ module @jit_fun.1 {
     one_subtest(
         'expects static assert_what',
         """
-module @jit_fun.1 {
+module @jit_fun.1 attributes {jax.uses_shape_polymorphism = true} {
   func.func public @main(%arg_i1: tensor<i1>, %arg_i32: tensor<i32>) -> tensor<i32> {
     stablehlo.custom_call @shape_assertion(%arg_i1) {
       error_message = "Some error",
@@ -567,7 +570,7 @@ module @jit_fun.1 {
     one_subtest(
         'expects has_side_effect=true',
         """
-module @jit_fun.1 {
+module @jit_fun.1 attributes {jax.uses_shape_polymorphism = true} {
   func.func public @main(%arg_i1: tensor<i1>, %arg_i32: tensor<i32>) -> tensor<i32> {
     %ok = stablehlo.constant dense<false> : tensor<i1>
     stablehlo.custom_call @shape_assertion(%ok) {
@@ -583,7 +586,7 @@ module @jit_fun.1 {
     one_subtest(
         'expects error_message .* Found specifier {0}',
         """
-module @jit_fun.1 {
+module @jit_fun.1 attributes {jax.uses_shape_polymorphism = true} {
   func.func public @main(%arg_i1: tensor<i1>, %arg_i32: tensor<i32>) -> tensor<i32> {
     %ok = stablehlo.constant dense<false> : tensor<i1>
     stablehlo.custom_call @shape_assertion(%ok) {
@@ -599,7 +602,7 @@ module @jit_fun.1 {
     one_subtest(
         'expects static error_message_input',
         """
-module @jit_fun.1 {
+module @jit_fun.1 attributes {jax.uses_shape_polymorphism = true} {
   func.func public @main(%arg_i1: tensor<i1>, %arg_i32: tensor<i32>) -> tensor<i32> {
     %ok = stablehlo.constant dense<false> : tensor<i1>
     stablehlo.custom_call @shape_assertion(%ok, %arg_i32) {
@@ -615,7 +618,7 @@ module @jit_fun.1 {
     one_subtest(
         'expects error_message_input .* to be a constant of type tensor<i32>',
         """
-module @jit_fun.1 {
+module @jit_fun.1 attributes {jax.uses_shape_polymorphism = true} {
   func.func public @main(%arg_i1: tensor<i1>, %arg_i32: tensor<i32>) -> tensor<i32> {
     %ok = stablehlo.constant dense<false> : tensor<i1>
     %c = stablehlo.constant dense<2.0> : tensor<f32>
@@ -636,7 +639,7 @@ module @jit_fun.1 {
     def f(x):  # x: f32[b, 5]
       # return np.arange(x.shape[0], dtype=np.int32)
       module, version = serialize("""
-module @jit_fun.1 {
+module @jit_fun.1 attributes {jax.uses_shape_polymorphism = true} {
   func.func public @main(%arg1: tensor<?x5xi32>) -> tensor<?xi32> {
     %arg0_new = "stablehlo.get_dimension_size"(%arg1) {dimension = 0 : i64} : (tensor<?x5xi32>) -> tensor<i32>
     %0 = call @dyn_main(%arg0_new, %arg1) : (tensor<i32>, tensor<?x5xi32>) -> tensor<?xi32>
@@ -684,7 +687,7 @@ module @jit_f.0 {
 
     def f(x):  # x: f32[b, 3]
       module, version = serialize("""
-module @jit_fun_flat_jax {
+module @jit_fun_flat_jax attributes {jax.uses_shape_polymorphism = true} {
   func.func public @main(%arg1: tensor<?x3xf32>) -> tensor<?xf32> {
     %arg0_new = "stablehlo.get_dimension_size"(%arg1) {dimension = 0 : i64} : (tensor<?x3xf32>) -> tensor<i32>
     %0 = call @dyn_main(%arg0_new, %arg1) : (tensor<i32>, tensor<?x3xf32>) -> tensor<?xf32>
@@ -713,7 +716,7 @@ module @jit_fun_flat_jax {
 
     def f(x):  # x: f32[b, 4]
       module, version = serialize("""
-module @jit_fun_flat_jax {
+module @jit_fun_flat_jax attributes {jax.uses_shape_polymorphism = true} {
   func.func public @main(%arg1: tensor<?x4xf32>) -> tensor<?x2xf32> {
     %arg0_new = "stablehlo.get_dimension_size"(%arg1) {dimension = 0 : i64} : (tensor<?x4xf32>) -> tensor<i32>
     %0 = call @dyn_main(%arg0_new, %arg1) : (tensor<i32>, tensor<?x4xf32>) -> tensor<?x2xf32>
@@ -744,7 +747,7 @@ module @jit_fun_flat_jax {
 
     def f(x):  # x: f32[b, 4]
       module, version = serialize("""
-module @jit_fun_flat_jax {
+module @jit_fun_flat_jax attributes {jax.uses_shape_polymorphism = true} {
   func.func public @main(%arg1: tensor<?x4xf32>) -> tensor<4xf32> {
     %arg0_new = "stablehlo.get_dimension_size"(%arg1) {dimension = 0 : i64} : (tensor<?x4xf32>) -> tensor<i32>
     %0 = call @dyn_main(%arg0_new, %arg1) : (tensor<i32>, tensor<?x4xf32>) -> tensor<4xf32>
@@ -781,7 +784,7 @@ module @jit_fun_flat_jax {
 
     def f(x, idx):  # x: f32[b, 4]  idx: i32
       module, version = serialize("""
-module @jit_fun_flat_jax {
+module @jit_fun_flat_jax attributes {jax.uses_shape_polymorphism = true} {
   func.func public @main(%arg1: tensor<?x4xf32>, %arg2: tensor<i32>) -> tensor<?x4xf32> {
     %arg0_new = "stablehlo.get_dimension_size"(%arg1) {dimension = 0 : i64} : (tensor<?x4xf32>) -> tensor<i32>
     %0 = call @dyn_main(%arg0_new, %arg1, %arg2) : (tensor<i32>, tensor<?x4xf32>, tensor<i32>) -> tensor<?x4xf32>
@@ -814,7 +817,7 @@ module @jit_fun_flat_jax {
     def f(x, y):  # x: f32[b, 4]  y: f32[2, b, 4]
       # return (np.broadcast_to(x, y.shape), x + y)
       module, version = serialize("""
-module @jit_fun.0 {
+module @jit_fun.0 attributes {jax.uses_shape_polymorphism = true} {
   func.func public @main(%arg1: tensor<?x4xf32>, %arg2: tensor<2x?x4xf32>) -> (tensor<2x?x4xf32>, tensor<2x?x4xf32>) {
     %arg0_new = "stablehlo.get_dimension_size"(%arg2) {dimension = 1 : i64} : (tensor<2x?x4xf32>) -> tensor<i32>
     %0, %1 = call @dyn_main(%arg0_new, %arg1, %arg2) : (tensor<i32>, tensor<?x4xf32>, tensor<2x?x4xf32>) -> (tensor<2x?x4xf32>, tensor<2x?x4xf32>)
@@ -846,7 +849,7 @@ module @jit_fun.0 {
 
     def f(x):  # x: i32[b]
       module, version = serialize("""
-module @jit_fun{
+module @jit_fun attributes {jax.uses_shape_polymorphism = true} {
   func.func public @main(%arg1: tensor<?xi32>) -> tensor<i32> {
     %arg0_new = "stablehlo.get_dimension_size"(%arg2) {dimension = 0 : i64} : (tensor<?xi32>) -> tensor<i32>
     %0 = call @dyn_main(%arg0_new, %arg1) : (tensor<i32>, tensor<?xi32>) -> tensor<i32>
@@ -878,7 +881,7 @@ module @jit_fun{
 
     def f(x):  # x: f32[b, 5]
       module, version = serialize("""
-module @jit_fun_flat_jax {
+module @jit_fun_flat_jax attributes {jax.uses_shape_polymorphism = true} {
   func.func public @main(%arg1: tensor<?x5xf32>) -> tensor<?x1xf32> {
     %arg0_new = "stablehlo.get_dimension_size"(%arg1) {dimension = 0 : i64} : (tensor<?x5xf32>) -> tensor<i32>
     %0 = call @dyn_main(%arg0_new, %arg1) : (tensor<i32>, tensor<?x5xf32>) -> tensor<?x1xf32>
@@ -914,7 +917,7 @@ module @jit_fun_flat_jax {
 
     def f(x):  # x: f32[b]
       module, version = serialize("""
-module @jit_fun_3 {
+module @jit_fun_3 attributes {jax.uses_shape_polymorphism = true} {
   func.func public @main(%arg1: tensor<?xf32>) -> tensor<?xi32> {
     %arg0_new = "stablehlo.get_dimension_size"(%arg1) {dimension = 0 : i64} : (tensor<?xf32>) -> tensor<i32>
     %0 = call @dyn_main(%arg0_new, %arg1) : (tensor<i32>, tensor<?xf32>) -> tensor<?xi32>
@@ -945,7 +948,7 @@ module @jit_fun_3 {
 
     def f(x):  # x: f32[b]
       module, version = serialize("""
-module @jit_fun_3 {
+module @jit_fun_3 attributes {jax.uses_shape_polymorphism = true} {
   func.func public @main(%arg1: tensor<?xf32>) -> tensor<?xf32> {
     %arg0_new = "stablehlo.get_dimension_size"(%arg1) {dimension = 0 : i64} : (tensor<?xf32>) -> tensor<i32>
     %0 = call @dyn_main(%arg0_new, %arg1) : (tensor<i32>, tensor<?xf32>) -> tensor<?xf32>
@@ -975,7 +978,7 @@ module @jit_fun_3 {
 
     def f(x):  # x: f32[b]
       module, version = serialize("""
-module @jit_fun_flat_jax {
+module @jit_fun_flat_jax attributes {jax.uses_shape_polymorphism = true} {
   func.func public @main(%arg1: tensor<?xf32>) -> (tensor<?xf32>, tensor<i64>) {
     %arg0_new = "stablehlo.get_dimension_size"(%arg1) {dimension = 0 : i64} : (tensor<?xf32>) -> tensor<i32>
     %0, %1 = call @dyn_main(%arg0_new, %arg1) : (tensor<i32>, tensor<?xf32>) -> (tensor<?xf32>, tensor<i64>)
@@ -1008,6 +1011,68 @@ module @jit_fun_flat_jax {
                              platforms=[self.testing_platform()])
 
     self._assertOpOutputMatchesExpected(f, (x,), (res0, res1))
+
+  def test_skip_shape_refinement(self):
+    # We skipped the shape refinement, but there are dynamic shapes.
+    x = np.ones((5,), dtype=np.float32)
+    res = x
+
+    module_attrs = ''  # attribute is missing
+    def f(x):  # x: f32[b]
+      module, version = serialize(f"""
+module @jit_fun_3 {module_attrs} {{
+  func.func public @main(%arg1: tensor<?xf32>) -> tensor<?xf32> {{
+    %arg0_new = "stablehlo.get_dimension_size"(%arg1) {{dimension = 0 : i64}} : (tensor<?xf32>) -> tensor<i32>
+    %0 = call @dyn_main(%arg0_new, %arg1) : (tensor<i32>, tensor<?xf32>) -> tensor<?xf32>
+    return %0 : tensor<?xf32>
+  }}
+  func.func private @dyn_main(%arg0: tensor<i32>, %arg1: tensor<?xf32>) -> tensor<?xf32> {{
+    return %arg1 : tensor<?xf32>
+  }}
+}}
+""")
+      return xla.call_module([x], version=version,
+                             module=module,
+                             Tout=[res.dtype],
+                             Sout=[()],
+                             platforms=[self.testing_platform()])
+
+    module_attrs = ''  # attribute is missing
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                'Module has dynamic shapes'):
+      self._assertOpOutputMatchesExpected(f, (x,), (res,))
+
+    module_attrs = 'attributes {jax.uses_shape_polymorphism = false}'
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                'Module has dynamic shapes'):
+      self._assertOpOutputMatchesExpected(f, (x,), (res,))
+
+  def test_uses_shape_polymorphism_before_version_8(self):
+    x = np.ones((5,), dtype=np.float32)
+    res = x
+
+    def f(x):  # x: f32[b]
+      # No `uses_shape_polymorphism` attribute, but it default for version 7
+      version = 7
+      module, _ = serialize("""
+module @jit_fun_3 {
+  func.func public @main(%arg1: tensor<?xf32>) -> tensor<?xf32> {
+    %arg0_new = "stablehlo.get_dimension_size"(%arg1) {dimension = 0 : i64} : (tensor<?xf32>) -> tensor<i32>
+    %0 = call @dyn_main(%arg0_new, %arg1) : (tensor<i32>, tensor<?xf32>) -> tensor<?xf32>
+    return %0 : tensor<?xf32>
+  }
+  func.func private @dyn_main(%arg0: tensor<i32>, %arg1: tensor<?xf32>) -> tensor<?xf32> {
+    return %arg1 : tensor<?xf32>
+  }
+}
+""")
+      return xla.call_module([x], version=version,
+                             module=module,
+                             Tout=[res.dtype],
+                             Sout=[()],
+                             platforms=[self.testing_platform()])
+
+    self._assertOpOutputMatchesExpected(f, (x,), (res,))
 
   def test_tf_call_function(self):
     """A TensorFlow function call inside StableHLO."""
@@ -1097,7 +1162,7 @@ module @jit_fun_flat_jax {
 
     def f(x, y):
       module, version = serialize("""
-module @jit_fun_flat_jax {
+module @jit_fun_flat_jax attributes {jax.uses_shape_polymorphism = true} {
   func.func public @main(%arg0: tensor<?xi32>, %arg1: tensor<?xi32>) -> tensor<?xi32> {
     %0 = stablehlo.get_dimension_size %arg0, dim = 0 : (tensor<?xi32>) -> tensor<i32>
     %1 = stablehlo.custom_call @tf.call_tf_function(%arg0, %arg1, %0) {

@@ -25,9 +25,11 @@ limitations under the License.
 #include "dnnl.hpp"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor_util.h"
+#include "tensorflow/core/kernels/mkl/mkl_kernel_util.h"
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/onednn_env_vars.h"
-#ifdef DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
 #include "tensorflow/core/platform/mutex.h"
 #endif
 
@@ -79,7 +81,7 @@ inline bool ExecuteSingleThreadedGemm(int64_t m, int64_t n, int64_t k,
   constexpr float kHeuristicMultiplier = 1.01;
   const float mul_size = bytes * (m * n + k * (m + n));
   const float l2_heur = l2_size * kHeuristicMultiplier;
-  return mul_size < l2_heur;
+  return (mul_size >= 0 && mul_size < l2_heur);
 }
 
 // This structure aggregates multiple inputs to MklDnnMatMul* methods.
@@ -151,7 +153,7 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
                const void* bias_data, Toutput* dst_data,
                const MklDnnMatMulFwdParams& matmul_fwd_params, void* sp_data,
                std::shared_ptr<stream> fwd_stream) {
-#ifdef DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
     mutex_lock lock(primitive_execution_mu_);
 #endif
     context_.src_mem->set_data_handle(
@@ -260,7 +262,11 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
 
     context_.weight_md.reset(new memory::desc({matmul_fwd_params.weight_dims},
                                               MklDnnType<Tweight>(),
+#ifdef DNNL_AARCH64_USE_ACL
+                                              memory::format_tag::any));
+#else
                                               matmul_fwd_params.weight_format));
+#endif
 
     context_.dst_md.reset(new memory::desc({matmul_fwd_params.dst_dims},
                                            MklDnnType<Toutput>(),
@@ -439,7 +445,7 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
 
   struct MklDnnMatMulFwdContext context_;
 
-#ifdef DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
   // Guards Execution()
   mutex primitive_execution_mu_;
 #endif
@@ -606,6 +612,13 @@ class MklDnnMatMulOpBase : public OpKernel {
       return;
     }
 
+#ifdef ENABLE_ONEDNN_V3
+    // For now, cache weights only for blocked format
+    if (weight_md.get_format_kind() != memory::format_kind::blocked) {
+      return;
+    }
+#endif  // ENABLE_ONEDNN_V3
+
     // reorder and cache the weight
     weight.SetUsrMem(weight_md, &weight_tensor);
     weight.CheckReorderToOpMem(matmul_fwd_pd.get()->weights_desc(), cpu_engine_,
@@ -625,6 +638,7 @@ class MklDnnMatMulOpBase : public OpKernel {
 
     // cache the memory descriptor
     auto expected_md = matmul_fwd_pd->weights_desc();
+#ifndef ENABLE_ONEDNN_V3
     TensorShape weight_mkl_format;
     weight_mkl_format.AddDim(sizeof(expected_md) / sizeof(Tweight));
 
@@ -633,6 +647,13 @@ class MklDnnMatMulOpBase : public OpKernel {
                                           weight_mkl_format, &weight_oi_md_));
     *reinterpret_cast<memory::desc*>(weight_oi_md_.flat<Tweight>().data()) =
         expected_md;
+#else
+    weight_oi_md_ = FilterMemoryDesc(
+        expected_md.get_ndims(), expected_md.get_inner_nblks(),
+        expected_md.get_data_type(), expected_md.get_dims(),
+        expected_md.get_inner_blks(), expected_md.get_inner_idxs(),
+        expected_md.get_strides());
+#endif  // !ENABLE_ONEDNN_V3
   }
 
   Tweight* GetCachedWeight(OpKernelContext* context,
@@ -640,6 +661,7 @@ class MklDnnMatMulOpBase : public OpKernel {
       TF_LOCKS_EXCLUDED(mu_) {
     tf_shared_lock lock(mu_);
     const Tensor& weight_t = weight_oi_;
+#ifndef ENABLE_ONEDNN_V3
     const Tensor& weight_md_t = weight_oi_md_;
 
     // Check if the memory descriptor of the cached weight is same as
@@ -653,6 +675,63 @@ class MklDnnMatMulOpBase : public OpKernel {
       }
     }
     return nullptr;
+#else
+    // Return the cached weights only if the dimensions of the cached weights
+    // and the current weights match. Otherwise, return nullptr.
+    //
+    // TODO(intel-tf): The following check assumes that all dimensions are
+    // known before checking for equality. We may have to modify it in the
+    // future once we support runtime dimensions (especially if the dimensions
+    // are still unknown at this point).
+    if (weight_oi_md_ ==
+        FilterMemoryDesc(expected_md.get_ndims(), expected_md.get_inner_nblks(),
+                         expected_md.get_data_type(), expected_md.get_dims(),
+                         expected_md.get_inner_blks(),
+                         expected_md.get_inner_idxs(),
+                         expected_md.get_strides())) {
+      return static_cast<Tweight*>(
+          const_cast<Tweight*>(weight_t.flat<Tweight>().data()));
+    }
+    return nullptr;
+#endif  // !ENABLE_ONEDNN_V3
+  }
+
+  bool IsBiasCacheEmpty() TF_LOCKS_EXCLUDED(bias_cache_mutex_) {
+    tf_shared_lock lock(bias_cache_mutex_);
+    return (cached_bias_data_pt_.NumElements() == 0);
+  }
+
+  virtual bool IsCachedBiasValid(float, float)
+      TF_LOCKS_EXCLUDED(bias_cache_mutex_) {
+    tf_shared_lock lock(bias_cache_mutex_);
+    return false;
+  }
+
+  void CacheBias(OpKernelContext* ctx, const Tensor& temp_scaled_bias_tensor,
+                 float min_input, float max_input)
+      TF_LOCKS_EXCLUDED(bias_cache_mutex_) {
+    mutex_lock lock(bias_cache_mutex_);
+    if (cached_bias_data_pt_.NumElements() > 0) {
+      return;
+    }
+    OP_REQUIRES_OK(ctx, ctx->allocate_temp(temp_scaled_bias_tensor.dtype(),
+                                           temp_scaled_bias_tensor.shape(),
+                                           &cached_bias_data_pt_));
+    tensor::DeepCopy(temp_scaled_bias_tensor, &cached_bias_data_pt_);
+    saved_min_input_ = min_input;
+    saved_max_input_ = max_input;
+  }
+
+  void GetCachedBias(float min_input, float max_input, void** bias_data)
+      TF_LOCKS_EXCLUDED(bias_cache_mutex_) {
+    tf_shared_lock lock(bias_cache_mutex_);
+    const Tensor& cached_bias_data = cached_bias_data_pt_;
+    if (IsCachedBiasValid(min_input, max_input)) {
+      *bias_data = static_cast<void*>(const_cast<TSCALED_BIAS*>(
+          cached_bias_data.flat<TSCALED_BIAS>().data()));
+    } else {
+      *bias_data = nullptr;
+    }
   }
 
   engine cpu_engine_ = engine(engine::kind::cpu, 0);
@@ -661,9 +740,20 @@ class MklDnnMatMulOpBase : public OpKernel {
   // Tensor to save reordered weight
   mutex mu_;
   Tensor weight_oi_ TF_GUARDED_BY(mu_);
+#ifndef ENABLE_ONEDNN_V3
   Tensor weight_oi_md_ TF_GUARDED_BY(mu_);
+#else
+  FilterMemoryDesc weight_oi_md_ TF_GUARDED_BY(mu_);
+#endif  // !ENABLE_ONEDNN_V3
 
   bool is_weight_const_;
+
+  bool is_bias_const_;
+  mutex bias_cache_mutex_;
+  // Persistent tensor for cached bias.
+  Tensor cached_bias_data_pt_ TF_GUARDED_BY(bias_cache_mutex_);
+  float saved_min_input_ = -std::numeric_limits<float>::infinity();
+  float saved_max_input_ = std::numeric_limits<float>::infinity();
 
   const int kInputIndexSrc = 0;
   const int kInputIndexWeight = 1;
@@ -721,7 +811,7 @@ class MklMatMulPrimitive : public MklPrimitive {
   void Execute(const std::shared_ptr<stream>& stream, const Tlhs* a_data,
                const Trhs* b_data, const Toutput* c_data, void* sp_data,
                void* mul_data = nullptr, void* add_data = nullptr) {
-#ifdef DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
     mutex_lock lock(primitive_execution_mu_);
 #endif
 #if !defined(ENABLE_ONEDNN_OPENMP) && !defined(ENABLE_ONEDNN_V3)
@@ -818,8 +908,11 @@ class MklMatMulPrimitive : public MklPrimitive {
                                          params.a_strides));
 
     context_.b_md.reset(new memory::desc({params.b_dims}, MklDnnType<Trhs>(),
+#ifdef DNNL_AARCH64_USE_ACL
+                                         memory::format_tag::any));
+#else
                                          params.b_strides));
-
+#endif
     context_.c_md.reset(new memory::desc({params.c_dims}, MklDnnType<Toutput>(),
                                          params.c_strides));
 
@@ -873,8 +966,13 @@ class MklMatMulPrimitive : public MklPrimitive {
     // Create memory primitive based on dummy data.
     context_.a_mem.reset(
         new dnnl::memory(*context_.a_md, cpu_engine_, DummyData));
+#ifdef DNNL_AARCH64_USE_ACL
+    context_.b_mem.reset(new dnnl::memory(
+        context_.prim_desc.get()->weights_desc(), cpu_engine_, DummyData));
+#else
     context_.b_mem.reset(
         new dnnl::memory(*context_.b_md, cpu_engine_, DummyData));
+#endif
     context_.c_mem.reset(
         new dnnl::memory(*context_.c_md, cpu_engine_, DummyData));
     auto scratchpad_md = context_.prim_desc->scratchpad_desc();
@@ -913,7 +1011,7 @@ class MklMatMulPrimitive : public MklPrimitive {
   }
 
   struct MklMatMulContext context_;
-#ifdef DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
   mutex primitive_execution_mu_;
 #endif
 };

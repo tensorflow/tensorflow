@@ -63,7 +63,7 @@ tf_cc_fuzz_test(
     deps = [
         ":checkpoint_reader_fuzz_input_proto_cc",
         "//tensorflow/c:checkpoint_reader",
-        "//tensorflow/c:tf_status_headers",
+        "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

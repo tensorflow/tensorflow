@@ -103,6 +103,9 @@ struct PJRT_Buffer {
   std::optional<pjrt::BufferMemoryLayoutData> layout_data;
   // Set and cached the first time PJRT_Buffer_UnpaddedDimensions is called.
   std::optional<std::vector<int64_t>> unpadded_dims;
+  // Set and cached the first time PJRT_Buffer_DynamicDimensionIndices is
+  // called.
+  std::optional<std::vector<size_t>> dynamic_dim_indices;
   // Used to synchronize concurrent setting of cached values.
   absl::Mutex mu;
 };
@@ -225,6 +228,8 @@ PJRT_Error* PJRT_Buffer_ElementType(PJRT_Buffer_ElementType_Args* args);
 PJRT_Error* PJRT_Buffer_Dimensions(PJRT_Buffer_Dimensions_Args* args);
 PJRT_Error* PJRT_Buffer_UnpaddedDimensions(
     PJRT_Buffer_UnpaddedDimensions_Args* args);
+PJRT_Error* PJRT_Buffer_DynamicDimensionIndices(
+    PJRT_Buffer_DynamicDimensionIndices_Args* args);
 PJRT_Error* PJRT_Buffer_GetMemoryLayout(PJRT_Buffer_GetMemoryLayout_Args* args);
 PJRT_Error* PJRT_Buffer_OnDeviceTrimmedShape(
     PJRT_Buffer_OnDeviceTrimmedShape_Args* args);
@@ -239,6 +244,8 @@ PJRT_Error* PJRT_Buffer_IsOnCpu(PJRT_Buffer_IsOnCpu_Args* args);
 PJRT_Error* PJRT_Buffer_ReadyEvent(PJRT_Buffer_ReadyEvent_Args* args);
 PJRT_Error* PJRT_Buffer_UnsafePointer(PJRT_Buffer_UnsafePointer_Args* args);
 
+PJRT_Error* PJRT_CopyToDeviceStream_Destroy(
+    PJRT_CopyToDeviceStream_Destroy_Args* args);
 PJRT_Error* PJRT_CopyToDeviceStream_AddChunk(
     PJRT_CopyToDeviceStream_AddChunk_Args* args);
 PJRT_Error* PJRT_CopyToDeviceStream_TotalBytes(
@@ -309,11 +316,17 @@ xla::PjRtClient::KeyValueGetCallback ToCppKeyValueGetCallback(
 xla::PjRtClient::KeyValuePutCallback ToCppKeyValuePutCallback(
     PJRT_KeyValuePutCallback c_callback, void* user_arg);
 
+// A method that does not nothing other than returning a nullptr. Can be used as
+// the implementation of PJRT_Plugin_Initialize for plugins that do not require
+// specific initialization.
+PJRT_Error* PJRT_Plugin_Initialize_NoOp(PJRT_Plugin_Initialize_Args* args);
+
 // Creates a PJRT_Api with create_fn from the input and other functions in
 // pjrt_c_api_wrapper_impl.
 constexpr PJRT_Api CreatePjrtApi(
     PJRT_Client_Create* create_fn,
-    PJRT_TopologyDescription_Create* topology_create_fn) {
+    PJRT_TopologyDescription_Create* topology_create_fn,
+    PJRT_Plugin_Initialize* plugin_initialize_fn) {
   return PJRT_Api{
       /*struct_size=*/PJRT_Api_STRUCT_SIZE,
       /*priv=*/nullptr,
@@ -328,6 +341,7 @@ constexpr PJRT_Api CreatePjrtApi(
       /*PJRT_Error_Message=*/pjrt::PJRT_Error_Message,
       /*PJRT_Error_GetCode=*/pjrt::PJRT_Error_GetCode,
 
+      /*PJRT_Plugin_Initialize=*/plugin_initialize_fn,
       /*PJRT_Plugin_Attributes=*/pjrt::PJRT_Plugin_Attributes,
 
       /*PJRT_Event_Destroy=*/pjrt::PJRT_Event_Destroy,
@@ -404,6 +418,8 @@ constexpr PJRT_Api CreatePjrtApi(
       /*PJRT_Buffer_Dimensions=*/pjrt::PJRT_Buffer_Dimensions,
       /*PJRT_Buffer_UnpaddedDimensions=*/
       pjrt::PJRT_Buffer_UnpaddedDimensions,
+      /*PJRT_Buffer_DynamicDimensionIndices=*/
+      pjrt::PJRT_Buffer_DynamicDimensionIndices,
       /*PJRT_Buffer_GetMemoryLayout=*/
       pjrt::PJRT_Buffer_GetMemoryLayout,
       /*PJRT_Buffer_OnDeviceTrimmedShape=*/
@@ -419,6 +435,8 @@ constexpr PJRT_Api CreatePjrtApi(
       /*PJRT_Buffer_ReadyEvent=*/pjrt::PJRT_Buffer_ReadyEvent,
       /*PJRT_Buffer_UnsafePointer=*/pjrt::PJRT_Buffer_UnsafePointer,
 
+      /*PJRT_CopyToDeviceStream_Destroy=*/
+      pjrt::PJRT_CopyToDeviceStream_Destroy,
       /*PJRT_CopyToDeviceStream_AddChunk=*/
       pjrt::PJRT_CopyToDeviceStream_AddChunk,
       /*PJRT_CopyToDeviceStream_TotalBytes=*/

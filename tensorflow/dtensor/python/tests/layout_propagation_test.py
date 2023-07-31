@@ -26,7 +26,9 @@ from tensorflow.python.eager.polymorphic_function import polymorphic_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -34,25 +36,8 @@ from tensorflow.python.platform import test
 UNSHARDED = layout.UNSHARDED
 
 # Convenient constants to use for tests.
-_MESH_DIM_BATCH = 'batch'
 _MESH_DIM_X = 'x'
 _MESH_DIM_Y = 'y'
-_MESH_2D_STRING = (
-    '|batch=2,x=2|0,1,2,3|0,1,2,3|'
-    '/job:localhost/replica:0/task:0/device:TPU:0,'
-    '/job:localhost/replica:0/task:0/device:TPU:1,'
-    '/job:localhost/replica:0/task:0/device:TPU:2,'
-    '/job:localhost/replica:0/task:0/device:TPU:3'
-)
-
-_2D_GLOBAL_IDS = test_util.create_device_ids_array((1, 2))
-
-_2D_MESH = layout.Mesh([_MESH_DIM_BATCH, _MESH_DIM_X], _2D_GLOBAL_IDS,
-                       np.ravel(_2D_GLOBAL_IDS).tolist(),
-                       test_util.create_device_list((1, 2), 'TPU'))
-_2D_X_Y_MESH = layout.Mesh([_MESH_DIM_X, _MESH_DIM_Y], _2D_GLOBAL_IDS,
-                           np.ravel(_2D_GLOBAL_IDS).tolist(),
-                           test_util.create_device_list((1, 2), 'CPU'))
 
 
 class LayoutPropagationV2Test(test_util.DTensorBaseTest):
@@ -385,6 +370,21 @@ class LayoutPropagationV2Test(test_util.DTensorBaseTest):
         ),
     )
     api.check_layout(result, unsharded_x)
+
+  def test_layout_prop_parted_layout(self):
+    value = np.array([1.0, 2.0, 3.0, 4.0])
+    expected = nn_ops.softmax_v2(gen_nn_ops.relu(value))
+
+    @polymorphic_function.function
+    def func(value):
+      return nn_ops.softmax_v2(gen_nn_ops.relu(value))
+
+    parted_layout = self.x_layout.to_parted()
+    result = func(api.relayout(value, parted_layout))
+
+    # Verifies the parted layout can be propagated through a chain of ops to the
+    # final output.
+    self.assertDTensorEqual(expected, parted_layout, result)
 
 
 if __name__ == '__main__':

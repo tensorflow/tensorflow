@@ -1029,10 +1029,9 @@ TEST_F(TritonGemmLevel2Test, SplitLHSInputOutputIsFused) {
   }
 
   const std::string kHloText = R"(
-HloModule m
-
 ENTRY e {
-  p0 = s8[5,18,20,150] parameter(0)
+  p0t = (s8[5,18,20,150]) parameter(0)
+  p0 = s8[5,18,20,150] get-tuple-element(p0t), index=0
   p0c = bf16[5,18,20,150] convert(p0)
   t0 = bf16[18,5,20,150] transpose(p0c), dimensions={1,0,2,3}
   r0 = bf16[18,15000] reshape(t0)
@@ -1047,7 +1046,7 @@ ENTRY e {
                           GetOptimizedModule(kHloText));
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
-      GmockMatch(m::Fusion(m::Parameter(), m::Parameter())
+      GmockMatch(m::Fusion(m::GetTupleElement(), m::Parameter())
                      .WithFusionKind(HloInstruction::FusionKind::kCustom)));
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
@@ -2049,44 +2048,6 @@ ENTRY main {
 ; CHECK-SAME:   __triton_softmax
 )");
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec(2e-3, 1e-5)));
-}
-
-TEST_F(TritonSoftmaxTest, CanFuseAndEmitExactSoftmaxF64) {
-  const std::string hlo_text = R"(
-HloModule softmax
-max_computation {
-  arg_0 = f64[] parameter(0)
-  arg_1 = f64[] parameter(1)
-  ROOT maximum = f64[] maximum(arg_0, arg_1)
-}
-add_computation {
-  arg_0.1 = f64[] parameter(0)
-  arg_1.1 = f64[] parameter(1)
-  ROOT add = f64[] add(arg_0.1, arg_1.1)
-}
-ENTRY main {
-  param_0 = f64[127,125]{1,0} parameter(0)
-  constant_neg_inf = f64[] constant(-inf)
-  reduce = f64[127]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
-  broadcast = f64[127,125]{1,0} broadcast(reduce), dimensions={0}
-  subtract = f64[127,125]{1,0} subtract(param_0, broadcast)
-  exponential = f64[127,125]{1,0} exponential(subtract)
-  constant_zero = f64[] constant(0)
-  second_reduce = f64[127]{0} reduce(exponential, constant_zero), dimensions={1}, to_apply=add_computation
-  second_broadcast = f64[127,125]{1,0} broadcast(second_reduce), dimensions={0}
-  ROOT divide = f64[127,125]{1,0} divide(exponential, second_broadcast)
-}
-)";
-
-  MatchOptimizedHlo(hlo_text, R"(
-; CHECK:    ENTRY
-; CHECK:      %[[P0:.*]] = f64[127,125]{1,0} parameter(0)
-; CHECK:      ROOT
-; CHECK-SAME: fusion(%[[P0]])
-; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
-)");
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec(1e-6, 1e-6)));
 }
 
 TEST_F(

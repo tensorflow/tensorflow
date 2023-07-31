@@ -16,9 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_XLA_SHARDING_UTIL_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_XLA_SHARDING_UTIL_H_
 
+#include <string>
+
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
@@ -34,6 +37,21 @@ inline constexpr absl::string_view kInputShardingAttr =
     "input_sharding_configuration";
 inline constexpr absl::string_view kOutputShardingAttr =
     "output_sharding_configuration";
+
+// Parses the sharding string. This sharding string can be binary (serialized)
+// or human readable.
+mlir::LogicalResult DecodeShardingAttribute(const std::string& shard_str,
+                                            xla::OpSharding& sharding,
+                                            bool report_error = true);
+
+// Encodes the sharding in human readable form.
+mlir::LogicalResult DecodeShardingAttribute(mlir::Attribute shard_attr,
+                                            xla::OpSharding& sharding,
+                                            bool report_error = true);
+
+// Parses the sharding attr. This sharding attr can be binary (serialized)
+// or human readable.
+void EncodeSharding(mlir::Operation* op, absl::string_view shard_str);
 
 // Parses "input_sharding_configuration" attribute and returns a list where i-th
 // element is a list of mlir::Value's which represent inputs for the TPU

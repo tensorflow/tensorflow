@@ -53,8 +53,8 @@ class MklLayerNormOp : public OpKernel {
       OP_REQUIRES(ctx, shift_tensor.dims() == 1,
                   errors::InvalidArgument("offset must be 1D tensor",
                                           shift_tensor.shape().DebugString()));
-      size_t num_elements_scale = scale_tensor.dim_size(0);
-      size_t num_elements_shift = shift_tensor.dim_size(0);
+      int64_t num_elements_scale = scale_tensor.dim_size(0);
+      int64_t num_elements_shift = shift_tensor.dim_size(0);
       OP_REQUIRES(
           ctx, num_elements_scale == num_elements_shift,
           errors::InvalidArgument("Number of elements in scale and shift",

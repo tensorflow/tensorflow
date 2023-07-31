@@ -431,6 +431,11 @@ std::unique_ptr<TensorWithLayoutTf> CreateDummyTensorWithLayout(
     const std::vector<int64_t>& local_shape, TF_DataType dtype,
     const Layout& layout);
 
+// Creates a DTensor from one or more tensor handles and a compatible
+// layout. Optionally accepts a `shape` argument that overrides the
+// actual shape of the underlying tensors; this argument should be
+// provided when there's a possibility of the inferred shape from
+// differing from the actual shape (like when it is dynamic).
 StatusOr<std::unique_ptr<TensorWithLayoutTf>> CreateTensorWithLayout(
     std::vector<TensorHandlePtr>&& tensor, const Layout& layout,
     std::optional<std::vector<int64_t>>&& shape = std::nullopt);
@@ -567,6 +572,10 @@ class ExecutableManager : public tsl::core::WeakRefCounted {
     std::atomic<int64_t> misses = 0;
   } stats_;
 };
+
+// Returns the shape of a given tensor.
+StatusOr<std::vector<int64_t>> GetTensorShapeAsVector(
+    const tensorflow::PartialTensorShape& shape);
 
 // Returns the shape of a given tensor.
 StatusOr<std::vector<int64_t>> GetTensorShapeAsVector(TFE_TensorHandle* tensor);

@@ -18,8 +18,6 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
 #include "absl/strings/escaping.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
@@ -518,6 +516,8 @@ TEST(PythonOpGen, GenerateMetadataWhenOpRegOffsetsIsPresent) {
   offset->set_end(3);
 
   string code = GetPythonOps(op_defs, api_def_map, offsets, {}, {});
+  int target_begin = code.find(absl::StrCat("def baz")) + 4;
+  int target_end = target_begin + 3;
 
   std::vector<string> sp = absl::StrSplit(code, '\n');
   string last_line = sp.back();
@@ -528,8 +528,8 @@ TEST(PythonOpGen, GenerateMetadataWhenOpRegOffsetsIsPresent) {
   EXPECT_EQ(gci.meta_size(), 1);
   EXPECT_EQ(gci.meta(0).source_begin(), 0);
   EXPECT_EQ(gci.meta(0).source_end(), 3);
-  EXPECT_EQ(gci.meta(0).target_begin(), 1212);
-  EXPECT_EQ(gci.meta(0).target_end(), 1215);
+  EXPECT_EQ(gci.meta(0).target_begin(), target_begin);
+  EXPECT_EQ(gci.meta(0).target_end(), target_end);
 }
 
 TEST(PythonOpGen, GenerateMetadataForMultipleOutputOp) {
@@ -560,6 +560,8 @@ TEST(PythonOpGen, GenerateMetadataForMultipleOutputOp) {
   offset->set_end(3);
 
   string code = GetPythonOps(op_defs, api_def_map, offsets, {}, {});
+  int target_begin = code.find(absl::StrCat("def baz")) + 4;
+  int target_end = target_begin + 3;
 
   std::vector<string> sp = absl::StrSplit(code, '\n');
   string last_line = sp.back();
@@ -570,8 +572,8 @@ TEST(PythonOpGen, GenerateMetadataForMultipleOutputOp) {
   EXPECT_EQ(gci.meta_size(), 1);
   EXPECT_EQ(gci.meta(0).source_begin(), 0);
   EXPECT_EQ(gci.meta(0).source_end(), 3);
-  EXPECT_EQ(gci.meta(0).target_begin(), 1289);
-  EXPECT_EQ(gci.meta(0).target_end(), 1292);
+  EXPECT_EQ(gci.meta(0).target_begin(), target_begin);
+  EXPECT_EQ(gci.meta(0).target_end(), target_end);
 }
 
 TEST(PythonOpGen, NotGenerateMetadataWhenOpRegOffsetsIsEmpty) {

@@ -89,7 +89,7 @@ struct CompileOptions {
 
   // Key-value string pairs, parsed in order to set miscellaneous options,
   // overriding if appropriate.
-  using OptionOverride = std::variant<std::string, bool>;
+  using OptionOverride = std::variant<std::string, bool, int64_t>;
   std::vector<std::pair<std::string, OptionOverride>> env_option_overrides;
 
   // Used to indicate the precision configuration.
@@ -101,6 +101,9 @@ struct CompileOptions {
 
   // Applies a single option to executable_build_options.debug_options().
   Status ApplyOption(const std::string& key, const OptionOverride& value);
+
+  Status ApplyOptionFromString(const tsl::protobuf::FieldDescriptor* field,
+                               const std::string& value);
 
   // Serialize the CompileOptions into a CompileOptionsProto.
   StatusOr<CompileOptionsProto> ToProto() const;
@@ -270,6 +273,17 @@ class PjRtExecutable {
   // Return an HloModule (optimized) per partition.
   virtual StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
       const = 0;
+
+  // Returns an output Shape per program, the size should be equal to
+  // `GetHloModules()`.
+  virtual StatusOr<std::vector<Shape>> GetOutputShapes() const;
+
+  // Returns a list of lists of memory kind strings for output. The returned
+  // value is `[num_programs, num_output]`. The size of the outer list should be
+  // equal to `GetHloModules()`. Under SPMD, one can use
+  // `GetOutputMemoryKinds().front()`.
+  virtual StatusOr<std::vector<std::vector<absl::string_view>>>
+  GetOutputMemoryKinds() const = 0;
 
   // Returns a list of parameter OpSharding protos.
   virtual std::optional<std::vector<OpSharding>> GetParameterShardings() const;

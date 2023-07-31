@@ -298,7 +298,9 @@ AutoShardingSolverResult CallORToolsSolver(
   }
   // c.
   if (request.memory_budget > 0) {
+    int64_t minimum_memory_budget_required_estimate = 0;
     for (size_t t = 0; t < request.live.size(); ++t) {
+      int64_t minimum_memory_budget_required_estimate_local = 0;
       std::string str = "[";
       double total_fixed_memory_cost = 0.0;  // Amount consumed "no matter what"
       for (auto i : request.live[t]) {
@@ -314,6 +316,7 @@ AutoShardingSolverResult CallORToolsSolver(
       for (auto i : request.live[t]) {
         auto fixed_memory_cost =
             *std::min_element(request.m[i].begin(), request.m[i].end());
+        minimum_memory_budget_required_estimate_local += fixed_memory_cost;
         for (size_t j = 0; j < s[i].size(); ++j) {
           double accumulated_coefficient = constraint->GetCoefficient(s[i][j]);
           constraint->SetCoefficient(
@@ -321,7 +324,13 @@ AutoShardingSolverResult CallORToolsSolver(
               accumulated_coefficient + request.m[i][j] - fixed_memory_cost);
         }
       }
+      minimum_memory_budget_required_estimate =
+          std::max(minimum_memory_budget_required_estimate,
+                   minimum_memory_budget_required_estimate_local);
     }
+    LOG(INFO) << "Minimum memory budget estimate: "
+              << minimum_memory_budget_required_estimate;
+    LOG(INFO) << "Using memory budget: " << request.memory_budget;
   }
 
   // d. specified via "BoolVarArray"

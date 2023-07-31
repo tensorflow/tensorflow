@@ -122,6 +122,14 @@ static constexpr char kCacheKey[] = "dtensor.cache_key";
 // from.
 static constexpr char kFromArgIndex[] = "dtensor.from_arg_index";
 
+// To record the target layout of a DTensorSend, which is computed after
+// layout propagation.
+static constexpr char kTargetLayoutAttr[] = "target_layout";
+
+// To record the source layout of a DTensorRecv, which is computed after
+// layout propagation.
+static constexpr char kSourceLayoutAttr[] = "source_layout";
+
 // An attribute that determines whether a tensor is a sparse tensor. If this
 // attribute exists in a tensor, then this tensor is a sparse tensor.
 static constexpr char kSparseValue[] = "tf._sparse";

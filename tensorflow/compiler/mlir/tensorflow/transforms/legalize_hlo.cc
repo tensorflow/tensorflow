@@ -311,6 +311,12 @@ class Convert1DConvOp : public OpConversionPattern<mhlo::ConvolutionOp>,
         RankedTensorType::get({2, 2}, rewriter.getI64Type()), padding_2d_array);
 
     // LHS dilation
+    // Set LHS dilation defaults if not set (1 for each input spatial dimension)
+    if (!conv_op.getLhsDilation().has_value()) {
+      conv_op.setLhsDilationAttr(rewriter.getI64TensorAttr(
+          std::vector<int64_t>(dnums.getInputSpatialDimensions().size(), 1)));
+    }
+
     SmallVector<int64_t, 4> lhs_dilation_array_2d;
     for (const auto v : conv_op.getLhsDilation().value().getValues<int64_t>()) {
       lhs_dilation_array_2d.emplace_back(v);
@@ -321,6 +327,13 @@ class Convert1DConvOp : public OpConversionPattern<mhlo::ConvolutionOp>,
         lhs_dilation_array_2d);
 
     // RHS dilation
+    // Set RHS dilation defaults if not set (1 for each kernel spatial
+    // dimension)
+    if (!conv_op.getRhsDilation().has_value()) {
+      conv_op.setRhsDilationAttr(rewriter.getI64TensorAttr(
+          std::vector<int64_t>(dnums.getKernelSpatialDimensions().size(), 1)));
+    }
+
     SmallVector<int64_t, 4> rhs_dilation_array_2d;
     for (const auto v : conv_op.getRhsDilation().value().getValues<int64_t>()) {
       rhs_dilation_array_2d.emplace_back(v);
@@ -337,9 +350,6 @@ class Convert1DConvOp : public OpConversionPattern<mhlo::ConvolutionOp>,
     auto window_reversal_2d = DenseIntElementsAttr::get(
         RankedTensorType::get({2}, rewriter.getI64Type()),
         SmallVector<int64_t>({0, 0}));
-
-    // Precision config
-    if (!conv_op.getPrecisionConfig().has_value()) return failure();
 
     // Dimension numbers reflect the form of the 2d conv op NWHC * WHIO -> NWHC
     auto dnums_2d =
@@ -380,7 +390,7 @@ class Convert1DConvOp : public OpConversionPattern<mhlo::ConvolutionOp>,
         transposed_image_2d_op.getResult(), transposed_kernel_2d_op.getResult(),
         window_strides_2d, padding_2d, lhs_dilation_2d, rhs_dilation_2d,
         window_reversal_2d, dnums_2d, conv_op.getFeatureGroupCount(),
-        conv_op.getBatchGroupCount(), *conv_op.getPrecisionConfig());
+        conv_op.getBatchGroupCount(), conv_op.getPrecisionConfigAttr());
 
     OpResult conv2d_output = conv2d_op->getResult(0);
     auto conv2d_output_type = conv2d_output.getType().cast<ShapedType>();
@@ -1230,9 +1240,6 @@ class ConvertDynamicUpdateSliceOp
     if (update_type == nullptr || start_indices_type == nullptr)
       return rewriter.notifyMatchFailure(
           op, "update and start_indices should have ShapedType");
-    if (!operand_type.hasStaticShape() || !update_type.hasStaticShape())
-      return rewriter.notifyMatchFailure(
-          op, "shape of operand and update should be static");
 
     Type idx_type = start_indices_type.getElementType();
     int64_t shape_dim = operand_type.getRank();
@@ -2977,8 +2984,8 @@ class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
     ShapedType operand_type = operand.getType().cast<ShapedType>();
     ShapedType start_indices_type = start_indices.getType().cast<ShapedType>();
     ShapedType result_type = gather_op.getResult().getType().cast<ShapedType>();
-    if (!operand_type.hasStaticShape() ||
-        !start_indices_type.hasStaticShape() || !result_type.hasStaticShape()) {
+    if (!operand_type.hasStaticShape()) {
+      gather_op.emitOpError() << "Dynamic shaped operand is not supported.";
       return failure();
     }
 
@@ -3106,8 +3113,10 @@ class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
     ShapedType result_type = gather_op.getResult().getType().cast<ShapedType>();
     if (!operand_type.hasStaticShape() ||
         !start_indices_type.hasStaticShape() || !result_type.hasStaticShape()) {
-      gather_op.emitOpError() << "Dynamic shaped inputs are not supported.";
-      return failure();
+      return rewriter.notifyMatchFailure(
+          gather_op,
+          "Dynamic shaped inputs are not supported when legalizing mhlo.gather "
+          "op to tf.slice.");
     }
 
     auto start_index_map = gather_op.getDimensionNumbers().getStartIndexMap();
@@ -3736,6 +3745,97 @@ class ConvertGetDimensionSizeOp
   }
 };
 
+class ConvertRealDynamicSliceOp
+    : public OpConversionPattern<mhlo::RealDynamicSliceOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::RealDynamicSliceOp real_dynamic_slice_op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final {
+    auto start_indices_type = real_dynamic_slice_op.getStartIndices()
+                                  .getType()
+                                  .cast<RankedTensorType>();
+    auto end_indices_type = real_dynamic_slice_op.getLimitIndices()
+                                .getType()
+                                .cast<RankedTensorType>();
+
+    if (start_indices_type.getNumDynamicDims() != 0 ||
+        end_indices_type.getNumDynamicDims() != 0) {
+      return rewriter.notifyMatchFailure(
+          real_dynamic_slice_op,
+          "Start indices and limit indices must not have dynamic dimensions.");
+    }
+    rewriter.replaceOpWithNewOp<StridedSliceOp>(
+        real_dynamic_slice_op, real_dynamic_slice_op.getType(),
+        real_dynamic_slice_op.getOperand(),
+        real_dynamic_slice_op.getStartIndices(),
+        real_dynamic_slice_op.getLimitIndices(),
+        real_dynamic_slice_op.getStrides());
+    return success();
+  };
+};
+
+class ConvertDynamicIotaOp : public OpConversionPattern<mhlo::DynamicIotaOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::DynamicIotaOp dynamic_iota_op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final {
+    RankedTensorType type =
+        dynamic_iota_op.getType().dyn_cast_or_null<RankedTensorType>();
+    if (!type || type.getElementType().isUnsignedInteger(64)) {
+      return rewriter.notifyMatchFailure(dynamic_iota_op,
+                                         "TF::RangeOp doesn't support UI64");
+    }
+    // Only support 1D for now.
+    if (type.getRank() > 1 || dynamic_iota_op.getIotaDimension() != 0) {
+      return rewriter.notifyMatchFailure(
+          dynamic_iota_op, [&](::mlir::Diagnostic& diag) {
+            diag << "Only 1D DynamicIotaOp with iota dimension 0 is supported";
+          });
+    }
+
+    const uint64_t dimension = dynamic_iota_op.getIotaDimension();
+    Type element_type = type.getElementType();
+    Attribute start, delta;
+    if (element_type.isa<FloatType>()) {
+      start = rewriter.getFloatAttr(element_type, 0.0);
+      delta = rewriter.getFloatAttr(element_type, 1.0);
+    } else if (element_type.isa<IntegerType>()) {
+      start = rewriter.getIntegerAttr(element_type, 0);
+      delta = rewriter.getIntegerAttr(element_type, 1);
+    } else {
+      return failure();
+    }
+    auto output_shape = dynamic_iota_op.getOperand();
+    if (element_type.isa<FloatType>()) {
+      auto cast_type =
+          output_shape.getType().cast<ShapedType>().clone(element_type);
+      output_shape = rewriter.create<TF::CastOp>(dynamic_iota_op.getLoc(),
+                                                 cast_type, output_shape);
+    }
+    DenseIntElementsAttr scalar_attr = DenseIntElementsAttr::get(
+        RankedTensorType::get({0}, rewriter.getI32Type()),
+        llvm::ArrayRef<int32_t>({}));
+    auto scalar_shape =
+        rewriter.create<TF::ConstOp>(dynamic_iota_op.getLoc(), scalar_attr);
+    auto limit_scalar = rewriter.create<TF::ReshapeOp>(
+        dynamic_iota_op.getLoc(), RankedTensorType::get({}, element_type),
+        output_shape, scalar_shape);
+    auto range_type =
+        RankedTensorType::get({type.getShape()[dimension]}, element_type);
+    Value start_op =
+        rewriter.create<TF::ConstOp>(dynamic_iota_op.getLoc(), start);
+    Value delta_op =
+        rewriter.create<TF::ConstOp>(dynamic_iota_op.getLoc(), delta);
+    Value range_op = rewriter.create<TF::RangeOp>(
+        dynamic_iota_op.getLoc(), range_type, start_op, limit_scalar, delta_op);
+    rewriter.replaceOp(dynamic_iota_op, range_op);
+    return success();
+  }
+};
 // Returns true if broadcast_dimensions obey Tensorflow convention, as in new
 // dimensions are added as prefix.
 bool IsTFStyleBroadcast(DenseIntElementsAttr broadcast_dimensions,
@@ -3838,7 +3938,8 @@ void PopulateLegalizeHloToTfPatterns(RewritePatternSet* patterns,
             ConvertReduceOpToTfMin, ConvertReduceOpToTfAll,
             ConvertReduceOpToTfAny, ConvertReduceOpToTfSum, ConvertSortToTfTopk,
             ConvertIotaOpToTfRange, ConvertWhileOp, ConvertLoweredCumSumOp,
-            ConvertLoweredCumProdOp, ConvertGetDimensionSizeOp>(context);
+            ConvertLoweredCumProdOp, ConvertGetDimensionSizeOp,
+            ConvertDynamicIotaOp, ConvertRealDynamicSliceOp>(context);
   populateWithGenerated(*patterns);
 }
 

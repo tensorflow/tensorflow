@@ -53,7 +53,10 @@ load(
     "if_mkldnn_aarch64_acl",
     "if_mkldnn_aarch64_acl_openmp",
     "if_mkldnn_openmp",
-    "if_onednn_v3",
+)
+load(
+    "//tensorflow/tsl/mkl:build_defs.bzl",
+    "onednn_v3_define",
 )
 load(
     "//third_party/compute_library:build_defs.bzl",
@@ -441,7 +444,7 @@ def tf_copts(
         # optimizations for Intel builds using oneDNN if configured
         if_enable_mkl(["-DENABLE_MKL"]) +
         if_mkldnn_openmp(["-DENABLE_ONEDNN_OPENMP"]) +
-        if_onednn_v3(["-DENABLE_ONEDNN_V3"]) +
+        onednn_v3_define() +
         if_mkldnn_aarch64_acl(["-DDNNL_AARCH64_USE_ACL=1"]) +
         if_mkldnn_aarch64_acl_openmp(["-DENABLE_ONEDNN_OPENMP"]) +
         if_zendnn(["-DAMD_ZENDNN"]) +
@@ -2983,7 +2986,7 @@ def pybind_library(
 def pybind_extension_opensource(
         name,
         srcs,
-        module_name = None,
+        module_name = None,  # Unused.
         hdrs = [],
         dynamic_deps = [],
         static_deps = [],
@@ -2994,6 +2997,7 @@ def pybind_extension_opensource(
         data = [],
         defines = [],
         deprecation = None,
+        enable_stub_generation = False,  # Unused.
         features = [],
         link_in_framework = False,
         licenses = None,
@@ -3006,7 +3010,7 @@ def pybind_extension_opensource(
         visibility = None,
         win_def_file = None):
     """Builds a generic Python extension module."""
-    _ignore = [module_name]
+    _ignore = [enable_stub_generation, module_name]  # buildifier: disable=unused-variable
     p = name.rfind("/")
     if p == -1:
         sname = name
@@ -3258,9 +3262,9 @@ def tf_python_pybind_static_deps(testonly = False):
         "@local_config_tensorrt//:__subpackages__",
         "@local_execution_config_platform//:__subpackages__",
         "@mkl_dnn_acl_compatible//:__subpackages__",
-        "@mkl_dnn_v1//:__subpackages__",
         "@nsync//:__subpackages__",
         "@nccl_archive//:__subpackages__",
+        "@onednn//:__subpackages__",
         "@org_sqlite//:__subpackages__",
         "@platforms//:__subpackages__",
         "@png//:__subpackages__",
@@ -3273,19 +3277,12 @@ def tf_python_pybind_static_deps(testonly = False):
         "@tf_runtime//:__subpackages__",
         "@upb//:__subpackages__",
         "@zlib//:__subpackages__",
-        "@python_x86_64-unknown-linux-gnu//:__subpackages__",
-        "@python_x86_64-pc-windows-msvc//:__subpackages__",
-        "@python_x86_64-apple-darwin//:__subpackages__",
-        "@python_aarch64-unknown-linux-gnu//:__subpackages__",
-        "@python_aarch64-apple-darwin//:__subpackages__",
-        "@pypi_numpy//:__subpackages__",
     ]
     static_deps += tsl_async_value_deps()
     static_deps += [] if not testonly else [
         "@com_google_benchmark//:__subpackages__",
         "@com_google_googletest//:__subpackages__",
     ]
-    static_deps += if_onednn_v3(["@onednn_v3//:__subpackages__"])
     return if_oss(static_deps)
 
 # buildozer: enable=function-docstring-args
@@ -3534,3 +3531,6 @@ def replace_with_portable_tf_lib_when_required(non_portable_tf_deps, use_lib_wit
         "//tensorflow:ios": [portable_tf_lib],
         "//conditions:default": non_portable_tf_deps,
     })
+
+def tf_python_framework_friends():
+    return ["//tensorflow:__subpackages__"]

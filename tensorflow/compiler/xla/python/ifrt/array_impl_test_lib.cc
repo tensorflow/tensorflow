@@ -42,7 +42,7 @@ TEST(ArrayImplTest, MakeArrayFromHostBuffer) {
   std::iota(data->begin(), data->end(), 0);
   Device* device = client->addressable_devices().at(0);
   std::shared_ptr<const Sharding> sharding =
-      SingleDeviceSharding::Create(device);
+      SingleDeviceSharding::Create(device, MemoryKind());
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto array, client->MakeArrayFromHostBuffer(
@@ -70,7 +70,7 @@ TEST_P(ArrayImplWithHostBufferSemanticsTest,
   std::iota(data->begin(), data->end(), 0);
   Device* device = client->addressable_devices().at(0);
   std::shared_ptr<const Sharding> sharding =
-      SingleDeviceSharding::Create(device);
+      SingleDeviceSharding::Create(device, MemoryKind());
 
   absl::Notification done_with_host_buffer;
   auto on_done_with_host_buffer = [&]() { done_with_host_buffer.Notify(); };
@@ -119,7 +119,7 @@ TEST(ArrayImplTest, MakeArrayFromHostBufferImmutableOnlyDuringCall) {
   std::iota(data->begin(), data->end(), 0);
   Device* device = client->addressable_devices().at(0);
   std::shared_ptr<const Sharding> sharding =
-      SingleDeviceSharding::Create(device);
+      SingleDeviceSharding::Create(device, MemoryKind());
 
   absl::Notification done_with_host_buffer;
   auto on_done_with_host_buffer = [&]() {
@@ -157,7 +157,7 @@ TEST(ArrayImplTest, MakeArrayFromHostBufferImmutableUntilTransferCompletes) {
   std::iota(data->begin(), data->end(), 0);
   Device* device = client->addressable_devices().at(0);
   std::shared_ptr<const Sharding> sharding =
-      SingleDeviceSharding::Create(device);
+      SingleDeviceSharding::Create(device, MemoryKind());
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto array,
@@ -182,7 +182,7 @@ TEST(ArrayImplTest, MakeArrayFromHostBufferZeroCopy) {
   std::iota(data->begin(), data->end(), 0);
   Device* device = client->addressable_devices().at(0);
   std::shared_ptr<const Sharding> sharding =
-      SingleDeviceSharding::Create(device);
+      SingleDeviceSharding::Create(device, MemoryKind());
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto array,
@@ -210,7 +210,7 @@ TEST(ArrayImplTest, MakeArrayFromHostBufferAndCopyToHostBuffer) {
   std::iota(data.begin(), data.end(), 0);
   Device* device = client->addressable_devices().at(0);
   std::shared_ptr<const Sharding> sharding =
-      SingleDeviceSharding::Create(device);
+      SingleDeviceSharding::Create(device, MemoryKind());
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto array, client->MakeArrayFromHostBuffer(
@@ -237,7 +237,7 @@ TEST(ArrayImplTest, MakeArrayFromHostBufferWithByteStridesAndCopyToHostBuffer) {
   std::vector<int64_t> byte_strides = {4, 8};
   Device* device = client->addressable_devices().at(0);
   std::shared_ptr<const Sharding> sharding =
-      SingleDeviceSharding::Create(device);
+      SingleDeviceSharding::Create(device, MemoryKind());
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto array, client->MakeArrayFromHostBuffer(
@@ -264,7 +264,7 @@ TEST(ArrayImplTest, MakeArrayFromHostBufferAndCopyToHostBufferWithByteStrides) {
   std::vector<float> data = {0, 1, 2, 3, 4, 5};
   Device* device = client->addressable_devices().at(0);
   std::shared_ptr<const Sharding> sharding =
-      SingleDeviceSharding::Create(device);
+      SingleDeviceSharding::Create(device, MemoryKind());
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto array, client->MakeArrayFromHostBuffer(
@@ -292,10 +292,10 @@ TEST(ArrayImplTest, AssembleArray) {
   std::iota(data.begin(), data.end(), 0);
   Device* device0 = client->addressable_devices().at(0);
   std::shared_ptr<const Sharding> sharding0 =
-      SingleDeviceSharding::Create(device0);
+      SingleDeviceSharding::Create(device0, MemoryKind());
   Device* device1 = client->addressable_devices().at(1);
   std::shared_ptr<const Sharding> sharding1 =
-      SingleDeviceSharding::Create(device1);
+      SingleDeviceSharding::Create(device1, MemoryKind());
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto array0, client->MakeArrayFromHostBuffer(
@@ -314,7 +314,8 @@ TEST(ArrayImplTest, AssembleArray) {
   Shape assembled_shape({4, 3});
   std::shared_ptr<const Sharding> assembled_sharding = OpaqueSharding::Create(
       DeviceList(DeviceList::Devices({array0->sharding().devices().front(),
-                                      array1->sharding().devices().front()})));
+                                      array1->sharding().devices().front()})),
+      MemoryKind());
   TF_ASSERT_OK_AND_ASSIGN(
       auto assembled_array,
       client->AssembleArrayFromSingleDeviceArrays(
@@ -336,10 +337,10 @@ TEST(ArrayImplTest, AssembleAndDisassembleArray) {
   std::iota(data.begin(), data.end(), 0);
   Device* device0 = client->addressable_devices().at(0);
   std::shared_ptr<const Sharding> sharding0 =
-      SingleDeviceSharding::Create(device0);
+      SingleDeviceSharding::Create(device0, MemoryKind());
   Device* device1 = client->addressable_devices().at(1);
   std::shared_ptr<const Sharding> sharding1 =
-      SingleDeviceSharding::Create(device1);
+      SingleDeviceSharding::Create(device1, MemoryKind());
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto array0, client->MakeArrayFromHostBuffer(
@@ -363,10 +364,11 @@ TEST(ArrayImplTest, AssembleAndDisassembleArray) {
                                       array1->sharding().devices().front()}));
   TF_ASSERT_OK_AND_ASSIGN(
       std::shared_ptr<const Sharding> sharding_param_sharding,
-      ShardingParamSharding::Create(std::move(sharding_param),
-                                    ifrt_device_list));
+      ShardingParamSharding::Create(std::move(sharding_param), ifrt_device_list,
+                                    MemoryKind()));
   std::shared_ptr<const Sharding> assembled_shardings[] = {
-      ConcreteEvenSharding::Create(ifrt_device_list, assembled_shape, shape),
+      ConcreteEvenSharding::Create(ifrt_device_list, MemoryKind(),
+                                   assembled_shape, shape),
       sharding_param_sharding};
   for (auto& assembled_sharding : assembled_shardings) {
     TF_ASSERT_OK_AND_ASSIGN(
@@ -400,7 +402,7 @@ TEST(ArrayImplTest, AssembleAndDisassembleSingleDeviceArray) {
   absl::c_iota(data, 0);
   Device* device = client->addressable_devices().at(0);
   std::shared_ptr<const Sharding> sharding =
-      SingleDeviceSharding::Create(device);
+      SingleDeviceSharding::Create(device, MemoryKind());
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto array, client->MakeArrayFromHostBuffer(
@@ -441,7 +443,7 @@ TEST(ArrayImplTest, ReshardToSameSharding) {
   std::iota(data.begin(), data.end(), 0);
   Device* device = client->addressable_devices().at(0);
   std::shared_ptr<const Sharding> sharding =
-      SingleDeviceSharding::Create(device);
+      SingleDeviceSharding::Create(device, MemoryKind());
   auto semantics = Client::HostBufferSemantics::kImmutableOnlyDuringCall;
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -471,7 +473,7 @@ TEST(ArrayImplTest, ReshardToDifferentDevice) {
   std::iota(data.begin(), data.end(), 0);
   Device* device = client->addressable_devices().at(0);
   std::shared_ptr<const Sharding> sharding =
-      SingleDeviceSharding::Create(device);
+      SingleDeviceSharding::Create(device, MemoryKind());
   auto semantics = Client::HostBufferSemantics::kImmutableOnlyDuringCall;
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -482,7 +484,7 @@ TEST(ArrayImplTest, ReshardToDifferentDevice) {
 
   Device* new_device = client->addressable_devices().at(1);
   std::shared_ptr<const Sharding> new_sharding =
-      SingleDeviceSharding::Create(new_device);
+      SingleDeviceSharding::Create(new_device, MemoryKind());
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto reshared_array,
@@ -505,7 +507,7 @@ TEST(ArrayImplTest, GetReadyFuture) {
   std::iota(data.begin(), data.end(), 0);
   Device* device = client->addressable_devices().at(0);
   std::shared_ptr<const Sharding> sharding =
-      SingleDeviceSharding::Create(device);
+      SingleDeviceSharding::Create(device, MemoryKind());
   auto semantics = Client::HostBufferSemantics::kImmutableOnlyDuringCall;
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -525,7 +527,7 @@ TEST(ArrayImplTest, Delete) {
   std::iota(data.begin(), data.end(), 0);
   Device* device = client->addressable_devices().at(0);
   std::shared_ptr<const Sharding> sharding =
-      SingleDeviceSharding::Create(device);
+      SingleDeviceSharding::Create(device, MemoryKind());
   auto semantics = Client::HostBufferSemantics::kImmutableOnlyDuringCall;
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -545,7 +547,7 @@ TEST(ArrayImplTest, IsDeleted) {
   std::iota(data.begin(), data.end(), 0);
   Device* device = client->addressable_devices().at(0);
   std::shared_ptr<const Sharding> sharding =
-      SingleDeviceSharding::Create(device);
+      SingleDeviceSharding::Create(device, MemoryKind());
   auto semantics = Client::HostBufferSemantics::kImmutableOnlyDuringCall;
 
   TF_ASSERT_OK_AND_ASSIGN(

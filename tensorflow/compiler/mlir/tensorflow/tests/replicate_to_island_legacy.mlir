@@ -237,7 +237,7 @@ func.func @device_ordinals() {
   tf_executor.graph {
     %0:3 = tf_executor.island {
       %1:2 = tf_device.replicate {n = 2 : i32, devices = {TPU_REPLICATED_CORE_0 = ["/job:worker/replica:0/task:0/device:TPU:1", "/job:worker/replica:0/task:0/device:TPU:2"]}} {
-        %2 = "tf._TPUDeviceOrdinalPlaceholder"() : () -> tensor<i64>
+        %2 = "tf._TPUDeviceOrdinalPlaceholder"() {logical_core = 0} : () -> tensor<i64>
         tf_device.return %2 : tensor<i64>
       }
       tf_executor.yield %1#0, %1#1 : tensor<i64>, tensor<i64>
@@ -266,7 +266,7 @@ func.func @missing_device_ordinals() {
     %0:3 = tf_executor.island {
       %1:2 = tf_device.replicate {n = 2 : i32, devices = {TPU_REPLICATED_CORE_1 = ["/job:worker/replica:0/task:0/device:TPU:1", "/job:worker/replica:0/task:0/device:TPU:2"]}} {
         // expected-error@below {{requires device ordinal from device TPU_REPLICATED_CORE_0 to be present in 'tf.device.replicate' op}}
-        %2 = "tf._TPUDeviceOrdinalPlaceholder"() : () -> tensor<i64>
+        %2 = "tf._TPUDeviceOrdinalPlaceholder"() {logical_core = 0} : () -> tensor<i64>
         tf_device.return %2 : tensor<i64>
       }
       tf_executor.yield %1#0, %1#1 : tensor<i64>, tensor<i64>

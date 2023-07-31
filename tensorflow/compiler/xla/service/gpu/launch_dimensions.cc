@@ -93,6 +93,14 @@ StatusOr<LaunchDimensions> CalculateLaunchDimensionsImplExperimental(
 
   int64_t block_count = CeilOfRatio(num_elements, threads_per_block_x);
 
+  if (gpu_device_info.block_dim_limit_x > 0 &&
+      block_count >= gpu_device_info.block_dim_limit_x) {
+    return tsl::errors::Unimplemented("Kernel launch needs more blocks (",
+                                      block_count,
+                                      ") than allowed by hardware (",
+                                      gpu_device_info.block_dim_limit_x, ").");
+  }
+
   return LaunchDimensions({block_count, 1, 1}, {threads_per_block_x, 1, 1});
 }
 

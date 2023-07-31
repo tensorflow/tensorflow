@@ -124,13 +124,11 @@ return selected_results
 // #include "smartass/brain/ops/flogs_ops.h"
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_replace.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/Support/Casting.h"
-#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -152,6 +150,7 @@ return selected_results
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -191,6 +190,30 @@ struct EmbeddingPipeliningPass
 
   void runOnOperation() override;
 };
+
+bool UseEmbeddingPipelining(ModuleOp& module) {
+  // Enable automated pipelining pass unless:
+  // 1. The user disables it via flog, or
+  // 2. The graph contains TF.Summary ops. Graphs like this typically only run
+  //    for a single step which doesn't work in pipelining.
+
+  if (tensorflow::GetBuildXlaOpsPassFlags()
+          ->tf_xla_disable_full_embedding_pipelining)
+    return false;
+
+  // Detect summaries by looking for key Ops in the graph. It would be better to
+  // do this via operator attributes rather than looking for a specific op.
+  WalkResult walk_result = module.walk([&](Operation* op) -> WalkResult {
+    if (llvm::isa<TF::WriteSummaryOp>(op)) return WalkResult::interrupt();
+    return WalkResult::advance();
+  });
+  if (walk_result.wasInterrupted()) {
+    VLOG(1) << "TF summaries detected - disabling embedding pipelining.";
+    return false;
+  }
+  VLOG(1) << "Embedding pipelining rewrite enabled.";
+  return true;
+}
 
 StringAttr GetReplicationAttr(mlir::Operation* op) {
   return op->getAttrOfType<StringAttr>(TF::kReplicationInfoAttr);
@@ -1218,7 +1241,7 @@ LogicalResult StartStep0(OpBuilder& builder, Location& loc,
   const std::string name = "start_step_0";
 
   AddAssertion(builder, loc, cond_value,
-               "Auto-pipelining requires at least two steps.");
+               "[StartStep0] Auto-pipelining requires at least two steps.");
   auto insertion_point = builder.saveInsertionPoint();
 
   func::FuncOp orig_parent_func =
@@ -1302,7 +1325,7 @@ LogicalResult StartStep1(OpBuilder& builder, Location& loc,
   const std::string name = "start_step_1";
 
   AddAssertion(builder, loc, cond_value,
-               "Auto-pipelining requires at least two steps.");
+               "[StartStep1] Auto-pipelining requires at least two steps.");
 
   auto insertion_point = builder.saveInsertionPoint();
   func::FuncOp orig_parent_func =
@@ -1362,7 +1385,7 @@ LogicalResult FinishStepNm2(OpBuilder& builder, Location& loc,
   const std::string name = "finish_step_nm2";
 
   AddAssertion(builder, loc, cond_value,
-               "Auto-pipelining requires at least two steps.");
+               "[FinishStepNm2] Auto-pipelining requires at least two steps.");
 
   auto insertion_point = builder.saveInsertionPoint();
   func::FuncOp orig_parent_func =
@@ -1622,6 +1645,11 @@ Operation* LiftNonTpuFuncCaller(mlir::OpBuilder& builder,
 void EmbeddingPipeliningPass::runOnOperation() {
   VLOG(3) << "EmbeddingPipeliningPass::runOnOperation()";
   ModuleOp module = getOperation();
+
+  // We only use one of the EmbeddingPipelining and EmbeddingSequencing passes.
+  if (!UseEmbeddingPipelining(module)) return;
+  VLOG(1) << "Embedding pipelining rewrite enabled.";
+
   SymbolTable symbol_table(module);
 
   llvm::SetVector<Operation*> forward_pass_ops;

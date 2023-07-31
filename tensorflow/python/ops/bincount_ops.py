@@ -87,6 +87,20 @@ def bincount(arr,
     array([[1, 1, 1, 1],
            [1, 1, 1, 0]], dtype=int32)>
 
+  **Missing zeros in SparseTensor**
+
+  Note that missing zeros (implict zeros) in SparseTensor are **NOT** counted.
+  This supports cases such as `0` in the values tensor indicates that index/id
+  `0`is present and a missing zero indicates that no index/id is present.
+
+  If counting missing zeros is desired, there are workarounds.
+  For the `axis=0` case, the number of missing zeros can computed by subtracting
+  the number of elements in the SparseTensor's `values` tensor from the
+  number of elements in the dense shape, and this difference can be added to the
+  first element of the output of `bincount`. For all cases, the SparseTensor
+  can be converted to a dense Tensor with `tf.sparse.to_dense` before calling
+  `tf.math.bincount`.
+
   Args:
     arr: A Tensor, RaggedTensor, or SparseTensor whose values should be counted.
       These tensors must have a rank of 2 if `axis=-1`.

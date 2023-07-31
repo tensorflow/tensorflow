@@ -35,7 +35,14 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_lt.h"
 #include "tensorflow/compiler/xla/stream_executor/scratch_allocator.h"
-#endif  // GOOGLE_CUDA
+
+#elif TENSORFLOW_USE_ROCM
+#include "rocm/rocm_config.h"
+#if TF_HIPBLASLT
+#include "tensorflow/compiler/xla/stream_executor/rocm/hip_blas_lt.h"
+#include "tensorflow/compiler/xla/stream_executor/scratch_allocator.h"
+#endif  // TF_HIPBLASLT
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace xla {
 namespace gpu {
@@ -189,17 +196,17 @@ StatusOr<bool> EpilogueHasAuxiliaryOutput(GemmBackendConfig_Epilogue epilogue);
 
 StatusOr<se::blas::DataType> AsBlasDataType(PrimitiveType dtype);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TF_HIPBLASLT
 
 namespace cublas_lt {
 
-StatusOr<se::cuda::BlasLt::Epilogue> AsBlasLtEpilogue(
+StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
     mlir::lmhlo_gpu::CublasLtMatmulEpilogue epilogue);
 
 class MatmulPlan {
  public:
   static StatusOr<MatmulPlan> From(const GemmConfig& config,
-                                   se::cuda::BlasLt::Epilogue epilogue);
+                                   se::gpu::BlasLt::Epilogue epilogue);
 
   Status ExecuteOnStream(
       se::Stream* stream, se::DeviceMemoryBase a_buffer,
@@ -210,15 +217,15 @@ class MatmulPlan {
       se::DeviceMemoryBase a_scale_buffer, se::DeviceMemoryBase b_scale_buffer,
       se::DeviceMemoryBase c_scale_buffer, se::DeviceMemoryBase d_scale_buffer,
       se::DeviceMemoryBase d_amax_buffer,
-      const se::cuda::BlasLt::MatmulAlgorithm& algorithm,
+      const se::gpu::BlasLt::MatmulAlgorithm& algorithm,
       se::ScratchAllocator& scratch_allocator,
       se::blas::ProfileResult* profile_result = nullptr) const;
 
-  StatusOr<std::vector<se::cuda::BlasLt::MatmulAlgorithm>> GetAlgorithms(
+  StatusOr<std::vector<se::gpu::BlasLt::MatmulAlgorithm>> GetAlgorithms(
       se::Stream* stream) const;
 
  private:
-  MatmulPlan(se::cuda::BlasLt::MatmulPlan plan, complex128 alpha, double beta,
+  MatmulPlan(se::gpu::BlasLt::MatmulPlan plan, complex128 alpha, double beta,
              bool must_swap_operands)
       : plan_(std::move(plan)),
         alpha_(alpha),
@@ -235,11 +242,11 @@ class MatmulPlan {
                   se::DeviceMemoryBase a_scale, se::DeviceMemoryBase b_scale,
                   se::DeviceMemoryBase c_scale, se::DeviceMemoryBase d_scale,
                   se::DeviceMemoryBase d_amax,
-                  const se::cuda::BlasLt::MatmulAlgorithm& algorithm,
+                  const se::gpu::BlasLt::MatmulAlgorithm& algorithm,
                   se::ScratchAllocator& scratch_allocator,
                   se::blas::ProfileResult* profile_result) const;
 
-  se::cuda::BlasLt::MatmulPlan plan_;
+  se::gpu::BlasLt::MatmulPlan plan_;
   complex128 alpha_;
   double beta_;
   bool must_swap_operands_;
@@ -247,7 +254,7 @@ class MatmulPlan {
 
 }  // namespace cublas_lt
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TF_HIPBLASLT
 
 }  // namespace gpu
 }  // namespace xla

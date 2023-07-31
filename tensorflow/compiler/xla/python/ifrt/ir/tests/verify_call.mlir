@@ -311,3 +311,34 @@ func.func @io_aliases_should_have_same_type(
 func.func @callee(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
   return %arg0 : tensor<2x2xi32>
 }
+
+// -----
+
+func.func @good_call_local_view(
+    %arg0: !ifrt.array<tensor<4x4xi32>, 2x2 to [0, 1] on 2x2, [0,1,2,3]>)
+    attributes {ifrt.function} {
+  %0, %ctrl_0 = ifrt.Call @callee(%arg0) on devices [0,1,2,3] {ifrt.local_view}
+    : (!ifrt.array<tensor<4x4xi32>, 2x2 to [0, 1] on 2x2, [0,1,2,3]>)
+    -> !ifrt.array<tensor<4x4xi32>, 2x2 to [0, 1] on 2x2, [0,1,2,3]>
+  return
+}
+
+func.func @callee(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
+  return %arg0 : tensor<2x2xi32>
+}
+
+// -----
+
+func.func @call_local_view_should_have_valid_shape(
+    %arg0: !ifrt.array<tensor<4x4xi32>, 2x2 to [0, 1] on 2x2, [0,1,2,3]>)
+    attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.Call' op requires the same global shape. Input #0 'tensor<4x4xi32>' vs Callee 'tensor<8x8xi32>'}}
+  %0, %ctrl_0 = ifrt.Call @callee(%arg0) on devices [0,1,2,3] {ifrt.local_view}
+    : (!ifrt.array<tensor<4x4xi32>, 2x2 to [0, 1] on 2x2, [0,1,2,3]>)
+    -> !ifrt.array<tensor<4x4xi32>, 2x2 to [0, 1] on 2x2, [0,1,2,3]>
+  return
+}
+
+func.func @callee(%arg0: tensor<4x4xi32>) -> tensor<4x4xi32> {
+  return %arg0 : tensor<4x4xi32>
+}

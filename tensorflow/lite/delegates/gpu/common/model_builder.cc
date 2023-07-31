@@ -2157,8 +2157,19 @@ class SelectV2OperationParser : public TFLiteOperationParser {
       if_tensor.data.push_back(if_scalar_tensor.data[0]);
     }
     if (!attr.broadcast_false) {
-      if (is_else_constant) {
-        RETURN_IF_ERROR(reader->ReadTensor(2, &else_tensor));
+      // Support 3D version of the else_tensor if needed. Convert it to 4D.
+      if (is_else_constant &&
+          absl::IsInvalidArgument(reader->ReadTensor(2, &else_tensor))) {
+        Tensor<HWC, DataType::FLOAT32> else_tensor_3d;
+        RETURN_IF_ERROR(reader->ReadTensor(2, &else_tensor_3d));
+        else_tensor.shape =
+            BHWC(1, else_tensor_3d.shape.h, else_tensor_3d.shape.w,
+                 else_tensor_3d.shape.c);
+        else_tensor.id = else_tensor_3d.id;
+        else_tensor.data.reserve(else_tensor_3d.data.size());
+        for (int i = 0; i < else_tensor_3d.data.size(); ++i) {
+          else_tensor.data.push_back(else_tensor_3d.data[i]);
+        }
       }
     } else {
       Tensor<Scalar, DataType::FLOAT32> else_scalar_tensor;

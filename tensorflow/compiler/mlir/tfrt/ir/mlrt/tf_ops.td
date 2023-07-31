@@ -19,8 +19,8 @@ limitations under the License.
 include "tensorflow/compiler/mlir/tfrt/ir/mlrt/tf_mlrt_dialect.td"
 include "tensorflow/compiler/mlir/tfrt/ir/mlrt/mlrt_dialect.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_base.td"
-include "third_party/tf_runtime/include/tfrt/compiler/opdefs/tfrt_op_interfaces.td"
-include "third_party/tf_runtime/include/tfrt/compiler/opdefs/tfrt_traits.td"
+include "tfrt/compiler/opdefs/tfrt_op_interfaces.td"  // from @tf_runtime
+include "tfrt/compiler/opdefs/tfrt_traits.td"  // from @tf_runtime
 
 // tf_mlrt.tf_await returns a tensorflow Tensor. It is a fake op that is only
 // used during parallelization and has no runtime implementation.

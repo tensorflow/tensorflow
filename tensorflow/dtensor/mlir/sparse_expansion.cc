@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/sparse_expander.h"
 #include "tensorflow/dtensor/mlir/spmd_expander_common.h"
+#include "tensorflow/dtensor/mlir/topological_iterator.h"
 
 namespace tensorflow {
 namespace dtensor {

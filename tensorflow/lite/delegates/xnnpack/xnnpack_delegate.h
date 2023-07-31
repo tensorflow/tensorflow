@@ -78,6 +78,12 @@ TfLiteDelegate* TfLiteXNNPackDelegateCreateWithThreadpool(
 TFL_CAPI_EXPORT void* TfLiteXNNPackDelegateGetThreadPool(
     TfLiteDelegate* delegate);
 
+// Returns the flags used for an XNNPack delegate.
+// See documentation for TfLiteXNNPackDelegateOptions.flags.
+//
+// WARNING: This API is experimental and subject to change.
+TFL_CAPI_EXPORT int TfLiteXNNPackDelegateGetFlags(TfLiteDelegate* delegate);
+
 // Destroys a delegate created with `TfLiteXNNPackDelegateCreate` call.
 TFL_CAPI_EXPORT void TfLiteXNNPackDelegateDelete(TfLiteDelegate* delegate);
 
