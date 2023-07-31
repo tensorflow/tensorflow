@@ -1606,6 +1606,7 @@ LogicalResult ConvertTFLTransposeConvOp::matchAndRewrite(
       dyn_cast<ShapedType>(tfl_conv_op.getWeights().getType());
   ShapedType output_type =
       dyn_cast<ShapedType>(tfl_conv_op.getResult().getType());
+
   // Not a ranked tensor output
   if (!input_type) return failure();
   if (!output_type) return failure();
@@ -1617,6 +1618,23 @@ LogicalResult ConvertTFLTransposeConvOp::matchAndRewrite(
       filter_type.getElementType().isa<mlir::quant::QuantizedType>();
   bool output_is_qtype =
       output_type.getElementType().isa<mlir::quant::QuantizedType>();
+
+  const bool has_bias = !(!tfl_conv_op.getBias() ||
+                          tfl_conv_op.getBias().getType().isa<NoneType>());
+
+  if (has_bias) {
+    RankedTensorType bias_type =
+        dyn_cast<RankedTensorType>(tfl_conv_op.getBias().getType());
+    bool bias_is_qtype =
+        bias_type.getElementType().isa<mlir::quant::QuantizedType>();
+
+    if (input_is_qtype != bias_is_qtype) {
+      return rewriter.notifyMatchFailure(
+          op,
+          "input/bias tensor should "
+          "be all quantized or all floating-point");
+    }
+  }
 
   if ((input_is_qtype != filter_is_qtype) ||
       (input_is_qtype != output_is_qtype)) {
@@ -1677,34 +1695,42 @@ LogicalResult ConvertTFLTransposeConvOp::matchAndRewrite(
     return failure();
   }
 
-  std::optional<Value> zero_bias;
-  if (input_is_qtype) {
-    uint32_t input_bits =
-        dyn_cast<mlir::quant::QuantizedType>(input_type.getElementType())
-            .getStorageTypeIntegralWidth();
-    uint32_t weight_bits =
-        dyn_cast<mlir::quant::QuantizedType>(filter_type.getElementType())
-            .getStorageTypeIntegralWidth();
-
-    if (input_bits == 16 && weight_bits == 8) {
-      SmallVector<APInt> vec(output_channel, APInt(48, 0, true));
-      zero_bias = getConstTensor<APInt>(rewriter, op, vec, {output_channel});
-    } else {
-      SmallVector<int32_t> vec(output_channel, 0);
-      zero_bias = getConstTensor<int32_t>(rewriter, op, vec, {output_channel});
-    }
+  Value bias_val;
+  if (has_bias) {
+    bias_val = tfl_conv_op.getBias();
   } else {
-    SmallVector<float> vec(output_channel, 0.0f);
-    zero_bias = getConstTensor<float>(rewriter, op, vec, {output_channel});
+    std::optional<Value> zero_bias;
+    if (input_is_qtype) {
+      uint32_t input_bits =
+          dyn_cast<mlir::quant::QuantizedType>(input_type.getElementType())
+              .getStorageTypeIntegralWidth();
+      uint32_t weight_bits =
+          dyn_cast<mlir::quant::QuantizedType>(filter_type.getElementType())
+              .getStorageTypeIntegralWidth();
+
+      if (input_bits == 16 && weight_bits == 8) {
+        SmallVector<APInt> vec(output_channel, APInt(48, 0, true));
+        zero_bias = getConstTensor<APInt>(rewriter, op, vec, {output_channel});
+      } else {
+        SmallVector<int32_t> vec(output_channel, 0);
+        zero_bias =
+            getConstTensor<int32_t>(rewriter, op, vec, {output_channel});
+      }
+    } else {
+      SmallVector<float> vec(output_channel, 0.0f);
+      zero_bias = getConstTensor<float>(rewriter, op, vec, {output_channel});
+    }
+
+    if (!zero_bias) return failure();
+    bias_val = zero_bias.value();
   }
 
-  if (!zero_bias) return failure();
-  Type bias_ety = zero_bias->getType().cast<ShapedType>().getElementType();
+  Type bias_ety = bias_val.getType().cast<ShapedType>().getElementType();
 
   auto a1_conv2d_op = CreateOpAndInfer<tosa::TransposeConv2DOp>(
       rewriter, op->getLoc(), output_type.clone(bias_ety),
-      tfl_conv_op.getInput(), tfl_conv_op.getWeights(), zero_bias.value(),
-      outpad, stride, output_shape);
+      tfl_conv_op.getInput(), tfl_conv_op.getWeights(), bias_val, outpad,
+      stride, output_shape);
 
   Value conv2d_output;
   if (input_is_qtype) {
