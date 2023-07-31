@@ -1819,8 +1819,19 @@ Status CheckCompatibleShapes(bool strict_shape_checking,
           ShapeUtil::HumanStringWithLayout(buffer_on_device_shape));
     }
   } else {
-    if (transfer_manager.GetByteSizeRequirement(buffer_on_device_shape) !=
-        transfer_manager.GetByteSizeRequirement(execution_shape)) {
+    const int64_t buffer_size =
+        transfer_manager.GetByteSizeRequirement(buffer_on_device_shape);
+    const int64_t execute_size =
+        transfer_manager.GetByteSizeRequirement(execution_shape);
+    if (buffer_on_device_shape.is_static() && buffer_size != execute_size) {
+      return InvalidArgument(
+          "Executable expected shape %s for argument %d but got "
+          "incompatible "
+          "shape %s",
+          ShapeUtil::HumanStringWithLayout(execution_shape), parameter_index,
+          ShapeUtil::HumanStringWithLayout(buffer_on_device_shape));
+    }
+    if (!buffer_on_device_shape.is_static() && buffer_size < execute_size) {
       return InvalidArgument(
           "Executable expected shape %s for argument %d but got "
           "incompatible "
