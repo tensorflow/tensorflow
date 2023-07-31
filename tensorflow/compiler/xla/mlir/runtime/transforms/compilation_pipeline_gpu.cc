@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/Dialect/Async/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
+#include "mlir/Dialect/MemRef/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"  // from @llvm-project
@@ -80,6 +81,11 @@ static void CreateDefaultXlaGpuRuntimeCompilationPipeline(
     // Add async.runtime reference counting operations.
     pm.addPass(mlir::createAsyncRuntimePolicyBasedRefCountingPass());
   }
+
+  // Prepare memrefs for lowering to LLVM.
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::memref::createExpandOpsPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::memref::createExpandStridedMetadataPass());
 
   // Convert runtime operations and custom calls to LLVM dialect.
   ConvertRuntimeToLLvmOpts rt_to_llvm_opts = {
