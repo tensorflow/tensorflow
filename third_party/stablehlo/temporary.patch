@@ -1035,6 +1035,16 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/
        !innerOpNameInfo->hasTrait<mlir::OpTrait::ZeroRegions>()) {
      parser.emitError(loc,
                       "expected the inner-op to be a commutative binary-op from "
+@@ -2786,7 +2786,8 @@
+ void printConvolutionDimensions(AsmPrinter& p,
+                                 ConvDimensionNumbersAttr dimNums) {
+   // TODO(b/202040055): we should check the attribute invariant and print the
+-  // "raw" form if they are violated, otherwise we'll crash here.
++  // "raw" form if they are violated, for now report_fatal_error is used to
++  // prevent invalid access.
+   auto printDim =
+       [&p](ArrayRef<int64_t> spatialDims,
+            ArrayRef<std::pair<int64_t, NonSpatialDim>> non_spatialDims) {
 diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/dialect/StablehloOps.td
 --- stablehlo/stablehlo/dialect/StablehloOps.td
 +++ stablehlo/stablehlo/dialect/StablehloOps.td
@@ -1083,6 +1093,18 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/d
    let arguments = (ins
      HLO_PredOrIntTensor:$lhs,
      HLO_PredOrIntTensor:$rhs
+diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo/dialect/TypeInference.cpp
+--- stablehlo/stablehlo/dialect/TypeInference.cpp
++++ stablehlo/stablehlo/dialect/TypeInference.cpp
+@@ -3400,7 +3400,7 @@
+ 
+   for (int i = 0; i != bcastDimensionsSize; ++i) {
+     auto dimIndex = bcastDimensions.getValues<int64_t>()[i];
+-    if (dimIndex >= resultRank)
++    if (dimIndex < 0 || dimIndex >= resultRank)
+       return emitOptionalError(location,
+                                "broadcast_dimensions contains invalid value ",
+                                dimIndex, " for result with rank ", resultRank);
 diff --ruN a/stablehlo/stablehlo/testdata/acosh_shape_bfloat16_20_20.mlir b/stablehlo/stablehlo/testdata/acosh_shape_bfloat16_20_20.mlir
 --- stablehlo/stablehlo/testdata/acosh_shape_bfloat16_20_20.mlir
 +++ stablehlo/stablehlo/testdata/acosh_shape_bfloat16_20_20.mlir
@@ -4205,6 +4227,32 @@ diff --ruN a/stablehlo/stablehlo/testdata/vmap_gather_from_take_indices_name__1_
      %59 = stablehlo.select %55, %58, %23 : tensor<2xi1>, tensor<2xi64>
      %60 = stablehlo.convert %59 : (tensor<2xi64>) -> tensor<2xi32>
      %61 = stablehlo.broadcast_in_dim %60, dims = [0] : (tensor<2xi32>) -> tensor<2x1xi32>
+diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo.mlir b/stablehlo/stablehlo/tests/ops_stablehlo.mlir
+--- stablehlo/stablehlo/tests/ops_stablehlo.mlir
++++ stablehlo/stablehlo/tests/ops_stablehlo.mlir
+@@ -894,6 +894,22 @@
+   %0 = stablehlo.constant dense<[1, 4]> : tensor<2xi64>
+   %1 = stablehlo.dynamic_broadcast_in_dim %arg0, %0, dims = [1] : (tensor<4xf32>, tensor<2xi64>) -> tensor<3x4xf32>
+   return %1 : tensor<3x4xf32>
++}
++
++// -----
++
++func.func @dynamic_broadcast_in_dim_negative_size(%arg0: tensor<1xf32>, %shape: tensor<3xi64>) -> tensor<7x8x9xf32> {
++  // expected-error@+1 {{broadcast_dimensions contains invalid value -1 for result with rank 3}}
++  %0 = "stablehlo.dynamic_broadcast_in_dim"(%arg0, %shape) {broadcast_dimensions = dense<[-1]> : tensor<1xi64>} : (tensor<1xf32>, tensor<3xi64>) -> tensor<7x8x9xf32>
++  func.return %0 : tensor<7x8x9xf32>
++}
++
++// -----
++
++func.func @dynamic_broadcast_in_dim_too_large(%arg0: tensor<1xf32>, %shape: tensor<3xi64>) -> tensor<7x8x9xf32> {
++  // expected-error@+1 {{broadcast_dimensions contains invalid value 3 for result with rank 3}}
++  %0 = "stablehlo.dynamic_broadcast_in_dim"(%arg0, %shape) {broadcast_dimensions = dense<[3]> : tensor<1xi64>} : (tensor<1xf32>, tensor<3xi64>) -> tensor<7x8x9xf32>
++  func.return %0 : tensor<7x8x9xf32>
+ }
+ 
+ // -----
 diff --ruN a/stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir b/stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir
 --- stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir
 +++ stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir
