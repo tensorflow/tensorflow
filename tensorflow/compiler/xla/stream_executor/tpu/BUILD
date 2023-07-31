@@ -445,7 +445,6 @@ cc_library(
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
-        "//tensorflow/tsl/platform/cloud:gcs_file_system",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
     ],

@@ -45,7 +45,6 @@ limitations under the License.
 #if !defined(PLATFORM_GOOGLE)
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform.h"
-#include "tensorflow/tsl/platform/cloud/gcs_file_system.h"
 #include "tensorflow/tsl/platform/env.h"
 #elif defined(LIBTPU_STATIC)
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
@@ -234,44 +233,6 @@ tsl::Status InitializeTpuLibrary(void* library_handle) {
   return s;
 }
 
-namespace {
-void* CreateGcsFilesystemFn() { return new tsl::RetryingGcsFileSystem(); }
-
-// This is a temporary fix for including GCS file system on TPU builds.
-// Will be removed once b/176954917 is fully resolved with the build fix.
-void InitializeCreateGcsFileSystemFnPtr() {
-  int fd = shm_open(absl::StrCat("/tmp_tf_gcs_fs_pointer_", getpid()).data(),
-                    O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
-  if (fd == -1) {
-    LOG(ERROR) << "Unable to open shared memory for GCS file system creator.";
-    return;
-  }
-
-  if (ftruncate(fd, sizeof(tsl::FileSystem*)) == -1) {
-    LOG(ERROR)
-        << "Unable to allocate shared memory for GCS file system creator.";
-    return;
-  }
-
-  void* (**fn)() = reinterpret_cast<void* (**)()>(mmap(
-      NULL, sizeof(void* (*)()), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0));
-  if (fn == MAP_FAILED) {
-    LOG(ERROR) << "Cannot mmap shared memory for GCS file system creator.";
-    return;
-  }
-
-  *fn = &CreateGcsFilesystemFn;
-
-  munmap(fn, sizeof(void* (*)()));
-  close(fd);
-
-  // Clean up shared memory on a clean exit.
-  atexit([]() {
-    shm_unlink(absl::StrCat("/tmp_tf_gcs_fs_pointer_", getpid()).data());
-  });
-}
-}  // namespace
-
 // TODO(b/261484192): refactor this function to align with supporting different
 // PJRT plugins.
 tsl::Status FindAndLoadTpuLibrary() {
@@ -289,7 +250,6 @@ tsl::Status FindAndLoadTpuLibrary() {
     LOG(INFO) << "Failed to open libtpu: " << dlerror();
   }
 
-  InitializeCreateGcsFileSystemFnPtr();
   return ::tsl::OkStatus();
 }
 
