@@ -169,15 +169,15 @@ Value removeZeroPointAndCastToInt32(PatternRewriter& rewriter, Operation* op,
 // Creates TOSA rescale op with int32 output
 Value buildRescaleToInt32(PatternRewriter& rewriter, Operation* op,
                           Value input_val, int32_t input_scale_multiplier,
-                          int32_t input_scale_shit, int64_t input_zp) {
+                          int32_t input_scale_shift, int64_t input_zp) {
   // Output is always int32 type
   auto input_type = dyn_cast<mlir::ShapedType>(input_val.getType());
   assert(input_type);
   auto output_type = input_type.clone(rewriter.getI32Type());
 
   return buildRescale(rewriter, op, output_type, input_val,
-                      input_scale_multiplier, input_scale_shit, input_zp, 0,
-                      IsTFLDoubleRoundingMode(), true);
+                      input_scale_multiplier, input_scale_shift, input_zp, /*input_zp=*/0,
+                      IsTFLDoubleRoundingMode(), /*scale32=*/true);
 }
 
 // Creates TOSA rescale op with int32 output
@@ -205,8 +205,8 @@ Value buildRescaleFromInt32(PatternRewriter& rewriter, Operation* op,
          "expected rescale input element type to be i32");
 
   // Potentially check input_shape == output_shape here
-  return buildRescale(rewriter, op, output_type, input_val, output_scale, 0,
-                      output_zp, IsTFLDoubleRoundingMode(), true);
+  return buildRescale(rewriter, op, output_type, input_val, output_scale, /*input_zp=*/0,
+                      output_zp, IsTFLDoubleRoundingMode(), /*scale32=*/true);
 }
 
 // Creates a TOSA rescale op based on conv2d parameters.

@@ -75,7 +75,7 @@ Value removeZeroPointAndCastToInt32(PatternRewriter& rewriter, Operation* op,
 // Creates TOSA rescale op with int32 output
 Value buildRescaleToInt32(PatternRewriter& rewriter, Operation* op,
                           Value input_val, int32_t input_scale_multiplier,
-                          int32_t input_scale_shit, int64_t input_zp);
+                          int32_t input_scale_shift, int64_t input_zp);
 
 // Creates TOSA rescale op with int32 output
 Value buildRescaleToInt32(PatternRewriter& rewriter, Operation* op,

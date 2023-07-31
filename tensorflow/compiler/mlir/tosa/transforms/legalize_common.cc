@@ -2898,8 +2898,8 @@ std::optional<Value> convertReduceOpCommon(
     UnrankedTensorType output_rescale_type =
         UnrankedTensorType::get(output_type.getElementType());
     val = buildRescale(rewriter, op, output_rescale_type, val,
-                       output_scale_multiplier, output_scale_shift, 0,
-                       output_zp, IsTFLDoubleRoundingMode(), true);
+                       output_scale_multiplier, output_scale_shift, /*input_zp=*/0,
+                       output_zp, IsTFLDoubleRoundingMode(), /*scale32=*/true);
   }
 
   // Squeeze out the reduced axes.

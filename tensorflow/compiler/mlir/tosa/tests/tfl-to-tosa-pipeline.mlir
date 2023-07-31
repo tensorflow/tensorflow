@@ -641,6 +641,20 @@ func.func @test_reduce_mean_out_of_bounds(%arg0: tensor<13x21x3xf32>) -> tensor<
 
 // -----
 
+// CHECK-LABEL: test_reduce_mean_qi8
+// CHECK-SAME: %[[VAL_0:.*]]: tensor<1x2x2x!quant.uniform<i8:f32, 0.0039208820089697838:-128>>
+// CHECK: %[[VAL_1:.*]] = "tosa.rescale"(%[[VAL_0]]) <{double_round = true, input_zp = -128 : i32, multiplier = array<i32: 1073741824>, output_zp = 0 : i32, per_channel = false, scale32 = true, shift = array<i32: 30>}> : (tensor<1x2x2x!quant.uniform<i8:f32, 0.0039208820089697838:-128>>) -> tensor<1x2x2xi32>
+// CHECK: %[[VAL_2:.*]] = "tosa.reduce_sum"(%[[VAL_1]]) <{axis = 2 : i64}> : (tensor<1x2x2xi32>) -> tensor<1x2x1xi32>
+// CHECK: %[[VAL_3:.*]] = "tosa.rescale"(%[[VAL_2]]) <{double_round = true, input_zp = 0 : i32, multiplier = array<i32: 1105078632>, output_zp = -128 : i32, per_channel = false, scale32 = true, shift = array<i32: 31>}> : (tensor<1x2x1xi32>) -> tensor<1x2x1x!quant.uniform<i8:f32, 0.0038096972275525331:-128>>
+// CHECK: return %[[VAL_3]] : tensor<1x2x1x!quant.uniform<i8:f32, 0.0038096972275525331:-128>>
+func.func @test_reduce_mean_qi8(%arg0: tensor<1x2x2x!quant.uniform<i8:f32, 0.0039208820089697838:-128>>) -> (tensor<1x2x1x!quant.uniform<i8:f32, 0.0038096972275525331:-128>>) {
+%0 = "tfl.pseudo_const"() {value = dense<-1> : tensor<i32>} : () -> tensor<i32>
+%1 = "tfl.mean"(%arg0, %0) {keep_dims = true} : (tensor<1x2x2x!quant.uniform<i8:f32, 0.0039208820089697838:-128>>, tensor<i32>) -> tensor<1x2x1x!quant.uniform<i8:f32, 0.0038096972275525331:-128>>
+return %1 : tensor<1x2x1x!quant.uniform<i8:f32, 0.0038096972275525331:-128>>
+}
+
+// -----
+
 // CHECK-LABEL: test_reduce_product
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.reduce_prod"(%arg0) <{axis = 0 : i64}>
 // CHECK: %[[VAR1:.*]] = "tosa.reshape"(%[[VAR0]]) <{new_shape = array<i64: 21, 3>}>
