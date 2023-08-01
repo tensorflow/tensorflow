@@ -2098,20 +2098,21 @@ struct FuseReshapeAndTransposeAroundBatchMatmul
     }
 
     auto reshape_op = op.getInput().getDefiningOp<ReshapeOp>();
-    if (!reshape_op || !ExpandOneDimInMiddle(reshape_op.getInput().getType(),
-                                             reshape_op.getType())) {
+    if (!reshape_op ||
+        !InsertOneInSecondInnermostDim(reshape_op.getInput().getType(),
+                                       reshape_op.getType())) {
       return failure();
     }
 
     auto batch_matmul = reshape_op.getInput().getDefiningOp<BatchMatMulOp>();
-    if (!batch_matmul || !batch_matmul.getAdjX() || batch_matmul.getAdjY()) {
+    if (!batch_matmul || batch_matmul.getAdjY()) {
       return failure();
     }
 
     auto reshape_op_1 = batch_matmul.getY().getDefiningOp<ReshapeOp>();
     if (!reshape_op_1 ||
-        !ExpandOneDimInMiddle(reshape_op_1.getType(),
-                              reshape_op_1.getInput().getType())) {
+        !InsertOneInSecondInnermostDim(reshape_op_1.getType(),
+                                       reshape_op_1.getInput().getType())) {
       return failure();
     }
 
@@ -2120,31 +2121,52 @@ struct FuseReshapeAndTransposeAroundBatchMatmul
       return failure();
     }
     DenseIntElementsAttr transpose_perm_1;
-    if (!matchPattern(transpose_op.getPerm(), m_Constant(&transpose_perm_1))) {
+    if (!matchPattern(transpose_op.getPerm(), m_Constant(&transpose_perm_1)) ||
+        !TransposeFirstTwoDimToLast(transpose_perm_1)) {
       return failure();
     }
-    const ArrayRef<int64_t> match_perm_1 = {2, 0, 1};
-    for (const auto &[perm_index, match_perm_index] :
-         llvm::zip(transpose_perm_1.getValues<APInt>(), match_perm_1)) {
-      if (perm_index != match_perm_index) {
-        return failure();
-      }
-    }
 
+    TypedValue<TensorType> transpose_input = transpose_op.getInput();
+    SmallVector<int, 3> new_shape = {
+        static_cast<int>(transpose_input.getType().getDimSize(0)),
+        static_cast<int>(transpose_input.getType().getDimSize(1)),
+        static_cast<int>(std::accumulate(
+            transpose_input.getType().getShape().begin() + 2,
+            transpose_input.getType().getShape().end(), 1, std::multiplies()))};
+    auto shape_constant = rewriter.create<ConstOp>(
+        batch_matmul.getLoc(),
+        DenseIntElementsAttr::get(
+            RankedTensorType::get(3, rewriter.getI32Type()), new_shape));
+    auto reshaped_input = rewriter.create<ReshapeOp>(
+        batch_matmul.getLoc(), transpose_op.getInput(), shape_constant);
     rewriter.replaceOpWithNewOp<BatchMatMulOp>(
-        op, op.getType(), transpose_op.getInput(), batch_matmul.getX(),
-        /*adj_x=*/false, /*adj_y=*/false,
+        op, op.getType(), reshaped_input, batch_matmul.getX(),
+        /*adj_x=*/false, /*adj_y=*/!batch_matmul.getAdjX(),
         batch_matmul.getAsymmetricQuantizeInputsAttr());
     return success();
   }
 
  private:
-  // Checks that tensor `a` has shape of [M, N] and `b` has [M, 1, N].
-  bool ExpandOneDimInMiddle(TensorType a, TensorType b) const {
+  // Checks that tensor `a` has shape of [M, N] and `b` has
+  // [M_0, M_1, ..., 1, N], where `M = M_0 * M_1 * ...`.
+  bool InsertOneInSecondInnermostDim(TensorType a, TensorType b) const {
     if (!a.hasStaticShape() || !b.hasStaticShape()) return false;
-    if (a.getRank() != 2 || b.getRank() != 3) return false;
-    return a.getShape().front() == b.getShape().front() &&
-           a.getShape().back() == b.getShape().back();
+    if (a.getRank() != 2 || b.getRank() < 2) return false;
+    if (a.getShape().back() != b.getShape().back()) return false;
+    return b.getDimSize(b.getRank() - 2) == 1;
+  }
+
+  // Checks if the transpose permutation has value [2, 3, ..., n-1, 0, 1].
+  bool TransposeFirstTwoDimToLast(DenseIntElementsAttr perm) const {
+    int rank = perm.getNumElements();
+    if (rank < 3) return false;
+    for (int i = 0; i < rank - 2; i++) {
+      if (perm.getValues<APInt>()[i] != i + 2) {
+        return false;
+      }
+    }
+    return perm.getValues<APInt>()[rank - 2] == 0 &&
+           perm.getValues<APInt>()[rank - 1] == 1;
   }
 };
 
