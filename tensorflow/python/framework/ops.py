@@ -21,7 +21,7 @@ import re
 import sys
 import threading
 import types
-from typing import Optional
+from typing import Any, AnyStr, Callable, List, NoReturn, Pattern, Tuple, Type, Union, Optional
 from absl import app
 import numpy as np
 
@@ -82,8 +82,8 @@ from tensorflow.python.util.tf_export import tf_export
 
 # Temporary global switches determining if we should enable the work-in-progress
 # calls to the C API. These will be removed once all functionality is supported.
-_USE_C_API = True
-_USE_C_SHAPES = True
+_USE_C_API: bool = True
+_USE_C_SHAPES: bool = True
 
 
 _api_usage_gauge = monitoring.BoolGauge(
@@ -111,7 +111,7 @@ def tensor_id(tensor):
 class _UserDeviceSpec(object):
   """Store user-specified device and provide computation of merged device."""
 
-  def __init__(self, device_name_or_function):
+  def __init__(self, device_name_or_function) -> None:
     self._device_name_or_function = device_name_or_function
     self.display_name = str(self._device_name_or_function)
     self.function = device_name_or_function
@@ -148,7 +148,7 @@ class _UserDeviceSpec(object):
     # and self.string_merge is typically called many times.
     self.fast_string_merge = isinstance(self.function, pydev.MergeDevice)
 
-  def string_merge(self, node_def):
+  def string_merge(self, node_def) -> str:
     if self.fast_string_merge:
       return self.function.shortcut_string_merge(node_def)
 
@@ -157,13 +157,13 @@ class _UserDeviceSpec(object):
 
 class NullContextmanager(object):
 
-  def __init__(self, *args, **kwargs):
+  def __init__(self, *args, **kwargs) -> None:
     pass
 
-  def __enter__(self):
+  def __enter__(self) -> None:
     pass
 
-  def __exit__(self, type_arg, value_arg, traceback_arg):
+  def __exit__(self, type_arg, value_arg, traceback_arg) -> bool:
     return False  # False values do not suppress exceptions
 
 
@@ -186,16 +186,16 @@ def _as_graph_element(obj):
 # Deprecated - do not use.
 # This API to avoid breaking estimator and tensorflow-mesh which depend on this
 # internal API. The stub should be safe to use after TF 2.3 is released.
-def is_dense_tensor_like(t):
+def is_dense_tensor_like(t) -> bool:
   return isinstance(t, core_tf_types.Tensor)
 
 
-def uid():
+def uid() -> int:
   """A unique (within this program execution) integer."""
   return pywrap_tfe.TFE_Py_UID()
 
 
-def numpy_text(tensor, is_repr=False):
+def numpy_text(tensor, is_repr=False) -> str:
   """Human readable representation of a tensor's numpy value."""
   if tensor.dtype.is_numpy_compatible:
     # pylint: disable=protected-access
@@ -208,7 +208,7 @@ def numpy_text(tensor, is_repr=False):
   return text
 
 
-def value_text(tensor, is_repr=False):
+def value_text(tensor, is_repr=False) -> AnyStr:
   """Either the NumPy value or a custom TensorFlow formatting of `tensor`.
 
   Custom formatting is used for custom device tensors, e.g. parallel tensors
@@ -234,7 +234,7 @@ def value_text(tensor, is_repr=False):
   return text
 
 
-Tensor = tensor_lib.Tensor
+Tensor: Type[tensor_lib.Tensor] = tensor_lib.Tensor
 
 
 @tf_export("__internal__.SymbolicTensor")
@@ -286,19 +286,19 @@ class _EagerTensorBase(
 
   # __complex__, __int__, __float__ and __index__ may copy the tensor to CPU and
   # only work for scalars; values are cast as per numpy.
-  def __complex__(self):
+  def __complex__(self) -> complex:
     return complex(self._numpy())
 
-  def __int__(self):
+  def __int__(self) -> int:
     return int(self._numpy())
 
-  def __float__(self):
+  def __float__(self) -> float:
     return float(self._numpy())
 
   def __index__(self):
     return self._numpy().__index__()
 
-  def __bool__(self):
+  def __bool__(self) -> bool:
     return bool(self._numpy())
 
   __nonzero__ = __bool__
@@ -310,7 +310,7 @@ class _EagerTensorBase(
       # Not numpy_text here, otherwise the __format__ behaves differently.
       return self._numpy().__format__(format_spec)
     else:
-      return "<unprintable>".__format__(format_spec)
+      return "<unprintable>".__format__(format_spec)  # pytype: disable=attribute-error
 
   def __reduce__(self):
     return convert_to_tensor, (self._numpy(),)
@@ -324,11 +324,11 @@ class _EagerTensorBase(
     del memo
     return self
 
-  def __str__(self):
+  def __str__(self) -> str:
     return "tf.Tensor(%s, shape=%s, dtype=%s)" % (
         value_text(self, is_repr=False), self.shape, self.dtype.name)
 
-  def __repr__(self):
+  def __repr__(self) -> str:
     return "<tf.Tensor: shape=%s, dtype=%s, %s>" % (
         self.shape, self.dtype.name, value_text(self, is_repr=True))
 
@@ -354,7 +354,7 @@ class _EagerTensorBase(
     raise TypeError("Tensor is unhashable. "
                     "Instead, use tensor.ref() as the key.")
 
-  def _numpy_internal(self):
+  def _numpy_internal(self) -> NoReturn:
     raise NotImplementedError()
 
   def _numpy(self):
@@ -408,10 +408,10 @@ class _EagerTensorBase(
     """
     raise NotImplementedError()
 
-  def _datatype_enum(self):
+  def _datatype_enum(self) -> NoReturn:
     raise NotImplementedError()
 
-  def _shape_tuple(self):
+  def _shape_tuple(self) -> NoReturn:
     """The shape of this Tensor, as a tuple.
 
     This is more performant than tuple(shape().as_list()) as it avoids
@@ -426,7 +426,7 @@ class _EagerTensorBase(
     """
     raise NotImplementedError()
 
-  def _rank(self):
+  def _rank(self) -> NoReturn:
     """Integer rank of this Tensor.
 
     Unlike regular Tensors, the rank is always known for EagerTensors.
@@ -438,7 +438,7 @@ class _EagerTensorBase(
     """
     raise NotImplementedError()
 
-  def _num_elements(self):
+  def _num_elements(self) -> NoReturn:
     """Number of elements of this Tensor.
 
     Unlike regular Tensors, the number of elements is always known for
@@ -451,11 +451,11 @@ class _EagerTensorBase(
     """
     raise NotImplementedError()
 
-  def _copy_to_device(self, device_name):  # pylint: disable=redefined-outer-name
+  def _copy_to_device(self, device_name) -> NoReturn:  # pylint: disable=redefined-outer-name
     raise NotImplementedError()
 
   @staticmethod
-  def _override_operator(name, func):
+  def _override_operator(name, func) -> None:
     setattr(_EagerTensorBase, name, func)
 
   def _copy_nograd(self, ctx=None, device_name=None):
@@ -503,11 +503,11 @@ class _EagerTensorBase(
 
     return self._tensor_shape
 
-  def get_shape(self):
+  def get_shape(self) -> tensor_shape.TensorShape:
     """Alias of Tensor.shape."""
     return self.shape
 
-  def _shape_as_list(self):
+  def _shape_as_list(self) -> List[Tuple[int, ...]]:
     """The shape of the tensor as a list."""
     return list(self._shape_tuple())
 
@@ -531,7 +531,7 @@ class _EagerTensorBase(
     """
     return self._copy(context.context(), "GPU:" + str(gpu_index))
 
-  def set_shape(self, shape):
+  def set_shape(self, shape) -> None:
     if not self.shape.is_compatible_with(shape):
       raise ValueError(f"Tensor's shape {self.shape} is not compatible "
                        f"with supplied shape {shape}.")
@@ -557,23 +557,23 @@ class _EagerTensorBase(
     raise AttributeError(
         "Tensor.value_index is undefined when eager execution is enabled.")
 
-  def consumers(self):
+  def consumers(self) -> NoReturn:
     raise NotImplementedError(
         "Tensor.consumers is undefined when eager execution is enabled.")
 
-  def _add_consumer(self, consumer):
+  def _add_consumer(self, consumer) -> NoReturn:
     raise NotImplementedError(
         "_add_consumer not supported when eager execution is enabled.")
 
-  def _as_node_def_input(self):
+  def _as_node_def_input(self) -> NoReturn:
     raise NotImplementedError(
         "_as_node_def_input not supported when eager execution is enabled.")
 
-  def _as_tf_output(self):
+  def _as_tf_output(self) -> NoReturn:
     raise NotImplementedError(
         "_as_tf_output not supported when eager execution is enabled.")
 
-  def eval(self, feed_dict=None, session=None):
+  def eval(self, feed_dict=None, session=None) -> NoReturn:
     raise NotImplementedError(
         "eval is not supported when eager execution is enabled, "
         "is .numpy() what you're looking for?")
@@ -616,7 +616,7 @@ EagerTensor = tf_export("__internal__.EagerTensor", v1=[])(
     pywrap_tfe.TFE_Py_InitEagerTensor(_EagerTensorBase))
 
 
-def _add_error_prefix(msg, *, name=None):
+def _add_error_prefix(msg: str, *, name: Optional[str] = None) -> str:
   return msg if name is None else f"{name}: {msg}"
 
 
@@ -691,7 +691,7 @@ def convert_to_tensor(
     # TODO(b/268347915): Remove argument.
     ctx=None,  # pylint: disable=unused-argument
     accepted_result_types=(tensor_lib.Tensor,),
-):
+) -> tensor_lib.Tensor:
   """Implementation of the public convert_to_tensor."""
   # TODO(b/142518781): Fix all call-sites and remove redundant arg
   preferred_dtype = preferred_dtype or dtype_hint
@@ -700,16 +700,17 @@ def convert_to_tensor(
   )
 
 
-internal_convert_to_tensor = convert_to_tensor
+internal_convert_to_tensor: Callable[..., tensor_lib.Tensor] = convert_to_tensor
 
 
-def internal_convert_n_to_tensor(values,
-                                 dtype=None,
-                                 name=None,
-                                 as_ref=False,
-                                 preferred_dtype=None,
-                                 # TODO(b/268347915): Remove argument.
-                                 ctx=None):  # pylint: disable=unused-argument
+def internal_convert_n_to_tensor(
+    values,
+    dtype=None,
+    name=None,
+    as_ref=False,
+    preferred_dtype=None,
+    # TODO(b/268347915): Remove argument.
+    ctx=None) -> List[Union[tensor_lib.Tensor, internal.IndexedSlices]]:  # pylint: disable=unused-argument
   """Converts `values` to a list of `Tensor` objects.
 
   Args:
@@ -749,7 +750,9 @@ def internal_convert_n_to_tensor(values,
   return ret
 
 
-def convert_n_to_tensor(values, dtype=None, name=None, preferred_dtype=None):
+def convert_n_to_tensor(
+    values, dtype=None, name=None, preferred_dtype=None
+) ->  List[Union[tensor_lib.Tensor, internal.IndexedSlices]]:
   """Converts `values` to a list of `Tensor` objects.
 
   Args:
@@ -780,7 +783,9 @@ def convert_n_to_tensor(values, dtype=None, name=None, preferred_dtype=None):
       as_ref=False)
 
 
-def convert_to_tensor_or_composite(value, dtype=None, name=None):
+def convert_to_tensor_or_composite(
+    value, dtype=None, name=None
+) -> Union[tensor_lib.Tensor, composite_tensor.CompositeTensor]:
   """Converts the given object to a `Tensor` or `CompositeTensor`.
 
   If `value` is a `CompositeTensor` it is returned unmodified. Otherwise, it
@@ -803,10 +808,11 @@ def convert_to_tensor_or_composite(value, dtype=None, name=None):
       value=value, dtype=dtype, name=name, as_ref=False)
 
 
-def internal_convert_to_tensor_or_composite(value,
-                                            dtype=None,
-                                            name=None,
-                                            as_ref=False):
+def internal_convert_to_tensor_or_composite(
+    value, dtype=None,
+    name=None,
+    as_ref=False
+) -> List[Union[tensor_lib.Tensor, internal.IndexedSlices]]:
   """Converts the given object to a `Tensor` or `CompositeTensor`.
 
   If `value` is a `CompositeTensor` it is returned unmodified.  Otherwise, it
@@ -843,10 +849,13 @@ def internal_convert_to_tensor_or_composite(value,
             tensor_lib.Tensor, composite_tensor.CompositeTensor))
 
 
-def internal_convert_n_to_tensor_or_composite(values,
-                                              dtype=None,
-                                              name=None,
-                                              as_ref=False):
+def internal_convert_n_to_tensor_or_composite(
+    values,
+    dtype=None,
+    name=None,
+    as_ref=False
+) -> List[Union[
+    tensor_lib.Tensor, composite_tensor.CompositeTensor, type(None)]]:
   """Converts `values` to a list of `Tensor` or `CompositeTensor` objects.
 
   Any `CompositeTensor` objects in `values` are returned unmodified.
@@ -883,7 +892,10 @@ def internal_convert_n_to_tensor_or_composite(values,
   return ret
 
 
-def convert_n_to_tensor_or_composite(values, dtype=None, name=None):
+def convert_n_to_tensor_or_composite(
+    values, dtype=None, name=None
+) -> List[Union[
+    tensor_lib.Tensor, composite_tensor.CompositeTensor, type(None)]]:
   """Converts `values` to a list of `Output` or `CompositeTensor` objects.
 
   Any `CompositeTensor` objects in `values` are returned unmodified.
@@ -916,7 +928,7 @@ def _device_string(dev_spec):
     return dev_spec
 
 
-def _NodeDef(op_type, name, attrs=None):
+def _NodeDef(op_type, name, attrs=None) -> node_def_pb2.NodeDef:
   """Create a NodeDef proto.
 
   Args:
@@ -939,8 +951,10 @@ def _NodeDef(op_type, name, attrs=None):
 
 # Copied from core/framework/node_def_util.cc
 # TODO(mrry,josh11b): Consolidate this validation in C++ code.
-_VALID_OP_NAME_REGEX = re.compile(r"^[A-Za-z0-9.][A-Za-z0-9_.\\/>-]*$")
-_VALID_SCOPE_NAME_REGEX = re.compile(r"^[A-Za-z0-9_.\\/>-]*$")
+_VALID_OP_NAME_REGEX: Pattern[str] = re.compile(
+    r"^[A-Za-z0-9.][A-Za-z0-9_.\\/>-]*$")
+_VALID_SCOPE_NAME_REGEX: Pattern[str] = re.compile(
+    r"^[A-Za-z0-9_.\\/>-]*$")
 
 
 @tf_export("__internal__.create_c_op", v1=[])
@@ -1529,7 +1543,7 @@ class Operation(pywrap_tf_session.PyOperation):
     """
     fields = ("s", "i", "f", "b", "type", "shape", "tensor", "func")
     try:
-      with c_api_util.tf_buffer() as buf:
+      with c_api_util.tf_buffer() as buf:   # pytype: disable=wrong-arg-count
         pywrap_tf_session.TF_OperationGetAttrValueProto(self._c_op, name, buf)
         data = pywrap_tf_session.TF_GetBuffer(buf)
     except errors.InvalidArgumentError as e:
@@ -1616,7 +1630,8 @@ class Operation(pywrap_tf_session.PyOperation):
     """
     _run_using_default_session(self, feed_dict, self.graph, session)
 
-
+gradient_registry: registry.Registry
+_gradient_registry: registry.Registry
 # TODO(b/185395742): Clean up usages of _gradient_registry
 gradient_registry = _gradient_registry = registry.Registry("gradient")
 
@@ -1671,7 +1686,7 @@ class RegisterGradient(object):
 
 @deprecation.deprecated_endpoints("NotDifferentiable", "NoGradient")
 @tf_export("no_gradient", v1=["no_gradient", "NotDifferentiable", "NoGradient"])
-def no_gradient(op_type):
+def no_gradient(op_type: str):
   """Specifies that ops of type `op_type` is not differentiable.
 
   This function should *not* be used for operations that have a
@@ -1705,8 +1720,8 @@ def no_gradient(op_type):
 
 
 # Aliases for the old names, will be eventually removed.
-NoGradient = no_gradient
-NotDifferentiable = no_gradient
+NoGradient: Callable[[str], None] = no_gradient
+NotDifferentiable: Callable[[str], None] = no_gradient
 
 
 def get_gradient_function(op):
@@ -1725,7 +1740,7 @@ def get_gradient_function(op):
   return gradient_registry.lookup(op_type)
 
 
-def set_shape_and_handle_data_for_outputs(_):
+def set_shape_and_handle_data_for_outputs(_) -> None:
   """No op. TODO(b/74620627): Remove this."""
   pass
 
@@ -1747,7 +1762,7 @@ class OpStats(object):
 
   __slots__ = ["_statistic_type", "_value"]
 
-  def __init__(self, statistic_type, value=None):
+  def __init__(self, statistic_type, value=None) -> None:
     """Sets up the initial placeholders for the statistics."""
     self.statistic_type = statistic_type
     self.value = value
@@ -1775,11 +1790,11 @@ class OpStats(object):
     if self.value is None:
       self.value = other.value
     elif other.value is not None:
-      self._value += other.value
+      self._value += other.value  # pytype: disable=attribute-error
     return self
 
 
-_stats_registry = registry.Registry("statistical functions")
+_stats_registry: registry.Registry = registry.Registry("statistical functions")
 
 
 class RegisterStatistics(object):
@@ -1828,7 +1843,7 @@ class RegisterStatistics(object):
 
   __slots__ = ["_op_type", "_statistic_type"]
 
-  def __init__(self, op_type, statistic_type):
+  def __init__(self, op_type, statistic_type) -> None:
     """Saves the `op_type` as the `Operation` type."""
     if not isinstance(op_type, str):
       raise TypeError("op_type must be a string.")
@@ -1847,7 +1862,7 @@ class RegisterStatistics(object):
     return f
 
 
-def get_stats_for_node_def(graph, node, statistic_type):
+def get_stats_for_node_def(graph, node, statistic_type) -> Any:
   """Looks up the node's statistics function in the registry and calls it.
 
   This function takes a Graph object and a NodeDef from a GraphDef, and if
@@ -1872,7 +1887,7 @@ def get_stats_for_node_def(graph, node, statistic_type):
   return result
 
 
-def name_from_scope_name(name):
+def name_from_scope_name(name) -> str:
   """Returns the name of an op given the name of its scope.
 
   Args:
@@ -1884,8 +1899,8 @@ def name_from_scope_name(name):
   return name[:-1] if (name and name[-1] == "/") else name
 
 
-_MUTATION_LOCK_GROUP = 0
-_SESSION_RUN_LOCK_GROUP = 1
+_MUTATION_LOCK_GROUP: int = 0
+_SESSION_RUN_LOCK_GROUP: int = 1
 
 
 @tf_contextlib.contextmanager
@@ -2331,7 +2346,7 @@ class Graph(pywrap_tf_session.PyGraph):
           graph = graph_pb2.GraphDef()
           graph.CopyFrom(pywrap_tf_session.TF_GraphToGraphDefPybind(c_graph))
       else:
-        with c_api_util.tf_buffer() as buf:
+        with c_api_util.tf_buffer() as buf:   # pytype: disable=wrong-arg-count
           with self._c_graph.get() as c_graph:
             pywrap_tf_session.TF_GraphToGraphDef(c_graph, buf)
             data = pywrap_tf_session.TF_GetBuffer(buf)
@@ -3893,7 +3908,7 @@ class Graph(pywrap_tf_session.PyGraph):
         c = c.op
       c = self.as_graph_element(c)
       if isinstance(c, tensor_lib.Tensor):
-        c = c.op
+        c = c.op  # pytype: disable=attribute-error
       elif not isinstance(c, Operation):
         raise TypeError("Control input must be Operation or Tensor: %s" % c)
       if c not in current:
@@ -3904,7 +3919,7 @@ class Graph(pywrap_tf_session.PyGraph):
         # manual control deps in graphs run through the MLIR Bridge are. See
         # go/manual-control-dependencies-bridge for details.
         # pylint: disable=protected-access
-        c._set_attr("_has_manual_control_dependencies",
+        c._set_attr("_has_manual_control_dependencies",  # pytype: disable=attribute-error
                     attr_value_pb2.AttrValue(b=True))
         # pylint: enable=protected-access
     return self._ControlDependenciesController(self, control_ops)
@@ -4488,7 +4503,8 @@ def control_dependencies(control_inputs):
 get_default_session = stack.get_default_session
 
 
-def _run_using_default_session(operation, feed_dict, graph, session=None):
+def _run_using_default_session(
+    operation, feed_dict, graph, session=None) -> None:
   """Uses the default session to run "operation".
 
   Args:
@@ -4526,7 +4542,7 @@ def _run_using_default_session(operation, feed_dict, graph, session=None):
 class _DefaultGraphStack(stack.DefaultStack):  # pylint: disable=protected-access
   """A thread-local stack of objects for providing an implicit default graph."""
 
-  def __init__(self):
+  def __init__(self) -> None:
     super(_DefaultGraphStack, self).__init__()
     self._global_default_graph = None
 
@@ -4549,7 +4565,7 @@ class _DefaultGraphStack(stack.DefaultStack):  # pylint: disable=protected-acces
       self._global_default_graph = Graph()
     return self._global_default_graph
 
-  def reset(self):
+  def reset(self) -> None:
     super(_DefaultGraphStack, self).reset()
     self._global_default_graph = None
 
@@ -4560,7 +4576,7 @@ class _DefaultGraphStack(stack.DefaultStack):  # pylint: disable=protected-acces
                                             default._device_function_stack)
     try:
       with super(_DefaultGraphStack,
-                 self).get_controller(default) as g, context.graph_mode():
+                 self).get_controller(default) as g, context.graph_mode():  # pytype: disable=wrong-arg-count
         yield g
     finally:
       # If an exception is raised here it may be hiding a related exception in
@@ -4568,7 +4584,7 @@ class _DefaultGraphStack(stack.DefaultStack):  # pylint: disable=protected-acces
       context.context().context_switches.pop()
 
 
-_default_graph_stack = _DefaultGraphStack()
+_default_graph_stack: _DefaultGraphStack = _DefaultGraphStack()
 
 
 # Shared helper used in init_scope and executing_eagerly_outside_functions
@@ -4873,7 +4889,7 @@ def disable_eager_execution():
 def enable_eager_execution_internal(config=None,
                                     device_policy=None,
                                     execution_mode=None,
-                                    server_def=None):
+                                    server_def=None) -> None:
   """Enables eager execution for the lifetime of this program.
 
   Most of the doc string for enable_eager_execution is relevant here as well.
@@ -4939,7 +4955,7 @@ def enable_eager_execution_internal(config=None,
   context.context = context.context_safe
 
 
-def eager_run(main=None, argv=None):
+def eager_run(main=None, argv=None) -> NoReturn:
   """Runs the program with an optional main function and argv list.
 
   The program will run with eager execution enabled.
@@ -4997,7 +5013,7 @@ def reset_default_graph():
 
 
 @tf_export(v1=["get_default_graph"])
-def get_default_graph():
+def get_default_graph() -> Graph:
   """Returns the default graph for the current thread.
 
   The returned graph will be the innermost graph on which a
@@ -5024,7 +5040,7 @@ def get_default_graph():
   return _default_graph_stack.get_default()
 
 
-def has_default_graph():
+def has_default_graph() -> bool:
   """Returns True if there is a default graph."""
   return len(_default_graph_stack.stack) >= 1
 
@@ -5051,7 +5067,7 @@ def get_name_scope():
   return get_default_graph().get_name_scope()
 
 
-def _assert_same_graph(original_item, item):
+def _assert_same_graph(original_item, item) -> None:
   """Fail if the 2 items are from different graphs.
 
   Args:
@@ -5279,7 +5295,7 @@ class GraphKeys(object):
     return cls.GLOBAL_VARIABLES
 
 
-def dismantle_graph(graph):
+def dismantle_graph(graph) -> None:
   """Cleans up reference cycles from a `Graph`.
 
   Helpful for making sure the garbage collector doesn't need to run after a
@@ -5443,7 +5459,7 @@ class internal_name_scope_v1(object):  # pylint: disable=invalid-name
   def name(self):
     return self._name
 
-  def __init__(self, name, default_name=None, values=None):
+  def __init__(self, name, default_name=None, values=None) -> None:
     """Initialize the context manager.
 
     Args:
@@ -5502,7 +5518,7 @@ class internal_name_scope_v1(object):  # pylint: disable=invalid-name
         self._g_manager.__exit__(*sys.exc_info())
       raise
 
-  def __exit__(self, *exc_info):
+  def __exit__(self, *exc_info) -> None:
     self._name_scope.__exit__(*exc_info)
     if self._g_manager is not None:
       self._g_manager.__exit__(*exc_info)
@@ -5690,7 +5706,7 @@ class name_scope_v2(object):
     self._exit_fns = state[1]
 
 
-def strip_name_scope(name, export_scope):
+def strip_name_scope(name: str, export_scope) -> str:
   """Removes name scope from a name.
 
   Args:
@@ -5718,7 +5734,7 @@ def strip_name_scope(name, export_scope):
     return name
 
 
-def prepend_name_scope(name, import_scope):
+def prepend_name_scope(name: str, import_scope) -> str:
   """Prepends name scope to a name.
 
   Args:
@@ -5763,7 +5779,7 @@ _proto_function_registry = registry.Registry("proto functions")
 def register_proto_function(collection_name,
                             proto_type=None,
                             to_proto=None,
-                            from_proto=None):
+                            from_proto=None) -> None:
   """Registers `to_proto` and `from_proto` functions for collection_name.
 
   `to_proto` function converts a Python object to the corresponding protocol
@@ -5867,12 +5883,12 @@ def to_raw_op(f):
   return kwarg_only(f)
 
 
-def raise_from_not_ok_status(e, name):
+def raise_from_not_ok_status(e, name) -> NoReturn:
   e.message += (" name: " + str(name if name is not None else ""))
   raise core._status_to_exception(e) from None  # pylint: disable=protected-access
 
 
-def add_exit_callback_to_default_func_graph(fn):
+def add_exit_callback_to_default_func_graph(fn) -> None:
   """Add a callback to run when the default function graph goes out of scope.
 
   Usage:
@@ -5947,13 +5963,13 @@ def _reconstruct_sequence_inputs(op_def, inputs, attrs):
 # SAFE mode disallows “risky” promotions that can result in dtype widening or
 # potential precision loss.
 class PromoMode(enum.Enum):
-  OFF = 0
-  LEGACY = 1
-  SAFE = 2
-  ALL = 3
+  OFF: int = 0
+  LEGACY: int = 1
+  SAFE: int = 2
+  ALL: int = 3
 
 
-_dtype_conversion_mode = PromoMode.OFF
+_dtype_conversion_mode: PromoMode = PromoMode.OFF
 
 
 def get_dtype_conversion_mode():
@@ -5973,7 +5989,7 @@ def is_numpy_style_type_promotion():
   return _dtype_conversion_mode == PromoMode.LEGACY
 
 
-def set_dtype_conversion_mode(dtype_conversion_mode):
+def set_dtype_conversion_mode(dtype_conversion_mode) -> None:
   """Enables the specified dtype conversion mode.
 
   Args:
@@ -6003,7 +6019,7 @@ def _get_promo_mode_enum(dtype_conversion_mode):
     )
 
 
-def promo_mode_enum_to_string(promo_safety_mode_enum):
+def promo_mode_enum_to_string(promo_safety_mode_enum) -> str:
   """Returns the corresponding PromoMode string value from PromoMode enum."""
   if promo_safety_mode_enum == PromoMode.OFF:
     return "off"
@@ -6019,10 +6035,10 @@ def promo_mode_enum_to_string(promo_safety_mode_enum):
     )
 
 
-_numpy_style_slicing = False
+_numpy_style_slicing: bool = False
 
 
-def enable_numpy_style_slicing():
+def enable_numpy_style_slicing() -> None:
   """If called, follows NumPy's rules for slicing Tensors.
 
   Used for enabling NumPy behavior on slicing for TF NumPy.
@@ -6031,13 +6047,13 @@ def enable_numpy_style_slicing():
   _numpy_style_slicing = True
 
 
-def set_int_list_attr(op, attr_name, ints):
+def set_int_list_attr(op, attr_name, ints) -> None:
   """TF internal method used to set a list(int) attribute in the node_def."""
   ints_list = attr_value_pb2.AttrValue.ListValue(i=ints)
   op._set_attr(attr_name, attr_value_pb2.AttrValue(list=ints_list))  # pylint:disable=protected-access
 
 
-def _get_enclosing_context(graph):
+def _get_enclosing_context(graph) -> Any:
   # pylint: disable=protected-access
   if graph is None:
     return None
@@ -6053,7 +6069,7 @@ def _get_enclosing_context(graph):
 get_resource_handle_data = handle_data_util.get_resource_handle_data
 
 
-def _copy_handle_data_to_arg_def(tensor, arg_def):
+def _copy_handle_data_to_arg_def(tensor, arg_def) -> None:
   handle_data = handle_data_util.get_resource_handle_data(tensor)
   if handle_data.shape_and_type:
     shape_and_type = handle_data.shape_and_type[0]
