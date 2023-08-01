@@ -3638,3 +3638,28 @@ func.func @FuseTransposeFCRhsToBatchMatmul(%arg0: tensor<16x1024xf32>, %arg1: te
   func.return %1 : tensor<16x128xf32>
   // CHECK: return %0 : tensor<16x128xf32>
 }
+
+// CHECK-LABEL: NotFuseTransposeFCRhsToBatchMatmul
+func.func @NotFuseTransposeFCRhsToBatchMatmul(%arg0: tensor<16x1024xf32>, %arg1: tensor<1024x128x!quant.uniform<u8:f32, 0.038859266393324911:129>>, %arg2: none) -> tensor<16x128xf32> {
+  %cst = arith.constant dense<[1, 0]> : tensor<2xi32>
+  %dequant = "tfl.dequantize"(%arg1) : (tensor<1024x128x!quant.uniform<u8:f32, 0.038859266393324911:129>>) -> tensor<1024x128xf32>
+  %0 = "tfl.transpose"(%dequant, %cst) : (tensor<1024x128xf32>, tensor<2xi32>) -> tensor<128x1024xf32>
+  // CHECK: tfl.fully_connected
+  // CHECK-NOT: tfl.batch_matmul
+  %1 = "tfl.fully_connected"(%arg0, %0, %arg2) {asymmetric_quantize_inputs = false, fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<16x1024xf32>, tensor<128x1024xf32>, none) -> tensor<16x128xf32>
+  func.return %1 : tensor<16x128xf32>
+}
+
+// CHECK-LABEL: NotFuseTransposeFCRhsFromSplitToBatchMatmul
+func.func @NotFuseTransposeFCRhsFromSplitToBatchMatmul(%arg0: tensor<16x1024xf32>, %arg1: tensor<1024x256x!quant.uniform<u8:f32, 0.038859266393324911:129>>, %arg2: none) -> tensor<16x128xf32> {
+  %cst = arith.constant dense<[1, 0]> : tensor<2xi32>
+  %cst_1 = arith.constant dense<1> : tensor<i32>
+  %dequant = "tfl.dequantize"(%arg1) : (tensor<1024x256x!quant.uniform<u8:f32, 0.038859266393324911:129>>) -> tensor<1024x256xf32>
+  %split:2 = "tfl.split"(%cst_1, %dequant) {num_splits = 2 : i32} : (tensor<i32>, tensor<1024x256xf32>) -> (tensor<1024x128xf32>, tensor<1024x128xf32>)
+  %0 = "tfl.transpose"(%split#0, %cst) : (tensor<1024x128xf32>, tensor<2xi32>) -> tensor<128x1024xf32>
+  // CHECK: tfl.fully_connected
+  // CHECK-NOT: tfl.batch_matmul
+  %1 = "tfl.fully_connected"(%arg0, %0, %arg2) {asymmetric_quantize_inputs = false, fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<16x1024xf32>, tensor<128x1024xf32>, none) -> tensor<16x128xf32>
+  func.return %1 : tensor<16x128xf32>
+}
+

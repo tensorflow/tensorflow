@@ -105,6 +105,20 @@ bool L2NormalizeReduceAxis(Value sq_op, DenseElementsAttr axis) {
   return true;
 }
 
+// Checks whether the producer of `value` is TFL_DequantizeOp. This function
+// iteratively finds the defining op if the direct defining op is TFL_SplitOp.
+bool NotFromDequant(Value value) {
+  auto dequant_op = value.getDefiningOp<DequantizeOp>();
+  if (dequant_op) {
+    return false;
+  }
+  auto split_op = value.getDefiningOp<SplitOp>();
+  if (!split_op) {
+    return true;
+  }
+  return !split_op.getValue().getDefiningOp<DequantizeOp>();
+}
+
 using ::llvm::cast;
 
 // Optimize TFLite operations in functions.
