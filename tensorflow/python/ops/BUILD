@@ -4638,6 +4638,7 @@ py_strict_test(
         "//tensorflow/python/ops/numpy_ops:np_array_ops",
         "//tensorflow/python/ops/numpy_ops:np_arrays",
         "//tensorflow/python/ops/numpy_ops:np_math_ops",
+        "//tensorflow/python/ops/numpy_ops:np_random",
         "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",

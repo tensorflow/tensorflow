@@ -69,13 +69,13 @@ def standard_normal(size=None):
     size = ()
   elif np_utils.isscalar(size):
     size = (size,)
-  dtype = np_dtypes.default_float_type()
+  dtype = np_utils.result_type(float)
   return random_ops.random_normal(size, dtype=dtype)
 
 
 @np_utils.np_doc('random.uniform')
 def uniform(low=0.0, high=1.0, size=None):
-  dtype = np_dtypes.default_float_type()
+  dtype = np_utils.result_type(float)
   low = np_array_ops.asarray(low, dtype=dtype)
   high = np_array_ops.asarray(high, dtype=dtype)
   if size is None:
