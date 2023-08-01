@@ -96,6 +96,7 @@ static const iree::vm::NativeFunction<XlaGpuModuleState> kXlaGpuFunctions[] = {
 
     // XLA:GPU memcpy APIs
     MakeApiFunction("memcpy.d2d", &MemcpyAPI::MemcpyD2D),
+    MakeApiFunction("memcpy.load.i1", &MemcpyAPI::LoadI1),
 
     // XLA:GPU tracing APIs
     MakeApiFunction("trace.create", &TraceAPI::TraceCreate),

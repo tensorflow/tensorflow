@@ -72,6 +72,9 @@ class XlaGpuApi {
   // Imports `@xla_gpu.memcpy.d2d` into the module.
   mlir::func::FuncOp getD2DMemcpy(mlir::OpBuilder &b, mlir::ModuleOp module);
 
+  // Imports `@xla_gpu.memcpy.load.i1` into the module.
+  mlir::func::FuncOp getLoadI1Memcpy(mlir::OpBuilder &b, mlir::ModuleOp module);
+
   //===--------------------------------------------------------------------===//
   // XLA:GPU tracing APIs
   //===--------------------------------------------------------------------===//

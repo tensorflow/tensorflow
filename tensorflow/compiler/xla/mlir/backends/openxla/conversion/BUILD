@@ -87,6 +87,7 @@ package(
 #     compatible_with = [],
 #     deps = [
 #         ":de_bufferization",
+#         ":xla_gpu_api",
 #         "@llvm-project//llvm:Support",
 #         "@llvm-project//mlir:ArithDialect",
 #         "@llvm-project//mlir:BufferizationDialect",
@@ -96,6 +97,7 @@ package(
 #         "@llvm-project//mlir:SCFDialect",
 #         "@llvm-project//mlir:TensorDialect",
 #         "@llvm-project//mlir:Transforms",
+#         "//tensorflow/compiler/xla/mlir/backends/openxla/ir:xla_gpu",
 #         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
 #     ] + if_openxla(["//third_party/iree/llvm-external-projects/iree-dialects:IREEInputDialect"]),
 # )

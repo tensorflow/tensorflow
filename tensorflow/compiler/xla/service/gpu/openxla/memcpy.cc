@@ -41,6 +41,25 @@ Status DispatchMemcpyD2D(const vm::ExecutionContext& ctx,
   return OkStatus();
 }
 
+StatusOr<bool> DispatchLoadI1(const vm::ExecutionContext& ctx,
+                              iree_hal_allocator_t* device_allocator,
+                              iree_hal_buffer_view_t* view, int32_t offset) {
+  se::Stream* stream = ctx.run_options->stream();
+
+  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase data,
+                      GetDeviceMemory(device_allocator, view));
+
+  if (offset >= data.size())
+    return absl::InvalidArgumentError("offset out of bounds");
+
+  std::byte* ptr = static_cast<std::byte*>(data.opaque());
+  se::DeviceMemoryBase value(ptr + offset, 1);
+
+  bool dst;
+  stream->ThenMemcpy(&dst, value, 1);
+  return dst;
+}
+
 //===-----------------------------------------------------------------------===/
 // XLA:GPU custom module memcpy API
 //===-----------------------------------------------------------------------===/
@@ -57,6 +76,16 @@ static iree::Status FromStatus(Status status) {
                           err.c_str());
 }
 
+template <typename T>
+static iree::StatusOr<T> FromStatus(StatusOr<T> status) {
+  if (status.ok()) return *status;
+
+  // TODO(ezhulenev): Convert from ABSL to IREE error code.
+  std::string err = status.status().ToString();
+  return iree_make_status(IREE_STATUS_INTERNAL, "internal error: %s",
+                          err.c_str());
+}
+
 namespace vm {
 
 MemcpyAPI::MemcpyAPI(iree_hal_allocator_t* device_allocator)
@@ -67,6 +96,13 @@ iree::Status MemcpyAPI::MemcpyD2D(iree::vm::ref<ExecutionContext> ctx,
                                   iree::vm::ref<iree_hal_buffer_view_t> src) {
   return FromStatus(
       DispatchMemcpyD2D(*ctx, device_allocator_, dst.get(), src.get()));
+}
+
+iree::StatusOr<int32_t> MemcpyAPI::LoadI1(
+    iree::vm::ref<ExecutionContext> ctx,
+    iree::vm::ref<iree_hal_buffer_view_t> view, int32_t offset) {
+  return FromStatus(
+      DispatchLoadI1(*ctx, device_allocator_, view.get(), offset));
 }
 
 }  // namespace vm

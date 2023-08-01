@@ -28,6 +28,9 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/ValueRange.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/mlir/backends/openxla/conversion/xla_gpu_api.h"
+#include "tensorflow/compiler/xla/mlir/backends/openxla/ir/xla_gpu_dialect.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 
 namespace xla {
@@ -36,6 +39,18 @@ namespace gpu {
 namespace {
 using namespace mlir;                 // NOLINT
 using namespace mlir::iree_compiler;  // NOLINT
+
+// TODO(ezhulenev): Rewrite while loops with statically known trip count to
+// scf.for loops (see `op.getTripCount()` attribute).
+
+// Exports tensor as `!iree_input.buffer_view`.
+TypedValue<IREE::Input::BufferViewType> getBufferView(
+    ImplicitLocOpBuilder &b, TypedValue<TensorType> tensor) {
+  Value view = b.create<IREE::Input::TensorExportOp>(
+      b.getType<IREE::Input::BufferViewType>(), tensor,
+      /*source_dims=*/ValueRange());
+  return cast<TypedValue<IREE::Input::BufferViewType>>(view);
+}
 
 //===----------------------------------------------------------------------===//
 // Helper functions for de-bufferizing operatrions with nested regions
@@ -67,10 +82,6 @@ UsedBuffers getUsedBuffers(ArrayRef<Block *> blocks) {
   return buffers;
 }
 
-//===----------------------------------------------------------------------===//
-// Converts lmhlo.view op to a scf.while + iree_input.tensor.load
-//===----------------------------------------------------------------------===//
-
 // Keep track of converted while operations to correctly lower terminators in
 // the loop before and after regions (condition and body regions).
 struct ConvertedWhileOp {
@@ -80,12 +91,14 @@ struct ConvertedWhileOp {
 
 using ConvertedWhileOps = llvm::DenseMap<scf::WhileOp, ConvertedWhileOp>;
 
-// TODO(ezhulenev): Rewrite while loops with statically known trip count to
-// scf.for loops (see `op.getTripCount()` attribute).
-struct ConvertWhileOp : public OpConversionPattern<lmhlo::WhileOp> {
-  ConvertWhileOp(TypeConverter &converter, MLIRContext *ctx,
-                 DeBufferization &state,
-                 std::shared_ptr<ConvertedWhileOps> converted)
+//===----------------------------------------------------------------------===//
+// Converts lmhlo.while op to a scf.while + iree_input.tensor.load
+//===----------------------------------------------------------------------===//
+
+struct ConvertWhileOpToHal : public OpConversionPattern<lmhlo::WhileOp> {
+  ConvertWhileOpToHal(TypeConverter &converter, MLIRContext *ctx,
+                      DeBufferization &state,
+                      std::shared_ptr<ConvertedWhileOps> converted)
       : OpConversionPattern(converter, ctx),
         state(state),
         converted(std::move(converted)) {}
@@ -152,13 +165,14 @@ struct ConvertWhileOp : public OpConversionPattern<lmhlo::WhileOp> {
 };
 
 //===----------------------------------------------------------------------===//
-// Converts lmhlo.terminator in the scf.while regions
+// Converts lmhlo.terminator in the scf.while regions and HAL backend
 //===----------------------------------------------------------------------===//
 
-struct ConvertTerminatorOp : public OpConversionPattern<lmhlo::TerminatorOp> {
-  ConvertTerminatorOp(TypeConverter &converter, MLIRContext *ctx,
-                      DeBufferization &state,
-                      std::shared_ptr<ConvertedWhileOps> converted)
+struct ConvertTerminatorOpToHal
+    : public OpConversionPattern<lmhlo::TerminatorOp> {
+  ConvertTerminatorOpToHal(TypeConverter &converter, MLIRContext *ctx,
+                           DeBufferization &state,
+                           std::shared_ptr<ConvertedWhileOps> converted)
       : OpConversionPattern(converter, ctx),
         state(state),
         converted(std::move(converted)) {}
@@ -201,6 +215,123 @@ struct ConvertTerminatorOp : public OpConversionPattern<lmhlo::TerminatorOp> {
   std::shared_ptr<ConvertedWhileOps> converted;
 };
 
+//===----------------------------------------------------------------------===//
+// Converts lmhlo.while op to a scf.while + @xla_gpu.memcpy.load.i1
+//===----------------------------------------------------------------------===//
+
+struct ConvertWhileOpToApiCall : public OpConversionPattern<lmhlo::WhileOp> {
+  ConvertWhileOpToApiCall(TypeConverter &converter, MLIRContext *ctx,
+                          DeBufferization &state, XlaGpuApi &api,
+                          std::shared_ptr<ConvertedWhileOps> converted)
+      : OpConversionPattern(converter, ctx),
+        state(state),
+        api(api),
+        converted(std::move(converted)) {}
+
+  LogicalResult matchAndRewrite(
+      lmhlo::WhileOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter &rewriter) const override {
+    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+
+    // Collect all buffers accessed in the loop condition and loop body.
+    auto bufs = getUsedBuffers({&op.getCond().front(), &op.getBody().front()});
+
+    Block *block = op->getBlock();
+
+    // Set up buffer to tensor remapping inside nested regions.
+    auto remap_iteration_args = [&](Block *nested_block) {
+      for (auto r : bufs.read)
+        state.remapped[nested_block][r] = state.remapped[block][r];
+      for (auto w : bufs.write)
+        state.remapped[nested_block][w] = state.remapped[block][w];
+    };
+
+    // Create an `scf.while` loop in place of `lmhlo.while` loop.
+    auto loop = rewriter.replaceOpWithNewOp<scf::WhileOp>(
+        op, TypeRange(), ValueRange(),
+        [&](OpBuilder &before_builder, Location before_loc, ValueRange args) {
+          Block *cond = before_builder.getBlock();
+          rewriter.mergeBlocks(&op.getCond().front(), cond);
+          remap_iteration_args(cond);
+        },
+        [&](OpBuilder &after_builder, Location after_loc, ValueRange args) {
+          Block *body = after_builder.getBlock();
+          rewriter.mergeBlocks(&op.getBody().front(), body);
+          remap_iteration_args(body);
+        });
+
+    // Predicate buffer placed on the device.
+    auto predicate = cast<TypedValue<MemRefType>>(op.getOperand(0));
+    (*converted)[loop] = ConvertedWhileOp{predicate, std::move(bufs)};
+
+    return success();
+  }
+
+  DeBufferization &state;
+  XlaGpuApi &api;
+  std::shared_ptr<ConvertedWhileOps> converted;
+};
+
+//===----------------------------------------------------------------------===//
+// Converts lmhlo.terminator in the scf.while regions and StreamExecutor backend
+//===----------------------------------------------------------------------===//
+
+TypedValue<ExecutionContextType> getExecutionContext(Operation *op) {
+  auto func = op->getParentOfType<func::FuncOp>();
+  return func.getArguments().front().cast<TypedValue<ExecutionContextType>>();
+}
+
+struct ConvertTerminatorOpToApiCall
+    : public OpConversionPattern<lmhlo::TerminatorOp> {
+  ConvertTerminatorOpToApiCall(TypeConverter &converter, MLIRContext *ctx,
+                               DeBufferization &state, XlaGpuApi &api,
+                               std::shared_ptr<ConvertedWhileOps> converted)
+      : OpConversionPattern(converter, ctx),
+        state(state),
+        api(api),
+        converted(std::move(converted)) {}
+
+  LogicalResult matchAndRewrite(
+      lmhlo::TerminatorOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter &rewriter) const override {
+    auto loop = dyn_cast<scf::WhileOp>(op->getParentOp());
+    if (!loop) return failure();
+
+    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+    assert(converted->contains(loop) && "loop conversion state was not found");
+
+    auto module = op->getParentOfType<ModuleOp>();
+
+    // Convert lmhlo.terminator in the before block to scf.condition operation
+    if (auto *cond = op->getBlock(); cond == &loop.getBefore().front()) {
+      SmallVector<Value> args = {
+          getExecutionContext(op),
+          getBufferView(b, state.remapped[cond][(*converted)[loop].predicate]),
+          b.create<arith::ConstantIntOp>(0, 32)};
+
+      auto api_func = api.getLoadI1Memcpy(b, module);
+      auto call = b.create<func::CallOp>(api_func.getSymName(),
+                                         api_func.getResultTypes(), args);
+
+      rewriter.replaceOpWithNewOp<scf::ConditionOp>(op, call.getResult(0),
+                                                    ValueRange());
+      return success();
+    }
+
+    // Convert lmhlo.terminator in the after block to scf.yield operation
+    if (auto *body = op->getBlock(); body == &loop.getAfter().front()) {
+      rewriter.replaceOpWithNewOp<scf::YieldOp>(op, TypeRange(), ValueRange());
+      return success();
+    }
+
+    return success();
+  }
+
+  DeBufferization &state;
+  XlaGpuApi &api;
+  std::shared_ptr<ConvertedWhileOps> converted;
+};
+
 }  // namespace
 
 //===----------------------------------------------------------------------===//
@@ -210,8 +341,17 @@ void populateWhileOpConversionPatterns(mlir::RewritePatternSet &patterns,
                                        DeBufferization &state) {
   auto *ctx = patterns.getContext();
   auto converted = std::make_shared<ConvertedWhileOps>();
-  patterns.insert<ConvertWhileOp, ConvertTerminatorOp>(converter, ctx, state,
-                                                       converted);
+  patterns.insert<ConvertWhileOpToHal, ConvertTerminatorOpToHal>(
+      converter, ctx, state, converted);
+}
+
+void populateWhileOpConversionPatterns(mlir::RewritePatternSet &patterns,
+                                       mlir::TypeConverter &converter,
+                                       DeBufferization &state, XlaGpuApi &api) {
+  auto *ctx = patterns.getContext();
+  auto converted = std::make_shared<ConvertedWhileOps>();
+  patterns.insert<ConvertWhileOpToApiCall, ConvertTerminatorOpToApiCall>(
+      converter, ctx, state, api, converted);
 }
 
 }  // namespace gpu

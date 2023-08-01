@@ -20,6 +20,7 @@ limitations under the License.
 #include "third_party/iree/runtime/src/iree/vm/api.h"   // IWYU pragma: keep
 #include "tensorflow/compiler/xla/service/gpu/openxla/vm.h"
 #include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla::gpu {
 
@@ -31,6 +32,10 @@ Status DispatchMemcpyD2D(const vm::ExecutionContext& ctx,
                          iree_hal_allocator_t* device_allocator,
                          iree_hal_buffer_view_t* dst,
                          iree_hal_buffer_view_t* src);
+
+StatusOr<bool> DispatchLoadI1(const vm::ExecutionContext& ctx,
+                              iree_hal_allocator_t* device_allocator,
+                              iree_hal_buffer_view_t* view, int32_t offset);
 
 //===-----------------------------------------------------------------------===/
 // XLA:GPU custom module memcpy API
@@ -45,6 +50,13 @@ class MemcpyAPI {
   iree::Status MemcpyD2D(iree::vm::ref<ExecutionContext> ctx,
                          iree::vm::ref<iree_hal_buffer_view_t> dst,
                          iree::vm::ref<iree_hal_buffer_view_t> src);
+
+  // IREE VM does not have registers smaller than i32 and automatically promotes
+  // smaller types to at least i32. We rely on this implicit conversion to
+  // return boolean values as int32_t.
+  iree::StatusOr<int32_t> LoadI1(iree::vm::ref<ExecutionContext> ctx,
+                                 iree::vm::ref<iree_hal_buffer_view_t> view,
+                                 int32_t offset);
 
  private:
   iree_hal_allocator_t* device_allocator_;

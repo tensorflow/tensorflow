@@ -19,14 +19,22 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/backends/openxla/conversion/de_bufferization.h"
+#include "tensorflow/compiler/xla/mlir/backends/openxla/conversion/xla_gpu_api.h"
 
 namespace xla {
 namespace gpu {
 
-// Appends patterns to convert while loops to scf.while operations.
+// Appends patterns to convert while loops to scf.while operations and IREE HAL
+// to load predicate from device buffer (HAL backend).
 void populateWhileOpConversionPatterns(mlir::RewritePatternSet &patterns,
                                        mlir::TypeConverter &converter,
                                        DeBufferization &state);
+
+// Appends patterns to convert while loops to scf.while operations and XLA:GPU
+// API to load predicate from device buffer (StreamExecutor backend).
+void populateWhileOpConversionPatterns(mlir::RewritePatternSet &patterns,
+                                       mlir::TypeConverter &converter,
+                                       DeBufferization &state, XlaGpuApi &api);
 
 }  // namespace gpu
 }  // namespace xla

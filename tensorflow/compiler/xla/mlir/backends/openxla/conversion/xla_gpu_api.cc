@@ -144,6 +144,16 @@ mlir::func::FuncOp XlaGpuApi::getD2DMemcpy(mlir::OpBuilder &b,
                  FunctionType::get(b.getContext(), args, /*rets=*/TypeRange()));
 }
 
+mlir::func::FuncOp XlaGpuApi::getLoadI1Memcpy(mlir::OpBuilder &b,
+                                              mlir::ModuleOp module) {
+  SmallVector<Type> args = {b.getType<ExecutionContextType>(),
+                            b.getType<IREE::Input::BufferViewType>(),
+                            b.getI32Type()};
+  SmallVector<Type> rets = {b.getIntegerType(1)};
+  return addDecl(b, module, "xla_gpu.memcpy.load.i1",
+                 FunctionType::get(b.getContext(), args, rets));
+}
+
 //===----------------------------------------------------------------------===//
 // XLA:GPU tracing APIs
 //===----------------------------------------------------------------------===//

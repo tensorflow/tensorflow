@@ -163,19 +163,24 @@ class ConvertToOpenXlaPass
 
     RewritePatternSet patterns(&getContext());
     populateAnyFunctionOpInterfaceTypeConversionPattern(patterns, converter);
+
+    switch (*compiled_ops_backend) {
+      case OpenXlaBackend::kHAL: {
+        auto executable_source = createXlaExecutableSource(getOperation());
+        populateCompiledOpsConversionPatterns(
+            patterns, converter, executable_source, thunk_sequence_, state);
+        populateWhileOpConversionPatterns(patterns, converter, state);
+      } break;
+
+      case OpenXlaBackend::kStreamExecutor: {
+        populateCompiledOpsConversionPatterns(patterns, converter,
+                                              thunk_sequence_, state, api);
+        populateWhileOpConversionPatterns(patterns, converter, state, api);
+      } break;
+    }
+
     populateLibraryOpsConversionPatterns(patterns, converter, state, api);
     populateMemrefConversionPatterns(patterns, converter, state);
-    populateWhileOpConversionPatterns(patterns, converter, state);
-
-    if (*compiled_ops_backend == OpenXlaBackend::kHAL) {
-      auto executable_source = createXlaExecutableSource(getOperation());
-      populateCompiledOpsConversionPatterns(
-          patterns, converter, executable_source, thunk_sequence_, state);
-
-    } else if (*compiled_ops_backend == OpenXlaBackend::kStreamExecutor) {
-      populateCompiledOpsConversionPatterns(patterns, converter,
-                                            thunk_sequence_, state, api);
-    }
 
     // Ensure all HLO and memref operations get lowered to IREEInput and OpenXLA
     // runtime. For this we have to de-bufferize the IR and correctly tie
