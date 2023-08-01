@@ -3628,3 +3628,13 @@ func.func @FuseReshapeAndTransposeAroundBatchMatmul(%arg0: tensor<1x128x1024xf32
   func.return %4 : tensor<1x128x16xf32>
   // CHECK: return %0 : tensor<1x128x16xf32>
 }
+
+// CHECK-LABEL: FuseTransposeFCRhsToBatchMatmul
+func.func @FuseTransposeFCRhsToBatchMatmul(%arg0: tensor<16x1024xf32>, %arg1: tensor<1024x128xf32>, %arg2: none) -> tensor<16x128xf32> {
+  %cst = arith.constant dense<[1, 0]> : tensor<2xi32>
+  %0 = "tfl.transpose"(%arg1, %cst) : (tensor<1024x128xf32>, tensor<2xi32>) -> tensor<128x1024xf32>
+  // CHECK: "tfl.batch_matmul"(%arg0, %arg1)
+  %1 = "tfl.fully_connected"(%arg0, %0, %arg2) {asymmetric_quantize_inputs = false, fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<16x1024xf32>, tensor<128x1024xf32>, none) -> tensor<16x128xf32>
+  func.return %1 : tensor<16x128xf32>
+  // CHECK: return %0 : tensor<16x128xf32>
+}
