@@ -16,10 +16,13 @@
 
 import numpy as np
 
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import extension_type
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import weak_tensor
+from tensorflow.python.ops import variables
 from tensorflow.python.util import nest
 
 
@@ -376,8 +379,15 @@ _all_str_dtypes = (
 
 def _is_acceptable_input_type(x):
   """Determines if x is an acceptable input type for auto dtype conversion semantics."""
-  return isinstance(x, weak_tensor.WeakTensor) or not isinstance(
-      x, extension_type.ExtensionType
+  # List of composite types that are supported by the auto dtype conversion
+  # semantics.
+  supported_composite_types = (
+      indexed_slices.IndexedSlices,
+      weak_tensor.WeakTensor,
+      variables.Variable,
+  )
+  return isinstance(x, supported_composite_types) or not isinstance(
+      x, composite_tensor.CompositeTensor
   )
 
 
@@ -389,6 +399,7 @@ def _get_dtype_and_weakness(x):
 
   Raises:
     OverflowError: if Python int x is too large to convert to int32.
+    NotImplementedError: when x is an unsupported input type.
 
   Returns:
     TF type and weak type information inferred from x in the form of
@@ -432,8 +443,12 @@ def _get_dtype_and_weakness(x):
     return _c128w
   if isinstance(x, bool) or x == bool:
     return _b8
-  infer_result = ops.convert_to_tensor(x)
-  return (infer_result.dtype, False)
+  if isinstance(x, tensor_shape.TensorShape):
+    # Since TensorShape is always integer value, return int32.
+    return _i32
+  raise NotImplementedError(
+      f'Auto dtype conversion semantics does not support {type(x)} type.'
+  )
 
 
 def _result_type_impl(*arrays_and_dtypes):
@@ -447,13 +462,13 @@ def _result_type_impl(*arrays_and_dtypes):
     The result promotion type from all the inputs.
 
   Raises:
-    KeyError: when there isn't a possible promotion for the input dtypes.
-
     TypeError: when the promotion between the input dtypes is disabled in the
     current mode
 
-    NotImplementedError: when arrays_and_dtypes contains an unsupported input
-    type (e.g. CompositeTensor).
+    NotImplementedError:
+      (1) When arrays_and_dtypes contains an unsupported input type (e.g.
+      RaggedTensor).
+      (2) When there isn't a possible promotion for the input dtypes.
   """
   promo_safety_mode = ops.get_dtype_conversion_mode()
   # Drop None inputs and check if input type is supported.
@@ -485,12 +500,14 @@ def _result_type_impl(*arrays_and_dtypes):
     try:
       res_next, allowed_mode = _BINARY_DTYPE_RES_FULL[res][arg]
     except KeyError as exc:
-      raise KeyError(
+      # Throw NotImplementedError When there isn't a possible promotion for the
+      # input dtypes. We will proceed with the default system promotion if
+      # NotImplementedError is thrown.
+      raise NotImplementedError(
           f'Implicit Conversion between {res[0]} and {arg[0]} is '
           'not allowed. Please convert the input manually if you '
           'need to.'
       ) from exc
-
     if allowed_mode.value > promo_safety_mode.value:
       raise TypeError(
           f'In promotion mode {promo_safety_mode}, implicit dtype '
@@ -515,4 +532,6 @@ def result_type(*arrays_and_dtypes):
   Returns:
     The result promotion type from all the inputs.
   """
+  # Make sure to catch NotImplementedError when using this method to account for
+  # inputs that are not supported yet.
   return _result_type_impl(*arrays_and_dtypes)
