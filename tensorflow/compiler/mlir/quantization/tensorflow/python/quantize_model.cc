@@ -649,7 +649,8 @@ absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
     const absl::string_view saved_model_path,
     const std::vector<std::string> &signature_keys,
     const std::unordered_set<std::string> &tags,
-    const QuantizationOptions &quantization_options) {
+    const QuantizationOptions &quantization_options,
+    const absl::flat_hash_map<std::string, std::string> &function_aliases) {
   // Convert the SavedModelBundle to an MLIR module.
   mlir::MLIRContext context = CreateMlirContextForTfQuantization();
 
@@ -673,8 +674,27 @@ absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
 
   mlir::OwningOpRef<mlir::ModuleOp> module_ref = std::move(module).value();
 
-  TF_QUANT_RETURN_IF_ERROR(PreprocessAndFreezeGraph(
-      module_ref.get(), &context, bundle ? bundle->GetSession() : nullptr));
+  const absl::flat_hash_map<std::string, std::string> updated_function_aliases =
+      UpdateFunctionAliases(function_aliases, *module_ref);
+
+  // Collect the names of the functions that have aliases so that they may not
+  // be inlined. The mapping is mlir function name - user defined function
+  // alias for each value in the set.
+  absl::flat_hash_set<std::string> aliased_function_names;
+  absl::c_for_each(updated_function_aliases, [&](const auto &aliases) {
+    return aliased_function_names.insert(aliases.first);
+  });
+
+  if (aliased_function_names.empty()) {
+    TF_QUANT_RETURN_IF_ERROR(PreprocessAndFreezeGraph(
+        module_ref.get(), &context, bundle ? bundle->GetSession() : nullptr));
+  } else {
+    TF_QUANT_RETURN_IF_ERROR(PreprocessAndFreezeGraph(
+        /*mlir_dump_file_prefix=*/kDefaultTfQuantMlirDumpFilePrefix,
+        /*is_inliner_run=*/false,
+        /*noinline_functions=*/aliased_function_names, module_ref.get(),
+        &context, bundle ? bundle->GetSession() : nullptr));
+  }
 
   TF_QUANT_RETURN_IF_ERROR(RunPasses(
       /*name=*/kTfQuantPtqDynamicRangeStepName,
@@ -698,8 +718,7 @@ absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
                       RunExportPasses(export_opts, context, *module_ref));
 
   return ConvertMlirModuleToExportedModel(
-      *module_ref, checkpoint_dir,
-      /*function_aliases=*/{},
+      *module_ref, checkpoint_dir, updated_function_aliases,
       {asset_file_defs.begin(), asset_file_defs.end()});
 }
 

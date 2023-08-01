@@ -122,7 +122,10 @@ StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
     PjRtCompatibleClient* client, std::shared_ptr<PjRtBuffer> pjrt_buffer) {
   TF_ASSIGN_OR_RETURN(auto dtype, ToDType(pjrt_buffer->element_type()));
   Shape shape(pjrt_buffer->dimensions());
-  auto sharding = SingleDeviceSharding::Create(pjrt_buffer->device());
+  // TODO(hyeontaek): Extract memory_kind from pjrt_buffer, and check if they
+  // have the same memory_kind.
+  auto sharding =
+      SingleDeviceSharding::Create(pjrt_buffer->device(), MemoryKind());
   return tsl::MakeRef<PjRtArray>(client, dtype, std::move(shape),
                                  std::move(sharding),
                                  PjRtBuffers({std::move(pjrt_buffer)}));
@@ -162,10 +165,12 @@ StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
     devices.push_back(pjrt_buffer->device());
     shapes.push_back(Shape(pjrt_buffer->dimensions()));
   }
-  auto sharding =
-      ifrt::ConcreteSharding::Create(xla::ifrt::DeviceList(std::move(devices)),
-                                     /*shape=*/shape,
-                                     /*shard_shapes=*/shapes);
+  // TODO(hyeontaek): Extract memory_kind from pjrt_buffer, and check if they
+  // have the same memory_kind.
+  auto sharding = ifrt::ConcreteSharding::Create(
+      ifrt::DeviceList(std::move(devices)), ifrt::MemoryKind(),
+      /*shape=*/shape,
+      /*shard_shapes=*/shapes);
   return PjRtArray::Create(client, dtype, std::move(shape), std::move(sharding),
                            std::move(pjrt_buffers));
 }
@@ -216,8 +221,8 @@ Future<Status> PjRtArray::CopyToHostBuffer(
 
   PjRtBuffer* pjrt_buffer = pjrt_buffers_.front().get();
   absl::Span<const int64_t> dims;
-  StatusOr<xla::Shape> dynamic_shape;
-  if (pjrt_buffer->on_device_shape().is_static()) {
+  StatusOr<std::vector<int64_t>> logical_dims;
+  if (!pjrt_buffer->has_dynamic_dimensions()) {
     dims = shape_.dims();
   } else {
     // TODO(b/182461453): This is a blocking call. If we further implemented
@@ -225,11 +230,11 @@ Future<Status> PjRtArray::CopyToHostBuffer(
     // need this static approach.
     // TODO(hyeontaek): Clean up this dynamic shape access once we formalize
     // dynamic shape support in IFRT.
-    dynamic_shape = pjrt_buffer->logical_on_device_shape();
-    if (!dynamic_shape.ok()) {
-      return Future<Status>(std::move(dynamic_shape).status());
+    logical_dims = pjrt_buffer->logical_dimensions();
+    if (!logical_dims.ok()) {
+      return Future<Status>(std::move(logical_dims).status());
     }
-    dims = dynamic_shape->dimensions();
+    dims = *logical_dims;
   }
 
   std::unique_ptr<xla::MutableBorrowingLiteral> literal;

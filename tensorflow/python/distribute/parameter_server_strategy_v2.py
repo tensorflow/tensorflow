@@ -32,6 +32,7 @@ from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.distribute import ps_values
 from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.distribute import values
+from tensorflow.python.distribute.cluster_resolver import cluster_resolver as base_cluster_resolver
 from tensorflow.python.distribute.coordinator import cluster_coordinator
 from tensorflow.python.eager import context
 from tensorflow.python.eager import remote
@@ -424,7 +425,7 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
   """
 
   # pyformat: disable
-  def __init__(self, cluster_resolver, variable_partitioner=None):
+  def __init__(self, cluster_resolver: base_cluster_resolver.ClusterResolver, variable_partitioner: sharded_variable.Partitioner = None):
     """Initializes the TF2 parameter server strategy.
 
     This initializes the `tf.distribute.experimental.ParameterServerStrategy`
@@ -488,7 +489,7 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
     # Used to check if isinstance() without having to import this module
     self._is_parameter_server_strategy_v2 = True
 
-  def _configure_coordination_service(self, cluster_spec):
+  def _configure_coordination_service(self, cluster_spec: base_cluster_resolver.ClusterSpec):
     if context.context().coordination_service is None:
       coordinated_jobs = ["worker", "ps"]
       coordinated_job_config = []
@@ -505,7 +506,7 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
           heartbeat_timeout_in_ms=_HEARTBEAT_TIMEOUT_SECS * 1000,
           allow_new_incarnation_to_reconnect=True)
 
-  def _connect_to_cluster(self, coordinator_name):
+  def _connect_to_cluster(self, coordinator_name: str):
     if coordinator_name in ["worker", "ps"]:
       raise ValueError("coordinator name should not be 'worker' or 'ps'.")
     cluster_spec = self._cluster_resolver.cluster_spec()
@@ -545,7 +546,7 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
     distribute_lib.distribution_strategy_replica_gauge.get_cell(
         "ps_strategy_num_ps").set(self._num_ps)
 
-  def _verify_args_and_config(self, cluster_resolver):
+  def _verify_args_and_config(self, cluster_resolver: base_cluster_resolver.ClusterResolver):
     if not cluster_resolver.cluster_spec():
       raise ValueError("Cluster spec must be non-empty in "
                        "`tf.distribute.cluster_resolver.ClusterResolver`.")
@@ -563,19 +564,25 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
 
 
 class ParameterServerStrategyV2Extended(
-    parameter_server_strategy.ParameterServerStrategyExtended):
+    parameter_server_strategy.ParameterServerStrategyExtended
+):
   """Extended class for ParameterServerStrategyV2.
 
   Please see `tf.distribute.StrategyExtended` doc for more information.
   """
 
-  def __init__(self, container_strategy, cluster_resolver,
-               variable_partitioner):
+  def __init__(
+      self,
+      container_strategy,
+      cluster_resolver: base_cluster_resolver.ClusterResolver,
+      variable_partitioner,
+  ):
     """Initialization of ParameterServerStrategyV2Extended."""
     super(ParameterServerStrategyV2Extended, self).__init__(container_strategy)
     self._num_ps = len(cluster_resolver.cluster_spec().as_dict().get("ps", []))
-    self._num_workers = len(cluster_resolver.cluster_spec().as_dict().get(
-        "worker", []))
+    self._num_workers = len(
+        cluster_resolver.cluster_spec().as_dict().get("worker", [])
+    )
     self._variable_count = 0
 
     self._variable_partitioner = variable_partitioner
@@ -701,20 +708,24 @@ class ParameterServerStrategyV2Extended(
       v = next_creator(**kwargs)
       if not isinstance(v, resource_variable_ops.UninitializedVariable):
         raise ValueError(
-            "It looks like you are using `ParameterServerStrategy` with a "
-            "`variable_partitioner`, and trying to create a variable without "
-            "specifying `initial_value`. This is not allowed. Please specify the "
-            "`initial_value`.")
+            "It looks like you are using `ParameterServerStrategy` with a"
+            " `variable_partitioner`, and trying to create a variable without"
+            " specifying `initial_value`. This is not allowed. Please specify"
+            " the `initial_value`."
+        )
       elif shape is None or dtype is None:
         raise ValueError(
             "It looks like you are trying to load a `SavedModel` using "
             "`tf.saved_model.load` within a `ParameterServerStrategy` scope, "
-            "but the `SavedModel` is missing shape or dtype information.")
+            "but the `SavedModel` is missing shape or dtype information."
+        )
       else:
+
         def initializer(shape, dtype, **kwargs):
           if "partition_shape" in kwargs:
             shape = kwargs["partition_shape"]
           return array_ops.zeros(shape, dtype)
+
         initial_value = functools.partial(initializer, shape=shape, dtype=dtype)
 
     # Two cases where initial_value can be a callable:

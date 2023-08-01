@@ -8,7 +8,7 @@ func.func @main(%arg0: tensor<?x3xf32>) -> tensor<?x2xf32> {
   func.return %2 : tensor<?x2xf32>
 }
 
-// CHECK: %[[cst:.*]] = stablehlo.constant
+// CHECK: %[[cst:.*]] = arith.constant
 // CHECK: %[[q1:.*]] = "quantfork.qcast"(%arg0)
 // CHECK-SAME: quant.uniform<i8:f32, 0.0078408040252386357:-1>
 // CHECK: %[[dq1:.*]] = "quantfork.dcast"(%[[q1]])

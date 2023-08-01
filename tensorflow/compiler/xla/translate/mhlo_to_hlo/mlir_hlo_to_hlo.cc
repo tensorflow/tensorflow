@@ -3160,8 +3160,9 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::func::FuncOp f) {
     bool any_arg_replicated = false;
     entry_args_same_across_replicas.reserve(f.getNumArguments());
     for (int64_t i = 0; i < f.getNumArguments(); ++i) {
-      auto attr = f.getArgAttrOfType<mlir::UnitAttr>(i, kReplicationAttr);
-      entry_args_same_across_replicas.push_back(attr != nullptr);
+      auto attr = f.getArgAttrOfType<mlir::BoolAttr>(i, kReplicationAttr);
+      entry_args_same_across_replicas.push_back(attr != nullptr &&
+                                                attr.getValue());
       any_arg_replicated |= entry_args_same_across_replicas.back();
       // Pass the alias info to the builder so that it will build the alias info
       // into the resulting HloModule.

@@ -95,7 +95,8 @@ class HloPrintOptions {
         print_ids_(true),
         canonicalize_computations_(false),
         print_extra_attributes_(true),
-        syntax_sugar_async_ops_(true) {}
+        syntax_sugar_async_ops_(true),
+        print_name_after_closing_brace_(false) {}
   // Static reference to a default construction HloPrintOptions, to avoid
   // constructing a new one each time default is needed.
   static const HloPrintOptions& Default() {
@@ -338,6 +339,11 @@ class HloPrintOptions {
     return *this;
   }
 
+  HloPrintOptions& set_print_name_after_closing_brace(bool value) {
+    print_name_after_closing_brace_ = value;
+    return *this;
+  }
+
   bool print_large_constants() const { return print_large_constants_; }
   bool print_only_essential_constants() const {
     return print_only_essential_constants_;
@@ -372,6 +378,9 @@ class HloPrintOptions {
   bool canonicalize_computations() const { return canonicalize_computations_; }
   int indent_amount() const { return indent_amount_; }
   int is_in_nested_computation() const { return is_in_nested_computation_; }
+  int print_name_after_closing_brace() const {
+    return print_name_after_closing_brace_;
+  }
 
  private:
   // The interval between the /*index=*/ annotated operands. 0 means never print
@@ -398,6 +407,7 @@ class HloPrintOptions {
   bool canonicalize_computations_;
   bool print_extra_attributes_;
   bool syntax_sugar_async_ops_;
+  bool print_name_after_closing_brace_;
 };
 
 // For canonical string output, we need to have a canonical way to rename

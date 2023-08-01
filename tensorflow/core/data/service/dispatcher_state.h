@@ -289,7 +289,7 @@ class DispatcherState {
   // deterministically sharding a dataset among a fixed set of workers.
   StatusOr<int64_t> GetWorkerIndex(absl::string_view worker_address) const;
 
-  // Returns the paths of all snapshots inititated during the lifetime of this
+  // Returns the paths of all snapshots initiated during the lifetime of this
   // journal.
   const absl::flat_hash_set<std::string>& ListSnapshotPaths() const {
     return snapshot_paths_;

@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <memory>
 #include <unordered_map>
+#include <utility>
 
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/c/registration_external.h"
@@ -24,9 +25,12 @@ limitations under the License.
 namespace tflite {
 namespace internal {
 
-TfLiteRegistrationExternal*
-CommonOpaqueConversionUtil::ObtainRegistrationExternal(
-    TfLiteContext* context, TfLiteRegistration* registration, int node_index) {
+namespace {
+
+// Returns a dynamically allocated object; the caller is responsible for
+// deallocating it using TfLiteRegistrationExternalDelete.
+TfLiteRegistrationExternal* MakeRegistrationExternal(
+    const TfLiteRegistration* registration, int node_index) {
   // We need to allocate a new TfLiteRegistrationExternal object and then
   // populate its state correctly, based on the contents in 'registration'.
 
@@ -36,12 +40,40 @@ CommonOpaqueConversionUtil::ObtainRegistrationExternal(
 
   registration_external->node_index = node_index;
 
-  registration->registration_external = registration_external;
-
-  auto* subgraph = static_cast<tflite::Subgraph*>(context->impl_);
-  subgraph->registration_externals_.insert(
-      std::unique_ptr<TfLiteRegistrationExternal>(registration_external));
   return registration_external;
+}
+
+}  // anonymous namespace
+
+TfLiteRegistrationExternal*
+CommonOpaqueConversionUtil::CachedObtainRegistrationExternal(
+    RegistrationExternalsCache* registration_externals_cache,
+    const TfLiteRegistration* registration, int node_index) {
+  OpResolver::OpId op_id{registration->builtin_code, registration->custom_name,
+                         registration->version};
+  auto it = registration_externals_cache->find(op_id);
+  if (it != registration_externals_cache->end()) {
+    return it->second.get();
+  }
+  auto* registration_external =
+      MakeRegistrationExternal(registration, node_index);
+  registration_externals_cache->insert(
+      it, std::make_pair(op_id, registration_external));
+
+  return registration_external;
+}
+
+TfLiteRegistrationExternal*
+CommonOpaqueConversionUtil::ObtainRegistrationExternal(
+    TfLiteContext* context, const TfLiteRegistration* registration,
+    int node_index) {
+  auto* subgraph = static_cast<tflite::Subgraph*>(context->impl_);
+  if (!subgraph->registration_externals_) {
+    subgraph->registration_externals_ =
+        std::make_shared<RegistrationExternalsCache>();
+  }
+  return CachedObtainRegistrationExternal(
+      subgraph->registration_externals_.get(), registration, node_index);
 }
 
 }  // namespace internal

@@ -46,7 +46,6 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dialect.h"
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dtensor_attributes.h"
 #include "tensorflow/dtensor/mlir/dtensor_location.h"
-#include "tensorflow/dtensor/mlir/group_assignment.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/spmd_expander_common.h"
@@ -153,7 +152,118 @@ mlir::LogicalResult ConvertShortIntReduce(ReduceOpType reduce_op) {
   return mlir::success();
 }
 
-// A Walk that allows mutatatoin inside parent.
+// Complex for AllReduce and ReduceScatter
+template <class ReduceOpType>
+mlir::LogicalResult ConvertComplexReduce(ReduceOpType reduce_op) {
+  ReduceOpType real_reduce_op;
+  ReduceOpType imag_reduce_op;
+  mlir::OpBuilder builder(reduce_op);
+  StatusOr<Layout> output_layout = ExtractRequiredSingleLayoutFromOp(reduce_op);
+  if (!output_layout.ok()) {
+    return reduce_op.emitOpError(output_layout.status().message());
+  }
+
+  const mlir::Value tensor_input = reduce_op.getInput();
+  const mlir::Value tensor_result = reduce_op.getResult();
+  const mlir::TensorType complex_input_tensor_type =
+      tensor_input.getType().dyn_cast<mlir::TensorType>();
+  if (!complex_input_tensor_type) {
+    return mlir::success();
+  }
+  const mlir::TensorType complex_result_tensor_type =
+      tensor_result.getType().dyn_cast<mlir::TensorType>();
+  if (!complex_result_tensor_type) {
+    return mlir::success();
+  }
+  auto input_element_type = mlir::dyn_cast<mlir::ComplexType>(
+      complex_input_tensor_type.getElementType());
+  if (!input_element_type) {
+    return mlir::success();
+  }
+  auto real_input_tensor_type =
+      mlir::RankedTensorType::get(complex_input_tensor_type.getShape(),
+                                  input_element_type.getElementType());
+  auto real_result_tensor_type =
+      mlir::RankedTensorType::get(complex_result_tensor_type.getShape(),
+                                  input_element_type.getElementType());
+  const mlir::Value tensor_temp_real = builder.create<mlir::TF::RealOp>(
+      reduce_op.getLoc(), real_input_tensor_type, tensor_input);
+  const mlir::Value tensor_temp_imag = builder.create<mlir::TF::ImagOp>(
+      reduce_op.getLoc(), real_input_tensor_type, tensor_input);
+  real_reduce_op = mlir::dyn_cast<ReduceOpType>(builder.clone(*reduce_op));
+  real_reduce_op->setOperand(0, tensor_temp_real);
+  real_reduce_op->getResult(0).setType(real_result_tensor_type);
+  imag_reduce_op = mlir::dyn_cast<ReduceOpType>(builder.clone(*reduce_op));
+  imag_reduce_op->setOperand(0, tensor_temp_imag);
+  imag_reduce_op->getResult(0).setType(real_result_tensor_type);
+  const mlir::Type output_type = reduce_op.getResult().getType();
+  auto complex_reduce_op = builder.create<mlir::TF::ComplexOp>(
+      reduce_op->getLoc(), output_type, real_reduce_op.getResult(),
+      imag_reduce_op.getResult());
+  StatusOr<Layout> desired_layout =
+      ExtractRequiredSingleLayoutFromOp(reduce_op);
+  SetSingleLayoutOnOp(complex_reduce_op, *desired_layout);
+  reduce_op.getOutput().replaceAllUsesWith(complex_reduce_op.getResult());
+  reduce_op.erase();
+  return mlir::success();
+}
+
+// Complex for AllToAll, AllGather, and AllScatter
+template <class CollectiveType>
+mlir::LogicalResult ConvertComplexCollectives(CollectiveType op) {
+  CollectiveType real_op;
+  CollectiveType imag_op;
+  mlir::OpBuilder builder(op);
+  StatusOr<Layout> output_layout = ExtractRequiredSingleLayoutFromOp(op);
+  if (!output_layout.ok()) {
+    return op.emitOpError(output_layout.status().message());
+  }
+
+  const mlir::Value tensor_input = op.getInput();
+  const mlir::Value tensor_result = op.getResult();
+  const mlir::TensorType complex_input_tensor_type =
+      tensor_input.getType().dyn_cast<mlir::TensorType>();
+  if (!complex_input_tensor_type) {
+    return mlir::success();
+  }
+  const mlir::TensorType& complex_result_tensor_type =
+      tensor_result.getType().dyn_cast<mlir::TensorType>();
+  if (!complex_result_tensor_type) {
+    return mlir::success();
+  }
+
+  auto input_element_type = mlir::dyn_cast<mlir::ComplexType>(
+      complex_input_tensor_type.getElementType());
+  if (!input_element_type) {
+    return mlir::success();
+  }
+  auto real_input_tensor_type =
+      mlir::RankedTensorType::get(complex_input_tensor_type.getShape(),
+                                  input_element_type.getElementType());
+  auto real_result_tensor_type =
+      mlir::RankedTensorType::get(complex_result_tensor_type.getShape(),
+                                  input_element_type.getElementType());
+  const mlir::Value tensor_temp_real = builder.create<mlir::TF::RealOp>(
+      op.getLoc(), real_input_tensor_type, tensor_input);
+  const mlir::Value tensor_temp_imag = builder.create<mlir::TF::ImagOp>(
+      op.getLoc(), real_input_tensor_type, tensor_input);
+  real_op = mlir::dyn_cast<CollectiveType>(builder.clone(*op));
+  real_op->setOperand(0, tensor_temp_real);
+  real_op->getResult(0).setType(real_result_tensor_type);
+  imag_op = mlir::dyn_cast<CollectiveType>(builder.clone(*op));
+  imag_op->setOperand(0, tensor_temp_imag);
+  imag_op->getResult(0).setType(real_result_tensor_type);
+  const mlir::Type output_type = op.getResult().getType();
+  auto complex_op = builder.create<mlir::TF::ComplexOp>(
+      op.getLoc(), output_type, real_op.getResult(), imag_op.getResult());
+  const Layout desired_layout = op.getOutputLayout();
+  SetSingleLayoutOnOp(complex_op, desired_layout);
+  op.getOutput().replaceAllUsesWith(complex_op.getResult());
+  op.erase();
+  return mlir::success();
+}
+
+// A Walk that allows mutation inside parent.
 template <typename FuncT, typename OpT = mlir::detail::first_argument<FuncT>>
 mlir::LogicalResult MutatingWalk(mlir::Operation* parent, FuncT func) {
   llvm::SmallVector<OpT, 4> ops;
@@ -173,6 +283,45 @@ class DTensorCollectiveTypeLoweringPass
   void runOnOperation() override {
     mlir::func::FuncOp func = getOperation();
 
+    if (mlir::failed(
+            MutatingWalk(func, [&](mlir::TF::DTensorAllReduceOp all_reduce) {
+              // Lower integer type all reduce
+              return ConvertComplexReduce(all_reduce);
+            }))) {
+      signalPassFailure();
+    }
+
+    if (mlir::failed(
+            MutatingWalk(func, [&](mlir::TF::DTensorAllScatterOp all_scatter) {
+              // Lower complex type all scatter
+              return ConvertComplexCollectives(all_scatter);
+            }))) {
+      signalPassFailure();
+    }
+
+    if (mlir::failed(
+            MutatingWalk(func, [&](mlir::TF::DTensorAllGatherOp all_gather) {
+              // Lower complex type all gather.
+              return ConvertComplexCollectives(all_gather);
+            }))) {
+      signalPassFailure();
+    }
+
+    if (mlir::failed(
+            MutatingWalk(func, [&](mlir::TF::DTensorAllToAllOp all_to_all) {
+              // Lower complex type all to all
+              return ConvertComplexCollectives(all_to_all);
+            }))) {
+      signalPassFailure();
+    }
+
+    if (mlir::failed(MutatingWalk(
+            func, [&](mlir::TF::DTensorReduceScatterOp reduce_scatter) {
+              // Lower complex type reduce scatter.
+              return ConvertComplexReduce(reduce_scatter);
+            }))) {
+      signalPassFailure();
+    }
 
     if (mlir::failed(
             MutatingWalk(func, [&](mlir::TF::DTensorAllReduceOp all_reduce) {

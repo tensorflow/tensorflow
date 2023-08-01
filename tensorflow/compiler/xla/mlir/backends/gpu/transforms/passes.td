@@ -152,8 +152,8 @@ def AddHloTraceAnnotationsPass :
 // Xla Gpu <-> Cuda Graphs integration.
 //===----------------------------------------------------------------------===//
 
-def OutlineCudaGraphsPass :
-    Pass<"xla-gpu-outline-cuda-graphs", "mlir::ModuleOp"> {
+def OutlineGpuGraphsPass :
+    Pass<"xla-gpu-outline-gpu-graphs", "mlir::ModuleOp"> {
   let summary = "Outline sequences of Xla Gpu operations into CUDA Graphs";
 
   let description = [{
@@ -178,13 +178,13 @@ def OutlineCudaGraphsPass :
     }
 
     // Replace a sequence of graph launch operations with a call to runtime API.
-    call @xla.gpu.cuda.graph.launch(%arg0: memref<?xf32>,
+    call @xla.gpu.graph.launch(%arg0: memref<?xf32>,
                                      %arg1: memref<?xf32>)
       attributes { capture = @capture }
     ```
   }];
 
-  let constructor = "createOutlineCudaGraphsPass()";
+  let constructor = "createOutlineGpuGraphsPass()";
 
   let options = [
     Option<"min_graph_size_", "min_graph_size", "int64_t", /*default=*/"2",
@@ -197,7 +197,7 @@ def OutlineCudaGraphsPass :
 //===----------------------------------------------------------------------===//
 
 def AddConcurrentRegionsPass:
-    Pass<"xla-gpu-add-concurrent-regions", "mlir::func::FuncOp"> {
+    Pass<"xla-gpu-add-concurrent-regions", "mlir::ModuleOp"> {
   let summary = "Identify and mark concurrent regions in CUDA graph capture "
                 "functions";
 
@@ -253,7 +253,7 @@ def AddConcurrentRegionsPass:
 //===----------------------------------------------------------------------===//
 
 def StreamAssignmentPass:
-    Pass<"xla-gpu-stream-assignment", "mlir::func::FuncOp"> {
+    Pass<"xla-gpu-stream-assignment", "mlir::ModuleOp"> {
   let summary = "Identify and mark concurrent regions in CUDA graph capture "
                 "functions";
 
@@ -287,8 +287,8 @@ def StreamAssignmentPass:
       call @xla.gpu.launch.func3 {stream = 2 : i64}
 
       // Add explicit synchronization to wait for stream 1 to finish executing
-      // func2. 
-      xla.stream.await {from = 0, to = 1}
+      // func2.
+      call @xla.stream.await {from = 0 : i64, to = [1]}
       call @xla.gpu.launch.func {stream = 0: i64}
       func.return
     }

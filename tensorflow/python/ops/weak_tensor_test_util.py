@@ -17,16 +17,51 @@
 import numpy as np
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework.weak_tensor import WeakTensor
 
 
+def get_test_input_for_op(val, dtype):
+  """Returns a list containing all the possible inputs with a given dtype.
+
+  Args:
+    val: value to convert to test input.
+    dtype: a tuple of format (tf.Dtype, bool) where the bool value represents
+      whether the dtype is "weak" or not.
+
+  Returns:
+    A list of all possible inputs given a value and a dtype.
+  """
+  python_inferred_types = {
+      (dtypes.int32, True): 1,
+      (dtypes.float32, True): 1.0,
+      (dtypes.complex128, True): 1.0j,
+  }
+  dtype, weak = dtype
+  inputs = []
+  if weak:
+    # WeakTensor and Python input types.
+    inputs.append(convert_to_input_type(val, "WeakTensor", dtype))
+    if dtype in python_inferred_types:
+      # There are only 3 possible Python default types : int, float, complex.
+      val_in_dtype = val * python_inferred_types[dtype]
+      inputs.append(val_in_dtype)
+      inputs.append(convert_to_input_type(val_in_dtype, "Tensor", None))
+  else:
+    # Tensor and NumPy input types.
+    inputs.append(convert_to_input_type(val, "Tensor", dtype))
+    inputs.append(convert_to_input_type(val, "NumPy", dtype))
+  return inputs
+
+
 def convert_to_input_type(base_input, input_type, dtype=None):
   if input_type == "WeakTensor":
-    return WeakTensor(constant_op.constant(base_input, dtype=dtype))
+    return WeakTensor.from_tensor(constant_op.constant(base_input, dtype=dtype))
   elif input_type == "Tensor":
     return constant_op.constant(base_input, dtype=dtype)
   elif input_type == "NumPy":
+    dtype = dtype.as_numpy_dtype if isinstance(dtype, dtypes.DType) else dtype
     return np.array(base_input, dtype=dtype)
   elif input_type == "Python":
     return base_input
@@ -35,7 +70,7 @@ def convert_to_input_type(base_input, input_type, dtype=None):
 
 
 def get_weak_tensor(*args, **kwargs):
-  return WeakTensor(constant_op.constant(*args, **kwargs))
+  return WeakTensor.from_tensor(constant_op.constant(*args, **kwargs))
 
 
 class DtypeConversionTestEnv:

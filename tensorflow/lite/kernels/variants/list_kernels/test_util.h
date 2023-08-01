@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_VARIANTS_LIST_KERNELS_TEST_UTIL_H_
 
 #include <cstring>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -41,6 +42,10 @@ class ListOpModel : public MultiOpModel {
   void ListSetItem(int index, int list_index, absl::Span<const int> item_dims,
                    TfLiteType item_type, const void* item_data);
 };
+
+// Gets the number of bytes required for a single element of `TfLiteType`,
+// or `nullopt` if type does not have a fixed size.
+std::optional<size_t> TfLiteTypeSizeOf(TfLiteType type);
 
 }  // namespace tflite
 

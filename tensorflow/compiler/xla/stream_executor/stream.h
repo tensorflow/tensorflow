@@ -26,6 +26,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -433,6 +434,25 @@ class Stream {
     return dnn_support->ConvolveRunnerFromDesc(
         this, algorithm_desc, kind, element_type, output_type, input_descriptor,
         filter_descriptor, output_descriptor, convolution_descriptor);
+  }
+
+  tsl::StatusOr<std::unique_ptr<const dnn::GraphConvRunner>>
+  GraphConvolveRunnerFromDesc(
+      const dnn::AlgorithmDesc &algorithm_desc, dnn::ConvolutionKind kind,
+      dnn::DataType element_type, dnn::DataType output_type,
+      const dnn::BatchDescriptor &input_descriptor,
+      const dnn::FilterDescriptor &filter_descriptor,
+      const dnn::BatchDescriptor &output_descriptor,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      std::string serialized_graph) {
+    dnn::DnnSupport *dnn_support = parent_->AsDnn();
+    if (!dnn_support) {
+      return tsl::errors::Unimplemented("DNN library is not found.");
+    }
+    return dnn_support->GraphConvolveRunnerFromDesc(
+        this, algorithm_desc, kind, element_type, output_type, input_descriptor,
+        filter_descriptor, output_descriptor, convolution_descriptor,
+        serialized_graph);
   }
 
   tsl::StatusOr<std::unique_ptr<const dnn::FusedConvRunner>>

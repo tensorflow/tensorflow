@@ -37,7 +37,17 @@ TpuOpExecutable::TpuOpExecutable(const XLA_TpuProgram* core_program,
                                  HostCommandHandler host_command_handler)
     : TpuExecutableInterface(std::move(hlo_module)),
       core_program_(core_program),
-      host_command_handler_(std::move(host_command_handler)) {}
+      host_command_handler_(std::move(host_command_handler)),
+      outside_compilation_params_(nullptr) {}
+
+TpuOpExecutable::TpuOpExecutable(
+    const XLA_TpuProgram* core_program,
+    std::unique_ptr<xla::HloModule> hlo_module,
+    SE_OutsideCompilationParams* outside_compilation_params)
+    : TpuExecutableInterface(std::move(hlo_module)),
+      core_program_(core_program),
+      host_command_handler_(nullptr),
+      outside_compilation_params_(outside_compilation_params) {}
 
 xla::Status TpuOpExecutable::LoadProgramAndEnqueueToStream(
     const xla::ServiceExecutableRunOptions& run_options,
@@ -100,6 +110,7 @@ xla::Status TpuOpExecutable::LoadProgramAndEnqueueToStream(
   params.device_assignment = &c_dev_assign;
   params.stream = stream;
   params.host_command_handler = ApiConverter::ToC(host_command_handler_);
+  params.outside_compilation_params = outside_compilation_params_;
   params.status = status.c_status;
 
   stream_executor::tpu::OpsApiFn()

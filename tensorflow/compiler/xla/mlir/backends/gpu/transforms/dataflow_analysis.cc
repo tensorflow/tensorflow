@@ -173,14 +173,20 @@ bool Reachable(const DataflowAnalysis::DataflowGraph& graph, size_t from_index,
   std::queue<size_t> bfs_queue;
   bfs_queue.push(from_index);
 
+  std::vector<bool> visited(graph.size(), false);
+
   while (!bfs_queue.empty()) {
     size_t index = bfs_queue.front();
+    visited[index] = true;
     bfs_queue.pop();
+
     if (index == to_index) return true;
 
     const DataflowAnalysis::Node& node = graph[index];
     for (size_t child_index : node.children) {
-      bfs_queue.push(child_index);
+      if (!visited[child_index]) {
+        bfs_queue.push(child_index);
+      }
     }
   }
 

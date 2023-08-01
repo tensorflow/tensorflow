@@ -36,13 +36,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/runtime/kernel_launch.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/support.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
-#include "tensorflow/tsl/profiler/lib/scoped_annotation_stack.h"
+#include "tensorflow/tsl/profiler/lib/profiler_lock.h"
 #include "tensorflow/tsl/profiler/lib/traceme.h"
 #include "tensorflow/tsl/profiler/lib/traceme_encode.h"
 
-#if GOOGLE_CUDA
-#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_graph.h"
-#endif  // #if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_graph.h"
+#endif  // #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace xla {
 namespace gpu {
@@ -60,18 +60,18 @@ using xla::runtime::MemrefDesc;
 using xla::runtime::MemrefType;
 using xla::runtime::StridedMemrefView;
 
-#if GOOGLE_CUDA
-using se::gpu::OwnedCudaGraph;
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+using se::gpu::OwnedGpuGraph;
 
 // Captures Gpu graph by running given function in capture mode.
-static absl::StatusOr<OwnedCudaGraph> CaptureGraph(
+static absl::StatusOr<OwnedGpuGraph> CaptureGraph(
     const ServiceExecutableRunOptions* run_options,
     runtime::FunctionRef function_ref, Arguments<MemrefDesc>& args,
     CustomCall::UserData user_data);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 //===----------------------------------------------------------------------===//
-// CUDA graphs caching.
+// GPU graphs caching.
 //===----------------------------------------------------------------------===//
 
 struct GraphInstances::Impl {
@@ -273,7 +273,7 @@ Status GraphInstances::InstantiateAllGraphs(
   // All Gpu graphs are already instantiated for a given executor.
   if (state.instantiated) return OkStatus();
 
-  TraceMe trace("cuda.graph.instantiate_all");
+  TraceMe trace("gpu.graph.instantiate_all");
 
   // Evict all timeout graphs before trying to instantiate new ones.
   EvictAllGraphs(executor, eviction_timeout_seconds);
@@ -290,7 +290,7 @@ Status GraphInstances::InstantiateAllGraphs(
   // with correct pointers.
   for (unsigned ordinal = 1; ordinal < executable.num_functions(); ++ordinal) {
     if (!absl::StartsWith(executable.function_name(ordinal),
-                          "xla.gpu.cuda.graph.capture"))
+                          "xla.gpu.graph.capture"))
       continue;
 
     VLOG(3) << "Instantiate Gpu graph defined by capture function @"
@@ -298,7 +298,7 @@ Status GraphInstances::InstantiateAllGraphs(
             << ")";
 
     TraceMe trace_instantiation([&] {
-      return TraceMeEncode("cuda.graph.instantiate", {{"ordinal", ordinal}});
+      return TraceMeEncode("gpu.graph.instantiate", {{"ordinal", ordinal}});
     });
 
     FunctionRef function_ref = executable.function_ref(ordinal);
@@ -327,12 +327,12 @@ Status GraphInstances::InstantiateAllGraphs(
                                     /*offset=*/0, sizes, strides);
     }
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     // Instantiate a Gpu graph with fake arguments.
     auto instantiate = [&]() -> absl::StatusOr<GraphInstance> {
       TF_ASSIGN_OR_RETURN(
           auto g, CaptureGraph(run_options, function_ref, args, user_data));
-      TF_ASSIGN_OR_RETURN(auto e, se::gpu::InstantiateCudaGraph(std::move(g)));
+      TF_ASSIGN_OR_RETURN(auto e, se::gpu::InstantiateGpuGraph(std::move(g)));
       return GraphInstance(0, std::move(e));
     };
 
@@ -349,7 +349,7 @@ Status GraphInstances::InstantiateAllGraphs(
 
     // Otherwise return an error to the caller.
     if (!instance.ok()) return instance.status();
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   }
 
   state.instantiated = true;
@@ -384,10 +384,10 @@ H AbslHashValue(H h, const RemainingArgsPtrs& m) {
 }
 
 //----------------------------------------------------------------------------//
-// Runs capture function exported by the executable to constuct a CUDA graph.
+// Runs capture function exported by the executable to construct a gpu graph.
 //----------------------------------------------------------------------------//
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 static bool InDebugMode() {
 #ifdef NDEBUG
@@ -413,7 +413,7 @@ static absl::Status ForwardArguments(CustomCall::RemainingArgs fwd_args,
   return OkStatus();
 }
 
-static absl::StatusOr<OwnedCudaGraph> CaptureGraph(
+static absl::StatusOr<OwnedGpuGraph> CaptureGraph(
     const ServiceExecutableRunOptions* run_options,
     runtime::FunctionRef function_ref, Arguments<MemrefDesc>& args,
     CustomCall::UserData user_data) {
@@ -423,7 +423,7 @@ static absl::StatusOr<OwnedCudaGraph> CaptureGraph(
   se::StreamExecutor* executor = run_options->stream()->parent();
 
   // Initialize (with memoization) BlasSupport here because cublasCreate fails
-  // during cuda graph capturing.
+  // during gpu graph capturing.
   if (function_ref.RequiresBlas()) {
     if (!executor->AsBlas()) {
       return absl::InternalError("Failed to initialize BLAS support");
@@ -439,7 +439,7 @@ static absl::StatusOr<OwnedCudaGraph> CaptureGraph(
                         capture_stream.status().message()));
 
   TraceMe trace([&] {
-    return TraceMeEncode("cuda.graph.capture",
+    return TraceMeEncode("gpu.graph.capture",
                          {{"ordinal", function_ref.ordinal()}});
   });
 
@@ -468,21 +468,23 @@ static absl::StatusOr<OwnedCudaGraph> CaptureGraph(
   opts.async_task_runner = reinterpret_cast<AsyncTaskRunner*>(0XDEADBEEF);
 
   // Create a graph from running the graph capture function.
-  auto captured = se::gpu::CaptureCudaGraph(capture_stream->get(), [&]() {
+  auto captured = se::gpu::CaptureGpuGraph(capture_stream->get(), [&]() {
     return function_ref(args, runtime::NoResultConverter{}, opts,
                         /*verify_arguments=*/InDebugMode())
         .status();
   });
 
   if (!captured.ok()) {
-    return InternalError("CaptureCudaGraph failed (%s): %s",
+    return InternalError("CaptureGpuGraph failed (%s): %s",
                          diagnostic.empty() ? "<no details>" : diagnostic,
                          captured.status().ToString());
   }
   return std::move(*captured);
 }
 
-static absl::Status RunGraphWithoutCapture(
+// When graph execution is disabled we run the graph capture function in
+// "regular" mode and execute all operation one by one.
+static absl::Status RunGraphOpByOp(
     const ServiceExecutableRunOptions* run_options,
     runtime::FunctionRef function_ref, CustomCall::RemainingArgs fwd_args,
     CustomCall::UserData user_data) {
@@ -491,7 +493,7 @@ static absl::Status RunGraphWithoutCapture(
   opts.custom_call_data = &user_data;
 
   TraceMe trace([&] {
-    return TraceMeEncode("cuda.graph.run_no_capture",
+    return TraceMeEncode("gpu.graph.run_op_by_op_fallback",
                          {{"ordinal", function_ref.ordinal()}});
   });
 
@@ -511,17 +513,17 @@ static absl::Status RunGraphWithoutCapture(
   auto executed =
       function_ref(args, runtime::NoResultConverter{}, opts, InDebugMode());
   if (!executed.ok()) {
-    return InternalError("RunGraphWithoutCapture failed (%s): %s",
+    return InternalError("RunGraphOpByOp failed (%s): %s",
                          diagnostic.empty() ? "<no details>" : diagnostic,
                          executed.status().ToString());
   }
   return absl::OkStatus();
 }
 
-#endif  // #if GOOGLE_CUDA
+#endif  // #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 //===----------------------------------------------------------------------===//
-// Define the cuda graph launch custom call.
+// Define the gpu graph launch custom call.
 //===----------------------------------------------------------------------===//
 
 static absl::Status LaunchGraph(
@@ -536,10 +538,10 @@ static absl::Status LaunchGraph(
     NonAtomicallyUpgradeableRWLock* gpu_lock,
     ConcurrentRegionStatus* region_status, CustomCall::RemainingArgs fwd_args,
     CustomCall::FunctionOrdinal capture) {
-#if GOOGLE_CUDA
-  VLOG(1) << "Launch Cuda Graph: ordinal = " << capture.ordinal;
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  VLOG(1) << "Launch GPU Graph: ordinal = " << capture.ordinal;
 
-  // Get a reference to exported function that captures the cuda graph.
+  // Get a reference to exported function that captures the gpu graph.
   runtime::FunctionRef function_ref = executable->function_ref(capture.ordinal);
 
   // Compute the hash of the buffer arguments.
@@ -559,20 +561,15 @@ static absl::Status LaunchGraph(
 
   int64_t count = (*get_count)->fetch_add(1);
   int64_t num_runs_to_instantiate =
-      debug_options->xla_gpu_cuda_graph_num_runs_to_instantiate();
+      debug_options->xla_gpu_graph_num_runs_to_instantiate();
 
-  // TODO(ezhulenev): Cupti tracing leads to deadlocks in CUDA 11. Always fall
-  // back on regular execution if we detect tracing activity.
-#if CUDA_VERSION >= 12000
-  bool is_profiling = false;
-#else
-  bool is_profiling = tsl::profiler::ScopedAnnotationStack::IsEnabled();
-#endif
+  // TODO(b/290773547): Profiler + CUDA graphs lead to memory corruption. As a
+  // work around disable graph execution and run everything in op-by-op mode.
+  bool is_profiling = tsl::profiler::ProfilerLock::HasActiveSession();
 
   if (count < num_runs_to_instantiate || is_profiling) {
     VLOG(3) << "Run gpu graph in op-by-op mode: ordinal = " << capture.ordinal;
-    return RunGraphWithoutCapture(run_options, function_ref, fwd_args,
-                                  user_data());
+    return RunGraphOpByOp(run_options, function_ref, fwd_args, user_data());
   }
 
   // Instantiate Gpu graph by running graph capture function.
@@ -583,7 +580,7 @@ static absl::Status LaunchGraph(
     TF_ASSIGN_OR_RETURN(
         auto g, CaptureGraph(run_options, function_ref, args, user_data()));
 
-    TF_ASSIGN_OR_RETURN(auto e, se::gpu::InstantiateCudaGraph(std::move(g)));
+    TF_ASSIGN_OR_RETURN(auto e, se::gpu::InstantiateGpuGraph(std::move(g)));
 
     return GraphInstance(ptrs_hash, std::move(e));
   };
@@ -599,7 +596,7 @@ static absl::Status LaunchGraph(
     // If pointers did not change we can run captured graph.
     if (ptrs_hash == instance->ptr_hash) {
       TraceMe trace([&] {
-        return TraceMeEncode("cuda.graph.launch_cached",
+        return TraceMeEncode("gpu.graph.launch_cached",
                              {{"ordinal", capture.ordinal}});
       });
 
@@ -614,7 +611,7 @@ static absl::Status LaunchGraph(
   Arguments<MemrefDesc> args(fwd_args.size());
   TF_RETURN_IF_ERROR(ForwardArguments(fwd_args, args));
 
-  // Capture CUDA graph by running capture function.
+  // Capture GPU graph by running capture function.
   TF_ASSIGN_OR_RETURN(
       auto g, CaptureGraph(run_options, function_ref, args, user_data()));
 
@@ -629,24 +626,23 @@ static absl::Status LaunchGraph(
   instance->ptr_hash = ptrs_hash;
 
   TraceMe trace([&] {
-    return TraceMeEncode("cuda.graph.launch_updated",
+    return TraceMeEncode("gpu.graph.launch_updated",
                          {{"ordinal", capture.ordinal}});
   });
 
   return instance->exec.Launch(run_options->stream());
+#else  // #if !GOOGLE_CUDA && !TENSORFLOW_USE_ROCM
 
-#else  // #if !GOOGLE_CUDA
+  return absl::InternalError("GPU graphs are not supported");
 
-  return absl::InternalError("Cuda graphs are not supported");
-
-#endif  // #if GOOGLE_CUDA
+#endif  // #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }
 
 //===----------------------------------------------------------------------===//
 
 XLA_RUNTIME_DEFINE_CUSTOM_CALL(
     Launch, FunctionWrapper<LaunchGraph>(), checks,
-    CustomCall::Bind("xla.gpu.cuda.graph.launch")
+    CustomCall::Bind("xla.gpu.graph.launch")
         .UserData<const ServiceExecutableRunOptions*>()
         .UserData<const DebugOptions*>()
         .UserData<const std::string*>()
@@ -665,7 +661,7 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
 
 void RegisterGraphLaunchCustomCalls(
     runtime::DirectCustomCallRegistry& registry) {
-  registry.Register("xla.gpu.cuda.graph.launch", Launch);
+  registry.Register("xla.gpu.graph.launch", Launch);
 }
 
 }  // namespace gpu

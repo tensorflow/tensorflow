@@ -119,14 +119,18 @@ PJRT_TopologyDescriptionDeleter MakeTopologyDescriptionDeleter(
   };
 }
 
-absl::StatusCode PjrtErrorToStatusCode(const PJRT_Error* error,
-                                       const PJRT_Api* api) {
+PJRT_Error_Code GetErrorCode(const PJRT_Error* error, const PJRT_Api* api) {
   PJRT_Error_GetCode_Args args;
   args.struct_size = PJRT_Error_GetCode_Args_STRUCT_SIZE;
   args.priv = nullptr;
   args.error = error;
-  api->PJRT_Error_GetCode(&args);
-  PJRT_Error_Code code = args.code;
+  pjrt::LogFatalIfPjrtError(api->PJRT_Error_GetCode(&args), api);
+  return args.code;
+}
+
+absl::StatusCode PjrtErrorToStatusCode(const PJRT_Error* error,
+                                       const PJRT_Api* api) {
+  PJRT_Error_Code code = GetErrorCode(error, api);
   switch (code) {
     case PJRT_Error_Code_CANCELLED:
     case PJRT_Error_Code_UNKNOWN:
@@ -539,9 +543,14 @@ PJRT_SerializedExecutableDeleter MakeSerializedExecutableDeleter(
 static std::string StructSizeErrorMsg(absl::string_view struct_name,
                                       size_t expected_size,
                                       size_t actual_size) {
-  return absl::StrCat("Unexpected ", struct_name, " size: expected ",
-                      expected_size, ", got ", actual_size,
-                      ". Check installed software versions.");
+  std::string error_msg = absl::StrCat(
+      "Unexpected ", struct_name, " size: expected ", expected_size, ", got ",
+      actual_size, ". Check installed software versions.");
+#if defined(PJRT_API_MAJOR)
+  absl::StrAppend(&error_msg, " The framework PJRT API version is ",
+                  PJRT_API_MAJOR, ".", PJRT_API_MINOR, ".");
+#endif  // PJRT_API_MAJOR
+  return error_msg;
 }
 
 xla::Status CheckMatchingStructSizes(absl::string_view struct_name,

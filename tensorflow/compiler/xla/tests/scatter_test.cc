@@ -903,7 +903,7 @@ max_f32 (lhs: f32[], rhs: f32[]) -> f32[] {
 
 ENTRY main {
   indices = s32[2] parameter(0)
-  constant_with_nans = f32[3] constant({nan, 2.5, nan})
+  constant_with_nans = f32[3] constant({-nan, 2.5, nan})
   operand = f32[3,3] broadcast(constant_with_nans), dimensions={1}
   updates = f32[2,3] constant({{4.6, -nan, 1}, {2.3, 3.1, 1.6}})
   scatter = f32[3,3] scatter(operand, indices, updates),

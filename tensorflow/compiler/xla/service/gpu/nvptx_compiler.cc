@@ -69,6 +69,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_platform_id.h"
 #include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/asm_compiler.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_driver.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/platform/path.h"
 #include "tensorflow/tsl/platform/status.h"
@@ -99,6 +100,11 @@ class ConvBfloat16Support : public FloatSupport {
 
   bool SupportsLowPrecisionOutput(const HloInstruction& hlo) const override {
     return (hlo.opcode() != HloOpcode::kConvolution) || is_conv_bf16_supported_;
+  }
+
+  bool SupportsMixedPrecisions(const HloInstruction& hlo) const override {
+    // Skip all HLOs other than convolutions.
+    return (hlo.opcode() != HloOpcode::kConvolution);
   }
 
  private:

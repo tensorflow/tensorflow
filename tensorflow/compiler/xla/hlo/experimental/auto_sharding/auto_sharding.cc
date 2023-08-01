@@ -151,9 +151,12 @@ GenerateReshardingCostsAndMissingShardingsForAllOperands(
         cur_input_sharding =
             GetInputSharding(ins, operand, k, output_sharding, call_graph);
       }
+      bool is_sharding_default_replicated = false;
       if (!cur_input_sharding.has_value() &&
           ((ins->opcode() == HloOpcode::kGather && k == 0) ||
-           (ins->opcode() == HloOpcode::kScatter && k != 0))) {
+           (ins->opcode() == HloOpcode::kScatter && k != 0) ||
+           ins->opcode() == HloOpcode::kCustomCall)) {
+        is_sharding_default_replicated = true;
         cur_input_sharding = HloSharding::Replicate();
       }
       CHECK(cur_input_sharding.has_value());
@@ -162,15 +165,26 @@ GenerateReshardingCostsAndMissingShardingsForAllOperands(
       }
       auto operand_strategies = strategy_map.at(operand).get();
       auto operand_shape = operand->shape();
-      resharding_costs.push_back(
-          ReshardingCostVector(operand_strategies, ins->operand(k)->shape(),
-                               *cur_input_sharding, cluster_env));
+      if (ins->opcode() == HloOpcode::kGather && k == 0 &&
+          is_sharding_default_replicated) {
+        LOG(INFO)
+            << "Zeroing out operand 0 resharding costs for gather sharding "
+            << output_sharding.ToString();
+        resharding_costs.push_back(
+            std::vector<double>(operand_strategies->leaf_vector.size(), 0));
+        input_shardings[k] = std::nullopt;
+      } else {
+        resharding_costs.push_back(
+            ReshardingCostVector(operand_strategies, ins->operand(k)->shape(),
+                                 *cur_input_sharding, cluster_env));
+      }
     }
   }
   return resharding_costs;
 }
 
-std::pair<std::vector<std::vector<double>>, std::vector<HloSharding>>
+std::pair<std::vector<std::vector<double>>,
+          std::vector<std::optional<HloSharding>>>
 GenerateReshardingCostsAndShardingsForAllOperands(
     const HloInstruction* ins, const HloSharding& output_sharding,
     const StrategyMap& strategy_map, const ClusterEnvironment& cluster_env,
@@ -180,13 +194,11 @@ GenerateReshardingCostsAndShardingsForAllOperands(
       GenerateReshardingCostsAndMissingShardingsForAllOperands(
           ins, output_sharding, strategy_map, cluster_env, call_graph,
           input_shardings_optional);
-  std::vector<HloSharding> input_shardings;
   for (auto sharding_optional : input_shardings_optional) {
     CHECK(sharding_optional.has_value());
-    input_shardings.push_back(sharding_optional.value());
   }
 
-  return std::make_pair(resharding_costs, input_shardings);
+  return std::make_pair(resharding_costs, input_shardings_optional);
 }
 
 std::vector<std::vector<double>> GenerateReshardingCostsForAllOperands(
@@ -385,7 +397,8 @@ std::vector<size_t> FindReplicateStrategyIndices(
   return indices;
 }
 
-std::pair<std::vector<std::vector<double>>, std::vector<HloSharding>>
+std::pair<std::vector<std::vector<double>>,
+          std::vector<std::optional<HloSharding>>>
 ReshardingCostsForTupleOperand(const HloInstruction* operand,
                                StrategyVector* operand_strategy_vector) {
   // TODO(yuemmawang) Support instructions with more than one tuple operand.
@@ -411,9 +424,10 @@ ReshardingCostsForTupleOperand(const HloInstruction* operand,
       resharding_costs.back().at(i) = 0.0;
     }
   }
-  return std::make_pair(resharding_costs,
-                        std::vector<HloSharding>({HloSharding::Tuple(
-                            operand->shape(), tuple_element_shardings)}));
+  return std::make_pair(
+      resharding_costs,
+      std::vector<std::optional<HloSharding>>(
+          {HloSharding::Tuple(operand->shape(), tuple_element_shardings)}));
 }
 
 std::vector<std::vector<double>> CreateZeroReshardingCostsForAllOperands(
@@ -454,7 +468,7 @@ void GenerateOutfeedStrategy(const HloInstruction* ins, const Shape& shape,
                              double replicated_penalty) {
   HloSharding output_spec = HloSharding::Replicate();
   std::vector<std::vector<double>> resharding_costs;
-  std::vector<HloSharding> input_shardings;
+  std::vector<std::optional<HloSharding>> input_shardings;
   if (ins->has_sharding()) {
     std::vector<Shape> operand_shapes(ins->operand_count());
     for (int i = 0; i < ins->operand_count(); ++i) {
@@ -508,7 +522,7 @@ void AddReplicatedStrategy(const HloInstruction* ins, const Shape& shape,
   HloSharding output_spec = HloSharding::Replicate();
 
   std::vector<std::vector<double>> resharding_costs;
-  std::vector<HloSharding> input_shardings;
+  std::vector<std::optional<HloSharding>> input_shardings;
 
   if (ins->operand_count() > 0 && ins->operand(0)->shape().IsTuple()) {
     CHECK_EQ(ins->operand_count(), 1)
@@ -524,7 +538,6 @@ void AddReplicatedStrategy(const HloInstruction* ins, const Shape& shape,
       if (ins->opcode() == HloOpcode::kConditional) {
         resharding_costs.push_back(std::vector<double>(
             strategy_map.at(operand)->leaf_vector.size(), 0));
-        input_shardings.push_back(output_spec);
       } else {
         resharding_costs.push_back(ReshardingCostVector(
             strategy_map.at(operand).get(), ins->operand(k)->shape(),
@@ -575,7 +588,7 @@ void EnumerateAll1DPartition(const HloInstruction* ins, const Shape& shape,
       double memory_cost = GetBytes(shape) / output_spec.NumTiles();
 
       std::vector<std::vector<double>> resharding_costs;
-      std::vector<HloSharding> input_shardings;
+      std::vector<std::optional<HloSharding>> input_shardings;
       if (ins->opcode() == HloOpcode::kConditional) {
         // TODO(pratikf): Compute input_shardings for kConditional ops
         resharding_costs =
@@ -624,8 +637,6 @@ void EnumerateAll2DPartition(const HloInstruction* ins, const Shape& shape,
                              const InstructionBatchDimMap& batch_dim_map,
                              bool only_allow_divisible,
                              const CallGraph& call_graph) {
-  std::vector<int64_t> shardable_mesh_dims =
-      VectorGreaterThanOneElementIndices(device_mesh.dimensions());
   auto iter = batch_dim_map.find(GetBatchDimMapKey(ins));
   int64_t batch_dim = -1;
   if (iter != batch_dim_map.end()) {
@@ -637,26 +648,22 @@ void EnumerateAll2DPartition(const HloInstruction* ins, const Shape& shape,
       if ((batch_dim != -1 && !(batch_dim == i || batch_dim == j)) || i == j) {
         continue;
       }
-      if (shape.dimensions(i) < device_mesh.dim(shardable_mesh_dims[0]) ||
-          shape.dimensions(j) < device_mesh.dim(shardable_mesh_dims[1])) {
+      if (shape.dimensions(i) < device_mesh.dim(0) ||
+          shape.dimensions(j) < device_mesh.dim(1)) {
         continue;
       }
 
       if (only_allow_divisible &&
-          (!IsDivisible(shape.dimensions(i),
-                        device_mesh.dim(shardable_mesh_dims[0])) ||
-           !IsDivisible(shape.dimensions(j),
-                        device_mesh.dim(shardable_mesh_dims[1])))) {
+          (!IsDivisible(shape.dimensions(i), device_mesh.dim(0)) ||
+           !IsDivisible(shape.dimensions(j), device_mesh.dim(1)))) {
         continue;
       }
 
       std::string name = absl::StrFormat("S{%d,%d} @ {0,1}", i, j);
-      HloSharding output_spec =
-          Tile(shape, {i, j}, {shardable_mesh_dims[0], shardable_mesh_dims[1]},
-               device_mesh);
+      HloSharding output_spec = Tile(shape, {i, j}, {0, 1}, device_mesh);
       double compute_cost = 0, communication_cost = 0;
       double memory_cost = GetBytes(shape) / output_spec.NumTiles();
-      std::vector<HloSharding> input_shardings;
+      std::vector<std::optional<HloSharding>> input_shardings;
       std::vector<std::vector<double>> resharding_costs;
       if (ins->opcode() == HloOpcode::kConditional) {
         // TODO(pratikf): Compute input_shardings for kConditional ops
@@ -757,8 +764,6 @@ void Enumerate2DPartitionReshape(const HloInstruction* ins,
                                  const InstructionBatchDimMap& batch_dim_map,
                                  std::unique_ptr<StrategyVector>& strategies,
                                  bool only_allow_divisible) {
-  std::vector<int64_t> shardable_mesh_dims =
-      VectorGreaterThanOneElementIndices(device_mesh.dimensions());
   auto iter = batch_dim_map.find(GetBatchDimMapKey(ins));
   int64_t batch_dim = -1;
   if (iter != batch_dim_map.end()) {
@@ -773,23 +778,17 @@ void Enumerate2DPartitionReshape(const HloInstruction* ins,
       if ((batch_dim != -1 && !(batch_dim == i || batch_dim == j)) || i == j) {
         continue;
       }
-      if (ins->shape().dimensions(i) <
-              device_mesh.dim(shardable_mesh_dims[0]) ||
-          ins->shape().dimensions(j) <
-              device_mesh.dim(shardable_mesh_dims[1])) {
+      if (ins->shape().dimensions(i) < device_mesh.dim(0) ||
+          ins->shape().dimensions(j) < device_mesh.dim(1)) {
         continue;
       }
       if (only_allow_divisible &&
-          (!IsDivisible(ins->shape().dimensions(i),
-                        device_mesh.dim(shardable_mesh_dims[0])) ||
-           !IsDivisible(ins->shape().dimensions(j),
-                        device_mesh.dim(shardable_mesh_dims[1])))) {
+          (!IsDivisible(ins->shape().dimensions(i), device_mesh.dim(0)) ||
+           !IsDivisible(ins->shape().dimensions(j), device_mesh.dim(1)))) {
         continue;
       }
 
-      HloSharding output_spec =
-          Tile(ins->shape(), {i, j},
-               {shardable_mesh_dims[0], shardable_mesh_dims[1]}, device_mesh);
+      HloSharding output_spec = Tile(ins->shape(), {i, j}, {0, 1}, device_mesh);
       std::optional<HloSharding> input_spec =
           hlo_sharding_util::ReshapeSharding(ins->shape(), operand->shape(),
                                              output_spec);
@@ -797,9 +796,7 @@ void Enumerate2DPartitionReshape(const HloInstruction* ins,
         continue;
       }
 
-      std::string name =
-          absl::StrFormat("S%d%d @ {%d,%d}", i, j, shardable_mesh_dims[0],
-                          shardable_mesh_dims[1]);
+      std::string name = absl::StrFormat("S%d%d @ {%d,%d}", i, j, 0, 1);
       double compute_cost = 0, communication_cost = 0;
       double memory_cost = GetBytes(ins->shape()) / output_spec.NumTiles();
 
@@ -1101,7 +1098,7 @@ void TrimOrGenerateStrategiesBasedOnExistingSharding(
         VLOG(1) << "Generate a new strategy based on user sharding.";
         std::string name = ToStringSimple(existing_sharding);
         std::vector<std::vector<double>> resharding_costs;
-        std::vector<HloSharding> input_shardings;
+        std::vector<std::optional<HloSharding>> input_shardings;
         if (strategies->in_nodes.empty()) {
           resharding_costs = {};
         } else {
@@ -1427,15 +1424,13 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                   ins, output_spec, strategy_map, cluster_env, call_graph,
                   input_shardings_optional);
 
-          std::vector<HloSharding> input_shardings;
           for (auto sharding_optional : input_shardings_optional) {
             CHECK(sharding_optional.has_value());
-            input_shardings.push_back(sharding_optional.value());
           }
 
           strategies->leaf_vector.push_back(ShardingStrategy(
               {name, output_spec, compute_cost, communication_cost, memory_cost,
-               std::move(resharding_cost), input_shardings}));
+               std::move(resharding_cost), input_shardings_optional}));
         }
         break;
       }
@@ -1484,15 +1479,10 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                     ins, output_spec, strategy_map, cluster_env, call_graph,
                     input_shardings_optional);
 
-            std::vector<HloSharding> input_shardings;
-            for (auto sharding_optional : input_shardings_optional) {
-              CHECK(sharding_optional.has_value());
-              input_shardings.push_back(sharding_optional.value());
-            }
-
             strategies->leaf_vector.push_back(ShardingStrategy(
                 {name, output_spec, compute_cost, communication_cost,
-                 memory_cost, std::move(resharding_cost), input_shardings}));
+                 memory_cost, std::move(resharding_cost),
+                 input_shardings_optional}));
           }
         }
         AddReplicatedStrategy(ins, ins->shape(), cluster_env, strategy_map,
@@ -1837,7 +1827,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
               double memory_cost =
                   GetBytes(ins->shape()) / output_spec.NumTiles();
               std::vector<std::vector<double>> resharding_costs;
-              std::vector<HloSharding> input_shardings;
+              std::vector<std::optional<HloSharding>> input_shardings;
               for (int64_t k = 0; k < ins->operand_count(); ++k) {
                 resharding_costs.push_back(ReshardingCostVector(
                     strategy_map.at(ins->operand(k)).get(),
@@ -2117,6 +2107,8 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
     if (instruction_execution_counts.contains(ins)) {
       ScaleCostsWithExecutionCounts(strategies.get(),
                                     instruction_execution_counts.at(ins));
+    } else {
+      VLOG(5) << "No execution count available for " << ins->name();
     }
     XLA_VLOG_LINES(2, absl::StrCat("strategies:\n", strategies->ToString()));
 
@@ -2495,10 +2487,14 @@ void SetHloShardingPostProcessing(
             << "Dot op requires both operands to have input shardings, "
                "but get instruction: "
             << inst->ToString() << ", strategy : " << stra.ToString();
-        FixMixedMeshShapeResharding(inst, 0, stra.input_shardings[0],
-                                    device_mesh, resharding_cache);
-        FixMixedMeshShapeResharding(inst, 1, stra.input_shardings[1],
-                                    device_mesh, resharding_cache);
+        if (stra.input_shardings[0].has_value()) {
+          FixMixedMeshShapeResharding(inst, 0, stra.input_shardings[0].value(),
+                                      device_mesh, resharding_cache);
+        }
+        if (stra.input_shardings[1].has_value()) {
+          FixMixedMeshShapeResharding(inst, 1, stra.input_shardings[1].value(),
+                                      device_mesh, resharding_cache);
+        }
       }
     } else if (inst->opcode() == HloOpcode::kConvolution) {
       const ShardingStrategy& stra =
@@ -2524,16 +2520,21 @@ void SetHloShardingPostProcessing(
         // Allow duplicatd conv computation in this case to reduce
         // communication
       } else {
-        FixMixedMeshShapeResharding(inst, 0, stra.input_shardings[0],
-                                    device_mesh, resharding_cache);
-        FixMixedMeshShapeResharding(inst, 1, stra.input_shardings[1],
-                                    device_mesh, resharding_cache);
+        if (stra.input_shardings[0].has_value()) {
+          FixMixedMeshShapeResharding(inst, 0, stra.input_shardings[0].value(),
+                                      device_mesh, resharding_cache);
+        }
+        if (stra.input_shardings[1].has_value()) {
+          FixMixedMeshShapeResharding(inst, 1, stra.input_shardings[1].value(),
+                                      device_mesh, resharding_cache);
+        }
       }
     } else if (inst->opcode() == HloOpcode::kReshape) {
       const ShardingStrategy& stra =
           GetShardingStrategy(inst, strategy_map, cost_graph, s_val);
-      if (!stra.input_shardings.empty()) {
-        FixMixedMeshShapeResharding(inst, 0, stra.input_shardings[0],
+      if (!stra.input_shardings.empty() &&
+          stra.input_shardings[0].has_value()) {
+        FixMixedMeshShapeResharding(inst, 0, stra.input_shardings[0].value(),
                                     device_mesh, resharding_cache);
       }
     } else if (inst->opcode() == HloOpcode::kOutfeed) {
@@ -2552,8 +2553,10 @@ void SetHloShardingPostProcessing(
             for (size_t i = 0; i < inst->shape().tuple_shapes_size(); ++i) {
               const ShardingStrategy& stra = GetShardingStrategyForTuple(
                   inst, i, strategy_map, cost_graph, s_val);
-              if (stra.input_shardings.size() > i) {
-                FixMixedMeshShapeResharding(inst, i, stra.input_shardings[i],
+              if (stra.input_shardings.size() > i &&
+                  stra.input_shardings[i].has_value()) {
+                FixMixedMeshShapeResharding(inst, i,
+                                            stra.input_shardings[i].value(),
                                             device_mesh, resharding_cache);
               }
             }
@@ -2564,7 +2567,9 @@ void SetHloShardingPostProcessing(
               const ShardingStrategy& stra = GetShardingStrategyForTuple(
                   inst, i, strategy_map, cost_graph, s_val);
               CHECK_EQ(stra.input_shardings.size(), 1);
-              FixMixedMeshShapeResharding(inst, i, stra.input_shardings[0],
+              CHECK(stra.input_shardings[0].has_value());
+              FixMixedMeshShapeResharding(inst, i,
+                                          stra.input_shardings[0].value(),
                                           device_mesh, resharding_cache);
             }
             break;
@@ -2582,6 +2587,7 @@ void SetHloShardingPostProcessing(
       } else {
         const ShardingStrategy& stra =
             GetShardingStrategy(inst, strategy_map, cost_graph, s_val);
+
         if (stra.input_shardings.empty()) {
           continue;
         }
@@ -2590,8 +2596,10 @@ void SetHloShardingPostProcessing(
               inst, inst->sharding(), device_mesh, preserve_shardings);
         } else {
           for (size_t i = 0; i < inst->operand_count(); ++i) {
-            if (stra.input_shardings.size() > i) {
-              FixMixedMeshShapeResharding(inst, i, stra.input_shardings[i],
+            if (stra.input_shardings.size() > i &&
+                stra.input_shardings[i].has_value()) {
+              FixMixedMeshShapeResharding(inst, i,
+                                          stra.input_shardings[i].value(),
                                           device_mesh, resharding_cache);
             }
           }
@@ -3754,10 +3762,6 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
   solver_option.allow_replicated_strategy_for_dot_and_conv =
       option_.allow_replicated_strategy_for_dot_and_conv;
 
-  absl::flat_hash_map<const HloInstruction*, int64_t>
-      instruction_execution_counts = spmd::ComputeInstructionExecutionCounts(
-          module, option_.loop_iteration_count_estimate);
-
   // Remove CustomCalls with custom_call_target="Sharding" and move their
   // shardings to their input ops.
   absl::flat_hash_map<const HloInstruction*, std::vector<int64_t>>
@@ -3828,6 +3832,10 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
   XLA_VLOG_LINES(10, spmd::PrintLivenessSet(liveness_set));
   const HloInstructionSequence& sequence =
       hlo_live_range->flattened_instruction_sequence();
+
+  absl::flat_hash_map<const HloInstruction*, int64_t>
+      instruction_execution_counts = spmd::ComputeInstructionExecutionCounts(
+          module, option_.loop_iteration_count_estimate);
 
   // ----- Analyze the batch dim -----
   spmd::InstructionBatchDimMap batch_dim_map;
@@ -4004,10 +4012,6 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
 
   // ----- Canonicalize layouts based on LayoutCanonicalizationCallback. -----
   TF_RETURN_IF_ERROR(CanonicalizeLayouts(module));
-  XLA_VLOG_LINES(7, absl::StrCat("After auto sharding for mesh ",
-                                 spmd::ToString(option_.device_mesh_shape),
-                                 ":\n", module->ToString()));
-  DumpHloModuleIfEnabled(*module, "after_auto_spmd_sharding");
 
   return module_is_changed ? AutoShardingResult::kModuleChangedShardingPerformed
                            : AutoShardingResult::kModuleUnchanged;

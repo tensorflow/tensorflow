@@ -50,8 +50,9 @@ class DataServiceWorkerClient : public DataServiceClientBase {
   void TryCancel();
   // Returns an error if the client is incompatible with a server which has the
   // properties described in `compatibility_info`.
-  Status CheckCompatibility(const std::string& compatibility_info) const {
-    return client_->CheckCompatibility(compatibility_info);
+  Status CheckCompatibility(
+      const std::string& server_compatibility_info) const {
+    return client_->CheckCompatibility(server_compatibility_info);
   }
   // Returns the data transfer protocol, preferring to use the local transfer
   // protocol if a local tf.data worker exists.

@@ -2438,6 +2438,287 @@ TEST(KernelTest, PromiseReturn) {
       output.Get<tfrt_stub::FallbackTensor>().tensor(), expected);
 }
 
+// A function body for AsyncWhile.
+void TestAsyncWhileFnBody(mlrt::KernelFrame frame) {
+  ASSERT_EQ(frame.arguments().size(), 4);
+
+  auto predicate_promise = std::move(frame.arguments()[0].Get<mlrt::Promise>());
+  auto prev_loop_count_future = frame.arguments()[1].Get<mlrt::Future>();
+  auto next_loop_count_promise =
+      std::move(frame.arguments()[2].Get<mlrt::Promise>());
+
+  int32_t max_iteration = frame.arguments()[3]
+                              .Get<tensorflow::tfrt_stub::FallbackTensor>()
+                              .tensor()
+                              .scalar<int32_t>()();
+
+  for (; !prev_loop_count_future.IsReady();) {
+    // wait for future to be ready
+  }
+  int32_t prev_loop_count =
+      prev_loop_count_future.Get<tensorflow::tfrt_stub::FallbackTensor>()
+          .tensor()
+          .scalar<int32_t>()();
+  tensorflow::Tensor next_loop_count(DT_INT32, {});
+  next_loop_count.scalar<int32_t>()() = prev_loop_count + 1;
+
+  tensorflow::Tensor predicate(DT_BOOL, {});
+  predicate.scalar<bool>()() = prev_loop_count + 1 < max_iteration;
+  std::move(predicate_promise)
+      .Set<tensorflow::tfrt_stub::FallbackTensor>(std::move(predicate));
+
+  std::move(next_loop_count_promise)
+      .Set<tensorflow::tfrt_stub::FallbackTensor>(std::move(next_loop_count));
+}
+
+mlrt::bc::Buffer CreateAsyncWhileExecutable() {
+  mlrt::bc::Buffer buffer;
+  mlrt::bc::Allocator allocator(&buffer);
+
+  auto executable_ctor = mlrt::bc::New<mlrt::bc::Executable>(&allocator);
+  mlrt::testing::SymbolTable kernels;
+  std::vector<std::string> kernel_names = {"tf_mlrt.async_while",
+                                           "tf_mlrt.await_all",
+                                           "test_async_while_body", "return"};
+  executable_ctor.construct_kernel_names(kernel_names.size())
+      .Assign(kernel_names);
+  kernels.Def(kernel_names);
+  mlrt::testing::AttributeTable attributes(
+      executable_ctor.construct_attributes(1));
+
+  attributes.Add("body_idx", 1);
+  attributes.Add("invariant_size", 1);
+  auto functions_ctor = executable_ctor.construct_functions(2);
+
+  {
+    auto function_ctor = functions_ctor.ConstructAt(0);
+    function_ctor.construct_name("main");
+    mlrt::testing::SymbolTable regs;
+    function_ctor.construct_input_regs(3).Assign(
+        regs.Def({"initial_predicate", "loop_count", "max_iterations"}));
+
+    auto kernels_ctor = function_ctor.construct_kernels(3);
+    {
+      auto kernel_ctor = kernels_ctor.ConstructAt(0);
+      kernel_ctor.set_code(kernels.Use("tf_mlrt.async_while"));
+      kernel_ctor.construct_attributes(2).Assign(
+          {attributes.GetHandle("body_idx"),
+           attributes.GetHandle("invariant_size")});
+      kernel_ctor.construct_arguments(3).Assign(
+          regs.Use({"initial_predicate", "loop_count", "max_iterations"}));
+      kernel_ctor.construct_results(3).Assign(
+          regs.Def({"last_predicate_future", "final_loop_count_future",
+                    "final_max_iterations_future"}));
+    }
+    {
+      auto kernel_ctor = kernels_ctor.ConstructAt(1);
+      kernel_ctor.set_code(kernels.Use("tf_mlrt.await_all"));
+      kernel_ctor.construct_arguments(3).Assign(
+          regs.Use({"last_predicate_future", "final_loop_count_future",
+                    "final_max_iterations_future"}));
+      kernel_ctor.construct_last_uses(3).Assign({true, true, true});
+      kernel_ctor.construct_results(3).Assign(regs.Def(
+          {"last_predicate", "final_loop_count", "final_max_iterations"}));
+    }
+    {
+      auto kernel_ctor = kernels_ctor.ConstructAt(2);
+      kernel_ctor.set_code(kernels.Use("return"));
+      kernel_ctor.construct_arguments(1).Assign({regs.Use("final_loop_count")});
+    }
+    function_ctor.set_num_regs(regs.size());
+    function_ctor.construct_output_regs(1).Assign(
+        {regs.Use("final_loop_count")});
+  }
+  {
+    auto function_ctor = functions_ctor.ConstructAt(1);
+    function_ctor.construct_name("body_function");
+
+    mlrt::testing::SymbolTable regs;
+
+    function_ctor.construct_input_regs(4).Assign(
+        regs.Def({"predicate_promise", "prev_loop_count_future",
+                  "loop_count_promise", "max_iterations"}));
+    auto kernels_ctor = function_ctor.construct_kernels(2);
+    {
+      auto kernel_ctor = kernels_ctor.ConstructAt(0);
+      kernel_ctor.set_code(kernels.Use("test_async_while_body"));
+      kernel_ctor.construct_arguments(4).Assign(
+          regs.Use({"predicate_promise", "prev_loop_count_future",
+                    "loop_count_promise", "max_iterations"}));
+    }
+    {
+      auto kernel_ctor = kernels_ctor.ConstructAt(1);
+      kernel_ctor.set_code(kernels.Use("return"));
+    }
+    function_ctor.set_num_regs(regs.size());
+  }
+  return buffer;
+}
+
+struct AsyncWhileOpTestParams {
+  bool initial_predicate;
+  int final_result;
+};
+class AsyncWhileOpTestFixture
+    : public ::testing::TestWithParam<AsyncWhileOpTestParams> {};
+TEST_P(AsyncWhileOpTestFixture, AsyncWhileOp) {
+  auto params = GetParam();
+  auto buffer = CreateAsyncWhileExecutable();
+
+  mlrt::bc::Executable executable(buffer.data());
+
+  mlrt::KernelRegistry registry;
+  RegisterTfMlrtKernels(registry);
+  registry.Register("test_async_while_body", TestAsyncWhileFnBody);
+
+  mlrt::LoadedExecutable loaded_executable(executable, registry);
+
+  auto work_queue = tfrt::CreateMultiThreadedWorkQueue(
+      /*num_threads=*/4, /*num_blocking_threads=*/4);
+  mlrt::ExecutionContext execution_context(&loaded_executable);
+  execution_context.set_work_queue(work_queue.get());
+
+  tensorflow::SessionOptions session_options;
+  tensorflow::FunctionDefLibrary fdef_lib;
+  TF_ASSERT_OK_AND_ASSIGN(auto fallback_state, tfrt_stub::FallbackState::Create(
+                                                   session_options, fdef_lib));
+
+  std::function<void(std::function<void()>)> runner =
+      [](const std::function<void()>& f) { f(); };
+  tfrt_stub::OpKernelRunnerTable runner_table;
+  tfd::FallbackResourceArray resource_array;
+  tfd::KernelFallbackCompatRequestState fallback_request_state(
+      &runner, &fallback_state->device_manager(), /*step_id=*/0, &runner_table,
+      &resource_array, /*user_intra_op_threadpool=*/nullptr,
+      /*model_metadata=*/std::nullopt,
+      &fallback_state->process_function_library_runtime());
+
+  tfrt::ResourceContext resource_context;
+
+  auto tf_context =
+      std::make_unique<Context>(&fallback_request_state, &resource_context);
+  execution_context.AddUserContext(std::move(tf_context));
+
+  std::vector<mlrt::Value> args;
+  args.resize(3);
+
+  // initial predicate is true
+  tensorflow::Tensor initial_predicate_tensor{DT_BOOL, {}};
+  initial_predicate_tensor.scalar<bool>()() = params.initial_predicate;
+  args.at(0).Set(
+      tfrt_stub::FallbackTensor(std::move(initial_predicate_tensor)));
+
+  tensorflow::Tensor loop_count_tensor{DT_INT32, {}};
+  loop_count_tensor.scalar<int32_t>()() = 0;
+  args.at(1).Set(tfrt_stub::FallbackTensor(std::move(loop_count_tensor)));
+
+  tensorflow::Tensor max_iteration_tensor{DT_INT32, {}};
+  max_iteration_tensor.scalar<int32_t>()() = 2;
+  args.at(2).Set(tfrt_stub::FallbackTensor(std::move(max_iteration_tensor)));
+
+  mlrt::Value result;
+
+  absl::Notification notification;
+  execution_context.set_exit_handler(
+      [&notification]() { notification.Notify(); });
+
+  std::vector<uint8_t> last_uses = {true, true, true};
+  execution_context.Call(executable.functions()[0], last_uses,
+                         absl::MakeSpan(args), absl::MakeSpan(&result, 1));
+  mlrt::Execute(execution_context);
+
+  notification.WaitForNotification();
+
+  ASSERT_OK(execution_context.status());
+
+  tensorflow::Tensor expected(tensorflow::DT_INT32, {});
+  expected.scalar<int32_t>()() = params.final_result;
+
+  auto& to_be = result.Get<tensorflow::tfrt_stub::FallbackTensor>();
+  tensorflow::test::ExpectEqual(to_be.tensor(), expected);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    AsyncWhileOpTestSuite, AsyncWhileOpTestFixture,
+    ::testing::ValuesIn<AsyncWhileOpTestParams>({{true, 2}, {false, 0}}));
+
+// A AsyncWhile body function that triggers failure.
+void TestAsyncWhileFnBodyError(mlrt::KernelFrame frame) {
+  ASSERT_EQ(frame.arguments().size(), 4);
+
+  frame.execution_context().Fail(absl::InternalError("Test error"));
+}
+TEST(KernelTest, AsyncWhileOpError) {
+  auto buffer = CreateAsyncWhileExecutable();
+
+  mlrt::bc::Executable executable(buffer.data());
+
+  mlrt::KernelRegistry registry;
+  RegisterTfMlrtKernels(registry);
+  registry.Register("test_async_while_body", TestAsyncWhileFnBodyError);
+
+  mlrt::LoadedExecutable loaded_executable(executable, registry);
+
+  auto work_queue = tfrt::CreateMultiThreadedWorkQueue(
+      /*num_threads=*/4, /*num_blocking_threads=*/4);
+  mlrt::ExecutionContext execution_context(&loaded_executable);
+  execution_context.set_work_queue(work_queue.get());
+
+  tensorflow::SessionOptions session_options;
+  tensorflow::FunctionDefLibrary fdef_lib;
+  TF_ASSERT_OK_AND_ASSIGN(auto fallback_state, tfrt_stub::FallbackState::Create(
+                                                   session_options, fdef_lib));
+
+  std::function<void(std::function<void()>)> runner =
+      [](const std::function<void()>& f) { f(); };
+  tfrt_stub::OpKernelRunnerTable runner_table;
+  tfd::FallbackResourceArray resource_array;
+  tfd::KernelFallbackCompatRequestState fallback_request_state(
+      &runner, &fallback_state->device_manager(), /*step_id=*/0, &runner_table,
+      &resource_array, /*user_intra_op_threadpool=*/nullptr,
+      /*model_metadata=*/std::nullopt,
+      &fallback_state->process_function_library_runtime());
+
+  tfrt::ResourceContext resource_context;
+
+  auto tf_context =
+      std::make_unique<Context>(&fallback_request_state, &resource_context);
+  execution_context.AddUserContext(std::move(tf_context));
+
+  std::vector<mlrt::Value> args;
+  args.resize(3);
+
+  // initial predicate is true
+  tensorflow::Tensor initial_predicate_tensor{DT_BOOL, {}};
+  initial_predicate_tensor.scalar<bool>()() = true;
+  args.at(0).Set(
+      tfrt_stub::FallbackTensor(std::move(initial_predicate_tensor)));
+
+  tensorflow::Tensor loop_count_tensor{DT_INT32, {}};
+  loop_count_tensor.scalar<int32_t>()() = 0;
+  args.at(1).Set(tfrt_stub::FallbackTensor(std::move(loop_count_tensor)));
+
+  tensorflow::Tensor max_iteration_tensor{DT_INT32, {}};
+  max_iteration_tensor.scalar<int32_t>()() = 2;
+  args.at(2).Set(tfrt_stub::FallbackTensor(std::move(max_iteration_tensor)));
+
+  mlrt::Value result;
+
+  absl::Notification notification;
+  execution_context.set_exit_handler(
+      [&notification]() { notification.Notify(); });
+
+  std::vector<uint8_t> last_uses = {true, true, true};
+  execution_context.Call(executable.functions()[0], last_uses,
+                         absl::MakeSpan(args), absl::MakeSpan(&result, 1));
+  mlrt::Execute(execution_context);
+
+  notification.WaitForNotification();
+  EXPECT_THAT(
+      execution_context.status(),
+      ::tsl::testing::StatusIs(absl::StatusCode::kInternal, "Test error"));
+}
+
 }  // namespace
 }  // namespace tf_mlrt
 }  // namespace tensorflow

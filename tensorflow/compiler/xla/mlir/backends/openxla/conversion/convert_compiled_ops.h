@@ -16,12 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_MLIR_BACKENDS_OPENXLA_CONVERSION_CONVERT_COMPILED_OPS_H_
 #define TENSORFLOW_COMPILER_XLA_MLIR_BACKENDS_OPENXLA_CONVERSION_CONVERT_COMPILED_OPS_H_
 
-#include <memory>
-
 #include "third_party/iree/llvm-external-projects/iree-dialects/include/iree-dialects/Dialect/Input/InputOps.h"
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/backends/openxla/conversion/de_bufferization.h"
+#include "tensorflow/compiler/xla/mlir/backends/openxla/conversion/xla_gpu_api.h"
 
 namespace xla {
 namespace gpu {
@@ -29,12 +28,20 @@ namespace gpu {
 // Forward declare.
 class ThunkSequence;
 
-// Appends patterns to convert LMHLO operations compiled to kernel thunks to an
+// Appends patterns to convert LMHLO operations compiled to kernel thunks to
 // IREEInput executable export and dispatch operations.
 void populateCompiledOpsConversionPatterns(
     mlir::RewritePatternSet &patterns, mlir::TypeConverter &converter,
     mlir::iree_compiler::IREE::Input::ExecutableSourceOp executable_source,
-    ThunkSequence *thunk_sequence, std::shared_ptr<DeBufferization> state);
+    ThunkSequence *thunk_sequence, DeBufferization &state);
+
+// Appends patterns to convert LMHLO operations compiled to kernel thunks to
+// XLA:GPU runtime API calls.
+void populateCompiledOpsConversionPatterns(mlir::RewritePatternSet &patterns,
+                                           mlir::TypeConverter &converter,
+                                           ThunkSequence *thunk_sequence,
+                                           DeBufferization &state,
+                                           XlaGpuApi &api);
 
 }  // namespace gpu
 }  // namespace xla

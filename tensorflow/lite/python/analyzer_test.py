@@ -144,8 +144,7 @@ class AnalyzerTest(test_util.TensorFlowTestCase):
           model_content=fb_model, gpu_compatibility=True)
     txt = mock_stdout.getvalue()
     self.assertIn(
-        'Your model looks compatible with GPU delegate with TFLite runtime',
-        txt)
+        'Your model looks compatible with GPU delegate on TFLite runtime', txt)
 
   def testTxtSignatureDefs(self):
     with tempfile.TemporaryDirectory() as tmp_dir:

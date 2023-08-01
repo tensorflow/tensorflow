@@ -316,11 +316,17 @@ xla::PjRtClient::KeyValueGetCallback ToCppKeyValueGetCallback(
 xla::PjRtClient::KeyValuePutCallback ToCppKeyValuePutCallback(
     PJRT_KeyValuePutCallback c_callback, void* user_arg);
 
+// A method that does not nothing other than returning a nullptr. Can be used as
+// the implementation of PJRT_Plugin_Initialize for plugins that do not require
+// specific initialization.
+PJRT_Error* PJRT_Plugin_Initialize_NoOp(PJRT_Plugin_Initialize_Args* args);
+
 // Creates a PJRT_Api with create_fn from the input and other functions in
 // pjrt_c_api_wrapper_impl.
 constexpr PJRT_Api CreatePjrtApi(
     PJRT_Client_Create* create_fn,
-    PJRT_TopologyDescription_Create* topology_create_fn) {
+    PJRT_TopologyDescription_Create* topology_create_fn,
+    PJRT_Plugin_Initialize* plugin_initialize_fn) {
   return PJRT_Api{
       /*struct_size=*/PJRT_Api_STRUCT_SIZE,
       /*priv=*/nullptr,
@@ -335,6 +341,7 @@ constexpr PJRT_Api CreatePjrtApi(
       /*PJRT_Error_Message=*/pjrt::PJRT_Error_Message,
       /*PJRT_Error_GetCode=*/pjrt::PJRT_Error_GetCode,
 
+      /*PJRT_Plugin_Initialize=*/plugin_initialize_fn,
       /*PJRT_Plugin_Attributes=*/pjrt::PJRT_Plugin_Attributes,
 
       /*PJRT_Event_Destroy=*/pjrt::PJRT_Event_Destroy,

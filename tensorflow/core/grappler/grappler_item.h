@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/variable.pb.h"
 #include "tensorflow/core/protobuf/queue_runner.pb.h"
+#include "tensorflow/tsl/platform/cpu_info.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -102,6 +103,9 @@ struct GrapplerItem {
 
     // Mark the grapper optimization run in eager mode or not.
     bool is_eager_mode = false;
+
+    // Number of intra threads used to run operation.
+    int intra_op_parallelism_threads = tsl::port::MaxParallelism();
   };
 
   const std::unordered_set<string>& devices() const;

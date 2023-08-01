@@ -396,6 +396,31 @@ ENTRY entry {
   expect_layout(call_0->operand(1)->shape(), {1, 2, 0});
 }
 
+TEST_F(LayoutAssignmentTest, ConvCuDNNF8) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::HOPPER)) {
+    GTEST_SKIP() << "FP8 convolutions require HOPPER or newer archiecture.";
+  }
+
+  const char* hlo = R"(
+
+  HloModule jit_conv_general_dilated
+
+  ENTRY main.4 {
+    Arg_0 = f8e4m3fn[1,64,64,16]{3,2,1,0} parameter(0)
+    Arg_1 = f8e4m3fn[3,3,16,32]{3,2,1,0} parameter(1)
+    ROOT conv = f8e4m3fn[1,64,64,32]{3,2,1,0} convolution(Arg_0, Arg_1), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f
+  }
+)";
+
+  MatchOptimizedHlo(hlo, R"(
+  // CHECK: [[P0:%[^ ]+]] = f8e4m3fn[1,64,64,16]{3,2,1,0} parameter(0)
+  // CHECK: [[P1:%[^ ]+]] = f8e4m3fn[3,3,16,32]{3,2,1,0} parameter(1)
+  // CHECK-NEXT: [[P2:%[^ ]+]] = f8e4m3fn[32,3,3,16]{3,2,1,0} transpose([[P1]]), dimensions={3,0,1,2}
+  // CHECK-NEXT: [[CONV:%[^ ]+]] = (f8e4m3fn[1,64,64,32]{3,2,1,0}, u8[0]{0}) custom-call([[P0]], [[P2]]), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, custom_call_target="__cudnn$convForwardGraph"
+  )");
+}
+
 TEST_F(LayoutAssignmentTest, ConvCuDNNBF16) {
   if (!GetCudaComputeCapability().IsAtLeast(
           se::CudaComputeCapability::AMPERE)) {

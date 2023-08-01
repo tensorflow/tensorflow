@@ -360,38 +360,5 @@ llvm::Value* TilingThreadIdInfo::GEPIntoSharedMemory(
   return b->CreateAddrSpaceCast(gep, pointer_in_addressspace);
 }
 
-llvm_ir::IrArray::Index GetUnnormalizedIndex(
-    const llvm_ir::IrArray::Index& normalized_shape_index,
-    const Shape& unnormalized_shape, llvm::IRBuilder<>* builder,
-    absl::Span<const int64_t> dims_in_elems) {
-  CHECK_EQ(normalized_shape_index.size(), 3);
-  // If the normalization only add a new dimensions of size 1,
-  // generate simpler indexing. LLVM doesn't always simplify the more
-  // complicated indexing and this prevents it from vectorizing some
-  // cases. We do this only for major_to_minor memory layout.
-  if (unnormalized_shape.rank() == 2 && unnormalized_shape.has_layout() &&
-      unnormalized_shape.dimensions()[0] == normalized_shape_index.dims()[1] &&
-      unnormalized_shape.dimensions()[1] == normalized_shape_index.dims()[2] &&
-      unnormalized_shape.layout().minor_to_major(1) == 0) {
-    CHECK_EQ(normalized_shape_index.dims()[0], 1);
-    auto multidim = normalized_shape_index.multidim();
-    return llvm_ir::IrArray::Index({multidim[1], multidim[2]},
-                                   unnormalized_shape,
-                                   normalized_shape_index.GetType());
-  }
-  if (unnormalized_shape.rank() == 2 && unnormalized_shape.has_layout() &&
-      unnormalized_shape.dimensions()[0] == normalized_shape_index.dims()[2] &&
-      unnormalized_shape.dimensions()[1] == normalized_shape_index.dims()[1] &&
-      unnormalized_shape.layout().minor_to_major(1) == 1) {
-    CHECK_EQ(normalized_shape_index.dims()[0], 1);
-    auto multidim = normalized_shape_index.multidim();
-    return llvm_ir::IrArray::Index({multidim[2], multidim[1]},
-                                   unnormalized_shape,
-                                   normalized_shape_index.GetType());
-  }
-  return normalized_shape_index.SourceIndexOfBitcast(
-      ShapeUtil::MakeShape(F32, dims_in_elems), unnormalized_shape, builder);
-}
-
 }  // namespace gpu
 }  // namespace xla

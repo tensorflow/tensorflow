@@ -341,20 +341,20 @@ module @test_multi_mesh {
     }) : () -> tensor<4xi32>
 
     // CHECK:      "tf_device.cluster"
-    // CHECK-NEXT:    "tf.CopyToMesh"
+    // CHECK-NEXT:    "tf.Relayout"
     // CHECK-NEXT:    tf_device.return
     // CHECK-NEXT:    _mesh = "TPU|x=2|0,1|0,1|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1"
     %6 = "tf_device.cluster"() ({
-      %7 = "tf.CopyToMesh"(%2) { layout = "sharding_specs:not_sharded mesh:TPU|x=2|0,1|0,1|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1"} : (tensor<4xi32>) -> tensor<4xi32>
+      %7 = "tf.Relayout"(%2) { layout = "sharding_specs:not_sharded mesh:TPU|x=2|0,1|0,1|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1"} : (tensor<4xi32>) -> tensor<4xi32>
       tf_device.return %7 : tensor<4xi32>
     }) { _mesh = "TPU|x=2|0,1|0,1|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1" } : () -> tensor<4xi32>
 
     // CHECK:      "tf_device.cluster"
-    // CHECK-NEXT:    "tf.CopyToMesh"
+    // CHECK-NEXT:    "tf.Relayout"
     // CHECK-NEXT:    tf_device.return
     // CHECK-NEXT:    _mesh = "TPU|x=2|0,1|0,1|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1"
     %8 = "tf_device.cluster"() ({
-      %9 = "tf.CopyToMesh"(%4) { layout = "sharding_specs:not_sharded mesh:TPU|x=2|0,1|0,1|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1"} : (tensor<4xi32>) -> tensor<4xi32>
+      %9 = "tf.Relayout"(%4) { layout = "sharding_specs:not_sharded mesh:TPU|x=2|0,1|0,1|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1"} : (tensor<4xi32>) -> tensor<4xi32>
       tf_device.return %9 : tensor<4xi32>
     }) { _mesh = "TPU|x=2|0,1|0,1|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1" } : () -> tensor<4xi32>
 
@@ -368,27 +368,6 @@ module @test_multi_mesh {
     }) : () -> tensor<4xi32>
 
     func.return %10 :tensor<4xi32>
-  }
-}
-
-// -----
-
-// Checks CopyToMeshGrad is written to CopyToMesh.
-// CHECK-LABEL: module @test_copy_to_mesh_grad
-module @test_copy_to_mesh_grad {
-  func.func @main(%arg0: tensor<4xi32> {tf._layout = "sharding_specs:not_sharded mesh:CPU|x=2|0,1|0,1|/job:localhost/task:0/device:CPU:0,/job:localhost/task:0/device:CPU:1"},
-             %arg1: tensor<4xi32> {tf._layout = "sharding_specs:not_sharded mesh:TPU|x=2|0,1|0,1|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1"}) -> (tensor<4xi32>) {
-
-    // CHECK:      "tf_device.cluster"
-    // CHECK-NEXT:    "tf.CopyToMesh"
-    // CHECK-NEXT:    tf_device.return
-    // CHECK-NEXT:    _mesh = "TPU|x=2|0,1|0,1|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1"
-    %0 = "tf_device.cluster"() ({
-      %1 = "tf.CopyToMeshGrad"(%arg0, %arg1) { reference_layout = "sharding_specs:not_sharded mesh:TPU|x=2|0,1|0,1|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1"} : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
-      tf_device.return %1 : tensor<4xi32>
-    }) : () -> tensor<4xi32>
-
-    func.return %0 :tensor<4xi32>
   }
 }
 

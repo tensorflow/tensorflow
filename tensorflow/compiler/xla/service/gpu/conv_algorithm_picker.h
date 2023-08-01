@@ -139,7 +139,7 @@ class GpuConvAlgorithmPicker : public HloModulePass {
 
   StatusOr<AutotuneResult> AutotuneOneConvRunner(
       se::DeviceMemoryAllocator* allocator, se::Stream* stream,
-      MaybeFusedConvRunner* runner,
+      GenericConvRunner* runner,
       std::optional<ReferenceResult>* reference_result,
       absl::Span<const stream_executor::dnn::AlgorithmDesc> disabled_algos,
       std::optional<AutotuneCacheKey> instruction_info,

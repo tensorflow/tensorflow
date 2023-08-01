@@ -120,6 +120,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/reduction_dimension_grouper.h"
 #include "tensorflow/compiler/xla/service/gpu/reduction_layout_normalizer.h"
 #include "tensorflow/compiler/xla/service/gpu/reduction_splitter.h"
+#include "tensorflow/compiler/xla/service/gpu/reduction_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime_intrinsics.h"
 #include "tensorflow/compiler/xla/service/gpu/scatter_slice_simplifier.h"
 #include "tensorflow/compiler/xla/service/gpu/softmax_rewriter_triton.h"
@@ -888,7 +889,10 @@ Status GpuCompiler::PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
     pipeline.AddPass<AliasPassthroughParams>();
   }
   pipeline.AddPass<LoopScheduleLinearizer>(GetCanShareBuffer());
-  pipeline.AddPass<CopyInsertion>(GetCanShareBuffer());
+
+  constexpr int64_t kNoRegionBasedLiveRangeAnalysisLimit = -1;
+  pipeline.AddPass<CopyInsertion>(GetCanShareBuffer(),
+                                  kNoRegionBasedLiveRangeAnalysisLimit);
   // We are using a sub-pipeline here, so that the verifier only runs after both
   // GpuHorizontalLoopFusion and HloDCE.
   auto& sub_pipeline =
@@ -966,7 +970,9 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     // in the softmax codegen pipeline. However we should run before
     // ReductionDimensionGrouper, as that makes matching the softmax pattern
     // harder.
-    if (debug_options.xla_gpu_enable_triton_softmax_fusion()) {
+    if (debug_options.xla_gpu_enable_triton_softmax_fusion() &&
+        std::holds_alternative<se::CudaComputeCapability>(
+            gpu_target_config.gpu_version)) {
       pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
       pipeline.AddPass<SoftmaxRewriterTriton>(gpu_target_config.gpu_version);
     }
@@ -1429,7 +1435,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
     HloCostAnalysis::Options cost_analysis_options{ShapeSizeBytesFunction()};
     cost_analysis_options.set_bytes_per_second(
         stream_exec->GetDeviceDescription().memory_bandwidth());
-    GpuHloCostAnalysis cost_analysis(cost_analysis_options);
+    GpuHloCostAnalysis cost_analysis(cost_analysis_options, &gpu_device_info);
     TF_RETURN_IF_ERROR(module->entry_computation()->Accept(&cost_analysis));
     if (!options.is_autotuning_compilation) {
       VLOG(1) << "HLO memory read+written: "

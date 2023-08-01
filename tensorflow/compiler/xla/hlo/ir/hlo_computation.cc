@@ -680,6 +680,10 @@ void HloComputation::Print(
     printer->Append(execution_thread());
     printer->Append("\"");
   }
+  if (options.print_name_after_closing_brace() && instruction_count() > 5) {
+    printer->Append(" // ");
+    printer->Append(name());
+  }
 }
 
 std::string HloComputation::ToString() const {

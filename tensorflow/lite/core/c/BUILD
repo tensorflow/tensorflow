@@ -67,19 +67,6 @@ tflite_cc_library_with_c_headers_test(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/async/c:types",
     ],
-    alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
-)
-
-# This is a private target, its visibility is set to public only to be
-# used by "tflite_custom_c_library".
-# Do not use this target directly and don't consider it as a part of the public API.
-alias(
-    name = "private_c_api",
-    actual = ":c_api",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//visibility:public",
-    ],
 )
 
 tflite_cc_library_with_c_headers_test(
@@ -328,7 +315,6 @@ tflite_cc_library_with_c_headers_test(
         "//tensorflow/lite/profiling/telemetry:profiler",
         "//tensorflow/lite/profiling/telemetry/c:profiler",
     ],
-    alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
 )
 
 # Same as ":c_api_experimental", but without linking in the default CreateOpResolver implementation.

@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/graphcycles/graphcycles.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 
@@ -139,6 +140,9 @@ Status DecomposeCollectivePermute(
 
   HloInstruction* recv_data = computation->AddInstruction(
       HloInstruction::CreateGetTupleElement(recv_done, 0));
+  // We want the Send to be scheduled before RecvDone to prevent the scheduler
+  // from interleaving two Send-Recv sequences.
+  TF_RETURN_IF_ERROR(send->AddControlDependencyTo(recv_done));
   // We want the RecvDone to be scheduled before the SendDone, enforce this
   // with a control dependency.
   TF_RETURN_IF_ERROR(recv_done->AddControlDependencyTo(send_done));

@@ -18,6 +18,7 @@ import collections
 import inspect
 import threading
 
+from tensorflow.core.framework import graph_debug_info_pb2
 from tensorflow.python.util import _tf_stack
 
 # Generally such lookups should be done using `threading.local()`. See
@@ -163,6 +164,23 @@ def extract_stack(stacklevel=1):
       _source_filter_stacks[thread_key][-1].internal_set,
       stacklevel,
   )
+
+
+def LoadTracesFromDebugInfo(debug_info):
+  return _tf_stack.LoadTracesFromDebugInfo(debug_info.SerializeToString())
+
+
+class GraphDebugInfoBuilder(_tf_stack.GraphDebugInfoBuilder):
+
+  def AppendGraphDebugInfo(self, fn_name, fn_debug_info):
+    debug_info_str = fn_debug_info.SerializeToString()
+    super().AppendGraphDebugInfo(fn_name, debug_info_str)
+
+  def Build(self):
+    debug_info_str = super().Build()
+    debug_info = graph_debug_info_pb2.GraphDebugInfo()
+    debug_info.ParseFromString(debug_info_str)
+    return debug_info
 
 
 StackSummary = _tf_stack.StackTrace

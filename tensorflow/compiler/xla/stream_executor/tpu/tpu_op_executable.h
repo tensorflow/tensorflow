@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/host_command_handler.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executable_interface.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
@@ -41,6 +42,11 @@ class TpuOpExecutable : public xla::TpuExecutableInterface {
   explicit TpuOpExecutable(const XLA_TpuProgram* core_program,
                            std::unique_ptr<xla::HloModule> hlo_module,
                            HostCommandHandler host_command_handler = nullptr);
+
+  explicit TpuOpExecutable(
+      const XLA_TpuProgram* core_program,
+      std::unique_ptr<xla::HloModule> hlo_module,
+      SE_OutsideCompilationParams* outside_compilation_params);
 
   ~TpuOpExecutable() override = default;
 
@@ -60,6 +66,8 @@ class TpuOpExecutable : public xla::TpuExecutableInterface {
   const XLA_TpuProgram* const core_program_;
 
   const HostCommandHandler host_command_handler_;
+
+  SE_OutsideCompilationParams* outside_compilation_params_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(TpuOpExecutable);
 };

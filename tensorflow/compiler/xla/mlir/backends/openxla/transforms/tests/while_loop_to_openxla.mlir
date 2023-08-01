@@ -35,6 +35,7 @@ func.func @main(%arg0: memref<4xi8>, %arg1: memref<4xi8>, %arg2: memref<1xi8>) {
 // of both tensors as a result.
 
 // CHECK-LABEL: func @main(
+// CHECK:   %[[CTX:.*]]: !xla_gpu.execution_context,
 // CHECK:   %[[ARG0:.*]]: tensor<4xi8>, %[[ARG1:.*]]: tensor<4xi8>,
 // CHECK:   %[[ARG2:.*]]: tensor<1xi8>
 // CHECK: ) {

@@ -1,5 +1,57 @@
 // RUN: dtensor-opt -split-input-file -dtensor-collective-type-lowering -verify-diagnostics %s| FileCheck %s --dump-input=fail
 
+// Check the lowering of AllScatter on CPU with any complex reduction.
+// CHECK-LABEL: func @lower_allgather_complex64
+func.func @lower_allgather_complex64(%arg0: tensor<i32>,
+                %arg1: tensor<1x2xcomplex<f32>> {tf._layout = "sharding_specs:x,unsharded, mesh:|x=2,y=1|0,1|0,1|/job:localhost/replica:0/task:0/device:CPU:0,/job:localhost/replica:0/task:0/device:CPU:1", tf._mesh = "|x=2,y=1|0,1|0,1|/job:localhost/replica:0/task:0/device:CPU:0,/job:localhost/replica:0/task:0/device:CPU:1"}) {
+  // CHECK:     "tf_device.cluster"
+  // CHECK-NEXT:  %[[REAL:.*]] = "tf.Real"(%arg1)
+  // CHECK-NEXT:  %[[IMAG:.*]] = "tf.Imag"(%arg1)
+  // CHECK-NEXT:  %[[ALLGATHER_OUT_REAL:.*]] = "tf.DTensorAllGather"(%[[REAL]])
+  // CHECK-SAME:  _layout = ["sharding_specs:unsharded,unsharded, mesh:|x=2,y=1|0,1|0,1|/job:localhost/replica:0/task:0/device:CPU:0,/job:localhost/replica:0/task:0/device:CPU:1"]
+  // CHECK-SAME:  (tensor<1x2xf32>) -> tensor<2x2xf32>
+  // CHECK-NEXT:  %[[ALLGATHER_OUT_IMAG:.*]] = "tf.DTensorAllGather"(%[[IMAG]])
+  // CHECK-SAME:  _layout = ["sharding_specs:unsharded,unsharded, mesh:|x=2,y=1|0,1|0,1|/job:localhost/replica:0/task:0/device:CPU:0,/job:localhost/replica:0/task:0/device:CPU:1"]
+  // CHECK-SAME:  (tensor<1x2xf32>) -> tensor<2x2xf32>
+  // CHECK-NEXT:  %[[OUTPUT:.*]] = "tf.Complex"(%[[ALLGATHER_OUT_REAL]], %[[ALLGATHER_OUT_IMAG]])
+  // CHECK-SAME:  _layout = ["sharding_specs:unsharded,unsharded, mesh:|x=2,y=1|0,1|0,1|/job:localhost/replica:0/task:0/device:CPU:0,/job:localhost/replica:0/task:0/device:CPU:1"]
+  // CHECK-SAME:  (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xcomplex<f32>>
+  // CHECK-NEXT   return %[[OUTPUT]]
+  %0 = "tf_device.cluster"() ({
+    %1 = "tf.DTensorAllGather"(%arg1) {_layout = ["sharding_specs:unsharded,unsharded, mesh:|x=2,y=1|0,1|0,1|/job:localhost/replica:0/task:0/device:CPU:0,/job:localhost/replica:0/task:0/device:CPU:1"], input_layout = #dtensor.layout<sharding_specs:x,unsharded, mesh:|x=2,y=1|0,1|0,1|/job:localhost/replica:0/task:0/device:CPU:0,/job:localhost/replica:0/task:0/device:CPU:1>, output_layout = #dtensor.layout<sharding_specs:unsharded,unsharded, mesh:|x=2,y=1|0,1|0,1|/job:localhost/replica:0/task:0/device:CPU:0,/job:localhost/replica:0/task:0/device:CPU:1>} : (tensor<1x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>>
+          tf_device.return %1 : tensor<2x2xcomplex<f32>>
+  }) {_mesh = "|x=2,y=1|0,1|0,1|/job:localhost/replica:0/task:0/device:CPU:0,/job:localhost/replica:0/task:0/device:CPU:1"} : () -> tensor<2x2xcomplex<f32>>
+  func.return
+}
+
+// -----
+
+// Check the lowering of DTensorAllToAll on TPU with any complex reduction.
+// CHECK-LABEL: func @lower_all_to_all_complex128
+func.func @lower_all_to_all_complex128(%arg0: tensor<i32>,
+                %arg1: tensor<1x2xcomplex<f64>> {tf._layout = "sharding_specs:x,unsharded, mesh:|x=2,y=1|0,1|0,1|/job:localhost/replica:0/task:0/device:CPU:0,/job:localhost/replica:0/task:0/device:CPU:1", tf._mesh = "|x=2,y=1|0,1|0,1|/job:localhost/replica:0/task:0/device:CPU:0,/job:localhost/replica:0/task:0/device:CPU:1"}) {
+  // CHECK:     "tf_device.cluster"
+  // CHECK-NEXT:  %[[REAL:.*]] = "tf.Real"(%arg1)
+  // CHECK-NEXT:  %[[IMAG:.*]] = "tf.Imag"(%arg1)
+  // CHECK-NEXT:  %[[ALLTOALL_OUT_REAL:.*]] = "tf.DTensorAllToAll"(%[[REAL]])
+  // CHECK-SAME:  _layout = ["sharding_specs:unsharded,x, mesh:|x=2,y=1|0,1|0,1|/job:localhost/replica:0/task:0/device:CPU:0,/job:localhost/replica:0/task:0/device:CPU:1"]
+  // CHECK-SAME:  (tensor<1x2xf64>) -> tensor<2x1xf64>
+  // CHECK-NEXT:  %[[ALLTOALL_OUT_IMAG:.*]] = "tf.DTensorAllToAll"(%[[IMAG]])
+  // CHECK-SAME:  _layout = ["sharding_specs:unsharded,x, mesh:|x=2,y=1|0,1|0,1|/job:localhost/replica:0/task:0/device:CPU:0,/job:localhost/replica:0/task:0/device:CPU:1"]
+  // CHECK-SAME:  (tensor<1x2xf64>) -> tensor<2x1xf64>
+  // CHECK-NEXT:  %[[OUTPUT:.*]] = "tf.Complex"(%[[ALLTOALL_OUT_REAL]], %[[ALLTOALL_OUT_IMAG]])
+  // CHECK-SAME:  _layout = ["sharding_specs:unsharded,x, mesh:|x=2,y=1|0,1|0,1|/job:localhost/replica:0/task:0/device:CPU:0,/job:localhost/replica:0/task:0/device:CPU:1"]
+  // CHECK-SAME:  (tensor<2x1xf64>, tensor<2x1xf64>) -> tensor<2x1xcomplex<f64>>
+  // CHECK-NEXT   return %[[OUTPUT]]
+  %0 = "tf_device.cluster"() ({
+    %1 = "tf.DTensorAllToAll"(%arg1) {_layout = ["sharding_specs:unsharded,x, mesh:|x=2,y=1|0,1|0,1|/job:localhost/replica:0/task:0/device:CPU:0,/job:localhost/replica:0/task:0/device:CPU:1"], input_layout = #dtensor.layout<sharding_specs:x,unsharded, mesh:|x=2,y=1|0,1|0,1|/job:localhost/replica:0/task:0/device:CPU:0,/job:localhost/replica:0/task:0/device:CPU:1>, output_layout = #dtensor.layout<sharding_specs:unsharded,x, mesh:|x=2,y=1|0,1|0,1|/job:localhost/replica:0/task:0/device:CPU:0,/job:localhost/replica:0/task:0/device:CPU:1>} : (tensor<1x2xcomplex<f64>>) -> tensor<2x1xcomplex<f64>>
+    tf_device.return %1 : tensor<2x1xcomplex<f64>>
+  }) {_mesh = "|x=2,y=1|0,1|0,1|/job:localhost/replica:0/task:0/device:CPU:0,/job:localhost/replica:0/task:0/device:CPU:1"} : () -> tensor<2x1xcomplex<f64>>
+  func.return
+}
+
+// -----
+
 // Check the lowering of AllReduce on TPU with any boolean reduction.
 // CHECK-LABEL: func @lower_allreduce_any_boolean
 func.func @lower_allreduce_any_boolean() -> (tensor<4096x8192xi1>) {

@@ -721,7 +721,7 @@ func.func @const() -> tensor<2xi32> {
 // CHECK-LABEL:   func @relu(
 // CHECK-SAME:               %[[VAL_0:.*]]: tensor<1xi32>) -> tensor<1xi32> {
 // CHECK:           %[[VAL_1:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
-// CHECK:           %[[VAL_2:.*]] = "tf.Maximum"(%[[VAL_1]], %[[VAL_0]]) : (tensor<i32>, tensor<1xi32>) -> tensor<1xi32>
+// CHECK:           %[[VAL_2:.*]] = "tf.Maximum"(%[[VAL_0]], %[[VAL_1]]) : (tensor<1xi32>, tensor<i32>) -> tensor<1xi32>
 // CHECK:           return %[[VAL_2]] : tensor<1xi32>
 // CHECK:         }
 func.func @relu(%arg0: tensor<1xi32>) -> tensor<1xi32> {
@@ -733,7 +733,7 @@ func.func @relu(%arg0: tensor<1xi32>) -> tensor<1xi32> {
 // CHECK-LABEL:   func @relu_unranked(
 // CHECK-SAME:                        %[[VAL_0:.*]]: tensor<?xi32>) -> tensor<?xi32> {
 // CHECK:           %[[VAL_1:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
-// CHECK:           %[[VAL_2:.*]] = "tf.Maximum"(%[[VAL_1]], %[[VAL_0]]) : (tensor<i32>, tensor<?xi32>) -> tensor<?xi32>
+// CHECK:           %[[VAL_2:.*]] = "tf.Maximum"(%[[VAL_0]], %[[VAL_1]]) : (tensor<?xi32>, tensor<i32>) -> tensor<?xi32>
 // CHECK:           return %[[VAL_2]] : tensor<?xi32>
 // CHECK:         }
 func.func @relu_unranked(%arg0: tensor<?xi32>) -> tensor<?xi32> {
@@ -1714,6 +1714,35 @@ func.func @convert_conv1d(%arg0: tensor<16x32x256xbf16>, %arg1: tensor<1x256x256
     padding = dense<0> : tensor<1x2xi64>,
     precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>],
     rhs_dilation = dense<1> : tensor<1xi64>,
+    window_strides = dense<1> : tensor<1xi64>
+  } : (tensor<16x32x256xbf16>, tensor<1x256x256xbf16>) -> tensor<16x32x256xbf16>
+  func.return %0 : tensor<16x32x256xbf16>
+}
+
+// CHECK-LABEL:   func.func @convert_conv1d_no_lhs_dil_rhs_dil_precision_conf(
+// CHECK-SAME:                              %[[VAL_0:.*]]: tensor<16x32x256xbf16>,
+// CHECK-SAME:                              %[[VAL_1:.*]]: tensor<1x256x256xbf16>) -> tensor<16x32x256xbf16> {
+// CHECK-DAG:       %[[VAL_2:.*]] = arith.constant dense<[16, 32, 256, 1]> : tensor<4xi64>
+// CHECK:           %[[VAL_3:.*]] = "tf.Reshape"(%[[VAL_0]], %[[VAL_2]]) : (tensor<16x32x256xbf16>, tensor<4xi64>) -> tensor<16x32x256x1xbf16>
+// CHECK-DAG:       %[[VAL_4:.*]] = "tf.Const"() {value = dense<[0, 1, 3, 2]> : tensor<4xi64>} : () -> tensor<4xi64>
+// CHECK:           %[[VAL_5:.*]] = "tf.Transpose"(%[[VAL_3]], %[[VAL_4]]) : (tensor<16x32x256x1xbf16>, tensor<4xi64>) -> tensor<16x32x1x256xbf16>
+// CHECK-DAG:       %[[VAL_6:.*]] = arith.constant dense<[1, 256, 256, 1]> : tensor<4xi64>
+// CHECK:           %[[VAL_7:.*]] = "tf.Reshape"(%[[VAL_1]], %[[VAL_6]]) : (tensor<1x256x256xbf16>, tensor<4xi64>) -> tensor<1x256x256x1xbf16>
+// CHECK-DAG:       %[[VAL_8:.*]] = "tf.Const"() {value = dense<[0, 3, 1, 2]> : tensor<4xi64>} : () -> tensor<4xi64>
+// CHECK:           %[[VAL_9:.*]] = "tf.Transpose"(%[[VAL_7]], %[[VAL_8]]) : (tensor<1x256x256x1xbf16>, tensor<4xi64>) -> tensor<1x1x256x256xbf16>
+// CHECK:           %[[VAL_10:.*]] = "tf.Conv2D"(%[[VAL_5]], %[[VAL_9]]) {data_format = "NHWC", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "VALID", strides = [1, 1, 1, 1], use_cudnn_on_gpu = true} : (tensor<16x32x1x256xbf16>, tensor<1x1x256x256xbf16>) -> tensor<16x32x1x256xbf16>
+// CHECK:           %[[VAL_11:.*]] = "tf.Const"() {value = dense<[0, 1, 3, 2]> : tensor<4xi64>} : () -> tensor<4xi64>
+// CHECK:           %[[VAL_12:.*]] = "tf.Transpose"(%[[VAL_10]], %[[VAL_11]]) : (tensor<16x32x1x256xbf16>, tensor<4xi64>) -> tensor<16x32x256x1xbf16>
+// CHECK:           %[[VAL_13:.*]] = arith.constant dense<[16, 32, 256]> : tensor<3xi64>
+// CHECK:           %[[VAL_14:.*]] = "tf.Reshape"(%[[VAL_12]], %[[VAL_13]]) : (tensor<16x32x256x1xbf16>, tensor<3xi64>) -> tensor<16x32x256xbf16>
+// CHECK:           return %[[VAL_14]] : tensor<16x32x256xbf16>
+// CHECK:         }
+func.func @convert_conv1d_no_lhs_dil_rhs_dil_precision_conf(%arg0: tensor<16x32x256xbf16>, %arg1: tensor<1x256x256xbf16>) -> tensor<16x32x256xbf16> {
+	%0 = "mhlo.convolution"(%arg0, %arg1) {
+    batch_group_count = 1 : i64,
+    dimension_numbers = #mhlo.conv<[b, 0, f]x[0, i, o]->[b, 0, f]>,
+    feature_group_count = 1 : i64,
+    padding = dense<0> : tensor<1x2xi64>,
     window_strides = dense<1> : tensor<1xi64>
   } : (tensor<16x32x256xbf16>, tensor<1x256x256xbf16>) -> tensor<16x32x256xbf16>
   func.return %0 : tensor<16x32x256xbf16>
@@ -2740,6 +2769,43 @@ func.func @convert_gather_to_slice_batch_size_1(%arg0: tensor<1x2944xi32>, %arg1
   func.return %0 : tensor<1x1504xi32>
 }
 
+// CHECK-LABEL:   func @convert_gather_slice_dynamic_indices(
+// CHECK-SAME:                         %[[ARG_0:.*]]: tensor<256000x1024xi8>,
+// CHECK-SAME:                         %[[ARG_1:.*]]: tensor<?x?x1xi32>) -> tensor<?x?x1024xi8> {
+// CHECK:            %[[VAL_0:.*]] = "tf.GatherNd"(%[[ARG_0]], %[[ARG_1]]) : (tensor<256000x1024xi8>, tensor<?x?x1xi32>) -> tensor<?x?x1024xi8>
+// CHECK:            return %[[VAL_0]] : tensor<?x?x1024xi8>
+// CHECK:         }
+func.func @convert_gather_slice_dynamic_indices(%arg0: tensor<256000x1024xi8>, %arg1: tensor<?x?x1xi32>) -> tensor<?x?x1024xi8> {
+  %0 = "mhlo.gather"(%arg0, %arg1) {
+    dimension_numbers = #mhlo.gather<
+      offset_dims = [2],
+      collapsed_slice_dims = [0],
+      start_index_map = [0],
+      index_vector_dim = 2
+    >,
+    slice_sizes = dense<[1, 1024]> : tensor<2xi64>
+  } : (tensor<256000x1024xi8>, tensor<?x?x1xi32>) -> tensor<?x?x1024xi8>
+  func.return %0 : tensor<?x?x1024xi8>
+}
+
+// CHECK-LABEL:   func @convert_gather_scalar_dynamic_indices(
+// CHECK-SAME:                         %[[ARG_0:.*]]: tensor<256000xf32>,
+// CHECK-SAME:                         %[[ARG_1:.*]]: tensor<?x?x1xi32>) -> tensor<?x?xf32> {
+// CHECK:            %[[VAL_0:.*]] = "tf.GatherNd"(%[[ARG_0]], %[[ARG_1]]) : (tensor<256000xf32>, tensor<?x?x1xi32>) -> tensor<?x?xf32>
+// CHECK:            return %[[VAL_0]] : tensor<?x?xf32>
+// CHECK:         }
+func.func @convert_gather_scalar_dynamic_indices(%arg0: tensor<256000xf32>, %arg1: tensor<?x?x1xi32>) -> tensor<?x?xf32> {
+  %0 = "mhlo.gather"(%arg0, %arg1) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [0],
+      start_index_map = [0],
+      index_vector_dim = 2
+    >,
+    slice_sizes = dense<1> : tensor<1xi64>
+  } : (tensor<256000xf32>, tensor<?x?x1xi32>) -> tensor<?x?xf32>
+  func.return %0 : tensor<?x?xf32>
+}
+
 // CHECK-LABEL:   func @convert_gather_to_slice(
 // CHECK-SAME:                         %[[ARG_0:.*]]: tensor<3x2944xi32>,
 // CHECK-SAME:                         %[[ARG_1:.*]]: tensor<3x2xi32>)
@@ -2783,7 +2849,7 @@ func.func @convert_gather_to_slice(%arg0: tensor<3x2944xi32>, %arg1: tensor<3x2x
 
 // CHECK-LABEL:   func @convert_gather_to_slice_dynamic_error
 func.func @convert_gather_to_slice_dynamic_error(%arg0: tensor<3x?xi32>, %arg1: tensor<3x2xi32>) -> tensor<3x1504xi32> {
-  // expected-error @+1 {{Dynamic shaped inputs are not supported.}}
+  // expected-error @+1 {{Dynamic shaped operand is not supported.}}
   %0 = "mhlo.gather"(%arg0, %arg1) {
     dimension_numbers = #mhlo.gather<
       offset_dims = [1],

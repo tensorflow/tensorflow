@@ -292,9 +292,6 @@ class _EagerTensorBase(
   def __int__(self):
     return int(self._numpy())
 
-  def __long__(self):
-    return long(self._numpy())
-
   def __float__(self):
     return float(self._numpy())
 

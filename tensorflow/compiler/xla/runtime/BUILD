@@ -313,6 +313,7 @@ cc_library(
         "//tensorflow/compiler/xla/runtime/ffi:ffi_c_api_hdrs",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 

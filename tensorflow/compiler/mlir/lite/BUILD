@@ -1209,7 +1209,6 @@ tf_cc_binary(
         "//tensorflow/core/platform:errors",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/schema:schema_fbs",
-        "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
@@ -1219,6 +1218,7 @@ tf_cc_binary(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
+        "@stablehlo//:stablehlo_ops",
     ],
 )
 

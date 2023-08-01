@@ -29,10 +29,10 @@ namespace gpu {
 Thunk::ExecuteParams::ExecuteParams(
     const ServiceExecutableRunOptions& run_options,
     const BufferAllocations& buffer_allocations, se::Stream* stream,
-    se::Stream* async_comms_stream)
+    absl::Span<se::Stream* const> async_streams)
     : buffer_allocations(&buffer_allocations),
       stream(stream),
-      async_comms_stream(async_comms_stream),
+      async_comms_streams(async_streams.begin(), async_streams.end()),
       nccl_params(run_options, stream->parent()) {}
 
 /*static*/ absl::string_view Thunk::KindToString(Thunk::Kind kind) {

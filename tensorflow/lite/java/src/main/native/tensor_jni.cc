@@ -22,8 +22,11 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/java/src/main/native/jni_utils.h"
-#include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/string_util.h"
+
+#if !TFLITE_DISABLE_SELECT_JAVA_APIS
+#include "tensorflow/lite/signature_runner.h"
+#endif
 
 using tflite::Interpreter;
 using tflite::jni::ThrowException;
@@ -37,7 +40,7 @@ namespace tflite {
 // invalidate all TfLiteTensor* handles during inference or allocation.
 class TensorHandleImpl {
  public:
-  virtual ~TensorHandleImpl() {}
+  virtual ~TensorHandleImpl() = default;
   virtual TfLiteTensor* tensor() const = 0;
   virtual int index() const { return -1; }
 };

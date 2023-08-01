@@ -62,8 +62,27 @@ xla::Status SetPjrtApi(absl::string_view device_type, const PJRT_Api* api) {
 xla::Status InitPjrtPlugin(PjrtApiInitFn init_fn,
                            absl::string_view device_type) {
   const PJRT_Api* pjrt_api = init_fn();
+  // TODO(jieying): 592 is the size of PJRT_Api right after PJRT_Api_Version is
+  // added. Remove this check after PJRT C API is stable and we assume all
+  // plugins uses PJRT C API with PJRT_Api_Version.
+  if (pjrt_api->struct_size >= 592) {
+    LOG(INFO) << "PJRT plugin for " << device_type << " has PJRT API version "
+              << pjrt_api->pjrt_api_version.major_version << "."
+              << pjrt_api->pjrt_api_version.minor_version
+              << ". The framework PJRT API version is " << PJRT_API_MAJOR << "."
+              << PJRT_API_MINOR << ".";
+  }
   TF_RETURN_IF_ERROR(pjrt::CheckMatchingStructSizes(
       "PJRT_Api", PJRT_Api_STRUCT_SIZE, pjrt_api->struct_size));
+  if (pjrt_api->struct_size >= 592 &&
+      (pjrt_api->pjrt_api_version.major_version > 0 ||
+       pjrt_api->pjrt_api_version.minor_version >= 13)) {
+    PJRT_Plugin_Initialize_Args args;
+    args.struct_size = PJRT_Plugin_Initialize_Args_STRUCT_SIZE;
+    args.priv = nullptr;
+    RETURN_STATUS_IF_PJRT_ERROR(pjrt_api->PJRT_Plugin_Initialize(&args),
+                                pjrt_api);
+  }
   return SetPjrtApi(device_type, pjrt_api);
 }
 

@@ -308,22 +308,10 @@ TEST(AutoScalerTest, RemoveConsumerAfterNewTPTReported) {
   TF_ASSERT_OK(auto_scaler.RemoveConsumer(0));
 }
 
-TEST(MultipleIterationsAutoScalerTest, RegisterNewIteration) {
-  MultipleIterationsAutoScaler auto_scaler;
-  TF_ASSERT_OK(auto_scaler.RegisterIteration(0));
-  TF_ASSERT_OK(auto_scaler.RegisterIteration(1));
-}
-
-TEST(MultipleIterationsAutoScalerTest, RegisterExistingIteration) {
-  MultipleIterationsAutoScaler auto_scaler;
-  TF_ASSERT_OK(auto_scaler.RegisterIteration(0));
-  EXPECT_THAT(auto_scaler.RegisterIteration(0),
-              StatusIs(absl::StatusCode::kAlreadyExists));
-}
-
 TEST(MultipleIterationsAutoScalerTest, UnregisterExistingIteration) {
   MultipleIterationsAutoScaler auto_scaler;
-  TF_ASSERT_OK(auto_scaler.RegisterIteration(0));
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(0, 0, absl::Microseconds(5)));
   TF_ASSERT_OK(auto_scaler.UnregisterIteration(0));
 }
 
@@ -343,8 +331,6 @@ TEST(MultipleIterationsAutoScalerTest,
 TEST(MultipleIterationsAutoScalerTest,
      UpdateOptimalNumberOfWorkersMetricNoReportedPTs) {
   MultipleIterationsAutoScaler auto_scaler;
-  TF_ASSERT_OK(auto_scaler.RegisterIteration(0));
-  TF_ASSERT_OK(auto_scaler.RegisterIteration(1));
 
   TF_ASSERT_OK(
       auto_scaler.ReportTargetProcessingTime(0, 0, absl::Microseconds(5)));
@@ -357,8 +343,6 @@ TEST(MultipleIterationsAutoScalerTest,
 TEST(MultipleIterationsAutoScalerTest,
      UpdateOptimalNumberOfWorkersMetricNoReportedTPTs) {
   MultipleIterationsAutoScaler auto_scaler;
-  TF_ASSERT_OK(auto_scaler.RegisterIteration(0));
-  TF_ASSERT_OK(auto_scaler.RegisterIteration(1));
 
   TF_ASSERT_OK(auto_scaler.ReportProcessingTime(0, "/worker/task/0:20000",
                                                 absl::Microseconds(10)));
@@ -371,8 +355,6 @@ TEST(MultipleIterationsAutoScalerTest,
 TEST(MultipleIterationsAutoScalerTest,
      UpdateOptimalNumberOfWorkersMetricWithReportedTimes) {
   MultipleIterationsAutoScaler auto_scaler;
-  TF_ASSERT_OK(auto_scaler.RegisterIteration(0));
-  TF_ASSERT_OK(auto_scaler.RegisterIteration(1));
 
   TF_ASSERT_OK(
       auto_scaler.ReportTargetProcessingTime(0, 0, absl::Microseconds(5)));
@@ -391,16 +373,12 @@ TEST(MultipleIterationsAutoScalerTest,
 
 TEST(MultipleIterationsAutoScalerTest, GetOptimalNumberOfWorkersInitialState) {
   MultipleIterationsAutoScaler auto_scaler;
-  TF_ASSERT_OK(auto_scaler.RegisterIteration(0));
-  TF_ASSERT_OK(auto_scaler.RegisterIteration(1));
   EXPECT_EQ(auto_scaler.GetOptimalNumberOfWorkers(), std::nullopt);
 }
 
 TEST(MultipleIterationsAutoScalerTest,
      GetOptimalNumberOfWorkersNoRegisteredWorkers) {
   MultipleIterationsAutoScaler auto_scaler;
-  TF_ASSERT_OK(auto_scaler.RegisterIteration(0));
-  TF_ASSERT_OK(auto_scaler.RegisterIteration(1));
 
   TF_ASSERT_OK(
       auto_scaler.ReportTargetProcessingTime(0, 0, absl::Microseconds(5)));
@@ -412,8 +390,6 @@ TEST(MultipleIterationsAutoScalerTest,
 TEST(MultipleIterationsAutoScalerTest,
      GetOptimalNumberOfWorkersNoRegisteredConsumers) {
   MultipleIterationsAutoScaler auto_scaler;
-  TF_ASSERT_OK(auto_scaler.RegisterIteration(0));
-  TF_ASSERT_OK(auto_scaler.RegisterIteration(1));
 
   TF_ASSERT_OK(auto_scaler.ReportProcessingTime(0, "/worker/task/0:20000",
                                                 absl::Microseconds(10)));
@@ -425,8 +401,6 @@ TEST(MultipleIterationsAutoScalerTest,
 TEST(MultipleIterationsAutoScalerTest,
      GetOptimalNumberOfWorkersExpectedEstimate1) {
   MultipleIterationsAutoScaler auto_scaler;
-  TF_ASSERT_OK(auto_scaler.RegisterIteration(0));
-  TF_ASSERT_OK(auto_scaler.RegisterIteration(1));
 
   // Estimated number of workers for iteration 0 = 8
   TF_ASSERT_OK(auto_scaler.ReportProcessingTime(0, "/worker/task/0:20000",
@@ -451,9 +425,6 @@ TEST(MultipleIterationsAutoScalerTest,
 TEST(MultipleIterationsAutoScalerTest,
      GetOptimalNumberOfWorkersExpectedEstimate2) {
   MultipleIterationsAutoScaler auto_scaler;
-  TF_ASSERT_OK(auto_scaler.RegisterIteration(0));
-  TF_ASSERT_OK(auto_scaler.RegisterIteration(1));
-  TF_ASSERT_OK(auto_scaler.RegisterIteration(2));
 
   // Estimated number of workers for iteration 0 = 8
   TF_ASSERT_OK(auto_scaler.ReportProcessingTime(0, "/worker/task/0:20000",
@@ -485,29 +456,23 @@ TEST(MultipleIterationsAutoScalerTest,
   EXPECT_EQ(auto_scaler.GetOptimalNumberOfWorkers(), 20);
 }
 
-TEST(MultipleIterationsAutoScalerTest,
-     ReportProcessingTimeUnregisteredIteration) {
+TEST(MultipleIterationsAutoScalerTest, ReportProcessingTimeNewIteration) {
   MultipleIterationsAutoScaler auto_scaler;
-  EXPECT_THAT(auto_scaler.ReportProcessingTime(0, "/worker/task/0:20000",
-                                               absl::Microseconds(10)),
-              StatusIs(absl::StatusCode::kNotFound));
+  TF_ASSERT_OK(auto_scaler.ReportProcessingTime(0, "/worker/task/0:20000",
+                                                absl::Microseconds(10)));
 }
 
 TEST(MultipleIterationsAutoScalerTest, ReportProcessingTimeNewWorker) {
   MultipleIterationsAutoScaler auto_scaler;
-  TF_ASSERT_OK(auto_scaler.RegisterIteration(0));
-  TF_ASSERT_OK(auto_scaler.RegisterIteration(1));
 
   TF_ASSERT_OK(auto_scaler.ReportProcessingTime(0, "/worker/task/0:20000",
                                                 absl::Microseconds(10)));
-  TF_ASSERT_OK(auto_scaler.ReportProcessingTime(1, "/worker/task/0:20000",
+  TF_ASSERT_OK(auto_scaler.ReportProcessingTime(0, "/worker/task/1:20000",
                                                 absl::Microseconds(10)));
 }
 
 TEST(MultipleIterationsAutoScalerTest, ReportProcessingTimeExistingWorker) {
   MultipleIterationsAutoScaler auto_scaler;
-  TF_ASSERT_OK(auto_scaler.RegisterIteration(0));
-  TF_ASSERT_OK(auto_scaler.RegisterIteration(1));
 
   TF_ASSERT_OK(auto_scaler.ReportProcessingTime(0, "/worker/task/0:20000",
                                                 absl::Microseconds(10)));
@@ -521,8 +486,6 @@ TEST(MultipleIterationsAutoScalerTest, ReportProcessingTimeExistingWorker) {
 
 TEST(MultipleIterationsAutoScalerTest, ReportProcessingTimeNewAndExisting) {
   MultipleIterationsAutoScaler auto_scaler;
-  TF_ASSERT_OK(auto_scaler.RegisterIteration(0));
-  TF_ASSERT_OK(auto_scaler.RegisterIteration(1));
 
   TF_ASSERT_OK(auto_scaler.ReportProcessingTime(0, "/worker/task/0:20000",
                                                 absl::Microseconds(10)));
@@ -545,7 +508,6 @@ TEST(MultipleIterationsAutoScalerTest, ReportProcessingTimeNewAndExisting) {
 
 TEST(MultipleIterationsAutoScalerTest, ReportProcessingTimeZeroDuration) {
   MultipleIterationsAutoScaler auto_scaler;
-  TF_ASSERT_OK(auto_scaler.RegisterIteration(0));
 
   tsl::Status result = auto_scaler.ReportProcessingTime(
       0, "/worker/task/0:20000", absl::ZeroDuration());
@@ -554,37 +516,30 @@ TEST(MultipleIterationsAutoScalerTest, ReportProcessingTimeZeroDuration) {
 
 TEST(MultipleIterationsAutoScalerTest, ReportProcessingTimeNegativeDuration) {
   MultipleIterationsAutoScaler auto_scaler;
-  TF_ASSERT_OK(auto_scaler.RegisterIteration(0));
 
   tsl::Status result = auto_scaler.ReportProcessingTime(
       0, "/worker/task/0:20000", absl::Microseconds(-10));
   EXPECT_THAT(result, StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
-TEST(MultipleIterationsAutoScalerTest,
-     ReportTargetProcessingTimeUnregisteredIteration) {
+TEST(MultipleIterationsAutoScalerTest, ReportTargetProcessingTimeNewIteration) {
   MultipleIterationsAutoScaler auto_scaler;
-  EXPECT_THAT(
-      auto_scaler.ReportTargetProcessingTime(0, 0, absl::Microseconds(10)),
-      StatusIs(absl::StatusCode::kNotFound));
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(0, 0, absl::Microseconds(10)));
 }
 
 TEST(MultipleIterationsAutoScalerTest, ReportTargetProcessingTimeNewConsumer) {
   MultipleIterationsAutoScaler auto_scaler;
-  TF_ASSERT_OK(auto_scaler.RegisterIteration(0));
-  TF_ASSERT_OK(auto_scaler.RegisterIteration(1));
 
   TF_ASSERT_OK(
       auto_scaler.ReportTargetProcessingTime(0, 0, absl::Microseconds(10)));
   TF_ASSERT_OK(
-      auto_scaler.ReportTargetProcessingTime(1, 0, absl::Microseconds(10)));
+      auto_scaler.ReportTargetProcessingTime(0, 1, absl::Microseconds(10)));
 }
 
 TEST(MultipleIterationsAutoScalerTest,
      ReportTargetProcessingTimeExistingWorker) {
   MultipleIterationsAutoScaler auto_scaler;
-  TF_ASSERT_OK(auto_scaler.RegisterIteration(0));
-  TF_ASSERT_OK(auto_scaler.RegisterIteration(1));
 
   TF_ASSERT_OK(
       auto_scaler.ReportTargetProcessingTime(0, 0, absl::Microseconds(10)));
@@ -599,8 +554,6 @@ TEST(MultipleIterationsAutoScalerTest,
 TEST(MultipleIterationsAutoScalerTest,
      ReportTargetProcessingTimeNewAndExisting) {
   MultipleIterationsAutoScaler auto_scaler;
-  TF_ASSERT_OK(auto_scaler.RegisterIteration(0));
-  TF_ASSERT_OK(auto_scaler.RegisterIteration(1));
 
   TF_ASSERT_OK(
       auto_scaler.ReportTargetProcessingTime(0, 0, absl::Microseconds(10)));
@@ -623,7 +576,6 @@ TEST(MultipleIterationsAutoScalerTest,
 
 TEST(MultipleIterationsAutoScalerTest, ReportTargetProcessingTimeZeroDuration) {
   MultipleIterationsAutoScaler auto_scaler;
-  TF_ASSERT_OK(auto_scaler.RegisterIteration(0));
 
   tsl::Status result =
       auto_scaler.ReportTargetProcessingTime(0, 0, absl::ZeroDuration());
@@ -633,7 +585,6 @@ TEST(MultipleIterationsAutoScalerTest, ReportTargetProcessingTimeZeroDuration) {
 TEST(MultipleIterationsAutoScalerTest,
      ReportTargetProcessingTimeNegativeDuration) {
   MultipleIterationsAutoScaler auto_scaler;
-  TF_ASSERT_OK(auto_scaler.RegisterIteration(0));
 
   tsl::Status result =
       auto_scaler.ReportTargetProcessingTime(0, 0, absl::Microseconds(-10));
@@ -650,8 +601,6 @@ TEST(MultipleIterationsAutoScalerTest, RemoveWorkerUnregisteredIteration) {
 
 TEST(MultipleIterationsAutoScalerTest, RemoveWorkerSuccessful) {
   MultipleIterationsAutoScaler auto_scaler;
-  TF_ASSERT_OK(auto_scaler.RegisterIteration(0));
-  TF_ASSERT_OK(auto_scaler.RegisterIteration(1));
 
   TF_ASSERT_OK(auto_scaler.ReportProcessingTime(0, "/worker/task/0:20000",
                                                 absl::Microseconds(10)));
@@ -663,14 +612,14 @@ TEST(MultipleIterationsAutoScalerTest, RemoveWorkerSuccessful) {
 
 TEST(MultipleIterationsAutoScalerTest, RemoveNonexistentWorker) {
   MultipleIterationsAutoScaler auto_scaler;
-  TF_ASSERT_OK(auto_scaler.RegisterIteration(0));
-  EXPECT_THAT(auto_scaler.RemoveWorker(0, "/worker/task/0:20000"),
+  TF_ASSERT_OK(auto_scaler.ReportProcessingTime(0, "/worker/task/0:20000",
+                                                absl::Microseconds(10)));
+  EXPECT_THAT(auto_scaler.RemoveWorker(0, "/worker/task/1:20000"),
               StatusIs(absl::StatusCode::kNotFound));
 }
 
 TEST(MultipleIterationsAutoScalerTest, RemoveWorkerAfterNewPTReported) {
   MultipleIterationsAutoScaler auto_scaler;
-  TF_ASSERT_OK(auto_scaler.RegisterIteration(0));
 
   TF_ASSERT_OK(auto_scaler.ReportProcessingTime(0, "/worker/task/0:20000",
                                                 absl::Microseconds(10)));
@@ -689,8 +638,6 @@ TEST(MultipleIterationsAutoScalerTest, RemoveConsumerUnregisteredIteration) {
 
 TEST(MultipleIterationsAutoScalerTest, RemoveConsumerSuccessful) {
   MultipleIterationsAutoScaler auto_scaler;
-  TF_ASSERT_OK(auto_scaler.RegisterIteration(0));
-  TF_ASSERT_OK(auto_scaler.RegisterIteration(1));
 
   TF_ASSERT_OK(
       auto_scaler.ReportTargetProcessingTime(0, 0, absl::Microseconds(10)));
@@ -702,14 +649,14 @@ TEST(MultipleIterationsAutoScalerTest, RemoveConsumerSuccessful) {
 
 TEST(MultipleIterationsAutoScalerTest, RemoveNonexistentConsumer) {
   MultipleIterationsAutoScaler auto_scaler;
-  TF_ASSERT_OK(auto_scaler.RegisterIteration(0));
-  EXPECT_THAT(auto_scaler.RemoveConsumer(0, 0),
+  TF_ASSERT_OK(
+      auto_scaler.ReportTargetProcessingTime(0, 0, absl::Microseconds(10)));
+  EXPECT_THAT(auto_scaler.RemoveConsumer(0, 1),
               StatusIs(absl::StatusCode::kNotFound));
 }
 
 TEST(MultipleIterationsAutoScalerTest, RemoveConsumerAfterNewTPTReported) {
   MultipleIterationsAutoScaler auto_scaler;
-  TF_ASSERT_OK(auto_scaler.RegisterIteration(0));
 
   TF_ASSERT_OK(
       auto_scaler.ReportTargetProcessingTime(0, 0, absl::Microseconds(10)));

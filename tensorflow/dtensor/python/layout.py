@@ -242,12 +242,7 @@ class Mesh(_pywrap_dtensor_device.Mesh):
     return hash(self.as_proto().SerializeToString(deterministic=True))
 
   def __repr__(self) -> str:
-    dims = [tuple(self[dim_name]) for dim_name in self.dim_names]
-    return (
-        f'<Mesh object with dims={dims}, device_type="{self.device_type()}", '
-        f'num_local_devices={self.num_local_devices()}), '
-        f'size={self.size}>'
-    )
+    return f'Mesh.from_string({self.to_string()})'
 
   # TODO(panzf): change to pybind11 pickle implementation in the last step
   def __reduce__(self):
@@ -447,7 +442,7 @@ class Layout(_pywrap_dtensor_device.Layout):
     return self
 
   def __repr__(self) -> str:
-    return f'Layout(sharding_specs={self.sharding_specs}, mesh={self.mesh})'
+    return f'Layout.from_string({self.to_string()})'
 
   def __hash__(self):
     return hash(self.as_proto().SerializeToString(deterministic=True))

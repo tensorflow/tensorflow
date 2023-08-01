@@ -32,8 +32,9 @@ using namespace mlir;  // NOLINT
 void registerOpenXlaPases() { ::impl::registerPasses(); }
 
 void populateOpenXlaRuntimePasses(mlir::OpPassManager& pm,
-                                  ThunkSequence* thunk_sequence) {
-  pm.addPass(createConvertToOpenXlaPass(thunk_sequence));
+                                  ThunkSequence* thunk_sequence,
+                                  OpenXlaBackend backend) {
+  pm.addPass(createConvertToOpenXlaPass(thunk_sequence, backend));
   pm.addPass(createCanonicalizerPass());
 }
 

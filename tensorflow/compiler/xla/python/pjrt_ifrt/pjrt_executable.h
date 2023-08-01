@@ -225,6 +225,12 @@ class PjRtLoadedExecutable final
     return pjrt_loaded_executable_->GetHloModules();
   }
 
+  StatusOr<std::vector<std::vector<absl::string_view>>> GetOutputMemoryKinds()
+      const override {
+    DCHECK(this);
+    return pjrt_loaded_executable_->GetOutputMemoryKinds();
+  }
+
   PjRtCompatibleClient* client() const override {
     DCHECK(this);
     return client_;

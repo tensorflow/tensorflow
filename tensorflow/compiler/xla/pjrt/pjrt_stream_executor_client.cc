@@ -1140,6 +1140,11 @@ Status PjRtStreamExecutorDevice::TransferFromOutfeed(
       local_device->device_ordinal(), literal);
 }
 
+StatusOr<PjRtMemorySpace*> PjRtStreamExecutorDevice::default_memory_space()
+    const {
+  return Unimplemented("default_memory_space is not supported.");
+}
+
 StatusOr<PjRtDevice*> PjRtStreamExecutorClient::LookupAddressableDevice(
     int local_hardware_id) const {
   for (auto* device : addressable_devices_) {
@@ -1814,8 +1819,19 @@ Status CheckCompatibleShapes(bool strict_shape_checking,
           ShapeUtil::HumanStringWithLayout(buffer_on_device_shape));
     }
   } else {
-    if (transfer_manager.GetByteSizeRequirement(buffer_on_device_shape) !=
-        transfer_manager.GetByteSizeRequirement(execution_shape)) {
+    const int64_t buffer_size =
+        transfer_manager.GetByteSizeRequirement(buffer_on_device_shape);
+    const int64_t execute_size =
+        transfer_manager.GetByteSizeRequirement(execution_shape);
+    if (buffer_on_device_shape.is_static() && buffer_size != execute_size) {
+      return InvalidArgument(
+          "Executable expected shape %s for argument %d but got "
+          "incompatible "
+          "shape %s",
+          ShapeUtil::HumanStringWithLayout(execution_shape), parameter_index,
+          ShapeUtil::HumanStringWithLayout(buffer_on_device_shape));
+    }
+    if (!buffer_on_device_shape.is_static() && buffer_size < execute_size) {
       return InvalidArgument(
           "Executable expected shape %s for argument %d but got "
           "incompatible "
@@ -2841,6 +2857,11 @@ PjRtStreamExecutorExecutable::GetHloModules() const {
     modules.push_back(local_exec->executable()->shared_module());
   }
   return std::move(modules);
+}
+
+StatusOr<std::vector<std::vector<absl::string_view>>>
+PjRtStreamExecutorExecutable::GetOutputMemoryKinds() const {
+  return Unimplemented("GetOutputMemoryKinds is not supported.");
 }
 
 StatusOr<PjRtStreamExecutorClient::ExecutableExtras>

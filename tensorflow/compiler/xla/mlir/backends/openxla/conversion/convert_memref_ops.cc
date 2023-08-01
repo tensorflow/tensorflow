@@ -17,10 +17,8 @@ limitations under the License.
 
 #include <algorithm>
 #include <functional>
-#include <memory>
 #include <optional>
 #include <string_view>
-#include <utility>
 
 #include "third_party/iree/llvm-external-projects/iree-dialects/include/iree-dialects/Dialect/Input/InputOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
@@ -87,8 +85,8 @@ FailureOr<IREE::Input::TensorImportOp> reinterpretCastTensor(
 
 struct ConvertMemrefViewOp : public OpConversionPattern<memref::ViewOp> {
   ConvertMemrefViewOp(TypeConverter &converter, MLIRContext *ctx,
-                      std::shared_ptr<DeBufferization> state)
-      : OpConversionPattern(converter, ctx), state(std::move(state)) {}
+                      DeBufferization &state)
+      : OpConversionPattern(converter, ctx), state(state) {}
 
   LogicalResult matchAndRewrite(
       memref::ViewOp op, OpAdaptor adaptor,
@@ -116,14 +114,14 @@ struct ConvertMemrefViewOp : public OpConversionPattern<memref::ViewOp> {
     rewriter.replaceOp(op, tensor_import->getResult());
 
     // Update de-bufferization state to track imported memref and a tensor.
-    state->imported[source].push_back(op.getResult());
-    state->remapped[op->getBlock()][op.getResult()] =
+    state.imported[source].push_back(op.getResult());
+    state.remapped[op->getBlock()][op.getResult()] =
         cast<TypedValue<TensorType>>(tensor_import->getResult());
 
     return success();
   }
 
-  std::shared_ptr<DeBufferization> state;
+  DeBufferization &state;
 };
 
 //===----------------------------------------------------------------------===//
@@ -173,8 +171,8 @@ std::optional<BlockArgument> getConstantArg(func::FuncOp func,
 struct ConvertMemrefGetGlobalOp
     : public OpConversionPattern<memref::GetGlobalOp> {
   ConvertMemrefGetGlobalOp(TypeConverter &converter, MLIRContext *ctx,
-                           std::shared_ptr<DeBufferization> state)
-      : OpConversionPattern(converter, ctx), state(std::move(state)) {}
+                           DeBufferization &state)
+      : OpConversionPattern(converter, ctx), state(state) {}
 
   LogicalResult matchAndRewrite(
       memref::GetGlobalOp op, OpAdaptor adaptor,
@@ -205,8 +203,8 @@ struct ConvertMemrefGetGlobalOp
       rewriter.replaceOp(op, tensor_import->getResult());
 
       // Update de-bufferization state to track imported memref and a tensor.
-      state->imported[*arg].push_back(op.getResult());
-      state->remapped[op->getBlock()][op.getResult()] =
+      state.imported[*arg].push_back(op.getResult());
+      state.remapped[op->getBlock()][op.getResult()] =
           cast<TypedValue<TensorType>>(tensor_import->getResult());
 
       return success();
@@ -215,7 +213,7 @@ struct ConvertMemrefGetGlobalOp
     return rewriter.notifyMatchFailure(op, "unsupported memref layout");
   }
 
-  std::shared_ptr<DeBufferization> state;
+  DeBufferization &state;
 };
 
 //===----------------------------------------------------------------------===//
@@ -242,7 +240,7 @@ struct ConvertMemrefGlobalOp : public OpConversionPattern<memref::GlobalOp> {
 
 void populateMemrefConversionPatterns(RewritePatternSet &patterns,
                                       TypeConverter &converter,
-                                      std::shared_ptr<DeBufferization> state) {
+                                      DeBufferization &state) {
   auto *ctx = patterns.getContext();
   patterns.insert<ConvertMemrefViewOp>(converter, ctx, state);
   patterns.insert<ConvertMemrefReinterpretCastOp>(converter, ctx);

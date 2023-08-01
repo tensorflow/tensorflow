@@ -277,6 +277,7 @@ cc_library(
     copts = ["-Ithird_party"],
     deps = [
         ":passes_inc_gen",
+        "@com_google_absl//absl/algorithm:container",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",

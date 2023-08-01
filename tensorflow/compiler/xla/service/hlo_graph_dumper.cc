@@ -1253,6 +1253,21 @@ std::string HloDotDumper::GetInstructionNodeMetadata(
     lines.push_back(StrFormat("source: %s:%d", instr->metadata().source_file(),
                               instr->metadata().source_line()));
   }
+  if (instr->metadata().stack_frame_id() != 0) {
+    auto hlo_module = instr->parent()->parent();
+    int frame_id = instr->metadata().stack_frame_id();
+    while (frame_id != 0) {
+      HloModule::StackFrame frame = hlo_module->get_stack_frame(frame_id);
+      if (frame.empty()) {
+        break;
+      }
+      frame_id = frame.parent_frame_id;
+
+      lines.push_back(StrFormat(
+          "%s:%s:%d%s", frame.file_name, frame.function_name, frame.line,
+          frame.column == 0 ? "" : StrFormat(":%d", frame.column)));
+    }
+  }
 
   return StrJoin(lines, "\n");
 }

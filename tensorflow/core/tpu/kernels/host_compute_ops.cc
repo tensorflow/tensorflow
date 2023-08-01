@@ -102,16 +102,25 @@ class RecvAtHostOp : public AsyncOpKernel {
       VLOG(2) << "  cpu_device_ = " << cpu_device_;
     }
 
+    // Depending on the compile op, the input could be either
+    // a scalar program key and a 1D vector of length 3 with program key at
+    // index 1.
     const Tensor& input = ctx->input(0);
     VLOG(2) << input.DebugString();
     OP_REQUIRES_ASYNC(
         ctx,
         TensorShapeUtils::IsVector(input.shape()) &&
-            input.shape().dim_size(0) == 3,
+                input.shape().dim_size(0) == 3 ||
+            TensorShapeUtils::IsScalar(input.shape()),
         errors::InvalidArgument("Input shape ", input.shape().DebugString(),
                                 " is not a vector of length 3."),
         done);
-    const string rendezvous_key_base = input.vec<tstring>()(1);
+    string rendezvous_key_base;
+    if (TensorShapeUtils::IsVector(input.shape())) {
+      rendezvous_key_base = input.vec<tstring>()(1);
+    } else {
+      rendezvous_key_base = input.flat<tstring>()(0);
+    }
     OP_REQUIRES_ASYNC(
         ctx, ctx->rendezvous() != nullptr,
         errors::Internal("Op kernel context needs to provide a rendezvous."),
@@ -262,13 +271,23 @@ class SendFromHostOp : public OpKernel {
     const int num_send_inputs =
         ctx->num_inputs() - (device_ordinal_is_attr ? 1 : 2);
     const Tensor& key_input = ctx->input(num_send_inputs);
+    // Depending on the compile op, the key_input could be either
+    // a scalar program key and a 1D vector of length 3 with program key at
+    // index 1.
     OP_REQUIRES(ctx,
                 TensorShapeUtils::IsVector(key_input.shape()) &&
-                    key_input.shape().dim_size(0) == 3,
+                        key_input.shape().dim_size(0) == 3 ||
+                    TensorShapeUtils::IsScalar(key_input.shape()),
                 errors::InvalidArgument("Key input shape ",
                                         key_input.shape().DebugString(),
                                         " is not a vector of length 3."));
-    const string rendezvous_key_base = key_input.vec<tstring>()(1);
+    string rendezvous_key_base;
+    if (TensorShapeUtils::IsVector(key_input.shape())) {
+      rendezvous_key_base = key_input.vec<tstring>()(1);
+    } else {
+      rendezvous_key_base = key_input.flat<tstring>()(0);
+    }
+
     OP_REQUIRES(
         ctx, ctx->rendezvous() != nullptr,
         errors::Internal("Op kernel context needs to provide a rendezvous."));

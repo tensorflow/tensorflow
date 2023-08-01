@@ -113,6 +113,8 @@ class TfrtCpuDevice final : public PjRtDevice {
 
   Status TransferFromOutfeed(MutableBorrowingLiteral literal) override;
 
+  StatusOr<PjRtMemorySpace*> default_memory_space() const override;
+
   // Returns a semaphore for admission control on inflight computations.
   Semaphore& max_inflight_computations_semaphore() {
     return max_inflight_computations_semaphore_;
@@ -377,6 +379,11 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
       const override {
     return std::vector<std::shared_ptr<HloModule>>{
         cpu_executable_->shared_module()};
+  }
+
+  StatusOr<std::vector<std::vector<absl::string_view>>> GetOutputMemoryKinds()
+      const override {
+    return Unimplemented("GetOutputMemoryKinds is not supported.");
   }
 
   StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const override {

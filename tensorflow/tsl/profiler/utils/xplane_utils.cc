@@ -45,16 +45,6 @@ namespace tsl {
 namespace profiler {
 namespace {
 
-// Returns the index of the first element in array for which pred is true.
-// Returns -1 if no such element is found.
-template <typename T, typename Pred>
-int Find(const protobuf::RepeatedPtrField<T>& array, const Pred& pred) {
-  for (int i = 0; i < array.size(); ++i) {
-    if (pred(&array.Get(i))) return i;
-  }
-  return -1;
-}
-
 // Returns the indices of all elements in array for which pred is true.
 template <typename T, typename Pred>
 std::vector<int> FindAll(const protobuf::RepeatedPtrField<T>& array,
@@ -64,6 +54,18 @@ std::vector<int> FindAll(const protobuf::RepeatedPtrField<T>& array,
     if (pred(&array.Get(i))) indices.push_back(i);
   }
   return indices;
+}
+
+// Returns the index of the first element in array for which pred is true.
+// Returns -1 if no such element is found.
+template <typename T, typename Pred>
+int Find(const protobuf::RepeatedPtrField<T>& array, const Pred& pred) {
+  std::vector<int> indices = FindAll(array, pred);
+  if (indices.size() > 1) {
+    LOG(WARNING) << "Found multiple " << T::descriptor()->name()
+                 << " when only one was expected.";
+  }
+  return indices.empty() ? -1 : indices.front();
 }
 
 template <typename T>

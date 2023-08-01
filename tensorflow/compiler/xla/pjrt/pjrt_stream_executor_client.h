@@ -157,6 +157,8 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
 
   Status TransferFromOutfeed(MutableBorrowingLiteral literal) override;
 
+  StatusOr<PjRtMemorySpace*> default_memory_space() const override;
+
   std::unique_ptr<ScopedAsyncTrackingEvent> CreateAsyncTrackingEvent(
       absl::string_view description) const override {
     return nullptr;
@@ -810,6 +812,9 @@ class PjRtStreamExecutorExecutable : public PjRtLoadedExecutable {
 
   // Return an HloModule per partition.
   StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
+      const override;
+
+  StatusOr<std::vector<std::vector<absl::string_view>>> GetOutputMemoryKinds()
       const override;
 
   using PjRtLoadedExecutable::Execute;

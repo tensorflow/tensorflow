@@ -21,15 +21,12 @@ limitations under the License.
 #include <memory>
 #include <optional>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
-#include "tensorflow/compiler/xla/service/fusion_node_indexing_evaluation.h"
 #include "tensorflow/compiler/xla/service/fusion_queue.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
@@ -54,7 +51,7 @@ class GpuPriorityFusion : public InstructionFusion {
   StatusOr<bool> Run(HloModule* module,
                      const absl::flat_hash_set<absl::string_view>&
                          execution_threads) override {
-    cost_analysis_.emplace(cost_analysis_options_);
+    cost_analysis_.emplace(cost_analysis_options_, &device_info_);
     return InstructionFusion::Run(module, execution_threads);
   }
 
