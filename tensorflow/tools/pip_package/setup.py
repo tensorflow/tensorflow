@@ -49,6 +49,11 @@ from setuptools.dist import Distribution
 # tensorflow/core/public/version.h
 _VERSION = '2.14.0'
 
+# This ensures that both fake required packages and collaborator build required packages had a valid version regardless
+# of the actual package version considering at most the patch version.
+_FAKE_REQUIRED_PACKAGES_VERSION = ".".join(_VERSION.split(".")[:3])
+_COLLABORATOR_BUILD_REQUIRED_PACKAGES_VERSION = _FAKE_REQUIRED_PACKAGES_VERSION
+
 
 # We use the same setup.py for all tensorflow_* packages and for the nightly
 # equivalents (tf_nightly_*). The package is controlled from the argument line
@@ -132,16 +137,16 @@ REQUIRED_PACKAGES = [
 REQUIRED_PACKAGES = [p for p in REQUIRED_PACKAGES if p is not None]
 
 FAKE_REQUIRED_PACKAGES = [
-    # The depedencies here below are not actually used but are needed for
+    # The dependencies here below are not actually used but are needed for
     # package managers like poetry to parse as they are confused by the
     # different architectures having different requirements.
     # The entries here should be a simple duplicate of those in the collaborator
     # build section.
     standard_or_nightly('tensorflow-cpu-aws', 'tf-nightly-cpu-aws') + '==' +
-    _VERSION + ';platform_system=="Linux" and (platform_machine=="arm64" or '
+    _FAKE_REQUIRED_PACKAGES_VERSION + ';platform_system=="Linux" and (platform_machine=="arm64" or '
     'platform_machine=="aarch64")',
     standard_or_nightly('tensorflow-intel', 'tf-nightly-intel') + '==' +
-    _VERSION + ';platform_system=="Windows"',
+    _FAKE_REQUIRED_PACKAGES_VERSION + ';platform_system=="Windows"',
 ]
 
 if platform.system() == 'Linux' and platform.machine() == 'x86_64':
@@ -154,16 +159,16 @@ if collaborator_build:
       # Install the TensorFlow package built by AWS if the user is running
       # Linux on an Aarch64 machine.
       standard_or_nightly('tensorflow-cpu-aws', 'tf-nightly-cpu-aws') + '==' +
-      _VERSION + ';platform_system=="Linux" and (platform_machine=="arm64" or '
+      _COLLABORATOR_BUILD_REQUIRED_PACKAGES_VERSION + ';platform_system=="Linux" and (platform_machine=="arm64" or '
       'platform_machine=="aarch64")',
       # Install the TensorFlow package built by Intel if the user is on a
       # Windows machine.
       standard_or_nightly('tensorflow-intel', 'tf-nightly-intel') + '==' +
-      _VERSION + ';platform_system=="Windows"',
+      _COLLABORATOR_BUILD_REQUIRED_PACKAGES_VERSION + ';platform_system=="Windows"',
       # Install the TensorFlow package built by Apple if the user is running
       # macOS on an Apple Silicon machine.
       standard_or_nightly('tensorflow-macos', 'tf-nightly-macos') + '==' +
-      _VERSION + ';platform_system=="Darwin" and platform_machine=="arm64"',
+      _COLLABORATOR_BUILD_REQUIRED_PACKAGES_VERSION + ';platform_system=="Darwin" and platform_machine=="arm64"',
   ]
 
 # Set up extra packages, which are optional sets of other Python package deps.
