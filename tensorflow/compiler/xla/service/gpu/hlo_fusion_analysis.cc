@@ -229,8 +229,6 @@ bool HloFusionAnalysis::HasConsistentTransposeHeros() const {
     return false;
   }
 
-  auto* fusion = fusion_->fused_instructions_computation();
-  std::vector<HloInstruction*> hlo_roots = GetFusionRoots(fusion);
   const HloInstruction* first_transpose =
       &FindNonTrivialHero(*root_with_tiled_transpose_);
   const Shape& transpose_in_shape = first_transpose->operand(0)->shape();
@@ -241,7 +239,7 @@ bool HloFusionAnalysis::HasConsistentTransposeHeros() const {
   // For every tuple element:
   //  -> EITHER it's a kCopy: S{L} -> S{L'}
   //  -> OR it's an elementwise op of shape S{L}
-  for (HloInstruction* root : hlo_roots) {
+  for (HloInstruction* root : fusion_roots()) {
     std::optional<TransposeDescription> tiled_transpose =
         FindAnyTiledTranspose(*root);
     if (tiled_transpose) {
@@ -506,8 +504,7 @@ int HloFusionAnalysis::SmallestInputDtypeBits() const {
 int64_t HloFusionAnalysis::MaxBeneficialColumnReductionUnrollBasedOnBlockSize()
     const {
   int64_t num_reduce_output_elems = 0;
-  for (const HloInstruction* root :
-       GetFusionRoots(fusion_->fused_instructions_computation())) {
+  for (const HloInstruction* root : fusion_roots()) {
     if (!IsReductionFromOrToContiguousDimensions(*root)) {
       continue;
     }
@@ -556,7 +553,7 @@ HloFusionAnalysis::GroupDisjointReductions() const {
   // non-reduction roots into one group to avoid read-after-write conflicts.
   HloInstruction* first_non_reduction_root = nullptr;
 
-  for (HloInstruction* root : fusion_roots_) {
+  for (HloInstruction* root : fusion_roots()) {
     disjoint_sets[root].Get() = root;
     if (!IsReductionFromOrToContiguousDimensions(*root)) {
       if (!first_non_reduction_root) {
@@ -572,7 +569,7 @@ HloFusionAnalysis::GroupDisjointReductions() const {
   for (HloInstruction* instr : fused_computation_->instructions()) {
     std::vector<HloInstruction*> reached_output_ids;
     bool added_to_reduce = false;
-    for (HloInstruction* output : fusion_roots_) {
+    for (HloInstruction* output : fusion_roots()) {
       if (IsReductionFromOrToContiguousDimensions(*output) &&
           (hlo_query::IsBroadcastedConstantOrScalar(*instr))) {
         if (added_to_reduce) {
@@ -602,7 +599,7 @@ HloFusionAnalysis::GroupDisjointReductions() const {
 
   // Place output instructions in the same set into the same group.
   HloInstructionMap<std::vector<HloInstruction*>> groups;
-  for (HloInstruction* root : fusion_roots_) {
+  for (HloInstruction* root : fusion_roots()) {
     groups[disjoint_sets[root].Get()].push_back(root);
   }
 
@@ -626,7 +623,7 @@ bool HloFusionAnalysis::IsUnrollingColumnReductionBeneficial(
   int64_t cannot_be_vectorized = 0;
   absl::flat_hash_set<HloInstruction*> use_chain_endings;
 
-  for (HloInstruction* fusion_root : fusion_roots_) {
+  for (HloInstruction* fusion_root : fusion_roots()) {
     if (!reduction_is_race_free &&
         IsReductionFromOrToContiguousDimensions(*fusion_root)) {
       // Atomics cannot be vectorized.
@@ -718,7 +715,7 @@ ReductionCodegenInfo HloFusionAnalysis::ComputeReductionCodegenInfo(
            << reduction_dimensions.dimensions[2];
   Vector3 reduction_tiling = GetReductionTiling(reduction_dimensions);
 
-  int64_t fan_out = fusion_roots_.size();
+  int64_t fan_out = fusion_roots().size();
   int64_t num_threads_y =
       reduction_dimensions.is_row_reduction ? 1 : WarpSize();
   int64_t num_threads_x = [&] {
