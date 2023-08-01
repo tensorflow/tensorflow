@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -30,13 +30,11 @@ limitations under the License.
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/STLForwardCompat.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
-#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -44,7 +42,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -60,15 +57,25 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "stablehlo/dialect/BroadcastUtils.h"  // from @stablehlo
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/lib/math/math_util.h"
 
 namespace mlir {
-namespace TF {
+namespace odml {
 namespace {
+
+#define DEBUG_TYPE "tf-legalize-hlo"
+
+#define GEN_PASS_DEF_LEGALIZEHLOTOTFPASS
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h.inc"
+
+class LegalizeHloToTf : public impl::LegalizeHloToTfPassBase<LegalizeHloToTf> {
+  /// Performs the legalization to the TF dialect.
+  void runOnOperation() override;
+};
 
 using mhlo::DotDimensionNumbersAttr;
 
@@ -617,13 +624,13 @@ class Convert2DConvOp : public OpConversionPattern<mhlo::ConvolutionOp>,
       size.push_back(input_shape[i] - pre_slice - post_slice);
     }
 
-    auto start_attr = rewriter.create<ConstOp>(
+    auto start_attr = rewriter.create<TF::ConstOp>(
         value.getLoc(),
         DenseIntElementsAttr::get(
             RankedTensorType::get({static_cast<int64_t>(start.size())},
                                   rewriter.getI64Type()),
             start));
-    auto size_attr = rewriter.create<ConstOp>(
+    auto size_attr = rewriter.create<TF::ConstOp>(
         value.getLoc(),
         DenseIntElementsAttr::get(
             RankedTensorType::get({static_cast<int64_t>(size.size())},
@@ -631,8 +638,8 @@ class Convert2DConvOp : public OpConversionPattern<mhlo::ConvolutionOp>,
             size));
     auto output_type = RankedTensorType::get(size, input_type.getElementType());
 
-    return rewriter.create<SliceOp>(value.getLoc(), output_type, value,
-                                    start_attr, size_attr);
+    return rewriter.create<TF::SliceOp>(value.getLoc(), output_type, value,
+                                        start_attr, size_attr);
   }
 
   void CreateConvOp(mhlo::ConvolutionOp conv_op, ArrayRef<int64_t> strides,
@@ -696,7 +703,7 @@ class Convert2DConvOp : public OpConversionPattern<mhlo::ConvolutionOp>,
           RankedTensorType::get(tf_filter_shape, filter_type.getElementType()),
           rhs);
 
-      output = rewriter.create<DepthwiseConv2dNativeOp>(
+      output = rewriter.create<TF::DepthwiseConv2dNativeOp>(
           conv_op.getLoc(), conv_output_type, sliced_lhs, reshaped_filter,
           rewriter.getI64ArrayAttr(strides),
           /*padding=*/rewriter.getStringAttr(padding),
@@ -704,7 +711,7 @@ class Convert2DConvOp : public OpConversionPattern<mhlo::ConvolutionOp>,
           /*data_format=*/rewriter.getStringAttr("NHWC"),
           /*dilations=*/rewriter.getI64ArrayAttr(dilation));
     } else {
-      output = rewriter.create<Conv2DOp>(
+      output = rewriter.create<TF::Conv2DOp>(
           conv_op.getLoc(), conv_output_type, sliced_lhs, rhs,
           rewriter.getI64ArrayAttr(strides),
           /*use_cudnn_on_gpu=*/rewriter.getBoolAttr(true),
@@ -800,7 +807,7 @@ class ConvertNonTrivialConvOp
     for (int64_t dim : conv_op.getType().cast<RankedTensorType>().getShape()) {
       input_shape.push_back(dim);
     }
-    auto input_sizes = rewriter.create<ConstOp>(
+    auto input_sizes = rewriter.create<TF::ConstOp>(
         conv_op.getLoc(),
         DenseIntElementsAttr::get(
             RankedTensorType::get({static_cast<int64_t>(input_shape.size())},
@@ -810,7 +817,7 @@ class ConvertNonTrivialConvOp
     auto filter = rewriter.create<mhlo::ReverseOp>(
         conv_op.getLoc(), conv_op.getRhs(),
         rewriter.getI64TensorAttr(dnums.getKernelSpatialDimensions()));
-    rewriter.replaceOpWithNewOp<Conv2DBackpropInputOp>(
+    rewriter.replaceOpWithNewOp<TF::Conv2DBackpropInputOp>(
         conv_op, conv_op.getType(), input_sizes, filter, conv_op.getLhs(),
         rewriter.getI64ArrayAttr(strides),
         /*use_cudnn_on_gpu=*/rewriter.getBoolAttr(true),
@@ -926,7 +933,7 @@ class ConvertNonTrivialConvOp
                               llvm::ArrayRef<int32_t> output_sizes,
                               bool align_corners,
                               ConversionPatternRewriter& rewriter) const {
-    Value output_sizes_attr = rewriter.create<ConstOp>(
+    Value output_sizes_attr = rewriter.create<TF::ConstOp>(
         conv_op.getLoc(),
         DenseIntElementsAttr::get(
             RankedTensorType::get({static_cast<int64_t>(output_sizes.size())},
@@ -935,7 +942,7 @@ class ConvertNonTrivialConvOp
     // The value of half_pixel_centers couldn't be inferred from the IR and XLA
     // only support half_pixel_centers=True as in 01/11/2022. Here
     // half_pixel_centers=False is hardcoded.
-    Value output = rewriter.create<ResizeBilinearOp>(
+    Value output = rewriter.create<TF::ResizeBilinearOp>(
         conv_op.getLoc(), conv_op.getType(), conv_op.getLhs(),
         output_sizes_attr,
         /*align_corners=*/rewriter.getBoolAttr(align_corners),
@@ -1056,15 +1063,15 @@ class ConvertSliceOp : public OpConversionPattern<mhlo::SliceOp> {
   LogicalResult matchAndRewrite(
       mhlo::SliceOp slice_op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
-    auto begin =
-        rewriter.create<ConstOp>(slice_op.getLoc(), slice_op.getStartIndices());
-    auto end =
-        rewriter.create<ConstOp>(slice_op.getLoc(), slice_op.getLimitIndices());
+    auto begin = rewriter.create<TF::ConstOp>(slice_op.getLoc(),
+                                              slice_op.getStartIndices());
+    auto end = rewriter.create<TF::ConstOp>(slice_op.getLoc(),
+                                            slice_op.getLimitIndices());
     auto strides =
-        rewriter.create<ConstOp>(slice_op.getLoc(), slice_op.getStrides());
-    rewriter.replaceOpWithNewOp<StridedSliceOp>(slice_op, slice_op.getType(),
-                                                slice_op.getOperand(), begin,
-                                                end, strides);
+        rewriter.create<TF::ConstOp>(slice_op.getLoc(), slice_op.getStrides());
+    rewriter.replaceOpWithNewOp<TF::StridedSliceOp>(
+        slice_op, slice_op.getType(), slice_op.getOperand(), begin, end,
+        strides);
     return success();
   }
 };
@@ -1097,7 +1104,7 @@ class ConvertDynamicSliceOp : public OpConversionPattern<mhlo::DynamicSliceOp> {
     // Clamp indices to [0, input_size - output_size]
     llvm::SmallVector<Value, 4> start_indices_vector;
     start_indices_vector.reserve(op.getStartIndices().size());
-    Value clamp_min = rewriter.create<ConstOp>(
+    Value clamp_min = rewriter.create<TF::ConstOp>(
         op.getLoc(),
         rewriter.getIntegerAttr(signed_start_indices_element_type, 0));
     for (uint64_t i = 0, e = op.getStartIndices().size(); i < e; ++i) {
@@ -1105,8 +1112,8 @@ class ConvertDynamicSliceOp : public OpConversionPattern<mhlo::DynamicSliceOp> {
       auto start = op.getStartIndices()[i];
       auto cast_type = start.getType().cast<ShapedType>().clone(
           signed_start_indices_element_type);
-      auto cast_op = rewriter.create<CastOp>(op.getLoc(), cast_type, start);
-      Value clamp_max = rewriter.create<ConstOp>(
+      auto cast_op = rewriter.create<TF::CastOp>(op.getLoc(), cast_type, start);
+      Value clamp_max = rewriter.create<TF::ConstOp>(
           op.getLoc(), rewriter.getIntegerAttr(
                            signed_start_indices_element_type,
                            input_type.getShape()[i] -
@@ -1120,13 +1127,13 @@ class ConvertDynamicSliceOp : public OpConversionPattern<mhlo::DynamicSliceOp> {
     Type start_indices_type = RankedTensorType::get(
         {static_cast<int64_t>(start_indices_vector.size())},
         signed_start_indices_element_type);
-    Value start_indices_op = rewriter.create<PackOp>(
+    Value start_indices_op = rewriter.create<TF::PackOp>(
         op.getLoc(), start_indices_type, ValueRange(start_indices_vector));
 
     Value slice_sices_op =
-        rewriter.create<ConstOp>(op.getLoc(), op.getSliceSizes());
-    rewriter.replaceOpWithNewOp<SliceOp>(op, op.getType(), op.getOperand(),
-                                         start_indices_op, slice_sices_op);
+        rewriter.create<TF::ConstOp>(op.getLoc(), op.getSliceSizes());
+    rewriter.replaceOpWithNewOp<TF::SliceOp>(op, op.getType(), op.getOperand(),
+                                             start_indices_op, slice_sices_op);
     return success();
   };
 };
@@ -1180,7 +1187,7 @@ Value BuildIntConstOp(ImplicitLocOpBuilder& builder,
                       ConversionPatternRewriter& rewriter, int64_t const_value,
                       Type type) {
   Value result_const =
-      builder.create<ConstOp>(rewriter.getIntegerAttr(type, const_value));
+      builder.create<TF::ConstOp>(rewriter.getIntegerAttr(type, const_value));
   return result_const;
 }
 // Create a const integer vector tensor (1-dim).
@@ -1198,7 +1205,7 @@ Value BuildIntArrayConstOp(ImplicitLocOpBuilder& builder,
     }
     const_value_raw = rewriter.getI32TensorAttr(const_i32_vec);
   }
-  Value result_const = builder.create<ConstOp>(const_value_raw);
+  Value result_const = builder.create<TF::ConstOp>(const_value_raw);
   return result_const;
 }
 
@@ -1208,7 +1215,7 @@ Value BuildReshapeOp(ImplicitLocOpBuilder& builder,
                      ArrayRef<int64_t> shape, Type idx_type,
                      Type element_type) {
   Value shape_cst = BuildIntArrayConstOp(builder, rewriter, shape, idx_type);
-  Value reshaped_input = builder.create<ReshapeOp>(
+  Value reshaped_input = builder.create<TF::ReshapeOp>(
       RankedTensorType::get(shape, element_type), input, shape_cst);
   return reshaped_input;
 }
@@ -1219,7 +1226,7 @@ Value BuildSliceOp(ImplicitLocOpBuilder& builder,
                    Value begin, ArrayRef<int64_t> shape, Type idx_type,
                    Type element_type) {
   Value shape_cst = BuildIntArrayConstOp(builder, rewriter, shape, idx_type);
-  Value slice_result = builder.create<SliceOp>(
+  Value slice_result = builder.create<TF::SliceOp>(
       RankedTensorType::get(shape, element_type), input, begin, shape_cst);
   return slice_result;
 }
@@ -1246,7 +1253,7 @@ class ConvertDynamicUpdateSliceOp
     llvm::SmallVector<Value> start_indices_vector;
     Append(start_indices_vector, op.getStartIndices());
     auto shape_tensor_type = RankedTensorType::get({shape_dim}, idx_type);
-    Value start_indices_tensor = rewriter.create<PackOp>(
+    Value start_indices_tensor = rewriter.create<TF::PackOp>(
         op.getLoc(), shape_tensor_type, start_indices_vector);
     rewriter.replaceOpWithNewOp<TF::XlaDynamicUpdateSliceOp>(
         op, op.getType(), op.getOperand(), op.getUpdate(),
@@ -1595,8 +1602,8 @@ class ConvertSortToTfTopk : public OpConversionPattern<mhlo::SortOp> {
       return rewriter.notifyMatchFailure(op, "only match for GT comparator");
     ImplicitLocOpBuilder builder(op.getLoc(), rewriter);
     Value k_cst = BuildIntConstOp(builder, rewriter, k, rewriter.getI32Type());
-    rewriter.replaceOpWithNewOp<TopKV2Op>(op, keys.getType(), indices.getType(),
-                                          keys, k_cst);
+    rewriter.replaceOpWithNewOp<TF::TopKV2Op>(op, keys.getType(),
+                                              indices.getType(), keys, k_cst);
     return success();
   };
 };
@@ -1817,7 +1824,7 @@ LogicalResult MatchBinaryReduceFunction<void>(mlir::Region& function) {
 // init value doesn't match the expectation of TfReduceOp.
 template <typename TfReduceOp, typename TfBinOp>
 LogicalResult rewriteNonMatchInitValue(mhlo::ReduceOp reduce_op, Value input,
-                                       ConstOp reduction_indices,
+                                       TF::ConstOp reduction_indices,
                                        ConversionPatternRewriter& rewriter) {
   Value reduce_result = rewriter.create<TfReduceOp>(
       reduce_op.getLoc(), reduce_op.getType(0), input, reduction_indices,
@@ -1832,14 +1839,14 @@ LogicalResult rewriteNonMatchInitValue(mhlo::ReduceOp reduce_op, Value input,
 // TfReduceOp and there is no corresponding TfBinaryOp.
 template <>
 LogicalResult rewriteNonMatchInitValue<TF::MaxOp, void>(
-    mhlo::ReduceOp reduce_op, Value input, ConstOp reduction_indices,
+    mhlo::ReduceOp reduce_op, Value input, TF::ConstOp reduction_indices,
     ConversionPatternRewriter& rewriter) {
   return failure();
 }
 
 template <>
 LogicalResult rewriteNonMatchInitValue<TF::MinOp, void>(
-    mhlo::ReduceOp reduce_op, Value input, ConstOp reduction_indices,
+    mhlo::ReduceOp reduce_op, Value input, TF::ConstOp reduction_indices,
     ConversionPatternRewriter& rewriter) {
   return failure();
 }
@@ -1877,7 +1884,7 @@ class ConvertReduceOpToTfOp : public OpConversionPattern<mhlo::ReduceOp> {
     }
     auto dim_type = RankedTensorType::get(
         {static_cast<int64_t>(reduce_dims.size())}, rewriter.getI64Type());
-    auto reduction_indices = rewriter.create<ConstOp>(
+    auto reduction_indices = rewriter.create<TF::ConstOp>(
         reduce_op.getLoc(), dim_type, rewriter.getI64TensorAttr(reduce_dims));
 
     // In `MatchReduceOpOperand` function, we already match that the
@@ -2060,7 +2067,7 @@ class ConvertReduceOpToTfArgMinMax
     int64_t axis = reduce_op.getDimensions().getValues<int64_t>()[0];
 
     auto dim_type = RankedTensorType::get({1}, rewriter.getI64Type());
-    auto reduction_indices = rewriter.create<ConstOp>(
+    auto reduction_indices = rewriter.create<TF::ConstOp>(
         reduce_op.getLoc(), dim_type, rewriter.getI64TensorAttr({axis}));
 
     // Generate a Max and an ArgMax of as the mhlo op returns both while in TF
@@ -2606,13 +2613,13 @@ class ConvertAvgPoolOp : public OpConversionPattern<mhlo::DivOp> {
                                    llvm::StringRef padding,
                                    ConversionPatternRewriter& rewriter) const {
     if (ksizes.size() == 4) {
-      rewriter.replaceOpWithNewOp<AvgPoolOp>(
+      rewriter.replaceOpWithNewOp<TF::AvgPoolOp>(
           op, op.getType(), input, rewriter.getI64ArrayAttr(ksizes),
           rewriter.getI64ArrayAttr(kstrides), rewriter.getStringAttr(padding),
           rewriter.getStringAttr("NHWC"));
       return success();
     } else if (ksizes.size() == 5) {
-      rewriter.replaceOpWithNewOp<AvgPool3DOp>(
+      rewriter.replaceOpWithNewOp<TF::AvgPool3DOp>(
           op, op.getType(), input, rewriter.getI64ArrayAttr(ksizes),
           rewriter.getI64ArrayAttr(kstrides), rewriter.getStringAttr(padding),
           rewriter.getStringAttr("NDHWC"));
@@ -2697,14 +2704,14 @@ class ConvertMaxPoolOp : public OpConversionPattern<mhlo::ReduceWindowOp> {
                                    llvm::StringRef padding,
                                    ConversionPatternRewriter& rewriter) const {
     if (ksizes.size() == 4) {
-      rewriter.replaceOpWithNewOp<MaxPoolOp>(
+      rewriter.replaceOpWithNewOp<TF::MaxPoolOp>(
           op, op.getType(0), input, rewriter.getI64ArrayAttr(ksizes),
           rewriter.getI64ArrayAttr(kstrides), rewriter.getStringAttr(padding),
           /*explicit_paddings=*/rewriter.getI64ArrayAttr({}),
           rewriter.getStringAttr("NHWC"));
       return success();
     } else if (ksizes.size() == 5) {
-      rewriter.replaceOpWithNewOp<MaxPool3DOp>(
+      rewriter.replaceOpWithNewOp<TF::MaxPool3DOp>(
           op, op.getType(0), input, rewriter.getI64ArrayAttr(ksizes),
           rewriter.getI64ArrayAttr(kstrides), rewriter.getStringAttr(padding),
           rewriter.getStringAttr("NDHWC"));
@@ -2712,14 +2719,6 @@ class ConvertMaxPoolOp : public OpConversionPattern<mhlo::ReduceWindowOp> {
     }
     return failure();
   }
-};
-
-#define GEN_PASS_DEF_LEGALIZEHLOTOTFPASS
-#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
-
-class LegalizeHloToTf : public impl::LegalizeHloToTfPassBase<LegalizeHloToTf> {
-  /// Performs the legalization to the TF dialect.
-  void runOnOperation() override;
 };
 
 // Returns the shape of the given value in a Constant Op.
@@ -3188,9 +3187,9 @@ class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
     auto min_start_indices = BuildIntArrayConstOp(
         builder, rewriter, llvm::SmallVector<int64_t>({0, 0}),
         start_indices_type.getElementType());
-    auto start_indices_max_op = rewriter.create<MaximumOp>(
+    auto start_indices_max_op = rewriter.create<TF::MaximumOp>(
         gather_op.getLoc(), start_indices, min_start_indices);
-    auto clamped_start_indices_op = rewriter.create<MinimumOp>(
+    auto clamped_start_indices_op = rewriter.create<TF::MinimumOp>(
         gather_op.getLoc(), start_indices_max_op, max_start_indices);
 
     int64_t batch_size = start_indices_type.getDimSize(batch_dim);
@@ -3204,8 +3203,8 @@ class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
           clamped_start_indices_op,
           rewriter.getI64ArrayAttr(llvm::ArrayRef<int64_t>({batch_dim})));
       auto slice_op =
-          rewriter.create<SliceOp>(gather_op.getLoc(), gather_op.getType(),
-                                   operand, squeeze_op, slice_size);
+          rewriter.create<TF::SliceOp>(gather_op.getLoc(), gather_op.getType(),
+                                       operand, squeeze_op, slice_size);
       rewriter.replaceOp(gather_op, slice_op);
       return mlir::success();
     }
@@ -3219,7 +3218,7 @@ class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
       auto two = BuildIntArrayConstOp(builder, rewriter,
                                       llvm::SmallVector<int64_t>({1, 2}),
                                       rewriter.getI32Type());
-      auto begin = rewriter.create<SliceOp>(
+      auto begin = rewriter.create<TF::SliceOp>(
           gather_op.getLoc(),
           RankedTensorType::get({1, 2}, start_indices_type.getElementType()),
           clamped_start_indices_op, zero, two);
@@ -3229,7 +3228,7 @@ class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
                                 start_indices_type.getElementType()),
           begin,
           rewriter.getI64ArrayAttr(llvm::ArrayRef<int64_t>({batch_dim})));
-      auto slice_op = rewriter.create<SliceOp>(
+      auto slice_op = rewriter.create<TF::SliceOp>(
           gather_op.getLoc(),
           RankedTensorType::get({1, slice_sizes_vector[1]},
                                 operand_type.getElementType()),
@@ -3240,7 +3239,7 @@ class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
     auto zero_scalar = rewriter.create<TF::ConstOp>(
         gather_op.getLoc(),
         DenseIntElementsAttr::get(scalar_type, static_cast<int32_t>(0)));
-    auto concat_op = rewriter.create<ConcatV2Op>(
+    auto concat_op = rewriter.create<TF::ConcatV2Op>(
         gather_op.getLoc(), result_type, slices, zero_scalar);
     rewriter.replaceOp(gather_op, concat_op);
     return mlir::success();
@@ -3479,7 +3478,7 @@ class ConvertScatterOp : public OpConversionPattern<mhlo::ScatterOp> {
           builder, rewriter,
           llvm::SmallVector<int64_t>({num_updates, index_depth}),
           rewriter.getI32Type());
-      new_indices = rewriter.create<ReshapeOp>(
+      new_indices = rewriter.create<TF::ReshapeOp>(
           loc,
           RankedTensorType::get({num_updates, index_depth},
                                 indices_type.getElementType()),
@@ -3488,7 +3487,7 @@ class ConvertScatterOp : public OpConversionPattern<mhlo::ScatterOp> {
           builder, rewriter,
           llvm::SmallVector<int64_t>({num_updates, updates_type.getDimSize(0)}),
           rewriter.getI32Type());
-      new_updates = rewriter.create<ReshapeOp>(
+      new_updates = rewriter.create<TF::ReshapeOp>(
           loc,
           RankedTensorType::get({1, updates_type.getDimSize(0)},
                                 updates_type.getElementType()),
@@ -3538,8 +3537,9 @@ Value ConvertPadOp(PatternRewriter& rewriter, Operation* old_op) {
   auto padding_attr = DenseIntElementsAttr::get(attr_type, padding);
   auto padding_op =
       rewriter.create<arith::ConstantOp>(loc, attr_type, padding_attr);
-  return rewriter.create<PadV2Op>(loc, pad_op.getType(), pad_op.getOperand(),
-                                  padding_op, pad_op.getPaddingValue());
+  return rewriter.create<TF::PadV2Op>(loc, pad_op.getType(),
+                                      pad_op.getOperand(), padding_op,
+                                      pad_op.getPaddingValue());
 }
 
 class ConvertPopulationCountOp
@@ -3766,7 +3766,7 @@ class ConvertRealDynamicSliceOp
           real_dynamic_slice_op,
           "Start indices and limit indices must not have dynamic dimensions.");
     }
-    rewriter.replaceOpWithNewOp<StridedSliceOp>(
+    rewriter.replaceOpWithNewOp<TF::StridedSliceOp>(
         real_dynamic_slice_op, real_dynamic_slice_op.getType(),
         real_dynamic_slice_op.getOperand(),
         real_dynamic_slice_op.getStartIndices(),
@@ -3901,7 +3901,7 @@ Value ExpandedDynamicShape(PatternRewriter& rewriter, Value input,
   return expanded_input;
 }
 
-#include "tensorflow/compiler/mlir/tensorflow/transforms/generated_legalize_hlo.inc"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/generated_legalize_hlo.inc"
 
 /// Performs the lowering to TF dialect.
 void LegalizeHloToTf::runOnOperation() {
@@ -3913,7 +3913,7 @@ void LegalizeHloToTf::runOnOperation() {
   PopulateLegalizeHloToTfPatterns(&patterns, &context);
 
   ConversionTarget target(context);
-  target.addLegalDialect<TensorFlowDialect>();
+  target.addLegalDialect<TF::TensorFlowDialect>();
   target.addLegalOp<func::CallOp, func::ConstantOp, arith::ConstantOp>();
   target.addLegalOp<mhlo::TupleOp>();
   if (failed(applyPartialConversion(getOperation(), target,
@@ -3947,5 +3947,7 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeHloToTfPass() {
   return std::make_unique<LegalizeHloToTf>();
 }
 
-}  // end namespace TF
+static PassRegistration<LegalizeHloToTf> pass;
+
+}  // end namespace odml
 }  // end namespace mlir
