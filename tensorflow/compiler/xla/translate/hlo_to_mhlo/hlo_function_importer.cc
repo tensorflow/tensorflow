@@ -1513,6 +1513,9 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           loc, return_types, llvm::ArrayRef(operands).take_front(num_inputs),
           llvm::ArrayRef(operands).drop_front(num_inputs),
           ConvertDimensions(instruction->dimensions()));
+      for (auto attr : attributes) {
+        reduce->setAttr(attr.getName(), attr.getValue());
+      }
       TF_RETURN_IF_ERROR(ImportAsRegion(*instruction->to_apply(),
                                         &reduce.getBody(),
                                         /*flatten_region_arg_tuple=*/true));
