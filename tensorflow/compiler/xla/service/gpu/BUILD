@@ -3284,12 +3284,11 @@ xla_test(
     srcs = ["float_support_test.cc"],
     backend_tags = {"gpu": [
         "requires-gpu-sm80",
+		"no_rocm",
     ]},
     backends = [
         "gpu",
     ],
-	tags_override = ["no_rocm",
-	],
     deps = [
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
