@@ -43,7 +43,7 @@ ops = _xla.ops
 profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
-# changes.
+# changes. In JAX, reference this via jax._src.lib.xla_extension_version.
 _version = 174
 
 # Version number for MLIR:Python components.
