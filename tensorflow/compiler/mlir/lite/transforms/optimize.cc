@@ -2057,6 +2057,83 @@ using FuseBinaryOpToFollowingDepthwiseConv2D =
     FuseBinaryOpToFollowingAffineOp<DepthwiseConv2DOp>;
 using FuseBinaryOpToFollowingConv2D = FuseBinaryOpToFollowingAffineOp<Conv2DOp>;
 
+// Optimizes transpose->reshape->batch_matmul->reshape->transpose to a single
+// batch_matmul.
+struct FuseReshapeAndTransposeAroundBatchMatmul
+    : public OpRewritePattern<TFL::TransposeOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TFL::TransposeOp op,
+                                PatternRewriter &rewriter) const override {
+    TensorType transpose_input_type = op.getInput().getType();
+    // TODO(chhe): to support more than 3D in this pattern.
+    if (!transpose_input_type.hasStaticShape() ||
+        transpose_input_type.getRank() != 3) {
+      return failure();
+    }
+    DenseIntElementsAttr transpose_perm;
+    if (!matchPattern(op.getPerm(), m_Constant(&transpose_perm))) {
+      return failure();
+    }
+    const ArrayRef<int64_t> match_perm = {1, 2, 0};
+    for (const auto &[perm_index, match_perm_index] :
+         llvm::zip(transpose_perm.getValues<APInt>(), match_perm)) {
+      if (perm_index != match_perm_index) {
+        return failure();
+      }
+    }
+
+    auto reshape_op = op.getInput().getDefiningOp<ReshapeOp>();
+    if (!reshape_op || !ExpandOneDimInMiddle(reshape_op.getInput().getType(),
+                                             reshape_op.getType())) {
+      return failure();
+    }
+
+    auto batch_matmul = reshape_op.getInput().getDefiningOp<BatchMatMulOp>();
+    if (!batch_matmul || !batch_matmul.getAdjX() || batch_matmul.getAdjY()) {
+      return failure();
+    }
+
+    auto reshape_op_1 = batch_matmul.getY().getDefiningOp<ReshapeOp>();
+    if (!reshape_op_1 ||
+        !ExpandOneDimInMiddle(reshape_op_1.getType(),
+                              reshape_op_1.getInput().getType())) {
+      return failure();
+    }
+
+    auto transpose_op = reshape_op_1.getInput().getDefiningOp<TransposeOp>();
+    if (!transpose_op) {
+      return failure();
+    }
+    DenseIntElementsAttr transpose_perm_1;
+    if (!matchPattern(transpose_op.getPerm(), m_Constant(&transpose_perm_1))) {
+      return failure();
+    }
+    const ArrayRef<int64_t> match_perm_1 = {2, 0, 1};
+    for (const auto &[perm_index, match_perm_index] :
+         llvm::zip(transpose_perm_1.getValues<APInt>(), match_perm_1)) {
+      if (perm_index != match_perm_index) {
+        return failure();
+      }
+    }
+
+    rewriter.replaceOpWithNewOp<BatchMatMulOp>(
+        op, op.getType(), transpose_op.getInput(), batch_matmul.getX(),
+        /*adj_x=*/false, /*adj_y=*/false,
+        batch_matmul.getAsymmetricQuantizeInputsAttr());
+    return success();
+  }
+
+ private:
+  // Checks that tensor `a` has shape of [M, N] and `b` has [M, 1, N].
+  bool ExpandOneDimInMiddle(TensorType a, TensorType b) const {
+    if (!a.hasStaticShape() || !b.hasStaticShape()) return false;
+    if (a.getRank() != 2 || b.getRank() != 3) return false;
+    return a.getShape().front() == b.getShape().front() &&
+           a.getShape().back() == b.getShape().back();
+  }
+};
+
 // Adds canonicalization patterns to the list of patterns.
 void AddCanonicalizationPatterns(MLIRContext *context,
                                  RewritePatternSet *patterns) {
@@ -2108,7 +2185,8 @@ void OptimizePass::runOnOperation() {
       FuseBinaryOpToFollowingFullyConnected, FuseConv2DAndMulWithQDQs,
       FuseDepthwiseConv2DAndMulWithQDQs, ConvertTrivialTransposeOpToReshapeOp,
       RemoveReshapeAfterFullyConnected, RemoveReshapeBeforeFullyConnected,
-      FuseUnpackAndConcatToReshape, OptimizeTopK, FuseAddAndStridedSlice>(ctx);
+      FuseUnpackAndConcatToReshape, OptimizeTopK, FuseAddAndStridedSlice,
+      FuseReshapeAndTransposeAroundBatchMatmul>(ctx);
   if (!this->disable_fuse_mul_and_fc_) {
     phase_2_patterns.add<FuseMulAndFullyConnected>(ctx);
   }
