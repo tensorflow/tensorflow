@@ -104,13 +104,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   // TODO(b/258036887): Enable gpu_graph_level=2. Currently blocked by CUDA 12
   // integration.
-<<<<<<< HEAD
-  opts.set_xla_gpu_cuda_graph_level(0);
-  opts.set_xla_gpu_cuda_graph_num_runs_to_instantiate(-1);
-=======
-  opts.set_xla_gpu_graph_level(1);
+  opts.set_xla_gpu_graph_level(0);
   opts.set_xla_gpu_graph_num_runs_to_instantiate(-1);
->>>>>>> upstream/master
   opts.set_xla_gpu_enable_persistent_temp_buffers(false);
   opts.set_xla_gpu_graph_min_graph_size(5);
   opts.set_xla_gpu_graph_enable_concurrent_region(false);
@@ -172,13 +167,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_triton_gemm(true);
   opts.set_xla_gpu_enable_cudnn_int8x32_convolution_reordering(true);
   opts.set_xla_gpu_triton_gemm_any(false);
-<<<<<<< HEAD
   opts.set_xla_gpu_enable_triton_softmax_fusion(false);
-  opts.set_xla_gpu_triton_fusion_level(1);
-=======
-  opts.set_xla_gpu_enable_triton_softmax_fusion(true);
   opts.set_xla_gpu_triton_fusion_level(2);
->>>>>>> upstream/master
 
   // Moving reduce-scatter out of while loops can increase memory footprint, so
   // turning it off by default.
