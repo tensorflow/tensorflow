@@ -1092,7 +1092,8 @@ def run_all_in_graph_and_eager_modes(cls):
     if (not name.startswith(unittest.TestLoader.testMethodPrefix) or
         name.startswith("testSkipEager") or
         name.startswith("test_skip_eager") or
-        name == "test_session"):
+        name == "test_session" or
+        name == "test_scope"):
       continue
     value = getattr(cls, name, None)
     if callable(value):
@@ -1495,7 +1496,17 @@ def run_in_graph_and_eager_modes(func=None,
       logging.info("Running %s in GRAPH mode.", f.__name__)
       try:
         with context.graph_mode(), self.subTest("graph_mode"):
-          with self.test_session(use_gpu=use_gpu, config=config):
+          # XLATestCase uses `session`, which also doesn't take any args,
+          # instead of `test_session`
+          for class_ in self.__class__.mro():
+            if class_.__name__ == "XLATestCase":
+              session_func = self.session
+              session_kwargs = {}
+              break
+          else:
+            session_func = self.test_session
+            session_kwargs = dict(use_gpu=use_gpu, config=config)
+          with session_func(**session_kwargs):
             f(self, *args, **kwargs)
       except unittest.case.SkipTest:
         pass
