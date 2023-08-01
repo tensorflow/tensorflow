@@ -549,7 +549,6 @@ StatusOr<tensorflow::MetaGraphDef> ReadSavedModel(
   return std::move(meta_graph_def);
 }
 
-
 tensorflow::StatusOr<std::unique_ptr<SavedModel>>
 SavedModelImpl::LoadSavedModel(Options options,
                                absl::string_view saved_model_dir,
@@ -939,6 +938,7 @@ SavedModelImpl::ImportSubgraph(
   graph_import_config.inputs = input_nodes;
   graph_import_config.outputs = output_nodes;
   graph_import_config.control_outputs = target_nodes;
+  graph_import_config.set_original_tf_func_name = true;
 
   // Optimize the graph.
   TF_ASSIGN_OR_RETURN(

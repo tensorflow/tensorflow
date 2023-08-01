@@ -723,6 +723,7 @@ GraphExecutor::ImportClientGraphToMlirModule(
   graph_import_config.inputs = client_graph.input_nodes;
   graph_import_config.outputs = client_graph.output_nodes;
   graph_import_config.control_outputs = client_graph.target_nodes;
+  graph_import_config.set_original_tf_func_name = true;
 
   // Optimize the graph.
   TF_ASSIGN_OR_RETURN(
