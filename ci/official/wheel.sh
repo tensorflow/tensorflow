@@ -29,11 +29,11 @@ tfrun bazel "${TFCI_BAZEL_BAZELRC_ARGS[@]}" build "${TFCI_BAZEL_COMMON_ARGS[@]}"
 tfrun ./bazel-bin/tensorflow/tools/pip_package/build_pip_package build "${TFCI_BUILD_PIP_PACKAGE_ARGS[@]}"
 tfrun ./ci/official/utilities/rename_and_verify_wheels.sh build
 
-if [[ "$TFCI_UPLOAD_PYPI_ENABLE" == 1 ]]; then
-  twine upload "${TFCI_UPLOAD_PYPI_ARGS[@]}" build/*.whl
+if [[ "$TFCI_UPLOAD_WHL_PYPI_ENABLE" == 1 ]]; then
+  twine upload "${TFCI_WHL_UPLOAD_PYPI_ARGS[@]}" build/*.whl
 fi
-if [[ "$TFCI_UPLOAD_GCS_ENABLE" == 1 ]]; then
-  gsutil cp build/*.whl "$TFCI_UPLOAD_GCS_URI"
+if [[ "$TFCI_UPLOAD_WHL_GCS_ENABLE" == 1 ]]; then
+  gsutil cp build/*.whl "$TFCI_UPLOAD_WHL_GCS_URI"
 fi
 
 tfrun bazel "${TFCI_BAZEL_BAZELRC_ARGS[@]}" test "${TFCI_BAZEL_COMMON_ARGS[@]}" --config=nonpip
