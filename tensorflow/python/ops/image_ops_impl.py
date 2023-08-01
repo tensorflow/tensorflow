@@ -4736,6 +4736,14 @@ def sobel_edges(image):
   return output
 
 
+@tf_export(v1=['image.resize_bicubic'])
+@dispatch.add_dispatch_support
+@deprecation.deprecated(
+    date=None,
+    instructions=(
+        'Use `tf.image.resize(...method=ResizeMethod.BICUBIC...)` instead.'
+    ),
+)
 def resize_bicubic(images,
                    size,
                    align_corners=False,
@@ -4749,6 +4757,14 @@ def resize_bicubic(images,
       name=name)
 
 
+@tf_export(v1=['image.resize_bilinear'])
+@dispatch.add_dispatch_support
+@deprecation.deprecated(
+    date=None,
+    instructions=(
+        'Use `tf.image.resize(...method=ResizeMethod.BILINEAR...)` instead.'
+    ),
+)
 def resize_bilinear(images,
                     size,
                     align_corners=False,
@@ -4762,6 +4778,15 @@ def resize_bilinear(images,
       name=name)
 
 
+@tf_export(v1=['image.resize_nearest_neighbor'])
+@dispatch.add_dispatch_support
+@deprecation.deprecated(
+    date=None,
+    instructions=(
+        'Use `tf.image.resize(...method=ResizeMethod.NEAREST_NEIGHBOR...)` '
+        'instead.'
+    ),
+)
 def resize_nearest_neighbor(images,
                             size,
                             align_corners=False,
@@ -4779,32 +4804,11 @@ resize_area_deprecation = deprecation.deprecated(
     date=None,
     instructions=(
         'Use `tf.image.resize(...method=ResizeMethod.AREA...)` instead.'))
-tf_export(v1=['image.resize_area'])(
+resize_area = tf_export(v1=['image.resize_area'])(
     resize_area_deprecation(
-        dispatch.add_dispatch_support(gen_image_ops.resize_area)))
-
-resize_bicubic_deprecation = deprecation.deprecated(
-    date=None,
-    instructions=(
-        'Use `tf.image.resize(...method=ResizeMethod.BICUBIC...)` instead.'))
-tf_export(v1=['image.resize_bicubic'])(
-    dispatch.add_dispatch_support(resize_bicubic_deprecation(resize_bicubic)))
-
-resize_bilinear_deprecation = deprecation.deprecated(
-    date=None,
-    instructions=(
-        'Use `tf.image.resize(...method=ResizeMethod.BILINEAR...)` instead.'))
-tf_export(v1=['image.resize_bilinear'])(
-    dispatch.add_dispatch_support(resize_bilinear_deprecation(resize_bilinear)))
-
-resize_nearest_neighbor_deprecation = deprecation.deprecated(
-    date=None,
-    instructions=(
-        'Use `tf.image.resize(...method=ResizeMethod.NEAREST_NEIGHBOR...)` '
-        'instead.'))
-tf_export(v1=['image.resize_nearest_neighbor'])(
-    dispatch.add_dispatch_support(
-        resize_nearest_neighbor_deprecation(resize_nearest_neighbor)))
+        dispatch.add_dispatch_support(gen_image_ops.resize_area)
+    )
+)
 
 
 @tf_export('image.crop_and_resize', v1=[])
