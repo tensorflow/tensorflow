@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/tsl/platform/logging.h"
 
 namespace tensorflow {
@@ -65,6 +66,16 @@ const WarmupStateRegistry::PerModelData* WarmupStateRegistry::Lookup(
 WarmupStateRegistry& GetGlobalWarmupStateRegistry() {
   static auto* const registry = new WarmupStateRegistry;
   return *registry;
+}
+
+bool ShouldWarmupAllBatchSizes(const OpKernelContext* c) {
+  auto metadata = c->session_metadata();
+  if (metadata == nullptr || metadata->name().empty()) {
+    return false;
+  }
+  serving::WarmupStateRegistry::Key key(metadata->name(), metadata->version());
+  auto per_model_data = serving::GetGlobalWarmupStateRegistry().Lookup(key);
+  return per_model_data && per_model_data->warmup_all_batch_sizes;
 }
 
 }  // namespace serving
