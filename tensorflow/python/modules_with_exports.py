@@ -159,6 +159,9 @@ from tensorflow.python.summary import summary
 from tensorflow.python.training import training as train
 from tensorflow.python.training import quantize_training as _quantize_training
 
+# User Ops
+from tensorflow.python.user_ops import user_ops
+
 # Util
 from tensorflow.python.util import compat
 from tensorflow.python.util import all_util
