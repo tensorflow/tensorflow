@@ -1017,7 +1017,7 @@ def _populate_quantization_options_default_values(
   Populates unspecified or unset fields of QuantizationOptions with the default
   values.
 
-  * If `op_set` is unspecified, it defaults to `OpSet.TF`.
+  * If `op_set` is unspecified, it defaults to `OpSet.XLA`.
   * If `freeze_all_variables` is not set, it defaults to `True`.
   * Check if configurations are set correctly:
     - Per-channel quantization is supported for Uniform Quantized opset only.
