@@ -45,6 +45,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/platform/errors.h"
@@ -419,6 +421,18 @@ void GetSignaturesFromSignatureDef(
   }
 }
 
+void GetDefaultInputValueFromSignatureDef(
+    SignatureMap& signatures,
+    const google::protobuf::Map<std::string, tensorflow::SignatureDef>& signature_defs) {
+  for (const auto& [function_name, signature_def] : signature_defs) {
+    auto itr = signatures.find(function_name);
+    if (itr == signatures.end()) {
+      continue;
+    }
+    signatures[function_name].default_inputs = signature_def.defaults();
+  }
+}
+
 void UpdateCompileOptions(SavedModel::Options& options) {
   // Disable DecomposeResourceOpsPass for now, as DecomposeResourceGather does
   // not work well with GPU (b/232819415).
@@ -625,6 +639,10 @@ SavedModelImpl::LoadSavedModel(Options options,
     GetSignaturesFromSignatureDef(initializers_and_signatures.signature_map,
                                   meta_graph_def.signature_def(), options);
   }
+
+  GetDefaultInputValueFromSignatureDef(
+      initializers_and_signatures.signature_map,
+      meta_graph_def.signature_def());
 
   auto runner_table = std::make_unique<OpKernelRunnerTable>();
   auto resource_array = std::make_unique<tfd::FallbackResourceArray>();
