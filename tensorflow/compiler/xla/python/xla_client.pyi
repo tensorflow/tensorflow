@@ -105,6 +105,10 @@ def make_tfrt_tpu_c_api_device_topology(topology_name: Optional[str] = None, **k
   ...
 
 
+def get_topology_for_devices(devices: List[Device]) -> DeviceTopology:
+  ...
+
+
 def make_tpu_client() -> Client:
   ...
 

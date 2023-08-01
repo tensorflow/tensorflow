@@ -108,6 +108,7 @@ def make_tfrt_tpu_c_api_client(options: Optional[_NameValueMapping] = None):
 
 
 DeviceTopology = _xla.DeviceTopology
+get_topology_for_devices = _xla.get_topology_for_devices
 
 
 def make_tfrt_tpu_c_api_device_topology(
