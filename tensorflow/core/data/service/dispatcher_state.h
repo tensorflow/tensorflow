@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_DISPATCHER_STATE_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_DISPATCHER_STATE_H_
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <queue>
@@ -294,6 +295,9 @@ class DispatcherState {
   const absl::flat_hash_set<std::string>& ListSnapshotPaths() const {
     return snapshot_paths_;
   }
+
+  // Returns the current number of registered workers.
+  int64_t GetNumberOfRegisteredWorkers() const { return workers_.size(); }
 
  private:
   void RegisterDataset(const RegisterDatasetUpdate& register_dataset);

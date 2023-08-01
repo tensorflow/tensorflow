@@ -1266,7 +1266,8 @@ void DataServiceDispatcherImpl::MaintenanceThread() {
       }
     }
     {
-      Status s = auto_scaler_.UpdateOptimalNumberOfWorkersMetric();
+      Status s = auto_scaler_.UpdateOptimalNumberOfWorkersMetric(
+          state_.GetNumberOfRegisteredWorkers());
       if (!s.ok()) {
         LOG(WARNING) << "Error updating the optimal number of workers metric "
                         "in tf.data service AutoScaler: "
