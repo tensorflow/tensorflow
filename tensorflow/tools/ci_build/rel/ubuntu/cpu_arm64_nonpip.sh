@@ -116,3 +116,6 @@ bazel test ${TF_TEST_FLAGS} \
     --local_test_jobs=$(grep -c ^processor /proc/cpuinfo) \
     --build_tests_only \
     -- ${TF_TEST_TARGETS}
+
+bazel clean
+bazel shutdown
