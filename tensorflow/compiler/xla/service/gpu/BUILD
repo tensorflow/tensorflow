@@ -3288,6 +3288,8 @@ xla_test(
     backends = [
         "gpu",
     ],
+	tags_override = ["no_rocm",
+	],
     deps = [
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
