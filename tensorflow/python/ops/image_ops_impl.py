@@ -3181,39 +3181,39 @@ def _is_png(contents, name=None):
     return math_ops.equal(substr, b'\211PN', name=name)
 
 
-tf_export(
+decode_and_crop_jpeg = tf_export(
     'io.decode_and_crop_jpeg',
     'image.decode_and_crop_jpeg',
     v1=['io.decode_and_crop_jpeg', 'image.decode_and_crop_jpeg'])(
         dispatch.add_dispatch_support(gen_image_ops.decode_and_crop_jpeg))
 
-tf_export(
+decode_bmp = tf_export(
     'io.decode_bmp',
     'image.decode_bmp',
     v1=['io.decode_bmp', 'image.decode_bmp'])(
         dispatch.add_dispatch_support(gen_image_ops.decode_bmp))
-tf_export(
+decode_gif = tf_export(
     'io.decode_gif',
     'image.decode_gif',
     v1=['io.decode_gif', 'image.decode_gif'])(
         dispatch.add_dispatch_support(gen_image_ops.decode_gif))
-tf_export(
+decode_jpeg = tf_export(
     'io.decode_jpeg',
     'image.decode_jpeg',
     v1=['io.decode_jpeg', 'image.decode_jpeg'])(
         dispatch.add_dispatch_support(gen_image_ops.decode_jpeg))
-tf_export(
+decode_png = tf_export(
     'io.decode_png',
     'image.decode_png',
     v1=['io.decode_png', 'image.decode_png'])(
         dispatch.add_dispatch_support(gen_image_ops.decode_png))
 
-tf_export(
+encode_jpeg = tf_export(
     'io.encode_jpeg',
     'image.encode_jpeg',
     v1=['io.encode_jpeg', 'image.encode_jpeg'])(
         dispatch.add_dispatch_support(gen_image_ops.encode_jpeg))
-tf_export(
+extract_jpeg_shape = tf_export(
     'io.extract_jpeg_shape',
     'image.extract_jpeg_shape',
     v1=['io.extract_jpeg_shape', 'image.extract_jpeg_shape'])(
