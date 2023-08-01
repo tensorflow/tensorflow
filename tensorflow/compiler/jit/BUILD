@@ -683,6 +683,7 @@ tf_cc_test(
     srcs = [
         "device_compiler_disable_test.cc",
     ],
+    tags = ["no_cuda_on_cpu_tap"],
     deps = [
         ":device_compilation_profiler",
         ":device_compiler",
@@ -1550,6 +1551,7 @@ cc_library(
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/compiler/xla/pjrt:pjrt_stream_executor_client",
         "//tensorflow/core:framework",
+        "//tensorflow/core/common_runtime:dma_helper",
     ],
 )
 
@@ -1564,6 +1566,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":pjrt_tensor_buffer_util",
+        "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c/experimental/next_pluggable_device:tensor_pjrt_buffer_util",
         "//tensorflow/compiler/tf2xla:common",
@@ -1677,6 +1680,7 @@ tf_cc_test(
 tf_cc_test(
     name = "device_executable_persistor_test",
     srcs = ["device_executable_persistor_test.cc"],
+    tags = ["no_cuda_on_cpu_tap"],
     deps = [
         ":device_compiler_client",
         ":device_executable_persistor",

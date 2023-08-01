@@ -202,7 +202,7 @@ struct BufferMemoryLayoutData {
   std::vector<size_t> tile_dim_sizes;
 };
 xla::StatusOr<BufferMemoryLayoutData> ConvertToBufferMemoryLayoutData(
-    const xla::Layout* cpp_layout);
+    const xla::Layout& cpp_layout);
 xla::StatusOr<BufferMemoryLayoutData> ConvertToBufferMemoryLayoutData(
     absl::Span<int64_t const> byte_strides);
 

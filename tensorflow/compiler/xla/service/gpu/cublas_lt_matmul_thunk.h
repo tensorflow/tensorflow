@@ -29,12 +29,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 #if GOOGLE_CUDA
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_lt.h"
 #else
+#include "rocm/rocm_config.h"
 #include "tensorflow/compiler/xla/stream_executor/rocm/hip_blas_lt.h"
-#endif
-#include "tensorflow/tsl/platform/statusor.h"
+#endif  // GOOGLE_CUDA
 
 namespace xla {
 namespace gpu {
@@ -42,8 +43,8 @@ namespace gpu {
 class CublasLtMatmulThunk : public Thunk {
  public:
   CublasLtMatmulThunk(ThunkInfo thunk_info, GemmConfig gemm_config,
-                      se::gpu::BlasLt::Epilogue epilogue,
-                      int64_t algorithm_idx, BufferAllocation::Slice a_buffer,
+                      se::gpu::BlasLt::Epilogue epilogue, int64_t algorithm_idx,
+                      BufferAllocation::Slice a_buffer,
                       BufferAllocation::Slice b_buffer,
                       BufferAllocation::Slice c_buffer,
                       BufferAllocation::Slice d_buffer,

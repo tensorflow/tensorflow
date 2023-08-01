@@ -294,7 +294,7 @@ class ConvOp : public BinaryOp<T> {
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format_str));
     OP_REQUIRES(context,
                 data_format_str == "CHANNELS_LAST" ||
-                    data_format_str == " CHANNELS_FIRST",
+                    data_format_str == "CHANNELS_FIRST",
                 absl::InvalidArgumentError(
                     absl::StrCat("Unknown data format: ", data_format_str)));
     data_format_ =
@@ -331,6 +331,11 @@ class ConvOp : public BinaryOp<T> {
                 absl::InvalidArgumentError(absl::StrCat(
                     "The input must have 2 or 3 spatial dimensions but got ",
                     spatial_dims)));
+
+    OP_REQUIRES(
+        context, filter.NumElements() > 0,
+        absl::InvalidArgumentError("filter must not have zero elements "
+                                   "(i.e. all dimensions must be non-zero)"));
 
     // Flatten tensor for computation.
     Tensor input_flat;

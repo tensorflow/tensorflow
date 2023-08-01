@@ -52,3 +52,16 @@ func.func @id_quint16(%arg0: tensor<1x!tf_type.quint16>) -> tensor<1x!tf_type.qu
   // CHECK-NEXT: return %arg0 : tensor<1xui16>
   func.return %arg0: tensor<1x!tf_type.quint16>
 }
+
+func.func @quantize_dequantize_qint8_not_converted(%arg0: tensor<1xf32>) -> tensor<1xf32> {
+  // CHECK: tf_type.qint8
+  %scales = "tf.Const"() { value = dense<2.0> : tensor<f32> } : () -> tensor<f32>
+  %zps = "tf.Const"() { value = dense<4> : tensor<i32> } : () -> tensor<i32>
+  %0 = "tf.UniformQuantize"(%arg0, %scales, %zps) {
+    quantization_axis = -1 : i64, quantization_min_val = -128 : i64, quantization_max_val = 127 : i64
+  } : (tensor<1xf32>, tensor<f32>, tensor<i32>) -> tensor<1x!tf_type.qint8>
+  %1 = "tf.UniformDequantize"(%0, %scales, %zps) {
+    quantization_axis = -1 : i64, quantization_min_val = -128 : i64, quantization_max_val = 127 : i64
+  } : (tensor<1x!tf_type.qint8>, tensor<f32>, tensor<i32>) -> tensor<1xf32>
+  func.return %1 : tensor<1xf32>
+}

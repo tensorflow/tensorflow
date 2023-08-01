@@ -469,6 +469,59 @@ TEST(StreamExecutorGpuClientTest, AsyncCopyToDevice) {
             literal->Relayout(src_literal.shape().layout()).data<float>());
 }
 
+TEST(StreamExecutorGpuClientTest, CreateMixOfErrorBuffers) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto client, GetStreamExecutorGpuClient(true, /*allocator_config=*/{},
+                                              /*node_id=*/0));
+  ASSERT_GE(client->addressable_devices().size(), 1);
+
+  std::vector<Literal> src_literals;
+  std::vector<Shape> src_shapes;
+  for (int i = 0; i < 4; ++i) {
+    std::vector<float> data(i + 1);
+    std::iota(data.begin(), data.end(), static_cast<float>(i + 10));
+    src_literals.emplace_back(LiteralUtil::CreateR1<float>(data));
+    src_shapes.push_back(src_literals.back().shape());
+  }
+  ASSERT_OK_AND_ASSIGN(auto transfer_manager,
+                       client->CreateBuffersForAsyncHostToDevice(
+                           src_shapes, client->addressable_devices()[0]));
+  std::vector<std::unique_ptr<PjRtBuffer>> buffers;
+  for (int i = 0; i < src_shapes.size(); ++i) {
+    buffers.emplace_back(transfer_manager->RetrieveBuffer(i));
+  }
+
+  absl::Mutex mu;
+  int got_callback_count = 0;
+  for (int i = 0; i < 4; ++i) {
+    auto& buffer = buffers[i];
+    if (i == 0 || i == 3) {
+      ASSERT_OK(transfer_manager->TransferLiteralToBuffer(i, src_literals[i],
+                                                          [&]() {}));
+      buffer->OnReady([&](absl::Status s) {
+        absl::MutexLock l(&mu);
+        ASSERT_OK(s);
+        ++got_callback_count;
+      });
+    } else {
+      absl::Status error = InternalError("error %d", i);
+      transfer_manager->SetBufferError(i, error);
+      buffer->OnReady([error, &mu, &got_callback_count](absl::Status s) {
+        absl::MutexLock l(&mu);
+        ASSERT_EQ(s, error);
+        ++got_callback_count;
+      });
+    }
+    buffer.reset();
+  }
+
+  {
+    auto done = [&]() { return got_callback_count == src_literals.size(); };
+    absl::MutexLock l(&mu);
+    QCHECK(mu.AwaitWithTimeout(absl::Condition(&done), absl::Seconds(60)));
+  }
+}
+
 TEST(GpuTopology, FromProto) {
   GpuTopologyProto msg;
   ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(

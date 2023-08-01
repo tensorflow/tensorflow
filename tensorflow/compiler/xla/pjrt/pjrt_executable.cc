@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
 
-#include <algorithm>
 #include <memory>
 #include <optional>
 #include <string>
@@ -37,6 +36,10 @@ void SetOptionOverride(OptionOverrideProto& option, const std::string& value) {
 
 void SetOptionOverride(OptionOverrideProto& option, bool value) {
   option.set_bool_field(value);
+}
+
+void SetOptionOverride(OptionOverrideProto& option, int64_t value) {
+  option.set_int_field(value);
 }
 
 }  // namespace
@@ -93,14 +96,20 @@ StatusOr<CompileOptions> CompileOptions::FromProto(
       case OptionOverrideProto::kStringField:
         output.env_option_overrides.push_back(
             {env_option_override.first,
-             std::variant<std::string, bool>(
+             CompileOptions::OptionOverride(
                  env_option_override.second.string_field())});
         break;
       case OptionOverrideProto::kBoolField:
         output.env_option_overrides.push_back(
             {env_option_override.first,
-             std::variant<std::string, bool>(
+             CompileOptions::OptionOverride(
                  env_option_override.second.bool_field())});
+        break;
+      case OptionOverrideProto::kIntField:
+        output.env_option_overrides.push_back(
+            {env_option_override.first,
+             CompileOptions::OptionOverride(
+                 env_option_override.second.int_field())});
         break;
       case OptionOverrideProto::VALUE_NOT_SET:
         return InternalError("OptionOverrideProto value not set.");
@@ -219,6 +228,16 @@ std::optional<std::vector<OpSharding>> PjRtExecutable::GetParameterShardings()
   return out;
 }
 
+StatusOr<std::vector<Shape>> PjRtExecutable::GetOutputShapes() const {
+  TF_ASSIGN_OR_RETURN(auto modules, GetHloModules());
+  std::vector<Shape> output_shapes;
+  output_shapes.reserve(modules.size());
+  for (const auto& module : modules) {
+    output_shapes.push_back(module->result_shape());
+  }
+  return output_shapes;
+}
+
 StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
 PjRtExecutableUtil::RunHloCostAnalysis(const PjRtExecutable& executable,
                                        HloCostAnalysis* hlo_cost_analysis) {
@@ -279,6 +298,16 @@ Status CompileOptions::ApplyOption(const std::string& key,
                std::holds_alternative<std::string>(value)) {
       reflection->SetString(&debug_options, xla_field,
                             std::get<std::string>(value));
+      return OkStatus();
+    } else if (xla_field->type() ==
+                   tsl::protobuf::FieldDescriptor::TYPE_INT32 &&
+               std::holds_alternative<int64_t>(value)) {
+      reflection->SetInt32(&debug_options, xla_field, std::get<int64_t>(value));
+      return OkStatus();
+    } else if (xla_field->type() ==
+                   tsl::protobuf::FieldDescriptor::TYPE_INT64 &&
+               std::holds_alternative<int64_t>(value)) {
+      reflection->SetInt64(&debug_options, xla_field, std::get<int64_t>(value));
       return OkStatus();
     } else {
       return InvalidArgument(

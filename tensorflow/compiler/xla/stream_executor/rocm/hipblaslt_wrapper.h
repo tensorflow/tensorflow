@@ -1,11 +1,8 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
-
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
-
     http://www.apache.org/licenses/LICENSE-2.0
-
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -35,10 +32,10 @@ namespace wrap {
 
 #ifdef PLATFORM_GOOGLE
 
-#define HIPBLASLT_API_WRAPPER(api_name)                        \
-  template <typename... Args>                                  \
-  auto api_name(Args... args)->decltype(::api_name(args...)) { \
-    return ::api_name(args...);                                \
+#define HIPBLASLT_API_WRAPPER(api_name)                          \
+  template <typename... Args>                                    \
+  auto api_name(Args... args) -> decltype(::api_name(args...)) { \
+    return ::api_name(args...);                                  \
   }
 
 #else
@@ -48,12 +45,12 @@ namespace wrap {
 
 #define HIPBLASLT_API_WRAPPER(api_name)                                       \
   template <typename... Args>                                                 \
-  auto api_name(Args... args)->decltype(::api_name(args...)) {                \
+  auto api_name(Args... args) -> decltype(::api_name(args...)) {              \
     using FuncPtrT = std::add_pointer<decltype(::api_name)>::type;            \
     static FuncPtrT loaded = []() -> FuncPtrT {                               \
       static const char* kName = TO_STR(api_name);                            \
       void* f;                                                                \
-      auto s = tsl::Env::Default()->GetSymbolFromLibrary(   \
+      auto s = tsl::Env::Default() -> GetSymbolFromLibrary(                   \
           stream_executor::internal::CachedDsoLoader::GetHipblasltDsoHandle() \
               .value(),                                                       \
           kName, &f);                                                         \

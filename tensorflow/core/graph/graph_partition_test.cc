@@ -68,28 +68,6 @@ using ::testing::Ne;
 
 const char gpu_device[] = "/job:a/replica:0/task:0/device:GPU:0";
 
-class TestStackTrace : public AbstractStackTrace {
- public:
-  explicit TestStackTrace(const std::vector<StackFrame> frames)
-      : frames_(std::move(frames)) {}
-
-  absl::Span<StackFrame const> ToFrames() const override { return frames_; }
-
-  std::vector<StackFrame> GetUserFrames(int limit) const override {
-    return frames_;
-  }
-
-  StackFrame LastUserFrame() const override { return frames_.back(); }
-
-  std::string ToString(const TracePrintingOptions& opts) const override {
-    auto frame = LastUserFrame();
-    return absl::StrCat(frame.file_name, ":", frame.line_number, ":",
-                        frame.function_name);
-  }
-
-  std::vector<StackFrame> frames_;
-};
-
 string SplitByDevice(const Node* node) { return node->assigned_device_name(); }
 
 string DeviceName(const Node* node) {
@@ -583,15 +561,15 @@ TEST_F(GraphPartitionTest, GraphDebugInfo) {
   EXPECT_NE(b1_node, nullptr);
   EXPECT_NE(b2_node, nullptr);
 
-  TestStackTrace a1_stack_trace(
-      std::vector<StackFrame>{{"main.cc", 20, "x"}, {"alpha.cc", 30, "a1"}});
-  TestStackTrace b1_stack_trace(
-      std::vector<StackFrame>{{"window.cc", 21, "y"}, {"beta.cc", 35, "b1"}});
-  TestStackTrace b2_stack_trace(
-      std::vector<StackFrame>{{"cache.cc", 22, "bar"}, {"beta.cc", 39, "b2"}});
-  a1_node->SetStackTrace(std::make_shared<TestStackTrace>(a1_stack_trace));
-  b1_node->SetStackTrace(std::make_shared<TestStackTrace>(b1_stack_trace));
-  b2_node->SetStackTrace(std::make_shared<TestStackTrace>(b2_stack_trace));
+  std::vector<StackFrame> a1_stack_trace{{"main.cc", 20, "x"},
+                                         {"alpha.cc", 30, "a1"}};
+  std::vector<StackFrame> b1_stack_trace{{"window.cc", 21, "y"},
+                                         {"beta.cc", 35, "b1"}};
+  std::vector<StackFrame> b2_stack_trace{{"cache.cc", 22, "bar"},
+                                         {"beta.cc", 39, "b2"}};
+  a1_node->SetStackTrace(std::make_shared<FrozenStackTrace>(a1_stack_trace));
+  b1_node->SetStackTrace(std::make_shared<FrozenStackTrace>(b1_stack_trace));
+  b2_node->SetStackTrace(std::make_shared<FrozenStackTrace>(b2_stack_trace));
 
   TF_EXPECT_OK(in_.ToGraphDef(&graph_def, /*include_debug_info=*/true));
 

@@ -200,6 +200,8 @@ def : Pat<(MHLO_TransposeOp $arg, $permutation),
 def : Pat<(MHLO_ReverseOp $op, $dims), (TF_ReverseV2Op $op, (TF_ConstOp $dims))>;
 def : Pat<(MHLO_ReshapeOp:$output $input),
           (TF_ReshapeOp $input, (ShapeToConst $output))>;
+def : Pat<(MHLO_DynamicReshapeOp $input, $shape),
+          (TF_ReshapeOp $input, $shape)>;
 
 // Both implement the Banker's rounding.
 def : Pat<(MHLO_RoundNearestEvenOp $input), (TF_RoundOp $input)>;

@@ -222,7 +222,7 @@ func.func @main() {
 // Check tf.AssignVariable op SPMD
 // CHECK-LABEL: module @test_spmd_assign_var
 module @test_spmd_assign_var {
-func.func @main(%arg0: tensor<32x32xi32> { tf._layout = "sharding_specs:x,y, mesh:TPU|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"}, %arg1: tensor<!tf_type.resource> { tf._layout = "sharding_specs: mesh:||||"}) {
+func.func @main(%arg0: tensor<32x32xi32> { tf._layout = "sharding_specs:x,y, mesh:TPU|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"}, %arg1: tensor<!tf_type.resource> { tf._layout = "empty_layout" }) {
   // CHECK:        "tf_device.cluster"
   // CHECK-NEXT:     "tf.AssignVariableOp"
   // CHECK-NEXT:     tf_device.return
@@ -362,11 +362,11 @@ module @test_spmd_resource {
 // CHECK-SAME: %arg1: tensor<1x1xf32>
 // CHECK-SAME: tf._layout = "sharding_specs:x,y, mesh:TPU|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"
 // CHECK-SAME: %arg2: tensor<!tf_type.resource>
-// CHECK-SAME: tf._layout = "sharding_specs: mesh:||||"
+// CHECK-SAME: tf._layout = "empty_layout"
 func.func @main(
   %arg0: tensor<f32>,
   %arg1: tensor<2x2xf32>{ tf._layout = "sharding_specs:x,y, mesh:TPU|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"},
-  %arg2: tensor<!tf_type.resource> { tf._layout = "sharding_specs: mesh:||||"}) {
+  %arg2: tensor<!tf_type.resource> { tf._layout = "empty_layout"}) {
   // CHECK:        "tf_device.cluster"
   // CHECK-NEXT:     "tf.ResourceApplyGradientDescent"(%arg2, %arg0, %arg1)
   // CHECK-NEXT:     tf_device.return
@@ -388,11 +388,11 @@ module @test_spmd_inputs_have_local_shapes {
 // CHECK-SAME: %arg1: tensor<1x1xf32>
 // CHECK-SAME: tf._layout = "sharding_specs:x,y, mesh:TPU|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"
 // CHECK-SAME: %arg2: tensor<!tf_type.resource>
-// CHECK-SAME: tf._layout = "sharding_specs: mesh:||||"
+// CHECK-SAME: tf._layout = "empty_layout"
 func.func @main(
   %arg0: tensor<f32>,
   %arg1: tensor<2x2xf32>{ tf._layout = "sharding_specs:x,y, mesh:TPU|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"},
-  %arg2: tensor<!tf_type.resource> { tf._layout = "sharding_specs: mesh:||||"}) {
+  %arg2: tensor<!tf_type.resource> { tf._layout = "empty_layout"}) {
   "tf_device.cluster"() ({
     tf_device.return
  }) {_mesh = "mesh:TPU|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"} : () -> ()
@@ -411,11 +411,11 @@ module @test_spmd_returned_values_have_local_shapes {
 // CHECK-SAME: %arg1: tensor<1x1xf32>
 // CHECK-SAME: tf._layout = "sharding_specs:x,y, mesh:TPU|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"
 // CHECK-SAME: %arg2: tensor<!tf_type.resource>
-// CHECK-SAME: tf._layout = "sharding_specs: mesh:||||"
+// CHECK-SAME: tf._layout = "empty_layout"
 func.func @main(
   %arg0: tensor<f32>,
   %arg1: tensor<2x2xf32>{ tf._layout = "sharding_specs:x,y, mesh:TPU|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"},
-  %arg2: tensor<!tf_type.resource> { tf._layout = "sharding_specs: mesh:||||"}) {
+  %arg2: tensor<!tf_type.resource> { tf._layout = "empty_layout"}) {
   "tf_device.cluster"() ({
     // CHECK:      tf_device.return
     // CHECK-SAME: tensor<1x1xf32>
@@ -435,11 +435,11 @@ module @test_spmd_return_types_have_local_shapes_at_callsite {
 // CHECK-SAME: %[[ARG1:[a-z0-9]*]]: tensor<1x1xf32>
 // CHECK-SAME: tf._layout = "sharding_specs:x,y, mesh:TPU|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"
 // CHECK-SAME: %[[ARG2:[a-z0-9]*]]: tensor<!tf_type.resource>
-// CHECK-SAME: tf._layout = "sharding_specs: mesh:||||"
+// CHECK-SAME: tf._layout = "empty_layout"
 func.func @main(
   %arg0: tensor<f32>,
   %arg1: tensor<2x2xf32>{ tf._layout = "sharding_specs:x,y, mesh:TPU|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"},
-  %arg2: tensor<!tf_type.resource> { tf._layout = "sharding_specs: mesh:||||"}) {
+  %arg2: tensor<!tf_type.resource> { tf._layout = "empty_layout"}) {
   "tf_device.cluster"() ({
     // CHECK:     "tf.StatefulPartitionedCall"(%[[ARG1]])
     // CHECK-SAME: (tensor<1x1xf32>) -> tensor<1x1xf32>

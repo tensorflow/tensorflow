@@ -17,34 +17,31 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_TPU_OP_EXECUTABLE_H_
 
 #include <cstdint>
-#include <functional>
 #include <memory>
-#include <optional>
 #include <vector>
 
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
-#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/host_command_handler.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executable_interface.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
-#include "tensorflow/compiler/xla/types.h"
 
 namespace tensorflow {
 
 // An executable capable of being fed to a TPU device via TpuExecutor.
 class TpuOpExecutable : public xla::TpuExecutableInterface {
  public:
-  using HostCommandHandler = std::function<void(uint32_t, int64_t)>;
+  using HostCommandHandler = tpu::HostCommandHandler;
 
   // Constructs an executable that holds a non-owning reference to an
   // XLA_TpuProgram.
   explicit TpuOpExecutable(const XLA_TpuProgram* core_program,
                            std::unique_ptr<xla::HloModule> hlo_module,
                            HostCommandHandler host_command_handler = nullptr);
+
   ~TpuOpExecutable() override = default;
 
   const XLA_TpuProgram* core_program() const { return core_program_; }

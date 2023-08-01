@@ -28,7 +28,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_bitwise_ops
-from tensorflow.python.ops import image_ops_impl
+from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import weak_tensor_ops
 from tensorflow.python.ops import weak_tensor_test_util
@@ -56,13 +56,14 @@ _TF_UNARY_APIS_SPECIFIC_DTYPE = [
 ]
 _TF_UNARY_APIS_WITH_MULT_INPUT = [
     gen_array_ops.check_numerics,
-    image_ops_impl.random_brightness,
-    image_ops_impl.stateless_random_brightness,
-    image_ops_impl.adjust_brightness,
+    image_ops.random_brightness,
+    image_ops.stateless_random_brightness,
+    image_ops.adjust_brightness,
     clip_ops.clip_by_value,
     np_array_ops.expand_dims,
     np_array_ops.full_like,
     np_array_ops.moveaxis,
+    np_array_ops.repeat,
     np_array_ops.reshape,
     np_array_ops.swapaxes,
     array_ops.reshape,
@@ -151,16 +152,16 @@ class WeakTensorOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         gen_array_ops.check_numerics(test_input, message=""), result_type
     )
     self.assertIsInstance(
-        image_ops_impl.random_brightness(test_input, 0.2), result_type
+        image_ops.random_brightness(test_input, 0.2), result_type
     )
     self.assertIsInstance(
-        image_ops_impl.stateless_random_brightness(
+        image_ops.stateless_random_brightness(
             image=test_input, max_delta=0.2, seed=(1, 2)
         ),
         result_type,
     )
     self.assertIsInstance(
-        image_ops_impl.adjust_brightness(test_input, delta=0.2), result_type
+        image_ops.adjust_brightness(test_input, delta=0.2), result_type
     )
     self.assertIsInstance(
         clip_ops.clip_by_value(
@@ -359,7 +360,9 @@ class WeakTensorOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     wt_np_result = wt_np_method_call(*args)
     t_np_result = t_np_method_call(*args)
     self.assertIsInstance(wt_np_result, result_type)
-    self.assertAllEqual(wt_np_result, t_np_result)
+    # Clip returns a float64 Tensor with Tensor input but a float32 Tensor with
+    # WeakTensor input.
+    self.assertAllClose(wt_np_result, t_np_result)
 
 
 # TODO(b/289333658): Add tf.constant(x) with no dtype arg as a "weak" input

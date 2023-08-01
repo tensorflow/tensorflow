@@ -49,7 +49,6 @@ limitations under the License.
 
 #define DEBUG_TYPE "tfg-shape-inference-utils"
 
-using tensorflow::shape_inference::DimensionHandle;
 using tensorflow::shape_inference::InferenceContext;
 using tensorflow::shape_inference::ShapeHandle;
 

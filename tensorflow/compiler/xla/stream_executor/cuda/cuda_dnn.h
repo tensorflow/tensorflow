@@ -285,6 +285,7 @@ class CudnnSupport : public dnn::DnnSupport {
       const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
       const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
       const dnn::TensorDescriptor& output_descriptor,
+      std::optional<dnn::TensorDescriptor> activation_descriptor,
       std::optional<double> dropout_rate, std::optional<int64_t> seed) override;
 
   tsl::StatusOr<std::unique_ptr<const dnn::FusedMHAMaskRunner>>
@@ -296,6 +297,7 @@ class CudnnSupport : public dnn::DnnSupport {
       const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
       const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
       const dnn::TensorDescriptor& output_descriptor,
+      std::optional<dnn::TensorDescriptor> activation_descriptor,
       const dnn::TensorDescriptor& mask_descriptor, double scale,
       std::optional<double> dropout_rate, std::optional<int64_t> seed) override;
 
@@ -308,6 +310,7 @@ class CudnnSupport : public dnn::DnnSupport {
       const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
       const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
       const dnn::TensorDescriptor& output_descriptor,
+      std::optional<dnn::TensorDescriptor> activation_descriptor,
       const dnn::TensorDescriptor& mask_descriptor,
       const dnn::TensorDescriptor& bias_descriptor, double scale,
       std::optional<double> dropout_rate, std::optional<int64_t> seed) override;
@@ -321,6 +324,7 @@ class CudnnSupport : public dnn::DnnSupport {
       const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
       const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
       const dnn::TensorDescriptor& output_descriptor,
+      std::optional<dnn::TensorDescriptor> activation_descriptor,
       const dnn::TensorDescriptor& bias_descriptor, double scale,
       std::optional<double> dropout_rate, std::optional<int64_t> seed) override;
 

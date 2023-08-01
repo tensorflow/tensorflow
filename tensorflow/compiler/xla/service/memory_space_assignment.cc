@@ -65,6 +65,10 @@ const float kCrossProgramPrefetchOccupyFreeingLimit = 0.6;
 // Each time we retry compilation, increase the preferred eviction end time by
 // this amount multiplied by preferred overlap to async copy ratio.
 const float kEvictionRetryMultiplier = 2.0;
+// The number of decreasing intervals for CostAnalysisPrefetchIntervalPicker to
+// return when it runs out of increasing intervals. Increasing this number may
+// hurt compilation time.
+const int kNumExploredDecreasingIntervals = 100;
 
 template <typename T>
 std::string VectorToString(const std::vector<T>& v,
@@ -152,7 +156,8 @@ bool LooksLikeAnActivation(const HloInstruction* inst) {
 // Filters out buffer uses that cannot use the cross-program prefetch due to
 // aliasing with program output.
 std::vector<HloUse> FindCrossProgramPrefetchUses(
-    absl::Span<const HloUse> buffer_uses) {
+    absl::Span<const HloUse> buffer_uses,
+    const HloAliasAnalysis& alias_analysis) {
   std::vector<HloUse> uses;
   if (buffer_uses.empty()) {
     return uses;
@@ -161,32 +166,44 @@ std::vector<HloUse> FindCrossProgramPrefetchUses(
                                                .instruction->GetModule()
                                                ->entry_computation()
                                                ->root_instruction();
-  absl::c_for_each(buffer_uses, [&](auto& use) {
-    if (use.instruction == root_instruction) {
-      if (use.instruction->opcode() == HloOpcode::kTuple ||
-          use.instruction->opcode() == HloOpcode::kBitcast) {
-        return;
-      }
-      auto in_place_pairs =
-          HloDataflowAnalysis::GetInPlaceInputOutputPairs(use.instruction);
-      if (absl::c_any_of(
-              in_place_pairs,
-              [&](const std::pair<HloOperandIndex, ShapeIndex>& in_place_pair) {
-                return in_place_pair.first.operand_number ==
-                           use.operand_number &&
-                       in_place_pair.first.operand_index == use.operand_index;
-              })) {
-        return;
-      }
-    }
-    uses.push_back(use);
-  });
+  // This function returns true if the use value does not live out of the
+  // module. The value lives out if it is the root or it aliases with another
+  // value that lives out. We recurse to detect the latter case.
+  std::function<bool(const HloUse&)> use_does_not_live_out =
+      [&](const HloUse& use) {
+        if (use.instruction == root_instruction &&
+            (use.instruction->opcode() == HloOpcode::kTuple ||
+             use.instruction->opcode() == HloOpcode::kBitcast)) {
+          return false;
+        }
+        auto in_place_pairs =
+            HloDataflowAnalysis::GetInPlaceInputOutputPairs(use.instruction);
+        return absl::c_all_of(
+            in_place_pairs,
+            [&](const std::pair<HloOperandIndex, ShapeIndex>& in_place_pair) {
+              if (in_place_pair.first.operand_number == use.operand_number &&
+                  in_place_pair.first.operand_index == use.operand_index) {
+                return use.instruction != root_instruction &&
+                       absl::c_all_of(
+                           alias_analysis.dataflow_analysis()
+                               .GetUniqueValueAt(use.instruction,
+                                                 in_place_pair.second)
+                               .GetUses(),
+                           use_does_not_live_out);
+              }
+              return true;
+            });
+      };
+
+  absl::c_copy_if(buffer_uses, std::back_inserter(uses), use_does_not_live_out);
   return uses;
 }
 
 bool IsCrossProgramPrefetchCandidate(const HloValue& value,
+                                     const HloAliasAnalysis& alias_analysis,
                                      const Options& options) {
-  std::vector<HloUse> uses = FindCrossProgramPrefetchUses(value.GetUses());
+  std::vector<HloUse> uses =
+      FindCrossProgramPrefetchUses(value.GetUses(), alias_analysis);
   return value.defining_instruction()->parent() ==
              value.defining_instruction()->GetModule()->entry_computation() &&
          value.defining_instruction()->opcode() == HloOpcode::kParameter &&
@@ -223,7 +240,7 @@ FindCrossProgramPrefetchCandidates(const HloAliasAnalysis& alias_analysis,
   for (const HloBuffer& buffer : alias_analysis.buffers()) {
     CHECK_GE(buffer.values().size(), 1);
     const HloValue* value = buffer.values().at(0);
-    if (IsCrossProgramPrefetchCandidate(*value, options)) {
+    if (IsCrossProgramPrefetchCandidate(*value, alias_analysis, options)) {
       MemorySpaceAssignment::BufferInterval interval;
       interval.buffer = value;
       interval.size = options.size_fn(*value);
@@ -1105,9 +1122,40 @@ int64_t CostAnalysisPrefetchIntervalPicker::Next() {
     return prefetch_time;
   } else {
     int64_t prefetch_time = decreasing_prefetch_time_iterator_--;
+    // As a compilation time optimization, reduce the number of intervals that
+    // this prefetch interval picker returns. When we run out of the increasing
+    // prefetch time iterator, only explore up to
+    // kNumExploredDecreasingIntervals intervals. To do that, calculate the
+    // 1/kNumExploredDecreasingIntervals of the elapsed time between the
+    // earliest prefetch time and the use, and decrement the iterator until the
+    // prefetch elapsed time is at least as large as this target value. This
+    // allows us to reduce the number of expensive heap fit and resource checks
+    // when the graph consists of a large number of fast-executing HLOs.
+    //
+    // Shown pictorially, assuming kNumExploredDecreasingIntervals = 3 and the
+    // numbers indicating the elapsed time of the HLOs, only the indicated
+    // options for prefetch start time would be explored:
+    //
+    //    ---1---1---3---1---1---1---1---0---0---0---0---1---5---X
+    //     ^           ^                                   ^     ^
+    //  Option3     Option2                             Option1 Use
+    // (Earliest)
+    float next_target_interval_elapsed = 0;
+    if (increasing_prefetch_time_iterator_ > latest_prefetch_time_) {
+      next_target_interval_elapsed =
+          GetLogicalIntervalElapsed(prefetch_time, end_logical_time_) +
+          (GetLogicalIntervalElapsed(earliest_prefetch_time_,
+                                     end_logical_time_) /
+           kNumExploredDecreasingIntervals);
+      VLOG(3) << "Next target interval elapsed: "
+              << next_target_interval_elapsed;
+    }
     while (decreasing_prefetch_time_iterator_ >= earliest_prefetch_time_ &&
-           computation_nest_level_[decreasing_prefetch_time_iterator_] !=
-               computation_nest_level_[end_logical_time_]) {
+           (computation_nest_level_[decreasing_prefetch_time_iterator_] !=
+                computation_nest_level_[end_logical_time_] ||
+            GetLogicalIntervalElapsed(decreasing_prefetch_time_iterator_,
+                                      end_logical_time_) <
+                next_target_interval_elapsed)) {
       --decreasing_prefetch_time_iterator_;
     }
     if (increasing_prefetch_time_iterator_ <= latest_prefetch_time_) {
@@ -4626,7 +4674,7 @@ void AlternateMemoryBestFitHeap::AllocateCrossProgramPrefetchBuffer(
 
   // Find the earliest use.
   const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
-  auto uses = FindCrossProgramPrefetchUses(buffer->GetUses());
+  auto uses = FindCrossProgramPrefetchUses(buffer->GetUses(), alias_analysis_);
   CHECK_GE(uses.size(), 1);
   auto use_schedule_compare = [&](const HloUse& lhs, const HloUse& rhs) {
     return instruction_schedule.at(lhs.instruction) <

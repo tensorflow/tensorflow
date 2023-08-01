@@ -40,12 +40,12 @@ void BufferSequencingEvent::SetSequencingEvent(EventPool::Handle event,
                                                se::Stream* stream) {
   {
     absl::MutexLock lock(&mu_);
+    defined_status_.emplace(OkStatus());
     CHECK(!event_.event());
     event_ = std::move(event);
     CHECK(streams_defined_on_.empty());
     streams_defined_on_.push_back(stream);
     sequence_number_.store(event_.sequence_number(), std::memory_order_seq_cst);
-    defined_status_.emplace(OkStatus());
   }
   this->ExecuteFutureTasks();
 }

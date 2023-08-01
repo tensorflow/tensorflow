@@ -56,7 +56,7 @@ Status TryDlopenROCmLibraries() {
 #if TF_HIPBLASLT
       || !hipblaslt_status.status().ok()
 #endif
-      ) {
+  ) {
     return Status(absl::StatusCode::kInternal,
                   absl::StrCat("Cannot dlopen all ROCm libraries."));
   } else {

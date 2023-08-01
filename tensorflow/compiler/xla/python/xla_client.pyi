@@ -27,6 +27,7 @@ from .xla_extension import ArrayImpl as ArrayImpl
 from .xla_extension import Client as Client
 from .xla_extension import CompileOptions as CompileOptions
 from .xla_extension import Device as Device
+from .xla_extension import Memory as Memory
 from .xla_extension import DeviceAssignment as DeviceAssignment
 from .xla_extension import DeviceTopology as DeviceTopology
 from .xla_extension import DistributedRuntimeClient as DistributedRuntimeClient

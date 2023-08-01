@@ -391,6 +391,16 @@ TF_CAPI_EXPORT extern void TFE_ContextUpdateServerDef(TFE_Context* ctx,
                                                       size_t proto_len,
                                                       TF_Status* status);
 
+// This API is for experimental usage and may be subject to change.
+TF_CAPI_EXPORT extern void TFE_ContextUpdateServerDefWithTimeout(
+    TFE_Context* ctx, int keep_alive_secs, const void* proto, size_t proto_len,
+    int64_t init_timeout_in_ms, TF_Status* status);
+
+// This API is for experimental usage and may be subject to change.
+TF_CAPI_EXPORT extern void TFE_ContextSetServerDefWithTimeout(
+    TFE_Context* ctx, int keep_alive_secs, const void* proto, size_t proto_len,
+    int64_t init_timeout_in_ms, TF_Status* status);
+
 // Checks whether a remote worker is alive or not. This will return true even if
 // the context doesn't exist on the remote worker.
 TF_CAPI_EXPORT extern bool TFE_ContextCheckAlive(TFE_Context* ctx,

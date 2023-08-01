@@ -43,6 +43,9 @@ std::vector<HloOpcode> TritonSupportedBinaryElementwise(PrimitiveType);
 // Allowlist of ternary elementwise operations supported by Triton GEMM codegen.
 std::vector<HloOpcode> TritonSupportedTernaryElementwise(PrimitiveType);
 
+// Data types that are supported by the Triton emitters.
+bool IsTritonSupportedDataType(PrimitiveType, GpuVersion);
+
 // Checks elementwise operation against all supported by Triton GEMM codegen.
 bool IsTritonSupportedElementwise(HloOpcode, PrimitiveType);
 
@@ -104,11 +107,17 @@ class TensorIterationSpec {
 
 // Analysis of iteration of HLO shapes within a fusion around dot().
 class DotFusionAnalysis {
+  DotFusionAnalysis() {}
+
+  Status ExecuteImpl(const HloComputation* computation, int64_t split_k = 1);
+
  public:
-  // Execute analysis of dot fusion computation.
-  // split_k indicates whether this operation was converted to the split-K
+  // Execute the analysis of a dot fusion computation.
+  // `computation` is a computation of a dot fusion to analyze.
+  // `split_k` indicates whether this operation was converted to the split-K
   // form and tells the analysis how to interpret the batch dimensions.
-  explicit DotFusionAnalysis(const HloComputation*, int64_t split_k = 1);
+  static StatusOr<DotFusionAnalysis> Execute(const HloComputation* computation,
+                                             int64_t split_k = 1);
 
   // A scope is an HLO graph that can be tiled efficiently using same or
   // compatible tile shapes on all operations. GEMM fusion has 3 scopes

@@ -988,14 +988,16 @@ using FusedMatmulRunner = OpRunner<FusedMatmulSignature>;
 using FusedMHASoftmaxSignature = void(DeviceMemoryBase /*BMM1_inputA_data*/,
                                       DeviceMemoryBase /* BMM1_inputB_data */,
                                       DeviceMemoryBase /* BMM2_inputA_data */,
-                                      DeviceMemoryBase /* output_data */);
+                                      DeviceMemoryBase /* output_data */,
+                                      DeviceMemoryBase /* activation_data */);
 using FusedMHASoftmaxRunner = OpRunner<FusedMHASoftmaxSignature>;
 
 using FusedMHAMaskSignature = void(DeviceMemoryBase /*BMM1_inputA_data*/,
                                    DeviceMemoryBase /* BMM1_inputB_data */,
                                    DeviceMemoryBase /* mask_data */,
                                    DeviceMemoryBase /* BMM2_inputA_data */,
-                                   DeviceMemoryBase /* output_data */);
+                                   DeviceMemoryBase /* output_data */,
+                                   DeviceMemoryBase /* activation_data */);
 using FusedMHAMaskRunner = OpRunner<FusedMHAMaskSignature>;
 
 using FusedMHABiasMaskSignature = void(DeviceMemoryBase /*BMM1_inputA_data*/,
@@ -1003,14 +1005,16 @@ using FusedMHABiasMaskSignature = void(DeviceMemoryBase /*BMM1_inputA_data*/,
                                        DeviceMemoryBase /* mask_data */,
                                        DeviceMemoryBase /* bias_data */,
                                        DeviceMemoryBase /* BMM2_inputA_data */,
-                                       DeviceMemoryBase /* output_data */);
+                                       DeviceMemoryBase /* output_data */,
+                                       DeviceMemoryBase /* activation_data */);
 using FusedMHABiasMaskRunner = OpRunner<FusedMHABiasMaskSignature>;
 
 using FusedMHABiasSignature = void(DeviceMemoryBase /*BMM1_inputA_data*/,
                                    DeviceMemoryBase /* BMM1_inputB_data */,
                                    DeviceMemoryBase /* bias_data */,
                                    DeviceMemoryBase /* BMM2_inputA_data */,
-                                   DeviceMemoryBase /* output_data */);
+                                   DeviceMemoryBase /* output_data */,
+                                   DeviceMemoryBase /* activation_data */);
 using FusedMHABiasRunner = OpRunner<FusedMHABiasSignature>;
 
 using FusedMHASoftmaxBackwardSignature =
@@ -1668,6 +1672,7 @@ class DnnSupport {
       const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
       const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
       const dnn::TensorDescriptor& output_descriptor,
+      std::optional<dnn::TensorDescriptor> activation_descriptor,
       std::optional<double> dropout_rate, std::optional<int64_t> seed);
 
   virtual tsl::StatusOr<std::unique_ptr<const dnn::FusedMHAMaskRunner>>
@@ -1679,6 +1684,7 @@ class DnnSupport {
       const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
       const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
       const dnn::TensorDescriptor& output_descriptor,
+      std::optional<dnn::TensorDescriptor> activation_descriptor,
       const dnn::TensorDescriptor& mask_descriptor, double scale,
       std::optional<double> dropout_rate, std::optional<int64_t> seed);
 
@@ -1691,6 +1697,7 @@ class DnnSupport {
       const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
       const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
       const dnn::TensorDescriptor& output_descriptor,
+      std::optional<dnn::TensorDescriptor> activation_descriptor,
       const dnn::TensorDescriptor& mask_descriptor,
       const dnn::TensorDescriptor& bias_descriptor, double scale,
       std::optional<double> dropout_rate, std::optional<int64_t> seed);
@@ -1704,6 +1711,7 @@ class DnnSupport {
       const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
       const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
       const dnn::TensorDescriptor& output_descriptor,
+      std::optional<dnn::TensorDescriptor> activation_descriptor,
       const dnn::TensorDescriptor& bias_descriptor, double scale,
       std::optional<double> dropout_rate, std::optional<int64_t> seed);
 

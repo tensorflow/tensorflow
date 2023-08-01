@@ -688,21 +688,21 @@ std::unique_ptr<PJRT_KeyValueCallbackData> ConvertToCKeyValueCallbacks(
 }
 
 xla::StatusOr<BufferMemoryLayoutData> ConvertToBufferMemoryLayoutData(
-    const xla::Layout* cpp_layout) {
+    const xla::Layout& cpp_layout) {
   BufferMemoryLayoutData layout_data;
   layout_data.c_layout.type =
       PJRT_Buffer_MemoryLayout_Type::PJRT_Buffer_MemoryLayout_Type_Tiled;
 
   PJRT_Buffer_MemoryLayout_Tiled c_tiled;
-  layout_data.minor_to_major.assign(cpp_layout->minor_to_major().begin(),
-                                    cpp_layout->minor_to_major().end());
+  layout_data.minor_to_major.assign(cpp_layout.minor_to_major().begin(),
+                                    cpp_layout.minor_to_major().end());
   c_tiled.minor_to_major = layout_data.minor_to_major.data();
   c_tiled.minor_to_major_size = layout_data.minor_to_major.size();
-  c_tiled.num_tiles = cpp_layout->tiles().size();
+  c_tiled.num_tiles = cpp_layout.tiles().size();
   if (c_tiled.num_tiles >= 0) {
     layout_data.tile_dim_sizes.reserve(c_tiled.num_tiles);
     for (int i = 0; i < c_tiled.num_tiles; ++i) {
-      absl::Span<const int64_t> tile_dim = cpp_layout->tiles()[i].dimensions();
+      absl::Span<const int64_t> tile_dim = cpp_layout.tiles()[i].dimensions();
       layout_data.tile_dims.insert(layout_data.tile_dims.end(),
                                    tile_dim.begin(), tile_dim.end());
       layout_data.tile_dim_sizes.push_back(tile_dim.size());

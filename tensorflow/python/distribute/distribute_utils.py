@@ -324,6 +324,12 @@ def create_mirrored_variable(strategy, real_mirrored_creator, class_mapping,
   """Create distributed variables with given synchronization and aggregation."""
   # Figure out what collections this variable should be added to.
   # We'll add the MirroredVariable to those collections instead.
+
+  if kwargs.pop("experimental_batch_initialization", None):
+    variable_class_key = "LazyVariableClass"
+  else:
+    variable_class_key = "VariableClass"
+
   var_collections = kwargs.pop("collections", None)
   if var_collections is None:
     var_collections = [ops.GraphKeys.GLOBAL_VARIABLES]
@@ -357,7 +363,7 @@ def create_mirrored_variable(strategy, real_mirrored_creator, class_mapping,
     if use_var_policy:
       var_policy_cls = policy_mapping.get(synchronization)
       var_policy = var_policy_cls(aggregation=aggregation)
-      var_cls = class_mapping.get("VariableClass")
+      var_cls = class_mapping.get(variable_class_key)
       result = var_cls(strategy, value_list, aggregation, var_policy=var_policy)
     else:
       var_cls = class_mapping.get(synchronization)
@@ -487,6 +493,7 @@ TPU_VARIABLE_POLICY_MAPPING = {
 
 TPU_VARIABLE_CLASS_MAPPING = {
     "VariableClass": tpu_values_lib.TPUDistributedVariable,
+    "LazyVariableClass": tpu_values_lib.TPULazyDistributedVariable,
     vs.VariableSynchronization.ON_WRITE: tpu_values_lib.TPUMirroredVariable,
     vs.VariableSynchronization.ON_READ: tpu_values_lib.TPUSyncOnReadVariable,
 }

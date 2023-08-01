@@ -2691,6 +2691,7 @@ class FromKerasFile(TestModels, parameterized.TestCase):
                                   ('_eager', context.eager_mode))
   def testGraphDebugInfo(self, test_context):
     """Test a Sequential tf.keras model has debug info captured."""
+    self.skipTest('TODO(b/291005679): will not be able to fix on OSS')
     with test_context():
       self._getSequentialModel()
       converter = lite.TFLiteConverter.from_keras_model_file(self._keras_file)

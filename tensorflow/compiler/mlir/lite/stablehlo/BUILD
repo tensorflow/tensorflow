@@ -1,5 +1,7 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -251,6 +253,42 @@ cc_library(
     ],
 )
 
+gentbl_cc_library(
+    name = "passes_inc_gen",
+    compatible_with = get_compatible_with_portable(),
+    tbl_outs = [
+        (
+            [
+                "-gen-pass-decls",
+                "-name=OdmlStablehlo",
+            ],
+            "transforms/passes.h.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "transforms/passes.td",
+    deps = ["@llvm-project//mlir:PassBaseTdFiles"],
+)
+
+cc_library(
+    name = "compose_uniform_quantized_type_pass",
+    srcs = ["transforms/compose_uniform_quantized_type_pass.cc"],
+    hdrs = ["transforms/passes.h"],
+    copts = ["-Ithird_party"],
+    deps = [
+        ":passes_inc_gen",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@stablehlo//:stablehlo_ops",
+    ],
+    alwayslink = 1,
+)
+
 cc_library(
     name = "unfuse_batch_norm_pass",
     srcs = [
@@ -263,6 +301,7 @@ cc_library(
         "-Ithird_party",
     ],
     deps = [
+        ":passes_inc_gen",
         "//tensorflow/compiler/xla/mlir_hlo",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
@@ -286,6 +325,7 @@ cc_library(
         "-Ithird_party",
     ],
     deps = [
+        ":passes_inc_gen",
         "//tensorflow/compiler/xla/mlir_hlo",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
@@ -308,6 +348,7 @@ cc_library(
         "-Ithird_party",
     ],
     deps = [
+        ":passes_inc_gen",
         "//tensorflow/compiler/mlir/lite:validators",
         "//tensorflow/compiler/xla/mlir_hlo",
         "@llvm-project//llvm:Support",
@@ -359,12 +400,36 @@ cc_library(
         "-Ithird_party",
     ],
     deps = [
+        ":passes_inc_gen",
         "//tensorflow/compiler/xla/mlir_hlo",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Transforms",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "uniform_quantized_stablehlo_to_tfl_pass",
+    srcs = ["transforms/uniform_quantized_stablehlo_to_tfl_pass.cc"],
+    hdrs = [
+        "transforms/passes.h",
+        "transforms/passes.h.inc",
+    ],
+    copts = ["-Ithird_party"],
+    deps = [
+        ":passes_inc_gen",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@stablehlo//:stablehlo_ops",
     ],
     alwayslink = 1,
 )
@@ -418,14 +483,17 @@ tf_cc_binary(
     testonly = True,
     tags = ["hostonly"],
     deps = [
+        ":compose_uniform_quantized_type_pass",
         ":fold_broadcast_pass",
         ":fuse_convolution_pass",
         ":legalize_tf_xla_call_module_to_stablehlo_pass",
         ":optimize",
+        ":passes_inc_gen",
         ":stablehlo_tfl",
         ":tf_stablehlo",
         ":tfl_stablehlo",
         ":unfuse_batch_norm_pass",
+        ":uniform_quantized_stablehlo_to_tfl_pass",
         "//tensorflow/compiler/mlir:passes",
         "//tensorflow/compiler/mlir:tf_mlir_opt_main",
     ],

@@ -88,8 +88,7 @@ class CustomNestProtocol(Protocol):
   See the method doc for details.
 
   In terms of support level, classes implementing this protocol
-    - are supported by tf.nest functions.
-    - are NOT supported by tf.data functions yet (work in progress).
+    - are supported by tf.nest and tf.data functions.
     - have limited support from tf.function, which requires writing a custom
       TraceType subclass to be used as the input or output of a tf.function.
     - are NOT supported by SavedModel.
@@ -116,8 +115,6 @@ class CustomNestProtocol(Protocol):
   >>> mt = MaskedTensor(mask=True, value=tf.constant([1]))
   >>> mt
   MaskedTensor(mask=True, value=<tf.Tensor: ... numpy=array([1], dtype=int32)>)
-  >>> isinstance(mt, CustomNestProtocol)
-  True
   >>> tf.nest.is_nested(mt)
   True
   >>> mt2 = MaskedTensor(mask=False, value=tf.constant([2]))
@@ -143,17 +140,19 @@ class CustomNestProtocol(Protocol):
     """Flatten current object into (metadata, components).
 
     Returns:
-      A tuple of (metadata, components), where metadata and components are also
-      tuples by themselves:
-        - metadata contains the static config of the current object, which is
-          not supposed to be modified during data transformation.
-        - components are the modifiable values inside the current object.
+      A `tuple` of (metadata, components), where
+        - metadata is a custom Python object that stands for the static config
+          of the current object, which is supposed to be fixed and not affected
+          by data transformation.
+        - components is a `tuple` that contains the modifiable fields of the
+          current object.
 
     Implementation Note:
     - This method should not invoke any TensorFlow ops.
     - This method only needs to flatten the current level. If current object has
       an attribute that also need custom flattening, nest functions (such as
       `nest.flatten`) will utilize this method to do recursive flattening.
+    - Components must ba a `tuple`, not a `list`
     """
 
   @classmethod
@@ -161,8 +160,10 @@ class CustomNestProtocol(Protocol):
     """Create a user-defined object from (metadata, components).
 
     Args:
-      metadata: the static config for creating the new object.
-      components: the dynamic values that are used to reconstruct the object.
+      metadata: a custom Python objet that stands for the static config for
+        reconstructing a new object of the current class.
+      components: a `tuple` that contains the dynamic data fields of the current
+        class, for object reconstruction.
 
     Returns:
       The user-defined object, with the same class of the current object.
@@ -345,7 +346,7 @@ def sequence_like(instance, args):
     return type(instance)(sequence_like(instance.__wrapped__, args))
   elif isinstance(instance, CustomNestProtocol):
     metadata = instance.__tf_flatten__()[0]
-    return instance.__tf_unflatten__(metadata, args)
+    return instance.__tf_unflatten__(metadata, tuple(args))
   else:
     # Not a namedtuple
     return type(instance)(args)
@@ -468,7 +469,9 @@ def _tf_core_yield_sorted_items(iterable):
     # structures, we need to use the same key string here.
     yield iterable.value_type.__name__, iterable._component_specs  # pylint: disable=protected-access
   elif isinstance(iterable, CustomNestProtocol):
-    yield from enumerate(iterable.__tf_flatten__()[1])
+    flat_component = iterable.__tf_flatten__()[1]
+    assert isinstance(flat_component, tuple)
+    yield from enumerate(flat_component)
   else:
     for item in enumerate(iterable):
       yield item
@@ -502,7 +505,9 @@ def _tf_data_yield_value(iterable):
     for _, attr in _get_attrs_items(iterable):
       yield attr
   elif isinstance(iterable, CustomNestProtocol):
-    yield from iterable.__tf_flatten__()[1]
+    flat_component = iterable.__tf_flatten__()[1]
+    assert isinstance(flat_component, tuple)
+    yield from flat_component
   else:
     for value in iterable:
       yield value

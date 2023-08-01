@@ -23,6 +23,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
@@ -72,6 +73,33 @@ int GetKernelCount(llvm::ArrayRef<DataflowAnalysis::Node> region) {
     }
   }
   return kernel_count;
+}
+
+// We use the size of the inputs to the kernel as a heuristic to avoid
+// adding memory bound kernels to the concurrent region.
+// The memory bandwidth on A100 is 2MB/us, so a data movement less than 10MB
+// is hidden by the kernel launch overhead, which is 5us.
+static constexpr int64_t kInputSizeThreshold = 10'000'000;
+
+bool IsKernelMemoryBound(Operation* op) {
+  if (auto launch_func = dyn_cast<mlir::gpu::LaunchFuncOp>(op)) {
+    size_t size = 0;
+
+    for (Value operand : launch_func.getOperands()) {
+      if (auto memref_type = dyn_cast<MemRefType>(operand.getType())) {
+        size += (memref_type.getNumElements() *
+                     memref_type.getElementTypeBitWidth() +
+                 7) /
+                8;
+      }
+    }
+
+    if (size > kInputSizeThreshold) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 //
@@ -129,7 +157,7 @@ llvm::SmallVector<RegionInfo> GetRegionInfos(
       }
     }
 
-    if (has_dependency) {
+    if (has_dependency || IsKernelMemoryBound(node.operation)) {
       store_region_and_start_new_region();
     } else {
       // No dependency with the current region.
@@ -174,25 +202,22 @@ void InsertConcurrentRegions(FuncOp capture_func,
 //===----------------------------------------------------------------------===//
 
 void AddConcurrentRegionsPass::runOnOperation() {
-  ModuleOp module = getOperation();
-  SymbolTable sym_table(module);
-  CustomCallDeclarations custom_calls(std::move(sym_table));
+  FuncOp func_op = getOperation();
 
-  auto func_ops = llvm::to_vector(module.getOps<FuncOp>());
-
-  for (auto func_op : func_ops) {
-    // Find the cuda graph capture function.
-    if (absl::StrContains(func_op.getSymNameAttr().str(),
-                          "xla.gpu.cuda.graph.capture")) {
-      InsertConcurrentRegions(func_op, custom_calls,
-                              getAnalysis<DataflowAnalysis>());
-    }
+  if (!absl::StrContains(func_op.getSymNameAttr().str(),
+                         "xla.gpu.cuda.graph.capture")) {
+    return;
   }
+
+  SymbolTable sym_table(func_op->getParentOfType<mlir::ModuleOp>());
+  CustomCallDeclarations custom_calls(std::move(sym_table));
+  InsertConcurrentRegions(func_op, custom_calls,
+                          getAnalysis<DataflowAnalysis>());
 }
 
 }  // namespace
 
-std::unique_ptr<OperationPass<ModuleOp>> createAddConcurrentRegionsPass() {
+std::unique_ptr<OperationPass<FuncOp>> createAddConcurrentRegionsPass() {
   return std::make_unique<AddConcurrentRegionsPass>();
 }
 

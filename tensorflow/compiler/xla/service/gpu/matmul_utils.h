@@ -37,7 +37,14 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_lt.h"
 #include "tensorflow/compiler/xla/stream_executor/scratch_allocator.h"
-#endif  // GOOGLE_CUDA
+
+#elif TENSORFLOW_USE_ROCM
+#include "rocm/rocm_config.h"
+#if TF_HIPBLASLT
+#include "tensorflow/compiler/xla/stream_executor/rocm/hip_blas_lt.h"
+#include "tensorflow/compiler/xla/stream_executor/scratch_allocator.h"
+#endif  // TF_HIPBLASLT
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #if TENSORFLOW_USE_ROCM
 #if TF_HIPBLASLT
@@ -256,7 +263,7 @@ class MatmulPlan {
 
 }  // namespace cublas_lt
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TF_HIPBLASLT
 
 }  // namespace gpu
 }  // namespace xla

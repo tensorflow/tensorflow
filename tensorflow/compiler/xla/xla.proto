@@ -454,6 +454,11 @@ message DebugOptions {
   // Identify concurrent regions in cuda graphs and execute them concurrently.
   bool xla_gpu_cuda_graph_enable_concurrent_region = 215;
 
+  // Timeout in seconds to evict instantiated Gpu graphs from device. When XLA
+  // instantiates new Gpu graphs, it evicts graphs that were not recently
+  // executed to free space on device.
+  int32 xla_gpu_cuda_graph_eviction_timeout_seconds = 230;
+
   // Allocate temp buffers once during the first execution of an executable.
   // Reuse the allocated buffers in subsequent executions. Executables cannot
   // run concurrently if this is enabled.
@@ -520,6 +525,7 @@ message DebugOptions {
   string xla_gpu_pgle_profile_file_or_directory_path = 210;
   bool xla_gpu_enable_pipelined_all_reduce = 217;
   bool xla_gpu_enable_pipelined_all_gather = 227;
+  bool xla_gpu_enable_pipelined_reduce_scatter = 231;
 
   enum PartitioningAlgorithm {
     PARTITIONING_ALGORITHM_NOOP = 0;
@@ -572,7 +578,9 @@ message DebugOptions {
 
   int32 xla_gpu_triton_fusion_level = 229;
 
-  // Next id: 230
+  bool xla_gpu_dump_autotuned_triton_fusions = 232;
+
+  // Next id: 233
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

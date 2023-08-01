@@ -392,15 +392,13 @@ Status CompileModuleToLlvmIrImpl(
       &results->output_shape, &results->entry_func_attrs));
 
   IrEmitterContext ir_emitter_context(
-      /*hlo_module=*/nullptr, /*buffer_assignment=*/nullptr, platform_name,
-      gpu_device_info, cuda_compute_capability, rocm_compute_capability,
-      &mlir_context, results->llvm_module.get());
+      hlo_module, /*buffer_assignment=*/nullptr, platform_name, gpu_device_info,
+      cuda_compute_capability, rocm_compute_capability, &mlir_context,
+      results->llvm_module.get());
 
   ir_emitter_context.set_allocations(results->allocations);
 
-  TF_ASSIGN_OR_RETURN(
-      auto ir_emitter,
-      IrEmitterUnnested::Create(hlo_module->config(), &ir_emitter_context));
+  auto ir_emitter = IrEmitterUnnested::Create(&ir_emitter_context);
 
   {
     XLA_SCOPED_LOGGING_TIMER(absl::StrCat(

@@ -38,6 +38,19 @@ namespace tensorflow {
 namespace dtensor {
 namespace {
 
+bool IsStringType(mlir::Type type) {
+  if (type.isa<mlir::TF::StringType>()) return true;
+
+  auto sub_type = type.dyn_cast<mlir::TF::TensorFlowTypeWithSubtype>();
+  if (!sub_type) return false;
+
+  bool has_string =
+      llvm::any_of(sub_type.GetSubtypes(), [](mlir::TensorType type) {
+        return type.getElementType().isa<mlir::TF::StringType>();
+      });
+  return has_string;
+}
+
 // Returns compilation key placeholder. This placeholder will be replaced with
 // output of TPUCompile op during TPURewrite pass. Program key (output of
 // TPUCompile op) is used to differentiate TPU computation from which to receive
@@ -534,18 +547,22 @@ StatusOr<mlir::Operation*> LowerDTensorSend(mlir::Operation* send_op,
   const Layout& recv_layout = dtensor_send.getTargetLayout();
   const Mesh& target_mesh = recv_layout.mesh();
   bool one_to_one = IsOneToOneMeshTransfer(input_layout, recv_layout);
-
+  // Force string type to not use the allreduce/broadcast optimization as there
+  // is no string type allreduce.
+  bool is_string_type =
+      IsStringType(dtensor_send.getInput().getType().getElementType());
   // Is tensor transfer is from TPU mesh to host mesh and send layout and recv
   // layout is identical, then tensor from each source device is sent to
   // target device asynchronously.
   mlir::Operation* lowered_send;
-  if (one_to_one && IsTpuToHostMeshTransfer(input_mesh, target_mesh)) {
+  if (IsTpuToHostMeshTransfer(input_mesh, target_mesh) && one_to_one) {
     TF_ASSIGN_OR_RETURN(lowered_send,
                         LowerDTensorSendToXlaOp(
                             input_layout, dtensor_send.getInput(), dtensor_send,
                             /*send_from_device_zero=*/false));
-  } else if (one_to_one && IsGpuToHostMeshTransfer(input_mesh, target_mesh) &&
-             !recv_layout.IsFullyReplicated()) {
+  } else if (IsGpuToHostMeshTransfer(input_mesh, target_mesh) &&
+             (one_to_one &&
+              (!recv_layout.IsFullyReplicated() || is_string_type))) {
     TF_ASSIGN_OR_RETURN(lowered_send,
                         LowerOneToOneDTensorSendToTFHostSend(
                             input_layout, target_mesh, dtensor_send));
@@ -664,9 +681,13 @@ StatusOr<mlir::Operation*> LowerDTensorRecv(mlir::Operation* send_op,
   bool cpu_to_cpu = recv_mesh.is_cpu_mesh() && send_mesh.is_cpu_mesh();
   bool one_to_one = IsOneToOneMeshTransfer(send_layout, recv_layout);
   bool send_recv_xla = SendRecvOpUsesXla(send_mesh, recv_mesh);
+  // Force string type to not use the allreduce/broadcast optimization as there
+  // is no string type allreduce.
+  bool is_string_type = IsStringType(dtensor_recv.getType().getElementType());
 
-  if (one_to_one && IsGpuToHostMeshTransfer(send_mesh, recv_mesh) &&
-      !dtensor_recv.getLayout().IsFullyReplicated()) {
+  if (IsGpuToHostMeshTransfer(send_mesh, recv_mesh) &&
+      (one_to_one &&
+       (!dtensor_recv.getLayout().IsFullyReplicated() || is_string_type))) {
     TF_ASSIGN_OR_RETURN(lowered_recv,
                         LowerOneToOneDTensorRecvToTFHostRecv(
                             send_mesh, recv_layout, dtensor_recv));
@@ -681,7 +702,7 @@ StatusOr<mlir::Operation*> LowerDTensorRecv(mlir::Operation* send_op,
     // Lower DTensorRecv op to TF Host Recv op.
     TF_ASSIGN_OR_RETURN(lowered_recv,
                         LowerDTensorRecvFromCPUToTFOp(send_mesh, dtensor_recv));
-  } else if ((one_to_one && IsTpuToHostMeshTransfer(send_mesh, recv_mesh)) ||
+  } else if ((IsTpuToHostMeshTransfer(send_mesh, recv_mesh) && one_to_one) ||
              (send_recv_xla && recv_mesh.is_cpu_mesh())) {
     // Recv can be lowered directly for a 1-to-1 transfer between host and
     // device (*for XLA/TPUs).

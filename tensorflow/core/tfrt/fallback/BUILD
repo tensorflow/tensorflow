@@ -107,7 +107,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/util:env_var",
-        "//tensorflow/tsl/platform:mutex",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )

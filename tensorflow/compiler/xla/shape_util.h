@@ -888,11 +888,6 @@ class ShapeUtil {
   // due to the tiling requirement.
   static int64_t ArrayDataSize(const Shape& shape);
 
-  // Returns the unsharded shape for an input `sharded_shape` that is
-  // partitioned among `num_shards`.
-  static Shape GetUnshardedShape(const Shape& sharded_shape,
-                                 int64_t num_shards);
-
  private:
   // Fills *shape. Returns true on success.
   // REQUIRES: *shape is empty.

@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_lt.h"
 #else
 #include "tensorflow/compiler/xla/stream_executor/rocm/hip_blas_lt.h"
-#endif
+#endif  // GOOGLE_CUDA
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/tsl/platform/logging.h"
 

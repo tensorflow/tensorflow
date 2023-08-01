@@ -2818,3 +2818,30 @@ func.func @func(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.resource> {
   // expected-remark@above {{ID: 0}}
   // expected-remark@above {{Sinks: {}}}
 }
+
+// -----
+
+func.func @add(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
+  // expected-remark@above {{ID: 2}}
+  %sum = "tf.Add"(%arg0, %arg1) : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+  // expected-remark@above {{ID: 0}}
+  func.return %sum : tensor<1xf32>
+  // expected-remark@above {{ID: 1}}
+  // expected-remark@above {{Sinks: {}}}
+}
+
+// CHECK-LABEL: func @call_pure_function
+func.func @call_pure_function(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.resource> {
+  // expected-remark@above {{ID: 5}}
+  %one = "tf.Const"() { value = dense<1.0> : tensor<1xf32> } : () -> tensor<1xf32>
+  // expected-remark@above {{ID: 0}}
+  %r1 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf_type.resource>) -> tensor<1xf32>
+  // expected-remark@above {{ID: 1}}
+  %two = "tf.StatefulPartitionedCall"(%one, %one) {config="", config_proto="", executor_type="", f=@add} : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+  // expected-remark@above {{ID: 2}}
+  %r2 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf_type.resource>) -> tensor<1xf32>
+  // expected-remark@above {{ID: 3}}
+  func.return %arg0 : tensor<!tf_type.resource>
+  // expected-remark@above {{ID: 4}}
+  // expected-remark@above {{Sinks: {1,3}}}
+}

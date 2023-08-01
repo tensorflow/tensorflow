@@ -32,15 +32,15 @@ limitations under the License.1
 #include "tensorflow/compiler/xla/stream_executor/scratch_allocator.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/tsl/platform/status.h"
-#include "rocm/rocm_config.h"
 
 #if GOOGLE_CUDA || TF_HIPBLASLT
 #if GOOGLE_CUDA
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_lt.h"
 #else
+#include "rocm/rocm_config.h"
 #include "tensorflow/compiler/xla/stream_executor/rocm/hip_blas_lt.h"
 #endif
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TF_HIPBLASLT
 
 namespace xla {
 #if GOOGLE_CUDA || TF_HIPBLASLT
@@ -71,8 +71,7 @@ void PopulateCublasLtMatmulAttrEncoding(CustomCallAttrEncodingSet& encoding) {
   encoding.Add<EnumAttrEncoding<lmhlo_gpu::CublasLtMatmulEpilogueAttr,
                                 lmhlo_gpu::CublasLtMatmulEpilogue,
                                 se::gpu::BlasLt::Epilogue>>(
-      [](lmhlo_gpu::CublasLtMatmulEpilogue value)
-          -> se::gpu::BlasLt::Epilogue {
+      [](lmhlo_gpu::CublasLtMatmulEpilogue value) -> se::gpu::BlasLt::Epilogue {
         return cublas_lt::AsBlasLtEpilogue(value).value();
       });
 }

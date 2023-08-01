@@ -24,7 +24,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "rocm/rocm_config.h"
-#if (TF_ROCM_VERSION >= 50200)
+#if TF_ROCM_VERSION >= 50600
 #include "rocm/include/rocblas/rocblas.h"
 #else
 #include "rocm/include/rocblas.h"
@@ -97,8 +97,9 @@ class ROCMBlas : public blas::BlasSupport {
 
   TENSORFLOW_STREAM_EXECUTOR_GPU_BLAS_SUPPORT_OVERRIDES
 #if TF_HIPBLASLT
-  BlasLt &blas_lt() { return blas_lt_; }
+  rocm::BlasLt &blas_lt() { return blas_lt_; }
 #endif
+
  private:
   // Tells rocBLAS to enqueue the BLAS operation onto a particular Stream.
   //
@@ -197,7 +198,7 @@ class ROCMBlas : public blas::BlasSupport {
   rocblas_handle blas_ ABSL_GUARDED_BY(mu_);
 
 #if TF_HIPBLASLT
-  BlasLt blas_lt_;
+  rocm::BlasLt blas_lt_;
 #endif
 
   SE_DISALLOW_COPY_AND_ASSIGN(ROCMBlas);

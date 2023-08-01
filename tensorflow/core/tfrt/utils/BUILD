@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "if_google", "if_oss", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "if_google", "if_oss", "tf_cc_shared_test", "tf_cc_test")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -60,9 +60,10 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+tf_cc_shared_test(
     name = "utils_test",
     srcs = ["utils_test.cc"],
+    tags = ["no_oss"],
     deps = [
         ":utils",
         "//tensorflow/core:framework",

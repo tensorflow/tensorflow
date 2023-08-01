@@ -26,12 +26,6 @@ limitations under the License.
 namespace stream_executor {
 namespace gpu {
 
-template <typename... Args>
-static tsl::Status InternalError(const absl::FormatSpec<Args...>& format,
-                                 const Args&... args) {
-  return tsl::errors::Internal(absl::StrFormat(format, args...));
-}
-
 //===----------------------------------------------------------------------===//
 // RAII helpers for CUDA graph types.
 //===----------------------------------------------------------------------===//
@@ -80,8 +74,8 @@ tsl::Status OwnedCudaGraphExec::Update(OwnedCudaGraph graph) {
 
   auto err = cudaGraphExecUpdate(get(), graph.get(), &updated);
   if (err != cudaSuccess || updated.result != cudaGraphExecUpdateSuccess)
-    return InternalError("failed to update cuda graph: %s",
-                         cudaGetErrorString(err));
+    return absl::InternalError(absl::StrFormat(
+        "failed to update cuda graph: %s", cudaGetErrorString(err)));
 
 #else
   cudaGraphExecUpdateResult updated;
@@ -89,8 +83,8 @@ tsl::Status OwnedCudaGraphExec::Update(OwnedCudaGraph graph) {
 
   auto err = cudaGraphExecUpdate(get(), graph.get(), &error_node, &updated);
   if (err != cudaSuccess || updated != cudaGraphExecUpdateSuccess)
-    return InternalError("Failed to update cuda graph %s",
-                         cudaGetErrorString(err));
+    return absl::InternalError(absl::StrFormat("Failed to update cuda graph %s",
+                                               cudaGetErrorString(err)));
 #endif
 
   return tsl::OkStatus();
@@ -103,8 +97,8 @@ tsl::Status OwnedCudaGraphExec::Launch(stream_executor::Stream* stream) {
 
   if (auto err = cudaGraphLaunch(get(), AsGpuStreamValue(stream));
       err != cudaSuccess)
-    return InternalError("failed to run cuda graph: %s",
-                         cudaGetErrorString(err));
+    return absl::InternalError(absl::StrFormat("failed to run cuda graph: %s",
+                                               cudaGetErrorString(err)));
 
   return tsl::OkStatus();
 }
@@ -133,20 +127,20 @@ tsl::StatusOr<OwnedCudaGraph> CaptureCudaGraph(
 
   // Capture graph constructed by the exported graph capture function.
   if (auto err = cudaStreamBeginCapture(gpu_stream, mode); err != cudaSuccess)
-    return InternalError("stream begin capture failed: %s",
-                         cudaGetErrorString(err));
+    return absl::InternalError(absl::StrFormat(
+        "stream begin capture failed: %s", cudaGetErrorString(err)));
 
   // Call into graph capture function.
   auto captured = capture();
 
   // Always stop capturing the stream before checking `captured` result.
   if (auto err = cudaStreamEndCapture(gpu_stream, &graph); err != cudaSuccess)
-    return InternalError("stream end capture failed: %s",
-                         cudaGetErrorString(err));
+    return absl::InternalError(absl::StrFormat("stream end capture failed: %s",
+                                               cudaGetErrorString(err)));
 
   if (!captured.ok())
-    return InternalError("failed to capture CUDA graph: %s",
-                         captured.message());
+    return absl::InternalError(absl::StrFormat(
+        "failed to capture CUDA graph: %s", captured.message()));
 
   VLOG(5) << "Captured CUDA graph " << graph;
 
@@ -195,8 +189,16 @@ tsl::StatusOr<OwnedCudaGraphExec> InstantiateCudaGraph(OwnedCudaGraph graph) {
   if (auto err = cudaGraphInstantiate(&exec, &*graph, nullptr, nullptr, 0);
 #endif
       err != cudaSuccess) {
-    return InternalError("graph instantiation failed: %s",
-                         cudaGetErrorString(err));
+    if (err == cudaErrorMemoryAllocation) {
+      // OOM is a recoverable error, we evict all instantiated cuda graphs to
+      // free up some space (see graph launch.cc). Clear error status.
+      return absl::ResourceExhaustedError(
+          absl::StrFormat("graph instantiation failed: %s",
+                          cudaGetErrorString(cudaGetLastError())));
+    } else {
+      return absl::InternalError(absl::StrFormat(
+          "graph instantiation failed: %s", cudaGetErrorString(err)));
+    }
   }
 
   size_t id = CudaGraphSupport::NotifyGraphExecCreated();
@@ -211,8 +213,8 @@ tsl::StatusOr<bool> IsStreamCapturing(stream_executor::Stream* stream) {
   cudaError_t err = cudaStreamIsCapturing(
       stream_executor::gpu::AsGpuStreamValue(stream), &capture_status);
   if (err != cudaSuccess) {
-    return InternalError("Failed to get stream's capture status: %s",
-                         cudaGetErrorString(err));
+    return absl::InternalError(absl::StrFormat(
+        "Failed to get stream's capture status: %s", cudaGetErrorString(err)));
   }
 
   return capture_status == cudaStreamCaptureStatusActive;

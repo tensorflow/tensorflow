@@ -19,15 +19,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/custom_call_encoding.h"
 #include "tensorflow/compiler/xla/runtime/custom_call_registry.h"
 
-#include "rocm/rocm_config.h"
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #if GOOGLE_CUDA
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_lt.h"
 #else
+#include "rocm/rocm_config.h"
 #include "tensorflow/compiler/xla/stream_executor/rocm/hip_blas_lt.h"
-#endif  // GOOGLE_CUDA
 #endif
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace xla {
 namespace gpu {
@@ -42,7 +42,7 @@ void PopulateCublasLtMatmulAttrEncoding(
 #if GOOGLE_CUDA || TF_HIPBLASLT
 // Keep cublas_lt::MatmulPlan's for all matmul instances in the executable.
 class MatmulPlans : public runtime::StateVector<cublas_lt::MatmulPlan> {};
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TF_HIPBLASLT
 
 }  // namespace gpu
 }  // namespace xla

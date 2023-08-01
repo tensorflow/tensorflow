@@ -14,8 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/service/worker_impl.h"
 
-#include <iterator>
+#include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -30,9 +31,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/auto_shard_rewriter.h"
 #include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/common.pb.h"
-#include "tensorflow/core/data/service/credentials_factory.h"
 #include "tensorflow/core/data/service/data_transfer.h"
-#include "tensorflow/core/data/service/dispatcher.grpc.pb.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/dispatcher_client.h"
 #include "tensorflow/core/data/service/export.pb.h"
@@ -46,18 +45,13 @@ limitations under the License.
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/framework/dataset.pb.h"
-#include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/io/zlib_outputbuffer.h"
-#include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/host_info.h"
-#include "tensorflow/core/platform/refcount.h"
-#include "tensorflow/core/platform/snappy.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -555,15 +549,54 @@ Status DataServiceWorkerImpl::Heartbeat() {
   return UpdateSnapshotWriters(response);
 }
 
-WorkerHeartbeatRequest DataServiceWorkerImpl::BuildWorkerHeartbeatRequest()
-    const TF_LOCKS_EXCLUDED(mu_) {
-  std::vector<int64_t> current_tasks;
+std::vector<ActiveTask> DataServiceWorkerImpl::GetActiveTasks() const
+    TF_LOCKS_EXCLUDED(mu_) {
+  std::vector<ActiveTask> active_tasks;
+  absl::flat_hash_map<int64_t, std::shared_ptr<Task>> current_tasks;
   {
     mutex_lock l(mu_);
-    for (const auto& task : tasks_) {
-      current_tasks.push_back(task.first);
-    }
+    current_tasks = tasks_;
   }
+
+  for (const auto& [task_id, task] : current_tasks) {
+    if (task == nullptr) {
+      continue;
+    }
+    ActiveTask active_task;
+    active_task.set_task_id(task_id);
+    active_task.set_processing_time_nsec(0.0);
+
+    bool task_initialized = false;
+    {
+      mutex_lock task_lock(task->mu);
+      task_initialized = task->initialized;
+    }
+    if (task_initialized && task->task_runner != nullptr) {
+      std::optional<double> processing_time_nsec =
+          task->task_runner->GetProcessingTimeNsec();
+      active_task.set_processing_time_nsec(
+          processing_time_nsec ? processing_time_nsec.value() : 0.0);
+    }
+    active_tasks.push_back(std::move(active_task));
+  }
+
+  return active_tasks;
+}
+
+std::vector<int64_t> DataServiceWorkerImpl::GetTaskIds(
+    const std::vector<ActiveTask>& active_tasks) const {
+  std::vector<int64_t> task_ids;
+  task_ids.reserve(active_tasks.size());
+  for (const ActiveTask& active_task : active_tasks) {
+    task_ids.push_back(active_task.task_id());
+  }
+  return task_ids;
+}
+
+WorkerHeartbeatRequest DataServiceWorkerImpl::BuildWorkerHeartbeatRequest()
+    const TF_LOCKS_EXCLUDED(mu_) {
+  std::vector<ActiveTask> active_tasks = GetActiveTasks();
+  std::vector<int64_t> current_tasks = GetTaskIds(active_tasks);
 
   WorkerHeartbeatRequest request;
   request.set_worker_address(worker_address_);
@@ -578,6 +611,7 @@ WorkerHeartbeatRequest DataServiceWorkerImpl::BuildWorkerHeartbeatRequest()
         {snapshot_task_progress.snapshot_task().base_path(),
          snapshot_task_progress});
   }
+  *request.mutable_active_tasks() = {active_tasks.begin(), active_tasks.end()};
   return request;
 }
 

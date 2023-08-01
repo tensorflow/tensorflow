@@ -352,6 +352,14 @@ typedef struct SE_TpuTopology SE_TpuTopology;
 typedef struct SE_TpuTopology_Core SE_TpuTopology_Core;
 typedef struct SE_TpuTopology_Core SE_TpuTopology_Host;
 
+typedef void (*SE_TpuHostCommandHandler_Function)(
+    void* context, uint32_t command, int64_t program_stack_byte_offset);
+
+typedef struct SE_TpuHostCommandHandler {
+  SE_TpuHostCommandHandler_Function handler_func;
+  void* context;
+} SE_TpuHostCommandHandler;
+
 #ifdef __cplusplus
 }
 #endif

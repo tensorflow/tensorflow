@@ -1,4 +1,6 @@
-numpy >= 1.22
+# must be the lowest supported numpy version from setup.py
+# otherwise incomatibility issues will occur.
+numpy ~= 1.23.5
 wheel ~= 0.38.1
 h5py >= 2.9.0
 lit ~= 16.0.5.post0

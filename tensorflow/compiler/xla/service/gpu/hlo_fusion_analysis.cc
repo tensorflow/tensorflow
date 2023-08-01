@@ -426,6 +426,12 @@ const LaunchDimensionsConfig* HloFusionAnalysis::GetLoopFusionConfig() {
   }
   VLOG(2) << "Unroll factor: " << unroll_factor;
 
+  if (GetEmitterFusionKind() == EmitterFusionKind::kScatter) {
+    // Only the unroll factor is used for scatter.
+    loop_fusion_config_.emplace(LaunchDimensionsConfig{unroll_factor});
+    return &loop_fusion_config_.value();
+  }
+
   bool row_vectorized;
   int num_big_inputs;
   std::tie(row_vectorized, num_big_inputs) =
