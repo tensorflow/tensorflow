@@ -113,7 +113,13 @@ class CudnnFusedConvRewriterTest : public GpuCodegenTest {
           << optimized_hlo_string;
       EXPECT_THAT(optimized_hlo_string,
                   HasSubstr(kCudnnConvBiasActivationForwardCallTarget));
-      EXPECT_TRUE(RunAndCompare(hlo_with_new_type, ErrorSpec{0.01}))
+
+      TF_ASSERT_OK_AND_ASSIGN(auto module,
+                              ParseAndReturnVerifiedModule(hlo_with_new_type));
+      DebugOptions debug_opts = module->config().debug_options();
+      debug_opts.set_xla_gpu_use_runtime_fusion(true);
+      module->config().set_debug_options(debug_opts);
+      EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{0.01}))
           << optimized_hlo_string;
     }
   }
@@ -365,6 +371,31 @@ TEST_F(CudnnFusedConvRewriterTest, TestRelu6) {
       broadcasted_bias = TYPE[1,3,3,64] broadcast(bias), dimensions={3}
       sum = TYPE[1,3,3,64] add(conv, broadcasted_bias)
       ROOT relu6 = TYPE[1,3,3,64] clamp(zeros, sum, sixes)
+    })");
+}
+
+// At time of writing, cudnn runtime fusion cannot handle f16 convs with an odd
+// number of input/output channels.  Check that we don't try to run this conv
+// with runtime fusion (or, if we do, that it works!).
+TEST_F(CudnnFusedConvRewriterTest, TestRelu6OddChannels) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE)) {
+    GTEST_SKIP() << "Conv-Bias-Relu6 fusion is supported and recommended with "
+                    "the Nvidia Ampere+ GPUs.";
+  }
+
+  TestMatchWithAllTypes(R"(
+    HloModule Test
+    ENTRY Test {
+      zeros = TYPE[1,384,1024,32] broadcast(TYPE[] constant(0)), dimensions={}
+      sixes = TYPE[1,384,1024,32] broadcast(TYPE[] constant(6)), dimensions={}
+      input = TYPE[1,769,2049,3] parameter(0)
+      filter = TYPE[32,3,3,3] parameter(1)
+      bias = TYPE[32] parameter(2)
+      conv = TYPE[1,384,1024,32] convolution(input, filter), window={size=3x3 stride=2x2}, dim_labels=b01f_o01i->b01f
+      broadcasted_bias = TYPE[1,384,1024,32] broadcast(bias), dimensions={3}
+      sum = add(conv, broadcasted_bias)
+      ROOT relu6 = clamp(zeros, sum, sixes)
     })");
 }
 
@@ -1381,8 +1412,8 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseRelu6) {
   const std::string module_str = R"(
     HloModule Test
     ENTRY Test {
-      inputs = f16[1,17,9,9] parameter(0)
-      filters = f16[3,3,17,32] parameter(1)
+      inputs = f16[1,18,9,9] parameter(0)
+      filters = f16[3,3,18,32] parameter(1)
       bias = f16[32] parameter(2)
       bias_broadcast = f16[1,32,9,9] broadcast(bias), dimensions={1}
       zero = f16[] constant(0)
@@ -1423,8 +1454,8 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseRelu6IfMultipleUses) {
   const std::string module_str = R"(
     HloModule Test
     ENTRY Test {
-      inputs = f16[1,17,9,9] parameter(0)
-      filters = f16[3,3,17,32] parameter(1)
+      inputs = f16[1,18,9,9] parameter(0)
+      filters = f16[3,3,18,32] parameter(1)
       bias = f16[1,32,9,9] broadcast(f16[32] parameter(2)), dimensions={1}
       zeros = f16[1,32,9,9] broadcast(f16[] constant(0)), dimensions={}
       sixes = f16[1,32,9,9] broadcast(f16[] constant(6)), dimensions={}

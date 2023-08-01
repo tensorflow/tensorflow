@@ -43,27 +43,12 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_cuda_data_dir("./cuda_sdk_lib");
   opts.set_xla_gpu_asm_extra_flags("");
 
-  // As of cudnn 8.9.0, enabling cudnn runtime fusion sometimes causes a
-  // situation where cudnn returns 0 algorithms for an otherwise-valid conv,
-  // causing compilation to fail.  Examples of failing convs:
-  //
-  // // failing kLeakyRelu, b/290967578
-  // (f16[2,256,768,16]{3,2,1,0}, u8[0]{0})
-  //   custom-call(f16[2,256,768,3]{3,2,1,0} %a, f16[16,3,3,3]{3,2,1,0} %b,
-  //   f16[16]{0} %c), window={size=3x3 pad=1_1x1_1},
-  //   dim_labels=b01f_o01i->b01f, operand_precision={highest,highest},
-  //   custom_call_target="__cudnn$convBiasActivationForward",
-  //   backend_config={"activation_mode":"kLeakyRelu","conv_result_scale":1,
-  //                   "side_input_scale":0,"leakyrelu_alpha":0.199951171875}
-  //
-  // // failing kRelu6, b/291011396
-  // (f16[1,384,1024,32]{3,2,1,0}, u8[0]{0})
-  //   custom-call(f16[1,769,2049,3]{3,2,1,0} %a, f16[32,3,3,3]{3,2,1,0} %b,
-  //   f16[32]{0} %c), window={size=3x3 stride=2x2}, dim_labels=b01f_o01i->b01f,
-  //   operand_precision={highest,highest},
-  //   custom_call_target="__cudnn$convBiasActivationForward",
-  //   backend_config={"activation_mode":"kRelu6","conv_result_scale":1,
-  //                   "side_input_scale":0,"leakyrelu_alpha":0}
+  // As of cudnn 8.9.0, runtime fusion creates convolutions that take about 7s
+  // seconds to run the first time we call them, at least on Ampere.  In
+  // contrast, non-runtime-fusion convs usually run in about 50ms.  Thus runtime
+  // fusion can cause a 100x slowdown when compiling models that have convs that
+  // use runtime fusion.  We therefore can't enable this by default today.
+  // Additional details in b/237009940#comment46.
   opts.set_xla_gpu_use_runtime_fusion(false);
 
   opts.set_xla_eliminate_hlo_implicit_broadcast(true);
