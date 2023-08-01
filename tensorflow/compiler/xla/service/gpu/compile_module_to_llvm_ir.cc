@@ -59,11 +59,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/metrics.h"
 #include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/while_thunk.h"
+#include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/hlo_rematerialization.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/optimization_barrier_expander.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/stream_executor/rocm/rocm_platform_id.h"
@@ -369,15 +371,20 @@ Status CompileModuleToLlvmIrImpl(
   {
     HloPassPipeline pipeline("remat-pipeline");
 
+    auto shape_size_func = [pointer_size](const Shape& shape) {
+      return GetSizeOfShape(shape, pointer_size);
+    };
+    HloCostAnalysis hlo_cost_analysis(shape_size_func);
+    HloRematerialization::RematerializationModeConfig
+        rematerialization_mode_config(/*recompute=*/true, /*compress=*/true,
+                                      /*host_offload=*/false);
     HloRematerialization::Options options(
-        [pointer_size](const Shape& shape) {
-          return GetSizeOfShape(shape, pointer_size);
-        },
+        hlo_cost_analysis, rematerialization_mode_config,
         // Assume 75% of the total device memory is available for XLA.
         /*memory_limit_bytes=*/gpu_device_info.device_memory_size * 0.75,
         /*block_size_limit=*/1, /*block_rematerialization_factor=*/1,
-        /*compact_shape_function=*/nullptr,
-        HloRematerialization::RematerializationMode::kRecomputeAndCompress);
+        /*min_remat_size=*/0, /*compact_shape_function=*/nullptr,
+        /*host_memory_offload_config=*/std::nullopt);
     HloRematerialization::RematerializationSizes sizes;
     pipeline.AddPass<HloRematerialization>(options, sizes);
 
