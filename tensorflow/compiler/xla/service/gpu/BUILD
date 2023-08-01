@@ -2852,7 +2852,9 @@ cc_library(
         "//tensorflow/compiler/xla/service:profile_guided_latency_estimator",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:protobuf",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
