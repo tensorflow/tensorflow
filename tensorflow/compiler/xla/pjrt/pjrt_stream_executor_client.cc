@@ -1140,6 +1140,11 @@ Status PjRtStreamExecutorDevice::TransferFromOutfeed(
       local_device->device_ordinal(), literal);
 }
 
+absl::Span<PjRtMemorySpace* const> PjRtStreamExecutorDevice::memory_spaces()
+    const {
+  return {};
+}
+
 StatusOr<PjRtMemorySpace*> PjRtStreamExecutorDevice::default_memory_space()
     const {
   return Unimplemented("default_memory_space is not supported.");
@@ -1154,6 +1159,11 @@ StatusOr<PjRtDevice*> PjRtStreamExecutorClient::LookupAddressableDevice(
   }
   return InvalidArgument("No matching device found for local_hardware_id %d",
                          local_hardware_id);
+}
+
+absl::Span<PjRtMemorySpace* const> PjRtStreamExecutorClient::memory_spaces()
+    const {
+  return {};
 }
 
 PjRtStreamExecutorBuffer::PjRtStreamExecutorBuffer(

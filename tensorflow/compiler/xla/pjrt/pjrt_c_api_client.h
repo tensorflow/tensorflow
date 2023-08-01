@@ -79,6 +79,10 @@ class PjRtCApiDevice : public PjRtDevice {
     return Unimplemented("PJRT C API does not support TransferFromOutfeed");
   }
 
+  absl::Span<PjRtMemorySpace* const> memory_spaces() const override {
+    return {};
+  }
+
   StatusOr<PjRtMemorySpace*> default_memory_space() const override {
     return Unimplemented("PJRT C API does not support default_memory_space");
   }
@@ -122,6 +126,8 @@ class PjRtCApiClient : public PjRtClient {
 
   StatusOr<PjRtDevice*> LookupAddressableDevice(
       int local_hardware_id) const override;
+
+  absl::Span<PjRtMemorySpace* const> memory_spaces() const override;
 
   PjRtPlatformId platform_id() const override {
     CHECK(false) << "PJRT C API does not support platform_id.";

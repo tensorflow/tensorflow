@@ -219,6 +219,10 @@ StatusOr<PjRtDevice*> PjRtCApiClient::LookupAddressableDevice(
   return GetCppDevice(args.addressable_device);
 }
 
+absl::Span<PjRtMemorySpace* const> PjRtCApiClient::memory_spaces() const {
+  return {};
+}
+
 // Initializes `PJRT_Client_Compile_Args`, which will be used to call
 // API PJRT_Client_Compile().
 static StatusOr<std::unique_ptr<PjRtLoadedExecutable>> InitializeArgsAndCompile(
