@@ -23,10 +23,36 @@ diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
 +)
 +
 +cc_library(
-     name = "reference_axes",
+     name = "interpreter_ops",
      srcs = [
-         "stablehlo/reference/Axes.cpp",
-@@ -677,6 +695,7 @@
+         "stablehlo/reference/InterpreterOps.cpp",
+@@ -297,6 +315,7 @@
+ 
+ gentbl_cc_library(
+     name = "interpreter_ops_inc_gen",
++    strip_include_prefix = ".",
+     tbl_outs = [
+         (
+             ["-gen-op-decls"],
+@@ -309,7 +328,6 @@
+     ],
+     tblgen = "@llvm-project//mlir:mlir-tblgen",
+     td_file = "stablehlo/reference/InterpreterOps.td",
+-    strip_include_prefix = ".",
+     deps = [
+         ":interpreter_ops_td_files",
+     ],
+@@ -419,8 +437,8 @@
+         ":reference_element",
+         ":reference_errors",
+         ":reference_index",
++        ":reference_interpretervalue",
+         ":reference_scope",
+-        ":reference_interpretervalue",
+         ":reference_tensor",
+         ":reference_token",
+         ":reference_types",
+@@ -725,6 +743,7 @@
      deps = [
          ":base",
          ":chlo_ops",
@@ -34,6 +60,26 @@ diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
          ":stablehlo_ops",
          ":stablehlo_ops_inc_gen",
          ":stablehlo_pass_inc_gen",
+@@ -850,8 +869,8 @@
+     ],
+     deps = [
+         ":register",
++        "@llvm-project//mlir:AllExtensions",
+         "@llvm-project//mlir:AllPassesAndDialects",
+-        "@llvm-project//mlir:AllExtensions",
+         "@llvm-project//mlir:MlirLspServerLib",
+     ],
+ )
+@@ -862,8 +881,8 @@
+         "stablehlo/tools/StablehloTranslateMain.cpp",
+     ],
+     deps = [
++        ":interpreter_ops",
+         ":reference_errors",
+-        ":interpreter_ops",
+         ":reference_ops",
+         ":reference_scope",
+         ":reference_tensor",
 diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 --- stablehlo/CMakeLists.txt
 +++ stablehlo/CMakeLists.txt
@@ -184,15 +230,7 @@ diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 diff --ruN a/stablehlo/stablehlo/dialect/Base.cpp b/stablehlo/stablehlo/dialect/Base.cpp
 --- stablehlo/stablehlo/dialect/Base.cpp
 +++ stablehlo/stablehlo/dialect/Base.cpp
-@@ -156,6 +156,7 @@
-   DenseIntElementsAttr attr;
-   if (!matchPattern(value, m_Constant(&attr))) return failure();
- 
-+  // Signless types are treated as signed, per StableHLO convention.
-   // Unless the type is i1 (which models boolean type from the StableHLO spec),
-   // in which case it's considered to be unsigned.
-   auto elementType = attr.getType().getElementType();
-@@ -599,5 +600,18 @@
+@@ -600,5 +600,18 @@
    return UnrankedTensorType::get(components.getElementType());
  }
  
@@ -988,57 +1026,6 @@ diff --ruN a/stablehlo/stablehlo/dialect/ExperimentalOps.h b/stablehlo/stablehlo
 +}  // namespace mlir
 +
 +#endif  // STABLEHLO_DIALECT_EXPERIMENTAL_OPS_H
-diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
---- stablehlo/stablehlo/dialect/StablehloOps.cpp
-+++ stablehlo/stablehlo/dialect/StablehloOps.cpp
-@@ -2786,7 +2786,8 @@
- void printConvolutionDimensions(AsmPrinter& p,
-                                 ConvDimensionNumbersAttr dimNums) {
-   // TODO(b/202040055): we should check the attribute invariant and print the
--  // "raw" form if they are violated, otherwise we'll crash here.
-+  // "raw" form if they are violated, for now report_fatal_error is used to
-+  // prevent invalid access.
-   auto printDim =
-       [&p](ArrayRef<int64_t> spatialDims,
-            ArrayRef<std::pair<int64_t, NonSpatialDim>> non_spatialDims) {
-diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo/dialect/TypeInference.cpp
---- stablehlo/stablehlo/dialect/TypeInference.cpp
-+++ stablehlo/stablehlo/dialect/TypeInference.cpp
-@@ -3400,7 +3400,7 @@
- 
-   for (int i = 0; i != bcastDimensionsSize; ++i) {
-     auto dimIndex = bcastDimensions.getValues<int64_t>()[i];
--    if (dimIndex >= resultRank)
-+    if (dimIndex < 0 || dimIndex >= resultRank)
-       return emitOptionalError(location,
-                                "broadcast_dimensions contains invalid value ",
-                                dimIndex, " for result with rank ", resultRank);
-diff --ruN a/stablehlo/stablehlo/reference/Ops.cpp b/stablehlo/stablehlo/reference/Ops.cpp
---- stablehlo/stablehlo/reference/Ops.cpp
-+++ stablehlo/stablehlo/reference/Ops.cpp
-@@ -1330,7 +1330,7 @@
-     Axis indexVectorDim, Region &updateComputation, Scope &scope,
-     ArrayRef<ShapedType> resultTypes) {
-   SmallVector<Tensor> results;
--  for (auto input : inputs) results.push_back(input);
-+  for (const auto &input : inputs) results.push_back(input);
- 
-   Axes updateScatterDims;
-   for (auto d : updates[0].getAxes())
-@@ -1372,11 +1372,11 @@
-     if (!resultIndex.inBounds(results[0].getShape())) continue;
- 
-     SmallVector<InterpreterValue> updateComputationArgs;
--    for (auto result : results)
-+    for (const auto &result : results)
-       updateComputationArgs.push_back(
-           Tensor(RankedTensorType::get({}, result.getElementType()),
-                  result.get(resultIndex)));
--    for (auto update : updates)
-+    for (const auto &update : updates)
-       updateComputationArgs.push_back(
-           Tensor(RankedTensorType::get({}, update.getElementType()),
-                  update.get(updateIndex)));
 diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo.mlir b/stablehlo/stablehlo/tests/ops_stablehlo.mlir
 --- stablehlo/stablehlo/tests/ops_stablehlo.mlir
 +++ stablehlo/stablehlo/tests/ops_stablehlo.mlir
