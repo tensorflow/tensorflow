@@ -2512,12 +2512,13 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicSlice(
 
     // Clamp the start index so that the sliced portion fits in the operand:
     // start_index = clamp(start_index, 0, operand_dim_size - output_dim_size)
-    start_index_value = SExtOrTrunc(start_index_value, index_type);
+    bool is_signed = ShapeUtil::ElementIsSigned(hlo->operand(1)->shape());
+    start_index_value =
+        b_->CreateIntCast(start_index_value, index_type, is_signed);
     int64_t largest_valid_start_index =
         input_hlo->shape().dimensions(i) - hlo->shape().dimensions(i);
     CHECK_GE(largest_valid_start_index, 0);
 
-    bool is_signed = ShapeUtil::ElementIsSigned(hlo->operand(1)->shape());
     start_index_value = EmitIntegralMin(
         index_typed_const(largest_valid_start_index),
         EmitIntegralMax(index_typed_const(0), start_index_value, is_signed),
@@ -2685,14 +2686,15 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicUpdateSlice(
 
     // Clamp the start index so that the update region fits in the operand.
     // start_index = clamp(start_index, 0, input_dim_size - update_dim_size)
-    start_index_value = SExtOrTrunc(start_index_value, index_type);
+    bool is_signed = ShapeUtil::ElementIsSigned(start_hlo->shape());
+    start_index_value =
+        b_->CreateIntCast(start_index_value, index_type, is_signed);
     llvm::Value* update_dim_size =
         index_typed_const(update_hlo->shape().dimensions(i));
     int64_t largest_valid_start_index =
         input_hlo->shape().dimensions(i) - update_hlo->shape().dimensions(i);
     CHECK_GE(largest_valid_start_index, 0);
 
-    bool is_signed = ShapeUtil::ElementIsSigned(start_hlo->shape());
     start_index_value = EmitIntegralMin(
         index_typed_const(largest_valid_start_index),
         EmitIntegralMax(index_typed_const(0), start_index_value, is_signed),
