@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
+#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_test_base.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
@@ -50,6 +51,7 @@ limitations under the License.
 namespace xla {
 namespace pjrt {
 namespace {
+
 // Serialized `ModuleOp` that does add 1.
 constexpr absl::string_view module_add_one =
     R"(module {
@@ -122,45 +124,11 @@ void RegisterPjRtCApiTestFactory(std::function<const PJRT_Api*()> factory,
 }
 
 namespace {
-class PjrtCApiTest : public ::testing::Test {
+
+class PjrtCApiTest : public PjrtCApiTestBase {
  protected:
-  const PJRT_Api* api_;
-  PJRT_Client* client_;
-  std::string platform_name_;
-  // We directly access the internal C++ client to test if the C API has the
-  // same behavior as the C++ API.
-  xla::PjRtClient* cc_client_;
-  XlaComputation xla_computation_;
-
-  void SetUp() override {
-    api_ = GetCApi();
-    client_ = make_client();
-    platform_name_ = GetPlatformName();
-  }
-
-  void TearDown() override { destroy_client(client_); }
-
-  void destroy_client(PJRT_Client* client) {
-    PJRT_Client_Destroy_Args destroy_args = PJRT_Client_Destroy_Args{
-        .struct_size = PJRT_Client_Destroy_Args_STRUCT_SIZE,
-        .priv = nullptr,
-        .client = client,
-    };
-    PJRT_Error* error = api_->PJRT_Client_Destroy(&destroy_args);
-    CHECK_EQ(error, nullptr);
-  }
-
-  PJRT_Client* make_client() {
-    PJRT_Client_Create_Args create_args = PJRT_Client_Create_Args{
-        .struct_size = PJRT_Client_Create_Args_STRUCT_SIZE,
-        .priv = nullptr,
-        .client = nullptr,
-    };
-    PJRT_Error* error = api_->PJRT_Client_Create(&create_args);
-    CHECK_EQ(error, nullptr);
-    CHECK_NE(create_args.client, nullptr);
-    return create_args.client;
-  }
+  PjrtCApiTest() : PjrtCApiTestBase(GetCApi()) {}
+  std::string platform_name_ = GetPlatformName();
 
   int GetDeviceId(PJRT_DeviceDescription* device_desc) const {
     PJRT_DeviceDescription_Id_Args args = PJRT_DeviceDescription_Id_Args{
