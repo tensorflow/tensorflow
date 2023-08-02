@@ -1,0 +1,14 @@
+# custom_zeta.py
+import tensorflow as tf
+import mpmath
+
+def custom_zeta(x, y):
+    # Convert TensorFlow tensors to mpmath complex numbers
+    s = mpmath.mpc(x.numpy(), y.numpy())
+    
+    # Calculate the Riemann zeta function using mpmath
+    result = mpmath.zeta(s)
+    
+    # Convert the mpmath result back to TensorFlow
+    result = tf.cast(result, dtype=tf.float32)
+    return result
