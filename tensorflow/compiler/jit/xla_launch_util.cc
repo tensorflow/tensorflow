@@ -768,11 +768,11 @@ Status PopulateCtxOutputsFromPjRtExecutableOutputs(
 
     if (use_pjrt_tensor_buffer) {
       PjRtTensorBufferUtil::UpdateOrMakeTensorWithPjRtStreamExecutorBuffer(
-          var->tensor()->dtype(), var->tensor()->shape(),
-          std::move(executable_outputs[output_num]), var->tensor());
+          write.type, write.shape, std::move(executable_outputs[output_num]),
+          var->tensor());
     } else {
-      TF_RETURN_IF_ERROR(ctx->allocate_temp(
-          var->tensor()->dtype(), var->tensor()->shape(), var->tensor()));
+      TF_RETURN_IF_ERROR(
+          ctx->allocate_temp(write.type, write.shape, var->tensor()));
       AsyncValueTensor::FromTensor(var->tensor())
           ->SetBuffer(std::move(executable_outputs[output_num]));
     }
