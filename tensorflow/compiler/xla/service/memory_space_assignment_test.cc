@@ -5499,6 +5499,37 @@ TEST_P(MemorySpaceAssignmentTest,
   AssignMemorySpace(module.get(), options);
 }
 
+TEST_P(MemorySpaceAssignmentTest, DisablePrefetch) {
+  absl::string_view hlo_string = R"(
+  HloModule module, is_scheduled=true
+
+  ENTRY entry {
+    p0 = f32[3]{0} parameter(0)
+    p1 = f32[3]{0} parameter(1)
+    negate1 = f32[3]{0} negate(p1)
+    negate2 = f32[3]{0} negate(negate1)
+    negate3 = f32[3]{0} negate(negate2)
+    negate4 = f32[3]{0} negate(negate3)
+    negate5 = f32[3]{0} negate(negate4)
+    negate6 = f32[3]{0} negate(negate5)
+    negate7 = f32[3]{0} negate(negate6)
+    negate8 = f32[3]{0} negate(negate7)
+    negate9 = f32[3]{0} negate(negate8)
+    ROOT add = f32[3]{0} add(negate9, p0)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  Options options = DefaultMemorySpaceOptions();
+  options.max_outstanding_prefetches = 0;
+  AssignMemorySpace(module.get(), options);
+
+  EXPECT_THAT(module->entry_computation()->root_instruction()->operand(1),
+              op::Parameter());
+}
+
 TEST_P(MemorySpaceAssignmentTest, BitcastRoot) {
   // Tests against a bug where the root of entry computation is a bitcast
   // instruction and it ends up getting an allocation in the alternate memory.
