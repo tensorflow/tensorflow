@@ -149,6 +149,15 @@ llvm::orc::SymbolMap TFFrameworkSymbolMap(llvm::orc::MangleAndInterner mangle) {
   return symbol_map;
 }
 
+void InitializeLlvmCompiler() {
+  static const bool initialized = ([] {
+    llvm::InitializeNativeTarget();
+    llvm::InitializeNativeTargetAsmPrinter();
+    return true;
+  })();
+  (void)initialized;
+}
+
 llvm::Expected<std::unique_ptr<ExecutionEngine>> Compile(
     const std::string code, llvm::SmallVectorImpl<std::string>& architectures,
     llvm::SmallVectorImpl<int64_t>& tile_sizes,
@@ -214,8 +223,7 @@ llvm::Expected<std::unique_ptr<ExecutionEngine>> Compile(
   }
 
   // Initialize LLVM targets.
-  llvm::InitializeNativeTarget();
-  llvm::InitializeNativeTargetAsmPrinter();
+  InitializeLlvmCompiler();
 
   // Create execution engine with an inner optimization pipeline.
   auto opt_pipeline = mlir::makeOptimizingTransformer(
