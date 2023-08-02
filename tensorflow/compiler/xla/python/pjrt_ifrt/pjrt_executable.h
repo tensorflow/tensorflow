@@ -163,11 +163,6 @@ class PjRtLoadedExecutable final
       PjRtCompatibleClient* client, mlir::ModuleOp module,
       xla::CompileOptions compile_options,
       std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks);
-  // TODO(phawkins): remove the XlaComputation overload.
-  static StatusOr<std::unique_ptr<LoadedExecutable>> Create(
-      PjRtCompatibleClient* client, const XlaComputation& computation,
-      xla::CompileOptions compile_options,
-      std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks);
 
   // PjRtCompatibleLoadedExecutable implementation.
 
