@@ -29,8 +29,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/utils/hlo_query.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
+#include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/while_loop_analysis.h"
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/union_find.h"
 
 namespace xla {
@@ -1441,7 +1443,9 @@ StatusOr<bool> WhileLoopSimplifier::Run(
       continue;
     }
   }
-
+  HloDCE dce;
+  TF_ASSIGN_OR_RETURN(bool dce_changed, dce.Run(module));
+  changed |= dce_changed;
   XLA_VLOG_LINES(3,
                  "WhileLoopSimplifier::Run(), after:\n" + module->ToString());
   return changed;

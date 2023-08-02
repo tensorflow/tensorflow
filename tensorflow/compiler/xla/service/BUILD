@@ -3102,6 +3102,7 @@ cc_library(
     hdrs = ["while_loop_simplifier.h"],
     deps = [
         ":call_inliner",
+        ":hlo_dce",
         ":hlo_pass",
         ":pattern_matcher",
         ":while_loop_analysis",
