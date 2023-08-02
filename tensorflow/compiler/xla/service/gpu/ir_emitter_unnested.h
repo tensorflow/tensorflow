@@ -300,17 +300,6 @@ class IrEmitterUnnested : public IrEmitter {
         shape, ir_emitter_context_->llvm_module()->getDataLayout());
   }
 
-  // The return type of BuildKernelPrototype.
-  struct KernelAndIrArrays {
-    llvm::Function* kernel = nullptr;
-    std::vector<llvm_ir::IrArray> ir_arrays;
-  };
-
-  KernelAndIrArrays BuildKernelPrototype(
-      absl::string_view suggested_name,
-      absl::Span<const KernelArgument> arguments,
-      const LaunchDimensions& launch_dimensions);
-
   // Generates code for reduction to contiguous dimensions.
   //
   // Row reduction uses the following algorithm described in CUDA-like
@@ -419,7 +408,8 @@ class IrEmitterUnnested : public IrEmitter {
 
   Status EmitElementForInputFusibleSlices(
       const HloComputation* fused_computation,
-      absl::Span<const llvm_ir::IrArray> ir_arrays,
+      absl::Span<const llvm_ir::IrArray> inputs,
+      absl::Span<const llvm_ir::IrArray> outputs,
       const llvm_ir::IrArray::Index& index);
 
   // Emits code for an in-place scatter, modifying `thunk`s launch dimensions in
@@ -499,7 +489,8 @@ class IrEmitterUnnested : public IrEmitter {
   //
   // EmitYourSpecificKernelCode(ir_arrays);
   // ```
-  StatusOr<std::optional<std::vector<llvm_ir::IrArray>>>
+  StatusOr<std::optional<std::pair<std::vector<llvm_ir::IrArray> /*inputs*/,
+                                   std::vector<llvm_ir::IrArray> /*outputs*/>>>
   BuildKernelThunkForFusion(mlir::lmhlo::FusionOp fusion_op,
                             const LaunchDimensions& launch_dimensions,
                             absl::string_view discriminator = "");
@@ -509,17 +500,21 @@ class IrEmitterUnnested : public IrEmitter {
   // All input and output tensors of `op` are passed to the kernel.
   //
   // TODO(tdanyluk): Consider also reusing non-fusion kernels.
-  StatusOr<std::vector<llvm_ir::IrArray>> BuildKernelThunkForNonFusionOp(
-      mlir::Operation* op, const LaunchDimensions& launch_dimensions);
+  StatusOr<std::pair<std::vector<llvm_ir::IrArray> /*inputs*/,
+                     std::vector<llvm_ir::IrArray> /*outputs*/>>
+  BuildKernelThunkForNonFusionOp(mlir::Operation* op,
+                                 const LaunchDimensions& launch_dimensions);
 
   // Builds a kernel thunk for a non-fusion operation, without reuse.
   //
   // Only the tensors specified in `needed_operands` are passed to the kernel.
   //
   // TODO(tdanyluk): Consider also reusing non-fusion kernels.
-  StatusOr<std::vector<llvm_ir::IrArray>> BuildKernelThunkForNonFusionOp(
-      mlir::Operation* op, mlir::ValueRange needed_operands,
-      const LaunchDimensions& launch_dimensions);
+  StatusOr<std::pair<std::vector<llvm_ir::IrArray> /*inputs*/,
+                     std::vector<llvm_ir::IrArray> /*outputs*/>>
+  BuildKernelThunkForNonFusionOp(mlir::Operation* op,
+                                 mlir::ValueRange needed_operands,
+                                 const LaunchDimensions& launch_dimensions);
 
   // Returns a thunk that, given a reduce or select-and-scatter op,
   // initializes its memory to the appropriate initial value.
