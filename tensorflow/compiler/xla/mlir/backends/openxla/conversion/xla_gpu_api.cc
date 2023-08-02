@@ -18,6 +18,8 @@ limitations under the License.
 #include <string_view>
 
 #include "third_party/iree/llvm-external-projects/iree-dialects/include/iree-dialects/Dialect/Input/InputDialect.h"
+#include "third_party/iree/llvm-external-projects/iree-dialects/include/iree-dialects/Dialect/Input/InputOps.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -29,6 +31,9 @@ namespace xla::gpu {
 
 using namespace mlir;                 // NOLINT
 using namespace mlir::iree_compiler;  // NOLINT
+
+using arith::ConstantIndexOp;
+using arith::ConstantIntOp;
 
 SymbolTable &XlaGpuApi::symTable(ModuleOp module) {
   return sym_table_.getSymbolTable(module);
@@ -52,6 +57,10 @@ func::FuncOp XlaGpuApi::addDecl(OpBuilder &b, ModuleOp module,
   return fn;
 }
 
+//===----------------------------------------------------------------------===//
+// Helper functions to build XLA:GPU API arguments.
+//===----------------------------------------------------------------------===//
+
 /*static*/ Type XlaGpuApi::getI32ListType(OpBuilder &b) {
   return b.getType<IREE::Input::ListType>(b.getI32Type());
 }
@@ -59,6 +68,52 @@ func::FuncOp XlaGpuApi::addDecl(OpBuilder &b, ModuleOp module,
 /*static*/ Type XlaGpuApi::getBufferViewListType(OpBuilder &b) {
   return b.getType<IREE::Input::ListType>(
       b.getType<IREE::Input::BufferViewType>());
+}
+
+/*static*/ TypedValue<IREE::Input::ListType> XlaGpuApi::getI32List(
+    ImplicitLocOpBuilder &b, ArrayRef<int64_t> values) {
+  Value size = b.create<ConstantIndexOp>(values.size());
+  Value list = b.create<IREE::Input::ListCreateOp>(getI32ListType(b), size);
+
+  if (!values.empty()) b.create<IREE::Input::ListResizeOp>(list, size);
+  for (auto indexed : llvm::enumerate(values)) {
+    Value index = b.create<ConstantIndexOp>(indexed.index());
+    Value value = b.create<ConstantIntOp>(indexed.value(), 32);
+    b.create<IREE::Input::ListSetOp>(list, index, value);
+  }
+
+  return list.cast<TypedValue<IREE::Input::ListType>>();
+}
+
+/*static*/ TypedValue<IREE::Input::BufferViewType> XlaGpuApi::getBufferView(
+    ImplicitLocOpBuilder &b, TypedValue<TensorType> tensor) {
+  // Skip exporting tensor that was just imported from a buffer view.
+  if (auto tensor_import = dyn_cast_or_null<IREE::Input::TensorImportOp>(
+          tensor.getDefiningOp())) {
+    return cast<TypedValue<IREE::Input::BufferViewType>>(
+        tensor_import.getSource());
+  }
+
+  Value view = b.create<IREE::Input::TensorExportOp>(
+      b.getType<IREE::Input::BufferViewType>(), tensor,
+      /*source_dims=*/ValueRange());
+  return cast<TypedValue<IREE::Input::BufferViewType>>(view);
+}
+
+/*static*/ TypedValue<IREE::Input::ListType> XlaGpuApi::getBufferViewList(
+    ImplicitLocOpBuilder &b, ArrayRef<TypedValue<TensorType>> tensors) {
+  Type type = XlaGpuApi::getBufferViewListType(b);
+  Value size = b.create<ConstantIndexOp>(tensors.size());
+  Value list = b.create<IREE::Input::ListCreateOp>(type, size);
+
+  if (!tensors.empty()) b.create<IREE::Input::ListResizeOp>(list, size);
+  for (auto indexed : llvm::enumerate(tensors)) {
+    Value index = b.create<ConstantIndexOp>(indexed.index());
+    Value view = getBufferView(b, indexed.value());
+    b.create<IREE::Input::ListSetOp>(list, index, view);
+  }
+
+  return list.cast<TypedValue<IREE::Input::ListType>>();
 }
 
 //===----------------------------------------------------------------------===//

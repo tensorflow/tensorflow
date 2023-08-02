@@ -102,13 +102,8 @@ struct ConvertMemrefViewOp : public OpConversionPattern<memref::ViewOp> {
       return rewriter.notifyMatchFailure(op, "expected a memref result");
 
     auto source = adaptor.getSource().cast<BlockArgument>();
-
-    // TODO(ezhulenev): Is it really needed? Try to delete it.
-    auto barrier =
-        b.create<IREE::Input::OptimizationBarrierOp>(source).getResult(0);
-
     auto tensor_import =
-        reinterpretCastTensor(b, *getTypeConverter(), barrier,
+        reinterpretCastTensor(b, *getTypeConverter(), source,
                               adaptor.getByteShift(), memref, match_failure);
     if (failed(tensor_import)) return failure();
     rewriter.replaceOp(op, tensor_import->getResult());

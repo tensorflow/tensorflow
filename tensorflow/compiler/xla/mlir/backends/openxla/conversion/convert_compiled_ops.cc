@@ -66,36 +66,6 @@ using arith::ConstantIndexOp;
 using arith::ConstantIntOp;
 
 //===----------------------------------------------------------------------===//
-// Helper functions to build arguments to API functions.
-//===----------------------------------------------------------------------===//
-
-// Exports tensor as `!iree_input.buffer_view`.
-TypedValue<IREE::Input::BufferViewType> getBufferView(
-    ImplicitLocOpBuilder &b, TypedValue<TensorType> tensor) {
-  Value view = b.create<IREE::Input::TensorExportOp>(
-      b.getType<IREE::Input::BufferViewType>(), tensor,
-      /*source_dims=*/ValueRange());
-  return cast<TypedValue<IREE::Input::BufferViewType>>(view);
-}
-
-// Creates `iree_input.list<!iree_input.buffer_view>` list.
-TypedValue<IREE::Input::ListType> getBufferViewList(
-    ImplicitLocOpBuilder &b, ArrayRef<TypedValue<TensorType>> values) {
-  Type type = XlaGpuApi::getBufferViewListType(b);
-  Value size = b.create<ConstantIndexOp>(values.size());
-  Value list = b.create<IREE::Input::ListCreateOp>(type, size);
-
-  if (!values.empty()) b.create<IREE::Input::ListResizeOp>(list, size);
-  for (auto indexed : llvm::enumerate(values)) {
-    Value index = b.create<ConstantIndexOp>(indexed.index());
-    Value view = getBufferView(b, indexed.value());
-    b.create<IREE::Input::ListSetOp>(list, index, view);
-  }
-
-  return list.cast<TypedValue<IREE::Input::ListType>>();
-}
-
-//===----------------------------------------------------------------------===//
 // Helper functions to work with ThunkSequence
 //===----------------------------------------------------------------------===//
 
@@ -520,8 +490,8 @@ LogicalResult ConvertCompiledOpToApiCall<OpTy>::matchAndRewrite(
     assert(src && "unknown mapping from `src` memref to a tensor");
     assert(dst && "unknown mapping from `dst` memref to a tensor");
 
-    auto src_view = getBufferView(b, src);
-    auto dst_view = getBufferView(b, dst);
+    auto src_view = api.getBufferView(b, src);
+    auto dst_view = api.getBufferView(b, dst);
     SmallVector<Value> args = {getExecutionContext(op), dst_view, src_view};
 
     func::FuncOp memcpy = api.getD2DMemcpy(b, module);
@@ -574,7 +544,7 @@ LogicalResult ConvertCompiledOpToApiCall<OpTy>::matchAndRewrite(
     auto dispatch_args = getDispatchArguments(op, kernel, state);
     auto &tensors = dispatch_args.second;
 
-    Value buffer_views = getBufferViewList(b, tensors);
+    Value buffer_views = api.getBufferViewList(b, tensors);
 
     // Prepare arguments for the kernel dispatch API call.
     SmallVector<Value> args = {getExecutionContext(op), loaded_kernel,

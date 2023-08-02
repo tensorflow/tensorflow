@@ -40,30 +40,8 @@ namespace {
 using namespace mlir;                 // NOLINT
 using namespace mlir::iree_compiler;  // NOLINT
 
-using arith::ConstantIndexOp;
 using arith::ConstantIntOp;
 using arith::ConstantOp;
-
-//===----------------------------------------------------------------------===//
-// Helper functions to build arguments to API functions.
-//===----------------------------------------------------------------------===//
-
-// Creates `iree_input.list<i32>` list from the given values.
-TypedValue<IREE::Input::ListType> getI32List(ImplicitLocOpBuilder &b,
-                                             ArrayRef<int64_t> values) {
-  Value size = b.create<ConstantIndexOp>(values.size());
-  Value list =
-      b.create<IREE::Input::ListCreateOp>(XlaGpuApi::getI32ListType(b), size);
-
-  if (!values.empty()) b.create<IREE::Input::ListResizeOp>(list, size);
-  for (auto indexed : llvm::enumerate(values)) {
-    Value index = b.create<ConstantIndexOp>(indexed.index());
-    Value value = b.create<ConstantIntOp>(indexed.value(), 32);
-    b.create<IREE::Input::ListSetOp>(list, index, value);
-  }
-
-  return list.cast<TypedValue<IREE::Input::ListType>>();
-}
 
 //===----------------------------------------------------------------------===//
 // Converts lmhlo_gpu.gemm op to OpenXLA runtime calls
@@ -73,10 +51,12 @@ TypedValue<DotDimensionNumbersType> getDotDimensionNumbers(
     XlaGpuApi &api, ImplicitLocOpBuilder &b, ModuleOp module,
     lmhlo_gpu::GEMMOp op) {
   mhlo::DotDimensionNumbersAttr attr = op.getDotDimensionNumbersAttr();
-  SmallVector<Value> args = {getI32List(b, attr.getLhsBatchingDimensions()),
-                             getI32List(b, attr.getRhsBatchingDimensions()),
-                             getI32List(b, attr.getLhsContractingDimensions()),
-                             getI32List(b, attr.getRhsContractingDimensions())};
+  SmallVector<Value> args = {
+      api.getI32List(b, attr.getLhsBatchingDimensions()),
+      api.getI32List(b, attr.getRhsBatchingDimensions()),
+      api.getI32List(b, attr.getLhsContractingDimensions()),
+      api.getI32List(b, attr.getRhsContractingDimensions()),
+  };
 
   auto api_func = api.getCreateDotDimensionsNumbers(b, module);
   auto call = b.create<func::CallOp>(api_func.getSymName(),
@@ -95,7 +75,7 @@ TypedValue<DotPrecisionType> getDotPrecision(XlaGpuApi &api,
         return static_cast<int64_t>(value);
       }));
 
-  SmallVector<Value> args = {getI32List(b, precision)};
+  SmallVector<Value> args = {api.getI32List(b, precision)};
 
   auto api_func = api.getCreateDotPrecision(b, module);
   auto call = b.create<func::CallOp>(api_func.getSymName(),

@@ -13,8 +13,7 @@ func.func @main(%arg0: memref<12xi8>) {
 // CHECK:   %[[ARG0:.*]]: tensor<12xi8>
 // CHECK: ) {
 // CHECK:   %[[C0:.*]] = arith.constant 0 : index
-// CHECK:   %[[B0:.*]] = iree_input.optimization_barrier %[[ARG0]]
-// CHECK:   %[[BUF:.*]] = iree_input.tensor.export %[[B0]]
+// CHECK:   %[[BUF:.*]] = iree_input.tensor.export %[[ARG0]]
 // CHECK:   %[[C3:.*]] = arith.constant 3 : index
 // CHECK:   %[[C12:.*]] = arith.constant 12 : index
 // CHECK:   %[[TYPE:.*]] = arith.constant 553648160 : i32
@@ -40,8 +39,7 @@ func.func @main(%arg0: memref<12xi8>) {
 // CHECK:   %[[ARG0:.*]]: tensor<12xi8>
 // CHECK: ) {
 // CHECK:   %[[C8:.*]] = arith.constant 8 : index
-// CHECK:   %[[B0:.*]] = iree_input.optimization_barrier %[[ARG0]]
-// CHECK:   %[[BUF:.*]] = iree_input.tensor.export %[[B0]]
+// CHECK:   %[[BUF:.*]] = iree_input.tensor.export %[[ARG0]]
 // CHECK:   %[[C1:.*]] = arith.constant 1 : index
 // CHECK:   %[[C4:.*]] = arith.constant 4 : index
 // CHECK:   %[[TYPE:.*]] = arith.constant 553648160 : i32
@@ -99,8 +97,7 @@ func.func @main(%arg0: memref<66560xi8>) {
 // CHECK:   %[[ARG0:.*]]: tensor<66560xi8>
 // CHECK: ) {
 // CHECK:   %[[C0:.*]] = arith.constant 0 : index
-// CHECK:   %[[B0:.*]] = iree_input.optimization_barrier %[[ARG0]]
-// CHECK:   %[[BUF:.*]] = iree_input.tensor.export %[[B0]]
+// CHECK:   %[[BUF:.*]] = iree_input.tensor.export %[[ARG0]]
 // CHECK:   %[[C1:.*]] = arith.constant 1 : index
 // CHECK:   %[[C4:.*]] = arith.constant 4 : index
 // CHECK:   %[[C128:.*]] = arith.constant 128 : index

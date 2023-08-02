@@ -43,15 +43,6 @@ using namespace mlir::iree_compiler;  // NOLINT
 // TODO(ezhulenev): Rewrite while loops with statically known trip count to
 // scf.for loops (see `op.getTripCount()` attribute).
 
-// Exports tensor as `!iree_input.buffer_view`.
-TypedValue<IREE::Input::BufferViewType> getBufferView(
-    ImplicitLocOpBuilder &b, TypedValue<TensorType> tensor) {
-  Value view = b.create<IREE::Input::TensorExportOp>(
-      b.getType<IREE::Input::BufferViewType>(), tensor,
-      /*source_dims=*/ValueRange());
-  return cast<TypedValue<IREE::Input::BufferViewType>>(view);
-}
-
 //===----------------------------------------------------------------------===//
 // Helper functions for de-bufferizing operatrions with nested regions
 //===----------------------------------------------------------------------===//
@@ -304,10 +295,10 @@ struct ConvertTerminatorOpToApiCall
 
     // Convert lmhlo.terminator in the before block to scf.condition operation
     if (auto *cond = op->getBlock(); cond == &loop.getBefore().front()) {
-      SmallVector<Value> args = {
-          getExecutionContext(op),
-          getBufferView(b, state.remapped[cond][(*converted)[loop].predicate]),
-          b.create<arith::ConstantIntOp>(0, 32)};
+      auto predicate = state.remapped[cond][(*converted)[loop].predicate];
+      SmallVector<Value> args = {getExecutionContext(op),
+                                 api.getBufferView(b, predicate),
+                                 b.create<arith::ConstantIntOp>(0, 32)};
 
       auto api_func = api.getLoadI1Memcpy(b, module);
       auto call = b.create<func::CallOp>(api_func.getSymName(),

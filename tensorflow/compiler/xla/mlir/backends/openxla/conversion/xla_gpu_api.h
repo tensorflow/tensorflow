@@ -18,9 +18,11 @@ limitations under the License.
 
 #include <string_view>
 
+#include "third_party/iree/llvm-external-projects/iree-dialects/include/iree-dialects/Dialect/Input/InputDialect.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 
 namespace xla::gpu {
@@ -29,11 +31,29 @@ namespace xla::gpu {
 // integration: device kernel launches and third party libraries.
 class XlaGpuApi {
  public:
-  // Returns  `!iree_input.list<i32>` type.
+  //===--------------------------------------------------------------------===//
+  // Helper functions to build XLA:GPU API arguments.
+  //===--------------------------------------------------------------------===//
+
+  // Returns `!iree_input.list<i32>` type.
   static mlir::Type getI32ListType(mlir::OpBuilder &b);
 
   // Returns `!iree_input.list<!iree_input.buffer_view>` type.
   static mlir::Type getBufferViewListType(mlir::OpBuilder &b);
+
+  // Constructs `!iree_input.list<i32>` list from given values.
+  static mlir::TypedValue<mlir::iree_compiler::IREE::Input::ListType>
+  getI32List(mlir::ImplicitLocOpBuilder &b, llvm::ArrayRef<int64_t> values);
+
+  // Exports tensor as `!iree_input.buffer_view`.
+  static mlir::TypedValue<mlir::iree_compiler::IREE::Input::BufferViewType>
+  getBufferView(mlir::ImplicitLocOpBuilder &b,
+                mlir::TypedValue<mlir::TensorType> tensor);
+
+  // Constructs `!iree_input.list<!iree_input.buffer_view>` list from tensors.
+  static mlir::TypedValue<mlir::iree_compiler::IREE::Input::ListType>
+  getBufferViewList(mlir::ImplicitLocOpBuilder &b,
+                    llvm::ArrayRef<mlir::TypedValue<mlir::TensorType>> tensors);
 
   //===--------------------------------------------------------------------===//
   // XLA:GPU kernel APIs

@@ -35,13 +35,9 @@ func.func @fusion(
 // CHECK:   %[[C3:.*]] = arith.constant 3 : index
 // CHECK:   %[[ARGS:.*]] = iree_input.list.create %[[C3]]
 // CHECK-SAME: !iree_input.list<!iree_input.buffer_view>
-//
-// CHECK:   %[[BUF0:.*]] = iree_input.tensor.export %[[TENSOR0]]
-// CHECK:   iree_input.list.set {{.*}}, %[[BUF0]]
-// CHECK:   %[[BUF1:.*]] = iree_input.tensor.export %[[TENSOR1]]
-// CHECK:   iree_input.list.set {{.*}}, %[[BUF1]]
-// CHECK:   %[[BUF2:.*]] = iree_input.tensor.export %[[TENSOR2]]
-// CHECK:   iree_input.list.set {{.*}}, %[[BUF2]]
+// CHECK:   iree_input.list.set
+// CHECK:   iree_input.list.set
+// CHECK:   iree_input.list.set
 //
 // CHECK:   call @xla_gpu.kernel.dispatch(%[[CTX]], %[[KERNEL]], %[[ARGS]]
 // CHECK-SAME:   (!xla_gpu.execution_context, !xla_gpu.kernel,
