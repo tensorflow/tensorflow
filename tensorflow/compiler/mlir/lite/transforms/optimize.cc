@@ -169,6 +169,22 @@ bool AreLastTwoDimsTransposed(Value permutation) {
          (perm_values[idx + 1].getSExtValue() == idx);
 }
 
+// Gets the new type after transposing the last 2 dimensions.
+Type TransposeLastTwoDims(Type type) {
+  auto shaped_type = type.dyn_cast<ShapedType>();
+  if (!shaped_type.hasStaticShape() || shaped_type.getRank() < 2) {
+    return nullptr;
+  }
+  int rank = shaped_type.getRank();
+  if (rank < 2) {
+    return nullptr;
+  }
+  SmallVector<int64_t> new_shape(shaped_type.getShape().begin(),
+                                 shaped_type.getShape().end());
+  std::swap(new_shape[rank - 1], new_shape[rank - 2]);
+  return shaped_type.clone(new_shape);
+}
+
 // Returns whether the given type `a` is broadcast-compatible with `b`.
 bool IsBroadcastableElementsAttrAndType(Type a, Type b) {
   return OpTrait::util::getBroadcastedType(a, b) != Type();
