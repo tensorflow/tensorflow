@@ -156,14 +156,14 @@ if [ -n "${CI_BUILD_USER_FORCE_BADNAME}" ]; then
         CI_BUILD_USER_FORCE_BADNAME_ENV="-e CI_BUILD_USER_FORCE_BADNAME=yes"
 fi
 
+df
 # Run the command inside the container.
 echo "Running '${COMMAND[*]}' inside ${DOCKER_IMG_NAME}..."
 mkdir -p ${WORKSPACE}/bazel-ci_build-cache
 # By default we cleanup - remove the container once it finish running (--rm)
 # and share the PID namespace (--pid=host) so the process inside does not have
 # pid 1 and SIGKILL is propagated to the process inside (jenkins can kill it).
-${DOCKER_BINARY} run --rm --name ${DOCKER_IMG_NAME} --pid=host \
-    -v ${WORKSPACE}/bazel-ci_build-cache:${WORKSPACE}/bazel-ci_build-cache \
+${DOCKER_BINARY} run --name ${DOCKER_IMG_NAME} --pid=host \
     -e "CI_BUILD_HOME=${WORKSPACE}/bazel-ci_build-cache" \
     -e "CI_BUILD_USER=$(id -u -n)" \
     -e "CI_BUILD_UID=$(id -u)" \
@@ -179,3 +179,9 @@ ${DOCKER_BINARY} run --rm --name ${DOCKER_IMG_NAME} --pid=host \
     "${DOCKER_IMG_NAME}" \
     ${CI_COMMAND_PREFIX[@]} \
     ${COMMAND[@]}
+
+df
+
+docker rm -f ${DOCKER_IMG_NAME}
+
+df
