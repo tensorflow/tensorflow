@@ -19,7 +19,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PJRT_C_PJRT_C_API_TEST_BASE_H_
 #define TENSORFLOW_COMPILER_XLA_PJRT_C_PJRT_C_API_TEST_BASE_H_
 
-namespace xla {
 namespace pjrt {
 
 class PjrtCApiTestBase : public ::testing::Test {
@@ -38,6 +37,5 @@ class PjrtCApiTestBase : public ::testing::Test {
 };
 
 }  // namespace pjrt
-}  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_PJRT_C_PJRT_C_API_TEST_BASE_H_

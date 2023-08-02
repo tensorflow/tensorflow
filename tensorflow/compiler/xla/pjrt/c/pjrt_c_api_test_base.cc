@@ -18,7 +18,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 
-namespace xla {
 namespace pjrt {
 namespace {
 
@@ -57,4 +56,3 @@ void PjrtCApiTestBase::destroy_client(PJRT_Client* client) {
 }
 
 }  // namespace pjrt
-}  // namespace xla

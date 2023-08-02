@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 
-namespace xla {
 namespace pjrt {
 namespace {
 
@@ -44,7 +43,7 @@ class PjrtCApiGpuTest : public PjrtCApiTestBase {
 
 std::unique_ptr<::pjrt::PJRT_KeyValueCallbackData> CreateTestCKVCallback(
     absl::flat_hash_map<std::string, std::string>* kv_store, absl::Mutex& mu) {
-  PjRtClient::KeyValueGetCallback kv_get =
+  xla::PjRtClient::KeyValueGetCallback kv_get =
       [kv_store, &mu](const std::string& k,
                       absl::Duration timeout) -> xla::StatusOr<std::string> {
     absl::Duration wait_interval = absl::Milliseconds(10);
@@ -62,7 +61,7 @@ std::unique_ptr<::pjrt::PJRT_KeyValueCallbackData> CreateTestCKVCallback(
     return absl::NotFoundError(
         absl::StrCat(k, " is not found in the kv store."));
   };
-  PjRtClient::KeyValuePutCallback kv_put =
+  xla::PjRtClient::KeyValuePutCallback kv_put =
       [kv_store, &mu](const std::string& k,
                       const std::string& v) -> xla::Status {
     {
@@ -151,4 +150,3 @@ TEST(PjrtCApiGpuKVStoreTest, CreateClientWithKVCallback) {
 }
 }  // namespace
 }  // namespace pjrt
-}  // namespace xla

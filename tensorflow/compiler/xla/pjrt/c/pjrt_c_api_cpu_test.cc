@@ -17,7 +17,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_test.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 
-namespace xla {
 namespace pjrt {
 namespace {
 
@@ -27,4 +26,3 @@ const bool kUnused = (RegisterPjRtCApiTestFactory([]() { return GetPjrtApi(); },
 
 }  // namespace
 }  // namespace pjrt
-}  // namespace xla
