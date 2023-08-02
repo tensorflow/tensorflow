@@ -643,6 +643,15 @@ const PJRT_Api* PjRtCApiMemorySpace::pjrt_c_api() const {
 
 PjRtClient* PjRtCApiMemorySpace::client() const { return client_; }
 
+int PjRtCApiMemorySpace::id() const {
+  PJRT_Memory_Id_Args args;
+  args.struct_size = PJRT_Memory_Id_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.memory = c_memory_;
+  pjrt::LogFatalIfPjrtError(pjrt_c_api()->PJRT_Memory_Id(&args), pjrt_c_api());
+  return args.id;
+}
+
 absl::string_view PjRtCApiMemorySpace::memory_space_kind() const {
   PJRT_Memory_Kind_Args args;
   args.struct_size = PJRT_Memory_Kind_Args_STRUCT_SIZE;

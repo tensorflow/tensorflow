@@ -72,9 +72,7 @@ class PjRtCApiMemorySpace : public PjRtMemorySpace {
     LOG(FATAL) << "PJRT C API does not support PjRtMemorySpace::devices";
   }
 
-  int id() const override {
-    LOG(FATAL) << "PJRT C API does not support PjRtMemorySpace::id";
-  }
+  int id() const override;
 
   absl::string_view memory_space_kind() const override;
 

@@ -691,6 +691,15 @@ PJRT_Error* PJRT_Device_MemoryStats(PJRT_Device_MemoryStats_Args* args) {
 
 // ------------------------------- Memory --------------------------------------
 
+PJRT_Error* PJRT_Memory_Id(PJRT_Memory_Id_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes("PJRT_Memory_Id_Args",
+                                                PJRT_Memory_Id_Args_STRUCT_SIZE,
+                                                args->struct_size));
+
+  args->id = args->memory->memory_space->id();
+  return nullptr;
+}
+
 PJRT_Error* PJRT_Memory_Kind(PJRT_Memory_Kind_Args* args) {
   PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
       "PJRT_Memory_Kind_Args", PJRT_Memory_Kind_Args_STRUCT_SIZE,

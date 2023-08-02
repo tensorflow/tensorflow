@@ -53,7 +53,7 @@ extern "C" {
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 15
+#define PJRT_API_MINOR 16
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -899,6 +899,17 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Device_MemoryStats_Args, peak_pool_bytes_is_set);
 typedef PJRT_Error* PJRT_Device_MemoryStats(PJRT_Device_MemoryStats_Args* args);
 
 //-------------------------------- Memory --------------------------------------
+
+struct PJRT_Memory_Id_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_Memory* memory;
+  int id;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Memory_Id_Args, id);
+
+// The ID of this memory. IDs are unique among memories of this type.
+typedef PJRT_Error* PJRT_Memory_Id(PJRT_Memory_Id_Args* args);
 
 struct PJRT_Memory_Kind_Args {
   size_t struct_size;
@@ -1824,6 +1835,7 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Device_AddressableMemories);
   _PJRT_API_STRUCT_FIELD(PJRT_Device_MemoryStats);
 
+  _PJRT_API_STRUCT_FIELD(PJRT_Memory_Id);
   _PJRT_API_STRUCT_FIELD(PJRT_Memory_Kind);
   _PJRT_API_STRUCT_FIELD(PJRT_Memory_DebugString);
   _PJRT_API_STRUCT_FIELD(PJRT_Memory_ToString);
