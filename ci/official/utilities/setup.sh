@@ -88,7 +88,7 @@ fi
 
 # If enabled, gather test logs into a format that the CI system Kokoro can
 # parse into a list of individual targets.
-if [[ "$TFCI_CAPTURE_LOGS_ENABLE" == 1]]; then
+if [[ "$TFCI_CAPTURE_LOGS_ENABLE" == 1 ]]; then
   capture_test_logs() {
     mkdir -p $TFCI_GIT_DIR/build/logs
     pushd $TFCI_GIT_DIR
