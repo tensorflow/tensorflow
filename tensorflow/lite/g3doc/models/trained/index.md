@@ -9,8 +9,8 @@ models for use with TensorFlow Lite.
 
 You can start browsing TensorFlow Lite models right away based on general use
 cases in the [TensorFlow Lite Examples](../../examples) section, or browse a
-larger set of models on [TensorFlow Hub](https://tfhub.dev/s?deployment-
-format=lite).
+larger set of models on [TensorFlow 
+Hub](https://tfhub.dev/s?deployment-format=lite).
 
 **Important:** TensorFlow Hub lists both regular TensorFlow models and
 TensorFlow Lite format models. These model formats are not interchangeable.
