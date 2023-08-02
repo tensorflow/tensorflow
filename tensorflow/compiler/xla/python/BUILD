@@ -1072,6 +1072,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:types",
+        "//tensorflow/tsl/profiler/convert:xla_op_utils",
         "//tensorflow/tsl/profiler/protobuf:profiled_instructions_proto_cc",
         "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/tsl/profiler/utils:file_system_utils",
