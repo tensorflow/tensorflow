@@ -40,10 +40,12 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/APInt.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/IR/Argument.h"
 #include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
@@ -356,20 +358,13 @@ llvm::GlobalVariable* AllocateShared(
     absl::Span<int64_t const> dimensions_major_to_minor,
     absl::string_view buffer_name) {
   CHECK(!dimensions_major_to_minor.empty());
-  llvm::Type* array_type = nullptr;
-  for (int i = dimensions_major_to_minor.size() - 1; i >= 0; i--) {
-    // Iterate in minor-to-major order.
-    int64_t dim = dimensions_major_to_minor[i];
-    if (!array_type) {
-      array_type = llvm::ArrayType::get(element_type, dim);
-    } else {
-      array_type = llvm::ArrayType::get(array_type, dim);
-    }
+  llvm::Type* ty = element_type;
+  for (auto dim : llvm::reverse(dimensions_major_to_minor)) {
+    ty = llvm::ArrayType::get(ty, dim);
   }
-  array_type = llvm::ArrayType::get(array_type,
-                                    tiling_scheme.GetThreadIdScalingFactor());
+  ty = llvm::ArrayType::get(ty, tiling_scheme.GetThreadIdScalingFactor());
   return llvm_ir::AllocateSharedMemoryTile(
-      builder->GetInsertBlock()->getModule(), array_type, buffer_name);
+      builder->GetInsertBlock()->getModule(), ty, buffer_name);
 }
 
 // Creates accumulator alloca's, populates them with initial values, generates
