@@ -1442,15 +1442,20 @@ class HloInstruction {
   // complete. If ignore_control_predecessors is true, instructions only
   // reachable via control dependencies will not be visited, and the postorder
   // will not take control dependencies into account. It is as if the control
-  // dependencies didn't exist in the graph at all.
+  // dependencies didn't exist in the graph at all. If cross_computation is
+  // true, DFS will go across the computation boundary (i.e., from an
+  // instruction to the root instruction of a computation it calls).
   template <typename HloInstructionPtr>
   Status Accept(DfsHloVisitorBase<HloInstructionPtr>* visitor,
                 bool call_finish_visit = true,
-                bool ignore_control_predecessors = false);
+                bool ignore_control_predecessors = false,
+                bool cross_computation = false);
   Status Accept(ConstDfsHloVisitor* visitor, bool call_finish_visit = true,
-                bool ignore_control_predecessors = false) const {
+                bool ignore_control_predecessors = false,
+                bool cross_computation = false) const {
     return const_cast<HloInstruction*>(this)->Accept(
-        visitor, call_finish_visit, ignore_control_predecessors);
+        visitor, call_finish_visit, ignore_control_predecessors,
+        cross_computation);
   }
 
   // Same as Accept() above, but the order of operand and control predecessor
@@ -2481,8 +2486,9 @@ class HloInstruction {
 };
 
 // Explicit instantiations in hlo_instruction.cc.
-extern template Status HloInstruction::Accept(DfsHloVisitor*, bool, bool);
-extern template Status HloInstruction::Accept(ConstDfsHloVisitor*, bool, bool);
+extern template Status HloInstruction::Accept(DfsHloVisitor*, bool, bool, bool);
+extern template Status HloInstruction::Accept(ConstDfsHloVisitor*, bool, bool,
+                                              bool);
 extern template Status HloInstruction::Visit(DfsHloVisitor* visitor);
 extern template Status HloInstruction::Visit(ConstDfsHloVisitor* visitor);
 
