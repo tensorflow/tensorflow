@@ -1513,21 +1513,27 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           loc, return_types, llvm::ArrayRef(operands).take_front(num_inputs),
           llvm::ArrayRef(operands).drop_front(num_inputs),
           ConvertDimensions(instruction->dimensions()));
-      for (auto attr : attributes) {
-        reduce->setAttr(attr.getName(), attr.getValue());
-      }
       TF_RETURN_IF_ERROR(ImportAsRegion(*instruction->to_apply(),
                                         &reduce.getBody(),
                                         /*flatten_region_arg_tuple=*/true));
 
       // Check if the output needs to be tupled.
       if (return_types.size() == 1 && return_types.front() == result_type) {
+        for (auto attr : attributes) {
+          reduce->setAttr(attr.getName(), attr.getValue());
+        }
         return reduce.getOperation();
       }
 
-      return func_builder
-          ->create<mlir::mhlo::TupleOp>(loc, result_type, reduce.getResults())
-          .getOperation();
+      mlir::Operation* operation =
+          func_builder
+              ->create<mlir::mhlo::TupleOp>(loc, result_type,
+                                            reduce.getResults())
+              .getOperation();
+      for (auto attr : attributes) {
+        operation->setAttr(attr.getName(), attr.getValue());
+      }
+      return operation;
     }
     case HloOpcode::kReverse: {
       return func_builder
