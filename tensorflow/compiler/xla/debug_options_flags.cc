@@ -119,9 +119,9 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_nccl_termination_timeout_seconds(-1);
   opts.set_xla_gpu_enable_shared_constants(true);
 
-  // OpenXLA/IREE runtime flags.
-  opts.set_xla_gpu_enable_openxla_runtime(false);
-  opts.set_xla_gpu_enable_openxla_hal(true);
+  // XLA:GPU + IREE runtime flags.
+  opts.set_xla_gpu_enable_gpu2_runtime(false);
+  opts.set_xla_gpu_enable_gpu2_hal(true);
 
   // Set 4GB space limit for redzone scratch allocator.
   opts.set_xla_gpu_redzone_scratch_max_megabytes(1LL << 12);
@@ -950,16 +950,16 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_xla_runtime_executable),
       debug_options->xla_gpu_enable_xla_runtime_executable(),
       "Whether to enable XLA runtime for XLA:GPU backend"));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_enable_openxla_runtime",
-      bool_setter_for(&DebugOptions::set_xla_gpu_enable_openxla_runtime),
-      debug_options->xla_gpu_enable_openxla_runtime(),
-      "Whether to enable OpenXLA runtime for XLA:GPU backend"));
   flag_list->push_back(
-      tsl::Flag("xla_gpu_enable_openxla_hal",
-                bool_setter_for(&DebugOptions::set_xla_gpu_enable_openxla_hal),
-                debug_options->xla_gpu_enable_openxla_hal(),
-                "Whether to enable OpenXLA CUDA HAL for XLA:GPU backend"));
+      tsl::Flag("xla_gpu_enable_gpu2_runtime",
+                bool_setter_for(&DebugOptions::set_xla_gpu_enable_gpu2_runtime),
+                debug_options->xla_gpu_enable_gpu2_runtime(),
+                "Whether to enable experimental XLA:GPU runtime"));
+  flag_list->push_back(
+      tsl::Flag("xla_gpu_enable_gpu2_hal",
+                bool_setter_for(&DebugOptions::set_xla_gpu_enable_gpu2_hal),
+                debug_options->xla_gpu_enable_gpu2_hal(),
+                "Whether to enable CUDA HAL in experimental XLA:GPU runtime"));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_nccl_termination_timeout_seconds",
       int64_setter_for(

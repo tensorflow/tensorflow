@@ -41,8 +41,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_types.h"
 #include "tensorflow/compiler/xla/service/gpu/non_atomically_upgradeable_rw_lock.h"
-#include "tensorflow/compiler/xla/service/gpu/openxla/executable.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/executable.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime2/executable.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
@@ -72,17 +72,16 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// If OpenXLA runtime is enabled, it automatically disables "classic" XLA
-// runtime which is enabled by default.
+// If experimental XLA:GPU runtime is enabled, it automatically disables
+// "classic" XLA:GPU runtime which is enabled by default.
 bool IsXlaRuntimeExecutableEnabled(const HloModuleConfig& config) {
   bool runtime = config.debug_options().xla_gpu_enable_xla_runtime_executable();
-  bool openxla = config.debug_options().xla_gpu_enable_openxla_runtime();
-  return runtime && !openxla;
+  bool gpu2 = config.debug_options().xla_gpu_enable_gpu2_runtime();
+  return runtime && !gpu2;
 }
 
-bool IsOpenXlaRuntimeEnabled(const HloModuleConfig& config) {
-  bool openxla = config.debug_options().xla_gpu_enable_openxla_runtime();
-  return openxla;
+bool IsXlaGpu2RuntimeEnabled(const HloModuleConfig& config) {
+  return config.debug_options().xla_gpu_enable_gpu2_runtime();
 }
 
 namespace {
@@ -119,12 +118,12 @@ StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(Params params) {
     return result;
   }
 
-  if (std::holds_alternative<OwnedOpenXlaRuntimeProgram>(executable)) {
-    auto& program = std::get<OwnedOpenXlaRuntimeProgram>(executable);
+  if (std::holds_alternative<OwnedGpu2RuntimeProgram>(executable)) {
+    auto& program = std::get<OwnedGpu2RuntimeProgram>(executable);
     TF_ASSIGN_OR_RETURN(
-        result->openxla_executable_,
-        OpenXlaRuntimeExecutable::Create(std::move(program), result->text(),
-                                         result->binary()));
+        result->gpu2_runtime_executable_,
+        Gpu2RuntimeExecutable::Create(std::move(program), result->text(),
+                                      result->binary()));
     return result;
   }
 
@@ -540,12 +539,13 @@ static Status ExecuteXlaRuntime(const std::string& module_name,
       block_host_until_done ? run_options->stream() : nullptr);
 }
 
-static Status ExecuteOpenXlaRuntime(
-    const std::string& module_name, ModuleIdentifier module_id,
-    OpenXlaRuntimeExecutable& openxla_executable,
-    const ServiceExecutableRunOptions* run_options,
-    const BufferAllocations& buffer_allocations,
-    const BufferAllocation* temp_buffer, bool block_host_until_done) {
+static Status ExecuteXlaRuntime2(const std::string& module_name,
+                                 ModuleIdentifier module_id,
+                                 Gpu2RuntimeExecutable& gpu2_executable,
+                                 const ServiceExecutableRunOptions* run_options,
+                                 const BufferAllocations& buffer_allocations,
+                                 const BufferAllocation* temp_buffer,
+                                 bool block_host_until_done) {
   uint64_t start_nanos = tsl::Env::Default()->NowNanos();
 
   tsl::profiler::TraceMe hlo_module_activity(
@@ -562,7 +562,7 @@ static Status ExecuteOpenXlaRuntime(
   });
 
   auto executed =
-      openxla_executable.Execute(run_options, buffer_allocations, temp_buffer);
+      gpu2_executable.Execute(run_options, buffer_allocations, temp_buffer);
   if (!executed.ok()) return executed;
 
   return MaybeSyncAndProfile(
@@ -836,10 +836,10 @@ Status GpuExecutable::ExecuteThunksOrXlaRuntime(
                              temp_buffer, block_host_until_done, gpu_lock);
   }
 
-  if (openxla_executable_) {
-    return ExecuteOpenXlaRuntime(module_name_, unique_id, *openxla_executable_,
-                                 run_options, buffer_allocations, temp_buffer,
-                                 block_host_until_done);
+  if (gpu2_runtime_executable_) {
+    return ExecuteXlaRuntime2(
+        module_name_, unique_id, *gpu2_runtime_executable_, run_options,
+        buffer_allocations, temp_buffer, block_host_until_done);
   }
 
   return FailedPrecondition("Expected XLA gpu executable is not supplied.");

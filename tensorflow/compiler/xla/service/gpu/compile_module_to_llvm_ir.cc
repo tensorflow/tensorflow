@@ -41,7 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/mlir/backends/gpu/transforms/passes.h"
-#include "tensorflow/compiler/xla/mlir/backends/openxla/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir/backends/gpu2/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compilation_pipeline_gpu.h"
 #include "tensorflow/compiler/xla/mlir_hlo/transforms/gpu_passes.h"
 #include "tensorflow/compiler/xla/service/bitcast_dtypes_expander.h"
@@ -132,21 +132,22 @@ static Status LowerToXlaGpuRuntime(mlir::ModuleOp module,
   return OkStatus();
 }
 
-// Lowers MLIR module to the OpenXla runtime (aka IREE input dialects).
-static Status LowerToOpenXlaRuntime(mlir::ModuleOp module,
+// Lowers MLIR module to the XLA:GPU experimental runtime (IREE input dialects).
+static Status LowerToXlaGpu2Runtime(mlir::ModuleOp module,
                                     llvm::StringRef entry_function_name,
                                     llvm::ArrayRef<int64_t> buffer_sizes,
                                     ThunkSequence* thunk_sequence,
                                     const DebugOptions& debug_options) {
   mlir::PassManager pm(module->getName(), mlir::PassManager::Nesting::Implicit);
 
-  OpenXlaBackend backend = debug_options.xla_gpu_enable_openxla_hal()
-                               ? OpenXlaBackend::kHAL
-                               : OpenXlaBackend::kStreamExecutor;
-  populateOpenXlaRuntimePasses(pm, thunk_sequence, backend);
+  RuntimeBackend backend = debug_options.xla_gpu_enable_gpu2_hal()
+                               ? RuntimeBackend::kHAL
+                               : RuntimeBackend::kStreamExecutor;
+  populateGpu2RuntimePasses(pm, thunk_sequence, backend);
 
   if (pm.run(module).failed()) {
-    return InternalError("Failed to lower LMHLO to OpenXLA input dialects.");
+    return InternalError(
+        "Failed to lower LMHLO to XLA:GPU runtime input dialects.");
   }
 
   return OkStatus();
@@ -221,7 +222,7 @@ StatusOr<GpuExecutable::OwnedGpuRuntimeProgram> LowerToJitRt(
       module_config.debug_options());
 }
 
-StatusOr<GpuExecutable::OwnedOpenXlaRuntimeProgram> LowerToOpenXla(
+StatusOr<GpuExecutable::OwnedGpu2RuntimeProgram> LowerToXlaGpu2Runtime(
     std::unique_ptr<mlir::MLIRContext> ctx,
     mlir::OwningOpRef<mlir::ModuleOp> module,
     llvm::StringRef entry_function_name, llvm::ArrayRef<int64_t> buffer_sizes,
@@ -231,8 +232,7 @@ StatusOr<GpuExecutable::OwnedOpenXlaRuntimeProgram> LowerToOpenXla(
   // Forward collective (NCCL) attributes for use by the lowering pipeline.
   ForwardCollectiveAttrs(*module, entry_function_name, module_config);
 
-  // Lower LMHLO operations to the OpenXLA compiler input dialects.
-  TF_RETURN_IF_ERROR(LowerToOpenXlaRuntime(
+  TF_RETURN_IF_ERROR(LowerToXlaGpu2Runtime(
       *module, {entry_function_name.data(), entry_function_name.size()},
       buffer_sizes, thunk_sequence.get(), module_config.debug_options()));
 
@@ -242,7 +242,7 @@ StatusOr<GpuExecutable::OwnedOpenXlaRuntimeProgram> LowerToOpenXla(
                             module_str);
   }
 
-  return std::make_unique<OpenXlaRuntimeProgram>(
+  return std::make_unique<Gpu2RuntimeProgram>(
       std::move(ctx), std::move(module), entry_function_name.str(),
       buffer_sizes.vec(), module_config.debug_options());
 }
@@ -503,13 +503,14 @@ Status CompileModuleToLlvmIrImpl(
     return OkStatus();
   }
 
-  if (IsOpenXlaRuntimeEnabled(hlo_module->config())) {
+  if (IsXlaGpu2RuntimeEnabled(hlo_module->config())) {
     TF_ASSIGN_OR_RETURN(
         results->executable,
-        LowerToOpenXla(std::move(mlir_context), std::move(mlir_module),
-                       entry_function.getName(), buffer_sizes,
-                       hlo_module->config(), ir_emitter->ConsumeThunkSequence(),
-                       /*hlo_module_for_dump=*/hlo_module));
+        LowerToXlaGpu2Runtime(std::move(mlir_context), std::move(mlir_module),
+                              entry_function.getName(), buffer_sizes,
+                              hlo_module->config(),
+                              ir_emitter->ConsumeThunkSequence(),
+                              /*hlo_module_for_dump=*/hlo_module));
     return OkStatus();
   }
 
