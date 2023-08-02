@@ -1850,7 +1850,13 @@ class HloInstruction {
     statistics_viz_.set_stat_index_to_visualize(index);
   }
 
+  // Whether this specific instruction has statistics
   bool has_statistics() const { return !statistics_viz_.statistics().empty(); }
+
+  // Whether any instruction within the same HLO module as this has statistics
+  bool module_has_statistics() const {
+    return statistics_viz_.stat_index_to_visualize() == -1;
+  }
 
   const Statistic& statistic_to_visualize() const {
     return statistics_viz_.statistics().at(
