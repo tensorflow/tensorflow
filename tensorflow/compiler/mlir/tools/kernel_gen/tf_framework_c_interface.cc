@@ -190,7 +190,10 @@ llvm::Expected<std::unique_ptr<ExecutionEngine>> Compile(
             /*jit_compile=*/false,
             /*jit_i64_indexed_for_large_tensors=*/false,
             /*apply_cl_options=*/false);
-    if (!status_or_module.ok()) return nullptr;
+    if (!status_or_module.ok()) {
+      LOG(ERROR) << status_or_module.status();
+      return nullptr;
+    }
     module = std::move(status_or_module.value());
 
     if (!cache_dir.empty() && tenv->RecursivelyCreateDir(cache_dir).ok()) {
@@ -221,7 +224,11 @@ llvm::Expected<std::unique_ptr<ExecutionEngine>> Compile(
   engine_options.transformer = opt_pipeline;
   llvm::Expected<std::unique_ptr<ExecutionEngine>> engine =
       mlir::ExecutionEngine::create(module.get(), engine_options);
-  if (!engine) return nullptr;
+  if (!engine) {
+    LOG(ERROR) << "Failed to create ExecutionEngine: "
+               << toString(engine.takeError());
+    return nullptr;
+  }
 
   // Finally, register the missing symbols.
   engine.get()->registerSymbols(TFFrameworkSymbolMap);
