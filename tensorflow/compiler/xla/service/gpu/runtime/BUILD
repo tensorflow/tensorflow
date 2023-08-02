@@ -157,6 +157,7 @@ cc_library(
         ":support",
         ":topk",
         ":tracing",
+        "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:xla_proto_cc",
         "//tensorflow/compiler/xla/mlir/runtime/transforms:compilation_pipeline_gpu",
         "//tensorflow/compiler/xla/runtime:executable",
@@ -164,10 +165,14 @@ cc_library(
         "//tensorflow/compiler/xla/runtime:jit_executable",
         "//tensorflow/compiler/xla/runtime:module_registry",
         "//tensorflow/compiler/xla/service:executable",
+        "//tensorflow/compiler/xla/service:stream_pool",
         "//tensorflow/compiler/xla/service/gpu:buffer_allocations",
         "//tensorflow/compiler/xla/service/gpu:non_atomically_upgradeable_rw_lock",
+        "//tensorflow/compiler/xla/service/gpu:thunk",
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_stream",
         "//tensorflow/tsl/protobuf:dnn_proto_cc",
+        "@com_google_absl//absl/container:inlined_vector",
     ],
 )
 
