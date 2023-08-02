@@ -79,7 +79,17 @@ bool GetEnvBool(const char* name, bool defval) {
   return has_int && int_env != 0;
 }
 
-}  // namespace
+const char* GetTpuDriverFile() {
+  static const char* tpu_dev_path = []() {
+    struct stat sb;
+    if (stat("/dev/accel0", &sb) == 0) {
+      return "/dev/accel0";
+    } else {
+      return "/dev/vfio/0";
+    }
+  }();
+  return tpu_dev_path;
+}
 
 // This function gets pid of a process and checks if that process is using tpu.
 // It is not able to check processes that are owned by another user.
@@ -92,7 +102,7 @@ bool IsTpuUsed(int64_t pid) {
   std::unique_ptr<DIR, int (*)(DIR*)> fd_dir(raw_fd_dir, closedir);
   struct dirent* ent;
   std::string line;
-  std::string tpu_dev_path = "/dev/accel0";
+  std::string tpu_dev_path = GetTpuDriverFile();
   line.resize(tpu_dev_path.size());
   while ((ent = readdir(raw_fd_dir))) {
     if (!absl::ascii_isdigit(*ent->d_name)) continue;
@@ -130,6 +140,8 @@ tsl::StatusOr<int64_t> FindLibtpuProcess() {
   }
   return tsl::errors::NotFound("did not find which pid uses the libtpu.so");
 }
+
+}  // namespace
 
 tsl::Status TryAcquireTpuLock() {
   static absl::Mutex* mu = new absl::Mutex();
@@ -185,9 +197,10 @@ tsl::Status TryAcquireTpuLock() {
     // File open permission locks multi-user access by default.
     return tsl::errors::Aborted(
         "The TPU is already in use by another process probably owned by "
-        "another user. Run \"$ sudo lsof -w /dev/accel0\" to figure out "
-        "which process is using the TPU. If you still get this message, "
-        "run \"$ sudo rm /tmp/libtpu_lockfile\".");
+        "another user. Run \"$ sudo lsof -w ",
+        GetTpuDriverFile(),
+        "\" to figure out which process is using the TPU. If you still get "
+        "this message, run \"$ sudo rm /tmp/libtpu_lockfile\".");
   }
 
   // lockf() holds the lock until the process exits to guard the underlying
