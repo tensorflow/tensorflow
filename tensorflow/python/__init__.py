@@ -45,8 +45,6 @@ from tensorflow.python.tpu import api
 # Sub-package for performing i/o directly instead of via ops in a graph.
 from tensorflow.python.lib.io import python_io
 
-from tensorflow.python.compat import v2_compat
-
 # Special dunders that we choose to export:
 _exported_dunders = set([
     '__version__',
