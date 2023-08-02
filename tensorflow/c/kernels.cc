@@ -889,3 +889,15 @@ TF_Tensor* TF_AllocateTemp(TF_OpKernelContext* context, TF_DataType dtype,
   }
   return tf_tensor;
 }
+
+void TF_IncNumDeferredOps(TF_OpKernelContext* context) {
+  tensorflow::OpKernelContext* cc_ctx =
+      reinterpret_cast<::tensorflow::OpKernelContext*>(context);
+  cc_ctx->inc_num_deferred_ops_function()();
+}
+
+void TF_DecNumDeferredOps(TF_OpKernelContext* context) {
+  tensorflow::OpKernelContext* cc_ctx =
+      reinterpret_cast<::tensorflow::OpKernelContext*>(context);
+  cc_ctx->dec_num_deferred_ops_function()();
+}
