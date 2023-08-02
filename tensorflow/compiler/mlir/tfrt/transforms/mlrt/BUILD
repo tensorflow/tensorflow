@@ -152,6 +152,7 @@ cc_library(
         ":while_to_map_fn",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
+        "//tensorflow/compiler/mlir/tfrt:export",
         "//tensorflow/compiler/mlir/tfrt:import_model",
         "//tensorflow/compiler/mlir/tfrt:tf_to_tfrt",
         "//tensorflow/compiler/mlir/tfrt:tfrt_compile_options",

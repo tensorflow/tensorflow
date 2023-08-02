@@ -82,6 +82,7 @@ cc_library(
         "//tensorflow/core/profiler/lib:connected_traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
         "//tensorflow/core/protobuf:for_core_protos_cc",
+        "//tensorflow/core/public:version",
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_compat_request_state",
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_execute_compat",
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_utils",
