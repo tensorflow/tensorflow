@@ -451,7 +451,8 @@ def list_physical_devices(device_type=None):
       
     Notes:
     1. If provided with any numerical values or any string other than 
-    'CPU' or 'GPU' it returns an empty list instead of raising error.
+    supported device type such as 'CPU' it returns an empty list instead of
+    raising error.
     2. For default value it returns all physical devices
 
   Returns:
@@ -492,7 +493,8 @@ def list_logical_devices(device_type=None):
       
     Notes:
     1. If provided with any numerical values or any string other than 
-    'CPU' or 'GPU' it returns an empty list instead of raising error.
+    supported device type such as 'CPU' it returns an empty list instead of 
+    raising error.
     2. For default value it returns all logical devices
 
   Returns:
