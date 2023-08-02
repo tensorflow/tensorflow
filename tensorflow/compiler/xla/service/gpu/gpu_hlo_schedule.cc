@@ -232,16 +232,14 @@ CanonicalAsyncOp GpuGetCanonicalAsyncOp(const HloInstruction& hlo) {
   }
 }
 
-SchedulerConfig GetSchedulerConfig(const GpuDeviceInfo& gpu_info) {
+SchedulerConfig GetSchedulerConfig(int64_t memory_limit) {
   SchedulerConfig config;
   config.all_reduce_overlap_limit = 1;
   config.collective_permute_overlap_limit = 1;
   config.use_real_cost_model = false;
   config.aggressive_scheduling_policies = true;
   config.schedule_send_recvs = true;
-
-  // Assume 75% of the total device memory is available for XLA.
-  config.memory_limit = gpu_info.device_memory_size * 0.95;
+  config.memory_limit = memory_limit;
   return config;
 }
 
@@ -593,7 +591,7 @@ int64_t GetSizeOfShape(const Shape& shape, int pointer_size) {
 }
 
 Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
-                         const GpuDeviceInfo& gpu_info) {
+                         int64_t memory_limit) {
   TF_ASSIGN_OR_RETURN(
       HloSchedule schedule,
       ScheduleGpuModuleWithMemoryScheduler(module, pointer_size));
@@ -619,7 +617,7 @@ Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
     return OkStatus();
   }
 
-  SchedulerConfig config = GetSchedulerConfig(gpu_info);
+  SchedulerConfig config = GetSchedulerConfig(memory_limit);
   auto gpu_latency_estimator = std::make_unique<GpuLatencyEstimator>();
 
   std::unique_ptr<LatencyEstimator> latency_estimator;
@@ -667,6 +665,52 @@ HloInstructionSequence PostProcessSchedule(
     const HloInstructionSequence& input) {
   HloInstructionSequence result = PostprocessorToScheduleSyncCollectives(input);
   return PostprocessorToScheduleAsEarlyOrLateAsPossible(result);
+}
+
+// Compute the device memory limit to be used by passes like scheduler and
+// HLO rematerialization.
+int64_t GetSchedulerMemoryLimit(const HloModule* module,
+                                const GpuDeviceInfo& gpu_device_info,
+                                int pointer_size) {
+  // There is a "base" value which is either specified in HloModuleConfig (this
+  // value should take into account the fact that we need to leave some memory
+  // free for allocations that happen outside of XLA's allocator) or
+  // obtained from GPU device info (we scale down this value to leave some space
+  // for these outside XLA's allocator allocation).
+  //
+  // From that base value, subtract any input and output sizes (assuming they
+  // are live throughout the execution) and then apply a slop factor.
+  const int64_t base_limit =
+      module->config().device_memory_size() != 0
+          ? module->config().device_memory_size()
+          : gpu_device_info.device_memory_size * 80 / 100;
+
+  // Find the total size of inputs and outputs.
+  int64_t total_io_size = 0;
+  for (HloInstruction* param :
+       module->entry_computation()->parameter_instructions()) {
+    ShapeUtil::ForEachSubshape(
+        param->shape(),
+        [&](const Shape& subshape, const ShapeIndex& /*index*/) {
+          total_io_size += GetSizeOfShape(subshape, pointer_size);
+        });
+  }
+  ShapeUtil::ForEachSubshape(
+      module->result_shape(),
+      [&](const Shape& subshape, const ShapeIndex& /*index*/) {
+        total_io_size += GetSizeOfShape(subshape, pointer_size);
+      });
+
+  // If any inputs and outputs are aliased, do not double count them.
+  module->input_output_alias_config().ForEachAlias(
+      [&](const ShapeIndex& output_index,
+          const HloInputOutputAliasConfig::Alias&) {
+        const Shape& subshape =
+            ShapeUtil::GetSubshape(module->result_shape(), output_index);
+        total_io_size -= GetSizeOfShape(subshape, pointer_size);
+      });
+
+  return (base_limit - total_io_size) * 95 / 100;
 }
 
 }  // namespace gpu
