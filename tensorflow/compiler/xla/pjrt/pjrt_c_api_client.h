@@ -78,13 +78,9 @@ class PjRtCApiMemorySpace : public PjRtMemorySpace {
 
   absl::string_view memory_space_kind() const override;
 
-  absl::string_view DebugString() const override {
-    LOG(FATAL) << "PJRT C API does not support PjRtMemorySpace::DebugString";
-  }
+  absl::string_view DebugString() const override;
 
-  absl::string_view ToString() const override {
-    LOG(FATAL) << "PJRT C API does not support PjRtMemorySpace::ToString";
-  }
+  absl::string_view ToString() const override;
 
   const PJRT_Api* pjrt_c_api() const;
 

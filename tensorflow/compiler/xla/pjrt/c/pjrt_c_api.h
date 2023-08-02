@@ -53,7 +53,7 @@ extern "C" {
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 14
+#define PJRT_API_MINOR 15
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -912,6 +912,31 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Memory_Kind_Args, memory_kind_size);
 
 // A platform-dependent string that uniquely identifies the kind of the memory.
 typedef PJRT_Error* PJRT_Memory_Kind(PJRT_Memory_Kind_Args* args);
+
+struct PJRT_Memory_DebugString_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_Memory* memory;
+  const char* debug_string;  // out
+  size_t debug_string_size;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Memory_DebugString_Args, debug_string_size);
+
+// Debug string suitable for logging when errors occur. Should be verbose
+// enough to describe the current memory unambiguously.
+typedef PJRT_Error* PJRT_Memory_DebugString(PJRT_Memory_DebugString_Args* args);
+
+struct PJRT_Memory_ToString_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_Memory* memory;
+  const char* to_string;  // out
+  size_t to_string_size;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Memory_ToString_Args, to_string_size);
+
+// Debug string suitable for reading by end users, should be reasonably terse.
+typedef PJRT_Error* PJRT_Memory_ToString(PJRT_Memory_ToString_Args* args);
 
 // ------------------------------- Executables ---------------------------------
 
@@ -1800,6 +1825,8 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Device_MemoryStats);
 
   _PJRT_API_STRUCT_FIELD(PJRT_Memory_Kind);
+  _PJRT_API_STRUCT_FIELD(PJRT_Memory_DebugString);
+  _PJRT_API_STRUCT_FIELD(PJRT_Memory_ToString);
 
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_Destroy);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_Name);

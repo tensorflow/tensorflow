@@ -655,6 +655,26 @@ absl::string_view PjRtCApiMemorySpace::memory_space_kind() const {
   return absl::string_view(args.memory_kind, args.memory_kind_size);
 }
 
+absl::string_view PjRtCApiMemorySpace::DebugString() const {
+  PJRT_Memory_DebugString_Args args;
+  args.struct_size = PJRT_Memory_DebugString_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.memory = c_memory_;
+  pjrt::LogFatalIfPjrtError(pjrt_c_api()->PJRT_Memory_DebugString(&args),
+                            pjrt_c_api());
+  return absl::string_view(args.debug_string, args.debug_string_size);
+}
+
+absl::string_view PjRtCApiMemorySpace::ToString() const {
+  PJRT_Memory_ToString_Args args;
+  args.struct_size = PJRT_Memory_ToString_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.memory = c_memory_;
+  pjrt::LogFatalIfPjrtError(pjrt_c_api()->PJRT_Memory_ToString(&args),
+                            pjrt_c_api());
+  return absl::string_view(args.to_string, args.to_string_size);
+}
+
 // ------------------------------- Executables ---------------------------------
 
 PjRtCApiExecutable::PjRtCApiExecutable(const PJRT_Api* c_api,

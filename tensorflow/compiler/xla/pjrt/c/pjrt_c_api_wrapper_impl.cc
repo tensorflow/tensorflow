@@ -701,6 +701,26 @@ PJRT_Error* PJRT_Memory_Kind(PJRT_Memory_Kind_Args* args) {
   return nullptr;
 }
 
+PJRT_Error* PJRT_Memory_DebugString(PJRT_Memory_DebugString_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Memory_DebugString_Args", PJRT_Memory_DebugString_Args_STRUCT_SIZE,
+      args->struct_size));
+
+  args->debug_string = args->memory->memory_space->DebugString().data();
+  args->debug_string_size = args->memory->memory_space->DebugString().size();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Memory_ToString(PJRT_Memory_ToString_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Memory_ToString_Args", PJRT_Memory_ToString_Args_STRUCT_SIZE,
+      args->struct_size));
+
+  args->to_string = args->memory->memory_space->ToString().data();
+  args->to_string_size = args->memory->memory_space->ToString().size();
+  return nullptr;
+}
+
 // ------------------------------- Executables ---------------------------------
 
 PJRT_Error* PJRT_Executable_Destroy(PJRT_Executable_Destroy_Args* args) {
