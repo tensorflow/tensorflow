@@ -34,17 +34,17 @@ Before sending your pull requests, make sure you do the following:
   reviewer.
 - If the PR didn't meet the validation criteria, we request for additional
   changes to be made to PR to pass quality checks and send it back or on a rare
-  occassion we may reject it.
+  occasion we may reject it.
 
 **3. Review**
 
-- For Valid PR, reviewer (person familiar with the code/functionality) checks if
+- For a valid PR, reviewer (person familiar with the code/functionality) checks if
   the PR looks good or needs additional changes.
-- If all looks good, reviewer would approve the PR.
-- If a change is needed, the contributor is requested to make suggested change.
-- You make the change and submit for the review again.
-- This cycle repeats itself till the PR gets approved.
-- Note: As a friendly reminder we may reach out to you if the PR is awaiting
+- If all looks good, the reviewer will approve the PR.
+- If a change is needed, the contributor is requested to make the suggested change.
+- You make the change and submit it for the review again.
+- This cycle repeats itself untill the PR gets approved.
+- Note: As a friendly reminder, we may reach out to you if the PR is awaiting
   your response for more than 2 weeks.
 
 **4. Approved**
@@ -54,14 +54,14 @@ Before sending your pull requests, make sure you do the following:
 - We can't move forward if these tests fail.
 - In such situations, we may request you to make further changes to your PR for
   the tests to pass.
-- Once the tests pass, we now bring all the code in the internal code base,
+- Once the tests pass, we now bring all the code into the internal code base,
   using a job called "copybara".
 
 **5. Copy to Google Internal codebase and run internal CI**
 
-- Once the PR is in Google codebase, we make sure it integrates well with its
+- Once the PR is in the Google codebase, we make sure it integrates well with its
   dependencies and the rest of the system.
-- Rarely, but If the tests fail at this stage, we cannot merge the code.
+- Rarely, If the tests fail at this stage, we cannot merge the code.
 - If needed, we may come to you to make some changes. At times, it may not be
   you, it may be us who may have hit a snag. Please be patient while we work to
   fix this.
@@ -147,7 +147,7 @@ TensorFlow coding style.
 *   As every PR requires several CPU/GPU hours of CI testing, we discourage
     submitting PRs to fix one typo, one warning,etc. We recommend fixing the
     same issue at the file level at least (e.g.: fix all typos in a file, fix
-    all compiler warning in a file, etc.)
+    all compiler warnings in a file, etc.)
 *   Tests should follow the
     [testing best practices](https://www.tensorflow.org/community/contribute/tests)
     guide.
@@ -234,7 +234,7 @@ There are two ways to run TensorFlow unit tests.
     [Docker images](https://hub.docker.com/r/tensorflow/tensorflow/tags/), e.g.,
     `tensorflow/tensorflow:devel` and `tensorflow/tensorflow:devel-gpu` for
     development to avoid installing the packages directly on your system (in
-    which case remember to change directory from `/root` to `/tensorflow` once
+    which case remember to change the directory from `/root` to `/tensorflow` once
     you get into the running container so `bazel` can find the `tensorflow`
     workspace).
 
@@ -245,7 +245,7 @@ There are two ways to run TensorFlow unit tests.
     export flags="--config=opt -k"
     ```
 
-    If the tests are to be run on GPU, add CUDA paths to LD_LIBRARY_PATH and add
+    If the tests are to be run on the GPU, add CUDA paths to LD_LIBRARY_PATH and add
     the `cuda` option flag
 
     ```bash
