@@ -219,6 +219,10 @@ StatusOr<PjRtDevice*> PjRtCApiClient::LookupAddressableDevice(
   return GetCppDevice(args.addressable_device);
 }
 
+absl::Span<PjRtMemorySpace* const> PjRtCApiClient::memory_spaces() const {
+  return {};
+}
+
 // Initializes `PJRT_Client_Compile_Args`, which will be used to call
 // API PJRT_Client_Compile().
 static StatusOr<std::unique_ptr<PjRtLoadedExecutable>> InitializeArgsAndCompile(
@@ -533,7 +537,21 @@ PjRtCApiDevice::PjRtCApiDevice(PJRT_Device* device, PjRtCApiClient* client)
     : client_(client),
       device_(device),
       description_(client->pjrt_c_api(),
-                   pjrt::GetDeviceDescription(client->pjrt_c_api(), device)) {}
+                   pjrt::GetDeviceDescription(client->pjrt_c_api(), device)) {
+  PJRT_Device_AddressableMemories_Args args;
+  args.struct_size = PJRT_Device_AddressableMemories_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.device = device_;
+  pjrt::LogFatalIfPjrtError(
+      client->pjrt_c_api()->PJRT_Device_AddressableMemories(&args),
+      client->pjrt_c_api());
+  memory_spaces_.reserve(args.num_memories);
+  memory_space_pointers_.reserve(args.num_memories);
+  for (int i = 0; i < args.num_memories; ++i) {
+    memory_spaces_.emplace_back(args.memories[i]);
+    memory_space_pointers_.emplace_back(&memory_spaces_.back());
+  }
+}
 
 PjRtClient* PjRtCApiDevice::client() const { return client_; }
 

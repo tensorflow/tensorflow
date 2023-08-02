@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/graphcycles/graphcycles.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 
@@ -68,8 +69,8 @@ bool hasCycles(const std::vector<std::pair<int64_t, int64_t>>& pairs) {
 // to Send/Recv. We currently limit the transformation to asynchronous
 // CollectivePermuteStart without any cycle in the (source, target)
 // relationship, with only one input and without any context data.
-bool ShouldDecompose(
-    const HloCollectivePermuteInstruction& collective_permute) {
+bool ShouldDecompose(const HloCollectivePermuteInstruction& collective_permute,
+                     int64_t threshold_in_bytes) {
   auto backend_config =
       collective_permute.backend_config<xla::gpu::CollectiveBackendConfig>()
           .value();
@@ -83,6 +84,12 @@ bool ShouldDecompose(
   const Shape& result_shape = collective_permute.shape();
   // Skip the transformation if there is any context data.
   if (result_shape.tuple_shapes_size() != 2) {
+    return false;
+  }
+
+  const Shape& shape = result_shape.tuple_shapes(0);
+  CHECK(shape.IsArray());
+  if (ShapeUtil::ByteSizeOf(shape) < threshold_in_bytes) {
     return false;
   }
   return !hasCycles(collective_permute.source_target_pairs());
@@ -139,6 +146,9 @@ Status DecomposeCollectivePermute(
 
   HloInstruction* recv_data = computation->AddInstruction(
       HloInstruction::CreateGetTupleElement(recv_done, 0));
+  // We want the Send to be scheduled before RecvDone to prevent the scheduler
+  // from interleaving two Send-Recv sequences.
+  TF_RETURN_IF_ERROR(send->AddControlDependencyTo(recv_done));
   // We want the RecvDone to be scheduled before the SendDone, enforce this
   // with a control dependency.
   TF_RETURN_IF_ERROR(recv_done->AddControlDependencyTo(send_done));
@@ -162,7 +172,7 @@ StatusOr<bool> CollectivePermuteDecomposer::Run(
         continue;
       }
       auto collective_permute = Cast<HloCollectivePermuteInstruction>(hlo);
-      if (ShouldDecompose(*collective_permute)) {
+      if (ShouldDecompose(*collective_permute, threshold_in_bytes_)) {
         TF_RETURN_IF_ERROR(
             DecomposeCollectivePermute(collective_permute, comp));
         changed = true;

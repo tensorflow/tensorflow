@@ -325,54 +325,6 @@ gentbl_cc_library(
     ],
 )
 
-gentbl_cc_library(
-    name = "hlo_legalize_tf_inc_gen",
-    compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-rewriters"],
-            "transforms/generated_legalize_hlo.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "transforms/legalize_hlo_patterns.td",
-    deps = [
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
-        "//tensorflow/compiler/xla/mlir_hlo:hlo_ops_td_files",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:FuncTdFiles",
-    ],
-)
-
-cc_library(
-    name = "tf_legalize_hlo",
-    srcs = [
-        "transforms/generated_legalize_hlo.inc",
-        "transforms/legalize_hlo.cc",
-        "transforms/passes.h",
-    ],
-    deps = [
-        ":lower_tf_lib",
-        ":tensorflow",
-        ":tf_device_pass_inc_gen",
-        ":tf_pass_inc_gen",
-        "//tensorflow/compiler/xla/mlir_hlo",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:Analysis",
-        "@llvm-project//mlir:ArithDialect",
-        "@llvm-project//mlir:Dialect",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:Transforms",
-        "@stablehlo//:broadcast_utils",
-        "@stablehlo//:chlo_ops",
-    ],
-)
-
 cc_library(
     name = "tfe_legalize_tfg",
     srcs = [
@@ -1367,7 +1319,6 @@ cc_library(
         ":tensorflow_types",
         ":tf_data_optimization",
         ":tf_device_pass_inc_gen",
-        ":tf_legalize_hlo",
         ":tf_ops_layout_helper",
         ":tf_pass_inc_gen",
         ":tf_savedmodel_pass_inc_gen",

@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/hash/hash.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/tsl/platform/logging.h"
 
@@ -121,6 +122,10 @@ class WarmupStateRegistry {
 };
 
 WarmupStateRegistry& GetGlobalWarmupStateRegistry();
+
+// Utility function that returns whether or not to warmup all batch sizes,
+// based on the state of WarmupStateRegistry.
+bool ShouldWarmupAllBatchSizes(const OpKernelContext* c);
 
 }  // namespace serving
 }  // namespace tensorflow

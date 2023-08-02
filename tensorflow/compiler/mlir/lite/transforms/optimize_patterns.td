@@ -1506,3 +1506,17 @@ def FuseTransposeIntoBatchMatMulLHS: Pat<
   [(AreLastTwoDimsTransposed $perm_value),
    (IsBoolAttrEqual<"false"> $adj_x)]>;
 
+def NotFromDequant : Constraint<CPred<"NotFromDequant($0)">>;
+
+// Fuses TFL_FullyConnectedOp and TFL_TransposeOp Rhs to TFL_BatchMatMulOp
+def FuseTransposeFCRhsToBatchMatmul : Pat<
+  (TFL_FullyConnectedOp
+    2DTensorOf<[F32]>:$lhs,
+    (TFL_TransposeOp TensorOf<[F32]>:$rhs, (Arith_ConstantOp:$perm_value $p0)),
+    $bias, $TFL_AF_None, $TFL_FCWO_Default,
+    $keep_num_dims, $asymmetric_quantize_inputs
+    ),
+  (TFL_BatchMatMulOp $lhs, $rhs, ConstBoolAttrFalse, ConstBoolAttrFalse,
+                     $asymmetric_quantize_inputs),
+  [(AreLastTwoDimsTransposed $perm_value), (IsNoneType $bias),
+   (NotFromDequant $rhs)]>;

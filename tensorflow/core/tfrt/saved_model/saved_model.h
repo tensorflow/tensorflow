@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
@@ -74,6 +75,8 @@ struct Signature {
   // The following two fields should have the same size.
   std::vector<std::string> output_names;
   std::vector<TensorSpec> output_specs;
+
+  proto2::Map<std::string, TensorProto> default_inputs;
 };
 
 }  // namespace internal
@@ -99,6 +102,10 @@ class FunctionMetadata {
 
   const std::vector<TensorSpec>& GetOutputSpecs() const {
     return signature_->output_specs;
+  }
+
+  const proto2::Map<std::string, TensorProto>& GetDefaultInputs() const {
+    return signature_->default_inputs;
   }
 
  private:

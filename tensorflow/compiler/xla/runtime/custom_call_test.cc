@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <numeric>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -1268,6 +1269,45 @@ TEST(CustomCallTest, MemrefF8Arg) {
   EXPECT_EQ(dtype, PrimitiveType::F8E4M3FN);
   EXPECT_EQ(sizes.size(), 1);
   EXPECT_EQ(sizes[0], 42);
+}
+
+TEST(CustomCallTest, MemrefDynamicOffset) {
+  absl::string_view source = R"(
+    func.func private @custom_call(%arg: memref<1xi32, strided<[1], offset: ?>>)
+      attributes { rt.dynamic, rt.custom_call = "test.custom_call" }
+
+    func.func @test(%arg0: memref<8xi32>, %arg1: i32) {
+      %0 = arith.index_castui %arg1 : i32 to index
+      %1 = memref.subview %arg0[%0] [1] [1]
+          : memref<8xi32> to memref<1xi32, strided<[1], offset: ?>>
+      call @custom_call(%1) : (memref<1xi32, strided<[1], offset: ?>>) -> ()
+      return
+    }
+  )";
+
+  int32_t value = 0;
+
+  auto handler = [&](StridedMemrefView arg0) {
+    value = reinterpret_cast<int32_t*>(arg0.data)[0];
+    return success();
+  };
+
+  CustomCallRegistry registry = {[&](DynamicCustomCallRegistry& registry) {
+    registry.Register(CustomCall::Bind("test.custom_call")
+                          .Arg<StridedMemrefView>()
+                          .To(handler));
+  }};
+
+  std::vector<int32_t> data(8);
+  std::iota(data.begin(), data.end(), 0);
+  MemrefDesc arg0(PrimitiveType::S32, data.data(), 0, {8}, {1});
+
+  Arguments<MemrefDesc, ScalarArg> args(2);
+  args.emplace_back<MemrefDesc>(std::move(arg0));
+  args.emplace_back<ScalarArg>(int32_t{4});
+
+  ASSERT_TRUE(CompileAndExecute(source, args, registry).ok());
+  EXPECT_EQ(value, 4);
 }
 
 //===----------------------------------------------------------------------===//

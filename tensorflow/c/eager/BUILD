@@ -1097,6 +1097,25 @@ cc_library(
     alwayslink = 1,
 )
 
+tf_cuda_cc_test(
+    name = "dlpack_test",
+    size = "small",
+    srcs = [
+        "dlpack_test.cc",
+    ],
+    args = [],
+    tags = [],
+    deps = [
+        ":c_api",
+        ":dlpack",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/strings",
+        "@dlpack",
+    ],
+)
+
 # TODO(karllessard): only used by //tensorflow/core:mobile_srcs_only_runtime
 # right now, remove this public rule when no longer needed (it should be
 # replaced by TF Lite)

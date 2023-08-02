@@ -250,6 +250,10 @@ struct BuildXlaOpsPassFlags {
   // Disables full embedding pipelining when true. Instead, strict SparseCore
   // TensorCore sequencing will be used.
   bool tf_xla_disable_full_embedding_pipelining;
+
+  // Force the WhileOps in embedding_pipelining and embedding_sequencing to use
+  // this many parallel_iterations
+  int tf_xla_embedding_parallel_iterations;
 };
 
 // Flags for common MLIR configurations.

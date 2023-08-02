@@ -143,6 +143,9 @@ class PjRtClient final
     return &default_compiler_;
   }
 
+  StatusOr<std::shared_ptr<const xla::PjRtTopologyDescription>>
+  GetTopologyForDevices(absl::Span<Device* const> devices) const override;
+
   static char ID;  // NOLINT
 
  private:

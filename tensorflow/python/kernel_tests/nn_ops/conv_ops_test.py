@@ -177,16 +177,14 @@ TEST_PARAMS = [
     ("Conv_NHWC_double_cpu", "NHWC", dtypes.float64, False, "Conv"),
     ("Conv_NHWC_bfloat16_cpu", "NHWC", dtypes.bfloat16, False, "Conv"),
     ("Conv_NHWC_int32_cpu", "NHWC", dtypes.int32, False, "Conv"),
-    # TODO(b/291785218): Enable GPU configs for Conv when GPU implementation is
-    # done.
-    # ("Conv_NHWC_float_gpu", "NHWC", dtypes.float32, True, "Conv"),
-    # ("Conv_NHWC_half_gpu", "NHWC", dtypes.float16, True, "Conv"),
-    # ("Conv_NHWC_double_gpu", "NHWC", dtypes.float64, True, "Conv"),
-    # ("Conv_NHWC_bfloat16_gpu", "NHWC", dtypes.bfloat16, True, "Conv"),
-    # ("Conv_NCHW_float_gpu", "NCHW", dtypes.float32, True, "Conv"),
-    # ("Conv_NCHW_half_gpu", "NCHW", dtypes.float16, True, "Conv"),
-    # ("Conv_NCHW_double_gpu", "NCHW", dtypes.float64, True, "Conv"),
-    # ("Conv_NCHW_bfloat16_gpu", "NCHW", dtypes.bfloat16, True, "Conv")
+    ("Conv_NHWC_float_gpu", "NHWC", dtypes.float32, True, "Conv"),
+    ("Conv_NHWC_half_gpu", "NHWC", dtypes.float16, True, "Conv"),
+    ("Conv_NHWC_double_gpu", "NHWC", dtypes.float64, True, "Conv"),
+    ("Conv_NHWC_bfloat16_gpu", "NHWC", dtypes.bfloat16, True, "Conv"),
+    ("Conv_NCHW_float_gpu", "NCHW", dtypes.float32, True, "Conv"),
+    ("Conv_NCHW_half_gpu", "NCHW", dtypes.float16, True, "Conv"),
+    ("Conv_NCHW_double_gpu", "NCHW", dtypes.float64, True, "Conv"),
+    ("Conv_NCHW_bfloat16_gpu", "NCHW", dtypes.bfloat16, True, "Conv"),
 ]
 
 DILATED_PARAMS = [
@@ -194,10 +192,8 @@ DILATED_PARAMS = [
     ("Conv2D_NHWC_gpu", "NHWC", True, "Conv2D"),
     ("Conv2D_NCHW_gpu", "NCHW", True, "Conv2D"),
     ("Conv_NHWC_cpu", "NHWC", False, "Conv"),
-    # TODO(b/291785218): Enable GPU configs for Conv when GPU implementation is
-    # done.
-    # ("Conv_NHWC_gpu", "NHWC", True, "Conv"),
-    # ("Conv_NCHW_gpu", "NCHW", True, "Conv")
+    ("Conv_NHWC_gpu", "NHWC", True, "Conv"),
+    ("Conv_NCHW_gpu", "NCHW", True, "Conv"),
 ]
 
 
@@ -583,7 +579,9 @@ class Conv2DTest(parameterized.TestCase, test.TestCase):
   ):
     if (gpu_only and not use_gpu) or not test.is_gpu_available(cuda_only=True):
       self.skipTest("GPU not available")
-    if test_grappler_layout_optimizer or data_format != "NHWC":
+    if (
+        test_grappler_layout_optimizer or data_format != "NHWC"
+    ) and dtype == dtypes.int32:
       self.skipTest("int32 not supported")
 
     tensors = []

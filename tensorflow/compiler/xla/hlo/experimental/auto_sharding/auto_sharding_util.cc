@@ -933,7 +933,7 @@ void RemoveDuplicatedStrategy(std::unique_ptr<StrategyVector>& strategies) {
       if (!strategies->leaf_vector[i].input_shardings.empty()) {
         for (const auto& sharding :
              strategies->leaf_vector[i].input_shardings) {
-          key += "/" + sharding.ToString();
+          key += "/" + (sharding.has_value() ? sharding->ToString() : "none");
         }
       }
       if (!added.contains(key)) {

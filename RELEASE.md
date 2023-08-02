@@ -88,6 +88,9 @@
       relayouting a tensor according to the layout of another tensor.
     * Added `dtensor.get_default_mesh`, for retrieving the current default
       mesh under the dtensor context.
+    * \*fft\* ops now support dtensors with any layout. Fixed bug in 'fft2d/
+      fft3d', 'ifft2d/ifft3d', 'rfft2d/rfft3d', and 'irfft2d/irfft3d' for
+      sharded input.
 
 *  `tf.experimental.strict_mode`
     * Added a new API, `strict_mode`, which converts all deprecation warnings

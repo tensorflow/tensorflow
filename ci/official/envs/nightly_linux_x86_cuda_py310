@@ -3,6 +3,7 @@
 TFCI_BAZEL_BAZELRC_ARGS=(--bazelrc ./ci/official/bazelrcs/cuda.bazelrc)
 TFCI_BAZEL_COMMON_ARGS=(--config sigbuild_remote_cache_push)
 TFCI_BUILD_PIP_PACKAGE_ARGS=(--nightly_flag)
+TFCI_CAPTURE_LOGS_ENABLE=1
 TFCI_COPYBARA_ENABLE=0
 TFCI_DOCKER_ENABLE=1
 TFCI_DOCKER_GPU_ARGS=(--gpus all)

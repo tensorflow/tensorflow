@@ -237,6 +237,12 @@ class GSPMDSharding : public XLACompatibleSharding {
   std::optional<size_t> hash_;
 };
 
+// pybind11-index-annotation BEGIN
+// refs {
+//   module_path: "tensorflow/compiler/xla/python/xla.cc"
+//   module_arg {}
+// }
+// pybind11-index-annotation END
 void RegisterSharding(pybind11::module& m);
 
 }  // namespace jax

@@ -833,6 +833,22 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Device_LocalHardwareId_Args, local_hardware_id);
 typedef PJRT_Error* PJRT_Device_LocalHardwareId(
     PJRT_Device_LocalHardwareId_Args* args);
 
+typedef struct PJRT_Memory PJRT_Memory;
+
+struct PJRT_Device_AddressableMemories_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_Device* device;
+  // Has the lifetime of `device`.
+  PJRT_Memory** memories;  // out
+  size_t num_memories;     // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Device_AddressableMemories_Args, memories);
+
+// Returns the memories that a device can address.
+typedef PJRT_Error* PJRT_Device_AddressableMemories(
+    PJRT_Device_AddressableMemories_Args* args);
+
 struct PJRT_Device_MemoryStats_Args {
   size_t struct_size;
   void* priv;
@@ -1765,6 +1781,7 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Device_GetDescription);
   _PJRT_API_STRUCT_FIELD(PJRT_Device_IsAddressable);
   _PJRT_API_STRUCT_FIELD(PJRT_Device_LocalHardwareId);
+  _PJRT_API_STRUCT_FIELD(PJRT_Device_AddressableMemories);
   _PJRT_API_STRUCT_FIELD(PJRT_Device_MemoryStats);
 
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_Destroy);

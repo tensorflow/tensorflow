@@ -87,6 +87,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/framework:graph_proto_cc",
+        "//tensorflow/core/framework:tensor_proto_cc",
         "//tensorflow/core/ops",
         "//tensorflow/core/platform:enable_tf2_utils",
         "//tensorflow/core/platform:errors",
@@ -136,6 +137,7 @@ cc_library(
     deps = [
         ":saved_model_lib",
         "//tensorflow/core/framework:graph_proto_cc",
+        "//tensorflow/core/framework:tensor_proto_cc",
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/core/tfrt/fallback:fallback_state",
@@ -158,6 +160,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "//tensorflow/core/framework:graph_proto_cc",
+        "//tensorflow/core/framework:tensor_proto_cc",
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         # TODO(chky): Remove kernel fallback tensor deps.

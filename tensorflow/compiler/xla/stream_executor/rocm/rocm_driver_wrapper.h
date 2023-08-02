@@ -141,10 +141,12 @@ namespace wrap {
   __macro(hipStreamWaitEvent)  // clang-format on
 
 HIP_ROUTINE_EACH(STREAM_EXECUTOR_HIP_WRAP)
+
 #undef HIP_ROUTINE_EACH
 #undef STREAM_EXECUTOR_HIP_WRAP
 #undef TO_STR
 #undef TO_STR_
+
 }  // namespace wrap
 }  // namespace stream_executor
 

@@ -697,7 +697,8 @@ bool CanPropagateThroughAtAggressiveLevel(const HloInstruction& inst,
       inst.opcode() != HloOpcode::kWhile &&
       inst.opcode() != HloOpcode::kDynamicSlice &&
       inst.opcode() != HloOpcode::kOptimizationBarrier &&
-      inst.opcode() != HloOpcode::kConcatenate) {
+      inst.opcode() != HloOpcode::kConcatenate &&
+      inst.opcode() != HloOpcode::kCall) {
     return false;
   }
   // Broadcast propagation should have at least aggressiveness 2.
@@ -2194,6 +2195,15 @@ bool ShardingPropagation::InferShardingFromOperands(
           }
           return false;
         }
+        case HloOpcode::kCall: {
+          int64_t i = instruction->parameter_number();
+          if (parent->operand(i)->has_sharding()) {
+            return MaybeImproveInstructionSharding(
+                parent->operand(i)->sharding(), instruction,
+                may_combine_partial_sharding);
+          }
+          return false;
+        }
         default:
           return false;
       }
@@ -2578,6 +2588,9 @@ StatusOr<bool> ShardingPropagation::Run(
       } else {
         return std::vector<HloInstruction*>{};
       }
+    } else if (inst->opcode() == HloOpcode::kCall) {
+      HloComputation* callee = inst->called_computations().front();
+      return std::vector<HloInstruction*>{inst, callee->root_instruction()};
     } else {
       CHECK(false);
     }
@@ -2608,7 +2621,8 @@ StatusOr<bool> ShardingPropagation::Run(
 
             if (instruction->opcode() == HloOpcode::kConditional ||
                 instruction->opcode() == HloOpcode::kWhile ||
-                instruction->opcode() == HloOpcode::kCustomCall) {
+                instruction->opcode() == HloOpcode::kCustomCall ||
+                instruction->opcode() == HloOpcode::kCall) {
               propagate_to_instruction(instruction);
             }
 
@@ -2635,7 +2649,8 @@ StatusOr<bool> ShardingPropagation::Run(
   for (auto computation : module->computations(execution_threads)) {
     for (auto instruction : computation->instructions()) {
       if (instruction->opcode() == HloOpcode::kWhile ||
-          instruction->opcode() == HloOpcode::kConditional) {
+          instruction->opcode() == HloOpcode::kConditional ||
+          instruction->opcode() == HloOpcode::kCall) {
         // Check if any of the related instructions has sharding, in which case
         // propagate it to the other instructions, so they all share the same
         // sharding, in case the user didn't shard all of them. We don't check

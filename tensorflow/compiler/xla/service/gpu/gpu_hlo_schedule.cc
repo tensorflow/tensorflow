@@ -22,8 +22,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
@@ -548,7 +550,7 @@ std::optional<tensorflow::profiler::ProfiledInstructionsProto> ReadPGLEProfile(
 
 // Return true if the profile is applicable to the module. That is true if every
 // instruction in the profile is present in the module.
-bool IsProfileApplicable(
+Status IsProfileApplicable(
     const HloModule* module,
     const tensorflow::profiler::ProfiledInstructionsProto& profile) {
   absl::flat_hash_set<absl::string_view> instruction_names;
@@ -560,16 +562,22 @@ bool IsProfileApplicable(
 
   for (const auto& cost : profile.costs()) {
     if (!instruction_names.contains(cost.name())) {
-      return false;
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "cost name %s not in module %s", cost.name(), module->name()));
     }
   }
   for (const auto& latency : profile.latencies()) {
-    if (!instruction_names.contains(latency.source()) ||
-        !instruction_names.contains(latency.target())) {
-      return false;
+    if (!instruction_names.contains(latency.source())) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "cost name %s not in module %s", latency.source(), module->name()));
+    }
+
+    if (!instruction_names.contains(latency.target())) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "cost name %s not in module %s", latency.target(), module->name()));
     }
   }
-  return true;
+  return OkStatus();
 }
 
 }  // end namespace
@@ -621,8 +629,11 @@ Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
     latency_estimator = std::make_unique<ProfileGuidedLatencyEstimator>(
         config, std::move(gpu_latency_estimator), profile.value());
     LOG(INFO) << "Found profile, using profile guided latency estimator";
-    if (!IsProfileApplicable(module, profile.value())) {
-      LOG(ERROR) << "!!! PGLE profile likely not applicable to the module";
+    Status s = IsProfileApplicable(module, profile.value());
+    if (!s.ok()) {
+      LOG(INFO) << "PGLE profile may not applicable to the module, but will "
+                   "still be used : "
+                << s.message();
     }
   } else {
     latency_estimator = std::move(gpu_latency_estimator);

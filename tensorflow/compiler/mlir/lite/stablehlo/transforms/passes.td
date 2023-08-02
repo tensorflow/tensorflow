@@ -72,3 +72,9 @@ def UniformQuantizedStablehloToTflPass
     "mlir::TFL::TFLDialect",
   ];
 }
+
+def LegalizeHloToTfPass : Pass<"tf-legalize-hlo", "ModuleOp"> {
+  let summary = "Legalize from MHLO to the TF dialect";
+  let dependentDialects = ["TF::TensorFlowDialect"];
+  let constructor = "mlir::odml::CreateLegalizeHloToTfPass()";
+}

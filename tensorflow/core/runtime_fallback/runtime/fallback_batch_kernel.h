@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/kernels/batching_util/adaptive_shared_batch_scheduler.h"
 #include "tensorflow/core/kernels/batching_util/batch_resource_base.h"
+#include "tensorflow/core/kernels/batching_util/warmup.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/errors.h"
@@ -223,9 +224,18 @@ void BatchFunctionFallbackKernel<BatchResourceType>::ComputeAsync(
           "Provided BEF function doesn't match with BatchResource. Expected:",
           expected_name, " Received:", received_name)),
       done);
-  Status status = (*br)->get()->RegisterInput(
-      random::New64(), c, batcher_queue_,
-      [c]() { return BatchResourceType::CreateBatchTask(c); }, done);
+  const uint64_t guid = random::New64();
+  auto create_batch_task_fn = [c]() {
+    return BatchResourceType::CreateBatchTask(c);
+  };
+  Status status;
+  if (serving::ShouldWarmupAllBatchSizes(c)) {
+    status = (*br)->get()->RegisterWarmupInputs(guid, c, batcher_queue_,
+                                                create_batch_task_fn, done);
+  } else {
+    status = (*br)->get()->RegisterInput(guid, c, batcher_queue_,
+                                         create_batch_task_fn, done);
+  }
   OP_REQUIRES_OK_ASYNC(c, status, done);
   // Assume br calls done, so nothing to do here.
 }
