@@ -29,6 +29,7 @@ tf_proto_library(
     cc_api_version = 2,
     protodeps = [
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_options_proto",
+        "//tensorflow/compiler/mlir/lite/debug:debug_options_proto",
         ":types_proto",
     ],
     visibility = ["//visibility:public"],

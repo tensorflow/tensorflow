@@ -2913,6 +2913,61 @@ TEST_F(AlgebraicSimplifierTest, SimplifyReduceOfConcat) {
                         m::Reduce(m::Parameter(2), m::Op().Is(zero)))));
 }
 
+// Test that reduce of concat is simplified if the concat operand shapes
+// differ and enable_unconditional_reduce_of_concat_replacement() is true.
+TEST_F(AlgebraicSimplifierTest, SimplifyReduceOfConcatWithDifferentShapes) {
+  const char* kModuleStr = R"(
+    HloModule m
+    add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT add = f32[] add(p0, p1)
+    }
+    ENTRY test {
+      p0 = f32[100,100,100]{2,1,0} parameter(0)
+      p1 = f32[100,100,100]{2,1,0} parameter(1)
+      p2 = f32[100,90,100]{2,1,0} parameter(2)
+      cat = f32[100,290,100]{2,1,0} concatenate(p0, p1, p2), dimensions={1}
+      cst = f32[] constant(0)
+      ROOT reduce = f32[100]{0} reduce(cat, cst), dimensions={1,2}, to_apply=add
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Map(m::Map(m::Reduce(m::Parameter(0), m::Constant()),
+                               m::Reduce(m::Parameter(1), m::Constant())),
+                        m::Reduce(m::Parameter(2), m::Constant()))));
+}
+
+// Test that reduce of concat is not simplified if the concat operand shapes
+// differ and enable_unconditional_reduce_of_concat_replacement() is false.
+TEST_F(AlgebraicSimplifierTest,
+       DoNotSimplifyReduceOfConcatBecauseShapesDiffer) {
+  const char* kModuleStr = R"(
+    HloModule m
+    add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT add = f32[] add(p0, p1)
+    }
+    ENTRY test {
+      p0 = f32[100,100,100]{2,1,0} parameter(0)
+      p1 = f32[100,100,100]{2,1,0} parameter(1)
+      p2 = f32[100,90,100]{2,1,0} parameter(2)
+      cat = f32[100,290,100]{2,1,0} concatenate(p0, p1, p2), dimensions={1}
+      cst = f32[] constant(0)
+      ROOT reduce = f32[100]{0} reduce(cat, cst), dimensions={1,2}, to_apply=add
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_enable_unconditional_reduce_of_concat_replacement(false);
+  ASSERT_FALSE(AlgebraicSimplifier(options).Run(m.get()).value());
+}
+
 // Test a concatenate with only empty operands is removed.
 TEST_F(AlgebraicSimplifierTest, OnlyEmptyConcatenateOperands) {
   auto m = CreateNewVerifiedModule();
@@ -5640,6 +5695,35 @@ TEST_F(AlgebraicSimplifierTest, TransposeOfDot) {
             PrecisionConfig::HIGHEST);
 }
 
+TEST_F(AlgebraicSimplifierTest, DotAssociativeReorder) {
+  const char* hlo_string = R"(
+    HloModule module
+
+    ENTRY test {
+        a = f32[2,3,4,5] parameter(0)
+        b = f32[6,7,5] parameter(1)
+        c = f32[4,7] parameter(2)
+        inner_dot = f32[2,3,4,6,7] dot(a,b),
+                    lhs_contracting_dims={3},
+                    rhs_contracting_dims={2}
+        ROOT outer_dot = f32[2,3,6] dot(inner_dot,c),
+                         lhs_contracting_dims={2,4},
+                         rhs_contracting_dims={0,1}
+      }
+    )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options;
+  options.set_use_associative_reordering(true);
+  options.set_associative_reordering_threshold(1.5);
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_TRUE(simplifier.Run(module.get()).value());
+  ASSERT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Dot(m::Parameter(0),
+                                m::Dot(m::Parameter(1), m::Parameter(2)))));
+}
+
 TEST_F(AlgebraicSimplifierTest, TransposeOfBatchDot) {
   const char* hlo_string = R"(
     HloModule module
@@ -8069,6 +8153,23 @@ TEST_F(AlgebraicSimplifierTest, MultiplySelfRsqrt_NegativeTestCase) {
             HloOpcode::kMultiply);
 }
 
+TEST_F(AlgebraicSimplifierTest, MultiplyNegateNegate) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      neg0 = f32[] negate(p0)
+      neg1 = f32[] negate(p1)
+      ROOT mul = f32[] multiply(neg0, neg1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Multiply(m::Parameter(0), m::Parameter(1))));
+}
+
 TEST_F(AlgebraicSimplifierTest, AbsEliminationBatchnormTraining) {
   const char* kModuleStr = R"(
     HloModule m
@@ -8919,7 +9020,7 @@ TEST_F(AlgebraicSimplifierTest, DynamicSliceShapeLayout) {
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   const Shape& slice_shape =
-      m.get()->entry_computation()->root_instruction()->operand(0)->shape();
+      m->entry_computation()->root_instruction()->operand(0)->shape();
   EXPECT_TRUE(slice_shape.has_layout());
   EXPECT_EQ(slice_shape.layout().tiles_size(), 1);
 }
@@ -9348,6 +9449,42 @@ TEST_F(AlgebraicSimplifierTest, TransposeOfBroadcast) {
               .WithPredicate([](const HloInstruction* instr) {
                 return instr->dimensions() == std::vector<int64_t>({0, 3});
               })));
+}
+
+TEST_F(AlgebraicSimplifierTest, TransposeBitcastOfBroadcast) {
+  const char* kModuleStr = R"(
+   HloModule m
+   test {
+     bcast = f32[10,2,3,4]{3,2,1,0} broadcast(f32[2,4]{1,0} parameter(0)), dimensions={1,3}
+     ROOT trans = f32[2,3,10,4]{3,1,0,2} bitcast(bcast)
+   }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(true);
+  EXPECT_TRUE(RunHloPass(AlgebraicSimplifier(options), m.get()).value());
+  SCOPED_TRACE(m->ToString());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(
+          m::Broadcast(m::Parameter(0))
+              .WithPredicate([](const HloInstruction* instr) {
+                return instr->dimensions() == std::vector<int64_t>({0, 3});
+              })));
+}
+
+TEST_F(AlgebraicSimplifierTest, TransposeOfBroadcastWithLayoutCheckSkipped) {
+  const char* kModuleStr = R"(
+   HloModule m
+   test {
+     bcast = f32[10,2,3,4]{3,2,1,0} broadcast(f32[2,4]{1,0} parameter(0)), dimensions={1,3}
+     ROOT trans = f32[2,3,10,4]{0,1,2,3} transpose(bcast), dimensions={1,2,0,3}
+   }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(true);
+  EXPECT_FALSE(RunHloPass(AlgebraicSimplifier(options), m.get()).value());
 }
 
 TEST_F(AlgebraicSimplifierTest, TransposeOfBroadcastSkipped) {

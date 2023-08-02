@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/compiler/xla/index_util.h"
+#include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -87,7 +88,8 @@ bool LiteralProtoHasValues(const LiteralProto& proto) {
          !proto.f16s().empty() || !proto.bf16s().empty() ||
          !proto.u16s().empty() || !proto.s16s().empty() ||
          !proto.f8e5m2s().empty() || !proto.f8e4m3fns().empty() ||
-         !proto.f8e4m3b11fnuzs().empty();
+         !proto.f8e4m3b11fnuzs().empty() || !proto.f8e5m2fnuzs().empty() ||
+         !proto.f8e4m3fnuzs().empty();
 }
 
 // Lazy getter for the interned scalar shape in static storage. We reuse this
@@ -273,6 +275,9 @@ Literal::Literal(const Shape& shape, bool allocate_arrays,
   }
   CHECK(leaf_array_value_state != ArrayValueState::kKnown ||
         LayoutUtil::HasLayout(*shape_));
+  // Currently we do nibble packing/unpacking in TPU host/device transfer.
+  CHECK(!LayoutUtil::HasCustomElementSizeInBits(*shape_))
+      << "Literal does not support layouts with custom bit size: " << *shape_;
   root_piece_.set_subshape(shape_.get());
   CHECK(&root_piece_.subshape() == shape_.get());
 
@@ -796,11 +801,21 @@ void MutableLiteralBase::PopulateInplaceInternal(
   char* const dest_base = static_cast<char*>(untyped_data());
   if (rank > 0) {
     StrideConfig stride_config(this_shape, this_shape, this_shape.dimensions());
-    int64_t minor_dimension_size =
-        ShapeUtil::GetDimension(this_shape, stride_config.minor_dimension);
-
     const int64_t primitive_size =
         ShapeUtil::ByteSizeOfPrimitiveType(shape().element_type());
+    const int64_t num_elements = ShapeUtil::ElementsIn(shape());
+    // If we are rank-1 and we are `parallel`, it is better to use a smaller
+    // `step` than what `StrideConfig` does: stick the entire dimension in the
+    // inner-most loop.
+    if (parallel && this_shape.rank() == 1) {
+      const int64_t thread_count =
+          ShapeUtil::GetForEachIndexParallelThreadCount();
+      // Let's just divide up the array into small amounts per thread.
+      stride_config.dest_stride = stride_config.minor_loop_size =
+          num_elements > 32 ? std::max<int64_t>(num_elements / thread_count, 1)
+                            : num_elements;
+      stride_config.step = {stride_config.minor_loop_size};
+    }
 
     auto init_function = [&](absl::Span<const int64_t> indexes,
                              int thread_id) -> StatusOr<bool> {
@@ -809,7 +824,12 @@ void MutableLiteralBase::PopulateInplaceInternal(
       DimensionVector minor_scan_indexes(rank, 0);
       std::copy(indexes.begin(), indexes.end(), minor_scan_indexes.begin());
       char* dest_ptr = dest_base + index * primitive_size;
-      char* const dest_end = dest_ptr + primitive_size * minor_dimension_size;
+      char* const dest_end =
+          dest_base +
+          // This handles the case where minor_loop_size does not evenly divide
+          // the most minor dimension.
+          std::min(index + stride_config.minor_loop_size, num_elements) *
+              primitive_size;
       while (dest_ptr < dest_end) {
         populator(dest_ptr, minor_scan_indexes, thread_id);
         ++minor_scan_indexes[stride_config.minor_dimension];
@@ -1916,6 +1936,30 @@ bool Literal::Piece::IsAll(const Literal& scalar) const {
       subshape().element_type());
 }
 
+int64_t Literal::Piece::CountAll(const Literal& scalar) const {
+  CHECK(ShapeUtil::IsScalar(scalar.shape())) << scalar.shape().ToString();
+  if (!subshape().IsArray()) {
+    return 0;
+  }
+
+  CHECK(LayoutUtil::IsDenseArray(subshape()))
+      << __func__ << " is only supported for dense arrays: " << subshape();
+  CHECK_EQ(subshape().element_type(), scalar.shape().element_type());
+  return primitive_util::PrimitiveTypeSwitch<int64_t>(
+      [&](auto primitive_type_constant) -> int64_t {
+        if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
+          using NativeT = NativeTypeOf<primitive_type_constant>;
+          return absl::c_count_if(
+              this->data<NativeT>(), [&](NativeT elem) -> bool {
+                return EqualIncludingNan(elem,
+                                         scalar.GetFirstElement<NativeT>());
+              });
+        }
+        return 0;
+      },
+      subshape().element_type());
+}
+
 bool LiteralBase::IsAll(const Literal& scalar) const {
   return root_piece().IsAll(scalar);
 }
@@ -2224,6 +2268,16 @@ void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
           reinterpret_cast<const char*>(data<tsl::float8_e4m3b11>().data()),
           size_bytes_dense());
       break;
+    case F8E5M2FNUZ:
+      *proto->mutable_f8e5m2fnuzs() = std::string(
+          reinterpret_cast<const char*>(data<tsl::float8_e5m2fnuz>().data()),
+          size_bytes_dense());
+      break;
+    case F8E4M3FNUZ:
+      *proto->mutable_f8e4m3fnuzs() = std::string(
+          reinterpret_cast<const char*>(data<tsl::float8_e4m3fnuz>().data()),
+          size_bytes_dense());
+      break;
     case F32:
       CopyToRepeatedField(proto->mutable_f32s(), data<float>());
       break;
@@ -2364,6 +2418,20 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
       const std::string& s(proto.f8e4m3b11fnuzs());
       TF_RET_CHECK(data<tsl::float8_e4m3b11>().size() *
                        sizeof(tsl::float8_e4m3b11) ==
+                   s.size());
+      memcpy(untyped_data(), s.data(), s.size());
+    } break;
+    case F8E5M2FNUZ: {
+      const std::string& s(proto.f8e5m2fnuzs());
+      TF_RET_CHECK(data<tsl::float8_e5m2fnuz>().size() *
+                       sizeof(tsl::float8_e5m2fnuz) ==
+                   s.size());
+      memcpy(untyped_data(), s.data(), s.size());
+    } break;
+    case F8E4M3FNUZ: {
+      const std::string& s(proto.f8e4m3fnuzs());
+      TF_RET_CHECK(data<tsl::float8_e4m3fnuz>().size() *
+                       sizeof(tsl::float8_e4m3fnuz) ==
                    s.size());
       memcpy(untyped_data(), s.data(), s.size());
     } break;

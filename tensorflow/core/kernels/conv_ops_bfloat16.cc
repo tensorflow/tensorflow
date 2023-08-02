@@ -33,6 +33,9 @@ REGISTER_KERNEL_BUILDER(
     Name("Conv2D").Device(DEVICE_CPU).TypeConstraint<bfloat16>("T"),
     Conv2DOp<CPUDevice, bfloat16>);
 #endif  // USE_GEMM_FOR_CONV
+REGISTER_KERNEL_BUILDER(
+    Name("Conv").Device(DEVICE_CPU).TypeConstraint<bfloat16>("T"),
+    ConvOp<CPUDevice, bfloat16>);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.

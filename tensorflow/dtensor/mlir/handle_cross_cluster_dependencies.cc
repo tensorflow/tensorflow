@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/UseDefLists.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
@@ -49,7 +50,7 @@ constexpr char kMissingMeshErrorMsg[] =
 constexpr char kInvalidTensorTransferErrorMsg[] =
     "CopyToMeshOp must be used to send data across mesh.";
 
-constexpr char kInvalidLayoutMsg[] =
+constexpr char kInvalidMeshMsg[] =
     "found CopyToMesh with invalid layout. Found layout {0}. Error: {1}.";
 
 // Extracts mesh from `cluster`.
@@ -87,23 +88,17 @@ mlir::LogicalResult CloneOpToCluster(mlir::Operation* const_op,
   auto copy_to_mesh =
       llvm::dyn_cast<mlir::TF::CopyToMeshOp>(operand->getOwner());
   assert(copy_to_mesh);
-  const std::string layout_attr = copy_to_mesh.getLayout().str();
-  StatusOr<Layout> layout = Layout::FromString(layout_attr);
-  if (!layout.ok())
-    return copy_to_mesh.emitOpError(llvm::formatv(
-        kInvalidLayoutMsg, layout_attr, layout.status().message()));
+  const std::string mesh_attr = copy_to_mesh.getMesh().str();
+  StatusOr<Mesh> mesh = Mesh::FromString(mesh_attr);
+  if (!mesh.ok())
+    return copy_to_mesh.emitOpError(
+        llvm::formatv(kInvalidMeshMsg, mesh_attr, mesh.status().message()));
 
   mlir::OpBuilder builder(&cluster.GetBody().front());
   mlir::Operation* cloned_op = builder.clone(*const_op);
-  mlir::TensorType type =
-      cloned_op->getResult(0).getType().cast<mlir::TensorType>();
-  auto layout_op = builder.create<mlir::TF::DTensorLayout>(
-      const_op->getLoc(), cloned_op->getResult(0),
-      mlir::dtensor::LayoutAttr::get(builder.getContext(), *layout),
-      mlir::TF::ShapeAttr::get(builder.getContext(), type));
 
   copy_to_mesh.getOutput().replaceUsesWithIf(
-      layout_op.getOutput(), [&](mlir::OpOperand& operand) {
+      cloned_op->getResult(0), [&](mlir::OpOperand& operand) {
         return cluster.getOperation()->isProperAncestor(operand.getOwner());
       });
 
@@ -176,9 +171,7 @@ mlir::LogicalResult CloneConstantsAcrossMesh(
 }
 
 // Handles CopyToMesh ops within the same cluster. These should not lower to
-// send or recv as we can directly replace it with a Relayout. If the source and
-// target layouts are the same, this is handled separately within Relayout
-// lowering.
+// send or recv; we can directly replace it with an Identity.
 mlir::LogicalResult HandleCopyToMeshWithinCluster(
     mlir::tf_device::ClusterOp cluster) {
   Mesh current_mesh;
@@ -205,9 +198,9 @@ mlir::LogicalResult HandleCopyToMeshWithinCluster(
       }
     }
     mlir::OpBuilder builder(op);
-    auto relayout_op = builder.create<mlir::TF::RelayoutOp>(
-        op.getLoc(), input.getType(), input, op.getLayout());
-    op->getResult(0).replaceAllUsesWith(relayout_op.getOutput());
+    auto identity_op = builder.create<mlir::TF::IdentityOp>(
+        op.getLoc(), input.getType(), input);
+    op->getResult(0).replaceAllUsesWith(identity_op.getOutput());
     op->erase();
     return mlir::WalkResult::advance();
   });
@@ -234,20 +227,20 @@ mlir::LogicalResult LowerToSendRecv(mlir::TF::CopyToMeshOp copy_to_mesh,
   mlir::OpBuilder builder(value_to_send.getParentBlock()->getTerminator());
 
   const std::string op_key =
-      llvm::formatv("communication_key_{0}_{1}", copy_to_mesh.getLayout(),
+      llvm::formatv("communication_key_{0}_{1}", copy_to_mesh.getMesh(),
                     *send_recv_counter)
           .str();
-  const std::string layout_attr = copy_to_mesh.getLayout().str();
-  auto layout_or_status = Layout::FromString(layout_attr);
-  if (!layout_or_status.ok())
+  const std::string mesh_attr = copy_to_mesh.getMesh().str();
+  auto mesh_or_status = Mesh::FromString(mesh_attr);
+  if (!mesh_or_status.ok())
     return copy_to_mesh.emitOpError(llvm::formatv(
-        kInvalidLayoutMsg, layout_attr, layout_or_status.status().message()));
+        kInvalidMeshMsg, mesh_attr, mesh_or_status.status().message()));
 
   // Create send op that sends data from input cluster to target cluster.
-  const Layout& target_layout = layout_or_status.value();
+  const Mesh& target_mesh = mesh_or_status.value();
   builder.create<mlir::TF::DTensorSend>(
       copy_to_mesh.getLoc(), value_to_send, builder.getStringAttr(op_key),
-      mlir::dtensor::LayoutAttr::get(context, target_layout));
+      mlir::dtensor::MeshAttr::get(context, target_mesh));
 
   // Create recv op that recvs data from send op.
   auto tensor_type = value_to_send.getType().dyn_cast<mlir::TensorType>();
@@ -261,7 +254,7 @@ mlir::LogicalResult LowerToSendRecv(mlir::TF::CopyToMeshOp copy_to_mesh,
       copy_to_mesh.getLoc(), value_to_send.getType(),
       builder.getStringAttr(op_key),
       mlir::TF::ShapeAttr::get(context, tensor_type),
-      mlir::dtensor::LayoutAttr::get(context, target_layout));
+      mlir::dtensor::MeshAttr::get(context, target_mesh));
 
   // Replace value for recv ops for all usages of `copy_to_mesh` op.
   copy_to_mesh.replaceAllUsesWith(recv_op.getOutput());
@@ -358,6 +351,50 @@ mlir::LogicalResult ReplaceCopyToMeshWithVirtualSendRecv(
   return result;
 }
 
+// Inserts a CopyToMesh Op to represent the mesh part of the Relayout.
+// Only insert to Cross mesh Relayout ops.
+mlir::LogicalResult InsertCopyToMesh(mlir::tf_device::ClusterOp cluster) {
+  Mesh mesh;
+  if (mlir::failed(ExtractMeshFromCluster(cluster, &mesh))) {
+    return mlir::failure();
+  }
+  llvm::SmallVector<mlir::Operation*, 4> relayout_ops;
+
+  cluster.walk([&](mlir::Operation* op) {
+    if (!mlir::isa<mlir::TF::RelayoutOp>(op) &&
+        !mlir::isa<mlir::TF::RelayoutLikeOp>(op)) {
+      return;
+    }
+    relayout_ops.push_back(op);
+  });
+
+  for (mlir::Operation* op : relayout_ops) {
+    mlir::Value input = op->getOperand(0);
+
+    auto input_cluster =
+        mlir::dyn_cast<mlir::tf_device::ClusterOp>(input.getDefiningOp());
+    if (!input_cluster) {
+      input_cluster =
+          input.getDefiningOp()->getParentOfType<mlir::tf_device::ClusterOp>();
+    }
+    if (!input_cluster) {
+      op->emitOpError() << "Input cluster not found.";
+      return mlir::failure();
+    }
+    Mesh input_mesh;
+    if (mlir::failed(ExtractMeshFromCluster(input_cluster, &input_mesh))) {
+      return mlir::failure();
+    }
+    if (input_mesh == mesh) continue;
+    mlir::OpBuilder builder(op);
+
+    auto new_op = builder.create<mlir::TF::CopyToMeshOp>(
+        op->getLoc(), op->getResult(0).getType(), input, mesh.ToString());
+    op->replaceUsesOfWith(input, new_op.getResult());
+  }
+  return mlir::success();
+}
+
 struct DTensorHandleCrossClusterDependencies
     : public impl::DTensorHandleCrossClusterDependenciesBase<
           DTensorHandleCrossClusterDependencies> {
@@ -374,6 +411,10 @@ struct DTensorHandleCrossClusterDependencies
     });
 
     int send_recv_counter = 0;
+    for (auto cluster : clusters) {
+      if (mlir::failed(InsertCopyToMesh(cluster))) return signalPassFailure();
+    }
+
     for (auto cluster : clusters) {
       if (mlir::failed(CloneConstantsAcrossMesh(cluster)))
         return signalPassFailure();

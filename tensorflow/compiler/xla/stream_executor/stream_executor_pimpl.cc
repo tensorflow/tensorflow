@@ -33,7 +33,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
 #include "tensorflow/compiler/xla/stream_executor/fft.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
-#include "tensorflow/compiler/xla/stream_executor/rng.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
 #include "tensorflow/tsl/platform/errors.h"
@@ -262,10 +261,6 @@ bool StreamExecutor::SupportsBlas() const {
   return implementation_->SupportsBlas();
 }
 
-bool StreamExecutor::SupportsRng() const {
-  return implementation_->SupportsRng();
-}
-
 bool StreamExecutor::SupportsDnn() const {
   return implementation_->SupportsDnn();
 }
@@ -289,6 +284,26 @@ tsl::Status StreamExecutor::GetConvolveRunners(
       input_descriptor, input_data, filter_descriptor, filter_data,
       output_descriptor, output_data, convolution_descriptor, use_fallback,
       scratch_allocator, numeric_options, out_exec_plans);
+}
+
+tsl::Status StreamExecutor::GetGraphConvolveRunners(
+    dnn::ConvolutionKind kind, dnn::DataType input_type,
+    dnn::DataType output_type, Stream* stream,
+    const dnn::BatchDescriptor& input_descriptor,
+    const dnn::FilterDescriptor& filter_descriptor,
+    const dnn::BatchDescriptor& output_descriptor,
+    const dnn::ConvolutionDescriptor& convolution_descriptor, bool use_fallback,
+    const NumericOptions& numeric_options,
+    std::vector<std::unique_ptr<const dnn::GraphConvRunner>>* out_exec_plans,
+    std::string serialized_graph) {
+  dnn::DnnSupport* dnn_support = AsDnn();
+  if (!dnn_support) {
+    return tsl::errors::Unimplemented("DNN library is not found.");
+  }
+  return dnn_support->GetGraphConvolveRunners(
+      kind, input_type, output_type, stream, input_descriptor,
+      filter_descriptor, output_descriptor, convolution_descriptor,
+      use_fallback, numeric_options, out_exec_plans, serialized_graph);
 }
 
 tsl::Status StreamExecutor::GetFusedConvolveRunners(
@@ -377,8 +392,8 @@ StreamExecutor::createRnnDescriptor(
     int batch_size, dnn::RnnInputMode input_mode,
     dnn::RnnDirectionMode direction_mode, dnn::RnnMode rnn_mode,
     dnn::DataType data_type, const dnn::AlgorithmConfig& algorithm_config,
-    float dropout, uint64_t seed, ScratchAllocator* state_allocator,
-    bool use_padded_io) {
+    const NumericOptions& numeric_options, float dropout, uint64_t seed,
+    ScratchAllocator* state_allocator, bool use_padded_io) {
   dnn::DnnSupport* dnn_support = AsDnn();
   if (!dnn_support) {
     return tsl::Status(absl::StatusCode::kUnknown,
@@ -386,8 +401,8 @@ StreamExecutor::createRnnDescriptor(
   }
   return dnn_support->createRnnDescriptor(
       num_layers, hidden_size, input_size, cell_size, batch_size, input_mode,
-      direction_mode, rnn_mode, data_type, algorithm_config, dropout, seed,
-      state_allocator, use_padded_io);
+      direction_mode, rnn_mode, data_type, algorithm_config, numeric_options,
+      dropout, seed, state_allocator, use_padded_io);
 }
 
 tsl::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
@@ -459,16 +474,6 @@ fft::FftSupport* StreamExecutor::AsFft() {
 
   fft_.reset(implementation_->CreateFft());
   return fft_.get();
-}
-
-rng::RngSupport* StreamExecutor::AsRng() {
-  absl::MutexLock lock(&mu_);
-  if (rng_ != nullptr) {
-    return rng_.get();
-  }
-
-  rng_.reset(implementation_->CreateRng());
-  return rng_.get();
 }
 
 tsl::Status StreamExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
@@ -784,22 +789,6 @@ void StreamExecutor::DeallocateStream(Stream* stream) {
 
 bool StreamExecutor::CreateStreamDependency(Stream* dependent, Stream* other) {
   return implementation_->CreateStreamDependency(dependent, other);
-}
-
-bool StreamExecutor::AllocateTimer(Timer* timer) {
-  return implementation_->AllocateTimer(timer);
-}
-
-void StreamExecutor::DeallocateTimer(Timer* timer) {
-  return implementation_->DeallocateTimer(timer);
-}
-
-bool StreamExecutor::StartTimer(Stream* stream, Timer* timer) {
-  return implementation_->StartTimer(stream, timer);
-}
-
-bool StreamExecutor::StopTimer(Stream* stream, Timer* timer) {
-  return implementation_->StopTimer(stream, timer);
 }
 
 std::unique_ptr<DeviceDescription> StreamExecutor::CreateDeviceDescription()

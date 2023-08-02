@@ -253,7 +253,8 @@ tf_py_strict_test(
         ":tf_inspect",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:strict_mode",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
@@ -275,6 +276,7 @@ tf_py_strict_test(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:extension_type",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
@@ -364,8 +366,6 @@ py_strict_library(
     ],
 )
 
-# Note: this is a heavyweight library specialized for TensorFlow graphs. Do not use for
-# other purposes.
 py_strict_library(
     name = "tf_stack",
     srcs = ["tf_stack.py"],
@@ -374,6 +374,7 @@ py_strict_library(
     visibility = ["//visibility:public"],
     deps = [
         ":_tf_stack",
+        "//tensorflow/core:protos_all_py",
         "@six_archive//:six",
     ],
 )
@@ -398,6 +399,8 @@ tf_python_pybind_extension(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@pybind11",
+        "@pybind11_abseil//pybind11_abseil:absl_casters",
+        "@pybind11_abseil//pybind11_abseil:status_casters",
     ] + if_static([
         ":stack_trace",
     ]),
@@ -419,15 +422,12 @@ cc_library(
     hdrs = ["stack_trace.h"],
     deps = [
         "//tensorflow/core/platform:status",
-        "//tensorflow/core/platform:str_util",
-        "//tensorflow/core/platform:stringpiece",
         "//tensorflow/core/util:managed_stack_trace",
+        "//tensorflow/tsl/platform:fingerprint",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -516,7 +516,9 @@ tf_py_strict_test(
     srcs = ["nest_test.py"],
     main = "nest_test.py",
     python_version = "PY3",
-    deps = [":nest_test_main_lib"],
+    deps = [
+        ":nest_test_main_lib",
+    ],
 )
 
 py_strict_library(
@@ -534,6 +536,7 @@ py_strict_library(
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/util:nest_util",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -644,6 +647,7 @@ py_strict_library(
     deps = [
         ":decorator_utils",
         ":is_in_graph_mode",
+        "//tensorflow/python/framework:strict_mode",
         "//tensorflow/python/platform:tf_logging",
         # global_test_configuration is added here because all major tests depend on this
         # library. It isn't possible to add these test dependencies via tensorflow.bzl's
@@ -1113,6 +1117,7 @@ tf_py_strict_test(
         "//tensorflow/python/framework:composite_tensor",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:variables",

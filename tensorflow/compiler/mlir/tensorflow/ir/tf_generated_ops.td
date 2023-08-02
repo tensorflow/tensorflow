@@ -1132,6 +1132,10 @@ to be batched.}]>:$captured_tensors,
     DefaultValuedOptionalAttr<StrAttr, "\"\"">:$container,
     DefaultValuedOptionalAttr<StrAttr, "\"\"">:$shared_name,
     DefaultValuedOptionalAttr<StrAttr, "\"\"">:$batching_queue,
+    DefaultValuedOptionalAttr<I64Attr, "0">:$low_priority_max_batch_size,
+    DefaultValuedOptionalAttr<I64Attr, "0">:$low_priority_batch_timeout_micros,
+    DefaultValuedOptionalAttr<I64ArrayAttr, "{}">:$low_priority_allowed_batch_sizes,
+    DefaultValuedOptionalAttr<I64Attr, "0">:$low_priority_max_enqueued_batches,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$enable_large_batch_splitting
   );
 
@@ -2690,6 +2694,45 @@ used for communication with all hosts.}]>:$network_configs
   let results = (outs);
 
   TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
+}
+
+def TF_ConvOp : TF_Op<"Conv", [Pure]> {
+  let summary = [{
+Computes a N-D convolution given (N+1+batch_dims)-D `input` and (N+2)-D `filter` tensors.
+  }];
+
+  let description = [{
+General function for computing a N-D convolution. It is required that
+`1 <= N <= 3`.
+  }];
+
+  let arguments = (ins
+    Arg<TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64, TF_Int32]>, [{Tensor of type T and shape `batch_shape + spatial_shape + [in_channels]` in the
+case that `channels_last_format = true` or shape
+`batch_shape + [in_channels] + spatial_shape` if `channels_last_format = false`.
+spatial_shape is N-dimensional with `N=2` or `N=3`.
+Also note that `batch_shape` is dictated by the parameter `batch_dims`
+and defaults to 1.}]>:$input,
+    Arg<TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64, TF_Int32]>, [{An `(N+2)-D` Tensor with the same type as `input` and shape
+`spatial_filter_shape + [in_channels, out_channels]`, where spatial_filter_shape
+is N-dimensional with `N=2` or `N=3`.
+}]>:$filter,
+
+    I64ArrayAttr:$strides,
+    TF_AnyStrAttrOf<["SAME", "VALID", "EXPLICIT"]>:$padding,
+    DefaultValuedOptionalAttr<I64ArrayAttr, "{}">:$explicit_paddings,
+    DefaultValuedOptionalAttr<TF_AnyStrAttrOf<["CHANNELS_FIRST", "CHANNELS_LAST"]>, "\"CHANNELS_LAST\"">:$data_format,
+    DefaultValuedOptionalAttr<I64ArrayAttr, "{}">:$dilations,
+    DefaultValuedOptionalAttr<I64Attr, "1">:$batch_dims,
+    DefaultValuedOptionalAttr<I64Attr, "1">:$groups
+  );
+
+  let results = (outs
+    Res<TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64, TF_Int32]>, [{A (N+1+batch_dims)-D tensor. The dimension order is determined by the value of
+`channels_last_format`, see below for details.}]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_Conv2DOp : TF_Op<"Conv2D", [InferTensorType, Pure, TF_LayoutSensitiveInterface]> {
@@ -21508,7 +21551,7 @@ Sorts a tensor. Currently only sorts in ascending order are supported.
   TF_DerivedOperandTypeAttr V = TF_DerivedOperandTypeAttr<1>;
 }
 
-def TF_XlaLaunchOp : TF_Op<"XlaLaunch", [AttrSizedOperandSegments, DeclareOpInterfaceMethods<MemoryEffectsOpInterface>]> {
+def TF_XlaLaunchOp : TF_Op<"XlaLaunch", [AttrSizedOperandSegments, DeclareOpInterfaceMethods<MemoryEffectsOpInterface>, DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>]> {
   let summary = "XLA Launch Op. For use by the XLA JIT only.";
 
   let arguments = (ins
@@ -22622,24 +22665,6 @@ look up the program in the compilation cache.
   TF_DerivedResultSizeAttr num_computations = TF_DerivedResultSizeAttr<1>;
 }
 
-def TF__TPUCompileMlirPlaceholderProgramKeyOp : TF_Op<"_TPUCompileMlirPlaceholderProgramKey", [TF_MustExecute]> {
-  let summary = [{
-Placeholder program key (compilation cache key) of a _TPUCompileMlir `program`.
-  }];
-
-  let description = [{
-This op can be used when certain rewrite passes materialize ops that require a
-program key but the _TPUCompileMlir op has not been added yet. Subsequent
-rewrite passes must replace this op with a _TPUCompileMlir op `program` output.
-  }];
-
-  let arguments = (ins);
-
-  let results = (outs
-    TF_StrTensor:$program
-  );
-}
-
 def TF__UnaryOpsCompositionOp : TF_Op<"_UnaryOpsComposition", [Pure, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = [{
 *NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
@@ -22699,6 +22724,24 @@ _XlaCompile always attempts to compile the cluster and
   TF_DerivedOperandSizeAttr Nresources = TF_DerivedOperandSizeAttr<2>;
   TF_DerivedOperandTypeListAttr Targs = TF_DerivedOperandTypeListAttr<1>;
   TF_DerivedOperandTypeListAttr Tconstants = TF_DerivedOperandTypeListAttr<0>;
+}
+
+def TF__XlaCompileMlirPlaceholderProgramKeyOp : TF_Op<"_XlaCompileMlirPlaceholderProgramKey", [TF_MustExecute]> {
+  let summary = [{
+Placeholder program key (compilation cache key) of a XLA `program`.
+  }];
+
+  let description = [{
+This op can be used when certain rewrite passes materialize ops that require a
+program key but the _TPUCompileMlir or _XlaCompile op has not been added yet.
+Subsequent rewrite passes must replace this op with `program` output.
+  }];
+
+  let arguments = (ins);
+
+  let results = (outs
+    TF_StrTensor:$program
+  );
 }
 
 def TF__XlaHostComputeMlirOp : TF_Op<"_XlaHostComputeMlir", [TF_RecvSideEffect, TF_SendSideEffect, TF_XlaHostComputeSideEffect]> {
@@ -22771,7 +22814,7 @@ execution the transfer corresponds to.}]>:$dynamic_key,
   TF_DerivedResultTypeListAttr Toutputs = TF_DerivedResultTypeListAttr<0>;
 }
 
-def TF__XlaRunOp : TF_Op<"_XlaRun", []> {
+def TF__XlaRunOp : TF_Op<"_XlaRun", [DeclareOpInterfaceMethods<MemoryEffectsOpInterface>]> {
   let summary = "XLA Run Op. For use by the XLA JIT only.";
 
   let description = [{

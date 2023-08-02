@@ -169,7 +169,7 @@ tf_py_strict_test(
         "//tensorflow/python/ops:template",
         "//tensorflow/python/ops:variable_scope",
         "//tensorflow/python/trackable:autotrackable",
-        "//tensorflow/python/training",
+        "//tensorflow/python/training:adam",
     ],
 )
 

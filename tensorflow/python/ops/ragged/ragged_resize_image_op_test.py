@@ -18,7 +18,7 @@ from absl.testing import parameterized
 
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import image_ops
@@ -61,7 +61,7 @@ class RaggedResizeImageOpTest(test_util.TensorFlowTestCase,
 
     # Resize the ragged batch of images.
     resized_images = resize(images, dst_size)
-    self.assertIsInstance(resized_images, ops.Tensor)
+    self.assertIsInstance(resized_images, tensor.Tensor)
     self.assertEqual(resized_images.shape.as_list(), expected_shape)
 
     # Check that results for each image matches what we'd get with the
@@ -106,7 +106,7 @@ class RaggedResizeImageOpTest(test_util.TensorFlowTestCase,
       return image_ops.resize_images_v2(images, dst_size)
 
     resized_images = do_resize(images)
-    self.assertIsInstance(resized_images, ops.Tensor)
+    self.assertIsInstance(resized_images, tensor.Tensor)
     self.assertTrue(resized_images.shape.is_compatible_with(expected_shape))
 
     # Check that results for each image matches what we'd get with the
@@ -123,7 +123,7 @@ class RaggedResizeImageOpTest(test_util.TensorFlowTestCase,
 
     src_images = self.make_image_batch([[5, 8], [3, 2], [10, 4]], 3)
     resized_images = do_resize(src_images, constant_op.constant([2, 2]))
-    self.assertIsInstance(resized_images, ops.Tensor)
+    self.assertIsInstance(resized_images, tensor.Tensor)
     self.assertTrue(resized_images.shape.is_compatible_with([3, 2, 2, 3]))
 
   def testBadRank(self):

@@ -73,12 +73,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/location_exporter.h"
+#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/stack_frame_index_builder.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/type_to_shape.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/float8.h"
@@ -714,6 +716,10 @@ class ConvertToHloModule {
 
   const MlirToHloConversionOptions& GetOptions() const { return options_; }
 
+  xla::StackFrameIndexProto BuildStackFramesIndexProto() {
+    return stack_frame_indexes_builder_.Build();
+  }
+
  private:
   LogicalResult SetEntryTupleShapesAndLeafReplication(
       Block* block, const std::vector<bool>& entry_args_same_across_replicas,
@@ -730,6 +736,9 @@ class ConvertToHloModule {
 
   // The top-level XlaBuilder.
   xla::XlaBuilder& module_builder_;
+
+  // Common stack frame index builder.
+  mlir::StackFrameIndexBuilder stack_frame_indexes_builder_;
 
   // Map between function and lowered computation.
   FunctionLoweringMap lowered_computation_;
@@ -755,6 +764,7 @@ struct OpLoweringContext {
   llvm::DenseMap<mlir::Value, xla::XlaOp>* values;
   mlir::ConvertToHloModule* converter;
   xla::XlaBuilder* builder;
+  mlir::StackFrameIndexBuilder* frame_index_builder;
 };
 
 mlir::LogicalResult GetTuple(mlir::Operation* op,
@@ -945,14 +955,29 @@ LogicalResult ExportXlaOp(AllReduceOp op, OpLoweringContext ctx) {
     return failure();
   }
 
-  xla::XlaOp operand;
-  if (failed(GetXlaOp(op.getOperand(), value_map, &operand, op)))
+  SmallVector<xla::XlaOp> operands;
+  if (failed(GetTuple(op.getOperation(), op.getOperands(), ctx, operands)))
     return failure();
 
-  value_map[op] = xla::AllReduce(
-      operand, computation, Convert_replica_groups(op.getReplicaGroups()),
-      Convert_channel_handle(op.getChannelHandle()), std::nullopt,
-      Convert_use_global_device_ids(op.getUseGlobalDeviceIds()));
+  mlir::FailureOr<xla::Shape> shape_or = ExtractXlaShape(op.getOperation());
+  if (failed(shape_or)) return failure();
+  if (shape_or->IsTuple()) {
+    std::optional<xla::Shape> shape_with_layout = std::nullopt;
+    if (shape_or->has_layout()) shape_with_layout = shape_or.value();
+    auto tuple = xla::AllReduceTuple(
+        operands, computation, Convert_replica_groups(op.getReplicaGroups()),
+        Convert_channel_handle(op.getChannelHandle()), shape_with_layout,
+        Convert_use_global_device_ids(op.getUseGlobalDeviceIds()));
+    for (auto [index, result] : llvm::enumerate(op.getResults())) {
+      value_map[result] = xla::GetTupleElement(tuple, index);
+    }
+  } else {
+    value_map[op->getResults()[0]] = xla::AllReduce(
+        operands[0], computation, Convert_replica_groups(op.getReplicaGroups()),
+        Convert_channel_handle(op.getChannelHandle()), std::nullopt,
+        Convert_use_global_device_ids(op.getUseGlobalDeviceIds()));
+  }
+
   return success();
 }
 
@@ -1253,7 +1278,7 @@ LogicalResult ExportXlaOp(AsyncDoneOp op, OpLoweringContext ctx) {
   if (all_reduce_op && SimplyReturnedOp(all_reduce_op)) {
     value_map[op.getResult(0)] =
         xla::internal::XlaBuilderFriend::BuildAllReduceDone(
-            ctx.builder, operand, xla::TypeToShape(all_reduce_op.getType()));
+            ctx.builder, operand, xla::TypeToShape(all_reduce_op.getType(0)));
     return success();
   }
   auto collective_permute_op =
@@ -1660,6 +1685,7 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   // The attributes supported by the ApproxTopK custom_call are:
   //
   //  - called_computation : This indicates the comparator for scoring entries
+  //  - has_side_effect: always False
   //  - api_version : always 4, the typed FFI API
   //  - backend_config : The actual arguments to ApproxTopK. This includes
   //    + top_k:i64 : the number of results to return
@@ -1723,7 +1749,8 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
     auto isSupportedAttrName = [](NamedAttribute attr) {
       auto name = attr.getName();
       return name == "call_target_name" || name == "backend_config" ||
-             name == "api_version" || name == "called_computations";
+             name == "api_version" || name == "called_computations" ||
+             name == "has_side_effect";
     };
     for (const auto& attr : op->getAttrs()) {
       if (!isSupportedAttrName(attr))
@@ -2865,8 +2892,9 @@ LogicalResult ConvertToHloModule::Lower(
     return success();
   };
 
-  if (succeeded(
-          ExportXlaOperatorWrapped(inst, {value_lowering, this, builder}))) {
+  if (succeeded(ExportXlaOperatorWrapped(
+          inst,
+          {value_lowering, this, builder, &stack_frame_indexes_builder_}))) {
     if (inst->getNumResults() == 1) {
       auto iter = value_lowering->find(inst->getResult(0));
       if (iter == value_lowering->end()) {
@@ -3132,8 +3160,9 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::func::FuncOp f) {
     bool any_arg_replicated = false;
     entry_args_same_across_replicas.reserve(f.getNumArguments());
     for (int64_t i = 0; i < f.getNumArguments(); ++i) {
-      auto attr = f.getArgAttrOfType<mlir::UnitAttr>(i, kReplicationAttr);
-      entry_args_same_across_replicas.push_back(attr != nullptr);
+      auto attr = f.getArgAttrOfType<mlir::BoolAttr>(i, kReplicationAttr);
+      entry_args_same_across_replicas.push_back(attr != nullptr &&
+                                                attr.getValue());
       any_arg_replicated |= entry_args_same_across_replicas.back();
       // Pass the alias info to the builder so that it will build the alias info
       // into the resulting HloModule.
@@ -3524,6 +3553,10 @@ xla::Status ConvertMlirHloToHlo(mlir::ModuleOp module, xla::HloProto* hlo_proto,
           *xla::ConvertSharding(sharding.cast<mlir::StringAttr>().getValue());
     }
   }
+
+  xla::StackFrameIndexProto stack_frame_index =
+      converter.BuildStackFramesIndexProto();
+  hlo_module.mutable_stack_frame_index()->Swap(&stack_frame_index);
   hlo_proto->mutable_hlo_module()->Swap(&hlo_module);
   return ::tsl::OkStatus();
 }

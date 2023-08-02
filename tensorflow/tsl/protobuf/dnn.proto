@@ -19,6 +19,9 @@ enum DataType {
   kBF16 = 7;
   kF8E5M2 = 8;
   kF8E4M3FN = 9;
+  kF8E5M2FNUZ = 10;
+  kF8E4M3FNUZ = 11;
+  kInt64 = 12;
 }
 
 // Describes how a convolution input or output layer's data is formatted.
@@ -99,6 +102,7 @@ enum ConvolutionKind {
   BACKWARD_FILTER = 2;
   BACKWARD_DATA = 3;
   FORWARD_BIAS_ACTIVATION = 4;
+  FORWARD_GRAPH = 5;
 }
 
 // Generic tensor representation.

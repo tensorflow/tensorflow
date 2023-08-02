@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <tuple>
@@ -37,7 +38,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
-#include "tensorflow/compiler/xla/stream_executor/rng.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
 #include "tensorflow/compiler/xla/stream_executor/trace_listener.h"
 #include "tensorflow/tsl/platform/status.h"
@@ -359,10 +359,6 @@ class StreamExecutor {
   // that underlies this interface.
   bool SupportsFft() const;
 
-  // Returns whether the StreamExecutor supports RNG routines for the platform
-  // that underlies this interface.
-  bool SupportsRng() const;
-
   // Returns whether the StreamExecutor support neural net routines for the
   // platform that underlies this interface.
   bool SupportsDnn() const;
@@ -380,6 +376,17 @@ class StreamExecutor {
       bool use_fallback, ScratchAllocator* scratch_allocator,
       const NumericOptions& numeric_options,
       std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_exec_plans);
+
+  tsl::Status GetGraphConvolveRunners(
+      dnn::ConvolutionKind kind, dnn::DataType input_type,
+      dnn::DataType output_type, Stream* stream,
+      const dnn::BatchDescriptor& input_descriptor,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const dnn::BatchDescriptor& output_descriptor,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      bool use_fallback, const NumericOptions& numeric_options,
+      std::vector<std::unique_ptr<const dnn::GraphConvRunner>>* out_exec_plans,
+      std::string serialized_graph);
 
   tsl::Status GetFusedConvolveRunners(
       bool use_cudnn_frontend, dnn::ConvolutionKind kind,
@@ -432,8 +439,8 @@ class StreamExecutor {
       int batch_size, dnn::RnnInputMode input_mode,
       dnn::RnnDirectionMode direction_mode, dnn::RnnMode rnn_mode,
       dnn::DataType data_type, const dnn::AlgorithmConfig& algorithm_config,
-      float dropout, uint64_t seed, ScratchAllocator* state_allocator,
-      bool use_padded_io);
+      const NumericOptions& numeric_options, float dropout, uint64_t seed,
+      ScratchAllocator* state_allocator, bool use_padded_io);
 
   // Create a RNN sequence descriptor that specifies either the input or output
   // sequence. The caller retains the ownership of the returned descriptor.
@@ -563,7 +570,6 @@ class StreamExecutor {
   friend class ScopedTracer;
   friend class Event;
   friend class Stream;
-  friend class Timer;
   template <typename... Params>
   friend class TypedKernel;
   template <typename... Args>
@@ -573,15 +579,6 @@ class StreamExecutor {
   // a DeviceMemoryBase representing that allocation. In the case of failure,
   // nullptr is returned.
   DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space);
-
-  // Gets-or-creates (creates with memoization) an RngSupport datatype that can
-  // be used for random-number-generation routines on the current platform.
-  //
-  // Ownership and user-facing is the same as AsBlas() above.
-  //
-  // Returns null if there was an error initializing the RNG support for the
-  // underlying platform.
-  rng::RngSupport* AsRng();
 
   // Causes the host code to synchronously wait for operations entrained onto
   // stream to complete. Effectively a join on the asynchronous device
@@ -645,19 +642,6 @@ class StreamExecutor {
   // last-enqueued work.
   bool CreateStreamDependency(Stream* dependent, Stream* other);
 
-  // Allocates timer resources on the underlying platform and initializes its
-  // internals.
-  bool AllocateTimer(Timer* timer);
-
-  // Deallocates timer resources on the underlying platform.
-  void DeallocateTimer(Timer* timer);
-
-  // Records a start event for an interval timer.
-  bool StartTimer(Stream* stream, Timer* timer);
-
-  // Records a stop event for an interval timer.
-  bool StopTimer(Stream* stream, Timer* timer);
-
   // Allocates a new metadata object, appropriately populated, on the heap, with
   // ownership transfer to caller.
   std::unique_ptr<DeviceDescription> CreateDeviceDescription() const;
@@ -716,10 +700,6 @@ class StreamExecutor {
   // Memoized FFT support object -- we only want to create this once when asked
   // for a FFT interface.
   std::unique_ptr<fft::FftSupport> fft_;
-
-  // Memoized RNG support object -- we only want to create this once when asked
-  // for an RNG interface.
-  std::unique_ptr<rng::RngSupport> rng_ ABSL_GUARDED_BY(mu_);
 
   // Slot to cache the owned DeviceDescription for the underlying device
   // once it has been queried from DeviceDescription().

@@ -12,6 +12,7 @@ package_group(
     name = "friends",
     packages = [
         "//platforms/...",
+        "//tensorflow/compiler/xla/service/gpu/...",
     ],
 )
 
@@ -26,6 +27,7 @@ cc_library(
     ],
     deps = [
         ":auto_sharding_cost_graph",
+        ":auto_sharding_solver",
         ":auto_sharding_solver_option",
         ":auto_sharding_strategy",
         ":auto_sharding_util",
@@ -47,6 +49,20 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+cc_library(
+    name = "auto_sharding_solver",
+    srcs = ["auto_sharding_solver.cc"],
+    hdrs = ["auto_sharding_solver.h"],
+    deps = [
+        ":auto_sharding_strategy",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/tsl/platform:hash",
+        "//tensorflow/tsl/platform:types",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
         "@com_google_ortools//ortools/linear_solver",
         "@com_google_ortools//ortools/linear_solver:linear_solver_cc_proto",
     ],
@@ -54,9 +70,7 @@ cc_library(
 
 cc_library(
     name = "auto_sharding_strategy",
-    hdrs = [
-        "auto_sharding_strategy.h",
-    ],
+    hdrs = ["auto_sharding_strategy.h"],
     deps = [
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_value",
@@ -66,9 +80,7 @@ cc_library(
 
 cc_library(
     name = "auto_sharding_cost_graph",
-    hdrs = [
-        "auto_sharding_cost_graph.h",
-    ],
+    hdrs = ["auto_sharding_cost_graph.h"],
     deps = [
         ":auto_sharding_strategy",
         ":matrix",
@@ -77,9 +89,7 @@ cc_library(
 
 cc_library(
     name = "matrix",
-    hdrs = [
-        "matrix.h",
-    ],
+    hdrs = ["matrix.h"],
     deps = [
         "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/strings",
@@ -110,19 +120,14 @@ cc_library(
 
 cc_library(
     name = "auto_sharding_util",
-    srcs = [
-        "auto_sharding_util.cc",
-    ],
-    hdrs = [
-        "auto_sharding_util.h",
-    ],
+    srcs = ["auto_sharding_util.cc"],
+    hdrs = ["auto_sharding_util.h"],
     deps = [
         ":auto_sharding_strategy",
         "//tensorflow/compiler/xla:array",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/hlo/utils:hlo_sharding_util",
-        "//tensorflow/tsl/platform:errors",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/status",
@@ -172,6 +177,16 @@ xla_cc_test(
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/tsl/lib/core:status_test_util",
-        "@com_google_ortools//ortools/linear_solver",
+    ],
+)
+
+xla_cc_test(
+    name = "auto_sharding_solver_test",
+    srcs = ["auto_sharding_solver_test.cc"],
+    deps = [
+        ":auto_sharding_solver",
+        ":auto_sharding_strategy",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "@com_google_googletest//:gtest",
     ],
 )

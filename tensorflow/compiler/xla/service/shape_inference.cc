@@ -3053,7 +3053,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   std::copy(operand.dimensions().begin(), operand.dimensions().end(),
             dimensions.begin() + broadcast_sizes.size());
 
-  Shape result = ShapeUtil::MakeShape(operand.element_type(), dimensions);
+  TF_ASSIGN_OR_RETURN(Shape result, ShapeUtil::MakeValidatedShape(
+                                        operand.element_type(), dimensions));
   for (int64_t i = 0; i < operand.dimensions_size(); ++i) {
     result.set_dynamic_dimension(broadcast_sizes.size() + i,
                                  operand.is_dynamic_dimension(i));

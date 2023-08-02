@@ -185,16 +185,17 @@ class FusedMatMulOpTest : public OpsTestBase {
                 &fused_matmul);
   }
 
-  void VerifyBiasAddTensorsNear(int m, int k, int n,
+  void VerifyBiasAddTensorsNear(int m, int k, int n, bool transpose_a,
+                                bool transpose_b,
                                 const BiasAddGraphRunner& run_default,
                                 const BiasAddGraphRunner& run_fused) {
     DataType dtype = DataTypeToEnum<T>::v();
 
-    Tensor lhs(dtype, {m, k});
+    Tensor lhs(dtype, {transpose_a ? k : m, transpose_a ? m : k});
     lhs.flat<T>() = lhs.flat<T>().setRandom();
 
     // Add some negative values to filter to properly test Relu.
-    Tensor rhs(dtype, {k, n});
+    Tensor rhs(dtype, {transpose_b ? n : k, transpose_b ? k : n});
     rhs.flat<T>() = rhs.flat<T>().setRandom();
     rhs.flat<T>() -= rhs.flat<T>().constant(static_cast<T>(0.5f));
 
@@ -235,7 +236,8 @@ class FusedMatMulOpTest : public OpsTestBase {
                            /*allow_gpu_device=*/true);
         };
 
-    VerifyBiasAddTensorsNear(m, k, n, run_default, run_fused);
+    VerifyBiasAddTensorsNear(m, k, n, transpose_a, transpose_b, run_default,
+                             run_fused);
   }
 
   // Verifies that computing MatMul+BiasAdd+{Activation} in a graph is identical
@@ -261,7 +263,8 @@ class FusedMatMulOpTest : public OpsTestBase {
                        /*allow_gpu_device=*/activation == "Relu");
     };
 
-    VerifyBiasAddTensorsNear(m, k, n, run_default, run_fused);
+    VerifyBiasAddTensorsNear(m, k, n, transpose_a, transpose_b, run_default,
+                             run_fused);
   }
 };
 
@@ -286,10 +289,16 @@ TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul256x256x256) {
 
 TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul1x256x256) {
   this->VerifyMatMulWithBias(1, 256, 256, false, false);
+  this->VerifyMatMulWithBias(1, 256, 256, true, false);
+  this->VerifyMatMulWithBias(1, 256, 256, false, true);
+  this->VerifyMatMulWithBias(1, 256, 256, true, true);
 }
 
 TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul256x256x1) {
   this->VerifyMatMulWithBias(256, 256, 1, false, false);
+  this->VerifyMatMulWithBias(256, 256, 1, true, false);
+  this->VerifyMatMulWithBias(256, 256, 1, false, true);
+  this->VerifyMatMulWithBias(256, 256, 1, true, true);
 }
 
 TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul1x256x1) {

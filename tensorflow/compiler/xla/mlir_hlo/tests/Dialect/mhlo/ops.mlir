@@ -60,7 +60,28 @@ func.func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
 
 // -----
 
+func.func @all_reduce_tuple(%arg0: tensor<10xf32>, %arg1: tensor<f32>) -> tensor<10xf32> {
+  %0:2 = "mhlo.all_reduce"(%arg0, %arg1) ({
+  // Perform max reduction inside the region
+  ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>):
+    %max = mhlo.maximum %lhs, %rhs : tensor<f32>
+    "mhlo.return"(%max) : (tensor<f32>) -> ()
+  })
+  {
+    replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>,
+    channel_handle = #mhlo.channel_handle<
+      handle = 5,
+      type = 2
+    >,
+    use_global_device_ids
+  } : (tensor<10xf32>, tensor<f32>) -> (tensor<10xf32>, tensor<f32>)
+  func.return %0 : tensor<10xf32>
+}
+
+// -----
+
 func.func @all_reduce_invalid_reducer(%operand: tensor<10xf32>) -> tensor<10xf32> {
+  // expected-error@+2 {{'mhlo.all_reduce' op failed to infer returned types}}
   // expected-error@+1 {{Reduction-region must take 2 parameters, but takes 3 parameter(s)}}
   %0 = "mhlo.all_reduce"(%operand) ({
   ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<f32>):
@@ -76,6 +97,7 @@ func.func @all_reduce_invalid_reducer(%operand: tensor<10xf32>) -> tensor<10xf32
 // -----
 
 func.func @all_reduce_invalid_reducer(%operand: tensor<10xf32>) -> tensor<10xf32> {
+  // expected-error@+2 {{'mhlo.all_reduce' op failed to infer returned types}}
   // expected-error@+1 {{The reduction-region expected to return some value(s)}}
   %0 = "mhlo.all_reduce"(%operand) ({
   ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>):
@@ -91,6 +113,7 @@ func.func @all_reduce_invalid_reducer(%operand: tensor<10xf32>) -> tensor<10xf32
 // -----
 
 func.func @all_reduce_invalid_reducer(%operand: tensor<10xf32>) -> tensor<10xf32> {
+  // expected-error@+2 {{'mhlo.all_reduce' op failed to infer returned types}}
   // expected-error@+1 {{Reduction-region here must produce 1 tensors, but produces 2 instead}}
   %0 = "mhlo.all_reduce"(%operand) ({
   ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>):
@@ -106,6 +129,7 @@ func.func @all_reduce_invalid_reducer(%operand: tensor<10xf32>) -> tensor<10xf32
 // -----
 
 func.func @all_reduce_invalid_reducer(%operand: tensor<10xf32>) -> tensor<10xf32> {
+  // expected-error@+2 {{'mhlo.all_reduce' op failed to infer returned types}}
   // expected-error@+1 {{Reduction-region here must produce tensor-typed result(s), but produces 'tuple<tensor<f32>, tensor<f32>>' instead}}
   %0 = "mhlo.all_reduce"(%operand) ({
   ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>):
@@ -122,6 +146,7 @@ func.func @all_reduce_invalid_reducer(%operand: tensor<10xf32>) -> tensor<10xf32
 // -----
 
 func.func @all_reduce_invalid_reducer(%operand: tensor<10xf32>) -> tensor<10xf32> {
+  // expected-error@+2 {{'mhlo.all_reduce' op failed to infer returned types}}
   // expected-error@+1 {{The type of reduction-region's parameter at index 1 is different than the corresponding result type: 'tensor<i32>' vs 'tensor<f32>'}}
   %0 = "mhlo.all_reduce"(%operand) ({
   ^bb0(%arg0: tensor<f32>, %arg1: tensor<i32>):
@@ -137,6 +162,7 @@ func.func @all_reduce_invalid_reducer(%operand: tensor<10xf32>) -> tensor<10xf32
 // -----
 
 func.func @all_reduce_invalid_reducer(%operand: tensor<10xf32>) -> tensor<10xf32> {
+  // expected-error@+2 {{'mhlo.all_reduce' op failed to infer returned types}}
   // expected-error@+1 {{The type of reduction-region's parameter at index 0 is different than the corresponding result type: 'tensor<f32>' vs 'tensor<i32>'}}
   %0 = "mhlo.all_reduce"(%operand) ({
   ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>):
@@ -153,6 +179,7 @@ func.func @all_reduce_invalid_reducer(%operand: tensor<10xf32>) -> tensor<10xf32
 // -----
 
 func.func @all_reduce_invalid_reducer(%operand: tensor<10xf32>) -> tensor<10xf32> {
+  // expected-error@+2 {{'mhlo.all_reduce' op failed to infer returned types}}
   // expected-error@+1 {{The type of reduction-region's result type at index 0 differs from the op's corresponding init-value type: 'tensor<i32>' vs 'tensor<f32>'}}
   %0 = "mhlo.all_reduce"(%operand) ({
   ^bb0(%arg0: tensor<i32>, %arg1: tensor<i32>):
@@ -168,6 +195,7 @@ func.func @all_reduce_invalid_reducer(%operand: tensor<10xf32>) -> tensor<10xf32
 // -----
 
 func.func @all_reduce_invalid_reducer(%operand: tensor<10xf32>) -> tensor<10xf32> {
+  // expected-error@+2 {{'mhlo.all_reduce' op failed to infer returned types}}
   // expected-error@+1 {{The type of reduction-region's result type at index 0 differs from the op's corresponding init-value type: 'tensor<4xf32>' vs 'tensor<f32>'}}
   %0 = "mhlo.all_reduce"(%operand) ({
   ^bb0(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>):
@@ -183,7 +211,8 @@ func.func @all_reduce_invalid_reducer(%operand: tensor<10xf32>) -> tensor<10xf32
 // -----
 
 func.func @all_reduce_invalid_return_type(%operand: tensor<10xf32>) -> tensor<10x4xf32> {
-  // expected-error@+1 {{requires compatible types for all operands and results}}
+  // expected-error@+2 {{'mhlo.all_reduce' op failed to infer returned types}}
+  // expected-error@+1 {{'mhlo.all_reduce' op inferred type(s) 'tensor<10xf32>' are incompatible with return type(s) of operation 'tensor<10x4xf32>'}}
   %0 = "mhlo.all_reduce"(%operand) ({
   ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>):
     %max = mhlo.maximum %arg0, %arg1 : tensor<f32>
@@ -198,7 +227,7 @@ func.func @all_reduce_invalid_return_type(%operand: tensor<10xf32>) -> tensor<10
 // -----
 
 func.func @all_reduce_invalid_return_type(%operand: tensor<10xf32>) -> tensor<10xi32> {
-  // expected-error@+1 {{requires compatible types for all operands and results}}
+  // expected-error@+1 {{'mhlo.all_reduce' op requires the same element type for all operands and results}}
   %0 = "mhlo.all_reduce"(%operand) ({
   ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>):
     %max = mhlo.maximum %arg0, %arg1 : tensor<f32>
@@ -213,6 +242,7 @@ func.func @all_reduce_invalid_return_type(%operand: tensor<10xf32>) -> tensor<10
 // -----
 
 func.func @all_reduce_invalid_replica_group(%operand: tensor<10xf32>) -> tensor<10xf32> {
+  // expected-error@+2 {{'mhlo.all_reduce' op failed to infer returned types}}
   // expected-error@+1 {{replica groups should be a rank 2 tensor}}
   %0 = "mhlo.all_reduce"(%operand) ({
   ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>):
@@ -228,6 +258,7 @@ func.func @all_reduce_invalid_replica_group(%operand: tensor<10xf32>) -> tensor<
 // -----
 
 func.func @all_reduce_invalid_replica_group(%operand: tensor<10xf32>) -> tensor<10xf32> {
+  // expected-error@+2 {{'mhlo.all_reduce' op failed to infer returned types}}
   // expected-error@+1 {{replica id #1 seen more than once}}
   %0 = "mhlo.all_reduce"(%operand) ({
   ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>):
@@ -243,6 +274,7 @@ func.func @all_reduce_invalid_replica_group(%operand: tensor<10xf32>) -> tensor<
 // -----
 
 func.func @all_reduce_invalid_replica_group(%operand: tensor<10xf32>) -> tensor<10xf32> {
+  // expected-error@+2 {{'mhlo.all_reduce' op failed to infer returned types}}
   //  expected-error@+1 {{replica id #2 not seen in replica groups}}
   %0 = "mhlo.all_reduce"(%operand) ({
   ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>):
@@ -258,6 +290,7 @@ func.func @all_reduce_invalid_replica_group(%operand: tensor<10xf32>) -> tensor<
 // -----
 
 func.func @all_reduce_invalid_replica_group(%operand: tensor<10xf32>) -> tensor<10xf32> {
+  // expected-error@+2 {{'mhlo.all_reduce' op failed to infer returned types}}
   //  expected-error@+1 {{replica groups cannot be empty}}
   %0 = "mhlo.all_reduce"(%operand) ({
   ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>):
@@ -892,6 +925,22 @@ func.func @dynamic_broadcast_in_dim_ok_dim(%arg0: tensor<1xf32>, %shape: tensor<
 func.func @dynamic_broadcast_in_dim_shape_mismatch(%arg0: tensor<32xf32>, %shape: tensor<3xi64>) -> tensor<7x8x9xf32> {
   // expected-error@+1 {{size of operand dimension 0 (32) is not compatible with size of result dimension 2 (9)}}
   %0 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %shape) {broadcast_dimensions = dense<[2]> : tensor<1xi64>} : (tensor<32xf32>, tensor<3xi64>) -> tensor<7x8x9xf32>
+  func.return %0 : tensor<7x8x9xf32>
+}
+
+// -----
+
+func.func @dynamic_broadcast_in_dim_negative_size(%arg0: tensor<1xf32>, %shape: tensor<3xi64>) -> tensor<7x8x9xf32> {
+  // expected-error@+1 {{broadcast_dimensions contains invalid value -1 for result with rank 3}}
+  %0 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %shape) {broadcast_dimensions = dense<[-1]> : tensor<1xi64>} : (tensor<1xf32>, tensor<3xi64>) -> tensor<7x8x9xf32>
+  func.return %0 : tensor<7x8x9xf32>
+}
+
+// -----
+
+func.func @dynamic_broadcast_in_dim_too_large(%arg0: tensor<1xf32>, %shape: tensor<3xi64>) -> tensor<7x8x9xf32> {
+  // expected-error@+1 {{broadcast_dimensions contains invalid value 3 for result with rank 3}}
+  %0 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %shape) {broadcast_dimensions = dense<[3]> : tensor<1xi64>} : (tensor<1xf32>, tensor<3xi64>) -> tensor<7x8x9xf32>
   func.return %0 : tensor<7x8x9xf32>
 }
 
@@ -3525,14 +3574,6 @@ func.func @bitcast_convert_scalar(%arg: tensor<f32>) -> tensor<f32> {
 
 // -----
 
-func.func @bitcast_convert_invalid_scalar(%arg: tensor<f64>) -> tensor<f32> {
-  // expected-error@+1 {{does not allow the smaller element type to be part of a 0d tensor, but got: 'tensor<f64>' and 'tensor<f32>'.}}
-  %0 = "mhlo.bitcast_convert"(%arg) : (tensor<f64>) -> tensor<f32>
-  return %0 : tensor<f32>
-}
-
-// -----
-
 func.func @bitcast_convert(%arg: tensor<*xf32>) -> tensor<*xf32> {
   %0 = "mhlo.bitcast_convert"(%arg) : (tensor<*xf32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
@@ -3541,39 +3582,15 @@ func.func @bitcast_convert(%arg: tensor<*xf32>) -> tensor<*xf32> {
 // -----
 
 func.func @invalid_bitcast_convert_width_mismatch(%arg: tensor<2x4xf64>) -> tensor<2x4xf32> {
-  // expected-error@+1 {{requires compatible bitwidths. Got: 'tensor<2x4xf64>' and 'tensor<2x4xf32>', but 32 * 4 != 64.}}
+  // expected-error@+1 {{rank of smaller element type (2) should be 1 more than rank of larger element type (2), but 2 != 2 + 1}}
   %0 = "mhlo.bitcast_convert"(%arg) : (tensor<2x4xf64>) -> tensor<2x4xf32>
   return %0 : tensor<2x4xf32>
 }
 
 // -----
 
-func.func @bitcast_convert_width_mismatch(%arg: tensor<f32>) -> tensor<f64> {
-  // expected-error@+1 {{does not allow the smaller element type to be part of a 0d tensor, but got: 'tensor<f32>' and 'tensor<f64>'.}}
-  %0 = "mhlo.bitcast_convert"(%arg) : (tensor<f32>) -> tensor<f64>
-  return %0 : tensor<f64>
-}
-
-// -----
-
-func.func @bitcast_convert_empty_target(%arg: tensor<1xf64>) -> tensor<f32> {
-  // expected-error@+1 {{does not allow the smaller element type to be part of a 0d tensor, but got: 'tensor<1xf64>' and 'tensor<f32>'.}}
-  %0 = "mhlo.bitcast_convert"(%arg) : (tensor<1xf64>) -> tensor<f32>
-  return %0 : tensor<f32>
-}
-
-// -----
-
-func.func @bitcast_convert_empty_operand(%arg: tensor<f32>) -> tensor<1xf64> {
-  // expected-error@+1 {{does not allow the smaller element type to be part of a 0d tensor, but got: 'tensor<f32>' and 'tensor<1xf64>'.}}
-  %0 = "mhlo.bitcast_convert"(%arg) : (tensor<f32>) -> tensor<1xf64>
-  return %0 : tensor<1xf64>
-}
-
-// -----
-
 func.func @invalid_bitcast_convert_width_mismatch(%arg: tensor<2x4xf32>) -> tensor<2x4xf64> {
-  // expected-error@+1 {{requires compatible bitwidths. Got: 'tensor<2x4xf32>' and 'tensor<2x4xf64>', but 32 * 4 != 64.}}
+  // expected-error@+1 {{rank of smaller element type (2) should be 1 more than rank of larger element type (2), but 2 != 2 + 1}}
   %0 = "mhlo.bitcast_convert"(%arg) : (tensor<2x4xf32>) -> tensor<2x4xf64>
   return %0 : tensor<2x4xf64>
 }
@@ -5645,7 +5662,7 @@ func.func @add_dependency(%data: tensor<4x16xf32>) -> tensor<4x16xf32> {
 
 // -----
 
-// CHECK: func @uniform_quantize
+// CHECK-LABEL: func @uniform_quantize
 func.func @uniform_quantize(%arg: tensor<16x16xf32>) -> tensor<16x16x!quant.uniform<ui8:f32, 34.0:16>> {
   %0 = mhlo.uniform_quantize %arg : (tensor<16x16xf32>) -> tensor<16x16x!quant.uniform<ui8:f32, 34.0:16>>
   func.return %0 : tensor<16x16x!quant.uniform<ui8:f32, 34.0:16>>
@@ -5661,7 +5678,7 @@ func.func @uniform_requantize(%arg: tensor<16x16x!quant.uniform<i8:f32, 5.0:20>>
 
 // -----
 
-// CHECK: func @uniform_dequantize
+// CHECK-LABEL: func @uniform_dequantize
 func.func @uniform_dequantize(%arg: tensor<16x16x!quant.uniform<i8:f32, 34.0:16>>) -> tensor<16x16xf32> {
   %0 = mhlo.uniform_dequantize %arg : (tensor<16x16x!quant.uniform<i8:f32, 34.0:16>>) -> tensor<16x16xf32>
   func.return %0 : tensor<16x16xf32>
@@ -5673,14 +5690,6 @@ func.func @uniform_dequantize(%arg: tensor<16x16x!quant.uniform<i8:f32, 34.0:16>
 func.func @uniform_dequantize_unranked(%arg: tensor<*x!quant.uniform<i8:f32, 34.0:16>>) -> tensor<*xf32> {
   %0 = mhlo.uniform_dequantize %arg : (tensor<*x!quant.uniform<i8:f32, 34.0:16>>) -> tensor<*xf32>
   func.return %0 : tensor<*xf32>
-}
-
-// -----
-
-func.func @uniform_dequantize_not_quantize(%arg: tensor<16x16xf32>) -> tensor<16x16xf32> {
-  // expected-error@+1 {{operand #0 must be tensor of 4/8/16/32-bit uniform quantized signed integer or 4/8/16/32-bit uniform quantized unsigned integer values, but got 'tensor<16x16xf32>'}}
-  %0 = mhlo.uniform_dequantize %arg : (tensor<16x16xf32>) -> tensor<16x16xf32>
-  func.return %0 : tensor<16x16xf32>
 }
 
 // -----
@@ -6023,6 +6032,35 @@ func.func @is_compatible_dynamism_bounds_mismatch(
   %0 = "mhlo.add"(%arg0, %arg1) : (
     tensor<?xf32, #mhlo.type_extensions<bounds = [4]>>,
     tensor<?xf32, #mhlo.type_extensions<bounds = [4]>>) -> tensor<5xf32>
+  func.return
+}
+
+// -----
+
+// The following is the not the exhaustive list of ops supporting quantized
+// types. The list will be updated as part of adding verification support for
+// quantized ops.
+func.func @quantization_supported_ops(%arg0: tensor<1x2x2x!quant.uniform<i8:f32, 1.0:17>>, %arg1: tensor<1x2x2x!quant.uniform<i8:f32, 1.0:17>>, %arg2: tensor<!quant.uniform<i8:f32, 1.0:17>>) {
+  %0 = "mhlo.atan2"(%arg0, %arg1) : (tensor<1x2x2x!quant.uniform<i8:f32, 1.0:17>>, tensor<1x2x2x!quant.uniform<i8:f32, 1.0:17>>) -> tensor<1x2x2x!quant.uniform<i8:f32, 1.0:17>>
+  %1 = "mhlo.divide"(%arg0, %arg1) : (tensor<1x2x2x!quant.uniform<i8:f32, 1.0:17>>, tensor<1x2x2x!quant.uniform<i8:f32, 1.0:17>>) -> tensor<1x2x2x!quant.uniform<i8:f32, 1.0:17>>
+  %2 = "mhlo.power"(%arg0, %arg1) : (tensor<1x2x2x!quant.uniform<i8:f32, 1.0:17>>, tensor<1x2x2x!quant.uniform<i8:f32, 1.0:17>>) -> tensor<1x2x2x!quant.uniform<i8:f32, 1.0:17>>
+  %3 = "mhlo.remainder"(%arg0, %arg1) : (tensor<1x2x2x!quant.uniform<i8:f32, 1.0:17>>, tensor<1x2x2x!quant.uniform<i8:f32, 1.0:17>>) -> tensor<1x2x2x!quant.uniform<i8:f32, 1.0:17>>
+  %4 = "mhlo.subtract"(%arg0, %arg1) : (tensor<1x2x2x!quant.uniform<i8:f32, 1.0:17>>, tensor<1x2x2x!quant.uniform<i8:f32, 1.0:17>>) -> tensor<1x2x2x!quant.uniform<i8:f32, 1.0:17>>
+
+  %5 = "mhlo.abs"(%arg0) : (tensor<1x2x2x!quant.uniform<i8:f32, 1.0:17>>) -> tensor<1x2x2x!quant.uniform<i8:f32, 1.0:17>>
+  %6 = "mhlo.cbrt"(%arg0) : (tensor<1x2x2x!quant.uniform<i8:f32, 1.0:17>>) -> tensor<1x2x2x!quant.uniform<i8:f32, 1.0:17>>
+  %7 = "mhlo.cosine"(%arg0) : (tensor<1x2x2x!quant.uniform<i8:f32, 1.0:17>>) -> tensor<1x2x2x!quant.uniform<i8:f32, 1.0:17>>
+  %8 = "mhlo.exponential"(%arg0) : (tensor<1x2x2x!quant.uniform<i8:f32, 1.0:17>>) -> tensor<1x2x2x!quant.uniform<i8:f32, 1.0:17>>
+  %9 = "mhlo.exponential_minus_one"(%arg0) : (tensor<1x2x2x!quant.uniform<i8:f32, 1.0:17>>) -> tensor<1x2x2x!quant.uniform<i8:f32, 1.0:17>>
+  %10 = "mhlo.log"(%arg0) : (tensor<1x2x2x!quant.uniform<i8:f32, 1.0:17>>) -> tensor<1x2x2x!quant.uniform<i8:f32, 1.0:17>>
+  %11 = "mhlo.log_plus_one"(%arg0) : (tensor<1x2x2x!quant.uniform<i8:f32, 1.0:17>>) -> tensor<1x2x2x!quant.uniform<i8:f32, 1.0:17>>
+  %12 = "mhlo.logistic"(%arg0) : (tensor<1x2x2x!quant.uniform<i8:f32, 1.0:17>>) -> tensor<1x2x2x!quant.uniform<i8:f32, 1.0:17>>
+  %13 = "mhlo.negate"(%arg0) : (tensor<1x2x2x!quant.uniform<i8:f32, 1.0:17>>) -> tensor<1x2x2x!quant.uniform<i8:f32, 1.0:17>>
+  %14 = "mhlo.rsqrt"(%arg0) : (tensor<1x2x2x!quant.uniform<i8:f32, 1.0:17>>) -> tensor<1x2x2x!quant.uniform<i8:f32, 1.0:17>>
+  %15 = "mhlo.sign"(%arg0) : (tensor<1x2x2x!quant.uniform<i8:f32, 1.0:17>>) -> tensor<1x2x2x!quant.uniform<i8:f32, 1.0:17>>
+  %16 = "mhlo.sine"(%arg0) : (tensor<1x2x2x!quant.uniform<i8:f32, 1.0:17>>) -> tensor<1x2x2x!quant.uniform<i8:f32, 1.0:17>>
+  %17 = "mhlo.sqrt"(%arg0) : (tensor<1x2x2x!quant.uniform<i8:f32, 1.0:17>>) -> tensor<1x2x2x!quant.uniform<i8:f32, 1.0:17>>
+  %18 = "mhlo.tanh"(%arg0) : (tensor<1x2x2x!quant.uniform<i8:f32, 1.0:17>>) -> tensor<1x2x2x!quant.uniform<i8:f32, 1.0:17>>
   func.return
 }
 

@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <functional>
 #include <string>
+#include <type_traits>
 #include <utility>
 
 #include "absl/status/status.h"
@@ -27,6 +28,7 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
+#include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/metrics.h"
@@ -1383,6 +1385,13 @@ Status OptimizeGraph(
   tensorflow::grappler::GrapplerItem item;
   item.id = grappler_item_id;
   item.optimization_options() = optimization_options;
+  if (cpu_device && std::is_same<decltype(cpu_device), LocalDevice>::value &&
+      cpu_device->tensorflow_cpu_worker_threads() != nullptr) {
+    // Forward to the optimisation pass number of intra threads that are used to
+    // parallelise operations.
+    item.optimization_options().intra_op_parallelism_threads =
+        cpu_device->tensorflow_cpu_worker_threads()->num_threads;
+  }
 
   // Add all available devices so that inlined function can be placed.
   for (const Device* d : device_set.devices()) {

@@ -31,10 +31,6 @@ load(
     "if_mkl",
     "mkl_deps",
 )
-load(
-    "//third_party/mkl_dnn:build_defs.bzl",
-    "if_onednn_v3",
-)
 load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup", "get_compatible_with_portable", "tf_cc_shared_library", "tf_cuda_cc_test", "tf_cuda_cc_tests", "tf_disable_ptxas_warning_flags", "tf_kernel_library")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
@@ -530,8 +526,9 @@ cc_library(
     hdrs = ["numeric_options_utils.h"],
     deps = [
         "//tensorflow/compiler/xla/stream_executor:numeric_options",
+        "//tensorflow/core/platform:tensor_float_32_hdr_lib",
         "//tensorflow/core/util:determinism_for_kernels",
-    ],
+    ] + if_static(["//tensorflow/core/platform:tensor_float_32_utils"]),
 )
 
 tf_cuda_library(
@@ -1531,6 +1528,7 @@ tf_kernel_library(
     deps = [
         ":cast_op",
         ":gpu_utils",
+        ":numeric_options_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -1583,9 +1581,13 @@ tf_cc_test(
     deps = [
         ":batch_kernel_test_util",
         ":batch_kernels",
+        ":function_ops",
+        ":shape_ops",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels/batching_util:warmup",
+        "//tensorflow/tsl/platform:blocking_counter",
     ],
 )
 
@@ -3473,6 +3475,7 @@ tf_kernel_library(
         ":conv_ops_gpu_hdrs",
         ":gpu_utils",
         ":conv_ops",
+        ":numeric_options_utils",
         "//tensorflow/core/protobuf:autotuning_proto_cc",
         "//tensorflow/core/util/autotune_maps:conv_parameters",
         "//tensorflow/core/util/proto:proto_utils",
@@ -3579,8 +3582,9 @@ tf_kernel_library(
 tf_kernel_library(
     name = "fft_ops",
     prefix = "fft_ops",
-    deps = MATH_DEPS + [
-    ] + if_cuda([
+    deps = MATH_DEPS + if_cuda([
+        "@com_google_absl//absl/container:flat_hash_map",
+        "//tensorflow/core/platform:stream_executor",
         "//tensorflow/compiler/xla/stream_executor/cuda:cufft_plugin",
     ]),
 )
@@ -4161,6 +4165,7 @@ tf_kernel_library(
         "//tensorflow/core/util:determinism_for_kernels",
     ] + if_cuda_or_rocm([
         ":reduction_ops",
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_timer",
     ]) + if_cuda([
         "@local_config_cuda//cuda:cub_headers",
         "//tensorflow/core/platform:stream_executor",
@@ -4614,6 +4619,7 @@ tf_kernel_library(
     prefix = "parse_tensor_op",
     deps = [
         "//tensorflow/core/util/tensor_bundle:byteswaptensor",
+        "@com_google_absl//absl/strings",
     ] + PARSING_DEPS,
 )
 
@@ -4698,6 +4704,14 @@ cc_library(
     deps = [
         ":random_op",
         ":stateless_random_ops_v2_header",
+        "//tensorflow/core:framework",
+    ],
+)
+
+cc_library(
+    name = "stochastic_cast_op_header",
+    hdrs = ["stochastic_cast_op.h"],
+    deps = [
         "//tensorflow/core:framework",
     ],
 )
@@ -7846,8 +7860,8 @@ tf_cc_shared_library(
         "@local_config_tensorrt//:__subpackages__",
         "@local_execution_config_platform//:__subpackages__",
         "@mkl_dnn_acl_compatible//:__subpackages__",
-        "@mkl_dnn_v1//:__subpackages__",
         "@nsync//:__subpackages__",
+        "@onednn//:__subpackages__",
         "@org_sqlite//:__subpackages__",
         "@platforms//:__subpackages__",
         "@png//:__subpackages__",
@@ -7857,7 +7871,7 @@ tf_cc_shared_library(
         "@upb//:__subpackages__",
         "@zlib//:__subpackages__",
         # copybara:comment_end
-    ] + if_onednn_v3(["@onednn_v3//:__subpackages__"]),
+    ],
     visibility = ["//visibility:public"],
     deps = [
         ":kernel_platform_strings",

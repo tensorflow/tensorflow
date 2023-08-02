@@ -273,6 +273,7 @@ py_strict_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:sparse_tensor",
         "//tensorflow/python/framework:stack",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/ops:session_ops",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/training/experimental:mixed_precision_global_state",
@@ -324,7 +325,6 @@ tf_py_strict_test(
     deps = [
         ":session",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:gradients",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework",
@@ -345,6 +345,7 @@ tf_py_strict_test(
         "//tensorflow/python/ops:control_flow_ops",
         "//tensorflow/python/ops:control_flow_ops_gen",
         "//tensorflow/python/ops:data_flow_ops",
+        "//tensorflow/python/ops:gradients",
         "//tensorflow/python/ops:gradients_impl",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:resource_variable_ops",
@@ -369,7 +370,6 @@ tf_py_strict_test(
     tags = [
         "no_gpu",
         "no_oss",
-        "no_pip",
         "no_pip_gpu",
         "notap",
     ],
@@ -427,13 +427,13 @@ tf_py_strict_test(
     ],
     deps = [
         ":session",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/platform:test",
         "//tensorflow/python/training:server_lib",
     ],
 )

@@ -5,7 +5,7 @@ load(
 )
 load(
     "//tensorflow:tensorflow.default.bzl",
-    "get_compatible_with_cloud",
+    "get_compatible_with_portable",
     "tf_py_test",
     "tf_python_pybind_extension",
 )
@@ -25,7 +25,7 @@ cc_library(
     name = "quantize_model_cc_impl",
     srcs = ["quantize_model.cc"],
     hdrs = ["quantize_model.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     visibility = [
         # Directly linked to `libtensorflow_cc.so` or
         # `_pywrap_tensorflow_internal.so` if static build.
@@ -41,11 +41,10 @@ cc_library(
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantize_preprocess",
         "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:custom_aggregator_op",  # Required for CustomAggregator op registration.
         "//tensorflow/compiler/mlir/quantization/tensorflow/cc:convert_asset_args",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/cc:run_passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow/cc:save_variables",
         "//tensorflow/compiler/mlir/quantization/tensorflow/cc:status_macro",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/debugging:mlir_dump",
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow:export_graphdef",
         "//tensorflow/compiler/mlir/tensorflow:mlir_import_options",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
@@ -65,9 +64,9 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",
@@ -83,7 +82,7 @@ cc_library(
 cc_library(
     name = "quantize_model_cc",
     hdrs = ["quantize_model.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = if_static([":quantize_model_cc_impl"]) + [
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
@@ -122,7 +121,6 @@ tf_py_test(
     srcs = [
         "pywrap_quantize_model_test.py",
     ],
-    tags = ["no_pip"],
     deps = [
         ":pywrap_quantize_model",
         "//tensorflow:tensorflow_py",
@@ -191,7 +189,9 @@ tf_py_test(
     size = "medium",
     srcs = ["integration_test/quantize_model_test.py"],
     shard_count = 50,  # Parallelize the test to avoid timeouts.
-    tags = ["no_pip"],
+    tags = [
+        "no_mac",  # TODO(b/292100835): Reenable
+    ],
     deps = [
         ":quantize_model",
         ":quantize_model_test_base",
@@ -249,7 +249,6 @@ tf_py_test(
     name = "concurrency_test",
     size = "medium",
     srcs = ["integration_test/concurrency_test.py"],
-    tags = ["no_pip"],
     deps = [
         ":quantize_model",
         "//tensorflow:tensorflow_py",
@@ -275,7 +274,6 @@ pytype_strict_library(
 tf_py_test(
     name = "representative_dataset_test",
     srcs = ["representative_dataset_test.py"],
-    tags = ["no_pip"],
     deps = [
         ":representative_dataset",
         "//tensorflow/python/client:session",

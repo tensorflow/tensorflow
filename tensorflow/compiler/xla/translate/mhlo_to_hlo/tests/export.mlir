@@ -161,6 +161,32 @@ func.func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
 
 // -----
 
+// expected-error@-3 {{'mhlo.async_start' op can't be translated to XLA HLO}}
+func.func @all_reduce_0(%arg0: tensor<10xf32>, %arg1: tensor<1xf32>) -> (tensor<10xf32>, tensor<1xf32>) attributes {execution_thread = "main"} {
+  %0:2 = "mhlo.all_reduce"(%arg0, %arg1) ({
+  ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>):
+    %max = mhlo.maximum %lhs, %rhs : tensor<f32>
+    "mhlo.return"(%max) : (tensor<f32>) -> ()
+  })
+  {
+    replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>,
+    channel_handle = #mhlo.channel_handle<
+      handle = 5,
+      type = 2
+    >,
+    use_global_device_ids
+  } : (tensor<10xf32>, tensor<1xf32>) -> (tensor<10xf32>, tensor<1xf32>)
+  func.return %0#0, %0#1 : tensor<10xf32>, tensor<1xf32>
+}
+
+func.func @main(%arg0: tensor<10xf32>, %arg1: tensor<1xf32>) -> (tensor<10xf32>, tensor<1xf32>) {
+  %0 = "mhlo.async_start"(%arg0, %arg1) {called_computation = @all_reduce_0, execution_thread = "main"} : (tensor<10xf32>, tensor<1xf32>) -> !mhlo.async_bundle<tuple<tensor<10xf32>,tensor<1xf32>>, tuple<tensor<10xf32>,tensor<1xf32>>>
+  %1:2 = "mhlo.async_done"(%0) {called_computation = @all_reduce_0, execution_thread = "main"} : (!mhlo.async_bundle<tuple<tensor<10xf32>,tensor<1xf32>>, tuple<tensor<10xf32>,tensor<1xf32>>>) -> (tensor<10xf32>, tensor<1xf32>)
+  return %1#0, %1#1 : tensor<10xf32>, tensor<1xf32>
+}
+
+// -----
+
 // CHECK:  HloModule
 func.func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
   %0 = "mhlo.all_reduce"(%arg0) ({
@@ -245,6 +271,24 @@ func.func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
 // CHECK-SAME{LITERAL}:  replica_groups={{0,2,4,6},{1,3,5,7}}
 // CHECK-SAME:  use_global_device_ids=true
 // CHECK-SAME:  to_apply=%[[COMPUTATION]]
+
+// -----
+
+func.func private @main(%arg0: tensor<8xf32>, %arg1: tensor<f32>) -> tuple<tensor<8xf32>, tensor<f32>> {
+  // CHECK:      %[[ARG0:.*]] = f32[8] parameter(0)
+  // CHECK-NEXT: %[[ARG1:.*]] = f32[] parameter(1)
+  // CHECK-NEXT: %[[TUPLE:.*]] = (f32[8], f32[]) tuple
+  // CHECK-NEXT: %[[TUPLE_ARG0:.*]] = f32[8] get-tuple-element((f32[8], f32[]) %[[TUPLE]]), index=0
+  // CHECK-NEXT: %[[TUPLE_ARG1:.*]] = f32[] get-tuple-element((f32[8], f32[]) %[[TUPLE]]), index=1
+  // CHECK-NEXT: (f32[8], f32[]) all-reduce(f32[8] %[[TUPLE_ARG0]], f32[] %[[TUPLE_ARG1]]), replica_groups={}, to_apply={{.*}}
+  %0:2 = "mhlo.all_reduce"(%arg0, %arg1) ({
+  ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+    %2 = mhlo.add %arg2, %arg3 : tensor<f32>
+    mhlo.return %2 : tensor<f32>
+  }) {replica_groups = dense<> : tensor<0x0xi64>} : (tensor<8xf32>, tensor<f32>) -> (tensor<8xf32>, tensor<f32>)
+  %1 = mhlo.tuple %0#0, %0#1 {xla_shape = "(f32[8]{0}, f32[])"} : tuple<tensor<8xf32>, tensor<f32>>
+  return %1 : tuple<tensor<8xf32>, tensor<f32>>
+}
 
 // -----
 
@@ -609,6 +653,12 @@ func.func @main() {
   // CHECK: f8e4m3b11fnuz[4] constant({1, 2, 3, 4})
   %cst_13 = arith.constant dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xf8E4M3B11FNUZ>
 
+  // CHECK: f8e4m3fnuz[4] constant({1, 2, 3, 4})
+  %cst_14 = arith.constant dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xf8E4M3FNUZ>
+
+  // CHECK: f8e5m2fnuz[4] constant({1, 2, 3, 4})
+  %cst_15 = arith.constant dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xf8E5M2FNUZ>
+
   func.return
 }
 
@@ -734,15 +784,23 @@ func.func @main(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   %1 = "mhlo.convert"(%0) : (tensor<2xf8E5M2>) -> tensor<2xf32>
   %2 = "mhlo.convert"(%1) : (tensor<2xf32>) -> tensor<2xf8E4M3FN>
   %3 = "mhlo.convert"(%2) : (tensor<2xf8E4M3FN>) -> tensor<2xf32>
-  func.return %3 : tensor<2xf32>
+  %4 = "mhlo.convert"(%3) : (tensor<2xf32>) -> tensor<2xf8E4M3FNUZ>
+  %5 = "mhlo.convert"(%4) : (tensor<2xf8E4M3FNUZ>) -> tensor<2xf32>
+  %6 = "mhlo.convert"(%5) : (tensor<2xf32>) -> tensor<2xf8E5M2FNUZ>
+  %7 = "mhlo.convert"(%6) : (tensor<2xf8E5M2FNUZ>) -> tensor<2xf32>
+  func.return %7 : tensor<2xf32>
 }
 
 // CHECK:  ENTRY
 // CHECK:  %[[ARG:.*]] = f32[2] parameter(0)
 // CHECK:  %[[E5M2_VAL:.*]] = f8e5m2[2] convert(f32[2] %[[ARG]])
 // CHECK:  %[[F32_VAL:.*]] = f32[2] convert(f8e5m2[2] %[[E5M2_VAL]])
-// CHECK:  %[[E4M3_VAL:.*]] = f8e4m3fn[2] convert(f32[2] %[[F32_VAL]])
-// CHECK:  ROOT %[[RESULT:.*]] = f32[2] convert(f8e4m3fn[2] %[[E4M3_VAL]])
+// CHECK:  %[[E4M3FN_VAL:.*]] = f8e4m3fn[2] convert(f32[2] %[[F32_VAL]])
+// CHECK:  %[[F32_VAL2:.*]] = f32[2] convert(f8e4m3fn[2] %[[E4M3FN_VAL]])
+// CHECK:  %[[E4M3FNUZ_VAL:.*]] = f8e4m3fnuz[2] convert(f32[2] %[[F32_VAL2]])
+// CHECK:  %[[F32_VAL3:.*]] = f32[2] convert(f8e4m3fnuz[2] %[[E4M3FNUZ_VAL]])
+// CHECK:  %[[E5M2FNUZ_VAL:.*]] = f8e5m2fnuz[2] convert(f32[2] %[[F32_VAL3]])
+// CHECK:  ROOT %[[RESULT:.*]] = f32[2] convert(f8e5m2fnuz[2] %[[E5M2FNUZ_VAL]])
 
 // -----
 

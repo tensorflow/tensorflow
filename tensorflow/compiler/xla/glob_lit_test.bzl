@@ -46,12 +46,22 @@ def _run_lit_test(name, data, size, tags, driver, features, exec_properties):
     """
 
     # Disable tests on windows for now, to enable testing rest of all xla and mlir.
+    xla_root_dir = "tensorflow/compiler/xla/"
+
+    # TODO(ddunleavy,jakeharmon) This is a hack! Once vendoring is complete we
+    # can remove this logic. This is necessary to have these tests run on builds
+    # using Python 3.11, but also to not include `@pypi_lit` in standalone xla
+    # builds where it won't be found.
+    deps = []
+    if xla_root_dir == "tensorflow/compiler/xla/":
+        deps.append("@pypi_lit//:pkg")
+
     native.py_test(
         name = name,
         srcs = ["@llvm-project//llvm:lit"],
-        tags = tags + ["no_pip", "no_windows"],
+        tags = tags + ["no_windows"],
         args = [
-            "xla/" + paths.basename(data[-1]) + " --config-prefix=runlit -v",
+            xla_root_dir + paths.basename(data[-1]) + " --config-prefix=runlit -v",
         ] + features,
         data = data + [
             "//tensorflow/compiler/xla:litfiles",
@@ -59,12 +69,14 @@ def _run_lit_test(name, data, size, tags, driver, features, exec_properties):
             "@llvm-project//llvm:count",
             "@llvm-project//llvm:not",
         ],
+        deps = deps,
         size = size,
         main = "lit.py",
         exec_properties = exec_properties,
     )
 
 def glob_lit_tests(
+        name = None,
         exclude = [],
         test_file_exts = _default_test_file_exts,
         default_size = _default_size,
@@ -79,6 +91,7 @@ def glob_lit_tests(
     """Creates all plausible Lit tests (and their inputs) under this directory.
 
     Args:
+      name: str, name of the test_suite rule to generate for running all tests.
       exclude: [str], paths to exclude (for tests and inputs).
       test_file_exts: [str], extensions for files that are tests.
       default_size: str, the test size for targets not in "size_override".
@@ -104,7 +117,10 @@ def glob_lit_tests(
 
     # Run tests individually such that errors can be attributed to a specific
     # failure.
+    all_tests = []
     for curr_test in tests:
+        all_tests.append(curr_test + ".test")
+
         # Instantiate this test with updated parameters.
         _run_lit_test(
             name = curr_test + ".test",
@@ -114,4 +130,12 @@ def glob_lit_tests(
             driver = driver,
             features = features,
             exec_properties = exec_properties,
+        )
+
+    # TODO: remove this check after making it a required param.
+    if name:
+        native.test_suite(
+            name = name,
+            tests = all_tests,
+            tags = ["manual"],
         )

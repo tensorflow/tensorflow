@@ -20,7 +20,6 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
-#include "testing/base/public/benchmark.h"
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/c/c_api_types.h"
@@ -54,7 +53,7 @@ TensorUniquePtr MakeTensorWithData(std::vector<int> dims,
 }
 
 TensorArray MakeTensorArrayForTest(const std::vector<int>& dims) {
-  return TensorArray(kTfLiteInt32, BuildTfLiteIntArray(dims));
+  return TensorArray(kTfLiteInt32, BuildTfLiteArray(dims));
 }
 
 TEST(TensorArrayTest, InsertSingleElement) {
@@ -227,23 +226,6 @@ TEST(OpaqueVariantTensorArrayDataTest, CastThroughVoidAndCopy) {
   delete d;
   delete copied_d;
 }
-
-void BM_CopyDestroySetArrayForEachElement(benchmark::State& state) {
-  constexpr int length = 1 << 8;
-  for (auto s : state) {
-    auto* arr = new TensorArray{kTfLiteInt32, {}};
-    arr->Resize(length);
-    for (int i = 0; i < length; ++i) {
-      TensorArray* temp = new TensorArray(*arr);
-      delete arr;
-      arr = temp;
-      arr->Set(i, BuildTfLiteTensor(kTfLiteInt32, {length, length, length},
-                                    kTfLiteDynamic));
-    }
-    delete arr;
-  }
-}
-BENCHMARK(BM_CopyDestroySetArrayForEachElement);
 
 }  // namespace
 }  // namespace variants

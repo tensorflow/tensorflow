@@ -24,11 +24,13 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
@@ -167,10 +169,16 @@ class XlaCallModuleOp : public XlaOpKernel {
                       "Unexpected device type ", loading_device_type)));
     }
     VLOG(3) << "Initialized XlaCallModuleOp on " << loading_platform;
+    if (!ctx->GetAttr("has_token_input_output", &module_has_token_input_output_)
+             .ok()) {
+      module_has_token_input_output_ = false;
+    }
     {
       auto loader = XlaCallModuleLoader::Create(
           &context_, version, std::move(module_str), std::move(dim_args_spec),
-          std::move(disabled_checks), std::move(platforms), loading_platform);
+          std::move(disabled_checks), std::move(platforms), loading_platform,
+          /*num_invocation_args=*/ctx->num_inputs(),
+          module_has_token_input_output_);
       OP_REQUIRES_OK(ctx, loader.status());
       loader_ = *std::move(loader);
     }
@@ -180,10 +188,6 @@ class XlaCallModuleOp : public XlaOpKernel {
       function_list_.clear();
     }
 
-    if (!ctx->GetAttr("has_token_input_output", &module_has_token_input_output_)
-             .ok()) {
-      module_has_token_input_output_ = false;
-    }
     if (!ctx->GetAttr(kXlaTokenInputNodesAttrName, &token_input_nodes_).ok()) {
       token_input_nodes_.clear();
       op_has_token_input_output_ = false;
@@ -195,6 +199,10 @@ class XlaCallModuleOp : public XlaOpKernel {
              .ok()) {
       original_node_name_ = name();
     }
+
+    mlir::DialectRegistry registry;
+    mlir::func::registerAllExtensions(registry);
+    context_.appendDialectRegistry(registry);
   }
 
   void Compile(XlaOpKernelContext *ctx) override {

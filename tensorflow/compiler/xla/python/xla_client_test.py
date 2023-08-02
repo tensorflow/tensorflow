@@ -19,6 +19,7 @@ import functools
 import itertools
 import re
 import threading
+import traceback
 import unittest
 
 from absl import flags
@@ -37,8 +38,10 @@ except ImportError:
 
 bfloat16 = xla_client.bfloat16
 float8_e4m3fn = xla_client.float8_e4m3fn
+float8_e4m3fnuz = xla_client.float8_e4m3fnuz
 float8_e4m3b11fnuz = xla_client.float8_e4m3b11fnuz
 float8_e5m2 = xla_client.float8_e5m2
+float8_e5m2fnuz = xla_client.float8_e5m2fnuz
 ops = xla_client.ops
 xla_computation_to_mlir_module = (
     xla_client._xla.mlir.xla_computation_to_mlir_module)
@@ -731,7 +734,7 @@ def TestFactory(xla_backend,
           continue
         # float8_e4m3b11fnuz not supported on some TPU backends.
         if (
-            dtype in [float8_e4m3b11fnuz]
+            dtype in [float8_e5m2fnuz, float8_e4m3fnuz, float8_e4m3b11fnuz]
             and self.backend.platform == "tpu"
         ):
           if self.backend.platform_version.find("TPU") == -1:
@@ -2217,12 +2220,7 @@ def TestFactory(xla_backend,
     def testMemoryStats(self):
       for device in self.backend.local_devices():
         stats = device.memory_stats()
-        if (
-            self.backend.platform != "tpu"
-            or pjrt_c_api
-            or not tfrt_tpu
-            or external_tpu
-        ):
+        if self.backend.platform != "tpu" or not tfrt_tpu or external_tpu:
           self.assertIsNone(stats)
         else:
           self.assertIsNotNone(stats)
@@ -2235,6 +2233,15 @@ def TestFactory(xla_backend,
           self.assertGreaterEqual(stats["peak_bytes_in_use"], 0)
           self.assertEqual(type(stats["largest_alloc_size"]), int)
           self.assertGreaterEqual(stats["largest_alloc_size"], 0)
+
+    @unittest.skipIf(pathways, "not implemented")
+    def testMemory(self):
+      for device in self.backend.local_devices():
+        for memory in device.addressable_memories():
+          self.assertEqual(memory.process_index, device.process_index)
+          self.assertEqual(memory.platform, device.platform)
+          self.assertIn(device, memory.attached_devices())
+          self.assertEqual(memory, device.memory(memory.kind))
 
   tests.append(DeviceTest)
 
@@ -2535,6 +2542,29 @@ def TestFactory(xla_backend,
             i for (i, f) in enumerate(frames) if f.function_name == "AFunction")
         self.assertEqual(frames[i - 1].function_name, "AnotherFunction")
         self.assertEqual(frames[i + 1].function_name, "testNestedFunction")
+
+    def testPythonTracebackHasCorrectLineNumbers(self):
+      def B():
+        return xla_client.Traceback.get_traceback()
+
+      def A():
+        return B()
+
+      tb = A().as_python_traceback()
+      for frame, lineno in traceback.walk_tb(tb):
+        if frame.f_code.co_name == "A":
+          line = A.__code__.co_firstlineno
+          self.assertBetween(lineno, line, line + 2)
+        elif frame.f_code.co_name == "B":
+          line = B.__code__.co_firstlineno
+          self.assertBetween(lineno, line, line + 2)
+
+    def testAccessingLocalsDoesNotCrash(self):
+      # https://github.com/google/jax/issues/16027
+      tb = xla_client.Traceback.get_traceback()
+      python_tb = tb.as_python_traceback()
+      for frame, _ in traceback.walk_tb(python_tb):
+        _ = frame.f_locals  # should not crash
 
   tests.append(TracebackTest)
 

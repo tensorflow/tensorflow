@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/serialization_utils.h"
 
+#include <map>
 #include <memory>
 #include <string>
 #include <utility>
@@ -272,6 +273,20 @@ Status VariantTensorDataReader::ReadDatasetInternal(FunctionLibraryRuntime* flr,
   graph_def.ParseFromString(serialized_graph_def);
   TF_RETURN_IF_ERROR(FromGraphDef(flr, graph_def, {}, output_node, val));
   return OkStatus();
+}
+
+std::map<string, Tensor> VariantTensorDataReader::ReadAllTensors() {
+  std::map<string, Tensor> result;
+  for (const auto& entry : map_) {
+    string key1 = entry.first;
+    for (const auto& inner : entry.second) {
+      string key2 = inner.first;
+      size_t index = inner.second;
+      result[absl::StrCat(key1, kDelimiter, key2)] =
+          data_[key1]->tensors(index);
+    }
+  }
+  return result;
 }
 
 Status VariantTensorDataWriter::WriteScalar(StringPiece key,
@@ -547,6 +562,39 @@ Status AsGraphDef(const DatasetBase* dataset,
                    .WithAttr("index", 0));
   TF_RETURN_IF_ERROR(b.ToGraphDef(graph_def));
   return OkStatus();
+}
+
+tsl::StatusOr<absl::flat_hash_map<std::string, int64_t>> CheckpointStats(
+    const std::string& checkpoint_bytes) {
+  TensorProto proto;
+  if (!ParseProtoUnlimited(&proto, checkpoint_bytes)) {
+    return absl::InvalidArgumentError(
+        "Failed to parse checkpoint bytes into proto.");
+  }
+  Tensor t;
+  if (!t.FromProto(proto)) {
+    return absl::InvalidArgumentError(
+        "Failed to parse checkpoint tensor from proto.");
+  }
+
+  int64_t num_tensors = t.dim_size(0);
+  auto serialized_vec = t.vec<Variant>();
+  std::vector<const VariantTensorData*> data;
+  data.reserve(num_tensors);
+  for (int i = 0; i < num_tensors; ++i) {
+    auto* w = serialized_vec(i).get<IteratorStateVariant>();
+    if (!w) {
+      return absl::InvalidArgumentError(
+          "Failed to access IteratorStateVariant inside checkpoint tensor");
+    }
+    data.push_back(w->GetData());
+  }
+  auto reader = std::make_unique<VariantTensorDataReader>(data);
+  absl::flat_hash_map<std::string, int64_t> stats;
+  for (const auto& [key, tensor] : reader->ReadAllTensors()) {
+    stats[key] = tensor.TotalBytes();
+  }
+  return stats;
 }
 
 }  // namespace data

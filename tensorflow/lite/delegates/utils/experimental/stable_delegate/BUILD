@@ -18,10 +18,13 @@ load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("//tensorflow/lite:build_def.bzl", "tflite_cc_shared_object", "tflite_linkopts_no_undefined")
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
 
+# copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
+
 cc_library_with_tflite(
     name = "delegate_loader",
     srcs = ["delegate_loader.cc"],
     hdrs = ["delegate_loader.h"],
+    generate_opaque_delegate_target = True,
     linkopts = select({
         "//tensorflow:windows": [],
         "//conditions:default": ["-ldl"],

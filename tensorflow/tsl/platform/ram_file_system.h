@@ -28,6 +28,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/strings/match.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/file_system.h"
 #include "tensorflow/tsl/platform/mutex.h"
@@ -332,11 +333,11 @@ class RamFileSystem : public FileSystem {
   }
 
   bool StartsWith(std::string s, std::string prefix) {
-    return s.find(prefix) == 0;
+    return absl::StartsWith(s, prefix);
   }
 
   string StripPrefix(std::string s, std::string prefix) {
-    if (s.find(prefix) == 0) {
+    if (absl::StartsWith(s, prefix)) {
       return s.erase(0, prefix.size());
     }
     return s;

@@ -91,6 +91,10 @@ class IrEmitterContext {
                      absl::string_view symbol_name, int allocation_idx,
                      llvm::ArrayRef<uint8_t> content, llvm::IRBuilder<>* b);
 
+  const DebugOptions& debug_options() const {
+    return hlo_module_->config().debug_options();
+  }
+
  private:
   const HloModule* hlo_module_;
   const BufferAssignment* buffer_assignment_;

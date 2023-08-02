@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/utils/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
+#include "tensorflow/compiler/xla/service/spmd/spmd_prepare.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -76,6 +77,7 @@ class SpmdPartitioningTest : public HloTestBase {
     HloPassPipeline pass("spmd-partitioning");
     pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
                               /*allow_mixed_precision=*/false);
+    pass.AddPass<SpmdPrepare>();
     pass.AddPass<SpmdPartitioner>(num_devices, /*num_replicas=*/1, options,
                                   collective_ops_creator);
     pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
@@ -13369,6 +13371,26 @@ ENTRY %main.21 {
   EXPECT_THAT(updates, op::Shape("bf16[4096,128]"));
 }
 
+TEST_F(SpmdPartitioningTest, ComplexReshardUnmerge) {
+  const char* const hlo_string = R"(
+HloModule Test
+
+ENTRY main.4 {
+  Arg_0.1 = f32[8,8,8,8]{3,2,1,0} parameter(0), sharding={devices=[1,1,2,8]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}
+  tuple.2 = (f32[8,8,8,8]{3,2,1,0}) tuple(Arg_0.1), sharding={{devices=[1,4,2,2]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}}
+  ROOT get-tuple-element.3 = f32[8,8,8,8]{3,2,1,0} get-tuple-element(tuple.2), index=0, sharding={devices=[1,4,2,2]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/16));
+
+  XLA_VLOG_LINES(1, module->ToString());
+  auto* allreduce = FindInstruction(module.get(), HloOpcode::kAllReduce);
+  EXPECT_EQ(allreduce, nullptr);
+  auto* alltoall = FindInstruction(module.get(), HloOpcode::kAllToAll);
+  EXPECT_NE(alltoall, nullptr);
+}
+
 TEST_F(SpmdPartitioningTest, ComplexReshardUnmergeToRight) {
   const char* const hlo_string = R"(
 HloModule Test
@@ -13490,6 +13512,50 @@ ENTRY main.6 {
   // Collective permute to resolve different device orders.
   EXPECT_NE(FindInstruction(module.get(), HloOpcode::kCollectivePermute),
             nullptr);
+}
+
+TEST_F(SpmdPartitioningTest, OutfeedChainedManualPartitioned) {
+  const char* const hlo_string = R"(
+HloModule Test
+
+ENTRY %entry (p0: f32[8], p1: f32[1]) -> (f32[1], token[]) {
+  %p1 = f32[1]{0} parameter(1), sharding={replicated}
+  %p0 = f32[8]{0} parameter(0), sharding={manual}
+  %tuple.1 = (f32[8]{0}) tuple(f32[8]{0} %p0), sharding={{manual}}
+  %constant.8 = u32[2]{0} constant({3, 12})
+  %tuple.10 = (u32[2]{0}) tuple(u32[2]{0} %constant.8), sharding={{manual}}
+  %aa.1 = token[] after-all()
+  %outfeed.1 = token[] outfeed((u32[2]{0}) %tuple.10, token[] %aa.1), outfeed_shape=(u32[2]{0}), sharding={{manual}, {manual}}
+  %outfeed.2 = token[] outfeed((f32[8]{0}) %tuple.1, token[] %outfeed.1), outfeed_shape=(f32[8]{0}), sharding={{manual}, {manual}}
+  ROOT %tuple.15 = (f32[1]{0}, token[]) tuple(f32[1]{0} %p1, token[] %outfeed.2), sharding={{replicated}, {manual}}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+
+  XLA_VLOG_LINES(1, module->ToString());
+  auto* outfeed = FindInstruction(module.get(), HloOpcode::kOutfeed);
+  EXPECT_NE(outfeed, nullptr);
+  EXPECT_THAT(outfeed->operand(0), op::Shape("(u32[2]{0})"));
+}
+
+TEST_F(SpmdPartitioningTest, PadUneven) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f32[128,13,257] parameter(0), sharding={devices=[1,2,1]0,1}
+  %const = f32[] constant(0)
+  ROOT %pad = f32[128,14,257] pad(%param0, %const), padding=0_0x0_1x0_0,
+    sharding={devices=[1,2,1]0,1}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+
+  const auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::Select(), op::Shape("f32[128,7,257]")));
 }
 
 }  // namespace

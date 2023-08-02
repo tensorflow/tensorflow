@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 
 #include <algorithm>
+#include <array>
+#include <complex>
 #include <cstdint>
 #include <functional>
 #include <iterator>
@@ -1920,7 +1922,7 @@ static LogicalResult inferConvReturnTypeComponents(
       // Skip if input or filter size is dynamic.
       if (input_ty.isDynamicDim(dim) || filter_ty.isDynamicDim(i)) continue;
       // Calculate the expected_output_size.
-      tensorflow::Status status = tensorflow::GetWindowedOutputSizeVerboseV2(
+      tensorflow::Status status = tensorflow::GetWindowedOutputSizeVerbose(
           input_ty.getDimSize(dim), filter_ty.getDimSize(i),
           get_int(dilations[dim]), stride, padding, &expected_output_size,
           &pad_low, &pad_high);

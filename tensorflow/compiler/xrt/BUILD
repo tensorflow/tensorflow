@@ -1,12 +1,12 @@
 # Description: Operations defined for XRT
 
+load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
-    "tf_custom_op_py_library",
     "tf_gen_op_wrapper_py",
 )
-load("//tensorflow:tensorflow.default.bzl", "tf_gen_op_libs")
+load("//tensorflow:tensorflow.default.bzl", "tf_custom_op_py_strict_library", "tf_gen_op_libs")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",
@@ -127,6 +127,13 @@ tf_gen_op_libs(
 tf_gen_op_wrapper_py(
     name = "xrt_ops_wrapper_py",
     out = "xrt_ops.py",
+    extra_py_deps = [
+        "//tensorflow/python:pywrap_tfe",
+        "//tensorflow/python/util:dispatch",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
+    ],
+    py_lib_rule = py_strict_library,
     deps = [
         ":xrt_compile_ops_op_lib",
         ":xrt_execute_op_op_lib",
@@ -134,7 +141,7 @@ tf_gen_op_wrapper_py(
     ],
 )
 
-tf_custom_op_py_library(
+tf_custom_op_py_strict_library(
     name = "xrt_ops",
     kernels = ["//tensorflow/compiler/xrt/kernels:xrt_ops"],
     visibility = ["//visibility:public"],

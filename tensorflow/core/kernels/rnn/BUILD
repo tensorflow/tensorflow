@@ -34,6 +34,7 @@ tf_gpu_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/kernels:eigen_helpers",
+        "//tensorflow/core/kernels:numeric_options_utils",
         "//tensorflow/core/platform:stream_executor",
         "//tensorflow/tsl/framework/contraction:eigen_contraction_kernel",
         "//third_party/eigen3",

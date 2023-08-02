@@ -54,49 +54,25 @@ import tflite.BenchmarkEvent;
  *       configuration and relative performance differences as percentages in HTML.
  * </ul>
  */
-public class BenchmarkAccuracyImpl {
+public class BenchmarkAccuracyImpl implements BenchmarkAccuracy {
 
   private static final String TAG = "TfLiteAccuracyImpl";
   private static final String ACCURACY_FOLDER_NAME = "accuracy";
 
-  private final Context context;
-  private final String[] tfliteSettingsJsonFiles;
-  private final BenchmarkReport report;
+  private Context context;
+  private String[] tfliteSettingsJsonFiles;
+  private BenchmarkReport report;
 
-  public BenchmarkAccuracyImpl(Context context, String[] tfliteSettingsJsonFiles) {
-    this.context = context;
-    this.tfliteSettingsJsonFiles = tfliteSettingsJsonFiles;
-    this.report = BenchmarkReport.create();
-  }
-
-  /**
-   * Initializes the test environment. Checks the validity of input arguments and creates the result
-   * folder.
-   *
-   * <p>Returns {@code true} if the initialization was successful. Otherwise, returns {@code false}.
-   */
-  public boolean initialize() {
-    if (tfliteSettingsJsonFiles == null || tfliteSettingsJsonFiles.length == 0) {
-      Log.e(TAG, "No TFLiteSettings file provided.");
+  @Override
+  public boolean benchmark(Context context, String[] tfliteSettingsJsonFiles) {
+    if (!initialize(context, tfliteSettingsJsonFiles)) {
+      Log.e(TAG, "Failed to initialize accuracy benchmark.");
       return false;
     }
-
-    try {
-      // Creates root result folder.
-      String resultFolderPath =
-          DelegatePerformanceBenchmark.createResultFolder(
-              context.getFilesDir(), ACCURACY_FOLDER_NAME);
-      report.addWriter(JsonWriter.create(resultFolderPath));
-      report.addWriter(CsvWriter.create(resultFolderPath));
-      report.addWriter(HtmlWriter.create(resultFolderPath));
-    } catch (IOException e) {
-      Log.e(TAG, "Failed to create result folder", e);
-      return false;
-    }
-    return true;
+    return benchmarkDelegatesAndExportReport();
   }
 
-  public void benchmark() {
+  private boolean benchmarkDelegatesAndExportReport() {
     Log.i(
         TAG,
         "Running accuracy benchmark with TFLiteSettings JSON files: "
@@ -105,14 +81,14 @@ public class BenchmarkAccuracyImpl {
         DelegatePerformanceBenchmark.loadTfLiteSettingsList(tfliteSettingsJsonFiles);
     if (tfliteSettingsList.size() < 2) {
       Log.e(TAG, "Failed to load the TFLiteSettings JSON file.");
-      return;
+      return false;
     }
     String[] assets;
     try {
       assets = context.getAssets().list(ACCURACY_FOLDER_NAME);
     } catch (IOException e) {
       Log.e(TAG, "Failed to list files from assets folder.", e);
-      return;
+      return false;
     }
     for (String asset : assets) {
       if (!asset.endsWith(".tflite")) {
@@ -127,7 +103,7 @@ public class BenchmarkAccuracyImpl {
                 context.getFilesDir(), ACCURACY_FOLDER_NAME + "/" + modelName);
       } catch (IOException e) {
         Log.e(TAG, "Failed to create result folder for " + modelName + ". Exiting application.", e);
-        return;
+        return false;
       }
       try (AssetFileDescriptor modelFileDescriptor =
           context.getAssets().openFd(ACCURACY_FOLDER_NAME + "/" + asset)) {
@@ -148,7 +124,7 @@ public class BenchmarkAccuracyImpl {
             AccuracyBenchmarkReport.create(modelName, rawDelegateMetricsEntries));
       } catch (IOException e) {
         Log.e(TAG, "Failed to open assets file " + asset, e);
-        return;
+        return false;
       }
     }
     // Computes the aggregated results and export the report to local files.
@@ -158,5 +134,36 @@ public class BenchmarkAccuracyImpl {
         TAG,
         String.format(
             "Accuracy benchmark result for %s: %s.", testTarget.filePath(), report.result()));
+    return true;
+  }
+
+  /**
+   * Initializes the test environment. Checks the validity of input arguments and creates the result
+   * folder.
+   *
+   * @return {@code true} if the initialization was successful. Otherwise, returns {@code false}.
+   */
+  private boolean initialize(Context context, String[] tfliteSettingsJsonFiles) {
+    if (tfliteSettingsJsonFiles == null || tfliteSettingsJsonFiles.length == 0) {
+      Log.e(TAG, "No TFLiteSettings file provided.");
+      return false;
+    }
+    this.context = context;
+    this.tfliteSettingsJsonFiles = tfliteSettingsJsonFiles;
+    report = BenchmarkReport.create();
+
+    try {
+      // Creates root result folder.
+      String resultFolderPath =
+          DelegatePerformanceBenchmark.createResultFolder(
+              context.getFilesDir(), ACCURACY_FOLDER_NAME);
+      report.addWriter(JsonWriter.create(resultFolderPath));
+      report.addWriter(CsvWriter.create(resultFolderPath));
+      report.addWriter(HtmlWriter.create(resultFolderPath));
+    } catch (IOException e) {
+      Log.e(TAG, "Failed to create result folder", e);
+      return false;
+    }
+    return true;
   }
 }

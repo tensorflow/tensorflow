@@ -201,6 +201,10 @@ class XEventVisitor : public XStatsOwner<XEvent> {
 
   int64_t NumOccurrences() const { return event_->num_occurrences(); }
 
+  bool IsAggregatedEvent() const {
+    return event_->data_case() == XEvent::kNumOccurrences;
+  }
+
   bool operator<(const XEventVisitor& other) const {
     return GetTimespan() < other.GetTimespan();
   }

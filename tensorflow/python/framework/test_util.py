@@ -60,6 +60,7 @@ from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import tfrt_utils
@@ -376,7 +377,7 @@ def NHWCToNCHW(input_tensor):
   """
   # tensor dim -> new axis order
   new_axes = {3: [0, 2, 1], 4: [0, 3, 1, 2], 5: [0, 4, 1, 2, 3]}
-  if isinstance(input_tensor, ops.Tensor):
+  if isinstance(input_tensor, tensor_lib.Tensor):
     ndims = input_tensor.shape.ndims
     return array_ops.transpose(input_tensor, new_axes[ndims])
   else:
@@ -401,7 +402,7 @@ def NHWCToNCHW_VECT_C(input_shape_or_tensor):
         divisible by 4.
   """
   permutations = {5: [0, 3, 1, 2, 4], 6: [0, 4, 1, 2, 3, 5]}
-  is_tensor = isinstance(input_shape_or_tensor, ops.Tensor)
+  is_tensor = isinstance(input_shape_or_tensor, tensor_lib.Tensor)
   temp_shape = (
       input_shape_or_tensor.shape.as_list()
       if is_tensor else input_shape_or_tensor)
@@ -435,7 +436,7 @@ def NCHW_VECT_CToNHWC(input_shape_or_tensor):
     ValueError: if last dimension of `input_shape_or_tensor` is not 4.
   """
   permutations = {5: [0, 2, 3, 1, 4], 6: [0, 2, 3, 4, 1, 5]}
-  is_tensor = isinstance(input_shape_or_tensor, ops.Tensor)
+  is_tensor = isinstance(input_shape_or_tensor, tensor_lib.Tensor)
   input_shape = (
       input_shape_or_tensor.shape.as_list()
       if is_tensor else input_shape_or_tensor)
@@ -462,7 +463,7 @@ def NCHWToNHWC(input_tensor):
   """
   # tensor dim -> new axis order
   new_axes = {4: [0, 2, 3, 1], 5: [0, 2, 3, 4, 1]}
-  if isinstance(input_tensor, ops.Tensor):
+  if isinstance(input_tensor, tensor_lib.Tensor):
     ndims = input_tensor.shape.ndims
     return array_ops.transpose(input_tensor, new_axes[ndims])
   else:
@@ -806,7 +807,7 @@ def assert_no_new_tensors(f):
     def _is_tensorflow_object(obj):
       try:
         return isinstance(obj,
-                          (ops.Tensor, variables.Variable,
+                          (tensor_lib.Tensor, variables.Variable,
                            tensor_shape.Dimension, tensor_shape.TensorShape))
       except (ReferenceError, AttributeError):
         # If the object no longer exists, we don't care about it.
@@ -1493,7 +1494,7 @@ def run_in_graph_and_eager_modes(func=None,
     def decorated(self, *args, **kwargs):
       logging.info("Running %s in GRAPH mode.", f.__name__)
       try:
-        with context.graph_mode():
+        with context.graph_mode(), self.subTest("graph_mode"):
           with self.test_session(use_gpu=use_gpu, config=config):
             f(self, *args, **kwargs)
       except unittest.case.SkipTest:
@@ -1519,7 +1520,11 @@ def run_in_graph_and_eager_modes(func=None,
       # Create a new graph for the eagerly executed version of this test for
       # better isolation.
       graph_for_eager_test = ops.Graph()
-      with graph_for_eager_test.as_default(), context.eager_mode():
+      with (
+          graph_for_eager_test.as_default(),
+          context.eager_mode(),
+          self.subTest("eager_mode"),
+      ):
         self.setUp()
         run_eagerly(self, **kwargs)
       ops.dismantle_graph(graph_for_eager_test)
@@ -1541,7 +1546,7 @@ def py_func_if_in_function(f):
     tensor_args = []
     tensor_indices = []
     for i, arg in enumerate(args):
-      if isinstance(arg, (ops.Tensor, variables.Variable)):
+      if isinstance(arg, (tensor_lib.Tensor, variables.Variable)):
         tensor_args.append(arg)
         tensor_indices.append(i)
 
@@ -2396,6 +2401,9 @@ class EagerSessionWarner:
         "tf.disable_eager_execution() in the main() function of this test "
         "file.")
 
+# TODO(b/286583977): Set it to True and remove.
+_ENABLE_AUTO_BOTH_MODES = False
+
 
 @tf_export("test.TestCase")
 class TensorFlowTestCase(googletest.TestCase):
@@ -2456,6 +2464,12 @@ class TensorFlowTestCase(googletest.TestCase):
       self.skipTest("Not a test.")
 
     self._test_start_time = time.time()
+
+  @classmethod
+  def setUpClass(cls):
+    super().setUpClass()
+    if _ENABLE_AUTO_BOTH_MODES:
+      run_all_in_graph_and_eager_modes(cls)
 
   def tearDown(self):
     # If a subclass overrides setUp and doesn't call the parent class's setUp,
@@ -2686,11 +2700,14 @@ class TensorFlowTestCase(googletest.TestCase):
       return self._eval_helper(tensors)
     else:
       sess = ops.get_default_session()
+      flattened_tensors = nest.flatten(tensors)
       if sess is None:
         with self.test_session() as sess:
-          return sess.run(tensors)
+          flattened_results = sess.run(flattened_tensors)
       else:
-        return sess.run(tensors)
+        flattened_results = sess.run(flattened_tensors)
+
+      return nest.pack_sequence_as(tensors, flattened_results)
 
   # pylint: disable=g-doc-return-or-yield
   @contextlib.contextmanager
@@ -3570,18 +3587,18 @@ class TensorFlowTestCase(googletest.TestCase):
     Raises:
       TypeError: If the arguments have the wrong type.
     """
-    if not isinstance(input_a, (np.ndarray, np.generic, ops.Tensor)):
+    if not isinstance(input_a, (np.ndarray, np.generic, tensor_lib.Tensor)):
       raise TypeError(
           "input_a must be a Numpy ndarray, Numpy scalar, or a Tensor."
           f"Instead received {type(input_a)}")
-    if not isinstance(input_b, (np.ndarray, np.generic, ops.Tensor)):
+    if not isinstance(input_b, (np.ndarray, np.generic, tensor_lib.Tensor)):
       raise TypeError(
           "input_b must be a Numpy ndarray, Numpy scalar, or a Tensor."
           f"Instead received {type(input_b)}")
     shape_a = input_a.get_shape().as_list() if isinstance(
-        input_a, ops.Tensor) else input_a.shape
+        input_a, tensor_lib.Tensor) else input_a.shape
     shape_b = input_b.get_shape().as_list() if isinstance(
-        input_b, ops.Tensor) else input_b.shape
+        input_b, tensor_lib.Tensor) else input_b.shape
     self.assertAllEqual(shape_a, shape_b, msg=msg)
 
   def assertDeviceEqual(self, device1, device2, msg=None):
@@ -3628,7 +3645,7 @@ class TensorFlowTestCase(googletest.TestCase):
     """Converts `a` to a nested python list."""
     if isinstance(a, ragged_tensor.RaggedTensor):
       return self.evaluate(a).to_list()
-    elif isinstance(a, ops.Tensor):
+    elif isinstance(a, tensor_lib.Tensor):
       a = self.evaluate(a)
       return a.tolist() if isinstance(a, np.ndarray) else a
     elif isinstance(a, np.ndarray):

@@ -66,6 +66,15 @@ struct TfLiteOpResolverCallbacks {
                                           int version)>
       find_custom_op;
 
+  // Variant of `find_builtin_op` which returns `TfLiteRegistration_V3`.
+  std::function<const TfLiteRegistration_V3*(
+      void* user_data, TfLiteBuiltinOperator op, int version)>
+      find_builtin_op_v3;
+  // Variant of `find_custom_op` which returns `TfLiteRegistration_V3`.
+  std::function<const TfLiteRegistration_V3*(void* user_data, const char* op,
+                                             int version)>
+      find_custom_op_v3;
+
   // Variant of `find_builtin_op` which returns `TfLiteRegistration_V2`.
   std::function<const TfLiteRegistration_V2*(
       void* user_data, TfLiteBuiltinOperator op, int version)>

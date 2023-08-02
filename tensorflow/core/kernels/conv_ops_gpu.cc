@@ -260,6 +260,7 @@ StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv(
     switch (kind) {
       case se::dnn::ConvolutionKind::FORWARD:
       case se::dnn::ConvolutionKind::FORWARD_BIAS_ACTIVATION:
+      case se::dnn::ConvolutionKind::FORWARD_GRAPH:
         output_ptr = se::DeviceMemory<T>(
             WrapRedzoneBestEffort(&rz_allocator, output_ptr));
         break;
@@ -358,7 +359,7 @@ StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv(
           "see if a warning log message was printed above.");
     }
 
-    std::vector<tensorflow::AutotuneResult> results;
+    std::vector<xla::AutotuneResult> results;
     if (algorithms.size() == 1) {
       auto profile_result = algorithms[0];
       results.emplace_back();

@@ -47,6 +47,7 @@ py_strict_library(
     deps = [
         "//tensorflow/python/eager:context",
         "//tensorflow/python/platform:tf_logging",
+        "@pypi_requests//:pkg",
         "@six_archive//:six",
     ],
 )

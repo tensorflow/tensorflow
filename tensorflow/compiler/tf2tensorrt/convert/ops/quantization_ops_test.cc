@@ -140,9 +140,6 @@ Output AddConv2D(Scope scope, Input input, int in_channels, int out_channels,
   auto conv_input =
       !qdq_on_output ? AddQDQV2(scope.WithOpName("qdq_input"), input) : input;
 
-  std::array<int, 4> strides =
-      data_format == "NCHW" ? std::array<int, 4>{1, 1, stride[0], stride[1]}
-                            : std::array<int, 4>{1, stride[0], stride[1], 1};
   Output result = ops::Conv2D(
       scope.WithOpName("conv2d"), conv_input, AddQDQV2(scope, weights_const),
       /*strides=*/{1, 1, 1, 1},
@@ -261,7 +258,7 @@ std::ostream& operator<<(std::ostream& os, const QDQTestOptions opts) {
 
 std::vector<QDQTestOptions> EnumerateQDQTestOptions() {
   std::vector<QDQTestOptions> result;
-  for (const auto* data_format : {"NCHW", "NHWC"}) {
+  for (const absl::string_view data_format : {"NCHW", "NHWC"}) {
     for (auto use_bias : {true, false}) {
       for (auto qdq_on_output : {false, true}) {
         // For now, always append a QDQ before output. For small single-op tests

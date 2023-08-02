@@ -51,7 +51,6 @@ add_mlir_library(MLIRBufferTransforms
   MLIRGPUDialect
   MLIRHLOAnalysis
   MLIRIR
-  MLIRLinalgToLLVM
   MLIRMathTransforms
   MLIRPass
   MLIRReconcileUnrealizedCasts

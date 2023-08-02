@@ -40,6 +40,8 @@ namespace tensorflow {
 namespace dtensor {
 namespace {
 
+// FIXME(feyu): This function should take layouts as arguments. It doesn't need
+// the ops.
 // Validates send/recv layout and mesh configurations. Among other things, this
 // checks for below constraints.
 // 1. Src/target layouts have non empty mesh.
@@ -60,11 +62,14 @@ Status ValidateSendRecvLayoutConfiguration(mlir::TF::DTensorSend dtensor_send,
     return absl::InvalidArgumentError(
         "Input to DTensorSend must have specified layout.");
 
+  TF_ASSIGN_OR_RETURN(const Layout output_layout,
+                      ExtractRequiredSingleLayoutFromOp(dtensor_recv));
+
   const Layout& send_layout = send_layout_or_null.value();
-  const Layout recv_layout = dtensor_recv.getLayout();
+  const Layout& recv_layout = output_layout;
+  const Mesh& recv_mesh = dtensor_recv.getMesh();
 
   const Mesh& send_mesh = send_layout.mesh();
-  const Mesh& recv_mesh = recv_layout.mesh();
 
   // If any one of send/recv mesh are empty, return error.
   if (send_mesh.IsEmpty() || recv_mesh.IsEmpty())
@@ -121,19 +126,6 @@ StatusOr<mlir::Operation*> ExpandRelayoutOp(RelayoutOp relayout,
     return absl::InternalError(
         "output layout of Relayout op after layout propagation does not match "
         "layout specified by Relayout op.");
-
-  if (input_layout == output_layout) {
-    // Input of RelayoutOp must be output value from DTensorLayout operation
-    // as layout propagation adds DTensorLayout op for each tensor values.
-    // Replace with identity op.
-    mlir::OpBuilder builder(relayout);
-    mlir::TF::IdentityOp op = builder.create<mlir::TF::IdentityOp>(
-        relayout.getLoc(), relayout.getInput().getType(), relayout.getInput());
-    relayout.getOutput().replaceAllUsesWith(op.getOutput());
-    relayout.erase();
-    return op.getOperation();
-  }
-
   auto value_or_status =
       EmitRelayout(relayout.getInput(), input_layout, output_layout);
   if (!value_or_status.ok())
@@ -335,7 +327,7 @@ DTensorRecvSPMDExpander::ComputeLayoutForward(
     return absl::InvalidArgumentError(
         llvm::formatv("Expecting DTensorRecvOp but got {0}", OpName(op)).str());
   }
-  return llvm::DenseMap<int, Layout>({{0, dtensor_recv.getLayout()}});
+  return llvm::DenseMap<int, Layout>();
 }
 
 StatusOr<llvm::DenseMap<int, Layout>>

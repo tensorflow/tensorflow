@@ -29,7 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
-#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/service/gpu/reduction_utils.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -99,7 +99,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     bool is_row_reduction = reduction_dimensions.is_row_reduction;
 
     // Base case: everything fits.
-    if (ReductionIsRaceFree(reduction_dimensions)) {
+    if (ReductionIsRaceFree(hlo->GetModule()->config(), reduction_dimensions)) {
       VLOG(3) << "Base case: dimensions fit";
       return OkStatus();
     }

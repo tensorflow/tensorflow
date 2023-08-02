@@ -62,8 +62,8 @@ tf_proto_library(
     name = "autotuning_proto",
     srcs = ["autotuning.proto"],
     make_default_target_header_only = True,
-    protodeps = ["//tensorflow/tsl/protobuf:autotuning_proto"],
-    exports = ["//tensorflow/tsl/protobuf:autotuning_proto"],
+    protodeps = ["//tensorflow/compiler/xla:autotuning_proto"],
+    exports = ["//tensorflow/compiler/xla:autotuning_proto"],
 )
 
 tf_proto_library(

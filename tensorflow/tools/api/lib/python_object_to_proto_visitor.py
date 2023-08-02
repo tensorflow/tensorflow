@@ -89,9 +89,9 @@ else:
 
 
 # Differences created by typing implementations.
-_NORMALIZE_TYPE[(
-    'tensorflow.python.framework.ops.Tensor')] = (
-        "<class 'tensorflow.python.framework.ops.Tensor'>")
+_NORMALIZE_TYPE[
+    'tensorflow.python.framework.tensor.Tensor'
+] = "<class 'tensorflow.python.framework.tensor.Tensor'>"
 _NORMALIZE_TYPE['typing.Generic'] = "<class 'typing.Generic'>"
 # TODO(b/203104448): Remove once the golden files are generated in Python 3.7.
 _NORMALIZE_TYPE["<class 'typing._GenericAlias'>"] = 'typing.Union'

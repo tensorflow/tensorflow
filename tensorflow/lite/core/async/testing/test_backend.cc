@@ -75,8 +75,7 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context,
   };
 
   return context->ReplaceNodeSubsetsWithDelegateKernels(
-      context, reg, BuildTfLiteIntArray(supported_nodes).get(),
-      tflite_delegate);
+      context, reg, BuildTfLiteArray(supported_nodes).get(), tflite_delegate);
 }
 
 }  // namespace

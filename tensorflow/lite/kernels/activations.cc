@@ -1687,17 +1687,33 @@ TfLiteRegistration* Register_LOGISTIC() {
 
 TfLiteRegistration* Register_SOFTMAX_REF() {
   static TfLiteRegistration r = {
-      activations::SoftmaxInit, activations::SoftmaxFree,
+      activations::SoftmaxInit,
+      activations::SoftmaxFree,
       activations::SoftmaxPrepare<activations::kReference>,
-      activations::SoftmaxEval<activations::kReference>};
+      activations::SoftmaxEval<activations::kReference>,
+      /*profiling_string=*/nullptr,
+      /*builtin_code=*/0,
+      /*custom_name=*/nullptr,
+      /*version=*/0,
+      /*registration_external=*/nullptr,
+      /*async_kernel=*/nullptr,
+      kTfLiteInplaceOpInput0Shared};
   return &r;
 }
 
 TfLiteRegistration* Register_SOFTMAX() {
   static TfLiteRegistration r = {
-      activations::SoftmaxInit, activations::SoftmaxFree,
+      activations::SoftmaxInit,
+      activations::SoftmaxFree,
       activations::SoftmaxPrepare<activations::kGenericOptimized>,
-      activations::SoftmaxEval<activations::kGenericOptimized>};
+      activations::SoftmaxEval<activations::kGenericOptimized>,
+      /*profiling_string=*/nullptr,
+      /*builtin_code=*/0,
+      /*custom_name=*/nullptr,
+      /*version=*/0,
+      /*registration_external=*/nullptr,
+      /*async_kernel=*/nullptr,
+      kTfLiteInplaceOpInput0Shared};
   return &r;
 }
 

@@ -53,6 +53,9 @@ class PjRtCompileOnlyDevice : public PjRtDevice {
   Status TransferFromOutfeed(MutableBorrowingLiteral literal) override {
     return Unimplemented("TransferFromOutfeed is not supported");
   }
+  StatusOr<PjRtMemorySpace*> default_memory_space() const override {
+    return Unimplemented("default_memory_space is not supported");
+  }
 
  private:
   const PjRtDeviceDescription* description_;
@@ -62,14 +65,14 @@ class InvalidIfrtCompiler final
     : public llvm::RTTIExtends<InvalidIfrtCompiler, ifrt::Compiler> {
  public:
   StatusOr<std::unique_ptr<ifrt::LoadedExecutable>> Compile(
-      mlir::ModuleOp mlir_module,
+      std::unique_ptr<ifrt::Program> program,
       std::unique_ptr<ifrt::CompileOptions> options) override {
     return Unimplemented("Compile not implemented.");
   }
 
   StatusOr<std::unique_ptr<ifrt::LoadedExecutable>> DeserializeLoadedExecutable(
       absl::string_view serialized,
-      std::unique_ptr<ifrt::DeserializeOptions> options) override {
+      std::unique_ptr<ifrt::DeserializeExecutableOptions> options) override {
     return Unimplemented("DeserializeLoadedExecutable not implemented.");
   }
 

@@ -96,9 +96,9 @@ FusionDecision CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
     return "Fusion is not profitable.";
   }
 
-  if (NoFusionPossible should_fuse =
-          !InstructionFusion::ShouldFuse(consumer, operand_index)) {
-    return !should_fuse;
+  if (auto fusible = InstructionFusion::ShouldFuse(consumer, operand_index);
+      !fusible) {
+    return fusible;
   }
 
   // Fuse constants in general but avoid creating 2-instruction fusions with

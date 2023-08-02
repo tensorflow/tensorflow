@@ -44,7 +44,6 @@ namespace tensorflow {
 namespace profiler {
 namespace pywrap {
 
-using ::tensorflow::RemoteProfilerSessionManagerOptions;
 using tsl::profiler::GetRemoteSessionManagerOptionsLocked;
 using tsl::profiler::ValidateHostPortPair;
 

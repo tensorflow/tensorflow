@@ -314,13 +314,13 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
         context,
         GetWindowedOutputSizeVerbose(
             dims.spatial_dims[0].input_size, dims.spatial_dims[0].filter_size,
-            dims.spatial_dims[0].stride, padding_,
+            /*dilation_rate=*/1, dims.spatial_dims[0].stride, padding_,
             &dims.spatial_dims[0].output_size, &pad_top, &pad_bottom));
     OP_REQUIRES_OK(
         context,
         GetWindowedOutputSizeVerbose(
             dims.spatial_dims[1].input_size, dims.spatial_dims[1].filter_size,
-            dims.spatial_dims[1].stride, padding_,
+            /*dilation_rate=*/1, dims.spatial_dims[1].stride, padding_,
             &dims.spatial_dims[1].output_size, &pad_left, &pad_right));
 
     // The total dimension size of each kernel.

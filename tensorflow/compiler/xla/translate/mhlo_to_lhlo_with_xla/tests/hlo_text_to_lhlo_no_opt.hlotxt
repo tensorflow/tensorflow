@@ -213,9 +213,8 @@ add {
 // CHECK-SAME: [[BUFFER:%.*]]: memref<32xi8>
 %test_async_all_reduce {
   param0 = f32[8] parameter(0)
-  // CHECK:  [[INPUT:%.*]] = memref.view [[BUFFER]]{{.*}} : memref<32xi8> to memref<8xf32>
-  // CHECK:  [[OUTPUT:%.*]] = memref.view [[BUFFER]]{{.*}} : memref<32xi8> to memref<8xf32>
-  // CHECK:  [[TOKEN:%.*]] = "lmhlo_gpu.all_reduce_start"([[INPUT]], [[OUTPUT]])
+  // CHECK:  [[VIEW:%.*]] = memref.view [[BUFFER]]{{.*}} : memref<32xi8> to memref<8xf32>
+  // CHECK:  [[TOKEN:%.*]] = "lmhlo_gpu.all_reduce_start"([[VIEW]], [[VIEW]])
   // CHECK:  ^bb0([[ARG0:%.*]]: tensor<f32>, [[ARG1:%.*]]: tensor<f32>):
   // CHECK:    [[ADD:%.*]] = mhlo.add [[ARG0]], [[ARG1]]
   // CHECK:    mhlo.return [[ADD]] : tensor<f32>
@@ -245,11 +244,9 @@ add {
 %test_async_all_reduce_two_operands {
   param0 = f32[8] parameter(0)
   param1 = f32[9] parameter(1)
-  // CHECK:  [[INPUT0:%.*]] = memref.view [[BUFFER0]]{{.*}} : memref<32xi8> to memref<8xf32>
-  // CHECK:  [[INPUT1:%.*]] = memref.view [[BUFFER1]]{{.*}} : memref<36xi8> to memref<9xf32>
-  // CHECK:  [[OUTPUT0:%.*]] = memref.view [[BUFFER0]]{{.*}} : memref<32xi8> to memref<8xf32>
-  // CHECK:  [[OUTPUT1:%.*]] = memref.view [[BUFFER1]]{{.*}} : memref<36xi8> to memref<9xf32>
-  // CHECK:  [[TOKEN:%.*]] = "lmhlo_gpu.all_reduce_start"([[INPUT0]], [[INPUT1]], [[OUTPUT0]], [[OUTPUT1]])
+  // CHECK:  [[VIEW0:%.*]] = memref.view [[BUFFER0]]{{.*}} : memref<32xi8> to memref<8xf32>
+  // CHECK:  [[VIEW1:%.*]] = memref.view [[BUFFER1]]{{.*}} : memref<36xi8> to memref<9xf32>
+  // CHECK:  [[TOKEN:%.*]] = "lmhlo_gpu.all_reduce_start"([[VIEW0]], [[VIEW1]], [[VIEW0]], [[VIEW1]])
   // CHECK:  ^bb0([[ARG0:%.*]]: tensor<f32>, [[ARG1:%.*]]: tensor<f32>):
   // CHECK:    [[ADD:%.*]] = mhlo.add [[ARG0]], [[ARG1]]
   // CHECK:    mhlo.return [[ADD]] : tensor<f32>

@@ -20,6 +20,8 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_replace.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
@@ -497,9 +499,13 @@ Status SchedulerState::Init(const GrapplerItem* item,
       // Note that input_node_name may be in <prefix><node_name>:<port_num>
       // format, where <prefix> (e.g., "^" for control dependency) and
       // ":<port_num>" may be omitted. NodeName() extracts only the node_name.
-      const NodeDef* input_node = name_to_node[NodeName(input_node_name)];
+      const string node_name = NodeName(input_node_name);
+      const NodeDef* input_node = name_to_node[node_name];
+      if (input_node == nullptr) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("Unknown node: ", node_name));
+      }
 
-      CHECK(input_node);
       const string in_device = DeviceName(input_node);
       const auto input_node_port_num = NodePosition(input_node_name);
 

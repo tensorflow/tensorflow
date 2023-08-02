@@ -23,8 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/multi_output_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
-#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/compiler/xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
@@ -46,9 +45,10 @@ class GpuFusionPipelineTest : public GpuCodegenTest {
     pipeline.AddPass<GpuInstructionFusion>(/*may_duplicate=*/false,
                                            device_info);
     pipeline.AddPass<GpuInstructionFusion>(/*may_duplicate=*/true, device_info);
-    pipeline.AddPass<FusionMerger>(device_info, ShapeSizeBytesFunction());
-    pipeline.AddPass<GpuMultiOutputFusion>(device_info,
-                                           ShapeSizeBytesFunction());
+    pipeline.AddPass<FusionMerger>(device_info, se::CudaComputeCapability(),
+                                   ShapeSizeBytesFunction());
+    pipeline.AddPass<GpuMultiOutputFusion>(
+        device_info, se::CudaComputeCapability(), ShapeSizeBytesFunction());
 
     RunAndFilecheckHloRewrite(hlo, std::move(pipeline), expected);
   }

@@ -425,9 +425,10 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   using BufferIntervalCompare =
       std::function<bool(const BufferInterval&, const BufferInterval&)>;
 
-  // A BufferInterval that we intend to allocate in slices. If
-  // sorted_slices.empty(), the allocation is not sliced. Sometimes we refer to
-  // such allocations as having a single slice.
+  // SlicedBufferInterval is a wrapper around BufferInterval with parameters
+  // indicating whether the BufferInterval should be allocated in slices. (If
+  // NumSlices() is 1, the allocation will not be sliced.) This class is used as
+  // input to GlobalDecreasingSizeBestFitHeap::FindChunkCandidates().
   //
   // For example, instead of allocating A in space and time as illustrated on
   // the left, we may wish to allocate A0 and A1 overlapping in time, contiguous
@@ -443,41 +444,76 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   // e | +-----------+                 e | +-----------+
   //   --|-----------|------->           --|-----|-----|------->
   //     s           e   time              s     i     e   time
-  //
-  // The allocation slices of a SlicedBufferInterval have the following
-  // properties:
-  // slice 0:
-  //   * size = full_buffer_interval.size - sum_over_j(sorted_slices[j].size)
-  //   * lifetime = [full_buffer_interval.start, full_buffer_interval.end)
-  // slice i (for i > 0):
-  //   * size = sorted_slices[i - 1].size
-  //   * lifetime = [sorted_slices[i - 1].start, full_buffer_interval.end)
-  //
-  // The only requirement on the spatial ordering of the slices is that they
-  // form a contiguous spatial block of memory, once all slices have been
-  // allocated.
-  struct SlicedBufferInterval {
-    // Represents a slice of full_buffer_interval that lives from start to
-    // full_buffer_interval.end.
-    struct IntervalSlice {
-      int64_t size;
-      int64_t allocation_start_time;
-    };
+  class SlicedBufferInterval {
+   public:
+    // Factory constructors.
+    static const SlicedBufferInterval CreateConstInterval(
+        const BufferInterval& full_buffer_interval);
+    static SlicedBufferInterval CreateMutableInterval(
+        BufferInterval& full_buffer_interval);
 
-    explicit SlicedBufferInterval(const BufferInterval& buffer_interval)
-        : full_buffer_interval(buffer_interval) {}
     SlicedBufferInterval() = delete;
+
+    // Updates the number of slices, and slice sizes. An empty
+    // slice_sizes_sorted_by_offset is treated the same as setting the number of
+    // slices to 1. Every time Slice() is called with a set of sizes > 1, it
+    // should be followed at some point by a call to UpdateSliceStartTimes, to
+    // update slice start times. Otherwise, the slice start times are
+    // meaningless.
+    //
+    // REQUIRES:
+    // - sum(slice_sizes_sorted_by_offset) == full_buffer_interval_.size
+    void Slice(absl::Span<int64_t> slice_sizes_sorted_by_offset);
+
+    // Updates the times at which we will start each slice. However, we have not
+    // yet decided which slice size will correspond to which start time.
+    //
+    // Mutates mutable_full_buffer_interval_.
+    //
+    // REQUIRES:
+    // - The SlicedBufferInterval was constructed using CreateMutableInterval.
+    // - start_times.size() == NumSlices()
+    // - start_times should be set such that it is permissible for any slice
+    //   size to map to any start time.
+    void UpdateSliceStartTimes(const std::vector<int64_t>& start_times);
+
+    // Updates the free time for all the slices.
+    //
+    // Mutates mutable_full_buffer_interval_.
+    //
+    // REQUIRES:
+    // - The SlicedBufferInterval was constructed using CreateMutableInterval.
+    void UpdateEndTime(int64_t end_time);
+
+    const BufferInterval& full_buffer_interval() const;
+    size_t num_slices() const { return slice_sizes_sorted_by_offset_.size(); }
+    const std::vector<int64_t>& SliceSizesSortedByOffset() const;
+
+    // Returns a BufferInterval with the requirements to call
+    // GlobalDecreasingSizeBestFitHeap::MakeFreeChunks at the specified slice
+    // time. The requirements are:
+    // - At the latest slice time, we need a contiguous buffer that is big
+    //   enough to fit all slices. In addition, that contiguous buffer will have
+    //   the same colocation requirements as the full_buffer_interval().
+    // - At other slice times, required chunks may be as small as the smallest
+    //   slice. Furthermore, their colocation requirements are empty.
+    // - The logical start time of the interval at slice time i is the end time
+    //   of the interval at slice time i-1.
+    const BufferInterval& IntervalForMakeFreeChunks(int64_t slice_time) const;
 
     // Convenience method for use with debugging and logging.
     std::string ToString() const;
 
-    const BufferInterval& full_buffer_interval;
+   private:
+    explicit SlicedBufferInterval(
+        const BufferInterval& full_buffer_interval,
+        BufferInterval* mutable_full_buffer_interval = nullptr);
 
-    // Describes allocations slices, after slice 0.
-    //
-    // sorted_slices is expected to be sorted according to
-    // sorted_slices[i].start < sorted_slices[i+1].start.
-    std::vector<IntervalSlice> sorted_slices;
+    const BufferInterval& full_buffer_interval_;
+    BufferInterval* mutable_full_buffer_interval_ = nullptr;
+    std::vector<int64_t> slice_sizes_sorted_by_offset_;
+    // make_free_chunks_intervals are indexed by slice time.
+    std::vector<BufferInterval> make_free_chunks_intervals_;
   };
 
   // A class for finding locations to allocate a sliced allocation. A sliced
@@ -709,8 +745,7 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
                            int64_t preferred_offset = -1) const;
   // FindChunkCandidates is the same as FindChunkCandidate, except it finds
   // spatially contiguous chunks candidates for a sliced buffer interval.
-  // Returned chunk i will correspond to slice i, as described in
-  // SlicedBufferInterval::sorted_slices.
+  // Returned chunk i should be copied at slice time i.
   std::vector<Chunk> FindChunkCandidates(
       const SlicedBufferInterval& sliced_buffer_interval,
       int64_t preferred_offset = -1) const;

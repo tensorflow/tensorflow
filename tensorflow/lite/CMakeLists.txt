@@ -154,11 +154,14 @@ if (NOT CMAKE_SYSTEM_PROCESSOR OR CMAKE_SYSTEM_PROCESSOR MATCHES "x86")
   list(APPEND TFLITE_TARGET_DEPENDENCIES NEON_2_SSE::NEON_2_SSE)
 endif()
 find_package(cpuinfo REQUIRED)  #CPUINFO is used by XNNPACK and RUY library
+find_package(ml_dtypes REQUIRED)
 find_package(ruy REQUIRED)
 # Download necessary dependencies.
 # Download pthreadpool source package if it doesn't exist.
-if(NOT DEFINED PTHREADPOOL_SOURCE_DIR)
-    message(STATUS "Downloading pthreadpool to ${CMAKE_BINARY_DIR}/pthreadpool-source (define PTHREADPOOL_SOURCE_DIR to avoid it)")
+if(SYSTEM_PTHREADPOOL)
+  find_library(PTHREADPOOL_LIB pthreadpool REQUIRED)
+elseif(NOT DEFINED PTHREADPOOL_SOURCE_DIR)
+    message(STATUS "Downloading pthreadpool to ${CMAKE_BINARY_DIR}/pthreadpool-source (define SYSTEM_PTHREADPOOL or PTHREADPOOL_SOURCE_DIR to avoid it)")
     configure_file(cmake/DownloadPThreadPool.cmake "${CMAKE_BINARY_DIR}/pthreadpool-download/CMakeLists.txt")
     execute_process(COMMAND "${CMAKE_COMMAND}" -G "${CMAKE_GENERATOR}" .
       WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/pthreadpool-download")
@@ -167,7 +170,7 @@ if(NOT DEFINED PTHREADPOOL_SOURCE_DIR)
     set(PTHREADPOOL_SOURCE_DIR "${CMAKE_BINARY_DIR}/pthreadpool-source" CACHE STRING "pthreadpool source directory")
 endif()
 # Configure pthreadpool
-if(NOT TARGET pthreadpool)
+if(NOT SYSTEM_PTHREADPOOL AND NOT TARGET pthreadpool)
   set(PTHREADPOOL_BUILD_TESTS OFF CACHE BOOL "")
   set(PTHREADPOOL_BUILD_BENCHMARKS OFF CACHE BOOL "")
   set(PTHREADPOOL_ALLOW_DEPRECATED_API OFF CACHE BOOL "")
@@ -336,6 +339,7 @@ if(TFLITE_ENABLE_GPU)
     ${TFLITE_SOURCE_DIR}/delegates/gpu/api.cc
     ${TFLITE_SOURCE_DIR}/delegates/gpu/delegate.cc
     ${TFLITE_SOURCE_DIR}/delegates/gpu/delegate_options.cc
+    ${TFLITE_SOURCE_DIR}/delegates/gpu/tflite_profile.cc
     ${TFLITE_SOURCE_DIR}/experimental/acceleration/compatibility/android_info.cc
     ${TFLITE_DELEGATES_GPU_CL_SRCS}
     ${TFLITE_DELEGATES_GPU_CL_DEFAULT_SRCS}
@@ -603,7 +607,6 @@ set(_ALL_TFLITE_HDRS ${_ALL_TFLITE_SRCS})
 list(FILTER _ALL_TFLITE_HDRS INCLUDE REGEX ".*\\.h$")
 target_include_directories(tensorflow-lite
   PUBLIC $<BUILD_INTERFACE:${TENSORFLOW_SOURCE_DIR}> $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
-  ${CMAKE_BINARY_DIR}/gemmlowp
 )
 target_link_libraries(tensorflow-lite
   PUBLIC
@@ -617,6 +620,8 @@ target_link_libraries(tensorflow-lite
     farmhash
     fft2d_fftsg2d
     flatbuffers::flatbuffers
+    gemmlowp::gemmlowp
+    ml_dtypes
     ruy::ruy
     pthreadpool
     ${CMAKE_DL_LIBS}

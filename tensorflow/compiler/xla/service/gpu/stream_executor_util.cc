@@ -48,7 +48,6 @@ using se::dnn::DataLayout;
 using se::dnn::DataLayoutString;
 using se::dnn::FilterLayout;
 using se::dnn::FilterLayoutString;
-using tensorflow::AutotuneResult;
 
 // Returns the smallest integer >= 0 that's not in the given set of numbers.
 //
@@ -125,7 +124,7 @@ StreamExecutorConvLayoutsToXlaLayouts(const ConvolutionDimensionNumbers& dnums,
                            dnums.kernel_spatial_dimensions().begin(),
                            dnums.kernel_spatial_dimensions().end());
       break;
-    case FilterLayout::kOutputInputYX4:   // OIHW_VECT_C
+    case FilterLayout::kOutputInputYX4:  // OIHW_VECT_C
       filter_layout.push_back(dnums.kernel_output_feature_dimension());
       filter_layout.push_back(dnums.kernel_input_feature_dimension());
       filter_layout.insert(filter_layout.end(),
@@ -486,10 +485,41 @@ StatusOr<se::dnn::ConvolutionKind> GetDNNConvKindFromCudnnConvKind(
       return se::dnn::FORWARD;
     case CudnnConvKind::kForwardActivation:
       return se::dnn::FORWARD_BIAS_ACTIVATION;
+    case CudnnConvKind::kForwardGraph:
+      return se::dnn::FORWARD_GRAPH;
     default:
       break;
   }
   return InternalError("Unexpected convolution kind");
+}
+
+StatusOr<se::dnn::FusedMHAKind> GetDNNFusedMHAKindFromCudnnfMHAKind(
+    CudnnfMHAKind kind) {
+  switch (kind) {
+    case CudnnfMHAKind::kScaleBiasMaskSoftmaxDropout:
+    case CudnnfMHAKind::kScaleMaskSoftmaxDropout:
+    case CudnnfMHAKind::kSoftmaxDropout:
+    case CudnnfMHAKind::kBmmBmm:
+    case CudnnfMHAKind::kScaleBiasMaskSoftmax:
+    case CudnnfMHAKind::kScaleMaskSoftmax:
+    case CudnnfMHAKind::kScaleBiasSoftmax:
+    case CudnnfMHAKind::kScaleBiasSoftmaxDropout:
+      return se::dnn::FusedMHAKind::BMM1_OUTPUT_INPUT_TYPE;
+    case CudnnfMHAKind::kSoftmax:
+      return se::dnn::FusedMHAKind::BMM1_OUTPUT_FLOAT;
+    // backward
+    case CudnnfMHAKind::kBackwardScaleBiasMaskSoftmaxDropout:
+    case CudnnfMHAKind::kBackwardScaleMaskSoftmaxDropout:
+    case CudnnfMHAKind::kBackwardBmmBmm:
+    case CudnnfMHAKind::kBackwardScaleBiasMaskSoftmax:
+    case CudnnfMHAKind::kBackwardScaleMaskSoftmax:
+    case CudnnfMHAKind::kBackwardScaleBiasSoftmax:
+    case CudnnfMHAKind::kBackwardScaleBiasSoftmaxDropout:
+    case CudnnfMHAKind::kBackwardSoftmaxDropout:
+    case CudnnfMHAKind::kBackwardSoftmax:
+      return se::dnn::FusedMHAKind::BMM1_OUTPUT_INPUT_TYPE;
+  }
+  return InternalError("Unexpected fMHA kind");
 }
 
 StatusOr<se::dnn::DataType> GetDNNDataTypeFromPrimitiveType(
@@ -507,6 +537,10 @@ StatusOr<se::dnn::DataType> GetDNNDataTypeFromPrimitiveType(
       return se::dnn::ToDataType<int32_t>::value;
     case BF16:
       return se::dnn::ToDataType<Eigen::bfloat16>::value;
+    case F8E4M3FN:
+      return se::dnn::ToDataType<tsl::float8_e4m3fn>::value;
+    case F8E5M2:
+      return se::dnn::ToDataType<tsl::float8_e5m2>::value;
     default:
       break;
   }

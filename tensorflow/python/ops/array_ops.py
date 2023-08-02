@@ -29,6 +29,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -48,8 +49,18 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
+from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
 # pylint: enable=wildcard-import
+
+# TODO(b/282205877): Eliminate this LazyLoader.
+# DTensor doesn't depend on array_ops.py, but it imports tensorflow.python,
+# which imports array_ops.py, creating a cyclic import without a cyclic BUILD
+# dependency. The import cycle creates errors in some unit tests, but not
+# always.
+d_api = LazyLoader(
+    "api", globals(), "tensorflow.dtensor.python.api"
+)
 
 # Used for slicing to specify a new 1 size dimension
 newaxis = None
@@ -203,7 +214,7 @@ def reshape(tensor, shape, name=None):  # pylint: disable=redefined-outer-name
 
 @tf_export("fill")
 @dispatch.add_dispatch_support
-def fill(dims, value, name=None):
+def fill(dims, value, name=None, layout=None):
   r"""Creates a tensor filled with a scalar value.
 
   See also `tf.ones`, `tf.zeros`, `tf.one_hot`, `tf.eye`.
@@ -226,6 +237,9 @@ def fill(dims, value, name=None):
       output `tf.Tensor`. Entries should be of type: `int32`, `int64`.
     value: A value to fill the returned `tf.Tensor`.
     name: Optional string. The name of the output `tf.Tensor`.
+    layout: Optional, `tf.experimental.dtensor.Layout`. If provided, the result
+      is a [DTensor](https://www.tensorflow.org/guide/dtensor_overview) with the
+      provided layout.
 
   Returns:
     A `tf.Tensor` with shape `dims` and the same dtype as `value`.
@@ -240,7 +254,9 @@ def fill(dims, value, name=None):
   specifying a 1-D shaped result, while TensorFlow does not support this syntax.
   @end_compatibility
   """
-  result = gen_array_ops.fill(dims, value, name=name)
+  result = d_api.call_with_layout(
+      gen_array_ops.fill, layout=layout, dims=dims, value=value, name=name
+  )
   shape_util.maybe_set_static_shape(result, dims)
   return result
 
@@ -1015,7 +1031,7 @@ def _slice_helper(tensor, slice_spec, var=None):
     appear in TensorFlow's generated documentation.
 
   Args:
-    tensor: An ops.Tensor object.
+    tensor: An tensor.Tensor object.
     slice_spec: The arguments to Tensor.__getitem__.
     var: In the case of variable slice assignment, the Variable object to slice
       (i.e. tensor is the read-only view of this variable).
@@ -1033,9 +1049,11 @@ def _slice_helper(tensor, slice_spec, var=None):
   if var is None and ops._numpy_style_slicing:  # pylint: disable=protected-access
     return tensor._numpy_style_getitem(slice_spec)  # pylint: disable=protected-access
 
-  if isinstance(slice_spec, bool) or \
-  (isinstance(slice_spec, ops.Tensor) and slice_spec.dtype == dtypes.bool) or \
-  (isinstance(slice_spec, np.ndarray) and slice_spec.dtype == bool):
+  if (isinstance(slice_spec, bool)
+      or (isinstance(slice_spec, tensor_lib.Tensor)
+          and slice_spec.dtype == dtypes.bool)
+      or (isinstance(slice_spec, np.ndarray)
+          and slice_spec.dtype == bool)):
     return boolean_mask(tensor=tensor, mask=slice_spec)
 
   if not isinstance(slice_spec, (list, tuple)):
@@ -1052,7 +1070,7 @@ def _slice_helper(tensor, slice_spec, var=None):
       # Finds the best dtype for begin, end, and strides.
       dtype = None
       for t in [s.start, s.stop, s.step]:
-        if t is None or not isinstance(t, ops.Tensor):
+        if t is None or not isinstance(t, tensor_lib.Tensor):
           continue
         if t.dtype == dtypes.int64:
           dtype = dtypes.int64
@@ -1102,8 +1120,9 @@ def _slice_helper(tensor, slice_spec, var=None):
       begin.append(s)
       end.append(s + 1)
       # TODO(mdan): Investigate why we can't set int32 here.
-      if isinstance(s, ops.Tensor) and (s.dtype == dtypes.int16 or
-                                        s.dtype == dtypes.int64):
+      if (
+          isinstance(s, tensor_lib.Tensor)
+          and (s.dtype == dtypes.int16 or s.dtype == dtypes.int64)):
         strides.append(constant_op.constant(1, dtype=s.dtype))
       else:
         strides.append(1)
@@ -1398,7 +1417,7 @@ def _SliceHelperVar(var, slice_spec):
   return _slice_helper(var.value(), slice_spec, var)
 
 
-ops.Tensor._override_operator("__getitem__", _slice_helper)
+tensor_lib.Tensor._override_operator("__getitem__", _slice_helper)
 
 
 @tf_export("parallel_stack")
@@ -2806,10 +2825,12 @@ def matrix_set_diag(
 # pylint: enable=invalid-name
 
 
-def _constant_if_small(value, shape, dtype, name):
+def _constant_if_small(value, shape, dtype, name, layout=None):
   try:
     if np.prod(shape) < 1000:
-      return constant(value, shape=shape, dtype=dtype, name=name)
+      return d_api.call_with_layout(
+          constant, layout, value, shape=shape, dtype=dtype, name=name
+      )
   except (NotImplementedError, TypeError):
     # Happens when shape is a Tensor, list with Tensor elements, etc.
     pass
@@ -2833,7 +2854,7 @@ def _tag_zeros_tensor(fun):
 @tf_export("zeros")
 @dispatch.add_dispatch_support
 @_tag_zeros_tensor
-def zeros(shape, dtype=dtypes.float32, name=None):
+def zeros(shape, dtype=dtypes.float32, name=None, layout=None):
   """Creates a tensor with all elements set to zero.
 
   See also `tf.zeros_like`, `tf.ones`, `tf.fill`, `tf.eye`.
@@ -2848,10 +2869,13 @@ def zeros(shape, dtype=dtypes.float32, name=None):
          [0, 0, 0, 0]], dtype=int32)>
 
   Args:
-    shape: A `list` of integers, a `tuple` of integers, or
-      a 1-D `Tensor` of type `int32`.
+    shape: A `list` of integers, a `tuple` of integers, or a 1-D `Tensor` of
+      type `int32`.
     dtype: The DType of an element in the resulting `Tensor`.
     name: Optional string. A name for the operation.
+    layout: Optional, `tf.experimental.dtensor.Layout`. If provided, the result
+      is a [DTensor](https://www.tensorflow.org/guide/dtensor_overview) with the
+      provided layout.
 
   Returns:
     A `Tensor` with all elements set to zero.
@@ -2867,12 +2891,12 @@ def zeros(shape, dtype=dtypes.float32, name=None):
     else:
       zero = 0
 
-    if not isinstance(shape, ops.Tensor):
+    if not isinstance(shape, tensor_lib.Tensor):
       try:
         if not context.executing_eagerly():
           # Create a constant if it won't be very big. Otherwise, create a fill
           # op to prevent serialized GraphDefs from becoming too large.
-          output = _constant_if_small(zero, shape, dtype, name)
+          output = _constant_if_small(zero, shape, dtype, name, layout=layout)
           if output is not None:
             return output
 
@@ -2884,7 +2908,7 @@ def zeros(shape, dtype=dtypes.float32, name=None):
         shape = ops.convert_to_tensor(shape, dtype=dtypes.int32)
     if not shape._shape_tuple():
       shape = reshape(shape, [-1])  # Ensure it's a vector
-    output = fill(shape, constant(zero, dtype=dtype), name=name)
+    output = fill(shape, constant(zero, dtype=dtype), name=name, layout=layout)
   assert output.dtype.base_dtype == dtype
   return output
 
@@ -2935,7 +2959,9 @@ def zeros_like(tensor, dtype=None, name=None, optimize=True):
 def zeros_like_v2(
     input,  # pylint: disable=redefined-builtin
     dtype=None,
-    name=None):
+    name=None,
+    layout=None,
+):
   """Creates a tensor with all elements set to zero.
 
   See also `tf.zeros`.
@@ -2943,6 +2969,10 @@ def zeros_like_v2(
   Given a single tensor or array-like object (`input`), this operation returns
   a tensor of the same type and shape as `input` with all elements set to zero.
   Optionally, you can use `dtype` to specify a new type for the returned tensor.
+
+  Note that the layout of the input tensor is not preserved if the op
+  is used inside tf.function. To obtain a tensor with the same layout as the
+  input, chain the returned value to a `dtensor.relayout_like`.
 
   Examples:
 
@@ -2968,42 +2998,73 @@ def zeros_like_v2(
       `float64`, `int8`, `uint8`, `int16`, `uint16`, `int32`, `int64`,
       `complex64`, `complex128`, `bool` or `string` (optional).
     name: A name for the operation (optional).
+    layout: Optional, `tf.experimental.dtensor.Layout`. If provided, the result
+      is a [DTensor](https://www.tensorflow.org/guide/dtensor_overview) with the
+      provided layout.
 
   Returns:
     A `Tensor` with all elements set to zero.
   """
-  return zeros_like_impl(input, dtype, name, optimize=True)
+  return zeros_like_impl(input, dtype, name, optimize=True, layout=layout)
+
+
+def array_like_impl(
+    array_fn, array_like_fn, tensor, dtype, name, optimize=True, layout=None
+):
+  """Internal implementation for ones_like and zeros_like API calls."""
+  # Note: the output follows the layout argument, not the layout of the input.
+  if not tensor_util.is_tf_type(tensor):
+    tensor = ops.convert_to_tensor(tensor, name="tensor")
+  tensor_shape = tensor.shape
+  tensor_dtype = tensor.dtype
+
+  if context.executing_eagerly():
+    if dtype is not None and dtype != tensor_dtype:
+      return array_fn(
+          shape_internal(tensor, optimize=optimize),
+          dtype=dtype,
+          name=name,
+          layout=layout,
+      )
+    return d_api.call_with_layout(array_like_fn, layout, tensor, name=name)
+
+  # For now, variant types must be created via array_like_fn; as we need to
+  # pass the input variant object to the proper array_fn callback.
+
+  if (
+      optimize
+      and tensor_shape.is_fully_defined()
+      and tensor_dtype != dtypes.variant
+  ):
+    # We can produce a result tensor independent of the value of 'tensor',
+    # since the shape is known statically.
+    return array_fn(
+        tensor_shape, dtype=dtype or tensor_dtype, name=name, layout=layout
+    )
+
+  if dtype is not None and dtype != tensor_dtype and dtype != dtypes.variant:
+    return array_fn(
+        shape_internal(tensor, optimize=optimize),
+        dtype=dtype,
+        name=name,
+        layout=layout,
+    )
+  return d_api.call_with_layout(array_like_fn, layout, tensor, name=name)
 
 
 @_tag_zeros_tensor
-def zeros_like_impl(tensor, dtype, name, optimize=True):
+def zeros_like_impl(tensor, dtype, name, optimize=True, layout=None):
   """Internal implementation for the v1/v2 zeros_like API calls."""
   with ops.name_scope(name, "zeros_like", [tensor]) as name:
-    if not tensor_util.is_tf_type(tensor):
-      tensor = ops.convert_to_tensor(tensor, name="tensor")
-    tensor_shape = tensor.shape
-    tensor_dtype = tensor.dtype
-
-    if context.executing_eagerly():
-      if dtype is not None and dtype != tensor_dtype:
-        return zeros(
-            shape_internal(tensor, optimize=optimize), dtype=dtype, name=name)
-      return gen_array_ops.zeros_like(tensor, name=name)
-
-    # For now, variant types must be created via zeros_like; as we need to
-    # pass the input variant object to the proper zeros callback.
-
-    if (optimize and tensor_shape.is_fully_defined() and
-        tensor_dtype != dtypes.variant):
-      # We can produce a zeros tensor independent of the value of 'tensor',
-      # since the shape is known statically.
-      return zeros(tensor_shape, dtype=dtype or tensor_dtype, name=name)
-
-    if dtype is not None and dtype != tensor_dtype and dtype != dtypes.variant:
-      return zeros(
-          shape_internal(tensor, optimize=optimize), dtype=dtype, name=name)
-    else:
-      return gen_array_ops.zeros_like(tensor, name=name)
+    return array_like_impl(
+        zeros,
+        gen_array_ops.zeros_like,
+        tensor,
+        dtype,
+        name,
+        optimize=optimize,
+        layout=layout,
+    )
 
 
 @tf_export(v1=["ones_like"])
@@ -3046,7 +3107,9 @@ def ones_like(tensor, dtype=None, name=None, optimize=True):
 def ones_like_v2(
     input,  # pylint: disable=redefined-builtin
     dtype=None,
-    name=None):
+    name=None,
+    layout=None,
+):
   """Creates a tensor of all ones that has the same shape as the input.
 
   See also `tf.ones`.
@@ -3063,27 +3126,44 @@ def ones_like_v2(
     array([[1, 1, 1],
            [1, 1, 1]], dtype=int32)>
 
+  Note that the layout of the input tensor is not preserved if the op
+  is used inside tf.function. To obtain a tensor with the same layout as the
+  input, chain the returned value to a `dtensor.relayout_like`.
+
   Args:
     input: A `Tensor`.
     dtype: A type for the returned `Tensor`. Must be `float16`, `float32`,
       `float64`, `int8`, `uint8`, `int16`, `uint16`, `int32`, `int64`,
       `complex64`, `complex128`, `bool` or `string`.
     name: A name for the operation (optional).
+    layout: Optional, `tf.experimental.dtensor.Layout`. If provided, the result
+      is a [DTensor](https://www.tensorflow.org/guide/dtensor_overview) with the
+      provided layout.
 
   Returns:
     A `Tensor` with all elements set to one.
   """
-  return ones_like_impl(input, dtype, name, optimize=True)
+  with ops.name_scope(name, "ones_like", [input]) as name:
+    return array_like_impl(
+        ones,
+        gen_array_ops.ones_like,
+        input,
+        dtype,
+        name,
+        optimize=True,
+        layout=layout,
+    )
 
 
-def ones_like_impl(tensor, dtype, name, optimize=True):
+def ones_like_impl(tensor, dtype, name, optimize=True, layout=None):
   """Internal implementation for the v1/v2 ones_like API calls."""
   with ops.name_scope(name, "ones_like", [tensor]) as name:
+
     tensor = ops.convert_to_tensor(tensor, name="tensor")
     ones_shape = shape_internal(tensor, optimize=optimize)
     if dtype is None:
       dtype = tensor.dtype
-    ret = ones(ones_shape, dtype=dtype, name=name)
+    ret = ones(ones_shape, dtype=dtype, name=name, layout=layout)
     if not context.executing_eagerly():
       ret.set_shape(tensor.get_shape())
     return ret
@@ -3091,7 +3171,7 @@ def ones_like_impl(tensor, dtype, name, optimize=True):
 
 @tf_export("ones")
 @dispatch.add_dispatch_support
-def ones(shape, dtype=dtypes.float32, name=None):
+def ones(shape, dtype=dtypes.float32, name=None, layout=None):
   """Creates a tensor with all elements set to one (1).
 
   See also `tf.ones_like`, `tf.zeros`, `tf.fill`, `tf.eye`.
@@ -3106,11 +3186,14 @@ def ones(shape, dtype=dtypes.float32, name=None):
          [1, 1, 1, 1]], dtype=int32)>
 
   Args:
-    shape: A `list` of integers, a `tuple` of integers, or
-      a 1-D `Tensor` of type `int32`.
+    shape: A `list` of integers, a `tuple` of integers, or a 1-D `Tensor` of
+      type `int32`.
     dtype: Optional DType of an element in the resulting `Tensor`. Default is
       `tf.float32`.
     name: Optional string. A name for the operation.
+    layout: Optional, `tf.experimental.dtensor.Layout`. If provided, the result
+      is a [DTensor](https://www.tensorflow.org/guide/dtensor_overview) with the
+      provided layout.
 
   Returns:
     A `Tensor` with all elements set to one (1).
@@ -3123,12 +3206,12 @@ def ones(shape, dtype=dtypes.float32, name=None):
       one = np.ones([]).astype(dtype.as_numpy_dtype)
     else:
       one = 1
-    if not isinstance(shape, ops.Tensor):
+    if not isinstance(shape, tensor_lib.Tensor):
       try:
         if not context.executing_eagerly():
           # Create a constant if it won't be very big. Otherwise, create a fill
           # op to prevent serialized GraphDefs from becoming too large.
-          output = _constant_if_small(one, shape, dtype, name)
+          output = _constant_if_small(one, shape, dtype, name, layout=layout)
           if output is not None:
             return output
 
@@ -3140,7 +3223,7 @@ def ones(shape, dtype=dtypes.float32, name=None):
         shape = ops.convert_to_tensor(shape, dtype=dtypes.int32)
     if not shape._shape_tuple():
       shape = reshape(shape, [-1])  # Ensure it's a vector
-    output = fill(shape, constant(one, dtype=dtype), name=name)
+    output = fill(shape, constant(one, dtype=dtype), name=name, layout=layout)
   assert output.dtype.base_dtype == dtype
   return output
 
@@ -3324,7 +3407,7 @@ def sparse_placeholder(dtype, shape=None, name=None):
     dense_shape = placeholder(dtypes.int64, shape=[rank], name=shape_name)
     dense_shape_default = tensor_util.constant_value_as_shape(dense_shape)
   else:
-    if isinstance(shape, ops.Tensor):
+    if isinstance(shape, tensor_lib.Tensor):
       rank = shape.get_shape()[0]
       dense_shape_default = tensor_util.constant_value_as_shape(shape)
     else:
@@ -3511,7 +3594,7 @@ def pad(tensor, paddings, mode="CONSTANT", name=None, constant_values=0):  # pyl
     paddings_constant = _get_paddings_constant(paddings)
     input_shape = (
         tensor_shape.TensorShape(tensor.shape)
-        if isinstance(tensor, ops.Tensor) else result.op.inputs[0].shape)
+        if isinstance(tensor, tensor_lib.Tensor) else result.op.inputs[0].shape)
     if (input_shape.ndims is not None and
         not result.shape.is_fully_defined() and paddings_constant is not None):
       new_shape = []
@@ -3539,7 +3622,7 @@ def _get_paddings_constant(paddings):
     A nested list or numbers or `None`, in which `None` indicates unknown
     padding size.
   """
-  if isinstance(paddings, ops.Tensor):
+  if isinstance(paddings, tensor_lib.Tensor):
     return tensor_util.constant_value(paddings, partial=True)
   elif isinstance(paddings, (list, tuple)):
     return [_get_paddings_constant(x) for x in paddings]
@@ -4323,7 +4406,7 @@ def one_hot(indices,
 def _all_dimensions(x):
   """Returns a 1D-tensor listing all dimensions in x."""
   # Fast path: avoid creating Rank and Range ops if ndims is known.
-  if isinstance(x, ops.Tensor) and x.get_shape().ndims is not None:
+  if isinstance(x, tensor_lib.Tensor) and x.get_shape().ndims is not None:
     return constant_op.constant(
         np.arange(x.get_shape().ndims), dtype=dtypes.int32)
   if (isinstance(x, sparse_tensor.SparseTensor) and

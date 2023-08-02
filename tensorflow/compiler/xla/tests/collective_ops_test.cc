@@ -1729,5 +1729,47 @@ XLA_TEST_F(CollectiveOpsTest, AllGather_Dim1UnitDimensions) {
   }
 }
 
+XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(SendRecv_Simple)) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY test_computation {
+    %replica = u32[] replica-id()
+    %ten = u32[] constant(10)
+    %sum = u32[] add(%replica, %ten)
+    %p = u32[2] broadcast(%sum), dimensions={}
+
+    %after-all = token[] after-all()
+    %recv = (u32[2], u32[], token[]) recv(%after-all), channel_id=1, frontend_attributes={
+      _xla_send_recv_source_target_pairs="{{1,0}}"
+    }
+    %send = (u32[2], u32[], token[]) send(%p, %after-all), channel_id=1, control-predecessors={%recv}, frontend_attributes={
+      _xla_send_recv_source_target_pairs="{{1,0}}"
+    }
+
+    %recv-done = (u32[2], token[]) recv-done(%recv), channel_id=1
+    %recv-data = u32[2] get-tuple-element(%recv-done), index=0
+    %send-done = token[] send-done(%send), channel_id=1, control-predecessors={%recv}
+    ROOT copy = u32[2] copy(%recv-data)
+  }
+  )";
+
+  const int64_t kNumReplicas = 2;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas)
+
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                          ExecuteReplicated(std::move(module), {}, kNumReplicas,
+                                            /*use_threads=*/true));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32_t>({11, 11}),
+                                     results[0]));
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32_t>({0, 0}),
+                                     results[1]));
+}
+
 }  // namespace
 }  // namespace xla

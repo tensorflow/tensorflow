@@ -144,6 +144,7 @@ cc_library(
         ":incomplete_nodedef_builder",
         "//tensorflow/compiler/jit:encapsulate_util",
         "//tensorflow/compiler/jit:shape_inference",
+        "//tensorflow/compiler/mlir/tensorflow:xla_sharding_util",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:resource_operation_table",
         "//tensorflow/compiler/tf2xla:sharding_util",
@@ -240,13 +241,11 @@ cc_library(
         "//tensorflow/compiler/tf2xla:tf2xla_util",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework_internal",
-        "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:node_hash_set",
-        "@com_google_absl//absl/types:optional",
     ],
 )
 

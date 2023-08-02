@@ -17,6 +17,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/kernels/reduction_ops.h"
 
+#include <cstdint>
+#include <limits>
 #include <vector>
 
 #include "tensorflow/compiler/tf2xla/type_util.h"
@@ -131,20 +133,30 @@ class MeanOp : public XlaReductionOp {
   }
 
   xla::XlaOp BuildFinalizer(
-      xla::XlaBuilder* /*builder*/, const xla::XlaOp& input,
+      xla::XlaBuilder* builder, const xla::XlaOp& input,
       const xla::XlaOp& reduce_output,
       const std::vector<int64_t>& dimensions_to_reduce) override {
     if (dimensions_to_reduce.empty()) {
       return reduce_output;
     }
+    xla::XlaOp result = reduce_output;
+    xla::Shape bounded_shape = builder->GetShape(input).value();
+    int64_t divisor_value = bounded_shape.dimensions(dimensions_to_reduce[0]);
     auto divisor = xla::GetDimensionSize(input, dimensions_to_reduce[0]);
     for (int i = 1; i < dimensions_to_reduce.size(); i++) {
+      int64_t size_value = bounded_shape.dimensions(dimensions_to_reduce[i]);
       auto size = xla::GetDimensionSize(input, dimensions_to_reduce[i]);
-      divisor = xla::Mul(divisor, size);
+      if (size_value * divisor_value > std::numeric_limits<int32_t>::max()) {
+        result = result / xla::ConvertElementType(divisor, xla_reduction_type_);
+        divisor_value = size_value;
+        divisor = size;
+      } else {
+        divisor = xla::Mul(divisor, size);
+        divisor_value = size_value * divisor_value;
+      }
     }
     divisor = xla::ConvertElementType(divisor, xla_reduction_type_);
-    return XlaHelpers::ConvertElementType(reduce_output / divisor,
-                                          input_type(0));
+    return XlaHelpers::ConvertElementType(result / divisor, input_type(0));
   }
 };
 

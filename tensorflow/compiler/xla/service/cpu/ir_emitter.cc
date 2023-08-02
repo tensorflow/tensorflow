@@ -2669,7 +2669,7 @@ StatusOr<bool> IrEmitter::EmitFastConcatenate(
   int64_t byte_offset_into_target_region = 0;
 
   int64_t inner_dims_product =
-      std::accumulate(inner_dims.begin(), inner_dims.end(), 1l,
+      std::accumulate(inner_dims.begin(), inner_dims.end(), int64_t{1},
                       [&](int64_t product, int64_t inner_dim) {
                         return product * output_shape.dimensions(inner_dim);
                       });
@@ -3149,7 +3149,8 @@ Status IrEmitter::Preprocess(HloInstruction* hlo) {
   VLOG(3) << "Visiting: " << hlo->ToString();
   // When profiling is enabled, trace the same HLOs that the profiler does.
   if (instruction_to_profile_idx_.count(hlo) ||
-      (hlo_module_config_.cpu_traceme_enabled() && !IsHloVeryCheap(hlo))) {
+      (hlo_module_config_.cpu_traceme_enabled() && !IsHloVeryCheap(hlo) &&
+       hlo->parent()->IsEntryComputation())) {
     tracing_state_.EmitTracingStart(&b_, hlo,
                                     GetExecutableRunOptionsArgument());
     profiling_state_.RecordCycleStart(&b_, hlo);
@@ -3163,7 +3164,8 @@ Status IrEmitter::Postprocess(HloInstruction* hlo) {
   }
   // When profiling is enabled, trace the same HLOs that the profiler does.
   if (instruction_to_profile_idx_.count(hlo) ||
-      (hlo_module_config_.cpu_traceme_enabled() && !IsHloVeryCheap(hlo))) {
+      (hlo_module_config_.cpu_traceme_enabled() && !IsHloVeryCheap(hlo) &&
+       hlo->parent()->IsEntryComputation())) {
     tracing_state_.EmitTracingEnd(&b_, hlo, GetExecutableRunOptionsArgument());
   }
   return OkStatus();

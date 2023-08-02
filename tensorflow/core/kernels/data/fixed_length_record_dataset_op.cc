@@ -199,7 +199,7 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
     Status SaveInternal(SerializationContext* ctx,
                         IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
-      TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kCurrentFileIndex),
+      TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kCurrentFileIndex,
                                              current_file_index_));
 
       // `input_buffer_` is empty if
@@ -207,7 +207,7 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
       // 2. All files have been read and iterator has been exhausted.
       int64_t current_pos = input_buffer_ ? input_buffer_->Tell() : -1;
       TF_RETURN_IF_ERROR(
-          writer->WriteScalar(full_name(kCurrentPos), current_pos));
+          writer->WriteScalar(prefix(), kCurrentPos, current_pos));
       return OkStatus();
     }
 
@@ -215,12 +215,12 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
       int64_t current_file_index;
-      TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kCurrentFileIndex),
-                                            &current_file_index));
+      TF_RETURN_IF_ERROR(
+          reader->ReadScalar(prefix(), kCurrentFileIndex, &current_file_index));
       current_file_index_ = size_t(current_file_index);
       int64_t current_pos;
       TF_RETURN_IF_ERROR(
-          reader->ReadScalar(full_name(kCurrentPos), &current_pos));
+          reader->ReadScalar(prefix(), kCurrentPos, &current_pos));
 
       // Seek to current_pos.
       input_buffer_.reset();
@@ -387,7 +387,7 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
     Status SaveInternal(SerializationContext* ctx,
                         IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
-      TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kCurrentFileIndex),
+      TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kCurrentFileIndex,
                                              current_file_index_));
 
       // `buffered_input_stream_` is empty if
@@ -396,7 +396,7 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
       int64_t current_pos =
           buffered_input_stream_ ? buffered_input_stream_->Tell() : -1;
       TF_RETURN_IF_ERROR(
-          writer->WriteScalar(full_name(kCurrentPos), current_pos));
+          writer->WriteScalar(prefix(), kCurrentPos, current_pos));
       return OkStatus();
     }
 
@@ -404,12 +404,12 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
       int64_t current_file_index;
-      TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kCurrentFileIndex),
-                                            &current_file_index));
+      TF_RETURN_IF_ERROR(
+          reader->ReadScalar(prefix(), kCurrentFileIndex, &current_file_index));
       current_file_index_ = size_t(current_file_index);
       int64_t current_pos;
       TF_RETURN_IF_ERROR(
-          reader->ReadScalar(full_name(kCurrentPos), &current_pos));
+          reader->ReadScalar(prefix(), kCurrentPos, &current_pos));
 
       // Seek to current_pos.
       buffered_input_stream_.reset();

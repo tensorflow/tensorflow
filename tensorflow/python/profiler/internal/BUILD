@@ -1,5 +1,5 @@
 load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
-load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "get_compatible_with_cloud", "tf_python_pybind_extension")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "get_compatible_with_portable", "tf_python_pybind_extension")
 load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts")
 
 package(
@@ -52,7 +52,7 @@ py_strict_library(
         "//tensorflow/python/ops:tensor_array_grad",
         "//tensorflow/python/ops:variable_scope",
         "//tensorflow/python/profiler:model_analyzer",
-        "//tensorflow/python/training",
+        "//tensorflow/python/training:gradient_descent",
         "//tensorflow/python/util:_pywrap_tfprof",
         "//tensorflow/python/util:compat",
     ],
@@ -136,10 +136,12 @@ tf_python_pybind_extension(
 cc_library(
     name = "python_hooks",
     hdrs = ["python_hooks.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     copts = tf_profiler_copts() + ["-fexceptions"],
     features = ["-use_header_modules"],  # Incompatible with -fexceptions.
-    visibility = ["//tensorflow/core/profiler:__subpackages__"],
+    visibility = [
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
+    ],
     deps = [
         "//tensorflow/compiler/xla/python/profiler/internal:python_hooks",
         "//tensorflow/core:lib",
@@ -156,9 +158,7 @@ cc_library(
     srcs = ["profiler_pywrap_impl.cc"],
     hdrs = ["profiler_pywrap_impl.h"],
     visibility = [
-        # Do not change this visibility field.
-        # This library is referred in OSS world by github.com/pytorch/xla
-        "//tensorflow/compiler/xla:__subpackages__",
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
     ],
     deps = [
         "//tensorflow/core:lib",

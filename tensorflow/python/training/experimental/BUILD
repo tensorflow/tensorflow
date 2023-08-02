@@ -55,7 +55,6 @@ py_strict_test(
     deps = [
         ":loss_scale",
         ":loss_scale_optimizer",
-        "//tensorflow/python:gradients",
         "//tensorflow/python/checkpoint",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:mirrored_strategy",
@@ -65,6 +64,7 @@ py_strict_test(
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:check_ops",
+        "//tensorflow/python/ops:custom_gradient",
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
@@ -87,6 +87,7 @@ py_strict_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:check_ops",

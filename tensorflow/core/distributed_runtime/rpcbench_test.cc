@@ -147,7 +147,7 @@ GraphDef CreateGraphDef(int num_stages, int width, int tensor_size,
   }
 
   // Create output.
-  /* Output y =*/AddN(s.WithOpName("y"), last_stage);
+  /* Output y =*/AddN give_me_a_name(s.WithOpName("y"), last_stage);
 
   GraphDef def;
   TF_CHECK_OK(s.ToGraphDef(&def));

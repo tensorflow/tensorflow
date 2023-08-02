@@ -29,14 +29,12 @@ limitations under the License.
 #include <ostream>
 #include <set>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/hash/hash.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -48,18 +46,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
 #include "tensorflow/compiler/xla/iterator_util.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/mapped_ptr_container_sorter.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
-#include "tensorflow/compiler/xla/shape_tree.h"
-#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/lib/gtl/iterator_range.h"
-#include "tensorflow/tsl/platform/logging.h"
-#include "tensorflow/tsl/platform/protobuf.h"
-#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 
@@ -103,7 +95,8 @@ class HloPrintOptions {
         print_ids_(true),
         canonicalize_computations_(false),
         print_extra_attributes_(true),
-        syntax_sugar_async_ops_(true) {}
+        syntax_sugar_async_ops_(true),
+        print_name_after_closing_brace_(false) {}
   // Static reference to a default construction HloPrintOptions, to avoid
   // constructing a new one each time default is needed.
   static const HloPrintOptions& Default() {
@@ -346,6 +339,11 @@ class HloPrintOptions {
     return *this;
   }
 
+  HloPrintOptions& set_print_name_after_closing_brace(bool value) {
+    print_name_after_closing_brace_ = value;
+    return *this;
+  }
+
   bool print_large_constants() const { return print_large_constants_; }
   bool print_only_essential_constants() const {
     return print_only_essential_constants_;
@@ -380,6 +378,9 @@ class HloPrintOptions {
   bool canonicalize_computations() const { return canonicalize_computations_; }
   int indent_amount() const { return indent_amount_; }
   int is_in_nested_computation() const { return is_in_nested_computation_; }
+  int print_name_after_closing_brace() const {
+    return print_name_after_closing_brace_;
+  }
 
  private:
   // The interval between the /*index=*/ annotated operands. 0 means never print
@@ -406,6 +407,7 @@ class HloPrintOptions {
   bool canonicalize_computations_;
   bool print_extra_attributes_;
   bool syntax_sugar_async_ops_;
+  bool print_name_after_closing_brace_;
 };
 
 // For canonical string output, we need to have a canonical way to rename
@@ -1420,7 +1422,11 @@ class HloInstruction {
   //
   // If a user is a fusion instruction, this function will remove any duplicated
   // operands of it which could be created due to this replacement.
-  Status ReplaceAllUsesWith(HloInstruction* new_producer);
+  //
+  // trigger is a string used in the error message if the new and the
+  // current instruction don't have a compatible shape.
+  Status ReplaceAllUsesWith(HloInstruction* new_producer,
+                            absl::string_view trigger = "");
 
   // Same as ReplaceAllUsesWith, but new_producer can have a different shape.
   Status ReplaceAllUsesWithDifferentShape(HloInstruction* new_producer);
@@ -1459,6 +1465,9 @@ class HloInstruction {
   // Visit this instruction and only this instruction with the given visitor.
   template <typename HloInstructionPtr>
   Status Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor);
+  Status Visit(ConstDfsHloVisitor* visitor) const {
+    return const_cast<HloInstruction*>(this)->Visit(visitor);
+  }
 
   // Returns the first non-GetTupleElement ancestor instruction of 'hlo'.
   // If the first non-GTE ancestor is tuple-shaped, populates 'index' with the
@@ -1805,6 +1814,8 @@ class HloInstruction {
     return OkStatus();
   }
 
+  bool preserve_layout() const { return metadata_.preserve_layout(); }
+
   bool has_backend_config() const { return !backend_config_.empty(); }
 
   void clear_backend_config() { backend_config_.clear(); }
@@ -1825,6 +1836,27 @@ class HloInstruction {
   const FrontendAttributes& frontend_attributes() const {
     return frontend_attributes_;
   }
+
+  void add_single_statistic(Statistic statistic) {
+    *statistics_viz_.add_statistics() = std::move(statistic);
+  }
+
+  void set_stat_index_to_visualize(int64_t index) {
+    statistics_viz_.set_stat_index_to_visualize(index);
+  }
+
+  bool has_statistics() const { return !statistics_viz_.statistics().empty(); }
+
+  const Statistic& statistic_to_visualize() const {
+    return statistics_viz_.statistics().at(
+        statistics_viz_.stat_index_to_visualize());
+  }
+
+  void set_statistics_viz(StatisticsViz statistics_viz) {
+    statistics_viz_ = std::move(statistics_viz);
+  }
+
+  const StatisticsViz& statistics_viz() const { return statistics_viz_; }
 
   // Getter/setter for raw JSON-encoded backend config.  Prefer the
   // functions above that deal in proto Messages where possible.
@@ -1888,6 +1920,9 @@ class HloInstruction {
   }
   void set_metadata_deduplicated_name(std::string deduplicated_name) {
     metadata_.set_deduplicated_name(std::move(deduplicated_name));
+  }
+  void set_metadata_preserve_layout(bool preserve_layout) {
+    metadata_.set_preserve_layout(preserve_layout);
   }
   const OpMetadata& metadata() const { return metadata_; }
 
@@ -2006,11 +2041,11 @@ class HloInstruction {
   HloInstruction* fused_expression_root() const;
 
   // Delegates to HloFusionInstruction::fused_instructions.
-  const tsl::gtl::iterator_range<UnwrappingIterator<
+  tsl::gtl::iterator_range<UnwrappingIterator<
       std::list<std::unique_ptr<HloInstruction>>::const_iterator>>
   fused_instructions() const;
 
-  const tsl::gtl::iterator_range<
+  tsl::gtl::iterator_range<
       UnwrappingIterator<std::list<std::unique_ptr<HloInstruction>>::iterator>>
   fused_instructions();
 
@@ -2025,7 +2060,7 @@ class HloInstruction {
 
   // Returns true if this instruction is a fusion instruction that generates
   // multiple outputs.
-  const bool IsMultiOutputFusion() const;
+  bool IsMultiOutputFusion() const;
 
   // Delegates to HloFusionInstruction::fusion_kind.
   FusionKind fusion_kind() const;
@@ -2422,6 +2457,10 @@ class HloInstruction {
   //    z' = const(20), frontend_attributes={?}
   FrontendAttributes frontend_attributes_;
 
+  // Used to render an HLO graph when tracking the propagation desired values
+  // through it.
+  StatisticsViz statistics_viz_;
+
   // String identifier for instruction.
   std::string name_;
 
@@ -2456,6 +2495,7 @@ StatusOr<HloInstruction::FusionKind> StringToFusionKind(
 std::string PaddingConfigToString(const PaddingConfig& padding);
 std::string FrontendAttributesToString(
     const FrontendAttributes& frontend_attributes);
+std::string StatisticsVizToString(const StatisticsViz& statistics_viz);
 std::string RandomAlgorithmToString(const RandomAlgorithm& algorithm);
 std::string RandomDistributionToString(const RandomDistribution& distribution);
 std::string PrecisionToString(const PrecisionConfig::Precision& precision);

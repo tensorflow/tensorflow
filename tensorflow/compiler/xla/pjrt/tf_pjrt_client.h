@@ -130,6 +130,10 @@ class TfPjRtExecutable : public PjRtLoadedExecutable {
       const override {
     return wrapped_->GetHloModules();
   }
+  StatusOr<std::vector<std::vector<absl::string_view>>> GetOutputMemoryKinds()
+      const override {
+    return wrapped_->GetOutputMemoryKinds();
+  }
   using PjRtLoadedExecutable::Execute;
   StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
       absl::Span<const std::vector<PjRtBuffer*>> argument_handles,

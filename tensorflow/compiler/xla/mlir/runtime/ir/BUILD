@@ -1,5 +1,5 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 
 package(
@@ -15,7 +15,7 @@ td_library(
         "rt_interfaces.td",
         "rt_ops.td",
     ],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     includes = ["include"],
     visibility = ["//visibility:private"],
     deps = [
@@ -27,7 +27,7 @@ td_library(
 
 gentbl_cc_library(
     name = "rt_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             ["-gen-dialect-decls"],
@@ -69,7 +69,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "rt_interfaces_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             ["-gen-attr-interface-decls"],
@@ -97,7 +97,7 @@ cc_library(
         "rt_interfaces.h",
         "rt_ops.h",
     ],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":rt_inc_gen",
         ":rt_interfaces_inc_gen",

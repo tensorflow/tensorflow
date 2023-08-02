@@ -2,8 +2,9 @@
 
 ## Description
 
-An example delegate for stable delegate testing that supports addition and
-subtraction operations only.
+An example delegate for stable delegate testing that supports only a few
+operations: addition, subtraction, multiplication, equality check, and while
+loops.
 
 The sample stable delegate implementation uses the stable delegate API, which is
 based around `TfLiteOpaqueDelegate`. `TfLiteOpaqueDelegate` is an opaque version
@@ -177,7 +178,7 @@ bazel build -c opt //tensorflow/lite/tools/benchmark:benchmark_model
 
 Now, we can execute the benchmark tool. We provide the settings file together
 with a TF Lite file that contains ADD operations. We do this because the sample
-stable delegate only support ADD and SUB:
+stable delegate only support ADD, SUB, MUL, EQUAL, and WHILE:
 
 ```bash
 $(bazel info -c opt bazel-bin)/tensorflow/lite/tools/benchmark/benchmark_model \
@@ -226,11 +227,22 @@ adb push "$(bazel info -c opt --config=android_arm64 bazel-bin)"/tensorflow/lite
 
 Now, we can execute the benchmark tool. We provide the settings file together
 with a TF Lite file that contains ADD operations. We do this because the sample
-stable delegate only support ADD and SUB:
+stable delegate only support ADD, SUB, MUL, EQUAL, and WHILE:
 
 ```bash
 adb push tensorflow/lite/testdata/add.bin /data/local/tmp/add.bin
 adb shell "/data/local/tmp/benchmark_model \
   --stable_delegate_settings_file=/data/local/tmp/stable_delegate_settings.json \
   --graph=/data/local/tmp/add.bin"
+```
+
+## Sample app
+
+To show how to use the sample stable delegate, we have included a sample app
+that uses it.  You can build and run the sample app as follows:
+
+```
+bazel run -c opt \
+    //tensorflow/lite/delegates/utils/experimental/sample_stable_delegate:sample_app_using_stable_delegate \
+    tensorflow/lite/testdata/add.tflite
 ```

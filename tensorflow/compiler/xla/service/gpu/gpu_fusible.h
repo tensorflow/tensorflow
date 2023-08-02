@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_FUSIBLE_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_FUSIBLE_H_
 
+#include <vector>
+
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/instruction_fusion.h"
@@ -108,6 +111,12 @@ bool CreatesHeavyComputation(const HloInstruction& producer,
 const HloInstruction* GetRealHeroForMultiOutputFusion(
     const HloInstruction& instr);
 
+// Whether 'hero1' and 'hero2' are compatible if the two fusions containing
+// 'hero1' and 'hero2' are merged together. For example merging two fusions with
+// a reduction hero and a transpose here, respectively, does not work.
+FusionDecision FusionHeroesAreCompatible(const HloInstruction* hero1,
+                                         const HloInstruction* hero2);
+
 // Whether instruction shapes are compatible for multi-output fusion, i.e.
 // whether the emitters support lowering the resulting fusion.
 // This function works for both, sibling and producer-consumer multi-output
@@ -125,11 +134,10 @@ FusionDecision ShapesCompatibleForMultiOutputFusion(
 FusionDecision IsProducerConsumerFusible(const HloInstruction& producer,
                                          const HloInstruction& consumer);
 
-// Whether the instructions are producer-consumer fusible with multiple outputs.
+// Whether the producer is a valid candidate for a multi-output fusion.
 // That is, the root tuple of the multi-output fusion will contain the results
 // of both, the producer and consumer.
-FusionDecision IsProducerConsumerMultiOutputFusible(
-    const HloInstruction& producer, const HloInstruction& consumer);
+FusionDecision IsProducerMultiOutputFusible(const HloInstruction& producer);
 // Whether `instr` is a candidate for sibling fusion or as a consumer in
 // a producer-consumer multi-output fusion.
 bool IsFusibleAsMultiOutputFusionRoot(const HloInstruction& instr);
@@ -152,6 +160,32 @@ absl::InlinedVector<const HloInstruction*, 2> GetOutputsOfFusible(
 
 // Returns the output size of the fusible `instr`.
 size_t GetOutputSizeOfFusible(const HloInstruction& instr);
+
+// Returns instructions which are roots of the fusion, following the operands of
+// GTE instructions in the root tuple. Groups multiple subsequent instructions
+// with the same root. CHECKs that the fusion never outputs the same instruction
+// twice, as well as that there are no explicitly created tuples or nested gtes
+// in fusion output.
+//
+// For input: (tuple (gte R1) (gte R1) O2)
+// Expected output: [R1, O2]
+//
+// For input: (tuple R1 R2 O2)
+// Expected output: [R1, R2, O2]
+//
+// For input: (tuple (gte R1) (gte R1) R2 O3)
+// Expected output: [R1, R2, O3]
+//
+// For input: R1
+// Expected output: [R1]
+std::vector<HloInstruction*> GetFusionRoots(HloComputation* computation);
+
+// Whether there is a fusion root triggering transposition emitter.
+bool HasAnyTiledTransposeRoot(HloComputation* computation);
+
+// Returns whether the computation has at least one root triggering unnested
+// reduction emitter.
+bool HasAnyUnnestedReductionRoot(HloComputation* computation);
 
 }  // namespace gpu
 }  // namespace xla

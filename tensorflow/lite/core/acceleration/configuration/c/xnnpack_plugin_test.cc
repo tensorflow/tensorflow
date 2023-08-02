@@ -45,7 +45,7 @@ class XnnpackTest : public testing::Test {
     settings_ = flatbuffers::GetRoot<TFLiteSettings>(
         flatbuffer_builder_.GetBufferPointer());
   }
-  ~XnnpackTest() override {}
+  ~XnnpackTest() override = default;
 
  protected:
   // settings_ points into storage owned by flatbuffer_builder_.
@@ -80,4 +80,59 @@ TEST_F(XnnpackTest, SetsCorrectThreadCount) {
   EXPECT_EQ(thread_count, kNumThreadsForTest);
   TfLiteXnnpackDelegatePluginCApi()->destroy(delegate);
 }
+
+TEST_F(XnnpackTest, UsesDefaultFlagsByDefault) {
+  TfLiteDelegate *delegate =
+      TfLiteXnnpackDelegatePluginCApi()->create(settings_);
+  int flags = TfLiteXNNPackDelegateGetFlags(delegate);
+  EXPECT_EQ(flags, TfLiteXNNPackDelegateOptionsDefault().flags);
+  TfLiteXnnpackDelegatePluginCApi()->destroy(delegate);
+}
+
+TEST_F(XnnpackTest, UsesSpecifiedFlagsWhenNonzero) {
+  XNNPackSettingsBuilder xnnpack_settings_builder(flatbuffer_builder_);
+  xnnpack_settings_builder.add_flags(
+      tflite::XNNPackFlags_TFLITE_XNNPACK_DELEGATE_FLAG_QU8);
+  flatbuffers::Offset<XNNPackSettings> xnnpack_settings =
+      xnnpack_settings_builder.Finish();
+  TFLiteSettingsBuilder tflite_settings_builder(flatbuffer_builder_);
+  tflite_settings_builder.add_xnnpack_settings(xnnpack_settings);
+  flatbuffers::Offset<TFLiteSettings> tflite_settings =
+      tflite_settings_builder.Finish();
+  flatbuffer_builder_.Finish(tflite_settings);
+  settings_ = flatbuffers::GetRoot<TFLiteSettings>(
+      flatbuffer_builder_.GetBufferPointer());
+
+  TfLiteDelegate *delegate =
+      TfLiteXnnpackDelegatePluginCApi()->create(settings_);
+  int flags = TfLiteXNNPackDelegateGetFlags(delegate);
+  EXPECT_EQ(flags, tflite::XNNPackFlags_TFLITE_XNNPACK_DELEGATE_FLAG_QU8);
+  TfLiteXnnpackDelegatePluginCApi()->destroy(delegate);
+}
+
+// Settings flags to XNNPackFlags_TFLITE_XNNPACK_DELEGATE_NO_FLAGS (zero)
+// causes flags to be set to their default values, not zero.
+// This is potentially confusing behaviour, but we can't distinguish
+// the case when flags isn't set from the case when flags is set to zero.
+TEST_F(XnnpackTest, UsesDefaultFlagsWhenZero) {
+  XNNPackSettingsBuilder xnnpack_settings_builder(flatbuffer_builder_);
+  xnnpack_settings_builder.add_flags(
+      tflite::XNNPackFlags_TFLITE_XNNPACK_DELEGATE_NO_FLAGS);
+  flatbuffers::Offset<XNNPackSettings> xnnpack_settings =
+      xnnpack_settings_builder.Finish();
+  TFLiteSettingsBuilder tflite_settings_builder(flatbuffer_builder_);
+  tflite_settings_builder.add_xnnpack_settings(xnnpack_settings);
+  flatbuffers::Offset<TFLiteSettings> tflite_settings =
+      tflite_settings_builder.Finish();
+  flatbuffer_builder_.Finish(tflite_settings);
+  settings_ = flatbuffers::GetRoot<TFLiteSettings>(
+      flatbuffer_builder_.GetBufferPointer());
+
+  TfLiteDelegate *delegate =
+      TfLiteXnnpackDelegatePluginCApi()->create(settings_);
+  int flags = TfLiteXNNPackDelegateGetFlags(delegate);
+  EXPECT_EQ(flags, TfLiteXNNPackDelegateOptionsDefault().flags);
+  TfLiteXnnpackDelegatePluginCApi()->destroy(delegate);
+}
+
 }  // namespace tflite

@@ -13,12 +13,14 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for DTensorDevice in python."""
+import os
 import threading
+from unittest import mock
+
 from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.dtensor.python import api
-
 from tensorflow.dtensor.python import d_variable
 from tensorflow.dtensor.python import dtensor_device
 from tensorflow.dtensor.python import layout as layout_lib
@@ -77,10 +79,12 @@ class DTensorDeviceTest(test_util.DTensorBaseTest, parameterized.TestCase):
     # There isn't a great way to test whether something actually executed
     # synchronously; this test just exercises the option.
     device = dtensor_device.DTensorDevice([], is_async=is_async)
-    a = device.copy_to_mesh(
-        constant_op.constant([1.0]), Layout.replicated(self.mesh, rank=1)
-    )
-    b = array_ops.identity(a)
+    with device._experimental_default_mesh(self.mesh):
+      with ops.device_v2(device.name):
+        a = api.copy_to_mesh(
+            constant_op.constant([1.0]), Layout.replicated(self.mesh, rank=1)
+        )
+        b = array_ops.identity(a)
     self.assertEqual([1.], b.numpy())
 
   def testBasicTypeBasedDispatch(self):
@@ -97,6 +101,22 @@ class DTensorDeviceTest(test_util.DTensorBaseTest, parameterized.TestCase):
 
     self.assertAllEqual(a.numpy(), [1., 2., 3., 4.])
     self.assertAllEqual(c.numpy(), [2., 4., 6., 8.])
+
+  @mock.patch.dict(os.environ, {"DTENSOR_ENABLE_MULTI_DEVICE_EXPANSION": "1"})
+  def testMultiDeviceExpansion(self):
+    # Tests for b = Op(a).
+    a = constant_op.constant([1.0, 2.0, 3.0, 4.0])
+    a = api.copy_to_mesh(a, Layout.replicated(self.mesh, rank=1))
+
+    # __getitem__
+    b = a[2:-2]
+    api.check_layout(b, Layout.replicated(self.mesh, rank=1))
+
+    c = a * 2
+    api.check_layout(b, Layout.replicated(self.mesh, rank=1))
+
+    self.assertAllEqual(a.numpy(), [1.0, 2.0, 3.0, 4.0])
+    self.assertAllEqual(c.numpy(), [2.0, 4.0, 6.0, 8.0])
 
   def testNoImplicitCopyOnForLargeIntegerTensors(self):
     a = array_ops.ones([10, 10], dtype=dtypes.int32)
@@ -177,7 +197,7 @@ class DTensorDeviceTest(test_util.DTensorBaseTest, parameterized.TestCase):
     self.skipForDeviceType(
         ["GPU", "TPU"], "Variable implicit copy is only allowed for CPU mesh.")
 
-    variable = d_variable.DVariable(array_ops.ones(shape=shape, dtype=dtype))
+    variable = variables.Variable(array_ops.ones(shape=shape, dtype=dtype))
     new_value = array_ops.zeros(shape=shape, dtype=dtype)
 
     @polymorphic_function.function
@@ -541,8 +561,8 @@ class DTensorPackUnpackOnOneDMeshTest(test_util.DTensorBaseTest):
     ):
       api._dtensor_device().pack(
           [
-              d_variable.DVariable(array_ops.ones([2, 3])),
-              d_variable.DVariable(array_ops.ones([2, 3])),
+              variables.Variable(array_ops.ones([2, 3])),
+              variables.Variable(array_ops.ones([2, 3])),
           ],
           Layout.replicated(self.mesh, rank=2),
       )

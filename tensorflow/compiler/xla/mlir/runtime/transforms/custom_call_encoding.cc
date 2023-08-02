@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
@@ -422,7 +423,8 @@ static LLVM::AllocaOp PackValue(ImplicitLocOpBuilder &b, Allocas &a,
   LLVM::AllocaOp alloca = a.GetOrCreate(b, value.getType());
   // Start the lifetime of encoded value.
   b.create<LLVM::LifetimeStartOp>(b.getI64IntegerAttr(-1), alloca);
-  b.create<LLVM::StoreOp>(value, alloca);
+  // Use volatile store to suppress expensive LLVM optimizations.
+  b.create<LLVM::StoreOp>(value, alloca, /*alignment=*/0, /*isVolatile=*/true);
 
   return alloca;
 }
@@ -636,6 +638,8 @@ static PrimitiveType ScalarPrimitiveType(Type type) {
   if (type.isFloat8E4M3FN()) return PrimitiveType::F8E4M3FN;
   if (type.isFloat8E4M3B11FNUZ()) return PrimitiveType::F8E4M3B11FNUZ;
   if (type.isFloat8E5M2()) return PrimitiveType::F8E5M2;
+  if (type.isFloat8E4M3FNUZ()) return PrimitiveType::F8E4M3FNUZ;
+  if (type.isFloat8E5M2FNUZ()) return PrimitiveType::F8E5M2FNUZ;
   if (type.isF16()) return PrimitiveType::F16;
   if (type.isF32()) return PrimitiveType::F32;
   if (type.isF64()) return PrimitiveType::F64;
@@ -1157,7 +1161,9 @@ static Value EncodeMemRef(ImplicitLocOpBuilder &b, MemRefType memref_ty,
   // dynamic values into the struct after all statically know values leads to a
   // better canonicalization and cleaner final LLVM IR.
   if (desc.has_value()) {
-    Value offset = b.create<ConstantOp>(i64(memref_offset));
+    Value offset = (memref_offset == ShapedType::kDynamic)
+                       ? desc->offset(b, loc)
+                       : b.create<ConstantOp>(i64(memref_offset)).getResult();
     auto ptr = LLVM::LLVMPointerType::get(b.getContext());
     Value data = b.create<LLVM::GEPOp>(ptr, memref_ty.getElementType(),
                                        desc->alignedPtr(b, loc), offset);

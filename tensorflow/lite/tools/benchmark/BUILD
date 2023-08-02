@@ -257,6 +257,24 @@ cc_library(
 )
 
 cc_library(
+    name = "register_custom_op",
+    srcs = [
+        "register_custom_op.cc",
+    ],
+    hdrs = [
+        "register_custom_op.h",
+    ],
+    copts = common_copts,
+    deps = [
+        "//tensorflow/lite:op_resolver",
+        "@com_google_absl//absl/base:core_headers",
+    ],
+    alwayslink = 1,
+)
+
+exports_files(["register_custom_op.h"])
+
+cc_library(
     name = "benchmark_utils",
     srcs = [
         "benchmark_utils.cc",

@@ -1,6 +1,6 @@
-// RUN: hlo_to_llvm_ir %s | FileCheck %s
+// RUN: hlo_to_llvm_ir %s | FileCheck %{IR_SUBST} %s
 
-// CHECK: define void @triton_gemm_r(
+// CHECK: define [[KERNEL_ANNOTATION]]void @triton_gemm_r(
 
 HloModule t, entry_computation_layout={(f16[15,19]{1,0},s8[19,17]{1,0})->f16[15,17]{1,0}}
 

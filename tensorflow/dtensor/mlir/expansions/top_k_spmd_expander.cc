@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/expansions/top_k_spmd_expander.h"
 
+#include <string>
+#include <vector>
+
 #include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
@@ -29,14 +32,12 @@ namespace dtensor {
 
 // layout -> layout[:-1] + unsharded
 StatusOr<Layout> GetSuggestedLayout(const Layout& input_layout) {
-  std::vector<ShardingSpec> layout_specs(input_layout.rank());
+  std::vector<std::string> layout_specs(input_layout.rank());
 
   for (int i = 0; i < input_layout.rank() - 1; ++i) {
-    layout_specs[i].set_sharding_spec(input_layout.sharding_spec(i));
+    layout_specs[i] = input_layout.sharding_spec(i);
   }
-  layout_specs[input_layout.rank() - 1].set_sharding_spec(
-      Layout::kUnshardedDim);
-
+  layout_specs[input_layout.rank() - 1] = Layout::kUnshardedDim;
   return Layout::GetLayout(layout_specs, input_layout.mesh());
 }
 

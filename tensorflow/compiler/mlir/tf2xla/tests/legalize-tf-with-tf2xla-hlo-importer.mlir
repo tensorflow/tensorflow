@@ -1,4 +1,4 @@
-// RUN: tf-opt "-xla-legalize-tf=device-type=XLA_CPU_JIT allow-partial-conversion=true prefer-tf2xla=true use-tf2xla-fallback=true use-tf2xla-hlo-importer=true" %s -verify-diagnostics -mlir-disable-threading  | FileCheck %s
+// RUN: tf-opt "-xla-legalize-tf=device-type=XLA_CPU_JIT prefer-tf2xla=true use-tf2xla-fallback=true" %s -verify-diagnostics -mlir-disable-threading  | FileCheck %s
 
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
   // CHECK-LABEL: binary_op
@@ -18,7 +18,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   // CHECK-LABEL: constant_parameter
   func.func @constant_parameter(%arg0: tensor<2xf32>) -> tensor<2xf32> {
     %0 = "tf.Const"() {value = dense<1.42> : tensor<2xf32>} : () -> tensor<2xf32>
-    // CHECK: mhlo.atan2 %arg0, %4
+    // CHECK: mhlo.atan2 %arg0, %2
     %1 = "tf.Atan2"(%arg0, %0) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
     func.return %0 : tensor<2xf32>
   }
@@ -675,6 +675,31 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     // CHECK: mhlo.remainder
     %6 = "tf.Mod"(%arg1, %cst) {_global_shape = [#tf_type.shape<4x8>], device = ""} : (tensor<2x2xf32>, tensor<f32>) -> tensor<2x2xf32>
     return %6 : tensor<2x2xf32>
+  }
+
+  // CHECK-LABEL: func @concat_v2
+  func.func @concat_v2(%arg0: tensor<3x3xf32>, %arg1: tensor<3x3xf32>) -> tensor<6x3xf32> {
+    // CHECK: "mhlo.concatenate"({{.*}}) {dimension = 0 : i64} : (tensor<3x3xf32>, tensor<3x3xf32>) -> tensor<6x3xf32>
+    %axis = "tf.Const"() { value = dense<0> : tensor<i64> } : () -> tensor<i64>
+    %1 = "tf.ConcatV2"(%arg0, %arg1, %axis) : (tensor<3x3xf32>, tensor<3x3xf32>, tensor<i64>) -> tensor<6x3xf32>
+    func.return %1 : tensor<6x3xf32>
+  }
+
+  // CHECK-LABEL: func @matrix_diag_part_v3
+  // CHECK-SAME: %[[ARG:.*]]: tensor<7x140x128xi32>
+  func.func @matrix_diag_part_v3(%arg0: tensor<7x140x128xi32>) -> tensor<7x22x128xi32> {
+    %0 = mhlo.constant dense<42> : tensor<i32>  // padding value
+    %1 = mhlo.constant dense<[-10, 11]> : tensor<2xi32>  // k
+    // CHECK: mhlo.iota
+    // CHECK: mhlo.reshape
+    // CHECK: mhlo.concatenate
+    // CHECK: mhlo.gather
+    // CHECK: mhlo.broadcast
+    // CHECK: mhlo.select
+    %2 = "tf.MatrixDiagPartV3"(%arg0, %1, %0) {
+        T = i32, align = "RIGHT_LEFT"
+    } : (tensor<7x140x128xi32>, tensor<2xi32>, tensor<i32>) -> tensor<7x22x128xi32>
+    func.return %2: tensor<7x22x128xi32>
   }
 
   // CHECK-LABEL: func @xla_call_module

@@ -189,6 +189,7 @@ cc_library(
     features = ["-use_header_modules"],
     deps = [
         "//tensorflow/compiler/xla:status",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -212,8 +213,6 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/compiler/xla/pjrt:pjrt_client",
-        "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:protobuf",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
@@ -342,6 +341,7 @@ cc_library(
     deps = [
         ":exceptions",
         ":pprof_profile_builder",
+        ":py_host_callback_proto_cc",
         ":python_ref_manager",
         ":python_utils",
         ":status_casters",
@@ -366,6 +366,7 @@ cc_library(
         "//tensorflow/compiler/xla/pjrt:transpose",
         "//tensorflow/compiler/xla/python/ifrt",
         "//tensorflow/compiler/xla/python/pjrt_ifrt",
+        "//tensorflow/compiler/xla/python/pjrt_ifrt:xla_host_callback_proto_cc",
         "//tensorflow/compiler/xla/python/pjrt_ifrt:xla_ifrt",
         "//tensorflow/compiler/xla/service:custom_call_status",
         "//tensorflow/compiler/xla/service:custom_call_target_registry",
@@ -383,6 +384,7 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
+        "@com_google_protobuf//:protobuf",
         "@llvm-project//llvm:Support",
         "@pybind11",
         "@pybind11_abseil//pybind11_abseil:absl_casters",
@@ -494,8 +496,6 @@ cc_library(
         "//tensorflow/compiler/xla/hlo/utils:hlo_sharding_util",
         "//tensorflow/compiler/xla/service:custom_call_sharding_helper",
         "//tensorflow/compiler/xla/service/spmd:spmd_partitioner",
-        "@com_google_absl//absl/cleanup",
-        "@com_google_absl//absl/synchronization",
         "@pybind11",
     ],
 )
@@ -566,6 +566,7 @@ cc_library(
         ":jax_jit",
         ":py_client",
         ":python_utils",
+        ":pytree",
         ":status_casters",
         ":util",
         "//tensorflow/compiler/xla/pjrt:lru_cache",
@@ -593,6 +594,7 @@ cc_library(
         ":jax_jit",
         ":py_client",
         ":python_utils",
+        ":pytree",
         ":status_casters",
         ":types",
         ":util",
@@ -620,7 +622,6 @@ xla_cc_test(
     srcs = ["outfeed_receiver_test.cc"],
     deps = [
         ":outfeed_receiver",
-        "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:executable_build_options",
@@ -629,9 +630,7 @@ xla_cc_test(
         "//tensorflow/compiler/xla/pjrt:pjrt_stream_executor_client",
         "//tensorflow/compiler/xla/pjrt:tfrt_cpu_pjrt_client",
         "//tensorflow/compiler/xla/service:platform_util",
-        "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
-        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -732,6 +731,7 @@ cc_library(
         "//tensorflow/tsl/platform:errors",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
@@ -749,13 +749,12 @@ cc_library(
     srcs = ["refine_polymorphic_shapes.cc"],
     hdrs = ["refine_polymorphic_shapes.h"],
     deps = [
-        "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla/mlir/utils:error_util",
-        "@com_google_absl//absl/log",
+        "//tensorflow/tsl/platform:errors",
         "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:BytecodeWriter",
         "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
@@ -781,6 +780,7 @@ cc_library(
     deps = [
         ":status_casters",
         ":types",
+        ":xplane_to_profile_instructions",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla/backends/profiler:profiler_backends",
         "//tensorflow/compiler/xla/backends/profiler/cpu:python_tracer",
@@ -788,7 +788,7 @@ cc_library(
         "//tensorflow/tsl/profiler/lib:profiler_session",
         "//tensorflow/tsl/profiler/rpc:profiler_server_impl",
         "//tensorflow/tsl/profiler/rpc/client:capture_profile",
-        "//tensorflow/tsl/profiler/rpc/client:profiler_client",
+        "//tensorflow/tsl/profiler/rpc/client:profiler_client_impl",
         "@pybind11",
     ],
 )
@@ -902,6 +902,12 @@ cc_library(
     ],
 )
 
+tf_proto_library(
+    name = "py_host_callback_proto",
+    srcs = ["py_host_callback.proto"],
+    cc_api_version = 2,
+)
+
 # TODO(phawkins): the configuration settings here are overly confusing. The right fix is to split
 # xla_extension.so so that each backend is a separate plugin, however that must wait for a clean
 # ABI separation between devices.
@@ -931,18 +937,6 @@ config_setting(
     name = "tpu_enabled",
     flag_values = {
         ":enable_tpu": "True",
-    },
-)
-
-bool_flag(
-    name = "enable_plugin_device",
-    build_setting_default = False,
-)
-
-config_setting(
-    name = "plugin_device_enabled",
-    flag_values = {
-        ":enable_plugin_device": "True",
     },
 )
 
@@ -981,9 +975,6 @@ tsl_pybind_extension(
         "//conditions:default": [],
     }) + select({
         ":tpu_enabled": ["XLA_PYTHON_ENABLE_TPU=1"],
-        "//conditions:default": [],
-    }) + select({
-        ":plugin_device_enabled": ["XLA_PYTHON_ENABLE_PLUGIN_DEVICE=1"],
         "//conditions:default": [],
     }),
     linkopts = select({
@@ -1053,6 +1044,7 @@ tsl_pybind_extension(
     ] + select({
         ":gpu_enabled": [
             "//tensorflow/compiler/xla/pjrt/gpu:se_gpu_pjrt_client",
+            "//tensorflow/tsl/platform/cloud:gcs_file_system",
         ],
         "//conditions:default": [],
     }) + select({
@@ -1066,10 +1058,49 @@ tsl_pybind_extension(
             "//tensorflow/compiler/xla/stream_executor/tpu:tpu_initializer_helper",
         ],
         "//conditions:default": [],
-    }) + select({
-        ":plugin_device_enabled": [
-            "//tensorflow/compiler/xla/pjrt:pjrt_plugin_device_client",
-        ],
-        "//conditions:default": [],
     }),
+)
+
+cc_library(
+    name = "xplane_to_profile_instructions",
+    srcs = ["xplane_to_profile_instructions.cc"],
+    hdrs = ["xplane_to_profile_instructions.h"],
+    deps = [
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:xla_proto_cc",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:types",
+        "//tensorflow/tsl/profiler/protobuf:profiled_instructions_proto_cc",
+        "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/tsl/profiler/utils:file_system_utils",
+        "//tensorflow/tsl/profiler/utils:tf_xplane_visitor",
+        "//tensorflow/tsl/profiler/utils:xplane_schema",
+        "//tensorflow/tsl/profiler/utils:xplane_utils",
+        "//tensorflow/tsl/profiler/utils:xplane_visitor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+xla_cc_test(
+    name = "xplane_to_profile_instructions_test",
+    srcs = ["xplane_to_profile_instructions_test.cc"],
+    deps = [
+        ":xplane_to_profile_instructions",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
+        "//tensorflow/compiler/xla/tests:verified_hlo_module",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
+        "//tensorflow/tsl/profiler/convert:xla_op_utils",
+        "//tensorflow/tsl/profiler/protobuf:profiled_instructions_proto_cc_impl",
+        "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/tsl/profiler/rpc/client:save_profile",
+        "//tensorflow/tsl/profiler/utils:file_system_utils",
+        "//tensorflow/tsl/profiler/utils:xplane_builder",
+        "//tensorflow/tsl/profiler/utils:xplane_schema",
+    ],
 )

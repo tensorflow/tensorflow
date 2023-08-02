@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <functional>
 #include <iterator>
 #include <limits>
@@ -32,6 +33,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
@@ -847,19 +849,125 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::BufferInterval::ToString() const {
 }
 
 template <typename BufferType>
+const  // NOLINT(readability-const-return-type)
+    typename GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedBufferInterval
+    GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedBufferInterval::
+        CreateConstInterval(const BufferInterval& full_buffer_interval) {
+  return SlicedBufferInterval(full_buffer_interval);
+}
+
+template <typename BufferType>
+typename GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedBufferInterval
+GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedBufferInterval::
+    CreateMutableInterval(BufferInterval& full_buffer_interval) {
+  return SlicedBufferInterval(full_buffer_interval, &full_buffer_interval);
+}
+
+template <typename BufferType>
+void GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedBufferInterval::Slice(
+    absl::Span<int64_t> slice_sizes_sorted_by_offset) {
+  if (slice_sizes_sorted_by_offset.empty()) {
+    slice_sizes_sorted_by_offset_ = {full_buffer_interval_.size};
+    make_free_chunks_intervals_ = {full_buffer_interval_};
+    return;
+  }
+
+  const int64_t min_slice_size =
+      *absl::c_min_element(slice_sizes_sorted_by_offset);
+  slice_sizes_sorted_by_offset_ = std::vector<int64_t>(
+      slice_sizes_sorted_by_offset.begin(), slice_sizes_sorted_by_offset.end());
+
+  size_t num_slices = slice_sizes_sorted_by_offset.size();
+  make_free_chunks_intervals_.clear();
+  make_free_chunks_intervals_.reserve(num_slices);
+
+  int64_t size_total = 0;
+  absl::InlinedVector<const BufferType*, 2> empty_colocations;
+  for (int i = 0; i < num_slices; ++i) {
+    int64_t new_size = slice_sizes_sorted_by_offset[i];
+    size_total += new_size;
+    make_free_chunks_intervals_.push_back(BufferInterval{
+        full_buffer_interval_.buffer,
+        /*size=*/
+        (i == num_slices - 1 ? full_buffer_interval_.size : min_slice_size),
+        /*start=*/0,
+        /*end=*/full_buffer_interval_.end,
+        /*colocations=*/
+        (i == num_slices - 1 ? full_buffer_interval_.colocations
+                             : empty_colocations),
+        full_buffer_interval_.need_allocation});
+  }
+
+  CHECK_EQ(size_total, full_buffer_interval_.size);
+}
+
+template <typename BufferType>
+void GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedBufferInterval::
+    UpdateSliceStartTimes(const std::vector<int64_t>& start_times) {
+  CHECK_EQ(start_times.size(), num_slices());
+  CHECK(mutable_full_buffer_interval_ != nullptr);
+  mutable_full_buffer_interval_->start = start_times.front();
+  for (size_t slice_time = 0; slice_time < num_slices(); ++slice_time) {
+    make_free_chunks_intervals_[slice_time].start = start_times[slice_time];
+    if (slice_time != num_slices() - 1) {
+      make_free_chunks_intervals_[slice_time].end = start_times[slice_time + 1];
+    } else {
+      make_free_chunks_intervals_[slice_time].end = full_buffer_interval_.end;
+    }
+  }
+}
+
+template <typename BufferType>
+void GlobalDecreasingSizeBestFitHeap<
+    BufferType>::SlicedBufferInterval::UpdateEndTime(int64_t end_time) {
+  CHECK(mutable_full_buffer_interval_ != nullptr);
+  mutable_full_buffer_interval_->end = end_time;
+  make_free_chunks_intervals_.back().end = end_time;
+}
+
+template <typename BufferType>
+const typename GlobalDecreasingSizeBestFitHeap<BufferType>::BufferInterval&
+GlobalDecreasingSizeBestFitHeap<
+    BufferType>::SlicedBufferInterval::full_buffer_interval() const {
+  return full_buffer_interval_;
+}
+
+template <typename BufferType>
+const std::vector<int64_t>& GlobalDecreasingSizeBestFitHeap<
+    BufferType>::SlicedBufferInterval::SliceSizesSortedByOffset() const {
+  return slice_sizes_sorted_by_offset_;
+}
+
+template <typename BufferType>
+const typename GlobalDecreasingSizeBestFitHeap<BufferType>::BufferInterval&
+GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedBufferInterval::
+    IntervalForMakeFreeChunks(int64_t slice_time) const {
+  CHECK_LT(slice_time, num_slices());
+  return make_free_chunks_intervals_[slice_time];
+}
+
+template <typename BufferType>
+GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedBufferInterval::
+    SlicedBufferInterval(const BufferInterval& full_buffer_interval,
+                         BufferInterval* mutable_full_buffer_interval)
+    : full_buffer_interval_(full_buffer_interval),
+      mutable_full_buffer_interval_(mutable_full_buffer_interval) {
+  // Start with 1 slice. Slice() will initialize the remaining data members.
+  Slice({});
+}
+
+template <typename BufferType>
 std::string GlobalDecreasingSizeBestFitHeap<
     BufferType>::SlicedBufferInterval::ToString() const {
   return absl::StrCat(
-      "{ full_buffer_interval: ", full_buffer_interval.ToString(),
-      ", sorted_slices: [ ",
-      absl::StrJoin(sorted_slices, ", ",
-                    [](std::string* out,
-                       const SlicedBufferInterval::IntervalSlice& slice) {
-                      absl::StrAppend(out, "{ size: ", slice.size,
-                                      ", allocation_start_time: ",
-                                      slice.allocation_start_time, " }");
+      "{ full_buffer_interval: ", full_buffer_interval_.ToString(), ", ",
+      "MakeFreeChunks intervals: { ",
+      absl::StrJoin(make_free_chunks_intervals_, ", ",
+                    [](std::string* out, const BufferInterval& interval) {
+                      absl::StrAppend(out, interval.ToString());
                     }),
-      " ] }");
+      " }, ", "slize_sizes_sorted_by_offsets: { ",
+      absl::StrJoin(slice_sizes_sorted_by_offset_, ", "), " } }");
 }
 
 template <typename BufferType>
@@ -1182,7 +1290,7 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::Find()
     const {
   // Check if we can place the fully allocated buffer at the preferred offset
   if (preferred_offset_ >= 0) {
-    VLOG(2) << "SlicedAllocationFinder::Find() searching preferred offset "
+    VLOG(3) << "SlicedAllocationFinder::Find() searching preferred offset "
             << preferred_offset_;
     auto it = free_chunks_.lower_bound(preferred_offset_);
     if (it != free_chunks_.end()) {
@@ -1190,6 +1298,9 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::Find()
       ChunksSortedBySliceTime chunks =
           FindInRoot(*root, /*only_try_preferred_offset=*/true);
       if (!chunks.empty()) {
+        VLOG(1) << "SlicedAllocationFinder found chunks: "
+                << "{ " << absl::StrJoin(chunks, ", ", absl::StreamFormatter())
+                << " }";
         return chunks;
       }
     }
@@ -1219,10 +1330,13 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::Find()
   // Each call to heap_next() gives us the next smallest root.
   for (const FreeChunkRoot* root = heap_next(); root != nullptr;
        root = heap_next()) {
-    VLOG(2) << "SlicedAllocationFinder::Find() searching " << root->ToString();
+    VLOG(3) << "SlicedAllocationFinder::Find() searching " << root->ToString();
     ChunksSortedBySliceTime chunks =
         FindInRoot(*root, /*only_try_preferred_offset=*/false);
     if (!chunks.empty()) {
+      VLOG(1) << "SlicedAllocationFinder found chunks: "
+              << "{ " << absl::StrJoin(chunks, ", ", absl::StreamFormatter())
+              << " }";
       return chunks;
     }
   }
@@ -1478,7 +1592,8 @@ typename GlobalDecreasingSizeBestFitHeap<BufferType>::Chunk
 GlobalDecreasingSizeBestFitHeap<BufferType>::FindChunkCandidate(
     const GlobalDecreasingSizeBestFitHeap::BufferInterval& buffer_interval,
     int64_t preferred_offset) const {
-  SlicedBufferInterval sliced_buffer_interval(buffer_interval);
+  const SlicedBufferInterval sliced_buffer_interval =
+      SlicedBufferInterval::CreateConstInterval(buffer_interval);
   std::vector<Chunk> chunks =
       FindChunkCandidates(sliced_buffer_interval, preferred_offset);
   CHECK_EQ(chunks.size(), 1);
@@ -1551,49 +1666,54 @@ std::vector<typename GlobalDecreasingSizeBestFitHeap<BufferType>::Chunk>
 GlobalDecreasingSizeBestFitHeap<BufferType>::FindChunkCandidates(
     const SlicedBufferInterval& sliced_buffer_interval,
     int64_t preferred_offset) const {
-  const BufferInterval& buffer_interval =
-      sliced_buffer_interval.full_buffer_interval;
-  // TODO(b/275905276): changes this method to account for slicing and remove
-  // the following check
-  CHECK(sliced_buffer_interval.sorted_slices.empty())
-      << "Chunk slicing is not yet supported.";
-
   VLOG(1) << "Finding chunks for sliced buffer interval: "
           << sliced_buffer_interval.ToString();
 
   // Find the max size of interval across its colocations and use this value
   // to determine whether the buffer will fit in the heap.
-  int64_t max_colocation_size = buffer_interval.size;
-  for (const BufferType* colocation :
-       GetTransitiveColocations(buffer_interval)) {
+  int64_t max_colocation_size =
+      sliced_buffer_interval.full_buffer_interval().size;
+  for (const BufferType* colocation : GetTransitiveColocations(
+           sliced_buffer_interval.full_buffer_interval())) {
     max_colocation_size =
         std::max(max_colocation_size, buffer_intervals_.at(colocation).size);
   }
 
-  // Get all colocated buffers and gather all interferenced chunks.
-  FreeChunks free_chunks = MakeFreeChunks(buffer_interval, max_colocation_size);
-
-  // TODO(b/275905276): when slicing, build free_chunks for each consecutive
-  // slice time, where slice time is logical time.
-
-  // TODO(b/275905276): when slicing, merge the free_chunks for each slice time.
-  // The end result should be a list of free chunks in which buffer_interval not
-  // only fits in each free chunk, but the slices of buffer interval can be
-  // allocated according to their requirements. Try to find a large enough free
-  // chunk containing the preferred offset.
-  Chunk chunk = Chunk::FromOffsetSize(preferred_offset, max_colocation_size);
-  auto it = (preferred_offset < 0) ? free_chunks.end()
-                                   : free_chunks.lower_bound(preferred_offset);
-  if (it == free_chunks.end() || (it->second < chunk.chunk_end())) {
-    // Otherwise, find the smallest free chunk. In the case of a tie, prefer the
-    // smallest offset. We ensure above that all of the free chunks are large
-    // enough to store the buffer.
-    chunk.offset = absl::c_min_element(free_chunks, [](auto a, auto b) {
-                     return std::forward_as_tuple(a.second - a.first, a.first) <
-                            std::forward_as_tuple(b.second - b.first, b.first);
-                   })->first;
+  // Build up a list of free chunks for each slice time.
+  std::vector<FreeChunks> free_chunks_per_slice_time;
+  free_chunks_per_slice_time.reserve(sliced_buffer_interval.num_slices());
+  for (int slice_time = 0; slice_time < sliced_buffer_interval.num_slices() - 1;
+       ++slice_time) {
+    // We don't need to account for colocation until the last slice time, in
+    // which we've allocated all the slices. So we set max_colocation_size to
+    // -1.
+    free_chunks_per_slice_time.push_back(MakeFreeChunks(
+        sliced_buffer_interval.IntervalForMakeFreeChunks(slice_time),
+        /*max_colocation_size=*/-1));
   }
-  return {chunk};
+  // We account for colocation size in the last slice time, where we've
+  // allocated all the slices.
+  free_chunks_per_slice_time.push_back(
+      MakeFreeChunks(sliced_buffer_interval.IntervalForMakeFreeChunks(
+                         sliced_buffer_interval.num_slices() - 1),
+                     max_colocation_size));
+
+  auto chunks =
+      SlicedAllocationFinder(free_chunks_per_slice_time,
+                             sliced_buffer_interval.SliceSizesSortedByOffset(),
+                             max_colocation_size, preferred_offset, alignment_)
+          .Find();
+  if (chunks.empty()) {
+    return {};
+  }
+  CHECK_EQ(chunks.size(), sliced_buffer_interval.num_slices() + 1);
+  // The extra chunk is for colocations, so merge the last two chunks.
+  Chunk last = chunks.back();
+  chunks.pop_back();
+  chunks.back() = Chunk::FromOffsetSize(chunks.back().offset,
+                                        chunks.back().size + last.size);
+
+  return chunks;
 }
 
 template <typename BufferType>

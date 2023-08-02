@@ -61,7 +61,7 @@ class EncodePngOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor& image = context->input(0);
     OP_REQUIRES(context, image.dims() >= 3,
-                errors::InvalidArgument("images must be ast least rank 3",
+                errors::InvalidArgument("images must be at least rank 3",
                                         image.shape().DebugString()));
     OP_REQUIRES(context, image.NumElements() >= 0,
                 errors::Internal("Invalid image provided."));

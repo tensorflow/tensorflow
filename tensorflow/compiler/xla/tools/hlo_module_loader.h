@@ -51,12 +51,15 @@ std::string StripLogHeaders(const std::string& hlo_string);
 // The ovr_config data can be used to override certain fields of the
 // HloModuleConfig.
 // The HloModuleConfig is passed to config_modifier_hook for custom
-// modifications before use.
+// modifications before use. If the buffer assignment proto pointer is not null
+// and the hlo module format is proto, it loads buffer assignment from the
+// proto.
 StatusOr<std::unique_ptr<HloModule>> LoadModuleFromData(
     const std::string& data, const std::string& format,
     hlo_module_loader_details::Config ovr_config =
         hlo_module_loader_details::Config(),
-    const std::function<void(HloModuleConfig*)>& config_modifier_hook = {});
+    const std::function<void(HloModuleConfig*)>& config_modifier_hook = {},
+    BufferAssignmentProto* buffer_assignment_proto = nullptr);
 
 // Loads an HLO module from file.
 // The file can be one of the followings:
@@ -70,13 +73,16 @@ StatusOr<std::unique_ptr<HloModule>> LoadModuleFromData(
 // file extension. The ovr_config data can be used to override certain fields of
 // the HloModuleConfig.
 // The HloModuleConfig is passed to config_modifier_hook for custom
-// modifications before use.
+// modifications before use. If the buffer assignment proto pointer is not null
+// and the hlo module format is proto, it loads buffer assignment from the
+// proto.
 StatusOr<std::unique_ptr<HloModule>> LoadModuleFromFile(
     const std::string& path,
     hlo_module_loader_details::Config ovr_config =
         hlo_module_loader_details::Config(),
     std::string format = "",
-    const std::function<void(HloModuleConfig*)>& config_modifier_hook = {});
+    const std::function<void(HloModuleConfig*)>& config_modifier_hook = {},
+    BufferAssignmentProto* buffer_assignment_proto = nullptr);
 
 // Loads an HLO snapshot from a string, only for its inputs
 // The data format must be one of the following:

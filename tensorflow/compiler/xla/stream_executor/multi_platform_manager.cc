@@ -76,7 +76,7 @@ class MultiPlatformManagerImpl {
   tsl::StatusOr<Platform*> LookupByIdLocked(const Platform::Id& id)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  // Returns the names of the initialied platforms satisfying the given filter.
+  // Returns the names of the initialized platforms satisfying the given filter.
   // By default, it will return all initialized platform names.
   std::vector<std::string> InitializedPlatformNamesWithFilter(
       const std::function<bool(const Platform*)>& filter = [](const Platform*) {
@@ -95,10 +95,9 @@ tsl::Status MultiPlatformManagerImpl::RegisterPlatform(
   std::string key = absl::AsciiStrToLower(platform->Name());
   absl::MutexLock lock(&mu_);
   if (name_map_.find(key) != name_map_.end()) {
-    LOG(WARNING)
-        << "platform is already registered with name: \"" << platform->Name()
-        << "\". Please check if you linked the platform more than once.";
-    return ::tsl::OkStatus();
+    return tsl::Status(absl::StatusCode::kInternal,
+                       "platform is already registered with name: \"" +
+                           platform->Name() + "\"");
   }
   Platform* platform_ptr = platform.get();
   CHECK(id_map_.emplace(platform->id(), platform_ptr).second);

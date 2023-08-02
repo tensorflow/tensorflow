@@ -377,7 +377,7 @@ ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
           PropagateInputToOutput(operand, result);
         }
       }
-    } else if (llvm::isa<IdentityNOp, IdentityOp>(op)) {
+    } else if (llvm::isa<IdentityNOp, IdentityOp, CastOp>(op)) {
       for (auto result : filter_resources(op->getResults()))
         PropagateInputToOutput(op->getOperand(result.getResultNumber()),
                                result);

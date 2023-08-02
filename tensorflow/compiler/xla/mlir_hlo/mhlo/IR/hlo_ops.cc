@@ -49,6 +49,7 @@ limitations under the License.
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/MathExtras.h"
 #include "mhlo/IR/hlo_ops.h.inc"
@@ -57,6 +58,7 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Quant/QuantTypes.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -99,9 +101,7 @@ using mlir::hlo::printDimSizes;
 #define GET_TYPEDEF_CLASSES
 #include "mhlo/IR/hlo_ops_typedefs.cc.inc"
 
-namespace mlir {
-namespace mhlo {
-
+namespace mlir::mhlo {
 namespace detail {
 /// A type representing a collection of other types.
 struct AsyncBundleTypeStorage final
@@ -373,7 +373,6 @@ void ReduceScatterOp::build(OpBuilder& odsBuilder, OperationState& odsState,
   }
 
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(AddOp)
-INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(AllReduceOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(AndOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(Atan2Op)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(CbrtOp)
@@ -2066,9 +2065,52 @@ void AllGatherOp::build(OpBuilder& odsBuilder, OperationState& odsState,
 // AllReduceOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult AllReduceOp::verify() {
-  return hlo::verifyAllReduceOp(getLoc(), getOperand(), getReplicaGroups(),
-                                getUseGlobalDeviceIds(), getComputation());
+void AllReduceOp::build(OpBuilder& odsBuilder, OperationState& odsState,
+                        Type resultType, Value operand,
+                        DenseIntElementsAttr replicaGroups,
+                        ChannelHandleAttr channelHandle,
+                        bool useGlobalDeviceIds) {
+  AllReduceOp::build(odsBuilder, odsState, resultType, ValueRange(operand),
+                     replicaGroups, channelHandle, useGlobalDeviceIds);
+}
+
+void AllReduceOp::build(OpBuilder& odsBuilder, OperationState& odsState,
+                        Value operand, DenseIntElementsAttr replicaGroups,
+                        ChannelHandleAttr channelHandle,
+                        bool useGlobalDeviceIds) {
+  AllReduceOp::build(odsBuilder, odsState, operand.getType(),
+                     ValueRange(operand), replicaGroups, channelHandle,
+                     useGlobalDeviceIds);
+}
+
+LogicalResult AllReduceOp::inferReturnTypeComponents(
+    MLIRContext*, std::optional<Location> location, ValueShapeRange operands,
+    DictionaryAttr attributes, OpaqueProperties, RegionRange regions,
+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+  AllReduceOp::Adaptor adaptor(operands, attributes, {}, regions);
+
+  // Verify constraints
+  if (adaptor.getOperands().empty())
+    return emitOptionalError(location,
+                             "AllReduce must have have at least one operand");
+  for (auto operand : adaptor.getOperands()) {
+    if (failed(hlo::verifyAllReduceOp(
+            location, operand, adaptor.getReplicaGroups(),
+            adaptor.getUseGlobalDeviceIds(), adaptor.getComputation())))
+      return failure();
+  }
+
+  // Populate inferred return shapes
+  for (auto resultType : adaptor.getOperands().getTypes()) {
+    auto rankedResult = resultType.dyn_cast<RankedTensorType>();
+    if (rankedResult)
+      inferredReturnShapes.emplace_back(rankedResult.getShape(),
+                                        rankedResult.getElementType(),
+                                        rankedResult.getEncoding());
+    else
+      inferredReturnShapes.emplace_back(resultType.cast<ShapedType>());
+  }
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -2200,6 +2242,12 @@ OpFoldResult BroadcastOp::fold(FoldAdaptor adaptor) {
     return {};
   }
 
+  // Skip Quantized types since they are not supported in
+  // DenseElementsAttr::get.
+  if (type.getElementType().isa<quant::QuantizedType>()) {
+    return {};
+  }
+
   return SplatElementsAttr::get(
       type, splatOperandAttr.getSplatValue<mlir::Attribute>());
 }
@@ -2285,6 +2333,12 @@ OpFoldResult BroadcastInDimOp::fold(FoldAdaptor adaptor) {
       return DenseElementsAttr::get(
           type, {splatOperandAttr.getSplatValue<std::complex<APInt>>()});
     }
+    return {};
+  }
+
+  // Skip Quantized types since they are not supported in
+  // DenseElementsAttr::get.
+  if (type.getElementType().isa<quant::QuantizedType>()) {
     return {};
   }
 
@@ -2963,7 +3017,7 @@ struct DynamicSliceToSlice : public OpRewritePattern<DynamicSliceOp> {
         rewriter.getI64TensorAttr(SmallVector<int64_t, 4>(inputRank, 1));
     auto result = rewriter.create<SliceOp>(loc, input, sliceStartIndices,
                                            sliceLimits, sliceStrides);
-    rewriter.replaceOp(dynamicSlice, {result});
+    rewriter.replaceOp(dynamicSlice, result);
     return success();
   }
 };
@@ -6224,8 +6278,7 @@ LogicalResult UniformDequantizeOp::inferReturnTypeComponents(
 using mlir::hlo::parseWindowAttributes;
 using mlir::hlo::printWindowAttributes;
 
-}  // namespace mhlo
-}  // namespace mlir
+}  // namespace mlir::mhlo
 
 using mlir::hlo::parseComplexOpType;
 using mlir::hlo::parseCustomCallTarget;
@@ -6247,8 +6300,7 @@ using mlir::hlo::printVariadicSameOperandsAndResultType;
 #define GET_OP_CLASSES
 #include "mhlo/IR/hlo_ops.cc.inc"
 
-namespace mlir {
-namespace mhlo {
+namespace mlir::mhlo {
 
 //===----------------------------------------------------------------------===//
 // mhlo Dialect Interfaces
@@ -6289,7 +6341,7 @@ struct MhloHloDialectInterface : public hlo::HloDialectInterface {
     return TypeExtensionsAttr::get(getDialect()->getContext(), bounds);
   }
 };
-}  // end anonymous namespace
+}  // namespace
 
 //===----------------------------------------------------------------------===//
 // mhlo Dialect Constructor
@@ -6604,7 +6656,8 @@ char nonSpatialDimToString(NonSpatialDim dim) {
 // Custom printer and parser for convolution attribute.
 void printConvolutionDimensions(AsmPrinter& p, ConvDimensionNumbersAttr dnums) {
   // TODO(b/202040055): we should check the attribute invariant and print the
-  // "raw" form if they are violated, otherwise we'll crash here.
+  // "raw" form if they are violated, for now report_fatal_error is used to
+  // prevent invalid access.
   constexpr int64_t kUnknownDim = std::numeric_limits<int64_t>::min();
   auto printDim =
       [&](ArrayRef<int64_t> spatialDims,
@@ -6623,9 +6676,15 @@ void printConvolutionDimensions(AsmPrinter& p, ConvDimensionNumbersAttr dnums) {
         // spatial dimension index.
         for (const std::pair<int64_t, NonSpatialDim>& nonSpatialDim :
              nonSpatialDims) {
+          if (nonSpatialDim.first < 0 ||
+              static_cast<size_t>(nonSpatialDim.first) >= dims.size())
+            llvm::report_fatal_error("Invalid non-spatial dimension.");
           dims[nonSpatialDim.first] = nonSpatialDim.second;
         }
         for (const auto& spatialDim : llvm::enumerate(spatialDims)) {
+          if (spatialDim.value() < 0 ||
+              static_cast<size_t>(spatialDim.value()) >= dims.size())
+            llvm::report_fatal_error("Invalid spatial dimension.");
           dims[spatialDim.value()] = static_cast<int64_t>(spatialDim.index());
         }
 
@@ -7310,5 +7369,4 @@ LogicalResult MhloDialect::verifyOperationAttribute(Operation* op,
   return success();
 }
 
-}  // namespace mhlo
-}  // namespace mlir
+}  // namespace mlir::mhlo

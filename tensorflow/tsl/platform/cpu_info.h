@@ -134,6 +134,13 @@ enum CPUFeature {
   AMX_BF16 = 43,  // Bfloat16 tile matrix multiplication
 };
 
+enum Aarch64CPU {
+  ARM_NEOVERSE_N1 = 0,  // ARM NEOVERSE N1
+  ARM_NEOVERSE_V1 = 1,  // ARM NEOVERSE V1
+};
+// Checks whether the current AArch64 processor is supported.
+bool TestAarch64CPU(Aarch64CPU cpu);
+
 // Checks whether the current processor supports one of the features above.
 // Checks CPU registers to return hardware capabilities.
 bool TestCPUFeature(CPUFeature feature);

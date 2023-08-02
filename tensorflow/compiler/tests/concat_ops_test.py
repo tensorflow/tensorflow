@@ -17,6 +17,7 @@
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
+from tensorflow.python import pywrap_sanitizers
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
@@ -294,6 +295,11 @@ class ConcatTest(xla_test.XLATestCase):
     if "CPU" in self.device:
       self.skipTest("This test can time out on CPU, so we will just allow "
                     "other backends to catch this specific error.")
+    if (pywrap_sanitizers.is_asan_enabled() or
+        pywrap_sanitizers.is_tsan_enabled() or
+        pywrap_sanitizers.is_msan_enabled() or
+        pywrap_sanitizers.is_ubsan_enabled()):
+      self.skipTest("This test can time out on *SAN.")
     with self.session():
       with self.test_scope():
         for concat_dim in range(2):

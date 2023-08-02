@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PASSES_PASSES_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -77,11 +78,15 @@ CreateInsertCustomAggregationOpsPass();
 // Replaces composite functions with quantized composite functions. After this
 // pass runs, functions in the given graph will be replaced with their quantized
 // versions. By doing so, the quantization will be applied to the given input.
+// mlir_dump_file_prefix is an optional field that is used for debugging to save
+// mlir dump files.
 std::unique_ptr<OperationPass<ModuleOp>> CreateQuantizeCompositeFunctionsPass(
     tensorflow::quantization::QuantizationMethod::ExperimentalMethod
         quantization_method,
     OpSet target_opset, bool enable_per_channel_quantization,
-    int min_num_elements_for_weight, bool enable_legacy_weight_only = false);
+    int min_num_elements_for_weight, bool enable_legacy_weight_only = false,
+    std::optional<const absl::string_view> mlir_dump_file_prefix =
+        std::nullopt);
 
 // Converts dequantize-(quantizable) call-quantize pattern to a single call op
 // that has quantized input and output types. It is expected for this pass to
@@ -117,11 +122,6 @@ std::unique_ptr<OperationPass<ModuleOp>> CreatePreprocessOpPass(
 // Creates an instance of the PostQuantize pass, which will remove unnecessary
 // ops from the final quantized graph.
 std::unique_ptr<OperationPass<func::FuncOp>> CreatePostQuantizePass();
-
-// Creates an instance of the ConvertTFQuantOpsToMHLOPass pass, which will
-// convert TF uniform quantized ops to the corresponding quantized MHLO ops.
-std::unique_ptr<OperationPass<func::FuncOp>>
-CreateConvertTFQuantOpsToMHLOPass();
 
 // Applies optimization patterns after quantization.
 std::unique_ptr<OperationPass<mlir::func::FuncOp>> CreateOptimizePass();

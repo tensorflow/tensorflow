@@ -20,7 +20,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallPtrSet.h"
@@ -32,7 +31,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
-#include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_remaining_ops.h"
@@ -179,38 +177,6 @@ Status ExtractConstStringVectorFromValue(
 
 StatusOr<std::string> ExtractConstScalarStringFromValue(mlir::Value value);
 
-// A general Iterator that visits a FuncOp's body in topological order. Note
-// that this does not visit the given FuncOp itself. Function ops are visited
-// exactly once if functions are used in multiple call sites.
-//
-// An example usage of this Iterator is for SPMD Expansion or Sparse
-// Expansion, where we expand ops in topological order starting from the
-// `main` FuncOp, only visiting function ops once so that we don't expand
-// multiple times.
-class TopologicalIterator {
- public:
-  explicit TopologicalIterator(mlir::func::FuncOp main_func);
-
-  // Returns whether there is any further ops to visit.
-  bool hasNext();
-
-  // Returns the next op to visit in the topological ordering. Returns
-  // a nullptr if there is no next op to visit.
-  mlir::Operation* next();
-
- private:
-  // Stack to keep track of ops to visit.
-  llvm::SmallVector<mlir::Operation*, 4> ops_to_visit_;
-
-  // Keep track of functions we are walking, this is needed to avoid recursive
-  // function calls.
-  llvm::SmallDenseSet<mlir::StringRef, 4> funcs_visited_in_call_stack_;
-
-  // Keep track of all visit functions. This is to guarantee that
-  // functions are visited exactly once if functions are used in multiple
-  // callsites.
-  llvm::SmallDenseSet<mlir::StringRef, 4> funcs_visited_;
-};
 }  // namespace dtensor
 }  // namespace tensorflow
 

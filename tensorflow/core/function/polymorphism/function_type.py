@@ -16,14 +16,16 @@
 
 import collections
 import inspect
-from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from absl import logging
 
 from tensorflow.core.function import trace_type
 from tensorflow.core.function.polymorphism import function_type_pb2
 from tensorflow.core.function.trace_type import serialization
+from tensorflow.python.types import core
 from tensorflow.python.types import trace
+
 
 # Represents a defined parameter default value that is saved alongside the
 # function's captures.
@@ -202,7 +204,6 @@ class FunctionType(inspect.Signature):
         else None
     )
 
-  # TODO(fmuham): Use this method instead of fullargspec and tf_inspect.
   @classmethod
   def from_callable(cls,
                     obj: Callable[..., Any],
@@ -351,17 +352,75 @@ class FunctionType(inspect.Signature):
     return inspect.BoundArguments(self, arguments)
 
   @property
-  def flat_inputs(self):
+  def flat_inputs(self) -> List[trace.TraceType]:
     """Flat tensor inputs accepted by this FunctionType."""
     if not hasattr(self, "_cached_flat_inputs"):
-      self._cached_flat_inputs = []
+      cached_flat_inputs = []
       for p in self.parameters.values():
-        self._cached_flat_inputs.extend(p.type_constraint._flatten())  # pylint: disable=protected-access
+        cached_flat_inputs.extend(p.type_constraint._flatten())  # pylint: disable=protected-access
+      self._cached_flat_inputs = cached_flat_inputs
 
     return self._cached_flat_inputs
 
+  def unpack_inputs(
+      self, bound_parameters: inspect.BoundArguments
+  ) -> List[core.Tensor]:
+    """Unpacks python arguments to flat tensor inputs accepted by this type."""
+    # Sort keyword-only parameters by name.
+    sorted_parameters = []
+    kwonly_parameters = []
+    for p in self.parameters.values():
+      if p.kind is Parameter.KEYWORD_ONLY:
+        kwonly_parameters.append(p)
+      else:
+        sorted_parameters.append(p)
+    sorted_parameters = sorted_parameters + sorted(
+        kwonly_parameters, key=lambda p: p.name
+    )
+
+    flat = []
+    for p in sorted_parameters:
+      flat.extend(
+          p.type_constraint._to_tensors(bound_parameters.arguments[p.name])  # pylint: disable=protected-access
+      )
+
+    dealiased_inputs = []
+    ids_used = set()
+    for tensor, input_type in zip(flat, self.flat_inputs):
+      alias_id = input_type._alias_id()  # pylint: disable=protected-access
+      if alias_id is None or alias_id not in ids_used:
+        dealiased_inputs.append(tensor)
+
+      if alias_id is not None:
+        ids_used.add(alias_id)
+
+    return dealiased_inputs
+
   @property
-  def flat_outputs(self):
+  def flat_captures(self) -> List[trace.TraceType]:
+    """Flat tensor captures needed by this FunctionType."""
+    if not hasattr(self, "_cached_flat_captures"):
+      cached_flat_captures = []
+      for t in self.captures.values():
+        cached_flat_captures.extend(t._flatten())  # pylint: disable=protected-access
+      self._cached_flat_captures = cached_flat_captures
+
+    return self._cached_flat_captures
+
+  def unpack_captures(self, captures) -> List[core.Tensor]:
+    """Unpacks captures to flat tensors."""
+    flat = []
+    for v, t in zip(captures, self.captures.values()):
+      flat.extend(t._to_tensors(v))  # pylint: disable=protected-access
+    if len(flat) != len(self.flat_captures):
+      raise TypeError(
+          f"Flattening captures {captures} with type {self!r} produced"
+          f" {len(flat)} tensors instead of {len(self.flat_captures)}"
+      )
+    return flat
+
+  @property
+  def flat_outputs(self) -> List[trace.TraceType]:
     """Flat tensor outputs returned by this FunctionType."""
     if not hasattr(self, "_cached_flat_outputs"):
       if self.output is not None:
@@ -369,7 +428,7 @@ class FunctionType(inspect.Signature):
 
     return self._cached_flat_outputs
 
-  def pack_output(self, flat_values):
+  def pack_output(self, flat_values: Sequence[core.Tensor]) -> Any:
     """Packs flat tensors to generate a value of the output type."""
     if flat_values is None:
       flat_values = []
@@ -447,19 +506,20 @@ def canonicalize_to_monomorphic(
     args: Tuple[Any, ...], kwargs: Dict[Any, Any], default_values: Dict[Any,
                                                                         Any],
     capture_types: collections.OrderedDict, polymorphic_type: FunctionType
-) -> Tuple[inspect.BoundArguments, FunctionType,
-           trace_type.InternalTracingContext]:
-  """Converts polymorphic parameters to monomorphic and associated type."""
+) -> Tuple[FunctionType, trace_type.InternalTracingContext]:
+  """Generates a monomorphic type out of polymorphic type for given args."""
   poly_bound_arguments = polymorphic_type.bind(*args, **kwargs)
-  poly_bound_arguments.apply_defaults()
 
   # Inject Default Values.
-  default_values_injected = poly_bound_arguments.arguments
-  for name, value in default_values_injected.items():
-    if value is CAPTURED_DEFAULT_VALUE:
-      default_values_injected[name] = default_values[name]
-  poly_bound_arguments = inspect.BoundArguments(poly_bound_arguments.signature,
-                                                default_values_injected)
+  if default_values:
+    poly_bound_arguments.apply_defaults()
+    default_values_injected = poly_bound_arguments.arguments
+    for name, value in default_values_injected.items():
+      if value is CAPTURED_DEFAULT_VALUE:
+        default_values_injected[name] = default_values[name]
+    poly_bound_arguments = inspect.BoundArguments(
+        poly_bound_arguments.signature, default_values_injected
+    )
 
   parameters = []
   type_context = trace_type.InternalTracingContext()
@@ -498,11 +558,7 @@ def canonicalize_to_monomorphic(
                                      type_context,
                                      poly_parameter.type_constraint))
 
-  monomorphic_function_type = FunctionType(parameters, capture_types)
-  mono_bound_arguments = monomorphic_function_type.bind(
-      *poly_bound_arguments.args, **poly_bound_arguments.kwargs)
-
-  return mono_bound_arguments, monomorphic_function_type, type_context
+  return FunctionType(parameters, capture_types), type_context
 
 
 # TODO(fmuham): Share code with canonicalize_to_monomorphic.

@@ -832,76 +832,35 @@ TEST_F(GraphTest, NodeShrinkTypeInput) {
   EXPECT_EQ(ft->args(3).args(0).type_id(), TFT_STRING);
 }
 
-TEST_F(GraphTest, BuildDebugInfo) {
-  class TestStackTrace : public AbstractStackTrace {
-   public:
-    explicit TestStackTrace(const std::vector<StackFrame> frames)
-        : frames_(std::move(frames)) {}
+TEST(AddInput, AddsControlSlot) {
+  auto input_name = "input-name";
+  auto expected_input_name = absl::StrCat("^", input_name);
+  NodeDef node_def;
 
-    absl::Span<StackFrame const> ToFrames() const override { return frames_; }
+  tensorflow::Graph::AddInput(&node_def, input_name, Graph::kControlSlot);
 
-    std::vector<StackFrame> GetUserFrames(int limit) const override {
-      return frames_;
-    }
+  EXPECT_EQ(node_def.input(0), expected_input_name);
+}
 
-    StackFrame LastUserFrame() const override { return frames_.back(); }
+TEST(AddInput, AddsSourceSlotZero) {
+  auto input_name = "input-name";
+  NodeDef node_def;
 
-    string ToString(const TracePrintingOptions& opts) const override {
-      StackFrame frame = LastUserFrame();
-      return absl::StrCat(frame.file_name, ":", frame.line_number, ":",
-                          frame.function_name);
-    }
+  tensorflow::Graph::AddInput(&node_def, input_name, 0);
 
-    std::vector<StackFrame> frames_;
-  };
+  EXPECT_EQ(node_def.input(0), input_name);
+}
 
-  FunctionDef func = test::function::XTimesTwo();
+TEST(AddInput, AddsOtherSlots) {
+  auto input_name = "input-name";
+  int arbitrary_slot = 37;
+  auto expected_input_name =
+      absl::StrCat(input_name, ":", arbitrary_slot);  // non-absl ok
+  NodeDef node_def;
 
-  // Hard-code the node names "two", "scale", and "y" from XTimesTwo.
-  StackTracesMap stack_traces;
-  stack_traces["two"] = std::make_shared<TestStackTrace>(
-      std::vector<StackFrame>{{"dummy_file_alpha.cc", 20, "function_bar"},
-                              {"dummy_file_beta.cc", 30, "function_sop"}});
-  stack_traces["scale"] =
-      std::make_shared<TestStackTrace>(std::vector<StackFrame>{
-          {"dummy_file_alpha.cc", 10, "function_foo"},
-          {"dummy_file_beta.cc", 30, "function_sop"},
-      });
-  stack_traces["y"] = std::make_shared<TestStackTrace>(std::vector<StackFrame>{
-      {"dummy_file_alpha.cc", 15, "function_flex"},
-      {"dummy_file_alpha.cc", 20, "function_bar"},
-      {"dummy_file_beta.cc", 30, "function_sop"},
-  });
+  tensorflow::Graph::AddInput(&node_def, input_name, arbitrary_slot);
 
-  TF_CHECK_OK(graph_.AddFunctionDef(func, stack_traces));
-
-  GraphDebugInfo debug_info = graph_.BuildDebugInfo();
-
-  EXPECT_THAT(debug_info.files(), UnorderedElementsAre("dummy_file_alpha.cc",
-                                                       "dummy_file_beta.cc"));
-  EXPECT_EQ(debug_info.traces_size(), 3);
-
-  // Examine one of the three stack traces in detail.
-  EXPECT_NE(debug_info.traces().find("scale@XTimesTwo"),
-            debug_info.traces().end());
-  GraphDebugInfo::StackTrace stack_trace =
-      debug_info.traces().find("scale@XTimesTwo")->second;
-  EXPECT_EQ(stack_trace.file_line_cols_size(), 2);
-
-  // `FileLineCol.file_index` is non-deterministic because the GraphDebugInfo is
-  // built by accumulating all file names into a set, and then storing that in
-  // the `files` field in an arbitrary order.
-  const GraphDebugInfo::FileLineCol& file_line_col_0 =
-      stack_trace.file_line_cols(0);
-  const GraphDebugInfo::FileLineCol& file_line_col_1 =
-      stack_trace.file_line_cols(1);
-  EXPECT_THAT(std::vector<int>(
-                  {file_line_col_0.file_index(), file_line_col_1.file_index()}),
-              UnorderedElementsAre(0, 1));
-  EXPECT_EQ(file_line_col_0.line(), 10);
-  EXPECT_EQ(file_line_col_0.func(), "function_foo");
-  EXPECT_EQ(file_line_col_1.line(), 30);
-  EXPECT_EQ(file_line_col_1.func(), "function_sop");
+  EXPECT_EQ(node_def.input(0), expected_input_name);
 }
 
 void BM_InEdgeIteration(::testing::benchmark::State& state) {

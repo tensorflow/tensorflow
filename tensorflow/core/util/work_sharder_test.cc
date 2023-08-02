@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/util/work_sharder.h"
 
+#include <algorithm>
 #include <atomic>
+#include <functional>
 #include <vector>
+
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"

@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_quant_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -64,18 +65,16 @@ class ConvertCustomAggregationOpToQuantStatsPass
   void runOnOperation() override;
 };
 
-class ConvertCustomAggregationOpToQuantStats : public RewritePattern {
+class ConvertCustomAggregationOpToQuantStats
+    : public OpRewritePattern<TF::CustomAggregatorOp> {
  public:
   // Does not take ownership of context, which must refer to a valid value that
   // outlives this object.
   explicit ConvertCustomAggregationOpToQuantStats(MLIRContext *context)
-      : RewritePattern(MatchAnyOpTypeTag(), /*benefit=*/1, context) {}
+      : OpRewritePattern<TF::CustomAggregatorOp>(context) {}
 
-  LogicalResult matchAndRewrite(Operation *op,
+  LogicalResult matchAndRewrite(TF::CustomAggregatorOp op,
                                 PatternRewriter &rewriter) const override {
-    // Return early if the given operator isn't the custom aggregator op.
-    if (op->getName().getStringRef() != "tf.CustomAggregator") return failure();
-
     FloatAttr min = op->getAttr("min").dyn_cast_or_null<FloatAttr>();
     FloatAttr max = op->getAttr("max").dyn_cast_or_null<FloatAttr>();
 

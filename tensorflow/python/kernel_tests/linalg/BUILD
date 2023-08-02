@@ -132,7 +132,9 @@ cuda_py_strict_test(
     tags = ["no_windows_gpu"],
     deps = [
         "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:linalg_ops",
@@ -203,6 +205,7 @@ cuda_py_strict_test(
     shard_count = 8,
     tags = ["optonly"],
     deps = [
+        "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:for_generated_wrappers",
@@ -268,7 +271,7 @@ cuda_py_strict_test(
     name = "linear_operator_circulant_test",
     size = "medium",
     srcs = ["linear_operator_circulant_test.py"],
-    shard_count = 15,
+    shard_count = 32,
     tags = [
         "no_cuda11",  # TODO(b/197522782): reenable test after fixing.
         "optonly",  # times out, b/79171797
@@ -404,6 +407,7 @@ cuda_py_strict_test(
     ],
     xla_enable_strict_auto_jit = False,
     deps = [
+        "//tensorflow/python/eager:backprop",
         "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:test_lib",
@@ -555,7 +559,9 @@ cuda_py_strict_test(
     shard_count = 5,
     tags = ["optonly"],
     deps = [
-        "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
+        "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:linalg_ops",
         "//tensorflow/python/ops:math_ops",
@@ -758,8 +764,8 @@ cuda_py_strict_test(
     # TODO(b/208263392): Re-enable. tf.Squeeze op after tf.Where op doesn't reshape.
     xla_enable_strict_auto_jit = False,
     deps = [
-        "//tensorflow/python:nn",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:nn_impl",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
     ],

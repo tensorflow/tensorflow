@@ -20,7 +20,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/core/profiler/convert/dcn_utils.h"
-#include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
+#include "tensorflow/tsl/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/tsl/profiler/utils/xplane_schema.h"
 
 namespace tensorflow {
@@ -55,7 +55,7 @@ TEST(DcnAnalysis, SetupMessageInfoTest) {
       host_trace_builder.GetOrCreateEventMetadata(2);
   event_metadata_2->set_name(std::string(kMegaScaleDcnSend));
 
-  XPlaneVisitor plane = CreateTfXPlaneVisitor(host_trace);
+  XPlaneVisitor plane = tsl::profiler::CreateTfXPlaneVisitor(host_trace);
   DcnEventsProcessor dcn_events_processor(/*num_tpu_tensor_cores*/ 4,
                                           /*is_megacore*/ false);
   dcn_events_processor.SetupMessageInfo(plane);
@@ -114,12 +114,12 @@ TEST(DcnAnalysis, CreateMessageTestValidMessages) {
       *xplane_builder.GetOrCreateStatMetadata("dcn_source_slice_id"), 112);
   event_builder.AddStatValue(
       *xplane_builder.GetOrCreateStatMetadata("dcn_source_per_slice_device_id"),
-      12345);
+      1);
   event_builder.AddStatValue(
       *xplane_builder.GetOrCreateStatMetadata("dcn_destination_slice_id"), 34);
   event_builder.AddStatValue(*xplane_builder.GetOrCreateStatMetadata(
                                  "dcn_destination_per_slice_device_id"),
-                             98765);
+                             2);
   event_builder.AddStatValue(
       *xplane_builder.GetOrCreateStatMetadata("dcn_chunk"), 4);
   event_builder.AddStatValue(
@@ -138,7 +138,7 @@ TEST(DcnAnalysis, CreateMessageTestValidMessages) {
       *xplane_builder.GetOrCreateStatMetadata("dcn_source_slice_id"), 9);
   event_builder.AddStatValue(
       *xplane_builder.GetOrCreateStatMetadata("dcn_source_per_slice_device_id"),
-      10005);
+      3);
   event_builder.AddStatValue(
       *xplane_builder.GetOrCreateStatMetadata("dcn_destination_slice_id"), 0);
   event_builder.AddStatValue(*xplane_builder.GetOrCreateStatMetadata(
@@ -149,7 +149,7 @@ TEST(DcnAnalysis, CreateMessageTestValidMessages) {
   event_builder.AddStatValue(
       *xplane_builder.GetOrCreateStatMetadata("payload_size_bytes"), 10);
 
-  XPlaneVisitor plane = CreateTfXPlaneVisitor(host_trace);
+  XPlaneVisitor plane = tsl::profiler::CreateTfXPlaneVisitor(host_trace);
   DcnEventsProcessor dcn_events_processor(4, false);
   dcn_events_processor.SetupMessageInfo(plane);
   dcn_events_processor.ProcessReceiveMessages(plane);
@@ -167,7 +167,7 @@ TEST(DcnAnalysis, CreateMessageTestValidMessages) {
   EXPECT_THAT(dcn_events_processor.GetMessage(1),
               FieldsAre("super-collective.1234", /* collective name */
                         /* slice_src, tpu_src, slice_dst, tpu_dst */
-                        112, 12345, 34, 98765,
+                        112, 1, 34, 2,
                         /* start_timestamp_ns. end_timestamp_ns, duration_us */
                         125000, 175000, 50,
                         /* size_bytes, chunk_id, loop_index_id */
@@ -177,7 +177,7 @@ TEST(DcnAnalysis, CreateMessageTestValidMessages) {
   EXPECT_THAT(
       dcn_events_processor.GetMessage(2),
       FieldsAre("super-collective", /* collective name */
-                9, 10005, 0, 0,     /* slice_src, tpu_src, slice_dst, tpu_dst */
+                9, 3, 0, 0,         /* slice_src, tpu_src, slice_dst, tpu_dst */
                 75000, 150000,      /* start_timestamp_ns. end_timestamp_ns */
                 75,                 /* duration_us */
                 10, -1, -1,         /* size_bytes, chunk_id, loop_index_id */
@@ -257,7 +257,7 @@ TEST(DcnAnalysis, CreateLoopBackMessageTest) {
       *xplane_builder.GetOrCreateStatMetadata("duration_us"), 1000);
   event_builder.AddStatValue(
       *xplane_builder.GetOrCreateStatMetadata("payload_size_bytes"), 1000);
-  XPlaneVisitor plane = CreateTfXPlaneVisitor(host_trace);
+  XPlaneVisitor plane = tsl::profiler::CreateTfXPlaneVisitor(host_trace);
   DcnEventsProcessor dcn_events_processor(4, false);
   dcn_events_processor.SetupMessageInfo(plane);
   dcn_events_processor.ProcessReceiveMessages(plane);
@@ -307,7 +307,7 @@ TEST(DcnAnalysis, CreateZeroDurationMessageTest) {
       *xplane_builder.GetOrCreateStatMetadata("duration_us"), 0);
   event_builder.AddStatValue(
       *xplane_builder.GetOrCreateStatMetadata("payload_size_bytes"), 512);
-  XPlaneVisitor plane = CreateTfXPlaneVisitor(host_trace);
+  XPlaneVisitor plane = tsl::profiler::CreateTfXPlaneVisitor(host_trace);
   DcnEventsProcessor dcn_events_processor(4, false);
   dcn_events_processor.SetupMessageInfo(plane);
   dcn_events_processor.ProcessReceiveMessages(plane);
@@ -339,7 +339,7 @@ TEST(DcnAnalysis, CreateMissingKeyTest) {
   event_builder.AddStatValue(
       *xplane_builder.GetOrCreateStatMetadata("payload_size_bytes"), 100);
 
-  XPlaneVisitor plane = CreateTfXPlaneVisitor(host_trace);
+  XPlaneVisitor plane = tsl::profiler::CreateTfXPlaneVisitor(host_trace);
   DcnEventsProcessor dcn_events_processor(4, false);
   dcn_events_processor.SetupMessageInfo(plane);
   dcn_events_processor.ProcessReceiveMessages(plane);

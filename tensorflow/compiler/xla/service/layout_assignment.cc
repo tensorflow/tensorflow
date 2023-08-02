@@ -153,8 +153,8 @@ OperandLayoutConstraint::OperandLayoutConstraint(
       instruction_(instruction),
       operand_no_(operand_no) {
   CHECK(shape_layout.LayoutIsSet());
-  CHECK(ShapeUtil::Compatible(shape_layout.shape(),
-                              instruction->operand(operand_no)->shape()))
+  CHECK(ShapeUtil::CompatibleIgnoringElementType(
+      shape_layout.shape(), instruction->operand(operand_no)->shape()))
       << shape_layout.shape() << " is not compatible with "
       << instruction->operand(operand_no)->shape() << " (for operand "
       << operand_no << " of instruction " << instruction->ToString() << ")";
@@ -630,7 +630,6 @@ bool IsLayoutConstrainedCustomCall(HloInstruction* instruction) {
   return custom_call != nullptr && custom_call->layout_constrained();
 }
 
-
 Status PropagateParameterLayoutToUsers(const HloInstruction* instruction,
                                        const Shape& shape,
                                        LayoutAssignment* constraints) {
@@ -752,6 +751,10 @@ Status LayoutAssignment::AddMandatoryConstraints(
           get_channel_constraints(instruction)
               ->LayoutShapeForChannel(buffer_shape, channel_id);
       TF_RETURN_IF_ERROR(SetInstructionLayout(new_buffer_shape, instruction));
+    } else if (instruction->preserve_layout()) {
+      TF_RETURN_IF_ERROR(SetInstructionLayout(instruction->shape(), instruction,
+                                              /*mandatory=*/true, /*dfs=*/true,
+                                              /*allow_alias=*/true));
     }
   }
 
@@ -1873,17 +1876,17 @@ Status LayoutAssignment::PropagateBufferConstraintToOperands(
       }
       VLOG(6) << "Propagating constraint to operand " << operand_no << " of "
               << instruction->ToShortString();
-        std::unique_ptr<Layout> operand_layout =
-            ChooseOperandLayoutFromOutputLayout(buffer_constraint.layout(),
-                                                instruction, operand_no);
-        if (operand_layout != nullptr) {
+      std::unique_ptr<Layout> operand_layout =
+          ChooseOperandLayoutFromOutputLayout(buffer_constraint.layout(),
+                                              instruction, operand_no);
+      if (operand_layout != nullptr) {
         TF_RETURN_IF_ERROR(SetArrayOperandLayout(
             *operand_layout, instruction, operand_no,
             /*mandatory=*/OutputLayoutAlwaysPropagateToOperands(instruction),
             /*dfs=*/
             InstructionShouldPropagateDepthFirst(*instruction),
             current_priority_));
-        }
+      }
     }
   }
   return OkStatus();
@@ -1919,9 +1922,9 @@ Status LayoutAssignment::PropagateBufferConstraintToUses(
     // Only add an operand constraint if the user does not forward the buffer
     // because this case is not handled is SetOperandLayout.
     if (!AnyOperandBufferForwarded(user, operand_no)) {
-        TF_RETURN_IF_ERROR(SetArrayOperandLayout(
-            buffer_constraint.layout(), user, operand_no, /*mandatory=*/false,
-            /*dfs=*/true, buffer_constraint.priority()));
+      TF_RETURN_IF_ERROR(SetArrayOperandLayout(
+          buffer_constraint.layout(), user, operand_no, /*mandatory=*/false,
+          /*dfs=*/true, buffer_constraint.priority()));
     }
   }
 
@@ -2323,7 +2326,8 @@ Status LayoutAssignment::ClearComputationLayouts(HloComputation* computation) {
     // Some instructions carry mandatory layouts in their shape.
     if (instruction->opcode() != HloOpcode::kInfeed &&
         !IsLayoutConstrainedCustomCall(instruction) &&
-        !IsLayoutConstrainedCollective(instruction)) {
+        !IsLayoutConstrainedCollective(instruction) &&
+        !instruction->preserve_layout()) {
       LayoutUtil::ClearLayout(instruction->mutable_shape());
     }
   }
@@ -2427,7 +2431,6 @@ Status LayoutAssignment::ConstrainChannelLayouts(
   return OkStatus();
 }
 
-
 Status LayoutAssignment::PropagateComputationLayouts(
     HloComputation* computation, ComputationLayout* computation_layout) {
   ComputationLayout computed_computation_layout(
@@ -2528,6 +2531,12 @@ StatusOr<bool> LayoutAssignment::Run(
   }
 
   // Clone Conditional computations with multiple callsites.
+  struct ComputationsToClone {
+    HloInstruction* caller;
+    int64_t branch_index;
+    HloComputation* computation;
+  };
+  std::vector<ComputationsToClone> computations_to_clone;
   for (HloComputation* computation : module->computations(execution_threads)) {
     CallGraphNode& node = call_graph_->GetNode(computation);
     if (node.caller_callsites().size() == 1) {
@@ -2543,13 +2552,18 @@ StatusOr<bool> LayoutAssignment::Run(
       if (caller->opcode() == HloOpcode::kConditional) {
         for (int64_t k = 0; k < caller->branch_count(); ++k) {
           if (computation == caller->branch_computation(k)) {
-            caller->set_branch_computation(
-                k, module->AddEmbeddedComputation(computation->Clone()));
+            // Defer cloning + adding the computation since we are iterating
+            // over the list of computations.
+            computations_to_clone.push_back({caller, k, computation});
             break;
           }
         }
       }
     }
+  }
+  for (auto [caller, branch_index, computation] : computations_to_clone) {
+    caller->set_branch_computation(
+        branch_index, module->AddEmbeddedComputation(computation->Clone()));
   }
 
   // Verify computation layout is sane.

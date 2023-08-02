@@ -228,6 +228,21 @@ TEST(OptimizeFunctionGraphTest, OptimizeFunctionGraphAndWriteToCache) {
   EXPECT_EQ(optimized_info->name, "FindDevice_1234");
   EXPECT_EQ(optimized_info->num_return_nodes, 1);
   EXPECT_THAT(optimized_info->ret_types, ElementsAre(DT_STRING));
+
+  // Clean up the cache directory for cases when the test is run multiple times
+  // in a row without clearing the filesystem where the test is running.
+  int64_t undeleted_files;
+  int64_t undeleted_dirs;
+
+  TF_EXPECT_OK(
+      env->DeleteRecursively(temp_dir, &undeleted_files, &undeleted_dirs));
+
+  // Check that the caching files have been cleaned up.
+  EXPECT_EQ(undeleted_files, 0);
+  EXPECT_EQ(undeleted_dirs, 0);
+  TF_ASSERT_OK(
+      env->GetMatchingPaths(absl::StrCat(temp_dir, "/*"), &empty_file_list));
+  ASSERT_TRUE(empty_file_list.empty());
 }
 
 }  // namespace

@@ -248,12 +248,43 @@ cc_library(
     srcs = ["hlo_extractor.cc"],
     hdrs = ["hlo_extractor.h"],
     deps = [
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:compilation_environments",
         "//tensorflow/compiler/xla/service:hlo_verifier",
+        "//tensorflow/compiler/xla/tests:test_utils",
+        "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+xla_cc_test(
+    name = "hlo_slicer_test",
+    srcs = ["hlo_slicer_test.cc"],
+    deps = [
+        ":hlo_slicer",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/hlo/utils:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
+    name = "hlo_slicer",
+    srcs = ["hlo_slicer.cc"],
+    hdrs = ["hlo_slicer.h"],
+    deps = [
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:call_graph",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -379,18 +410,16 @@ cc_library(
         ":hlo_module_loader",
         ":prepare_reference_module",
         ":run_hlo_module_proto_cc",
-        "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:error_spec",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_comparison",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/compiler/xla/client/lib:testing",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/compiler/xla/service:hlo_runner",
         "//tensorflow/compiler/xla/service:hlo_verifier",
         "//tensorflow/compiler/xla/tests:test_utils",
-        "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:path",
         "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/types:span",
@@ -468,10 +497,11 @@ xla_cc_test(
         "//tensorflow/compiler/xla/service:collective_ops_utils",
         "//tensorflow/compiler/xla/service:despecializer",
         "//tensorflow/compiler/xla/service:hlo_verifier",
+        "//tensorflow/compiler/xla/service/spmd:spmd_partitioner",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//tensorflow/tsl/lib/core:status_test_util",
-        "//tensorflow/tsl/platform:test",
         "@com_google_absl//absl/strings",
     ],
 )

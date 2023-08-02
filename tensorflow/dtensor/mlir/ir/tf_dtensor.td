@@ -39,6 +39,11 @@ def DTensor_LayoutAttr : DTensor_DTensorAttr<"Layout", "layout"> {
   let convertFromStorage = "$_self.cast<mlir::dtensor::LayoutAttr>().getValue()";
 }
 
+def DTensor_MeshAttr : DTensor_DTensorAttr<"Mesh", "mesh"> {
+  let returnType = "mlir::dtensor::MeshAttr::Mesh";
+  let convertFromStorage = "$_self.cast<mlir::dtensor::MeshAttr>().getValue()";
+}
+
 //===----------------------------------------------------------------------===//
 // DTensor op definitions
 //===----------------------------------------------------------------------===//
@@ -49,7 +54,7 @@ def Tf_DTensorSend : TF_Op<"DTensorSend", []> {
   let arguments = (ins
     TF_Tensor:$input,
     StrAttr:$key,
-    DTensor_LayoutAttr:$target_layout
+    DTensor_MeshAttr:$target_mesh
   );
 
   let results = (outs);
@@ -63,7 +68,7 @@ def Tf_DTensorRecv : TF_Op<"DTensorRecv", []> {
   let arguments = (ins
     StrAttr:$key,
     TF_ShapeAttr:$shape,
-    DTensor_LayoutAttr:$layout
+    DTensor_MeshAttr:$mesh
  );
  let results = (outs
     TF_Tensor:$output
@@ -87,38 +92,6 @@ def TF_DTensorLayout: TF_Op<"DTensorLayout", [DeclareOpInterfaceMethods<InferTyp
     TF_Tensor:$output
   );
   let hasVerifier = 1;
-}
-
-def TF_DTensorEmbeddingEnqueueOp : TF_Op<"DTensorEmbeddingEnqueue", [SameVariadicOperandSize]> {
-  let summary = "";
-
-  let arguments = (ins
-    Variadic<TF_Int32Tensor>:$embedding_indices,
-    Variadic<TF_Float32Tensor>:$aggregation_weights,
-
-    DefaultValuedOptionalAttr<StrAttr, "\"training\"">:$mode_override,
-    DefaultValuedOptionalAttr<StrArrayAttr, "{}">:$combiners,
-    StrAttr:$config
-  );
-
-  let results = (outs);
-
-  TF_DerivedOperandSizeAttr num_inputs = TF_DerivedOperandSizeAttr<0>;
-}
-
-def TF_DTensorEmbeddingDequeueOp : TF_Op<"DTensorEmbeddingDequeue", [Pure]> {
-  let summary = "DTensor TPU Embedding activation dequeue virtual op";
-
-  let arguments = (ins
-    StrAttr:$config,
-    StrArrayAttr:$output_layouts
-  );
-
-  let results = (outs
-    Variadic<TF_Float32Tensor>:$outputs
-  );
-
-  TF_DerivedResultSizeAttr num_outputs = TF_DerivedResultSizeAttr<0>;
 }
 
 def TF_RelayoutOp : TF_Op<"Relayout", [Pure, TF_AllTypesMatch<["input", "output"]>, TF_NoConstantFold]> {
@@ -159,8 +132,7 @@ def TF_CopyToMeshOp : TF_Op<"CopyToMesh", [Pure]> {
 
   let arguments = (ins
     TF_Tensor:$input,
-
-    StrAttr:$layout
+    StrAttr:$mesh
   );
 
   let results = (outs
@@ -175,10 +147,7 @@ def TF_CopyToMeshGradOp : TF_Op<"CopyToMeshGrad", [Pure]> {
 
   let arguments = (ins
     TF_Tensor:$input,
-
-    TF_Tensor:$forward_input,
-
-    StrAttr:$reference_layout
+    TF_Tensor:$forward_input
   );
 
   let results = (outs
@@ -188,356 +157,11 @@ def TF_CopyToMeshGradOp : TF_Op<"CopyToMeshGrad", [Pure]> {
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_SetEmbeddingConfigOp : TF_Op<"SetEmbeddingConfig", []> {
-  let summary = "";
-
-  let arguments = (ins
-    TF_StrTensor:$config
-  );
-
-  let results = (outs);
-}
-
-def TF_GetEmbeddingConfigurationOp: TF_Op<"GetEmbeddingConfiguration", [AttrSizedOperandSegments, Pure]> {
-  let summary = [{
-    tf.GetEmbeddingConfiguration gathers information from the inputs and
-    outputs a scalar string with the configuration to use when calling
-    `initialize_system_for_tpu_embedding`.
-    }];
-
-  let arguments = (ins
-    TF_Float32Tensor:$table,
-    Variadic<TF_Float32Tensor>:$slots,
-    TF_Int32Tensor:$ids,
-    Variadic<TF_Float32Tensor>:$scalars,
-
-    FlatSymbolRefAttr:$optimizer,
-    DenseI32ArrayAttr:$operand_segment_sizes
-  );
-
-  let results = (outs
-    TF_StrTensor:$config
-  );
-
-  TF_DerivedOperandTypeListAttr num_slots = TF_DerivedOperandTypeListAttr<1>;
-  TF_DerivedOperandTypeListAttr num_scalars = TF_DerivedOperandTypeListAttr<3>;
-}
-
-// Op has no outputs, so we do not inlude the NosideEffect tag so that it will
-// not get pruned.
-def TF_LoadEmbeddingTableOp: TF_Op<"LoadEmbeddingTable", []> {
-  let summary = [{
-    tf.LoadEmbeddingTable loads an embedding table onto the tpu. Must be called
-    after `initialize_system_for_tpu_embedding` and before any data is enqueued
-    for embedding lookup.
-    }];
-
-  let arguments = (ins
-    TF_Float32Tensor:$table,
-    Variadic<TF_Float32Tensor>:$slots,
-
-    StrAttr:$config
-  );
-
-  TF_DerivedOperandTypeListAttr num_slots = TF_DerivedOperandTypeListAttr<1>;
-}
-
-// This TF op is not public exported, add it here temporarily so we can easily
-// construct one.
-// Op has no outputs, so we do not inlude the NosideEffect tag so that it will
-// not get pruned.
-def TF_LoadAllTPUEmbeddingParametersOp : TF_Op<"LoadAllTPUEmbeddingParameters", [SameVariadicOperandSize]> {
-  let summary = [{
-An op that loads optimization parameters into embedding memory. Must be
-  }];
-
-  let description = [{
-preceded by a ConfigureTPUEmbeddingHost op that sets up the correct embedding table
-configuration. For example, this op is used to install parameters that are
-loaded from a checkpoint before a training loop is executed.  For Adagrad,
-auxiliary1 should be the accumulators. For SGD, all of the auxiliary* values
-should be empty. For FTRL, auxiliary1 should be the accumulators and auxiliary2
-should be the linear terms. For ADAM, auxiliary1 should be the momenta and
-auxiliary2 should be the velocities.
-  }];
-
-  let arguments = (ins
-    Arg<Variadic<TF_Float32Tensor>, [{A list of tensors, one for each embedding table,
-containing the initial embedding table parameters to use in embedding
-lookups.}]>:$parameters,
-    Arg<Variadic<TF_Float32Tensor>, [{A list of tensors, one for each embedding table, containing the
-initial values of the first auxiliary optimization parameter to use in embedding
-training loop updates. The shape of each entry is ignored (and thus can be
-empty) for those tables whose optimization algorithms do not have at least one
-auxiliary parameter.}]>:$auxiliary1,
-    Arg<Variadic<TF_Float32Tensor>, [{A list of tensors, one for each embedding table, containing the
-initial values of the second auxiliary optimization parameter to use in
-embedding training loop updates. The shape of each entry is ignored (and thus
-can be empty) for those tables whose optimization algorithms do not have at
-least two auxiliary}]>:$auxiliary2,
-    Arg<Variadic<TF_Float32Tensor>, [{A list of tensors, one for each embedding table, containing the
-initial values of the third auxiliary optimization parameter to use in embedding
-training loop updates. The shape of each entry is ignored (and thus can be
-empty) for those tables whose optimization algorithms do not have three
-auxiliary parameters.}]>:$auxiliary3,
-    Arg<Variadic<TF_Float32Tensor>, [{A list of tensors, one for each embedding table, containing the
-initial values of the third auxiliary optimization parameter to use in embedding
-training loop updates. The shape of each entry is ignored (and thus can be
-empty) for those tables whose optimization algorithms do not have four
-auxiliary parameters.}]>:$auxiliary4,
-    Arg<Variadic<TF_Float32Tensor>, [{A list of tensors, one for each embedding table, containing the
-initial values of the third auxiliary optimization parameter to use in embedding
-training loop updates. The shape of each entry is ignored (and thus can be
-empty) for those tables whose optimization algorithms do not have five
-auxiliary parameters.}]>:$auxiliary5,
-    Arg<Variadic<TF_Float32Tensor>, [{A list of tensors, one for each embedding table, containing the
-initial values of the third auxiliary optimization parameter to use in embedding
-training loop updates. The shape of each entry is ignored (and thus can be
-empty) for those tables whose optimization algorithms do not have six
-auxiliary parameters.}]>:$auxiliary6,
-    Arg<Variadic<TF_Float32Tensor>, [{A list of tensors, one for each embedding table, containing the
-initial values of the third auxiliary optimization parameter to use in embedding
-training loop updates. The shape of each entry is ignored (and thus can be
-empty) for those tables whose optimization algorithms do not have seven
-auxiliary parameters.}]>:$auxiliary7,
-
-    StrAttr:$config,
-    I64Attr:$num_shards,
-    I64Attr:$shard_id
-  );
-
-  let results = (outs);
-
-  TF_DerivedOperandSizeAttr NumTables = TF_DerivedOperandSizeAttr<0>;
-}
-
-def TF_DTensorLoadTPUEmbeddingParametersOp : TF_Op<"DTensorLoadTPUEmbeddingParameters", [SameVariadicOperandSize]> {
-  let summary = "";
-
-  let arguments = (ins
-    Variadic<TF_Float32Tensor>:$parameters,
-    Variadic<TF_Float32Tensor>:$auxiliary1,
-    Variadic<TF_Float32Tensor>:$auxiliary2,
-    Variadic<TF_Float32Tensor>:$auxiliary3,
-    Variadic<TF_Float32Tensor>:$auxiliary4,
-    Variadic<TF_Float32Tensor>:$auxiliary5,
-    Variadic<TF_Float32Tensor>:$auxiliary6,
-    Variadic<TF_Float32Tensor>:$auxiliary7,
-
-    StrAttr:$config,
-    I64Attr:$num_shards,
-    I64Attr:$shard_id
-  );
-
-  let results = (outs);
-
-  TF_DerivedOperandSizeAttr num_tables = TF_DerivedOperandSizeAttr<0>;
-}
-
-def TF_RetrieveAllTPUEmbeddingParametersOp : TF_Op<"RetrieveAllTPUEmbeddingParameters", [SameVariadicResultSize]> {
-  let summary = [{
-An op that retrieves optimization parameters from embedding to host memory.
-  }];
-
-  let description = [{
-Must be preceded by a ConfigureTPUEmbeddingHost op that sets up the correct
-embedding table configuration. For example, this op is used to retrieve updated
-parameters before saving a checkpoint.  For Adagrad, auxiliary1 will contain the
-accumulators after running this op. For SGD, all of the auxiliary* values will
-be empty (0x0 tensors for that table). For FTRL, auxiliary1 will contain the
-accumulators and auxiliary2 will contain the linear terms. For ADAM, auxiliary1
-will contain the momenta and auxiliary2 will contain the velocities.
-  }];
-
-  let arguments = (ins
-    StrAttr:$config,
-    I64Attr:$num_shards,
-    I64Attr:$shard_id
-  );
-
-  let results = (outs
-    Res<Variadic<TF_Float32Tensor>, [{A list of tensors, one for each embedding table, containing the
-stored embedding table parameters.}]>:$parameters,
-    Res<Variadic<TF_Float32Tensor>, [{A list of tensors, one for each embedding table, containing the
-first auxiliary optimization parameter stored. Elements are
-present in the list, but have zero size, for unused optimization parameters
-(based on the algorithm in use for each table).}]>:$auxiliary1,
-    Res<Variadic<TF_Float32Tensor>, [{A list of tensors, one for each embedding table, containing the
-second auxiliary optimization parameter stored. Elements are
-present in the list, but have zero size, for unused optimization parameters
-(based on the algorithm in use for each table).}]>:$auxiliary2,
-    Res<Variadic<TF_Float32Tensor>, [{A list of tensors, one for each embedding table, containing the
-third auxiliary optimization parameter stored. Elements are
-present in the list, but have zero size, for unused optimization parameters
-(based on the algorithm in use for each table).}]>:$auxiliary3,
-    Res<Variadic<TF_Float32Tensor>, [{A list of tensors, one for each embedding table, containing the
-third auxiliary optimization parameter stored. Elements are
-present in the list, but have zero size, for unused optimization parameters
-(based on the algorithm in use for each table).}]>:$auxiliary4,
-    Res<Variadic<TF_Float32Tensor>, [{A list of tensors, one for each embedding table, containing the
-third auxiliary optimization parameter stored. Elements are
-present in the list, but have zero size, for unused optimization parameters
-(based on the algorithm in use for each table).}]>:$auxiliary5,
-    Res<Variadic<TF_Float32Tensor>, [{A list of tensors, one for each embedding table, containing the
-third auxiliary optimization parameter stored. Elements are
-present in the list, but have zero size, for unused optimization parameters
-(based on the algorithm in use for each table).}]>:$auxiliary6,
-    Res<Variadic<TF_Float32Tensor>, [{A list of tensors, one for each embedding table, containing the
-third auxiliary optimization parameter stored. Elements are
-present in the list, but have zero size, for unused optimization parameters
-(based on the algorithm in use for each table).}]>:$auxiliary7
-  );
-
-  TF_DerivedResultSizeAttr NumTables = TF_DerivedResultSizeAttr<0>;
-}
-
-def TF_DTensorRetrieveTPUEmbeddingParametersOp : TF_Op<"DTensorRetrieveTPUEmbeddingParameters", [Pure, SameVariadicResultSize]> {
-  let summary = "";
-
-  let arguments = (ins
-    DefaultValuedOptionalAttr<I64Attr, "1">:$num_hosts,
-    StrAttr:$config,
-    I64Attr:$num_shards,
-    I64Attr:$shard_id
-  );
-
-  let results = (outs
-    Variadic<TF_Float32Tensor>:$parameters,
-    Variadic<TF_Float32Tensor>:$auxiliary1,
-    Variadic<TF_Float32Tensor>:$auxiliary2,
-    Variadic<TF_Float32Tensor>:$auxiliary3,
-    Variadic<TF_Float32Tensor>:$auxiliary4,
-    Variadic<TF_Float32Tensor>:$auxiliary5,
-    Variadic<TF_Float32Tensor>:$auxiliary6,
-    Variadic<TF_Float32Tensor>:$auxiliary7
-  );
-
-  TF_DerivedResultSizeAttr num_tables = TF_DerivedResultSizeAttr<0>;
-}
-
-def TF_DTensorSendEmbeddingGradientsOp : TF_Op<"DTensorSendEmbeddingGradients", [AttrSizedOperandSegments]> {
-  let summary = "";
-
-  let arguments = (ins
-    Variadic<TF_Float32Tensor>:$gradients,
-    Variadic<TF_Float32Tensor>:$learning_rates,
-
-    StrAttr:$config
-  );
-
-  let results = (outs);
-
-  TF_DerivedOperandSizeAttr num_lr_tags = TF_DerivedOperandSizeAttr<1>;
-  TF_DerivedOperandSizeAttr num_tables = TF_DerivedOperandSizeAttr<0>;
-}
-
-// Op has no outputs, so we do not inlude the NosideEffect tag so that it will
-// not get pruned.
-def TF_ApplyEmbeddingOptimizerOp : TF_Op<"ApplyEmbeddingOptimizer", []> {
-  let summary = "";
-
-  let arguments = (ins
-    TF_Float32Tensor:$gradient,
-    Variadic<TF_Float32Tensor>:$scalars,
-
-    StrAttr:$config
-  );
-
-  let results = (outs);
-
-  TF_DerivedOperandSizeAttr num_scalars = TF_DerivedOperandSizeAttr<1>;
-}
-
-
-def TF_ApplyEmbeddingOptimizerV2Op : TF_Op<"ApplyEmbeddingOptimizerV2", []> {
-  let summary = "";
-
-  let arguments = (ins
-    TF_Float32Tensor:$gradient,
-    TF_Float32Tensor:$variable,
-    Variadic<TF_Float32Tensor>:$slot_variables,
-
-    StrAttr:$optimization_parameters
-  );
-
-  let results = (outs);
-
-  TF_DerivedOperandSizeAttr num_slots = TF_DerivedOperandSizeAttr<2>;
-}
-
-def TF_EmbeddingDequeueOp : TF_Op<"EmbeddingDequeue", [Pure]> {
-  let summary = "";
-
-  let arguments = (ins
-    StrAttr:$config
-  );
-
-  let results = (outs
-    TF_Float32Tensor:$result
-  );
-}
-
-// Op has no outputs, so we do not inlude the NosideEffect tag so that it will
-// not get pruned.
-def TF_EmbeddingEnqueueOp : TF_Op<"EmbeddingEnqueue"> {
-  let summary = "";
-
-  let arguments = (ins
-    TF_Int32Tensor:$ids,
-    TF_StrTensor:$mode,
-
-    StrAttr:$config
-  );
-
-  let results = (outs);
-}
-
-def TF_IsTPUEmbeddingInitializedOp : TF_Op<"IsTPUEmbeddingInitialized", []> {
-  let summary = [{
-Whether TPU Embedding is initialized in a distributed TPU system.
-  }];
-
-  let arguments = (ins
-    DefaultValuedOptionalAttr<StrAttr, "\"\"">:$config
-  );
-
-  let results = (outs
-    TF_BoolTensor:$is_tpu_embedding_initialized
-  );
-}
-
-def TF_TPUDenseEmbeddingLookUpOp : TF_Op<"TPUDenseEmbeddingLookUp", [Pure]> {
-  let summary = "";
-
-  let arguments = (ins
-    TF_Int32Tensor:$ids,
-    TF_Float32Tensor:$table
-  );
-
-  let results = (outs
-    TF_Float32Tensor:$output
-  );
-}
-
-def TF_TPUDenseEmbeddingLookUpGradOp : TF_Op<"TPUDenseEmbeddingLookUpGrad", [Pure]> {
-  let summary = "";
-
-  let arguments = (ins
-    TF_Float32Tensor:$gradients,
-    TF_Int32Tensor:$ids,
-    TF_Float32Tensor:$table
-  );
-
-  let results = (outs
-    TF_Float32Tensor:$output
-  );
-}
-
 def TF_DTensorAllReduceOp : TF_Op<"DTensorAllReduce", [Pure]> {
   let summary = "";
 
   let arguments = (ins
-    TensorOf<[TF_Bfloat16, TF_Bool, TF_Float16, TF_Float32, TF_Float64, TF_Int32, TF_Int64, TF_Uint32, TF_Uint64, TF_Int8, TF_Uint8]>:$input,
+    TF_Tensor:$input,
     TF_Int32Tensor:$group_assignment,
 
     TF_AnyStrAttrOf<["Min", "Max", "Mul", "Add", "Mean", "Any", "All"]>:$reduce_op,
@@ -545,7 +169,7 @@ def TF_DTensorAllReduceOp : TF_Op<"DTensorAllReduce", [Pure]> {
   );
 
   let results = (outs
-    TensorOf<[TF_Bfloat16, TF_Bool, TF_Float16, TF_Float32, TF_Float64, TF_Int32, TF_Int64, TF_Uint32, TF_Uint64, TF_Int8, TF_Uint8]>:$output
+    TF_Tensor:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -555,7 +179,7 @@ def TF_DTensorReduceScatterOp : TF_Op<"DTensorReduceScatter", [Pure]> {
   let summary = "";
 
   let arguments = (ins
-    TensorOf<[TF_Bfloat16, TF_Bool, TF_Float16, TF_Float32, TF_Int32, TF_Int64, TF_Uint32]>:$input,
+    TF_Tensor:$input,
     TF_Int32Tensor:$group_assignment,
     TF_Int32Tensor:$scatter_dimension,
 
@@ -564,7 +188,7 @@ def TF_DTensorReduceScatterOp : TF_Op<"DTensorReduceScatter", [Pure]> {
   );
 
   let results = (outs
-    TensorOf<[TF_Bfloat16, TF_Bool, TF_Float16, TF_Float32, TF_Int32, TF_Int64, TF_Uint32]>:$output
+    TF_Tensor:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -627,14 +251,14 @@ sharded than the input layout.
   }];
 
   let arguments = (ins
-    TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64, TF_Int8, TF_Uint8, TF_Int32, TF_Uint32, TF_Int64, TF_Uint64, TF_Bool, TF_Str]>:$input,
+    TF_Tensor:$input,
     DTensor_LayoutAttr:$input_layout,
     DTensor_LayoutAttr:$output_layout
   );
 
   let results = (outs
-    TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Float64, TF_Int8, TF_Uint8, TF_Int32, TF_Uint32, TF_Int64, TF_Uint64, TF_Bool, TF_Str]>:$output
-  );
+    TF_Tensor:$output
+    );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
@@ -650,14 +274,14 @@ sharded than the input layout.
   }];
 
   let arguments = (ins
-    TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Int8, TF_Uint8, TF_Int32, TF_Uint32, TF_Int64, TF_Uint64, TF_Bool]>:$input,
+    TF_Tensor:$input,
     DTensor_LayoutAttr:$input_layout,
     DTensor_LayoutAttr:$output_layout
   );
 
   let results = (outs
-    TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Int8, TF_Uint8, TF_Int32, TF_Uint32, TF_Int64, TF_Uint64, TF_Bool]>:$output
-  );
+    TF_Tensor:$output
+    );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
@@ -667,20 +291,20 @@ sharded than the input layout.
 def TF_DTensorAllToAllOp : TF_Op<"DTensorAllToAll", [Pure]> {
   let summary = "Mutually exchanges the input to match the given layout.";
 
-  let description = [{
+  let description = [{"
 This op takes both an input and an output layout. There can be one mesh
 dimension which is becoming unsharded in one axis while becoming sharded 
 in another axis."
   }];
 
   let arguments = (ins
-    TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Int32, TF_Uint32, TF_Int64, TF_Bool]>:$input,
+    TF_Tensor:$input,
     DTensor_LayoutAttr:$input_layout,
     DTensor_LayoutAttr:$output_layout
   );
 
   let results = (outs
-    TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32, TF_Int32, TF_Uint32, TF_Int64, TF_Bool]>:$output
+    TF_Tensor:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
