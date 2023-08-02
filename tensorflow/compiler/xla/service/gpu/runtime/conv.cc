@@ -397,7 +397,7 @@ static absl::Status ConvImpl(
   if (bias.has_value()) buffers.push_back(GetDeviceAddress(*bias));
   if (side_input.has_value()) buffers.push_back(GetDeviceAddress(*side_input));
 
-  se::DeviceMemoryBase result_buffer = GetDeviceAddress(output);
+  std::vector<se::DeviceMemoryBase> result_buffers = {GetDeviceAddress(output)};
   se::DeviceMemoryBase scratch_buffer = GetDeviceAddress(scratch);
 
   int64_t scratch_buffer_size = scratch_buffer.size();
@@ -419,7 +419,7 @@ static absl::Status ConvImpl(
         AutotuneResult best_algo,
         conv_algorithm_picker.PickBestAlgorithmWithAllocatedBuffer(
             config, gpu_conv_config, run_options, *debug_options, buffers,
-            result_buffer));
+            result_buffers));
 
     // Set algorithm in the convolution runner state.
     se::dnn::AlgorithmDesc algo_desc(best_algo.conv().algorithm(),
@@ -447,7 +447,7 @@ static absl::Status ConvImpl(
                                             scratch_buffer_size);
 
     // Run the convolution using the new scratch buffer.
-    TF_RETURN_IF_ERROR(RunGpuConv(conv->config, buffers, result_buffer,
+    TF_RETURN_IF_ERROR(RunGpuConv(conv->config, buffers, result_buffers,
                                   new_scratch_buffer, run_options->stream(),
                                   opts));
     if (!run_options->stream()->ok()) {
@@ -457,7 +457,7 @@ static absl::Status ConvImpl(
   }
 
   // Run the convolution.
-  TF_RETURN_IF_ERROR(RunGpuConv(conv->config, buffers, result_buffer,
+  TF_RETURN_IF_ERROR(RunGpuConv(conv->config, buffers, result_buffers,
                                 scratch_buffer, run_options->stream(), opts));
   if (!run_options->stream()->ok()) {
     return absl::InternalError("run_options stream not ok");
