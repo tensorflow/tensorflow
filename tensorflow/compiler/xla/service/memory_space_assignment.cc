@@ -40,12 +40,14 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/heap_simulator.h"
 #include "tensorflow/compiler/xla/service/hlo_value.h"
 #include "tensorflow/compiler/xla/service/memory_space_assignment_tuning_utils.h"
 #include "tensorflow/compiler/xla/service/memory_space_assignment_utils.h"
 #include "tensorflow/compiler/xla/service/tuple_util.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/platform/errors.h"
@@ -7244,6 +7246,7 @@ MemorySpaceAssignment::SlicedCopyAllocation::SlicedCopyAllocation(
               slice_decisions_sorted_by_start_time),
           end_time,
           /*is_scoped_allocation=*/false),
+      original_shape_to_slice_(prev_allocation.defining_position().shape()),
       prev_allocation_(prev_allocation),
       update_layout_fn_(update_layout_fn) {
   CHECK_GE(slice_decisions_sorted_by_start_time.size(), 2);
@@ -7288,6 +7291,9 @@ Status ProcessCopyLikeAllocationUses(HloPosition& defining_position,
               use.instruction->mutable_operand(use.operand_number),
               use.operand_index));
     } else if (operand_shape != copy_complete->shape()) {
+      // When processing allocations, we treat bitcasts as trivial positions and
+      // do not create allocations for them. We insert bitcasts after copies, to
+      // account for the fact that we don't have an allocation for the bitcast.
       VLOG(4) << "Old shape = " << operand_shape.ToString()
               << ", new shape = " << copy_complete->shape().ToString()
               << "; inserting a bitcast.";
@@ -7306,6 +7312,24 @@ Status ProcessCopyLikeAllocationUses(HloPosition& defining_position,
 Status MemorySpaceAssignment::SlicedCopyAllocation::Process() {
   Shape shape = defining_position().shape();
   HloInstruction* producing_instruction = AddGetTupleElements();
+
+  // Calling Process() over the previous allocation might have modified the
+  // defining position, and hence the shape that was used when we computed
+  // the slices. In cases where the shape has changed, we insert a bitcast, so
+  // slice instructions operate on the originally sliced shape.
+  //
+  // Note, these bitcasts are being inserted in the same cases that
+  // ProcessCopyLikeAllocationUses() is inserting bitcasts, except we are
+  // inserting the bitcasts before the copy, instead of after the copy.
+  if (!Shape::Equal().IgnoreMemorySpaceInLayout()(shape,
+                                                  original_shape_to_slice_)) {
+    int64_t new_memory_space = shape.layout().memory_space();
+    shape = original_shape_to_slice_;
+    shape.mutable_layout()->set_memory_space(new_memory_space);
+    producing_instruction = producing_instruction->parent()->AddInstruction(
+        HloInstruction::CreateBitcast(shape, producing_instruction));
+  }
+
   HloComputation* computation = producing_instruction->parent();
   std::vector<HloInstruction*> slice_dones;
   slice_dones.reserve(slice_details_sorted_by_start_time_.size());
@@ -7885,8 +7909,9 @@ class AsyncCopyStepForSlice : public AsyncCopyStep {
   }
 
   DonePhase done_phase() const override {
-    MemorySpaceAssignment::SlicedCopyAllocation::SliceDetail& slice_details =
-        sliced_copy_allocation_->mutable_sorted_slice_details()[slice_index_];
+    const MemorySpaceAssignment::SlicedCopyAllocation::SliceDetail&
+        slice_details =
+            sliced_copy_allocation_->sorted_slice_details()[slice_index_];
     DonePhase phase{slice_details.copy_done_before_time,
                     slice_details.copy_done};
 

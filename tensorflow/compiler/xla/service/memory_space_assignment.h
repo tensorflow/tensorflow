@@ -931,6 +931,7 @@ class MemorySpaceAssignment {
     Status CreateBitcastConcat(const Shape& shape,
                                absl::Span<HloInstruction* const> slices);
 
+    Shape original_shape_to_slice_;
     const Allocation& prev_allocation_;
     // REQUIRES:
     // - sorted_segments_[i].copy_start_after_time <=
