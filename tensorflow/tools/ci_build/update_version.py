@@ -261,6 +261,30 @@ def check_for_old_version(old_version, new_version):
     old_r_major_minor = "r%s.%s" % (old_version.major, old_version.minor)
     check_for_lingering_string(old_r_major_minor)
 
+## AMD ##
+# For tensorflow-rocm, add the rocm version we're building against as a
+# semver compatible buid metadata string (https://semver.org/#spec-item-10)
+# This is not pip public version compatible (see: https://peps.python.org/pep-0440/),
+# so for pip we will convert the '+' to a "."
+def _get_default_rocm_path():
+  return "/opt/rocm"
+
+def _get_rocm_install_path():
+  """Determines and returns the ROCm installation path."""
+  rocm_install_path = _get_default_rocm_path()
+  if "ROCM_PATH" in os.environ:
+    rocm_install_path = os.environ["ROCM_PATH"]
+  return rocm_install_path
+
+def _rocm_version(rocm_install_path):
+  version_file = os.path.join(rocm_install_path, ".info/version-dev")
+  if not os.path.exists(version_file):
+    return ""
+  version_numbers = []
+  with open(version_file) as f:
+    version_string = f.read().strip()
+    version_numbers = version_string.split(".")
+  return str(version_numbers[0] + "." + version_numbers[1] + "." + version_numbers[2].split("-")[0])
 
 def main():
   """This script updates all instances of version in the tensorflow directory.
@@ -283,6 +307,9 @@ def main():
   parser.add_argument("--nightly",
                       help="disable the service provisioning step",
                       action="store_true")
+  parser.add_argument("--rocm_version",
+                      help="Add ROCm version string",
+                      action="store_true")
 
   args = parser.parse_args()
 
@@ -292,9 +319,19 @@ def main():
   if args.nightly:
     if args.version:
       new_version = Version.parse_from_string(args.version, NIGHTLY_VERSION)
-      new_version.set_identifier_string("-dev" + time.strftime("%Y%m%d"))
+      if args.rocm_version:
+          new_version.set_identifier_string("." + str(_rocm_version(_get_rocm_install_path()).replace('.', '')) + "-dev" + time.strftime("%Y%m%d"))
+      else:
+          new_version.set_identifier_string("-dev" + time.strftime("%Y%m%d"))
     else:
-      new_version = Version(old_version.major,
+      if args.rocm_version:
+          new_version = Version(old_version.major,
+                            str(old_version.minor),
+                            old_version.patch,
+                            "." + str(_rocm_version(_get_rocm_install_path()).replace('.', '')) + "-dev" + time.strftime("%Y%m%d"),
+                            NIGHTLY_VERSION)
+      else:
+          new_version = Version(old_version.major,
                             str(old_version.minor),
                             old_version.patch,
                             "-dev" + time.strftime("%Y%m%d"),

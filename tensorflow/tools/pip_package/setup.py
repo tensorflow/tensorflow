@@ -72,32 +72,6 @@ if '--collaborator_build' in sys.argv:
 def standard_or_nightly(standard, nightly):
   return nightly if 'tf_nightly' in project_name else standard
 
-## AMD ##
-# For tensorflow-rocm, add the rocm version we're building against as a
-# semver compatible buid metadata string (https://semver.org/#spec-item-10)
-# This is not pip public version compatible (see: https://peps.python.org/pep-0440/),
-# so for pip we will convert the '+' to a "."
-def _get_default_rocm_path():
-  return "/opt/rocm"
-
-def _get_rocm_install_path():
-  """Determines and returns the ROCm installation path."""
-  rocm_install_path = _get_default_rocm_path()
-  if "ROCM_PATH" in os.environ:
-    rocm_install_path = os.environ["ROCM_PATH"]
-  return rocm_install_path
-
-def _rocm_version(rocm_install_path):
-  version_file = os.path.join(rocm_install_path, ".info/version-dev")
-  if not os.path.exists(version_file):
-    return ""
-  version_numbers = []
-  with open(version_file) as f:
-    version_string = f.read().strip()
-    version_numbers = version_string.split(".")
-  return str(version_numbers[0] + "." + version_numbers[1] + "." + version_numbers[2].split("-")[0])
-
-
 # All versions of TF need these packages. We indicate the widest possible range
 # of package releases possible to be as up-to-date as possible as well as to
 # accomodate as many pre-installed packages as possible.
@@ -188,10 +162,6 @@ if collaborator_build:
       standard_or_nightly('tensorflow-macos', 'tf-nightly-macos') + '==' +
       _VERSION + ';platform_system=="Darwin" and platform_machine=="arm64"',
   ]
-
-# Append the ROCM version to the version string
-if project_name.endswith('_rocm'):
-  _VERSION = _VERSION + "." + str(_rocm_version(_get_rocm_install_path()).replace('.', ''))
 
 # Set up extra packages, which are optional sets of other Python package deps.
 # E.g. "pip install tensorflow[and-cuda]" below installs the normal TF deps
