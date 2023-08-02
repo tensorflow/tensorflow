@@ -178,6 +178,23 @@ config_setting(
 )
 
 cc_library(
+    name = "flags",
+    srcs = ["flags.cc"],
+    hdrs = ["flags.h"],
+    defines = select({
+        "//tensorflow/core/common_runtime/next_pluggable_device:tf_npd_use_c_api_enabled": [
+            "DEFAULT_TF_NEXT_PLUGGABLE_DEVICE_USE_C_API=true",
+        ],
+        "//conditions:default": [
+            "DEFAULT_TF_NEXT_PLUGGABLE_DEVICE_USE_C_API=false",
+        ],
+    }),
+    visibility = ["//visibility:public"],
+    deps = ["@com_google_absl//absl/flags:flag"],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "c_plugin_op_kernel",
     srcs = ["c_plugin_op_kernel.cc"],
     hdrs = ["c_plugin_op_kernel.h"],
@@ -219,6 +236,7 @@ cc_library(
         ":plugin_op_kernel",
         "//tensorflow/c:kernels_hdrs",
         "//tensorflow/c:tf_status_helper",
+        "//tensorflow/core/common_runtime/next_pluggable_device:flags",
     ],
 )
 
@@ -285,6 +303,7 @@ cc_library(
         ":plugin_coordination_service_agent",
         "//tensorflow/c:kernels_hdrs",
         "//tensorflow/c:tf_status_helper",
+        "//tensorflow/core/common_runtime/next_pluggable_device:flags",
     ],
 )
 
