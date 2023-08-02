@@ -397,6 +397,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service:llvm_compiler",
         "//tensorflow/compiler/xla/stream_executor",
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_pimpl",  # fixdeps: keep
         "//tensorflow/compiler/xla/stream_executor/host:host_platform_id",
         "@llvm-project//llvm:Target",
     ],
