@@ -53,7 +53,7 @@ extern "C" {
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 13
+#define PJRT_API_MINOR 14
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -897,6 +897,21 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Device_MemoryStats_Args, peak_pool_bytes_is_set);
 // are optional and may not be returned by all platforms. Implementations may
 // also return PJRT_Error_Code_UNIMPLEMENTED. Intended for diagnostic purposes.
 typedef PJRT_Error* PJRT_Device_MemoryStats(PJRT_Device_MemoryStats_Args* args);
+
+//-------------------------------- Memory --------------------------------------
+
+struct PJRT_Memory_Kind_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_Memory* memory;
+  // `memory_kind` has same lifetime as `memory`.
+  const char* memory_kind;  // out
+  size_t memory_kind_size;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Memory_Kind_Args, memory_kind_size);
+
+// A platform-dependent string that uniquely identifies the kind of the memory.
+typedef PJRT_Error* PJRT_Memory_Kind(PJRT_Memory_Kind_Args* args);
 
 // ------------------------------- Executables ---------------------------------
 
@@ -1783,6 +1798,8 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Device_LocalHardwareId);
   _PJRT_API_STRUCT_FIELD(PJRT_Device_AddressableMemories);
   _PJRT_API_STRUCT_FIELD(PJRT_Device_MemoryStats);
+
+  _PJRT_API_STRUCT_FIELD(PJRT_Memory_Kind);
 
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_Destroy);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_Name);

@@ -63,11 +63,10 @@ class PjRtCApiDeviceDescription : public PjRtDeviceDescription {
 
 class PjRtCApiMemorySpace : public PjRtMemorySpace {
  public:
-  explicit PjRtCApiMemorySpace(PJRT_Memory* c_memory) : c_memory_(c_memory) {}
+  explicit PjRtCApiMemorySpace(PjRtCApiClient* client, PJRT_Memory* c_memory)
+      : client_(client), c_memory_(c_memory) {}
 
-  PjRtClient* client() const override {
-    LOG(FATAL) << "PJRT C API does not support PjRtMemorySpace::client";
-  }
+  PjRtClient* client() const override;
 
   absl::Span<PjRtDevice* const> devices() const override {
     LOG(FATAL) << "PJRT C API does not support PjRtMemorySpace::devices";
@@ -77,10 +76,7 @@ class PjRtCApiMemorySpace : public PjRtMemorySpace {
     LOG(FATAL) << "PJRT C API does not support PjRtMemorySpace::id";
   }
 
-  absl::string_view memory_space_kind() const override {
-    LOG(FATAL)
-        << "PJRT C API does not support PjRtMemorySpace::memory_space_kind";
-  }
+  absl::string_view memory_space_kind() const override;
 
   absl::string_view DebugString() const override {
     LOG(FATAL) << "PJRT C API does not support PjRtMemorySpace::DebugString";
@@ -90,8 +86,11 @@ class PjRtCApiMemorySpace : public PjRtMemorySpace {
     LOG(FATAL) << "PJRT C API does not support PjRtMemorySpace::ToString";
   }
 
+  const PJRT_Api* pjrt_c_api() const;
+
  private:
-  PJRT_Memory* c_memory_;  // NOLINT
+  PjRtCApiClient* client_;
+  PJRT_Memory* c_memory_;
 };
 
 class PjRtCApiDevice : public PjRtDevice {
