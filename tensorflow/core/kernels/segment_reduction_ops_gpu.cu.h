@@ -1214,7 +1214,6 @@ struct SparseSegmentGradV2Functor<GPUDevice, T, Tindices, Tsegmentids> {
             const Tsegmentids_internal* segment_ids,
             const TensorShape& dense_output_shape,
             typename AsyncOpKernel::DoneCallback done) {
-    const GPUDevice& device = context->eigen_gpu_device();
     const int64_t dense_output_dim0 = dense_output_shape.dim_size(0);
 
     // Allocate and compute segment weights (for Mean/SqrtN operations only).
