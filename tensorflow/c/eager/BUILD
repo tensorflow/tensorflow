@@ -655,6 +655,9 @@ tf_cuda_cc_test(
         ":tfe_op_internal",
         ":tfe_tensorhandle_internal",
         "//tensorflow/c:c_test_util",
+        "//tensorflow/c:tf_datatype",
+        "//tensorflow/c:tf_status",
+        "//tensorflow/c:tf_tensor",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
@@ -663,6 +666,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
+        "//tensorflow/core/platform:env",
         "@com_google_absl//absl/strings",
     ],
 )
