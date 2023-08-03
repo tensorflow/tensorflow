@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/data/service/auto_shard_rewriter.h"
+#include "tensorflow/core/data/service/graph_rewriters.h"
 
 #include <cstdlib>
 #include <iterator>
@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/data/auto_shard.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 #include "tensorflow/core/grappler/optimizers/data/optimizer_base.h"
+#include "tensorflow/core/grappler/optimizers/data/remove_compression_map.h"
 #include "tensorflow/core/kernels/data/experimental/auto_shard_dataset_op.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
@@ -83,6 +84,34 @@ bool ShouldReplaceDynamicPort(absl::string_view config_address,
          worker_url.has_port() && config_url.host() == worker_url.host();
 }
 }  // namespace
+
+StatusOr<GraphDef>
+RemoveCompressionMapRewriter::ApplyRemoveCompressionMapRewrite(
+    const GraphDef& graph_def) {
+  grappler::RemoveCompressionMap remove_compression_map;
+  tensorflow::RewriterConfig::CustomGraphOptimizer config = GetRewriteConfig();
+  TF_RETURN_IF_ERROR(remove_compression_map.Init(&config));
+
+  GraphDef input_graph = graph_def;
+  TF_ASSIGN_OR_RETURN(std::string dataset_node, GetDatasetNode(input_graph));
+  std::unique_ptr<tensorflow::grappler::GrapplerItem> grappler_item =
+      GetGrapplerItem(&input_graph, &dataset_node, /*add_fake_sinks=*/false);
+
+  GraphDef rewritten_graph;
+  std::unordered_map<std::string, tensorflow::DeviceProperties> device_map;
+  tensorflow::grappler::VirtualCluster cluster(device_map);
+  grappler::AutoShard::OptimizationStats stats;
+  TF_RETURN_IF_ERROR(remove_compression_map.OptimizeAndCollectStats(
+      &cluster, *grappler_item, &rewritten_graph, &stats));
+  return rewritten_graph;
+}
+
+tensorflow::RewriterConfig::CustomGraphOptimizer
+RemoveCompressionMapRewriter::GetRewriteConfig() const {
+  tensorflow::RewriterConfig::CustomGraphOptimizer config;
+  config.set_name("tf-data-service-remove-compression-map");
+  return config;
+}
 
 StatusOr<AutoShardRewriter> AutoShardRewriter::Create(const TaskDef& task_def) {
   TF_ASSIGN_OR_RETURN(

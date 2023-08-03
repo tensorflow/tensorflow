@@ -27,6 +27,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "mlir/Parser/Parser.h"  // from @llvm-project
@@ -44,13 +45,16 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/runtime/executable.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime2/executable.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
+#include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
+#include "tensorflow/compiler/xla/service/stream_pool.h"
 #include "tensorflow/compiler/xla/service/xla_debug_info_manager.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
@@ -224,14 +228,15 @@ Status ExecuteThunks(const std::string& module_name, ModuleIdentifier module_id,
   }
 
   // Create the needed streams to support NcclCollectiveThunk.
-  absl::InlinedVector<se::Stream*, kAsyncStreamTotal> async_comms_streams;
-  for (int64_t i = 0; i < kAsyncStreamTotal; ++i) {
-    StatusOr<StreamPool::Ptr> async_comms_stream =
-        run_options->BorrowStream(executor->device_ordinal(), stream_priority);
-    async_comms_streams.push_back(
-        async_comms_stream.ok() ? async_comms_stream->get() : nullptr);
+  absl::InlinedVector<se::Stream*, kAsyncStreamTotal> async_comms_streams(
+      kAsyncStreamTotal, nullptr);
+  StatusOr<std::vector<StreamPool::Ptr>> streams = run_options->BorrowStreams(
+      executor->device_ordinal(), kAsyncStreamTotal, stream_priority);
+  if (streams.ok()) {
+    for (int64_t i = 0; i < kAsyncStreamTotal; ++i) {
+      async_comms_streams[i] = streams->at(i).get();
+    }
   }
-
   uint64_t start_nanos = tsl::Env::Default()->NowNanos();
 
   tsl::profiler::TraceMe hlo_module_activity(

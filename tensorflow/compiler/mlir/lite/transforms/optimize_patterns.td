@@ -1520,3 +1520,43 @@ def FuseTransposeFCRhsToBatchMatmul : Pat<
                      $asymmetric_quantize_inputs),
   [(AreLastTwoDimsTransposed $perm_value), (IsNoneType $bias),
    (NotFromDequant $rhs)]>;
+
+def TransposeFCLastTwoDims:
+  NativeCodeCall<"TransposeLastTwoDims($0[0].getType())">;
+
+// Fuses TFL_FullyConnectedOp and TFL_TransposeOp Rhs to TFL_BatchMatMulOp when
+// it's used by TFL_BatchMatMulOp and "transpose_lhs" is true.
+def FuseTransposeFCLhsToBatchMatmul : Pat<
+  (TFL_BatchMatMulOp
+    (TFL_FullyConnectedOp:$fc_output
+      (TFL_TransposeOp TensorOf<[F32]>:$fc_lhs,
+                       (Arith_ConstantOp:$perm_value $p0)),
+      TensorOf<[F32]>:$fc_rhs,
+      $bias, $TFL_AF_None, $TFL_FCWO_Default,
+      $keep_num_dims, $asymmetric_quantize_inputs_fc
+    ),
+    $bmm_rhs, ConstBoolAttrTrue, $transpose_rhs,
+    $asymmetric_quantize_inputs_bmm
+  ),
+  (TFL_BatchMatMulOp
+    (TFL_BatchMatMulOp $fc_rhs, $fc_lhs, ConstBoolAttrFalse, ConstBoolAttrFalse,
+                       $asymmetric_quantize_inputs_fc,
+                       (returnType (TransposeFCLastTwoDims $fc_output))
+    ),
+    $bmm_rhs, ConstBoolAttrFalse, $transpose_rhs,
+    $asymmetric_quantize_inputs_bmm
+  ),
+  [(AreLastTwoDimsTransposed $perm_value), (IsNoneType $bias)]>;
+
+// Fuses TFL_TransposeOp after TFL_BatchMatMulOp into the BMM.
+def FuseTransposeAfterBatchMatmul : Pat<
+  (TFL_TransposeOp
+    (TFL_BatchMatMulOp $lhs, $rhs, ConstBoolAttrFalse, ConstBoolAttrTrue,
+                       $asymmetric_quantize_inputs
+    ),
+    (Arith_ConstantOp:$perm_value $p0)
+  ),
+  (TFL_BatchMatMulOp $rhs, $lhs, ConstBoolAttrFalse, ConstBoolAttrTrue,
+                     $asymmetric_quantize_inputs
+  ),
+  [(AreLastTwoDimsTransposed $perm_value)]>;

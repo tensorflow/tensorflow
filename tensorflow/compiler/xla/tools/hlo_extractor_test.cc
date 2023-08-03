@@ -148,9 +148,9 @@ TEST_F(HloExtractorTest, ExtractFromMultipleComputation) {
     calculate_alpha {
       c.1 = f32[] constant(1)
       c.2 = f32[] constant(2)
-      c.3 = f32[] add(c.1, c.2)
-      c.4 = f32[] constant(4)
-      ROOT ret = f32[] subtract(c.4, c.3)
+      add.0 = f32[] add(c.1, c.2)
+      c.3 = f32[] constant(4)
+      ROOT ret = f32[] subtract(add.0, c.3)
     }
     
     ENTRY axpy_computation {
@@ -159,39 +159,58 @@ TEST_F(HloExtractorTest, ExtractFromMultipleComputation) {
       x = f32[10] parameter(0)
       ax = f32[10] multiply(broadcast, x)
       y = f32[10] parameter(1)
-      ROOT add = f32[10] add(ax, y)
+      ROOT add.1 = f32[10] add(ax, y)
     }
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  {
-    // Find the kSubtract instruction in computation: calculate_alpha
-    HloInstruction* inst =
-        FindInstruction(hlo_module.get(), HloOpcode::kSubtract);
-    EXPECT_NE(inst, nullptr);
-    EXPECT_THAT(inst, op::Subtract());
 
-    // Extract from the non-entry computation, with kSubstract instruction as
-    // the new root instruction
-    auto extracted_module = ExtractModule(inst, /*height=*/1);
-    EXPECT_THAT(extracted_module->entry_computation()->root_instruction(),
-                op::Subtract(op::Constant(), op::Add()));
-    EXPECT_EQ(extracted_module->computation_count(), 1);
+  HloInstruction* inst = FindInstruction(hlo_module.get(), "add.0");
+  EXPECT_THAT(inst, op::Add());
+
+  auto extract_selector = [&inst](const HloInstruction* hlo_inst) {
+    return hlo_inst != inst;
+  };
+
+  // Exclude `add.0 = f32[] add(c.1, c.2)` from computation `calculate_alpha`,
+  // and replace it with a constant.
+  {
+    auto replace_type_selector = [](const HloInstruction* hlo_inst) {
+      return ReplaceType::kReplaceConst;
+    };
+
+    auto extracted_module =
+        ExtractModule(hlo_module->entry_computation()->root_instruction(),
+                      /*height=*/-1, /*extract_selector=*/extract_selector,
+                      /*replace_type_selector=*/replace_type_selector,
+                      /*cross_computation=*/true);
+    EXPECT_EQ(extracted_module->computation_count(), 2);
+    auto calculate_alpha_root_instruction =
+        FindComputation(extracted_module.get(), "calculate_alpha")
+            ->root_instruction();
+    EXPECT_THAT(calculate_alpha_root_instruction,
+                op::Subtract(op::Constant(), op::Constant()));
   }
 
+  // Exclude `add.0 = f32[] add(c.1, c.2)` from computation `calculate_alpha`,
+  // and replace it with a broadcasted zero.
   {
-    // FindInstruction iterates from the ENTRY computation, therefore, it
-    // matches to the kAdd instruction at the entry computation, instead of the
-    // kAdd instruction in the Computation:calculate_alpha
-    HloInstruction* inst = FindInstruction(hlo_module.get(), "add");
-    EXPECT_NE(inst, nullptr);
-    EXPECT_THAT(inst, op::Add(op::Multiply(), op::Parameter()));
+    auto replace_type_selector = [](const HloInstruction* hlo_inst) {
+      return ReplaceType::kReplaceZeroBroadcast;
+    };
 
-    auto extracted_module = ExtractModule(inst);
-    EXPECT_THAT(extracted_module->entry_computation()->root_instruction(),
-                op::Add(op::Multiply(), op::Parameter()));
+    auto extracted_module =
+        ExtractModule(hlo_module->entry_computation()->root_instruction(),
+                      /*height=*/-1, /*extract_selector=*/extract_selector,
+                      /*replace_type_selector=*/replace_type_selector,
+                      /*cross_computation=*/true);
     EXPECT_EQ(extracted_module->computation_count(), 2);
+    auto calculate_alpha_root_instruction =
+        FindComputation(extracted_module.get(), "calculate_alpha")
+            ->root_instruction();
+    EXPECT_THAT(calculate_alpha_root_instruction,
+                op::Subtract(op::Broadcast(op::Constant()), op::Constant()));
   }
 }
 

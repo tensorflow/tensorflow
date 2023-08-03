@@ -3611,6 +3611,43 @@ func.func @dont_fuse_non_2d_upscaling_wrong_perm(%arg0: tensor<8x1x8x1280xf32>) 
   return %transpose_second : tensor<1x16x16x1280xf32>
 }
 
+// CHECK-LABEL: FuseReshapeAndTransposeAroundBatchMatmul
+func.func @FuseReshapeAndTransposeAroundBatchMatmul(%arg0: tensor<1x128x1024xf32>, %arg1: tensor<1024x16xf32>) -> tensor<1x128x16xf32> {
+  %cst_0 = arith.constant dense<[1, 2, 0]> : tensor<3xi32>
+  %cst_1 = arith.constant dense<[16, 1, 128]> : tensor<3xi32>
+  %cst_2 = arith.constant dense<[1024, 128]> : tensor<2xi32>
+  %cst_3 = arith.constant dense<[2, 0, 1]> : tensor<3xi32>
+  %0 = "tfl.transpose"(%arg0, %cst_3) : (tensor<1x128x1024xf32>, tensor<3xi32>) -> tensor<1024x1x128xf32>
+  %1 = "tfl.reshape"(%0, %cst_2) : (tensor<1024x1x128xf32>, tensor<2xi32>) -> tensor<1024x128xf32>
+  // CHECK: %[[BMM:.*]] = "tfl.batch_matmul"(%arg0, %arg1) {adj_x = false, adj_y = false, asymmetric_quantize_inputs = false}
+  // CHECK-NOT: tfl.reshape
+  // CHECK-NOT: tfl.transpose
+  %2 = "tfl.batch_matmul"(%arg1, %1) {adj_x = true, adj_y = false, asymmetric_quantize_inputs = false} : (tensor<1024x16xf32>, tensor<1024x128xf32>) -> tensor<16x128xf32>
+  %3 = "tfl.reshape"(%2, %cst_1) : (tensor<16x128xf32>, tensor<3xi32>) -> tensor<16x1x128xf32>
+  %4 = "tfl.transpose"(%3, %cst_0) : (tensor<16x1x128xf32>, tensor<3xi32>) -> tensor<1x128x16xf32>
+  func.return %4 : tensor<1x128x16xf32>
+  // CHECK: return %[[BMM]] : tensor<1x128x16xf32>
+}
+
+// CHECK-LABEL: FuseReshapeAndTransposeAroundBatchMatmulWithLargerThan3Rank
+func.func @FuseReshapeAndTransposeAroundBatchMatmulWithLargerThan3Rank(%arg0: tensor<1x128x4x256xf32>, %arg1: tensor<16x1024xf32>) -> tensor<1x128x16xf32> {
+  %cst_0 = arith.constant dense<[1, 2, 0]> : tensor<3xi32>
+  %cst_1 = arith.constant dense<[16, 1, 128]> : tensor<3xi32>
+  %cst_2 = arith.constant dense<[1024, 128]> : tensor<2xi32>
+  %cst_3 = arith.constant dense<[2, 3, 0, 1]> : tensor<4xi32>
+  %0 = "tfl.transpose"(%arg0, %cst_3) : (tensor<1x128x4x256xf32>, tensor<4xi32>) -> tensor<4x256x1x128xf32>
+  %1 = "tfl.reshape"(%0, %cst_2) : (tensor<4x256x1x128xf32>, tensor<2xi32>) -> tensor<1024x128xf32>
+  // CHECK: %[[RESHAE_ARG0:.*]] = "tfl.reshape"(%arg0, %[[CST:.*]]) : (tensor<1x128x4x256xf32>, tensor<3xi32>) -> tensor<1x128x1024xf32>
+  // CHECK: %[[BMM:.*]] = "tfl.batch_matmul"(%[[RESHAE_ARG0]], %arg1) {adj_x = false, adj_y = true, asymmetric_quantize_inputs = false}
+  // CHECK-NOT: tfl.reshape
+  // CHECK-NOT: tfl.transpose
+  %2 = "tfl.batch_matmul"(%arg1, %1) {adj_x = false, adj_y = false, asymmetric_quantize_inputs = false} : (tensor<16x1024xf32>, tensor<1024x128xf32>) -> tensor<16x128xf32>
+  %3 = "tfl.reshape"(%2, %cst_1) : (tensor<16x128xf32>, tensor<3xi32>) -> tensor<16x1x128xf32>
+  %4 = "tfl.transpose"(%3, %cst_0) : (tensor<16x1x128xf32>, tensor<3xi32>) -> tensor<1x128x16xf32>
+  func.return %4 : tensor<1x128x16xf32>
+  // CHECK: return %[[BMM]] : tensor<1x128x16xf32>
+}
+
 // CHECK-LABEL: FuseTransposeFCRhsToBatchMatmul
 func.func @FuseTransposeFCRhsToBatchMatmul(%arg0: tensor<16x1024xf32>, %arg1: tensor<1024x128xf32>, %arg2: none) -> tensor<16x128xf32> {
   %cst = arith.constant dense<[1, 0]> : tensor<2xi32>
@@ -3645,3 +3682,38 @@ func.func @NotFuseTransposeFCRhsFromSplitToBatchMatmul(%arg0: tensor<16x1024xf32
   func.return %1 : tensor<16x128xf32>
 }
 
+// CHECK-LABEL: FuseTransposeFCLhsToBatchMatmul
+func.func @FuseTransposeFCLhsToBatchMatmul(%arg0: tensor<1024x4xf32>, %arg1: tensor<8x1024xf32>, %arg2: tensor<4x256xf32>) -> tensor<8x256xf32> {
+  %cst_0 = arith.constant dense<[1, 0]> : tensor<2xi32>
+  %cst_1 = "tfl.no_value"() {value} : () -> none
+  %0 = "tfl.transpose"(%arg0, %cst_0) : (tensor<1024x4xf32>, tensor<2xi32>) -> tensor<4x1024xf32>
+  // CHECK: %[[RES0:.*]] = "tfl.batch_matmul"(%arg1, %arg0) {adj_x = false, adj_y = false, asymmetric_quantize_inputs = false} : (tensor<8x1024xf32>, tensor<1024x4xf32>) -> tensor<8x4xf32>
+  %1 = "tfl.fully_connected"(%0, %arg1, %cst_1) {asymmetric_quantize_inputs = false, fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<4x1024xf32>, tensor<8x1024xf32>, none) -> tensor<4x8xf32>
+  // CHECK: %[[RES1:.*]] = "tfl.batch_matmul"(%[[RES0]], %arg2) {adj_x = false, adj_y = false, asymmetric_quantize_inputs = false} : (tensor<8x4xf32>, tensor<4x256xf32>) -> tensor<8x256xf32>
+  %2 = "tfl.batch_matmul"(%1, %arg2) {adj_x = true, adj_y = false, asymmetric_quantize_inputs = false} : (tensor<4x8xf32>, tensor<4x256xf32>) -> tensor<8x256xf32>
+  func.return %2 : tensor<8x256xf32>
+  // CHECK: return %[[RES1]] : tensor<8x256xf32>
+}
+
+// CHECK-LABEL: FuseTransposeReshapeIntoBatchMatmul
+func.func @FuseTransposeReshapeIntoBatchMatmul(%arg0: tensor<4x1024xf32>, %arg1: tensor<8x4x256xf32>, %arg2: none) -> tensor<4x8xf32> {
+  %cst_0 = arith.constant dense<[1024, 8]> : tensor<2xi32>
+  %cst_1 = arith.constant dense<[1, 2, 0]> : tensor<3xi32>
+  %0 = "tfl.transpose"(%arg1, %cst_1) : (tensor<8x4x256xf32>, tensor<3xi32>) -> tensor<4x256x8xf32>
+  %1 = "tfl.reshape"(%0, %cst_0) : (tensor<4x256x8xf32>, tensor<2xi32>) -> tensor<1024x8xf32>
+  // CHECK: %[[RES0:.*]] = "tfl.reshape"(%arg1, %[[CST:.*]]) : (tensor<8x4x256xf32>, tensor<2xi32>) -> tensor<8x1024xf32>
+  // CHECK: %[[RES1:.*]] = "tfl.batch_matmul"(%arg0, %[[RES0]]) {adj_x = false, adj_y = true, asymmetric_quantize_inputs = false} : (tensor<4x1024xf32>, tensor<8x1024xf32>) -> tensor<4x8xf32>
+  %2 = "tfl.batch_matmul"(%arg0, %1) {adj_x = false, adj_y = false, asymmetric_quantize_inputs = false} : (tensor<4x1024xf32>, tensor<1024x8xf32>) -> tensor<4x8xf32>
+  func.return %2 : tensor<4x8xf32>
+  // CHECK: return %[[RES1]] : tensor<4x8xf32>
+}
+
+// CHECK-LABEL: FuseTransposeAfterBatchMatmul
+func.func @FuseTransposeAfterBatchMatmul(%arg0: tensor<4x1024xf32>, %arg1: tensor<8x1024xf32>, %arg2: none) -> tensor<8x4xf32> {
+  %cst = arith.constant dense<[1, 0]> : tensor<2xi32>
+  // CHECK: %[[RES0:.*]] = "tfl.batch_matmul"(%arg1, %arg0) {adj_x = false, adj_y = true, asymmetric_quantize_inputs = false} : (tensor<8x1024xf32>, tensor<4x1024xf32>) -> tensor<8x4xf32>
+  %0 = "tfl.batch_matmul"(%arg0, %arg1) {adj_x = false, adj_y = true, asymmetric_quantize_inputs = false} : (tensor<4x1024xf32>, tensor<8x1024xf32>) -> tensor<4x8xf32>
+  %1 = "tfl.transpose"(%0, %cst) : (tensor<4x8xf32>, tensor<2xi32>) -> tensor<8x4xf32>
+  func.return %1 : tensor<8x4xf32>
+  // CHECK: return %[[RES0]] : tensor<8x4xf32>
+}

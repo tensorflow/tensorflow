@@ -11258,6 +11258,9 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
   let extraClassDeclaration = [{
     // Gets the argument operands to the called function.
     operand_range getArgOperands() { return getArgs(); }
+    MutableOperandRange getArgOperandsMutable() {
+      return getArgsMutable();
+    }
 
     // Returns the callee of this operation.
     CallInterfaceCallable getCallableForCallee() { return getFAttr(); }

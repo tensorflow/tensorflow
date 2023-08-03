@@ -38,17 +38,21 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/str_split.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/heap_simulator.h"
 #include "tensorflow/compiler/xla/service/hlo_value.h"
 #include "tensorflow/compiler/xla/service/memory_space_assignment_tuning_utils.h"
 #include "tensorflow/compiler/xla/service/memory_space_assignment_utils.h"
 #include "tensorflow/compiler/xla/service/tuple_util.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
@@ -3394,11 +3398,6 @@ HeapSimulator::Result<HloValue> AlternateMemoryBestFitHeap::Finish() {
   if (options_.autotuning_config.has_value()) {
     CHECK_EQ((*options_.autotuning_config).size(), buffer_intervals_.size());
   }
-  // TODO(b/275905276): Add support to allow both slicing and repacking to be
-  // enabled. When done, remove this check.
-  CHECK(options_.sliced_prefetch_options.max_slices() < 2 ||
-        options_.max_repacks == 0)
-      << "Repacking must be disabled when slicing is enabled.";
   VLOG(1) << "Slicing is "
           << (options_.sliced_prefetch_options.max_slices() >= 2 ? "enabled"
                                                                  : "disabled");
@@ -5143,8 +5142,7 @@ void AlternateMemoryBestFitHeap::ImportRepackedAllocations() {
             << ", " << allocation_block.end_time << ") from "
             << allocation_block.initial_offset << " to "
             << allocation_block.offset;
-    allocation_block.allocation->mutable_chunk()->offset =
-        allocation_block.offset;
+    allocation_block.allocation->ReplaceOffset(allocation_block.offset);
     interval_tree_.Add(allocation_block.start_time, allocation_block.end_time,
                        HeapSimulator::Chunk::FromOffsetSize(
                            allocation_block.offset, allocation_block.size));
@@ -6923,6 +6921,11 @@ void MemorySpaceAssignment::Allocation::AddUse(HloUse use) {
   uses_.push_back(use);
 }
 
+void MemorySpaceAssignment::Allocation::ReplaceOffset(int64_t offset) {
+  CHECK(chunk_.has_value());
+  chunk_->offset = offset;
+}
+
 float MemorySpaceAssignment::ComputeEstimatedElapsedTime(
     const HloLiveRange& hlo_live_range, const AllocationSequence& allocations) {
   absl::flat_hash_map<const HloInstruction*, std::vector<ShapeIndex>>
@@ -7244,6 +7247,7 @@ MemorySpaceAssignment::SlicedCopyAllocation::SlicedCopyAllocation(
               slice_decisions_sorted_by_start_time),
           end_time,
           /*is_scoped_allocation=*/false),
+      original_shape_to_slice_(prev_allocation.defining_position().shape()),
       prev_allocation_(prev_allocation),
       update_layout_fn_(update_layout_fn) {
   CHECK_GE(slice_decisions_sorted_by_start_time.size(), 2);
@@ -7288,6 +7292,9 @@ Status ProcessCopyLikeAllocationUses(HloPosition& defining_position,
               use.instruction->mutable_operand(use.operand_number),
               use.operand_index));
     } else if (operand_shape != copy_complete->shape()) {
+      // When processing allocations, we treat bitcasts as trivial positions and
+      // do not create allocations for them. We insert bitcasts after copies, to
+      // account for the fact that we don't have an allocation for the bitcast.
       VLOG(4) << "Old shape = " << operand_shape.ToString()
               << ", new shape = " << copy_complete->shape().ToString()
               << "; inserting a bitcast.";
@@ -7306,6 +7313,24 @@ Status ProcessCopyLikeAllocationUses(HloPosition& defining_position,
 Status MemorySpaceAssignment::SlicedCopyAllocation::Process() {
   Shape shape = defining_position().shape();
   HloInstruction* producing_instruction = AddGetTupleElements();
+
+  // Calling Process() over the previous allocation might have modified the
+  // defining position, and hence the shape that was used when we computed
+  // the slices. In cases where the shape has changed, we insert a bitcast, so
+  // slice instructions operate on the originally sliced shape.
+  //
+  // Note, these bitcasts are being inserted in the same cases that
+  // ProcessCopyLikeAllocationUses() is inserting bitcasts, except we are
+  // inserting the bitcasts before the copy, instead of after the copy.
+  if (!Shape::Equal().IgnoreMemorySpaceInLayout()(shape,
+                                                  original_shape_to_slice_)) {
+    int64_t new_memory_space = shape.layout().memory_space();
+    shape = original_shape_to_slice_;
+    shape.mutable_layout()->set_memory_space(new_memory_space);
+    producing_instruction = producing_instruction->parent()->AddInstruction(
+        HloInstruction::CreateBitcast(shape, producing_instruction));
+  }
+
   HloComputation* computation = producing_instruction->parent();
   std::vector<HloInstruction*> slice_dones;
   slice_dones.reserve(slice_details_sorted_by_start_time_.size());
@@ -7347,6 +7372,15 @@ HloPosition MemorySpaceAssignment::SlicedCopyAllocation::defining_position()
 int64_t MemorySpaceAssignment::SlicedCopyAllocation::earliest_available_time()
     const {
   return sorted_slice_details().back().copy_done_before_time;
+}
+
+void MemorySpaceAssignment::SlicedCopyAllocation::ReplaceOffset(
+    int64_t offset) {
+  int64_t diff = chunk().offset - offset;
+  Allocation::ReplaceOffset(offset);
+  for (SliceDetail& slice_detail : slice_details_sorted_by_start_time_) {
+    slice_detail.slice_decision.chunk.offset -= diff;
+  }
 }
 
 const std::vector<MemorySpaceAssignment::SlicedCopyAllocation::SliceDetail>&
@@ -7885,8 +7919,9 @@ class AsyncCopyStepForSlice : public AsyncCopyStep {
   }
 
   DonePhase done_phase() const override {
-    MemorySpaceAssignment::SlicedCopyAllocation::SliceDetail& slice_details =
-        sliced_copy_allocation_->mutable_sorted_slice_details()[slice_index_];
+    const MemorySpaceAssignment::SlicedCopyAllocation::SliceDetail&
+        slice_details =
+            sliced_copy_allocation_->sorted_slice_details()[slice_index_];
     DonePhase phase{slice_details.copy_done_before_time,
                     slice_details.copy_done};
 

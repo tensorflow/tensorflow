@@ -321,11 +321,3 @@ cc_library(
     name = "any_ptr",
     hdrs = ["any_ptr.h"],
 )
-
-cc_library(
-    name = "export_error",
-    hdrs = ["export_error.h"],
-    deps = [
-        "@com_google_absl//absl/strings",
-    ],
-)

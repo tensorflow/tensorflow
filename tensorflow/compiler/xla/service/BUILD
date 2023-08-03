@@ -3102,6 +3102,7 @@ cc_library(
     hdrs = ["while_loop_simplifier.h"],
     deps = [
         ":call_inliner",
+        ":hlo_dce",
         ":hlo_pass",
         ":pattern_matcher",
         ":while_loop_analysis",
@@ -4468,6 +4469,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:btree",
@@ -4506,6 +4508,7 @@ xla_cc_test(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",

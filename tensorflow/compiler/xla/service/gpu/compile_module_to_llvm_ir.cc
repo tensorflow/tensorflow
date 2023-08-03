@@ -354,8 +354,10 @@ Status CompileModuleToLlvmIrImpl(
   results->llvm_module->setTargetTriple(target_triple);
   results->llvm_module->setDataLayout(data_layout);
 
+  const int64_t scheduler_mem_limit =
+      GetSchedulerMemoryLimit(hlo_module, gpu_device_info, pointer_size);
   TF_RETURN_IF_ERROR(
-      ScheduleGpuModule(hlo_module, pointer_size, gpu_device_info));
+      ScheduleGpuModule(hlo_module, pointer_size, scheduler_mem_limit));
   {
     HloPassPipeline pipeline("post-scheduling-passes");
 
@@ -381,7 +383,7 @@ Status CompileModuleToLlvmIrImpl(
     HloRematerialization::Options options(
         hlo_cost_analysis, rematerialization_mode_config,
         // Assume 75% of the total device memory is available for XLA.
-        /*memory_limit_bytes=*/gpu_device_info.device_memory_size * 0.75,
+        /*memory_limit_bytes=*/scheduler_mem_limit,
         /*block_size_limit=*/1, /*block_rematerialization_factor=*/1,
         /*min_remat_size=*/0, /*compact_shape_function=*/nullptr,
         /*host_memory_offload_config=*/std::nullopt);

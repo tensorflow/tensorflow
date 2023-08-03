@@ -286,6 +286,9 @@ void CallOp::setCalleeFromCallable(mlir::CallInterfaceCallable callee) {
 }
 
 mlir::Operation::operand_range CallOp::getArgOperands() { return getInputs(); }
+mlir::MutableOperandRange CallOp::getArgOperandsMutable() {
+  return getInputsMutable();
+}
 
 mlir::LogicalResult CallOp::verifySymbolUses(
     mlir::SymbolTableCollection& symbol_table) {
@@ -377,6 +380,9 @@ void CallLoadedExecutableOp::setCalleeFromCallable(
 
 mlir::Operation::operand_range CallLoadedExecutableOp::getArgOperands() {
   return getInputs();
+}
+mlir::MutableOperandRange CallLoadedExecutableOp::getArgOperandsMutable() {
+  return getInputsMutable();
 }
 
 mlir::LogicalResult CallLoadedExecutableOp::verifySymbolUses(

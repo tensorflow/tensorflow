@@ -39,11 +39,14 @@ limitations under the License.
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
+#include "mlir/Dialect/Tosa/Utils/QuantUtils.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_utils.h"
 
@@ -79,6 +82,22 @@ namespace {
 // return the adjusted axis value wrapped around the tensor size.
 int32_t adjust_axis(int32_t axis, int32_t tensor_size) {
   return axis >= 0 ? axis % tensor_size : (axis + tensor_size) % tensor_size;
+}
+
+template <typename T>
+int countLeadingZeros(T integer_input) {
+  if (integer_input == 0) {
+    return std::numeric_limits<T>::digits;
+  }
+
+  const T one_in_leading_positive = static_cast<T>(1)
+                                    << (std::numeric_limits<T>::digits - 1);
+  int leading_zeros = 0;
+  while (integer_input < one_in_leading_positive) {
+    integer_input <<= 1;
+    ++leading_zeros;
+  }
+  return leading_zeros;
 }
 };  // namespace
 
@@ -2826,8 +2845,10 @@ template <typename T>
 std::optional<Value> convertReduceOpCommon(
     PatternRewriter& rewriter, Operation* op, RankedTensorType output_type,
     Value input_value, ElementsAttr axes_elems, Type reduce_element_type,
-    bool is_quantized, double input_scale, int64_t input_zp,
-    double output_scale, int64_t output_zp) {
+    bool is_quantized, int32_t input_scale_multiplier,
+    int32_t input_scale_shift, int64_t input_zp,
+    int32_t output_scale_multiplier, int32_t output_scale_shift,
+    int64_t output_zp) {
   RankedTensorType input_type =
       dyn_cast<RankedTensorType>(input_value.getType());
   if (!input_type) return std::nullopt;
@@ -2872,7 +2893,8 @@ std::optional<Value> convertReduceOpCommon(
     SmallVector<int64_t> shape_vec(input_shape.begin(), input_shape.end());
 
     if (is_quantized) {
-      val = buildRescaleToInt32(rewriter, op, val, input_scale, input_zp);
+      val = buildRescaleToInt32(rewriter, op, val, input_scale_multiplier,
+                                input_scale_shift, input_zp);
     }
 
     for (auto axis_val : axes) {
@@ -2892,8 +2914,10 @@ std::optional<Value> convertReduceOpCommon(
   if (is_quantized) {
     UnrankedTensorType output_rescale_type =
         UnrankedTensorType::get(output_type.getElementType());
-    val = buildRescale(rewriter, op, output_rescale_type, val, output_scale, 0,
-                       output_zp, false, true);
+    val = buildRescale(rewriter, op, output_rescale_type, val,
+                       output_scale_multiplier, output_scale_shift,
+                       /*input_zp=*/0, output_zp, IsTFLDoubleRoundingMode(),
+                       /*scale32=*/true);
   }
 
   // Squeeze out the reduced axes.
@@ -2902,6 +2926,31 @@ std::optional<Value> convertReduceOpCommon(
       rewriter.getDenseI64ArrayAttr(
           tensorflow::ConvertMlirShapeToTF(output_shape)));
   return reshape_op.getResult();
+}
+
+// Common function for lowering reduce operations to TOSA ops.
+template <typename T>
+std::optional<Value> convertReduceOpCommon(
+    PatternRewriter& rewriter, Operation* op, RankedTensorType output_type,
+    Value input_value, ElementsAttr axes_elems, Type reduce_element_type,
+    bool is_quantized, double input_scale, int64_t input_zp,
+    double output_scale, int64_t output_zp) {
+  const int32_t scale_width = 32;
+
+  int32_t input_scale_multiplier;
+  int32_t input_scale_shift;
+  computeMultiplierAndShift(input_scale, input_scale_multiplier,
+                            input_scale_shift, scale_width);
+
+  int32_t output_scale_multiplier;
+  int32_t output_scale_shift;
+  computeMultiplierAndShift(output_scale, output_scale_multiplier,
+                            output_scale_shift, scale_width);
+
+  return convertReduceOpCommon<T>(
+      rewriter, op, output_type, input_value, axes_elems, reduce_element_type,
+      is_quantized, input_scale_multiplier, input_scale_shift, input_zp,
+      output_scale_multiplier, output_scale_shift, output_zp);
 }
 
 // Lowers ReduceAll to a sequence of TOSA ops.
@@ -3047,7 +3096,11 @@ std::optional<Value> convertReduceMeanOp(PatternRewriter& rewriter,
                                          RankedTensorType output_type,
                                          Value input_value,
                                          ElementsAttr axes_elems) {
-  // reduce_mean is lowered as followed:
+  // reduce_mean is lowered as followed for quantized types:
+  // op1 = reduce_sum(input) with the 1.0/num_elements_on_reduced_axis
+  // integrated to the rescale layer,
+  //
+  // and for floating-point types:
   // op1 = reduce_sum(input)
   // op2 = mul(op1, 1.0 / num_elements_on_reduced_axis)
 
@@ -3086,13 +3139,16 @@ std::optional<Value> convertReduceMeanOp(PatternRewriter& rewriter,
     }
     num_elems_on_reduced_axis *= input_type.getShape()[axis_val];
   }
-  double div_scale = 1.0 / static_cast<double>(num_elems_on_reduced_axis);
 
-  double input_scale = 1.0f;
-  double output_scale = 1.0f;
   int64_t input_zp = 0;
   int64_t output_zp = 0;
   Type reduce_element_type = input_type.getElementType();
+
+  int32_t input_scale_multiplier = 1;
+  int32_t input_scale_shift = 0;
+
+  int32_t output_scale_multiplier = 1;
+  int32_t output_scale_shift = 0;
 
   if (input_is_qtype) {
     auto input_qtype =
@@ -3100,21 +3156,43 @@ std::optional<Value> convertReduceMeanOp(PatternRewriter& rewriter,
     auto output_qtype =
         output_type.getElementType().cast<mlir::quant::UniformQuantizedType>();
 
-    // Combine 'div_scale' as part of output rescale
-    output_scale = div_scale * input_qtype.getScale() / output_qtype.getScale();
+    const int32_t scale_width = 32;
+    computeMultiplierAndShift(1.0f, input_scale_multiplier, input_scale_shift,
+                              scale_width);
+    computeMultiplierAndShift(input_qtype.getScale() / output_qtype.getScale(),
+                              output_scale_multiplier, output_scale_shift,
+                              scale_width);
 
     input_zp = input_qtype.getZeroPoint();
     output_zp = output_qtype.getZeroPoint();
     reduce_element_type = rewriter.getI32Type();
+
+    // Match TFL REDUCE_MEAN reference kernel
+    // tensorflow/lite/kernels/internal/reference/reduce.h taking into account
+    // the shift difference between computeMultiplierAndShift and
+    // QuantizeMultiplier.
+    //
+    // Readapt output rescaling when calculating the mean to integrate a
+    // 1/num_elems_on_reduced_axis multiplier.
+    int shift = 63 - countLeadingZeros(
+                         static_cast<uint64_t>(num_elems_on_reduced_axis));
+    shift = std::min(shift, 32);
+    shift = std::min(shift, 62 - output_scale_shift);
+    output_scale_multiplier = static_cast<int32_t>(
+        (static_cast<int64_t>(output_scale_multiplier) << shift) /
+        num_elems_on_reduced_axis);
+    output_scale_shift = output_scale_shift + shift;
   }
 
   auto val = convertReduceOpCommon<tosa::ReduceSumOp>(
       rewriter, op, output_type, input_value, axes_elems, reduce_element_type,
-      input_is_qtype, input_scale, input_zp, output_scale, output_zp);
+      input_is_qtype, input_scale_multiplier, input_scale_shift, input_zp,
+      output_scale_multiplier, output_scale_shift, output_zp);
 
   if (!val.has_value()) return std::nullopt;
 
   if (!input_is_qtype) {
+    double div_scale = 1.0 / static_cast<double>(num_elems_on_reduced_axis);
     Value div_const = getTosaConstTensorSingleF32(rewriter, op, div_scale);
     return CreateOpAndInfer<tosa::MulOp>(rewriter, op->getLoc(), output_type,
                                          val.value(), div_const, 0)

@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
+#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
@@ -685,6 +686,47 @@ PJRT_Error* PJRT_Device_MemoryStats(PJRT_Device_MemoryStats_Args* args) {
     args->peak_pool_bytes = *stats.peak_pool_bytes;
   }
 
+  return nullptr;
+}
+
+// ------------------------------- Memory --------------------------------------
+
+PJRT_Error* PJRT_Memory_Id(PJRT_Memory_Id_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes("PJRT_Memory_Id_Args",
+                                                PJRT_Memory_Id_Args_STRUCT_SIZE,
+                                                args->struct_size));
+
+  args->id = args->memory->memory_space->id();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Memory_Kind(PJRT_Memory_Kind_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Memory_Kind_Args", PJRT_Memory_Kind_Args_STRUCT_SIZE,
+      args->struct_size));
+  args->memory_kind = args->memory->memory_space->memory_space_kind().data();
+  args->memory_kind_size =
+      args->memory->memory_space->memory_space_kind().size();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Memory_DebugString(PJRT_Memory_DebugString_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Memory_DebugString_Args", PJRT_Memory_DebugString_Args_STRUCT_SIZE,
+      args->struct_size));
+
+  args->debug_string = args->memory->memory_space->DebugString().data();
+  args->debug_string_size = args->memory->memory_space->DebugString().size();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Memory_ToString(PJRT_Memory_ToString_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Memory_ToString_Args", PJRT_Memory_ToString_Args_STRUCT_SIZE,
+      args->struct_size));
+
+  args->to_string = args->memory->memory_space->ToString().data();
+  args->to_string_size = args->memory->memory_space->ToString().size();
   return nullptr;
 }
 

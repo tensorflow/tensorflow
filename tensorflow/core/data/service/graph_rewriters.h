@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_DATA_SERVICE_AUTO_SHARD_REWRITER_H_
-#define TENSORFLOW_CORE_DATA_SERVICE_AUTO_SHARD_REWRITER_H_
+#ifndef TENSORFLOW_CORE_DATA_SERVICE_GRAPH_REWRITERS_H_
+#define TENSORFLOW_CORE_DATA_SERVICE_GRAPH_REWRITERS_H_
 
 #include <cstdint>
 #include <string>
@@ -30,6 +30,19 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+
+// TODO(mpcallanan): Refactor rewriters into shared base class.
+
+// Rewrites the dataset graph by removing the compression map.
+class RemoveCompressionMapRewriter {
+ public:
+  // Returns `graph_def` with the compression map removed.
+  StatusOr<GraphDef> ApplyRemoveCompressionMapRewrite(
+      const GraphDef& graph_def);
+
+ private:
+  tensorflow::RewriterConfig::CustomGraphOptimizer GetRewriteConfig() const;
+};
 
 // Rewrites the dataset graph by applying an auto-shard policy.
 class AutoShardRewriter {
@@ -93,4 +106,4 @@ class WorkerIndexResolver {
 }  // namespace data
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_DATA_SERVICE_AUTO_SHARD_REWRITER_H_
+#endif  // TENSORFLOW_CORE_DATA_SERVICE_GRAPH_REWRITERS_H_

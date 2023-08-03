@@ -304,7 +304,7 @@ tensorflow::Status CheckInputSpecs(
     if (!run_options.validate_input_specs_dry_run) {
       return tensorflow::errors::InvalidArgument(error_string);
     }
-    LOG_EVERY_N_SEC(ERROR, 5)
+    LOG_EVERY_N_SEC(WARNING, 5)
         << "TFRT input specs validation failed, " << error_string;
   }
 

@@ -25,7 +25,7 @@ PJRT_Client* CreateClient(const PJRT_Api* api) {
   PJRT_Client_Create_Args create_args;
   create_args.struct_size = PJRT_Client_Create_Args_STRUCT_SIZE;
   create_args.priv = nullptr;
-  create_args.client = nullptr;
+  create_args.create_options = nullptr;
   create_args.num_options = 0;
   create_args.kv_get_callback = nullptr;
   create_args.kv_put_callback = nullptr;

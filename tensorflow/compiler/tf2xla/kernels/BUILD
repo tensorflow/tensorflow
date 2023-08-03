@@ -183,6 +183,7 @@ tf_kernel_library(
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "//tensorflow/compiler/mlir/tensorflow:xla_sharding_util",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",

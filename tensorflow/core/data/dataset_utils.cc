@@ -980,6 +980,8 @@ REGISTER_DATASET_EXPERIMENT("file_locality", RandomJobSamplePercentage<0>,
                             IndependentHostTasks);
 REGISTER_DATASET_EXPERIMENT("file_locality_v2", RandomJobSamplePercentage<50>,
                             AllTasks);
+REGISTER_DATASET_EXPERIMENT("no_compression", RandomJobSamplePercentage<1>,
+                            AllTasks);
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

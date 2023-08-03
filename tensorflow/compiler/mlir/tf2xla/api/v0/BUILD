@@ -27,6 +27,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/mlir/tensorflow:translate_utils",
+        "//tensorflow/compiler/mlir/tensorflow:xla_sharding_util",
         "//tensorflow/compiler/mlir/tf2xla:mlir_bridge_rollout_policy",
         "//tensorflow/compiler/mlir/tf2xla/internal:mlir_pass_instrumentation",
         "//tensorflow/compiler/mlir/tf2xla/transforms:tf_xla_passes",

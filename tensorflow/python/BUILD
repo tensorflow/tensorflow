@@ -333,6 +333,7 @@ py_library(
         ":no_contrib",
         ":tf2",
         "//tensorflow/core/function/trace_type",
+        "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/compiler/mlir",
         "//tensorflow/python/compiler/xla",
         "//tensorflow/python/compiler/xla:compiler_py",

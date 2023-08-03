@@ -548,7 +548,7 @@ PjRtCApiDevice::PjRtCApiDevice(PJRT_Device* device, PjRtCApiClient* client)
   memory_spaces_.reserve(args.num_memories);
   memory_space_pointers_.reserve(args.num_memories);
   for (int i = 0; i < args.num_memories; ++i) {
-    memory_spaces_.emplace_back(args.memories[i]);
+    memory_spaces_.emplace_back(PjRtCApiMemorySpace(client_, args.memories[i]));
     memory_space_pointers_.emplace_back(&memory_spaces_.back());
   }
 }
@@ -633,6 +633,55 @@ StatusOr<tsl::AllocatorStats> PjRtCApiDevice::GetAllocatorStats() const {
     result.peak_pool_bytes = args.peak_pool_bytes;
   }
   return result;
+}
+
+// ------------------------------- Memory --------------------------------------
+
+const PJRT_Api* PjRtCApiMemorySpace::pjrt_c_api() const {
+  return client_->pjrt_c_api();
+}
+
+PjRtClient* PjRtCApiMemorySpace::client() const { return client_; }
+
+int PjRtCApiMemorySpace::id() const {
+  PJRT_Memory_Id_Args args;
+  args.struct_size = PJRT_Memory_Id_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.memory = c_memory_;
+  pjrt::LogFatalIfPjrtError(pjrt_c_api()->PJRT_Memory_Id(&args), pjrt_c_api());
+  return args.id;
+}
+
+absl::string_view PjRtCApiMemorySpace::memory_space_kind() const {
+  PJRT_Memory_Kind_Args args;
+  args.struct_size = PJRT_Memory_Kind_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.memory = c_memory_;
+
+  pjrt::LogFatalIfPjrtError(pjrt_c_api()->PJRT_Memory_Kind(&args),
+                            pjrt_c_api());
+
+  return absl::string_view(args.memory_kind, args.memory_kind_size);
+}
+
+absl::string_view PjRtCApiMemorySpace::DebugString() const {
+  PJRT_Memory_DebugString_Args args;
+  args.struct_size = PJRT_Memory_DebugString_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.memory = c_memory_;
+  pjrt::LogFatalIfPjrtError(pjrt_c_api()->PJRT_Memory_DebugString(&args),
+                            pjrt_c_api());
+  return absl::string_view(args.debug_string, args.debug_string_size);
+}
+
+absl::string_view PjRtCApiMemorySpace::ToString() const {
+  PJRT_Memory_ToString_Args args;
+  args.struct_size = PJRT_Memory_ToString_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.memory = c_memory_;
+  pjrt::LogFatalIfPjrtError(pjrt_c_api()->PJRT_Memory_ToString(&args),
+                            pjrt_c_api());
+  return absl::string_view(args.to_string, args.to_string_size);
 }
 
 // ------------------------------- Executables ---------------------------------

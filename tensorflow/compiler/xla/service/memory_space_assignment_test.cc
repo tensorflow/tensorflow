@@ -34,10 +34,13 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"
+#include "absl/strings/str_split.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
@@ -49,6 +52,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/instruction_hoister.h"
 #include "tensorflow/compiler/xla/service/memory_space_assignment.pb.h"
 #include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -11227,6 +11231,157 @@ ENTRY main {
     }
   }
   EXPECT_EQ(num_chunks_for_expected_aliases, 1);
+}
+
+TEST_F(SlicedPrefetchTest, Repack) {
+  absl::string_view hlo_string = R"(
+HloModule Slice, is_scheduled=true
+
+ENTRY main {
+  /* parameters */
+  p0 = f32[] parameter(0)
+  p1 = f32[16,16] parameter(1)
+  p2 = f32[32,16] parameter(2)
+  p3 = f32[16,16] parameter(3)
+  p4 = f32[32,16] parameter(4)
+
+  /* filler that we can prefetch over */
+  x1 = f32[] add(p0,p0)
+  x2 = f32[] add(x1, x1)
+
+  /* uses of p1 and p3 */
+  a = f32[16,16] sine(p1)
+  c = f32[16,16] sine(p3)
+
+  /* more filler, giving us time to prefetch p4, when repacking */
+  x3 = f32[] add(x2, x2)
+  x4 = f32[] add(x3, x3)
+
+  /* uses of p2 and p4 */
+  b = f32[32,16] sine(p2)
+  d = f32[32,16] sine(p4)
+
+  /* make sure that x4, a, b, c, d are not dead code */
+  z1 = f32[16,16] broadcast(x4), dimensions={}
+  z2 = f32[16,16] add(z1, a)
+  z3 = f32[32,16] concatenate(z2, c), dimensions={0}
+  z4 = f32[32,16] add(z3, b)
+  ROOT z5 = f32[32,16] add(z4, d)
+})";
+
+  // Create 2 copies of the module, one to run without repacking and one to run
+  // with repacking.
+  TF_ASSERT_OK_AND_ASSIGN(auto module_no_repacking,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(auto module_with_repacking,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  VLOG(1) << "Original module:\n"
+          << module_no_repacking->ToString(HloPrintOptions::ShortParsable());
+
+  // Setup slicing expectations
+  Shape f32_8_16 = ShapeUtil::MakeShape(F32, {8, 16});
+  Shape f32_16_16 = ShapeUtil::MakeShape(F32, {16, 16});
+  Shape f32_32_16 = ShapeUtil::MakeShape(F32, {32, 16});
+  EXPECT_CALL(slice_proposer_,
+              ProposeSlices(f32_16_16, EqualsSlicedPrefetchOptions(
+                                           options_.sliced_prefetch_options)))
+      .WillRepeatedly(Return(SliceProposalCollection({
+          SliceProposal({f32_8_16, std::vector<SliceParam>({{0, 8}, {0, 16}}),
+                         ShapeSize(f32_8_16)}),
+          SliceProposal({f32_8_16, std::vector<SliceParam>({{8, 16}, {0, 16}}),
+                         ShapeSize(f32_8_16)}),
+      })));
+  EXPECT_CALL(slice_proposer_,
+              ProposeSlices(f32_32_16, EqualsSlicedPrefetchOptions(
+                                           options_.sliced_prefetch_options)))
+      .WillRepeatedly(Return(SliceProposalCollection({
+          SliceProposal({f32_16_16, std::vector<SliceParam>({{0, 16}, {0, 16}}),
+                         ShapeSize(f32_16_16)}),
+          SliceProposal({f32_16_16,
+                         std::vector<SliceParam>({{16, 32}, {0, 16}}),
+                         ShapeSize(f32_16_16)}),
+      })));
+
+  // Force MSA to prefer prefetching (in order) p0, p1, p2, p3, p4, and then
+  // anything else.
+  MemorySpaceAssignment::BufferIntervalCompare buffer_interval_compare =
+      [](const MemorySpaceAssignment::BufferInterval& a,
+         const MemorySpaceAssignment::BufferInterval& b) {
+        auto get_priority = [](const HloInstruction* instruction) {
+          if (instruction->name() == "p1") {
+            return 1;
+          }
+          if (instruction->name() == "p2") {
+            return 2;
+          }
+          if (instruction->name() == "p3") {
+            return 3;
+          }
+          if (instruction->name() == "p4") {
+            return 4;
+          }
+          return 100;
+        };
+
+        return get_priority(a.buffer->defining_instruction()) <
+               get_priority(b.buffer->defining_instruction());
+      };
+
+  // Configure MSA.
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(2, 50);
+  options_.max_size_in_bytes = 4 * 1024;
+  options_.max_repacks = 0;
+
+  // Run MSA without repacking
+  std::unique_ptr<PresetAssignments> assignments =
+      AssignMemorySpace(module_no_repacking.get(), options_,
+                        buffer_interval_compare, &prefetch_interval_picker);
+  VLOG(1) << "Post-MSA module (no repacking):\n"
+          << module_no_repacking->ToString(HloPrintOptions::ShortParsable());
+
+  // If repacking is disabled, p4 (the source of d) should not be prefetched.
+  const HloInstruction* d = nullptr;
+  for (const HloInstruction* i :
+       module_no_repacking->entry_computation()->instructions()) {
+    if (i->name() == "d") {
+      d = i;
+      break;
+    }
+  }
+  ASSERT_NE(d, nullptr);
+  EXPECT_FALSE(IsConcatBitcast(d->operand(0)));
+
+  // Configure MSA to repack.
+  absl::flat_hash_map<std::pair<int64_t, int64_t>, int64_t> repack_map;
+  // Move "p2" from offset 1024 to 2048.
+  repack_map[{2, 1024}] = 2048;
+  // Move "p3" from offset 3072 to 1024.
+  repack_map[{3, 3072}] = 1024;
+  FakeMemorySpaceAssignmentRepacker repacker =
+      FakeMemorySpaceAssignmentRepacker(repack_map);
+  options_.max_repacks = 1;
+  options_.repacker = &repacker;
+  assignments =
+      AssignMemorySpace(module_with_repacking.get(), options_,
+                        buffer_interval_compare, &prefetch_interval_picker);
+  VLOG(1) << "Post-MSA module (with repacking):\n"
+          << module_with_repacking->ToString(HloPrintOptions::ShortParsable());
+
+  // If repacking is enabled, p4 (the source of d) should be prefetched.
+  d = nullptr;
+  for (const HloInstruction* i :
+       module_with_repacking->entry_computation()->instructions()) {
+    if (i->name() == "d") {
+      d = i;
+      break;
+    }
+  }
+  ASSERT_NE(d, nullptr);
+  EXPECT_TRUE(IsConcatBitcast(d->operand(0)));
+
+  // Check expectations on the chunks assigned to the asynchronous sliced copy.
+  // In particular, we want to make sure the slices are still contiguous.
+  TF_EXPECT_OK(CheckSliceChunks(*assignments, d->operand(0)));
 }
 
 }  // namespace
