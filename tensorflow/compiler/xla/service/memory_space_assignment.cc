@@ -6293,9 +6293,21 @@ bool DoWeHaveEnoughCopyResource(
   // The specs must be in slice start time order because that's the order
   // they'll be added to prefetch_async_copy_resource_ in
   // AddAsyncSlicesForPrefetch(), if the solution is selected.
+  static const float kSlicedCopyResourceInflation = 1.8;
   for (int i = 0; i < slice_start_times.size(); ++i) {
+    float original_copy_resource = copy_resource_per_slice[i];
+    float new_copy_resource = original_copy_resource;
+    if (slice_start_times.size() > 1) {
+      // This is a hack that makes us more conservative about using sliced
+      // prefetching vs unsliced prefetching.
+      new_copy_resource = original_copy_resource * kSlicedCopyResourceInflation;
+      VLOG(5)
+          << "Inflating required copy resources DoWeHaveEnoughCopyResource() "
+             "slice check from "
+          << original_copy_resource << " to " << new_copy_resource;
+    }
     specs.push_back(
-        {slice_start_times[i], prefetch_end_time, copy_resource_per_slice[i]});
+        {slice_start_times[i], prefetch_end_time, new_copy_resource});
   }
 
   auto specs_to_string = [&specs]() {
