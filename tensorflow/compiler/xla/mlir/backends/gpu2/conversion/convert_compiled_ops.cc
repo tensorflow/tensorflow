@@ -668,8 +668,10 @@ SmallVector<int64_t> getTiedOperands(lmhlo::SortOp op) {
 
 struct TerminatorOpLowering : public OpConversionPattern<lmhlo::TerminatorOp> {
   TerminatorOpLowering(TypeConverter &converter, MLIRContext *ctx,
-                       DeBufferization &state)
-      : OpConversionPattern(converter, ctx), state(state) {}
+                       DeBufferization &state, bool add_opt_barrier = true)
+      : OpConversionPattern(converter, ctx),
+        state(state),
+        add_opt_barrier(add_opt_barrier) {}
 
   LogicalResult matchAndRewrite(
       lmhlo::TerminatorOp op, OpAdaptor adaptor,
@@ -678,6 +680,14 @@ struct TerminatorOpLowering : public OpConversionPattern<lmhlo::TerminatorOp> {
 
     auto func = dyn_cast<func::FuncOp>(op->getParentOp());
     if (!func) return rewriter.notifyMatchFailure(op, "unsupported terminator");
+
+    // When lowering for StreamExecutor backend we don't need to add
+    // optimization barriers because API calls mutate buffers in place and
+    // external functions calls are not dead-code-eliminated.
+    if (!add_opt_barrier) {
+      rewriter.replaceOpWithNewOp<func::ReturnOp>(op);
+      return success();
+    }
 
     // Collect block arguments corresponding to output buffers.
     SmallVector<BlockArgument> results;
@@ -712,6 +722,7 @@ struct TerminatorOpLowering : public OpConversionPattern<lmhlo::TerminatorOp> {
   }
 
   DeBufferization &state;
+  bool add_opt_barrier;
 };
 
 }  // namespace
@@ -737,7 +748,8 @@ void populateCompiledOpsConversionPatterns(mlir::RewritePatternSet &patterns,
   auto *ctx = patterns.getContext();
   patterns.insert<ConvertFusionOpToApiCall, ConvertSortOpToApiCall>(
       converter, ctx, thunk_sequence, state, api);
-  patterns.insert<TerminatorOpLowering>(converter, ctx, state);
+  patterns.insert<TerminatorOpLowering>(converter, ctx, state,
+                                        /*add_opt_barrier=*/false);
 }
 
 }  // namespace xla::gpu

@@ -185,6 +185,8 @@ package_group(
 #     deps = [
 #         "@com_google_absl//absl/container:inlined_vector",
 #         "@com_google_absl//absl/strings:str_format",
+#         "//tensorflow/compiler/xla:status",
+#         "//tensorflow/compiler/xla:statusor",
 #     ] + if_gpu2([
 #         "//third_party/iree/runtime/src/iree/vm",
 #         "//third_party/iree/runtime/src/iree/vm:cc",
