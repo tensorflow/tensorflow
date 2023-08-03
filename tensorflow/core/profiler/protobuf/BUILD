@@ -252,3 +252,10 @@ tf_proto_library(
     cc_api_version = 2,
     visibility = [":friends"],
 )
+
+tf_proto_library(
+    name = "dcn_slack_analysis_proto",
+    srcs = ["dcn_slack_analysis.proto"],
+    cc_api_version = 2,
+    visibility = [":friends"],
+)
