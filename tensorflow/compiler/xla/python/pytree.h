@@ -19,9 +19,6 @@ limitations under the License.
 // See https://jax.readthedocs.io/en/latest/pytrees.html for the documentation
 // about pytree.
 
-// Caution: this code uses exceptions. The exception use is local to the
-// binding code and the idiomatic way to emit Python exceptions.
-
 #include <memory>
 #include <optional>
 #include <stdexcept>
@@ -34,7 +31,7 @@ limitations under the License.
 #include "absl/hash/hash.h"
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
-#include "pybind11/stl.h"  // from @pybind11
+#include "pybind11/stl.h"  // from @pybind11  // IWYU pragma: keep
 #include "tensorflow/compiler/xla/python/pytree.pb.h"
 
 namespace xla {
@@ -50,8 +47,10 @@ enum class PyTreeKind {
 };
 
 // Registry of custom node types.
-class PyTreeTypeRegistry {
+class PyTreeRegistry : public std::enable_shared_from_this<PyTreeRegistry> {
  public:
+  PyTreeRegistry(bool enable_none, bool enable_tuple, bool enable_namedtuple,
+                 bool enable_list, bool enable_dict);
   struct Registration {
     PyTreeKind kind;
 
@@ -66,16 +65,17 @@ class PyTreeTypeRegistry {
 
   // Registers a new custom type. Objects of `type` will be treated as container
   // node types in PyTrees.
-  static void Register(pybind11::object type, pybind11::function to_iterable,
-                       pybind11::function from_iterable);
+  void Register(pybind11::object type, pybind11::function to_iterable,
+                pybind11::function from_iterable);
 
   // Finds the custom type registration for `type`. Returns nullptr if none
   // exists.
-  static const Registration* Lookup(pybind11::handle type);
+  const Registration* Lookup(pybind11::handle type) const;
+
+  PyTreeKind KindOfObject(pybind11::handle obj,
+                          PyTreeRegistry::Registration const** custom) const;
 
  private:
-  static PyTreeTypeRegistry* Singleton();
-
   struct TypeHash {
     using is_transparent = void;
     size_t operator()(const pybind11::object& t) const {
@@ -99,32 +99,43 @@ class PyTreeTypeRegistry {
   absl::flat_hash_map<pybind11::object, std::unique_ptr<Registration>, TypeHash,
                       TypeEq>
       registrations_;
+  bool enable_namedtuple_;
 };
+
+// Returns the default pytree registry.
+std::shared_ptr<PyTreeRegistry> DefaultPyTreeRegistry();
 
 // A PyTreeDef describes the tree structure of a PyTree. A PyTree is a tree of
 // Python values, where the interior nodes are tuples, lists, dictionaries, or
 // user-defined containers, and the leaves are other objects.
 class PyTreeDef {
  public:
-  PyTreeDef() = default;
+  // Unowned registry: the registry must remain live at least as long as the
+  // PyTreeDef. It is the caller's responsibility to enforce this.
+  explicit PyTreeDef(PyTreeRegistry* registry) : registry_(registry) {}
+
+  explicit PyTreeDef(std::shared_ptr<PyTreeRegistry> registry)
+      : registry_(registry.get()), registry_ref_(std::move(registry)) {}
 
   // Flattens a Pytree into a list of leaves and a PyTreeDef.
   // Returns references to the flattened objects, which might be temporary
   // objects in the case of custom pytype handlers.
   static std::pair<std::vector<pybind11::object>, std::unique_ptr<PyTreeDef>>
   Flatten(pybind11::handle x,
-          std::optional<pybind11::function> leaf_predicate = std::nullopt);
+          std::optional<pybind11::function> leaf_predicate = std::nullopt,
+          std::shared_ptr<PyTreeRegistry> registry = nullptr);
 
-  // Recursive helper used to implement Flatten().
-  void FlattenInto(
-      pybind11::handle handle, std::vector<pybind11::object>& leaves,
-      std::optional<pybind11::function> leaf_predicate = std::nullopt);
-  void FlattenInto(
-      pybind11::handle handle, absl::InlinedVector<pybind11::object, 2>& leaves,
-      std::optional<pybind11::function> leaf_predicate = std::nullopt);
+  // Flattens a Pytree into a list of `leaves` and a PyTreeDef (this).
+  // `leaves` owns references to the flattened objects, which might be
+  // temporary objects in the case of custom pytype handlers.
+  void Flatten(pybind11::handle handle, std::vector<pybind11::object>& leaves,
+               std::optional<pybind11::function> leaf_predicate = std::nullopt);
+  void Flatten(pybind11::handle handle,
+               absl::InlinedVector<pybind11::object, 2>& leaves,
+               std::optional<pybind11::function> leaf_predicate = std::nullopt);
 
   // Tests whether the given list is a flat list of leaves.
-  static bool AllLeaves(const pybind11::iterable& x);
+  static bool AllLeaves(PyTreeRegistry* registry, const pybind11::iterable& x);
 
   // Flattens a Pytree up to this PyTreeDef. 'this' must be a tree prefix of
   // the tree-structure of 'x'. For example, if we flatten a value
@@ -137,12 +148,15 @@ class PyTreeDef {
   pybind11::object Unflatten(absl::Span<const pybind11::object> leaves) const;
 
   // Composes two PyTreeDefs, replacing the leaves of this tree with copies of
-  // `inner`.
+  // `inner`. The returned PyTreeDef holds a reference to its registry.
   std::unique_ptr<PyTreeDef> Compose(const PyTreeDef& inner) const;
 
   // Makes a Tuple PyTreeDef out of a vector of PyTreeDefs.
-  static std::unique_ptr<PyTreeDef> Tuple(const std::vector<PyTreeDef>& defs);
+  static std::unique_ptr<PyTreeDef> Tuple(
+      std::shared_ptr<PyTreeRegistry> registry,
+      absl::Span<PyTreeDef* const> defs);
 
+  // The returned PyTreeDefs hold a reference to the registry.
   std::vector<std::unique_ptr<PyTreeDef>> Children() const;
 
   // Maps a function over a PyTree structure, applying f_leaf to each leaf, and
@@ -165,6 +179,8 @@ class PyTreeDef {
 
   int num_nodes() const { return traversal_.size(); }
 
+  PyTreeRegistry* registry() const { return registry_; }
+
   size_t Hash() const;
 
   bool operator==(const PyTreeDef& other) const;
@@ -174,20 +190,22 @@ class PyTreeDef {
 
   // Transforms the PyTreeDef into a pickleable object. Used to implement
   // `PyTreeDef.__getstate__`.
-  pybind11::object ToPickleable() const;
+  pybind11::object ToPickle() const;
 
   // Transforms the object returned by `ToPickleable()` back to PyTreeDef. Used
   // to implement `PyTreeDef.__setstate__`.
-  static PyTreeDef FromPickleable(pybind11::object pickleable);
+  static PyTreeDef FromPickle(pybind11::object pickleable);
 
   void SerializeTo(jax::PyTreeDefProto& result) const;
 
-  static PyTreeDef DeserializeFrom(const jax::PyTreeDefProto& input);
+  static PyTreeDef DeserializeFrom(std::shared_ptr<PyTreeRegistry> registry,
+                                   const jax::PyTreeDefProto& input);
 
   std::optional<std::pair<pybind11::type, pybind11::object>> GetNodeData()
       const;
 
   static PyTreeDef MakeFromNodeDataAndChildren(
+      std::shared_ptr<PyTreeRegistry> registry,
       std::optional<std::pair<pybind11::type, pybind11::object>> node_data,
       pybind11::iterable children);
 
@@ -213,7 +231,7 @@ class PyTreeDef {
     std::vector<pybind11::object> sorted_dict_keys;
 
     // Custom type registration. Must be null for non-custom types.
-    const PyTreeTypeRegistry::Registration* custom = nullptr;
+    const PyTreeRegistry::Registration* custom = nullptr;
 
     // Number of leaf nodes in the subtree rooted at this node.
     int num_leaves = 0;
@@ -237,16 +255,18 @@ class PyTreeDef {
       absl::InlinedVector<PyTreeDef::Node, 1>::const_reverse_iterator* it)
       const;
 
-  // Computes the node kind of a given Python object.
-  static PyTreeKind GetKind(const pybind11::handle& obj,
-                            PyTreeTypeRegistry::Registration const** custom);
-
   template <typename T>
-  void FlattenIntoImpl(pybind11::handle handle, T& leaves,
-                       const std::optional<pybind11::function>& leaf_predicate);
+  void FlattenImpl(pybind11::handle handle, T& leaves,
+                   const std::optional<pybind11::function>& leaf_predicate);
 
   template <typename T>
   pybind11::object UnflattenImpl(T leaves) const;
+
+  // Pytree registry. Not owned.
+  PyTreeRegistry* registry_;
+  // If this class holds a reference to `registry`, it is held by
+  // `registry_ref_`.
+  std::shared_ptr<PyTreeRegistry> registry_ref_;
 
   // Nodes, in a post-order traversal. We use an ordered traversal to minimize
   // allocations, and post-order corresponds to the order we need to rebuild the
@@ -266,6 +286,12 @@ H AbslHashValue(H h, const PyTreeDef& t) {
   return h;
 }
 
+// pybind11-index-annotation BEGIN
+// refs {
+//   module_path: "tensorflow/compiler/xla/python/xla.cc"
+//   module_arg {}
+// }
+// pybind11-index-annotation END
 void BuildPytreeSubmodule(pybind11::module& m);
 
 }  // namespace xla

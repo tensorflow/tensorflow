@@ -23,7 +23,6 @@ import numpy as np
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.dtensor.python import config
-from tensorflow.dtensor.python import gen_dtensor_ops
 from tensorflow.dtensor.python import layout as layout_lib
 from tensorflow.python import _pywrap_dtensor_device
 from tensorflow.python.eager import context
@@ -118,12 +117,6 @@ class DTensorDevice(object):
   @property
   def meshes(self) -> Set[layout_lib.Mesh]:
     return self._meshes
-
-  def copy_to_mesh(self, tensor, new_layout) -> ops.Tensor:
-    """Copy `tensor` to `device` with the given layout."""
-    self._register_mesh(new_layout.mesh)
-    with ops.device(self.name):
-      return gen_dtensor_ops.copy_to_mesh(tensor, layout=new_layout.to_string())
 
   def pack(self, tensors: Sequence[Any], layout: layout_lib.Layout) -> Any:
     """Packs tensors into a DTensor handle on this DTensor device.

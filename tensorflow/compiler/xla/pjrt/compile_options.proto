@@ -6,7 +6,7 @@ import "tensorflow/compiler/xla/xla.proto";
 import "tensorflow/compiler/xla/xla_data.proto";
 
 // A serialization of xla::ExecutableBuildOptions.
-// Next id: 15.
+// Next id: 16.
 message ExecutableBuildOptionsProto {
   // If set, this is the device to build the computation for. Valid
   // device_ordinal values are: 0 to # of devices - 1. These values are
@@ -81,12 +81,15 @@ message ExecutableBuildOptionsProto {
 
   // Opaque profile data for any feedback directed optimizations.
   bytes fdo_profile = 14;
+
+  int64 device_memory_size = 15;
 }
 
 message OptionOverrideProto {
   oneof value {
     string string_field = 1;
     bool bool_field = 2;
+    int64 int_field = 3;
   }
 }
 

@@ -15,7 +15,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_GRAPH_EXECUTOR_GRAPH_EXECUTOR_H_
 #define TENSORFLOW_CORE_TFRT_GRAPH_EXECUTOR_GRAPH_EXECUTOR_H_
 
-#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -23,8 +22,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/call_once.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/time.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "tensorflow/core/platform/statusor.h"
@@ -39,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/context.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
+#include "tensorflow/core/tfrt/runtime/stream.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tensorflow/core/tfrt/utils/tfrt_graph_execution_state.h"
 #include "tensorflow/tsl/platform/thread_annotations.h"
@@ -66,6 +66,8 @@ struct RequestInfo {
   WorkQueueInterface* request_queue = nullptr;
   // The task runner used by tensorflow::OpKernel.
   std::function<void(std::function<void()>)> runner;
+
+  tensorflow::CancellationManager cancellation_manager;
 };
 
 struct SymbolUids {
@@ -91,6 +93,9 @@ StatusOr<std::unique_ptr<RequestInfo>> CreateRequestInfo(
 // Note: `resource_context` is per-graph-executor and
 // `client_graph_resource_context` is per-loaded-client-graph. See the comment
 // above `GraphExecutor::resource_context_` about the todo to merge these two.
+//
+// TODO(chky): Refactor this function to take `LoadedClientGraph` instead of
+// having a long list of parameters.
 tensorflow::Status GraphExecutionRunOnFunction(
     const GraphExecutionOptions& options,
     const GraphExecutionRunOptions& run_options,
@@ -104,7 +109,8 @@ tensorflow::Status GraphExecutionRunOnFunction(
     tfd::FallbackResourceArray* resource_array, const Runtime& runtime,
     const FallbackState& fallback_state,
     tfrt::RequestDeadlineTracker* req_deadline_tracker,
-    CostRecorder* cost_recorder = nullptr);
+    CostRecorder* cost_recorder = nullptr,
+    std::optional<StreamCallbackId> stream_callback_id = std::nullopt);
 
 // Runs a MLRT function for executing tensorflow graphs.
 tensorflow::Status RunMlrtFunction(
@@ -131,28 +137,41 @@ class GraphExecutor {
                       mlir::OwningOpRef<mlir::ModuleOp> tf_mlir_with_op_keys,
                       mlir::OwningOpRef<mlir::ModuleOp> tfrt_mlir,
                       std::shared_ptr<ExecutableContext> executable_context,
-                      bool enable_online_cost_analysis)
+                      std::optional<StreamCallbackId> stream_callback_id)
         : name_(std::move(name)),
           symbol_uids_(std::move(symbol_uids)),
           graph_executor_(graph_executor),
           mlir_context_(std::move(mlir_context)),
-          executable_context_(std::move(executable_context)) {
-      if (enable_online_cost_analysis) {
-        tf_mlir_with_op_keys_ = std::move(tf_mlir_with_op_keys);
-        tfrt_mlir_ = std::move(tfrt_mlir);
+          executable_context_(std::move(executable_context)),
+          stream_callback_id_(std::move(stream_callback_id)) {
+      const auto& options = graph_executor_->options().cost_analysis_options;
+      if (options.version != Options::CostAnalysisOptions::kDisabled) {
+        // Initialize in a way that ensures recompilation on the first run.
+        cost_analysis_data_.start_time = absl::Now() - options.reset_interval;
+        cost_analysis_data_.is_available = true;
+        cost_analysis_data_.num_cost_updates = options.updates_per_interval - 1;
+        cost_analysis_data_.cost_recorder = std::make_unique<CostRecorder>();
+        if (executable_context_->IsForMlrt()) {
+          cost_analysis_data_.tf_mlir_with_op_keys =
+              std::move(tf_mlir_with_op_keys);
+        } else {
+          cost_analysis_data_.tfrt_mlir = std::move(tfrt_mlir);
+        }
       }
     }
 
-    // Returns a `CostRecorder` if none has been created before for this
-    // `LoadedClientGraph`.
-    std::unique_ptr<CostRecorder> MaybeCreateCostRecorder(
-        uint64_t normalize_ratio = 1) const;
-
+    // Returns this instance's CostRecorder if it is time to update costs,
+    // else returns nullptr. Only allows one non-null return value at a time
+    // in order to provide thread-safety. If do_recompilation becomes `true`,
+    // then recompiles using updated costs occurs.
+    CostRecorder* MaybeGetCostRecorder(absl::Time now, bool* do_recompilation);
     // Updates the op cost values in this `LoadedClientGraph` with records from
     // `cost_recorder`.
     Status UpdateCost(const CostRecorder& cost_recorder,
                       const Runtime& runtime);
-
+    // Updates `cost_analysis_data_` to make it accurate for the next execution.
+    // Assumes a cost update occurred this cycle.
+    void UpdateCostAnalysisData(absl::Time now, bool do_recompilation);
     // Getters.
     std::shared_ptr<ExecutableContext> executable_context() const {
       tensorflow::mutex_lock lock(executable_context_mu_);
@@ -165,26 +184,44 @@ class GraphExecutor {
     tfd::FallbackResourceArray& resource_array() { return resource_array_; }
     SyncResourceState& sync_resource_state() { return sync_resource_state_; }
 
+    const std::optional<StreamCallbackId>& stream_callback_id() const {
+      return stream_callback_id_;
+    }
+
    private:
     std::string name_;
     SymbolUids symbol_uids_;
     GraphExecutor* graph_executor_ = nullptr;
+
     // `mlir_context_` is declared here because the resources declared later may
     // hold references to the MLIR objects.
     std::unique_ptr<mlir::MLIRContext> mlir_context_;
+
+    struct CostAnalysisData {
+      mutable tensorflow::mutex mu;
+      // Ensures only one GraphExecutor thread updates costs at a time.
+      bool is_available TF_GUARDED_BY(mu) = false;
+      // Maintains the book-keeping of op costs.
+      std::unique_ptr<CostRecorder> cost_recorder;
+      // For recompilation in MLRT, TFRT respectively.
+      mlir::OwningOpRef<mlir::ModuleOp> tf_mlir_with_op_keys;
+      mlir::OwningOpRef<mlir::ModuleOp> tfrt_mlir;
+      // Start of current cost measurement cycle.
+      absl::Time start_time TF_GUARDED_BY(mu) = absl::Now();
+      // Cost recordings within the current measurement cycle.
+      int num_cost_updates TF_GUARDED_BY(mu) = 0;
+    };
+    CostAnalysisData cost_analysis_data_;
+
     OpKernelRunnerTable runner_table_;
     tfd::FallbackResourceArray resource_array_;
-    // Thread-safety resulted from `create_cost_recorder_once_`.
-    // These OwningOpRefs are temporary storage for recompilation.
-    mlir::OwningOpRef<mlir::ModuleOp>
-        tf_mlir_with_op_keys_;                     // For recompilation in MLRT.
-    mlir::OwningOpRef<mlir::ModuleOp> tfrt_mlir_;  // For recompilation in TFRT.
     mutable tensorflow::mutex executable_context_mu_;
     // Can be updated if online cost analysis is enabled.
     std::shared_ptr<ExecutableContext> executable_context_
         TF_GUARDED_BY(executable_context_mu_);
-    mutable absl::once_flag create_cost_recorder_once_;
     SyncResourceState sync_resource_state_;
+
+    std::optional<StreamCallbackId> stream_callback_id_;
   };
 
   // A subgraph constructed by specifying input/output tensors.
@@ -316,6 +353,12 @@ class GraphExecutor {
   std::unique_ptr<mlrt::KernelRegistry> kernel_registry_;
 
   std::unique_ptr<tfrt::ResourceContext> resource_context_;
+
+ protected:
+  // For testing basic Cost Analysis functionality.
+  absl::Duration simulated_duration_ = absl::ZeroDuration();
+  tensorflow::mutex num_recompilations_mu_;
+  int num_recompilations_ TF_GUARDED_BY(num_recompilations_mu_) = 0;
 };
 
 void RegisterMlirDialect(mlir::DialectRegistry& registry);

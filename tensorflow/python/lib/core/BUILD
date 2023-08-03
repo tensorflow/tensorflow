@@ -176,7 +176,6 @@ cc_library(
         ":ndarray_tensor",
         ":ndarray_tensor_bridge",
         ":py_util",
-        ":safe_pyobject_ptr",
         "//tensorflow/c:safe_ptr",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c/eager:c_api",

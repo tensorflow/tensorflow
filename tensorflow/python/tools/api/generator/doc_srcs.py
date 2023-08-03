@@ -37,7 +37,7 @@ class DocSource(object):
 
 _TENSORFLOW_DOC_SOURCES = {
     'app':
-        DocSource(docstring_module_name='platform.app'),
+        DocSource(docstring='Import router for absl.app.'),
     'bitwise':
         DocSource(docstring_module_name='ops.bitwise_ops'),
     'compat':
@@ -52,7 +52,7 @@ _TENSORFLOW_DOC_SOURCES = {
     'experimental.numpy':
         DocSource(docstring_module_name='ops.numpy_ops'),
     'gfile':
-        DocSource(docstring_module_name='platform.gfile'),
+        DocSource(docstring='Import router for file_io.'),
     'graph_util':
         DocSource(docstring_module_name='framework.graph_util'),
     'image':
@@ -80,7 +80,7 @@ _TENSORFLOW_DOC_SOURCES = {
     'ragged':
         DocSource(docstring_module_name='ops.ragged'),
     'resource_loader':
-        DocSource(docstring_module_name='platform.resource_loader'),
+        DocSource(docstring='Resource management library.'),
     'sets':
         DocSource(docstring_module_name='ops.sets'),
     'signal':
@@ -92,11 +92,15 @@ _TENSORFLOW_DOC_SOURCES = {
     'summary':
         DocSource(docstring_module_name='summary.summary'),
     'sysconfig':
-        DocSource(docstring_module_name='platform.sysconfig'),
+        DocSource(docstring='System configuration library.'),
     'test':
-        DocSource(docstring_module_name='platform.test'),
-    'train':
-        DocSource(docstring_module_name='training.training'),
+        DocSource(docstring='Testing.'),
+    'train': DocSource(
+        docstring=(
+            'Support for training models. See the'
+            ' [Training](https://tensorflow.org/api_guides/python/train) guide.'
+        )
+    ),
 }
 
 _ESTIMATOR_DOC_SOURCES = {

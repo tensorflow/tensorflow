@@ -49,6 +49,7 @@ limitations under the License.
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/MathExtras.h"
 #include "mhlo/IR/hlo_ops.h.inc"
@@ -100,9 +101,7 @@ using mlir::hlo::printDimSizes;
 #define GET_TYPEDEF_CLASSES
 #include "mhlo/IR/hlo_ops_typedefs.cc.inc"
 
-namespace mlir {
-namespace mhlo {
-
+namespace mlir::mhlo {
 namespace detail {
 /// A type representing a collection of other types.
 struct AsyncBundleTypeStorage final
@@ -6279,8 +6278,7 @@ LogicalResult UniformDequantizeOp::inferReturnTypeComponents(
 using mlir::hlo::parseWindowAttributes;
 using mlir::hlo::printWindowAttributes;
 
-}  // namespace mhlo
-}  // namespace mlir
+}  // namespace mlir::mhlo
 
 using mlir::hlo::parseComplexOpType;
 using mlir::hlo::parseCustomCallTarget;
@@ -6302,8 +6300,7 @@ using mlir::hlo::printVariadicSameOperandsAndResultType;
 #define GET_OP_CLASSES
 #include "mhlo/IR/hlo_ops.cc.inc"
 
-namespace mlir {
-namespace mhlo {
+namespace mlir::mhlo {
 
 //===----------------------------------------------------------------------===//
 // mhlo Dialect Interfaces
@@ -6344,7 +6341,7 @@ struct MhloHloDialectInterface : public hlo::HloDialectInterface {
     return TypeExtensionsAttr::get(getDialect()->getContext(), bounds);
   }
 };
-}  // end anonymous namespace
+}  // namespace
 
 //===----------------------------------------------------------------------===//
 // mhlo Dialect Constructor
@@ -6659,7 +6656,8 @@ char nonSpatialDimToString(NonSpatialDim dim) {
 // Custom printer and parser for convolution attribute.
 void printConvolutionDimensions(AsmPrinter& p, ConvDimensionNumbersAttr dnums) {
   // TODO(b/202040055): we should check the attribute invariant and print the
-  // "raw" form if they are violated, otherwise we'll crash here.
+  // "raw" form if they are violated, for now report_fatal_error is used to
+  // prevent invalid access.
   constexpr int64_t kUnknownDim = std::numeric_limits<int64_t>::min();
   auto printDim =
       [&](ArrayRef<int64_t> spatialDims,
@@ -6678,9 +6676,15 @@ void printConvolutionDimensions(AsmPrinter& p, ConvDimensionNumbersAttr dnums) {
         // spatial dimension index.
         for (const std::pair<int64_t, NonSpatialDim>& nonSpatialDim :
              nonSpatialDims) {
+          if (nonSpatialDim.first < 0 ||
+              static_cast<size_t>(nonSpatialDim.first) >= dims.size())
+            llvm::report_fatal_error("Invalid non-spatial dimension.");
           dims[nonSpatialDim.first] = nonSpatialDim.second;
         }
         for (const auto& spatialDim : llvm::enumerate(spatialDims)) {
+          if (spatialDim.value() < 0 ||
+              static_cast<size_t>(spatialDim.value()) >= dims.size())
+            llvm::report_fatal_error("Invalid spatial dimension.");
           dims[spatialDim.value()] = static_cast<int64_t>(spatialDim.index());
         }
 
@@ -7365,5 +7369,4 @@ LogicalResult MhloDialect::verifyOperationAttribute(Operation* op,
   return success();
 }
 
-}  // namespace mhlo
-}  // namespace mlir
+}  // namespace mlir::mhlo

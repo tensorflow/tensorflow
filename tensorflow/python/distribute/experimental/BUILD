@@ -8,7 +8,10 @@ load(
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["//tensorflow:internal"],
+    default_visibility = [
+        "//learning/brain/distribute/python/benchmark:__subpackages__",
+        "//tensorflow:internal",
+    ],
     licenses = ["notice"],
 )
 
@@ -19,12 +22,8 @@ py_strict_library(
     ],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python/distribute:central_storage_strategy",
-        "//tensorflow/python/distribute:collective_all_reduce_strategy",
-        "//tensorflow/python/distribute:parameter_server_strategy",
-        "//tensorflow/python/distribute:tpu_strategy",
-        "//tensorflow/python/distribute/failure_handling:failure_handling_lib",
-        "//tensorflow/python/distribute/failure_handling:preemption_watcher",
+        ":mirrored_strategy",
+        ":multi_worker_mirrored_strategy",
     ],
 )
 

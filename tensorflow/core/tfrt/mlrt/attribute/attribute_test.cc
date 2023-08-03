@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/mlrt/mlir_to_bytecode.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/tsl/platform/status_matchers.h"
 
 namespace tensorflow {
 namespace tf_mlrt {
@@ -43,8 +44,9 @@ TEST(AttributeTest, TensorAttr) {
 
   mlrt::AttributeEncoderRegistry attribute_encoder_registry;
   mlrt::ModuleEmitterContext emitter_context(&attribute_encoder_registry);
-  ASSERT_OK_AND_ASSIGN(auto attr_buffer, EncodeTensorflowAttribute(
-                                             emitter_context, dense_i64_attr));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto attr_buffer,
+      EncodeTensorflowAttribute(emitter_context, dense_i64_attr));
 
   TensorAttr tensor_attr(attr_buffer.data());
 
@@ -64,8 +66,9 @@ TEST(AttributeTest, BoolTensorAttr) {
 
   mlrt::AttributeEncoderRegistry attribute_encoder_registry;
   mlrt::ModuleEmitterContext emitter_context(&attribute_encoder_registry);
-  ASSERT_OK_AND_ASSIGN(auto attr_buffer, EncodeTensorflowAttribute(
-                                             emitter_context, dense_bool_attr));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto attr_buffer,
+      EncodeTensorflowAttribute(emitter_context, dense_bool_attr));
 
   TensorAttr tensor_attr(attr_buffer.data());
 
@@ -89,7 +92,7 @@ TEST(AttributeTest, SplatTensorAttr) {
 
   mlrt::AttributeEncoderRegistry attribute_encoder_registry;
   mlrt::ModuleEmitterContext emitter_context(&attribute_encoder_registry);
-  ASSERT_OK_AND_ASSIGN(
+  TF_ASSERT_OK_AND_ASSIGN(
       auto attr_buffer,
       EncodeTensorflowAttribute(emitter_context, dense_splat_i64_attr));
 
@@ -116,8 +119,8 @@ TEST(AttributeTest, TypedAttr) {
 
   mlrt::AttributeEncoderRegistry attribute_encoder_registry;
   mlrt::ModuleEmitterContext emitter_context(&attribute_encoder_registry);
-  ASSERT_OK_AND_ASSIGN(auto attr_buffer,
-                       EncodeTensorflowAttribute(emitter_context, type_attr));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto attr_buffer, EncodeTensorflowAttribute(emitter_context, type_attr));
   tensorflow::DataType dtype;
   std::memcpy(&dtype, attr_buffer.data(), sizeof(dtype));
 
@@ -136,8 +139,8 @@ TEST(AttributeTest, ShapeAttr) {
 
   mlrt::AttributeEncoderRegistry attribute_encoder_registry;
   mlrt::ModuleEmitterContext emitter_context(&attribute_encoder_registry);
-  ASSERT_OK_AND_ASSIGN(auto attr_buffer,
-                       EncodeTensorflowAttribute(emitter_context, shape_attr));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto attr_buffer, EncodeTensorflowAttribute(emitter_context, shape_attr));
 
   ShapeAttr shape_attr_decoded(attr_buffer.data());
 
@@ -162,8 +165,8 @@ TEST(AttributeTest, DtypeArrayAttr) {
 
   mlrt::AttributeEncoderRegistry attribute_encoder_registry;
   mlrt::ModuleEmitterContext emitter_context(&attribute_encoder_registry);
-  ASSERT_OK_AND_ASSIGN(auto attr_buffer,
-                       EncodeTensorflowAttribute(emitter_context, arr_attr));
+  TF_ASSERT_OK_AND_ASSIGN(auto attr_buffer,
+                          EncodeTensorflowAttribute(emitter_context, arr_attr));
 
   mlrt::bc::Vector<tensorflow::DataType> dtype_arr(attr_buffer.data());
   EXPECT_THAT(dtype_arr, ::testing::ElementsAreArray(
@@ -182,15 +185,15 @@ TEST(AttributeTest, UnsupportedAttr) {
   mlrt::AttributeEncoderRegistry attribute_encoder_registry;
   mlrt::ModuleEmitterContext emitter_context(&attribute_encoder_registry);
 
-  EXPECT_THAT(EncodeTensorflowAttribute(emitter_context, dense_string_attr),
-              ::testing::status::CanonicalStatusIs(
-                  absl::StatusCode::kInvalidArgument,
-                  "String tensor attribute is not yet supported"));
+  EXPECT_THAT(
+      EncodeTensorflowAttribute(emitter_context, dense_string_attr),
+      ::tsl::testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                               "String tensor attribute is not yet supported"));
 
-  EXPECT_THAT(EncodeTensorflowAttribute(emitter_context, builder.getUnitAttr()),
-              ::testing::status::CanonicalStatusIs(
-                  absl::StatusCode::kInvalidArgument,
-                  "Try to encode unsupported attribute: unit"));
+  EXPECT_THAT(
+      EncodeTensorflowAttribute(emitter_context, builder.getUnitAttr()),
+      ::tsl::testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                               "Try to encode unsupported attribute: unit"));
 }
 
 }  // namespace

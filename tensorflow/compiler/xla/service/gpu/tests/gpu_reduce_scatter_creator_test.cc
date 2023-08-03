@@ -15,18 +15,16 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/gpu_reduce_scatter_creator.h"
 
+#include <memory>
+#include <utility>
+
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
-#include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
-#include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace gpu {
@@ -82,6 +80,44 @@ ENTRY %AllReduce {
   %offset = s32[] multiply(%reshape, %slice_size)
   %zero = s32[] constant(0)
   ROOT %dynamic-slice = f32[4,8,128] dynamic-slice(%all-reduce, %offset, %zero, %zero),
+    dynamic_slice_sizes={4,8,128}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
+                                               /*num_replicas=*/8,
+                                               /*num_partitions=*/1,
+                                               /*expect_change=*/true));
+  ASSERT_THAT(module->entry_computation()->root_instruction(),
+              op::ReduceScatter(op::Parameter(0)));
+  const auto *rs = Cast<HloReduceScatterInstruction>(
+      module->entry_computation()->root_instruction());
+  EXPECT_EQ(rs->scatter_dimension(), 0) << rs->ToString();
+  EXPECT_EQ(AllReduceCount(module), 0);
+}
+
+TEST_F(GpuReduceScatterCreatorTest, AllReplicasWithOffsetReshape) {
+  absl::string_view hlo_string = R"(
+HloModule AllReduce
+
+%sum {
+  %a = f32[] parameter(0)
+  %b = f32[] parameter(1)
+  ROOT %add = f32[] add(%a, %b)
+}
+
+ENTRY %AllReduce {
+  %param = f32[32,8,128]{2,1,0} parameter(0)
+  %all-reduce = f32[32,8,128]{2,1,0} all-reduce(%param),
+    replica_groups={}, to_apply=%sum
+  %table = s32[8]{0} constant({0,1,2,3,4,5,6,7})
+  %rid = u32[] replica-id()
+  %id = s32[1] dynamic-slice(%table, %rid), dynamic_slice_sizes={1}
+  %slice_size = s32[1] constant({4})
+  %offset = s32[1] multiply(%id, %slice_size)
+  %reshape = s32[] reshape(%offset)
+  %zero = s32[] constant(0)
+  ROOT %dynamic-slice = f32[4,8,128] dynamic-slice(%all-reduce, %reshape, %zero, %zero),
     dynamic_slice_sizes={4,8,128}
 }
 )";

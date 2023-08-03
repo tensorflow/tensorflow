@@ -34,6 +34,19 @@ ABSL_CONST_INIT extern const absl::string_view kHloFormat;
 ABSL_CONST_INIT extern const absl::string_view kMlirFormat;
 ABSL_CONST_INIT extern const absl::string_view kHloWithConfigFormat;
 
+// Return error status if not success and frees the PJRT_Error returned by
+// `expr`.
+#define RETURN_STATUS_IF_PJRT_ERROR(expr, c_api)                        \
+  do {                                                                  \
+    PJRT_Error* error = (expr);                                         \
+    std::unique_ptr<PJRT_Error, pjrt::PJRT_ErrorDeleter> _error(        \
+        error, pjrt::MakeErrorDeleter(c_api));                          \
+    xla::Status _status = pjrt::PjrtErrorToStatus(_error.get(), c_api); \
+    if (!_status.ok()) {                                                \
+      return _status;                                                   \
+    }                                                                   \
+  } while (false)
+
 using PJRT_ClientDeleter = std::function<void(PJRT_Client*)>;
 
 // Pass in an API pointer; receive a custom deleter for smart pointers.
@@ -96,6 +109,8 @@ void LogFatalIfPjrtError(PJRT_Error* error, const PJRT_Api* api);
 
 absl::string_view GetPjrtErrorMessage(const PJRT_Error* error,
                                       const PJRT_Api* api);
+
+PJRT_Error_Code GetErrorCode(const PJRT_Error* error, const PJRT_Api* api);
 
 xla::Status PjrtErrorToStatus(const PJRT_Error* error, const PJRT_Api* api);
 
@@ -160,6 +175,9 @@ xla::PjRtChunk ConvertToCppChunk(const PJRT_Chunk& chunk);
 PJRT_DeviceDescription* GetDeviceDescription(const PJRT_Api* api,
                                              PJRT_Device* device);
 
+absl::Span<PJRT_Memory*> GetAddressableMemories(const PJRT_Api* api,
+                                                PJRT_Device* device);
+
 using PJRT_KeyValueGetCFunc =
     std::function<PJRT_Error*(PJRT_KeyValueGetCallback_Args* args)>;
 
@@ -202,7 +220,7 @@ struct BufferMemoryLayoutData {
   std::vector<size_t> tile_dim_sizes;
 };
 xla::StatusOr<BufferMemoryLayoutData> ConvertToBufferMemoryLayoutData(
-    const xla::Layout* cpp_layout);
+    const xla::Layout& cpp_layout);
 xla::StatusOr<BufferMemoryLayoutData> ConvertToBufferMemoryLayoutData(
     absl::Span<int64_t const> byte_strides);
 

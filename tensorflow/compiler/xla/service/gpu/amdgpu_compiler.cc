@@ -20,9 +20,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
+#include "tensorflow/compiler/xla/service/gpu/conv_algorithm_picker.h"
 #include "tensorflow/compiler/xla/service/gpu/cusolver_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_padding_legalization.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
@@ -217,7 +217,8 @@ StatusOr<std::pair<std::string, std::vector<uint8_t>>>
 AMDGPUCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
                                     llvm::Module* llvm_module,
                                     GpuVersion gpu_version, bool relocatable,
-                                    const HloModule* debug_module) {
+                                    const HloModule* debug_module,
+                                    const CompileOptions& options) {
   if (rocdl_dir_.empty()) {
     // Compute rocdl_dir_ just once and cache it in this member.
     rocdl_dir_ = GetROCDLDir(module_config);
@@ -229,8 +230,11 @@ AMDGPUCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
 
   std::vector<uint8_t> hsaco;
   {
-    XLA_SCOPED_LOGGING_TIMER(
-        "AMDGPUCompiler::CompileTargetBinary - CompileToHsaco");
+    // This may print multiple lines per HLO compilation because of the
+    // parallelized compilation of LLVM modules.
+    XLA_SCOPED_LOGGING_TIMER_IF(
+        "AMDGPUCompiler::CompileTargetBinary - CompileToHsaco",
+        !options.is_autotuning_compilation);
     TF_ASSIGN_OR_RETURN(
         hsaco, amdgpu::CompileToHsaco(llvm_module, gpu_version,
                                       module_config.debug_options(), rocdl_dir_,

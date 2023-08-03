@@ -3136,12 +3136,45 @@ TEST_F(ModelTimingTest, ComputeTargetTime_TestWindow) {
   EXPECT_DOUBLE_EQ(10.0, model_->ComputeTargetTimeNsec() * 1e-3);
 }
 
-TEST_F(ModelTimingTest, ComputeProcessingTimeEmptyModel) {
-  model::Model model;
-  EXPECT_EQ(model.ComputeProcessingTimeNsec(), 0.0);
+TEST_F(ModelTimingTest, ComputeExperimentalTargetTime) {
+  model_ = std::make_unique<Model>();
+
+  for (int i = 0; i < 45; ++i) {
+    model_->RecordIteratorGapTime(5);
+    model_->RecordIteratorGapTime(15);
+  }
+  for (int i = 0; i < 10; ++i) {
+    model_->RecordIteratorGapTime(10);
+  }
+  for (int i = 0; i < 20; ++i) {
+    // Gap times that are >= 10 seconds are always dropped.
+    model_->RecordIteratorGapTime(10000000);
+  }
+
+  EXPECT_DOUBLE_EQ(10.0, model_->ComputeTargetTimeNsec() * 1e-3);
 }
 
-TEST_F(ModelTimingTest, ComputeProcessingTimeSingleStage1) {
+TEST_F(ModelTimingTest, ComputeExperimentalTargetTime_NotEnoughGapTimes) {
+  model_ = std::make_unique<Model>();
+
+  for (int i = 0; i < 40; ++i) {
+    model_->RecordIteratorGapTime(5);
+    model_->RecordIteratorGapTime(15);
+  }
+  for (int i = 0; i < 20; ++i) {
+    // Gap times that are >= 10 seconds are always dropped.
+    model_->RecordIteratorGapTime(10000000);
+  }
+
+  EXPECT_DOUBLE_EQ(0.0, model_->ComputeExperimentalTargetTimeNsec() * 1e-3);
+}
+
+TEST_F(ModelTimingTest, ComputeSnapshotProcessingTimeEmptyModel) {
+  model::Model model;
+  EXPECT_EQ(model.ComputeSnapshotProcessingTimeNsec(), 0.0);
+}
+
+TEST_F(ModelTimingTest, ComputeSnapshotProcessingTimeNullSnapshot) {
   BuildModelFromProto(R"pb(
     nodes: {
       key: 1
@@ -3178,10 +3211,55 @@ TEST_F(ModelTimingTest, ComputeProcessingTimeSingleStage1) {
     output: 1
   )pb");
 
-  EXPECT_EQ(model_->ComputeProcessingTimeNsec(), 1100.0);
+  EXPECT_EQ(model_->ComputeSnapshotProcessingTimeNsec(), 0.0);
 }
 
-TEST_F(ModelTimingTest, ComputeProcessingTimeSingleStage2) {
+TEST_F(ModelTimingTest, ComputeSnapshotProcessingTimeSingleStage1) {
+  BuildModelFromProto(R"pb(
+    nodes: {
+      key: 1
+      value: {
+        id: 1
+        name: "ParallelMapV2"
+        autotune: true
+        num_elements: 100
+        processing_time: 20000
+        node_class: ASYNC_KNOWN_RATIO
+        ratio: 1
+        inputs: 2
+        parameters: {
+          name: "parallelism"
+          value: 2
+          min: 1
+          max: 16
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 2
+      value: {
+        id: 2
+        name: "SSTable"
+        autotune: true
+        num_elements: 100
+        processing_time: 100000
+        node_class: KNOWN_RATIO
+        ratio: 1
+      }
+    }
+    output: 1
+  )pb");
+
+  CancellationManager cancellation_manager;
+  // Ensure the model snapshot is populated.
+  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, /*cpu_budget=*/1,
+                   /*ram_budget=*/1, /*model_input_time=*/1000000,
+                   &cancellation_manager);
+  EXPECT_EQ(model_->ComputeSnapshotProcessingTimeNsec(), 1200.0);
+}
+
+TEST_F(ModelTimingTest, ComputeSnapshotProcessingTimeSingleStage2) {
   BuildModelFromProto(R"pb(
     nodes: {
       key: 1
@@ -3218,10 +3296,15 @@ TEST_F(ModelTimingTest, ComputeProcessingTimeSingleStage2) {
     output: 1
   )pb");
 
-  EXPECT_EQ(model_->ComputeProcessingTimeNsec(), 1250.0);
+  CancellationManager cancellation_manager;
+  // Ensure the model snapshot is populated.
+  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, /*cpu_budget=*/1,
+                   /*ram_budget=*/1, /*model_input_time=*/1000000,
+                   &cancellation_manager);
+  EXPECT_EQ(model_->ComputeSnapshotProcessingTimeNsec(), 1500.0);
 }
 
-TEST_F(ModelTimingTest, ComputeProcessingTimeMultipleStages) {
+TEST_F(ModelTimingTest, ComputeSnapshotProcessingTimeMultipleStages) {
   BuildModelFromProto(R"pb(
     nodes: {
       key: 1
@@ -3291,7 +3374,12 @@ TEST_F(ModelTimingTest, ComputeProcessingTimeMultipleStages) {
     output: 1
   )pb");
 
-  EXPECT_EQ(model_->ComputeProcessingTimeNsec(), 1250.0);
+  CancellationManager cancellation_manager;
+  // Ensure the model snapshot is populated.
+  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, /*cpu_budget=*/1,
+                   /*ram_budget=*/1, /*model_input_time=*/1000000,
+                   &cancellation_manager);
+  EXPECT_EQ(model_->ComputeSnapshotProcessingTimeNsec(), 1500.0);
 }
 
 TEST_F(ModelTimingTest, SelfTime) {

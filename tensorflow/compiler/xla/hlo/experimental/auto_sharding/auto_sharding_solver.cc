@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -26,6 +27,8 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
+#include "tensorflow/tsl/platform/hash.h"
+#include "tensorflow/tsl/platform/types.h"
 #include "ortools/linear_solver/linear_solver.h"
 #include "ortools/linear_solver/linear_solver.pb.h"
 #ifdef PLATFORM_GOOGLE
@@ -104,6 +107,13 @@ void PrintLargestInstructions(
   }
 }
 
+// Adds deterministic noise to the coefficient using the name & salt multiplier.
+void AddSalt(const std::string& name, double saltiplier, double* coeff) {
+  if (saltiplier <= 0.0) return;
+  const tsl::uint64 hash = tsl::Hash64(name);  // stable across runs & platforms
+  *coeff *= 1.0 + saltiplier * hash / std::numeric_limits<tsl::uint64>::max();
+}
+
 // We formulate the auto sharding process as the following ILP problem:
 // Variables:
 //   s[i]: Sharding strategy one-hot vector.
@@ -162,12 +172,8 @@ AutoShardingSolverResult CallORToolsSolver(
 #ifdef PLATFORM_GOOGLE
   if (solver->ProblemType() ==
       operations_research::MPSolver::SAT_INTEGER_PROGRAMMING) {
-    // Set random_seed, interleave_search and share_binary_clauses for
-    // determinism, and num_workers for parallelism.
-    solver_parameter_str = absl::StrCat(
-        "share_binary_clauses:false,random_seed:1,interleave_"
-        "search:true,num_workers:",
-        num_workers);
+    // Set num_workers for parallelism.
+    solver_parameter_str = absl::StrCat("num_workers:", num_workers);
     solver->SetSolverSpecificParametersAsString(solver_parameter_str);
   }
 #endif
@@ -206,8 +212,10 @@ AutoShardingSolverResult CallORToolsSolver(
     for (size_t j = 0; j < s[i].size(); ++j) {
       double accumulated_coefficient =
           solver->MutableObjective()->GetCoefficient(s[i][j]);
+      double coefficient = request.c[i][j] + request.d[i][j];
+      AddSalt(absl::StrCat(i, "S", j), request.saltiplier, &coefficient);
       solver->MutableObjective()->SetCoefficient(
-          s[i][j], accumulated_coefficient + request.c[i][j] + request.d[i][j]);
+          s[i][j], accumulated_coefficient + coefficient);
     }
   }
   // Edge costs
@@ -215,8 +223,10 @@ AutoShardingSolverResult CallORToolsSolver(
     for (size_t j = 0; j < e[i].size(); ++j) {
       double accumulated_coefficient =
           solver->MutableObjective()->GetCoefficient(e[i][j]);
+      double coefficient = request.r[i][j];
+      AddSalt(absl::StrCat(i, "E", j), request.saltiplier, &coefficient);
       solver->MutableObjective()->SetCoefficient(
-          e[i][j], accumulated_coefficient + request.r[i][j]);
+          e[i][j], accumulated_coefficient + coefficient);
     }
   }
 
@@ -288,7 +298,9 @@ AutoShardingSolverResult CallORToolsSolver(
   }
   // c.
   if (request.memory_budget > 0) {
+    int64_t minimum_memory_budget_required_estimate = 0;
     for (size_t t = 0; t < request.live.size(); ++t) {
+      int64_t minimum_memory_budget_required_estimate_local = 0;
       std::string str = "[";
       double total_fixed_memory_cost = 0.0;  // Amount consumed "no matter what"
       for (auto i : request.live[t]) {
@@ -304,6 +316,7 @@ AutoShardingSolverResult CallORToolsSolver(
       for (auto i : request.live[t]) {
         auto fixed_memory_cost =
             *std::min_element(request.m[i].begin(), request.m[i].end());
+        minimum_memory_budget_required_estimate_local += fixed_memory_cost;
         for (size_t j = 0; j < s[i].size(); ++j) {
           double accumulated_coefficient = constraint->GetCoefficient(s[i][j]);
           constraint->SetCoefficient(
@@ -311,7 +324,13 @@ AutoShardingSolverResult CallORToolsSolver(
               accumulated_coefficient + request.m[i][j] - fixed_memory_cost);
         }
       }
+      minimum_memory_budget_required_estimate =
+          std::max(minimum_memory_budget_required_estimate,
+                   minimum_memory_budget_required_estimate_local);
     }
+    LOG(INFO) << "Minimum memory budget estimate: "
+              << minimum_memory_budget_required_estimate;
+    LOG(INFO) << "Using memory budget: " << request.memory_budget;
   }
 
   // d. specified via "BoolVarArray"
@@ -460,6 +479,7 @@ AutoShardingSolverResult CallORToolsSolver(
   }
 
   // Return value
+  double unsalted_objective = 0.0;
   std::vector<int64_t> chosen_strategy(request.num_nodes, -1),
       e_val(num_edges, -1);
   for (int i = 0; i < request.num_nodes; ++i) {
@@ -467,6 +487,7 @@ AutoShardingSolverResult CallORToolsSolver(
       // if lhs == 1
       if (s[i][j]->solution_value() > 0.5) {
         chosen_strategy[i] = j;
+        unsalted_objective += request.c[i][j] + request.d[i][j];
         break;
       }
     }
@@ -476,11 +497,13 @@ AutoShardingSolverResult CallORToolsSolver(
       // if lhs == 1
       if (e[i][j]->solution_value() > 0.5) {
         e_val[i] = j;
+        unsalted_objective += request.r[i][j];
         break;
       }
     }
   }
 
+  LOG(INFO) << "Unsalted objective value: " << unsalted_objective;
   LOG(INFO) << "N = " << request.num_nodes;
   if (request.memory_budget < 0) {
     LOG(INFO) << "memory budget: -1";
@@ -492,7 +515,7 @@ AutoShardingSolverResult CallORToolsSolver(
                            request.instruction_names);
   return AutoShardingSolverResult(
       std::make_tuple(std::move(chosen_strategy), std::move(e_val),
-                      solver->Objective().Value()),
+                      unsalted_objective),
       false);
 }
 

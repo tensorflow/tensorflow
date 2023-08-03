@@ -124,7 +124,7 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
   pm->addPass(CreateDTensorSparseTensorToDenseTensor());
 
   // After shape inference, there may be unused constants ops added when
-  // propagating caller-callee constants. As DTensor mesh/layout propgation
+  // propagating caller-callee constants. As DTensor mesh/layout propagation
   // passes assumes that there are no unreachable ops, removes trivial unused
   // ops. Note that `Canonicalizer` pass in TF includes similar optimization.
   // However, canonicalizer pass also rewrites some ops and may remove `_layout`
@@ -169,11 +169,6 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
   // Merge Clusters
   pm->addPass(CreateDTensorMergeClustersPass());
 
-  // Mark all ops and functions with global shape attribute to preserve global
-  // shape information as it is needed during Layout Propagation and SPMD
-  // expansion.
-  pm->addPass(CreateDTensorAnnotateGlobalShape());
-
   ////////
   // Propagate layout to all ops in graph.
 
@@ -182,6 +177,11 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
   // outputs from the tf.AssignVariableOps that consume these outputs.
   // This pass fills in all missing shapes caused by tf.RestoreV2 ops.
   pm->addPass(CreateDTensorInferShapesForRestoreV2Op());
+
+  // Mark all ops and functions with global shape attribute to preserve global
+  // shape information as it is needed during Layout Propagation and SPMD
+  // expansion.
+  pm->addPass(CreateDTensorAnnotateGlobalShape());
 
   pm->addPass(CreateDTensorLayoutPropagationPassV2());
 
@@ -227,7 +227,7 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
 
   // DTensorReduceScatter lowering should come before DTensorAllReduce
   // and DTensorAllScatter lowerings since for some devices DTensorReduceScatter
-  // will be decomposed into an DTensorAllReduce+DTensorScatter.
+  // will be decomposed into a DTensorAllReduce+DTensorScatter.
   pm->addPass(CreateDTensorReduceScatterLoweringPass());
 
   // For large enough reduction groups in reduction ops, upcast the input

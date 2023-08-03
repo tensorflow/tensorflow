@@ -495,6 +495,54 @@ struct SparseSDDMMCallRewriter {
   }
 };
 
+// This rewriter rewrites 2:4 SpMM custom op to linalg.generic operator that
+// carries the DENSE24 trait and does multiplication.
+struct Sparse2To4SpMMCallRewriter {
+  LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
+    assert(op.getInputs().size() == 3 && "Need C, A, B matrices");
+    assert(op.getResults().size() == 1 && "Need one output tensor");
+    Location loc = op.getLoc();
+    Value mat_c = op.getInputs()[0];
+    Value mat_a = op.getInputs()[1];
+    Value mat_b = op.getInputs()[2];
+
+    auto etp = mat_c.getType().dyn_cast<RankedTensorType>().getElementType();
+    // Build the enveloping generic op with the following trait:
+    //   indexing_maps = [
+    //     affine_map<(i,j,k) -> (i,k)>,  // A
+    //     affine_map<(i,j,k) -> (k,j)>,  // B
+    //     affine_map<(i,j,k) -> (i,j)>   // S
+    //   ],
+    //   iterator_types = ["parallel", "parallel", "reduction"],
+    //   doc = "C(i,j) += SUM_k A(i,k) B(k,j)"
+    SmallVector<utils::IteratorType, 3> iteratorTypes;
+    iteratorTypes.push_back(utils::IteratorType::parallel);
+    iteratorTypes.push_back(utils::IteratorType::parallel);
+    iteratorTypes.push_back(utils::IteratorType::reduction);
+    using MapList = ArrayRef<ArrayRef<AffineExpr>>;
+    auto infer = [](MapList m) { return AffineMap::inferFromExprList(m); };
+    AffineExpr i, j, k;
+    bindDims(op.getContext(), i, j, k);
+    auto indexing_maps = infer({{i, k}, {k, j}, {i, j}});
+    auto generic_op = rewriter.create<linalg::GenericOp>(
+        loc, TypeRange{mat_c.getType()}, ValueRange{mat_a, mat_b},
+        ValueRange{mat_c}, indexing_maps, iteratorTypes);
+    // Set DENSE24 attribute.
+    generic_op->setAttr("DENSE24", rewriter.getI32IntegerAttr(1));
+    // Construct operations in the linalg.generic block.
+    Block* main = rewriter.createBlock(&generic_op.getRegion(), {},
+                                       {etp, etp, etp}, {loc, loc, loc});
+    Value arg_c = main->getArgument(2);
+    rewriter.setInsertionPointToStart(&generic_op.getRegion().front());
+    auto mul = rewriter.create<arith::MulFOp>(loc, main->getArgument(0),
+                                              main->getArgument(1));
+    auto add = rewriter.create<arith::AddFOp>(loc, mul.getResult(), arg_c);
+    rewriter.create<linalg::YieldOp>(loc, add.getResult());
+    rewriter.replaceOp(op, generic_op.getResults());
+    return success();
+  }
+};
+
 class SparseCustomCallRewriter : public OpRewritePattern<mhlo::CustomCallOp> {
   using OpRewritePattern<mhlo::CustomCallOp>::OpRewritePattern;
   using SparseCustomTargetRewriter = std::function<LogicalResult(
@@ -591,6 +639,7 @@ class SparseCustomCallRewriter : public OpRewritePattern<mhlo::CustomCallOp> {
       std::make_pair("sparse_tensor_transpose", SparseTransposeCallRewriter()),
       // User custom ops that need rewriting.
       std::make_pair("sparse_jax_sddmm", SparseSDDMMCallRewriter()),
+      std::make_pair("sparse_jax_2to4_spmm", Sparse2To4SpMMCallRewriter()),
   };
 
   // Rewrites a CustomCallOp to corresponding sparse_tensor operation.

@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/delegates/delegate_test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/testing/util.h"
 
 namespace {
@@ -1646,6 +1647,196 @@ TEST(CApiSimple, OpaqueApiAccessors) {
 
   EXPECT_EQ(kTfLiteOk, interpreter.ModifyGraphWithDelegate(&my_delegate));
   EXPECT_TRUE(delegate_kernel_invoked);
+}
+
+TEST(CApiSimple, OpaqueApiAccessorsStrings) {
+  ::tflite::Interpreter interpreter;
+  interpreter.AddTensors(3);
+  std::vector<int> dims = {1};
+  TfLiteQuantizationParams quant{};
+  interpreter.SetTensorParametersReadWrite(0, kTfLiteString, "a", dims, quant,
+                                           /*is_variable=*/false);
+  interpreter.SetTensorParametersReadWrite(1, kTfLiteString, "b", dims, quant,
+                                           /*is_variable=*/false);
+  interpreter.SetTensorParametersReadWrite(2, kTfLiteString, "c", dims, quant,
+                                           /*is_variable=*/false);
+
+  interpreter.SetInputs({0, 1});
+  interpreter.SetOutputs({2});
+  const char* initial_data = "";
+  tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates resolver;
+  TfLiteAddParams* builtin_data =
+      reinterpret_cast<TfLiteAddParams*>(malloc(sizeof(TfLiteAddParams)));
+  builtin_data->activation = kTfLiteActNone;
+  builtin_data->pot_scale_int16 = false;
+  const TfLiteRegistration* registration =
+      resolver.FindOp(::tflite::BuiltinOperator_ADD, 1);
+  interpreter.AddNodeWithParameters({0, 1}, {2}, initial_data, 0, builtin_data,
+                                    registration);
+
+  TfLiteOpaqueDelegateBuilder opaque_delegate_builder{};
+  opaque_delegate_builder.flags = kTfLiteDelegateFlagsAllowDynamicTensors;
+  bool delegate_kernel_invoked = false;
+  opaque_delegate_builder.data = &delegate_kernel_invoked;
+  opaque_delegate_builder.Prepare = [](TfLiteOpaqueContext* context,
+                                       TfLiteOpaqueDelegate* delegate,
+                                       void* data) -> TfLiteStatus {
+    TfLiteRegistrationExternal* registration = TfLiteRegistrationExternalCreate(
+        kTfLiteBuiltinDelegate, "my delegate", 123);
+    TfLiteRegistrationExternalSetInit(
+        registration,
+        [](TfLiteOpaqueContext* opaque_context, const char* buffer,
+           size_t length) -> void* {
+          const TfLiteOpaqueDelegateParams* params =
+              reinterpret_cast<const TfLiteOpaqueDelegateParams*>(buffer);
+          EXPECT_EQ(2, params->input_tensors->size);
+          TfLiteOpaqueTensor* opaque_input_tensor =
+              TfLiteOpaqueContextGetOpaqueTensor(
+                  opaque_context, params->input_tensors->data[0]);
+          EXPECT_EQ(1, TfLiteOpaqueTensorNumDims(opaque_input_tensor));
+          EXPECT_EQ(1, TfLiteOpaqueTensorDim(opaque_input_tensor, 0));
+          EXPECT_EQ(kTfLiteDynamic,
+                    TfLiteOpaqueTensorGetAllocationType(opaque_input_tensor));
+
+          bool* delegate_kernel_invoked =
+              static_cast<bool*>(params->delegate_data);
+          *delegate_kernel_invoked = true;
+          return nullptr;
+        });
+
+    TfLiteRegistrationExternalSetPrepare(
+        registration,
+        [](TfLiteOpaqueContext* context,
+           TfLiteOpaqueNode* node) -> TfLiteStatus { return kTfLiteOk; });
+
+    TfLiteRegistrationExternalSetInvoke(
+        registration,
+        [](TfLiteOpaqueContext* context,
+           TfLiteOpaqueNode* node) -> TfLiteStatus {
+          const TfLiteOpaqueTensor* input0 =
+              TfLiteOpaqueNodeGetInput(context, node, 0);
+
+          EXPECT_EQ(TfLiteOpaqueTensorGetStringCount(input0), 4);
+          const char* input0_string2 = nullptr;
+          int input0_string2_len = -1;
+          EXPECT_EQ(kTfLiteOk,
+                    TfLiteOpaqueTensorGetString(input0, 2, &input0_string2,
+                                                &input0_string2_len));
+          EXPECT_EQ(std::string(input0_string2, input0_string2_len), "F");
+          EXPECT_EQ(1, input0_string2_len);
+
+          const TfLiteOpaqueTensor* input1 =
+              TfLiteOpaqueNodeGetInput(context, node, 1);
+          EXPECT_EQ(TfLiteOpaqueTensorGetStringCount(input1), 1);
+          const char* input1_string0 = nullptr;
+          int input1_string0_len = -1;
+          EXPECT_EQ(kTfLiteOk,
+                    TfLiteOpaqueTensorGetString(input1, 0, &input1_string0,
+                                                &input1_string0_len));
+          EXPECT_EQ(std::string(input1_string0, input1_string0_len), "XYZ");
+          EXPECT_EQ(3, input1_string0_len);
+
+          TfLiteOpaqueTensor* opaque_output0 =
+              TfLiteOpaqueNodeGetOutput(context, node, 0);
+
+          //
+          // First use 'TfLiteOpaqueTensorWriteString' to check that we can copy
+          // a string from an input tensor to an output tensor.
+          //
+          EXPECT_EQ(kTfLiteOk,
+                    TfLiteOpaqueTensorWriteString(
+                        opaque_output0, input0_string2, input0_string2_len));
+          const char* output_str_from_opaque_tensor = nullptr;
+          int output_str_from_opaque_tensor_len = -1;
+          EXPECT_EQ(kTfLiteOk,
+                    TfLiteOpaqueTensorGetString(
+                        opaque_output0, 0, &output_str_from_opaque_tensor,
+                        &output_str_from_opaque_tensor_len));
+          EXPECT_EQ(std::string(output_str_from_opaque_tensor,
+                                output_str_from_opaque_tensor_len),
+                    "F");
+          EXPECT_EQ(1, output_str_from_opaque_tensor_len);
+
+          //
+          // Then perform the 'actual' ADD operation of adding the input tensor
+          // string to the output tensor.
+          //
+          std::vector<const char*> str_array;
+          std::vector<int> str_array_len;
+          for (int i = 0; i < TfLiteOpaqueTensorGetStringCount(input0); ++i) {
+            const char* input_string = nullptr;
+            int input_string_len = -1;
+            EXPECT_EQ(kTfLiteOk,
+                      TfLiteOpaqueTensorGetString(input0, i, &input_string,
+                                                  &input_string_len));
+            str_array.push_back(input_string);
+            str_array_len.push_back(input_string_len);
+          }
+          str_array.push_back(input1_string0);
+          str_array_len.push_back(input1_string0_len);
+
+          EXPECT_EQ(kTfLiteOk, TfLiteOpaqueTensorWriteStrings(
+                                   opaque_output0, str_array.data(),
+                                   str_array.size(), str_array_len.data()));
+          return kTfLiteOk;
+        });
+
+    TfLiteIntArray* execution_plan{};
+    TfLiteOpaqueContextGetExecutionPlan(context, &execution_plan);
+    TfLiteOpaqueContextReplaceNodeSubsetsWithDelegateKernels(
+        context, registration, execution_plan, delegate);
+    return kTfLiteOk;
+  };
+
+  TfLiteDelegate my_delegate{};
+  my_delegate.opaque_delegate_builder = &opaque_delegate_builder;
+  EXPECT_EQ(kTfLiteOk, interpreter.ModifyGraphWithDelegate(&my_delegate));
+  EXPECT_TRUE(delegate_kernel_invoked);
+  EXPECT_EQ(kTfLiteOk, interpreter.AllocateTensors());
+
+  //
+  // Load input tensors with string data.
+  //
+  TfLiteTensor* t0 = interpreter.tensor(0);
+  tflite::DynamicBuffer buf0;
+  const char* raw_buf_with_embedded_null = "DDD\0EEE";
+  const char* raw_buf_without_embedded_null = "12345678";
+  std::vector<std::string> t0_strings{
+      "ABC",
+      std::string(raw_buf_with_embedded_null, raw_buf_with_embedded_null + 6),
+      "F",
+      std::string(raw_buf_without_embedded_null,
+                  raw_buf_without_embedded_null + 4)};
+  for (const std::string& s : t0_strings) {
+    ASSERT_EQ(buf0.AddString(s.data(), s.size()), kTfLiteOk);
+  }
+  buf0.WriteToTensorAsVector(t0);
+
+  TfLiteTensor* t1 = interpreter.tensor(1);
+  char s1[] = "XYZ";
+  tflite::DynamicBuffer buf1;
+  ASSERT_EQ(buf1.AddString(s1, 3), kTfLiteOk);
+  buf1.WriteToTensorAsVector(t1);
+
+  //
+  // Invoke the interpreter, so that the input tensor strings get copied to the
+  // output tensor.
+  //
+  EXPECT_EQ(kTfLiteOk, interpreter.Invoke());
+
+  //
+  // Check that the output tensor stores the combination of the input strings.
+  //
+  const std::vector<std::string> expected_strings{
+      "ABC",
+      std::string(raw_buf_with_embedded_null, raw_buf_with_embedded_null + 6),
+      "F", "1234", "XYZ"};
+  TfLiteTensor* t2 = interpreter.tensor(2);
+  EXPECT_EQ(tflite::GetStringCount(t2), expected_strings.size());
+  for (int i = 0; i < tflite::GetStringCount(t2); ++i) {
+    tflite::StringRef str_ref = tflite::GetString(t2, i);
+    EXPECT_EQ(std::string(str_ref.str, str_ref.len), expected_strings[i]);
+  }
 }
 
 void AddNode(

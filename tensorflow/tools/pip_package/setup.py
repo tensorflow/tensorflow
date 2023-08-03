@@ -47,7 +47,7 @@ from setuptools.dist import Distribution
 # result for pip.
 # Also update tensorflow/tensorflow.bzl and
 # tensorflow/core/public/version.h
-_VERSION = '2.14.0'
+_VERSION = '2.15.0'
 
 
 # We use the same setup.py for all tensorflow_* packages and for the nightly
@@ -90,15 +90,18 @@ REQUIRED_PACKAGES = [
     'h5py >= 2.9.0',
     'libclang >= 13.0.0',
     'ml_dtypes >= 0.2.0',
-    'numpy >= 1.22',
+    'numpy >= 1.23.5',
     'opt_einsum >= 2.3.2',
     'packaging',
-    'protobuf>=3.20.3,<5.0.0dev,!=4.21.0,!=4.21.1,!=4.21.2,!=4.21.3,!=4.21.4,!=4.21.5',
+    # pylint:disable=line-too-long
+    (
+        'protobuf>=3.20.3,<5.0.0dev,!=4.21.0,!=4.21.1,!=4.21.2,!=4.21.3,!=4.21.4,!=4.21.5'
+    ),
     'setuptools',
     'six >= 1.12.0',
     'termcolor >= 1.1.0',
     'typing_extensions >= 3.6.6',
-    'wrapt >= 1.11.0',
+    'wrapt >= 1.11.0, < 1.15',
     # This looks worse as a wrapped line. pylint:disable=line-too-long
     (
         'tensorflow-io-gcs-filesystem >= 0.23.1;platform_machine!="arm64" or'

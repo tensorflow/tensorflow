@@ -38,6 +38,7 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import callbacks as callbacks_module
@@ -77,7 +78,6 @@ from tensorflow.python.training import py_checkpoint_reader
 from tensorflow.python.types import data as data_types
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
-from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
 
 
@@ -128,7 +128,6 @@ def is_functional_model_init_params(args, kwargs):
           'inputs' in kwargs and 'outputs' in kwargs)
 
 
-@keras_export('keras.Model', 'keras.models.Model')
 class Model(base_layer.Layer, version_utils.ModelVersionSelector):
   """`Model` groups layers into an object with training and inference features.
 
@@ -2908,7 +2907,8 @@ def _multi_worker_concat(v, strategy):
 
 
 def _is_scalar(x):
-  return isinstance(x, (ops.Tensor, variables.Variable)) and x.shape.rank == 0
+  return isinstance(
+      x, (tensor_lib.Tensor, variables.Variable)) and x.shape.rank == 0
 
 
 def write_scalar_summaries(logs, step):

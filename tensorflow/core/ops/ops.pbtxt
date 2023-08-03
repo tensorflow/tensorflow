@@ -10681,7 +10681,7 @@ op {
     type_attr: "T"
   }
   attr {
-    name: "layout"
+    name: "mesh"
     type: "string"
   }
   attr {
@@ -10702,13 +10702,6 @@ op {
   output_arg {
     name: "output"
     type_attr: "T"
-  }
-  attr {
-    name: "reference_layout"
-    type: "string"
-    default_value {
-      s: ""
-    }
   }
   attr {
     name: "T"

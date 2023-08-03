@@ -1,5 +1,6 @@
 load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -16,7 +17,6 @@ glob_lit_tests(
         "layout_optimization_to_nhwc.mlir": "medium",
     },
     tags_override = {
-        "legalize_hlo.mlir": ["notsan"],  # b/28150957
         "optimize.mlir": ["no_rocm"],
         "tf_optimize.mlir": ["no_rocm"],
         "tf-reduce-identity.mlir": ["no_windows"],
@@ -45,4 +45,16 @@ filegroup(
             "reducer/*.sh",
         ],
     ),
+)
+
+tf_cc_test(
+    name = "xla_sharding_util_test",
+    srcs = ["xla_sharding_util_test.cc"],
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow:xla_sharding_util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:Support",
+    ],
 )

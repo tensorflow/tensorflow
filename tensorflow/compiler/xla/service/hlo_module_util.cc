@@ -130,6 +130,7 @@ StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
     config->set_alias_passthrough_params(
         execution_options->alias_passthrough_params());
     *config->mutable_fdo_profile() = execution_options->fdo_profile();
+    config->set_device_memory_size(execution_options->device_memory_size());
   } else {
     config->set_replica_count(default_num_replicas);
     config->set_debug_options(GetDebugOptionsFromFlags());

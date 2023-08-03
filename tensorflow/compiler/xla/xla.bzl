@@ -61,6 +61,7 @@ def xla_cc_binary(deps = None, copts = tsl_copts(), **kwargs):
         "//tensorflow/compiler/xla/service:hlo_proto_cc_impl",
         "//tensorflow/compiler/xla/service:memory_space_assignment_proto_cc_impl",
         "//tensorflow/compiler/xla/service/gpu:backend_configs_cc_impl",
+        "//tensorflow/compiler/xla/service/gpu:hlo_op_profile_proto_cc_impl",
         "//tensorflow/compiler/xla/stream_executor:dnn_proto_cc_impl",
         "//tensorflow/tsl/platform:env_impl",
         "//tensorflow/tsl/platform:tensor_float_32_utils",
@@ -79,11 +80,9 @@ def xla_cc_binary(deps = None, copts = tsl_copts(), **kwargs):
 def xla_cc_test(
         name,
         deps = [],
-        extra_copts = [],
         **kwargs):
     native.cc_test(
         name = name,
-        copts = extra_copts,
         deps = deps + if_tsl_link_protobuf(
                    [],
                    [
@@ -94,6 +93,7 @@ def xla_cc_test(
                        clean_dep("//tensorflow/compiler/xla/service:hlo_proto_cc_impl"),
                        clean_dep("//tensorflow/compiler/xla/service:memory_space_assignment_proto_cc_impl"),
                        clean_dep("//tensorflow/compiler/xla/service/gpu:backend_configs_cc_impl"),
+                       clean_dep("//tensorflow/compiler/xla/service/gpu:hlo_op_profile_proto_cc_impl"),
                        clean_dep("//tensorflow/compiler/xla/stream_executor:dnn_proto_cc_impl"),
                        clean_dep("//tensorflow/compiler/xla/stream_executor:stream_executor_impl"),
                        clean_dep("//tensorflow/compiler/xla/stream_executor:device_id_utils"),
@@ -102,6 +102,7 @@ def xla_cc_test(
                        clean_dep("//tensorflow/tsl/profiler/utils:time_utils_impl"),
                        clean_dep("//tensorflow/tsl/profiler/backends/cpu:annotation_stack_impl"),
                        clean_dep("//tensorflow/tsl/profiler/backends/cpu:traceme_recorder_impl"),
+                       clean_dep("//tensorflow/tsl/profiler/protobuf:xplane_proto_cc_impl"),
                        clean_dep("//tensorflow/compiler/xla:autotuning_proto_cc_impl"),
                        clean_dep("//tensorflow/tsl/protobuf:dnn_proto_cc_impl"),
                        clean_dep("//tensorflow/tsl/protobuf:protos_all_cc_impl"),

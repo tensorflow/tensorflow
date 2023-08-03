@@ -406,6 +406,9 @@ def TF_LegacyCallOp : TF_Op<"LegacyCall",
   let extraClassDeclaration = [{
     // Gets the argument operands to the called function.
     operand_range getArgOperands() { return getArgs(); }
+    MutableOperandRange getArgOperandsMutable() {
+      return getArgsMutable();
+    }
 
     // Returns the callee of this operation.
     CallInterfaceCallable getCallableForCallee() { return getFAttr(); }
@@ -569,6 +572,9 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
   let extraClassDeclaration = [{
     // Gets the argument operands to the called function.
     operand_range getArgOperands() { return getArgs(); }
+    MutableOperandRange getArgOperandsMutable() {
+      return getArgsMutable();
+    }
 
     // Returns the callee of this operation.
     CallInterfaceCallable getCallableForCallee() { return getFAttr(); }
@@ -1010,6 +1016,9 @@ def TF_TPUPartitionedCallOp : TF_Op<"TPUPartitionedCall",
   let extraClassDeclaration = [{
     // Gets the argument operands to the called function.
     operand_range getArgOperands() { return getArgs(); }
+    MutableOperandRange getArgOperandsMutable() {
+      return getArgsMutable();
+    }
 
     // Returns the callee of this operation.
     CallInterfaceCallable getCallableForCallee() { return getFAttr(); }
@@ -1423,18 +1432,22 @@ summary_metadata: Serialized SummaryMetadata protocol buffer containing
 
 def TF__TPUDeviceOrdinalPlaceholderOp : TF_Op<"_TPUDeviceOrdinalPlaceholder", [Pure]> {
   let summary = [{
-Placeholder device ordinal that represents device ordinal of a replicated op.
+Placeholder for a device ordinal that depends on its tf_device.replicate ancestor.
   }];
 
   let description = [{
-This op can be used when certain rewrite passes materialize ops that require a
-device ordinal of a replicated op but replication logic has been abstracted away
-using tf_device.replicate op. Subsequent rewrite passes must replace this op with
-a constant output that represents the correct device ordinal of the replicated
-operations inside a TPU host.
+This op must have a tf_device.replicate ancestor. The ancestor replica_id and
+logical_core attribute correspond to a TPU core. This op maps the TPU core to a
+device_ordinal, where the device ordinal is the index of the core relative to
+its host.
+
+The replicate_to_island pass removes and flattens tf_device.replicate, so it
+converts this op to the constant index of the core relative to its host.
   }];
 
-  let arguments = (ins);
+  let arguments = (ins
+    I64Attr:$logical_core
+  );
 
   let results = (outs
     TF_Int64Tensor:$device_ordinal

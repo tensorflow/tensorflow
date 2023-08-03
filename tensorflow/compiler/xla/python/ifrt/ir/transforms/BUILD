@@ -29,13 +29,18 @@ cc_library(
     srcs = [
         "ifrt_duplicated_callee_elimination_pass.cc",
         "spmd_expandable_interface_verification_pass.cc",
+        "spmd_expansion_pass.cc",
     ],
     hdrs = ["passes.h"],
     deps = [
+        ":constants",
         ":passes_inc_gen",
         "//tensorflow/compiler/xla/python/ifrt/ir",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
@@ -53,4 +58,10 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
     ],
+)
+
+cc_library(
+    name = "constants",
+    hdrs = ["constants.h"],
+    deps = ["@llvm-project//llvm:Support"],
 )

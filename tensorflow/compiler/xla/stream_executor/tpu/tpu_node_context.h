@@ -16,14 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_TPU_NODE_CONTEXT_H_
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_TPU_NODE_CONTEXT_H_
 
-#include <string>
+#include <memory>
 
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/stream_pool.h"
-#include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
 #include "tensorflow/tsl/platform/macros.h"
 #include "tensorflow/tsl/platform/status.h"

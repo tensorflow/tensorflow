@@ -44,6 +44,7 @@ channel_id)` </b>
 | `operand`        | `XlaOp`              | Array to concatenate across |
 :                  :                      : replicas.                   :
 | `all_gather_dim` | `int64`              | Concatenation dimension.    |
+| `shard_count`    | `int64`              | Size of each replica group. |
 | `replica_groups` | vector of vectors of | Groups between which the    |
 :                  : `int64`              : concatenation is performed. :
 | `channel_id`     | optional `int64`     | Optional channel ID for     |

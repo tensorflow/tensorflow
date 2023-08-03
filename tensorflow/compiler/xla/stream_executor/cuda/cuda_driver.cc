@@ -1234,7 +1234,11 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
     return false;
   }
 
-  if (gpu_dst == 0 || gpu_src == 0) {
+  // In graph capture mode we never have operations that access peer memory, so
+  // we can always make a call to cuMemcpyDtoDAsync.
+  bool is_capturing = stream_capture_status == cudaStreamCaptureStatusActive;
+
+  if ((gpu_dst == 0 || gpu_src == 0) || is_capturing) {
     // CreatedContexts::GetAnyContext() doesn't works when ptr == 0.
     // This happens when the size is 0.
     result = cuMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream);

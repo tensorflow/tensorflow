@@ -16,23 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_AUTOTUNER_COMPILE_UTIL_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_AUTOTUNER_COMPILE_UTIL_H_
 
-#include <stdint.h>
-
-#include <algorithm>
-#include <array>
-#include <cstdint>
-#include <iterator>
-#include <limits>
 #include <memory>
 #include <optional>
-#include <string>
-#include <tuple>
-#include <utility>
-#include <variant>
 #include <vector>
 
-#include "tensorflow/compiler/xla/autotune_results.pb.h"
-#include "tensorflow/compiler/xla/autotuning.pb.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_clone_context.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
@@ -49,61 +36,58 @@ namespace gpu {
 // separate target, as runtime autotuning cannot perform compilation.
 class AutotunerCompileUtil {
  public:
-  using ExtractModuleFn =
+  using GenerateModuleFn =
       absl::AnyInvocable<StatusOr<std::unique_ptr<HloModule>>()>;
 
-  static StatusOr<AutotunerCompileUtil> Create(
-      se::Stream& stream, se::DeviceMemoryAllocator& allocator);
-
-  AutotunerCompileUtil(Compiler* compiler, se::StreamExecutor& stream_executor,
-                       se::Stream& stream, se::DeviceMemoryAllocator& allocator)
-      : compiler_(compiler),
-        stream_executor_(stream_executor),
-        stream_(stream),
-        allocator_(allocator) {}
-
-  // Runs the compiled executable with the given extractor, cached with
-  // <cache_key, config>. Returns std::nullopt on expected failure, bad Status
-  // otherwise.
-  // Uses a global cache, *not* unique per instance.
-  StatusOr<std::optional<absl::Duration>> GenerateAndProfileExecutable(
-      const HloComputation& hlo_computation, const AutotuneResult& config,
-      const AutotuneCacheKey& cache_key, se::Stream* stream,
-      absl::Span<se::DeviceMemoryBase const> input_buffers,
-      se::DeviceMemoryBase output_buffer, ExtractModuleFn extractor);
-
-  // Generic method to compile a given computation in isolation using a given
-  // pipeline, cached on AutotuneResult and AutotuneCacheKey.
+  // Generates a compile util for a platform associated with the `stream`.
   //
-  // On *expected* failures we will store an empty unique_ptr in cache.
+  // Returns an empty optional if the AutotuneConfig is deviceless, as
+  // autotuning is impossible in that case.
+  static StatusOr<std::optional<AutotunerCompileUtil>> Create(
+      const AutotuneConfig& config, const DebugOptions& opts);
+
+  struct ProfilingOutput {
+    ProfilingOutput(absl::Duration duration, ScopedShapedBuffer&& buffer)
+        : duration(duration), output(std::move(buffer)) {}
+
+    absl::Duration duration;
+    ScopedShapedBuffer output;
+  };
+
+  // Generates an executable first, given the module generator function in
+  // `extractor`.
+  //
+  // Runs the resulting executable with the given extractor, cached with
+  // `(cache_key, config)`. Returns `std::nullopt` on expected failure, bad
+  // `Status` otherwise.
+  StatusOr<std::optional<ProfilingOutput>> ProfileExecutable(
+      Executable* executable, se::Stream* stream,
+      absl::Span<se::DeviceMemoryBase const> input_buffers);
+
+  // Generic method to compile a generated module from `extractor` in isolation.
   //
   // Returns:
-  //  - <nullptr> on *expected* failure
-  //  - Executable if everything goes fine.
-  //  - Status on *unexpected* failure.
-  StatusOr<Executable*> Compile(
-      const HloComputation& hlo_computation, const AutotuneResult& res,
-      const AutotuneCacheKey& cache_key,
-      AutotunerCompileUtil::ExtractModuleFn extractor);
-
-  static void ClearCompilationCache();
+  //  - `nullptr` on *expected* failure
+  //  - `Executable` if everything goes fine.
+  //  - `Status` on *unexpected* failure.
+  StatusOr<std::unique_ptr<Executable>> Compile(
+      AutotunerCompileUtil::GenerateModuleFn extractor);
 
  private:
-  StatusOr<std::unique_ptr<Executable>> RunBackend(
-      const HloComputation& original_computation,
-      std::unique_ptr<HloModule> module);
-
-  StatusOr<std::unique_ptr<Executable>> CompileNoCache(
-      const HloComputation& original_computation,
-      AutotunerCompileUtil::ExtractModuleFn module_extractor);
+  AutotunerCompileUtil(const AutotuneConfig& config, Compiler* compiler,
+                       se::StreamExecutor& stream_executor, se::Stream& stream,
+                       se::DeviceMemoryAllocator& allocator,
+                       const DebugOptions& opts);
 
   StatusOr<ExecutionOutput> Execute(Executable& executable,
                                     std::vector<ExecutionInput> arguments);
 
+  AutotuneConfig config_;
   Compiler* compiler_;
   se::StreamExecutor& stream_executor_;
   se::Stream& stream_;
   se::DeviceMemoryAllocator& allocator_;
+  DebugOptions opts_;
 };
 
 }  // namespace gpu

@@ -17,10 +17,8 @@
 
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.types import data as data_types
-from tensorflow.python.util.tf_export import keras_export
 
 
-@keras_export('keras.utils.experimental.DatasetCreator', v1=[])
 class DatasetCreator(object):
   """Object that returns a `tf.data.Dataset` upon invoking.
 

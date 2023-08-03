@@ -27,16 +27,20 @@ limitations under the License.
 #include <string_view>
 #include <tuple>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"
+#include "absl/strings/str_split.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
@@ -48,6 +52,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/instruction_hoister.h"
 #include "tensorflow/compiler/xla/service/memory_space_assignment.pb.h"
 #include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -5390,6 +5395,145 @@ TEST_P(MemorySpaceAssignmentTest,
   }
 }
 
+TEST_P(MemorySpaceAssignmentTest,
+       WhileRedundantEvictionWithInefficientAllocationBug) {
+  absl::string_view hlo_string = R"(
+  HloModule module, is_scheduled=true
+
+  while_cond {
+    p0 = (f32[3]{0}, f32[3]{0}, pred[]) parameter(0)
+    ROOT gte = pred[] get-tuple-element(p0), index=2
+  }
+
+  while_body {
+    p0 = (f32[3]{0}, f32[3]{0}, pred[]) parameter(0)
+    gte0 = f32[3]{0} get-tuple-element(p0), index=0
+    gte1 = f32[3]{0} get-tuple-element(p0), index=1
+    tanh = f32[3]{0} tanh(gte1)
+    gte2 = pred[] get-tuple-element(p0), index=2
+    negate0 = f32[3]{0} negate(gte0)
+    negate1 = f32[3]{0} negate(negate0)
+    add = f32[3]{0} add(negate1, tanh)
+    ROOT tuple = (f32[3]{0}, f32[3]{0}, pred[]) tuple(add, gte1, gte2)
+  }
+
+  while_cond1 {
+    p0 = (f32[3]{0}, f32[3]{0}, pred[]) parameter(0)
+    ROOT gte = pred[] get-tuple-element(p0), index=2
+  }
+
+  while_body1 {
+    p0 = (f32[3]{0}, f32[3]{0}, pred[]) parameter(0)
+    gte0 = f32[3]{0} get-tuple-element(p0), index=0
+    gte2 = pred[] get-tuple-element(p0), index=2
+    negate0 = f32[3]{0} negate(gte0)
+    negate1 = f32[3]{0} negate(negate0)
+    negate2 = f32[3]{0} negate(negate1)
+    negate3 = f32[3]{0} negate(negate2)
+    negate4 = f32[3]{0} negate(negate3)
+    negate5 = f32[3]{0} negate(negate4)
+    negate6 = f32[3]{0} negate(negate5)
+    negate7 = f32[3]{0} negate(negate6)
+    negate8 = f32[3]{0} negate(negate7)
+    negate9 = f32[3]{0} negate(negate8)
+    negate10 = f32[3]{0} negate(negate9)
+    negate11 = f32[3]{0} negate(negate10)
+    negate12 = f32[3]{0} negate(negate11)
+    negate13 = f32[3]{0} negate(negate12)
+    negate14 = f32[3]{0} negate(negate13)
+    gte1 = f32[3]{0} get-tuple-element(p0), index=1
+    tanh = f32[3]{0} tanh(gte1)
+    add = f32[3]{0} add(negate14, tanh)
+    ROOT tuple = (f32[3]{0}, f32[3]{0}, pred[]) tuple(add, gte1, gte2)
+  }
+
+  ENTRY entry {
+    p0 = f32[3]{0} parameter(0)
+    p1 = pred[] parameter(1)
+    p2 = f32[3]{0} parameter(2)
+    copy = f32[3]{0} copy(p0)
+    tuple1 = (f32[3]{0}, f32[3]{0}, pred[]) tuple(copy, p0, p1)
+    while1 = (f32[3]{0}, f32[3]{0}, pred[]) while(tuple1), condition=while_cond, body=while_body
+    gte0 = f32[3]{0} get-tuple-element(while1), index=0
+    gte1 = f32[3]{0} get-tuple-element(while1), index=1
+    negate0_entry = f32[3]{0} negate(gte1)
+    gte2 = pred[] get-tuple-element(while1), index=2
+    tuple2 = (f32[3]{0}, f32[3]{0}, pred[]) tuple(gte0, gte1, gte2)
+    while2 = (f32[3]{0}, f32[3]{0}, pred[]) while(tuple2), condition=while_cond1, body=while_body1
+    negate1 = f32[3]{0} negate(negate0_entry)
+    negate2 = f32[3]{0} negate(negate1)
+    negate3 = f32[3]{0} negate(negate2)
+    negate4 = f32[3]{0} negate(negate3)
+    negate5 = f32[3]{0} negate(negate4)
+    negate6 = f32[3]{0} negate(negate5)
+    negate7 = f32[3]{0} negate(negate6)
+    negate8 = f32[3]{0} negate(negate7)
+    negate9 = f32[3]{0} negate(negate8)
+    negate10 = f32[3]{0} negate(negate9)
+    negate11 = f32[3]{0} negate(negate10)
+    negate12 = f32[3]{0} negate(negate11)
+    negate13 = f32[3]{0} negate(negate12)
+    negate14 = f32[3]{0} negate(negate13)
+    gte = f32[3]{0} get-tuple-element(while2), index=1
+    ROOT add = f32[3]{0} add(gte, negate14)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options options = DefaultMemorySpaceOptions();
+  // Inject GetInefficientAllocationSites to mark negate0_entry use as
+  // inefficient. This triggers a corner case bug where allocating for while2{1}
+  // in the retry allocation fails to find the previous required allocation in
+  // default memory, and creates a new one which is wrong.
+  bool marked_inefficient = false;
+  options.get_inefficient_allocation_sites_fn =
+      [&](absl::Span<HloPosition> defining_positions)
+      -> std::vector<std::variant<HloPosition, HloUse>> {
+    if (absl::c_find(defining_positions,
+                     HloPosition{FindInstruction(module.get(), "while1"),
+                                 {1}}) != defining_positions.end() &&
+        !marked_inefficient) {
+      LOG(INFO) << "Marking the use inefficient.";
+      marked_inefficient = true;
+      return {HloUse{FindInstruction(module.get(), "negate0_entry"), 0}};
+    }
+    return {};
+  };
+  AssignMemorySpace(module.get(), options);
+}
+
+TEST_P(MemorySpaceAssignmentTest, DisablePrefetch) {
+  absl::string_view hlo_string = R"(
+  HloModule module, is_scheduled=true
+
+  ENTRY entry {
+    p0 = f32[3]{0} parameter(0)
+    p1 = f32[3]{0} parameter(1)
+    negate1 = f32[3]{0} negate(p1)
+    negate2 = f32[3]{0} negate(negate1)
+    negate3 = f32[3]{0} negate(negate2)
+    negate4 = f32[3]{0} negate(negate3)
+    negate5 = f32[3]{0} negate(negate4)
+    negate6 = f32[3]{0} negate(negate5)
+    negate7 = f32[3]{0} negate(negate6)
+    negate8 = f32[3]{0} negate(negate7)
+    negate9 = f32[3]{0} negate(negate8)
+    ROOT add = f32[3]{0} add(negate9, p0)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  Options options = DefaultMemorySpaceOptions();
+  options.max_outstanding_prefetches = 0;
+  AssignMemorySpace(module.get(), options);
+
+  EXPECT_THAT(module->entry_computation()->root_instruction()->operand(1),
+              op::Parameter());
+}
+
 TEST_P(MemorySpaceAssignmentTest, BitcastRoot) {
   // Tests against a bug where the root of entry computation is a bitcast
   // instruction and it ends up getting an allocation in the alternate memory.
@@ -7891,6 +8035,46 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramRootDotMayAlias) {
   EXPECT_THAT(FindInstruction(module.get(), "dot")->operand(1),
               op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
                             op::Parameter(0)));
+}
+
+TEST_P(MemorySpaceAssignmentTest, CrossProgramRootLiveOutBug) {
+  // An in-place fusion that lives out should not be included as a use to the
+  // cross-program prefetch allocation. Due to a bug, we considered in-place
+  // update that feeds the ROOT of the entry computation as a valid use of the
+  // cross-program prefetch. This then would cause this live-out buffer to be
+  // placed in the alternate memory. We expect p0 to be cross-program prefetched
+  // but only for the dot operand and not the fusion operand.
+  absl::string_view hlo_string = R"(
+  HloModule cross_program_prefetch, is_scheduled=true, input_output_alias={ {0}: (0, {}, may-alias) }
+    fused_computation {
+      p0 = s32[2,2] parameter(0)
+      p1 = s32[2,2] parameter(1)
+      slice = s32[1,2] slice(p1), slice={[0:1], [0:2]}
+      c1 = s32[] constant(0)
+      ROOT dus = s32[2,2] dynamic-update-slice(s32[2,2] p0, s32[1,2] slice, s32[] c1, s32[] c1)
+    }
+
+    ENTRY CrossProgramPrefetch {
+      p0 = s32[2,2] parameter(0)
+      p1 = s32[2,2] parameter(1)
+      dot = s32[2,2] dot(p1, p0), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+      fusion = s32[2,2] fusion(p0, dot), kind=kLoop, calls=fused_computation
+      ROOT root = (s32[2,2], s32[2,2]) tuple(fusion, dot)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  auto preset_assignments = AssignMemorySpace(
+      module.get(), DefaultMemorySpaceOptions(),
+      /*max_prefetch_interval=*/5, /*min_prefetch_interval=*/2);
+
+  auto cross_program_prefetches = module->CrossProgramPrefetches();
+  EXPECT_EQ(cross_program_prefetches.size(), 1);
+  EXPECT_THAT(FindInstruction(module.get(), "dot")->operand(1),
+              op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
+                            op::Parameter(0)));
+  EXPECT_THAT(FindInstruction(module.get(), "fusion")->operand(0),
+              op::Parameter(0));
 }
 
 TEST_P(MemorySpaceAssignmentTest, CrossProgramRootParameter) {
@@ -11047,6 +11231,157 @@ ENTRY main {
     }
   }
   EXPECT_EQ(num_chunks_for_expected_aliases, 1);
+}
+
+TEST_F(SlicedPrefetchTest, Repack) {
+  absl::string_view hlo_string = R"(
+HloModule Slice, is_scheduled=true
+
+ENTRY main {
+  /* parameters */
+  p0 = f32[] parameter(0)
+  p1 = f32[16,16] parameter(1)
+  p2 = f32[32,16] parameter(2)
+  p3 = f32[16,16] parameter(3)
+  p4 = f32[32,16] parameter(4)
+
+  /* filler that we can prefetch over */
+  x1 = f32[] add(p0,p0)
+  x2 = f32[] add(x1, x1)
+
+  /* uses of p1 and p3 */
+  a = f32[16,16] sine(p1)
+  c = f32[16,16] sine(p3)
+
+  /* more filler, giving us time to prefetch p4, when repacking */
+  x3 = f32[] add(x2, x2)
+  x4 = f32[] add(x3, x3)
+
+  /* uses of p2 and p4 */
+  b = f32[32,16] sine(p2)
+  d = f32[32,16] sine(p4)
+
+  /* make sure that x4, a, b, c, d are not dead code */
+  z1 = f32[16,16] broadcast(x4), dimensions={}
+  z2 = f32[16,16] add(z1, a)
+  z3 = f32[32,16] concatenate(z2, c), dimensions={0}
+  z4 = f32[32,16] add(z3, b)
+  ROOT z5 = f32[32,16] add(z4, d)
+})";
+
+  // Create 2 copies of the module, one to run without repacking and one to run
+  // with repacking.
+  TF_ASSERT_OK_AND_ASSIGN(auto module_no_repacking,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(auto module_with_repacking,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  VLOG(1) << "Original module:\n"
+          << module_no_repacking->ToString(HloPrintOptions::ShortParsable());
+
+  // Setup slicing expectations
+  Shape f32_8_16 = ShapeUtil::MakeShape(F32, {8, 16});
+  Shape f32_16_16 = ShapeUtil::MakeShape(F32, {16, 16});
+  Shape f32_32_16 = ShapeUtil::MakeShape(F32, {32, 16});
+  EXPECT_CALL(slice_proposer_,
+              ProposeSlices(f32_16_16, EqualsSlicedPrefetchOptions(
+                                           options_.sliced_prefetch_options)))
+      .WillRepeatedly(Return(SliceProposalCollection({
+          SliceProposal({f32_8_16, std::vector<SliceParam>({{0, 8}, {0, 16}}),
+                         ShapeSize(f32_8_16)}),
+          SliceProposal({f32_8_16, std::vector<SliceParam>({{8, 16}, {0, 16}}),
+                         ShapeSize(f32_8_16)}),
+      })));
+  EXPECT_CALL(slice_proposer_,
+              ProposeSlices(f32_32_16, EqualsSlicedPrefetchOptions(
+                                           options_.sliced_prefetch_options)))
+      .WillRepeatedly(Return(SliceProposalCollection({
+          SliceProposal({f32_16_16, std::vector<SliceParam>({{0, 16}, {0, 16}}),
+                         ShapeSize(f32_16_16)}),
+          SliceProposal({f32_16_16,
+                         std::vector<SliceParam>({{16, 32}, {0, 16}}),
+                         ShapeSize(f32_16_16)}),
+      })));
+
+  // Force MSA to prefer prefetching (in order) p0, p1, p2, p3, p4, and then
+  // anything else.
+  MemorySpaceAssignment::BufferIntervalCompare buffer_interval_compare =
+      [](const MemorySpaceAssignment::BufferInterval& a,
+         const MemorySpaceAssignment::BufferInterval& b) {
+        auto get_priority = [](const HloInstruction* instruction) {
+          if (instruction->name() == "p1") {
+            return 1;
+          }
+          if (instruction->name() == "p2") {
+            return 2;
+          }
+          if (instruction->name() == "p3") {
+            return 3;
+          }
+          if (instruction->name() == "p4") {
+            return 4;
+          }
+          return 100;
+        };
+
+        return get_priority(a.buffer->defining_instruction()) <
+               get_priority(b.buffer->defining_instruction());
+      };
+
+  // Configure MSA.
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(2, 50);
+  options_.max_size_in_bytes = 4 * 1024;
+  options_.max_repacks = 0;
+
+  // Run MSA without repacking
+  std::unique_ptr<PresetAssignments> assignments =
+      AssignMemorySpace(module_no_repacking.get(), options_,
+                        buffer_interval_compare, &prefetch_interval_picker);
+  VLOG(1) << "Post-MSA module (no repacking):\n"
+          << module_no_repacking->ToString(HloPrintOptions::ShortParsable());
+
+  // If repacking is disabled, p4 (the source of d) should not be prefetched.
+  const HloInstruction* d = nullptr;
+  for (const HloInstruction* i :
+       module_no_repacking->entry_computation()->instructions()) {
+    if (i->name() == "d") {
+      d = i;
+      break;
+    }
+  }
+  ASSERT_NE(d, nullptr);
+  EXPECT_FALSE(IsConcatBitcast(d->operand(0)));
+
+  // Configure MSA to repack.
+  absl::flat_hash_map<std::pair<int64_t, int64_t>, int64_t> repack_map;
+  // Move "p2" from offset 1024 to 2048.
+  repack_map[{2, 1024}] = 2048;
+  // Move "p3" from offset 3072 to 1024.
+  repack_map[{3, 3072}] = 1024;
+  FakeMemorySpaceAssignmentRepacker repacker =
+      FakeMemorySpaceAssignmentRepacker(repack_map);
+  options_.max_repacks = 1;
+  options_.repacker = &repacker;
+  assignments =
+      AssignMemorySpace(module_with_repacking.get(), options_,
+                        buffer_interval_compare, &prefetch_interval_picker);
+  VLOG(1) << "Post-MSA module (with repacking):\n"
+          << module_with_repacking->ToString(HloPrintOptions::ShortParsable());
+
+  // If repacking is enabled, p4 (the source of d) should be prefetched.
+  d = nullptr;
+  for (const HloInstruction* i :
+       module_with_repacking->entry_computation()->instructions()) {
+    if (i->name() == "d") {
+      d = i;
+      break;
+    }
+  }
+  ASSERT_NE(d, nullptr);
+  EXPECT_TRUE(IsConcatBitcast(d->operand(0)));
+
+  // Check expectations on the chunks assigned to the asynchronous sliced copy.
+  // In particular, we want to make sure the slices are still contiguous.
+  TF_EXPECT_OK(CheckSliceChunks(*assignments, d->operand(0)));
 }
 
 }  // namespace

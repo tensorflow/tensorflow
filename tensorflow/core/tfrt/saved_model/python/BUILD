@@ -13,32 +13,23 @@ package_group(
         # Authorized users go here.
         "//tensorflow/core/tfrt/saved_model/...",
         "//tensorflow/core/tfrt/graph_executor/...",
+        "//learning/brain/tfrt/cpp_tests/gpu_inference/...",
     ],
 )
 
 pytype_strict_binary(
     name = "saved_model_load_and_run_py",
-    srcs = ["saved_model_load_and_run.py"],
+    srcs = [
+        "saved_model_load_and_run.py",
+    ],
+    data = ["//tensorflow/core/tfrt/graph_executor:graph_execution_options.so"],  # copybara:comment
     main = "saved_model_load_and_run.py",
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
         ":_pywrap_saved_model",
-        "//tensorflow/core/tfrt/graph_executor:graph_execution_options",
         "@absl_py//absl:app",
-    ],
-)
-
-py_binary(
-    name = "saved_model_aot_compile_py",
-    srcs = ["saved_model_aot_compile.py"],
-    main = "saved_model_aot_compile.py",
-    python_version = "PY3",
-    srcs_version = "PY3",
-    deps = [
-        ":_pywrap_saved_model_aot_compile",
-        "//tensorflow/core/tfrt/graph_executor/python:_pywrap_graph_execution_options",
-        "@absl_py//absl:app",
+        # copybara:uncomment "//tensorflow/core/tfrt/graph_executor:graph_execution_options",
     ],
 )
 

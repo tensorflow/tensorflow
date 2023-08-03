@@ -357,6 +357,10 @@ void TF_GetInput(TF_OpKernelContext* ctx, int i, TF_Tensor** tensor,
     return;
   }
   const ::tensorflow::Tensor& cc_tensor(cc_ctx->input(i));
+  if ((&cc_tensor) == nullptr) {  // NOLINT: Error observed in OSS.
+    *tensor = nullptr;
+    return;
+  }
   TF_Tensor* result =
       ::tensorflow::TF_TensorFromTensor(cc_tensor, &status->status);
   if (TF_GetCode(status) == TF_OK) {
@@ -884,4 +888,16 @@ TF_Tensor* TF_AllocateTemp(TF_OpKernelContext* context, TF_DataType dtype,
     return nullptr;
   }
   return tf_tensor;
+}
+
+void TF_IncNumDeferredOps(TF_OpKernelContext* context) {
+  tensorflow::OpKernelContext* cc_ctx =
+      reinterpret_cast<::tensorflow::OpKernelContext*>(context);
+  cc_ctx->inc_num_deferred_ops_function()();
+}
+
+void TF_DecNumDeferredOps(TF_OpKernelContext* context) {
+  tensorflow::OpKernelContext* cc_ctx =
+      reinterpret_cast<::tensorflow::OpKernelContext*>(context);
+  cc_ctx->dec_num_deferred_ops_function()();
 }

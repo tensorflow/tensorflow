@@ -396,16 +396,19 @@ class BincountOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 class SparseBincountOpTest(test_util.TensorFlowTestCase,
                            parameterized.TestCase):
 
-  @parameterized.parameters([{
-      "dtype": np.int32,
-  }, {
-      "dtype": np.int64,
-  }])
+  @parameterized.parameters([
+      {
+          "dtype": np.int32,
+      },
+      {
+          "dtype": np.int64,
+      },
+  ])
   def test_sparse_bincount_all_count(self, dtype):
     np.random.seed(42)
-    num_rows = 128
+    num_rows = 4096
     size = 1000
-    n_elems = 4096
+    n_elems = 128
     inp_indices = np.random.randint(0, num_rows, (n_elems, 1))
     inp_vals = np.random.randint(0, size, (n_elems,), dtype=dtype)
 
@@ -420,16 +423,19 @@ class SparseBincountOpTest(test_util.TensorFlowTestCase,
                 size=size,
                 weights=[])))
 
-  @parameterized.parameters([{
-      "dtype": np.int32,
-  }, {
-      "dtype": np.int64,
-  }])
+  @parameterized.parameters([
+      {
+          "dtype": np.int32,
+      },
+      {
+          "dtype": np.int64,
+      },
+  ])
   def test_sparse_bincount_all_count_with_weights(self, dtype):
     np.random.seed(42)
-    num_rows = 128
+    num_rows = 4096
     size = 1000
-    n_elems = 4096
+    n_elems = 128
     inp_indices = np.random.randint(0, num_rows, (n_elems, 1))
     inp_vals = np.random.randint(0, size, (n_elems,), dtype=dtype)
     inp_weight = np.random.random((n_elems,))
@@ -558,6 +564,77 @@ class SparseBincountOpTest(test_util.TensorFlowTestCase,
                 size=size,
                 weights=[],
                 binary_output=True)))
+
+  @parameterized.parameters([
+      {
+          "values": [0, 1, 2, 2],
+          "axis": 0,
+          "binary": False,
+          "expect": [1, 1, 2],
+      },
+      {
+          "values": [2, 1, 2, 2],
+          "axis": 0,
+          "binary": False,
+          "expect": [0, 1, 3],
+      },
+      {
+          "values": [0, 1, 2, 2],
+          "axis": 0,
+          "binary": True,
+          "expect": [1, 1, 1],
+      },
+      {
+          "values": [2, 1, 2, 2],
+          "axis": 0,
+          "binary": True,
+          "expect": [0, 1, 1],
+      },
+      {
+          "values": [0, 1, 2, 2],
+          "axis": -1,
+          "binary": False,
+          "expect": [[0, 0, 0], [1, 1, 0], [0, 0, 2], [0, 0, 0]],
+      },
+      {
+          "values": [2, 1, 2, 2],
+          "axis": -1,
+          "binary": False,
+          "expect": [[0, 0, 0], [0, 1, 1], [0, 0, 2], [0, 0, 0]],
+      },
+      {
+          "values": [0, 1, 2, 2],
+          "axis": -1,
+          "binary": True,
+          "expect": [[0, 0, 0], [1, 1, 0], [0, 0, 1], [0, 0, 0]],
+      },
+      {
+          "values": [2, 1, 2, 2],
+          "axis": -1,
+          "binary": True,
+          "expect": [[0, 0, 0], [0, 1, 1], [0, 0, 1], [0, 0, 0]],
+      },
+  ])
+  def test_sparse_bincount_implicit_zeros(
+      self, values, axis, binary, expect
+  ):
+    if axis == -1:
+      indices = [[1, 2], [1, 4], [2, 2], [2, 4]]
+      dense_shape = [4, 5]
+    else:
+      indices = [[7], [9], [12], [14]]
+      dense_shape = [20]
+
+    self.assertAllEqual(
+        expect,
+        self.evaluate(
+            gen_math_ops.sparse_bincount(
+                indices=indices,
+                values=values,
+                dense_shape=dense_shape,
+                size=3,
+                weights=[],
+                binary_output=binary)))
 
   @test_util.run_in_graph_and_eager_modes
   def test_size_is_not_scalar(self):  # b/206619828

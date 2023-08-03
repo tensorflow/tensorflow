@@ -17,7 +17,7 @@
 from tensorflow.python.data.experimental.ops.cardinality import assert_cardinality
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import tensor
 from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
@@ -35,10 +35,10 @@ def _check_table_initializer_element_spec(element_spec):
                      f"{len(element_spec)} components instead of two "
                      "(key, value) components. Full dataset element spec: "
                      f"{element_spec}.")
-  if not isinstance(element_spec[0], tensor_spec.TensorSpec):
+  if not isinstance(element_spec[0], tensor.TensorSpec):
     raise ValueError(base_error + "However, the given dataset produces "
                      f"non-Tensor keys of type {type(element_spec[0])}.")
-  if not isinstance(element_spec[1], tensor_spec.TensorSpec):
+  if not isinstance(element_spec[1], tensor.TensorSpec):
     raise ValueError(base_error + "However, the given dataset produces "
                      f"non-Tensor values of type {type(element_spec[1])}.")
   if element_spec[0].shape.rank not in (None, 0):
@@ -163,14 +163,14 @@ def table_from_dataset(dataset=None,
   if num_oov_buckets < 0:
     raise ValueError("`num_oov_buckets` must be greater than or equal to 0, "
                      f"got {num_oov_buckets}.")
-  if (not isinstance(vocab_size, ops.Tensor) and vocab_size is not None and
+  if (not isinstance(vocab_size, tensor.Tensor) and vocab_size is not None and
       vocab_size < 1):
     raise ValueError(f"`vocab_size` must be greater than 0, got {vocab_size}.")
   if (not key_dtype.is_integer) and (dtypes.string != key_dtype.base_dtype):
     raise TypeError("`key_dtype` must be either an integer or string type, "
                     f"but got {key_dtype}")
   if vocab_size is not None:
-    if isinstance(vocab_size, ops.Tensor):
+    if isinstance(vocab_size, tensor.Tensor):
       vocab_size = math_ops.cast(vocab_size, dtypes.int64)
     dataset = dataset.take(vocab_size)
     dataset = dataset.apply(assert_cardinality(vocab_size))

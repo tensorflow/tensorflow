@@ -150,6 +150,25 @@ RankedTensorType interleavedToComplexType(RankedTensorType type) {
   return RankedTensorType::get(new_shape, ComplexType::get(base_type));
 }
 
+// Create a TOSA rescale op from TFLite scaling multiplier, scaling shift, zero
+// points and rounding mode
+Value buildRescale(PatternRewriter& rewriter, Operation* op,
+                   ShapedType output_type, Value input_val,
+                   int32_t scale_multiplier, int32_t scale_shit,
+                   int64_t input_zp, int64_t output_zp, bool double_round,
+                   bool scale32) {
+  auto rescale_op = CreateOpAndInfer<tosa::RescaleOp>(
+      rewriter, op->getLoc(), output_type, input_val,
+      rewriter.getI32IntegerAttr(static_cast<int32_t>(input_zp)),
+      rewriter.getI32IntegerAttr(static_cast<int32_t>(output_zp)),
+      rewriter.getDenseI32ArrayAttr({scale_multiplier}),
+      rewriter.getDenseI32ArrayAttr({scale_shit}),
+      rewriter.getBoolAttr(scale32), rewriter.getBoolAttr(double_round),
+      rewriter.getBoolAttr(false));
+
+  return rescale_op.getResult();
+}
+
 // Create a TOSA rescale op from TFLite scaling, zero points and rounding mode
 Value buildRescale(PatternRewriter& rewriter, Operation* op,
                    ShapedType output_type, Value input_val, double scale,
@@ -162,15 +181,8 @@ Value buildRescale(PatternRewriter& rewriter, Operation* op,
 
   computeMultiplierAndShift(scale, multiplier, shift, scale_width);
 
-  auto rescale_op = CreateOpAndInfer<tosa::RescaleOp>(
-      rewriter, op->getLoc(), output_type, input_val,
-      rewriter.getI32IntegerAttr(static_cast<int32_t>(input_zp)),
-      rewriter.getI32IntegerAttr(static_cast<int32_t>(output_zp)),
-      rewriter.getDenseI32ArrayAttr({multiplier}),
-      rewriter.getDenseI32ArrayAttr({shift}), rewriter.getBoolAttr(scale32),
-      rewriter.getBoolAttr(double_round), rewriter.getBoolAttr(false));
-
-  return rescale_op.getResult();
+  return buildRescale(rewriter, op, output_type, input_val, multiplier, shift,
+                      input_zp, output_zp, double_round, scale32);
 }
 
 // Removes the zero point and cast to int32, no need to handle roundings modes
@@ -181,21 +193,31 @@ Value removeZeroPointAndCastToInt32(PatternRewriter& rewriter, Operation* op,
 
 // Creates TOSA rescale op with int32 output
 Value buildRescaleToInt32(PatternRewriter& rewriter, Operation* op,
-                          Value input_val, double input_scale,
-                          int64_t input_zp) {
+                          Value input_val, int32_t input_scale_multiplier,
+                          int32_t input_scale_shift, int64_t input_zp) {
   // Output is always int32 type
   auto input_type = dyn_cast<mlir::ShapedType>(input_val.getType());
   assert(input_type);
   auto output_type = input_type.clone(rewriter.getI32Type());
 
-#if TFLITE_SINGLE_ROUNDING
-  bool double_round = false;
-#else   // TFLITE_DOUBLE_ROUNDING
-  bool double_round = true;
-#endif  // TFLITE_SINGLE_ROUNDING
+  return buildRescale(rewriter, op, output_type, input_val,
+                      input_scale_multiplier, input_scale_shift, input_zp,
+                      /*input_zp=*/0, IsTFLDoubleRoundingMode(),
+                      /*scale32=*/true);
+}
 
-  return buildRescale(rewriter, op, output_type, input_val, input_scale,
-                      input_zp, 0, double_round, true);
+// Creates TOSA rescale op with int32 output
+Value buildRescaleToInt32(PatternRewriter& rewriter, Operation* op,
+                          Value input_val, double input_scale,
+                          int64_t input_zp) {
+  int32_t multiplier;
+  int32_t shift;
+
+  const int32_t scale_width = 32;
+  computeMultiplierAndShift(input_scale, multiplier, shift, scale_width);
+
+  return buildRescaleToInt32(rewriter, op, input_val, multiplier, shift,
+                             input_zp);
 }
 
 // Creates TOSA rescale op with int32 input
@@ -208,15 +230,10 @@ Value buildRescaleFromInt32(PatternRewriter& rewriter, Operation* op,
   assert(input_type && input_type.getElementType().isInteger(32) &&
          "expected rescale input element type to be i32");
 
-#if TFLITE_SINGLE_ROUNDING
-  bool double_round = false;
-#else   // TFLITE_DOUBLE_ROUNDING
-  bool double_round = true;
-#endif  // TFLITE_SINGLE_ROUNDING
-
   // Potentially check input_shape == output_shape here
-  return buildRescale(rewriter, op, output_type, input_val, output_scale, 0,
-                      output_zp, double_round, true);
+  return buildRescale(rewriter, op, output_type, input_val, output_scale,
+                      /*input_zp=*/0, output_zp, IsTFLDoubleRoundingMode(),
+                      /*scale32=*/true);
 }
 
 // Creates a TOSA rescale op based on conv2d parameters.
@@ -405,7 +422,7 @@ void getTosaConst32bitTable(PatternRewriter& rewriter, Operation* op,
     int32_t first = (rescaled >> 24) & 0xFF;
     int32_t second = (rescaled >> 16) & 0xFF;
     int32_t third = (rescaled >> 8) & 0xFF;
-    int32_t fourth = (rescaled)&0xFF;
+    int32_t fourth = (rescaled) & 0xFF;
 
     first_table.push_back(first);
     second_table.push_back(second);
@@ -553,7 +570,7 @@ bool getPaddingValuesFromPadType(tensorflow::Padding tf_pad,
     ip_size = ip_size < 0 ? f_size * dim_dilation : ip_size;
     int64_t op_size, pad_before_tf,
         pad_after_tf;  // Complains if using int64_T
-    tensorflow::Status status = tensorflow::GetWindowedOutputSizeVerboseV2(
+    tensorflow::Status status = tensorflow::GetWindowedOutputSizeVerbose(
         ip_size, f_size, dim_dilation, dim_stride, tf_pad, &op_size,
         &pad_before_tf, &pad_after_tf);
     if (!status.ok()) return false;

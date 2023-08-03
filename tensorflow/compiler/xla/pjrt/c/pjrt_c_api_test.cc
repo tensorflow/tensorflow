@@ -32,21 +32,25 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
+#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_test_base.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
+#include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
 
-namespace xla {
 namespace pjrt {
 namespace {
+
 // Serialized `ModuleOp` that does add 1.
 constexpr absl::string_view module_add_one =
     R"(module {
@@ -71,10 +75,14 @@ ENTRY %TupleCreate.v4 (v1: f32[], v2: f32[3], v3: f32[2,3]) -> (f32[], f32[3], f
 
 class TestCApiFactory {
  public:
-  void Register(std::function<const PJRT_Api*()> factory) {
+  void Register(std::function<const PJRT_Api*()> factory,
+                absl::string_view platform_name) {
     absl::MutexLock lock(&mu_);
     CHECK(!factory_);
     factory_ = std::move(factory);
+    CHECK(platform_name_.empty()) << "Platform name already provided";
+    CHECK(!platform_name.empty()) << "Provided platform name is empty";
+    platform_name_ = platform_name;
   }
 
   std::function<const PJRT_Api*()> Get() const {
@@ -83,9 +91,17 @@ class TestCApiFactory {
     return factory_;
   }
 
+  std::string GetPlatformName() const {
+    absl::MutexLock lock(&mu_);
+    CHECK(!platform_name_.empty())
+        << "Test didn't call RegisterPjRtCApiTestFactory()";
+    return platform_name_;
+  }
+
  private:
   mutable absl::Mutex mu_;
   std::function<const PJRT_Api*()> factory_ ABSL_GUARDED_BY(mu_);
+  std::string platform_name_;
 };
 
 TestCApiFactory& GetGlobalTestCApiFactory() {
@@ -95,50 +111,23 @@ TestCApiFactory& GetGlobalTestCApiFactory() {
 
 const PJRT_Api* GetCApi() { return GetGlobalTestCApiFactory().Get()(); }
 
+std::string GetPlatformName() {
+  return GetGlobalTestCApiFactory().GetPlatformName();
+}
+
 }  // namespace
 
-void RegisterPjRtCApiTestFactory(std::function<const PJRT_Api*()> factory) {
-  GetGlobalTestCApiFactory().Register(std::move(factory));
+void RegisterPjRtCApiTestFactory(std::function<const PJRT_Api*()> factory,
+                                 absl::string_view platform_name) {
+  GetGlobalTestCApiFactory().Register(std::move(factory), platform_name);
 }
 
 namespace {
-class PjrtCApiTest : public ::testing::Test {
+
+class PjrtCApiTest : public PjrtCApiTestBase {
  protected:
-  const PJRT_Api* api_;
-  PJRT_Client* client_;
-  // We directly access the internal C++ client to test if the C API has the
-  // same behavior as the C++ API.
-  xla::PjRtClient* cc_client_;
-  XlaComputation xla_computation_;
-
-  void SetUp() override {
-    api_ = GetCApi();
-    client_ = make_client();
-  }
-
-  void TearDown() override { destroy_client(client_); }
-
-  void destroy_client(PJRT_Client* client) {
-    PJRT_Client_Destroy_Args destroy_args = PJRT_Client_Destroy_Args{
-        .struct_size = PJRT_Client_Destroy_Args_STRUCT_SIZE,
-        .priv = nullptr,
-        .client = client,
-    };
-    PJRT_Error* error = api_->PJRT_Client_Destroy(&destroy_args);
-    CHECK_EQ(error, nullptr);
-  }
-
-  PJRT_Client* make_client() {
-    PJRT_Client_Create_Args create_args = PJRT_Client_Create_Args{
-        .struct_size = PJRT_Client_Create_Args_STRUCT_SIZE,
-        .priv = nullptr,
-        .client = nullptr,
-    };
-    PJRT_Error* error = api_->PJRT_Client_Create(&create_args);
-    CHECK_EQ(error, nullptr);
-    CHECK_NE(create_args.client, nullptr);
-    return create_args.client;
-  }
+  PjrtCApiTest() : PjrtCApiTestBase(GetCApi()) {}
+  std::string platform_name_ = GetPlatformName();
 
   int GetDeviceId(PJRT_DeviceDescription* device_desc) const {
     PJRT_DeviceDescription_Id_Args args = PJRT_DeviceDescription_Id_Args{
@@ -202,20 +191,20 @@ class PjrtCApiTest : public ::testing::Test {
   }
 
   std::string BuildSingleDeviceCompileOptionStr() {
-    ExecutableBuildOptions build_options;
+    xla::ExecutableBuildOptions build_options;
     build_options.set_device_ordinal(0);
-    DeviceAssignment device_assignment(1, 1);
+    xla::DeviceAssignment device_assignment(1, 1);
     device_assignment(0, 0) = 0;
     build_options.set_device_assignment(device_assignment);
-    CompileOptions options;
+    xla::CompileOptions options;
     options.executable_build_options = build_options;
-    absl::StatusOr<CompileOptionsProto> options_proto = options.ToProto();
+    absl::StatusOr<xla::CompileOptionsProto> options_proto = options.ToProto();
     TF_CHECK_OK(options_proto.status());
     return options_proto->SerializeAsString();
   }
 
   PJRT_Client_BufferFromHostBuffer_Args CreateBufferFromHostBufferArgs(
-      const std::vector<float>& data, const Shape& shape,
+      const std::vector<float>& data, const xla::Shape& shape,
       const xla::PjRtClient::HostBufferSemantics host_buffer_semantics,
       PJRT_Device* device = nullptr) {
     PJRT_Client_BufferFromHostBuffer_Args args;
@@ -240,9 +229,9 @@ class PjrtCApiTest : public ::testing::Test {
   }
 
   std::pair<std::unique_ptr<PJRT_Buffer, ::pjrt::PJRT_BufferDeleter>,
-            PjRtFuture<absl::Status>>
+            xla::PjRtFuture<absl::Status>>
   create_buffer(PJRT_Device* device = nullptr) {
-    Shape shape = ShapeUtil::MakeShapeWithType<float>({4});
+    xla::Shape shape = xla::ShapeUtil::MakeShapeWithType<float>({4});
     std::vector<float> float_data(4);
     std::iota(float_data.begin(), float_data.end(), 41.0f);
 
@@ -268,7 +257,7 @@ class PjrtCApiTest : public ::testing::Test {
     auto ready_event_error =
         ToUniquePtr(api_->PJRT_Buffer_ReadyEvent(&get_event_args));
     EXPECT_EQ(ready_event_error, nullptr);
-    PjRtFuture<absl::Status> buffer_ready_event =
+    xla::PjRtFuture<absl::Status> buffer_ready_event =
         ::pjrt::ConvertCEventToCppFuture(get_event_args.event, api_);
 
     return std::make_pair(std::move(buffer), buffer_ready_event);
@@ -283,6 +272,7 @@ class PjrtCApiTest : public ::testing::Test {
         .struct_size = PJRT_Buffer_ToHostBuffer_Args_STRUCT_SIZE,
         .priv = nullptr,
         .src = src_buffer,
+        .host_layout = nullptr,
         .dst = nullptr,
         .dst_size = 0,
         .event = nullptr,
@@ -317,7 +307,7 @@ class PjrtCApiTest : public ::testing::Test {
       return ::pjrt::PjrtErrorToStatus(error, api_);
     }
 
-    PjRtFuture<absl::Status> transfer_to_host =
+    xla::PjRtFuture<absl::Status> transfer_to_host =
         ::pjrt::ConvertCEventToCppFuture(args.event, api_);
     TF_RETURN_IF_ERROR(transfer_to_host.Await());
     return value;
@@ -379,6 +369,17 @@ TEST_F(PjrtCApiTest, ApiVersion) {
 }
 
 // ---------------------------------- Client -----------------------------------
+
+TEST_F(PjrtCApiTest, PlatformName) {
+  PJRT_Client_PlatformName_Args args;
+  args.client = client_;
+  args.struct_size = PJRT_Client_PlatformName_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  PJRT_Error* error = api_->PJRT_Client_PlatformName(&args);
+  ASSERT_EQ(error, nullptr);
+  absl::string_view platform_name(args.platform_name, args.platform_name_size);
+  ASSERT_EQ(platform_name_, platform_name);
+}
 
 TEST_F(PjrtCApiTest, ClientProcessIndex) {
   PJRT_Client_ProcessIndex_Args process_index_args =
@@ -537,15 +538,6 @@ TEST_F(PjrtCApiTest, LookupDeviceOutOfRangeId) {
 
 static constexpr std::string_view kExecutableName = "operation";
 
-XlaComputation CreateAddOneComputation() {
-  XlaBuilder builder(std::string{kExecutableName});
-  Shape s = ShapeUtil::MakeShape(F32, {});
-  auto inp = Parameter(&builder, 0, s, "input");
-  auto one = ConstantR0<float>(&builder, 1.0f);
-  auto incremented = Add(inp, one);
-  return builder.Build(incremented).value();
-}
-
 void destroy_executable(PJRT_LoadedExecutable* executable,
                         const PJRT_Api* api) {
   PJRT_LoadedExecutable_Destroy_Args args{
@@ -558,7 +550,7 @@ void destroy_executable(PJRT_LoadedExecutable* executable,
 }
 
 TEST_F(PjrtCApiTest, BufferTransferImmutableUntilTransferCompletes) {
-  Shape shape = ShapeUtil::MakeShapeWithType<float>({4});
+  xla::Shape shape = xla::ShapeUtil::MakeShapeWithType<float>({4});
   std::vector<float> float_data(4);
   std::iota(float_data.begin(), float_data.end(), 41.0f);
 
@@ -618,16 +610,16 @@ TEST_F(PjrtCApiTest, CompileXlaComputation) {
       .priv = nullptr,
       .client = client_,
   };
-  DeviceAssignment device_assignment(1, 1);
+  xla::DeviceAssignment device_assignment(1, 1);
   device_assignment(0, 0) = 0;
-  DeviceAssignmentProto proto;
+  xla::DeviceAssignmentProto proto;
   ASSERT_TRUE(device_assignment.Serialize(&proto).ok());
   std::string device_assignment_str = proto.SerializeAsString();
   std::string options_str = BuildSingleDeviceCompileOptionStr();
   args.compile_options = options_str.c_str();
   args.compile_options_size = options_str.size();
 
-  absl::StatusOr<std::unique_ptr<HloModule>> hlo_module =
+  absl::StatusOr<std::unique_ptr<xla::HloModule>> hlo_module =
       xla::ParseAndReturnUnverifiedModule(kHloString);
   ASSERT_EQ(hlo_module.ok(), true);
   std::string module_str = hlo_module->get()->ToProto().SerializeAsString();
@@ -688,9 +680,9 @@ TEST_F(PjrtCApiTest, CompileInvalidProgramFormat) {
       .priv = nullptr,
       .client = client_,
   };
-  DeviceAssignment device_assignment(1, 1);
+  xla::DeviceAssignment device_assignment(1, 1);
   device_assignment(0, 0) = 0;
-  DeviceAssignmentProto proto;
+  xla::DeviceAssignmentProto proto;
   ASSERT_TRUE(device_assignment.Serialize(&proto).ok());
   std::string device_assignment_str = proto.SerializeAsString();
   std::string options_str = BuildSingleDeviceCompileOptionStr();
@@ -791,7 +783,7 @@ class PjrtCApiBufferTest : public PjrtCApiTest {
   }
 
   std::unique_ptr<PJRT_Buffer, ::pjrt::PJRT_BufferDeleter> buffer_;
-  PjRtFuture<absl::Status> event_;
+  xla::PjRtFuture<absl::Status> event_;
 };
 
 TEST_F(PjrtCApiBufferTest, IsDeleted) {
@@ -864,6 +856,31 @@ TEST_F(PjrtCApiBufferTest, ReadyEvent) {
   EXPECT_EQ(error, nullptr);
 }
 
+TEST_F(PjrtCApiBufferTest, ToHostBufferNoHostLayout) {
+  PJRT_Buffer_ToHostBuffer_Args args;
+  args.struct_size = PJRT_Buffer_ToHostBuffer_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.src = buffer_.get();
+  xla::Shape host_shape = xla::ShapeUtil::MakeShape(xla::F32, {4});
+  auto literal = std::make_shared<xla::Literal>(host_shape);
+  args.host_layout = nullptr;
+  args.dst = literal->untyped_data();
+  args.dst_size = xla::ShapeUtil::ByteSizeOfElements(host_shape);
+  args.event = nullptr;
+
+  PJRT_Error* error = api_->PJRT_Buffer_ToHostBuffer(&args);
+  xla::PjRtFuture<absl::Status> transfer_to_host =
+      ::pjrt::ConvertCEventToCppFuture(args.event, api_);
+  TF_CHECK_OK(transfer_to_host.Await());
+
+  EXPECT_EQ(error, nullptr);
+  ASSERT_EQ(literal->data<float>().size(), 4);
+  std::vector<float> float_data(4);
+  std::iota(float_data.begin(), float_data.end(), 41.0f);
+  EXPECT_TRUE(xla::LiteralTestUtil::Equal(
+      xla::LiteralUtil::CreateR1<float>(float_data), *literal));
+}
+
 // --------------------------------- Helpers -----------------------------------
 
 class PjrtCommonCApiHelpersTest : public PjrtCApiTest {};
@@ -875,4 +892,3 @@ TEST_F(PjrtCommonCApiHelpersTest, PjrtErrorToStatus) {
 
 }  // namespace
 }  // namespace pjrt
-}  // namespace xla

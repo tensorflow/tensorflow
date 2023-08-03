@@ -55,6 +55,14 @@ IfrtIrExecutableImplTestBase::LoadFromSource(absl::string_view source) {
   return op_ref;
 }
 
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
+IfrtIrExecutableImplTestBase::LoadFromFile(absl::string_view file_path) {
+  auto op_ref =
+      mlir::parseSourceFile<mlir::ModuleOp>(file_path, &mlir_context_);
+  TF_RET_CHECK(op_ref) << "Failed to parse MLIR file";
+  return op_ref;
+}
+
 absl::StatusOr<tsl::RCReference<Array>>
 IfrtIrExecutableImplTestBase::CreateArray(
     absl::Span<void* const> per_shard_data, Shape shape, DType dtype,
@@ -64,7 +72,7 @@ IfrtIrExecutableImplTestBase::CreateArray(
       << " vs device_list " << device_list.devices().size();
   TF_ASSIGN_OR_RETURN(
       std::shared_ptr<const Sharding> sharding,
-      ShardingParamSharding::Create(sharding_param, device_list));
+      ShardingParamSharding::Create(sharding_param, device_list, MemoryKind()));
   TF_ASSIGN_OR_RETURN(auto per_shard, sharding->Disassemble(shape));
   // All shards have the same shape. Just pick 0.
   Shape per_shard_shape = per_shard[0].first;
@@ -76,7 +84,7 @@ IfrtIrExecutableImplTestBase::CreateArray(
         client_->MakeArrayFromHostBuffer(
             per_shard_data[i], dtype, per_shard_shape,
             /*byte_strides=*/std::nullopt,
-            SingleDeviceSharding::Create(device_list[i]),
+            SingleDeviceSharding::Create(device_list[i], MemoryKind()),
             Client::HostBufferSemantics::kImmutableOnlyDuringCall,
             /*on_done_with_host_buffer=*/nullptr));
     per_shard_arrays.push_back(per_shard_array);

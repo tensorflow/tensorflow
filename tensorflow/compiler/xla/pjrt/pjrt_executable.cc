@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
 
-#include <algorithm>
 #include <memory>
 #include <optional>
 #include <string>
@@ -23,7 +22,9 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/strings/numbers.h"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
+#include "tensorflow/compiler/xla/pjrt/execute_options.pb.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/platform/statusor.h"
 
@@ -36,6 +37,10 @@ void SetOptionOverride(OptionOverrideProto& option, const std::string& value) {
 
 void SetOptionOverride(OptionOverrideProto& option, bool value) {
   option.set_bool_field(value);
+}
+
+void SetOptionOverride(OptionOverrideProto& option, int64_t value) {
+  option.set_int_field(value);
 }
 
 }  // namespace
@@ -92,20 +97,98 @@ StatusOr<CompileOptions> CompileOptions::FromProto(
       case OptionOverrideProto::kStringField:
         output.env_option_overrides.push_back(
             {env_option_override.first,
-             std::variant<std::string, bool>(
+             CompileOptions::OptionOverride(
                  env_option_override.second.string_field())});
         break;
       case OptionOverrideProto::kBoolField:
         output.env_option_overrides.push_back(
             {env_option_override.first,
-             std::variant<std::string, bool>(
+             CompileOptions::OptionOverride(
                  env_option_override.second.bool_field())});
+        break;
+      case OptionOverrideProto::kIntField:
+        output.env_option_overrides.push_back(
+            {env_option_override.first,
+             CompileOptions::OptionOverride(
+                 env_option_override.second.int_field())});
         break;
       case OptionOverrideProto::VALUE_NOT_SET:
         return InternalError("OptionOverrideProto value not set.");
     }
   }
   return output;
+}
+
+MultiSliceConfig::~MultiSliceConfig() = default;
+
+absl::StatusOr<ExecuteOptionsProto> ExecuteOptions::ToProto() const {
+  ExecuteOptionsProto proto;
+
+  proto.set_arguments_are_tupled(arguments_are_tupled);
+  proto.set_untuple_result(untuple_result);
+  proto.set_launch_id(launch_id);
+  if (context != nullptr) {
+    return absl::UnimplementedError(
+        "ExecuteOptions with non-nullptr context is not serializable");
+  }
+  proto.set_strict_shape_checking(strict_shape_checking);
+
+  if (multi_slice_config != nullptr) {
+    return absl::UnimplementedError(
+        "ExecuteOptions with multi-slice config is not serializable");
+  }
+
+  if (!send_callbacks.empty() || !recv_callbacks.empty()) {
+    return absl::UnimplementedError(
+        "ExecuteOptions with send/recv calbacks is not serializable");
+  }
+
+  switch (execution_mode) {
+    case ExecutionMode::kDefault:
+      proto.set_execution_mode(EXECUTION_MODE_DEFAULT);
+      break;
+    case ExecutionMode::kSynchronous:
+      proto.set_execution_mode(EXECUTION_MODE_SYNCHRONOUS);
+      break;
+    case ExecutionMode::kAsynchronous:
+      proto.set_execution_mode(EXECUTION_MODE_ASYNCHRONOUS);
+      break;
+  }
+
+  proto.mutable_non_donatable_input_indices()->Add(
+      non_donatable_input_indices.begin(), non_donatable_input_indices.end());
+
+  return proto;
+}
+
+absl::StatusOr<ExecuteOptions> ExecuteOptions::FromProto(
+    const ExecuteOptionsProto& proto) {
+  ExecuteOptions options;
+
+  options.arguments_are_tupled = proto.arguments_are_tupled();
+  options.untuple_result = proto.untuple_result();
+  options.launch_id = proto.launch_id();
+
+  switch (proto.execution_mode()) {
+    case EXECUTION_MODE_DEFAULT:
+      options.execution_mode = ExecutionMode::kDefault;
+      break;
+    case EXECUTION_MODE_SYNCHRONOUS:
+      options.execution_mode = ExecutionMode::kSynchronous;
+      break;
+    case EXECUTION_MODE_ASYNCHRONOUS:
+      options.execution_mode = ExecutionMode::kAsynchronous;
+      break;
+    default:
+      return absl::UnimplementedError(
+          absl::StrCat("Unknown execution mode: ", proto.execution_mode()));
+  }
+
+  options.non_donatable_input_indices.insert(
+      proto.non_donatable_input_indices().begin(),
+      proto.non_donatable_input_indices().end());
+
+  return options;
 }
 
 void GetOpSharding(std::vector<OpSharding>& out, const OpSharding& sharding) {
@@ -144,6 +227,16 @@ std::optional<std::vector<OpSharding>> PjRtExecutable::GetParameterShardings()
     GetOpSharding(out, s.ToProto());
   }
   return out;
+}
+
+StatusOr<std::vector<Shape>> PjRtExecutable::GetOutputShapes() const {
+  TF_ASSIGN_OR_RETURN(auto modules, GetHloModules());
+  std::vector<Shape> output_shapes;
+  output_shapes.reserve(modules.size());
+  for (const auto& module : modules) {
+    output_shapes.push_back(module->result_shape());
+  }
+  return output_shapes;
 }
 
 StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
@@ -201,11 +294,19 @@ Status CompileOptions::ApplyOption(const std::string& key,
         std::holds_alternative<bool>(value)) {
       reflection->SetBool(&debug_options, xla_field, std::get<bool>(value));
       return OkStatus();
+    } else if (std::holds_alternative<std::string>(value)) {
+      TF_RETURN_IF_ERROR(
+          ApplyOptionFromString(xla_field, std::get<std::string>(value)));
+      return OkStatus();
     } else if (xla_field->type() ==
-                   tsl::protobuf::FieldDescriptor::TYPE_STRING &&
-               std::holds_alternative<std::string>(value)) {
-      reflection->SetString(&debug_options, xla_field,
-                            std::get<std::string>(value));
+                   tsl::protobuf::FieldDescriptor::TYPE_INT32 &&
+               std::holds_alternative<int64_t>(value)) {
+      reflection->SetInt32(&debug_options, xla_field, std::get<int64_t>(value));
+      return OkStatus();
+    } else if (xla_field->type() ==
+                   tsl::protobuf::FieldDescriptor::TYPE_INT64 &&
+               std::holds_alternative<int64_t>(value)) {
+      reflection->SetInt64(&debug_options, xla_field, std::get<int64_t>(value));
       return OkStatus();
     } else {
       return InvalidArgument(
@@ -223,6 +324,44 @@ Status CompileOptions::ApplyAllOptionOverrides() {
     TF_RETURN_IF_ERROR(ApplyOption(option.first, option.second));
   }
   return OkStatus();
+}
+
+Status CompileOptions::ApplyOptionFromString(
+    const tsl::protobuf::FieldDescriptor* field, const std::string& value) {
+  xla::DebugOptions& debug_options =
+      *executable_build_options.mutable_debug_options();
+  const tsl::protobuf::Reflection* reflection = debug_options.GetReflection();
+  if (field->type() == tsl::protobuf::FieldDescriptor::TYPE_STRING) {
+    reflection->SetString(&debug_options, field, value);
+    return OkStatus();
+  } else if (field->type() == tsl::protobuf::FieldDescriptor::TYPE_INT32) {
+    int int_value;
+    if (absl::SimpleAtoi(value, &int_value)) {
+      reflection->SetInt32(&debug_options, field, int_value);
+      return OkStatus();
+    }
+  } else if (field->type() == tsl::protobuf::FieldDescriptor::TYPE_INT64) {
+    int int_value;
+    if (absl::SimpleAtoi(value, &int_value)) {
+      reflection->SetInt64(&debug_options, field, int_value);
+      return OkStatus();
+    }
+  } else if (field->type() == tsl::protobuf::FieldDescriptor::TYPE_FLOAT) {
+    float float_value;
+    if (absl::SimpleAtof(value, &float_value)) {
+      reflection->SetFloat(&debug_options, field, float_value);
+      return OkStatus();
+    }
+  } else if (field->type() == tsl::protobuf::FieldDescriptor::TYPE_BOOL) {
+    bool bvalue = value == "True";
+    if (value == "True" || value == "False") {
+      reflection->SetBool(&debug_options, field, bvalue);
+      return OkStatus();
+    }
+  }
+  return InvalidArgument(
+      "While setting option %s, '%s' is not a valid %s value.", field->name(),
+      value, field->type_name());
 }
 
 }  // namespace xla

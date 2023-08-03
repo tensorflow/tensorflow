@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <algorithm>
+#include <iostream>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -22,6 +23,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
@@ -31,6 +33,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/backends/gpu/transforms/dataflow_analysis.h"
 #include "tensorflow/compiler/xla/mlir/runtime/utils/custom_calls.h"
+#include "tensorflow/tsl/platform/env.h"
 
 namespace xla {
 namespace gpu {
@@ -72,6 +75,33 @@ int GetKernelCount(llvm::ArrayRef<DataflowAnalysis::Node> region) {
   return kernel_count;
 }
 
+// We use the size of the inputs to the kernel as a heuristic to avoid
+// adding memory bound kernels to the concurrent region.
+// The memory bandwidth on A100 is 2MB/us, so a data movement less than 10MB
+// is hidden by the kernel launch overhead, which is 5us.
+static constexpr int64_t kInputSizeThreshold = 10'000'000;
+
+bool IsKernelMemoryBound(Operation* op) {
+  if (auto launch_func = dyn_cast<mlir::gpu::LaunchFuncOp>(op)) {
+    size_t size = 0;
+
+    for (Value operand : launch_func.getOperands()) {
+      if (auto memref_type = dyn_cast<MemRefType>(operand.getType())) {
+        size += (memref_type.getNumElements() *
+                     memref_type.getElementTypeBitWidth() +
+                 7) /
+                8;
+      }
+    }
+
+    if (size > kInputSizeThreshold) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 //
 // Return a list of pairs of operations, in which the first element is the
 // first operation in the region, and the second is the last operation in the
@@ -93,6 +123,13 @@ llvm::SmallVector<RegionInfo> GetRegionInfos(
   DataflowAnalysis::DataflowGraph dataflow_graph =
       dataflow_analysis.GetDataflowGraph(capture_func);
 
+  // If verbose logging is enabled print the dataflow graph as a DOT graph.
+  if (VLOG_IS_ON(100)) {
+    std::cout << "Dependency graph for graph capture function "
+              << capture_func.getName().str() << ":\n"
+              << dataflow_analysis.ToDot(dataflow_graph);
+  }
+
   llvm::SmallVector<DataflowAnalysis::Node> region;
 
   auto store_region_and_start_new_region = [&]() {
@@ -103,6 +140,16 @@ llvm::SmallVector<RegionInfo> GetRegionInfos(
       region_infos.push_back(region_info);
     }
     region.clear();
+  };
+
+  auto append_node_to_region = [&](const DataflowAnalysis::Node& node) {
+    if (region.empty()) {
+      if (!IsNoOp(node.operation)) {
+        region.push_back(node);
+      }
+    } else {
+      region.push_back(node);
+    }
   };
 
   for (const DataflowAnalysis::Node& node : dataflow_graph) {
@@ -120,15 +167,13 @@ llvm::SmallVector<RegionInfo> GetRegionInfos(
       }
     }
 
-    if (has_dependency) {
+    if (IsKernelMemoryBound(node.operation)) {
       store_region_and_start_new_region();
+    } else if (has_dependency) {
+      store_region_and_start_new_region();
+      append_node_to_region(node);
     } else {
-      // No dependency with the current region.
-      if (region.empty() && IsNoOp(node.operation)) {
-        continue;
-      } else {
-        region.push_back(node);
-      }
+      append_node_to_region(node);
     }
   }
 
@@ -172,9 +217,9 @@ void AddConcurrentRegionsPass::runOnOperation() {
   auto func_ops = llvm::to_vector(module.getOps<FuncOp>());
 
   for (auto func_op : func_ops) {
-    // Find the cuda graph capture function.
+    // Find the gpu graph capture function.
     if (absl::StrContains(func_op.getSymNameAttr().str(),
-                          "xla.gpu.cuda.graph.capture")) {
+                          "xla.gpu.graph.capture")) {
       InsertConcurrentRegions(func_op, custom_calls,
                               getAnalysis<DataflowAnalysis>());
     }

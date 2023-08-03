@@ -559,6 +559,8 @@ Array<T> Transpose(const Array<T> array, std::vector<int64_t> axes) {
 size_t VectorGreaterThanOneElementCount(absl::Span<const int64_t> span,
                                         bool omit_last_dim = false);
 
+// This functions returns the indices of all vector elements larger than 1, in
+// order.
 std::vector<int64_t> VectorGreaterThanOneElementIndices(
     absl::Span<const int64_t> span, bool omit_last_dim = false);
 

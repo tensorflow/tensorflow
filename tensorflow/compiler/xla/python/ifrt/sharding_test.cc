@@ -24,6 +24,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "tensorflow/compiler/xla/python/ifrt/device.h"
 #include "tensorflow/compiler/xla/python/ifrt/ir/sharding_param.h"
+#include "tensorflow/compiler/xla/python/ifrt/sharding_test_util.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/status_matchers.h"
 #include "tensorflow/tsl/platform/statusor.h"
@@ -33,32 +34,31 @@ namespace ifrt {
 namespace {
 
 using ::testing::ElementsAre;
+using ::testing::ElementsAreArray;
 using ::testing::HasSubstr;
 using ::testing::SizeIs;
 using ::tsl::testing::StatusIs;
 
-DeviceList CreateDummyDevices(int count) {
-  DeviceList::Devices devices;
-  devices.reserve(count);
-  for (int i = 0; i < count; ++i) {
-    devices.push_back(reinterpret_cast<Device*>(i + 1));
-  }
-  return DeviceList(std::move(devices));
-}
+class SingleDeviceShardingTest : public test_util::ShardingTest {};
+class OpaqueShardingTest : public test_util::ShardingTest {};
+class ConcreteShardingTest : public test_util::ShardingTest {};
+class ConcreteEvenShardingTest : public test_util::ShardingTest {};
+class ShardingParamShardingTest : public test_util::ShardingTest {};
 
-TEST(SingleDeviceShardingTest, IndexDomains) {
+TEST_P(SingleDeviceShardingTest, IndexDomains) {
+  auto device_list = GetDevices({0});
   std::shared_ptr<const Sharding> sharding =
-      SingleDeviceSharding::Create(reinterpret_cast<Device*>(1));
+      SingleDeviceSharding::Create(device_list.devices().front(), MemoryKind());
 
   Shape shape({10, 20});
   TF_ASSERT_OK_AND_ASSIGN(auto index_domains, sharding->IndexDomains(shape));
   EXPECT_THAT(index_domains, ElementsAre(IndexDomain(shape)));
 }
 
-TEST(SingleDeviceShardingTest, Disassemble) {
-  auto device = reinterpret_cast<Device*>(1);
+TEST_P(SingleDeviceShardingTest, Disassemble) {
+  auto device_list = GetDevices({0});
   std::shared_ptr<const Sharding> sharding =
-      SingleDeviceSharding::Create(device);
+      SingleDeviceSharding::Create(device_list.devices().front(), MemoryKind());
 
   Shape shape({10, 20});
   TF_ASSERT_OK_AND_ASSIGN(auto disassembled, sharding->Disassemble(shape));
@@ -67,13 +67,14 @@ TEST(SingleDeviceShardingTest, Disassemble) {
   const auto& [result_shape, result_sharding] = disassembled[0];
   ASSERT_EQ(shape, result_shape);
   ASSERT_TRUE(llvm::isa<SingleDeviceSharding>(*result_sharding));
-  EXPECT_THAT(result_sharding->devices().devices(), ElementsAre(device));
+  EXPECT_THAT(result_sharding->devices().devices(),
+              ElementsAreArray(device_list.devices()));
 }
 
-TEST(OpaqueShardingTest, FailedToDisassemble) {
-  DeviceList device_list = CreateDummyDevices(2);
+TEST_P(OpaqueShardingTest, FailedToDisassemble) {
+  auto device_list = GetDevices({0, 1});
   std::shared_ptr<const Sharding> sharding =
-      OpaqueSharding::Create(device_list);
+      OpaqueSharding::Create(device_list, MemoryKind());
 
   EXPECT_THAT(
       sharding->Disassemble(Shape({30})),
@@ -82,10 +83,10 @@ TEST(OpaqueShardingTest, FailedToDisassemble) {
           HasSubstr("OpaqueSharding does not have shard shape information")));
 }
 
-TEST(OpaqueShardingTest, IndexDomainsFails) {
-  DeviceList device_list = CreateDummyDevices(2);
+TEST_P(OpaqueShardingTest, IndexDomainsFails) {
+  auto device_list = GetDevices({0, 1});
   std::shared_ptr<const Sharding> sharding =
-      OpaqueSharding::Create(device_list);
+      OpaqueSharding::Create(device_list, MemoryKind());
 
   EXPECT_THAT(
       sharding->IndexDomains(Shape({30})),
@@ -94,14 +95,14 @@ TEST(OpaqueShardingTest, IndexDomainsFails) {
           HasSubstr("OpaqueSharding does not have index domain information")));
 }
 
-TEST(ConcreteShardingTest, Disassemble) {
-  DeviceList device_list = CreateDummyDevices(2);
+TEST_P(ConcreteShardingTest, Disassemble) {
+  auto device_list = GetDevices({0, 1});
   std::vector<Shape> shard_shapes;
   shard_shapes.reserve(2);
   shard_shapes.push_back(Shape({10}));
   shard_shapes.push_back(Shape({20}));
-  std::shared_ptr<const Sharding> sharding =
-      ConcreteSharding::Create(device_list, Shape({30}), shard_shapes);
+  std::shared_ptr<const Sharding> sharding = ConcreteSharding::Create(
+      device_list, MemoryKind(), Shape({30}), shard_shapes);
 
   TF_ASSERT_OK_AND_ASSIGN(auto disassembled,
                           sharding->Disassemble(Shape({30})));
@@ -115,28 +116,28 @@ TEST(ConcreteShardingTest, Disassemble) {
   }
 }
 
-TEST(ConcreteShardingTest, DisassembleFailsForUnexpectedShape) {
-  DeviceList device_list = CreateDummyDevices(2);
+TEST_P(ConcreteShardingTest, DisassembleFailsForUnexpectedShape) {
+  auto device_list = GetDevices({0, 1});
   std::vector<Shape> shard_shapes;
   shard_shapes.reserve(2);
   shard_shapes.push_back(Shape({10}));
   shard_shapes.push_back(Shape({20}));
-  std::shared_ptr<const Sharding> sharding =
-      ConcreteSharding::Create(device_list, Shape({30}), shard_shapes);
+  std::shared_ptr<const Sharding> sharding = ConcreteSharding::Create(
+      device_list, MemoryKind(), Shape({30}), shard_shapes);
 
   EXPECT_THAT(sharding->Disassemble(Shape({40})),
               StatusIs(tsl::error::INVALID_ARGUMENT,
                        HasSubstr("ConcreteSharding can only disassemble")));
 }
 
-TEST(ConcreteShardingTest, IndexDomainsFails) {
-  DeviceList device_list = CreateDummyDevices(2);
+TEST_P(ConcreteShardingTest, IndexDomainsFails) {
+  auto device_list = GetDevices({0, 1});
   std::vector<Shape> shard_shapes;
   shard_shapes.reserve(2);
   shard_shapes.push_back(Shape({10}));
   shard_shapes.push_back(Shape({20}));
-  std::shared_ptr<const Sharding> sharding =
-      ConcreteSharding::Create(device_list, Shape({30}), shard_shapes);
+  std::shared_ptr<const Sharding> sharding = ConcreteSharding::Create(
+      device_list, MemoryKind(), Shape({30}), shard_shapes);
 
   EXPECT_THAT(sharding->IndexDomains(Shape({30})),
               StatusIs(tsl::error::INVALID_ARGUMENT,
@@ -144,10 +145,10 @@ TEST(ConcreteShardingTest, IndexDomainsFails) {
                                  "domain information")));
 }
 
-TEST(ConcreteEvenShardingTest, Disassemble) {
-  DeviceList device_list = CreateDummyDevices(2);
-  std::shared_ptr<const Sharding> sharding =
-      ConcreteEvenSharding::Create(device_list, Shape({30}), Shape({15}));
+TEST_P(ConcreteEvenShardingTest, Disassemble) {
+  auto device_list = GetDevices({0, 1});
+  std::shared_ptr<const Sharding> sharding = ConcreteEvenSharding::Create(
+      device_list, MemoryKind(), Shape({30}), Shape({15}));
 
   TF_ASSERT_OK_AND_ASSIGN(auto disassembled,
                           sharding->Disassemble(Shape({30})));
@@ -161,21 +162,21 @@ TEST(ConcreteEvenShardingTest, Disassemble) {
   }
 }
 
-TEST(ConcreteEvenShardingTest, DisassembleFailsForUnexpectedShape) {
-  DeviceList device_list = CreateDummyDevices(2);
-  std::shared_ptr<const Sharding> sharding =
-      ConcreteEvenSharding::Create(device_list, Shape({30}), Shape({15}));
+TEST_P(ConcreteEvenShardingTest, DisassembleFailsForUnexpectedShape) {
+  auto device_list = GetDevices({0, 1});
+  std::shared_ptr<const Sharding> sharding = ConcreteEvenSharding::Create(
+      device_list, MemoryKind(), Shape({30}), Shape({15}));
 
   EXPECT_THAT(sharding->Disassemble(Shape({40})),
               StatusIs(tsl::error::INVALID_ARGUMENT,
                        HasSubstr("ConcreteEvenSharding can only disassemble")));
 }
 
-TEST(ConcreteEvenShardingTest, IndexDomainsFails) {
-  DeviceList device_list = CreateDummyDevices(2);
+TEST_P(ConcreteEvenShardingTest, IndexDomainsFails) {
+  auto device_list = GetDevices({0, 1});
   std::vector<Shape> shard_shapes;
-  std::shared_ptr<const Sharding> sharding =
-      ConcreteEvenSharding::Create(device_list, Shape({30}), Shape({15}));
+  std::shared_ptr<const Sharding> sharding = ConcreteEvenSharding::Create(
+      device_list, MemoryKind(), Shape({30}), Shape({15}));
 
   EXPECT_THAT(
       sharding->IndexDomains(Shape({30})),
@@ -185,24 +186,24 @@ TEST(ConcreteEvenShardingTest, IndexDomainsFails) {
               "ConcreteEvenSharding does not have index domain information")));
 }
 
-TEST(ShardingParamShardingTest, CreateFailsWhenDeviceCountNotMatch) {
-  DeviceList device_list = CreateDummyDevices(2);
+TEST_P(ShardingParamShardingTest, CreateFailsWhenDeviceCountNotMatch) {
+  auto device_list = GetDevices({0, 1});
   ShardingParam param{/*dim_shards=*/{2, 3},
                       {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}}};
 
-  EXPECT_THAT(ShardingParamSharding::Create(param, device_list),
+  EXPECT_THAT(ShardingParamSharding::Create(param, device_list, MemoryKind()),
               StatusIs(tsl::error::FAILED_PRECONDITION,
                        HasSubstr("Device counts don't match. From "
                                  "ShardingParam 6 vs from DeviceList 2")));
 }
 
-TEST(ShardingParamShardingTest, Disassemble) {
-  DeviceList device_list = CreateDummyDevices(6);
+TEST_P(ShardingParamShardingTest, Disassemble) {
+  auto device_list = GetDevices({0, 1, 2, 3, 4, 5});
   ShardingParam param{/*dim_shards=*/{2, 3},
                       {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}}};
   TF_ASSERT_OK_AND_ASSIGN(
       std::shared_ptr<const Sharding> param_sharding,
-      ShardingParamSharding::Create(param, CreateDummyDevices(6)));
+      ShardingParamSharding::Create(param, device_list, MemoryKind()));
 
   TF_ASSERT_OK_AND_ASSIGN(auto disassembled,
                           param_sharding->Disassemble(Shape({6, 6})));
@@ -216,12 +217,13 @@ TEST(ShardingParamShardingTest, Disassemble) {
   }
 }
 
-TEST(ShardingParamShardingTest, DisassembleFailsWhenRankNotMatch) {
+TEST_P(ShardingParamShardingTest, DisassembleFailsWhenRankNotMatch) {
+  auto device_list = GetDevices({0, 1, 2, 3, 4, 5});
   ShardingParam param{/*dim_shards=*/{2, 3},
                       {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}}};
   TF_ASSERT_OK_AND_ASSIGN(
       std::shared_ptr<const Sharding> param_sharding,
-      ShardingParamSharding::Create(param, CreateDummyDevices(6)));
+      ShardingParamSharding::Create(param, device_list, MemoryKind()));
 
   EXPECT_THAT(
       param_sharding->Disassemble(Shape({6, 6, 6})),
@@ -230,12 +232,13 @@ TEST(ShardingParamShardingTest, DisassembleFailsWhenRankNotMatch) {
                    "Ranks don't match. From Shape 3 vs from ShardingParam 2")));
 }
 
-TEST(ShardingParamShardingTest, DisassembleFailsForUnevenSharding) {
+TEST_P(ShardingParamShardingTest, DisassembleFailsForUnevenSharding) {
+  auto device_list = GetDevices({0, 1, 2, 3, 4, 5});
   ShardingParam param{/*dim_shards=*/{2, 3},
                       {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}}};
   TF_ASSERT_OK_AND_ASSIGN(
       std::shared_ptr<const Sharding> param_sharding,
-      ShardingParamSharding::Create(param, CreateDummyDevices(6)));
+      ShardingParamSharding::Create(param, device_list, MemoryKind()));
 
   EXPECT_THAT(
       param_sharding->Disassemble(Shape({7, 6})),
@@ -244,12 +247,13 @@ TEST(ShardingParamShardingTest, DisassembleFailsForUnevenSharding) {
           HasSubstr("Uneven shard is not supported. dim: 7, dim_shards: 2")));
 }
 
-TEST(ShardingParamShardingTest, IndexDomain) {
+TEST_P(ShardingParamShardingTest, IndexDomain) {
+  auto device_list = GetDevices({0, 1, 2, 3, 4, 5});
   ShardingParam param{/*dim_shards=*/{2, 3},
                       {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 3}}};
   TF_ASSERT_OK_AND_ASSIGN(
       std::shared_ptr<const Sharding> param_sharding,
-      ShardingParamSharding::Create(param, CreateDummyDevices(6)));
+      ShardingParamSharding::Create(param, device_list, MemoryKind()));
 
   TF_ASSERT_OK_AND_ASSIGN(auto index_domains,
                           param_sharding->IndexDomains(Shape({6, 6})));
@@ -262,12 +266,13 @@ TEST(ShardingParamShardingTest, IndexDomain) {
                           IndexDomain(Index({3, 4}), Shape({3, 2}))));
 }
 
-TEST(ShardingParamShardingTest, IndexDomainWithPermutation) {
+TEST_P(ShardingParamShardingTest, IndexDomainWithPermutation) {
+  auto device_list = GetDevices({0, 1, 2, 3, 4, 5});
   ShardingParam param{/*dim_shards=*/{2, 3},
                       {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}}};
   TF_ASSERT_OK_AND_ASSIGN(
       std::shared_ptr<const Sharding> param_sharding,
-      ShardingParamSharding::Create(param, CreateDummyDevices(6)));
+      ShardingParamSharding::Create(param, device_list, MemoryKind()));
 
   TF_ASSERT_OK_AND_ASSIGN(auto index_domains,
                           param_sharding->IndexDomains(Shape({6, 6})));
@@ -280,12 +285,13 @@ TEST(ShardingParamShardingTest, IndexDomainWithPermutation) {
                           IndexDomain(Index({3, 4}), Shape({3, 2}))));
 }
 
-TEST(ShardingParamShardingTest, IndexDomainWithReplication) {
+TEST_P(ShardingParamShardingTest, IndexDomainWithReplication) {
+  auto device_list = GetDevices({0, 1, 2, 3, 4, 5});
   ShardingParam param{/*dim_shards=*/{2, 1},
                       {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 3}}};
   TF_ASSERT_OK_AND_ASSIGN(
       std::shared_ptr<const Sharding> param_sharding,
-      ShardingParamSharding::Create(param, CreateDummyDevices(6)));
+      ShardingParamSharding::Create(param, device_list, MemoryKind()));
 
   TF_ASSERT_OK_AND_ASSIGN(auto index_domains,
                           param_sharding->IndexDomains(Shape({6, 6})));
@@ -297,6 +303,22 @@ TEST(ShardingParamShardingTest, IndexDomainWithReplication) {
                           IndexDomain(Index({3, 0}), Shape({3, 6})),
                           IndexDomain(Index({3, 0}), Shape({3, 6}))));
 }
+
+INSTANTIATE_TEST_SUITE_P(NumDevices, SingleDeviceShardingTest,
+                         testing::Values(test_util::ShardingTestParam{
+                             .num_devices = 6, .num_addressable_devices = 6}));
+INSTANTIATE_TEST_SUITE_P(NumDevices, OpaqueShardingTest,
+                         testing::Values(test_util::ShardingTestParam{
+                             .num_devices = 6, .num_addressable_devices = 6}));
+INSTANTIATE_TEST_SUITE_P(NumDevices, ConcreteShardingTest,
+                         testing::Values(test_util::ShardingTestParam{
+                             .num_devices = 6, .num_addressable_devices = 6}));
+INSTANTIATE_TEST_SUITE_P(NumDevices, ConcreteEvenShardingTest,
+                         testing::Values(test_util::ShardingTestParam{
+                             .num_devices = 6, .num_addressable_devices = 6}));
+INSTANTIATE_TEST_SUITE_P(NumDevices, ShardingParamShardingTest,
+                         testing::Values(test_util::ShardingTestParam{
+                             .num_devices = 6, .num_addressable_devices = 4}));
 
 }  // namespace
 }  // namespace ifrt

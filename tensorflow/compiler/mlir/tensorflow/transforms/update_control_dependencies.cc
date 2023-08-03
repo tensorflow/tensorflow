@@ -18,7 +18,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/SmallVector.h"
@@ -54,6 +53,36 @@ using OpToParallelIdsMap =
     absl::flat_hash_map<Operation*, GroupIdToBranchIdMap>;
 using OpToOpsMap =
     absl::flat_hash_map<Operation*, absl::flat_hash_set<Operation*>>;
+
+// Many operations have the same dependency and parallel id set. We cache the
+// processed result of these operations to speed execution.
+struct OpCacheEntry {
+  Operation* template_op;
+  llvm::SmallVector<Operation*, 8> preds_in_reverse_program_order;
+};
+
+struct OpCacheKey {
+  const llvm::SmallVector<Operation*, 4> deps;
+  const GroupIdToBranchIdMap& group_id_to_branch_id_map;
+
+  template <typename H>
+  friend H AbslHashValue(H h, const OpCacheKey& c) {
+    for (Operation* dep : c.deps) {
+      h = H::combine(std::move(h), dep);
+    }
+    for (auto [group_id, branch_id] : c.group_id_to_branch_id_map) {
+      h = H::combine(std::move(h), group_id, branch_id);
+    }
+    return h;
+  }
+
+  bool operator==(const OpCacheKey& other) const {
+    return deps == other.deps &&
+           group_id_to_branch_id_map == other.group_id_to_branch_id_map;
+  }
+};
+
+using OpCache = absl::flat_hash_map<OpCacheKey, OpCacheEntry>;
 
 #define GEN_PASS_DEF_EXECUTORUPDATECONTROLDEPENDENCIESPASS
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
@@ -169,27 +198,63 @@ LogicalResult FillOpToParallelIdsMap(
 
 // Computes and sets direct control inputs for `op`. Also fills
 // `active_transitive_preds` and `inactive_transitive_preds` for `op`.
-void
-UpdateControlDependenciesForOp(
+//
+// `active_transitive_preds` are those dominated by `op`: taking a dependency
+// on `op` will also ensure all `active_transitive_preds[op]` are waited
+// for.
+//
+// `inactive_transitive_preds` are transitive dependencies of op in the original
+// graph but are not dominated by `op`. (They run in a different parallel
+// execution group). They must be separately considered when processing
+// successor operations.
+void UpdateControlDependenciesForOp(
     Operation* op, const TF::SideEffectAnalysis::Info& analysis_for_func,
     const OpToParallelIdsMap& op_to_parallel_ids_map,
+    OpCache& op_cache,
     OpToOpsMap& active_transitive_preds,
     OpToOpsMap& inactive_transitive_preds,
     int& num_control_inputs_removed,
     int& num_control_inputs_added,
     int& num_invalid_dependencies) {
+  auto& op_inactive = inactive_transitive_preds[op];
+  auto& op_active = active_transitive_preds[op];
+
+  llvm::SmallVector<Operation*, 4> control_deps =
+      analysis_for_func.DirectControlPredecessors(op);
+  OpCacheKey key = {
+    control_deps,
+    GetGroupIdToBranchIdMap(op, op_to_parallel_ids_map)
+  };
+
+  // We matched with another op in the cache. We will have the same active and
+  // inactive dependency sets and control inputs, except we swap out our current
+  // op for the template op in the active set.
+  if (op_cache.contains(key)) {
+    auto& entry = op_cache[key];
+    op_active = active_transitive_preds[entry.template_op];
+    op_active.insert(op);
+    op_active.erase(entry.template_op);
+
+    op_inactive = inactive_transitive_preds[entry.template_op];
+    ClearControlInputs(op, num_control_inputs_removed);
+    SetControlInputs(op, entry.preds_in_reverse_program_order,
+                    num_control_inputs_added);
+    return;
+  }
+
+  op_active.insert(op);
+
+  // First iterate over all direct control dependencies and collect the set of
+  // potential active dependencies.
   absl::flat_hash_set<Operation*> pred_set;
-  active_transitive_preds[op].insert(op);
-  for (Operation* pred : analysis_for_func.DirectControlPredecessors(op)) {
-    // Propagate inactive transitive dependencies from `pred` to `op`.
-    inactive_transitive_preds[op].insert(
-        inactive_transitive_preds[pred].begin(),
-        inactive_transitive_preds[pred].end());
+  for (Operation* pred : control_deps) {
     // Inactive transitive predecessors of `pred` are potential direct
     // predecessors of `op` (they are not tracked by `pred`).
     for (Operation* transitive_pred : inactive_transitive_preds[pred]) {
       pred_set.insert(transitive_pred);
+      op_inactive.insert(transitive_pred);
     }
+
     if (IsValidDependency(pred, op, op_to_parallel_ids_map)) {
       // We know that any active transitive predecessors will still be covered
       // by (pred, op), so we don't have to add them to `potential_preds`.
@@ -197,40 +262,55 @@ UpdateControlDependenciesForOp(
     } else {
       // Active transitive predecessors will not be covered by (pred, op)
       // anymore, so add them all as candidates.
-      for (Operation* transitive_pred : active_transitive_preds[pred]) {
-        pred_set.insert(transitive_pred);
-      }
+      pred_set.insert(
+          active_transitive_preds[pred].begin(),
+          active_transitive_preds[pred].end());
       ++num_invalid_dependencies;
     }
   }
 
-  std::vector<Operation*> potential_preds(pred_set.begin(), pred_set.end());
-  std::sort(potential_preds.begin(), potential_preds.end(), IsAfterInBlock());
+  // Now collect a list of valid dependencies and sort them in program order.
+  std::vector<Operation*> potential_preds;
+  potential_preds.reserve(pred_set.size());
 
-  llvm::SmallVector<Operation*, 8> preds_in_reverse_program_order;
-  for (Operation* potential_pred : potential_preds) {
-    bool is_valid =
-        IsValidDependency(potential_pred, op, op_to_parallel_ids_map);
-    if (!is_valid) {
+  for (Operation* potential_pred : pred_set) {
+    if (IsValidDependency(potential_pred, op, op_to_parallel_ids_map)) {
+      potential_preds.push_back(potential_pred);
+    } else {
       // We don't keep the (pred, op) dependency, so all active transitive
       // dependencies become inactive.
-      inactive_transitive_preds[op].insert(
+      op_inactive.insert(
           active_transitive_preds[potential_pred].begin(),
           active_transitive_preds[potential_pred].end());
-    } else if (!active_transitive_preds[op].contains(potential_pred)) {
+    }
+  }
+  std::sort(potential_preds.begin(), potential_preds.end(), IsAfterInBlock());
+
+  // Finally, accumulate dependencies until we have coverage over all active
+  // dependencies.
+  llvm::SmallVector<Operation*, 8> preds_in_reverse_program_order;
+  for (Operation* potential_pred : potential_preds) {
+    if (!op_active.contains(potential_pred)) {
       // `potential_pred` is not an active transitive predecessor of `op` yet,
       // so we must add it as a direct predecessor.
       preds_in_reverse_program_order.push_back(potential_pred);
       // We keep the (pred, op) dependency, so all active transitive
       // dependencies stay active.
-      active_transitive_preds[op].insert(
+      op_active.insert(
           active_transitive_preds[potential_pred].begin(),
           active_transitive_preds[potential_pred].end());
     }
   }
+
+  for (Operation* pred : op_active) {
+    op_inactive.erase(pred);
+  }
+
   ClearControlInputs(op, num_control_inputs_removed);
   SetControlInputs(op, preds_in_reverse_program_order,
                    num_control_inputs_added);
+
+  op_cache[key] = {op, preds_in_reverse_program_order};
 }
 
 // This function updates all control dependencies in `func`, represented as
@@ -259,6 +339,7 @@ LogicalResult UpdateAllControlDependencies(
 
   // Maps island ops to parallel IDs of the wrapped ops.
   OpToParallelIdsMap op_to_parallel_ids_map;
+  OpCache op_cache;
   OpToOpsMap active_transitive_preds, inactive_transitive_preds;
 
   // We call `VerifyExportSuitable` in the beginning of the pass, so every
@@ -275,6 +356,7 @@ LogicalResult UpdateAllControlDependencies(
         op,
         analysis_for_func,
         op_to_parallel_ids_map,
+        op_cache,
         active_transitive_preds,
         inactive_transitive_preds,
         num_control_inputs_removed,

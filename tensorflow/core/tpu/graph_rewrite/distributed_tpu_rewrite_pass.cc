@@ -36,18 +36,15 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/array4d.h"
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/common_runtime/device_propagation.h"
-#include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/lower_function_call_op.h"
 #include "tensorflow/core/common_runtime/lower_functional_ops.h"
@@ -58,23 +55,18 @@ limitations under the License.
 #include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/node_def_util.h"
-#include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
-#include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/error_payloads.h"
-#include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/protobuf/core_platform_payloads.pb.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
-#include "tensorflow/core/protobuf/tpu/dynamic_padding.pb.h"
 #include "tensorflow/core/protobuf/tpu/topology.pb.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/tpu/graph_rewrite/cond_builder.h"
@@ -82,7 +74,6 @@ limitations under the License.
 #include "tensorflow/core/tpu/graph_rewrite/distributed_tpu_rewrite_pass_internal.h"
 #include "tensorflow/core/tpu/graph_rewrite/host_training_loop_optimization_util.h"
 #include "tensorflow/core/tpu/graph_rewrite/incomplete_nodedef_builder.h"
-#include "tensorflow/core/tpu/tpu_compile_interface.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/core/tpu/tpu_fingerprint_utils.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -1425,7 +1416,7 @@ struct NodeAndSharding {
 Status ParseAndValidateSharding(const NodeAndSharding& node_and_sharding,
                                 const int num_cores_per_replica,
                                 int64_t* inferred_core_id,
-                                absl::optional<NodeAndSharding>* result) {
+                                std::optional<NodeAndSharding>* result) {
   if (node_and_sharding.sharding.type() == xla::OpSharding::MAXIMAL) {
     int64_t core_annotation =
         node_and_sharding.sharding.tile_assignment_devices(0);
@@ -1764,7 +1755,7 @@ static Status BuildGeneralDeviceAssignment(
     std::unique_ptr<xla::DeviceAssignment>* xla_device_assignment) {
   // Assign TensorFlow devices to each computation's replicas according to
   // device_assignment and 'topology'.
-  *xla_device_assignment = absl::make_unique<xla::DeviceAssignment>(
+  *xla_device_assignment = std::make_unique<xla::DeviceAssignment>(
       num_replicas, num_cores_per_replica);
   for (int replica = 0; replica < num_replicas; ++replica) {
     for (int computation = 0; computation < num_cores_per_replica;
@@ -2128,7 +2119,7 @@ bool UseSpmdForXlaPartitioning(const Node* replicate_node) {
 }
 
 std::string FormatNodeAndShardingMsg(
-    const absl::optional<NodeAndSharding>& node_and_sharding) {
+    const std::optional<NodeAndSharding>& node_and_sharding) {
   DCHECK(node_and_sharding.has_value());
 
   xla::OpSharding sharding_no_metadata = node_and_sharding->sharding;
@@ -2236,7 +2227,7 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
           i + (is_per_replica_arg ? 0 : index_offset), &input_node));
       if (_IsTPUPartitionedInput(input_node)) {
         TF_ASSIGN_OR_RETURN(
-            absl::optional<xla::OpSharding> parsed_sharding,
+            std::optional<xla::OpSharding> parsed_sharding,
             GetShardingFromNodeDef(input_node->def(), /*add_metadata=*/true));
         if (!parsed_sharding.has_value())
           return errors::InvalidArgument("Missing _XlaSharding attr from: ",
@@ -2254,7 +2245,7 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
           replicate_node->input_node(i + index_offset, &input_node));
       if (input_node->type_string() == kVarHandleOp) {
         TF_ASSIGN_OR_RETURN(
-            absl::optional<xla::OpSharding> parsed_sharding,
+            std::optional<xla::OpSharding> parsed_sharding,
             GetShardingFromNodeDef(input_node->def(), /*add_metadata=*/true));
         if (parsed_sharding.has_value()) {
           node_and_sharding = NodeAndSharding(input_node, *parsed_sharding);
@@ -2366,11 +2357,11 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
     TF_RETURN_IF_ERROR(retvals[i]->input_edge(0, &edge));
 
     TF_ASSIGN_OR_RETURN(
-        absl::optional<xla::OpSharding> edge_sharding,
+        std::optional<xla::OpSharding> edge_sharding,
         ParseShardingFromEdgeSource(*edge, num_cores_per_replica,
                                     /*add_metadata=*/true));
 
-    absl::optional<NodeAndSharding> node_and_sharding;
+    std::optional<NodeAndSharding> node_and_sharding;
     if (edge_sharding.has_value()) {
       node_and_sharding.emplace(NodeAndSharding(edge->src(), *edge_sharding));
     }
@@ -2378,7 +2369,7 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
     if (partitioned_output_nodes.contains(i)) {
       Node* output_node = partitioned_output_nodes[i];
       TF_ASSIGN_OR_RETURN(
-          absl::optional<xla::OpSharding> parsed_sharding,
+          std::optional<xla::OpSharding> parsed_sharding,
           GetShardingFromNodeDef(output_node->def(), /*add_metadata=*/true));
       if (parsed_sharding.has_value()) {
         node_and_sharding = NodeAndSharding(output_node, *parsed_sharding);
@@ -2387,7 +2378,7 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
                 << parsed_sharding->DebugString();
       }
     }
-    absl::optional<int64_t> assigned_core;
+    std::optional<int64_t> assigned_core;
     if (node_and_sharding.has_value()) {
       if (enable_automatic_model_parallelism_) {
         return tensorflow::errors::InvalidArgument(
@@ -4497,7 +4488,7 @@ DistributedTPURewritePass::LowerOutsideCompilationFunctionalNodes(
   TF_RETURN_IF_ERROR(
       GetNodeAttr(replicate_node.attrs(), "computation", function));
 
-  *computation = absl::make_unique<Graph>(graph->op_registry());
+  *computation = std::make_unique<Graph>(graph->op_registry());
   TF_RETURN_IF_ERROR(GetComputationForTPUReplicateOp(
       **function, flr, computation->get(), arg_types, retval_types));
 

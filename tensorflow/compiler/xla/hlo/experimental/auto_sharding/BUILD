@@ -59,6 +59,8 @@ cc_library(
     deps = [
         ":auto_sharding_strategy",
         "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/tsl/platform:hash",
+        "//tensorflow/tsl/platform:types",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_ortools//ortools/linear_solver",

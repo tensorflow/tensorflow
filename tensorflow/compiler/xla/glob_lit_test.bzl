@@ -46,12 +46,22 @@ def _run_lit_test(name, data, size, tags, driver, features, exec_properties):
     """
 
     # Disable tests on windows for now, to enable testing rest of all xla and mlir.
+    xla_root_dir = "tensorflow/compiler/xla/"
+
+    # TODO(ddunleavy,jakeharmon) This is a hack! Once vendoring is complete we
+    # can remove this logic. This is necessary to have these tests run on builds
+    # using Python 3.11, but also to not include `@pypi_lit` in standalone xla
+    # builds where it won't be found.
+    deps = []
+    if xla_root_dir == "tensorflow/compiler/xla/":
+        deps.append("@pypi_lit//:pkg")
+
     native.py_test(
         name = name,
         srcs = ["@llvm-project//llvm:lit"],
         tags = tags + ["no_windows"],
         args = [
-            "xla/" + paths.basename(data[-1]) + " --config-prefix=runlit -v",
+            xla_root_dir + paths.basename(data[-1]) + " --config-prefix=runlit -v",
         ] + features,
         data = data + [
             "//tensorflow/compiler/xla:litfiles",
@@ -59,6 +69,7 @@ def _run_lit_test(name, data, size, tags, driver, features, exec_properties):
             "@llvm-project//llvm:count",
             "@llvm-project//llvm:not",
         ],
+        deps = deps,
         size = size,
         main = "lit.py",
         exec_properties = exec_properties,

@@ -107,6 +107,13 @@ struct Parameter {
         max(max),
         state(std::move(state)) {}
 
+  explicit Parameter(const std::shared_ptr<Parameter> parameter)
+      : name(parameter->name),
+        value(parameter->value),
+        min(parameter->min),
+        max(parameter->max),
+        state(parameter->state) {}
+
   // Human-readable name of the parameter.
   const string name;
 
@@ -864,9 +871,16 @@ class Model {
   // gap times to produce a good estimate.
   double ComputeTargetTimeNsec();
 
+  // Computes the target time in nsecs to use for estimating input bottlenecks.
+  // Returns 0 if there are not sufficient recorded iterator gap times to
+  // produce a good estimate.
+  double ComputeExperimentalTargetTimeNsec();
+
   // Returns the time in nanoseconds it takes the pipeline to produce an
-  // element. Returns 0 if the model is empty.
-  double ComputeProcessingTimeNsec() const;
+  // element, according to the latest model snapshot obtained from optimization.
+  // Returns 0 if the model snapshot is empty or null. This may be caused by not
+  // having executed an optimization round before.
+  double ComputeSnapshotProcessingTimeNsec() const;
 
  private:
   // Determines whether optimization should stop given total processing time,

@@ -89,7 +89,6 @@ cc_test(
         "//tensorflow/lite/kernels:test_util",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/schema:schema_fbs",
-        "//third_party/tflite_micro/tensorflow/lite/micro:memory_helpers",
         "@com_google_googletest//:gtest_main",
     ],
 )

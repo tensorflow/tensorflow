@@ -821,6 +821,7 @@ StatusOr<llvm::SmallVector<Layout>> GetLayoutsFromAssignVariableOps(
       // an IdentityOp, CastOp, or a DTensorSend op on the path. So, skip past
       // these ops first.
       while (llvm::isa<mlir::TF::CastOp, mlir::TF::IdentityOp,
+                       mlir::TF::RelayoutOp, mlir::TF::DTensorLayout,
                        mlir::TF::DTensorSend>(consuming_op)) {
         if (auto send_op =
                 mlir::dyn_cast_or_null<mlir::TF::DTensorSend>(consuming_op)) {
@@ -891,8 +892,10 @@ SaveRestoreSPMDExpander::ComputeLayoutForward(
     // Change the mesh of each layout to `mesh` since RestoreOp always runs on
     // the CPU.
     for (int i = 0; i < layouts.size(); ++i) {
-      Layout host_mesh_layout = layouts[i];
-      host_mesh_layout.set_mesh(mesh);
+      TF_ASSIGN_OR_RETURN(
+          Layout host_mesh_layout,
+          Layout::GetLayout(Layout::LayoutType::kStatic,
+                            layouts[i].sharding_spec_strs(), mesh));
       output_layouts[i] = host_mesh_layout;
     }
     return output_layouts;

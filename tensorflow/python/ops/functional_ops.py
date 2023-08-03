@@ -20,6 +20,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_functional_ops
@@ -1044,7 +1045,7 @@ def _ForUsingWhile(start,
     if isinstance(for_result, ops.Operation):
       for_result = ()
     # Unary functions return a single Tensor value.
-    elif isinstance(for_result, ops.Tensor):
+    elif isinstance(for_result, tensor.Tensor):
       for_result = (for_result,)
     return (i + 1, n, start, delta) + tuple(for_result)
 

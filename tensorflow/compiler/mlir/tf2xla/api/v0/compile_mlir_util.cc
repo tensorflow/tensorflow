@@ -57,6 +57,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/xla_sharding_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/mlir_pass_instrumentation.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/xla_legalize_targets.h"
@@ -108,9 +109,10 @@ Status MaybeRewriteLayoutWithShardedShape(
   if (!sharding) return OkStatus();
 
   xla::OpSharding op_sharding;
-  if (!op_sharding.ParseFromString(sharding.getValue().str()))
+  if (tensorflow::DecodeShardingAttribute(sharding, op_sharding).failed()) {
     return errors::InvalidArgument("failed to parse sharding '",
                                    sharding.getValue().str(), "'");
+  }
   std::optional<xla::HloSharding> hlo_sharding;
   TF_ASSIGN_OR_RETURN(hlo_sharding, xla::HloSharding::FromProto(op_sharding));
   TF_RETURN_IF_ERROR(RewriteLayoutWithShardedShape(
@@ -431,7 +433,8 @@ void CreateConvertMlirToXlaHloPipeline(
   pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
 
   pm.addNestedPass<mlir::func::FuncOp>(mlir::TF::CreateLowerQuantizedPass());
-  pm.addPass(mlir::mhlo::CreateLegalizeTfTypesPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::stablehlo::CreateConvertTFQuantTypesPass());
 
   for (auto& target_pass : custom_legalization_passes) {
     pm.addNestedPass<mlir::func::FuncOp>(std::move(target_pass));

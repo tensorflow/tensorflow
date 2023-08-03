@@ -289,20 +289,25 @@ StatusOr<Layout> GetLayoutThroughIdentityOps(Node* op, int output_index) {
 char TensorWithLayoutTf::ID = 0;
 
 StatusOr<std::vector<int64_t>> GetTensorShapeAsVector(
+    const tensorflow::PartialTensorShape& shape) {
+  const int dims = shape.dims();
+  if (dims < 0) {
+    return absl::InvalidArgumentError("Unavailable tensor shape!");
+  }
+  std::vector<int64_t> result;
+  result.reserve(dims);
+  for (const TensorShapeDim& dim : shape) {
+    result.emplace_back(dim.size);
+  }
+  return result;
+}
+
+StatusOr<std::vector<int64_t>> GetTensorShapeAsVector(
     TFE_TensorHandle* tensor) {
   tensorflow::PartialTensorShape shape;
   const Status status = tensorflow::unwrap(tensor)->Shape(&shape);
   if (status.ok()) {
-    const int dims = shape.dims();
-    if (dims < 0) {
-      return absl::InvalidArgumentError("Unavailable tensor shape!");
-    }
-    std::vector<int64_t> result;
-    result.reserve(dims);
-    for (const TensorShapeDim& dim : shape) {
-      result.emplace_back(dim.size);
-    }
-    return result;
+    return GetTensorShapeAsVector(shape);
   } else {
     return status;
   }
@@ -922,6 +927,21 @@ Status PrepareGraphForMlir(
   return OkStatus();
 }
 
+StatusOr<std::vector<int64_t>> GetNumLocalOutputs(Node* node) {
+  const AttrValue* num_local_outputs =
+      (node->attrs()).Find(kNumLocalOutputsAttr);
+  if (num_local_outputs == nullptr) {
+    return absl::InvalidArgumentError("missing num_local_outputs attribute");
+  } else {
+    const AttrValue_ListValue& list = num_local_outputs->list();
+    std::vector<int64_t> res;
+    res.reserve(list.i_size());
+    std::copy(list.i().begin(), list.i().end(), std::back_inserter(res));
+    return res;
+  }
+}
+
+namespace {
 Status SetMultiDeviceFunctionOutputs(
     TranslatedFunction& function, Node* node,
     const std::vector<PartialTensorShape>& global_output_shapes) {
@@ -929,6 +949,8 @@ Status SetMultiDeviceFunctionOutputs(
   if (serialized_layouts == nullptr) {
     return absl::InvalidArgumentError("missing layout attribute");
   }
+  TF_ASSIGN_OR_RETURN(std::vector<int64_t> num_local_outputs,
+                      GetNumLocalOutputs(node));
   const auto& serialized_layout_list = serialized_layouts->list();
   for (int i = 0; i < serialized_layout_list.s_size(); i++) {
     const auto& serialized_layout = serialized_layout_list.s(i);
@@ -936,17 +958,26 @@ Status SetMultiDeviceFunctionOutputs(
                         Layout::FromString(serialized_layout));
     function.output_layouts.emplace_back(std::move(layout));
   }
-  for (int i = 0; i < function.output_layouts.size(); i++) {
-    const Layout& output_layout = function.output_layouts[i];
+  int num_output_layouts = function.output_layouts.size();
+  for (int i = 0; i < num_output_layouts; i++) {
+    const Layout* output_layout = &(function.output_layouts[i]);
+    if (output_layout->IsEmpty()) {
+      const auto search = function.resource_input_layouts.find(i);
+      if (search != function.resource_input_layouts.end()) {
+        output_layout = &(search->second);
+      }
+    }
     PartialTensorShape local_shape =
-        output_layout.LocalShapeFromGlobalShape(global_output_shapes[i]);
-    const int num_devices = output_layout.num_devices();
+        output_layout->LocalShapeFromGlobalShape(global_output_shapes[i]);
+    const int64_t num_devices = num_local_outputs[i];
     for (int j = 0; j < num_devices; j++) {
       function.local_output_shapes.emplace_back(local_shape);
     }
   }
+  function.num_local_outputs = std::move(num_local_outputs);
   return OkStatus();
 }
+}  // namespace
 
 // Returns set of functions to run to execute DTensor computation.
 StatusOr<ExecutionFunctions> IdentifyAllFunctionsToExecute(
@@ -1033,6 +1064,7 @@ StatusOr<ExecutionFunctions> IdentifyAllFunctionsToExecute(
         function.local_output_shapes.emplace_back(
             output_layout.LocalShapeFromGlobalShape(
                 global_output_shapes[global_index]));
+        function.num_local_outputs.emplace_back(1);
       }
     }
 

@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
@@ -238,6 +239,27 @@ class CudnnSupport : public dnn::DnnSupport {
       const dnn::BatchDescriptor& output_descriptor,
       const dnn::ConvolutionDescriptor& convolution_descriptor) override;
 
+  tsl::Status GetGraphConvolveRunners(
+      dnn::ConvolutionKind kind, dnn::DataType input_type,
+      dnn::DataType output_type, Stream* stream,
+      const dnn::BatchDescriptor& input_descriptor,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const dnn::BatchDescriptor& output_descriptor,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      bool use_fallback, const NumericOptions& numeric_options,
+      std::vector<std::unique_ptr<const dnn::GraphConvRunner>>* out_exec_plans,
+      std::string serialized_graph) override;
+
+  tsl::StatusOr<std::unique_ptr<const dnn::GraphConvRunner>>
+  GraphConvolveRunnerFromDesc(
+      Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+      dnn::ConvolutionKind kind, dnn::DataType input_type,
+      dnn::DataType output_type, const dnn::BatchDescriptor& input_descriptor,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const dnn::BatchDescriptor& output_descriptor,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      std::string serialized_graph) override;
+
   tsl::Status GetFusedConvolveRunners(
       bool use_cudnn_frontend, dnn::ConvolutionKind kind,
       dnn::DataType input_type, dnn::DataType bias_type,
@@ -285,6 +307,7 @@ class CudnnSupport : public dnn::DnnSupport {
       const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
       const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
       const dnn::TensorDescriptor& output_descriptor,
+      std::optional<dnn::TensorDescriptor> activation_descriptor,
       std::optional<double> dropout_rate, std::optional<int64_t> seed) override;
 
   tsl::StatusOr<std::unique_ptr<const dnn::FusedMHAMaskRunner>>
@@ -296,6 +319,7 @@ class CudnnSupport : public dnn::DnnSupport {
       const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
       const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
       const dnn::TensorDescriptor& output_descriptor,
+      std::optional<dnn::TensorDescriptor> activation_descriptor,
       const dnn::TensorDescriptor& mask_descriptor, double scale,
       std::optional<double> dropout_rate, std::optional<int64_t> seed) override;
 
@@ -308,6 +332,7 @@ class CudnnSupport : public dnn::DnnSupport {
       const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
       const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
       const dnn::TensorDescriptor& output_descriptor,
+      std::optional<dnn::TensorDescriptor> activation_descriptor,
       const dnn::TensorDescriptor& mask_descriptor,
       const dnn::TensorDescriptor& bias_descriptor, double scale,
       std::optional<double> dropout_rate, std::optional<int64_t> seed) override;
@@ -321,6 +346,7 @@ class CudnnSupport : public dnn::DnnSupport {
       const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
       const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
       const dnn::TensorDescriptor& output_descriptor,
+      std::optional<dnn::TensorDescriptor> activation_descriptor,
       const dnn::TensorDescriptor& bias_descriptor, double scale,
       std::optional<double> dropout_rate, std::optional<int64_t> seed) override;
 

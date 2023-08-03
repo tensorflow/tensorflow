@@ -183,6 +183,7 @@ tf_kernel_library(
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "//tensorflow/compiler/mlir/tensorflow:xla_sharding_util",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
@@ -347,6 +348,7 @@ cc_library(
         "//tensorflow/core/kernels:conv_grad_shape_utils",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/tsl/platform:tensor_float_32_hdr_lib",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
     ] + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
@@ -394,6 +396,7 @@ cc_library(
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/xla/mlir_hlo:mhlo_passes",
+        "//tensorflow/compiler/xla/python:refine_polymorphic_shapes",
         "//tensorflow/compiler/xla/translate/hlo_to_mhlo:hlo_utils",
         "//tensorflow/compiler/xla/translate/mhlo_to_hlo:mlir_hlo_to_hlo",
         "//tensorflow/tsl/platform:errors",
@@ -566,5 +569,6 @@ tf_cc_test(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:framework",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:FuncDialect",
     ],
 )

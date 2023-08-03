@@ -226,6 +226,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/data:name_utils",
         "//tensorflow/core/data:snapshot_utils",
+        "//tensorflow/core/data:utils",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:status",

@@ -1,3 +1,63 @@
+# Release 2.15.0
+
+## TensorFlow
+
+<INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
+
+### Breaking Changes
+
+* <DOCUMENT BREAKING CHANGES HERE>
+* <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
+
+### Known Caveats
+
+* <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
+* <ADDING/BUMPING DEPENDENCIES SHOULD GO HERE>
+* <KNOWN LACK OF SUPPORT ON SOME PLATFORM, SHOULD GO HERE>
+
+### Major Features and Improvements
+
+*   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
+*   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
+
+### Bug Fixes and Other Changes
+
+* <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
+* <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
+* <NOTES SHOULD BE GROUPED PER AREA>
+
+## Keras
+
+<INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
+
+### Breaking Changes
+
+* <DOCUMENT BREAKING CHANGES HERE>
+* <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
+
+### Known Caveats
+
+* <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
+* <ADDING/BUMPING DEPENDENCIES SHOULD GO HERE>
+* <KNOWN LACK OF SUPPORT ON SOME PLATFORM, SHOULD GO HERE>
+
+### Major Features and Improvements
+
+*   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
+*   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
+
+### Bug Fixes and Other Changes
+
+* <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
+* <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
+* <NOTES SHOULD BE GROUPED PER AREA>
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+<INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
+
 # Release 2.14.0
 
 <INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
@@ -44,7 +104,7 @@
 * `tf.keras`
     * `Model.compile` now support `steps_per_execution='auto'` as a parameter,
     allowing automatic tuning of steps per execution during `Model.fit`,
-    `Model.predict`, and `Model.evaluate` for a significant performance boost. 
+    `Model.predict`, and `Model.evaluate` for a significant performance boost.
 
 *   Enable JIT-compiled i64-indexed kernels on GPU for large tensors with more
     than 2**32 elements.
@@ -84,10 +144,18 @@
       cause TPUs to use float32 precision for such ops instead of bfloat16.
 
 *  `tf.experimental.dtensor`
-    * API changes for Relayout. Added a new API, `dtensor.relayout_like`, for 
-      relayouting a tensor according to the layout of another tensor. 
-    * Added `dtensor.get_default_mesh`, for retrieving the current default 
+    * API changes for Relayout. Added a new API, `dtensor.relayout_like`, for
+      relayouting a tensor according to the layout of another tensor.
+    * Added `dtensor.get_default_mesh`, for retrieving the current default
       mesh under the dtensor context.
+    * \*fft\* ops now support dtensors with any layout. Fixed bug in 'fft2d/
+      fft3d', 'ifft2d/ifft3d', 'rfft2d/rfft3d', and 'irfft2d/irfft3d' for
+      sharded input.
+
+*  `tf.experimental.strict_mode`
+    * Added a new API, `strict_mode`, which converts all deprecation warnings
+      into runtime errors with instructions on switching to a recommended 
+      substitute.
 
 *   TensorFlow Debugger (tfdbg) CLI: ncurses-based CLI for tfdbg v1 was removed.
 
@@ -96,9 +164,13 @@
     TensorFlow. This may be needed when linking TensorFlow into RTTI-enabled
     programs since mixing RTTI and non-RTTI code can cause ABI issues.
 
-    * `tf.ones`, `tf.zeros`, `tf.fill`, `tf.ones_like`, `tf.zeros_like` now
-      take an additional Layout argument that controls the output layout of
-      their results.
+* `tf.ones`, `tf.zeros`, `tf.fill`, `tf.ones_like`, `tf.zeros_like` now take an
+    additional Layout argument that controls the output layout of their results.
+
+* `tf.nest` and `tf.data` now support user defined classes implementing
+  `__tf_flatten__` and `__tf_unflatten__` methods. See [
+  nest_util code examples](https://github.com/tensorflow/tensorflow/blob/04869b4e63bfc03cb13627b3e1b879fdd0f69e34/tensorflow/python/util/nest_util.py#L97)
+  for an example.
 
 # Thanks to our Contributors
 

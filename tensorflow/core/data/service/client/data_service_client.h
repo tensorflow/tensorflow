@@ -103,6 +103,9 @@ class DataServiceClient {
     bool in_use TF_GUARDED_BY(&DataServiceClient::mu_) = false;
     // Indicates whether the worker has returned end_of_sequence for the task.
     bool end_of_sequence TF_GUARDED_BY(&DataServiceClient::mu_) = false;
+    // Number of retries. The more it is retried, the longer it should wait
+    // before the next retry.
+    int64_t num_retries = 0;
   };
 
   struct Result {

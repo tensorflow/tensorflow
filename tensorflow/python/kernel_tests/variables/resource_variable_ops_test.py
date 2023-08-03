@@ -38,6 +38,7 @@ from tensorflow.python.framework import extension_type
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import memory_checker
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_ops
@@ -989,7 +990,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
         result = tape.gradient(out, v)
 
       self.assertAllEqual(out, 5.)
-      self.assertIsInstance(result, ops.Tensor)
+      self.assertIsInstance(result, tensor_lib.Tensor)
       self.assertAllEqual(result, 2.)
 
   def testToFromProtoCachedValue(self):
@@ -1805,7 +1806,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
   def testVariableInExtensionType(self):
     class MaskVariable(extension_type.ExtensionType):
       variable: resource_variable_ops.ResourceVariable
-      mask: ops.Tensor
+      mask: tensor_lib.Tensor
 
     v = resource_variable_ops.ResourceVariable([1., 2.])
     self.evaluate(v.initializer)

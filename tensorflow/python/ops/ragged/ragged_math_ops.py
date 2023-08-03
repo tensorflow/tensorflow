@@ -22,6 +22,7 @@ import numpy as np
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
@@ -529,7 +530,7 @@ def ragged_reduce_aggregate(reduce_op,
     return reduce_op(
         rt_input, axis, keepdims=keepdims, name=name, **maybe_separator)
 
-  if isinstance(axis, ops.Tensor):
+  if isinstance(axis, tensor.Tensor):
     axis = tensor_util.constant_value(axis)
     if axis is None:
       raise ValueError('axis must be known at graph construction time.')
@@ -1174,7 +1175,7 @@ def tensor_not_equals(self: ragged_tensor.RaggedOrDense,
 
 def _use_legacy_mode_for_tensor_equality(self):
   g = getattr(self, 'graph', None)
-  return not (ops.Tensor._USE_EQUALITY and  # pylint: disable=protected-access
+  return not (tensor.Tensor._USE_EQUALITY and  # pylint: disable=protected-access
               ops.executing_eagerly_outside_functions() and
               (g is None or g.building_function))
 

@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
@@ -74,6 +75,8 @@ struct Signature {
   // The following two fields should have the same size.
   std::vector<std::string> output_names;
   std::vector<TensorSpec> output_specs;
+
+  proto2::Map<std::string, TensorProto> default_inputs;
 };
 
 }  // namespace internal
@@ -99,6 +102,10 @@ class FunctionMetadata {
 
   const std::vector<TensorSpec>& GetOutputSpecs() const {
     return signature_->output_specs;
+  }
+
+  const proto2::Map<std::string, TensorProto>& GetDefaultInputs() const {
+    return signature_->default_inputs;
   }
 
  private:
@@ -202,6 +209,35 @@ class SavedModel {
   const Options options_;
 };
 
+// TODO(cesarmagana) Create new library saved_model_utils and move (refactor)
+// functions to the anonymous space of the util file. Making only one API public
+// for use in both LoadSavedModel and AotCompileSavedModel.
+StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
+    mlir::MLIRContext* context, const tensorflow::MetaGraphDef& meta_graph_def,
+    const FallbackState& fallback_state, std::string saved_model_dir,
+    bool import_user_signatures, bool run_placer_grappler_on_functions);
+
+StatusOr<tensorflow::MetaGraphDef> ReadSavedModel(
+    absl::string_view saved_model_dir,
+    const std::unordered_set<std::string>& tags);
+
+using SignatureMap = absl::flat_hash_map<std::string, internal::Signature>;
+using ::tensorflow::StatusOr;
+
+struct Initializer {
+  std::string name;
+};
+
+struct InitializersAndSignatures {
+  // Initializers are kept in a certain order as they need to be executed in
+  // that order.
+  std::vector<Initializer> initializers;
+  SignatureMap signature_map;
+};
+
+StatusOr<InitializersAndSignatures> GetInitializersAndSignatures(
+    mlir::ModuleOp module);
+
 class SavedModelImpl final : public SavedModel {
  public:
   struct JoinedSignature;
@@ -268,8 +304,15 @@ class SavedModelImpl final : public SavedModel {
   struct LoadingResult {
     std::string name;
     SymbolUids symbol_uids;
+
+    // For the MLRT path.
+    mlrt::bc::Buffer bytecode_buffer;
+    std::unique_ptr<mlrt::LoadedExecutable> bytecode_executable;
+
+    // For the TFRT path.
     tfrt::BefBuffer bef;
     tfrt::RCReference<tfrt::BEFFile> bef_file;
+
     std::unique_ptr<OpKernelRunnerTable> runner_table;
     std::unique_ptr<tfd::FallbackResourceArray> resource_array;
   };
@@ -277,7 +320,7 @@ class SavedModelImpl final : public SavedModel {
   // Imports a subgraph as an MLIR module with the specified `input_nodes`,
   // `output_nodes`.
   tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSubgraph(
-      mlir::MLIRContext* context,
+      mlir::MLIRContext* context, absl::string_view name,
       const tensorflow::GraphImportConfig::InputArrays& input_nodes,
       const std::vector<std::string>& output_nodes,
       const std::vector<std::string>& target_nodes);

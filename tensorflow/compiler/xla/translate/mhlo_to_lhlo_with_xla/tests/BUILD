@@ -1,5 +1,5 @@
 load("//tensorflow/tsl:tsl.default.bzl", "filegroup")
-load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
+load("//tensorflow/compiler/xla:glob_lit_test.bzl", "glob_lit_tests")
 load(
     "//tensorflow/tsl/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",

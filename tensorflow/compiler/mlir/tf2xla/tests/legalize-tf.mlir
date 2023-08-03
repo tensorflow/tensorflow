@@ -3538,7 +3538,7 @@ func.func @strided_slice_nonconstant_begin_end(%arg0: tensor<i32>, %arg1: tensor
   // CHECK-NEXT: %[[CMP:.*]] = chlo.broadcast_compare %[[INDEX2]], %[[ZERO]]
   // CHECK-DAG-SAME: {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<i32>, tensor<i32>) -> tensor<i1>
   // CHECK-NEXT: %[[DIM:.*]] = mhlo.constant dense<32> : tensor<i32>
-  // CHECK-NEXT: %[[WRAP:.*]] = chlo.broadcast_add %[[DIM]], %[[INDEX2]] : (tensor<i32>, tensor<i32>) -> tensor<i32>
+  // CHECK-NEXT: %[[WRAP:.*]] = chlo.broadcast_add %[[INDEX2]], %[[DIM]] : (tensor<i32>, tensor<i32>) -> tensor<i32>
   // CHECK-NEXT: %[[INDEX3:.*]] = mhlo.select %[[CMP]], %[[WRAP]], %[[INDEX2]] :
   // CHECK-DAG-SAME: (tensor<i1>, tensor<i32>, tensor<i32>) -> tensor<i32>
   // CHECK-NEXT: %[[SLICED:.*]] = "mhlo.dynamic_slice"
@@ -3567,7 +3567,7 @@ func.func @strided_slice_nonconstant_begin_end_with_start_end_mask(%input: tenso
   // CHECK-NEXT: %[[CMP:.*]] = chlo.broadcast_compare %[[INDEX2]], %[[ZERO]]
   // CHECK-DAG-SAME: {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<i32>, tensor<i32>) -> tensor<i1>
   // CHECK-NEXT: %[[DIM:.*]] = mhlo.constant dense<32> : tensor<i32>
-  // CHECK-NEXT: %[[WRAP:.*]] = chlo.broadcast_add %[[DIM]], %[[INDEX2]] : (tensor<i32>, tensor<i32>) -> tensor<i32>
+  // CHECK-NEXT: %[[WRAP:.*]] = chlo.broadcast_add %[[INDEX2]], %[[DIM]] : (tensor<i32>, tensor<i32>) -> tensor<i32>
   // CHECK-NEXT: %[[INDEX3:.*]] = mhlo.select %[[CMP]], %[[WRAP]], %[[INDEX2]] :
   // CHECK-DAG-SAME: (tensor<i1>, tensor<i32>, tensor<i32>) -> tensor<i32>
   // CHECK-NEXT: %[[SLICED:.*]] = "mhlo.dynamic_slice"

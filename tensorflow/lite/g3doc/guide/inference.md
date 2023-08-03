@@ -574,22 +574,21 @@ print(output_data)
 As an alternative to loading the model as a pre-converted `.tflite` file, you
 can combine your code with the
 [TensorFlow Lite Converter Python API](https://www.tensorflow.org/lite/api_docs/python/tf/lite/TFLiteConverter)
-(`tf.lite.TFLiteConverter`), allowing you to convert your TensorFlow model into
-the TensorFlow Lite format and then run inference:
+(`tf.lite.TFLiteConverter`), allowing you to convert your Keras model into the
+TensorFlow Lite format and then run inference:
 
 ```python
 import numpy as np
 import tensorflow as tf
 
-img = tf.placeholder(name="img", dtype=tf.float32, shape=(1, 64, 64, 3))
+img = tf.keras.Input(shape=(64, 64, 3), name="img")
 const = tf.constant([1., 2., 3.]) + tf.constant([1., 4., 4.])
 val = img + const
 out = tf.identity(val, name="out")
 
 # Convert to TF Lite format
-with tf.Session() as sess:
-  converter = tf.lite.TFLiteConverter.from_session(sess, [img], [out])
-  tflite_model = converter.convert()
+converter = tf.lite.TFLiteConverter.from_keras_model(tf.keras.models.Model(inputs=[img], outputs=[out]))
+tflite_model = converter.convert()
 
 # Load the TFLite model and allocate tensors.
 interpreter = tf.lite.Interpreter(model_content=tflite_model)
@@ -616,16 +615,15 @@ running inference in different languages.
 All the examples assume that the input shape is defined as `[1/None, 10]`, and
 need to be resized to `[3, 10]`.
 
-<section class="tabs">
-
-###### C++ {.new-tab}
+C++ example:
 
 ```c++
 // Resize input tensors before allocate tensors
 interpreter->ResizeInputTensor(/*tensor_index=*/0, std::vector<int>{3,10});
 interpreter->AllocateTensors();
 ```
-###### Python {.new-tab}
+
+Python example:
 
 ```python
 # Load the TFLite model in TFLite Interpreter

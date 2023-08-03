@@ -132,7 +132,6 @@ ENTRY %constant_pred_array () -> pred[2,3] {
 
 )"
 },
-
 // s32 constant
 {
 "ConstantS32",
@@ -140,6 +139,17 @@ R"(HloModule constant_s32_module, entry_computation_layout={()->s32[]}
 
 ENTRY %constant_s32 () -> s32[] {
   ROOT %constant = s32[] constant(-42)
+}
+
+)"
+},
+// s32 constant with statistics
+{
+"ConstantS32WithStatistics",
+R"(HloModule constant_s32_module, entry_computation_layout={()->s32[]}
+
+ENTRY %constant_s32 () -> s32[] {
+  ROOT %constant = s32[] constant(-42), statistics={visualizing_index=1,stat-1=33,stat-2=44}
 }
 
 )"
@@ -4501,6 +4511,15 @@ test {
   EXPECT_EQ(
       module->entry_computation()->ComputeProgramShape().result().layout(),
       Layout({1, 0, 2, 3}));
+}
+
+TEST_F(HloParserTest, ParseComputationNameClosingBrace) {
+  const std::string original = R"(
+test {
+  ROOT root =  f32[1,64,10,128]{1,0,2,3} parameter(0)
+} // test
+)";
+  EXPECT_TRUE(ParseAndReturnUnverifiedModule(original).ok());
 }
 
 TEST_F(HloParserTest, ParseSingleEntryComputation) {

@@ -91,6 +91,13 @@ namespace wrap {
   __macro(hipGetDevice)                             \
   __macro(hipGetDeviceCount)                        \
   __macro(hipGetDeviceProperties)                   \
+  __macro(hipGetErrorString)                        \
+  __macro(hipGraphDebugDotPrint)                    \
+  __macro(hipGraphDestroy)                          \
+  __macro(hipGraphExecDestroy)                      \
+  __macro(hipGraphExecUpdate)                       \
+  __macro(hipGraphInstantiate)                      \
+  __macro(hipGraphLaunch)                           \
   __macro(hipHostFree)                              \
   __macro(hipHostMalloc)                            \
   __macro(hipHostRegister)                          \
@@ -123,18 +130,23 @@ namespace wrap {
   __macro(hipSetDevice)                             \
   __macro(hipDeviceGetStreamPriorityRange)          \
   __macro(hipStreamAddCallback)                     \
+  __macro(hipStreamBeginCapture)                    \
   __macro(hipStreamCreateWithFlags)                 \
   __macro(hipStreamCreateWithPriority)              \
   __macro(hipStreamDestroy)                         \
+  __macro(hipStreamEndCapture)                      \
+  __macro(hipStreamIsCapturing)                     \
   __macro(hipStreamQuery)                           \
   __macro(hipStreamSynchronize)                     \
   __macro(hipStreamWaitEvent)  // clang-format on
 
 HIP_ROUTINE_EACH(STREAM_EXECUTOR_HIP_WRAP)
+
 #undef HIP_ROUTINE_EACH
 #undef STREAM_EXECUTOR_HIP_WRAP
 #undef TO_STR
 #undef TO_STR_
+
 }  // namespace wrap
 }  // namespace stream_executor
 

@@ -91,17 +91,6 @@ Status CheckOperandCount(const HloInstruction* hlo, int expected) {
   return OkStatus();
 }
 
-Status CheckParameterCount(const HloInstruction* calling_instruction,
-                           const HloComputation* computation, int expected) {
-  if (computation->num_parameters() != expected) {
-    return InternalError(
-        "Expected computation %s called from %s to have %d parameters, has %d",
-        computation->name(), calling_instruction->name(), expected,
-        computation->num_parameters());
-  }
-  return OkStatus();
-}
-
 int64_t GetSubgroupSize(HloCollectiveInstruction* hlo,
                         CollectiveOpGroupMode group_mode) {
   const HloModuleConfig& config = hlo->GetModule()->config();
@@ -148,6 +137,18 @@ Status CheckNestedComputationThreadNameEqual(const HloComputation* comp,
   return OkStatus();
 }
 }  // namespace
+
+/*static*/ Status ShapeVerifier::CheckParameterCount(
+    const HloInstruction* calling_instruction,
+    const HloComputation* computation, int expected) {
+  if (computation->num_parameters() != expected) {
+    return InternalError(
+        "Expected computation %s called from %s to have %d parameters, has %d",
+        computation->name(), calling_instruction->name(), expected,
+        computation->num_parameters());
+  }
+  return OkStatus();
+}
 
 Status ShapeVerifier::Preprocess(HloInstruction* hlo) {
   if (!hlo->called_computations().empty() && !IsCallerInstruction(hlo)) {
@@ -1750,6 +1751,9 @@ Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
     case HloOpcode::kAllReduce:
     case HloOpcode::kAllReduceStart:
     case HloOpcode::kAllReduceDone:
+    case HloOpcode::kAllGather:
+    case HloOpcode::kAllGatherStart:
+    case HloOpcode::kAllGatherDone:
     case HloOpcode::kAsyncDone:
     case HloOpcode::kAsyncUpdate:
     case HloOpcode::kAsyncStart:
@@ -2678,6 +2682,19 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
       // Allow kCustomCall to contain computations on separate thread.
       return CheckCallableInstructionThreadName(
           hlo, /*skip_nested_async_op_check=*/true);
+    }
+    return OkStatus();
+  }
+
+  Status HandleScatter(HloInstruction* scatter) override {
+    int64_t rank = scatter->operand(0)->shape().rank();
+    for (int64_t operand_dim :
+         scatter->scatter_dimension_numbers().scatter_dims_to_operand_dims()) {
+      if (operand_dim > rank) {
+        return absl::OutOfRangeError(absl::StrCat(
+            "The provided scatter_dims_to_operand_dim was out of range.",
+            " (operand_dim: ", operand_dim, ", rank: ", rank, ")"));
+      }
     }
     return OkStatus();
   }

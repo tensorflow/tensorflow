@@ -20,9 +20,6 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/MemoryBuffer.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
@@ -30,11 +27,23 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate_cl.h"
+#include "tensorflow/compiler/tf2xla/xla_compiler.h"
+#include "tensorflow/compiler/xla/client/client_library.h"
+#include "tensorflow/compiler/xla/client/compile_only_client.h"
+#include "tensorflow/compiler/xla/stream_executor/host/host_platform_id.h"
+#include "tensorflow/compiler/xla/stream_executor/multi_platform_manager.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
 
 namespace mlir {
 using tsl::Status;
 using tsl::StatusOr;
+
+static constexpr char kMlirToGraphCompilationCheckName[] =
+    "mlir-to-graph-compilation-check";
+// Use CPU arbitrarily in order to check that a graph compiles at all
+static constexpr char kArbitraryDeviceName[] = "XLA_CPU_JIT";
 
 namespace {
 inline absl::string_view StringRefToView(llvm::StringRef ref) {
@@ -49,7 +58,7 @@ static OwningOpRef<mlir::ModuleOp> GraphdefToMlirTranslateFunction(
       prune_unused_nodes,     convert_legacy_fed_inputs,
       graph_as_function,      upgrade_legacy,
       enable_shape_inference, unconditionally_use_set_output_shapes,
-      enable_soft_placement};
+      enable_soft_placement,  set_original_tf_func_name};
 
   auto module_or = tensorflow::GraphdefToMlirTranslateFunction(
       input, input_arrays, input_dtypes, input_shapes, output_arrays,
@@ -78,6 +87,80 @@ static OwningOpRef<mlir::ModuleOp> GraphdefToSplattedMlirTranslateFunction(
 static TranslateToMLIRRegistration GraphdefToSplattedMlirTranslate(
     "graphdef-to-splatted-mlir", "graphdef-to-splatted-mlir",
     GraphdefToSplattedMlirTranslateFunction);
+
+static Status CompileGraph(tensorflow::Graph* graph,
+                           xla::CompileOnlyClient* client) {
+  if (!graph || !client) {
+    return Status(absl::StatusCode::kInvalidArgument,
+                  "Invalid graph or client");
+  }
+
+  tensorflow::FunctionDefLibrary flib;
+  auto flib_def = std::make_unique<tensorflow::FunctionLibraryDefinition>(
+      tensorflow::OpRegistry::Global(), flib);
+
+  tensorflow::XlaCompiler::Options options;
+  options.device_type = tensorflow::DeviceType(kArbitraryDeviceName);
+  options.client = client;
+  options.flib_def = flib_def.get();
+  tensorflow::XlaCompiler compiler(options);
+
+  std::unique_ptr<tensorflow::Graph> graph_copy(
+      new tensorflow::Graph(tensorflow::OpRegistry::Global()));
+  tensorflow::CopyGraph(*graph, graph_copy.get());
+
+  tensorflow::XlaCompiler::CompileOptions compile_options;
+  tensorflow::XlaCompiler::CompilationResult result;
+  return compiler.CompileGraph(compile_options,
+                               kMlirToGraphCompilationCheckName,
+                               std::move(graph_copy), {}, &result);
+}
+
+static LogicalResult MlirToGraphTranslateFunction(ModuleOp module,
+                                                  llvm::raw_ostream& output) {
+  if (!module) return failure();
+
+  tensorflow::GraphExportConfig confs;
+  confs.export_entry_func_to_flib = export_entry_func_to_flib;
+
+  std::unique_ptr<tensorflow::FunctionLibraryDefinition> flib_def;
+  auto graph =
+      std::make_unique<tensorflow::Graph>(tensorflow::OpRegistry::Global());
+
+  auto status =
+      tensorflow::ConvertMlirToGraph(module, confs, &graph, flib_def.get());
+  if (!status.ok()) {
+    LOG(ERROR) << "Export to Graph failed: " << status;
+    return mlir::failure();
+  }
+
+  // Use Host platform, which should always exist, to make sure graphs compile.
+  auto platform = stream_executor::MultiPlatformManager::PlatformWithId(
+      stream_executor::host::kHostPlatformId);
+  auto client =
+      xla::ClientLibrary::GetOrCreateCompileOnlyClient(platform.value());
+
+  tensorflow::XlaOpRegistry::RegisterCompilationKernels();
+
+  // Verify that the resulting graph can compile.
+  if (!CompileGraph(graph.get(), client.value()).ok()) {
+    return mlir::failure();
+  }
+
+  auto graphdef = std::make_unique<tensorflow::GraphDef>();
+  // Print the graph to the output after going through GraphDef conversion.
+  // The DumpGraphToFile would do this anyway so just skip straight to it.
+  graph->ToGraphDef(graphdef.get());
+  output << graphdef->DebugString();
+
+  return success();
+}
+
+static TranslateFromMLIRRegistration mlir_to_graph_translate(
+    /*name=*/"mlir-to-graph", /*description=*/"convert mlir to graph",
+    MlirToGraphTranslateFunction, [](DialectRegistry& registry) {
+      mlir::RegisterAllTensorFlowDialects(registry);
+    });
 
 static LogicalResult MlirToGraphdefTranslateFunction(
     ModuleOp module, llvm::raw_ostream& output) {

@@ -42,7 +42,15 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_multi_thread_eigen(true);
   opts.set_xla_gpu_cuda_data_dir("./cuda_sdk_lib");
   opts.set_xla_gpu_asm_extra_flags("");
-  opts.set_xla_gpu_use_runtime_fusion(true);
+
+  // As of cudnn 8.9.0, runtime fusion creates convolutions that take about 7s
+  // seconds to run the first time we call them, at least on Ampere.  In
+  // contrast, non-runtime-fusion convs usually run in about 50ms.  Thus runtime
+  // fusion can cause a 100x slowdown when compiling models that have convs that
+  // use runtime fusion.  We therefore can't enable this by default today.
+  // Additional details in b/237009940#comment46.
+  opts.set_xla_gpu_use_runtime_fusion(false);
+
   opts.set_xla_eliminate_hlo_implicit_broadcast(true);
   opts.set_xla_dump_hlo_as_html(false);
   opts.set_xla_dump_fusion_visualization(false);
@@ -79,13 +87,14 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   // flag.
   opts.set_xla_gpu_enable_cublaslt(false);
 
-  // TODO(b/258036887): Enable cuda_graph_level=2. Currently blocked by CUDA 12
+  // TODO(b/258036887): Enable gpu_graph_level=2. Currently blocked by CUDA 12
   // integration.
-  opts.set_xla_gpu_cuda_graph_level(0);
-  opts.set_xla_gpu_cuda_graph_num_runs_to_instantiate(2);
+  opts.set_xla_gpu_graph_level(1);
+  opts.set_xla_gpu_graph_num_runs_to_instantiate(-1);
   opts.set_xla_gpu_enable_persistent_temp_buffers(false);
-  opts.set_xla_gpu_cuda_graph_min_graph_size(2);
-  opts.set_xla_gpu_cuda_graph_enable_concurrent_region(false);
+  opts.set_xla_gpu_graph_min_graph_size(5);
+  opts.set_xla_gpu_graph_enable_concurrent_region(true);
+  opts.set_xla_gpu_graph_eviction_timeout_seconds(60);
 
   // Despite the name, fast min/max on GPUs does not seem to be any faster, and
   // adds very counter-intuitive "NaN-swallowing" behavior.
@@ -94,9 +103,10 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_allow_excess_precision(true);
   opts.set_xla_force_host_platform_device_count(1);
-  opts.set_xla_gpu_all_reduce_combine_threshold_bytes(30 * 1024 * 1024);
-  opts.set_xla_gpu_all_gather_combine_threshold_bytes(1024 * 1024 * 1024);
-  opts.set_xla_gpu_reduce_scatter_combine_threshold_bytes(30 * 1024 * 1024);
+  constexpr int64_t kDefaultThreshold = 30 * 1024 * 1024;
+  opts.set_xla_gpu_all_reduce_combine_threshold_bytes(kDefaultThreshold);
+  opts.set_xla_gpu_all_gather_combine_threshold_bytes(kDefaultThreshold);
+  opts.set_xla_gpu_reduce_scatter_combine_threshold_bytes(kDefaultThreshold);
   opts.set_xla_gpu_enable_async_all_reduce(true);
   opts.set_xla_gpu_enable_reassociation_for_converted_ar(true);
 
@@ -108,6 +118,10 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_xla_runtime_executable(true);
   opts.set_xla_gpu_nccl_termination_timeout_seconds(-1);
   opts.set_xla_gpu_enable_shared_constants(true);
+
+  // XLA:GPU + IREE runtime flags.
+  opts.set_xla_gpu_enable_gpu2_runtime(false);
+  opts.set_xla_gpu_enable_gpu2_hal(true);
 
   // Set 4GB space limit for redzone scratch allocator.
   opts.set_xla_gpu_redzone_scratch_max_megabytes(1LL << 12);
@@ -122,6 +136,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_highest_priority_async_stream(false);
   opts.set_xla_gpu_enable_pipelined_all_reduce(false);
   opts.set_xla_gpu_enable_pipelined_all_gather(false);
+  opts.set_xla_gpu_enable_pipelined_reduce_scatter(false);
 
   opts.set_xla_cpu_enable_mlir_tiling_and_fusion(true);
   opts.set_xla_cpu_enable_custom_matmul_tiling(false);
@@ -137,7 +152,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_triton_gemm(true);
   opts.set_xla_gpu_enable_cudnn_int8x32_convolution_reordering(true);
   opts.set_xla_gpu_triton_gemm_any(false);
-  opts.set_xla_gpu_enable_triton_softmax_fusion(false);
+  opts.set_xla_gpu_enable_triton_softmax_fusion(true);
+  opts.set_xla_gpu_triton_fusion_level(2);
 
   // Moving reduce-scatter out of while loops can increase memory footprint, so
   // turning it off by default.
@@ -145,7 +161,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_collective_inflation_factor(1);
 
-  opts.set_xla_gpu_enable_experimental_block_size(false);
+  opts.set_xla_gpu_enable_experimental_block_size(true);
   opts.set_xla_gpu_exhaustive_tiling_search(false);
 
   opts.set_xla_gpu_enable_priority_fusion(false);
@@ -867,31 +883,39 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 debug_options->xla_gpu_enable_cublaslt(),
                 "Use cuBLASLt for GEMMs when possible."));
   flag_list->push_back(tsl::Flag(
-      "xla_gpu_cuda_graph_level",
-      int32_setter_for(&DebugOptions::set_xla_gpu_cuda_graph_level),
-      debug_options->xla_gpu_cuda_graph_level(),
-      "Set CUDA graph level. 0 = off; 1 = capture fusions and memcpys; 2 = "
+      "xla_gpu_graph_level",
+      int32_setter_for(&DebugOptions::set_xla_gpu_graph_level),
+      debug_options->xla_gpu_graph_level(),
+      "Set GPU graph level. 0 = off; 1 = capture fusions and memcpys; 2 = "
       "capture convolutions and gemms; 3 = capture collectives."));
   flag_list->push_back(tsl::Flag(
-      "xla_gpu_cuda_graph_num_runs_to_instantiate",
+      "xla_gpu_graph_num_runs_to_instantiate",
       int32_setter_for(
-          &DebugOptions::set_xla_gpu_cuda_graph_num_runs_to_instantiate),
-      debug_options->xla_gpu_cuda_graph_num_runs_to_instantiate(),
-      "Instantiate a cuda graph after the time a captured function is executed "
+          &DebugOptions::set_xla_gpu_graph_num_runs_to_instantiate),
+      debug_options->xla_gpu_graph_num_runs_to_instantiate(),
+      "Instantiate a gpu graph after the time a captured function is executed "
       "reaches the threshold."));
   flag_list->push_back(tsl::Flag(
-      "xla_gpu_cuda_graph_capture_threshold",
-      int32_setter_for(&DebugOptions::set_xla_gpu_cuda_graph_min_graph_size),
-      debug_options->xla_gpu_cuda_graph_min_graph_size(),
+      "xla_gpu_graph_min_graph_size",
+      int32_setter_for(&DebugOptions::set_xla_gpu_graph_min_graph_size),
+      debug_options->xla_gpu_graph_min_graph_size(),
       "Capture a region as a function to be launched as cuda graph if the "
       "number of moved instructions reaches this threshold."));
+  flag_list->push_back(
+      tsl::Flag("xla_gpu_graph_enable_concurrent_region",
+                bool_setter_for(
+                    &DebugOptions::set_xla_gpu_graph_enable_concurrent_region),
+                debug_options->xla_gpu_graph_enable_concurrent_region(),
+                "Identify concurrent regions in gpu graphs and execute them "
+                "concurrently."));
   flag_list->push_back(tsl::Flag(
-      "xla_gpu_cuda_graph_enable_concurrent_region",
-      bool_setter_for(
-          &DebugOptions::set_xla_gpu_cuda_graph_enable_concurrent_region),
-      debug_options->xla_gpu_cuda_graph_enable_concurrent_region(),
-      "Identify concurrent regions in cuda graphs and execute them "
-      "concurrently."));
+      "xla_gpu_graph_eviction_timeout_seconds",
+      int32_setter_for(
+          &DebugOptions::set_xla_gpu_graph_eviction_timeout_seconds),
+      debug_options->xla_gpu_graph_eviction_timeout_seconds(),
+      "Timeout in seconds to evict instantiated Gpu graphs from device. When "
+      "XLA instantiates new Gpu graphs, it evicts graphs that were not "
+      "recently executed to free space on device."));
 
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_persistent_temp_buffers",
@@ -926,6 +950,16 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_xla_runtime_executable),
       debug_options->xla_gpu_enable_xla_runtime_executable(),
       "Whether to enable XLA runtime for XLA:GPU backend"));
+  flag_list->push_back(
+      tsl::Flag("xla_gpu_enable_gpu2_runtime",
+                bool_setter_for(&DebugOptions::set_xla_gpu_enable_gpu2_runtime),
+                debug_options->xla_gpu_enable_gpu2_runtime(),
+                "Whether to enable experimental XLA:GPU runtime"));
+  flag_list->push_back(
+      tsl::Flag("xla_gpu_enable_gpu2_hal",
+                bool_setter_for(&DebugOptions::set_xla_gpu_enable_gpu2_hal),
+                debug_options->xla_gpu_enable_gpu2_hal(),
+                "Whether to enable CUDA HAL in experimental XLA:GPU runtime"));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_nccl_termination_timeout_seconds",
       int64_setter_for(
@@ -1046,6 +1080,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_pipelined_all_gather),
       debug_options->xla_gpu_enable_pipelined_all_gather(),
       "Enable pipelinling of all-gather instructions."));
+  flag_list->push_back(
+      tsl::Flag("xla_gpu_enable_pipelined_reduce_scatter",
+                bool_setter_for(
+                    &DebugOptions::set_xla_gpu_enable_pipelined_reduce_scatter),
+                debug_options->xla_gpu_enable_pipelined_reduce_scatter(),
+                "Enable pipelinling of reduce-scatter instructions."));
   flag_list->push_back(tsl::Flag(
       "xla_partitioning_algorithm", setter_for_xla_partitioning_algorithm,
       DebugOptions::PartitioningAlgorithm_Name(
@@ -1130,6 +1170,18 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Forces any reductions during matrix multiplications to use the "
       "accumulator type and not the output type. The precision of the dot "
       "operation may not increase that much if there is output fusion."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_triton_fusion_level",
+      int32_setter_for(&DebugOptions::set_xla_gpu_triton_fusion_level),
+      debug_options->xla_gpu_triton_fusion_level(),
+      "Triton fusion level, higher levels mean more fused operations."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_dump_autotuned_triton_fusions",
+      bool_setter_for(&DebugOptions::set_xla_gpu_dump_autotuned_triton_fusions),
+      debug_options->xla_gpu_dump_autotuned_triton_fusions(),
+      "Dumps autotuned Triton fusions to the directory specified by "
+      "xla_dump_to or stdout. Each fusion is dumped only once, as an optimized "
+      "HLO."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

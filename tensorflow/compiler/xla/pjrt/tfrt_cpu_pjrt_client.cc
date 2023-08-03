@@ -383,6 +383,14 @@ Status TfrtCpuDevice::TransferFromOutfeed(MutableBorrowingLiteral literal) {
   return TransferLiteralFromOutfeedOnCpu(local_hardware_id(), literal);
 }
 
+absl::Span<PjRtMemorySpace* const> TfrtCpuDevice::memory_spaces() const {
+  return {};
+}
+
+StatusOr<PjRtMemorySpace*> TfrtCpuDevice::default_memory_space() const {
+  return Unimplemented("default_memory_space is not supported");
+}
+
 static int CpuDeviceCount() {
   // By default we fix the number of devices to one.  However we do let the user
   // override this behavior to help run tests on the host that run models in
@@ -478,6 +486,10 @@ StatusOr<PjRtDevice*> TfrtCpuClient::LookupAddressableDevice(
   }
   return InvalidArgument("No matching device found for local_hardware_id %d",
                          local_hardware_id);
+}
+
+absl::Span<PjRtMemorySpace* const> TfrtCpuClient::memory_spaces() const {
+  return {};
 }
 
 StatusOr<DeviceAssignment> TfrtCpuClient::GetDefaultDeviceAssignment(

@@ -673,7 +673,7 @@ class MemorySpaceAssignment {
       CHECK(chunk_.has_value());
       return *chunk_;
     }
-    Chunk* mutable_chunk() { return &*chunk_; }
+    virtual void ReplaceOffset(int64_t offset);
     void set_start_time(int64_t start_time) { start_time_ = start_time; }
     int64_t start_time() const { return start_time_; }
     int64_t end_time() const { return end_time_; }
@@ -914,6 +914,8 @@ class MemorySpaceAssignment {
     // SlicedCopyAllocation, this is when all copies have ended.
     int64_t earliest_available_time() const override;
 
+    void ReplaceOffset(int64_t offset) override;
+
     const std::vector<SliceDetail>& sorted_slice_details() const;
     std::vector<SliceDetail>& mutable_sorted_slice_details();
     HloInstruction* concat() const { return concat_; }
@@ -931,6 +933,7 @@ class MemorySpaceAssignment {
     Status CreateBitcastConcat(const Shape& shape,
                                absl::Span<HloInstruction* const> slices);
 
+    Shape original_shape_to_slice_;
     const Allocation& prev_allocation_;
     // REQUIRES:
     // - sorted_segments_[i].copy_start_after_time <=
@@ -1487,6 +1490,12 @@ struct Options {
   //     example is a tensor may be prefetched, used, and then evicted. In that
   //     case copy_bytes would be twice the size of the tensor.
   float inefficient_use_to_copy_ratio = 0.0;
+
+  // This is mostly used for testing, it allows a test case to inject its own
+  // logic for AlternateMemoryBestFitHeap::GetInefficientAllocationSites.
+  std::function<std::vector<std::variant<HloPosition, HloUse>>(
+      absl::Span<HloPosition>)>
+      get_inefficient_allocation_sites_fn = nullptr;
 
   // The window size used to calculate the pipeline overhead when HLO accesses
   // the default memory, in MiB.

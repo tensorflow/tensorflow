@@ -6,7 +6,7 @@ load(
     "tf_proto_library",
     "tf_protos_profiler_service",
 )
-load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "get_compatible_with_cloud", "tf_grpc_cc_dependencies")
+load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "get_compatible_with_portable", "tf_grpc_cc_dependencies")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
@@ -265,9 +265,9 @@ cc_library(
         ":data_transfer_visibility",
     ],
     deps = [
-        ":common_proto_cc",
         ":worker_proto_cc",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core/framework:dataset_proto_cc",
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/platform:errors",
@@ -331,7 +331,7 @@ tf_cc_test(
 cc_grpc_library(
     name = "dispatcher_cc_grpc_proto",
     srcs = [":dispatcher_proto"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     generate_mocks = True,
     grpc_only = True,
@@ -418,6 +418,7 @@ cc_library(
         "//tensorflow/core/data:hash_utils",
         "//tensorflow/core/data:snapshot_utils",
         "//tensorflow/core/data:standalone",
+        "//tensorflow/core/data/service:auto_scaler",
         "//tensorflow/core/data/service/snapshot:file_utils",
         "//tensorflow/core/data/service/snapshot:path_utils",
         "//tensorflow/core/data/service/snapshot:snapshot_manager",
@@ -982,7 +983,7 @@ tf_cc_test(
 cc_grpc_library(
     name = "worker_cc_grpc_proto",
     srcs = [":worker_proto"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     generate_mocks = True,
     grpc_only = True,
@@ -1062,9 +1063,7 @@ cc_library(
         ":auto_shard_rewriter",
         ":common",
         ":common_proto_cc",
-        ":credentials_factory",
         ":data_transfer",
-        ":dispatcher_cc_grpc_proto",
         ":dispatcher_client",
         ":dispatcher_proto_cc",
         ":export_proto_cc",
@@ -1125,6 +1124,7 @@ cc_library(
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:thread_annotations",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
     ],

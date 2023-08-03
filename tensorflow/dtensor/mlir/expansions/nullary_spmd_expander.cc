@@ -63,8 +63,7 @@ StatusOr<mlir::Operation*> NullarySPMDExpander::ExpandOp(mlir::Operation* op) {
         auto shape = dense.getType().getShape();
         std::vector<int64_t> new_shape(dense.getType().getRank());
         for (int i = 0; i < op_layouts[0]->rank(); ++i) {
-          const int num_shards =
-              op_layouts[0]->num_shards_for_dim(op_layouts[0]->dim(i));
+          const int num_shards = op_layouts[0]->num_shards_for_dim(i);
           if (shape[i] % num_shards != 0)
             return errors::InvalidArgument(
                 "has output dimension size ", shape[i],

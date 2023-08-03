@@ -51,5 +51,12 @@ bool IsOnGpuDevice(mlir::Operation *op) {
   return *device == kDeviceGpu;
 }
 
+mlir::Value CopyAttributes(mlir::Operation *src, mlir::Operation *dest) {
+  // This is not expected to happen in practice.
+  if (dest->getNumResults() != 1)
+    llvm_unreachable("expected single result in `dest`");
+  dest->setAttrs(src->getAttrs());
+  return dest->getResult(0);
+}
 }  // namespace TF
 }  // namespace mlir

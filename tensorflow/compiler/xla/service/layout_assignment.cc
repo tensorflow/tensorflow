@@ -153,8 +153,8 @@ OperandLayoutConstraint::OperandLayoutConstraint(
       instruction_(instruction),
       operand_no_(operand_no) {
   CHECK(shape_layout.LayoutIsSet());
-  CHECK(ShapeUtil::Compatible(shape_layout.shape(),
-                              instruction->operand(operand_no)->shape()))
+  CHECK(ShapeUtil::CompatibleIgnoringElementType(
+      shape_layout.shape(), instruction->operand(operand_no)->shape()))
       << shape_layout.shape() << " is not compatible with "
       << instruction->operand(operand_no)->shape() << " (for operand "
       << operand_no << " of instruction " << instruction->ToString() << ")";
@@ -629,7 +629,6 @@ bool IsLayoutConstrainedCustomCall(HloInstruction* instruction) {
       DynCast<HloCustomCallInstruction>(instruction);
   return custom_call != nullptr && custom_call->layout_constrained();
 }
-
 
 Status PropagateParameterLayoutToUsers(const HloInstruction* instruction,
                                        const Shape& shape,
@@ -1877,17 +1876,17 @@ Status LayoutAssignment::PropagateBufferConstraintToOperands(
       }
       VLOG(6) << "Propagating constraint to operand " << operand_no << " of "
               << instruction->ToShortString();
-        std::unique_ptr<Layout> operand_layout =
-            ChooseOperandLayoutFromOutputLayout(buffer_constraint.layout(),
-                                                instruction, operand_no);
-        if (operand_layout != nullptr) {
+      std::unique_ptr<Layout> operand_layout =
+          ChooseOperandLayoutFromOutputLayout(buffer_constraint.layout(),
+                                              instruction, operand_no);
+      if (operand_layout != nullptr) {
         TF_RETURN_IF_ERROR(SetArrayOperandLayout(
             *operand_layout, instruction, operand_no,
             /*mandatory=*/OutputLayoutAlwaysPropagateToOperands(instruction),
             /*dfs=*/
             InstructionShouldPropagateDepthFirst(*instruction),
             current_priority_));
-        }
+      }
     }
   }
   return OkStatus();
@@ -1923,9 +1922,9 @@ Status LayoutAssignment::PropagateBufferConstraintToUses(
     // Only add an operand constraint if the user does not forward the buffer
     // because this case is not handled is SetOperandLayout.
     if (!AnyOperandBufferForwarded(user, operand_no)) {
-        TF_RETURN_IF_ERROR(SetArrayOperandLayout(
-            buffer_constraint.layout(), user, operand_no, /*mandatory=*/false,
-            /*dfs=*/true, buffer_constraint.priority()));
+      TF_RETURN_IF_ERROR(SetArrayOperandLayout(
+          buffer_constraint.layout(), user, operand_no, /*mandatory=*/false,
+          /*dfs=*/true, buffer_constraint.priority()));
     }
   }
 
@@ -2431,7 +2430,6 @@ Status LayoutAssignment::ConstrainChannelLayouts(
   }
   return OkStatus();
 }
-
 
 Status LayoutAssignment::PropagateComputationLayouts(
     HloComputation* computation, ComputationLayout* computation_layout) {

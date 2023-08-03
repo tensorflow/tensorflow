@@ -18,12 +18,14 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <memory>
 #include <numeric>
 #include <optional>
 #include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/framework/metrics.h"
@@ -34,23 +36,6 @@ namespace tensorflow {
 namespace data {
 
 constexpr double kAutoScalerOutlierSigmas = 1.0;
-
-tsl::Status AutoScaler::UpdateOptimalNumberOfWorkersMetric() {
-  std::optional<int64_t> optimal_number_of_workers =
-      GetOptimalNumberOfWorkers();
-  if (!optimal_number_of_workers)
-    return absl::UnavailableError(
-        "Cannot update the optimal number of workers metric because there are "
-        "no reported processing and target processing times");
-
-  constexpr float FIVE_MINUTES = 60.0 * 5.0;
-  LOG_EVERY_N_SEC(INFO, FIVE_MINUTES) << "Estimated optimal number of workers: "
-                                      << optimal_number_of_workers.value();
-  metrics::RecordTFDataServiceOptimalNumberOfWorkers(
-      optimal_number_of_workers.value());
-
-  return tsl::OkStatus();
-}
 
 template <typename T>
 double GetMedian(const absl::flat_hash_map<T, double>& rates) {
@@ -111,7 +96,7 @@ void ReplaceOutliers(const absl::flat_hash_map<T, double>& rates,
   }
 }
 
-std::optional<int64_t> AutoScaler::GetOptimalNumberOfWorkers()
+std::optional<int64_t> AutoScaler::GetOptimalNumberOfWorkers() const
     TF_LOCKS_EXCLUDED(mu_) {
   tsl::mutex_lock l(mu_);
 
@@ -142,7 +127,7 @@ std::optional<int64_t> AutoScaler::GetOptimalNumberOfWorkers()
   int64_t optimal_number_of_workers =
       ceil(consumption_rates_sum_ / average_worker_throughput);
 
-  return std::max(static_cast<int64_t>(1), optimal_number_of_workers);
+  return std::max(int64_t{1}, optimal_number_of_workers);
 }
 
 tsl::Status AutoScaler::ReportProcessingTime(const std::string& worker_address,
@@ -200,6 +185,129 @@ tsl::Status AutoScaler::RemoveConsumer(int64_t consumer_id)
   consumption_rates_.erase(consumer_id);
 
   return tsl::OkStatus();
+}
+
+void MultipleIterationsAutoScaler::EnsureIterationIsRegistered(
+    int64_t iteration_id) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  if (!auto_scalers_.contains(iteration_id)) {
+    auto_scalers_[iteration_id] = std::make_unique<AutoScaler>();
+  }
+}
+
+tsl::Status MultipleIterationsAutoScaler::UnregisterIteration(
+    int64_t iteration_id) TF_LOCKS_EXCLUDED(mu_) {
+  tsl::mutex_lock l(mu_);
+  if (!auto_scalers_.contains(iteration_id))
+    return absl::NotFoundError(absl::StrCat("AutoScaler for iteration_id ",
+                                            iteration_id, " does not exist"));
+  auto_scalers_.erase(iteration_id);
+  return tsl::OkStatus();
+}
+
+tsl::Status MultipleIterationsAutoScaler::UpdateOptimalNumberOfWorkersMetric(
+    int64_t current_number_of_workers) TF_LOCKS_EXCLUDED(mu_) {
+  if (current_number_of_workers <= 0)
+    return absl::InvalidArgumentError(
+        "The current number of workers must be positive");
+
+  std::optional<int64_t> optimal_number_of_workers =
+      GetOptimalNumberOfWorkers();
+  if (!optimal_number_of_workers)
+    return absl::UnavailableError(
+        "Cannot update the optimal number of workers metric because there are "
+        "no reported processing and target processing times for at least one "
+        "iteration");
+
+  VLOG(3) << "Estimated optimal number of workers: "
+          << optimal_number_of_workers.value();
+
+  // Limit the estimate to wait for target processing times to converge to a
+  // feasible value. First, start increasing exponentially by 4x. Once
+  // increases are greater than 500, scale linearly.
+  int64_t bound_optimal_number_of_workers = optimal_number_of_workers.value();
+  if (bound_optimal_number_of_workers > current_number_of_workers * 4 ||
+      bound_optimal_number_of_workers > current_number_of_workers + 500) {
+    bound_optimal_number_of_workers = std::min(current_number_of_workers * 4,
+                                               current_number_of_workers + 500);
+  }
+  // Limit the estimate to at most 100k workers.
+  bound_optimal_number_of_workers =
+      std::min(bound_optimal_number_of_workers, int64_t{100000});
+  VLOG(3) << "Bound optimal number of workers: "
+          << bound_optimal_number_of_workers;
+
+  metrics::RecordTFDataServiceOptimalNumberOfWorkers(
+      bound_optimal_number_of_workers);
+
+  return tsl::OkStatus();
+}
+
+std::optional<int64_t> MultipleIterationsAutoScaler::GetOptimalNumberOfWorkers()
+    const TF_LOCKS_EXCLUDED(mu_) {
+  int64_t optimal_number_of_workers = 0;
+  {
+    tsl::tf_shared_lock l(mu_);
+    for (const auto& [iteration_id, auto_scaler] : auto_scalers_) {
+      std::optional<int64_t> current_optimal_number_of_workers =
+          auto_scaler->GetOptimalNumberOfWorkers();
+      if (!current_optimal_number_of_workers.has_value()) continue;
+
+      optimal_number_of_workers = std::max(
+          optimal_number_of_workers, current_optimal_number_of_workers.value());
+    }
+  }
+
+  if (optimal_number_of_workers == 0)
+    return std::nullopt;
+  else
+    return optimal_number_of_workers;
+}
+
+tsl::Status MultipleIterationsAutoScaler::ReportProcessingTime(
+    int64_t iteration_id, const std::string& worker_address,
+    absl::Duration processing_time) TF_LOCKS_EXCLUDED(mu_) {
+  tsl::mutex_lock l(mu_);
+  EnsureIterationIsRegistered(iteration_id);
+
+  tsl::Status status = auto_scalers_[iteration_id]->ReportProcessingTime(
+      worker_address, processing_time);
+  return status;
+}
+
+tsl::Status MultipleIterationsAutoScaler::ReportTargetProcessingTime(
+    int64_t iteration_id, int64_t consumer_id,
+    absl::Duration target_processing_time) TF_LOCKS_EXCLUDED(mu_) {
+  tsl::mutex_lock l(mu_);
+  EnsureIterationIsRegistered(iteration_id);
+
+  tsl::Status status = auto_scalers_[iteration_id]->ReportTargetProcessingTime(
+      consumer_id, target_processing_time);
+  return status;
+}
+
+tsl::Status MultipleIterationsAutoScaler::RemoveWorker(
+    int64_t iteration_id, const std::string& worker_address)
+    TF_LOCKS_EXCLUDED(mu_) {
+  tsl::tf_shared_lock l(mu_);
+  if (!auto_scalers_.contains(iteration_id))
+    return absl::NotFoundError(absl::StrCat(
+        "There are no reported times for iteration_id ", iteration_id));
+
+  tsl::Status status =
+      auto_scalers_[iteration_id]->RemoveWorker(worker_address);
+  return status;
+}
+
+tsl::Status MultipleIterationsAutoScaler::RemoveConsumer(int64_t iteration_id,
+                                                         int64_t consumer_id)
+    TF_LOCKS_EXCLUDED(mu_) {
+  tsl::tf_shared_lock l(mu_);
+  if (!auto_scalers_.contains(iteration_id))
+    return absl::NotFoundError(absl::StrCat(
+        "There are no reported times for iteration_id ", iteration_id));
+
+  tsl::Status status = auto_scalers_[iteration_id]->RemoveConsumer(consumer_id);
+  return status;
 }
 
 }  // namespace data

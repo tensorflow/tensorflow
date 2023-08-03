@@ -243,7 +243,6 @@ def cc_proto_library(
 
     if use_grpc_plugin:
         cc_libs += select({
-            clean_dep("//tensorflow/tsl:linux_s390x"): ["//external:grpc_lib_unsecure"],
             "//conditions:default": ["//external:grpc_lib"],
         })
 
@@ -326,7 +325,6 @@ def cc_grpc_library(
     proto_targets += srcs
 
     extra_deps += select({
-        clean_dep("//tensorflow/tsl:linux_s390x"): ["//external:grpc_lib_unsecure"],
         "//conditions:default": ["//external:grpc_lib"],
     })
 
@@ -663,6 +661,7 @@ def tf_additional_lib_hdrs():
         clean_dep("//tensorflow/tsl/platform/default:notification.h"),
         clean_dep("//tensorflow/tsl/platform/default:stacktrace.h"),
         clean_dep("//tensorflow/tsl/platform/default:status.h"),
+        clean_dep("//tensorflow/tsl/platform/default:statusor.h"),
         clean_dep("//tensorflow/tsl/platform/default:tracing_impl.h"),
         clean_dep("//tensorflow/tsl/platform/default:unbounded_work_queue.h"),
     ] + select({
@@ -841,6 +840,9 @@ def tf_platform_alias(name, platform_dir = "//tensorflow/tsl/platform/"):
 
 def tf_logging_deps():
     return [clean_dep("//tensorflow/tsl/platform/default:logging")]
+
+def tf_error_logging_deps():
+    return [clean_dep("//tensorflow/tsl/platform/default:error_logging")]
 
 def tf_resource_deps():
     return [clean_dep("//tensorflow/tsl/platform/default:resource")]

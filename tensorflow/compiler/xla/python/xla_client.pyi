@@ -27,6 +27,7 @@ from .xla_extension import ArrayImpl as ArrayImpl
 from .xla_extension import Client as Client
 from .xla_extension import CompileOptions as CompileOptions
 from .xla_extension import Device as Device
+from .xla_extension import Memory as Memory
 from .xla_extension import DeviceAssignment as DeviceAssignment
 from .xla_extension import DeviceTopology as DeviceTopology
 from .xla_extension import DistributedRuntimeClient as DistributedRuntimeClient
@@ -101,6 +102,10 @@ def make_tfrt_tpu_c_api_client(options: Optional[_NameValueMapping] = None) -> C
 
 
 def make_tfrt_tpu_c_api_device_topology(topology_name: Optional[str] = None, **kwargs) -> DeviceTopology:
+  ...
+
+
+def get_topology_for_devices(devices: List[Device]) -> DeviceTopology:
   ...
 
 

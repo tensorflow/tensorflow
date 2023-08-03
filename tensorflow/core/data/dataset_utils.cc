@@ -92,7 +92,6 @@ constexpr char kAutotuneBufferSizesOpt[] = "autotune_buffer_sizes";
 constexpr char kDisablePrefetchLegacyAutotuneOpt[] =
     "disable_prefetch_legacy_autotune";
 constexpr char kMakeSloppyOpt[] = "make_sloppy";
-constexpr char kUseChooseFastestOpt[] = "use_choose_fastest";
 constexpr char kBatchParallelizationOpt[] = "batch_parallelization";
 constexpr char kEnableGradientDescentOpt[] = "enable_gradient_descent";
 constexpr char kInjectPrefetchOpt[] = "inject_prefetch";
@@ -975,7 +974,11 @@ REGISTER_DATASET_EXPERIMENT("stage_based_autotune",
                             RandomJobSamplePercentage<0>, IndependentHostTasks);
 REGISTER_DATASET_EXPERIMENT("stage_based_autotune_v2",
                             RandomJobSamplePercentage<0>, IndependentHostTasks);
-REGISTER_DATASET_EXPERIMENT("data_transfer", RandomJobSamplePercentage<50>,
+REGISTER_DATASET_EXPERIMENT("data_transfer", RandomJobSamplePercentage<0>,
+                            AllTasks);
+REGISTER_DATASET_EXPERIMENT("file_locality", RandomJobSamplePercentage<0>,
+                            IndependentHostTasks);
+REGISTER_DATASET_EXPERIMENT("file_locality_v2", RandomJobSamplePercentage<50>,
                             AllTasks);
 }  // namespace
 }  // namespace data

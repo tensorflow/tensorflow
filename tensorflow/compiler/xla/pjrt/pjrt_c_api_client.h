@@ -61,6 +61,32 @@ class PjRtCApiDeviceDescription : public PjRtDeviceDescription {
   void InitAttributes();
 };
 
+class PjRtCApiMemorySpace : public PjRtMemorySpace {
+ public:
+  explicit PjRtCApiMemorySpace(PjRtCApiClient* client, PJRT_Memory* c_memory)
+      : client_(client), c_memory_(c_memory) {}
+
+  PjRtClient* client() const override;
+
+  absl::Span<PjRtDevice* const> devices() const override {
+    LOG(FATAL) << "PJRT C API does not support PjRtMemorySpace::devices";
+  }
+
+  int id() const override;
+
+  absl::string_view memory_space_kind() const override;
+
+  absl::string_view DebugString() const override;
+
+  absl::string_view ToString() const override;
+
+  const PJRT_Api* pjrt_c_api() const;
+
+ private:
+  PjRtCApiClient* client_;
+  PJRT_Memory* c_memory_;
+};
+
 class PjRtCApiDevice : public PjRtDevice {
  public:
   explicit PjRtCApiDevice(PJRT_Device* device, PjRtCApiClient* client);
@@ -77,6 +103,14 @@ class PjRtCApiDevice : public PjRtDevice {
 
   Status TransferFromOutfeed(MutableBorrowingLiteral literal) override {
     return Unimplemented("PJRT C API does not support TransferFromOutfeed");
+  }
+
+  absl::Span<PjRtMemorySpace* const> memory_spaces() const override {
+    return memory_space_pointers_;
+  }
+
+  StatusOr<PjRtMemorySpace*> default_memory_space() const override {
+    return Unimplemented("PJRT C API does not support default_memory_space");
   }
 
   std::unique_ptr<ScopedAsyncTrackingEvent> CreateAsyncTrackingEvent(
@@ -98,6 +132,8 @@ class PjRtCApiDevice : public PjRtDevice {
   // `device_` is owned by the `PJRT_Client` wrapped by `client_`
   PJRT_Device* device_;
   PjRtCApiDeviceDescription description_;
+  std::vector<PjRtCApiMemorySpace> memory_spaces_;
+  std::vector<PjRtMemorySpace*> memory_space_pointers_;
 };
 
 class PjRtCApiClient : public PjRtClient {
@@ -118,6 +154,8 @@ class PjRtCApiClient : public PjRtClient {
 
   StatusOr<PjRtDevice*> LookupAddressableDevice(
       int local_hardware_id) const override;
+
+  absl::Span<PjRtMemorySpace* const> memory_spaces() const override;
 
   PjRtPlatformId platform_id() const override {
     CHECK(false) << "PJRT C API does not support platform_id.";
@@ -268,7 +306,20 @@ class PjRtCApiBuffer : public PjRtBuffer {
 
   absl::Span<const int64_t> dimensions() const override;
 
+  const Layout& layout() const override;
+
+  // PJRT C API doesn't support tuple buffers.
+  bool IsTuple() const override { return false; }
+
   const Shape& on_device_shape() const override;
+
+  bool has_dynamic_dimensions() const override;
+
+  absl::Span<const bool> is_dynamic_dimension() const override {
+    LOG(FATAL) << "PjRtCApiBuffer::is_dynamic_dimension() not implemented. "
+               << "Considering using has_dynamic_dimensions() or "
+                  "logical_dimensions() if applicable.";
+  }
 
   StatusOr<std::vector<int64_t>> logical_dimensions() override;
 
@@ -349,6 +400,10 @@ class PjRtCApiBuffer : public PjRtBuffer {
   // `readiness_promise` is destroyed before `readiness_event`, and the callback
   // we set on `readiness_event` modifies `readiness_promise_`.
   std::shared_ptr<PjRtFuture<Status>::Promise> readiness_promise_;
+  // Set and cached the first time layout() is called.
+  mutable std::optional<xla::Layout> layout_;
+  // Used to synchronize concurrent setting of cached values.
+  mutable absl::Mutex mu_;
 };
 
 class PjRtCApiExecutable : public PjRtExecutable {
@@ -366,6 +421,11 @@ class PjRtCApiExecutable : public PjRtExecutable {
 
   StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
       const override;
+
+  StatusOr<std::vector<std::vector<absl::string_view>>> GetOutputMemoryKinds()
+      const override {
+    return Unimplemented("PJRT C API does not support GetOutputMemoryKinds");
+  }
 
   const PJRT_Api* pjrt_c_api() const { return c_api_; }
   PJRT_Executable* c_executable() const { return executable_.get(); }
@@ -413,6 +473,11 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
   StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
       const override {
     return executable_->GetHloModules();
+  }
+
+  StatusOr<std::vector<std::vector<absl::string_view>>> GetOutputMemoryKinds()
+      const override {
+    return executable_->GetOutputMemoryKinds();
   }
 
   StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
@@ -547,6 +612,7 @@ class CApiCopyToDeviceStream : public CopyToDeviceStream {
  public:
   CApiCopyToDeviceStream(PJRT_CopyToDeviceStream* c_stream,
                          const PJRT_Api* c_api);
+  ~CApiCopyToDeviceStream() override;
 
   PjRtFuture<Status> AddChunk(PjRtChunk chunk) override;
 

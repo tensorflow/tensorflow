@@ -94,6 +94,7 @@ xla_cc_test(
         "gpu",
         "no_oss",
         "noasan",
+        "nomsan",
         "requires-gpu-nvidia:2",
     ],
     deps = [

@@ -27,9 +27,3 @@ from tensorflow.python.keras import models
 from tensorflow.python.keras.engine.input_layer import Input
 from tensorflow.python.keras.engine.sequential import Sequential
 from tensorflow.python.keras.engine.training import Model
-
-from tensorflow.python.util.tf_export import keras_export
-
-__version__ = '2.6.0'
-
-keras_export('keras.__version__').export_constant(__name__, '__version__')

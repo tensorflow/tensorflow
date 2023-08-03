@@ -57,6 +57,7 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dialect.h"
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dtensor_attributes.h"
 #include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
+#include "tensorflow/dtensor/mlir/dtensor_send_recv.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/op_utils.h"
@@ -299,7 +300,10 @@ StatusOr<Layout> MergeLayouts(
     }
   }
   FilterkAnySpecs(proposed_specs);
-  return Layout::GetLayout(proposed_specs, mesh);
+  // Parted layout is propagated from producer side to consumer side, so when
+  // merging the layout with producer layout, take the producer layout type into
+  // account.
+  return Layout::GetLayout(producer->type(), proposed_specs, mesh);
 }
 
 mlir::LogicalResult InsertLayoutsForDTensorLayout(
@@ -708,6 +712,8 @@ mlir::LogicalResult InsertDTensorLayoutOps(
     int num_users = std::distance(users.begin(), users.end());
     if (num_users == 1 && mlir::isa<mlir::TF::DTensorLayout>(*users.begin()))
       continue;
+    auto layout_attr = mlir::dtensor::LayoutAttr::get(builder.getContext(),
+                                                      merged_layout.second);
     builder.setInsertionPointAfterValue(merged_layout.first);
     // Handles resource and variant as the real shape is embedded in the
     // resource type elements.
@@ -715,9 +721,7 @@ mlir::LogicalResult InsertDTensorLayoutOps(
 
     if (auto type = value_type.dyn_cast<mlir::TensorType>()) {
       auto layout_op = builder.create<mlir::TF::DTensorLayout>(
-          merged_layout.first.getLoc(), merged_layout.first,
-          mlir::dtensor::LayoutAttr::get(builder.getContext(),
-                                         merged_layout.second),
+          merged_layout.first.getLoc(), merged_layout.first, layout_attr,
           mlir::TF::ShapeAttr::get(builder.getContext(), type));
       llvm::SmallPtrSet<mlir::Operation*, 4> exception{layout_op};
       merged_layout.first.replaceAllUsesExcept(layout_op.getOutput(),
@@ -725,9 +729,67 @@ mlir::LogicalResult InsertDTensorLayoutOps(
     } else {
       mlir::emitError(merged_layout.first.getLoc())
           << "value type is not TensorType as expected.";
+      return mlir::failure();
     }
   }
+  return mlir::success();
+}
 
+mlir::LogicalResult UpdateDTensorSendRecvOps(mlir::ModuleOp module,
+                                             mlir::OpBuilder& builder) {
+  llvm::SmallVector<mlir::TF::DTensorSend, 4> send_ops;
+  llvm::SmallVector<mlir::TF::DTensorRecv, 4> recv_ops;
+  module.walk([&](mlir::Operation* op) {
+    if (auto send_op = llvm::dyn_cast<mlir::TF::DTensorSend>(op))
+      send_ops.emplace_back(send_op);
+    if (auto recv_op = llvm::dyn_cast<mlir::TF::DTensorRecv>(op))
+      recv_ops.emplace_back(recv_op);
+  });
+
+  for (auto send_op : send_ops) {
+    absl::StatusOr<Layout> layout =
+        ExtractRequiredLayoutFromOperand(send_op->getOperand(0));
+    if (!layout.ok()) {
+      send_op->emitOpError()
+          << "Cannot add source layout to DTensorRecv for DTensorSend: "
+          << layout.status().message();
+      return mlir::failure();
+    }
+    absl::StatusOr<mlir::Operation*> recv_op =
+        GetCorrespondingDTensorSendRecvOp<mlir::TF::DTensorSend>(module,
+                                                                 send_op);
+    if (!recv_op.ok()) {
+      send_op->emitOpError()
+          << "Cannot add source layout to DTensorRecv for DTensorSend: "
+          << recv_op.status().message();
+      return mlir::failure();
+    }
+    auto layout_attr =
+        mlir::dtensor::LayoutAttr::get(builder.getContext(), *layout);
+    recv_op.value()->setAttr(kSourceLayoutAttr, layout_attr);
+  }
+
+  for (auto recv_op : recv_ops) {
+    absl::StatusOr<Layout> layout = ExtractRequiredSingleLayoutFromOp(recv_op);
+    if (!layout.ok()) {
+      recv_op->emitOpError()
+          << "Cannot add source layout to DTensorRecv for DTensorSend: "
+          << layout.status().message();
+      return mlir::failure();
+    }
+    absl::StatusOr<mlir::Operation*> send_op =
+        GetCorrespondingDTensorSendRecvOp<mlir::TF::DTensorRecv>(module,
+                                                                 recv_op);
+    if (!send_op.ok()) {
+      recv_op->emitOpError()
+          << "Cannot add target layout to DTensorSend for DTensorRecv: "
+          << send_op.status().message();
+      return mlir::failure();
+    }
+    auto layout_attr =
+        mlir::dtensor::LayoutAttr::get(builder.getContext(), *layout);
+    send_op.value()->setAttr(kTargetLayoutAttr, layout_attr);
+  }
   return mlir::success();
 }
 
@@ -1561,6 +1623,9 @@ struct DLayoutPropagationPassV2
 
     if (mlir::failed(
             InsertDTensorLayoutForIfRegionOp(if_ops, builder.getContext())))
+      return signalPassFailure();
+
+    if (mlir::failed(UpdateDTensorSendRecvOps(module, builder)))
       return signalPassFailure();
   };
 };

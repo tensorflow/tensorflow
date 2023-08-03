@@ -124,13 +124,12 @@ tsl::StatusOr<StreamExecutor*> CudaPlatform::FirstExecutorForBus(
 Platform::Id CudaPlatform::id() const { return cuda::kCudaPlatformId; }
 
 int CudaPlatform::VisibleDeviceCount() const {
-  // Throw away the result - it logs internally, and this [containing] function
-  // isn't in the path of user control. It's safe to call this > 1x.
-  if (!gpu::GpuDriver::Init().ok()) {
-    return -1;
-  }
-
-  return GpuDriver::GetDeviceCount();
+  // Initialized in a thread-safe manner the first time this is run.
+  static const int num_devices = [] {
+    if (!GpuDriver::Init().ok()) return -1;
+    return GpuDriver::GetDeviceCount();
+  }();
+  return num_devices;
 }
 
 const std::string& CudaPlatform::Name() const { return name_; }
