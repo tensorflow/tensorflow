@@ -1547,3 +1547,16 @@ def FuseTransposeFCLhsToBatchMatmul : Pat<
     $asymmetric_quantize_inputs_bmm
   ),
   [(AreLastTwoDimsTransposed $perm_value), (IsNoneType $bias)]>;
+
+// Fuses TFL_TransposeOp after TFL_BatchMatMulOp into the BMM.
+def FuseTransposeAfterBatchMatmul : Pat<
+  (TFL_TransposeOp
+    (TFL_BatchMatMulOp $lhs, $rhs, ConstBoolAttrFalse, ConstBoolAttrTrue,
+                       $asymmetric_quantize_inputs
+    ),
+    (Arith_ConstantOp:$perm_value $p0)
+  ),
+  (TFL_BatchMatMulOp $rhs, $lhs, ConstBoolAttrFalse, ConstBoolAttrTrue,
+                     $asymmetric_quantize_inputs
+  ),
+  [(AreLastTwoDimsTransposed $perm_value)]>;
