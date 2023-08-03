@@ -189,7 +189,7 @@ cc_library(
     ),
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_initializer_helper",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_initializer_framework_helper",
         "//tensorflow/core/platform:status",
     ],
     # Always link this in, because even if we don't use it directly we want its
@@ -315,7 +315,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_c_api_hdrs",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_init_fns",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_initializer_helper",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_initializer_framework_helper",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_library_init_fns",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_ops_c_api_hdrs",
         "//tensorflow/core:lib",

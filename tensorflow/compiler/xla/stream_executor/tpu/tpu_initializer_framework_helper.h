@@ -13,27 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if !defined(PLATFORM_GOOGLE)
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_initializer_framework_helper.h"
-#include "tensorflow/core/platform/status.h"
-#endif
+#ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_TPU_INITIALIZER_FRAMEWORK_HELPER_H_
+#define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_TPU_INITIALIZER_FRAMEWORK_HELPER_H_
 
+
+#include "tensorflow/tsl/platform/status.h"
 
 namespace tensorflow {
 namespace tpu {
-namespace {
-Status InitializeTpuLibrary() {
-  Status status = FindAndLoadTpuLibrary();
-  if (!status.ok()) {
-    LOG(INFO) << "FindAndLoadTpuLibrary failed with " << status.ToString()
-              << ". This is expected if TPU is not used.";
-  }
-  return status;
-}
 
-#if !defined(PLATFORM_GOOGLE)
-static Status tpu_library_finder = InitializeTpuLibrary();
-#endif
-}  // namespace
+// This will check the lock and then load the library.
+tsl::Status FindAndLoadTpuLibrary();  // TENSORFLOW_STATUS_OK
+
 }  // namespace tpu
 }  // namespace tensorflow
+
+#endif  // TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_TPU_INITIALIZER_FRAMEWORK_HELPER_H_

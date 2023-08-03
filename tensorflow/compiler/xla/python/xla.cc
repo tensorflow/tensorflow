@@ -58,7 +58,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_client.h"
 #ifdef XLA_PYTHON_ENABLE_TPU
 #include "tensorflow/compiler/xla/pjrt/tpu_client.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_initializer_helper.h"  // NOLINT(unused-includes): required for tensorflow::tpu::FindAndLoadTpuLibrary
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_initializer_framework_helper.h"  // NOLINT(unused-includes): required for tensorflow::tpu::FindAndLoadTpuLibrary
 #endif  // XLA_PYTHON_ENABLE_TPU
 #include "tensorflow/compiler/xla/pjrt/pjrt_api.h"
 #include "tensorflow/compiler/xla/python/custom_call_sharding.h"

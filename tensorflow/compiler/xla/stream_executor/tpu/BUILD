@@ -426,10 +426,10 @@ cc_library(
 )
 
 cc_library(
-    name = "tpu_initializer_helper",
-    srcs = ["tpu_initializer_helper.cc"],
+    name = "tpu_initializer_framework_helper",
+    srcs = ["tpu_initializer_framework_helper.cc"],
     hdrs = [
-        "tpu_initializer_helper.h",
+        "tpu_initializer_framework_helper.h",
     ],
     visibility = ["//visibility:public"],
     deps = [
@@ -438,8 +438,24 @@ cc_library(
         ":tpu_api_dlsym_set_fn",
         ":tpu_executor_base",
         ":tpu_executor_c_api_hdrs",
+        ":tpu_initialize_util",
         ":tpu_library_init_fns",
         ":tpu_ops_c_api_hdrs",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:status",
+    ],
+)
+
+cc_library(
+    name = "tpu_initialize_util",
+    srcs = ["tpu_initialize_util.cc"],
+    hdrs = [
+        "tpu_initialize_util.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:logging",

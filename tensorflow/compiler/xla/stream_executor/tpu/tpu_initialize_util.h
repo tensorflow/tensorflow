@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_TPU_INITIALIZER_HELPER_H_
-#define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_TPU_INITIALIZER_HELPER_H_
+#ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_TPU_INITIALIZE_UTIL_H_
+#define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_TPU_INITIALIZE_UTIL_H_
 
 #include <string>
 #include <vector>
@@ -29,8 +29,6 @@ namespace tpu {
 // up calls to this function will return true if the lock has been acquired and
 // false if we failed to acquire the lock.
 tsl::Status TryAcquireTpuLock();  // TENSORFLOW_STATUS_OK
-// This will check the lock and then load the library.
-tsl::Status FindAndLoadTpuLibrary();  // TENSORFLOW_STATUS_OK
 // Returns arguments (e.g. flags) set in the LIBTPU_INIT_ARGS environment
 // variable. The first return value is the arguments, the second return value is
 // pointers to the arguments suitable for passing into the C API.
@@ -40,4 +38,4 @@ GetLibTpuInitArguments();
 }  // namespace tpu
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_TPU_INITIALIZER_HELPER_H_
+#endif  // TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_TPU_INITIALIZE_UTIL_H_
