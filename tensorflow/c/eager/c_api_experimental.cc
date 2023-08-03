@@ -575,10 +575,16 @@ bool TFE_CancellationManagerRegisterCallback(
       ->RegisterCallbackWithErrorLogging(token, callback, callback_name);
 }
 
-TF_CAPI_EXPORT extern bool TFE_CancellationManagerDeregisterCallback(
+bool TFE_CancellationManagerDeregisterCallback(
     TFE_CancellationManager* cancellation_manager,
     TFE_CancellationToken token) {
   return tensorflow::unwrap(cancellation_manager)->DeregisterCallback(token);
+}
+
+bool TFE_CancellationManagerTryDeregisterCallback(
+    TFE_CancellationManager* cancellation_manager,
+    TFE_CancellationToken token) {
+  return tensorflow::unwrap(cancellation_manager)->TryDeregisterCallback(token);
 }
 
 void TFE_DeleteCancellationManager(

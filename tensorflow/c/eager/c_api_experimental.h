@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_C_EAGER_C_API_EXPERIMENTAL_H_
 
 #include "tensorflow/c/c_api.h"
+#include "tensorflow/c/c_api_macros.h"
 #include "tensorflow/c/eager/c_api.h"
 
 #ifdef __cplusplus
@@ -322,6 +323,8 @@ TF_CAPI_EXPORT extern bool TFE_CancellationManagerRegisterCallback(
     TFE_CancellationManager*, TFE_CancellationToken token,
     const TFE_CancelCallback* c_callback, const char* callback_name);
 TF_CAPI_EXPORT extern bool TFE_CancellationManagerDeregisterCallback(
+    TFE_CancellationManager*, TFE_CancellationToken token);
+TF_CAPI_EXPORT extern bool TFE_CancellationManagerTryDeregisterCallback(
     TFE_CancellationManager*, TFE_CancellationToken token);
 TF_CAPI_EXPORT extern void TFE_DeleteCancellationManager(
     TFE_CancellationManager*);
