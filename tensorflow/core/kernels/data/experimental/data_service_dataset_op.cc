@@ -390,7 +390,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           return 0.0;
         }
 
-        double target_time_nsec = ctx_.model()->ComputeTargetTimeNsec();
+        double target_time_nsec =
+            ctx_.model()->ComputeExperimentalTargetTimeNsec();
         if (target_time_nsec == 0.0) return 0.0;
 
         model::ModelTiming model_timing(ctx_.model()->output());

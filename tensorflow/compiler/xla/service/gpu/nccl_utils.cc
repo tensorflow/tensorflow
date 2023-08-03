@@ -163,6 +163,9 @@ std::shared_ptr<StatusOr<NcclClique::Lock>> AcquireNcclClique(
     }
   }
 
+  VLOG(2) << "AcquireNcclClique Rendezvous key (clique_key:"
+          << clique_key.ToString() << ", run" << run_id.ToString() << ", op"
+          << op_id.value() << ")";
   auto rendezvous_key = std::make_tuple(run_id, op_id, std::move(clique_key));
 
   int64_t terminate_timeout = xla::GetDebugOptionsFromFlags()

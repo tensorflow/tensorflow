@@ -28,8 +28,6 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/tsl/platform/fingerprint.h"
-#include "tensorflow/tsl/platform/logging.h"
-#include "tensorflow/tsl/platform/protobuf.h"
 #include "tensorflow/tsl/platform/types.h"
 #include "tensorflow/tsl/profiler/lib/context_types.h"
 #include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
@@ -142,13 +140,12 @@ void CopyEventMetadata(const XEventMetadata& src_event_metadata,
 
 // Copies src_event from source line to the destination line in the destination
 // plane as is, along with event metadata and stats.
-void CopyEvent(const XEventVisitor& src_event, const XPlane& src_plane,
-               int64_t time_offset_ps, XPlaneBuilder& dst_plane,
-               XLineBuilder& dst_line) {
+void CopyEvent(const XEventVisitor& src_event, const XPlaneVisitor& src,
+               const XPlane& src_plane, int64_t time_offset_ps,
+               XPlaneBuilder& dst_plane, XLineBuilder& dst_line) {
   XEventMetadata* dst_event_metadata =
       dst_plane.GetOrCreateEventMetadata(src_event.Name());
-  CopyEventMetadata(*src_event.metadata(), XPlaneVisitor(&src_plane),
-                    *dst_event_metadata, dst_plane);
+  CopyEventMetadata(*src_event.metadata(), src, *dst_event_metadata, dst_plane);
   XEventBuilder dst_event = dst_line.AddEvent(*dst_event_metadata);
   if (src_event.IsAggregatedEvent()) {
     dst_event.SetNumOccurrences(src_event.NumOccurrences());
@@ -344,7 +341,7 @@ void MergePlanes(const XPlane& src_plane, XPlane* dst_plane) {
     }
 
     line.ForEachEvent([&](const XEventVisitor& event) {
-      CopyEvent(event, src_plane, time_offset_ps, dst, dst_line);
+      CopyEvent(event, src, src_plane, time_offset_ps, dst, dst_line);
     });
   });
 }
@@ -544,7 +541,8 @@ void AggregateXPlane(const XPlane& full_trace, XPlane& aggregated_trace) {
           aggregated_plane.GetOrCreateLine(line.Id());
       aggregated_line.SetName(kStepLineName);
       line.ForEachEvent([&](const XEventVisitor& event) {
-        CopyEvent(event, full_trace, 0LL, aggregated_plane, aggregated_line);
+        CopyEvent(event, plane, full_trace, 0LL, aggregated_plane,
+                  aggregated_line);
       });
     }
     if (!IsOpLineName(line.Name())) return;

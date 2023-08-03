@@ -581,6 +581,7 @@ void CreateTritonPipeline(mlir::OpPassManager& pm,
   pm.addPass(mt::createRewriteTensorPointerPass());
   pm.addPass(mlir::createInlinerPass());
   pm.addPass(mt::createCombineOpsPass());
+  pm.addPass(mt::createReorderBroadcastPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createLoopInvariantCodeMotionPass());

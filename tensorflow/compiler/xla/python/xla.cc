@@ -586,6 +586,26 @@ PYBIND11_MODULE(xla_extension, m) {
           return xla::ValueOrThrow(
               GetCApiTopology(platform_name, topology_name, options));
         });
+  m.def("get_topology_for_devices",
+        [](std::vector<ClientAndPtr<PjRtDevice>> devices_and_clients) {
+          if (devices_and_clients.empty()) {
+            throw py::value_error(
+                "get_topology_for_devices requires >= 1 devices.");
+          }
+          auto client = devices_and_clients[0].client();
+          std::vector<PjRtDevice*> devices;
+          devices.reserve(devices_and_clients.size());
+          for (const ClientAndPtr<PjRtDevice>& device : devices_and_clients) {
+            if (device.get_client() != client.get()) {
+              throw py::value_error(
+                  "devices passed to get_topology_for_devices come from "
+                  "different clients.");
+            }
+            devices.push_back(device.get());
+          }
+          return xla::ValueOrThrow(client->ifrt_client()->GetTopologyForDevices(
+              absl::MakeSpan(devices)));
+        });
 
   TF_CHECK_OK(PyArray::RegisterTypes(m));
   jax::RegisterSharding(m);

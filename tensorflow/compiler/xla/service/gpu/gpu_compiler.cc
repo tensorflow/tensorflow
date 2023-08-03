@@ -1125,8 +1125,10 @@ StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPassesWithoutDevice(
 StatusOr<std::unique_ptr<BufferAssignment>> GpuCompiler::AssignBuffers(
     HloModule* hlo_module, se::StreamExecutor* stream_exec) {
   const GpuDeviceInfo gpu_device_info = GetGpuDeviceInfo(stream_exec);
+  const int64_t scheduler_mem_limit =
+      GetSchedulerMemoryLimit(hlo_module, gpu_device_info, pointer_size_);
   TF_RETURN_IF_ERROR(
-      ScheduleGpuModule(hlo_module, pointer_size_, gpu_device_info));
+      ScheduleGpuModule(hlo_module, pointer_size_, scheduler_mem_limit));
 
   auto buffer_size_bytes_function =
       [this](const BufferValue& buffer_value) -> int64_t {

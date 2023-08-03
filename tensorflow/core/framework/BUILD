@@ -35,6 +35,7 @@ package(
         # copybara:uncomment "//learning/brain/tfrt/aot:__subpackages__",
         # copybara:uncomment "//platforms/xla/megascale/tensorflow:__subpackages__",
         # copybara:uncomment "//learning/brain/experimental/tfrt/native_lowering/graph_executor:__subpackages__",
+        "//tensorflow/cc/saved_model:__subpackages__",
     ],
     licenses = ["notice"],
 )
@@ -797,6 +798,7 @@ tf_cuda_library(
     ],
     visibility = [
         "//tensorflow:__pkg__",
+        "//tensorflow/cc/saved_model:__subpackages__",
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/runtime_fallback:__subpackages__",
         "//tensorflow/core/tfrt:__subpackages__",

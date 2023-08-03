@@ -149,5 +149,14 @@ StatusOr<tsl::RCReference<Tuple>> PjRtClient::MakeTuple(
   return PjRtTuple::Create(this, values);
 }
 
+StatusOr<std::shared_ptr<const xla::PjRtTopologyDescription>>
+PjRtClient::GetTopologyForDevices(absl::Span<Device* const> devices) const {
+  // TODO(parkers): Consider constructing a sub-slice topology based on the
+  // provided devices.
+  TF_ASSIGN_OR_RETURN(auto topology, pjrt_client_->GetTopologyDescription());
+  return std::shared_ptr<const xla::PjRtTopologyDescription>(pjrt_client_,
+                                                             topology);
+}
+
 }  // namespace ifrt
 }  // namespace xla

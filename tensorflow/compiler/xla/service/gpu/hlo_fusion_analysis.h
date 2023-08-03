@@ -65,9 +65,9 @@ class HloFusionAnalysis {
       }
     }
 
-    return HloFusionAnalysis(fusion, std::move(backend_config), device_info,
-                             compute_capability, root_with_tiled_transpose,
-                             tiled_transpose);
+    return HloFusionAnalysis(
+        fusion, std::move(backend_config), std::move(hlo_roots), device_info,
+        compute_capability, root_with_tiled_transpose, tiled_transpose);
   }
 
   const HloComputation* fused_computation() const { return fused_computation_; }
@@ -98,6 +98,7 @@ class HloFusionAnalysis {
  private:
   HloFusionAnalysis(const HloFusionInstruction* fusion,
                     FusionBackendConfig fusion_backend_config,
+                    std::vector<HloInstruction*> fusion_roots,
                     const GpuDeviceInfo* device_info,
                     se::CudaComputeCapability compute_capability,
                     HloInstruction* root_with_tiled_transpose,
@@ -105,7 +106,7 @@ class HloFusionAnalysis {
       : fusion_(fusion),
         fusion_backend_config_(std::move(fusion_backend_config)),
         fused_computation_(fusion->fused_instructions_computation()),
-        fusion_roots_(GetFusionRoots(fusion->fused_instructions_computation())),
+        fusion_roots_(std::move(fusion_roots)),
         device_info_(device_info),
         compute_capability_(compute_capability),
         root_with_tiled_transpose_(root_with_tiled_transpose),

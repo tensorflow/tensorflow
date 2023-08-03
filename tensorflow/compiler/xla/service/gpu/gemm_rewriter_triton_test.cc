@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter_triton.h"
 
+#include <memory>
 #include <string>
 
 #include "absl/strings/string_view.h"
@@ -26,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/status_matchers.h"
@@ -1240,6 +1242,25 @@ ENTRY e {
             DotFusionAnalysis::kMaxParameterPerScope * 2);
 }
 
+TEST_F(GemmRewriterTritonLevel2Test, FusionLevelIsLimitedOnVolta) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p0 = f32[1,53] parameter(0)
+  p0e = f32[1,53] exponential(p0)
+  p1 = s16[53,1] parameter(1)
+  p1c = f32[53,1] convert(p1)
+  ROOT dot = f32[1,1] dot(p0e, p1c),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})"));
+  EXPECT_TRUE(GemmRewriterTriton(se::CudaComputeCapability{
+                                     se::CudaComputeCapability::VOLTA, 0})
+                  .Run(module.get())
+                  .value());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch((m::Fusion(m::Parameter(), m::Exp()))));
+}
+
 TEST_F(GemmRewriterTritonLevel2Test, ParameterUsedElementwiseTwiceIsFused) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
@@ -1256,7 +1277,7 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })"));
   EXPECT_TRUE(GemmRewriterTriton(se::CudaComputeCapability{
-                                     se::CudaComputeCapability::VOLTA, 0})
+                                     se::CudaComputeCapability::AMPERE, 0})
                   .Run(module.get())
                   .value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -1286,7 +1307,7 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })"));
   EXPECT_TRUE(GemmRewriterTriton(se::CudaComputeCapability{
-                                     se::CudaComputeCapability::VOLTA, 0})
+                                     se::CudaComputeCapability::AMPERE, 0})
                   .Run(module.get())
                   .value());
   EXPECT_THAT(

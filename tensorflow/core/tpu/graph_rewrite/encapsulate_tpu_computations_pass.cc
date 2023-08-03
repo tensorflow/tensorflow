@@ -2577,8 +2577,8 @@ Status LiftOutsideCompilationOnlyArgs(Graph* g, FunctionLibraryRuntime* flr,
           GetNodeAttr(in_edges[pos]->src()->attrs(), "N", &input_num_replicas));
 
       bool is_mirrored_variable;
-      CHECK_OK(GetNodeAttr(in_edges[pos]->src()->attrs(),
-                           "is_mirrored_variable", &is_mirrored_variable));
+      TF_CHECK_OK(GetNodeAttr(in_edges[pos]->src()->attrs(),
+                              "is_mirrored_variable", &is_mirrored_variable));
       if (is_mirrored_variable) {
         mirrored_variable_indices.push_back(pos);
       }

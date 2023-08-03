@@ -19,8 +19,11 @@ limitations under the License.
 #include <functional>
 #include <map>
 #include <memory>
+#include <utility>
+#include <vector>
 
 #include "absl/strings/str_join.h"
+#include "absl/synchronization/blocking_counter.h"
 #include "tensorflow/core/common_runtime/cost_measurement_registry.h"
 #include "tensorflow/core/common_runtime/request_cost.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -110,6 +113,10 @@ class BatchResourceBase : public ResourceBase {
 
     tsl::criticality::Criticality criticality;
 
+    // If nonzero, make a batch of this size entirely out of padding. This
+    // batch is processed, but is not propagated to the kernel outputs.
+    int forced_warmup_batch_size = 0;
+
    protected:
     virtual std::unique_ptr<BatchTask> CreateDerivedTask() {
       return std::make_unique<BatchTask>();
@@ -133,8 +140,7 @@ class BatchResourceBase : public ResourceBase {
         batcher_(std::move(batcher)),
         batcher_queue_options_(batcher_queue_options),
         allowed_batch_sizes_(std::move(allowed_batch_sizes)),
-        allowed_batch_sizes_str_(absl::StrJoin(allowed_batch_sizes_, ",")),
-        disable_padding_(batcher_queue_options.disable_padding) {}
+        allowed_batch_sizes_str_(absl::StrJoin(allowed_batch_sizes_, ",")) {}
 
   BatchResourceBase(bool has_process_batch_function,
                     std::shared_ptr<AdaptiveBatcherT> batcher,
@@ -144,8 +150,7 @@ class BatchResourceBase : public ResourceBase {
         adaptive_batcher_(std::move(batcher)),
         adaptive_batcher_queue_options_(batcher_queue_options),
         allowed_batch_sizes_(std::move(allowed_batch_sizes)),
-        allowed_batch_sizes_str_(absl::StrJoin(allowed_batch_sizes_, ",")),
-        disable_padding_(batcher_queue_options.disable_padding) {}
+        allowed_batch_sizes_str_(absl::StrJoin(allowed_batch_sizes_, ",")) {}
 
   void set_session_metadata(tensorflow::SessionMetadata session_metadata) {
     session_metadata_ = std::move(session_metadata);
@@ -156,12 +161,19 @@ class BatchResourceBase : public ResourceBase {
   using CreateBatchTaskFn =
       std::function<StatusOr<std::unique_ptr<BatchTask>>()>;
 
+  // Like `RegisterInput`, but extra "dummy" batches are processed for each
+  // batch size. Only the real request's outputs are propagated to the caller.
+  Status RegisterWarmupInputs(int64_t guid, OpKernelContext* context,
+                              const string& batcher_queue_name,
+                              const CreateBatchTaskFn& create_batch_task_fn,
+                              AsyncOpKernel::DoneCallback done);
   // Ingests data from one invocation of the batch op. The data is enqueued to
   // be combined with others into a batch, asynchronously.
   Status RegisterInput(int64_t guid, OpKernelContext* context,
                        const string& batcher_queue_name,
                        const CreateBatchTaskFn& create_batch_task_fn,
-                       AsyncOpKernel::DoneCallback done_callback);
+                       AsyncOpKernel::DoneCallback done_callback,
+                       int forced_warmup_batch_size = 0);
 
   static BatcherT::QueueOptions GetBatcherQueueOptions(
       int32_t num_batch_threads, int32_t max_batch_size,
@@ -268,7 +280,7 @@ class BatchResourceBase : public ResourceBase {
   SessionMetadata session_metadata_;
 
   absl::Mutex outstanding_batch_mu_;
-  int num_outstanding_batches_ = 0;
+  int num_outstanding_batched_items_ TF_GUARDED_BY(outstanding_batch_mu_) = 0;
 
   // True if user specified a batch processing function for this resource.
   const bool has_process_batch_function_;
@@ -291,9 +303,6 @@ class BatchResourceBase : public ResourceBase {
   // A concatenated string of <allowed_batch_sizes_>, separated by ",". This is
   // used to record batching parameter.
   string allowed_batch_sizes_str_;
-
-  // If true, the padding will not be appended.
-  bool disable_padding_;
 };
 
 }  // namespace serving

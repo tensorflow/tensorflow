@@ -22,6 +22,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <ostream>
 #include <sstream>
 #include <string>
@@ -72,7 +73,7 @@ struct ShardingStrategy {
   std::vector<std::vector<double>> resharding_costs;
   // Optional: the required shardings of operands.
   // This is used to guide the SPMD partitioner.
-  std::vector<HloSharding> input_shardings;
+  std::vector<std::optional<HloSharding>> input_shardings;
 
   std::string ToString() const {
     return absl::StrCat(name, ", ", output_sharding.ToString());
@@ -89,16 +90,18 @@ struct ShardingStrategy {
         absl::StrCat("{", absl::StrJoin(resharding_vector_strings, ", "), "}");
     std::string input_sharding_str = "{";
     for (const auto& s : input_shardings) {
-      if (s.IsReplicated()) {
+      if (!s.has_value()) {
+        input_sharding_str += "[*],";
+      } else if (s->IsReplicated()) {
         input_sharding_str += "[R],";
       } else {
-        if (s.ReplicateOnLastTileDim()) {
+        if (s->ReplicateOnLastTileDim()) {
           input_sharding_str +=
-              "[" + absl::StrJoin(s.tile_assignment().dimensions(), ", ") +
+              "[" + absl::StrJoin(s->tile_assignment().dimensions(), ", ") +
               "]last_tile_dim_replicate,";
         } else {
           input_sharding_str +=
-              "[" + absl::StrJoin(s.tile_assignment().dimensions(), ", ") +
+              "[" + absl::StrJoin(s->tile_assignment().dimensions(), ", ") +
               "],";
         }
       }

@@ -143,8 +143,8 @@ static Status EmitDynamicUpdateSliceInPlaceImpl(
     //
     std::vector<llvm::Value*> output_multi_index(rank);
     for (int64_t i = 0; i < rank; ++i) {
-      llvm::Value* start_index0 = b->CreateSExtOrBitCast(
-          start_multi_index[i], update_index[i]->getType());
+      llvm::Value* start_index0 = b->CreateIntCast(
+          start_multi_index[i], update_index[i]->getType(), is_signed);
       output_multi_index[i] = b->CreateAdd(start_index0, update_index[i]);
     }
 

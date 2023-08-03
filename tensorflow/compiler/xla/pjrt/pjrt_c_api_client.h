@@ -61,6 +61,32 @@ class PjRtCApiDeviceDescription : public PjRtDeviceDescription {
   void InitAttributes();
 };
 
+class PjRtCApiMemorySpace : public PjRtMemorySpace {
+ public:
+  explicit PjRtCApiMemorySpace(PjRtCApiClient* client, PJRT_Memory* c_memory)
+      : client_(client), c_memory_(c_memory) {}
+
+  PjRtClient* client() const override;
+
+  absl::Span<PjRtDevice* const> devices() const override {
+    LOG(FATAL) << "PJRT C API does not support PjRtMemorySpace::devices";
+  }
+
+  int id() const override;
+
+  absl::string_view memory_space_kind() const override;
+
+  absl::string_view DebugString() const override;
+
+  absl::string_view ToString() const override;
+
+  const PJRT_Api* pjrt_c_api() const;
+
+ private:
+  PjRtCApiClient* client_;
+  PJRT_Memory* c_memory_;
+};
+
 class PjRtCApiDevice : public PjRtDevice {
  public:
   explicit PjRtCApiDevice(PJRT_Device* device, PjRtCApiClient* client);
@@ -77,6 +103,10 @@ class PjRtCApiDevice : public PjRtDevice {
 
   Status TransferFromOutfeed(MutableBorrowingLiteral literal) override {
     return Unimplemented("PJRT C API does not support TransferFromOutfeed");
+  }
+
+  absl::Span<PjRtMemorySpace* const> memory_spaces() const override {
+    return memory_space_pointers_;
   }
 
   StatusOr<PjRtMemorySpace*> default_memory_space() const override {
@@ -102,6 +132,8 @@ class PjRtCApiDevice : public PjRtDevice {
   // `device_` is owned by the `PJRT_Client` wrapped by `client_`
   PJRT_Device* device_;
   PjRtCApiDeviceDescription description_;
+  std::vector<PjRtCApiMemorySpace> memory_spaces_;
+  std::vector<PjRtMemorySpace*> memory_space_pointers_;
 };
 
 class PjRtCApiClient : public PjRtClient {
@@ -122,6 +154,8 @@ class PjRtCApiClient : public PjRtClient {
 
   StatusOr<PjRtDevice*> LookupAddressableDevice(
       int local_hardware_id) const override;
+
+  absl::Span<PjRtMemorySpace* const> memory_spaces() const override;
 
   PjRtPlatformId platform_id() const override {
     CHECK(false) << "PJRT C API does not support platform_id.";

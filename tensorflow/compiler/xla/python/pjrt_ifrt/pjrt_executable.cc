@@ -198,54 +198,6 @@ StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
   }
 }
 
-StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
-    PjRtCompatibleClient* client, const XlaComputation& computation,
-    xla::CompileOptions compile_options,
-    std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks) {
-  VLOG(3) << "PjRtLoadedExecutable::Create";
-  VLOG(3) << computation.proto().DebugString();
-  VLOG(3) << compile_options.ToProto()->DebugString();
-  const auto& build_options = compile_options.executable_build_options;
-  const bool auto_spmd_partitioning =
-      build_options.use_spmd_partitioning() &&
-      build_options.num_partitions() > 1 &&
-      (build_options.use_auto_spmd_partitioning() ||
-       build_options.any_allow_spmd_sharding_propagation_to_output());
-  TF_ASSIGN_OR_RETURN(
-      auto pjrt_loaded_executable,
-      client->pjrt_client()->Compile(computation, std::move(compile_options)));
-
-  if (auto_spmd_partitioning) {
-    // TODO(hyeontaek): Use a full shape and a sharding rather than a per-shard
-    // shape.
-    VLOG(3) << "Using per-shard shape";
-    TF_ASSIGN_OR_RETURN(auto result_shapes,
-                        pjrt_loaded_executable->GetOutputShapes());
-    if (result_shapes.empty()) {
-      return FailedPrecondition("No output shape found");
-    }
-    return CreateInternal(
-        client, std::move(pjrt_loaded_executable), result_shapes.front(),
-        /*result_hlo_sharding=*/nullptr, std::move(loaded_host_callbacks));
-  } else {
-    VLOG(3) << "Using full shape";
-    TF_ASSIGN_OR_RETURN(const auto* root_instruction,
-                        FindRootInstruction(computation.proto()));
-    const xla::Shape result_shape(root_instruction->shape());
-    const xla::HloSharding* result_hlo_sharding = nullptr;
-    std::optional<xla::HloSharding> result_hlo_sharding_holder;
-    if (root_instruction->has_sharding()) {
-      TF_ASSIGN_OR_RETURN(
-          result_hlo_sharding_holder,
-          xla::HloSharding::FromProto(root_instruction->sharding()));
-      result_hlo_sharding = &*result_hlo_sharding_holder;
-    }
-    return CreateInternal(client, std::move(pjrt_loaded_executable),
-                          result_shape, result_hlo_sharding,
-                          std::move(loaded_host_callbacks));
-  }
-}
-
 StatusOr<std::unique_ptr<LoadedExecutable>>
 PjRtLoadedExecutable::CreateInternal(
     PjRtCompatibleClient* client,

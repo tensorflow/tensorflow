@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <list>
@@ -547,6 +548,69 @@ std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrder(
   CHECK_EQ(instructions_.size(), post_order.size())
       << "number of instructions does not match post order size";
   return post_order;
+}
+
+std::vector<HloInstruction*>
+HloComputation::MakeInstructionPostOrderWithReshapeFirst() const {
+  std::vector<HloInstruction*> frontier_std;
+  std::vector<HloInstruction*> frontier_reshapes;
+  std::vector<HloInstruction*> sorted;
+  absl::flat_hash_map<int, uint32_t> visitations;
+  sorted.reserve(instruction_count());
+  visitations.reserve(instruction_count());
+
+  auto pop_frontier_element = [&frontier_std, &frontier_reshapes]() mutable {
+    // Because the result of this sort is going to be reverse, check for
+    // Reshapes later, which we want to occur earlier in the final result
+    if (!frontier_std.empty()) {
+      HloInstruction* const to_return = frontier_std.back();
+      frontier_std.pop_back();
+      return to_return;
+    }
+    if (!frontier_reshapes.empty()) {
+      HloInstruction* const to_return = frontier_reshapes.back();
+      frontier_reshapes.pop_back();
+      return to_return;
+    }
+    return static_cast<HloInstruction*>(nullptr);
+  };
+
+  auto add_to_frontier = [&frontier_std, &frontier_reshapes](
+                             HloInstruction* const instruction_to_add) mutable {
+    if (instruction_to_add->opcode() == HloOpcode::kReshape) {
+      frontier_reshapes.push_back(instruction_to_add);
+    } else {
+      frontier_std.push_back(instruction_to_add);
+    }
+  };
+
+  // Add all instructions with no users inside the computation, including the
+  // root instruction
+  bool found_root_instruction = false;
+  for (HloInstruction* const inst : instructions()) {
+    if (inst->user_count() == 0) {
+      if (inst == root_instruction()) {
+        found_root_instruction = true;
+      }
+      add_to_frontier(inst);
+    }
+  }
+  CHECK(found_root_instruction);
+
+  while (HloInstruction* const inst = pop_frontier_element()) {
+    sorted.push_back(inst);
+    for (HloInstruction* const child : inst->operands()) {
+      // Will increment, or set to 1 if not present
+      visitations[child->unique_id()]++;
+      if (child->user_count() == visitations[child->unique_id()]) {
+        add_to_frontier(child);
+      }
+    }
+  }
+
+  std::reverse(sorted.begin(), sorted.end());
+  CHECK_EQ(sorted.size(), instruction_count());
+  return sorted;
 }
 
 void HloComputation::ForEachInstructionPostOrder(

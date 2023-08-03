@@ -31,12 +31,20 @@ limitations under the License.
 #include <unordered_set>
 
 #include "llvm/ADT/ArrayRef.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
+#include "mlir/IR/Block.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/Region.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -1936,10 +1944,35 @@ LogicalResult ConvertTFLBatchMatMulOp::matchAndRewrite(
               .getResult();
   }
 
+  Type output_ety;
+  if (result_is_qtype) {
+    auto lhs_qty_width = lhs_ty.getElementType()
+                             .cast<mlir::quant::QuantizedType>()
+                             .getStorageTypeIntegralWidth();
+    auto rhs_qty_width = rhs_ty.getElementType()
+                             .cast<mlir::quant::QuantizedType>()
+                             .getStorageTypeIntegralWidth();
+
+    if (lhs_qty_width != rhs_qty_width) {
+      return rewriter.notifyMatchFailure(
+          op, "input tensors should have same qtype storage width");
+    }
+
+    if (lhs_qty_width == 8) {
+      output_ety = rewriter.getI32Type();
+    } else if (lhs_qty_width == 16) {
+      output_ety = rewriter.getIntegerType(48);
+    } else {
+      return rewriter.notifyMatchFailure(
+          op, "only support 8-bit or 16-bit quantized type");
+    }
+  } else {
+    output_ety = result_ty.getElementType();
+  }
+
   auto matmul =
       CreateOpAndInfer<tosa::MatMulOp>(
-          rewriter, op->getLoc(),
-          UnrankedTensorType::get(result_ty.getElementType()), lhs, rhs)
+          rewriter, op->getLoc(), UnrankedTensorType::get(output_ety), lhs, rhs)
           .getResult();
 
   // Conditionally reshape rank back to expected rank.

@@ -1165,7 +1165,7 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+pytype_strict_library(
     name = "ops",  # "ops" is already the name of a deprecated target
     srcs = ["ops.py"],
     srcs_version = "PY3",
@@ -1844,10 +1844,13 @@ pytype_strict_library(
     name = "flexible_dtypes",
     srcs = ["flexible_dtypes.py"],
     deps = [
+        ":composite_tensor",
         ":dtypes",
-        ":extension_type",
+        ":indexed_slices",
         ":ops",
+        ":tensor_shape",
         ":weak_tensor",
+        "//tensorflow/python/ops:variables",
         "//tensorflow/python/util:nest",
         "//third_party/py/numpy",
     ],

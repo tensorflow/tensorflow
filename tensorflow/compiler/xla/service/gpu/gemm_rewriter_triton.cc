@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter_triton.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -598,6 +599,12 @@ FusionDecision CanFuse(const HloInstruction& hlo, bool as_input,
                                            HloInstruction*>& old_to_new_mapping,
                        const GpuVersion gpu_version,
                        std::vector<DimensionOrder>& result_dim_orders) {
+  int fusion_level =
+      hlo.GetModule()->config().debug_options().xla_gpu_triton_fusion_level();
+  if (!std::get<se::CudaComputeCapability>(gpu_version)
+           .IsAtLeast(se::CudaComputeCapability::AMPERE)) {
+    fusion_level = std::min(fusion_level, 1);
+  }
   if (hlo.opcode() == HloOpcode::kTuple ||
       hlo.opcode() == HloOpcode::kGetTupleElement) {
     return "Unsupported instruction.";
@@ -616,10 +623,7 @@ FusionDecision CanFuse(const HloInstruction& hlo, bool as_input,
     return "Skipping unsupported broadcast.";
   }
   if (as_input) {
-    if (hlo.GetModule()
-            ->config()
-            .debug_options()
-            .xla_gpu_triton_fusion_level() < 2) {
+    if (fusion_level < 2) {
       if (hlo.opcode() == HloOpcode::kConvert) {
         if (FusionDecision decision =
                 RequireTritonFusibleConvert(&hlo, gpu_version);
@@ -635,10 +639,7 @@ FusionDecision CanFuse(const HloInstruction& hlo, bool as_input,
       }
     }
   } else {
-    if (hlo.GetModule()
-            ->config()
-            .debug_options()
-            .xla_gpu_triton_fusion_level() < 2) {
+    if (fusion_level < 2) {
       return "Skipping fusing outputs at low fusion levels.";
     }
     for (const HloInstruction* operand : hlo.operands()) {

@@ -287,11 +287,13 @@ message GetSnapshotSplitResponse {
   int64 local_split_index = 3;
 }
 
+// Next tag: 2
 message GetSnapshotStreamsRequest {
   // The path at which the snapshot is being materialized.
   string path = 1;
 }
 
+// Next tag: 2
 message GetSnapshotStreamsResponse {
   // Information about all streams for the snapshot.
   repeated SnapshotStreamInfo streams = 1;

@@ -85,3 +85,18 @@ fi
 if [[ "$TFCI_INDEX_HTML_ENABLE" == 1 ]]; then
   ./ci/official/utilities/generate_index_html.sh build/index.html
 fi
+
+# If enabled, gather test logs into a format that the CI system Kokoro can
+# parse into a list of individual targets.
+if [[ "$TFCI_CAPTURE_LOGS_ENABLE" == 1 ]]; then
+  capture_test_logs() {
+    mkdir -p $TFCI_GIT_DIR/build/logs
+    pushd $TFCI_GIT_DIR
+    find -L bazel-testlogs -name "test.log" -exec cp --parents {} "$TFCI_GIT_DIR/build/logs" \;
+    find -L bazel-testlogs -name "test.xml" -exec cp --parents {} "$TFCI_GIT_DIR/build/logs" \;
+    find -L "$TFCI_GIT_DIR/build/logs" -name "test.log" -exec chmod -x {} \;
+    find -L "$TFCI_GIT_DIR/build/logs" -name "test.log" -exec rename 's/test\.log/sponge_log.log/' {} \;
+    find -L "$TFCI_GIT_DIR/build/logs" -name "test.xml" -exec rename 's/test\.xml/sponge_log.xml/' {} \;
+  }
+  trap capture_test_logs EXIT
+fi

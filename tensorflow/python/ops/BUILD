@@ -1,6 +1,7 @@
 load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test")
 load("//tensorflow/python:build_defs.bzl", "tf_gen_op_strict_wrapper_private_py")
+load("//tensorflow/core/platform:build_config_root.bzl", "tf_additional_xla_deps_py")
 
 visibility = [
     "//engedu/ml/tf_from_scratch:__pkg__",
@@ -4476,6 +4477,8 @@ py_strict_library(
         ":nn_ops",
         ":resource_variable_ops",
         ":special_math_ops",
+        "//tensorflow/python/framework:composite_tensor",
+        "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:flexible_dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor",
@@ -4483,6 +4486,7 @@ py_strict_library(
         "//tensorflow/python/ops/numpy_ops:np_array_ops",
         "//tensorflow/python/ops/numpy_ops:np_math_ops",
         "//tensorflow/python/platform:tf_logging",
+        "//tensorflow/python/types:core",
         "//tensorflow/python/util:dispatch",
         "//tensorflow/python/util:tf_decorator",
     ],
@@ -4634,6 +4638,7 @@ py_strict_test(
         "//tensorflow/python/ops/numpy_ops:np_array_ops",
         "//tensorflow/python/ops/numpy_ops:np_arrays",
         "//tensorflow/python/ops/numpy_ops:np_math_ops",
+        "//tensorflow/python/ops/numpy_ops:np_random",
         "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
@@ -4682,6 +4687,31 @@ py_strict_test(
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
     ],
+)
+
+tf_py_strict_test(
+    name = "weak_tensor_constant_op_test",
+    srcs = ["weak_tensor_constant_op_test.py"],
+    deps = [
+        ":gradients_impl",
+        ":weak_tensor_ops",
+        ":weak_tensor_test_util",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:flexible_dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
+        "//tensorflow/python/framework:tensor_util",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/framework:weak_tensor",
+        "//tensorflow/python/ops/parallel_for:control_flow_ops",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ] + tf_additional_xla_deps_py(),
 )
 
 py_strict_library(

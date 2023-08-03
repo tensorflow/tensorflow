@@ -52,6 +52,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 
@@ -853,6 +854,18 @@ void EmbeddingSequencingPass::runOnOperation() {
   TF::WhileOp while_op = nullptr;
   result = FindOwningWhileOp(loop_body_func, module, &while_op);
   if (failed(result)) return signalPassFailure();
+
+  // Override the WhileOp parallel_iterations if requested by flag.
+  int parallel_iterations_flag = tensorflow::GetBuildXlaOpsPassFlags()
+                                     ->tf_xla_embedding_parallel_iterations;
+  if (parallel_iterations_flag > 0) {
+    VLOG(1) << "Setting WhileOp parallel_iterations_flag to "
+            << parallel_iterations_flag;
+    while_op.setParallelIterations(parallel_iterations_flag);
+  } else {
+    VLOG(1) << "Using original WhileOp parallel_iterations = "
+            << while_op.getParallelIterations();
+  }
 
   OpBuilder builder(module);
 

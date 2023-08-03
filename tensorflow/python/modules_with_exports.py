@@ -31,6 +31,9 @@ from tensorflow.core.protobuf.meta_graph_pb2 import MetaGraphDef
 from tensorflow.core.protobuf.config_pb2 import *
 from tensorflow.core.util.event_pb2 import *
 
+# Compat
+from tensorflow.python.compat import v2_compat
+
 # Compiler
 from tensorflow.python.compiler.xla import jit
 from tensorflow.python.compiler.xla import xla
@@ -158,6 +161,9 @@ from tensorflow.python.summary import summary
 # Training
 from tensorflow.python.training import training as train
 from tensorflow.python.training import quantize_training as _quantize_training
+
+# User Ops
+from tensorflow.python.user_ops import user_ops
 
 # Util
 from tensorflow.python.util import compat

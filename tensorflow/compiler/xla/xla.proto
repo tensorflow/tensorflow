@@ -429,12 +429,12 @@ message DebugOptions {
   //
   // Note: this mode disables thunks and the "classic" gpu runtime, which
   // is defined above.
-  bool xla_gpu_enable_openxla_runtime = 233;
+  bool xla_gpu_enable_gpu2_runtime = 233;
 
   // If true, use OpenXLA hardware abstraction layer (aka CUDA HAL) to dispatch
   // device kernels, otherwise use StreamExecutor kernel launch APIs. Has any
-  // effect only if `xla_gpu_enable_openxla_runtime` is set to true.
-  bool xla_gpu_enable_openxla_hal = 234;
+  // effect only if `xla_gpu_enable_gpu2_runtime` is set to true.
+  bool xla_gpu_enable_gpu2_hal = 234;
 
   // Timeout in seconds before terminating jobs that are stuck in a NCCL
   // Rendezvous. Negative value disables the timeout and will not terminate.
@@ -619,7 +619,7 @@ message ShardableValueUpdatePairProto {
 // will have an effect on every platform.
 //
 // When adding new fields, keep in mind that boolean fields default to false.
-// Next id: 22.
+// Next id: 23.
 message ExecutionOptions {
   // This optional field's layout is used as a hint when storing the output of
   // this computation.  Subsequent transfers of this output array to the client
@@ -711,12 +711,15 @@ message ExecutionOptions {
   // the only way to feed FDO data into the compiler and individual backends
   // may choose to get FDO data by other means.
   bytes fdo_profile = 21;
+
+  // Amount of device memory available for the executable to use.
+  int64 device_memory_size = 22;
 }
 
 // Serialization of HloModuleConfig. See the C++ class definition for
 // descriptions of each field.
 // There are no guarantees of backwards or forwards compatibility.
-// Next id: 32.
+// Next id: 33.
 message HloModuleConfigProto {
   enum FusionConfigCollection {
     OFF = 0;       // Do not collect configuration.
@@ -768,6 +771,7 @@ message HloModuleConfigProto {
   map<string, int64> analysis_allowance_map = 28;
   xla.PrecisionConfig.Precision matrix_unit_operand_precision = 29;
   bytes fdo_profile = 31;
+  int64 device_memory_size = 32;
 }
 
 message HloModuleProtoWithConfig {

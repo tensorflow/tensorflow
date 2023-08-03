@@ -790,6 +790,7 @@ cc_library(
     hdrs = ["sharding_util.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/compiler/mlir/tensorflow:xla_sharding_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla/client:sharding_builder",
         "//tensorflow/core:core_cpu",

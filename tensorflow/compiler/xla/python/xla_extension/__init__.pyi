@@ -369,19 +369,16 @@ class Memory:
   def __str__(self) -> str: ...
   def attached_devices(self) -> List[Device]: ...
 
-class _GpuAllocatorKind(enum.IntEnum):
-    DEFAULT: int
-    PLATFORM: int
-    BFC: int
-    CUDA_ASYNC: int
-
 class GpuAllocatorConfig:
-  # TODO(b/194673104): Remove once pytype correctly resolves a nested enum.
-  Kind = _GpuAllocatorKind
+  class Kind(enum.IntEnum):
+      DEFAULT: int
+      PLATFORM: int
+      BFC: int
+      CUDA_ASYNC: int
 
   def __init__(
       self,
-      kind: _GpuAllocatorKind = ...,
+      kind: Kind = ...,
       memory_fraction: float = ...,
       preallocate: bool = ...) -> None: ...
 
@@ -464,6 +461,8 @@ def get_default_c_api_topology(
     topology_name: str,
     options: Dict[str, Union[str, int, List[int], float]],
 ) -> DeviceTopology:
+  ...
+def get_topology_for_devices(devices: List[Device]) -> DeviceTopology:
   ...
 
 

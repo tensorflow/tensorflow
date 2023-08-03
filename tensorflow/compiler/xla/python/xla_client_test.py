@@ -2234,7 +2234,7 @@ def TestFactory(xla_backend,
           self.assertEqual(type(stats["largest_alloc_size"]), int)
           self.assertGreaterEqual(stats["largest_alloc_size"], 0)
 
-    @unittest.skipIf(pathways, "not implemented")
+    @unittest.skipIf(pathways or pjrt_c_api, "not implemented")
     def testMemory(self):
       for device in self.backend.local_devices():
         for memory in device.addressable_memories():

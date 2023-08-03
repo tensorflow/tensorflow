@@ -45,7 +45,6 @@ limitations under the License.
 #if !defined(PLATFORM_GOOGLE)
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform.h"
-#include "tensorflow/tsl/platform/cloud/gcs_file_system.h"
 #include "tensorflow/tsl/platform/env.h"
 #elif defined(LIBTPU_STATIC)
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
@@ -80,7 +79,17 @@ bool GetEnvBool(const char* name, bool defval) {
   return has_int && int_env != 0;
 }
 
-}  // namespace
+const char* GetTpuDriverFile() {
+  static const char* tpu_dev_path = []() {
+    struct stat sb;
+    if (stat("/dev/accel0", &sb) == 0) {
+      return "/dev/accel0";
+    } else {
+      return "/dev/vfio/0";
+    }
+  }();
+  return tpu_dev_path;
+}
 
 // This function gets pid of a process and checks if that process is using tpu.
 // It is not able to check processes that are owned by another user.
@@ -93,7 +102,7 @@ bool IsTpuUsed(int64_t pid) {
   std::unique_ptr<DIR, int (*)(DIR*)> fd_dir(raw_fd_dir, closedir);
   struct dirent* ent;
   std::string line;
-  std::string tpu_dev_path = "/dev/accel0";
+  std::string tpu_dev_path = GetTpuDriverFile();
   line.resize(tpu_dev_path.size());
   while ((ent = readdir(raw_fd_dir))) {
     if (!absl::ascii_isdigit(*ent->d_name)) continue;
@@ -131,6 +140,8 @@ tsl::StatusOr<int64_t> FindLibtpuProcess() {
   }
   return tsl::errors::NotFound("did not find which pid uses the libtpu.so");
 }
+
+}  // namespace
 
 tsl::Status TryAcquireTpuLock() {
   static absl::Mutex* mu = new absl::Mutex();
@@ -186,9 +197,10 @@ tsl::Status TryAcquireTpuLock() {
     // File open permission locks multi-user access by default.
     return tsl::errors::Aborted(
         "The TPU is already in use by another process probably owned by "
-        "another user. Run \"$ sudo lsof -w /dev/accel0\" to figure out "
-        "which process is using the TPU. If you still get this message, "
-        "run \"$ sudo rm /tmp/libtpu_lockfile\".");
+        "another user. Run \"$ sudo lsof -w ",
+        GetTpuDriverFile(),
+        "\" to figure out which process is using the TPU. If you still get "
+        "this message, run \"$ sudo rm /tmp/libtpu_lockfile\".");
   }
 
   // lockf() holds the lock until the process exits to guard the underlying
@@ -234,44 +246,6 @@ tsl::Status InitializeTpuLibrary(void* library_handle) {
   return s;
 }
 
-namespace {
-void* CreateGcsFilesystemFn() { return new tsl::RetryingGcsFileSystem(); }
-
-// This is a temporary fix for including GCS file system on TPU builds.
-// Will be removed once b/176954917 is fully resolved with the build fix.
-void InitializeCreateGcsFileSystemFnPtr() {
-  int fd = shm_open(absl::StrCat("/tmp_tf_gcs_fs_pointer_", getpid()).data(),
-                    O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
-  if (fd == -1) {
-    LOG(ERROR) << "Unable to open shared memory for GCS file system creator.";
-    return;
-  }
-
-  if (ftruncate(fd, sizeof(tsl::FileSystem*)) == -1) {
-    LOG(ERROR)
-        << "Unable to allocate shared memory for GCS file system creator.";
-    return;
-  }
-
-  void* (**fn)() = reinterpret_cast<void* (**)()>(mmap(
-      NULL, sizeof(void* (*)()), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0));
-  if (fn == MAP_FAILED) {
-    LOG(ERROR) << "Cannot mmap shared memory for GCS file system creator.";
-    return;
-  }
-
-  *fn = &CreateGcsFilesystemFn;
-
-  munmap(fn, sizeof(void* (*)()));
-  close(fd);
-
-  // Clean up shared memory on a clean exit.
-  atexit([]() {
-    shm_unlink(absl::StrCat("/tmp_tf_gcs_fs_pointer_", getpid()).data());
-  });
-}
-}  // namespace
-
 // TODO(b/261484192): refactor this function to align with supporting different
 // PJRT plugins.
 tsl::Status FindAndLoadTpuLibrary() {
@@ -289,7 +263,6 @@ tsl::Status FindAndLoadTpuLibrary() {
     LOG(INFO) << "Failed to open libtpu: " << dlerror();
   }
 
-  InitializeCreateGcsFileSystemFnPtr();
   return ::tsl::OkStatus();
 }
 

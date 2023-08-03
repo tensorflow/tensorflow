@@ -502,6 +502,20 @@ TF_CAPI_EXPORT extern TF_Tensor* TF_AllocateTemp(
     TF_OpKernelContext* context, TF_DataType dtype, const int64_t* dims,
     int num_dims, TF_AllocatorAttributes* alloc_attrs, TF_Status* status);
 
+// Used by OpKernel implementations to track actively running deferred ops.
+//
+// A deferred op is one whose Compute method returns (or whose ComputeAsync
+// method invokes the callback) when work is scheduled onto a device. At that
+// point, we don't know when the work will actually complete (or if it has
+// already completed) on the device. These functions allow the executor to
+// track the status of deferred ops and act accordingly.
+//
+// Deferred OpKernel implementations must use these methods to get two
+// functions. It then must call these two functions in pairs, before and after
+// device execution, respectively.
+TF_CAPI_EXPORT extern void TF_IncNumDeferredOps(TF_OpKernelContext* context);
+TF_CAPI_EXPORT extern void TF_DecNumDeferredOps(TF_OpKernelContext* context);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif
