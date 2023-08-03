@@ -752,8 +752,8 @@ struct ExecuteOpDevice : ExecuteOp {
     return Base::last_uses().drop_front();
   }
 
-  tensorflow::Device* device() const {
-    return arguments()[0].Get<std::unique_ptr<tensorflow::Device>>().get();
+  const std::shared_ptr<tensorflow::Device>& device() const {
+    return arguments()[0].Get<std::shared_ptr<tensorflow::Device>>();
   }
 
   void Invoke() { ExecuteOpInternal</*IsAsync=*/false>(*this); }
