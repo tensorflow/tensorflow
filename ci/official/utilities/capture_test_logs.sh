@@ -20,5 +20,5 @@ cd $ROOT_DIR
 find -L bazel-testlogs -name "test.log" -exec cp --parents {} "$OUTPUT_DIR" \;
 find -L bazel-testlogs -name "test.xml" -exec cp --parents {} "$OUTPUT_DIR" \;
 find -L "$OUTPUT_DIR" -name "test.log" -exec chmod -x {} \;
-find -L "$OUTPUT_DIR" -name "test.log" -exec rename 's/test\.log/sponge_log.log/' {} \;
-find -L "$OUTPUT_DIR" -name "test.xml" -exec rename 's/test\.xml/sponge_log.xml/' {} \;
+find -L "$OUTPUT_DIR" -name "test.log" -execdir mv test.log sponge_log.log \;
+find -L "$OUTPUT_DIR" -name "test.xml" -execdir mv test.xml sponge_log.xml \;
