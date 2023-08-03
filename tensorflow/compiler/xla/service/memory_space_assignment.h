@@ -673,7 +673,7 @@ class MemorySpaceAssignment {
       CHECK(chunk_.has_value());
       return *chunk_;
     }
-    Chunk* mutable_chunk() { return &*chunk_; }
+    virtual void ReplaceOffset(int64_t offset);
     void set_start_time(int64_t start_time) { start_time_ = start_time; }
     int64_t start_time() const { return start_time_; }
     int64_t end_time() const { return end_time_; }
@@ -913,6 +913,8 @@ class MemorySpaceAssignment {
     // Returns the time the buffer is first available to be used. For
     // SlicedCopyAllocation, this is when all copies have ended.
     int64_t earliest_available_time() const override;
+
+    void ReplaceOffset(int64_t offset) override;
 
     const std::vector<SliceDetail>& sorted_slice_details() const;
     std::vector<SliceDetail>& mutable_sorted_slice_details();
