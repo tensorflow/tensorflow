@@ -94,6 +94,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/for_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/fused_mha_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/fusions/fusions.h"
+#include "tensorflow/compiler/xla/service/gpu/fusions/thunk_util.h"
 #include "tensorflow/compiler/xla/service/gpu/fusions/tiling_util.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
@@ -3280,86 +3281,6 @@ IrEmitterUnnested::BuildKernelThunkForNonFusionOp(
                                         launch_dimensions);
 }
 
-std::unique_ptr<Thunk> IrEmitterUnnested::BuildConstantInitializerThunk(
-    mlir::Operation* op, absl::Span<const uint8_t> init_value, mlir::Value dest,
-    const BufferAllocation::Slice& dest_slice, const Shape& output_shape) {
-  int64_t num_bytes = init_value.size();
-  if (absl::c_all_of(init_value, [](uint8_t byte) { return byte == 0; })) {
-    return std::make_unique<MemzeroThunk>(Thunk::ThunkInfo(op), dest_slice,
-                                          dest);
-  }
-
-  // If the literal is 8 or 16 bits wide, we can emit a 32-bit memset by
-  // repeating the literal 4 or 2 times, so long as the destination buffer is
-  // an even multiple of 32 bits long.
-  if ((num_bytes == 1 || num_bytes == 2) &&
-      ShapeUtil::ByteSizeOf(output_shape) % 4 == 0) {
-    uint16_t pattern16;
-    if (num_bytes == 1) {
-      uint8_t b = init_value.front();
-      pattern16 = uint16_t{b} | (uint16_t{b} << 8);
-    } else {
-      memcpy(&pattern16, init_value.data(), sizeof(pattern16));
-    }
-    uint32_t pattern32 = uint32_t{pattern16} | (uint32_t{pattern16} << 16);
-    return std::make_unique<Memset32BitValueThunk>(Thunk::ThunkInfo(op),
-                                                   pattern32, dest_slice, dest);
-  }
-
-  // If the literal is an even multiple of 32 bits wide, we can emit a 32-bit
-  // memset so long as all 32-bit words of the scalar are equal to each other.
-  if (num_bytes >= 4 && num_bytes % 4 == 0 &&
-      memcmp(init_value.data(), init_value.data() + 4, init_value.size() - 4) ==
-          0) {
-    uint32_t word;
-    memcpy(&word, init_value.data(), sizeof(word));
-    return std::make_unique<Memset32BitValueThunk>(Thunk::ThunkInfo(op), word,
-                                                   dest_slice, dest);
-  }
-
-  return nullptr;
-}
-
-StatusOr<std::unique_ptr<Thunk>>
-IrEmitterUnnested::TryBuildConstantInitializerThunk(mlir::Operation* op,
-                                                    mlir::Value init_value,
-                                                    mlir::Value dest) {
-  mlir::DenseElementsAttr const_init;
-  if (auto get_global_memref =
-          mlir::dyn_cast_or_null<mlir::memref::GetGlobalOp>(
-              init_value.getDefiningOp())) {
-    auto global_memref =
-        mlir::SymbolTable::lookupNearestSymbolFrom<mlir::memref::GlobalOp>(
-            get_global_memref, get_global_memref.getNameAttr());
-    if (global_memref.getConstant() && global_memref.getInitialValue()) {
-      // If the initial value happens to be a constant, generate a specialized
-      // thunk.
-      const_init = global_memref.getInitialValue()
-                       .value()
-                       .cast<mlir::DenseElementsAttr>();
-    }
-  } else if (auto constant = mlir::dyn_cast_or_null<mlir::mhlo::ConstantOp>(
-                 init_value.getDefiningOp())) {
-    const_init = constant.getValue().dyn_cast<mlir::DenseElementsAttr>();
-  }
-
-  if (const_init) {
-    std::vector<uint8_t> literal_bytes;
-    TF_RETURN_IF_ERROR(
-        CopyDenseElementsDataToXlaFormat(const_init, &literal_bytes));
-
-    TF_ASSIGN_OR_RETURN(auto dest_slice, GetAllocationSlice(dest));
-
-    const Shape dest_shape = GetShape(dest);
-    auto thunk = BuildConstantInitializerThunk(op, literal_bytes, dest,
-                                               dest_slice, dest_shape);
-    if (thunk) {
-      return {std::move(thunk)};
-    }
-  }
-  return std::unique_ptr<Thunk>();
-}
-
 Status IrEmitterUnnested::BuildInitializerThunk(mlir::Operation* op,
                                                 mlir::Value init_value,
                                                 mlir::Value dest) {
@@ -3367,10 +3288,11 @@ Status IrEmitterUnnested::BuildInitializerThunk(mlir::Operation* op,
   auto init_type = init_value.getType().dyn_cast<mlir::MemRefType>();
   TF_RET_CHECK(init_type.getRank() == 0);
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> constant_init_thunk,
-                      TryBuildConstantInitializerThunk(op, init_value, dest));
+  TF_ASSIGN_OR_RETURN(std::optional<std::unique_ptr<Thunk>> constant_init_thunk,
+                      BuildConstantInitializerThunk(*ir_emitter_context_, op,
+                                                    init_value, dest));
   if (constant_init_thunk) {
-    AddThunkToThunkSequence(std::move(constant_init_thunk));
+    AddThunkToThunkSequence(*std::move(constant_init_thunk));
     return OkStatus();
   }
 
@@ -3412,11 +3334,11 @@ Status IrEmitterUnnested::BuildFusedInitializerThunk(
 
   mlir::Value init_value = reduce.getInitValues()[0];
   mlir::Value dest = fusion.getOutputBuffers()[output_index];
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<Thunk> constant_init_thunk,
-      TryBuildConstantInitializerThunk(fusion, init_value, dest));
+  TF_ASSIGN_OR_RETURN(std::optional<std::unique_ptr<Thunk>> constant_init_thunk,
+                      BuildConstantInitializerThunk(*ir_emitter_context_,
+                                                    fusion, init_value, dest));
   if (constant_init_thunk) {
-    AddThunkToThunkSequence(std::move(constant_init_thunk));
+    AddThunkToThunkSequence(std::move(*constant_init_thunk));
     return OkStatus();
   }
 
@@ -3523,39 +3445,6 @@ static llvm::Value* GetStartOffsetX(const TilingScheme& tiling_scheme,
           : tiling_scheme.GetTileSizeFor(TilingScheme::DimX);
   return b->CreateMul(thread_id_x,
                       llvm::ConstantInt::get(index_ty, multiplier));
-}
-
-static llvm_ir::IrArray::Index GetUnnormalizedIndex(
-    const llvm_ir::IrArray::Index& normalized_shape_index,
-    const Shape& unnormalized_shape, llvm::IRBuilder<>* b_,
-    absl::Span<const int64_t> dims_in_elems) {
-  CHECK_EQ(normalized_shape_index.size(), 3);
-  // If the normalization only add a new dimensions of size 1,
-  // generate simpler indexing. LLVM doesn't always simplify the more
-  // complicated indexing and this prevents it from vectorizing some
-  // cases. We do this only for major_to_minor memory layout.
-  if (unnormalized_shape.rank() == 2 && unnormalized_shape.has_layout() &&
-      unnormalized_shape.dimensions()[0] == normalized_shape_index.dims()[1] &&
-      unnormalized_shape.dimensions()[1] == normalized_shape_index.dims()[2] &&
-      unnormalized_shape.layout().minor_to_major(1) == 0) {
-    CHECK_EQ(normalized_shape_index.dims()[0], 1);
-    auto multidim = normalized_shape_index.multidim();
-    return llvm_ir::IrArray::Index({multidim[1], multidim[2]},
-                                   unnormalized_shape,
-                                   normalized_shape_index.GetType());
-  }
-  if (unnormalized_shape.rank() == 2 && unnormalized_shape.has_layout() &&
-      unnormalized_shape.dimensions()[0] == normalized_shape_index.dims()[2] &&
-      unnormalized_shape.dimensions()[1] == normalized_shape_index.dims()[1] &&
-      unnormalized_shape.layout().minor_to_major(1) == 1) {
-    CHECK_EQ(normalized_shape_index.dims()[0], 1);
-    auto multidim = normalized_shape_index.multidim();
-    return llvm_ir::IrArray::Index({multidim[2], multidim[1]},
-                                   unnormalized_shape,
-                                   normalized_shape_index.GetType());
-  }
-  return normalized_shape_index.SourceIndexOfBitcast(
-      ShapeUtil::MakeShape(F32, dims_in_elems), unnormalized_shape, b_);
 }
 
 // Emits shuffle-down reduction for the `partial_result_address` using the
