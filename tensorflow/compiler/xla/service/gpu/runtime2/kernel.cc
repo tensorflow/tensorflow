@@ -16,11 +16,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/runtime2/kernel.h"
 
 #include "absl/container/inlined_vector.h"
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime2/hal.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime2/vm.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
+#include "tensorflow/compiler/xla/stream_executor/kernel.h"
 
 namespace xla::gpu {
 
@@ -28,19 +30,26 @@ namespace xla::gpu {
 // XLA:GPU kernel dispatch API
 //===-----------------------------------------------------------------------===/
 
-Status DispatchKernel(const vm::ExecutionContext& ctx, const vm::Kernel& kernel,
+Status DispatchKernel(const vm::ExecutionContext& ctx, vm::Kernel& kernel,
                       iree_hal_allocator_t* device_allocator,
                       absl::Span<iree_hal_buffer_view_t*> args,
                       LaunchDimensions dims) {
   se::Stream* stream = ctx.run_options->stream();
   se::StreamExecutor* executor = stream->parent();
 
-  // TODO(ezhulenev): Keep a cache of loaded kernels for each executor.
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<se::KernelBase> kernel_base,
-      CreateKernel(kernel.kernel_name, args.size(), ctx.executable_source.ptx,
-                   ctx.executable_source.cubin, executor,
-                   kernel.shared_memory_bytes));
+  absl::MutexLock lock(&kernel.mutex);
+  se::KernelBase* loaded_kernel = nullptr;
+
+  if (auto it = kernel.loaded.find(executor); it != kernel.loaded.end()) {
+    loaded_kernel = it->second.get();
+  } else {
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<se::KernelBase> kernel_base,
+        CreateKernel(kernel.kernel_name, args.size(), ctx.executable_source.ptx,
+                     ctx.executable_source.cubin, executor,
+                     kernel.shared_memory_bytes));
+    loaded_kernel = (kernel.loaded[executor] = std::move(kernel_base)).get();
+  }
 
   absl::InlinedVector<se::DeviceMemoryBase, 8> device_args;
   for (iree_hal_buffer_view_t* arg : args) {
@@ -48,7 +57,7 @@ Status DispatchKernel(const vm::ExecutionContext& ctx, const vm::Kernel& kernel,
                         GetDeviceMemory(device_allocator, arg));
   }
 
-  return ExecuteKernelOnStream(*kernel_base, device_args, dims, stream);
+  return ExecuteKernelOnStream(*loaded_kernel, device_args, dims, stream);
 }
 
 //===-----------------------------------------------------------------------===/

@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "third_party/iree/llvm-external-projects/iree-dialects/include/iree-dialects/Dialect/Input/InputDialect.h"
 #include "third_party/iree/llvm-external-projects/iree-dialects/include/iree-dialects/Dialect/Input/InputOps.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -114,6 +115,46 @@ func::FuncOp XlaGpuApi::addDecl(OpBuilder &b, ModuleOp module,
   }
 
   return list.cast<TypedValue<IREE::Input::ListType>>();
+}
+
+//===---------------------------------------------------------------------===/
+// Helper functions to build globals
+//===--------------------------------------------------------------------===//
+
+IREE::Input::GlobalOp XlaGpuApi::getOrCreateGlobal(
+    StringRef name, Type type, ModuleOp module, ImplicitLocOpBuilder &b,
+    std::function<Value(ImplicitLocOpBuilder &)> initializer) {
+  // Check if we already have a global with given name and type in the module.
+  GlobalKey key = {module, b.getStringAttr(name), type};
+  if (auto it = globals_.find(key); it != globals_.end()) return it->second;
+
+  OpBuilder::InsertionGuard guard(b);
+  b.setInsertionPointToEnd(module.getBody());
+
+  // Create initializer function using user-defined builder.
+  auto fn = b.create<func::FuncOp>(llvm::formatv("{0}.initializer", name).str(),
+                                   b.getFunctionType(TypeRange(), type));
+  fn.setPrivate();
+  symTable(module).insert(fn);
+
+  b.setInsertionPointToStart(fn.addEntryBlock());
+  Value value = initializer(b);
+  b.create<func::ReturnOp>(TypeRange(), value);
+
+  // Create global value at module level.
+  b.setInsertionPointToEnd(module.getBody());
+  auto sym = FlatSymbolRefAttr::get(fn->getContext(), fn.getSymNameAttr());
+  auto global = b.create<IREE::Input::GlobalOp>(
+      b.getStringAttr("private"), b.getStringAttr(name), type,
+      /*is_mutable=*/false, sym, /*initial_value=*/nullptr);
+
+  return globals_[key] = global;
+}
+
+Value XlaGpuApi::loadGlobal(ImplicitLocOpBuilder &b,
+                            IREE::Input::GlobalOp global) {
+  return b.create<IREE::Input::GlobalLoadOp>(global.getType(),
+                                             global.getSymNameAttr());
 }
 
 //===----------------------------------------------------------------------===//

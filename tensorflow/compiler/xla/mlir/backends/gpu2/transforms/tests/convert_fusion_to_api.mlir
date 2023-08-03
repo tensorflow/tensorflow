@@ -30,7 +30,7 @@ func.func @fusion(
 // CHECK:   %[[TENSOR1:.*]] = iree_input.tensor.import {{.*}} -> tensor<3xf32>
 // CHECK:   %[[TENSOR2:.*]] = iree_input.tensor.import {{.*}} -> tensor<3xf32>
 //
-// CHECK:   %[[KERNEL:.*]] = call @xla_gpu.kernel.create
+// CHECK:   %[[KERNEL:.*]] = iree_input.global.load @[[KERNEL_NAME:.*]] :
 //
 // CHECK:   %[[C3:.*]] = arith.constant 3 : index
 // CHECK:   %[[ARGS:.*]] = iree_input.list.create %[[C3]]
@@ -44,3 +44,11 @@ func.func @fusion(
 // CHECK-SAME:    !iree_input.list<!iree_input.buffer_view>, i32, i32, i32,
 // CHECK-SAME:    i32, i32, i32) -> ()
 // CHECK: }
+
+// CHECK: func private @[[KERNEL_NAME]].initializer() -> !xla_gpu.kernel {
+// CHECK:   %[[CREATED:.*]] = call @xla_gpu.kernel.create
+// CHECK:   return %[[CREATED]] : !xla_gpu.kernel
+// CHECK: }
+
+// CHECK: iree_input.global private @[[KERNEL_NAME]]
+// CHECK-SAME:  initializer(@[[KERNEL_NAME]].initializer)
