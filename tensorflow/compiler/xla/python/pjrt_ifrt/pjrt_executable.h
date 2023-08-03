@@ -22,7 +22,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/strings/string_view.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
@@ -263,8 +262,7 @@ class PjRtLoadedExecutable final
       PjRtCompatibleClient* client,
       std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
       const xla::Shape& result_shape,
-      const std::optional<xla::HloSharding>& result_hlo_sharding,
-      const std::optional<std::vector<absl::string_view>>& result_memory_kinds,
+      const xla::HloSharding* result_hlo_sharding,
       std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks);
 
   PjRtLoadedExecutable(
