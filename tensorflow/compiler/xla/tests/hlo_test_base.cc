@@ -237,9 +237,11 @@ DebugOptions HloTestBase::GetDebugOptionsForTest() {
 void HloTestBase::RunAndFilecheckHloRewrite(
     absl::string_view hlo, HloPassInterface&& hlo_pass,
     std::optional<absl::string_view> expected,
-    std::function<void(HloModule*)> after_pass_checks) {
+    std::function<void(HloModule*)> after_pass_checks,
+    const HloModuleConfig* config) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+                          config ? ParseAndReturnVerifiedModule(hlo, *config)
+                                 : ParseAndReturnVerifiedModule(hlo));
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&hlo_pass, module.get()));
   EXPECT_EQ(changed, expected.has_value()) << module->ToString();
   if (changed) {
