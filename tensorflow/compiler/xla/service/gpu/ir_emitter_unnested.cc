@@ -2701,9 +2701,9 @@ Status IrEmitterUnnested::EmitScatter(
           desc.scatter_indices_gen(raw_scatter_index_index.SourceIndexOfReshape(
               scatter_indices_shape_fixed, desc.scatter_indices_shape, &b_)));
       // And add the index to our window index. This yields the output index.
-      llvm::Value* casted_scatter_index =
-          IntCast(loaded_scatter_index, index.GetType(),
-                  /*isSigned=*/true);
+      llvm::Value* casted_scatter_index = IntCast(
+          loaded_scatter_index, index.GetType(),
+          /*isSigned=*/ShapeUtil::ElementIsSigned(desc.scatter_indices_shape));
       llvm::Value* dim_offset =
           Add(input_window_multidim[operand_dim], casted_scatter_index);
       input_window_multidim[operand_dim] = dim_offset;
