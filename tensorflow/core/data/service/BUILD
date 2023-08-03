@@ -74,10 +74,10 @@ tf_proto_library(
 )
 
 cc_library(
-    name = "graph_rewriters",
-    srcs = ["graph_rewriters.cc"],
+    name = "auto_shard_rewriter",
+    srcs = ["auto_shard_rewriter.cc"],
     hdrs = [
-        "graph_rewriters.h",
+        "auto_shard_rewriter.h",
     ],
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
@@ -97,7 +97,6 @@ cc_library(
         "//tensorflow/core/grappler/optimizers/data:auto_shard",
         "//tensorflow/core/grappler/optimizers/data:graph_utils",
         "//tensorflow/core/grappler/optimizers/data:optimizer_base",
-        "//tensorflow/core/grappler/optimizers/data:remove_compression_map",
         "//tensorflow/core/kernels/data/experimental:auto_shard_dataset_op",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
@@ -109,13 +108,13 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "graph_rewriters_test",
+    name = "auto_shard_rewriter_test",
     size = "small",
-    srcs = ["graph_rewriters_test.cc"],
+    srcs = ["auto_shard_rewriter_test.cc"],
     # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     deps = [
+        ":auto_shard_rewriter",
         ":common_proto_cc",
-        ":graph_rewriters",
         ":test_util",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
@@ -419,7 +418,6 @@ cc_library(
         "//tensorflow/core/data:hash_utils",
         "//tensorflow/core/data:snapshot_utils",
         "//tensorflow/core/data:standalone",
-        "//tensorflow/core/data:utils",
         "//tensorflow/core/data/service:auto_scaler",
         "//tensorflow/core/data/service/snapshot:file_utils",
         "//tensorflow/core/data/service/snapshot:path_utils",
@@ -449,9 +447,9 @@ cc_library(
     ],
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
+        ":auto_shard_rewriter",
         ":common",
         ":common_proto_cc",
-        ":graph_rewriters",
         ":journal",
         ":journal_proto_cc",
         "//tensorflow/core:protos_all_cc",
@@ -1062,13 +1060,13 @@ cc_library(
     ],
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
+        ":auto_shard_rewriter",
         ":common",
         ":common_proto_cc",
         ":data_transfer",
         ":dispatcher_client",
         ":dispatcher_proto_cc",
         ":export_proto_cc",
-        ":graph_rewriters",
         ":grpc_util",
         ":split_provider",
         ":task_runner",

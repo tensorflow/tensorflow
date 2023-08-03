@@ -92,7 +92,6 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/data/service:dispatcher_client",
-        "//tensorflow/core/data/service:dispatcher_proto_cc",
         "//tensorflow/core/data/service:grpc_util",
         "//tensorflow/core/platform:env_time",
         "//tensorflow/core/platform:statusor",

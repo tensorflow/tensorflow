@@ -181,9 +181,6 @@ class DataServiceDispatcherImpl {
                           GetSnapshotSplitResponse* response);
   Status GetSnapshotStreams(const GetSnapshotStreamsRequest* request,
                             GetSnapshotStreamsResponse* response);
-  Status DisableCompressionAtRuntime(
-      const DisableCompressionAtRuntimeRequest* request,
-      DisableCompressionAtRuntimeResponse* response);
 
   // Exports the dispatcher state for debugging.
   DispatcherStateExport ExportState() const;
@@ -341,10 +338,6 @@ class DataServiceDispatcherImpl {
   Status GetDatasetDef(const DispatcherState::Dataset& dataset,
                        std::shared_ptr<const DatasetDef>& dataset_def)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  // Gets host information about a noncolocated worker from the dispatcher
-  // state. Returns null if no noncolocated worker has registered.
-  std::optional<absl::flat_hash_map<std::string, std::string>>
-  WorkerCompressionInfoByProtocol() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   const experimental::DispatcherConfig config_;
   Env* env_;
