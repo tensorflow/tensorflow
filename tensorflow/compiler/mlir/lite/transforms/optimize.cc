@@ -48,6 +48,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -59,6 +60,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
+#include "tensorflow/compiler/mlir/lite/utils/utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
@@ -2186,6 +2188,68 @@ struct FuseReshapeAndTransposeAroundBatchMatmul
   }
 };
 
+// Optimizes transpose->reshape->batch_matmul to reshape->batch_matmul.
+struct FuseTransposeReshapeIntoBatchMatmul
+    : public OpRewritePattern<TFL::BatchMatMulOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TFL::BatchMatMulOp op,
+                                PatternRewriter &rewriter) const override {
+    auto reshape_op = op.getY().getDefiningOp<ReshapeOp>();
+    if (!reshape_op || !ReshapeFirstTwoDim(reshape_op.getInput().getType(),
+                                           reshape_op.getType())) {
+      return failure();
+    }
+
+    auto transpose_op = reshape_op.getInput().getDefiningOp<TransposeOp>();
+    if (!transpose_op) {
+      return failure();
+    }
+    DenseIntElementsAttr transpose_perm;
+    if (!matchPattern(transpose_op.getPerm(), m_Constant(&transpose_perm)) ||
+        !TransposeLastTwoDimToFirst(transpose_perm)) {
+      return failure();
+    }
+
+    SmallVector<int> new_shape(
+        reshape_op.getType().getShape().drop_front().begin(),
+        reshape_op.getType().getShape().drop_front().end());
+    new_shape.push_back(reshape_op.getType().getDimSize(0));
+    auto shape_constant = rewriter.create<ConstOp>(
+        op.getLoc(), DenseIntElementsAttr::get(
+                         RankedTensorType::get(reshape_op.getType().getRank(),
+                                               rewriter.getI32Type()),
+                         new_shape));
+    auto new_reshape = rewriter.create<ReshapeOp>(
+        op.getLoc(), transpose_op.getInput(), shape_constant);
+    rewriter.replaceOpWithNewOp<BatchMatMulOp>(
+        op, op.getType(), op.getX(), new_reshape, op.getAdjX(), !op.getAdjY(),
+        op.getAsymmetricQuantizeInputsAttr());
+    return success();
+  }
+
+ private:
+  // Checks that tensor `a` has shape of [M, N, ...] and `b` has [M * N, ...].
+  bool ReshapeFirstTwoDim(TensorType a, TensorType b) const {
+    if (!a.hasStaticShape() || !b.hasStaticShape()) return false;
+    if (a.getRank() < 2 || b.getRank() < 1) return false;
+    return a.getShape().drop_front(2) == b.getShape().drop_front(1);
+  }
+
+  // Checks if the transpose permutation has value [n-2, n-1, 0, 1, ...].
+  bool TransposeLastTwoDimToFirst(DenseIntElementsAttr perm) const {
+    const int rank = perm.getNumElements();
+    auto perm_iter = perm.getValues<APInt>();
+    if (rank < 3) return false;
+    for (int i = 2; i < rank; i++) {
+      if (perm_iter[i] != i - 2) {
+        return false;
+      }
+    }
+    return perm_iter[0] == rank - 2 && perm_iter[1] == rank - 1;
+  }
+};
+
 // Adds canonicalization patterns to the list of patterns.
 void AddCanonicalizationPatterns(MLIRContext *context,
                                  RewritePatternSet *patterns) {
@@ -2238,7 +2302,8 @@ void OptimizePass::runOnOperation() {
       FuseDepthwiseConv2DAndMulWithQDQs, ConvertTrivialTransposeOpToReshapeOp,
       RemoveReshapeAfterFullyConnected, RemoveReshapeBeforeFullyConnected,
       FuseUnpackAndConcatToReshape, OptimizeTopK, FuseAddAndStridedSlice,
-      FuseReshapeAndTransposeAroundBatchMatmul>(ctx);
+      FuseReshapeAndTransposeAroundBatchMatmul,
+      FuseTransposeReshapeIntoBatchMatmul>(ctx);
   if (!this->disable_fuse_mul_and_fc_) {
     phase_2_patterns.add<FuseMulAndFullyConnected>(ctx);
   }
