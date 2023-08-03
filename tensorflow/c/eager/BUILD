@@ -817,6 +817,19 @@ cc_library(
 )
 
 tf_cuda_library(
+    name = "c_api_experimental_hdrs",
+    hdrs = [
+        "c_api.h",
+        "c_api_experimental.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/c:c_api_headers",
+        "//tensorflow/c:c_api_macros_hdrs",
+    ],
+)
+
+tf_cuda_library(
     name = "c_api_experimental",
     srcs = [
         "c_api_experimental.cc",
