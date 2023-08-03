@@ -1,15 +1,8 @@
 # Release 2.14.0
 
-<REPLACE THIS TEXT WITH THE RELEASE NOTES>
+## Tensorflow
 
-# Release 2.14.0
-
-<INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
-
-# Breaking Changes
-
-* <DOCUMENT BREAKING CHANGES HERE>
-* <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
+### Breaking Changes
 
 *  `tf.Tensor`
     * The class hierarchy for `tf.Tensor` has changed, and there are now
@@ -29,11 +22,8 @@
     * `tf.estimator` API will be removed in the next release. TF Estimator
        Python package will no longer be released.
 
-# Known Caveats
+### Known Caveats
 
-* <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
-* <ADDING/BUMPING DEPENDENCIES SHOULD GO HERE>
-* <KNOWN LACK OF SUPPORT ON SOME PLATFORM, SHOULD GO HERE>
 * `tf.lite`
     * when converter flag "_experimenal_use_buffer_offset" is enabled,
     additional metadata is automatically excluded from the generated model.
@@ -41,14 +31,7 @@
     * If the model is larger than 2GB, then we also require
     "exclude_conversion_metadata" flag to be set
 
-# Major Features and Improvements
-
-*   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
-*   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
-* `tf.keras`
-    * `Model.compile` now support `steps_per_execution='auto'` as a parameter,
-    allowing automatic tuning of steps per execution during `Model.fit`,
-    `Model.predict`, and `Model.evaluate` for a significant performance boost.
+### Major Features and Improvements
 
 *   Enable JIT-compiled i64-indexed kernels on GPU for large tensors with more
     than 2**32 elements.
@@ -61,7 +44,7 @@
     * Add experimental supports conversion of models that may be larger than 2GB
      before buffer deduplication
 
-# Bug Fixes and Other Changes
+### Bug Fixes and Other Changes
 
 * `tf.py_function` and `tf.numpy_function` can now be used as function
    decorators for clearer code:
@@ -74,10 +57,6 @@
 
 * `tf.lite`
     * Strided_Slice now supports `UINT32`.
-
-* <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
-* <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
-* <NOTES SHOULD BE GROUPED PER AREA>
 
 * `tf.config.experimental.enable_tensor_float_32_execution`
     * Disabling TensorFloat-32 execution now causes TPUs to use float32
@@ -116,11 +95,22 @@
   nest_util code examples](https://github.com/tensorflow/tensorflow/blob/04869b4e63bfc03cb13627b3e1b879fdd0f69e34/tensorflow/python/util/nest_util.py#L97)
   for an example.
 
+## Keras
+
+Keras is a framework built on top of the TensorFlow. See more details on the Keras [website](https://keras.io/).
+
+### Major Features and Improvements
+
+* `tf.keras`
+    * `Model.compile` now support `steps_per_execution='auto'` as a parameter,
+    allowing automatic tuning of steps per execution during `Model.fit`,
+    `Model.predict`, and `Model.evaluate` for a significant performance boost.
+
 # Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:
 
-<INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
+Aakar Dwivedi, Adrian Popescu, ag.ramesh, Akhil Goel, Albert Zeyer, Alex Rosen, Alexey Vishnyakov, Andrew Goodbody, angerson, Ashiq Imran, Ayan Moitra, Ben Barsdell, Bhavani Subramanian, Boian Petkantchin, BrianWieder, Chris Mc, cloudhan, Connor Flanagan, Daniel Lang, Daniel Yudelevich, Darya Parygina, David Korczynski, David Svantesson, dingyuqing05, Dragan Mladjenovic, dskkato, Eli Kobrin, Erick Ochoa, Erik Schultheis, Frédéric Bastien, gaikwadrahul8, Gauri1 Deshpande, guozhong.zhuang, H. Vetinari, Isaac Cilia Attard, Jake Hall, Jason Furmanek, Jerry Ge, Jinzhe Zeng, JJ, johnnkp, Jonathan Albrecht, jongkweh, justkw, Kanvi Khanna, kikoxia, Koan-Sin Tan, Kun-Lu, ltsai1, Lu Teng, luliyucoordinate, Mahmoud Abuzaina, mdfaijul, Milos Puzovic, Nathan Luehr, Om Thakkar, pateldeev, Peng Sun, Philipp Hack, pjpratik, Poliorcetics, rahulbatra85, rangjiaheng, Renato Arantes, Robert Kalmar, roho, Rylan Justice, Sachin Muradi, samypr100, Saoirse Stewart, Shanbin Ke, Shivam Mishra, shuw, Song Ziming, Stephan Hartmann, Sulav, sushreebarsa, T Coxon, Tai Ly, talyz, Thibaut Goetghebuer-Planchon, Thomas Preud'Homme, tilakrayal, Tirumalesh, Tj Xu, Tom Allsop, Trevor Morris, Varghese, Jojimon, Wen Chen, Yaohui Liu, Yimei Sun, Zhoulong Jiang, Zhoulong, Jiang
 
 # Release 2.13.0
 
