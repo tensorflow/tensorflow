@@ -104,6 +104,13 @@ StatusOr<DType> ToDType(xla::PrimitiveType primitive_type) {
   }
 }
 
+MemoryKind MakeMemoryKindFromPjRtBuffer(PjRtBuffer* pjrt_buffer) {
+  if (pjrt_buffer->memory_space() == nullptr) {
+    return MemoryKind();
+  }
+  return MemoryKind(pjrt_buffer->memory_space()->memory_space_kind());
+}
+
 StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
     PjRtCompatibleClient* client, DType dtype, Shape shape,
     std::shared_ptr<const Sharding> sharding, PjRtBuffers pjrt_buffers) {
@@ -122,10 +129,8 @@ StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
     PjRtCompatibleClient* client, std::shared_ptr<PjRtBuffer> pjrt_buffer) {
   TF_ASSIGN_OR_RETURN(auto dtype, ToDType(pjrt_buffer->element_type()));
   Shape shape(pjrt_buffer->dimensions());
-  // TODO(hyeontaek): Extract memory_kind from pjrt_buffer, and check if they
-  // have the same memory_kind.
-  auto sharding =
-      SingleDeviceSharding::Create(pjrt_buffer->device(), MemoryKind());
+  auto sharding = SingleDeviceSharding::Create(
+      pjrt_buffer->device(), MakeMemoryKindFromPjRtBuffer(pjrt_buffer.get()));
   return tsl::MakeRef<PjRtArray>(client, dtype, std::move(shape),
                                  std::move(sharding),
                                  PjRtBuffers({std::move(pjrt_buffer)}));
@@ -161,16 +166,26 @@ StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
   std::vector<Shape> shapes;
   shapes.reserve(pjrt_buffers.size());
 
+  const auto first_memory_kind =
+      MakeMemoryKindFromPjRtBuffer(pjrt_buffers.front().get());
+  const MemoryKind canonical_first_memory_kind =
+      CanonicalizeMemoryKind(first_memory_kind, pjrt_buffers.front()->device());
   for (const auto& pjrt_buffer : pjrt_buffers) {
     devices.push_back(pjrt_buffer->device());
     shapes.push_back(Shape(pjrt_buffer->dimensions()));
+    if (auto memory_kind = MakeMemoryKindFromPjRtBuffer(pjrt_buffer.get());
+        canonical_first_memory_kind !=
+        CanonicalizeMemoryKind(memory_kind, devices.back())) {
+      return InvalidArgument(
+          "Memory kind mismatch between PjRtBuffers. Got one buffer with "
+          "memory kind: %s and another with memory_kind: %s",
+          first_memory_kind.DebugString(), memory_kind.DebugString());
+    }
   }
-  // TODO(hyeontaek): Extract memory_kind from pjrt_buffer, and check if they
-  // have the same memory_kind.
-  auto sharding = ifrt::ConcreteSharding::Create(
-      ifrt::DeviceList(std::move(devices)), ifrt::MemoryKind(),
-      /*shape=*/shape,
-      /*shard_shapes=*/shapes);
+  auto sharding = ifrt::ConcreteSharding::Create(DeviceList(std::move(devices)),
+                                                 first_memory_kind,
+                                                 /*shape=*/shape,
+                                                 /*shard_shapes=*/shapes);
   return PjRtArray::Create(client, dtype, std::move(shape), std::move(sharding),
                            std::move(pjrt_buffers));
 }
