@@ -154,6 +154,7 @@ cc_library(
         ":memcpy",
         ":memset",
         ":send_recv",
+        ":stream_synchronization",
         ":support",
         ":topk",
         ":tracing",
@@ -378,6 +379,23 @@ cc_library(
     srcs = ["concurrent_region.cc"],
     hdrs = ["concurrent_region.h"],
     deps = [
+        ":support",
+        "//tensorflow/compiler/xla/runtime:custom_call",
+        "//tensorflow/compiler/xla/runtime:custom_call_registry",
+        "//tensorflow/compiler/xla/runtime:executable",
+        "//tensorflow/compiler/xla/service:executable",
+        "//tensorflow/compiler/xla/service:stream_pool",
+        "//tensorflow/compiler/xla/stream_executor",
+        "//tensorflow/tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "stream_synchronization",
+    srcs = ["stream_synchronization.cc"],
+    hdrs = ["stream_synchronization.h"],
+    deps = [
+        ":concurrent_region",
         ":support",
         "//tensorflow/compiler/xla/runtime:custom_call",
         "//tensorflow/compiler/xla/runtime:custom_call_registry",
