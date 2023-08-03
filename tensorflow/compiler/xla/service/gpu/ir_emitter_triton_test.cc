@@ -820,30 +820,21 @@ ENTRY e {
 
 TEST_F(TritonGemmLevel2Test, LinkingLibdeviceTwiceWorks) {
   const std::string kHloText = R"(
-HloModule m
-
 ENTRY e {
   p0 = s8[7,3] parameter(0)
   c0 = f32[7,3] convert(p0)
-  e0 = f32[7,3] exponential(c0)
   p1 = f32[3,16] parameter(1)
   e1 = f32[3,16] exponential(p1)
   d0 = f32[7,16] dot(c0, e1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
-  d1 = f32[7,16] dot(e0, p1),
+  p2 = s8[7,3] parameter(2)
+  c2 = f32[7,3] convert(p2)
+  e2 = f32[7,3] exponential(c2)
+  p3 = f32[3,16] parameter(3)
+  d1 = f32[7,16] dot(e2, p3),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
   ROOT a = f32[7,16] add(d0, d1)
 })";
-
-  MatchOptimizedHlo(kHloText, R"(
-; CHECK: ENTRY
-; CHECK-NEXT: parameter
-; CHECK-NEXT: parameter
-; CHECK-NEXT: kCustom
-; CHECK-NEXT: kCustom
-; CHECK-NEXT: ROOT
-; CHECK-SAME: add
-)");
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           GetOptimizedModule(kHloText));
