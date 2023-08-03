@@ -28,13 +28,13 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/time/time.h"
-#include "tensorflow/core/data/service/auto_shard_rewriter.h"
 #include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/data_transfer.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/dispatcher_client.h"
 #include "tensorflow/core/data/service/export.pb.h"
+#include "tensorflow/core/data/service/graph_rewriters.h"
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/service/snapshot/snapshot_split_provider.h"
@@ -372,18 +372,57 @@ StatusOr<DatasetDef> DataServiceWorkerImpl::GetDatasetDef(
   }
 }
 
+StatusOr<bool> DataServiceWorkerImpl::DisableCompressionAtRuntime(
+    const std::string& dataset_id) const {
+  DisableCompressionAtRuntimeRequest request;
+  request.set_dataset_id(dataset_id);
+  DisableCompressionAtRuntimeResponse response;
+
+  absl::Time deadline =
+      absl::FromUnixMicros(EnvTime::NowMicros()) + kDefaultDispatcherTimeout;
+  auto should_retry = [this]() TF_LOCKS_EXCLUDED(mu_) {
+    mutex_lock l(mu_);
+    return !cancelled_;
+  };
+  TF_RETURN_IF_ERROR(grpc_util::Retry(
+      [&]() {
+        return dispatcher_->DisableCompressionAtRuntime(request, response);
+      },
+      should_retry, "Disable compression at runtime.",
+      absl::ToUnixMicros(deadline)));
+
+  if (response.not_enough_information()) {
+    return errors::Internal(
+        "Either compression should not have been set or a runtime compression "
+        "disabling decision should've been made.");
+  }
+  if (response.no_compression_to_disable()) {
+    return false;
+  }
+  metrics::RecordTFDataServiceRuntimeCompressionDecision(
+      response.compression_disabled_at_runtime());
+  return response.compression_disabled_at_runtime();
+}
+
 StatusOr<std::unique_ptr<standalone::Dataset>>
 DataServiceWorkerImpl::MakeDataset(const DatasetDef& dataset_def,
                                    const TaskDef& task_def) const {
+  TF_ASSIGN_OR_RETURN(bool compression_disabled_at_runtime,
+                      DisableCompressionAtRuntime(task_def.dataset_id()));
+  GraphDef graph = dataset_def.graph();
+  if (compression_disabled_at_runtime) {
+    RemoveCompressionMapRewriter remove_compression_map_rewriter;
+    TF_ASSIGN_OR_RETURN(
+        graph, remove_compression_map_rewriter.ApplyRemoveCompressionMapRewrite(
+                   graph));
+  }
   TF_ASSIGN_OR_RETURN(AutoShardRewriter auto_shard_rewriter,
                       AutoShardRewriter::Create(task_def));
   // `ApplyAutoShardRewrite` does nothing if auto-sharding is disabled.
-  TF_ASSIGN_OR_RETURN(
-      GraphDef rewritten_graph,
-      auto_shard_rewriter.ApplyAutoShardRewrite(dataset_def.graph()));
+  TF_ASSIGN_OR_RETURN(graph, auto_shard_rewriter.ApplyAutoShardRewrite(graph));
   std::unique_ptr<standalone::Dataset> dataset;
   TF_RETURN_IF_ERROR(standalone::Dataset::FromGraph(
-      standalone::Dataset::Params(), rewritten_graph, &dataset));
+      standalone::Dataset::Params(), graph, &dataset));
   return dataset;
 }
 

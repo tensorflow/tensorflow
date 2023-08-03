@@ -362,6 +362,20 @@ Status DataServiceDispatcherClient::GetDataServiceConfig(
   return OkStatus();
 }
 
+Status DataServiceDispatcherClient::DisableCompressionAtRuntime(
+    const DisableCompressionAtRuntimeRequest& request,
+    DisableCompressionAtRuntimeResponse& response) {
+  TF_RETURN_IF_ERROR(EnsureInitialized());
+  grpc::ClientContext ctx;
+  DisableCompressionAtRuntimeRequest mine = request;
+  grpc::Status s = stub_->DisableCompressionAtRuntime(&ctx, mine, &response);
+  if (!s.ok()) {
+    return grpc_util::WrapError(
+        "Failed to get runtime compression disabling decision", s);
+  }
+  return OkStatus();
+}
+
 Status DataServiceDispatcherClient::EnsureInitialized() {
   return grpc_util::Retry([this] { return Initialize(); },
                           "Initialize dispatcher client",

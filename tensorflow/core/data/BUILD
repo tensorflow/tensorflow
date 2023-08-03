@@ -621,5 +621,6 @@ cc_library(
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
