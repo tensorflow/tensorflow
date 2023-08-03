@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_ML_ADJACENT_LIB_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_ML_ADJACENT_LIB_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -41,6 +42,74 @@ enum etype_t : uint8_t {
 // Size in bytes of data element.
 typedef uint8_t width_t;
 
+namespace data {
+
+// get size of single element of type
+inline width_t TypeWidth(etype_t type) {
+  switch (type) {
+    case etype_t::i32:
+      return 4;
+    case etype_t::f32:
+      return 4;
+    case etype_t::f64:
+      return 8;
+  }
+}
+
+/// Input/Output Wrapper for Algos ///
+
+// Encapsulates a input or output to an algorithm. Management of
+// buffers is to be implemented outside of algorithms.
+
+// Read only wrapper.
+class DataRef {
+ public:
+  explicit DataRef(etype_t type) : element_type_(type) {}
+
+  DataRef(const DataRef&) = delete;
+  DataRef(DataRef&&) = delete;
+  DataRef& operator=(const DataRef&) = delete;
+  DataRef& operator=(DataRef&&) = delete;
+
+  // Read only buffer, allocated to be of size == Bytes().
+  virtual const void* Data() const = 0;
+
+  // Number of elements currently allocated.
+  virtual ind_t NumElements() const = 0;
+
+  // Size of buffer.
+  virtual size_t Bytes() const = 0;
+
+  // Type of elements.
+  etype_t Type() const { return element_type_; }
+
+  // Implicit dimensions of buffer.
+  const dims_t& Dims() const { return dims_; }
+
+  virtual ~DataRef() = default;
+
+ protected:
+  dims_t dims_;
+  // Data can be reshaped but not change types.
+  const etype_t element_type_;
+};
+
+// Read/write wrapper which can be resized.
+class MutableDataRef : public DataRef {
+ public:
+  using DataRef::Data;
+
+  explicit MutableDataRef(etype_t type) : DataRef(type) {}
+
+  // Takes ownership of dims_t. Implementations must set bytes and
+  // `num_elements_` field.
+  virtual void Resize(dims_t&& dims) = 0;
+
+  // Write buffer, allocated to be of size == Bytes().
+  virtual void* Data() = 0;
+};
+
+}  // namespace data
 }  // namespace ml_adj
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_ML_ADJACENT_LIB_H_
