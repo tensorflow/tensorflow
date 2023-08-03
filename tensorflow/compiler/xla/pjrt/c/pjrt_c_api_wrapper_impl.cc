@@ -19,15 +19,14 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <functional>
-#include <iostream>
 #include <memory>
 #include <optional>
-#include <ostream>
 #include <string>
 #include <utility>
 #include <variant>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
@@ -60,6 +59,15 @@ static PJRT_Device* GetCDevice(const PJRT_Client* client,
   auto c_device_map = client->c_device_from_cpp_device;
   auto iter = c_device_map.find(device);
   CHECK(iter != c_device_map.end());
+  return iter->second;
+}
+
+// Returns C memory from wrapped C++ memory.
+static PJRT_Memory* GetCMemory(const PJRT_Device* device,
+                               const xla::PjRtMemorySpace* memory) {
+  auto c_memory_map = device->c_memory_from_cpp_memory;
+  auto iter = c_memory_map.find(memory);
+  CHECK(iter != c_memory_map.end());
   return iter->second;
 }
 
@@ -638,6 +646,16 @@ PJRT_Error* PJRT_Device_AddressableMemories(
       PJRT_Device_AddressableMemories_Args_STRUCT_SIZE, args->struct_size));
   args->memories = args->device->memories.data();
   args->num_memories = args->device->memories.size();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Device_DefaultMemory(PJRT_Device_DefaultMemory_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Device_DefaultMemory_Args",
+      PJRT_Device_DefaultMemory_Args_STRUCT_SIZE, args->struct_size));
+  PJRT_ASSIGN_OR_RETURN(xla::PjRtMemorySpace * memory_space,
+                        args->device->device->default_memory_space());
+  args->memory = GetCMemory(args->device, memory_space);
   return nullptr;
 }
 
@@ -1782,6 +1800,8 @@ static void PopulatePjrtDeviceMemories(const xla::PjRtDevice& cpp_device,
   for (xla::PjRtMemorySpace* memory_space : cpp_device.memory_spaces()) {
     c_device->owned_memories.push_back(PJRT_Memory{memory_space});
     c_device->memories.push_back(&c_device->owned_memories.back());
+    c_device->c_memory_from_cpp_memory[memory_space] =
+        &c_device->owned_memories.back();
   }
 }
 
