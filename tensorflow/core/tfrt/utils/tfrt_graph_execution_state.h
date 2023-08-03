@@ -93,13 +93,13 @@ class TfrtGraphExecutionState {
     return graph_execution_state_->original_graph_def();
   }
 
- private:
   // Return the function library in the original graph.
   const FunctionLibraryDefinition& flib_def() const {
     absl::MutexLock lock(&graph_execution_state_mu_);
     return graph_execution_state_->flib_def();
   }
 
+ private:
   StatusOr<std::unique_ptr<tensorflow::Graph>> OptimizeGraph(
       const tensorflow::Graph& graph,
       const tensorflow::BuildGraphOptions& build_graph_options);
@@ -114,7 +114,8 @@ class TfrtGraphExecutionState {
 
   const FallbackState& fallback_state_;
   // Only valid if `options_.run_placer_grappler_on_functions` is true.
-  absl::flat_hash_set<std::string> functions_to_optimize_;
+  absl::flat_hash_set<std::string> functions_to_optimize_
+      ABSL_GUARDED_BY(graph_execution_state_mu_);
 };
 
 // Prunes the `graph_def` using the feed/fetch nodes specified in
