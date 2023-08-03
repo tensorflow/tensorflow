@@ -34,7 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/host_command_handler.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/tsl/platform/protobuf.h"
 
@@ -348,68 +347,6 @@ TEST(XlaHloModule, ToAndFromC) {
 
 // TODO(b/290654348): SE_DeviceMemoryBase, SE_DeviceMemoryAllocator,
 // SE_MaybeOwningDeviceMemory
-
-TEST(HostCommandHandler, ToC) {
-  using tensorflow::tpu::HostCommandHandler;
-
-  constexpr uint32_t kCommand = 0xdeadbeef;
-  int64_t kStackOffset = 0x666'0420'6908'0085;
-  std::string side_effect = "This value should not be the final result";
-  const std::string kExpected = absl::StrCat(
-      "command: ", "0xdeadbeef", "\n", "stack_offset: ", "0x666042069080085");
-
-  HostCommandHandler cpp_handler = [&side_effect](uint32_t command,
-                                                  int64_t stack_offset) {
-    side_effect = absl::StrFormat("command: 0x%x\nstack_offset: 0x%x", command,
-                                  stack_offset);
-  };
-  SE_TpuHostCommandHandler* c_handler = ToC(cpp_handler);
-  ASSERT_NE(c_handler->handler_func, nullptr);
-  ASSERT_NE(c_handler->context, nullptr);
-
-  SE_TpuHostCommandHandler_Function c_handler_shim = c_handler->handler_func;
-  c_handler_shim(c_handler->context, kCommand, kStackOffset);
-  EXPECT_EQ(kExpected, side_effect);
-
-  Destroy(c_handler);
-}
-
-TEST(HostCommandHandler, FromC) {
-  using tensorflow::tpu::HostCommandHandler;
-
-  constexpr uint32_t kCommand = 0xdeadbeef;
-  int64_t kStackOffset = 0x666'0420'6908'0085;
-  constexpr absl::string_view kInvalid =
-      "This value should not be the final result";
-  std::string side_effect(kInvalid);
-  const std::string kExpected = absl::StrCat(
-      "command: ", "0xdeadbeef", "\n", "stack_offset: ", "0x666042069080085");
-
-  HostCommandHandler in_handler = [&side_effect](uint32_t command,
-                                                 int64_t stack_offset) {
-    side_effect = absl::StrFormat("command: 0x%x\nstack_offset: 0x%x", command,
-                                  stack_offset);
-  };
-
-  SE_TpuHostCommandHandler* c_handler = ToC(in_handler);
-  ASSERT_NE(c_handler->handler_func, nullptr);
-  ASSERT_NE(c_handler->context, nullptr);
-
-  in_handler(kCommand, kStackOffset);
-  std::string in_side_effect = side_effect;
-  EXPECT_EQ(kExpected, in_side_effect);
-
-  std::string out_side_effect(kInvalid);
-
-  std::unique_ptr<HostCommandHandler> out_handler = FromC(c_handler);
-  ASSERT_NE(out_handler, nullptr);
-  (*out_handler)(kCommand, kStackOffset);
-  out_side_effect = side_effect;
-  EXPECT_EQ(in_side_effect, out_side_effect);
-  EXPECT_EQ(kExpected, side_effect);
-
-  Destroy(c_handler);
-}
 
 }  // namespace
 

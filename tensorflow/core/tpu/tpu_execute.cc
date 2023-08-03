@@ -52,7 +52,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_defn.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/host_command_handler.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/proto_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
@@ -80,6 +79,12 @@ namespace {
 
 using ::tensorflow::tpu::TpuNodeContext;
 
+// Handler to invoke when a host command is received.
+// `program_stack_byte_offset` is the byte address of the current program stack.
+// This value is always 0 prior to TPU v4, but may vary per run on TPU v4+.
+using HostCommandHandler =
+    std::function<void(uint32_t command, int64_t program_stack_byte_offset)>;
+
 // These are placeholders for absl flags.
 static bool tpu_cancellation_terminates_process = false;
 static bool tpu_cancellation_closes_chips = true;
@@ -89,8 +94,6 @@ static bool tpu_cancellation_closes_chips = true;
 class HostTransferManager {
  public:
   explicit HostTransferManager(TpuNodeContext*, xla::Backend*) {}
-
-  using HostCommandHandler = TpuOpExecutable::HostCommandHandler;
 
   // Returns a function to be called when the TPU triggers a host command
   // interrupt while executing the current program.
@@ -102,10 +105,9 @@ class HostTransferManager {
   TF_DISALLOW_COPY_AND_ASSIGN(HostTransferManager);
 };
 
-xla::StatusOr<HostTransferManager::HostCommandHandler>
-HostTransferManager::Initialize(const TPUHostTransferInfoProto& program,
-                                const std::string& rendezvous_key_base,
-                                OpKernelContext* ctx) {
+xla::StatusOr<HostCommandHandler> HostTransferManager::Initialize(
+    const TPUHostTransferInfoProto& program,
+    const std::string& rendezvous_key_base, OpKernelContext* ctx) {
   return HostCommandHandler([](uint32_t, int64_t) {
     LOG(WARNING) << "HostTransferManager is unimplemented.";
   });
@@ -471,7 +473,7 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
   // Create a HostTransferManager to handle Send/Recv operations from the TPU.
   std::shared_ptr<HostTransferManager> host_transfer_manager =
       std::make_shared<HostTransferManager>(node_context, backend);
-  TF_ASSIGN_OR_RETURN(tpu::HostCommandHandler host_command_handler,
+  TF_ASSIGN_OR_RETURN(HostCommandHandler host_command_handler,
                       host_transfer_manager->Initialize(
                           host_transfers, rendezvous_key_base, ctx));
 

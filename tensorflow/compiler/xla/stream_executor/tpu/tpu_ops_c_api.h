@@ -234,7 +234,6 @@ typedef struct TpuExecutable_LoadProgramAndEnqueueToStream_Params {
   int32_t rng_seed;
   XLA_DeviceAssignment* device_assignment;
   SE_Stream* stream;
-  SE_TpuHostCommandHandler* host_command_handler;
   SE_OutsideCompilationParams* outside_compilation_params;
 
   TF_Status* status;  // out

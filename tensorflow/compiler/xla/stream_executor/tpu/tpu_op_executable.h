@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/host_command_handler.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executable_interface.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
 
@@ -35,14 +34,8 @@ namespace tensorflow {
 // An executable capable of being fed to a TPU device via TpuExecutor.
 class TpuOpExecutable : public xla::TpuExecutableInterface {
  public:
-  using HostCommandHandler = tpu::HostCommandHandler;
-
   // Constructs an executable that holds a non-owning reference to an
   // XLA_TpuProgram.
-  explicit TpuOpExecutable(const XLA_TpuProgram* core_program,
-                           std::unique_ptr<xla::HloModule> hlo_module,
-                           HostCommandHandler host_command_handler = nullptr);
-
   explicit TpuOpExecutable(
       const XLA_TpuProgram* core_program,
       std::unique_ptr<xla::HloModule> hlo_module,
@@ -64,8 +57,6 @@ class TpuOpExecutable : public xla::TpuExecutableInterface {
       const std::vector<uint32_t>& cross_program_prefetch_offsets) override;
 
   const XLA_TpuProgram* const core_program_;
-
-  const HostCommandHandler host_command_handler_;
 
   SE_OutsideCompilationParams* outside_compilation_params_;
 

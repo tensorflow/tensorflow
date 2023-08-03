@@ -53,7 +53,6 @@ cc_library(
     hdrs = ["c_api_conversions.h"],
     deps = [
         ":c_api_decl",
-        ":host_command_handler",
         ":tpu_api",
         ":tpu_executor_c_api_hdrs",
         ":tpu_ops_c_api_hdrs",
@@ -77,7 +76,6 @@ xla_cc_test(
     deps = [
         ":c_api_conversions",
         ":c_api_decl",
-        ":host_command_handler",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
@@ -381,7 +379,6 @@ cc_library(
     deps = [
         ":c_api_conversions",
         ":c_api_decl",
-        ":host_command_handler",
         ":proto_helper",
         ":status_helper",
         ":tpu_api",
@@ -561,10 +558,4 @@ cc_library(
         ":tpu_api",
         "//tensorflow/tsl/platform:types",
     ],
-)
-
-cc_library(
-    name = "host_command_handler",
-    hdrs = ["host_command_handler.h"],
-    visibility = ["//visibility:public"],
 )
