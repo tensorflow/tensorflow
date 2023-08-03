@@ -422,6 +422,13 @@ class HloModule {
     return input_output_alias_config_;
   }
 
+  // buffer_donor_config_ indicates the set of input buffer donors that are
+  // expected from the module.
+  HloBufferDonorConfig& buffer_donor_config() { return buffer_donor_config_; }
+  const HloBufferDonorConfig& buffer_donor_config() const {
+    return buffer_donor_config_;
+  }
+
   // DynamicParameterBinding holds the list of bindings that indicates which
   // parameter dimensions are dynamic and which parameters represent their
   // runtime value.
@@ -650,6 +657,10 @@ class HloModule {
   // alias_config indicates the alias information of input/output buffers that
   // are expected from the module.
   HloInputOutputAliasConfig input_output_alias_config_;
+
+  // buffer_donor_config_ indicates the donor information of input buffers that
+  // are expected from the module.
+  HloBufferDonorConfig buffer_donor_config_;
 
   // Bindings for dynamic parameter mapping.
   DynamicParameterBinding dynamic_parameter_binding_;
