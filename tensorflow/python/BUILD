@@ -331,6 +331,7 @@ py_library(
     ],
     deps = [
         ":no_contrib",
+        ":pywrap_tensorflow",
         ":tf2",
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python/compat:v2_compat",

@@ -134,6 +134,9 @@ from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import sysconfig as sysconfig_lib
 from tensorflow.python.platform import test
 
+# Pywrap TF
+from tensorflow.python import pywrap_tensorflow as _pywrap_tensorflow
+
 # Update the RaggedTensor package docs w/ a list of ops that support dispatch.
 ragged.__doc__ += ragged_ops.ragged_dispatch.ragged_op_list()
 
