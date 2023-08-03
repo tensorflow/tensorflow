@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/compiler/jit/device_executable_persistor.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/pjrt_device_compiler_client.h"
@@ -30,6 +31,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tfrt/common/create_pjrt_client_util.h"
 #include "tensorflow/core/tfrt/common/global_state.h"
@@ -238,14 +243,27 @@ Status BuildXlaDeviceCompiler(DeviceBase* device, FunctionLibraryRuntime* flr,
 }
 
 Status GetOrCreatePjRtDeviceCompilerAndProfiler(
-    const XlaPlatformInfo& platform_info, FunctionLibraryRuntime* flr,
-    PjRtDeviceCompiler** pjrt_device_compiler,
+    const OpKernelContext& ctx, const XlaPlatformInfo& platform_info,
+    FunctionLibraryRuntime* flr, PjRtDeviceCompiler** pjrt_device_compiler,
     DeviceCompilationProfiler** profiler) {
-  // We store information about the JIT-compiled XLA computation
-  // in the ResourceMgr.
-  ResourceMgr* rm = tfrt_global::GetTFGlobalResourceMgr();
-
   const auto& device_type = platform_info.device_type();
+
+  // We store information about the JIT-compiled XLA computation in the
+  // ResourceMgr. The DeviceCompiler (which contains the DeviceCompilationCache)
+  // is stored in the tfrt_global ResourceMgr for TPU and the Device ResourceMgr
+  // for CPU/GPU. This is to make sure the DeviceCompiler's lifecycle is
+  // maintained appropriately.
+  ResourceMgr* rm = nullptr;
+  if (device_type == DEVICE_TPU) {
+    rm = tfrt_global::GetTFGlobalResourceMgr();
+  } else {
+    rm = ctx.resource_manager();
+  }
+
+  if (!rm) {
+    return absl::InternalError("No resource manager found.");
+  }
+
   const std::string& compiler_name =
       GetPjRtDeviceCompilerResourceName(device_type);
 

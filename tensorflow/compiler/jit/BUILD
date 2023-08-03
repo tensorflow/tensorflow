@@ -361,6 +361,7 @@ cc_library(
         "//tensorflow/tsl/framework:device_id_utils",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
     ],
     alwayslink = 1,

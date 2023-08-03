@@ -445,7 +445,8 @@ Status CompileToPjRtLoadedExecutable(
   PjRtDeviceCompiler* pjrt_device_compiler;
   DeviceCompilationProfiler* profiler;
   TF_RETURN_IF_ERROR(GetOrCreatePjRtDeviceCompilerAndProfiler(
-      platform_info, ctx.function_library(), &pjrt_device_compiler, &profiler));
+      ctx, platform_info, ctx.function_library(), &pjrt_device_compiler,
+      &profiler));
   // Hold the reference to the PJRT device compiler and profiler during
   // evaluation. (We could probably free them sooner because the ResourceMgr
   // will retain references, but this is more obviously correct.)
