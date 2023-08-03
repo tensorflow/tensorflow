@@ -98,5 +98,5 @@ if [[ "$TFCI_CAPTURE_LOGS_ENABLE" == 1 ]]; then
     find -L "$TFCI_GIT_DIR/build/logs" -name "test.log" -exec rename 's/test\.log/sponge_log.log/' {} \;
     find -L "$TFCI_GIT_DIR/build/logs" -name "test.xml" -exec rename 's/test\.xml/sponge_log.xml/' {} \;
   }
-  trap capture_test_logs EXIT
+  trap "tfrun capture_test_logs" EXIT
 fi
