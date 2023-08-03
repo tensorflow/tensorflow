@@ -44,15 +44,15 @@ typedef uint8_t width_t;
 
 namespace data {
 
-// get size of single element of type
+// Get size (int bytes) of single element of type.
 inline width_t TypeWidth(etype_t type) {
   switch (type) {
     case etype_t::i32:
-      return 4;
+      return sizeof(int32_t);
     case etype_t::f32:
-      return 4;
+      return sizeof(float);
     case etype_t::f64:
-      return 8;
+      return sizeof(double);
   }
 }
 
@@ -110,6 +110,30 @@ class MutableDataRef : public DataRef {
 };
 
 }  // namespace data
+
+namespace algo {
+
+/// Function Interface for Operations on DataRefs ///
+
+// Inputs to algorithm.
+typedef std::vector<data::DataRef*> InputPack;
+// Outputs to algorithm.
+typedef std::vector<data::MutableDataRef*> OutputPack;
+
+// Generic algorithm, computes outputs via inputs.
+typedef void ComputeFunc(const InputPack& inputs, const OutputPack& outputs);
+
+// Optional hook to compute output shapes when they are non data-dependent.
+// This is a place-holder for now.
+// TODO(b/292143456) Figure out what the signature of this should be.
+typedef size_t ShapeFunc();
+
+struct Algo {
+  ComputeFunc* process = nullptr;
+  ShapeFunc* output_size = nullptr;
+};
+
+}  // namespace algo
 }  // namespace ml_adj
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_ML_ADJACENT_LIB_H_
