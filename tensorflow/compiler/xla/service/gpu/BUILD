@@ -996,6 +996,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":target_util",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/mlir_hlo",
