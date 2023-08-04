@@ -170,6 +170,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_auto_spmd_partitioning_memory_budget_gb(0);
   opts.set_xla_gpu_auto_spmd_partitioning_memory_budget_ratio(1.1);
+
+  opts.set_xla_gpu_copy_insertion_use_region_analysis(true);
   return opts;
 }
 
@@ -1189,6 +1191,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Dumps autotuned Triton fusions to the directory specified by "
       "xla_dump_to or stdout. Each fusion is dumped only once, as an optimized "
       "HLO."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_copy_insertion_use_region_analysis",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_copy_insertion_use_region_analysis),
+      debug_options->xla_gpu_copy_insertion_use_region_analysis(),
+      "If true, use the new fine-grain region-based live range interference"
+      " analysis in the copy insertion optimization pass."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

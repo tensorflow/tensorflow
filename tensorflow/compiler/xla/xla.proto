@@ -595,7 +595,9 @@ message DebugOptions {
 
   bool xla_gpu_dump_autotuned_triton_fusions = 232;
 
-  // Next id: 236
+  bool xla_gpu_copy_insertion_use_region_analysis = 236;
+
+  // Next id: 237
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
