@@ -1813,6 +1813,7 @@ tf_cuda_cc_test(
         ":xla_gpu_jit",
         "//tensorflow/compiler/tf2xla:layout_util",
         "//tensorflow/compiler/xla/pjrt:tfrt_cpu_pjrt_client",
+        "//tensorflow/core:framework",
         "//tensorflow/core:framework_types_hdr",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:test",
