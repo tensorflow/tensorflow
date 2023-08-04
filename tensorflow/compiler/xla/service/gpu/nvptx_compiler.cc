@@ -256,7 +256,8 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
   TF_RETURN_IF_ERROR(pre_pipeline.Run(hlo_module).status());
 
   TF_RETURN_IF_ERROR(GpuCompiler::OptimizeHloPostLayoutAssignment(
-      hlo_module, stream_exec, options, gpu_target_config, autotune_results));
+      hlo_module, stream_exec, options, gpu_target_config, autotune_results,
+      thread_pool));
 
   HloPassPipeline post_pipeline("nvptx post-layout_assignment part 2");
 
