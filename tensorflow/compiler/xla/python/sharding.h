@@ -67,6 +67,10 @@ class XLACompatibleSharding : public Sharding {
   ~XLACompatibleSharding() override = default;
 };
 
+bool AreMemoryKindsOfShardingEqual(const pybind11::object& s1,
+                                   const pybind11::object& s2,
+                                   pybind11::object mk1, pybind11::object mk2);
+
 class NamedSharding : public XLACompatibleSharding {
  public:
   NamedSharding(pybind11::object mesh, pybind11::object spec,
@@ -172,12 +176,10 @@ class GSPMDSharding : public XLACompatibleSharding {
         devices_(std::move(devices)),
         hlo_sharding_(std::move(op_sharding)),
         memory_kind_(std::move(memory_kind)) {
-    if (memory_kind_ != Py_None) {
-      // This function will check if the memory_kind is correct for the devices
-      // specified.
-      GetMemory(pybind11::cast<xla::ClientAndPtr<xla::PjRtDevice>>(devices_[0]),
-                pybind11::cast<std::string>(memory_kind_));
-    }
+    // This checks in python if the memory kind is correct for the given
+    // devices. Currently in python this check is optimized but we want to
+    // move that check to C++ after which we can remove this call.
+    pybind11::cast(this).attr("_preprocess")();
   }
 
   const pybind11::tuple& devices() const { return devices_; }
@@ -197,11 +199,8 @@ class GSPMDSharding : public XLACompatibleSharding {
 
   const xla::HloSharding& hlo_sharding() const { return hlo_sharding_; }
 
-  bool operator==(const GSPMDSharding& other) const {
-    return AreOpShardingsEqual(*this, other) &&
-           this->devices().equal(other.devices()) &&
-           this->memory_kind().equal(other.memory_kind());
-  }
+  static bool AreOpShardingsEqual(const GSPMDSharding& a,
+                                  const GSPMDSharding& b);
 
  private:
   size_t CalculateHash() const {
@@ -216,19 +215,6 @@ class GSPMDSharding : public XLACompatibleSharding {
       return true;
     }
     return hlo_sharding().IsReplicated();
-  }
-
-  static bool AreOpShardingsEqual(const GSPMDSharding& a,
-                                  const GSPMDSharding& b) {
-    // If the OpSharding object is the same, return true
-    if (&a.hlo_sharding() == &b.hlo_sharding()) {
-      return true;
-    }
-    // If both OpShardings are replicated, return true
-    if (a.IsOpShardingReplicated() && b.IsOpShardingReplicated()) {
-      return true;
-    }
-    return a.hlo_sharding() == b.hlo_sharding();
   }
 
   pybind11::tuple devices_;

@@ -15,11 +15,18 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/python/sharding.h"
 
+#include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 
+#include "pybind11/cast.h"  // from @pybind11
+#include "pybind11/pytypes.h"  // from @pybind11
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
+#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/python/py_client.h"
 #include "tensorflow/compiler/xla/python/util.h"
+#include "tensorflow/compiler/xla/statusor.h"
 
 namespace jax {
 
@@ -76,6 +83,59 @@ size_t ShardingHash(const pybind11::object& sharding) {
   return py::hash(sharding);
 }
 
+std::optional<std::string_view> Normalize(
+    py::object mem_kind, xla::ClientAndPtr<xla::PjRtDevice> device,
+    std::string& scratch) {
+  std::optional<std::string_view> final_mem_kind;
+  if (mem_kind == py::none()) {
+    xla::StatusOr<xla::PjRtMemorySpace*> mem = device->default_memory_space();
+    if (mem.ok()) {
+      final_mem_kind = mem.value()->memory_space_kind();
+    }
+  } else {
+    scratch = py::cast<std::string>(mem_kind);
+    final_mem_kind = scratch;
+  }
+  return final_mem_kind;
+}
+
+// TODO(yashkatariya): Remove this when the canonicalization happens in __init__
+// of Shardings. That can be done after OSS support is also added for memories.
+bool AreMemoryKindsOfShardingEqual(const pybind11::object& s1,
+                                   const pybind11::object& s2,
+                                   pybind11::object mk1, pybind11::object mk2) {
+  if (mk1 == py::none() && mk2 == py::none()) {
+    return true;
+  }
+
+  py::tuple da1 = s1.attr("_device_assignment");
+  py::tuple da2 = s2.attr("_device_assignment");
+
+  xla::ClientAndPtr<xla::PjRtDevice> d1 =
+      py::cast<xla::ClientAndPtr<xla::PjRtDevice>>(da1[0]);
+  xla::ClientAndPtr<xla::PjRtDevice> d2 =
+      py::cast<xla::ClientAndPtr<xla::PjRtDevice>>(da2[0]);
+
+  std::string scratch_mk1;
+  std::string scratch_mk2;
+  auto final_mk1 = Normalize(mk1, d1, scratch_mk1);
+  auto final_mk2 = Normalize(mk2, d2, scratch_mk2);
+  return final_mk1 == final_mk2;
+}
+
+bool GSPMDSharding::AreOpShardingsEqual(const GSPMDSharding& a,
+                                        const GSPMDSharding& b) {
+  // If the OpSharding object is the same, return true
+  if (&a.hlo_sharding() == &b.hlo_sharding()) {
+    return true;
+  }
+  // If both OpShardings are replicated, return true
+  if (a.IsOpShardingReplicated() && b.IsOpShardingReplicated()) {
+    return true;
+  }
+  return a.hlo_sharding() == b.hlo_sharding();
+}
+
 bool ShardingEqual(const pybind11::object& a, const pybind11::object& b) {
   if (a.ptr() == b.ptr()) return true;
 
@@ -90,15 +150,19 @@ bool ShardingEqual(const pybind11::object& a, const pybind11::object& b) {
 
     return a_named_sharding->mesh().ptr() == b_named_sharding->mesh().ptr() &&
            a_named_sharding->spec().equal(b_named_sharding->spec()) &&
-           a_named_sharding->memory_kind().equal(
-               b_named_sharding->memory_kind());
+           AreMemoryKindsOfShardingEqual(a, b, a_named_sharding->memory_kind(),
+                                         b_named_sharding->memory_kind());
   }
 
   if (a_type.is(GSPMDSharding::type())) {
     auto* a_gspmd_sharding = xla::fast_cast<const GSPMDSharding>(a);
     auto* b_gspmd_sharding = xla::fast_cast<const GSPMDSharding>(b);
 
-    return a_gspmd_sharding == b_gspmd_sharding;
+    return GSPMDSharding::AreOpShardingsEqual(*a_gspmd_sharding,
+                                              *b_gspmd_sharding) &&
+           a_gspmd_sharding->devices().equal(b_gspmd_sharding->devices()) &&
+           AreMemoryKindsOfShardingEqual(a, b, a_gspmd_sharding->memory_kind(),
+                                         b_gspmd_sharding->memory_kind());
   }
 
   if (a_type.is(SingleDeviceSharding::type())) {
@@ -109,7 +173,8 @@ bool ShardingEqual(const pybind11::object& a, const pybind11::object& b) {
 
     return a_single_device_sharding->device().ptr() ==
                b_single_device_sharding->device().ptr() &&
-           a_single_device_sharding->memory_kind().equal(
+           AreMemoryKindsOfShardingEqual(
+               a, b, a_single_device_sharding->memory_kind(),
                b_single_device_sharding->memory_kind());
   }
 
