@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/tsl/lib/io/compression.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/path.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/status_to_from_proto.h"
 #include "tensorflow/tsl/platform/statusor.h"
