@@ -566,6 +566,12 @@ bool CanNotBeFusedIntoAUser(const HloInstruction& hlo) {
                           hlo.users()[0]->opcode() == HloOpcode::kTuple);
 }
 
+// Tells if an instruction has no input into which it could be fused.
+// More cases should be added here.
+bool CanNotBeFusedIntoAProducer(const HloInstruction& hlo) {
+  return hlo_query::AllOperandsAreParametersOrConstants(hlo);
+}
+
 // Let input and output data volumes of a fusion grow by small amounts.
 constexpr int kIoToleranceBytes = 1024;
 
@@ -574,7 +580,7 @@ bool IsInputWorthFusing(const HloInstruction& hlo) {
   if (hlo.user_count() > 1) {
     return false;
   }
-  return hlo_query::AllOperandsAreParametersOrConstantsWithSingleUser(hlo) ||
+  return hlo_query::AllOperandsAreParametersOrConstants(hlo) ||
          InputMinusOutputBytes(hlo) <= kIoToleranceBytes;
 }
 
@@ -628,7 +634,7 @@ FusionDecision CanFuse(const HloInstruction& hlo, bool as_input,
         return "Ignored elementwise operation";
       }
     } else {
-      if (!IsInputWorthFusing(hlo)) {
+      if (!CanNotBeFusedIntoAProducer(hlo) && !IsInputWorthFusing(hlo)) {
         return "Not obviously profitable to fuse as input.";
       }
     }

@@ -18,17 +18,10 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
-#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
-#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
-#include "tensorflow/compiler/xla/layout.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_padding_requirements.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_types.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -1320,31 +1313,6 @@ ENTRY e {
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
       GmockMatch((m::Fusion(m::Parameter(), m::Transpose(), m::Parameter()))));
-}
-
-TEST_F(GemmRewriterTritonLevel2Test,
-       ComputationParameterWithMultipleUsersIsNotTrivialToFuse) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
-ENTRY e {
-  p0 = f32[400,400] parameter(0)
-
-  c0 = f16[400,400] convert(p0)
-  p1 = f16[400,400] parameter(1)
-  dot0 = f16[400,400] dot(c0, p1),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
-
-  c1 = f16[400,400] convert(p0)
-  p2 = f16[400,400] parameter(2)
-  dot1 = f16[400,400] dot(c1, p2),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
-
-  ROOT a = f16[400,400] add(dot0, dot1)
-})"));
-  EXPECT_FALSE(GemmRewriterTriton(se::CudaComputeCapability{
-                                      se::CudaComputeCapability::AMPERE, 0})
-                   .Run(module.get())
-                   .value());
 }
 
 }  // namespace

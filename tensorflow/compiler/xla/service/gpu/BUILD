@@ -1235,7 +1235,6 @@ xla_cc_test(
     deps = [
         ":cublas_padding_requirements",
         ":gemm_rewriter_triton",
-        ":gpu_types",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:pattern_matcher",
@@ -1249,8 +1248,6 @@ xla_cc_test(
         "//tensorflow/tsl/platform:status_matchers",
         "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_googletest//:gtest",
     ],
 )
 
