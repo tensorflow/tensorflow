@@ -91,6 +91,7 @@ set(TEST_FRAMEWORK_SRC
   ${TFLITE_SOURCE_DIR}/tools/optimize/operator_property.cc
   ${TFLITE_SOURCE_DIR}/tools/optimize/quantization_utils.cc
   ${TFLITE_SOURCE_DIR}/tools/tool_params.cc
+  ${TFLITE_SOURCE_DIR}/tools/versioning/op_signature.cc
   ${TFLITE_SOURCE_DIR}/tools/versioning/op_version.cc
   ${TF_SOURCE_DIR}/tsl/platform/default/env_time.cc
   ${TF_SOURCE_DIR}/tsl/platform/default/logging.cc
