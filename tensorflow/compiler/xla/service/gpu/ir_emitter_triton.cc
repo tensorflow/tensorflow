@@ -1579,6 +1579,7 @@ StatusOr<LaunchDimensions> TritonWrapper(
   ll_triton_module->eraseNamedMDNode(
       ll_triton_module->getNamedMetadata("nvvm.annotations"));
   ll_triton_module->setDataLayout(llvm_module->getDataLayout());
+  ll_triton_module->setTargetTriple(llvm_module->getTargetTriple());
   // Use override flag because libdevice functions can be present in both.
   CHECK(!llvm::Linker::linkModules(*llvm_module, std::move(ll_triton_module),
                                    llvm::Linker::Flags::OverrideFromSrc));
