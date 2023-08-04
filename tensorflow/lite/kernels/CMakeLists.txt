@@ -107,6 +107,11 @@ if(NOT _TFLITE_ENABLE_NNAPI)
     ${TFLITE_SOURCE_DIR}/nnapi/nnapi_util.cc
   )
 endif()
+if(NOT TFLITE_ENABLE_GPU)
+  list(APPEND TEST_FRAMEWORK_SRC
+    ${TFLITE_SOURCE_DIR}/tools/versioning/op_signature.cc
+  )
+endif()
 
 set(TEST_FRAMEWORK_OPTIONS "")
 if(TFLITE_ENABLE_XNNPACK)
