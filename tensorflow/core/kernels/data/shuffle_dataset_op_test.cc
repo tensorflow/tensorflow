@@ -208,6 +208,19 @@ ShuffleDatasetParams ShuffleDatasetParams8() {
                               /*node_name=*/kShuffleAndRepeatNodeName);
 }
 
+// Test case 4: similar with the test case 2 but a buffer size of UNKNOWN.
+ShuffleDatasetParams ShuffleDatasetParamsWithUnknownCardinality() {
+  return ShuffleDatasetParams(RangeDatasetParams(0, 10, 1),
+                              /*buffer_size=*/-2,
+                              /*seed=*/1,
+                              /*seed2=*/2,
+                              /*count=*/1,
+                              /*reshuffle_each_iteration=*/true,
+                              /*output_dtypes=*/{DT_INT64},
+                              /*output_shapes=*/{PartialTensorShape({})},
+                              /*node_name=*/kShuffleNodeName);
+}
+
 ShuffleDatasetParams ShuffleDatasetParamsWithInvalidBufferSize() {
   return ShuffleDatasetParams(RangeDatasetParams(0, 0, 1),
                               /*buffer_size=*/-1,
@@ -316,7 +329,15 @@ std::vector<GetNextTestCase<ShuffleDatasetParams>> GetNextTestCases() {
        CreateTensors<int64_t>(
            TensorShape({}),
            {{2}, {0}, {1}, {2}, {0}, {1}, {2}, {0}, {1}, {2}, {0},
-            {1}, {2}, {0}, {1}, {2}, {0}, {1}, {2}, {0}, {1}})}};
+            {1}, {2}, {0}, {1}, {2}, {0}, {1}, {2}, {0}, {1}})},
+      {/*dataset_params=*/ShuffleDatasetParamsWithUnknownCardinality(),
+       /*expected_shuffle_outputs=*/
+       CreateTensors<int64_t>(
+           TensorShape({}), {{2}, {6}, {1}, {3}, {9}, {5}, {0}, {8}, {7}, {4}}),
+       /*expected_reshuffle_outputs=*/
+       CreateTensors<int64_t>(
+           TensorShape({}),
+           {{1}, {6}, {0}, {5}, {2}, {7}, {4}, {3}, {9}, {8}})}};
 }
 
 class ParameterizedGetNextTest : public ShuffleDatasetOpTest,
@@ -428,7 +449,9 @@ std::vector<CardinalityTestCase<ShuffleDatasetParams>> CardinalityTestCases() {
           {/*dataset_params=*/ShuffleDatasetParams7(),
            /*expected_cardinality=*/20},
           {/*dataset_params=*/ShuffleDatasetParams8(),
-           /*expected_cardinality=*/kInfiniteCardinality}};
+           /*expected_cardinality=*/kInfiniteCardinality},
+          {/*dataset_params=*/ShuffleDatasetParamsWithUnknownCardinality(),
+           /*expected_cardinality=*/10}};
 }
 
 DATASET_CARDINALITY_TEST_P(ShuffleDatasetOpTest, ShuffleDatasetParams,
@@ -508,7 +531,13 @@ IteratorSaveAndRestoreTestCases() {
            CreateTensors<int64_t>(
                TensorShape({}),
                {{2}, {0}, {1}, {2}, {0}, {1}, {2}, {0}, {1}, {2}, {0},
-                {1}, {2}, {0}, {1}, {2}, {0}, {1}, {2}, {0}, {1}})}};
+                {1}, {2}, {0}, {1}, {2}, {0}, {1}, {2}, {0}, {1}})},
+          {/*dataset_params=*/ShuffleDatasetParamsWithUnknownCardinality(),
+           /*breakpoints=*/{0, 4, 11},
+           /*expected_shuffle_outputs=*/
+           CreateTensors<int64_t>(
+               TensorShape({}),
+               {{2}, {6}, {1}, {3}, {9}, {5}, {0}, {8}, {7}, {4}})}};
 }
 
 class ParameterizedIteratorSaveAndRestoreTest

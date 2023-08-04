@@ -52,10 +52,6 @@ class TfrtGraphExecutionState {
 
   struct Options {
     bool run_placer_grappler_on_functions = false;
-    // TODO(b/262826012): Remove the flag after we switch to using bridge.
-    bool enable_tfrt_gpu = false;
-    // TODO(b/260915352): Remove the flag and default to using bridge.
-    bool use_bridge_for_gpu = false;
     bool run_placer_on_graph = true;
   };
 
@@ -97,13 +93,13 @@ class TfrtGraphExecutionState {
     return graph_execution_state_->original_graph_def();
   }
 
- private:
   // Return the function library in the original graph.
   const FunctionLibraryDefinition& flib_def() const {
     absl::MutexLock lock(&graph_execution_state_mu_);
     return graph_execution_state_->flib_def();
   }
 
+ private:
   StatusOr<std::unique_ptr<tensorflow::Graph>> OptimizeGraph(
       const tensorflow::Graph& graph,
       const tensorflow::BuildGraphOptions& build_graph_options);
@@ -118,7 +114,8 @@ class TfrtGraphExecutionState {
 
   const FallbackState& fallback_state_;
   // Only valid if `options_.run_placer_grappler_on_functions` is true.
-  absl::flat_hash_set<std::string> functions_to_optimize_;
+  absl::flat_hash_set<std::string> functions_to_optimize_
+      ABSL_GUARDED_BY(graph_execution_state_mu_);
 };
 
 // Prunes the `graph_def` using the feed/fetch nodes specified in
@@ -137,12 +134,6 @@ Status EliminateRefVariablesFromV1ControlFlow(GraphDef& graph_def);
 
 // Removes the "_input_shapes" attribute of functions in the graph.
 void RemoveInputShapesInFunctions(tensorflow::GraphDef& graph_def);
-
-// Replaces partitioned calls in the graph that have _XlaMustCompile attribute
-// set to true with XlaLaunch op.
-// TODO(b/239089915): Clean this up after the logic is implemented in TFXLA
-// bridge.
-Status BuildXlaLaunchOps(Graph* graph);
 
 }  // namespace tfrt_stub
 }  // namespace tensorflow

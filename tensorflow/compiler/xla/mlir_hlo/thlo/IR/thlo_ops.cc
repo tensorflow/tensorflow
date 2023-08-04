@@ -175,7 +175,7 @@ SmallVector<utils::IteratorType> getParallelIteratorTypes(int64_t dimCount) {
 SmallVector<Range> getIterationDomainForTensor(OpBuilder &b, Location loc,
                                                Value tensor,
                                                int64_t dimCount = -1) {
-  auto dimValues = tensor::createDimValues(b, loc, tensor);
+  auto dimValues = tensor::getMixedSizes(b, loc, tensor);
   if (dimCount >= 0) dimValues.resize(dimCount);
   return llvm::to_vector(llvm::map_range(dimValues, [&](OpFoldResult d) {
     return Range{b.getIndexAttr(0), d, b.getIndexAttr(1)};
@@ -307,10 +307,10 @@ Value getSingleOperandTiledImplementationForConcatRecursively(
   assert(remainingOperands.size() > 1 &&
          "expect more than one operand at this point");
   Value leadingOperandSizeInConcatDim =
-      b.create<tensor::DimOp>(loc, leadingOperand, concatDim);
+      b.createOrFold<tensor::DimOp>(loc, leadingOperand, concatDim);
   Value remainingOffsetInConcatDim =
       getValueOrCreateConstantIndexOp(b, loc, remainingOffsets[concatDim]);
-  Value leadingOperandPredicate = b.create<arith::CmpIOp>(
+  Value leadingOperandPredicate = b.createOrFold<arith::CmpIOp>(
       loc, arith::CmpIPredicate::ult, remainingOffsetInConcatDim,
       leadingOperandSizeInConcatDim);
   auto ifOp = b.create<scf::IfOp>(
@@ -322,10 +322,9 @@ Value getSingleOperandTiledImplementationForConcatRecursively(
         b.create<scf::YieldOp>(loc, tiledConcat);
       },
       [&](OpBuilder &b, Location loc) {
-        remainingOffsets[concatDim] =
-            b.create<arith::SubIOp>(loc, remainingOffsetInConcatDim,
-                                    leadingOperandSizeInConcatDim)
-                .getResult();
+        remainingOffsets[concatDim] = getAsOpFoldResult(
+            b.createOrFold<arith::SubIOp>(loc, remainingOffsetInConcatDim,
+                                          leadingOperandSizeInConcatDim));
         Value tiledConcat =
             getSingleOperandTiledImplementationForConcatRecursively(
                 b, loc, concatDim, remainingOperands.drop_front(),
@@ -378,16 +377,18 @@ Value getGenericTiledImplementationForConcat(ConcatenateOp op, OpBuilder &b,
     // the remaining offset clamped into the bounds of the operand. Note that
     // the remaining offset is always >= 0.
     Value operandSizeInConcatDim =
-        b.create<tensor::DimOp>(loc, operand, concatDimCst);
-    Value operandTileOffsetInConcatDim = b.create<arith::MinUIOp>(
+        b.createOrFold<tensor::DimOp>(loc, operand, concatDimCst);
+    Value operandTileOffsetInConcatDim = b.createOrFold<arith::MinUIOp>(
         loc, remainingTileOffsetInConcatDim, operandSizeInConcatDim);
-    operandTileOffsetsBase[concatDim] = operandTileOffsetInConcatDim;
+    operandTileOffsetsBase[concatDim] =
+        getAsOpFoldResult(operandTileOffsetInConcatDim);
 
     // Find the current operand's tile size in the concat dimension.
-    Value remainingOperandSizeInConcatDim = b.create<arith::SubIOp>(
+    Value remainingOperandSizeInConcatDim = b.createOrFold<arith::SubIOp>(
         loc, operandSizeInConcatDim, operandTileOffsetInConcatDim);
-    operandTileSizesBase[concatDim] = b.createOrFold<arith::MinUIOp>(
-        loc, remainingOperandSizeInConcatDim, maxTileSizeInConcatDim);
+    operandTileSizesBase[concatDim] =
+        getAsOpFoldResult(b.createOrFold<arith::MinUIOp>(
+            loc, remainingOperandSizeInConcatDim, maxTileSizeInConcatDim));
 
     // Create the operand tile and materialize the subset for this operand.
     tiledOperands.push_back(
@@ -398,13 +399,13 @@ Value getGenericTiledImplementationForConcat(ConcatenateOp op, OpBuilder &b,
     // concat dimension. The remaining offset is subtracted by the operand's
     // size but must remain >= 0.
     if (operand != op.getInputs().back()) {
-      Value cmp = b.create<arith::CmpIOp>(loc, arith::CmpIPredicate::ule,
-                                          remainingTileOffsetInConcatDim,
-                                          operandSizeInConcatDim);
-      Value sub = b.create<arith::SubIOp>(loc, remainingTileOffsetInConcatDim,
-                                          operandSizeInConcatDim);
+      Value cmp = b.createOrFold<arith::CmpIOp>(loc, arith::CmpIPredicate::ule,
+                                                remainingTileOffsetInConcatDim,
+                                                operandSizeInConcatDim);
+      Value sub = b.createOrFold<arith::SubIOp>(
+          loc, remainingTileOffsetInConcatDim, operandSizeInConcatDim);
       remainingTileOffsetInConcatDim =
-          b.create<arith::SelectOp>(loc, cmp, zeroCst, sub);
+          b.createOrFold<arith::SelectOp>(loc, cmp, zeroCst, sub);
     }
   }
 
@@ -860,7 +861,7 @@ LogicalResult ScatterOp::getResultTilePosition(
   auto init = scatterOp.getInit();
   resultOffsets =
       SmallVector<OpFoldResult>(init.getType().getRank(), b.getIndexAttr(0));
-  resultSizes = tensor::createDimValues(b, scatterOp.getLoc(), init);
+  resultSizes = tensor::getMixedSizes(b, scatterOp.getLoc(), init);
   return success();
 }
 
@@ -961,7 +962,7 @@ LogicalResult GatherOp::getResultTilePosition(
   resultOffsets =
       SmallVector<OpFoldResult>(init.getType().getRank(), b.getIndexAttr(0));
   resultOffsets.front() = offsets.front();
-  resultSizes = tensor::createDimValues(b, gatherOp.getLoc(), init);
+  resultSizes = tensor::getMixedSizes(b, gatherOp.getLoc(), init);
   resultSizes.front() = sizes.front();
   return success();
 }

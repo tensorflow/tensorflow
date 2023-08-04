@@ -17,18 +17,18 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/log/log.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/bridge_logger.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/dtensor_utils.h"
 #include "tensorflow/dtensor/mlir/create_dtensor_mlir_passes.h"
-#include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/utils/dtensor_mlir_passes_internal.h"
 
 namespace tensorflow {
@@ -39,9 +39,11 @@ class ConditionalPrinter : public BridgeLoggerConfig {
   bool do_not_print_;
 
  public:
-  explicit ConditionalPrinter(bool print_module_scope = false,
-                              bool print_after_only_on_change = true)
-      : BridgeLoggerConfig(print_module_scope, print_after_only_on_change) {
+  explicit ConditionalPrinter(
+      bool print_module_scope = false, bool print_after_only_on_change = true,
+      mlir::OpPrintingFlags op_printing_flags = mlir::OpPrintingFlags())
+      : BridgeLoggerConfig(print_module_scope, print_after_only_on_change,
+                           op_printing_flags) {
     do_not_print_ = !(LogOnAllTasks() || (ClientId() == 0));
   }
 
@@ -50,6 +52,15 @@ class ConditionalPrinter : public BridgeLoggerConfig {
 
   void printAfterIfEnabled(mlir::Pass *pass, mlir::Operation *operation,
                            PrintCallbackFn print_callback) override {
+    // NOTE(b/284312504): Disable dumping of
+    // FunctionalToExecutorDialectConversionPass as it tends to get very large
+    // being a nested pass on FuncOp before inliner.
+    if (pass->getName() == "ExecutorDialectToFunctionalPass") {
+      return;
+    }
+    if (pass->getName() == "FunctionalToExecutorDialectConversionPass") {
+      return;
+    }
     mlir::ModuleOp module = mlir::dyn_cast<mlir::ModuleOp>(operation);
     if (!module) module = operation->getParentOfType<mlir::ModuleOp>();
     if (module && !module->hasAttr(dtensor::kDoNotLog) && !do_not_print_)
@@ -64,8 +75,15 @@ bool MaybeEnableLogging(mlir::PassManager *pm) {
     // Print the whole module after each pass, which requires disabling
     // multi-threading as well.
     pm->getContext()->disableMultithreading();
+    mlir::OpPrintingFlags flags;
+    if (VLOG_IS_ON(5)) {
+      // Enable debug information, which includes the call stack of each op.
+      // This might generate a huge MLIR graph dump, so put it under VLOG(5).
+      flags = flags.enableDebugInfo(true, true).useLocalScope();
+    }
     pm->enableIRPrinting(std::make_unique<ConditionalPrinter>(
-        /*print_module_scope=*/true));
+        /*print_module_scope=*/true, /*print_after_only_on_change=*/true,
+        flags));
     return true;
   }
   return false;
@@ -93,6 +111,10 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
   pm->addPass(mlir::TF::CreateTFFunctionalControlFlowToRegions());
   pm->addPass(mlir::createInlinerPass());
 
+  // An additional shape inference to catch any newly created constants
+  // from canonicalizer.
+  pm->addPass(mlir::TF::CreateTFShapeInferencePass());
+
   // Ensure that all functions have `device_id` as 0th argument.
   pm->addPass(CreateDTensorPropagateDeviceIdToFunctionArgs());
 
@@ -101,10 +123,8 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
   // of a SparseTensor.
   pm->addPass(CreateDTensorSparseTensorToDenseTensor());
 
-  AddDTensorEmbeddingPass(pm);
-
   // After shape inference, there may be unused constants ops added when
-  // propagating caller-callee constants. As DTensor mesh/layout propgation
+  // propagating caller-callee constants. As DTensor mesh/layout propagation
   // passes assumes that there are no unreachable ops, removes trivial unused
   // ops. Note that `Canonicalizer` pass in TF includes similar optimization.
   // However, canonicalizer pass also rewrites some ops and may remove `_layout`
@@ -139,19 +159,18 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
     func_pm.addPass(CreateDTensorDesignateResourceHandleMesh());
   }
 
+  // Clone Control Flow.
+  pm->addPass(CreateDTensorDecomposeControlflowPass());
+
   // Validates that all cross mesh data transfers are expressed via
   // DTensorLayout operation and lowers it to send/recvs.
   pm->addPass(CreateDTensorHandleCrossClusterDependencies());
 
-  // Mark all ops and functions with global shape attribute to preserve global
-  // shape information as it is needed during Layout Propagation and SPMD
-  // expansion.
-  pm->addPass(CreateDTensorAnnotateGlobalShape());
-
-  // Propagate layout to all ops in graph.
+  // Merge Clusters
   pm->addPass(CreateDTensorMergeClustersPass());
 
-  AddDTensorEmbeddingPassV2(pm);
+  ////////
+  // Propagate layout to all ops in graph.
 
   // For DTensor Checkpoint V2, the outputs of tf.RestoreV2 ops
   // do not have shape information. We can infer the shapes of these
@@ -159,14 +178,16 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
   // This pass fills in all missing shapes caused by tf.RestoreV2 ops.
   pm->addPass(CreateDTensorInferShapesForRestoreV2Op());
 
+  // Mark all ops and functions with global shape attribute to preserve global
+  // shape information as it is needed during Layout Propagation and SPMD
+  // expansion.
+  pm->addPass(CreateDTensorAnnotateGlobalShape());
+
   pm->addPass(CreateDTensorLayoutPropagationPassV2());
 
   // Expand graph to SPMD form given layouts are annotated to all ops.
   // Remove all DTensorLayout ops after the expansion is done.
   pm->addPass(CreateDTensorSPMDExpansion());
-
-  // Insert functions to save or load embeddings when using tpu device.
-  AddDTensorEmbeddingCheckpointPass(pm);
 
   // Expand all ops that consume SparseTensors to possibly new ops.
   // Remove any unused SparseToDense, Layout, and Const Ops after
@@ -200,9 +221,13 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
 
   AddDTensorAllReduceCombineOptimization(pm);
 
+  // Lowers complex and other unsupported types to supported types.
+  pm->addNestedPass<mlir::func::FuncOp>(
+      CreateDTensorCollectiveTypeLoweringPass());
+
   // DTensorReduceScatter lowering should come before DTensorAllReduce
   // and DTensorAllScatter lowerings since for some devices DTensorReduceScatter
-  // will be decomposed into an DTensorAllReduce+DTensorScatter.
+  // will be decomposed into a DTensorAllReduce+DTensorScatter.
   pm->addPass(CreateDTensorReduceScatterLoweringPass());
 
   // For large enough reduction groups in reduction ops, upcast the input
@@ -228,6 +253,8 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
   pm->addPass(CreateDTensorAllReduceLoweringPass());
 
   pm->addPass(CreateDTensorAllScatterLoweringPass());
+
+  pm->addPass(CreateDTensorAllToAllLoweringPass());
 
   // Group together multiple device clusters assigned to the same mesh. Repeat
   // this for every mesh to support multi-mesh. Collective lowering may have
@@ -299,6 +326,9 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
     // Rename functions with unique names, to avoid collisions in the function
     // library.
     pm->addPass(CreateFunctionRenamingPass());
+
+    // Expands the DTensor call ops across devices within a "multi-device" main.
+    pm->addPass(CreateDTensorMultiDeviceExpansionPass());
 
     // As DTensor SPMD expansion handles sharded inputs for model
     // parallelism, we set input/output sharding to maximal sharding

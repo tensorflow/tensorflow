@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL)
 
 #define EIGEN_USE_THREADS
 
@@ -72,7 +72,12 @@ class MklDequantizeOp : public OpKernel {
       MklDnnData<float> dst(&cpu_engine);
 
       std::shared_ptr<stream> reorder_stream;
-      MklDnnThreadPool eigen_tp(ctx);
+      // Create the oneDNN wrapper over Eigen threadpool and set max threads
+      // in oneDNN.
+      Eigen::ThreadPoolInterface* eigen_interface =
+          EigenThreadPoolFromTfContext(ctx);
+      tsl::OneDnnThreadPool eigen_tp(eigen_interface,
+                                     ThreadPoolUseCallerThread());
       reorder_stream.reset(CreateStream(&eigen_tp, cpu_engine));
 
       memory::format_tag dst_layout_type;
@@ -147,7 +152,15 @@ class MklDequantizeOp : public OpKernel {
       std::vector<float> scales;
       scales.push_back(scale_factor);
       primitive_attr attr;
+#ifndef ENABLE_ONEDNN_V3
       attr.set_output_scales(0, scales);
+#else
+      attr.set_scales_mask(DNNL_ARG_SRC, 0);
+      auto scale_mem = memory({{static_cast<int64_t>(scales.size())},
+                               MklDnnType<float>(),
+                               memory::format_tag::x},
+                              cpu_engine, scales.data());
+#endif  // !ENABLE_ONEDNN_V3
       std::vector<primitive> net;
 
       // Create reorder primitive and then execute.
@@ -156,8 +169,16 @@ class MklDequantizeOp : public OpKernel {
                     dst.GetUsrMem()->get_desc(), attr);
       net.push_back(reorder(reorder_pd));
       std::vector<std::unordered_map<int, memory>> reorder_net_args;
+#ifndef ENABLE_ONEDNN_V3
+      reorder_net_args.push_back({{DNNL_ARG_FROM, *src.GetUsrMem()},
+                                  { DNNL_ARG_TO,
+                                    *dst.GetUsrMem() }});
+#else
       reorder_net_args.push_back(
-          {{DNNL_ARG_FROM, *src.GetUsrMem()}, {DNNL_ARG_TO, *dst.GetUsrMem()}});
+          {{DNNL_ARG_FROM, *src.GetUsrMem()},
+           {DNNL_ARG_TO, *dst.GetUsrMem()},
+           {DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC, scale_mem}});
+#endif  // !ENABLE_ONEDNN_V3
       execute_primitives(net, reorder_stream, reorder_net_args);
     } catch (dnnl::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +

@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
 #include "tensorflow/compiler/xla/stream_executor/temporary_device_memory.h"
-#include "tensorflow/compiler/xla/stream_executor/timer.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_c_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_interface.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform.h"
@@ -52,15 +51,10 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
   using StatusCallback = std::function<void(const tsl::Status&)>;
   using Stream = ::stream_executor::Stream;
   using Event = ::stream_executor::Event;
-  using Timer = ::stream_executor::Timer;
   using DeviceMemoryBase = ::stream_executor::DeviceMemoryBase;
   using StreamInterface = ::stream_executor::internal::StreamInterface;
   using StreamExecutorInterface =
       ::stream_executor::internal::StreamExecutorInterface;
-
-  using TimerMap =
-      absl::flat_hash_map<stream_executor::internal::TimerInterface*,
-                          SE_Timer*>;
 
   explicit TpuExecutor(::tensorflow::tpu::TpuPlatformInterface* platform,
                        SE_StreamExecutor* executor)
@@ -76,8 +70,6 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
   tsl::Status AllocateEvent(Event* event) override;
 
   bool AllocateStream(Stream* stream) override;
-
-  bool AllocateTimer(Timer* timer) override;
 
   tsl::Status BlockHostUntilDone(::stream_executor::Stream* stream) override;
 
@@ -96,8 +88,6 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
 
   tsl::Status DeallocateEvent(Event* event) override;
 
-  void DeallocateTimer(Timer* timer) override;
-
   bool DeviceMemoryUsage(int64_t* free, int64_t* total) const override;
 
   void DequeueOutfeed(int32_t outfeed_queue_index, absl::Span<uint8_t> bytes,
@@ -115,9 +105,6 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
 
   std::unique_ptr<::stream_executor::internal::StreamInterface>
   GetStreamImplementation() override;
-
-  std::unique_ptr<::stream_executor::internal::TimerInterface>
-  GetTimerImplementation() override;
 
   std::unique_ptr<::stream_executor::internal::EventInterface>
   CreateEventImplementation() override;
@@ -157,9 +144,6 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
                           ::stream_executor::Event* event) override;
   tsl::Status WaitForEvent(Stream* stream,
                            ::stream_executor::Event* event) override;
-
-  bool StartTimer(Stream* stream, ::stream_executor::Timer* timer) override;
-  bool StopTimer(Stream* stream, ::stream_executor::Timer* timer) override;
 
   tsl::Status WaitForInfeedReady(int32_t infeed_queue_index);
 
@@ -249,7 +233,6 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
     return stream_map()[ptr];
   }
 
-  TimerMap timer_map_;
   tensorflow::tpu::TpuPlatformInterface* platform_;
   SE_StreamExecutor* executor_;
 };

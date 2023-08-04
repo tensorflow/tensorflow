@@ -191,13 +191,6 @@ class ImmediateExecutionContext : public AbstractContext {
   // to invoke MLIR compiler passes.
   virtual FunctionLibraryDefinition* FuncLibDef() = 0;
 
-  // When tensor transfer across functions/eager executions using send/recv ops
-  // are required, `reuse_rendezvous_for_functions_` can be set to true so that
-  // function executions and eager executions use the same rendezvous instance,
-  // instead of creating new instance per function calls.
-  virtual void SetReuseRendezvousForFunctions(
-      bool reuse_rendezvous_for_functions) = 0;
-
   // Resets the global rendezvous used for functions.
   virtual void ResetGlobalRendezvousForFunction() = 0;
 
@@ -253,6 +246,7 @@ class ImmediateExecutionContext : public AbstractContext {
     int64_t kernel_cache_size;
     int64_t device_cache_size;
     std::map<std::string, int64_t> func_kernel_cache_entries;
+    int64_t local_rendezvous_cache_active_size;
   };
   virtual CacheStats GetCacheStats() = 0;
 

@@ -37,30 +37,24 @@ class UnaryOpsLargeTensorTest : public UnaryOpsTestBase {
 
 /// Test `tf.Abs`.
 
-#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) && \
-    defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
-
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 TEST_F(UnaryOpsLargeTensorTest, Abs) {
   Test<float, float, float, float>(
       "Abs", test::DefaultInputShapeExceedingInt32(),
       test::DefaultInput<float>(), std::abs,
       test::OpsTestConfig().ExpectStrictlyEqual().SuppressTolerance());
 }
-
 #endif
 
 /// Test `tf.Atanh`.
 
-#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) && \
-    defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
-
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 TEST_F(UnaryOpsLargeTensorTest, Atanh) {
   Test<float, float, float, float>("Atanh",
                                    test::DefaultInputShapeExceedingInt32(),
                                    test::DefaultInput<float>(), std::atanh,
                                    test::OpsTestConfig().ExpectStrictlyEqual());
 }
-
 #endif
 
 }  // namespace

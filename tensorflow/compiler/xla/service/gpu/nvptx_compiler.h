@@ -16,16 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_NVPTX_COMPILER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_NVPTX_COMPILER_H_
 
-#include <memory>
-#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_compiler.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/device_description.h"
+#include "tensorflow/compiler/xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -44,9 +44,27 @@ class NVPTXCompiler : public GpuCompiler {
 
   Status OptimizeHloPostLayoutAssignment(
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
-      se::DeviceMemoryAllocator* device_allocator,
-      const GpuTargetConfig& gpu_target_config,
+      const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
       const AutotuneResults* autotune_results) override;
+
+  bool EnableCollectiveScheduleLinearizerForSpmd(
+      HloModule* hlo_module, se::StreamExecutor* stream_exec) override;
+
+  bool RequiresCollectiveScheduleLinearizer(const HloModule* module) override;
+
+  Status AddAutotuningPasses(HloPassPipeline* pipeline, HloModule* hlo_module,
+                             se::StreamExecutor* stream_exec,
+                             const DebugOptions& debug_options,
+                             const CompileOptions& options,
+                             const GpuTargetConfig& gpu_target_config,
+                             const AutotuneResults* autotune_results,
+                             tsl::thread::ThreadPool* thread_pool) override;
+
+  Status LoadAutotuneResultsFromFile(
+      const DebugOptions& debug_options) override;
+
+  Status SerializeAutotuneResultsToFile(
+      const DebugOptions& debug_options) override;
 
   HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer() override;
 
@@ -54,8 +72,8 @@ class NVPTXCompiler : public GpuCompiler {
 
   StatusOr<std::pair<std::string, std::vector<uint8_t>>> CompileTargetBinary(
       const HloModuleConfig& module_config, llvm::Module* llvm_module,
-      GpuVersion gpu_version, bool relocatable,
-      const HloModule* debug_module) override;
+      GpuVersion gpu_version, bool relocatable, const HloModule* debug_module,
+      const CompileOptions& options) override;
 
  private:
   StatusOr<bool> CanUseLinkModules(
@@ -68,22 +86,23 @@ class NVPTXCompiler : public GpuCompiler {
 
   absl::Mutex mutex_;
 
-  // When compiling an HLO module, we need to find a path to the nvvm libdevice
-  // files.  We search in the module's config.debug_options().cuda_data_dir()
-  // and in tensorflow::LibdeviceRoot(), the latter of which is a constant.
-  //
-  // We cache the cuda_data_dir() and the result of our search, so that if the
-  // next module we have to compile has the same cuda_data_dir(), we can skip
-  // the search.
-  std::string cached_cuda_data_dir_ ABSL_GUARDED_BY(mutex_);
-  std::string cached_libdevice_dir_ ABSL_GUARDED_BY(mutex_);
+  enum class LinkingMethod {
+    kNone,
+    kNvLink,
+    kDriver,
+  };
+  absl::flat_hash_map<std::string, LinkingMethod> linking_methods_
+      ABSL_GUARDED_BY(mutex_);
+
+  StatusOr<LinkingMethod> ChooseLinkingMethod(
+      const std::string& preferred_cuda_dir);
 
   // Tries to compile the given ptx string to cubin.  Returns a vector with the
   // compiled cubin.  If compilation was unsuccessful, returns an empty vector.
   std::vector<uint8_t> CompileGpuAsmOrGetCachedResult(
       const std::string& ptx, se::CudaComputeCapability cc,
       const HloModuleConfig& hlo_module_config, absl::string_view module_name,
-      bool relocatable);
+      bool relocatable, const CompileOptions& options);
 
   // The compilation_cache_ map is a cache from {ptx string, cc_major, cc_minor}
   // -> cubin so we don't recompile the same ptx twice.  This is important for

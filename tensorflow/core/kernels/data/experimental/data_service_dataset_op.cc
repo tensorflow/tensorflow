@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/experimental/data_service_dataset_op.h"
 
 #include <algorithm>
+#include <atomic>
 #include <functional>
 #include <limits>
 #include <memory>
@@ -40,10 +41,13 @@ limitations under the License.
 #include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
+#include "tensorflow/core/data/utils.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/dataset.pb.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/model.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -383,6 +387,23 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         iterator_->RecordBufferDequeue(&ctx_, element);
       }
 
+      double GetTargetProcessingTimeNsec() const override {
+        if (ctx_.model() == nullptr) {
+          LOG(WARNING) << "tf.data Model is null in DataServiceIteratorContext";
+          return 0.0;
+        }
+
+        double target_time_nsec =
+            ctx_.model()->ComputeExperimentalTargetTimeNsec();
+        if (target_time_nsec == 0.0) return 0.0;
+
+        model::ModelTiming model_timing(ctx_.model()->output());
+        const model::ModelTiming::NodeTiming* data_service_node_timing =
+            model_timing.GetTiming(iterator_->model_node().get());
+
+        return target_time_nsec / data_service_node_timing->pipeline_ratio;
+      }
+
      private:
       IteratorContext ctx_;
       Iterator* iterator_ = nullptr;
@@ -597,6 +618,20 @@ void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
         should_uncompress &&
         (*compression == DataServiceMetadata::COMPRESSION_SNAPPY);
   }
+  if (should_uncompress) {
+    StatusOr<std::optional<std::string>> trainer_compression_info =
+        TrainerCompressionInfo(data_transfer_protocol_,
+                               config->deployment_mode());
+    OP_REQUIRES_OK(ctx, trainer_compression_info.status());
+    StatusOr<bool> compression_disabled_at_runtime =
+        CompressionDisabledAtRuntime(dataset_id, address, protocol,
+                                     *trainer_compression_info);
+    OP_REQUIRES_OK(ctx, compression_disabled_at_runtime.status());
+    metrics::RecordTFDataServiceRuntimeCompressionDecision(
+        *compression_disabled_at_runtime);
+    should_uncompress = should_uncompress && !*compression_disabled_at_runtime;
+  }
+
   DataTypeVector data_service_output_types = output_types_;
   std::vector<PartialTensorShape> data_service_output_shapes = output_shapes_;
   if (should_uncompress) {

@@ -91,7 +91,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_TYPES_EQ(context, op_context.input->type,
                           op_context.output->type);
 
-  if (!IsConstantTensor(op_context.perm)) {
+  if (!IsConstantOrPersistentTensor(op_context.perm)) {
     SetTensorToDynamic(op_context.output);
     return kTfLiteOk;
   }
@@ -116,8 +116,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   CpuBackendContext* cpu_backend_context =
       CpuBackendContext::GetFromContext(context);
   pthreadpool_t threadpool = cpu_backend_context->get_xnnpack_threadpool();
-  // TODO (grantjensen): Add threading.
-  threadpool = nullptr;
   std::array<size_t, kTransposeMaxDimensions> xnn_input_shape;
   std::array<size_t, kTransposeMaxDimensions> xnn_perm;
   TfLiteIntArray* input_shape = op_context.input->dims;

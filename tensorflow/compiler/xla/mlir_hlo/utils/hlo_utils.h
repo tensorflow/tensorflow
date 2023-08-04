@@ -16,7 +16,10 @@ limitations under the License.
 #ifndef MLIR_HLO_UTILS_HLO_UTILS_H
 #define MLIR_HLO_UTILS_HLO_UTILS_H
 
+#include <complex>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -123,7 +126,7 @@ static Value getConstantLike(OpBuilder& b, Location loc, T constant,
       return complex::NumberAttr::get(complexTy, constant, 0);
     llvm_unreachable("unhandled element type");
   };
-  return b.create<ConstantLikeOp>(loc, getAttr(), val);
+  return b.create<ConstantLikeOp>(loc, cast<TypedAttr>(getAttr()), val);
 }
 
 Value getConstantLike(OpBuilder& b, Location loc, const APFloat& constant,

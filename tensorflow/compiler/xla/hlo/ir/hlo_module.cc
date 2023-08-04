@@ -31,8 +31,10 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
+#include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
 #include "tensorflow/compiler/xla/map_util.h"
@@ -80,6 +82,29 @@ void HloModule::ReplaceEntryComputation(HloComputation* entry_computation) {
       entry_computation_->ComputeProgramShape());
   input_output_alias_config_ = HloInputOutputAliasConfig(
       entry_computation_->root_instruction()->shape());
+  buffer_donor_config_ = HloBufferDonorConfig();
+}
+
+HloModule::StackFrame HloModule::get_stack_frame(int id) const {
+  HloModule::StackFrame stack_frame;
+  if (!stack_frame_index_.has_value() || id < 1 ||
+      id > stack_frame_index_->stack_frames().size()) {
+    return stack_frame;
+  }
+
+  auto& frame = stack_frame_index_->stack_frames(id - 1);
+  auto& file_location =
+      stack_frame_index_->file_locations(frame.file_location_id() - 1);
+
+  stack_frame.file_name =
+      stack_frame_index_->file_names(file_location.file_name_id() - 1);
+  stack_frame.function_name =
+      stack_frame_index_->function_names(file_location.function_name_id() - 1);
+  stack_frame.line = file_location.line();
+  stack_frame.column = file_location.column();
+  stack_frame.parent_frame_id = frame.parent_frame_id();
+
+  return stack_frame;
 }
 
 HloComputation* HloModule::AddComputationInternal(
@@ -100,6 +125,7 @@ HloComputation* HloModule::AddComputationInternal(
     }
     input_output_alias_config_ = HloInputOutputAliasConfig(
         entry_computation_->root_instruction()->shape());
+    buffer_donor_config_ = HloBufferDonorConfig();
   }
 
   if (uniquify_identifiers) {
@@ -195,6 +221,33 @@ void HloModule::MarkFusionDuplications(
   }
 }
 
+void HloModule::MoveComputationsFrom(HloModule* module) {
+  for (size_t i = 0; i < module->computation_count(); ++i) {
+    for (auto* instruction : module->computations_[i]->instructions()) {
+      instruction->ClearUniqueIdInternal();
+    }
+    module->computations_[i]->ClearUniqueIdInternal();
+    auto computation_raw_ptr = module->computations_[i].get();
+    if (computation_raw_ptr->IsEntryComputation()) {
+      this->entry_computation_ = nullptr;
+    }
+    this->AddComputationInternal(
+        std::move(module->computations_[i]),
+        /*is_entry=*/computation_raw_ptr->IsEntryComputation(),
+        /*uniquify_identifiers=*/false,
+        /*preserve_entry_layouts=*/false);
+    // Pick unique IDs for each instruction.
+    for (auto* instruction : computation_raw_ptr->instructions()) {
+      instruction->SetUniqueId(NewUniqueInstructionId());
+    }
+    // Set unique id to this computation_raw_ptr.
+    CHECK_NE(computation_raw_ptr->root_instruction()->unique_id(), -1)
+        << "Root has no valid id: " << computation_raw_ptr->ToString();
+    computation_raw_ptr->SetUniqueId(
+        computation_raw_ptr->root_instruction()->unique_id());
+  }
+}
+
 void HloModule::ReplaceComputations(
     const absl::flat_hash_map<HloComputation*, HloComputation*>& replacements) {
   // Replace all uses of non-canonical computations with their
@@ -283,6 +336,12 @@ void HloModule::Print(Printer* printer, const HloPrintOptions& options) const {
     printer->Append(std::move(serialized_aliasing));
     printer->Append(" }");
   }
+  std::string serialized_buffer_donor = buffer_donor_config().ToShortString();
+  if (!serialized_buffer_donor.empty()) {
+    printer->Append(", buffer_donor={ ");
+    printer->Append(std::move(serialized_buffer_donor));
+    printer->Append(" }");
+  }
   if (config_.alias_passthrough_params()) {
     printer->Append(", alias_passthrough_params=true");
   }
@@ -354,6 +413,7 @@ HloModuleProto HloModule::ToProto() const {
     *proto.mutable_schedule() = schedule().ToProto().value();
   }
   *proto.mutable_input_output_alias() = input_output_alias_config().ToProto();
+  *proto.mutable_buffer_donor() = buffer_donor_config().ToProto();
   *proto.mutable_dynamic_parameter_binding() =
       dynamic_parameter_binding().ToProto();
   for (const auto& [parameter, indices, alt_memory_offset] :
@@ -393,6 +453,10 @@ HloModuleProto HloModule::ToProto() const {
     TF_CHECK_OK(
         this->config_.static_device_assignment().Serialize(&device_assignment));
     (*proto.mutable_device_assignment()) = device_assignment;
+  }
+
+  if (stack_frame_index_.has_value()) {
+    (*proto.mutable_stack_frame_index()) = *stack_frame_index_;
   }
   return proto;
 }
@@ -510,6 +574,9 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
       module->input_output_alias_config_,
       HloInputOutputAliasConfig::CreateFromProto(
           entry->ComputeProgramShape().result(), proto.input_output_alias()));
+  TF_ASSIGN_OR_RETURN(
+      module->buffer_donor_config_,
+      HloBufferDonorConfig::CreateFromProto(proto.buffer_donor()));
 
   // Because we didn't uniquify the names or the ids, double-check that the
   // instruction and computation names and ids are unique from the proto.
@@ -563,6 +630,12 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
           std::unique_ptr<DeviceAssignment> device_assignment,
           DeviceAssignment::Deserialize(proto.device_assignment()));
       module->config_.set_static_device_assignment(*device_assignment);
+    }
+  }
+
+  if (proto.has_stack_frame_index()) {
+    if (!module->stack_frame_index_.has_value()) {
+      module->stack_frame_index_ = std::move(proto.stack_frame_index());
     }
   }
   return std::move(module);
@@ -949,6 +1022,7 @@ std::unique_ptr<HloModule> HloModule::Clone(const HloModuleConfig& config,
   auto cloned_computation = entry_computation_->Clone(suffix, &context);
   module->AddEntryComputation(std::move(cloned_computation));
   module->input_output_alias_config() = input_output_alias_config();
+  module->buffer_donor_config() = buffer_donor_config();
   module->set_is_dynamic(is_dynamic());
   if (has_schedule() && schedule().Verify().ok()) {
     HloSchedule clone_schedule(module.get());
@@ -1037,6 +1111,13 @@ HloComputation* HloModule::GetComputationWithName(absl::string_view name) {
       computations_in_module,
       [&](HloComputation* computation) { return computation->name() == name; });
   return it == computations_in_module.end() ? nullptr : *it;
+}
+
+std::string HloModule::GetFingerprint128(const HloPrintOptions& options) const {
+  const tsl::Fprint128 fingerprint = tsl::Fingerprint128(ToString(options));
+  absl::string_view fp_bytes(reinterpret_cast<const char*>(&fingerprint),
+                             sizeof(tsl::Fprint128));
+  return absl::BytesToHexString(fp_bytes);
 }
 
 /* static */ std::atomic<int> HloModule::next_unique_module_id_(0);

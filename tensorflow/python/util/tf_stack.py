@@ -18,7 +18,7 @@ import collections
 import inspect
 import threading
 
-# TODO(b/138203821): change to from ...util import ... once the bug is fixed.
+from tensorflow.core.framework import graph_debug_info_pb2
 from tensorflow.python.util import _tf_stack
 
 # Generally such lookups should be done using `threading.local()`. See
@@ -147,40 +147,41 @@ class CurrentModuleFilter(StackTraceFilter):
     return filtered_filenames
 
 
-def extract_stack():
+def extract_stack(stacklevel=1):
   """An eager-friendly alternative to traceback.extract_stack.
+
+  Args:
+    stacklevel: number of initial frames to skip when producing the stack.
 
   Returns:
     A list-like FrameSummary containing StackFrame-like objects, which are
     namedtuple-like objects with the following fields: filename, lineno, name,
     line, meant to masquerade as traceback.FrameSummary objects.
   """
-  # N.B ExtractStack in tf_stack.cc will drop this frame prior to
-  # traversing the stack.
-  # TODO(cheshire): Remove this function, use extract_stack_for_op or Python
-  # traceback module.
   thread_key = _get_thread_key()
   return _tf_stack.extract_stack(
       _source_mapper_stacks[thread_key][-1].internal_map,
-      _source_filter_stacks[thread_key][-1].internal_set)
+      _source_filter_stacks[thread_key][-1].internal_set,
+      stacklevel,
+  )
 
 
-# TODO(mdan): Revisit these - a single location is almost always sufficient.
-def extract_stack_for_op(c_op, stacklevel=1):
-  """Attaches the current stack trace to `c_op`.
-
-  Args:
-    c_op: a TF_Operation object.
-    stacklevel: An integer for ignoring Python wrapper stack frames.
-      The default value of 1 ignores this function from the frame.
-  """
-  # N.B ExtractStack in tf_stack.cc will drop this frame prior to
-  # traversing the stack.
-  thread_key = _get_thread_key()
-  _tf_stack.extract_stack_for_op(
-      _source_mapper_stacks[thread_key][-1].internal_map,
-      _source_filter_stacks[thread_key][-1].internal_set, c_op, stacklevel)
+def LoadTracesFromDebugInfo(debug_info):
+  return _tf_stack.LoadTracesFromDebugInfo(debug_info.SerializeToString())
 
 
-StackSummary = _tf_stack.StackTraceWrapper
+class GraphDebugInfoBuilder(_tf_stack.GraphDebugInfoBuilder):
+
+  def AppendGraphDebugInfo(self, fn_name, fn_debug_info):
+    debug_info_str = fn_debug_info.SerializeToString()
+    super().AppendGraphDebugInfo(fn_name, debug_info_str)
+
+  def Build(self):
+    debug_info_str = super().Build()
+    debug_info = graph_debug_info_pb2.GraphDebugInfo()
+    debug_info.ParseFromString(debug_info_str)
+    return debug_info
+
+
+StackSummary = _tf_stack.StackTrace
 FrameSummary = _tf_stack.StackFrame

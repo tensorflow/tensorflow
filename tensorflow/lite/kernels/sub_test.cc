@@ -137,6 +137,40 @@ TEST(FloatSubOpModel, SecondInputZero) {
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray<int>({0}));
 }
 
+TEST(FloatSubOpModel, NoActivationInplaceInput0) {
+  FloatSubOpModel m({TensorType_FLOAT32, {1, 2, 2, 1}},
+                    {TensorType_FLOAT32, {1, 2, 2, 1}},
+                    {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
+  const int kInplaceInputTensorIdx = 0;
+  const int kInplaceOutputTensorIdx = 0;
+  const TfLiteTensor* input_tensor = m.GetInputTensor(kInplaceInputTensorIdx);
+  TfLiteTensor* output_tensor = m.GetOutputTensor(kInplaceOutputTensorIdx);
+  output_tensor->data.data = input_tensor->data.data;
+  m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 1.7, 0.5});
+  m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.8});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray(ArrayFloatNear({-2.1, 0.0, 1.4, -0.3})));
+  EXPECT_EQ(output_tensor->data.data, input_tensor->data.data);
+}
+
+TEST(FloatSubOpModel, NoActivationInplaceInput1) {
+  FloatSubOpModel m({TensorType_FLOAT32, {1, 2, 2, 1}},
+                    {TensorType_FLOAT32, {1, 2, 2, 1}},
+                    {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
+  const int kInplaceInputTensorIdx = 1;
+  const int kInplaceOutputTensorIdx = 0;
+  const TfLiteTensor* input_tensor = m.GetInputTensor(kInplaceInputTensorIdx);
+  TfLiteTensor* output_tensor = m.GetOutputTensor(kInplaceOutputTensorIdx);
+  output_tensor->data.data = input_tensor->data.data;
+  m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 1.7, 0.5});
+  m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.8});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray(ArrayFloatNear({-2.1, 0.0, 1.4, -0.3})));
+  EXPECT_EQ(output_tensor->data.data, input_tensor->data.data);
+}
+
 TEST(FloatSubOpModel, NoActivation) {
   FloatSubOpModel m({TensorType_FLOAT32, {1, 2, 2, 1}},
                     {TensorType_FLOAT32, {1, 2, 2, 1}},

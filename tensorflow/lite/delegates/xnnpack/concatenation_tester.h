@@ -53,12 +53,45 @@ class ConcatenationTester {
       }
     }
     input_shapes_ = shapes;
+    input_scales_.resize(shapes.size(), 1);
+    output_scale_ = 1.f;
+    input_zero_points_.resize(shapes.size(), 0);
+    output_zero_point_ = 0;
     return *this;
   }
 
   inline std::vector<int32_t> InputShape(size_t i) const {
     return input_shapes_[i];
   }
+
+  inline ConcatenationTester& InputScales(const std::vector<float> scales) {
+    input_scales_ = scales;
+    return *this;
+  }
+
+  inline float InputScale(size_t i) const { return input_scales_[i]; }
+
+  inline ConcatenationTester& InputZeroPoint(
+      const std::vector<int32_t> zero_points) {
+    input_zero_points_ = zero_points;
+    return *this;
+  }
+
+  inline float InputZeroPoint(size_t i) const { return input_zero_points_[i]; }
+
+  inline ConcatenationTester& OutputScale(float scale) {
+    output_scale_ = scale;
+    return *this;
+  }
+
+  inline float OutputScale() const { return output_scale_; }
+
+  inline ConcatenationTester& OutputZeroPoint(int32_t zero_point) {
+    output_zero_point_ = zero_point;
+    return *this;
+  }
+
+  inline int32_t OutputZeroPoint() const { return output_scale_; }
 
   inline size_t NumInputs() const { return input_shapes_.size(); }
 
@@ -86,6 +119,10 @@ class ConcatenationTester {
   int axis_;
   std::vector<int32_t> output_shape_;
   std::vector<std::vector<int32_t>> input_shapes_;
+  std::vector<float> input_scales_;
+  float output_scale_;
+  std::vector<int32_t> input_zero_points_;
+  int32_t output_zero_point_;
 };
 
 }  // namespace xnnpack

@@ -16,6 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_NCCL_UTILS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_NCCL_UTILS_H_
 
+#if TENSORFLOW_USE_ROCM
+#define __HIP_DISABLE_CPP_FUNCTIONS__
+#endif
+
 #include <memory>
 #include <utility>
 #include <vector>
@@ -30,6 +34,7 @@ limitations under the License.
 
 // Common place for all collective thunks to include nccl/rccl headers.
 #if TENSORFLOW_USE_ROCM
+#include "rocm/rocm_config.h"
 #if (TF_ROCM_VERSION >= 50200)
 #include "rocm/include/rccl/rccl.h"
 #else
@@ -47,12 +52,7 @@ StatusOr<std::pair<ncclDataType_t, int>> ToNcclDataTypeAndCountMultiplier(
     PrimitiveType element_type, Thunk::Kind reduction_op);
 
 bool IsGlobalNcclConfig();
-bool IsNcclLaunchModeParallel();
 
-#ifndef TENSORFLOW_USE_ROCM
-Status ToStatus(cudaError_t s, const char* file, int64_t line,
-                const char* expr);
-#endif
 Status ToStatus(ncclResult_t s, const char* file, int64_t line,
                 const char* expr);
 
@@ -129,7 +129,8 @@ struct NcclComm : public Lockable<ncclComm_t> {
 StatusOr<NcclComm::Lock> AcquireNcclComm(
     RunId run_id, OpId op_id, std::vector<GlobalDeviceId> participants,
     size_t num_local_participants,
-    const NcclUniqueIdCallback& unique_id_callback, int rank);
+    const NcclUniqueIdCallback& unique_id_callback, int rank,
+    int64_t stream_id);
 
 }  // namespace gpu
 }  // namespace xla

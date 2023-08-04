@@ -1,5 +1,5 @@
 # This package contains code to auto-generate the contents of the file
-#   tensorflow/lite/core/shims:builtin_ops_list.inc
+#   tensorflow/lite/kernels:builtin_ops_list.inc
 # from the BuiltinOperator enum in the FlatBuffer schema,
 # and a test to verify that the checked-in copy remains up-to-date.
 
@@ -45,7 +45,7 @@ cc_test(
     name = "consistency_test",
     srcs = ["consistency_test.cc"],
     data = [
-        "//tensorflow/lite/core/shims:builtin_ops_list.inc",
+        "//tensorflow/lite/kernels:builtin_ops_list.inc",
     ],
     deps = [
         ":generator",

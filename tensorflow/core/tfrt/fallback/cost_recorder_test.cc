@@ -18,9 +18,8 @@ limitations under the License.
 #include <string>
 
 #include <gtest/gtest.h>
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/tfrt/fallback/op_cost_map.pb.h"
 
 namespace tensorflow {
 namespace tfrt_stub {
@@ -33,8 +32,8 @@ constexpr uint64_t kTestAvgCost = 1851;
 TEST(CostRecorderTest, RecordCostTest) {
   CostRecorder recorder;
 
-  recorder.RecordCostNanosecond(kTestOpKey, kTestCost);
-  recorder.RecordCostNanosecond(kTestOpKey, kTestCost);
+  recorder.RecordCost(kTestOpKey, kTestCost);
+  recorder.RecordCost(kTestOpKey, kTestCost);
 
   EXPECT_EQ(recorder.size(), 1);
 }
@@ -42,18 +41,18 @@ TEST(CostRecorderTest, RecordCostTest) {
 TEST(CostRecorderTest, GetCostTest) {
   CostRecorder recorder;
 
-  recorder.RecordCostNanosecond(kTestOpKey, kTestCost);
-  recorder.RecordCostNanosecond(kTestOpKey, 2 * kTestCost);
+  recorder.RecordCost(kTestOpKey, kTestCost);
+  recorder.RecordCost(kTestOpKey, 2 * kTestCost);
 
   EXPECT_EQ(recorder.size(), 1);
-  EXPECT_EQ(recorder.GetCostNanosecond(kTestOpKey), kTestAvgCost);
+  EXPECT_EQ(recorder.GetCost(kTestOpKey), kTestAvgCost);
 }
 
 TEST(CostRecorderTest, GetCostDefaultValueTest) {
   CostRecorder recorder;
   ASSERT_EQ(recorder.size(), 0);
 
-  EXPECT_EQ(recorder.GetCostNanosecond(kTestOpKey),
+  EXPECT_EQ(recorder.GetCost(kTestOpKey),
             std::numeric_limits<uint32_t>::max());
 }
 
@@ -78,8 +77,8 @@ TEST(CostRecorderTest, ProtoRecordsTest) {
   CostRecorder recorder;
 
   // Records the cost of op.
-  recorder.RecordCostNanosecond(kTestOpKey, kTestCost);
-  recorder.RecordCostNanosecond(kTestOpKey, 2 * kTestCost);
+  recorder.RecordCost(kTestOpKey, kTestCost);
+  recorder.RecordCost(kTestOpKey, 2 * kTestCost);
   ASSERT_EQ(recorder.size(), 1);
 
   // Writes op's cost to the disk.

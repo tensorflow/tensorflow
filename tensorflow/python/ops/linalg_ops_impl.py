@@ -18,6 +18,7 @@ import numpy as np
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util import compat
@@ -42,8 +43,8 @@ def eye(num_rows,
     num_columns = num_rows if num_columns is None else num_columns
 
     # We cannot statically infer what the diagonal size should be:
-    if (isinstance(num_rows, ops.Tensor) or
-        isinstance(num_columns, ops.Tensor)):
+    if (isinstance(num_rows, tensor.Tensor) or
+        isinstance(num_columns, tensor.Tensor)):
       diag_size = math_ops.minimum(num_rows, num_columns)
     else:
       # We can statically infer the diagonal size, and whether it is square.
@@ -56,9 +57,12 @@ def eye(num_rows,
       diag_size = np.minimum(num_rows, num_columns)
 
     # We can not statically infer the shape of the tensor.
-    if isinstance(batch_shape, ops.Tensor) or isinstance(diag_size, ops.Tensor):
+    if isinstance(batch_shape, tensor.Tensor) or isinstance(
+        diag_size, tensor.Tensor
+    ):
       batch_shape = ops.convert_to_tensor(
-          batch_shape, name='shape', dtype=dtypes.int32)
+          batch_shape, name='shape', dtype=dtypes.int32
+      )
       diag_shape = array_ops.concat((batch_shape, [diag_size]), axis=0)
       if not is_square:
         shape = array_ops.concat((batch_shape, [num_rows, num_columns]), axis=0)

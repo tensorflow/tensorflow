@@ -22,7 +22,6 @@ from tensorflow.python.keras.initializers import initializers_v2
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_inspect as inspect
 from tensorflow.python.ops import init_ops
-from tensorflow.python.util.tf_export import keras_export
 
 
 # LOCAL.ALL_OBJECTS is meant to be a global mutable. Hence we need to make it
@@ -125,12 +124,10 @@ globals().update(LOCAL.ALL_OBJECTS)
 # Utility functions
 
 
-@keras_export('keras.initializers.serialize')
 def serialize(initializer):
   return generic_utils.serialize_keras_object(initializer)
 
 
-@keras_export('keras.initializers.deserialize')
 def deserialize(config, custom_objects=None):
   """Return an `Initializer` object from its config."""
   populate_deserializable_objects()
@@ -141,7 +138,6 @@ def deserialize(config, custom_objects=None):
       printable_module_name='initializer')
 
 
-@keras_export('keras.initializers.get')
 def get(identifier):
   """Retrieve a Keras initializer by the identifier.
 

@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Transforms/TilingInterfaceImpl.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/SCF/Transforms/TileUsingInterface.h"
 #include "mlir/Dialect/SCF/Transforms/Transforms.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -38,7 +39,8 @@ namespace {
 FailureOr<Operation *> tileUsingSCFForAndReplace(
     PatternRewriter &rewriter, Operation *op,
     const scf::SCFTilingOptions &tilingOptions) {
-  auto tilingResult = scf::tileUsingSCFForOp(rewriter, op, tilingOptions);
+  auto tilingResult = scf::tileUsingSCFForOp(
+      rewriter, cast<TilingInterface>(op), tilingOptions);
   if (failed(tilingResult) || tilingResult->loops.empty()) return failure();
   rewriter.replaceOp(op, tilingResult->replacements);
   return tilingResult->tiledOps.front();
@@ -96,8 +98,8 @@ LogicalResult tileMmt4DOp(linalg::Mmt4DOp mmt4dOp, PatternRewriter &rewriter) {
     iterTypes.resize(parallelTileSizes.size());
   }
 
-  splitParallelAndReductionTiles(mmt4dOp.getOperation(), parallelTileSizes,
-                                 reductionTileSizes);
+  splitParallelAndReductionTiles(cast<linalg::LinalgOp>(mmt4dOp.getOperation()),
+                                 parallelTileSizes, reductionTileSizes);
 
   // Tile the parallel loops.
   auto tiledOp = tileUsingSCFForAndReplace(
@@ -127,15 +129,12 @@ struct TransformMmt4DForCpuPass
 
   void runOnOperation() override {
     func::FuncOp func = getOperation();
+    MLIRContext *ctx = &getContext();
 
-    RewritePatternSet patterns(&getContext());
+    RewritePatternSet patterns(ctx);
     patterns.add(tileMmt4DOp);
-
     if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns))))
       return signalPassFailure();
-
-    // Ensure we drop the marker in the end.
-    func.walk([](linalg::Mmt4DOp op) { removeLabel(op, kTransformedLabel); });
   }
 };
 

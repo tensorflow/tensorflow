@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_SAVED_MODEL_SAVED_MODEL_H_
 #define TENSORFLOW_CORE_TFRT_SAVED_MODEL_SAVED_MODEL_H_
 
+#include <cstdint>
 #include <functional>
 #include <limits>
 #include <memory>
@@ -28,7 +29,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
@@ -72,6 +75,8 @@ struct Signature {
   // The following two fields should have the same size.
   std::vector<std::string> output_names;
   std::vector<TensorSpec> output_specs;
+
+  proto2::Map<std::string, TensorProto> default_inputs;
 };
 
 }  // namespace internal
@@ -97,6 +102,10 @@ class FunctionMetadata {
 
   const std::vector<TensorSpec>& GetOutputSpecs() const {
     return signature_->output_specs;
+  }
+
+  const proto2::Map<std::string, TensorProto>& GetDefaultInputs() const {
+    return signature_->default_inputs;
   }
 
  private:
@@ -125,7 +134,7 @@ class SavedModel {
 
     // If true, the lazy loading path will use tfrt_stub::GraphExecutor.
     //
-    // TODO(b/216379787): Remove this option once b/239749833 is unblocked.
+    // TODO(b/216379787): Remove this option once b/279197040 is unblocked.
     bool lazy_loading_use_graph_executor = false;
 
     GraphExecutionOptions graph_execution_options;
@@ -134,14 +143,19 @@ class SavedModel {
   // Per-request options.
   using RunOptions = GraphExecutionRunOptions;
 
-  explicit SavedModel(const Runtime* runtime) : runtime_(runtime) {
-    DCHECK(runtime_);
+  explicit SavedModel(const Runtime* runtime) : options_(runtime) {
+    DCHECK(runtime);
   }
+  explicit SavedModel(Options&& options) : options_(std::move(options)) {}
   virtual ~SavedModel();
 
+  const SessionMetadata& model_metadata() const {
+    return options_.graph_execution_options.model_metadata;
+  }
+
   const Runtime& runtime() const {
-    DCHECK(runtime_);
-    return *runtime_;
+    DCHECK(options_.graph_execution_options.runtime);
+    return *options_.graph_execution_options.runtime;
   }
   tfrt::HostContext* GetHostContext() const;
 
@@ -191,9 +205,38 @@ class SavedModel {
       absl::Span<const std::string> target_node_names,
       std::vector<tensorflow::Tensor>* outputs) = 0;
 
- private:
-  const Runtime* runtime_ = nullptr;
+ protected:
+  const Options options_;
 };
+
+// TODO(cesarmagana) Create new library saved_model_utils and move (refactor)
+// functions to the anonymous space of the util file. Making only one API public
+// for use in both LoadSavedModel and AotCompileSavedModel.
+StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
+    mlir::MLIRContext* context, const tensorflow::MetaGraphDef& meta_graph_def,
+    const FallbackState& fallback_state, std::string saved_model_dir,
+    bool import_user_signatures, bool run_placer_grappler_on_functions);
+
+StatusOr<tensorflow::MetaGraphDef> ReadSavedModel(
+    absl::string_view saved_model_dir,
+    const std::unordered_set<std::string>& tags);
+
+using SignatureMap = absl::flat_hash_map<std::string, internal::Signature>;
+using ::tensorflow::StatusOr;
+
+struct Initializer {
+  std::string name;
+};
+
+struct InitializersAndSignatures {
+  // Initializers are kept in a certain order as they need to be executed in
+  // that order.
+  std::vector<Initializer> initializers;
+  SignatureMap signature_map;
+};
+
+StatusOr<InitializersAndSignatures> GetInitializersAndSignatures(
+    mlir::ModuleOp module);
 
 class SavedModelImpl final : public SavedModel {
  public:
@@ -218,9 +261,9 @@ class SavedModelImpl final : public SavedModel {
       absl::string_view saved_model_dir);
 
   SavedModelImpl(
-      Options options, tensorflow::MetaGraphDef meta_graph_def,
-      tfrt::BefBuffer bef, tfrt::RCReference<tfrt::BEFFile> bef_file,
-      mlrt::bc::Buffer bytecode,
+      Options options, SymbolUids symbol_uids,
+      tensorflow::MetaGraphDef meta_graph_def, tfrt::BefBuffer bef,
+      tfrt::RCReference<tfrt::BEFFile> bef_file, mlrt::bc::Buffer bytecode,
       std::optional<mlrt::LoadedExecutable> loaded_executable,
       absl::flat_hash_map<std::string, internal::Signature> signatures,
       std::unique_ptr<FallbackState> fallback_state,
@@ -260,8 +303,16 @@ class SavedModelImpl final : public SavedModel {
   // The result of loading signature(s).
   struct LoadingResult {
     std::string name;
+    SymbolUids symbol_uids;
+
+    // For the MLRT path.
+    mlrt::bc::Buffer bytecode_buffer;
+    std::unique_ptr<mlrt::LoadedExecutable> bytecode_executable;
+
+    // For the TFRT path.
     tfrt::BefBuffer bef;
     tfrt::RCReference<tfrt::BEFFile> bef_file;
+
     std::unique_ptr<OpKernelRunnerTable> runner_table;
     std::unique_ptr<tfd::FallbackResourceArray> resource_array;
   };
@@ -269,7 +320,7 @@ class SavedModelImpl final : public SavedModel {
   // Imports a subgraph as an MLIR module with the specified `input_nodes`,
   // `output_nodes`.
   tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSubgraph(
-      mlir::MLIRContext* context,
+      mlir::MLIRContext* context, absl::string_view name,
       const tensorflow::GraphImportConfig::InputArrays& input_nodes,
       const std::vector<std::string>& output_nodes,
       const std::vector<std::string>& target_nodes);
@@ -287,7 +338,7 @@ class SavedModelImpl final : public SavedModel {
                            absl::Span<const std::string> names)
       TF_LOCKS_EXCLUDED(loading_result_cache_mu_);
 
-  Options options_;
+  SymbolUids symbol_uids_;
   // `meta_graph_def_` only contains metadata of the model. The graph_def field
   // is removed.
   //

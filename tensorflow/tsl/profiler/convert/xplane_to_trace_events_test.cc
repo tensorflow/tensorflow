@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/tsl/profiler/convert/xplane_to_trace_events.h"
 
+#include <limits>
+#include <utility>
+
 #include "tensorflow/tsl/platform/test.h"
 #include "tensorflow/tsl/profiler/protobuf/trace_events.pb.h"
 #include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
@@ -26,7 +29,6 @@ namespace tsl {
 namespace profiler {
 namespace {
 
-using tensorflow::profiler::Trace;
 using tensorflow::profiler::XSpace;
 
 void CreateXSpace(XSpace* space) {
@@ -66,13 +68,13 @@ TEST(ConvertXPlaneToTraceEvents, Convert) {
   XSpace xspace;
   CreateXSpace(&xspace);
 
-  Trace trace;
-  ConvertXSpaceToTraceEvents(xspace, &trace);
+  TraceContainer container = ConvertXSpaceToTraceContainer(xspace);
 
-  ASSERT_EQ(trace.devices_size(), 2);
-  EXPECT_EQ(trace.devices().at(kHostThreadsDeviceId).resources_size(), 2);
-  EXPECT_EQ(trace.devices().at(kFirstDeviceId).resources_size(), 1);
-  EXPECT_EQ(trace.trace_events_size(), 3);
+  ASSERT_EQ(container.trace().devices_size(), 2);
+  EXPECT_EQ(
+      container.trace().devices().at(kHostThreadsDeviceId).resources_size(), 2);
+  EXPECT_EQ(container.trace().devices().at(kFirstDeviceId).resources_size(), 1);
+  EXPECT_EQ(container.UnsortedEvents().size(), 3);
 }
 
 TEST(ConvertXPlaneToTraceEvents, SkipAsyncOps) {
@@ -88,26 +90,9 @@ TEST(ConvertXPlaneToTraceEvents, SkipAsyncOps) {
   event1.SetTimestampNs(100);
   event1.SetDurationNs(1);
 
-  Trace trace;
-  ConvertXSpaceToTraceEvents(xspace, &trace);
+  TraceContainer container = ConvertXSpaceToTraceContainer(xspace);
 
-  ASSERT_THAT(trace.trace_events(), ::testing::IsEmpty());
-}
-
-TEST(ConvertXPlaneToTraceEvents, Drop) {
-  Trace trace;
-  for (int i = 0; i < 100; i++) {
-    trace.add_trace_events()->set_timestamp_ps((100 - i) % 50);
-  }
-
-  MaybeDropEventsForTraceViewer(&trace, 150);
-  EXPECT_EQ(trace.trace_events_size(), 100);  // No dropping.
-
-  MaybeDropEventsForTraceViewer(&trace, 50);
-  EXPECT_EQ(trace.trace_events_size(), 50);
-  for (const auto& event : trace.trace_events()) {
-    EXPECT_LT(event.timestamp_ps(), 25);
-  }
+  ASSERT_THAT(container.UnsortedEvents(), ::testing::IsEmpty());
 }
 
 }  // namespace

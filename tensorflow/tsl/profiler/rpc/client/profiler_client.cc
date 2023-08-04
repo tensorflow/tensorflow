@@ -54,6 +54,7 @@ std::unique_ptr<typename T::Stub> CreateStub(
       service_address, ::grpc::InsecureChannelCredentials(), channel_args);
   if (!channel) {
     LOG(ERROR) << "Unable to create channel" << service_address;
+    return nullptr;
   }
   return T::NewStub(channel);
 }

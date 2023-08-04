@@ -1,3 +1,5 @@
+load("//tensorflow:py.default.bzl", "py_library")
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
@@ -380,10 +382,7 @@ py_library(
     ],
 )
 
-py_library(
+alias(
     name = "expect_tensorflow_estimator_installed",
-    srcs_version = "PY3",
-    # This is a dummy rule used as a dependency in open-source.
-    # We expect tensorflow_estimator to already be installed.
-    visibility = ["//visibility:public"],
+    actual = "@pypi_tf_estimator_nightly//:pkg",
 )

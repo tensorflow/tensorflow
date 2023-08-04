@@ -37,19 +37,5 @@ int64_t EstimatedSizeBytes(const std::vector<Tensor>& tensors) {
   return size_bytes;
 }
 
-Status StreamAssignmentChanged(absl::string_view worker_address,
-                               int64_t stream_index) {
-  return errors::FailedPrecondition(
-      "Worker ", worker_address,
-      " has an outdated stream assignment: ", stream_index,
-      ". It must heartbeat to the dispatcher to refresh its assigned stream.");
-}
-
-bool IsStreamAssignmentChanged(const Status& status) {
-  return errors::IsFailedPrecondition(status) &&
-         absl::StrContains(status.error_message(),
-                           "has an outdated stream assignment");
-}
-
 }  // namespace data
 }  // namespace tensorflow

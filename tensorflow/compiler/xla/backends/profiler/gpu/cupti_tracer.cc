@@ -47,7 +47,13 @@ using tsl::profiler::AnnotationStack;
 //
 // Define some type aliases so we can access the hardware channel id if it's
 // available.
-#if CUDA_VERSION >= 11060  // CUDA 11.6
+#if CUDA_VERSION >= 12000  // CUDA 12.0
+#define TF_CUPTI_HAS_CHANNEL_ID 1
+using CuptiActivityKernelTy = CUpti_ActivityKernel9;
+using CuptiActivityMemcpyTy = CUpti_ActivityMemcpy5;
+using CuptiActivityMemcpyP2PTy = CUpti_ActivityMemcpyPtoP4;
+using CuptiActivityMemsetTy = CUpti_ActivityMemset4;
+#elif CUDA_VERSION >= 11060  // CUDA 11.6
 #define TF_CUPTI_HAS_CHANNEL_ID 1
 using CuptiActivityKernelTy = CUpti_ActivityKernel7;
 using CuptiActivityMemcpyTy = CUpti_ActivityMemcpy5;
@@ -90,7 +96,7 @@ Status ToStatus(CUresult result) {
 
 inline void LogIfError(const Status &status) {
   if (status.ok()) return;
-  LOG(ERROR) << status.error_message();
+  LOG(ERROR) << status.message();
 }
 
 // Maps an OverheadKind enum to a const string.
@@ -581,8 +587,9 @@ void AddGenericEventUponApiExit(CuptiTraceCollector *collector,
   collector->AddEvent(std::move(event));
 }
 
+template <bool cupti_has_channel_id, typename CuptiActivityKernel>
 void AddKernelActivityEvent(CuptiTraceCollector *collector,
-                            const CuptiActivityKernelTy *kernel) {
+                            const CuptiActivityKernel *kernel) {
   CuptiTracerEvent event{};
   event.type = CuptiTracerEventType::Kernel;
   event.source = CuptiTracerEventSource::Activity;
@@ -606,10 +613,10 @@ void AddKernelActivityEvent(CuptiTraceCollector *collector,
   event.kernel_info.grid_x = kernel->gridX;
   event.kernel_info.grid_y = kernel->gridY;
   event.kernel_info.grid_z = kernel->gridZ;
-#if TF_CUPTI_HAS_CHANNEL_ID
-  event.kernel_info.channel_id = kernel->channelID;
-  event.kernel_info.channel_type = kernel->channelType;
-#endif
+  if constexpr (cupti_has_channel_id) {
+    event.kernel_info.channel_id = kernel->channelID;
+    event.kernel_info.channel_type = kernel->channelType;
+  }
   collector->AddEvent(std::move(event));
 }
 
@@ -1304,6 +1311,17 @@ class CuptiDriverApiHookWithCudaEvent : public CuptiDriverApiHook {
             cbdata->symbolName, cbdata->context, cbdata->correlationId, params);
         break;
       }
+#if CUDA_VERSION >= 11080  // CUDA 11.8
+      case CUPTI_DRIVER_TRACE_CBID_cuLaunchKernelEx: {
+        DCHECK_NE(cbdata->symbolName, nullptr);
+        const auto *params = static_cast<const cuLaunchKernelEx_params *>(
+            cbdata->functionParams);
+        *cbdata->correlationData = recorder->StartKernel<CUlaunchConfig>(
+            cbdata->symbolName, cbdata->context, cbdata->correlationId,
+            params->config);
+        break;
+      }
+#endif  // CUDA_VERSION >= 11080
       case CUPTI_DRIVER_TRACE_CBID_cuLaunchCooperativeKernel: {
         DCHECK_NE(cbdata->symbolName, nullptr);
         const auto *params =
@@ -1397,6 +1415,9 @@ class CuptiDriverApiHookWithCudaEvent : public CuptiDriverApiHook {
     tsl::uint64 start_tsc = 0;
     switch (cbid) {
       case CUPTI_DRIVER_TRACE_CBID_cuLaunchKernel:
+#if CUDA_VERSION >= 11080  // CUDA 11.8
+      case CUPTI_DRIVER_TRACE_CBID_cuLaunchKernelEx:
+#endif  // CUDA_VERSION >= 11080
       case CUPTI_DRIVER_TRACE_CBID_cuLaunchCooperativeKernel:
         start_tsc = recorder->StopKernel(*cbdata->correlationData);
         break;
@@ -1538,6 +1559,9 @@ class CuptiDriverApiHookWithCudaEvent : public CuptiDriverApiHook {
     const CUpti_CallbackData *cbdata) {
   switch (cbid) {
     case CUPTI_DRIVER_TRACE_CBID_cuLaunchKernel:
+#if CUDA_VERSION >= 11080  // CUDA 11.8
+    case CUPTI_DRIVER_TRACE_CBID_cuLaunchKernelEx:
+#endif  // CUDA_VERSION >= 11080
     case CUPTI_DRIVER_TRACE_CBID_cuLaunchCooperativeKernel:
     case CUPTI_DRIVER_TRACE_CBID_cuLaunchCooperativeKernelMultiDevice:
       AddKernelEventUponApiExit(collector, device_id, cbdata, start_tsc,
@@ -1962,8 +1986,12 @@ Status CuptiTracer::ProcessActivityBuffer(CUcontext context, uint32_t stream_id,
       switch (record->kind) {
         case CUPTI_ACTIVITY_KIND_KERNEL:  // sequential
         case CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL:
-          AddKernelActivityEvent(
+          AddKernelActivityEvent<TF_CUPTI_HAS_CHANNEL_ID>(
               collector_, reinterpret_cast<CuptiActivityKernelTy *>(record));
+          break;
+        case CUPTI_ACTIVITY_KIND_CDP_KERNEL:
+          AddKernelActivityEvent<false>(
+              collector_, reinterpret_cast<CUpti_ActivityCdpKernel *>(record));
           break;
         case CUPTI_ACTIVITY_KIND_MEMCPY:
           AddMemcpyActivityEvent(

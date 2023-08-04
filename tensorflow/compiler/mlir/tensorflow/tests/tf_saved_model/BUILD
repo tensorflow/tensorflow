@@ -1,3 +1,4 @@
+load("//tensorflow:py.default.bzl", "py_binary", "py_library")
 load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 
@@ -62,12 +63,12 @@ test_files = glob(
 ]
 
 glob_lit_tests(
+    name = "all_tests",
     data = [":test_utilities"],
     default_size = "medium",
     default_tags = [
         "no_mac",  # TODO(b/191167848)
         "no_oss",  # TODO(b/190855110)
-        "no_pip",
         "no_rocm",
     ],
     driver = "@llvm-project//mlir:run_lit.sh",

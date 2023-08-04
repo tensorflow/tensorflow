@@ -645,10 +645,6 @@ errors::Code InMemoryRunGraphResponse::status_code() const {
   return static_cast<errors::Code>(status_.code());
 }
 
-const string& InMemoryRunGraphResponse::status_error_message() const {
-  return status_.error_message();
-}
-
 void InMemoryRunGraphResponse::set_status(const Status& status) {
   status_ = status;
 }
@@ -710,20 +706,17 @@ CostGraphDef* OwnedProtoRunGraphResponse::mutable_cost_graph() {
 }
 
 Status OwnedProtoRunGraphResponse::status() const {
-  return Status(response_.status_code(), response_.status_error_message());
+  return Status(static_cast<absl::StatusCode>(response_.status_code()),
+                response_.status_error_message());
 }
 
 absl::StatusCode OwnedProtoRunGraphResponse::status_code() const {
   return static_cast<absl::StatusCode>(response_.status_code());
 }
 
-const string& OwnedProtoRunGraphResponse::status_error_message() const {
-  return response_.status_error_message();
-}
-
 void OwnedProtoRunGraphResponse::set_status(const Status& status) {
   response_.set_status_code(static_cast<tsl::error::Code>(status.code()));
-  response_.set_status_error_message(status.error_message());
+  response_.set_status_error_message(tsl::NullTerminatedMessage(status));
 }
 
 RunGraphResponse* OwnedProtoRunGraphResponse::get_proto() { return &response_; }
@@ -785,20 +778,17 @@ CostGraphDef* NonOwnedProtoRunGraphResponse::mutable_cost_graph() {
 }
 
 Status NonOwnedProtoRunGraphResponse::status() const {
-  return Status(response_->status_code(), response_->status_error_message());
+  return Status(static_cast<absl::StatusCode>(response_->status_code()),
+                response_->status_error_message());
 }
 
 absl::StatusCode NonOwnedProtoRunGraphResponse::status_code() const {
   return static_cast<absl::StatusCode>(response_->status_code());
 }
 
-const string& NonOwnedProtoRunGraphResponse::status_error_message() const {
-  return response_->status_error_message();
-}
-
 void NonOwnedProtoRunGraphResponse::set_status(const Status& status) {
   response_->set_status_code(static_cast<tsl::error::Code>(status.code()));
-  response_->set_status_error_message(status.error_message());
+  response_->set_status_error_message(tsl::NullTerminatedMessage(status));
 }
 
 RunGraphResponse* NonOwnedProtoRunGraphResponse::get_proto() {
@@ -853,10 +843,6 @@ errors::Code InMemoryRunStepResponse::status_code() const {
   return static_cast<errors::Code>(status_.code());
 }
 
-const string& InMemoryRunStepResponse::status_error_message() const {
-  return status_.error_message();
-}
-
 void InMemoryRunStepResponse::set_status(const Status& status) {
   status_ = status;
 }
@@ -900,20 +886,17 @@ RunMetadata* OwnedProtoRunStepResponse::mutable_metadata() {
 }
 
 Status OwnedProtoRunStepResponse::status() const {
-  return Status(response_.status_code(), response_.status_error_message());
+  return Status(static_cast<absl::StatusCode>(response_.status_code()),
+                response_.status_error_message());
 }
 
 absl::StatusCode OwnedProtoRunStepResponse::status_code() const {
   return static_cast<absl::StatusCode>(response_.status_code());
 }
 
-const string& OwnedProtoRunStepResponse::status_error_message() const {
-  return response_.status_error_message();
-}
-
 void OwnedProtoRunStepResponse::set_status(const Status& status) {
   response_.set_status_code(static_cast<tsl::error::Code>(status.code()));
-  response_.set_status_error_message(status.error_message());
+  response_.set_status_error_message(tsl::NullTerminatedMessage(status));
 }
 
 RunStepResponse* OwnedProtoRunStepResponse::get_proto() { return &response_; }
@@ -956,20 +939,17 @@ RunMetadata* NonOwnedProtoRunStepResponse::mutable_metadata() {
 }
 
 Status NonOwnedProtoRunStepResponse::status() const {
-  return Status(response_->status_code(), response_->status_error_message());
+  return Status(static_cast<absl::StatusCode>(response_->status_code()),
+                response_->status_error_message());
 }
 
 absl::StatusCode NonOwnedProtoRunStepResponse::status_code() const {
   return static_cast<absl::StatusCode>(response_->status_code());
 }
 
-const string& NonOwnedProtoRunStepResponse::status_error_message() const {
-  return response_->status_error_message();
-}
-
 void NonOwnedProtoRunStepResponse::set_status(const Status& status) {
   response_->set_status_code(static_cast<tsl::error::Code>(status.code()));
-  response_->set_status_error_message(status.error_message());
+  response_->set_status_error_message(tsl::NullTerminatedMessage(status));
 }
 
 RunStepResponse* NonOwnedProtoRunStepResponse::get_proto() { return response_; }

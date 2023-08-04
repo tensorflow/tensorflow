@@ -17,10 +17,8 @@ limitations under the License.
 
 #include <algorithm>
 #include <ostream>
-#include <string>
 
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace gpu {
@@ -35,7 +33,7 @@ std::ostream& operator<<(std::ostream& out,
   return out;
 }
 
-static int64_t ThreadsPerBlockLimit(GpuDeviceInfo gpu_device_info) {
+static int64_t ThreadsPerBlockLimit(const GpuDeviceInfo& gpu_device_info) {
   int64_t threads_per_block = gpu_device_info.threads_per_block_limit;
   if (threads_per_block <= 0) {
     static std::atomic<int64_t> log_count{0};
@@ -55,7 +53,7 @@ static int64_t ThreadsPerBlockLimit(GpuDeviceInfo gpu_device_info) {
 }
 
 int64_t ThreadsPerBlockRowVectorized(const Shape& shape,
-                                     GpuDeviceInfo gpu_device_info,
+                                     const GpuDeviceInfo& gpu_device_info,
                                      LaunchDimensionsConfig dim_config) {
   if (shape.dimensions().empty()) {
     return -1;
@@ -76,8 +74,38 @@ int64_t ThreadsPerBlockRowVectorized(const Shape& shape,
   return -1;
 }
 
-StatusOr<LaunchDimensions> CalculateLaunchDimensions(
-    const Shape& shape, GpuDeviceInfo gpu_device_info,
+StatusOr<LaunchDimensions> CalculateLaunchDimensionsImplExperimental(
+    const Shape& shape, const GpuDeviceInfo& gpu_device_info,
+    LaunchDimensionsConfig dim_config) {
+  int64_t num_elements = ShapeUtil::ElementsIn(shape);
+  if (num_elements <= 1) {
+    return LaunchDimensions();
+  }
+  CHECK_EQ(num_elements % dim_config.unroll_factor, 0);
+  num_elements = num_elements / dim_config.unroll_factor;
+  int64_t threads_per_block_x = [&]() {
+    const int kWarpSchedulers = 4;
+    int64_t block_size = std::min<int64_t>(
+        gpu_device_info.threads_per_warp * kWarpSchedulers, num_elements);
+    VLOG(2) << "Block size: " << block_size;
+    return block_size;
+  }();
+
+  int64_t block_count = CeilOfRatio(num_elements, threads_per_block_x);
+
+  if (gpu_device_info.block_dim_limit_x > 0 &&
+      block_count >= gpu_device_info.block_dim_limit_x) {
+    return tsl::errors::Unimplemented("Kernel launch needs more blocks (",
+                                      block_count,
+                                      ") than allowed by hardware (",
+                                      gpu_device_info.block_dim_limit_x, ").");
+  }
+
+  return LaunchDimensions({block_count, 1, 1}, {threads_per_block_x, 1, 1});
+}
+
+StatusOr<LaunchDimensions> CalculateLaunchDimensionsImpl(
+    const Shape& shape, const GpuDeviceInfo& gpu_device_info,
     LaunchDimensionsConfig dim_config) {
   int64_t num_elements = ShapeUtil::ElementsIn(shape);
   if (num_elements <= 1) {
@@ -177,6 +205,17 @@ StatusOr<LaunchDimensions> CalculateLaunchDimensions(
       block_count, threads_per_block_x, threads_per_block_y, num_elements);
   return LaunchDimensions({block_count, 1, 1},
                           {threads_per_block_x, threads_per_block_y, 1});
+}
+
+StatusOr<LaunchDimensions> CalculateLaunchDimensions(
+    const Shape& shape, const GpuDeviceInfo& gpu_device_info,
+    bool use_experimental_block_size, LaunchDimensionsConfig dim_config) {
+  if (use_experimental_block_size) {
+    VLOG(2) << "Experimental block size is enabled";
+    return CalculateLaunchDimensionsImplExperimental(shape, gpu_device_info,
+                                                     dim_config);
+  }
+  return CalculateLaunchDimensionsImpl(shape, gpu_device_info, dim_config);
 }
 
 }  // namespace gpu

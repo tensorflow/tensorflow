@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_runner_interface.h"
 #include "tensorflow/compiler/xla/service/hlo_runner_pjrt.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/tests/filecheck.h"
@@ -57,11 +58,12 @@ bool ProgramShapesEqual(const ProgramShape& lhs, const ProgramShape& rhs) {
     return false;
   }
   for (int i = 0; i < lhs.parameters_size(); i++) {
-    if (!ShapeUtil::Equal(lhs.parameters(i), rhs.parameters(i))) {
+    if (!Shape::Equal().IgnoreElementSizeInLayout()(lhs.parameters(i),
+                                                    rhs.parameters(i))) {
       return false;
     }
   }
-  return ShapeUtil::Equal(lhs.result(), rhs.result());
+  return Shape::Equal().IgnoreElementSizeInLayout()(lhs.result(), rhs.result());
 }
 
 ProgramShape GetProgramShapeWithLayout(const HloModule& module) {
@@ -235,9 +237,11 @@ DebugOptions HloTestBase::GetDebugOptionsForTest() {
 void HloTestBase::RunAndFilecheckHloRewrite(
     absl::string_view hlo, HloPassInterface&& hlo_pass,
     std::optional<absl::string_view> expected,
-    std::function<void(HloModule*)> after_pass_checks) {
+    std::function<void(HloModule*)> after_pass_checks,
+    const HloModuleConfig* config) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+                          config ? ParseAndReturnVerifiedModule(hlo, *config)
+                                 : ParseAndReturnVerifiedModule(hlo));
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&hlo_pass, module.get()));
   EXPECT_EQ(changed, expected.has_value()) << module->ToString();
   if (changed) {
@@ -470,7 +474,7 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
       runner_->Execute(std::move(module), fake_arguments, run_hlo_passes);
   return output.ok()
              ? ::testing::AssertionSuccess()
-             : ::testing::AssertionFailure() << output.status().error_message();
+             : ::testing::AssertionFailure() << output.status().message();
 }
 
 ::testing::AssertionResult HloTestBase::RunAndCompare(
@@ -623,7 +627,7 @@ HloTestBase::RunAndCompareTwoModulesInternal(
         module->entry_computation()->root_instruction();
     Status s = instruction->set_backend_config(*backend_config);
     return s.ok() ? ::testing::AssertionSuccess()
-                  : ::testing::AssertionFailure() << s.error_message();
+                  : ::testing::AssertionFailure() << s.message();
   }
 
   auto output = runner_->Execute(std::move(module), fake_argument_ptrs,
@@ -632,7 +636,7 @@ HloTestBase::RunAndCompareTwoModulesInternal(
 
   return output.ok()
              ? ::testing::AssertionSuccess()
-             : ::testing::AssertionFailure() << output.status().error_message();
+             : ::testing::AssertionFailure() << output.status().message();
 }
 
 ::testing::AssertionResult HloTestBase::RunReplicated(
@@ -659,7 +663,7 @@ HloTestBase::RunAndCompareTwoModulesInternal(
         module->entry_computation()->root_instruction();
     Status s = instruction->set_backend_config(*backend_config);
     return s.ok() ? ::testing::AssertionSuccess()
-                  : ::testing::AssertionFailure() << s.error_message();
+                  : ::testing::AssertionFailure() << s.message();
   }
 
   HloRunner::ReplicatedExecuteOptions options;
@@ -673,7 +677,7 @@ HloTestBase::RunAndCompareTwoModulesInternal(
 
   return output.ok()
              ? ::testing::AssertionSuccess()
-             : ::testing::AssertionFailure() << output.status().error_message();
+             : ::testing::AssertionFailure() << output.status().message();
 }
 
 ::testing::AssertionResult HloTestBase::RunMultipleTimes(
@@ -715,14 +719,13 @@ HloTestBase::RunAndCompareTwoModulesInternal(
           module->entry_computation()->root_instruction();
       Status s = instruction->set_backend_config(*backend_config);
       return s.ok() ? ::testing::AssertionSuccess()
-                    : ::testing::AssertionFailure() << s.error_message();
+                    : ::testing::AssertionFailure() << s.message();
     }
 
     auto executable =
         runner_->CreateExecutable(std::move(module), run_hlo_passes);
     if (!executable.ok()) {
-      return ::testing::AssertionFailure()
-             << executable.status().error_message();
+      return ::testing::AssertionFailure() << executable.status().message();
     }
     executables[i] = std::move(executable.value());
   }
@@ -733,7 +736,7 @@ HloTestBase::RunAndCompareTwoModulesInternal(
         runner_->ExecuteWithExecutable(executables[i].get(), fake_arguments[i],
                                        /*profile=*/&((*profiles)[i]));
     if (!output.ok()) {
-      return ::testing::AssertionFailure() << output.status().error_message();
+      return ::testing::AssertionFailure() << output.status().message();
     }
 
     if (assert_determinism) {

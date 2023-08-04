@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #ifndef TENSORFLOW_CORE_KERNELS_MKL_MKL_BATCH_MATMUL_HELPER_H_
 #define TENSORFLOW_CORE_KERNELS_MKL_MKL_BATCH_MATMUL_HELPER_H_
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL)
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/register_types.h"

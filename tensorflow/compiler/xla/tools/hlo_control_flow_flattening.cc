@@ -320,6 +320,9 @@ Status HloControlFlowFlattening::RemoveOutfeed(
           outfeed_hlo->shape(), outfeed_hlo->operands(), "NopReturnToken"));
   Cast<HloCustomCallInstruction>(custom_call)
       ->set_custom_call_has_side_effect(true);
+  // For SPMD graphs, partitioner requires that side-effecting custom calls have
+  // a sharding that is non-replicated.
+  custom_call->set_sharding(HloSharding::Manual());
   TF_RETURN_IF_ERROR(computation->ReplaceInstruction(outfeed_hlo, custom_call));
   custom_call->SetAndSanitizeName(outfeed_hlo->name());
 
@@ -385,8 +388,7 @@ Status HloControlFlowFlattening::RemoveCollective(HloInstruction* hlo) const {
   return OkStatus();
 }
 
-Status HloControlFlowFlattening::RemovePartitionOrReplicaId(
-    HloInstruction* hlo) const {
+Status HloControlFlowFlattening::RemoveId(HloInstruction* hlo) const {
   HloComputation* computation = hlo->parent();
   HloInstruction* zero = CreateConstant(hlo->shape(), computation);
   TF_RETURN_IF_ERROR(computation->ReplaceInstruction(hlo, zero));
@@ -447,9 +449,11 @@ StatusOr<bool> HloControlFlowFlattening::Run(
         changed = true;
       } else if (remove_comm_ &&
                  (instruction->opcode() == HloOpcode::kPartitionId ||
-                  instruction->opcode() == HloOpcode::kReplicaId)) {
+                  instruction->opcode() == HloOpcode::kReplicaId ||
+                  (instruction->opcode() == HloOpcode::kCustomCall &&
+                   instruction->custom_call_target() == "SliceId"))) {
         VLOG(1) << "Remove " << instruction->name();
-        TF_RETURN_IF_ERROR(RemovePartitionOrReplicaId(instruction));
+        TF_RETURN_IF_ERROR(RemoveId(instruction));
       }
     }
   }

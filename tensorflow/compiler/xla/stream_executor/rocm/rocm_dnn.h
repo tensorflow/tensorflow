@@ -85,8 +85,8 @@ class MIOpenSupport : public dnn::DnnSupport {
       int batch_size, dnn::RnnInputMode input_mode,
       dnn::RnnDirectionMode direction_mode, dnn::RnnMode rnn_mode,
       dnn::DataType data_type, const dnn::AlgorithmConfig& algorithm_config,
-      float dropout, uint64_t seed, ScratchAllocator* state_allocator,
-      bool use_padded_io) override;
+      const NumericOptions& numeric_options, float dropout, uint64_t seed,
+      ScratchAllocator* state_allocator, bool use_padded_io) override;
 
   tsl::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
   createRnnSequenceTensorDescriptor(int seq_length, int batch_size,
@@ -232,10 +232,6 @@ class MIOpenSupport : public dnn::DnnSupport {
                      ScratchAllocator* workspace_allocator,
                      dnn::ProfileResult* output_profile_result) override;
 
-  bool GetConvolveAlgorithms(
-      CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
-      std::vector<dnn::AlgorithmDesc>* out_algorithms) override;
-
   tsl::Status GetConvolveRunners(
       bool use_cudnn_frontend, dnn::ConvolutionKind kind,
       dnn::DataType input_type, dnn::DataType output_type, Stream* stream,
@@ -246,6 +242,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       DeviceMemoryBase output_data,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       bool use_fallback, ScratchAllocator* scratch_allocator,
+      const NumericOptions& numeric_options,
       std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_runners)
       override;
 
@@ -269,14 +266,6 @@ class MIOpenSupport : public dnn::DnnSupport {
       std::vector<dnn::ProfileResult>* out_algorithms) override;
 
   bool GetRnnAlgorithms(
-      std::vector<dnn::AlgorithmDesc>* out_algorithms) override;
-
-  bool GetConvolveBackwardDataAlgorithms(
-      CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
-      std::vector<dnn::AlgorithmDesc>* out_algorithms) override;
-
-  bool GetConvolveBackwardFilterAlgorithms(
-      CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
       std::vector<dnn::AlgorithmDesc>* out_algorithms) override;
 
   bool DoBatchNormalizationForward(
@@ -427,6 +416,16 @@ class MIOpenSupport : public dnn::DnnSupport {
     LOG(ERROR) << "DNN MatMulQuantized not supported by MIOpen";
     return false;
   }
+
+  tsl::Status GetFusedMatmulRunners(
+      bool use_cudnn_frontend, dnn::DataType input_type,
+      dnn::DataType bias_type, dnn::DataType output_type, Stream* stream,
+      bool trans_a, bool trans_b, uint64_t m, uint64_t n, uint64_t k,
+      int64_t lda, int64_t ldb, int64_t ldc,
+      dnn::ActivationMode activation_mode, bool use_fallback,
+      const NumericOptions& numeric_options,
+      std::vector<std::unique_ptr<const dnn::FusedMatmulRunner>>*
+          out_exec_plans) override;
 
   bool DoBiasAdd(Stream* stream, const DeviceMemory<float>& input_data,
                  const DeviceMemory<float>& biases,
@@ -785,6 +784,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       absl::Span<const int> labels_data,
       absl::Span<const int> labels_lengths_data,
       absl::Span<const int> input_lengths_data,
+      const NumericOptions& numeric_options,
       ScratchAllocator* scratch_allocator, DeviceMemory<uint8>* scratch_memory,
       int* ctc_loss_algo_id) override;
 

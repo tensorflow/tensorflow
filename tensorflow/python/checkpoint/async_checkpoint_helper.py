@@ -17,6 +17,7 @@
 import atexit
 import collections
 import copy
+import queue
 import threading
 import time
 import weakref
@@ -34,8 +35,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops.resource_variable_ops import UninitializedVariable
 from tensorflow.python.ops.variables import Variable
 from tensorflow.python.saved_model.pywrap_saved_model import metrics
-from tensorflow.python.tpu.tpu_embedding_v2 import TPUEmbedding
-from tensorflow.python.training import optimizer as optimizer_v1
 from tensorflow.python.util import object_identity
 
 # Captures the timestamp of the first Checkpoint instantiation or end of a write
@@ -45,6 +44,10 @@ _END_TIME_OF_LAST_ASYNC_WRITE_LOCK = threading.Lock()
 
 # API label for cell names used in async checkpoint metrics.
 _ASYNC_CHECKPOINT = "async_checkpoint"
+
+# Name of TPUEmbedding attribute. This is a temporary workaround
+# to identify TPUEmbedding while avoiding import cycles.
+_TPU_EMBEDDING_ATTR = "_create_copy_for_async_checkpoint"
 
 
 def _get_duration_microseconds(start_time_seconds, end_time_seconds):
@@ -75,6 +78,9 @@ class AsyncCheckpointHelper:
       root: The root object to checkpoint. `root` may be a trackable object or
         `WeakRef` of a trackable object.
       **kwargs: The keyword arguments representing the checkpointed variables.
+
+    Raises:
+      AttributeError: when checkpointer_impl is None.
     """
     # TODO(chienchunh): Make sure the processing for the root object is
     #   consistent when integrating with the public API, e.g., adding all kwarg
@@ -84,12 +90,20 @@ class AsyncCheckpointHelper:
       kwargs["root"] = trackable_root
       trackable_root._maybe_initialize_trackable()
 
+    # The underlying Checkpoint instance and its items.
+    if checkpointer_impl is None:
+      raise AttributeError(
+          "checkpointer_impl cannot be None for AsyncCheckpointHelper."
+      )
     self._checkpointer_impl = checkpointer_impl
     self._checkpoint_items = kwargs
-
-    # The underlying Checkpoint instance and its items.
     self._checkpoint = None
+    self.checkpointer()
     self._checkpoint_options = None
+
+    # Indicate whether async checkpoint has finished traversing the variable
+    # list and created the object map between the original and copied variables.
+    self._initialized = False
 
     # The callback function that needs to be executed after checkpoint write.
     # Currently this is only applied to the scenario where CheckpointManager is
@@ -111,14 +125,20 @@ class AsyncCheckpointHelper:
     self._save_file_prefix = None
     self._use_checkpoint_save = False
     self._async_save_thread = None
-    self._async_save_thread_shutdown = False
-    # Semaphores for writing/reading the cpu-copied variables (self._var_pairs)
-    # TODO(chienchunh): Consider Queue/Condition instead of Semaphore.
-    self._writer_sem = threading.Semaphore(1)
-    self._reader_sem = threading.Semaphore(0)
+    # Concurrent queue that coordinates the events for writing/reading the
+    # cpu-copied variables. A 'True' in the queue triggers the async thread to
+    # perform saving; a 'False' breaks the while loop so that the async thread
+    # exits; no other values will be added to the queue.
+    # Maxsize is set to 1 only to ensure the exit procedure. We could have used
+    # queue.join() in _join_async_save_thread(), but queue.join() does not have
+    # a timeout argument. Hence we use queue.put(timeout=300), in case the last
+    # checkpoint takes forever. To achieve that, maxsize needs to be 1.
+    self._queue = queue.Queue(maxsize=1)
 
     # Register to join the async save thread upon exit.
     atexit.register(self._join_async_save_thread)
+
+    self._async_error = None
 
     global _END_TIME_OF_LAST_ASYNC_WRITE
     with _END_TIME_OF_LAST_ASYNC_WRITE_LOCK:
@@ -133,7 +153,8 @@ class AsyncCheckpointHelper:
                       hangining the accelerators idle during function tracing.
     """
     for accelerator_var, cpu_var in self._object_map.items():
-      if isinstance(accelerator_var, (ShardedVariable, TPUEmbedding)):
+      if isinstance(accelerator_var, ShardedVariable) or hasattr(
+          accelerator_var, _TPU_EMBEDDING_ATTR):
         # Skip for SharededVariable and TPUEmbedding as their sub-variables will
         # be copied over separately through other entries in the object map.
         continue
@@ -148,7 +169,8 @@ class AsyncCheckpointHelper:
                       hangining the accelerators idle during function tracing.
     """
     for accelerator_var, cpu_var in self._object_map.items():
-      if isinstance(accelerator_var, (ShardedVariable, TPUEmbedding)):
+      if isinstance(accelerator_var, ShardedVariable) or hasattr(
+          accelerator_var, _TPU_EMBEDDING_ATTR):
         # Skip for SharededVariable and TPUEmbedding as their sub-variables will
         # be copied over separately through other entries in the object map.
         continue
@@ -175,7 +197,7 @@ class AsyncCheckpointHelper:
 
       if isinstance(current_trackable, (Variable, ShardedVariable)):
         self._copy_trackable(current_trackable)
-      if isinstance(current_trackable, TPUEmbedding):
+      if hasattr(current_trackable, _TPU_EMBEDDING_ATTR):
         self._handle_tpu_embedding(current_trackable)
 
       for child in current_trackable._trackable_children(
@@ -186,9 +208,15 @@ class AsyncCheckpointHelper:
         to_traverse.append(child)
     # pylint: enable=protected-access
 
+  def checkpointer(self):
+    """Gets or creates the underlying Checkpoint instance."""
+    if self._checkpoint is None:
+      self._checkpoint = self._checkpointer_impl(**self._checkpoint_items)
+    return self._checkpoint
+
   def _ensure_initialized(self):
     """Initialize the async checkpoint internal state."""
-    if self._checkpoint is not None:
+    if self._initialized:
       return
 
     self._original_nodes = []
@@ -201,7 +229,7 @@ class AsyncCheckpointHelper:
     for v in self._checkpoint_items.values():
       if isinstance(v, (Variable, ShardedVariable)):
         self._copy_trackable(v)
-      elif isinstance(v, TPUEmbedding):
+      elif hasattr(v, _TPU_EMBEDDING_ATTR):
         self._handle_tpu_embedding(v)
       to_traverse.append(v)
       visited.add(v)
@@ -209,10 +237,9 @@ class AsyncCheckpointHelper:
 
     # Copy for the slot variables.
     for current_trackable in self._original_nodes:
-      if (isinstance(current_trackable, optimizer_v1.Optimizer)
-          # Note: dir() is used rather than hasattr() here to avoid triggering
-          # custom __getattr__ code, see b/152031870 for context.
-          or "get_slot_names" in dir(current_trackable)):
+      # Note: dir() is used rather than hasattr() here to avoid triggering
+      # custom __getattr__ code, see b/152031870 for context.
+      if "get_slot_names" in dir(current_trackable):
         slot_names = current_trackable.get_slot_names()
         for slot_name in slot_names:
           for original_variable in self._original_nodes:
@@ -226,46 +253,59 @@ class AsyncCheckpointHelper:
             if isinstance(original_slot_variable, (Variable, ShardedVariable)):
               self._copy_trackable(original_slot_variable)
 
-    # Initiate the underlying Checkpoint instance with the copied items.
-    self._checkpoint = self._checkpointer_impl(**self._checkpoint_items)
     # Initiate the underlying Checkpoint instance's save_counter.
-    save_counter = self._checkpoint.save_counter
+    save_counter = self.checkpointer().save_counter.numpy()
     logging.info("Initializing async checkpoint's save_counter: %d",
                  save_counter)
 
     # Pass the object map of the copied variables to the underlying Checkpoint.
-    self._checkpoint._saver._object_map = self._object_map  # pylint: disable=protected-access
+    self.checkpointer()._saver._object_map = self._object_map  # pylint: disable=protected-access
 
     # Initiate the async thread for checkpoint saving.
     self._async_save_thread = threading.Thread(
         target=self._async_save, daemon=True)
     self._async_save_thread.start()
 
+    self._initialized = True
+
+  def _check_async_thread_error(self):
+    """Expose the most recent error from the async saving thread to the caller.
+    """
+    if self._async_error:
+      e = self._async_error
+      self._async_error = None
+      logging.error("Propagating the most recent error from the async thread "
+                    "before joining: %s", str(e))
+      raise e
+
   def _join_async_save_thread(self):
     """Join the async save thread.
 
     The steps for terminating the async save thread:
-    1). Wait until the last async save event is done.
-    2). Set _async_save_thread_shutdown flag to false to indicate termination.
-    3). Trigger the async save thread to check and fail the while-predicate.
-    4). Join the async save thread. (The thread may finish before joining.)
+    1). Put will succeed when the last async save event is done. Putting a false
+        triggers the async save thread's while loop to end. We use put instead
+        of sync because sync does not have a timeout argument.
+    2). Join the async save thread. (The thread may finish before joining.)
     """
-    if self._writer_sem.acquire(timeout=300):  # Step-1.
-      self._async_save_thread_shutdown = True  # Step-2.
-      self._reader_sem.release()  # Step-3.
+    try:
+      self._queue.put(False, timeout=300)  # Step-1.
       logging.info("Joining the async save thread.")
       if self._async_save_thread is not None:
-        self._async_save_thread.join()  # Step-4.
-    else:
+        self._async_save_thread.join()  # Step-2.
+    except queue.Full:
       logging.error("Timeout waiting for the async save thread; terminating the"
                     " thread instead. The last checkpoint may be incomeplete.")
+    finally:
+      self._check_async_thread_error()
 
   def _async_save(self):
     """The thread function for the async checkpoint save."""
     with context.executor_scope(
         executor.new_executor(
             enable_async=False, enable_streaming_enqueue=False)):
-      while self._reader_sem.acquire() and not self._async_save_thread_shutdown:
+      # The main thread inserts: a True to the queue when the user calls save,
+      # triggering async save; and a False when we exit the Checkpoint instance.
+      while self._queue.get():
         logging.info("Starting async checkpoint save on the device: %s",
                      self._default_device)
 
@@ -276,18 +316,23 @@ class AsyncCheckpointHelper:
         # would clear the placement policy and make localhost the default
         # placement, while the main thread's default placement would be the
         # master worker's CPU:0.
-        with ops.device(self._default_device):
-          with checkpoint_context.async_metrics_context():
-            if self._use_checkpoint_save:
-              self._checkpoint.save(self._save_file_prefix,
-                                    self._checkpoint_options)
-            else:
-              self._checkpoint._write(  # pylint: disable=protected-access
-                  self._save_file_prefix,
-                  options=self._checkpoint_options,
-                  write_done_callback=self._async_write_done_callback)
-        # Allow the next checkpoint event to overwrite the cpu-copied variables.
-        self._writer_sem.release()
+        try:
+          with ops.device(self._default_device):
+            with checkpoint_context.async_metrics_context():
+              if self._use_checkpoint_save:
+                self.checkpointer().save(
+                    self._save_file_prefix, self._checkpoint_options
+                )
+              else:
+                self.checkpointer()._write(  # pylint: disable=protected-access
+                    self._save_file_prefix,
+                    options=self._checkpoint_options,
+                    write_done_callback=self._async_write_done_callback,
+                )
+        except Exception as e:   # # pylint: disable=broad-except
+          self._async_error = e
+        finally:
+          self._queue.task_done()
 
         async_save_end_time = time.time()
         metrics.AddAsyncCheckpointWriteDuration(
@@ -364,19 +409,24 @@ class AsyncCheckpointHelper:
     Raises:
       AttributeError: if the input trackable is not TPUEmbedding type.
     """
-    if not isinstance(tpu_embedding, TPUEmbedding):
-      raise AttributeError("Expecting TPUEmbedding type; got %s" %
-                           type(tpu_embedding))
+    if not hasattr(
+        tpu_embedding, _TPU_EMBEDDING_ATTR
+    ) or not callable(tpu_embedding._create_copy_for_async_checkpoint):  # pylint: disable=protected-access
+      raise AttributeError(
+          "Expecting TPUEmbedding type; got %s" % type(tpu_embedding)
+      )
 
     # Create a dummy TPUEmbedding object and add it to the object_map. This is
     # to prevent the TPUEmbedding's save_callback from being triggered because
     # the embedding values have already being retrieved by AsyncCheckpoint.
     # pylint: disable=protected-access
-    new_embedding = TPUEmbedding(
+    new_embedding = tpu_embedding._create_copy_for_async_checkpoint(
         feature_config=tpu_embedding._feature_config,
-        optimizer=tpu_embedding._table_config[0].optimizer,
-        pipeline_execution_with_tensor_core=tpu_embedding
-        ._pipeline_execution_with_tensor_core)
+        optimizer=tpu_embedding._table_config[0]
+        if tpu_embedding._table_config
+        else None,
+        pipeline_execution_with_tensor_core=tpu_embedding._pipeline_execution_with_tensor_core,
+    )
     self._object_map[tpu_embedding] = new_embedding
     # pylint: enable=protected-access
 
@@ -394,12 +444,7 @@ class AsyncCheckpointHelper:
     Returns:
       The save counter variable.
     """
-    # TODO(sagunb): Improve the solution for initializing save_counter.
-    # If save_counter() is called before all the variables are created,
-    # self._ensure_initialized() would construct the object_map without some
-    # variables that need to be checkpointed, e.g., slot variables.
-    self._ensure_initialized()
-    return self._checkpoint.save_counter
+    return self.checkpointer().save_counter
 
   def write(self, save_path, options=None):
     """Save the checkpointed variables.
@@ -433,9 +478,16 @@ class AsyncCheckpointHelper:
 
     write_start_time = time.time()
 
-    # Copy the variable values to the host CPU.
-    if self._writer_sem.acquire():
-      self._copy_to_cpu()
+    # First wait for async thread to finish the previous save, then copy the
+    # variable values to the host CPU.
+    self._queue.join()
+    self._copy_to_cpu()
+
+    # Surface the error from the async thread, if any.
+    # This step should come after the sem acquision step in the above, so that
+    # it makes sure it waits until the previous async save finishes storing the
+    # error.
+    self._check_async_thread_error()
 
     # Trigger the async thread to checkpoint the cpu-copied variables.
     # Need to wait until the weight copying finishes before checkpoint save.
@@ -450,7 +502,7 @@ class AsyncCheckpointHelper:
       self._checkpoint_options.experimental_enable_async_checkpoint = False
 
     self._async_write_done_callback = write_done_callback
-    self._reader_sem.release()
+    self._queue.put(True)  # Trigger save in async thread
 
     write_end_time = time.time()
     metrics.AddCheckpointWriteDuration(
@@ -482,15 +534,22 @@ class AsyncCheckpointHelper:
 
     save_start_time = time.time()
 
-    # Copy the variable values to the host CPU.
-    if self._writer_sem.acquire():
-      self._copy_to_cpu()
+    # First wait for async thread to finish the previous save, then copy the
+    # variable values to the host CPU.
+    self._queue.join()
+    self._copy_to_cpu()
+
+    # Surface the error from the async thread, if any.
+    # This step should come after the sem acquision step in the above, so that
+    # it makes sure it waits until the previous async save finishes storing the
+    # error.
+    self._check_async_thread_error()
 
     # Retrieve the save counter from the underlying checkpoint object to
     # re-construct the full path of the checkpoint file.
-    # This step has to happen before triggerting the underlying checkpoint;
+    # This step has to happen before triggering the underlying checkpoint;
     # otherwise, the save_counter value may or may not have been updated.
-    save_counter = self._checkpoint.save_counter.numpy() + 1
+    save_counter = self.checkpointer().save_counter.numpy() + 1
     full_path = "{}-{}".format(save_path, save_counter)
 
     # Trigger the async thread to checkpoint the cpu-copied variables.
@@ -505,7 +564,7 @@ class AsyncCheckpointHelper:
     if self._checkpoint_options:
       self._checkpoint_options.experimental_enable_async_checkpoint = False
 
-    self._reader_sem.release()
+    self._queue.put(True)  # Trigger save in async thread
 
     save_end_time = time.time()
     metrics.AddCheckpointWriteDuration(
@@ -551,22 +610,19 @@ class AsyncCheckpointHelper:
       self._checkpoint_options.experimental_enable_async_checkpoint = False
 
     # Wait for any ongoing checkpoint event to finish.
-    with self._writer_sem:
-      # If _checkpoint has not been initialized yet, it means the restore() is
-      # called right after the coordinator is restarted. We directly restore
-      # the checkpointed items through tf.train.Checkpoint.restore().
-      if self._checkpoint is None:
-        tmp_checkpoint = self._checkpointer_impl(**self._checkpoint_items)
-        return tmp_checkpoint.restore(save_path, self._checkpoint_options)
+    self._queue.join()
+    # Restore the values of the cpu-copied variables.
+    status = self.checkpointer().restore(save_path, self._checkpoint_options)
 
-      # Restore the values of the cpu-copied variables.
-      status = self._checkpoint.restore(save_path, self._checkpoint_options)
-
-      # Restore the values of the original model.
+    # Copy the values back to the original variables.
+    # This is only executed if the copies of the variables have been created,
+    # i.e., object_map is created.
+    if self._initialized:
       self._copy_from_cpu()
-      return status
+
+    return status
 
   def sync(self):
     """Sync on any ongoing save or restore events."""
-    with self._writer_sem:
-      logging.info("Sync on ongoing save/restore.")
+    self._queue.join()
+    logging.info("Sync on ongoing save/restore.")

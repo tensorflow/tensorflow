@@ -31,10 +31,10 @@ namespace stream_executor {
 namespace wrap {
 #ifdef PLATFORM_GOOGLE
 // Use static linked library
-#define STREAM_EXECUTOR_HIP_WRAP(hipSymbolName)                          \
-  template <typename... Args>                                            \
-  auto hipSymbolName(Args... args)->decltype(::hipSymbolName(args...)) { \
-    return ::hipSymbolName(args...);                                     \
+#define STREAM_EXECUTOR_HIP_WRAP(hipSymbolName)                            \
+  template <typename... Args>                                              \
+  auto hipSymbolName(Args... args) -> decltype(::hipSymbolName(args...)) { \
+    return ::hipSymbolName(args...);                                       \
   }
 
 // This macro wraps a global identifier, given by hipSymbolName, in a callable
@@ -46,22 +46,22 @@ namespace wrap {
 #define TO_STR_(x) #x
 #define TO_STR(x) TO_STR_(x)
 
-#define STREAM_EXECUTOR_HIP_WRAP(hipSymbolName)                          \
-  template <typename... Args>                                            \
-  auto hipSymbolName(Args... args)->decltype(::hipSymbolName(args...)) { \
-    using FuncPtrT = std::add_pointer<decltype(::hipSymbolName)>::type;  \
-    static FuncPtrT loaded = []() -> FuncPtrT {                          \
-      static const char *kName = TO_STR(hipSymbolName);                  \
-      void *f;                                                           \
-      auto s = tsl::Env::Default()->GetSymbolFromLibrary(                \
-          stream_executor::internal::CachedDsoLoader::GetHipDsoHandle()  \
-              .value(),                                                  \
-          kName, &f);                                                    \
-      CHECK(s.ok()) << "could not find " << kName                        \
-                    << " in HIP DSO; dlerror: " << s.error_message();    \
-      return reinterpret_cast<FuncPtrT>(f);                              \
-    }();                                                                 \
-    return loaded(args...);                                              \
+#define STREAM_EXECUTOR_HIP_WRAP(hipSymbolName)                            \
+  template <typename... Args>                                              \
+  auto hipSymbolName(Args... args) -> decltype(::hipSymbolName(args...)) { \
+    using FuncPtrT = std::add_pointer<decltype(::hipSymbolName)>::type;    \
+    static FuncPtrT loaded = []() -> FuncPtrT {                            \
+      static const char *kName = TO_STR(hipSymbolName);                    \
+      void *f;                                                             \
+      auto s = tsl::Env::Default() -> GetSymbolFromLibrary(                \
+          stream_executor::internal::CachedDsoLoader::GetHipDsoHandle()    \
+              .value(),                                                    \
+          kName, &f);                                                      \
+      CHECK(s.ok()) << "could not find " << kName                          \
+                    << " in HIP DSO; dlerror: " << s.message();            \
+      return reinterpret_cast<FuncPtrT>(f);                                \
+    }();                                                                   \
+    return loaded(args...);                                                \
   }
 #endif
 
@@ -91,11 +91,19 @@ namespace wrap {
   __macro(hipGetDevice)                             \
   __macro(hipGetDeviceCount)                        \
   __macro(hipGetDeviceProperties)                   \
+  __macro(hipGetErrorString)                        \
+  __macro(hipGraphDebugDotPrint)                    \
+  __macro(hipGraphDestroy)                          \
+  __macro(hipGraphExecDestroy)                      \
+  __macro(hipGraphExecUpdate)                       \
+  __macro(hipGraphInstantiate)                      \
+  __macro(hipGraphLaunch)                           \
   __macro(hipHostFree)                              \
   __macro(hipHostMalloc)                            \
   __macro(hipHostRegister)                          \
   __macro(hipHostUnregister)                        \
   __macro(hipInit)                                  \
+  __macro(hipLaunchHostFunc)                        \
   __macro(hipMalloc)                                \
   __macro(hipMemGetAddressRange)                    \
   __macro(hipMemGetInfo)                            \
@@ -120,20 +128,25 @@ namespace wrap {
   __macro(hipModuleUnload)                          \
   __macro(hipPointerGetAttributes)                  \
   __macro(hipSetDevice)                             \
+  __macro(hipDeviceGetStreamPriorityRange)          \
   __macro(hipStreamAddCallback)                     \
+  __macro(hipStreamBeginCapture)                    \
   __macro(hipStreamCreateWithFlags)                 \
   __macro(hipStreamCreateWithPriority)              \
   __macro(hipStreamDestroy)                         \
+  __macro(hipStreamEndCapture)                      \
+  __macro(hipStreamIsCapturing)                     \
   __macro(hipStreamQuery)                           \
   __macro(hipStreamSynchronize)                     \
-  __macro(hipStreamWaitEvent)                       \
-// clang-format on
+  __macro(hipStreamWaitEvent)  // clang-format on
 
 HIP_ROUTINE_EACH(STREAM_EXECUTOR_HIP_WRAP)
+
 #undef HIP_ROUTINE_EACH
 #undef STREAM_EXECUTOR_HIP_WRAP
 #undef TO_STR
 #undef TO_STR_
+
 }  // namespace wrap
 }  // namespace stream_executor
 

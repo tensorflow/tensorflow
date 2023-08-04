@@ -28,6 +28,10 @@ void TF_SetStatus(TF_Status* s, TF_Code code, const char* msg) {
 void TF_SetPayload(TF_Status* s, const char* key, const char* value) {
   TSL_SetPayload(s, key, value);
 }
+void TF_ForEachPayload(const TF_Status* s, TF_PayloadVisitor visitor,
+                       void* capture) {
+  TSL_ForEachPayload(s, visitor, capture);
+}
 void TF_SetStatusFromIOError(TF_Status* s, int error_code,
                              const char* context) {
   TSL_SetStatusFromIOError(s, error_code, context);

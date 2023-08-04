@@ -2,8 +2,8 @@ path: "tensorflow.__internal__.FuncGraph"
 tf_class {
   is_instance: "<class \'tensorflow.python.framework.func_graph.FuncGraph\'>"
   is_instance: "<class \'tensorflow.python.framework.ops.Graph\'>"
-  is_instance: "<class \'tensorflow.python.client._pywrap_tf_session.GraphHandle\'>"
-  is_instance: "<class \'pybind11_builtins.pybind11_object\'>"
+  is_instance: "<class \'tensorflow.python.client._pywrap_tf_session.PyGraph\'>"
+  is_instance: "<type \'object\'>"
   member {
     name: "building_function"
     mtype: "<type \'property\'>"
@@ -33,11 +33,19 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "function_captures"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "graph_def_versions"
     mtype: "<type \'property\'>"
   }
   member {
     name: "internal_captures"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "operations"
     mtype: "<type \'property\'>"
   }
   member {
@@ -79,6 +87,9 @@ tf_class {
   member {
     name: "version"
     mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "Dismantle"
   }
   member_method {
     name: "__init__"
@@ -170,7 +181,6 @@ tf_class {
   }
   member_method {
     name: "get_operations"
-    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "get_tensor_by_name"
@@ -195,6 +205,12 @@ tf_class {
   member_method {
     name: "name_scope"
     argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "new_operations"
+  }
+  member_method {
+    name: "num_operations"
   }
   member_method {
     name: "op_def_for_type"

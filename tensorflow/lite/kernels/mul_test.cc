@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -88,6 +88,20 @@ class IntegerMulOpModel : public BaseMulOpModel<int32_t> {
   std::vector<int32_t> GetOutput() { return ExtractVector<int32_t>(output_); }
 };
 
+class UnsignedInteger32BitMulOpModel : public BaseMulOpModel<uint32_t> {
+ public:
+  using BaseMulOpModel::BaseMulOpModel;
+
+  std::vector<uint32_t> GetOutput() { return ExtractVector<uint32_t>(output_); }
+};
+
+class Integer16BitMulOpModel : public BaseMulOpModel<int16_t> {
+ public:
+  using BaseMulOpModel::BaseMulOpModel;
+
+  std::vector<int16_t> GetOutput() { return ExtractVector<int16_t>(output_); }
+};
+
 // For quantized Mul, the error shouldn't exceed (2*step + step^2).
 // The param min=-1.0 & max=1.0 is used in the following tests.
 // The tolerance value is ~0.0157.
@@ -152,6 +166,38 @@ class QuantizedMulOpModel : public SingleOpModel {
 };
 
 using MulOpTest = testing::TestWithParam<bool>;
+
+TEST(MulOpTest, NoActivationFloatInplaceInput0) {
+  FloatMulOpModel m({TensorType_FLOAT32, {1, 2, 2, 1}},
+                    {TensorType_FLOAT32, {1, 2, 2, 1}},
+                    {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE,
+                    {-2.0, 0.2, 0.7, 0.8}, {0.1, 0.2, 0.3, 0.5}, false);
+  const int kInplaceInputTensorIdx = 0;
+  const int kInplaceOutputTensorIdx = 0;
+  const TfLiteTensor* input_tensor = m.GetInputTensor(kInplaceInputTensorIdx);
+  TfLiteTensor* output_tensor = m.GetOutputTensor(kInplaceOutputTensorIdx);
+  output_tensor->data.data = input_tensor->data.data;
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray(ArrayFloatNear({-0.2, 0.04, 0.21, 0.4})));
+  EXPECT_EQ(output_tensor->data.data, input_tensor->data.data);
+}
+
+TEST(MulOpTest, NoActivationFloatInplaceInput1) {
+  FloatMulOpModel m({TensorType_FLOAT32, {1, 2, 2, 1}},
+                    {TensorType_FLOAT32, {1, 2, 2, 1}},
+                    {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE,
+                    {-2.0, 0.2, 0.7, 0.8}, {0.1, 0.2, 0.3, 0.5}, false);
+  const int kInplaceInputTensorIdx = 1;
+  const int kInplaceOutputTensorIdx = 0;
+  const TfLiteTensor* input_tensor = m.GetInputTensor(kInplaceInputTensorIdx);
+  TfLiteTensor* output_tensor = m.GetOutputTensor(kInplaceOutputTensorIdx);
+  output_tensor->data.data = input_tensor->data.data;
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray(ArrayFloatNear({-0.2, 0.04, 0.21, 0.4})));
+  EXPECT_EQ(output_tensor->data.data, input_tensor->data.data);
+}
 
 TEST_P(MulOpTest, NoActivationFloat) {
   const bool constant_tensors = GetParam();
@@ -344,6 +390,86 @@ TEST_P(MulOpTest, IntegerNoActivation) {
                       constant_tensors);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({-20, 4, 21, 40}));
+}
+
+TEST_P(MulOpTest, Int16ActivationRELU_N1_TO_1) {
+  bool constant_tensors = GetParam();
+  if (SingleOpModel::GetForceUseNnapi() && constant_tensors) {
+    // NNAPI does not support graphs with all constant inputs.
+    return;
+  }
+  Integer16BitMulOpModel m(
+      {TensorType_INT16, {1, 2, 2, 1}}, {TensorType_INT16, {1, 2, 2, 1}},
+      {TensorType_INT16, {}}, ActivationFunctionType_RELU_N1_TO_1,
+      {-20, 2, 7, 8}, {1, 2, 3, 5}, constant_tensors);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1, 1, 1, 1}));
+}
+
+TEST_P(MulOpTest, Int16VariousInputShapes) {
+  bool constant_tensors = GetParam();
+  if (SingleOpModel::GetForceUseNnapi() && constant_tensors) {
+    // NNAPI does not support graphs with all constant inputs.
+    return;
+  }
+  const std::vector<std::vector<int>> test_shapes = {
+      {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
+  for (int i = 0; i < test_shapes.size(); ++i) {
+    Integer16BitMulOpModel m(
+        {TensorType_INT16, test_shapes[i]}, {TensorType_INT16, test_shapes[i]},
+        {TensorType_INT16, {}}, ActivationFunctionType_NONE,
+        {-20, 2, 7, 8, 11, 20}, {1, 2, 3, 5, 11, 1}, constant_tensors);
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    EXPECT_THAT(m.GetOutput(), ElementsAreArray({-20, 4, 21, 40, 121, 20}))
+        << "With shape number " << i;
+  }
+}
+
+TEST_P(MulOpTest, Int16WithBroadcast) {
+  bool constant_tensors = GetParam();
+  if (SingleOpModel::GetForceUseNnapi() && constant_tensors) {
+    // NNAPI does not support graphs with all constant inputs.
+    return;
+  }
+  const std::vector<std::vector<int>> test_shapes = {
+      {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
+  for (int i = 0; i < test_shapes.size(); ++i) {
+    Integer16BitMulOpModel m({TensorType_INT16, test_shapes[i]},
+                             {TensorType_INT16, {}},  // always a scalar
+                             {TensorType_INT16, {}},
+                             ActivationFunctionType_NONE,
+                             {-20, 2, 7, 8, 11, 20}, {1}, constant_tensors);
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    EXPECT_THAT(m.GetOutput(), ElementsAreArray({-20, 2, 7, 8, 11, 20}))
+        << "With shape number " << i;
+  }
+}
+
+TEST_P(MulOpTest, 16BitIntegerNoActivation) {
+  bool constant_tensors = GetParam();
+  if (SingleOpModel::GetForceUseNnapi() && constant_tensors) {
+    // NNAPI does not support graphs with all constant inputs.
+    return;
+  }
+  Integer16BitMulOpModel m({TensorType_INT16, {4}}, {TensorType_INT16, {4}},
+                           {TensorType_INT16, {}}, ActivationFunctionType_NONE,
+                           {-20, 2, 7, 8}, {1, 2, 3, 5}, constant_tensors);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-20, 4, 21, 40}));
+}
+
+TEST_P(MulOpTest, 32BitUnsignedIntegerNoActivation) {
+  bool constant_tensors = GetParam();
+  if (SingleOpModel::GetForceUseNnapi() && constant_tensors) {
+    // NNAPI does not support graphs with all constant inputs.
+    return;
+  }
+  UnsignedInteger32BitMulOpModel m(
+      {TensorType_UINT32, {1, 2, 2, 1}}, {TensorType_UINT32, {1, 2, 2, 1}},
+      {TensorType_UINT32, {}}, ActivationFunctionType_NONE, {20, 2, 7, 8},
+      {1, 2, 3, 5}, constant_tensors);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({20, 4, 21, 40}));
 }
 
 TEST_P(MulOpTest, ComplexBaseTest) {

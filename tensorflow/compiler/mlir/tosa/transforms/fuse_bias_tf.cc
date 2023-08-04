@@ -19,8 +19,10 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <memory>
 #include <numeric>
 #include <optional>
+#include <utility>
 
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -44,7 +46,7 @@ namespace {
 
 class FuseBiasTF : public impl::TosaFusebiasTFPassBase<FuseBiasTF> {
  public:
-  explicit FuseBiasTF() {}
+  explicit FuseBiasTF() = default;
   void runOnOperation() override;
 };
 
@@ -70,7 +72,7 @@ LogicalResult ConvertTFBiasAddOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_biasadd_op = cast<TF::BiasAddOp>(op);
   auto output_type =
-      tf_biasadd_op.getResult().getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(tf_biasadd_op.getResult().getType());
 
   if (!output_type) {
     return rewriter.notifyMatchFailure(op, "output not a ranked tensor");

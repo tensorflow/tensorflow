@@ -229,11 +229,11 @@ and [the Google OSS VRP
 rules](https://bughunters.google.com/about/rules/6521337925468160/google-open-source-software-vulnerability-reward-program-rules)).
 
 **Note**: Although the iterative exploration of TF API via fuzzing
-`tf.raw_ops.xxx` symbols is the best way to uncover code weakeness, please bear
-in mind that this is not a typical usecase that has security implications. It is
-better to try to translate the vulnerability to something that can be exploited
-during training or inference of a model (i.e., build a model that when given a
-specific input would produce unwanted behavior). Alternatively, if the
+`tf.raw_ops.xxx` symbols is the best way to uncover code weakness, please bear
+in mind that this is not a typical use case that has security implications. It
+is better to try to translate the vulnerability to something that can be
+exploited during training or inference of a model (i.e., build a model that when
+given a specific input would produce unwanted behavior). Alternatively, if the
 TensorFlow API is only used in ancillary tooling, consider the environment where
 the tool would run. For example, if `saved_model_cli` tool would crash on
 parsing a `SavedModel` that is not considered a vulnerability but a bug (since
@@ -254,7 +254,7 @@ In addition, please include the following information along with your report:
 *   Your name and affiliation (if any).
 *   A description of the technical details of the vulnerabilities. It is very
     important to let us know how we can reproduce your findings.
-*   A minimal example of the vulnerabity.
+*   A minimal example of the vulnerability.
 *   An explanation of who can exploit this vulnerability, and what they gain
     when doing so -- write an attack scenario. This will help us evaluate your
     report quickly, especially if the issue is complex.
@@ -279,9 +279,9 @@ For each vulnerability, we try to ingress it as soon as possible, given the size
 of the team and the number of reports. Vulnerabilities will, in general, be
 batched to be fixed at the same time as a quarterly release.
 
-Past security advisories are listed
+Security advisories from 2018 to March 2023 are listed
 [here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/security/README.md).
-In the future, we might sunset this list and only use GitHub's Security Advisory
-format, to simplify the post-vulnerability-fix process.  We credit reporters for
-identifying security issues, although we keep your name confidential if you
-request it.
+From TF 2.13 onwards, we have sunset this list and only use GitHub's Security
+Advisory format, to simplify the post-vulnerability-fix process.  In both
+locations, we credit reporters for identifying security issues, although we keep
+your name confidential if you request it.

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/tsl/c/tsl_status.h"
 
+#include <string>
+
 #include "tensorflow/tsl/c/tsl_status_internal.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/status.h"
@@ -40,6 +42,16 @@ void TSL_SetPayload(TSL_Status* s, const char* key, const char* value) {
   s->status.SetPayload(key, absl::Cord(absl::string_view(value)));
 }
 
+void TSL_ForEachPayload(const TSL_Status* s, TSL_PayloadVisitor visitor,
+                        void* capture) {
+  s->status.ForEachPayload([visitor, capture](absl::string_view type_url,
+                                              const absl::Cord& payload) {
+    std::string type_url_str(type_url);
+    std::string payload_str(payload);
+    visitor(type_url_str.c_str(), payload_str.c_str(), capture);
+  });
+}
+
 void TSL_SetStatusFromIOError(TSL_Status* s, int error_code,
                               const char* context) {
   // TODO(b/139060984): Handle windows when changing its filesystem
@@ -51,5 +63,5 @@ TSL_Code TSL_GetCode(const TSL_Status* s) {
 }
 
 const char* TSL_Message(const TSL_Status* s) {
-  return s->status.error_message().c_str();
+  return tsl::NullTerminatedMessage(s->status);
 }

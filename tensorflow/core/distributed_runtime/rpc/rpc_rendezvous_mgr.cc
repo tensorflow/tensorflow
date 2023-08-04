@@ -308,9 +308,10 @@ void RpcRemoteRendezvous::RecvFromRemoteAsync(
 RpcRendezvousMgr::RpcRendezvousMgr(const WorkerEnv* env)
     : BaseRendezvousMgr(env) {}
 
-BaseRemoteRendezvous* RpcRendezvousMgr::Create(int64_t step_id,
-                                               const WorkerEnv* worker_env) {
-  return new RpcRemoteRendezvous(worker_env, step_id);
+tsl::core::RefCountPtr<BaseRemoteRendezvous> RpcRendezvousMgr::Create(
+    int64_t step_id, const WorkerEnv* worker_env) {
+  return tsl::core::RefCountPtr<BaseRemoteRendezvous>(
+      new RpcRemoteRendezvous(worker_env, step_id));
 }
 
 }  // end namespace tensorflow

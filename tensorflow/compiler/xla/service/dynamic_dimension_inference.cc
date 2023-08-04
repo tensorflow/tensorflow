@@ -2172,6 +2172,11 @@ HloInstruction* DynamicDimensionInference::GetDynamicSize(
   return nullptr;
 }
 
+const HloInstruction* DynamicDimensionInference::GetDynamicSize(
+    const HloInstruction* inst, const ShapeIndex& index, int64_t dim) const {
+  return GetDynamicSize(const_cast<HloInstruction*>(inst), index, dim);
+}
+
 std::vector<HloInstruction*> DynamicDimensionInference::GetDynamicSizes(
     HloInstruction* inst, const ShapeIndex& index) const {
   CHECK(ShapeUtil::IndexIsValid(inst->shape(), index));

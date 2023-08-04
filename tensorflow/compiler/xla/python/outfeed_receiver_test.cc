@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/outfeed_receiver.h"
 
 #include <memory>
+#include <optional>
+#include <vector>
 
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
@@ -120,7 +122,7 @@ TEST(OutfeedReceiverTest, ReceiveOutfeedSimple) {
         receiver->Receive(consumer_id, data);
       };
   auto outfeed_receiver =
-      std::make_shared<OutfeedReceiver>(callback, clients, 128);
+      std::make_shared<OutfeedReceiver>(callback, clients, 128, std::nullopt);
   outfeed_receiver->Start();
 
   XlaBuilder builder("execute_test_outfeed");
@@ -153,7 +155,7 @@ TEST(OutfeedReceiverTest, ReceiveOutfeedTwoComputations) {
         receiver->Receive(consumer_id, data);
       };
   auto outfeed_receiver =
-      std::make_shared<OutfeedReceiver>(callback, clients, 128);
+      std::make_shared<OutfeedReceiver>(callback, clients, 128, std::nullopt);
   outfeed_receiver->Start();
 
   XlaBuilder builder0("execute_test_outfeed_0");
@@ -198,7 +200,7 @@ TEST(OutfeedReceiverTest, ReceiveOutfeedTwoOutfeed) {
         receiver->Receive(consumer_id, data);
       };
   auto outfeed_receiver =
-      std::make_shared<OutfeedReceiver>(callback, clients, 128);
+      std::make_shared<OutfeedReceiver>(callback, clients, 128, std::nullopt);
   outfeed_receiver->Start();
 
   XlaBuilder builder("execute_test_outfeed");
@@ -241,7 +243,7 @@ TEST(OutfeedReceiverTest, DifferentShapeForConsumerIdError) {
         receiver->Receive(consumer_id, data);
       };
   auto outfeed_receiver =
-      std::make_shared<OutfeedReceiver>(callback, clients, 128);
+      std::make_shared<OutfeedReceiver>(callback, clients, 128, std::nullopt);
   outfeed_receiver->Start();
 
   XlaBuilder builder("execute_test_outfeed");
@@ -275,7 +277,7 @@ TEST(OutfeedReceiverTest, InvalidConsumerIdError) {
         receiver->Receive(consumer_id, data);
       };
   auto outfeed_receiver =
-      std::make_shared<OutfeedReceiver>(callback, clients, 128);
+      std::make_shared<OutfeedReceiver>(callback, clients, 128, std::nullopt);
   outfeed_receiver->Start();
 
   XlaBuilder builder("execute_test_outfeed");

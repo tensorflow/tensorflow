@@ -2,10 +2,7 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [
-        "//tensorflow/compiler/tf2xla:internal",
-        "//tensorflow/core/tpu:__subpackages__",
-    ],
+    default_visibility = ["//tensorflow/compiler/tf2xla:internal"],
     licenses = ["notice"],
 )
 
@@ -23,6 +20,8 @@ XLA_OPS_DEPS = [
     "//tensorflow/compiler/jit:variable_info_util",
     "//tensorflow/compiler/jit:xla_device_no_jit_rewrite_registration",
     "//tensorflow/compiler/jit:xla_cluster_util",
+    "//tensorflow/compiler/jit:xla_host_recv_device_context",
+    "//tensorflow/compiler/jit:xla_host_send_device_context",
     "//tensorflow/compiler/jit:xla_launch_util",
     "//tensorflow/compiler/tf2xla:common",
     "//tensorflow/compiler/tf2xla:tf2xla_util",
@@ -59,6 +58,8 @@ cc_library(
         "//tensorflow/compiler/jit:xla_compile_util",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/core/platform:refcount",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
 )

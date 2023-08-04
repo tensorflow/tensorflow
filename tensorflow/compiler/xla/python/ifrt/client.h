@@ -34,7 +34,6 @@ namespace xla {
 namespace ifrt {
 
 using PlatformId = ::xla::PjRtPlatformId;
-using ChannelHandle = ::xla::ChannelHandle;
 
 // TODO(hyeontaek): Generalize DeviceAssignment or hide it from the top-level
 // API.
@@ -131,12 +130,13 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
       int num_replicas, int num_partitions) const = 0;
   virtual StatusOr<Device*> LookupDevice(int device_id) const = 0;
 
-  virtual StatusOr<ChannelHandle> CreateDeviceToHostChannelHandle() = 0;
-  virtual StatusOr<ChannelHandle> CreateHostToDeviceChannelHandle() = 0;
-
   // TODO(hyeontaek): Potentially remove this method to encourage supporting
   // only ahead-of-time compilation.
   virtual Compiler* GetDefaultCompiler() = 0;
+
+  // Returns a topology description for that covers the provided devices.
+  virtual StatusOr<std::shared_ptr<const xla::PjRtTopologyDescription>>
+  GetTopologyForDevices(absl::Span<Device* const> devices) const = 0;
 
   static char ID;  // NOLINT
 };

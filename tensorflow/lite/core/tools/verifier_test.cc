@@ -155,7 +155,7 @@ class TfLiteFlatbufferModelBuilder {
 
   flatbuffers::FlatBufferBuilder builder_;
   MutableOpResolver resolver_;
-  TfLiteRegistration fake_op_;
+  TfLiteRegistration fake_op_{};
   MockErrorReporter mock_reporter_;
   std::vector<flatbuffers::Offset<Operator>> operators_;
   std::vector<flatbuffers::Offset<OperatorCode>> operator_codes_;
@@ -628,7 +628,7 @@ TEST(VerifyModel, SimpleValidSparseTensor) {
   ::tflite::FinishModelBuffer(builder, model_);
   MockErrorReporter mock_reporter;
   MutableOpResolver resolver;
-  TfLiteRegistration fake_op;
+  TfLiteRegistration fake_op{};
   resolver.AddCustom("FakeOp", &fake_op);
   ASSERT_TRUE(
       Verify(builder.GetBufferPointer(), builder.GetSize(), &mock_reporter));
@@ -653,7 +653,7 @@ TEST(VerifyModel, InvalidSparseTensorMissingBlockMap) {
   ::tflite::FinishModelBuffer(builder, model_);
   MockErrorReporter mock_reporter;
   MutableOpResolver resolver;
-  TfLiteRegistration fake_op;
+  TfLiteRegistration fake_op{};
   resolver.AddCustom("FakeOp", &fake_op);
   ASSERT_FALSE(
       Verify(builder.GetBufferPointer(), builder.GetSize(), &mock_reporter));
@@ -681,7 +681,7 @@ TEST(VerifyModel, InvalidSparseTensorIndexOutOfBound) {
   ::tflite::FinishModelBuffer(builder, model_);
   MockErrorReporter mock_reporter;
   MutableOpResolver resolver;
-  TfLiteRegistration fake_op;
+  TfLiteRegistration fake_op{};
   resolver.AddCustom("FakeOp", &fake_op);
   ASSERT_FALSE(
       Verify(builder.GetBufferPointer(), builder.GetSize(), &mock_reporter));
@@ -708,7 +708,7 @@ TEST(VerifyModel, InvalidSparseTensorInvalidBuffer) {
   ::tflite::FinishModelBuffer(builder, model_);
   MockErrorReporter mock_reporter;
   MutableOpResolver resolver;
-  TfLiteRegistration fake_op;
+  TfLiteRegistration fake_op{};
   resolver.AddCustom("FakeOp", &fake_op);
   ASSERT_FALSE(
       Verify(builder.GetBufferPointer(), builder.GetSize(), &mock_reporter));
@@ -737,7 +737,7 @@ TEST(VerifyModel, InvalidSparseTensorInvalidTraversalOrder) {
   ::tflite::FinishModelBuffer(builder, model_);
   MockErrorReporter mock_reporter;
   MutableOpResolver resolver;
-  TfLiteRegistration fake_op;
+  TfLiteRegistration fake_op{};
   resolver.AddCustom("FakeOp", &fake_op);
   ASSERT_FALSE(
       Verify(builder.GetBufferPointer(), builder.GetSize(), &mock_reporter));
@@ -778,7 +778,7 @@ TEST(VerifyModel, ValidSparseTensorBCSC) {
   ::tflite::FinishModelBuffer(builder, model_);
   MockErrorReporter mock_reporter;
   MutableOpResolver resolver;
-  TfLiteRegistration fake_op;
+  TfLiteRegistration fake_op{};
   resolver.AddCustom("FakeOp", &fake_op);
   ASSERT_TRUE(
       Verify(builder.GetBufferPointer(), builder.GetSize(), &mock_reporter));

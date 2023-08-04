@@ -107,6 +107,17 @@ TEST_F(RefTest, ScopedUnref_Nullptr) {
   EXPECT_EQ(destroyed_, 0);
 }
 
+TEST_F(RefTest, RefCountPtr) {
+  const RefCountPtr<MyRef> cref = RefCountPtr<MyRef>(new MyRef);
+  ASSERT_TRUE(cref.get() != nullptr);
+  ASSERT_EQ(cref->RefCount(), 1);
+  {
+    const RefCountPtr<MyRef> cref2 = cref.GetNewRef();
+    ASSERT_EQ(cref->RefCount(), 2);
+  }
+  ASSERT_EQ(cref->RefCount(), 1);
+}
+
 class ObjType : public WeakRefCounted {
  public:
   ObjType() : ObjType(unused_dtor_called_) {}

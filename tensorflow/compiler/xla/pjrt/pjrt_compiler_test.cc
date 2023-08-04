@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include <gtest/gtest.h>
 #include "tensorflow/compiler/xla/client/xla_computation.h"
@@ -27,13 +28,17 @@ namespace xla {
 namespace {
 
 TEST(PjRtCompilerTest, CompilerNotRegistered) {
-  class PjRtTestTopology : public PjRtDeviceTopology {
+  class PjRtTestTopology : public PjRtTopologyDescription {
    public:
     PjRtPlatformId platform_id() const override { return 0; }
     absl::string_view platform_name() const override {
       return "not_registered";
     }
     absl::string_view platform_version() const override { return "test"; }
+    std::vector<std::unique_ptr<const PjRtDeviceDescription>>
+    DeviceDescriptions() const override {
+      LOG(FATAL) << "Unused";
+    }
   };
   PjRtTestTopology topology;
 
@@ -45,11 +50,15 @@ TEST(PjRtCompilerTest, CompilerNotRegistered) {
 }
 
 TEST(PjRtCompilerTest, CompilerRegistered) {
-  class PjRtTestTopology : public PjRtDeviceTopology {
+  class PjRtTestTopology : public PjRtTopologyDescription {
    public:
     PjRtPlatformId platform_id() const override { return 0; }
     absl::string_view platform_name() const override { return "registered"; }
     absl::string_view platform_version() const override { return "test"; }
+    std::vector<std::unique_ptr<const PjRtDeviceDescription>>
+    DeviceDescriptions() const override {
+      LOG(FATAL) << "Unused";
+    }
   };
   PjRtTestTopology topology;
 
@@ -57,12 +66,12 @@ TEST(PjRtCompilerTest, CompilerRegistered) {
    public:
     StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
         CompileOptions options, const XlaComputation& computation,
-        const PjRtDeviceTopology& topology, PjRtClient* client) override {
+        const PjRtTopologyDescription& topology, PjRtClient* client) override {
       return tsl::errors::Unimplemented("test compiler!");
     }
     StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
         CompileOptions options, mlir::ModuleOp module,
-        const PjRtDeviceTopology& topology, PjRtClient* client) override {
+        const PjRtTopologyDescription& topology, PjRtClient* client) override {
       return tsl::errors::Unimplemented("test compiler!");
     }
   };

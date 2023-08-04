@@ -40,10 +40,7 @@ class ReduceScatterReassociateTest : public HloTestBase {
 
   size_t ReduceScatterCount(std::unique_ptr<HloModule>& module) {
     return absl::c_count_if(module->entry_computation()->instructions(),
-                            [](const HloInstruction* inst) {
-                              return inst->opcode() ==
-                                     HloOpcode::kReduceScatter;
-                            });
+                            HloPredicateIsOp<HloOpcode::kReduceScatter>);
   }
 };
 

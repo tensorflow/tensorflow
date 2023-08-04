@@ -10,6 +10,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "check_deps",
     "tf_cc_test",
+    "tf_cc_test_mkl",
     "tf_cc_tests",
     "tf_copts",
     "tf_cuda_library",
@@ -130,6 +131,8 @@ filegroup(
         "util.h",
         "work_sharder.cc",
         "work_sharder.h",
+        "//tensorflow/core/config:flag_defs",
+        "//tensorflow/core/config:flags",
         "//tensorflow/core/util/quantization:mobile_srcs_only_runtime",
         "//tensorflow/tsl/util:mobile_srcs_only_runtime",
     ],
@@ -161,7 +164,7 @@ filegroup(
         "matmul_autotune.h",
         "matmul_bcast.h",
         "mirror_pad_mode.h",
-        "mkl_threadpool.h",
+        "mkl_heuristics.h",
         "mkl_util.h",
         "onednn_env_vars.h",
         "overflow.h",
@@ -294,9 +297,10 @@ filegroup(
 filegroup(
     name = "mkl_util_hdrs",
     srcs = [
-        "mkl_threadpool.h",
+        "mkl_heuristics.h",
         "mkl_util.h",
         "onednn_env_vars.h",
+        "//tensorflow/tsl/util:onednn_util_hdrs",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -730,11 +734,10 @@ tf_kernel_library(
     }),
     visibility = ["//tensorflow/core/kernels:friends"],
     deps = [
-        "//tensorflow/compiler/xla/stream_executor/cuda:cublas_lib",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cublas_plugin",
         "//tensorflow/compiler/xla/stream_executor/cuda:cusolver_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/tsl/platform/default/build_config:cublas_plugin",
     ],
 )
 
@@ -745,15 +748,15 @@ tf_kernel_library(
     compatible_with = [],
     visibility = ["//tensorflow/core/kernels:friends"],
     deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
         "//tensorflow/compiler/xla/stream_executor/platform:dso_loader",
+        "//tensorflow/compiler/xla/stream_executor/rocm:hipsolver_wrapper",
         "//tensorflow/compiler/xla/stream_executor/rocm:rocblas_plugin",
         "//tensorflow/compiler/xla/stream_executor/rocm:rocblas_wrapper",
         "//tensorflow/compiler/xla/stream_executor/rocm:rocm_gpu_executor",
         "//tensorflow/compiler/xla/stream_executor/rocm:rocsolver_wrapper",
-        "//tensorflow/compiler/xla/stream_executor/rocm:hipsolver_wrapper",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
     ] + if_rocm([
         "@local_config_rocm//rocm:rocprim",
     ]),
@@ -954,6 +957,21 @@ tf_cc_test(
         "//tensorflow/core/platform",
         "@com_google_absl//absl/functional:bind_front",
         "@com_google_absl//absl/time",
+    ],
+)
+
+tf_cc_test_mkl(
+    name = "mkl_heuristics_test",
+    size = "small",
+    srcs = ["mkl_heuristics_test.cc"],
+    linkstatic = 1,  # Fixes dyld error on MacOS.
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/kernels:ops_testutil",
     ],
 )
 

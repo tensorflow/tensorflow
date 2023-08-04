@@ -51,8 +51,8 @@ typedef Eigen::GpuDevice GPUDevice;
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_RELU_KERNELS);
 #undef REGISTER_RELU_KERNELS
 
-// Register LeakyRelu here for all types except bfloat16
-// bfloat16 is in cwise_op_leakyrelu_bf16.cc
+// Register LeakyRelu here for all types except bfloat16 and float32
+// bfloat16 and float32 are registered in cwise_op_leakyrelu.cc
 #define REGISTER_LEAKYRELU_KERNELS(type)                              \
   REGISTER_KERNEL_BUILDER(                                            \
       Name("LeakyRelu").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
@@ -60,8 +60,7 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_RELU_KERNELS);
 
 TF_CALL_INTEGRAL_TYPES(REGISTER_LEAKYRELU_KERNELS)
 TF_CALL_half(REGISTER_LEAKYRELU_KERNELS)
-    TF_CALL_float(REGISTER_LEAKYRELU_KERNELS)
-        TF_CALL_double(REGISTER_LEAKYRELU_KERNELS)
+    TF_CALL_double(REGISTER_LEAKYRELU_KERNELS)
 #undef REGISTER_LEAKYRELU_KERNELS
 
 #define REGISTER_ELU_KERNELS(type)                                   \

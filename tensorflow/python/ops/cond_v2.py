@@ -31,6 +31,7 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
@@ -254,8 +255,8 @@ def _build_cond(pred,
 
   # Create the If op.
   with ops.control_dependencies(
-      list(true_graph._function_captures.control) + list(  # pylint: disable=protected-access
-          false_graph._function_captures.control)):  # pylint: disable=protected-access
+      list(true_graph.function_captures.control) + list(
+          false_graph.function_captures.control)):
     true_stateful_ops = [
         op for op in true_graph.get_operations() if op._is_stateful
     ]
@@ -333,7 +334,7 @@ def get_func_graphs(op):
       func_graph = util.get_func_graph(op, input_shapes, name_attr_list.name)
     for external_t, internal_t in zip(inputs, func_graph.inputs):
       handle_data_util.copy_handle_data(external_t, internal_t)
-    func_graph._function_captures.reset_captures(inputs, func_graph.inputs)
+    func_graph.function_captures.reset_captures(inputs, func_graph.inputs)
     # Link the op so that the gradient code can use it.
     func_graph._forward_cond = op
     return func_graph
@@ -584,7 +585,7 @@ def _make_inputs_match(branch_graphs, branch_inputs):
     branch_graph.inputs = input_list
 
     # Rewrite the FuncGraphs' state to reflect the new inputs.
-    branch_graph._function_captures.reset_captures(
+    branch_graph.function_captures.reset_captures(
         new_inputs, branch_graph.inputs)
 
   return new_inputs
@@ -650,7 +651,7 @@ def _make_output_composite_tensors_match(op_type, branch_graphs):
     for branch_idx, branch_out in enumerate(branch_outs):
       if isinstance(branch_out, indexed_slices.IndexedSlices):
         continue
-      elif isinstance(branch_out, ops.Tensor):
+      elif isinstance(branch_out, tensor_lib.Tensor):
         with branch_graphs[branch_idx].as_default():
           branch_outputs[branch_idx][output_idx] = math_ops._as_indexed_slices(
               branch_out)
@@ -1237,7 +1238,7 @@ def _build_case(branch_index,
 
   # Create the Case op.
   with ops.control_dependencies(
-      sum((list(bg._function_captures.control) for bg in branch_graphs), [])):  # pylint: disable=protected-access
+      sum((list(bg.function_captures.control) for bg in branch_graphs), [])):
 
     def _make_op(inputs):
       case_op, tensors = util.get_op_and_outputs(op_fn(

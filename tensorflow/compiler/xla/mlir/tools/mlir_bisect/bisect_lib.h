@@ -61,7 +61,7 @@ std::pair<OwningOpRef<ModuleOp>, Op> CloneModuleFor(Op op) {
 
 namespace detail {
 
-using CandidateVector = SmallVector<OwningOpRef<ModuleOp>>;
+using CandidateVector = SmallVector<std::function<OwningOpRef<ModuleOp>()>>;
 
 CandidateVector GetCandidates(
     const std::function<CandidateVector(BisectState&, Operation*)>& strategy,

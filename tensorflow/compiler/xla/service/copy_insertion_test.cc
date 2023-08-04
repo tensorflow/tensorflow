@@ -3279,7 +3279,7 @@ TEST_F(CopyInsertionTest, CustomCallAliasingCopyInsertedAliasedParam) {
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnUnverifiedModule(kModuleString));
+                          ParseAndReturnVerifiedModule(kModuleString));
   InsertCopies(module.get());
   HloInstruction* custom_call = module->entry_computation()->root_instruction();
   EXPECT_THAT(custom_call->operand(0), op::Copy(op::Parameter(0)));
@@ -3302,7 +3302,7 @@ TEST_F(CopyInsertionTest, CustomCallAliasingCopyInsertedAliasedReuse) {
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnUnverifiedModule(kModuleString));
+                          ParseAndReturnVerifiedModule(kModuleString));
 
   InsertCopies(module.get());
   HloInstruction* custom_call = FindInstruction(module.get(), "custom-call");
@@ -3324,7 +3324,7 @@ TEST_F(CopyInsertionTest, CustomCallAliasingCopyRemoved) {
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnUnverifiedModule(kModuleString));
+                          ParseAndReturnVerifiedModule(kModuleString));
 
   InsertCopies(module.get());
   HloInstruction* custom_call = module->entry_computation()->root_instruction();
@@ -3356,7 +3356,7 @@ ENTRY %main.13 (Arg_0.1: pred[], Arg_1.2: u8[300,451,3]) -> u8[300,451,3] {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnUnverifiedModule(kModuleString));
+                          ParseAndReturnVerifiedModule(kModuleString));
 
   CopyInsertion copy_insertion(nullptr,
                                /*use_region_based_live_range_analysis=*/-1);
@@ -3376,7 +3376,7 @@ ROOT %arg_tuple.1 = (f32[]{:T(256)}, f32[]{:T(256)}) parameter(0), parameter_rep
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnUnverifiedModule(kModuleString));
+                          ParseAndReturnVerifiedModule(kModuleString));
 
   CopyInsertion copy_insertion(nullptr,
                                /*use_region_based_live_range_analysis=*/-1);
@@ -3414,7 +3414,7 @@ ENTRY %main {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnUnverifiedModule(kModuleString));
+                          ParseAndReturnVerifiedModule(kModuleString));
 
   CopyInsertion copy_insertion(nullptr,
                                /*use_region_based_live_range_analysis=*/-1);
@@ -3453,13 +3453,123 @@ ENTRY %main {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnUnverifiedModule(kModuleString));
+                          ParseAndReturnVerifiedModule(kModuleString));
 
   CopyInsertion copy_insertion(nullptr,
                                /*use_region_based_live_range_analysis=*/-1);
   ASSERT_IS_OK(copy_insertion.Run(module.get(), {"foobar"}).status());
   VLOG(2) << module->ToString();
   EXPECT_EQ(CountCopies(*module), 1);
+}
+
+TEST_F(CopyInsertionTest,
+       RegionAnalysisDoesNotAddUnnecessaryCopyOfInputTupleElements) {
+  const char* const kModuleString = R"(
+HloModule while_aliasing, input_output_alias={ {0}: (0, {}, may-alias), {1}: (1, {}, may-alias), {2}: (2, {}, may-alias) }
+
+add {
+  param_0 = f32[1,128] parameter(0)
+  param_1 = f32[1,128] parameter(1)
+  ROOT add = f32[1,128] add(param_0, param_1)
+}
+
+condition {
+  input_tuple = (f32[1,128], f32[1,128], pred[]) parameter(0)
+  ROOT cond = pred[] get-tuple-element(input_tuple), index=2
+}
+
+body {
+  input_tuple = (f32[1,128], f32[1,128], pred[]) parameter(0)
+  param_0 = f32[1,128] get-tuple-element(input_tuple), index=0
+  param_1 = f32[1,128] get-tuple-element(input_tuple), index=1
+  cond = pred[] get-tuple-element(input_tuple), index=2
+  add = f32[1,128] add(param_0, param_1)
+  c0 = f32[] constant(0)
+  splat_c0 = f32[1,128] broadcast(c0), dimensions={}
+  ROOT output_tuple = (f32[1,128], f32[1,128], pred[]) tuple(add, splat_c0, cond)
+}
+
+ENTRY main {
+  param_0 = f32[1,128] parameter(0)
+  param_1 = f32[1,128] parameter(1)
+  param_2 = pred[] parameter(2)
+  tuple = (f32[1,128], f32[1,128], pred[]) tuple(param_0, param_1, param_2)
+  ROOT while = (f32[1,128], f32[1,128], pred[]) while(tuple), condition=condition, body=body
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleString));
+
+  CopyInsertion copy_insertion(nullptr,
+                               /*use_region_based_live_range_analysis=*/-1);
+  ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
+  VLOG(3) << module->ToString();
+
+  // Both params of add should not be copy
+  auto add = FindInstruction(module.get(), "add.1");
+  EXPECT_NE(add, nullptr);
+  EXPECT_EQ(add->operand(0)->opcode(), HloOpcode::kGetTupleElement);
+  EXPECT_EQ(add->operand(1)->opcode(), HloOpcode::kGetTupleElement);
+}
+
+TEST_F(CopyInsertionTest,
+       RegionAnalysisDoesNotAddCopyForNonUpdateParameterOfDynamicSliceUpdate) {
+  const char* const kModuleString = R"(
+HloModule while_aliasing, input_output_alias={ {0}: (0, {}, may-alias), {1}: (1, {}, may-alias), {2}: (2, {}, may-alias), {3}: (3, {}, may-alias) }
+
+fused_computation {
+  param_0 = f32[4,2,128,512]{3,2,1,0} parameter(0)
+  param_1 = f32[2,128,512]{2,1,0} parameter(1)
+  bitcast.1 = f32[1,2,128,512]{3,2,1,0} bitcast(param_1)
+  param_2 = s32[] parameter(2)
+  constant.1 = s32[] constant(0)
+  compare.1 = pred[] compare(param_2, constant.1), direction=LT
+  constant.2 = s32[] constant(4)
+  add.1 = s32[] add(param_2, constant.2)
+  select.1 = s32[] select(compare.1, add.1, param_2)
+  ROOT dynamic-update-slice.73 = f32[4,2,128,512]{3,2,1,0} dynamic-update-slice(param_0, bitcast.1, select.1, constant.1, constant.1, constant.1)
+}
+
+condition {
+  input_tuple = (s32[], f32[2,128,512], f32[4,2,128,512], pred[]) parameter(0)
+  ROOT cond = pred[] get-tuple-element(input_tuple), index=3
+}
+
+body {
+  input_tuple = (s32[], f32[2,128,512], f32[4,2,128,512], pred[]) parameter(0)
+  get-tuple-element.0 = s32[] get-tuple-element(input_tuple), index=0
+  get-tuple-element.1 = f32[4,2,128,512]{3,2,1,0} get-tuple-element(input_tuple), index=2
+  get-tuple-element.2 = f32[2,128,512]{2,1,0} get-tuple-element(input_tuple), index=1
+  fusion = f32[4,2,128,512]{3,2,1,0} fusion(get-tuple-element.1, get-tuple-element.2, get-tuple-element.0), kind=kLoop, calls=fused_computation
+  cond = pred[] get-tuple-element(input_tuple), index=3
+  c0 = f32[] constant(0)
+  fusion.1 = f32[2,128,512]{2,1,0} broadcast(c0), dimensions={}
+  ROOT output_tuple = (s32[], f32[2,128,512], f32[4,2,128,512], pred[]) tuple(get-tuple-element.0, fusion.1, fusion, cond)
+}
+
+ENTRY main {
+  param_0 = f32[2,128,512] parameter(0)
+  param_1 = f32[4,2,128,512] parameter(1)
+  param_2 = pred[] parameter(2)
+  param_3 = s32[] parameter(3)
+  tuple = (s32[], f32[2,128,512], f32[4,2,128,512], pred[]) tuple(param_3, param_0, param_1, param_2)
+  ROOT while = (s32[], f32[2,128,512], f32[4,2,128,512], pred[]) while(tuple), condition=condition, body=body
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleString));
+
+  CopyInsertion copy_insertion(nullptr,
+                               /*use_region_based_live_range_analysis=*/-1);
+  ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
+  VLOG(3) << module->ToString();
+
+  // The param 1 of fusion should not be a copy
+  auto fusion = FindInstruction(module.get(), "fusion");
+  EXPECT_NE(fusion, nullptr);
+  EXPECT_EQ(fusion->operand(1)->opcode(), HloOpcode::kGetTupleElement);
 }
 
 }  // namespace

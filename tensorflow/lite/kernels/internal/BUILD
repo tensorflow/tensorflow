@@ -3,6 +3,7 @@ load("//tensorflow:tensorflow.bzl", "transitive_hdrs")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_extra_arm_config_settings", "tflite_portable_test_suite_combined")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -14,7 +15,6 @@ package(
 
 HARD_FP_FLAGS_IF_APPLICABLE = select({
     "//tensorflow:android_arm": ["-mfloat-abi=softfp"],
-    "//tensorflow:android_arm64": ["-mfloat-abi=softfp"],
     "//tensorflow:android_armeabi": ["-mfloat-abi=softfp"],
     "//conditions:default": [],
 })
@@ -22,7 +22,6 @@ HARD_FP_FLAGS_IF_APPLICABLE = select({
 NEON_FLAGS_IF_APPLICABLE = select({
     ":arm": [
         "-O3",
-        "-mfpu=neon",
     ],
     ":armeabi-v7a": [
         "-O3",
@@ -52,6 +51,17 @@ cc_library(
 )
 
 cc_library(
+    name = "runtime_shape",
+    srcs = ["runtime_shape.cc"],
+    hdrs = ["runtime_shape.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
+    deps = [
+        ":compatibility",
+    ],
+)
+
+cc_library(
     name = "types",
     hdrs = [
         "runtime_shape.h",
@@ -61,6 +71,7 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         ":compatibility",
+        ":runtime_shape",
     ],
 )
 
@@ -127,6 +138,13 @@ config_setting(
     name = "ios_x86_64",
     values = {
         "cpu": "ios_x86_64",
+    },
+)
+
+config_setting(
+    name = "tvos_x86_64",
+    values = {
+        "cpu": "tvos_x86_64",
     },
 )
 
@@ -236,6 +254,7 @@ selects.config_setting_group(
         ":darwin_x86_64",
         ":freebsd",
         ":windows",
+        ":tvos_x86_64",
     ],
 )
 
@@ -259,7 +278,7 @@ selects.config_setting_group(
 
 cc_library(
     name = "common",
-    srcs = [],
+    srcs = ["common.cc"],
     hdrs = ["common.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
@@ -267,6 +286,7 @@ cc_library(
         ":cppmath",
         ":cpu_check",
         ":types",
+        "//tensorflow/lite/core:macros",
         "@gemmlowp//:fixedpoint",
     ],
 )
@@ -280,6 +300,7 @@ cc_library(
         "optimized/depthwiseconv_multithread.h",
         "optimized/depthwiseconv_uint8.h",
         "optimized/depthwiseconv_uint8_3x3_filter.h",
+        "optimized/fully_connected_4bit.h",
         "optimized/im2col_utils.h",
         "optimized/integer_ops/add.h",
         "optimized/integer_ops/conv.h",
@@ -311,6 +332,7 @@ cc_library(
         ":compatibility",
         ":cppmath",
         ":cpu_check",
+        ":optimized_4bit",
         ":quantization_util",
         ":reduce_utils",
         ":reference_base",
@@ -319,6 +341,7 @@ cc_library(
         ":tensor_utils",
         ":transpose_utils",
         ":types",
+        "//tensorflow/lite:macros",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:cpu_backend_gemm",
@@ -357,6 +380,7 @@ cc_library(
         ":tensor_utils",
         ":transpose_utils",
         ":types",
+        "//tensorflow/lite:macros",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:cpu_backend_gemm",
@@ -382,6 +406,111 @@ cc_library(
         "//tensorflow/lite/core/c:common",
         "//tensorflow/tsl/framework/convolution:eigen_spatial_convolutions-inl",
         "//third_party/eigen3",
+    ],
+)
+
+selects.config_setting_group(
+    name = "linux_x86_64_opt",
+    match_all = [
+        "//tensorflow:linux_x86_64",
+        "//tensorflow:optimized",
+    ],
+)
+
+cc_library(
+    name = "optimized_4bit",
+    srcs = select({
+        ":linux_x86_64_opt": [
+            "optimized/4bit/sse_fully_connected.cc",
+        ],
+        "//tensorflow:android_arm64": [
+            "optimized/4bit/neon_fully_connected.cc",
+            "optimized/4bit/neon_fully_connected_aarch64_nosdot.cc",
+            "optimized/4bit/neon_fully_connected_aarch64_sdot.cc",
+            "optimized/4bit/neon_fully_connected_impl.h",
+        ],
+        # copybara:uncomment_begin(google-only)
+        # "//tools/cc_target_os:toyota-sa8155-aarch64-oe-linux": [
+        # "optimized/4bit/neon_fully_connected.cc",
+        # "optimized/4bit/neon_fully_connected_aarch64_nosdot.cc",
+        # "optimized/4bit/neon_fully_connected_aarch64_sdot.cc",
+        # "optimized/4bit/neon_fully_connected_impl.h",
+        # ],
+        # copybara:uncomment_end
+        "//tensorflow:android_arm": [
+            "optimized/4bit/neon_fully_connected.cc",
+            "optimized/4bit/neon_fully_connected_arm32.cc",
+            "optimized/4bit/neon_fully_connected_impl.h",
+        ],
+        "//conditions:default": [],
+    }) + [
+        "optimized/4bit/fully_connected_common.h",
+        "optimized/4bit/fully_connected_reference.cc",
+        "optimized/4bit/fully_connected_reference_impl.h",
+    ],
+    hdrs = [
+        "optimized/4bit/fully_connected_reference.h",
+        "optimized/fully_connected_4bit.h",
+    ] + select({
+        ":linux_x86_64_opt": [
+            "optimized/4bit/sse_fully_connected.h",
+            "optimized/4bit/sse_fully_connected_impl.h",
+        ],
+        "//tensorflow:android_arm64": [
+            "optimized/4bit/neon_fully_connected.h",
+        ],
+        # copybara:uncomment_begin(google-only)
+        # "//tools/cc_target_os:toyota-sa8155-aarch64-oe-linux": [
+        # "optimized/4bit/neon_fully_connected.h",
+        # ],
+        # copybara:uncomment_end
+        "//tensorflow:android_arm": [
+            "optimized/4bit/neon_fully_connected.h",
+        ],
+        "//conditions:default": [],
+    }),
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts() + select({
+        "//tensorflow:android_arm64": [
+            "-march=armv8.2-a+dotprod",
+        ],
+        # copybara:uncomment_begin(google-only)
+        # "//tools/cc_target_os:toyota-sa8155-aarch64-oe-linux": [
+        # "-march=armv8.2-a+dotprod",
+        # ],
+        # copybara:uncomment_end
+        "//tensorflow:android_arm": [],
+        "//conditions:default": [],
+    }) + NEON_FLAGS_IF_APPLICABLE,
+    defines = select({
+        ":linux_x86_64_opt": ["FC_4BIT_SSE"],
+        "//tensorflow:android_arm64": [
+            "FC_4BIT_NEON",
+        ],
+        # copybara:uncomment_begin(google-only)
+        # "//tools/cc_target_os:toyota-sa8155-aarch64-oe-linux": [
+        # "FC_4BIT_NEON",
+        # ],
+        # copybara:uncomment_end
+        "//tensorflow:android_arm": [
+            "FC_4BIT_NEON",
+        ],
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":cppmath",
+        ":cpu_check",
+        "@cpuinfo//:cpuinfo_with_unstripped_include_path",
+    ],
+)
+
+cc_test(
+    name = "optimized_4bit_test",
+    srcs = ["optimized/optimized_4bit_test.cc"],
+    deps = [
+        ":common",
+        ":optimized_4bit",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -508,9 +637,23 @@ cc_library(
 )
 
 cc_library(
+    name = "reference_comparisons",
+    srcs = ["reference/comparisons.cc"],
+    hdrs = ["reference/comparisons.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
+    deps = [
+        ":common",
+        ":types",
+        "//tensorflow/lite/core/c:common",
+    ],
+)
+
+cc_library(
     name = "reference_base",
     srcs = [],
     hdrs = [
+        "reduce_common.h",
         "reference/add.h",
         "reference/add_n.h",
         "reference/arg_min_max.h",
@@ -557,8 +700,8 @@ cc_library(
         "reference/integer_ops/transpose_conv.h",
         "reference/l2normalization.h",
         "reference/leaky_relu.h",
-        "reference/logistic.h",
         "reference/log_softmax.h",
+        "reference/logistic.h",
         "reference/lstm_cell.h",
         "reference/maximum_minimum.h",
         "reference/mul.h",
@@ -570,7 +713,6 @@ cc_library(
         "reference/process_broadcast_shapes.h",
         "reference/quantize.h",
         "reference/reduce.h",
-        "reduce_common.h",
         "reference/requantize.h",
         "reference/resize_bilinear.h",
         "reference/resize_nearest_neighbor.h",
@@ -592,8 +734,8 @@ cc_library(
             "reference/integer_ops/dequantize.h",
             "reference/integer_ops/log_softmax.h",
             "reference/reference_ops.h",
-            "reference/string_comparisons.h",
             "reference/sparse_ops/fully_connected.h",
+            "reference/string_comparisons.h",
         ],
     }),
     compatible_with = get_compatible_with_portable(),
@@ -612,6 +754,7 @@ cc_library(
         ":constants",
         ":cppmath",
         ":quantization_util",
+        ":reference_comparisons",
         ":strided_slice_logic",
         ":tensor",
         ":tensor_utils",
@@ -707,6 +850,7 @@ cc_library(
         ":legacy_types",
         ":quantization_util",
         ":reference_base",
+        ":reference_comparisons",
         ":strided_slice_logic",
         ":tensor",
         ":tensor_utils",
@@ -718,6 +862,33 @@ cc_library(
         "//third_party/eigen3",
         "@gemmlowp",
         "@ruy//ruy/profiler:instrumentation",
+    ],
+)
+
+cc_library(
+    name = "tensor_ctypes",
+    srcs = ["tensor_ctypes.cc"],
+    hdrs = ["tensor_ctypes.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
+    deps = [
+        ":types",
+        "//tensorflow/lite/core:macros",
+        "//tensorflow/lite/core/c:common",
+    ],
+)
+
+cc_library_with_tflite(
+    name = "opaque_tensor_ctypes",
+    srcs = ["opaque_tensor_ctypes.cc"],
+    hdrs = ["opaque_tensor_ctypes.h"],
+    copts = tflite_copts(),
+    tflite_deps = [
+        "//tensorflow/lite/c:c_api_experimental_without_op_resolver",
+    ],
+    deps = [
+        ":types",
+        "//tensorflow/lite/core:macros",
     ],
 )
 
@@ -735,7 +906,9 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
+        ":tensor_ctypes",
         ":types",
+        "//tensorflow/lite:macros",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/core/c:common",
     ],
@@ -755,7 +928,9 @@ cc_library(
     }),
     copts = tflite_copts(),
     deps = [
+        ":tensor_ctypes",
         ":types",
+        "//tensorflow/lite:macros",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/core/c:common",
     ],
@@ -934,8 +1109,8 @@ cc_library(
     deps = [
         ":cpu_check",
         ":tensor_utils_no_eigen",
-        "//third_party/eigen3",
         "//tensorflow/lite/core/c:common",
+        "//third_party/eigen3",
     ] + selects.with_or({
         (
             ":arm_any",
@@ -1076,6 +1251,24 @@ cc_test(
 cc_test(
     name = "resize_bilinear_test",
     srcs = ["resize_bilinear_test.cc"],
+    defines = [
+        "TFLITE_SINGLE_ROUNDING=0",
+    ],
+    deps = [
+        ":optimized_base",
+        ":reference_base",
+        ":test_util",
+        ":types",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "resize_bilinear_test_single_rounding",
+    srcs = ["resize_bilinear_test.cc"],
+    defines = [
+        "TFLITE_SINGLE_ROUNDING=1",
+    ],
     deps = [
         ":optimized_base",
         ":reference_base",
@@ -1285,6 +1478,17 @@ cc_test(
     deps = [
         ":common",
         ":reduce_utils",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "runtime_shape_test",
+    srcs = ["runtime_shape_test.cc"],
+    deps = [
+        ":types",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
 )

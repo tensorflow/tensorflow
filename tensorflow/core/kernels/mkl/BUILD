@@ -62,9 +62,11 @@ tf_mkl_kernel_library(
     srcs = ["mkl_batch_matmul_op.cc"],
     hdrs = [
         "mkl_batch_matmul_helper.h",
+        "mkl_kernel_util.h",
         "mkl_matmul_ops_common.h",
     ],
     deps = [
+        "//tensorflow/core:graph",
         "//tensorflow/core/kernels:batch_matmul_op",
         "//tensorflow/core/kernels:matmul_op",
     ] + MKL_DEPS,
@@ -75,9 +77,11 @@ tf_mkl_kernel_library(
     srcs = ["mkl_einsum_op.cc"],
     hdrs = [
         "mkl_batch_matmul_helper.h",
+        "mkl_kernel_util.h",
         "mkl_matmul_ops_common.h",
     ],
     deps = [
+        "//tensorflow/core:graph",
         "//tensorflow/core/kernels/linalg:einsum_op",
     ] + MKL_DEPS,
 )
@@ -88,8 +92,13 @@ tf_mkl_kernel_library(
         "mkl_matmul_op.cc",
         "mkl_matmul_op_fused.cc",
     ],
-    hdrs = ["mkl_matmul_ops_common.h"],
-    deps = MKL_DEPS,
+    hdrs = [
+        "mkl_kernel_util.h",
+        "mkl_matmul_ops_common.h",
+    ],
+    deps = [
+        "//tensorflow/core:graph",
+    ] + MKL_DEPS,
 )
 
 tf_cc_test_mkl(
@@ -119,11 +128,11 @@ tf_cc_test_mkl(
         "//tensorflow/core:direct_session",
         "//tensorflow/core:math_ops_op_lib",
         "//tensorflow/core:nn_ops_op_lib",
-        "//tensorflow/core/kernels:quantization_utils",
-        "//tensorflow/core/kernels:quantized_ops",
         "//tensorflow/core/kernels:bias_op",
         "//tensorflow/core/kernels:conv_ops",
         "//tensorflow/core/kernels:depthwise_conv_op",
+        "//tensorflow/core/kernels:quantization_utils",
+        "//tensorflow/core/kernels:quantized_ops",
         "//tensorflow/core/kernels:relu_op",
     ] + MKL_TEST_DEPS,
 )
@@ -149,8 +158,8 @@ tf_mkl_kernel_library(
     name = "mkl_quantize_op",
     srcs = ["mkl_quantize_op.cc"],
     deps = [
-        "//tensorflow/core/kernels:quantized_ops",
         "//tensorflow/core/graph:mkl_graph_util",
+        "//tensorflow/core/kernels:quantized_ops",
         "@gemmlowp",
     ] + MKL_DEPS,
 )
@@ -174,6 +183,7 @@ tf_cc_test_mkl(
     srcs = ["mkl_quantized_pooling_ops_test.cc"],
     linkstatic = 1,  # Fixes dyld error on MacOS.
     deps = [
+        ":mkl_kernel_util",
         ":mkl_pooling_ops",
         "//tensorflow/core:array_ops_op_lib",
         "//tensorflow/core:math_ops_op_lib",
@@ -203,29 +213,33 @@ tf_mkl_kernel_library(
     name = "mkl_qmatmul_op",
     srcs = ["mkl_qmatmul_op.cc"],
     hdrs = [
+        "mkl_kernel_util.h",
         "mkl_matmul_ops_common.h",
         "mkl_quantized_conv_ops.h",
     ],
     deps = [
-        "//tensorflow/core/kernels:matmul_op",
-        "//tensorflow/core/kernels:no_op",
+        "//tensorflow/core:graph",
         "//tensorflow/core:math_ops_op_lib",
         "//tensorflow/core:mkl_nn_ops_op_lib",
         "//tensorflow/core:nn_ops_op_lib",
+        "//tensorflow/core/kernels:matmul_op",
+        "//tensorflow/core/kernels:no_op",
     ] + MKL_DEPS,
 )
 
 tf_mkl_kernel_library(
     name = "mkl_conv_op",
     hdrs = [
+        "mkl_kernel_util.h",
         "mkl_quantized_conv_ops.h",
     ],
     prefix = "mkl_conv",
     deps = [
-        "@com_google_absl//absl/strings",
+        "//tensorflow/core:graph",
         "//tensorflow/core/kernels:conv_grad_shape_utils",
         "//tensorflow/core/kernels:conv_ops",
         "//tensorflow/core/kernels:no_op",
+        "@com_google_absl//absl/strings",
     ] + MKL_DEPS,
 )
 
@@ -253,10 +267,10 @@ tf_cc_test_mkl(
     deps = [
         ":mkl_eltwise_activation_base_op",
         ":mkl_swish_op",
-        "@com_google_absl//absl/strings",
         "//tensorflow/cc:math_ops",
-        "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core:direct_session",
+        "//tensorflow/core/kernels:cwise_op",
+        "@com_google_absl//absl/strings",
     ] + MKL_TEST_DEPS,
 )
 
@@ -281,13 +295,12 @@ tf_mkl_kernel_library(
     name = "mkl_dequantize_op",
     srcs = ["mkl_dequantize_op.cc"],
     deps = [
-        "@gemmlowp",
         "//tensorflow/core:array_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:math_ops_op_lib",
-        "//tensorflow/core/graph:mkl_graph_util",
         "//tensorflow/core:nn_ops_op_lib",
+        "//tensorflow/core/graph:mkl_graph_util",
         "//tensorflow/core/kernels:concat_lib_hdrs",
         "//tensorflow/core/kernels:conv_ops",
         "//tensorflow/core/kernels:cwise_op",
@@ -299,6 +312,7 @@ tf_mkl_kernel_library(
         "//tensorflow/core/kernels:transpose_functor",
         "//tensorflow/core/util:image_resizer_state",
         "//tensorflow/core/util:onednn_env_vars",
+        "@gemmlowp",
     ] + mkl_deps(),
 )
 
@@ -347,8 +361,8 @@ tf_mkl_kernel_library(
     name = "mkl_softmax_op",
     prefix = "mkl_softmax",
     deps = [
-        "//third_party/eigen3",
         "//tensorflow/core/graph:mkl_graph_util",
+        "//third_party/eigen3",
     ] + MKL_SHORT_DEPS,
 )
 
@@ -362,8 +376,8 @@ tf_mkl_kernel_library(
     name = "mkl_deprecated_ops",
     prefix = "mkl_deprecated_ops",
     deps = [
-        "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/graph:mkl_graph_util",
+        "//tensorflow/core/kernels:cwise_op",
     ] + MKL_DEPS,
 )
 
@@ -380,8 +394,8 @@ tf_mkl_kernel_library(
     name = "mkl_layer_norm_op",
     srcs = ["mkl_layer_norm_op.cc"],
     deps = [
-        "//tensorflow/core:nn_ops_op_lib",
         "//tensorflow/core:mkl_nn_ops_op_lib",
+        "//tensorflow/core:nn_ops_op_lib",
     ] + MKL_DEPS,
 )
 
@@ -400,6 +414,15 @@ tf_cc_test_mkl(
 )
 
 tf_mkl_kernel_library(
+    name = "mkl_fused_instance_norm_op",
+    srcs = ["mkl_fused_instance_norm_op.cc"],
+    deps = [
+        "//tensorflow/core:mkl_nn_ops_op_lib",
+        "//tensorflow/core:nn_ops_op_lib",
+    ] + MKL_DEPS,
+)
+
+tf_mkl_kernel_library(
     name = "mkl_concat_op",
     prefix = "mkl_concat_op",
     deps = [
@@ -415,7 +438,6 @@ tf_mkl_kernel_library(
         "mkl_requantize_per_channel_op.cc",
     ],
     deps = [
-        "@gemmlowp",
         "//tensorflow/core/kernels:concat_lib_hdrs",
         "//tensorflow/core/kernels:conv_ops",
         "//tensorflow/core/kernels:eigen_helpers",
@@ -424,6 +446,7 @@ tf_mkl_kernel_library(
         "//tensorflow/core/kernels:pooling_ops",
         "//tensorflow/core/kernels:quantization_utils",
         "//tensorflow/core/util:image_resizer_state",
+        "@gemmlowp",
     ] + MKL_DEPS,
 )
 
@@ -452,6 +475,7 @@ tf_cc_test_mkl(
         ":mkl_tfconv_op",
         "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/core:direct_session",
+        "//tensorflow/core:tensorflow",
         "//tensorflow/core/graph:mkl_graph_util",
         "//tensorflow/core/kernels:bias_op",
         "//tensorflow/core/kernels:conv_ops",
@@ -459,8 +483,7 @@ tf_cc_test_mkl(
         "//tensorflow/core/kernels:matmul_op",
         "//tensorflow/core/kernels:pad_op",
         "//tensorflow/core/kernels:relu_op",
-        "//tensorflow/core/kernels/image:image",
-        "//tensorflow/core:tensorflow",
+        "//tensorflow/core/kernels/image",
     ] + MKL_TEST_DEPS,
 )
 
@@ -479,6 +502,7 @@ tf_cc_test_mkl(
     linkstatic = 1,
     deps = [
         "//tensorflow/core/kernels:matmul_op",
+        "//tensorflow/core/kernels/mkl:mkl_batch_matmul_op",
         "//tensorflow/core/kernels/mkl:mkl_matmul_op",
     ] + MKL_TEST_DEPS,
 )
@@ -489,12 +513,13 @@ tf_mkl_kernel_library(
     hdrs = ["mkl_kernel_util.h"],
     deps = MKL_DEPS + [
         ":mkl_quantize_op",
+        "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:ops",
-        "//tensorflow/core/kernels:quantization_utils",
+        "//tensorflow/cc:scope",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:direct_session",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/cc:scope",
+        "//tensorflow/core:graph",
+        "//tensorflow/core/kernels:quantization_utils",
     ],
 )
 

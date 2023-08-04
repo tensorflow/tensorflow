@@ -41,13 +41,13 @@ ConvolutionThunk::ConvolutionThunk(
       scratch_buffer_(scratch_slice),
       config_(std::move(config)) {}
 
-MaybeFusedConvRunner& ConvolutionThunk::GetOrCreateRunner(
+GenericConvRunner& ConvolutionThunk::GetOrCreateRunner(
     const stream_executor::Stream* stream) {
   absl::MutexLock lock(&mu_);
   auto it = runner_cache_.find(stream);
   if (it == runner_cache_.end()) {
     it = runner_cache_
-             .insert({stream, std::make_unique<MaybeFusedConvRunner>(config_)})
+             .insert({stream, std::make_unique<GenericConvRunner>(config_)})
              .first;
   }
   return *it->second;
@@ -57,6 +57,7 @@ Status ConvolutionThunk::ExecuteOnStream(const ExecuteParams& params) {
   const auto& buffer_allocations = *params.buffer_allocations;
 
   std::vector<se::DeviceMemoryBase> operand_se_buffers;
+  operand_se_buffers.reserve(operand_buffers_.size());
   for (const auto& buffer : operand_buffers_) {
     operand_se_buffers.push_back(buffer_allocations.GetDeviceAddress(buffer));
   }

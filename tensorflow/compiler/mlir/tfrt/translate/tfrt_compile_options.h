@@ -21,7 +21,11 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/core/protobuf/config.pb.h"
+
 namespace tensorflow {
+
+class BackendCompiler;
 
 enum class TfrtDeviceInfraTarget {
   kCpu,             // CPU only, no device support.
@@ -36,6 +40,7 @@ enum class TfrtDeviceInfraTarget {
 std::ostream& operator<<(std::ostream& os, TfrtDeviceInfraTarget device_target);
 
 struct TfrtCompileOptions {
+  std::string saved_model_dir;
   // TODO(tfrt-devs): Ideally, compiler should make the decision where
   // to place the variable.
   std::string variable_device = "/job:localhost/replica:0/task:0/device:CPU:0";
@@ -46,6 +51,10 @@ struct TfrtCompileOptions {
 
   // If true, run grappler passes before compiling.
   bool enable_grappler = true;
+
+  // Graph rewrite options that will be applied on GraphDef before converting to
+  // MLIR.
+  GraphOptions graph_options;
 
   // Force data format for all layout sensitive operations, eg. setting it to
   // "NHWC" will changes all data format in the graph to "NHWC" by inserting
@@ -59,6 +68,11 @@ struct TfrtCompileOptions {
   // The target device infrastructure to use. This will trigger target specific
   // compiler passes and runtime initialization.
   TfrtDeviceInfraTarget device_target = TfrtDeviceInfraTarget::kCpu;
+
+  // The custom compiler for device compilation. Instead of using the enum above
+  // to choose predefined device target, users can use this `backend_compiler`
+  // to inject their customized implementation.
+  BackendCompiler* backend_compiler = nullptr;
 
   // If true, use the fused TPU compile_and_execute kernel, which performs all
   // TPU inference related operations, e.g. core selection, h2d/d2h transfers,
@@ -97,6 +111,9 @@ struct TfrtCompileOptions {
   // supposed to be turned on by default.
   bool hoist_invariant_ops = false;
 
+  // If true, get_resource_op will be fused during hoisting.
+  bool fuse_get_resource_ops_in_hoisting = true;
+
   // If true, the compiler will try to sink in the invariant ops (e.g. const
   // ops, var handle ops, etc.) to the nested function (e.g. batch function) to
   // facilitate invariant ops hoisting.
@@ -107,20 +124,6 @@ struct TfrtCompileOptions {
   // If true, tf.While's iterations will be parallelized on a best-effort
   // basis. This is currently experimental.
   bool enable_while_parallel_iterations = false;
-
-  // A set of flags to control auto-fusion: automatic clustering of Tensorflow
-  // operations and compiling outlined regions using MLIR based compilation
-  // stack.
-  //
-  // WARNING: These flags are experimental and are intended for manual testing
-  // of different auto-fusion strategies. They will be removed in the future.
-
-  // A list of Tensorflow operations that are supported by auto-fusion
-  // clustering and compilation (e.g. tf.Tanh).
-  std::vector<std::string> auto_fusion_oplist;
-
-  // Minimum size of the cluster to be compiled at runtime.
-  int auto_fusion_min_cluster_size = 2;
 
   // The cost threshold to decide whether a sequence of operations is cheap, and
   // then whether it can be executed inline. If the cost is smaller than the
@@ -144,10 +147,6 @@ struct TfrtCompileOptions {
 
   // Whether to compile to sync TFRT dialect.
   bool compile_to_sync_tfrt_dialect = false;
-
-  // Whether to use bridge for GPU.
-  // TODO(b/260915352): Remove the flag and default to using bridge.
-  bool use_bridge_for_gpu = false;
 };
 
 std::ostream& operator<<(std::ostream& os, const TfrtCompileOptions& options);

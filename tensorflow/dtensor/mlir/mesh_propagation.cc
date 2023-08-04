@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -30,6 +31,7 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
@@ -60,7 +62,7 @@ mlir::LogicalResult ExtractMeshFromBlockArgument(mlir::BlockArgument block_arg,
   }
   auto layout_or_status = ExtractLayoutFromOperand(block_arg);
   if (!layout_or_status.ok())
-    return func_op.emitOpError(layout_or_status.status().error_message());
+    return func_op.emitOpError(layout_or_status.status().message());
 
   if (layout_or_status->has_value()) {
     out->emplace(layout_or_status->value().mesh());
@@ -100,7 +102,7 @@ mlir::LogicalResult ExtractMeshFromOpOutput(mlir::Value value,
   if (!mesh_or_status.ok())
     return operand_cluster.emitOpError(
         llvm::formatv("Failed during mesh propagation. {0}",
-                      mesh_or_status.status().error_message()));
+                      mesh_or_status.status().message()));
 
   auto extracted_mesh = mesh_or_status.value();
   if (extracted_mesh) *out = extracted_mesh.value();
@@ -193,10 +195,9 @@ mlir::LogicalResult InferMeshFromInputs(
   // inputs. `tf.CopyToMesh` specifies that all operations following the
   // operation is executed on target device mesh cluster specified by
   // `tf.CopyToMesh`.
-  if (llvm::isa<mlir::TF::CopyToMeshOp>(&cluster.GetBody().front())) {
-    return result;
-  }
-  if (llvm::isa<mlir::TF::CopyToMeshGradOp>(&cluster.GetBody().front())) {
+  if (llvm::isa<mlir::TF::CopyToMeshOp, mlir::TF::RelayoutOp,
+                mlir::TF::CopyToMeshGradOp, mlir::TF::RelayoutLikeOp>(
+          &cluster.GetBody().front())) {
     return result;
   }
 
@@ -209,8 +210,7 @@ mlir::LogicalResult InferMeshFromInputs(
         // extracted from the DTensorLayout op to infer the mesh of the cluster.
         if (auto layout_op =
                 llvm::dyn_cast<mlir::TF::DTensorLayout>(operand->getOwner())) {
-          auto mesh = layout_op.getLayout().mesh();
-          extracted_config.emplace(mesh);
+          extracted_config.emplace(layout_op.getLayout().mesh());
         } else {
           auto extract_result =
               ExtractMeshFromOperand(producers, operand, &extracted_config);
@@ -228,9 +228,18 @@ mlir::LogicalResult InferMeshFromInputs(
 
         inputs_with_inferred_mesh->emplace_back(operand);
         if (mesh->has_value() && extracted_config != mesh->value()) {
+          llvm::SmallVector<std::string, 8> input_debug_strings;
+          int index = 0;
+          for (const auto& input : *inputs_with_inferred_mesh) {
+            input_debug_strings.push_back(
+                llvm::formatv("Input Cluster {0}: {1}", index, input->get()));
+            ++index;
+          }
           result = cluster.emitOpError(
-              "failed during mesh propagation. All inputs to "
-              "`tf_device.Cluster` must have same mesh configuration.");
+              llvm::formatv("failed during mesh propagation. All inputs to "
+                            "`tf_device.Cluster` must have same mesh "
+                            "configuration. List of found inputs:\n{0}",
+                            absl::StrJoin(input_debug_strings, "\n")));
         }
 
         if (!mesh->has_value()) mesh->emplace(extracted_config.value());
@@ -278,7 +287,10 @@ mlir::LogicalResult InferMeshFromConsumers(
     // `tf.CopyToMesh`. Therefore, if `consumer` operation is `tf.CopyToMesh`
     // do not propagate mesh backwards to `cluster`.
     if (llvm::isa<mlir::TF::CopyToMeshOp>(consumer)) continue;
+    if (llvm::isa<mlir::TF::RelayoutOp>(consumer)) continue;
     if (llvm::isa<mlir::TF::CopyToMeshGradOp>(&cluster.GetBody().front()))
+      continue;
+    if (llvm::isa<mlir::TF::RelayoutLikeOp>(&cluster.GetBody().front()))
       continue;
 
     Mesh extracted_mesh;
@@ -307,7 +319,7 @@ mlir::LogicalResult InferMeshFromConsumers(
 
       auto mesh_or_status = ExtractDeviceMeshFromOp(consumer_cluster);
       if (!mesh_or_status.ok())
-        return cluster.emitOpError(mesh_or_status.status().error_message());
+        return cluster.emitOpError(mesh_or_status.status().message());
 
       auto consumer_mesh = mesh_or_status.value();
       if (!consumer_mesh) continue;
@@ -413,7 +425,7 @@ mlir::LogicalResult AnnotateFunctionReturnValuesWithMeshInformation(
             Layout::FromString(function_result_layout.getValue().str());
         if (!layout_or_status.ok())
           return parent_function.emitOpError(
-              layout_or_status.status().error_message());
+              layout_or_status.status().message());
 
         result_mesh_attribute.emplace(
             builder->getStringAttr(layout_or_status->mesh().ToString()));
@@ -534,8 +546,7 @@ DTensorMeshPropagation::PropagateDefaultMeshToUnAssignedClusters(
 
     auto mesh_or_status = ExtractDeviceMeshFromOp(cluster);
     if (!mesh_or_status.ok()) {
-      cluster.GetBody().front().emitOpError(
-          mesh_or_status.status().error_message());
+      cluster.GetBody().front().emitOpError(mesh_or_status.status().message());
       return mlir::WalkResult::interrupt();
     }
 
@@ -663,23 +674,20 @@ mlir::LogicalResult DTensorMeshPropagation::PropagateMeshFromConsumers(
   return mlir::success();
 }
 
-mlir::LogicalResult RewriteCopyToMeshGradOp(
+mlir::LogicalResult PropagateLikeMesh(
     const llvm::DenseMap<mlir::OpOperand*, std::vector<mlir::Value>>& producers,
     mlir::tf_device::ClusterOp cluster, mlir::OpBuilder* builder,
     bool* mesh_changed) {
-  auto backward_op = llvm::dyn_cast_or_null<mlir::TF::CopyToMeshGradOp>(
-      &cluster.GetBody().front());
-  if (!backward_op) {
+  mlir::Operation* backward_op = &cluster.GetBody().front();
+
+  if (!mlir::isa<mlir::TF::CopyToMeshGradOp>(backward_op) &&
+      !mlir::isa<mlir::TF::RelayoutLikeOp>(backward_op)) {
     // No CopyToMeshGradOp is found. Either the cluster did not have one,
     // or it has been rewritten from previous iterations.
     return mlir::success();
   }
 
-  if (cluster->getAttrOfType<mlir::StringAttr>(kMeshAttr)) {
-    return backward_op.emitOpError(
-        "A cluster with CopyToMeshGrad is already assigned a mesh. "
-        "This indicates an internal error.");
-  }
+  auto old_mesh = cluster->getAttrOfType<mlir::StringAttr>(kMeshAttr);
 
   std::optional<Mesh> mesh;
   mlir::OpOperand& operand = backward_op->getOpOperand(1);  // forward_input();
@@ -688,27 +696,14 @@ mlir::LogicalResult RewriteCopyToMeshGradOp(
   if (mlir::failed(ExtractMeshFromOperand(producers, &operand, &mesh))) {
     return mlir::success();
   }
+  if (old_mesh != nullptr) {
+    if (old_mesh.getValue().str() == mesh->ToString()) {
+      return mlir::success();
+    }
+  }
+
   cluster->setAttr(kMeshAttr, builder->getStringAttr(mesh->ToString()));
 
-  // Rewrites to CopyToMesh, by combining the sharding spec of the reference
-  // layout with the mesh.
-  // This assumes the CopyToMesh maintains the layout of the input and only
-  // changes the mesh.
-  builder->setInsertionPoint(backward_op);
-  StatusOr<Layout> layout =
-      Layout::FromString(backward_op.getReferenceLayout().str());
-  if (!layout.ok()) {
-    return backward_op.emitOpError("Failure passing layout: ")
-           << backward_op.getReferenceLayout().str();
-  }
-  layout->set_mesh(mesh.value());
-
-  auto op = builder->create<mlir::TF::CopyToMeshOp>(
-      backward_op->getLoc(), backward_op->getResult(0).getType(),
-      backward_op.getInput(), layout->ToString());
-
-  backward_op->replaceAllUsesWith(op);
-  backward_op->erase();
   *mesh_changed = true;
   return mlir::success();
 }
@@ -751,8 +746,8 @@ mlir::LogicalResult DTensorMeshPropagation::PropagateMesh(
       return mlir::failure();
   }
   for (auto cluster : llvm::reverse(cluster_ops)) {
-    if (mlir::failed(RewriteCopyToMeshGradOp(producers, cluster, builder,
-                                             mesh_changed))) {
+    if (mlir::failed(
+            PropagateLikeMesh(producers, cluster, builder, mesh_changed))) {
       return mlir::failure();
     }
   }

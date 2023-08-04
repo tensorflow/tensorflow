@@ -26,8 +26,8 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import extension_type
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
@@ -132,15 +132,16 @@ class _DynamicRaggedShapeBatchEncoder(extension_type.ExtensionTypeBatchEncoder):
              encoding) -> "DynamicRaggedShape":
     return DynamicRaggedShape.from_tensor(encoding, dtype=spec.dtype)
 
-  def encode(self,
-             spec: "DynamicRaggedShape.Spec",
-             value,
-             minimum_rank=0) -> Union[ragged_tensor.RaggedTensor, ops.Tensor]:
+  def encode(
+      self,
+      spec: "DynamicRaggedShape.Spec",
+      value,
+      minimum_rank=0) -> Union[ragged_tensor.RaggedTensor, tensor_lib.Tensor]:
     return ones(value, dtype=dtypes.bool)
 
   def encoding_specs(
       self, spec: "DynamicRaggedShape.Spec"
-  ) -> Union[ragged_tensor.RaggedTensorSpec, tensor_spec.TensorSpec]:
+  ) -> Union[ragged_tensor.RaggedTensorSpec, tensor_lib.TensorSpec]:
     if spec.rank != 0:
       ragged_rank = spec.num_row_partitions
     else:
@@ -195,7 +196,7 @@ class DynamicRaggedShape(extension_type.BatchableExtensionType):
   [RP([2, 1]), RP([2, 1, 2])] | [5]          | `[[[1, 2], [3]], [[4, 5]]]`
   """
   _row_partitions: Tuple[RowPartition, ...]
-  _inner_shape: ops.Tensor
+  _inner_shape: tensor_lib.Tensor
   _static_inner_shape: tensor_shape.TensorShape
   __batch_encoder__ = _DynamicRaggedShapeBatchEncoder()
   __name__ = "tf.DynamicRaggedShape"
@@ -1069,7 +1070,7 @@ class DynamicRaggedShape(extension_type.BatchableExtensionType):
 
   def _validate_flat_values(self, flat_values):
     """Test if flat_values have the right nvals."""
-    if not isinstance(flat_values, ops.Tensor):
+    if not isinstance(flat_values, tensor_lib.Tensor):
       return flat_values
     if self.row_partitions:
       last_row_partition = self.row_partitions[-1]
@@ -1200,7 +1201,7 @@ class DynamicRaggedShape(extension_type.BatchableExtensionType):
         ]
 
       self._static_inner_shape = static_inner_shape
-      self._inner_shape = tensor_spec.TensorSpec([inner_rank], dtype=dtype)
+      self._inner_shape = tensor_lib.TensorSpec([inner_rank], dtype=dtype)
       self._row_partitions = row_partitions
 
     def __repr__(self):
@@ -1305,7 +1306,7 @@ class DynamicRaggedShape(extension_type.BatchableExtensionType):
     def _from_spec(
         cls,
         spec: Union["DynamicRaggedShape.Spec", ragged_tensor.RaggedTensorSpec,
-                    tensor_spec.TensorSpec],
+                    tensor_lib.TensorSpec],
         dtype: dtypes.DType = dtypes.int64) -> "DynamicRaggedShape.Spec":
       """Create a TypeSpec for the shape of an object with a given TypeSpec.
 
@@ -1335,7 +1336,7 @@ class DynamicRaggedShape(extension_type.BatchableExtensionType):
       elif isinstance(spec, ragged_tensor.RaggedTensorSpec):
         return cls._from_tensor_shape(spec.shape, spec.ragged_rank,
                                       spec.row_splits_dtype)
-      elif isinstance(spec, tensor_spec.TensorSpec):
+      elif isinstance(spec, tensor_lib.TensorSpec):
         return cls._from_tensor_shape(
             shape=spec.shape, num_row_partitions=0, dtype=dtype)
 
@@ -3182,9 +3183,10 @@ def _merge_row_partitions(
 
 
 def _merge_inner_shape(
-    inner_shape: ops.Tensor, static_inner_shape: tensor_shape.TensorShape,
+    inner_shape: tensor_lib.Tensor,
+    static_inner_shape: tensor_shape.TensorShape,
     outer_axis: int,
-    inner_axis: int) -> Tuple[ops.Tensor, tensor_shape.TensorShape]:
+    inner_axis: int) -> Tuple[tensor_lib.Tensor, tensor_shape.TensorShape]:
   """Merge the inner shape of a DynamicRaggedShape."""
   prefix = inner_shape[:outer_axis]
   suffix = inner_shape[inner_axis + 1:]

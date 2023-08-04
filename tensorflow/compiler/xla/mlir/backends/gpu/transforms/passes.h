@@ -16,8 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_MLIR_BACKENDS_GPU_TRANSFORMS_PASSES_H_
 #define TENSORFLOW_COMPILER_XLA_MLIR_BACKENDS_GPU_TRANSFORMS_PASSES_H_
 
+#include <cstdint>
 #include <memory>
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 
@@ -30,7 +32,9 @@ namespace gpu {
 #define GEN_PASS_DECL_CONVERTLMHLOTOGPULAUNCHPASS
 #define GEN_PASS_DECL_CONVERTLMHLOTOGPURUNTIMEPASS
 #define GEN_PASS_DECL_CONVERTMEMREFGETGLOBALTOARGPASS
-#define GEN_PASS_DECL_OUTLINECUDAGRAPHSPASS
+#define GEN_PASS_DECL_OUTLINEGPUGRAPHSPASS
+#define GEN_PASS_DECL_ADDCONCURRENTREGIONSPASS
+#define GEN_PASS_DECL_STREAMASSIGNMENTPASS
 #include "tensorflow/compiler/xla/mlir/backends/gpu/transforms/passes.h.inc"
 
 class ThunkSequence;  // forward declare
@@ -39,7 +43,9 @@ struct GpuPipelineOpts {
   // Enable experimental pass that outlines parts of the XLA computation into
   // CUDA Graphs, which allows us to amortize the cost of launching multiple
   // device kernels.
-  bool enable_cuda_graphs = false;
+  int32_t gpu_graph_level = 0;
+  int32_t min_graph_size = 0;
+  bool enable_concurrent_region = false;
 };
 
 // Populate passes that lower MLIR modules from a combination of LMHLO and
@@ -95,7 +101,24 @@ createAddHloTraceAnnotationsPass();
 //===----------------------------------------------------------------------===//
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-createOutlineCudaGraphsPass();
+createOutlineGpuGraphsPass();
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> createOutlineGpuGraphsPass(
+    int32_t gpu_graph_level, int32_t min_graph_size);
+
+//===----------------------------------------------------------------------===//
+// Passes for marking concurrent region in CUDA graph capture function.
+//===----------------------------------------------------------------------===//
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createAddConcurrentRegionsPass();
+
+//===----------------------------------------------------------------------===//
+// Passes for assigning kernels to streams in CUDA graph capture function.
+//===----------------------------------------------------------------------===//
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createStreamAssignmentPass();
 
 //===-----------------------------------------------------------------------===/
 

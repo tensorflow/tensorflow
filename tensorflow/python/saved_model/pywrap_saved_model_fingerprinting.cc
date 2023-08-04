@@ -16,11 +16,18 @@ limitations under the License.
 #include <exception>
 #include <string>
 
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/stl.h"  // from @pybind11
+#include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
+#include "tensorflow/cc/saved_model/constants.h"
 #include "tensorflow/cc/saved_model/fingerprinting.h"
+#include "tensorflow/cc/saved_model/reader.h"
+#include "tensorflow/core/common_runtime/graph_runner.h"
+#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/protobuf/saved_model.pb.h"
+#include "tensorflow/python/lib/core/pybind11_status.h"
 
 namespace tensorflow {
 namespace saved_model {
@@ -37,42 +44,61 @@ class FingerprintException : public std::exception {
   std::string message_ = "";
 };
 
+class FileNotFoundException : public std::exception {
+ public:
+  explicit FileNotFoundException(const char *m) : message_{m} {}
+  const char *what() const noexcept override { return message_.c_str(); }
+
+ private:
+  std::string message_ = "";
+};
+
 void DefineFingerprintingModule(py::module main_module) {
   auto m = main_module.def_submodule("fingerprinting");
 
   m.doc() = "Python bindings for TensorFlow SavedModel Fingerprinting.";
 
-  static py::exception<FingerprintException> ex(m, "FingerprintException");
+  static py::exception<FingerprintException> fp_ex(m, "FingerprintException");
   py::register_exception_translator([](std::exception_ptr p) {
     try {
       if (p) {
         std::rethrow_exception(p);
       }
     } catch (const FingerprintException &e) {
-      ex(e.what());
+      fp_ex(e.what());
+    }
+  });
+
+  static py::exception<FileNotFoundException> fnf_ex(m,
+                                                     "FileNotFoundException");
+  py::register_exception_translator([](std::exception_ptr p) {
+    try {
+      if (p) {
+        std::rethrow_exception(p);
+      }
+    } catch (const FileNotFoundException &e) {
+      fnf_ex(e.what());
     }
   });
 
   m.def(
       "CreateFingerprintDef",
-      [](std::string serialized_saved_model, std::string export_dir) {
-        // Deserialize the SavedModel.
-        SavedModel saved_model_pb;
-        saved_model_pb.ParseFromString(serialized_saved_model);
-
+      [](std::string export_dir) -> StatusOr<py::bytes> {
         StatusOr<FingerprintDef> fingerprint =
-            fingerprinting::CreateFingerprintDef(saved_model_pb, export_dir);
+            fingerprinting::CreateFingerprintDef(export_dir);
         if (fingerprint.ok()) {
           return py::bytes(fingerprint.value().SerializeAsString());
         }
         throw FingerprintException(
-            std::string("Could not create fingerprint in directory: " +
-                        export_dir)
+            absl::StrCat(
+                std::string("Could not create fingerprint in directory: " +
+                            export_dir),
+                "\n", fingerprint.status().ToString())
                 .c_str());
       },
-      py::arg("saved_model"), py::arg("export_dir"),
+      py::arg("export_dir"),
       py::doc(
-          "Returns the serialized FingerprintDef of a serialized SavedModel."));
+          "Returns the serialized FingerprintDef of a SavedModel on disk."));
 
   m.def(
       "ReadSavedModelFingerprint",
@@ -81,16 +107,46 @@ void DefineFingerprintingModule(py::module main_module) {
             fingerprinting::ReadSavedModelFingerprint(export_dir);
         if (fingerprint.ok()) {
           return py::bytes(fingerprint.value().SerializeAsString());
+        } else if (fingerprint.status().code() == absl::StatusCode::kNotFound) {
+          throw FileNotFoundException(
+              absl::StrCat(
+                  std::string("Could not find fingerprint in directory: " +
+                              export_dir),
+                  "\n", fingerprint.status().ToString())
+                  .c_str());
+        } else {
+          throw FingerprintException(
+              absl::StrCat(
+                  std::string(
+                      "Could not read fingerprint from fingerprint.pb file "
+                      "in directory: " +
+                      export_dir),
+                  "\n", fingerprint.status().ToString())
+                  .c_str());
         }
-        throw FingerprintException(
-            std::string("Could not read fingerprint from directory: " +
-                        export_dir)
-                .c_str());
       },
       py::arg("export_dir"),
       py::doc(
           "Loads the `fingerprint.pb` from `export_dir`, returns an error if "
           "there is none."));
+
+  m.def(
+      "SingleprintFromSM",
+      [](std::string export_dir) {
+        StatusOr<std::string> singleprint =
+            fingerprinting::Singleprint(export_dir);
+        if (singleprint.ok()) {
+          return py::str(singleprint.value());
+        }
+        throw FingerprintException(
+            absl::StrCat(
+                std::string(
+                    "Could not create singleprint from the saved_model."),
+                "\n", singleprint.status().ToString())
+                .c_str());
+      },
+      py::arg("export_dir"),
+      py::doc("Canonical fingerprinting ID for a SavedModel."));
 
   m.def(
       "Singleprint",
@@ -103,7 +159,9 @@ void DefineFingerprintingModule(py::module main_module) {
           return py::str(singleprint.value());
         }
         throw FingerprintException(
-            std::string("Could not create singleprint from given values.")
+            absl::StrCat(
+                std::string("Could not create singleprint from given values."),
+                "\n", singleprint.status().ToString())
                 .c_str());
       },
       py::arg("graph_def_program_hash"), py::arg("signature_def_hash"),

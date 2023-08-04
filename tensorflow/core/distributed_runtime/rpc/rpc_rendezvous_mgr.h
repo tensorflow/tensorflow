@@ -47,7 +47,8 @@ class RpcRendezvousMgr : public BaseRendezvousMgr {
   explicit RpcRendezvousMgr(const WorkerEnv* env);
 
  protected:
-  BaseRemoteRendezvous* Create(int64_t step_id, const WorkerEnv* worker_env);
+  tsl::core::RefCountPtr<BaseRemoteRendezvous> Create(
+      int64_t step_id, const WorkerEnv* worker_env) override;
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(RpcRendezvousMgr);

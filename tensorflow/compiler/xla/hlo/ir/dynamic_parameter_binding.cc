@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/hlo/ir/dynamic_parameter_binding.h"
 
+#include <optional>
+#include <ostream>
+#include <string>
+#include <vector>
+
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"

@@ -54,11 +54,11 @@ cc_library(
     srcs = ["grpc_service_main.cc"],
     deps = [
         ":grpc_service",
-        "@com_google_absl//absl/strings:str_format",
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:platform_port",
         "//tensorflow/tsl/util:command_line_flags",
+        "@com_google_absl//absl/strings:str_format",
     ] + tsl_grpc_cc_dependencies() + if_libtpu(
         if_false = ["//tensorflow/compiler/xla/service:cpu_plugin"],
         if_true = [],
@@ -81,7 +81,6 @@ xla_cc_test(
     ],
     deps = [
         ":grpc_stub",
-        "@com_google_absl//absl/strings:str_format",
         "//tensorflow/compiler/xla/client",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/tests:literal_test_util",
@@ -91,6 +90,7 @@ xla_cc_test(
         "//tensorflow/tsl/platform:subprocess",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
+        "@com_google_absl//absl/strings:str_format",
     ] + tsl_grpc_cc_dependencies(),
 )
 

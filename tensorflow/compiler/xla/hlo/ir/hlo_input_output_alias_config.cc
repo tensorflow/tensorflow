@@ -15,8 +15,26 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_input_output_alias_config.h"
 
+#include <cstdint>
+#include <optional>
+#include <ostream>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "absl/log/log.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
+#include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 
@@ -34,8 +52,6 @@ Status HloInputOutputAliasConfig::SetUpAlias(
       << " which is an invalid index for shape "
       << ShapeUtil::HumanString(alias_.shape());
   TF_RET_CHECK(param_number >= 0) << param_number;
-  TF_RET_CHECK(!OutputHasAlias(output_index))
-      << "Output index " << output_index << " already has an alias setup";
   // Output can't be aliased with multiple parameters.
   TF_RET_CHECK(!alias_.element(output_index)) << absl::StrFormat(
       "Trying to set up output alias for param %lld at %s but failed: output "
@@ -46,7 +62,7 @@ Status HloInputOutputAliasConfig::SetUpAlias(
   (*alias_.mutable_element(output_index)) =
       Alias(param_number, param_index, must_alias);
   VLOG(4) << "Set up alias between output index " << output_index.ToString()
-          << " and parameter " << param_index << " at index "
+          << " and parameter " << param_number << " at index "
           << param_index.ToString();
   return OkStatus();
 }
@@ -136,15 +152,16 @@ bool HloInputOutputAliasConfig::ParameterMustAlias(
 
 std::optional<ShapeIndex> HloInputOutputAliasConfig::GetAliasedOutput(
     int64_t param_number, const ShapeIndex& param_index) const {
-  std::optional<ShapeIndex> output;
-  alias_.ForEachElement(
-      [&](const xla::ShapeIndex& output_index, std::optional<Alias> alias) {
-        if (alias && alias->parameter_number == param_number &&
-            alias->parameter_index == param_index) {
-          output = output_index;
-        }
-      });
-  return output;
+  // We use reverse iterator to preserve the semantics of
+  // alias_.ForEachElement() which was used before.
+  for (auto it = alias_.rbegin(); it != alias_.rend(); ++it) {
+    if (it->second.has_value() &&
+        it->second->parameter_number == param_number &&
+        it->second->parameter_index == param_index) {
+      return it->first;
+    }
+  }
+  return std::nullopt;
 }
 
 std::optional<HloInputOutputAliasConfig::Alias>
@@ -186,13 +203,13 @@ Status HloInputOutputAliasConfig::Verify(
   }
   return ForEachAliasWithStatus([&](const ShapeIndex& output_index,
                                     const Alias& alias) -> Status {
-    const HloInstruction* root = entry->root_instruction();
-
     TF_RET_CHECK(0 <= alias.parameter_number);
     TF_RET_CHECK(entry->num_parameters() > alias.parameter_number);
     const Shape& param_shape =
-        entry->parameter_instruction(alias.parameter_number)->shape();
-    const Shape& output_shape = root->shape();
+        module.entry_computation_layout().parameter_shape(
+            alias.parameter_number);
+    const Shape& output_shape =
+        module.entry_computation_layout().result_shape();
     TF_RET_CHECK(ShapeUtil::IndexIsValid(param_shape, alias.parameter_index));
     TF_RET_CHECK(ShapeUtil::IndexIsValid(output_shape, output_index));
 
@@ -231,4 +248,100 @@ std::ostream& operator<<(std::ostream& out,
   out << config.ToString();
   return out;
 }
+
+Status HloBufferDonorConfig::AddBufferDonor(int64_t param_number,
+                                            const ShapeIndex& param_index) {
+  TF_RET_CHECK(param_number >= 0) << param_number;
+  VLOG(4) << "Register the parameter " << param_number << " at index "
+          << param_index.ToString() << " as a buffer donor.";
+  buffer_donor_.emplace(BufferDonor(param_number, param_index));
+  return OkStatus();
+}
+
+Status HloBufferDonorConfig::RemoveBufferDonor(int64_t param_number,
+                                               const ShapeIndex& param_index) {
+  TF_RET_CHECK(param_number >= 0) << param_number;
+  buffer_donor_.erase(BufferDonor(param_number, param_index));
+  return OkStatus();
+}
+
+HloBufferDonorProto HloBufferDonorConfig::ToProto() const {
+  HloBufferDonorProto result;
+  for (const auto& donor : buffer_donor_) {
+    HloBufferDonorProto::BufferDonorEntryProto entry;
+    entry.set_parameter_number(donor.param_number);
+    for (int64_t i : donor.param_index) {
+      entry.add_parameter_shape_index(i);
+    }
+    result.add_entries()->Swap(&entry);
+  }
+  return result;
+}
+
+StatusOr<HloBufferDonorConfig> HloBufferDonorConfig::CreateFromProto(
+    const HloBufferDonorProto& proto) {
+  HloBufferDonorConfig result;
+  for (const HloBufferDonorProto::BufferDonorEntryProto& entry :
+       proto.entries()) {
+    int64_t param_number = entry.parameter_number();
+    ShapeIndex param_index(entry.parameter_shape_index().begin(),
+                           entry.parameter_shape_index().end());
+    TF_RETURN_IF_ERROR(result.AddBufferDonor(param_number, param_index));
+  }
+  return result;
+}
+
+std::string HloBufferDonorConfig::ToString() const {
+  std::vector<std::string> pieces;
+  pieces.push_back("HloBufferDonorConfig");
+  for (const auto& donor : buffer_donor_) {
+    pieces.push_back(absl::StrFormat(
+        "  Parameter %lld at %s is registered as a buffer donor.",
+        donor.param_number, donor.param_index.ToString()));
+  }
+  return absl::StrJoin(pieces, "\n");
+}
+
+std::string HloBufferDonorConfig::ToShortString() const {
+  std::vector<std::string> pieces;
+  pieces.reserve(buffer_donor_.size());
+  for (const auto& donor : buffer_donor_) {
+    pieces.push_back(absl::StrFormat("%lld at %s", donor.param_number,
+                                     donor.param_index.ToString()));
+  }
+  return absl::StrJoin(pieces, ", ");
+}
+
+bool HloBufferDonorConfig::ParameterIsBufferDonor(
+    int64_t param_number, const ShapeIndex& param_index) const {
+  auto it = buffer_donor_.find(BufferDonor(param_number, param_index));
+  return it != buffer_donor_.end();
+}
+
+Status HloBufferDonorConfig::Verify(const HloModule& module) const {
+  const HloComputation* entry = module.entry_computation();
+  for (const auto& donor : buffer_donor_) {
+    TF_RET_CHECK(donor.param_number >= 0);
+    TF_RET_CHECK(donor.param_number < entry->num_parameters());
+
+    const Shape& param_shape =
+        module.entry_computation_layout().parameter_shape(donor.param_number);
+    TF_RET_CHECK(ShapeUtil::IndexIsValid(param_shape, donor.param_index));
+
+    const Shape& param_subshape =
+        ShapeUtil::GetSubshape(param_shape, donor.param_index);
+    TF_RET_CHECK(LayoutUtil::IsDenseArray(param_subshape));
+  }
+
+  // Since buffer_donor_ is a set, we do not need to check if one input has
+  // registered as a buffer donor many times.
+  return OkStatus();
+}
+
+std::ostream& operator<<(std::ostream& out,
+                         const HloBufferDonorConfig& config) {
+  out << config.ToString();
+  return out;
+}
+
 }  // namespace xla

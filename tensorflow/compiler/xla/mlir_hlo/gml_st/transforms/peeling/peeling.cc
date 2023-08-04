@@ -54,11 +54,11 @@ LogicalResult peelLoop(RewriterBase &b, scf::ForallOp loopOp, int64_t idx,
   // New upper bound: %ub - (%ub - %lb) mod %step
   auto modMap = AffineMap::get(0, 3, exprUb - ((exprUb - exprLb) % exprStep));
   SmallVector<Value> operands{lb, ub, step};
-  canonicalizeMapAndOperands(&modMap, &operands);
+  affine::canonicalizeMapAndOperands(&modMap, &operands);
   modMap = simplifyAffineMap(modMap);
   RewriterBase::InsertionGuard guard(b);
   b.setInsertionPoint(loopOp);
-  splitBound = b.createOrFold<AffineApplyOp>(loc, modMap, operands);
+  splitBound = b.createOrFold<affine::AffineApplyOp>(loc, modMap, operands);
 
   // No specialization necessary if step already divides upper bound evenly.
   if (splitBound == ub || (ubInt && ubInt == getConstantIntValue(splitBound)))
@@ -163,10 +163,10 @@ GmlStPeelingResult peelAllLoops(scf::ForallOp loop,
     Value mainIv = loop.getInductionVars()[peeledIdx],
           remainderIv = remainderLoop.getInductionVars()[peeledIdx];
 
-    rewriteAffineOpAfterPeeling<AffineMinOp>(rewriter, loop, remainderLoop,
-                                             mainIv, remainderIv, ub, step);
-    rewriteAffineOpAfterPeeling<AffineMaxOp>(rewriter, loop, remainderLoop,
-                                             mainIv, remainderIv, ub, step);
+    rewriteAffineOpAfterPeeling<affine::AffineMinOp>(
+        rewriter, loop, remainderLoop, mainIv, remainderIv, ub, step);
+    rewriteAffineOpAfterPeeling<affine::AffineMaxOp>(
+        rewriter, loop, remainderLoop, mainIv, remainderIv, ub, step);
 
     // Mark the new loop if one was created.
     peelingResult.tailLoops.push_back(remainderLoop);

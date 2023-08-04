@@ -157,7 +157,7 @@ func.func @reduce_diferent_input_shapes(%arg0: tensor<2x3xf32>, %arg1: tensor<3x
 func.func @reduce_oob_dims(%arg0: tensor<?x?xf32>, %arg1 : tensor<f32>)
     -> (tensor<?xf32>) {
 
-  // expected-error@+1 {{Out-of-bounds dimension 2 for input-tensor rank: 2}}
+  // expected-error@+1 {{Out-of-bounds dimension 2, expected to be less than the input-tensor rank 2}}
   %0 = "mhlo.reduce"(%arg0, %arg1) ({
 
   ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32> ):
@@ -401,6 +401,7 @@ func.func @verify_dynamic_operand(%arg0: tensor<8x?xf32>, %arg1 : tensor<4xf32>)
 func.func @reduce_verify_rettype(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xi32>,
     %arg2: tensor<f32>, %arg3: tensor<i32>) -> (tensor<?xf32>) {
 
+  // expected-error@+2 {{'mhlo.reduce' op failed to infer returned types}}
   // expected-error@+1 {{inferred type(s) 'tensor<?xf32>', 'tensor<?xi32>' are incompatible with return type(s) of operation 'tensor<?xf32>', 'tensor<?xi32>', 'tensor<?xi32>'}}
   %0:3 = "mhlo.reduce"(%arg0, %arg1, %arg2, %arg3) ({
 
@@ -419,6 +420,7 @@ func.func @reduce_verify_rettype(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xi32>,
 func.func @reduce_verify_rettype(%arg0: tensor<?x?xf32>, %arg1 : tensor<f32>)
     -> (tensor<?x?xi32>) {
 
+  // expected-error@+2 {{'mhlo.reduce' op failed to infer returned types}}
   // expected-error@+1 {{'mhlo.reduce' op inferred type(s) 'tensor<?xf32>' are incompatible with return type(s) of operation 'tensor<?xf32>', 'tensor<?xf32>'}}
   %0:2 = "mhlo.reduce"(%arg0, %arg1) ({
 
@@ -436,6 +438,7 @@ func.func @reduce_verify_rettype(%arg0: tensor<?x?xf32>, %arg1 : tensor<f32>)
 func.func @reduce_verify_rettype(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xi32>,
     %arg2: tensor<f32>, %arg3: tensor<i32>) -> (tensor<?xf32>) {
 
+  // expected-error@+2 {{'mhlo.reduce' op failed to infer returned types}}
   // expected-error@+1 {{'mhlo.reduce' op inferred type(s) 'tensor<?xf32>', 'tensor<?xi32>' are incompatible with return type(s) of operation 'tensor<?xf32>', 'tensor<?x?xf32>'}}
   %0:2 = "mhlo.reduce"(%arg0, %arg1, %arg2, %arg3) ({
 
@@ -454,6 +457,7 @@ func.func @reduce_verify_rettype(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xi32>,
 func.func @reduce_verify_rettype(%arg0: tensor<?x?xf32>, %arg1 : tensor<f32>)
     -> (tensor<?xi32>) {
 
+  // expected-error@+2 {{'mhlo.reduce' op failed to infer returned types}}
   // expected-error@+1 {{'mhlo.reduce' op inferred type(s) 'tensor<?xf32>' are incompatible with return type(s) of operation 'tensor<?xi32>'}}
   %0 = "mhlo.reduce"(%arg0, %arg1) ({
 
@@ -471,6 +475,7 @@ func.func @reduce_verify_rettype(%arg0: tensor<?x?xf32>, %arg1 : tensor<f32>)
 func.func @reduce_verify_rettype(%arg0: tensor<?x?xf32>, %arg1 : tensor<f32>)
     -> (tensor<?x?xi32>) {
 
+  // expected-error@+2 {{'mhlo.reduce' op failed to infer returned types}}
   // expected-error@+1 {{'mhlo.reduce' op inferred type(s) 'tensor<?xf32>' are incompatible with return type(s) of operation 'tensor<?x?xf32>'}}
   %0 = "mhlo.reduce"(%arg0, %arg1) ({
 

@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/tsl/platform/test.h"
@@ -893,8 +894,7 @@ TEST_F(PatternMatcherTest, HloInstructionDescribeToAndExplain) {
       "in a = s32[] add(s32[] c, s32[] c)");
 
   EXPECT_DESC_AND_EXPLANATION(
-      constant,
-      m::Op().WithPredicate([](const HloInstruction*) { return false; }),
+      constant, m::Op().WithPredicate(HloPredicateFalse),
       "an HloInstruction which matches a user-specified predicate",
       "HloInstruction does not match user-specified predicate\n"
       "in c = s32[] constant(0)");
@@ -1212,6 +1212,38 @@ TEST_F(PatternMatcherTest, Comparison) {
       "direction=EQ");
 }
 
+TEST_F(PatternMatcherTest, ConvDnums) {
+  TF_ASSERT_OK_AND_ASSIGN(ConvolutionDimensionNumbers dnums,
+                          ParseConvolutionDimensionNumbers("bf01_oi01->bf01"));
+  auto param =
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p0");
+  auto op = HloInstruction::CreateCustomCall(ShapeUtil::MakeShape(F32, {}),
+                                             /*operands=*/{},
+                                             /*custom_call_target=*/"foo");
+  op->set_convolution_dimension_numbers(dnums);
+
+  EXPECT_TRUE(Match(op.get(), m::CustomCall().WithConvDnums(dnums)));
+  EXPECT_TRUE(
+      Match(op.get(), m::CustomCall().WithConvDnums("bf01_oi01->bf01")));
+  TF_ASSERT_OK_AND_ASSIGN(ConvolutionDimensionNumbers different_dnums,
+                          ParseConvolutionDimensionNumbers("b01f_oi01->bf01"));
+  EXPECT_FALSE(Match(op.get(), m::CustomCall().WithConvDnums(different_dnums)));
+  EXPECT_FALSE(
+      Match(op.get(), m::CustomCall().WithConvDnums("b01f_oi01->bf01")));
+  EXPECT_FALSE(
+      Match(param.get(), m::CustomCall().WithConvDnums("b01f_oi01->bf01")));
+
+  EXPECT_DESC_AND_EXPLANATION(
+      op.get(), m::CustomCall().WithConvDnums("b01f_oi01->bf01"),
+      "an HloInstruction:\n"
+      " * with opcode custom-call AND\n"
+      " * which has convolution dimension numbers b01f_oi01->bf01",
+      "convolution_dimension_numbers bf01_oi01->bf01 don't match expected "
+      "b01f_oi01->bf01\n"
+      "in custom-call = f32[] custom-call(), dim_labels=bf01_oi01->bf01, "
+      "custom_call_target=\"foo\"");
+}
+
 TEST_F(PatternMatcherTest, CustomCallMatchers) {
   constexpr char kModuleStr[] = R"(
     HloModule test_module
@@ -1254,6 +1286,70 @@ TEST_F(PatternMatcherTest, CustomCallMatchers) {
   EXPECT_FALSE(Match(root, m::CustomCall({"other_target", "other_target2"})));
   EXPECT_FALSE(Match(
       root, m::CustomCall({"test_target"}, m::Parameter(1), m::Parameter(0))));
+}
+
+TEST_F(PatternMatcherTest, SharedSubpatternPreservesTheSemantics) {
+  auto scalar0 = m::SharedSubpattern(m::ConstantScalar(0));
+  auto pattern0 = m::AnyOf<HloInstruction>(m::Convert(scalar0), scalar0);
+
+  auto scalar1 = m::SharedSubpattern(m::ConstantScalar(1));
+  auto pattern1 = m::AnyOf<HloInstruction>(m::Convert(scalar1), scalar1);
+
+  {
+    constexpr char kModuleStr[] = R"(
+    HloModule test_module ENTRY test {
+      ROOT constant = f16[] constant(0)
+    })";
+    TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                            ParseAndReturnVerifiedModule(kModuleStr));
+    auto* root = hlo_module->entry_computation()->root_instruction();
+
+    EXPECT_TRUE(Match(root, pattern0));
+    EXPECT_FALSE(Match(root, pattern1));
+  }
+
+  {
+    constexpr char kModuleStr[] = R"(
+    HloModule test_module ENTRY test {
+      constant = f16[] constant(0)
+      ROOT convert = f32[] convert(constant)
+    })";
+    TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                            ParseAndReturnVerifiedModule(kModuleStr));
+    auto* root = hlo_module->entry_computation()->root_instruction();
+
+    EXPECT_TRUE(Match(root, pattern0));
+    EXPECT_FALSE(Match(root, pattern1));
+  }
+}
+
+TEST_F(PatternMatcherTest, SharedSubpatternCanBeNested) {
+  auto scalar0 = m::SharedSubpattern(match::ConstantScalar(0));
+  auto subpattern0 = m::SharedSubpattern(
+      m::AnyOf<HloInstruction>(m::Convert(scalar0), scalar0));
+  auto pattern0 =
+      m::AnyOf<HloInstruction>(m::Convert(subpattern0), subpattern0);
+
+  auto scalar1 = m::SharedSubpattern(match::ConstantScalar(1));
+  auto subpattern1 = m::SharedSubpattern(
+      m::AnyOf<HloInstruction>(m::Convert(scalar1), scalar1));
+  auto pattern1 =
+      m::AnyOf<HloInstruction>(m::Convert(subpattern1), subpattern1);
+
+  {
+    constexpr char kModuleStr[] = R"(
+    HloModule test_module ENTRY test {
+      constant = f16[] constant(0)
+      convert = f32[] convert(constant)
+      ROOT convert1 = f32[] convert(convert)
+    })";
+    TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                            ParseAndReturnVerifiedModule(kModuleStr));
+    auto* root = hlo_module->entry_computation()->root_instruction();
+
+    EXPECT_TRUE(Match(root, pattern0));
+    EXPECT_FALSE(Match(root, pattern1));
+  }
 }
 
 }  // namespace

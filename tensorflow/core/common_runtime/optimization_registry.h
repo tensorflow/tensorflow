@@ -137,6 +137,20 @@ class OptimizationPassRegistry {
 
  private:
   std::map<Grouping, GraphOptimizationPasses> groups_;
+
+  const char* GetGroupingName(Grouping grouping) const {
+    switch (grouping) {
+      case PRE_PLACEMENT:
+        return "pre_placement";
+      case POST_PLACEMENT:
+        return "post_placement";
+      case POST_REWRITE_FOR_EXEC:
+        return "post_rewrite_for_exec";
+      case POST_PARTITIONING:
+        return "post_partitioning";
+    }
+    return "unknown";
+  }
 };
 
 namespace optimization_registration {

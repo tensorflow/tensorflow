@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #if !defined(PLATFORM_GOOGLE)
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_initializer_helper.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_initializer_framework_helper.h"
 #include "tensorflow/core/platform/status.h"
 #endif
 
@@ -22,8 +22,17 @@ limitations under the License.
 namespace tensorflow {
 namespace tpu {
 namespace {
+Status InitializeTpuLibrary() {
+  Status status = FindAndLoadTpuLibrary();
+  if (!status.ok()) {
+    LOG(INFO) << "FindAndLoadTpuLibrary failed with " << status.ToString()
+              << ". This is expected if TPU is not used.";
+  }
+  return status;
+}
+
 #if !defined(PLATFORM_GOOGLE)
-static Status tpu_library_finder = FindAndLoadTpuLibrary();
+static Status tpu_library_finder = InitializeTpuLibrary();
 #endif
 }  // namespace
 }  // namespace tpu

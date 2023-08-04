@@ -68,7 +68,7 @@ struct PyArray_Storage {
   std::optional<Shape> dynamic_shape = std::nullopt;
 
   // Doubly-linked list of all PyArrays known to the client. Protected by the
-  // GIL. Since multiple PyBuffers may share the same PjRtBuffer, there may be
+  // GIL. Since multiple PyArrays may share the same PjRtBuffer, there may be
   // duplicate PjRtBuffers in this list.
   PyArray_Storage* next;
   PyArray_Storage* prev;
@@ -83,11 +83,6 @@ class PyArray : public pybind11::object {
   PyArray() = default;
 
   // "__init__" methods. Only used in python
-  static void PyInit(pybind11::object self, pybind11::object aval,
-                     pybind11::object sharding,
-                     absl::Span<const PyBuffer::object> py_buffers,
-                     bool committed, bool skip_checks);
-
   static void PyInit(pybind11::object self, pybind11::object aval,
                      pybind11::object sharding,
                      absl::Span<const PyArray> py_arrays, bool committed,
@@ -109,6 +104,17 @@ class PyArray : public pybind11::object {
       std::shared_ptr<PyClient> py_client, std::shared_ptr<Traceback> traceback,
       tsl::RCReference<ifrt::Array> ifrt_array, bool weak_type, bool committed);
 
+  static PyArray MakeFromIfrtArrayAndSharding(
+      std::shared_ptr<PyClient> py_client, std::shared_ptr<Traceback> traceback,
+      tsl::RCReference<ifrt::Array> ifrt_array, pybind11::object sharding,
+      bool weak_type, bool committed);
+
+  // pybind11-index-annotation BEGIN
+  // refs {
+  //   module_path: "tensorflow/compiler/xla/python/xla.cc"
+  //   module_arg {}
+  // }
+  // pybind11-index-annotation END
   static Status RegisterTypes(pybind11::module& m);
 
   using Storage = PyArray_Storage;
@@ -188,6 +194,7 @@ class PyArray : public pybind11::object {
 
   pybind11::object arrays();
   Status set_arrays(pybind11::object obj);
+  StatusOr<PyArray> FullyReplicatedShard();
 
   int num_shards() const {
     ifrt::Array* ifrt_array_ptr = ifrt_array();
@@ -254,7 +261,6 @@ class PyArrayResultHandler {
   PyArrayResultHandler(pybind11::object aval, pybind11::object sharding,
                        bool committed, bool skip_checks);
 
-  PyArray Call(absl::Span<const PyBuffer::object> py_buffers) const;
   PyArray Call(absl::Span<const PyArray> py_arrays) const;
   PyArray Call(PyArray py_array) const;
 

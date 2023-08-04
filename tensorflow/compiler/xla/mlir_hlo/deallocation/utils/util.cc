@@ -90,6 +90,11 @@ RegionBranchOpInterface moveRegionsToNewOpButKeepOldOp(
         op.getLoc(),
         TypeRange{op->getRegion(0).front().getTerminator()->getOperands()},
         op->getOperands()[0], op->getNumRegions() > 1);
+  } else if (llvm::isa<scf::ParallelOp>(op)) {
+    auto parallel = llvm::cast<scf::ParallelOp>(op);
+    newOp = b.create<scf::ParallelOp>(
+        op.getLoc(), parallel.getLowerBound(), parallel.getUpperBound(),
+        parallel.getStep(), parallel.getInitVals());
   } else {
     llvm_unreachable("unsupported");
   }
@@ -101,19 +106,6 @@ RegionBranchOpInterface moveRegionsToNewOpButKeepOldOp(
   }
 
   return newOp;
-}
-
-Type getUnrankedMemrefType(Type ty) {
-  if (ty.isa<UnrankedMemRefType>()) {
-    return ty;
-  }
-  MemRefType memRefTy = llvm::cast<MemRefType>(ty);
-  return UnrankedMemRefType::get(memRefTy.getElementType(),
-                                 memRefTy.getMemorySpace());
-}
-
-Type getUnrankedMemrefType(Value v) {
-  return getUnrankedMemrefType(v.getType());
 }
 
 }  // namespace deallocation

@@ -15,7 +15,7 @@
 # pylint: disable=protected-access
 """Utilities related to loss functions."""
 
-from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.keras import backend
@@ -24,10 +24,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import cond
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_tensor
-from tensorflow.python.util.tf_export import keras_export
 
 
-@keras_export('keras.losses.Reduction', v1=[])
 class ReductionV2(object):
   """Types of loss reduction.
 
@@ -276,7 +274,6 @@ def reduce_weighted_loss(weighted_losses,
   return loss
 
 
-@keras_export('keras.__internal__.losses.compute_weighted_loss', v1=[])
 def compute_weighted_loss(losses,
                           sample_weight=None,
                           reduction=ReductionV2.SUM_OVER_BATCH_SIZE,
@@ -340,7 +337,7 @@ def compute_weighted_loss(losses,
 def scale_loss_for_distribution(loss_value):
   """Scales and returns the given loss value by the number of replicas."""
   num_replicas = (
-      distribution_strategy_context.get_strategy().num_replicas_in_sync)
+      distribute_lib.get_strategy().num_replicas_in_sync)
   if num_replicas > 1:
     loss_value *= (1. / num_replicas)
   return loss_value

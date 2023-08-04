@@ -7,7 +7,7 @@ load(
     "tflite_custom_c_library",
     "tflite_jni_binary",
 )
-load("@build_bazel_rules_android//android:rules.bzl", "android_library")
+load("@build_bazel_rules_android//android:rules.bzl", "android_binary", "android_library")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 
 def _concat(lists):
@@ -74,7 +74,7 @@ def android_library_with_tflite(
     Note that this build rule doesn't itself add any dependencies on
     TF Lite; this macro should normally be used in conjunction with a
     direct or indirect 'tflite_deps' dependency on one of the "shim"
-    library targets from //third_party/tensorflow/lite/core/shims:*.
+    library targets from //tensorflow/lite/core/shims:*.
 
     Args:
       name: as for android_library.
@@ -89,6 +89,34 @@ def android_library_with_tflite(
     android_library(
         name = name,
         exports = exports + tflite_exports,
+        deps = deps + tflite_deps,
+        **kwargs
+    )
+
+def android_binary_with_tflite(
+        name,
+        deps = [],
+        tflite_deps = [],
+        **kwargs):
+    """Defines an android_binary that uses the TFLite shims.
+
+    This is a hook to allow applying different build flags (etc.)
+    for targets that use the TFLite shims.
+
+    Note that this build rule doesn't itself add any dependencies on
+    TF Lite; this macro should normally be used in conjunction with a
+    direct or indirect 'tflite_deps' dependency on one of the "shim"
+    library targets from //tensorflow/lite/core/shims:*.
+
+    Args:
+      name: as for android_binary.
+      deps: as for android_binary.
+      tflite_deps: dependencies on rules that are themselves defined using
+        'cc_library_with_tflite' / 'android_library_with_tflite'.
+      **kwargs: Additional android_binary parameters.
+    """
+    android_binary(
+        name = name,
         deps = deps + tflite_deps,
         **kwargs
     )
@@ -125,7 +153,7 @@ def cc_library_with_tflite(
       generate_opaque_delegate_target: (bool) If set, generates an additional
         cc_library target, which has "_opaque_delegate" appended to the name.
         The target depends on
-        //third_party/tensorflow/lite/core/shims:tflite_use_opaque_delegate
+        //tensorflow/lite/core/shims:tflite_use_opaque_delegate
         which enables the truly opaque delegate type. This macro ensures that
         dependencies listed in 'tflite_deps' use _opaque_delegate variant.
       **kwargs: Additional cc_library parameters.
@@ -190,7 +218,7 @@ def cc_library_with_tflite_with_c_headers_test(name, hdrs, **kwargs):
         cc_library_with_tflite(
             name = "%s_lib" % basename,
             srcs = ["%s.c" % basename],
-            deps = [":" + name],
+            tflite_deps = [":" + name],
             copts = kwargs.get("copts", []),
             visibility = ["//visibility:private"],
             testonly = True,
@@ -241,7 +269,7 @@ def cc_test_with_tflite(
     Note that this build rule doesn't itself add any dependencies on
     TF Lite; this macro should normally be used in conjunction with a
     direct or indirect 'tflite_deps' dependency on one of the "shim"
-    library targets from //third_party/tensorflow/lite/core/shims:*.
+    library targets from //tensorflow/lite/core/shims:*.
 
     Args:
       name: as for cc_test.
@@ -274,7 +302,7 @@ def java_library_with_tflite(
     TF Lite; this macro should normally be used in conjunction with a
     direct or indirect 'tflite_deps' or 'tflite_jni_binaries' dependency
     on one of the "shim" library targets from
-    //third_party/tensorflow/lite/core/shims:*.
+    //tensorflow/lite/core/shims:*.
 
     Args:
       name: as for java_library.
@@ -312,7 +340,7 @@ def java_test_with_tflite(
     TF Lite; this macro should normally be used in conjunction with a
     direct or indirect 'tflite_deps' or 'tflite_jni_binaries' dependency
     on one of the "shim" library targets from
-    //third_party/tensorflow/lite/core/shims:*.
+    //tensorflow/lite/core/shims:*.
 
     Args:
       name: as for java_library.
@@ -344,7 +372,7 @@ def jni_binary_with_tflite(
     Note that this build rule doesn't itself add any dependencies on
     TF Lite; this macro should normally be used in conjunction with a
     direct or indirect 'tflite_deps' dependency on one of the "shim"
-    library targets from //third_party/tensorflow/lite/core/shims:*.
+    library targets from //tensorflow/lite/core/shims:*.
 
     Args:
       name: as for tflite_jni_binary.
@@ -399,6 +427,7 @@ def custom_c_library_with_tflite(
         copts = tflite_copts_warnings(),
         deps = [
             ":%s_c_api" % name,
+            "//tensorflow/lite/core/c:private_c_api_without_op_resolver",
         ],
         **kwargs
     )

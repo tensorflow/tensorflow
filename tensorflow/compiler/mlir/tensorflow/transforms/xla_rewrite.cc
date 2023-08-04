@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This transformation pass converts stateful and stateless paritioned calls
+// This transformation pass converts stateful and stateless partitioned calls
 // with _xla_compile_device_type attribute to XLA launch ops.
 
 #include <stack>
@@ -21,9 +21,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/call_graph_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/call_graph_util.h"
 
 #define DEBUG_TYPE "tf-xla-rewrite"
 
@@ -52,7 +52,7 @@ void MoveResourceArgsToEnd(func::FuncOp callee) {
       removed_params.push_back(false);
     }
   }
-  // Remove old reousrce-type parameters.
+  // Remove old resource-type parameters.
   callee.getBody().front().eraseArguments(removed_params);
   // Update function type.
   callee.setFunctionType(FunctionType::get(callee.getContext(),
@@ -97,20 +97,6 @@ void XlaRewritePass::runOnOperation() {
   OpBuilder builder(&getContext());
   module.walk([&](tf_device::ClusterFuncOp cluster_func_op) {
     RewriteCall(cluster_func_op, symtab, builder);
-  });
-
-  // Verify that there are no nested XLA launch ops.
-  module.walk([&](TF::XlaLaunchOp xla_launch_op) {
-    llvm::SmallVector<mlir::Operation *> nested_launch_ops;
-    func::FuncOp root = symtab.lookup<func::FuncOp>(
-        xla_launch_op.getFunctionAttr().getRootReference());
-    if (failed(GetOutermostOpsOfType<TF::XlaLaunchOp>(root, symtab,
-                                                      nested_launch_ops)))
-      return signalPassFailure();
-    if (!nested_launch_ops.empty()) {
-      xla_launch_op.emitError() << "Nested XLA launch ops detected";
-      return signalPassFailure();
-    }
   });
 }
 

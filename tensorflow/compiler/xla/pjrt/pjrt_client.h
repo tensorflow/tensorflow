@@ -22,7 +22,6 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/base/attributes.h"
@@ -34,6 +33,8 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_compiler.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_device_description.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
@@ -44,39 +45,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/framework/allocator.h"
 #include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/fingerprint.h"
 
 // API notes:
 // PjRt stands for "Pretty much Just another RunTime".
 
 namespace xla {
-
-using PjRtPlatformId = uint64_t;
-
-inline const char* CpuName() {
-  static constexpr char kCpuName[] = "cpu";
-  return kCpuName;
-}
-inline const char* GpuName() {
-  static constexpr char kGpuName[] = "gpu";
-  return kGpuName;
-}
-inline const char* TpuName() {
-  static constexpr char kTpuName[] = "tpu";
-  return kTpuName;
-}
-inline PjRtPlatformId CpuId() {
-  static const PjRtPlatformId kCpuId = tsl::Fingerprint64(CpuName());
-  return kCpuId;
-}
-inline PjRtPlatformId GpuId() {
-  static const PjRtPlatformId kGpuId = tsl::Fingerprint64(GpuName());
-  return kGpuId;
-}
-inline PjRtPlatformId TpuId() {
-  static const PjRtPlatformId kTpuId = tsl::Fingerprint64(TpuName());
-  return kTpuId;
-}
 
 enum PjRtRuntimeType { kStreamExecutor, kTfrt };
 inline constexpr absl::string_view PjRtRuntimeTypeString(PjRtRuntimeType type) {
@@ -89,10 +62,33 @@ inline constexpr absl::string_view PjRtRuntimeTypeString(PjRtRuntimeType type) {
 }
 
 class PjRtClient;
+class PjRtDevice;
 
-using PjRtValueType =
-    std::variant<std::string, int64_t, std::vector<int64_t>, float>;
-using PjRtDeviceAttribute = PjRtValueType;
+class PjRtMemorySpace {
+ public:
+  virtual ~PjRtMemorySpace() = default;
+
+  // The owner of this memory space.
+  virtual PjRtClient* client() const = 0;
+
+  // The devices that this memory space is attached to.
+  virtual absl::Span<PjRtDevice* const> devices() const = 0;
+
+  // The ID of this memory space. IDs are unique among memory spaces of this
+  // type.
+  virtual int id() const = 0;
+
+  // A platform-dependent string that uniquely identifies the kind of the
+  // memory space.
+  virtual absl::string_view memory_space_kind() const = 0;
+
+  // Debug string suitable for logging when errors occur. Should be verbose
+  // enough to describe the current memory space unambiguously.
+  virtual absl::string_view DebugString() const = 0;
+
+  // Debug string suitable for reading by end users, should be reasonably terse.
+  virtual absl::string_view ToString() const = 0;
+};
 
 class PjRtDevice {
  public:
@@ -104,17 +100,22 @@ class PjRtDevice {
   // Whether client can issue command to this device.
   virtual bool IsAddressable() const = 0;
 
+  virtual const PjRtDeviceDescription& description() const {
+    LOG(FATAL) << "PjRtDeviceDescription not available (must override "
+                  "PjRtDevice::description).";
+  }
+
   // The ID of this device. IDs are unique among devices of this type
   // (e.g. CPUs, GPUs). On multi-host platforms, this will be unique across all
   // hosts' devices.  This is the ID that should be used in a DeviceAssignment.
-  virtual int id() const = 0;
+  virtual int id() const { return description().id(); }
 
   // The index of the process that this device belongs to, i.e. is addressable
   // from. This is not always identical to PjRtClient::process_index() in a
   // multi-process setting, where each client can see devices from all
   // processes, but only a subset of them are addressable and have the same
   // process_index as the client.
-  virtual int process_index() const = 0;
+  virtual int process_index() const { return description().process_index(); }
 
   // Opaque hardware ID, e.g., the CUDA device number, useful for identifying
   // which GPU when interacting with non-JAX code. In general, not guaranteed to
@@ -124,15 +125,29 @@ class PjRtDevice {
   // A vendor-dependent string that uniquely identifies the kind of device,
   // e.g., "Tesla V100-SXM2-16GB". May be used to determine whether two GPUs are
   // compatible compilation.
-  virtual absl::string_view device_kind() const = 0;
+  virtual absl::string_view device_kind() const {
+    return description().device_kind();
+  }
 
   // Debug string suitable for logging when errors occur. Should be verbose
   // enough to describe the current device unambiguously.
-  virtual absl::string_view DebugString() const = 0;
+  virtual absl::string_view DebugString() const {
+    return description().DebugString();
+  }
 
   // Debug string suitable for reading by end users, should be reasonably terse,
   // for example: "CpuDevice(id=0)".
-  virtual absl::string_view ToString() const = 0;
+  virtual absl::string_view ToString() const {
+    return description().ToString();
+  }
+
+  // Returns vendor specific attributes about the device. For example the model
+  // number of a GPU, or the mesh coordinates of a TPU device. The returned
+  // reference will remain valid for the lifetime of the PjRtDevice.
+  virtual const absl::flat_hash_map<std::string, PjRtDeviceAttribute>&
+  Attributes() const {
+    return description().Attributes();
+  }
 
   // Returns a scoped event that the caller uses to tell the PjRtClient that
   // there is asynchronous work happening that depends on activity on the
@@ -149,17 +164,33 @@ class PjRtDevice {
   // Transfer and return a value of the given shape from the outfeed queue.
   virtual Status TransferFromOutfeed(MutableBorrowingLiteral literal) = 0;
 
-  // Returns vendor specific attributes about the device. For example the model
-  // number of a GPU, or the mesh coordinates of a TPU device. The returned
-  // reference will remain valid for the lifetime of the PjRtDevice.
-  virtual const absl::flat_hash_map<std::string, PjRtDeviceAttribute>&
-  Attributes() const = 0;
-
   // Returns allocator stats for the device. Only some PjRtDevice
   // implementations support allocator_stats, and those that do not will return
   // an Unimplemented error.
   virtual StatusOr<tsl::AllocatorStats> GetAllocatorStats() const {
     return Unimplemented("GetAllocatorStats is not supported");
+  }
+
+  // Returns all memory spaces attached to this device.
+  virtual absl::Span<PjRtMemorySpace* const> memory_spaces() const = 0;
+
+  // Returns the default memory space attached to this device.
+  virtual StatusOr<PjRtMemorySpace*> default_memory_space() const = 0;
+
+  // Experimental: Poisons the earliest execution on this device with given
+  // launch_id if it's not finished yet, i.e. makes its output buffers error.
+  //
+  // Returns true if the output buffers have been successfully poisoned.
+  //
+  // Returns false if the output buffers were not successfully poisoned because
+  // launch_id is not in the list of executions that have not yet completed.
+  // This may happen either because the execution corresponding to launch_id has
+  // already completed, or because an incorrect launch_id was supplied.
+  //
+  // Returns error otherwise, including in the case that poisoning is not
+  // implemented by this client.
+  virtual StatusOr<bool> PoisonExecution(int32_t launch_id, Status error) {
+    return Unimplemented("PoisonExecution is not supported");
   }
 };
 
@@ -342,16 +373,6 @@ class PjRtHostMemoryForDeviceManager {
                               size_t dst_size, const Shape& dst_shape) = 0;
 };
 
-struct LoadOptions {
-  // Origin of the subslice of the target topology to run computation on.
-  struct ComputationOrigin {
-    int x = 0;
-    int y = 0;
-    int z = 0;
-  };
-  std::optional<ComputationOrigin> computation_origin;
-};
-
 class PjRtLoadedExecutable;
 
 // Encapsulates the state of Python session with XLA.
@@ -403,6 +424,21 @@ class PjRtLoadedExecutable;
 // will eventually be able to make progress.
 class PjRtClient {
  public:
+  // In the multi-node case, the caller of PjRtClient can provide a key-value
+  // store accessible across nodes. The caller can provide the two callbacks
+  // below to access the key-value store. There are a few requirements:
+  // (1) KeyValueGetCallback and KeyValuePutCallback must be thread-safe.
+  // (2) The caller that provides the two callbacks is responsible for avoiding
+  // key collisions between different users of key-value store (i.e. between
+  // different plugins, but not between different GPU plugin nodes).
+  // (3) KeyValueGetCallback is blocking.
+  // Subclasses of PjRtClient can optionally take these callbacks in their
+  // constructors.
+  using KeyValueGetCallback = std::function<xla::StatusOr<std::string>(
+      const std::string& key, absl::Duration timeout)>;
+  using KeyValuePutCallback = std::function<xla::Status(
+      const std::string& key, const std::string& value)>;
+
   PjRtClient() = default;
   explicit PjRtClient(std::unique_ptr<PjRtHostMemoryForDeviceManager>
                           host_memory_for_device_manager)
@@ -438,6 +474,9 @@ class PjRtClient {
   // PjRtDevice::local_hardware_id().
   virtual StatusOr<PjRtDevice*> LookupAddressableDevice(
       int local_hardware_id) const = 0;
+
+  // Return all memory spaces owned by the client.
+  virtual absl::Span<PjRtMemorySpace* const> memory_spaces() const = 0;
 
   // Return an ID that identifies the platform (CPU/GPU/TPU).
   virtual PjRtPlatformId platform_id() const = 0;
@@ -527,6 +566,18 @@ class PjRtClient {
   virtual StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
       Status error, const Shape& shape, PjRtDevice* device) {
     return Unimplemented("CreateErrorBuffer not supported.");
+  }
+
+  // Gets the pointer to the topology description held by the client.
+  virtual StatusOr<const PjRtTopologyDescription*> GetTopologyDescription()
+      const {
+    return Unimplemented("GetTopologyDescription not supported!");
+  }
+
+  // Returns topology object for compilation based on this client's topology.
+  virtual StatusOr<const PjRtTopologyDescription*>
+  GetFullTopologyForCompilation() const {
+    return GetTopologyDescription();
   }
 
   // A client may want to create a buffer, and hand the buffer to other PjRt
@@ -667,11 +718,51 @@ class PjRtClient {
       HostBufferSemantics host_buffer_semantics,
       std::function<void()> on_done_with_host_buffer, PjRtDevice* device) = 0;
 
+  // Variant of BufferFromHostBuffer that takes an optional device layout. It is
+  // used when non-compact layout is preferred.
+  // TODO(b/275645543): remove BufferFromHostBuffer without optional device
+  // layout after all the inherited classes and call sites are updated.
+  virtual StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
+      const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+      std::optional<absl::Span<int64_t const>> byte_strides,
+      HostBufferSemantics host_buffer_semantics,
+      std::function<void()> on_done_with_host_buffer, PjRtDevice* device,
+      const Layout* device_layout) {
+    return tsl::errors::Unimplemented(
+        "BufferFromHostBuffer with an optional device layout is not "
+        "implemented on platform: ",
+        platform_name());
+  }
+
+  // TODO(b/277820585): remove BufferFromHostBuffer with PjRtDevice after the
+  // migration is done.
+  virtual StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
+      const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+      std::optional<absl::Span<int64_t const>> byte_strides,
+      HostBufferSemantics host_buffer_semantics,
+      std::function<void()> on_done_with_host_buffer,
+      PjRtMemorySpace* memory_space, const Layout* device_layout) {
+    return tsl::errors::Unimplemented(
+        "BufferFromHostBuffer with PjRtMemorySpace is not implemented on "
+        "platform: ",
+        platform_name());
+  }
+
   // Note that literal must remain in scope until the transfer has completed, so
   // the caller should, for example, wait for GetReadyFuture().Await()
   // completes on the return value before letting literal go out of scope.
   virtual StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
       const LiteralSlice& literal, PjRtDevice* device) = 0;
+
+  // TODO(b/277820585): remove BufferFromHostLiteral with PjRtDevice after the
+  // migration is done.
+  virtual StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
+      const LiteralSlice& literal, PjRtMemorySpace* memory_space) {
+    return tsl::errors::Unimplemented(
+        "BufferFromHostLiteral with PjRtMemorySpace is not implemented on "
+        "platform: ",
+        platform_name());
+  }
 
   // Creates a PjRtBuffer that is a non-owned view of an on-device
   // buffer (typically allocated by another library).
@@ -755,6 +846,11 @@ class PjRtClient {
   // Defragment device memory.
   virtual Status Defragment() = 0;
 
+  // If false, this client does not support send/recv host callbacks, and
+  // callers should not set the `send_callbacks` and `recv_callbacks` arguments
+  // in ExecuteOptions.
+  virtual bool SupportsSendRecvCallbacks() const { return false; }
+
   // Return the PjRtHostMemoryForDeviceManager for this client. It can be
   // nullptr if the implementation does not provide one.
   virtual PjRtHostMemoryForDeviceManager* GetPjRtHostMemoryForDeviceManager()
@@ -778,7 +874,48 @@ class PjRtBuffer {
  public:
   virtual ~PjRtBuffer() = default;
 
+  virtual PrimitiveType element_type() const {
+    return on_device_shape().element_type();
+  }
+
+  // Returned dimensions have lifetime of this buffer.
+  virtual absl::Span<const int64_t> dimensions() const {
+    return on_device_shape().dimensions();
+  }
+
+  virtual const Layout& layout() const {
+    CHECK(on_device_shape().has_layout());
+    return on_device_shape().layout();
+  }
+
+  // PjRtBuffers can either represent a single array buffer or a tuple of array
+  // buffers. Returns true if this buffer represents a tuple, false if an array.
+  virtual bool IsTuple() const { return on_device_shape().IsTuple(); }
+
   virtual const Shape& on_device_shape() const = 0;
+
+  virtual bool has_dynamic_dimensions() const {
+    return on_device_shape().is_dynamic();
+  }
+
+  // Each returned element is true if the corresponding dimensions is dynamic,
+  // false if static.
+  virtual absl::Span<const bool> is_dynamic_dimension() const {
+    return on_device_shape().dynamic_dimensions();
+  }
+
+  // Same as dimensions() when the shape is static. When the shape is dynamic,
+  // it gathers the metadata from the device and returns a static shape
+  // representing the logical shape of the data. This approach is identical to
+  // how tensorflow and xrt setup the output buffer in the graph.
+  //
+  // Since this method actually acquires locks and communicate with the device,
+  // it does not have the const qualifier, similar to what ToLiteral does.
+  virtual StatusOr<std::vector<int64_t>> logical_dimensions() {
+    TF_ASSIGN_OR_RETURN(Shape logical_shape, logical_on_device_shape());
+    absl::Span<const int64_t> dims = logical_shape.dimensions();
+    return std::vector<int64_t>(dims.begin(), dims.end());
+  }
 
   // Same as on_device_shape when the shape is static. When the shape is
   // dynamic, it gathers the metadata from the device and returns a static shape
@@ -787,7 +924,16 @@ class PjRtBuffer {
   //
   // Since this method actually acquires locks and communicate with the device,
   // it does not have the const qualifier, similar to what ToLiteral does.
-  virtual StatusOr<Shape> logical_on_device_shape() = 0;
+  virtual StatusOr<Shape> logical_on_device_shape() {
+    const Shape& shape = on_device_shape();
+    CHECK(shape.is_static())
+        << "logical_on_device_shape needs to be overridden for platform '"
+        << client()->platform_name() << "'";
+    return shape;
+  }
+
+  virtual PjRtMemorySpace* memory_space() const { return nullptr; }
+  // TODO(b/277820585): remove device() after the migration is done.
   virtual PjRtDevice* device() const = 0;
   virtual PjRtClient* client() const = 0;
 
@@ -841,8 +987,31 @@ class PjRtBuffer {
   // Convenience synchronous overload that allocates a literal with a default
   // layout.
   StatusOr<std::shared_ptr<Literal>> ToLiteralSync() {
+    Shape device_shape;
+    if (!IsTuple()) {
+      absl::Span<const int64_t> literal_dims;
+      std::optional<std::vector<int64_t>> logical_dims_storage;
+      if (has_dynamic_dimensions()) {
+        TF_ASSIGN_OR_RETURN(std::vector<int64_t> logical_dims,
+                            logical_dimensions());
+        logical_dims_storage.emplace(std::move(logical_dims));
+        literal_dims = *logical_dims_storage;
+      } else {
+        literal_dims = dimensions();
+      }
+      device_shape = ShapeUtil::MakeShape(element_type(), literal_dims);
+      *device_shape.mutable_layout() = layout();
+    } else {
+      // TODO(skyewm): does anything need to create tuple literals? The PJRT C
+      // API doesn't support tuples or {logical_}on_device_shape(), so we prefer
+      // to use the above non-tuple code path where possible.
+      device_shape = on_device_shape();
+      if (device_shape.is_dynamic()) {
+        TF_ASSIGN_OR_RETURN(device_shape, logical_on_device_shape());
+      }
+    }
     auto literal = std::make_shared<Literal>(
-        ShapeUtil::DeviceShapeToHostShape(on_device_shape()));
+        ShapeUtil::DeviceShapeToHostShape(device_shape));
     TF_RETURN_IF_ERROR(ToLiteralSync(literal.get()));
     return literal;
   }
@@ -1051,8 +1220,8 @@ class PjRtBuffer {
   Status BlockHostUntilReady() {
     auto s = GetReadyFuture().Await();
     // Fix up error string because some clients rely on it.
-    if (!s.ok() && s.error_message() ==
-                       "GetReadyFuture() called on deleted or donated buffer") {
+    if (!s.ok() &&
+        s.message() == "GetReadyFuture() called on deleted or donated buffer") {
       return InvalidArgument(
           "BlockHostUntilReady() called on deleted or donated buffer");
     }
@@ -1082,91 +1251,6 @@ class PjRtBuffer {
   virtual bool IsOnCpu() const = 0;
 };
 
-class ExecuteContext {
- public:
-  virtual ~ExecuteContext() = default;
-};
-
-struct PjRtTransferMetadata {
-  Shape device_shape;
-};
-
-struct SendCallback {
-  int64_t channel_id;
-  // The callback for retrieving the send value. It will be invoked once for
-  // each invocation of the corresponding Send op in the HLO program (So it can
-  // be invoked multiple times if it is in a loop). Currently there is no
-  // guarantee that the callback here will be invoked in the same order as their
-  // corresponding HLO Send ops. The callback can also return errors to indicate
-  // the execution should fail.
-  //
-  // IMPORTANT: the implementation might NOT signal the error to the execution,
-  // and the execution will run to completion with UNDEFINED DATA returned by
-  // the callback. If there is any potential control flow that depends on the
-  // value of the returned data, an error return is unsafe.
-  //
-  // TODO(chky): Currently the callback invocation order may not be consistent
-  // with the HLO send op invocation order, due to limitations in some PjRt
-  // implementation. Consider making it strictly the same order as HLO program.
-  std::function<Status(const PjRtTransferMetadata& metadata, PjRtChunk chunk,
-                       size_t total_size_in_bytes, bool done)>
-      callback;
-};
-
-struct RecvCallback {
-  int64_t channel_id;
-  // The callback for feeding the recv value. It will be invoked once for each
-  // invocation of the corresponding Recv op in the HLO program (So it can be
-  // invoked multiple times if it is in a loop). Currently there is no
-  // guarantee that the callback here will be invoked in the same order as their
-  // corresponding HLO Recv ops.
-  std::function<void(const PjRtTransferMetadata& metadata,
-                     std::unique_ptr<CopyToDeviceStream> stream)>
-      callback;
-};
-
-struct ExecuteOptions {
-  // If true, the client must pass a single PjRtBuffer which contains all of
-  // the arguments as a single XLA tuple, otherwise each argument must be
-  // passed in its own PjRtBuffer. May only be true if the executable was
-  // compiled with parameter_is_tupled_arguments==true.
-  bool arguments_are_tupled = false;
-  // If true, the computation must return a tuple, which will be destructured
-  // into its elements.
-  bool untuple_result = false;
-  // If non-zero, identifies this execution as part of a potentially
-  // multi-device launch. This can be used to detect scheduling errors, e.g. if
-  // multi-host programs are launched in different orders on different hosts,
-  // the launch IDs may be used by the runtime to detect the mismatch.
-  int32_t launch_id = 0;
-  // If non-null, an opaque context passed to an execution that may be used to
-  // supply additional arguments to a derived class of PjRtExecutable.
-  const ExecuteContext* context = nullptr;
-  // If true, check that the PjRtBuffer argument shapes match the compiled
-  // shapes. Otherwise, any shape with the right size on device may be passed.
-  bool strict_shape_checking = true;
-
-  // Set multi_slice_config when the computation spans multiple slices. The
-  // config should match what was used during compilation to generate this
-  // executable.
-  const MultiSliceConfig* multi_slice_config = nullptr;
-
-  // The send/recv callbacks for PjRt execution. The first level span is for
-  // multi-device parallel execution, the second level vector contains the
-  // callbacks for all send/recv ops in the executable. These callbacks can be
-  // stateful and the user code is responsible for managing the states here.
-  // These callbacks must outlive the execution.
-  absl::Span<const std::vector<SendCallback>> send_callbacks;
-  absl::Span<const std::vector<RecvCallback>> recv_callbacks;
-
-  // The `execution_mode` decides whether the execution will be invoked in the
-  // caller thread or launched to a separate thread. By default, the
-  // implementation may choose either strategy or use a heuristic to decide.
-  // Currently it is only applied to CPU implementations
-  enum class ExecutionMode { kDefault = 0, kSynchronous, kAsynchronous };
-  ExecutionMode execution_mode = ExecutionMode::kDefault;
-};
-
 // Represents a compiled computation that can be executed given handles to
 // device-allocated literals. If any input/output alias has been specified in
 // the computation, the parameter containing the input buffer will be donated
@@ -1182,8 +1266,8 @@ class PjRtLoadedExecutable : public PjRtExecutable {
   // Returns named values for cost properties of this executable (such as
   // operations, size of input/outputs, and run time estimate). Properties may
   // differ for different platforms.
-  virtual StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
-  GetCostAnalysis() const;
+  StatusOr<absl::flat_hash_map<std::string, PjRtValueType>> GetCostAnalysis()
+      const override;
 
   // The replica and partition indices of device_assignment to be run by this
   // client. On single-host platforms without partitioning, this is all replicas
@@ -1206,7 +1290,7 @@ class PjRtLoadedExecutable : public PjRtExecutable {
   //
   // The following Execute*() methods will donate the input buffer to the
   // execution if it is specified in the executable. Donation is usually
-  // implemented as a transaction: it is acquired in the begining and committed
+  // implemented as a transaction: it is acquired in the beginning and committed
   // when the device execution is successully launched. Concurrent donations
   // might either block or return failures.
   //

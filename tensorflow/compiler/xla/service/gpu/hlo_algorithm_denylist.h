@@ -18,14 +18,14 @@ limitations under the License.
 
 #include <vector>
 
+#include "tensorflow/compiler/xla/autotuning.pb.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
-#include "tensorflow/tsl/protobuf/autotuning.pb.h"
 
 namespace xla {
 namespace gpu {
 
 absl::Span<const stream_executor::dnn::AlgorithmDesc> GetDisabledConvAlgorithms(
-    tensorflow::ComputeCapability cc, tensorflow::CudnnVersion cudnn_version,
+    ComputeCapability cc, CudnnVersion cudnn_version,
     const std::string& blas_version, const std::string& hlo);
 
 }  // namespace gpu

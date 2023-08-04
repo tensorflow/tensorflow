@@ -87,6 +87,11 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
     return kAllNHWC;
   }
 
+  if (primitive_util::IsF8Type(input_ty)) {
+    VLOG(2) << "Using NHWC for FP8 conv " << instr->ToString();
+    return kAllNHWC;
+  }
+
   const DebugOptions& debug_options =
       instr->GetModule()->config().debug_options();
 
@@ -158,6 +163,7 @@ Status GpuLayoutAssignment::AddBackendConstraintsToDnnConvCustomCall(
   switch (kind) {
     case CudnnConvKind::kForward:
     case CudnnConvKind::kForwardActivation:
+    case CudnnConvKind::kForwardGraph:
       input_shape = &lhs_shape;
       filter_shape = &rhs_shape;
       output_shape = &result_shape;
@@ -200,20 +206,33 @@ Status GpuLayoutAssignment::AddBackendConstraintsToDnnConvCustomCall(
   TF_RETURN_IF_ERROR(SetOperandLayout(lhs_shape, instr, 0));
   TF_RETURN_IF_ERROR(SetOperandLayout(rhs_shape, instr, 1));
   TF_RETURN_IF_ERROR(SetBufferLayout(result_shape.layout(), *call_result_buf));
-  // instr->operand(2), if exists, is the bias buffer. There is no need to
-  // assign layout to it, as it has only one dimension.
-
+  // For fused convolutions, instr->operand(2), if exists, is the bias buffer.
+  // There is no need to assign layout to it, as it has only one dimension.
   // instr->operand(3), if exists, is the side input buffer.
-  if (instr->operand_count() == 4) {
-    if (kind != CudnnConvKind::kForwardActivation) {
-      return InternalError(
-          "Invalid convolution. Conv has a side input, but kind is not fused "
-          "conv forward: %s",
-          instr->ToString());
-    }
+  if (kind == CudnnConvKind::kForwardActivation &&
+      instr->operand_count() == 4) {
     // The side input layout must match the output layout.
     TF_RETURN_IF_ERROR(SetOperandLayout(*output_shape, instr, 3));
   }
+
+  // For graph convolutions, align the layouts of the non-scalar inputs to any
+  // pointwise ops with the output layout.
+  if (kind == CudnnConvKind::kForwardGraph) {
+    for (int k = 2; k < instr->operand_count(); ++k) {
+      if (!ShapeUtil::IsScalar(instr->operand(k)->shape())) {
+        TF_RETURN_IF_ERROR(SetOperandLayout(*output_shape, instr, k));
+      }
+    }
+  }
+
+  if (instr->operand_count() > 2 && kind != CudnnConvKind::kForwardActivation &&
+      kind != CudnnConvKind::kForwardGraph) {
+    return InternalError(
+        "Invalid convolution. Conv has a side input, but kind is not fused "
+        "conv forward or graph conv foward: %s",
+        instr->ToString());
+  }
+
   return OkStatus();
 }
 
@@ -235,9 +254,13 @@ bool DotCanSupportShapeWithLayout(const HloInstruction* dot,
   // If we are able to construct a `MatrixLayout` then the dot can support
   // this layout.
   return MatrixLayout::For(shape, dot_dims.lhs_batch_dimensions().size(),
-                           dot_dims.lhs_contracting_dimensions().size(),
+                           dot->operand(0)->shape().rank() -
+                               dot_dims.lhs_contracting_dimensions().size() -
+                               dot_dims.lhs_batch_dimensions().size(),
                            dot_dims.rhs_batch_dimensions().size(),
-                           dot_dims.rhs_contracting_dimensions().size())
+                           dot->operand(1)->shape().rank() -
+                               dot_dims.rhs_contracting_dimensions().size() -
+                               dot_dims.rhs_batch_dimensions().size())
       .ok();
 }
 
@@ -260,7 +283,7 @@ Status GpuLayoutAssignment::AddBackendConstraints(
     CHECK(!IsCublasGemm(*instruction))
         << "Gemm rewriting should run after layout assignment";
 
-    if (IsMatrixMultiplication(*instruction)) {
+    if (instruction->opcode() == HloOpcode::kDot) {
       const Shape& output_shape = instruction->shape();
       const Shape& lhs_shape = instruction->operand(0)->shape();
       const Shape& rhs_shape = instruction->operand(1)->shape();
@@ -273,19 +296,19 @@ Status GpuLayoutAssignment::AddBackendConstraints(
       // minor physical dimension for inputs or the output.
       absl::Span<const int64_t> lhs_batch_dims =
           dot_dims.lhs_batch_dimensions();
-      absl::Span<const int64_t> lhs_col_dims =
+      absl::Span<const int64_t> lhs_contracting_dims =
           dot_dims.lhs_contracting_dimensions();
-      TF_ASSIGN_OR_RETURN(
-          std::vector<int64_t> lhs_row_dims,
-          GetNonContractingDims(lhs_shape, lhs_batch_dims, lhs_col_dims));
+      TF_ASSIGN_OR_RETURN(std::vector<int64_t> lhs_non_contracting_dims,
+                          GetNonContractingDims(lhs_shape, lhs_batch_dims,
+                                                lhs_contracting_dims));
 
       absl::Span<const int64_t> rhs_batch_dims =
           dot_dims.rhs_batch_dimensions();
-      absl::Span<const int64_t> rhs_row_dims =
+      absl::Span<const int64_t> rhs_contracting_dims =
           dot_dims.rhs_contracting_dimensions();
-      TF_ASSIGN_OR_RETURN(
-          std::vector<int64_t> rhs_col_dims,
-          GetNonContractingDims(rhs_shape, rhs_batch_dims, rhs_row_dims));
+      TF_ASSIGN_OR_RETURN(std::vector<int64_t> rhs_non_contracting_dims,
+                          GetNonContractingDims(rhs_shape, rhs_batch_dims,
+                                                rhs_contracting_dims));
 
       // For unbatched S8xS8->S32 matrix multiplication enforce a TN layout,
       // which will allow the NVidia GPUs to use TensorCores.
@@ -298,16 +321,32 @@ Status GpuLayoutAssignment::AddBackendConstraints(
 
       if (is_s8_to_s32) {
         TF_RETURN_IF_ERROR(SetOperandBatchRowsColsLayout(
-            instruction, 0, lhs_batch_dims, lhs_row_dims, lhs_col_dims));
+            instruction, 0, lhs_batch_dims, lhs_non_contracting_dims,
+            lhs_contracting_dims));
         TF_RETURN_IF_ERROR(SetOperandBatchRowsColsLayout(
-            instruction, 1, rhs_batch_dims, rhs_col_dims, rhs_row_dims));
+            instruction, 1, rhs_batch_dims, rhs_non_contracting_dims,
+            rhs_contracting_dims));
         TF_RETURN_IF_ERROR(SetDotLayout(instruction, constraints));
-      } else if (!lhs_batch_dims.empty()) {
-        TF_RETURN_IF_ERROR(SetDotOperandLayout(instruction, 0, lhs_batch_dims,
-                                               lhs_row_dims, lhs_col_dims));
-        TF_RETURN_IF_ERROR(SetDotOperandLayout(instruction, 1, rhs_batch_dims,
-                                               rhs_row_dims, rhs_col_dims));
-        TF_RETURN_IF_ERROR(SetDotLayout(instruction, constraints));
+      } else {
+        if (!lhs_batch_dims.empty() || lhs_contracting_dims.size() > 1 ||
+            lhs_non_contracting_dims.size() > 1) {
+          TF_RETURN_IF_ERROR(SetDotOperandLayout(instruction, 0, lhs_batch_dims,
+                                                 lhs_contracting_dims,
+                                                 lhs_non_contracting_dims));
+        }
+        if (!rhs_batch_dims.empty() || rhs_non_contracting_dims.size() > 1 ||
+            rhs_contracting_dims.size() > 1) {
+          TF_RETURN_IF_ERROR(SetDotOperandLayout(instruction, 1, rhs_batch_dims,
+                                                 rhs_contracting_dims,
+                                                 rhs_non_contracting_dims));
+        }
+        // If we have at least one batch dimension or there is more than one
+        // non-contracting dimension on lhs or rhs, we need to set a layout for
+        // the dot output.
+        if (!lhs_batch_dims.empty() || lhs_non_contracting_dims.size() > 1 ||
+            rhs_non_contracting_dims.size() > 1) {
+          TF_RETURN_IF_ERROR(SetDotLayout(instruction, constraints));
+        }
       }
     } else if (instruction->opcode() == HloOpcode::kTranspose) {
       const HloInstruction* operand = instruction->operand(0);
@@ -417,17 +456,9 @@ Status GpuLayoutAssignment::SetDotOperandLayout(
   if (MatrixLayout::For(shape, batch_dims, row_dims, col_dims).ok())
     return SetOperandLayout(shape, instruction, operand);
 
-  // Otherwise, fallback to forcing the same layout as chosen by dot
-  // normalization, i.e. (batch, rows, cols) layout for the second operand and
-  // (batch, cols, rows) layout for the first operand.
-  if (operand == 1) {
-    return SetOperandBatchRowsColsLayout(instruction, operand, batch_dims,
-                                         row_dims, col_dims);
-  }
-  // To get (batch, cols, rows) layout, simply swap 'row_dims' with 'col_dims'
-  // when calling SetOperandBatchRowsColsLayout.
+  // Otherwise, fallback to forcing (batch, rows, cols) layout.
   return SetOperandBatchRowsColsLayout(instruction, operand, batch_dims,
-                                       col_dims, row_dims);
+                                       row_dims, col_dims);
 }
 
 Status GpuLayoutAssignment::SetOperandBatchRowsColsLayout(

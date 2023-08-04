@@ -14,10 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tpu/kernels/tpu_execute_op.h"
 
+#include <memory>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/memory/memory.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/jit/variable_info.h"
 #include "tensorflow/compiler/jit/variable_info_util.h"
@@ -34,29 +35,22 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_node_context.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/node_def_util.h"
-#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/resource_var.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/casts.h"
-#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_entry.h"
-#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_external.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_interface.h"
-#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_local_lookup.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_lookup.h"
 #include "tensorflow/core/tpu/kernels/tpu_executable_info.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_op_consts.h"
+#include "tensorflow/core/tpu/kernels/tpu_program_group.h"
 #include "tensorflow/core/tpu/tpu_configuration.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/core/tpu/tpu_execute.h"
-#include "tensorflow/core/util/stream_executor_util.h"
 
 namespace tensorflow {
 namespace {
@@ -278,7 +272,7 @@ xla::StatusOr<std::unique_ptr<InputBuffers>> BuildComputationInputs(
   se::DeviceMemoryAllocator* const allocator = backend->memory_allocator();
   xla::TransferManager* const transfer_manager = backend->transfer_manager();
 
-  auto input_buffers = absl::make_unique<InputBuffers>(
+  auto input_buffers = std::make_unique<InputBuffers>(
       transfer_manager->HostShapeToDeviceShape(input_host_shape));
 
   // Allocates a buffer for the root tuple.
@@ -437,7 +431,7 @@ xla::StatusOr<std::unique_ptr<OutputBuffers>> AllocateOutputTensors(
       node_context->backend()->memory_allocator();
 
   auto output_buffers =
-      absl::make_unique<OutputBuffers>(std::move(scoped_buffers), allocator);
+      std::make_unique<OutputBuffers>(std::move(scoped_buffers), allocator);
 
   xla::Shape output_device_shape = output_buffers->buffers.on_device_shape();
 

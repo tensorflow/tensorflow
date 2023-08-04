@@ -130,6 +130,18 @@ opt<bool> unconditionally_use_set_output_shapes(
                    "(temporary)"),
     llvm::cl::init(false));
 
+// NOLINTNEXTLINE
+opt<bool> enable_soft_placement(
+    "tf-enable-soft-placement-on-import",
+    llvm::cl::desc("Enable soft device placement on import."),
+    llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+opt<bool> set_original_tf_func_name(
+    "tf-set-original-tf-func-name-on-import",
+    llvm::cl::desc("Set original TF function name on importi."),
+    llvm::cl::init(false));
+
 // Export options.
 // NOLINTNEXTLINE
 opt<bool> export_entry_func_to_flib(

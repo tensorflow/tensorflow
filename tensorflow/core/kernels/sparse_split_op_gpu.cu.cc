@@ -163,7 +163,7 @@ __global__ void SparseSplitScatterKernel(
     const Index* __restrict__ sort_permutation,
     const Index* __restrict__ slice_ends,
     const Index* __restrict__ input_indices, const T* __restrict__ input_values,
-    GpuDeviceArrayStruct<Index*> output_indices_data,
+    const int64_t index_bound, GpuDeviceArrayStruct<Index*> output_indices_data,
     GpuDeviceArrayStruct<T*> output_values_data) {
   Index* __restrict__* __restrict__ output_indices =
       GetGpuDeviceArrayOnDevice(&output_indices_data);
@@ -172,17 +172,19 @@ __global__ void SparseSplitScatterKernel(
 
   for (Index sorted_input_nz : GpuGridRangeX<Index>(input_nnz)) {
     Index input_nz = sort_permutation[sorted_input_nz];
-    int slice_index =
-        slice_indexer.GetSliceIndex(input_indices[input_nz * rank + axis]);
-    Index slice_nz =
-        sorted_input_nz -
-        (slice_index == 0 ? Index(0) : slice_ends[slice_index - 1]);
-    output_values[slice_index][slice_nz] = input_values[input_nz];
-    for (int dim = 0; dim < rank; ++dim) {
-      Index input_index = input_indices[input_nz * rank + dim];
-      output_indices[slice_index][slice_nz * rank + dim] =
-          (dim == axis) ? slice_indexer.GetIndexInSlice(input_index)
-                        : input_index;
+    Index slice_input_index = input_indices[input_nz * rank + axis];
+    int slice_index = slice_indexer.GetSliceIndex(slice_input_index);
+    if (slice_input_index >= 0 && slice_input_index < index_bound) {
+      Index slice_nz =
+          sorted_input_nz -
+          (slice_index == 0 ? Index(0) : slice_ends[slice_index - 1]);
+      output_values[slice_index][slice_nz] = input_values[input_nz];
+      for (int dim = 0; dim < rank; ++dim) {
+        Index input_index = input_indices[input_nz * rank + dim];
+        output_indices[slice_index][slice_nz * rank + dim] =
+            (dim == axis) ? slice_indexer.GetIndexInSlice(input_index)
+                          : input_index;
+      }
     }
   }
 }
@@ -192,7 +194,7 @@ Status LaunchSparseSplitScatterKernel(
     const GPUDevice& device, Index input_nnz, int rank, int axis,
     SliceIndexer<Index> slice_indexer, const Index* sort_permutation,
     const Index* slice_ends, const Index* input_indices, const T* input_values,
-    GpuDeviceArrayStruct<Index*> output_indices_data,
+    int64_t index_bound, GpuDeviceArrayStruct<Index*> output_indices_data,
     GpuDeviceArrayStruct<T*> output_values_data) {
   if (input_nnz == 0) return OkStatus();
   GpuLaunchConfig config = GetGpuLaunchConfig(
@@ -201,7 +203,7 @@ Status LaunchSparseSplitScatterKernel(
   return GpuLaunchKernel(SparseSplitScatterKernel<T, Index>, config.block_count,
                          config.thread_per_block, 0, device.stream(), input_nnz,
                          rank, axis, slice_indexer, sort_permutation,
-                         slice_ends, input_indices, input_values,
+                         slice_ends, input_indices, input_values, index_bound,
                          output_indices_data, output_values_data);
 }
 
@@ -327,7 +329,8 @@ struct SparseSplitFunctor<GPUDevice, T> {
           LaunchSparseSplitScatterKernel(
               device, input_nnz, rank, axis, slice_indexer,
               sort_permutation_ptr, slice_ends_ptr, input_indices_ptr,
-              input_values_ptr, output_indices.data(), output_values.data()),
+              input_values_ptr, dense_shape.dim_size(axis),
+              output_indices.data(), output_values.data()),
           done);
 
       done();

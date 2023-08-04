@@ -15,29 +15,32 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/cudnn_fused_conv_rewriter.h"
 
+#include <array>
 #include <string>
 #include <string_view>
 
 #include "absl/strings/str_replace.h"
+
+#if GOOGLE_CUDA
+#include "third_party/gpus/cuda/include/cuda.h"
+#include "third_party/gpus/cudnn/cudnn.h"
+#endif
+
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/convert_mover.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_rewriter.h"
-#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
-#include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/filecheck.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
-#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
@@ -84,6 +87,7 @@ class CudnnFusedConvRewriterTest : public GpuCodegenTest {
     HloModuleConfig config = GetModuleConfigForTest();
     DebugOptions debug_opts = config.debug_options();
     debug_opts.add_xla_disable_hlo_passes("cudnn_vectorize_convolutions");
+    debug_opts.set_xla_gpu_use_runtime_fusion(true);
     config.set_debug_options(debug_opts);
 
     auto result = backend().compiler()->RunHloPasses(
@@ -109,7 +113,13 @@ class CudnnFusedConvRewriterTest : public GpuCodegenTest {
           << optimized_hlo_string;
       EXPECT_THAT(optimized_hlo_string,
                   HasSubstr(kCudnnConvBiasActivationForwardCallTarget));
-      EXPECT_TRUE(RunAndCompare(hlo_with_new_type, ErrorSpec{0.01}))
+
+      TF_ASSERT_OK_AND_ASSIGN(auto module,
+                              ParseAndReturnVerifiedModule(hlo_with_new_type));
+      DebugOptions debug_opts = module->config().debug_options();
+      debug_opts.set_xla_gpu_use_runtime_fusion(true);
+      module->config().set_debug_options(debug_opts);
+      EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{0.01}))
           << optimized_hlo_string;
     }
   }
@@ -140,6 +150,81 @@ class CudnnFusedConvRewriterTest : public GpuCodegenTest {
       EXPECT_THAT(optimized_hlo_string, HasSubstr(kCudnnConvForwardCallTarget));
       EXPECT_THAT(optimized_hlo_string,
                   Not(HasSubstr(kCudnnConvBiasActivationForwardCallTarget)));
+    }
+  }
+
+  void TestF8(std::string pre_hlo_string, std::string custom_call_string,
+              std::string serialized_graph_string) {
+    if (GetCudaComputeCapability().IsAtLeast(
+            se::CudaComputeCapability::HOPPER)) {
+      // On Hopper and newer architectures, test numerical correctness and
+      // verify the HLO of the Custom Call with operand and return layouts and
+      // the serialized graph based on the full compiler pipeline.
+      std::string optimized_hlo_string = GetOptimizedHlo(pre_hlo_string);
+      EXPECT_THAT(optimized_hlo_string, Not(HasSubstr("Convert")));
+      EXPECT_THAT(optimized_hlo_string, HasSubstr("__cudnn$conv"));
+      EXPECT_TRUE(RunAndCompare(pre_hlo_string, ErrorSpec{0.1}))
+          << pre_hlo_string;
+
+      StatusOr<bool> filecheck_result =
+          RunFileCheck(optimized_hlo_string, custom_call_string);
+      ASSERT_TRUE(filecheck_result.ok()) << filecheck_result.status();
+      EXPECT_TRUE(*filecheck_result);
+
+      filecheck_result =
+          RunFileCheck(optimized_hlo_string, serialized_graph_string);
+      ASSERT_TRUE(filecheck_result.ok()) << filecheck_result.status();
+      EXPECT_TRUE(*filecheck_result);
+    } else {
+      // On older architectures, disregard layout information and only verify
+      // the basic configuration of the convolution Custom Call using the number
+      // of operands and the window_size and serialized graph attributes based
+      // on the GpuConvRewriter and CudnnFusedConvRewriter passes.
+      std::string::size_type p0 = custom_call_string.find(':');
+      std::string::size_type p1 = custom_call_string.find("custom-call");
+      custom_call_string.erase(p0 + 1, p1 - p0 - 2);
+      p0 = custom_call_string.find(", dim_labels");
+      custom_call_string.erase(p0);
+
+      TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                              ParseAndReturnVerifiedModule(pre_hlo_string));
+      TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                              RunHloPass(GpuConvRewriter(), module.get()));
+      EXPECT_TRUE(changed);
+      RunAndFilecheckHloRewrite(
+          module->ToString(HloPrintOptions{}.set_print_operand_shape(false)),
+          CudnnFusedConvRewriter(
+              se::CudaComputeCapability{se::CudaComputeCapability::HOPPER, 0}),
+          custom_call_string);
+      RunAndFilecheckHloRewrite(
+          module->ToString(HloPrintOptions{}.set_print_operand_shape(false)),
+          CudnnFusedConvRewriter(
+              se::CudaComputeCapability{se::CudaComputeCapability::HOPPER, 0}),
+          serialized_graph_string);
+    }
+  }
+
+  void TestF8Parameterized(std::string template_pre_hlo_string,
+                           std::string template_custom_call_string,
+                           std::string template_serialized_graph_string) {
+    std::array<absl::string_view, 2> types = {"f8e4m3fn", "f8e5m2"};
+    std::array<absl::string_view, 2> clamp_lower = {"-448.", "-57344."};
+    std::array<absl::string_view, 2> clamp_upper = {"448.", "57344."};
+    absl::flat_hash_map<absl::string_view, absl::string_view> replacements;
+    for (int i = 0; i < 2; ++i) {
+      replacements["<<InputType>>"] = types[i];
+      for (int j = 0; j < 2; ++j) {
+        replacements["<<FilterType>>"] = types[j];
+        for (int k = 0; k < 2; ++k) {
+          replacements["<<OutputType>>"] = types[k];
+          replacements["<<ClampLower>>"] = clamp_lower[k];
+          replacements["<<ClampUpper>>"] = clamp_upper[k];
+          TestF8(absl::StrReplaceAll(template_pre_hlo_string, replacements),
+                 absl::StrReplaceAll(template_custom_call_string, replacements),
+                 absl::StrReplaceAll(template_serialized_graph_string,
+                                     replacements));
+        }
+      }
     }
   }
 };
@@ -219,11 +304,6 @@ TEST_F(CudnnFusedConvRewriterTest, DontFuseBiasWithDepthwiseConv) {
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestElu) {
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << "Conv-Bias-Elu fusion is supported and recommended with "
-                    "the Nvidia Ampere+ GPUs.";
-  }
   // sum = conv(x, w) + bias
   // select(compare(sum, 0, GT), sum, exponential-minus-one(sum));
   TestMatchWithAllTypes(R"(
@@ -247,12 +327,6 @@ TEST_F(CudnnFusedConvRewriterTest, TestElu) {
 }
 
 TEST_F(CudnnFusedConvRewriterTest, DontFuseEluWithDepthwiseConv) {
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << "Conv-Bias-Elu fusion is supported and recommended with "
-                    "the Nvidia Ampere+ GPUs.";
-  }
-
   // sum = conv(x, w) + bias
   // select(compare(sum, 0, GT), sum, exponential-minus-one(sum));
   TestNotMatchWithAllTypes(R"(
@@ -272,6 +346,84 @@ TEST_F(CudnnFusedConvRewriterTest, DontFuseEluWithDepthwiseConv) {
       cmp = pred[1,3,3,64] compare(sum, zeros), direction=GT
       expm1 = TYPE[1,3,3,64] exponential-minus-one(sum)
       ROOT elu = TYPE[1,3,3,64] select(cmp, sum, expm1)
+    })");
+}
+
+TEST_F(CudnnFusedConvRewriterTest, TestRelu6) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE)) {
+    GTEST_SKIP() << "Conv-Bias-Relu6 fusion is supported and recommended with "
+                    "the Nvidia Ampere+ GPUs.";
+  }
+  // sum = conv(x, w) + bias
+  // clamp(0, sum, 6);
+  TestMatchWithAllTypes(R"(
+    HloModule Test
+    ENTRY Test {
+      zero = TYPE[] constant(0)
+      zeros = TYPE[1,3,3,64] broadcast(zero), dimensions={}
+      six = TYPE[] constant(6)
+      sixes = TYPE[1,3,3,64] broadcast(six), dimensions={}
+      input = TYPE[1,3,3,64] parameter(0)
+      filter = TYPE[3,3,64,64] parameter(1)
+      bias = TYPE[64] parameter(2)
+      conv = TYPE[1,3,3,64] convolution(input, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f, feature_group_count=1
+      broadcasted_bias = TYPE[1,3,3,64] broadcast(bias), dimensions={3}
+      sum = TYPE[1,3,3,64] add(conv, broadcasted_bias)
+      ROOT relu6 = TYPE[1,3,3,64] clamp(zeros, sum, sixes)
+    })");
+}
+
+// At time of writing, cudnn runtime fusion cannot handle f16 convs with an odd
+// number of input/output channels.  Check that we don't try to run this conv
+// with runtime fusion (or, if we do, that it works!).
+TEST_F(CudnnFusedConvRewriterTest, TestRelu6OddChannels) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE)) {
+    GTEST_SKIP() << "Conv-Bias-Relu6 fusion is supported and recommended with "
+                    "the Nvidia Ampere+ GPUs.";
+  }
+
+  TestMatchWithAllTypes(R"(
+    HloModule Test
+    ENTRY Test {
+      zeros = TYPE[1,384,1024,32] broadcast(TYPE[] constant(0)), dimensions={}
+      sixes = TYPE[1,384,1024,32] broadcast(TYPE[] constant(6)), dimensions={}
+      input = TYPE[1,769,2049,3] parameter(0)
+      filter = TYPE[32,3,3,3] parameter(1)
+      bias = TYPE[32] parameter(2)
+      conv = TYPE[1,384,1024,32] convolution(input, filter), window={size=3x3 stride=2x2}, dim_labels=b01f_o01i->b01f
+      broadcasted_bias = TYPE[1,384,1024,32] broadcast(bias), dimensions={3}
+      sum = add(conv, broadcasted_bias)
+      ROOT relu6 = clamp(zeros, sum, sixes)
+    })");
+}
+
+TEST_F(CudnnFusedConvRewriterTest, TestLeakyRelu) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE)) {
+    GTEST_SKIP()
+        << "Conv-Bias-LeakyRelu fusion is supported and recommended with "
+           "the Nvidia Ampere+ GPUs.";
+  }
+  // sum = conv(x, w) + bias
+  // select(compare(sum, 0, GT), sum, multiply(sum, alpha));
+  TestMatchWithAllTypes(R"(
+    HloModule Test
+    ENTRY Test {
+      zero = TYPE[] constant(0)
+      zeros = TYPE[1,3,3,64] broadcast(zero), dimensions={}
+      alpha = TYPE[] constant(0.2)
+      alphas = TYPE[1,3,3,64] broadcast(alpha), dimensions={}
+      input = TYPE[1,3,3,64] parameter(0)
+      filter = TYPE[3,3,64,64] parameter(1)
+      bias = TYPE[64] parameter(2)
+      conv = TYPE[1,3,3,64] convolution(input, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f, feature_group_count=1
+      broadcasted_bias = TYPE[1,3,3,64] broadcast(bias), dimensions={3}
+      sum = TYPE[1,3,3,64] add(conv, broadcasted_bias)
+      cmp = pred[1,3,3,64] compare(sum, zeros), direction=GT
+      mul = TYPE[1,3,3,64] multiply(sum, alphas)
+      ROOT elu = TYPE[1,3,3,64] select(cmp, sum, mul)
     })");
 }
 
@@ -560,6 +712,228 @@ TEST_F(CudnnFusedConvRewriterTest, TestPreservesFeatureGroupCount) {
     }
   )";
   EXPECT_TRUE(RunAndCompare(kHloString, ErrorSpec{0.01}));
+}
+
+TEST_F(CudnnFusedConvRewriterTest, TestConvF8) {
+#if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8900)
+  GTEST_SKIP() << "FP8 convolutions require CUDA 12 and cuDNN 8.9.";
+#endif
+  TestF8(
+      // pre_hlo
+      R"(
+    HloModule Test
+
+    ENTRY Test {
+       input = f8e4m3fn[1,128,6,6] parameter(0)
+       filter = f8e4m3fn[3,3,128,16] parameter(1)
+       ROOT conv_a = f8e4m3fn[1,16,6,6] convolution(input, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, feature_group_count=1
+
+    })",
+      // custom_call
+      R"(
+// CHECK: [[cudnn_conv_4_0:%[^ ]+]] = (f8e4m3fn[1,6,6,16]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[OPERAND0:%[^ ]+]], [[OPERAND1:%[^ ]+]]), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, custom_call_target="__cudnn$convForwardGraph"
+  )",
+      // serialized_graph
+      R"(
+// CHECK: "serialized_graph":"conv[f8e4m3fn]-\u003e"
+      )");
+}
+
+TEST_F(CudnnFusedConvRewriterTest, TestConvScaledOutputF8) {
+#if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8900)
+  GTEST_SKIP() << "FP8 convolutions require CUDA 12 and cuDNN 8.9.";
+#endif
+  TestF8(
+      // pre_hlo
+      R"(
+    HloModule Test
+
+    ENTRY Test {
+       input = f8e4m3fn[1,128,6,6] parameter(0)
+       filter = f8e4m3fn[3,3,128,16] parameter(1)
+       input_f32 = f32[1,128,6,6] convert(input)
+       filter_f32 = f32[3,3,128,16] convert(filter)
+       z_scale = f32[] parameter(2)
+       z_scale_bcast = f32[1,16,6,6] broadcast(z_scale), dimensions={}
+       conv_a = f32[1,16,6,6] convolution(input_f32, filter_f32), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, feature_group_count=1
+       conv_a_scaled = f32[1,16,6,6] multiply(conv_a, z_scale_bcast)
+       c1 = f32[] constant(-448.)
+       c1_bcast = f32[1,16,6,6] broadcast(c1), dimensions={}
+       c2 = f32[] constant(448.)
+       c2_bcast = f32[1,16,6,6] broadcast(c2), dimensions={}
+       conv_a_clamped = f32[1,16,6,6] clamp(c1_bcast, conv_a_scaled, c2_bcast)
+       ROOT conv_f8 = f8e4m3fn[1,16,6,6] convert(conv_a_clamped)
+
+    })",
+      // custom_call
+      R"(
+// CHECK: [[cudnn_conv_4_0:%[^ ]+]] = (f8e4m3fn[1,6,6,16]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[OPERAND0:%[^ ]+]], [[OPERAND1:%[^ ]+]], [[OPERAND2:%[^ ]+]]), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, custom_call_target="__cudnn$convForwardGraph"
+  )",
+      // serialized_graph
+      R"(
+// CHECK: "serialized_graph":"conv[f32]-\u003escale[f8e4m3fn]-\u003e"
+      )");
+}
+
+TEST_F(CudnnFusedConvRewriterTest, TestConvScaledF8Parameterized) {
+#if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8900)
+  GTEST_SKIP() << "FP8 convolutions require CUDA 12 and cuDNN 8.9.";
+#endif
+  TestF8Parameterized(
+      // pre_hlo
+      R"(
+    HloModule Test
+
+    ENTRY Test {
+       input = <<InputType>>[1,128,6,6] parameter(0)
+       filter = <<FilterType>>[3,3,128,16] parameter(1)
+       input_scale = f32[] parameter(2)
+       input_scale_bcast = f32[1,128,6,6] broadcast(input_scale), dimensions={}
+       filter_scale = f32[] parameter(3)
+       filter_scale_bcast = f32[3,3,128,16] broadcast(filter_scale), dimensions={}
+       input_f32 = f32[1,128,6,6] convert(input)
+       input_unscaled = f32[1,128,6,6] multiply(input_f32, input_scale_bcast)
+       filter_f32 = f32[3,3,128,16] convert(filter)
+       filter_unscaled = f32[3,3,128,16] multiply(filter_f32, filter_scale_bcast)
+       z_scale = f32[] parameter(4)
+       z_scale_bcast = f32[1,16,6,6] broadcast(z_scale), dimensions={}
+       conv_a = f32[1,16,6,6] convolution(input_unscaled, filter_unscaled), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, feature_group_count=1
+       conv_a_scaled = f32[1,16,6,6] multiply(conv_a, z_scale_bcast)
+       c1 = f32[] constant(<<ClampLower>>)
+       c1_bcast = f32[1,16,6,6] broadcast(c1), dimensions={}
+       c2 = f32[] constant(<<ClampUpper>>)
+       c2_bcast = f32[1,16,6,6] broadcast(c2), dimensions={}
+       conv_a_clamped = f32[1,16,6,6] clamp(c1_bcast, conv_a_scaled, c2_bcast)
+       ROOT conv_f8 = <<OutputType>>[1,16,6,6] convert(conv_a_clamped)
+
+    })",
+      // custom_call
+      R"(
+// CHECK: [[cudnn_conv_4_0:%[^ ]+]] = (<<OutputType>>[1,6,6,16]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[OPERAND0:%[^ ]+]], [[OPERAND1:%[^ ]+]], [[OPERAND2:%[^ ]+]], [[OPERAND3:%[^ ]+]]), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, custom_call_target="__cudnn$convForwardGraph"
+  )",
+      // serialized_graph
+      R"(
+// CHECK: "serialized_graph":"conv[f32]-\u003escale[f32]-\u003escale[<<OutputType>>]-\u003e"
+      )");
+}
+
+TEST_F(CudnnFusedConvRewriterTest, TestConvScaledBiasF8) {
+#if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8900)
+  GTEST_SKIP() << "FP8 convolutions require CUDA 12 and cuDNN 8.9.";
+#endif
+  TestF8(
+      // pre_hlo
+      R"(
+    HloModule Test
+
+    ENTRY Test {
+       input = f8e4m3fn[1,128,6,6] parameter(0)
+       filter = f8e4m3fn[3,3,128,16] parameter(1)
+       input_scale = f32[] parameter(2)
+       input_scale_bcast = f32[1,128,6,6] broadcast(input_scale), dimensions={}
+       filter_scale = f32[] parameter(3)
+       filter_scale_bcast = f32[3,3,128,16] broadcast(filter_scale), dimensions={}
+       input_f32 = f32[1,128,6,6] convert(input)
+       input_unscaled = f32[1,128,6,6] multiply(input_f32, input_scale_bcast)
+       filter_f32 = f32[3,3,128,16] convert(filter)
+       filter_unscaled = f32[3,3,128,16] multiply(filter_f32, filter_scale_bcast)
+       bias = f32[1,16,6,6] parameter(4)
+       z_scale = f32[] parameter(5)
+       z_scale_bcast = f32[1,16,6,6] broadcast(z_scale), dimensions={}
+       conv_a = f32[1,16,6,6] convolution(input_unscaled, filter_unscaled), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, feature_group_count=1
+       conv_a_bias = f32[1,16,6,6] add(conv_a, bias)
+       conv_a_scaled = f32[1,16,6,6] multiply(conv_a_bias, z_scale_bcast)
+       c1 = f32[] constant(-448.)
+       c1_bcast = f32[1,16,6,6] broadcast(c1), dimensions={}
+       c2 = f32[] constant(448.)
+       c2_bcast = f32[1,16,6,6] broadcast(c2), dimensions={}
+       conv_a_clamped = f32[1,16,6,6] clamp(c1_bcast, conv_a_scaled, c2_bcast)
+       ROOT conv_f8 = f8e4m3fn[1,16,6,6] convert(conv_a_clamped)
+
+    })",
+      // custom_call
+      R"(
+// CHECK: [[cudnn_conv_4_0:%[^ ]+]] = (f8e4m3fn[1,6,6,16]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[OPERAND0:%[^ ]+]], [[OPERAND1:%[^ ]+]], [[OPERAND2:%[^ ]+]], [[OPERAND3:%[^ ]+]], [[OPERAND4:%[^ ]+]]), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, custom_call_target="__cudnn$convForwardGraph"
+  )",
+      // serialized_graph
+      R"(
+// CHECK: "serialized_graph":"conv[f32]-\u003escale[f32]-\u003eadd[f32]-\u003escale[f8e4m3fn]-\u003e"
+      )");
+}
+
+TEST_F(CudnnFusedConvRewriterTest, TestConvInvscaledF8) {
+#if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8900)
+  GTEST_SKIP() << "FP8 convolutions require CUDA 12 and cuDNN 8.9.";
+#endif
+  TestF8(
+      // pre_hlo
+      R"(
+    HloModule Test
+
+    ENTRY Test {
+       input = f8e4m3fn[1,128,6,6] parameter(0)
+       filter = f8e4m3fn[3,3,128,16] parameter(1)
+       input_f32 = f32[1,128,6,6] convert(input)
+       filter_f32 = f32[3,3,128,16] convert(filter)
+       z_scale = f32[] parameter(2)
+       z_scale_bcast = f32[1,16,6,6] broadcast(z_scale), dimensions={}
+       conv_a = f32[1,16,6,6] convolution(input_f32, filter_f32), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, feature_group_count=1
+       conv_a_scaled = f32[1,16,6,6] divide(conv_a, z_scale_bcast)
+       c1 = f32[] constant(-448.)
+       c1_bcast = f32[1,16,6,6] broadcast(c1), dimensions={}
+       c2 = f32[] constant(448.)
+       c2_bcast = f32[1,16,6,6] broadcast(c2), dimensions={}
+       conv_a_clamped = f32[1,16,6,6] clamp(c1_bcast, conv_a_scaled, c2_bcast)
+       ROOT conv_f8 = f8e4m3fn[1,16,6,6] convert(conv_a_clamped)
+
+    })",
+      // custom_call
+      R"(
+// CHECK: [[cudnn_conv_4_0:%[^ ]+]] = (f8e4m3fn[1,6,6,16]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[OPERAND0:%[^ ]+]], [[OPERAND1:%[^ ]+]], [[OPERAND2:%[^ ]+]]), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, custom_call_target="__cudnn$convForwardGraph"
+  )",
+      // serialized_graph
+      R"(
+// CHECK: "serialized_graph":"conv[f32]-\u003einvscale[f8e4m3fn]-\u003e"
+      )");
+}
+
+TEST_F(CudnnFusedConvRewriterTest, TestConvScaledReluActivationF8) {
+#if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8900)
+  GTEST_SKIP() << "FP8 convolutions require CUDA 12 and cuDNN 8.9.";
+#endif
+  TestF8(
+      // pre_hlo
+      R"(
+    HloModule Test
+
+    ENTRY Test {
+       input = f8e4m3fn[1,128,6,6] parameter(0)
+       filter = f8e4m3fn[3,3,128,16] parameter(1)
+       input_f32 = f32[1,128,6,6] convert(input)
+       filter_f32 = f32[3,3,128,16] convert(filter)
+       z_scale = f32[] parameter(2)
+       z_scale_bcast = f32[1,16,6,6] broadcast(z_scale), dimensions={}
+       c = f32[] constant(0)
+       c_bcast = f32[1,16,6,6] broadcast(c), dimensions={}
+       conv_a = f32[1,16,6,6] convolution(input_f32, filter_f32), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, feature_group_count=1
+       relu_a = f32[1,16,6,6] maximum(conv_a, c_bcast)
+       relu_a_scaled = f32[1,16,6,6] multiply(relu_a, z_scale_bcast)
+       c1 = f32[] constant(-448.)
+       c1_bcast = f32[1,16,6,6] broadcast(c1), dimensions={}
+       c2 = f32[] constant(448.)
+       c2_bcast = f32[1,16,6,6] broadcast(c2), dimensions={}
+       relu_a_clamped = f32[1,16,6,6] clamp(c1_bcast, relu_a_scaled, c2_bcast)
+       ROOT conv_f8 = f8e4m3fn[1,16,6,6] convert(relu_a_clamped)
+
+    })",
+      // custom_call
+      R"(
+// CHECK: [[cudnn_conv_4_0:%[^ ]+]] = (f8e4m3fn[1,6,6,16]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[OPERAND0:%[^ ]+]], [[OPERAND1:%[^ ]+]], [[OPERAND2:%[^ ]+]]), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, custom_call_target="__cudnn$convForwardGraph"
+  )",
+      // serialized_graph
+      R"(
+// CHECK: "serialized_graph":"conv[f32]-\u003erelu[f32]-\u003escale[f8e4m3fn]-\u003e"
+      )");
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestConvInt8ToInt8) {
@@ -935,11 +1309,6 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseReluIfMultipleUses) {
 }
 
 TEST_F(CudnnFusedConvRewriterHloTest, FuseElu) {
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << "Conv-Bias-Elu fusion is supported and recommended with "
-                    "the Nvidia Ampere+ GPUs.";
-  }
   const std::string module_str = R"(
     HloModule Test
 
@@ -959,10 +1328,14 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseElu) {
       ROOT elu = select(cmp, sum, expm1)
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  DebugOptions debug_opts = m->config().debug_options();
+  debug_opts.set_xla_gpu_use_runtime_fusion(true);
+  m->config().set_debug_options(debug_opts);
 
   GpuConvRewriter rewriter;
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
-  CudnnFusedConvRewriter fuser{GetCudaComputeCapability()};
+  // elu fusion is only active on Ampere+.
+  CudnnFusedConvRewriter fuser{se::CudaComputeCapability(8, 0)};
   TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
 
   SCOPED_TRACE(m->ToString());
@@ -1002,6 +1375,9 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseEluIfMultipleUses) {
       ROOT root = tuple(elu, not_elu) 
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  DebugOptions debug_opts = m->config().debug_options();
+  debug_opts.set_xla_gpu_use_runtime_fusion(true);
+  m->config().set_debug_options(debug_opts);
 
   GpuConvRewriter rewriter;
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
@@ -1024,10 +1400,192 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseEluIfMultipleUses) {
                         .WithComparisonDirection(ComparisonDirection::kGt),
                     gte_pattern,
                     m::Op()
-                        .WithPredicate([](const HloInstruction* instr) {
-                          return instr->opcode() == HloOpcode::kExpm1;
-                        })
+                        .WithPredicate(HloPredicateIsOp<HloOpcode::kExpm1>)
                         .WithOperand(0, gte_pattern)),
+          m::Minimum())));
+  TF_ASSERT_OK_AND_ASSIGN(auto config,
+                          conv->backend_config<CudnnConvBackendConfig>());
+  EXPECT_EQ(config.activation_mode(), se::dnn::kNone);
+}
+
+TEST_F(CudnnFusedConvRewriterHloTest, FuseRelu6) {
+  const std::string module_str = R"(
+    HloModule Test
+    ENTRY Test {
+      inputs = f16[1,18,9,9] parameter(0)
+      filters = f16[3,3,18,32] parameter(1)
+      bias = f16[32] parameter(2)
+      bias_broadcast = f16[1,32,9,9] broadcast(bias), dimensions={1}
+      zero = f16[] constant(0)
+      zeros = f16[1,32,9,9] broadcast(zero), dimensions={}
+      sixes = f16[1,32,9,9] broadcast(f16[] constant(6)), dimensions={}
+      conv = f16[1,32,9,9] convolution(inputs, filters),
+               window={size=3x3 pad=1_1x1_1},
+               dim_labels=bf01_01io->bf01
+      sum = add(conv, bias_broadcast)
+      ROOT relu = clamp(zeros, sum, sixes)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  DebugOptions debug_opts = m->config().debug_options();
+  debug_opts.set_xla_gpu_use_runtime_fusion(true);
+  m->config().set_debug_options(debug_opts);
+
+  GpuConvRewriter rewriter;
+  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
+  // relu6 fusion is only enabled on Ampere+.
+  CudnnFusedConvRewriter fuser{se::CudaComputeCapability(8, 0)};
+  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
+  SCOPED_TRACE(m->ToString());
+  const HloInstruction* conv;
+  ASSERT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(
+          m::GetTupleElement(
+              m::CustomCall(&conv, {kCudnnConvBiasActivationForwardCallTarget},
+                            m::Parameter(0), m::Parameter(1), m::Parameter(2)),
+              0)
+              .WithShape(F16, {1, 32, 9, 9})));
+  TF_ASSERT_OK_AND_ASSIGN(auto config,
+                          conv->backend_config<CudnnConvBackendConfig>());
+  EXPECT_EQ(config.activation_mode(), se::dnn::kRelu6);
+}
+
+TEST_F(CudnnFusedConvRewriterHloTest, DontFuseRelu6IfMultipleUses) {
+  const std::string module_str = R"(
+    HloModule Test
+    ENTRY Test {
+      inputs = f16[1,18,9,9] parameter(0)
+      filters = f16[3,3,18,32] parameter(1)
+      bias = f16[1,32,9,9] broadcast(f16[32] parameter(2)), dimensions={1}
+      zeros = f16[1,32,9,9] broadcast(f16[] constant(0)), dimensions={}
+      sixes = f16[1,32,9,9] broadcast(f16[] constant(6)), dimensions={}
+      conv = f16[1,32,9,9] convolution(inputs, filters),
+               window={size=3x3 pad=1_1x1_1},
+               dim_labels=bf01_01io->bf01
+      sum = add(conv, bias)
+      relu = clamp(zeros, sum, sixes)
+      not_relu = minimum(sum, zeros)
+      ROOT root = tuple(relu, not_relu)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  DebugOptions debug_opts = m->config().debug_options();
+  debug_opts.set_xla_gpu_use_runtime_fusion(true);
+  m->config().set_debug_options(debug_opts);
+
+  GpuConvRewriter rewriter;
+  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
+  CudnnFusedConvRewriter fuser{GetCudaComputeCapability()};
+  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
+
+  SCOPED_TRACE(m->ToString());
+  const HloInstruction* conv;
+  ASSERT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Tuple(
+          m::Clamp(m::Broadcast(m::ConstantEffectiveScalar(0)),
+                   m::GetTupleElement(
+                       m::CustomCall(
+                           &conv, {kCudnnConvBiasActivationForwardCallTarget},
+                           m::Parameter(0), m::Parameter(1), m::Parameter(2)),
+                       0)
+                       .WithShape(F16, {1, 32, 9, 9}),
+                   m::Broadcast(m::ConstantEffectiveScalar(6))),
+          m::Minimum())));
+  TF_ASSERT_OK_AND_ASSIGN(auto config,
+                          conv->backend_config<CudnnConvBackendConfig>());
+  EXPECT_EQ(config.activation_mode(), se::dnn::kNone);
+}
+
+TEST_F(CudnnFusedConvRewriterHloTest, FuseLeakyRelu) {
+  const std::string module_str = R"(
+    HloModule Test
+    ENTRY Test {
+      inputs = f16[1,16,9,9] parameter(0)
+      filters = f16[3,3,16,32] parameter(1)
+      bias = f16[1,32,9,9] broadcast(f16[32] parameter(2)), dimensions={1}
+      zeros = f16[1,32,9,9] broadcast(f16[] constant(0)), dimensions={}
+      alphas = f16[1,32,9,9] broadcast(f16[] constant(0.2)), dimensions={}
+      conv = f16[1,32,9,9] convolution(inputs, filters),
+               window={size=3x3 pad=1_1x1_1},
+               dim_labels=bf01_01io->bf01
+      sum = add(conv, bias)
+      cmp = compare(sum, zeros), direction=GT
+      mul = multiply(sum, alphas)
+      ROOT leaky_relu = select(cmp, sum, mul)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  DebugOptions debug_opts = m->config().debug_options();
+  debug_opts.set_xla_gpu_use_runtime_fusion(true);
+  m->config().set_debug_options(debug_opts);
+
+  GpuConvRewriter rewriter;
+  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
+  // Leaky-relu fusion is only enabled on Ampere+.
+  CudnnFusedConvRewriter fuser{se::CudaComputeCapability(8, 0)};
+  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
+
+  SCOPED_TRACE(m->ToString());
+  const HloInstruction* conv;
+  ASSERT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(
+          m::GetTupleElement(
+              m::CustomCall(&conv, {kCudnnConvBiasActivationForwardCallTarget},
+                            m::Parameter(0), m::Parameter(1), m::Parameter(2)),
+              0)
+              .WithShape(F16, {1, 32, 9, 9})));
+  TF_ASSERT_OK_AND_ASSIGN(auto config,
+                          conv->backend_config<CudnnConvBackendConfig>());
+  EXPECT_EQ(config.activation_mode(), se::dnn::kLeakyRelu);
+}
+
+TEST_F(CudnnFusedConvRewriterHloTest, DontFuseLeakyReluIfMultipleUses) {
+  const std::string module_str = R"(
+    HloModule Test
+    ENTRY Test {
+      inputs = f16[1,16,9,9] parameter(0)
+      filters = f16[3,3,16,32] parameter(1)
+      bias = f16[1,32,9,9] broadcast(f16[32] parameter(2)), dimensions={1}
+      zeros = f16[1,32,9,9] broadcast(f16[] constant(0)), dimensions={}
+      alphas = f16[1,32,9,9] broadcast(f16[] constant(0.2)), dimensions={}
+      conv = f16[1,32,9,9] convolution(inputs, filters),
+               window={size=3x3 pad=1_1x1_1},
+               dim_labels=bf01_01io->bf01
+      sum = add(conv, bias)
+      cmp = compare(sum, zeros), direction=GT
+      mul = multiply(sum, alphas)
+      leaky_relu = select(cmp, sum, mul)
+      not_leaky_relu = minimum(sum, zeros)
+      ROOT root = tuple(leaky_relu, not_leaky_relu) 
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  DebugOptions debug_opts = m->config().debug_options();
+  debug_opts.set_xla_gpu_use_runtime_fusion(true);
+  m->config().set_debug_options(debug_opts);
+
+  GpuConvRewriter rewriter;
+  TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
+  CudnnFusedConvRewriter fuser{GetCudaComputeCapability()};
+  TF_ASSERT_OK(RunHloPass(&fuser, m.get()).status());
+
+  SCOPED_TRACE(m->ToString());
+  const HloInstruction* conv;
+  auto gte_pattern =
+      m::GetTupleElement(
+          m::CustomCall(&conv, {kCudnnConvBiasActivationForwardCallTarget},
+                        m::Parameter(0), m::Parameter(1), m::Parameter(2)),
+          0)
+          .WithShape(F16, {1, 32, 9, 9});
+  ASSERT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Tuple(
+          m::Select(m::Compare(gte_pattern,
+                               m::Broadcast(m::ConstantEffectiveScalar(0)))
+                        .WithComparisonDirection(ComparisonDirection::kGt)
+                        .WithOneUse(),
+                    gte_pattern,
+                    m::Multiply(gte_pattern,
+                                m::Broadcast(m::ConstantEffectiveScalar()))),
           m::Minimum())));
   TF_ASSERT_OK_AND_ASSIGN(auto config,
                           conv->backend_config<CudnnConvBackendConfig>());

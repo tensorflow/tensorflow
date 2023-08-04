@@ -69,7 +69,7 @@ TEST(CostUpdateTest, Basic) {
   }
   tensorflow::tfrt_stub::CostRecorder cost_recorder;
   for (const auto& [op_key, cost] : expected_op_cost_map) {
-    cost_recorder.RecordCostNanosecond(op_key, cost);
+    cost_recorder.RecordCost(op_key, cost);
   }
 
   // Update the TFRT MLIR with the cost recorder.

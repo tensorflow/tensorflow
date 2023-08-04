@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
@@ -25,11 +26,6 @@ limitations under the License.
 #include "pybind11/stl.h"  // from @pybind11
 
 namespace xla {
-
-// The representation of frame->f_lasti changed from bytes to words in Python
-// 3.10, see https://docs.python.org/3/whatsnew/3.10.html#changes-in-the-c-api
-// This should match sizeof(_Py_CODEUNIT) which is unfortunately private.
-static constexpr int kLastiWordBytes = (PY_VERSION_HEX < 0x030a0000) ? 1 : 2;
 
 // Represents a Python traceback.
 class Traceback {
@@ -87,6 +83,11 @@ class Traceback {
   }
 
  private:
+  // Each frame is a pair of a code object and a "lasti" instruction location
+  // in bytes. The size of _Py_CODEUNIT has changed across different Python
+  // versions; the lasti value here has already been multiplied by
+  // sizeof(_Py_CODEUNIT) if needed and is suitable for passing to functions
+  // like PyCode_Addr2Line().
   absl::InlinedVector<std::pair<PyCodeObject*, int>, 32> frames_;
 
   // Protected by GIL.
@@ -99,6 +100,12 @@ H AbslHashValue(H h, const Traceback& traceback) {
   return h;
 }
 
+// pybind11-index-annotation BEGIN
+// refs {
+//   module_path: "tensorflow/compiler/xla/python/xla.cc"
+//   module_arg {}
+// }
+// pybind11-index-annotation END
 void BuildTracebackSubmodule(pybind11::module& m);
 
 }  // namespace xla

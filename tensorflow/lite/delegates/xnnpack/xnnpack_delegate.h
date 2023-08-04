@@ -29,6 +29,9 @@ extern "C" {
 #define TFLITE_XNNPACK_DELEGATE_FLAG_QU8 0x00000002
 // Force FP16 inference for FP32 operators.
 #define TFLITE_XNNPACK_DELEGATE_FLAG_FORCE_FP16 0x00000004
+// Enable XNNPACK acceleration for FULLY_CONNECTED operator with dynamic
+// weights.
+#define TFLITE_XNNPACK_DELEGATE_FLAG_DYNAMIC_FULLY_CONNECTED 0x00000008
 
 struct TfLiteXNNPackDelegateWeightsCache;
 
@@ -40,6 +43,7 @@ typedef struct {
   // - TFLITE_XNNPACK_DELEGATE_FLAG_QS8
   // - TFLITE_XNNPACK_DELEGATE_FLAG_QU8
   // - TFLITE_XNNPACK_DELEGATE_FLAG_FORCE_FP16
+  // - TFLITE_XNNPACK_DELEGATE_FLAG_DYNAMIC_FULLY_CONNECTED
   uint32_t flags;
   // Cache for packed weights, can be shared between multiple instances of
   // delegates.
@@ -73,6 +77,12 @@ TfLiteDelegate* TfLiteXNNPackDelegateCreateWithThreadpool(
 // WARNING: This API is experimental and subject to change.
 TFL_CAPI_EXPORT void* TfLiteXNNPackDelegateGetThreadPool(
     TfLiteDelegate* delegate);
+
+// Returns the flags used for an XNNPack delegate.
+// See documentation for TfLiteXNNPackDelegateOptions.flags.
+//
+// WARNING: This API is experimental and subject to change.
+TFL_CAPI_EXPORT int TfLiteXNNPackDelegateGetFlags(TfLiteDelegate* delegate);
 
 // Destroys a delegate created with `TfLiteXNNPackDelegateCreate` call.
 TFL_CAPI_EXPORT void TfLiteXNNPackDelegateDelete(TfLiteDelegate* delegate);

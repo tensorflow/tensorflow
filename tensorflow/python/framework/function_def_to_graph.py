@@ -168,8 +168,54 @@ def get_function_def(fname, graph):
     # Graph mode: use outer graphs as the single source of truth.
     while graph is not None:
       if graph._is_function(fname):  # pylint: disable=protected-access
-        return graph._get_function(fname).definition  # pylint: disable=protected-access
+        return graph._get_function(fname).cached_definition  # pylint: disable=protected-access
       graph = getattr(graph, "outer_graph", None)
+
+
+def copy_function_def_to_graph_def_recursively(
+    func_name, graph_def, copied_functions, default_graph=None):
+  """Recursively copies `FunctionDef`s to `GraphDef`.
+
+  It copies the outermost `FunctionDef` and all nested `FunctionDef`s to
+  `graph_def`. The `copied_function` enforces that every `FunctionDef` will be
+  copied at most once. The `FunctionDef`s will be found from `default_graph` if
+  this function was called in graph mode or from eager context if this function
+  was called in eager mode.
+
+  Args:
+    func_name: The signature name of FunctionDef to be copied to `graph_def`.
+    graph_def: The GraphDef that will contain all `FunctionDef`s in its library.
+    copied_functions: A set contains all copied function names.
+    default_graph: The `tf.Graph` where all `FunctionDef`s will be found
+      in graph mode. Not used in eager mode.
+  """
+  # Custom ops may contain a func attr with an empty fname.
+  if func_name and not is_function(func_name, default_graph):
+    raise ValueError(f"Function {func_name} was not found. Please make "
+                     "sure the FunctionDef `fdef` is correct.")
+
+  # If `copied_functions` contains `func_name`, the FunctionDef has already
+  # been added to GraphDef so we simply return here.
+  if func_name in copied_functions:
+    return
+
+  copied_functions.add(func_name)
+  func_def = get_function_def(func_name, default_graph)
+  graph_def.library.function.add().CopyFrom(func_def)
+
+  for node_def in func_def.node_def:
+    op_def = default_graph.op_def_for_type(node_def.op)
+    for attr in op_def.attr:
+      if attr.type == "func":
+        func_name = node_def.attr[attr.name].func.name
+        copy_function_def_to_graph_def_recursively(
+            func_name, graph_def, copied_functions, default_graph)
+
+      elif attr.type == "list(func)":
+        for fn in node_def.attr[attr.name].list.func:
+          func_name = fn.name
+          copy_function_def_to_graph_def_recursively(
+              func_name, graph_def, copied_functions, default_graph)
 
 
 def function_def_to_graph_def(
@@ -191,10 +237,10 @@ def function_def_to_graph_def(
       function inputs. If specified, its length must match length of
       `fdef.signature.input_arg`. If a shape is None, the corresponding input
       placeholder will have unknown shape.
-    include_library_functions: Optional. Whether to include library functions in
-      the output GraphDef. In graph mode, the library functions will be found
-      from outer graph. In eager mode, the library functions will be found from
-      eager context.
+    include_library_functions: Optional. If enabled, copy `fdef` and its
+      nested `FunctionDef`s to the library functions of the returned `GraphDef`.
+      In graph mode, the functions will be found from outer graph. In eager
+      mode, the functions will be found from eager context.
 
   Returns:
     A tuple of (GraphDef, dict<string, string>). The dict contains a mapping
@@ -267,7 +313,7 @@ def function_def_to_graph_def(
       graph = graph.outer_graph
 
     if f is not None:
-      fdef = f.definition
+      fdef = f.cached_definition
       op_def = fdef.signature
       if node_def.op not in copied_functions:
         # Since this function is referenced as an op type, we have no choice but
@@ -275,7 +321,7 @@ def function_def_to_graph_def(
         # it.
         graph_def.library.function.add().CopyFrom(fdef)
         copied_functions.add(node_def.op)
-        if f.grad_func_name:
+        if getattr(f, "grad_func_name", None):
           grad_def = function_pb2.GradientDef()
           grad_def.function_name = f.name
           grad_def.gradient_func = f.grad_func_name
@@ -290,10 +336,9 @@ def function_def_to_graph_def(
         if fname and not is_function(fname, default_graph):
           raise ValueError(f"Function {fname} was not found. Please make sure "
                            "the FunctionDef `fdef` is correct.")
-        if include_library_functions and fname not in copied_functions:
-          fdef = get_function_def(fname, default_graph)
-          graph_def.library.function.add().CopyFrom(fdef)
-          copied_functions.add(fname)
+        if include_library_functions:
+          copy_function_def_to_graph_def_recursively(
+              fname, graph_def, copied_functions, default_graph)
 
       elif attr.type == "list(func)":
         for fn in node_def.attr[attr.name].list.func:
@@ -302,10 +347,9 @@ def function_def_to_graph_def(
           if fname and not is_function(fname, default_graph):
             raise ValueError(f"Function {fname} was not found. Please make "
                              "sure the FunctionDef `fdef` is correct.")
-          if include_library_functions and fname not in copied_functions:
-            fdef = get_function_def(fname, default_graph)
-            graph_def.library.function.add().CopyFrom(fdef)
-            copied_functions.add(fname)
+          if include_library_functions:
+            copy_function_def_to_graph_def_recursively(
+                fname, graph_def, copied_functions, default_graph)
 
     # Iterate over output_args in op_def to build the map.
     # Index of the output tensor in the flattened list of *all* output

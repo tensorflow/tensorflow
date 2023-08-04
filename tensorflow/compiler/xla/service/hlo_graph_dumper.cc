@@ -190,7 +190,7 @@ NodeColors NodeColorsForScheme(ColorScheme color) {
     case kRed:
       return NodeColors{"filled", "#ffcdd2", "#cb9ca1", "black"};
     case kWhite:
-      return NodeColors{"filled", "white", "black", "black"};
+      return NodeColors{"filled", "white", "#9e9e9e", "black"};
     case kYellow:
       return NodeColors{"filled", "#fff9c4", "#cbc693", "black"};
     case kDashedBorder:
@@ -199,6 +199,45 @@ NodeColors NodeColorsForScheme(ColorScheme color) {
       // any part of the node (not just the text inside the node), our css
       // :hover rule is triggered.
       return NodeColors{"filled,dashed", "white", "#757575", "#757575"};
+  }
+}
+
+// Given a Statistic object, returns a hex string for the fill color of the node
+// with that statistic.
+const char* NodeFillColorForStatistic(const Statistic& statistic) {
+  auto stat_val = statistic.stat_val();
+  if (stat_val == 0) {
+    return "#f5f5f5";
+  } else if (stat_val < 10) {
+    return "#f7d4cc";
+  } else if (stat_val < 20) {
+    return "#f8b2a3";
+  } else if (stat_val < 30) {
+    return "#f9a28f";
+  } else if (stat_val < 40) {
+    return "#fa917b";
+  } else if (stat_val < 50) {
+    return "#fb8066";
+  } else if (stat_val < 60) {
+    return "#fc7052";
+  } else if (stat_val < 70) {
+    return "#fd5f3d";
+  } else if (stat_val < 80) {
+    return "#fd4e29";
+  } else if (stat_val < 90) {
+    return "#fe3e14";
+  } else {
+    return "#ff2d00";
+  }
+}
+
+// Given a Statistic object, returns a hex string for the font color of the node
+// with that statistic.
+const char* NodeFontColorForStatistic(const Statistic& statistic) {
+  if (statistic.stat_val() < 60) {
+    return "black";
+  } else {
+    return "white";
   }
 }
 
@@ -658,7 +697,17 @@ std::string HloDotDumper::DumpSubcomputation(
     bool highlight = filter_.Highlight(parent_instr);
     const char* fillcolor;
     const char* strokecolor;
-    if (debug_options_.xla_hlo_graph_sharding_color() && !highlight) {
+
+    if (!highlight && (parent_instr->module_has_statistics() ||
+                       parent_instr->has_statistics())) {
+      // Use color from the statistic if available, otherwise default to
+      // coloring all other nodes gray when any other nodes has statistics
+      fillcolor = parent_instr->has_statistics()
+                      ? NodeFillColorForStatistic(
+                            parent_instr->statistic_to_visualize())
+                      : "#f5f5f5";
+      strokecolor = "#c2c2c2";
+    } else if (debug_options_.xla_hlo_graph_sharding_color() && !highlight) {
       // Use the sharding color, if the node isn't highlighted.
       NodeColors node_colors =
           NodeColorsForScheme(GetInstructionColor(parent_instr));
@@ -837,6 +886,27 @@ std::string HloDotDumper::DumpInstruction(const HloInstruction* instr) {
       color = kDarkRed;
     }
   }
+
+  NodeColors node_colors = NodeColorsForScheme(color);
+  if (instr->has_statistics()) {
+    // override node's color to show statistics
+    const auto& statistic_to_visualize = instr->statistic_to_visualize();
+    node_colors.fill_color = NodeFillColorForStatistic(statistic_to_visualize);
+    node_colors.stroke_color = "#c2c2c2";
+    node_colors.font_color = NodeFontColorForStatistic(statistic_to_visualize);
+  } else if (instr->module_has_statistics()) {
+    // all other nodes without statistics must be gray
+    node_colors.fill_color = "#f5f5f5";
+    node_colors.stroke_color = "#c2c2c2";
+    node_colors.font_color = "black";
+  }
+
+  // Build the node style
+  std::string node_style =
+      StrFormat(R"(style="%s", fontcolor="%s", color="%s", fillcolor="%s")",
+                node_colors.style, node_colors.font_color,
+                node_colors.stroke_color, node_colors.fill_color);
+
   // Build the text that will be displayed inside the node.
   std::string node_body = node_label;
   for (const std::string& s : {trivial_subcomputation, extra_info,
@@ -849,7 +919,7 @@ std::string HloDotDumper::DumpInstruction(const HloInstruction* instr) {
   return StrFormat(R"(%s [label=<%s>, shape=%s, tooltip="%s", %s];)"
                    "\n",
                    InstructionId(instr), node_body, node_shape, node_metadata,
-                   NodeColorAttributes(color));
+                   node_style);
 }
 
 std::string HloDotDumper::GetInstructionNodeInlinedOperands(
@@ -891,7 +961,7 @@ std::string HloDotDumper::GetInstructionNodeInlinedOperands(
     // Otherwise, print e.g. "%constant.42 (s32[100])".
     std::string constant_name;
     if (absl::StartsWith(constant->name(), "constant")) {
-      constant_name = constant->name();
+      constant_name = std::string(constant->name());
     } else {
       constant_name = StrCat("constant ", constant->name());
     }
@@ -899,6 +969,7 @@ std::string HloDotDumper::GetInstructionNodeInlinedOperands(
   };
 
   std::vector<std::string> lines;
+  constexpr int64_t kMaxOperandsShown = 32;
   for (int64_t i = 0; i < instr->operand_count(); ++i) {
     const HloInstruction* operand = instr->operand(i);
     optional<std::string> operand_str;
@@ -928,7 +999,7 @@ std::string HloDotDumper::GetInstructionNodeInlinedOperands(
                       operand->operand(0)->name(),
                       ShapeUtil::HumanStringWithLayout(operand->shape()));
       } else {
-        operand_str = operand->name();
+        operand_str = std::string(operand->name());
       }
     }
 
@@ -938,6 +1009,10 @@ std::string HloDotDumper::GetInstructionNodeInlinedOperands(
       } else {
         lines.push_back(StrFormat("<b>operand</b> = %s", *operand_str));
       }
+    }
+    if (lines.size() == kMaxOperandsShown && i < instr->operand_count() - 1) {
+      lines.push_back("...");
+      break;
     }
   }
 
@@ -1024,6 +1099,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kXor:
     case HloOpcode::kPower:
     case HloOpcode::kReal:
+    case HloOpcode::kReducePrecision:
     case HloOpcode::kRemainder:
     case HloOpcode::kRng:
     case HloOpcode::kRngGetAndUpdateState:
@@ -1041,63 +1117,49 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kSin:
     case HloOpcode::kSlice:
     case HloOpcode::kSort:
+    case HloOpcode::kTopK:
     case HloOpcode::kSqrt:
     case HloOpcode::kCbrt:
     case HloOpcode::kSubtract:
     case HloOpcode::kTan:
     case HloOpcode::kTanh:
-      // De-emphasize scalar-shaped elementwise ops -- they're generally
-      // uninteresting.
-      if (ShapeUtil::IsEffectiveScalar(instr->shape())) {
-        return kWhite;
-      }
-      return kYellow;
-    case HloOpcode::kBitcast:
-    case HloOpcode::kGetTupleElement:
-    case HloOpcode::kAfterAll:
+      return kWhite;
     case HloOpcode::kAddDependency:
-    case HloOpcode::kTuple:
+    case HloOpcode::kAfterAll:
+    case HloOpcode::kGetTupleElement:
     case HloOpcode::kOptimizationBarrier:
+    case HloOpcode::kPad:
+    case HloOpcode::kTuple:
       return kWhite;
     case HloOpcode::kConstant:
       // Constants aren't usually shown as their own nodes, but they'll be
       // present if e.g. they're the root of a computation.
       return kWhite;
     case HloOpcode::kBroadcast:
-      // De-emphasize nodes which broadcast a scalar within a fusion node --
-      // these are essentially free.
-      if (instr->IsFused() &&
-          ShapeUtil::IsEffectiveScalar(instr->operand(0)->shape())) {
-        return kWhite;
-      }
-      return kGreen;
+    case HloOpcode::kDynamicUpdateSlice:
+      return kYellow;
     case HloOpcode::kConcatenate:
     case HloOpcode::kDynamicSlice:
-    case HloOpcode::kGather:
-    case HloOpcode::kPad:
     case HloOpcode::kReshape:
     case HloOpcode::kDynamicReshape:
     case HloOpcode::kReverse:
     case HloOpcode::kTranspose:
-      // De-emphasize scalar-shaped data movement ops and all data movement ops
-      // inside fusion nodes, both of which are essentially free.
-      if (ShapeUtil::IsEffectiveScalar(instr->shape()) || instr->IsFused()) {
-        return kWhite;
-      }
-      return kGreen;
-    case HloOpcode::kDynamicUpdateSlice:
-      // Unlike the data-movement ops above, dynamic-update-slice is not ~free
-      // inside of fusion nodes, so we de-emphasize it only if it's
-      // scalar-shaped.
-      if (ShapeUtil::IsEffectiveScalar(instr->shape())) {
-        return kWhite;
-      }
+      // These data-movement ops can be expensive; emphasize them.  (Yes, even
+      // concat can be expensive, at least on GPU, as it can create warp
+      // divergence.)
       return kGreen;
     case HloOpcode::kCopy:
     case HloOpcode::kCopyStart:
     case HloOpcode::kCopyDone:
       // Emphasize copy nodes, which are either physical transposes (and thus
       // significant), or copies of read-only buffers (and thus dead weight).
+      return kGreen;
+    case HloOpcode::kBitcast:
+      // Unfused bitcast is free, but fused bitcast should count as a non-free
+      // data-movement op (e.g. requires linearization of indices on GPU).
+      if (!instr->IsFused()) {
+        return kWhite;
+      }
       return kGreen;
     case HloOpcode::kAsyncStart:
     case HloOpcode::kAsyncUpdate:
@@ -1109,8 +1171,6 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kTriangularSolve:
     case HloOpcode::kCholesky:
       return kDarkBlue;
-    case HloOpcode::kReducePrecision:
-      return kRed;
     case HloOpcode::kParameter:
       return parameter_color;
     case HloOpcode::kBatchNormGrad:
@@ -1120,6 +1180,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kReduceWindow:
     case HloOpcode::kScatter:  // scatter is a kind of reduction
     case HloOpcode::kSelectAndScatter:
+    case HloOpcode::kGather:  // not a reduction, but goes with scatter
       return kPurple;
     case HloOpcode::kDomain:
     case HloOpcode::kFusion:
@@ -1201,6 +1262,21 @@ std::string HloDotDumper::GetInstructionNodeMetadata(
     lines.push_back(StrFormat("source: %s:%d", instr->metadata().source_file(),
                               instr->metadata().source_line()));
   }
+  if (instr->metadata().stack_frame_id() != 0) {
+    auto hlo_module = instr->parent()->parent();
+    int frame_id = instr->metadata().stack_frame_id();
+    while (frame_id != 0) {
+      HloModule::StackFrame frame = hlo_module->get_stack_frame(frame_id);
+      if (frame.empty()) {
+        break;
+      }
+      frame_id = frame.parent_frame_id;
+
+      lines.push_back(StrFormat(
+          "%s:%s:%d%s", frame.file_name, frame.function_name, frame.line,
+          frame.column == 0 ? "" : StrFormat(":%d", frame.column)));
+    }
+  }
 
   return StrJoin(lines, "\n");
 }
@@ -1213,6 +1289,9 @@ ExtractCudnnConvBackendConfigProps(const gpu::CudnnConvBackendConfig& config) {
   }
   if (config.side_input_scale() != 0 && config.side_input_scale() != 1) {
     props.emplace_back("side_input_scale", StrCat(config.side_input_scale()));
+  }
+  if (config.activation_mode() == se::dnn::ActivationMode::kLeakyRelu) {
+    props.emplace_back("leakyrelu_alpha", StrCat(config.leakyrelu_alpha()));
   }
   props.emplace_back(
       "activation_mode",
@@ -1321,6 +1400,10 @@ std::string HloDotDumper::GetInstructionNodeExtraInfo(
         line.length() > kMaxDeviceIdFieldLen) {
       lines.push_back(HtmlLikeStringSanitize(
           StrCat(line.substr(0, kMaxDeviceIdFieldLen - 3), "...")));
+    } else if (absl::StartsWith(line, "feature_group_count=")) {
+      // Highlight the group count so it's obvious that it's a grouped
+      // convolution.
+      lines.push_back(StrFormat("<b>%s</b>", HtmlLikeStringSanitize(line)));
     } else {
       lines.push_back(HtmlLikeStringSanitize(line));
     }
@@ -1613,22 +1696,6 @@ NodeFilter MakeNodeFromToFilter(const HloInstruction* from,
     return to_display.count(instr) ? kNormalNode : kHideNode;
   });
 }
-
-static const char* kRenderDotJS = R"(
-  <!-- Integrity hash is generated by https://www.srihash.org/ -->
-  <script src="https://cdn.jsdelivr.net/npm/viz.js@2.1.1/viz.js"
-     integrity="sha384-aD1MJYb0WKIUT+CtwJp5LTuV3U4pLAS6B/nUxL7ECimC2pN9N8vjlMr/yQCAkzxE"
-     crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/viz.js@2.1.1/full.render.js"
-     integrity="sha384-bAixY275aIpCj6Te19y0MILZ4V+VEC8CVFujFEH+Lf7W+4XYYeYLwW5IBI6yQmMT"
-     crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.0/dist/svg-pan-zoom.min.js"
-     integrity="sha384-3008WpYB2pOBvE7lwkrKf+qTmbTPGGPYxA9C1YVhvbPukns4ZFj7E98QPLkNW9dS"
-     crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@hpcc-js/wasm/dist/index.min.js"
-     integrity="sha384-X+8WXyWZ+W2gUHiSSj0aePAkE77Fl6eZ+QIByw+Ii8LzWEJ/W8bI8M4RkneDAJ4D"
-     crossorigin="anonymous"></script>
-)";
 
 std::string WrapDotInHtml(absl::string_view dot) {
   std::string html_prefix =
@@ -2093,10 +2160,11 @@ void RegisterFusionState(const HloComputation& computation,
   fusion_progress.AddState(dot_txt, label, producer_to_highlight);
 }
 
-StatusOr<std::string> RenderGraph(
-    const HloComputation& computation, absl::string_view label,
-    const DebugOptions& debug_options, RenderedGraphFormat format,
-    HloRenderOptions hlo_render_options) {
+StatusOr<std::string> RenderGraph(const HloComputation& computation,
+                                  absl::string_view label,
+                                  const DebugOptions& debug_options,
+                                  RenderedGraphFormat format,
+                                  HloRenderOptions hlo_render_options) {
   absl::MutexLock lock(&url_renderer_mu);
   if (format == RenderedGraphFormat::kUrl && url_renderer == nullptr) {
     return Unavailable("Can't render as URL; no URL renderer was registered.");

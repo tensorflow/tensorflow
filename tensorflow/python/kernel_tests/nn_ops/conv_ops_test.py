@@ -17,6 +17,7 @@
 import os
 import time
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
@@ -157,8 +158,47 @@ def GetTestConfigs():
   return test_configs
 
 
+TEST_PARAMS = [
+    ("Conv2D_NHWC_float_cpu", "NHWC", dtypes.float32, False, "Conv2D"),
+    ("Conv2D_NHWC_half_cpu", "NHWC", dtypes.float16, False, "Conv2D"),
+    ("Conv2D_NHWC_double_cpu", "NHWC", dtypes.float64, False, "Conv2D"),
+    ("Conv2D_NHWC_bfloat16_cpu", "NHWC", dtypes.bfloat16, False, "Conv2D"),
+    ("Conv2D_NHWC_int32_cpu", "NHWC", dtypes.int32, False, "Conv2D"),
+    ("Conv2D_NHWC_float_gpu", "NHWC", dtypes.float32, True, "Conv2D"),
+    ("Conv2D_NHWC_half_gpu", "NHWC", dtypes.float16, True, "Conv2D"),
+    ("Conv2D_NHWC_double_gpu", "NHWC", dtypes.float64, True, "Conv2D"),
+    ("Conv2D_NHWC_bfloat16_gpu", "NHWC", dtypes.bfloat16, True, "Conv2D"),
+    ("Conv2D_NCHW_float_gpu", "NCHW", dtypes.float32, True, "Conv2D"),
+    ("Conv2D_NCHW_half_gpu", "NCHW", dtypes.float16, True, "Conv2D"),
+    ("Conv2D_NCHW_double_gpu", "NCHW", dtypes.float64, True, "Conv2D"),
+    ("Conv2D_NCHW_bfloat16_gpu", "NCHW", dtypes.bfloat16, True, "Conv2D"),
+    ("Conv_NHWC_float_cpu", "NHWC", dtypes.float32, False, "Conv"),
+    ("Conv_NHWC_half_cpu", "NHWC", dtypes.float16, False, "Conv"),
+    ("Conv_NHWC_double_cpu", "NHWC", dtypes.float64, False, "Conv"),
+    ("Conv_NHWC_bfloat16_cpu", "NHWC", dtypes.bfloat16, False, "Conv"),
+    ("Conv_NHWC_int32_cpu", "NHWC", dtypes.int32, False, "Conv"),
+    ("Conv_NHWC_float_gpu", "NHWC", dtypes.float32, True, "Conv"),
+    ("Conv_NHWC_half_gpu", "NHWC", dtypes.float16, True, "Conv"),
+    ("Conv_NHWC_double_gpu", "NHWC", dtypes.float64, True, "Conv"),
+    ("Conv_NHWC_bfloat16_gpu", "NHWC", dtypes.bfloat16, True, "Conv"),
+    ("Conv_NCHW_float_gpu", "NCHW", dtypes.float32, True, "Conv"),
+    ("Conv_NCHW_half_gpu", "NCHW", dtypes.float16, True, "Conv"),
+    ("Conv_NCHW_double_gpu", "NCHW", dtypes.float64, True, "Conv"),
+    ("Conv_NCHW_bfloat16_gpu", "NCHW", dtypes.bfloat16, True, "Conv"),
+]
+
+DILATED_PARAMS = [
+    ("Conv2D_NHWC_cpu", "NHWC", False, "Conv2D"),
+    ("Conv2D_NHWC_gpu", "NHWC", True, "Conv2D"),
+    ("Conv2D_NCHW_gpu", "NCHW", True, "Conv2D"),
+    ("Conv_NHWC_cpu", "NHWC", False, "Conv"),
+    ("Conv_NHWC_gpu", "NHWC", True, "Conv"),
+    ("Conv_NCHW_gpu", "NCHW", True, "Conv"),
+]
+
+
 @test_util.run_all_without_tensor_float_32("Avoid TF32 conv on GPU")
-class Conv2DTest(test.TestCase):
+class Conv2DTest(parameterized.TestCase, test.TestCase):
 
   def _DtypesToTest(self, use_gpu):
     if test_util.IsMklEnabled():
@@ -182,21 +222,33 @@ class Conv2DTest(test.TestCase):
       total_size *= s
     return np.arange(1, total_size + 1, dtype=np.float32).reshape(shape)
 
-  def _SetupValuesForDevice(self, tensor_in_sizes, filter_in_sizes, dilations,
-                            strides, padding, data_format, dtype, use_gpu):
+  def _SetupValuesForDevice(
+      self,
+      tensor_in_sizes,
+      filter_in_sizes,
+      dilations,
+      strides,
+      padding,
+      data_format,
+      dtype,
+      use_gpu,
+      op_name,
+  ):
     """Verifies the output values of the convolution function.
 
     Args:
-      tensor_in_sizes: Input tensor dimensions in
-        [batch, input_rows, input_cols, input_depth].
-      filter_in_sizes: Filter tensor dimensions in
-        [kernel_rows, kernel_cols, input_depth, output_depth].
+      tensor_in_sizes: Input tensor dimensions in [batch, input_rows,
+        input_cols, input_depth].
+      filter_in_sizes: Filter tensor dimensions in [kernel_rows, kernel_cols,
+        input_depth, output_depth].
       dilations: Dilated rate: [col_dilation, row_dilation]
       strides: Stride: [col_stride, row_stride]
       padding: Padding type.
       data_format: Format of the data tensors.
       dtype: Data type for inputs and outputs.
       use_gpu: True if the operations should be run on GPU
+      op_name: Name of the op to be tested
+
     Returns:
       Symbolic tensor value that can be used to execute the computation
     """
@@ -216,13 +268,32 @@ class Conv2DTest(test.TestCase):
         dilations = test_util.NHWCToNCHW(dilations)
         if isinstance(padding, (list, tuple)):
           padding = test_util.NHWCToNCHW(padding)
-      conv = nn_ops.conv2d(
-          t1,
-          t2,
-          dilations=dilations,
-          strides=strides,
-          padding=padding,
-          data_format=data_format)
+      if op_name == "Conv2D":
+        conv = nn_ops.conv2d(
+            t1,
+            t2,
+            dilations=dilations,
+            strides=strides,
+            padding=padding,
+            data_format=data_format,
+        )
+      elif op_name == "Conv":
+        conv_format = (
+            "CHANNELS_LAST" if data_format == "NHWC" else "CHANNELS_FIRST"
+        )
+        conv_padding, explicit_paddings = nn_ops.convert_padding(padding)
+        conv = gen_nn_ops.conv(
+            t1,
+            t2,
+            strides=strides,
+            padding=conv_padding,
+            explicit_paddings=explicit_paddings,
+            data_format=conv_format,
+            dilations=dilations,
+        )
+      else:
+        raise ValueError("Invalid op name: %s" % op_name)
+
       self.assertEqual(conv.dtype, dtype)
       if data_format == "NCHW":
         conv = test_util.NCHWToNHWC(conv)
@@ -265,9 +336,64 @@ class Conv2DTest(test.TestCase):
     for i in range(1, len(values)):
       self.assertAllClose(values[0], values[i], rtol=1e-3, atol=1e-3)
 
-  def _ComputeReferenceDilatedConv(self, tensor_in_sizes, filter_in_sizes,
-                                   stride, dilation, padding, data_format,
-                                   use_gpu):
+  def _ComputeReferenceDilatedConv(
+      self,
+      tensor_in_sizes,
+      filter_in_sizes,
+      stride,
+      dilation,
+      padding,
+      data_format,
+      use_gpu,
+  ):
+    x1 = self._CreateNumpyTensor(tensor_in_sizes)
+    x2 = self._CreateNumpyTensor(filter_in_sizes)
+    with test_util.device(use_gpu):
+      t1 = constant_op.constant(x1, shape=tensor_in_sizes)
+      t2 = constant_op.constant(x2, shape=filter_in_sizes)
+      if isinstance(stride, collections_abc.Iterable):
+        strides = list(stride)
+      else:
+        strides = [stride, stride]
+      if data_format == "NCHW":
+        t1 = test_util.NHWCToNCHW(t1)
+        full_strides = [1, 1] + strides
+        full_dilation = [1, 1] + dilation
+      else:
+        full_strides = [1] + strides + [1]
+        full_dilation = [1] + dilation + [1]
+      expected = nn_ops.convolution(
+          t1,
+          t2,
+          padding=padding,
+          strides=strides,
+          dilation_rate=dilation,
+          data_format=data_format,
+      )
+      computed = nn_ops.conv2d(
+          t1,
+          t2,
+          strides=full_strides,
+          dilations=full_dilation,
+          padding=padding,
+          data_format=data_format,
+      )
+      if data_format == "NCHW":
+        expected = test_util.NCHWToNHWC(expected)
+        computed = test_util.NCHWToNHWC(computed)
+    return expected, computed
+
+  def _ComputeReferenceDilatedConvParameters(
+      self,
+      tensor_in_sizes,
+      filter_in_sizes,
+      stride,
+      dilation,
+      padding,
+      data_format,
+      use_gpu,
+      op_name,
+  ):
     x1 = self._CreateNumpyTensor(tensor_in_sizes)
     x2 = self._CreateNumpyTensor(filter_in_sizes)
     with test_util.device(use_gpu):
@@ -291,17 +417,73 @@ class Conv2DTest(test.TestCase):
           strides=strides,
           dilation_rate=dilation,
           data_format=data_format)
-      computed = nn_ops.conv2d(
-          t1,
-          t2,
-          strides=full_strides,
-          dilations=full_dilation,
-          padding=padding,
-          data_format=data_format)
+      if op_name == "Conv2D":
+        computed = nn_ops.conv2d(
+            t1,
+            t2,
+            strides=full_strides,
+            dilations=full_dilation,
+            padding=padding,
+            data_format=data_format,
+        )
+      elif op_name == "Conv":
+        conv_format = (
+            "CHANNELS_LAST" if data_format == "NHWC" else "CHANNELS_FIRST"
+        )
+        conv_padding, explicit_paddings = nn_ops.convert_padding(padding)
+        computed = gen_nn_ops.conv(
+            t1,
+            t2,
+            strides=full_strides,
+            dilations=full_dilation,
+            padding=conv_padding,
+            explicit_paddings=explicit_paddings,
+            data_format=conv_format,
+        )
+      else:
+        raise ValueError("Invalid op name: %s" % op_name)
+
       if data_format == "NCHW":
         expected = test_util.NCHWToNHWC(expected)
         computed = test_util.NCHWToNHWC(computed)
     return expected, computed
+
+  def _VerifyDilatedConvValuesParameters(
+      self,
+      tensor_in_sizes,
+      filter_in_sizes,
+      strides,
+      padding,
+      dilations,
+      data_format,
+      use_gpu,
+      op_name,
+      rtol=1e-4,
+  ):
+    if use_gpu and not test.is_gpu_available(cuda_only=True):
+      self.skipTest("GPU not available")
+    expected_results = []
+    computed_results = []
+    expected, computed = self._ComputeReferenceDilatedConvParameters(
+        tensor_in_sizes,
+        filter_in_sizes,
+        strides,
+        dilations,
+        padding,
+        data_format,
+        use_gpu,
+        op_name,
+    )
+    expected_results.append(expected)
+    computed_results.append(computed)
+    expected_values = self.evaluate(expected_results)
+    computed_values = self.evaluate(computed_results)
+    for e_value, c_value in zip(expected_values, computed_values):
+      tf_logging.debug("expected = %s", e_value)
+      tf_logging.debug("actual = %s", c_value)
+      self.assertAllCloseAccordingToType(
+          e_value.flatten(), c_value.flatten(), atol=1e-5, rtol=rtol
+      )
 
   def _VerifyDilatedConvValues(self, tensor_in_sizes, filter_in_sizes, strides,
                                padding, dilations, rtol=1e-4):
@@ -309,8 +491,14 @@ class Conv2DTest(test.TestCase):
     computed_results = []
     for data_format, use_gpu in GetTestConfigs():
       expected, computed = self._ComputeReferenceDilatedConv(
-          tensor_in_sizes, filter_in_sizes, strides, dilations, padding,
-          data_format, use_gpu)
+          tensor_in_sizes,
+          filter_in_sizes,
+          strides,
+          dilations,
+          padding,
+          data_format,
+          use_gpu,
+      )
       expected_results.append(expected)
       computed_results.append(computed)
     tolerance = 1e-2 if use_gpu else 1e-5
@@ -336,7 +524,7 @@ class Conv2DTest(test.TestCase):
       return
     tensors = []
     dilations = list(dilations)
-    for (data_format, use_gpu) in GetTestConfigs():
+    for data_format, use_gpu, op_name in GetTestConfigs():
       if gpu_only and not use_gpu:
         continue
       dtypes_to_test = self._DtypesToTest(use_gpu)
@@ -351,7 +539,9 @@ class Conv2DTest(test.TestCase):
             padding,
             data_format,
             dtype,
-            use_gpu=use_gpu)
+            use_gpu=use_gpu,
+            op_name=op_name,
+        )
         if test_grappler_layout_optimizer and data_format == "NHWC" and use_gpu:
           # Grappler's layout optimizer will not optimize a fetch node, so
           # this identity allows Grappler to optimize the Conv2D node.
@@ -371,14 +561,76 @@ class Conv2DTest(test.TestCase):
         self.assertShapeEqual(value, conv)
         self.assertEqual(value.dtype, conv.dtype.as_numpy_dtype)
 
-  def _VerifyExplicitPaddings(self,
-                              tensor_in_sizes,
-                              filter_in_sizes,
-                              strides,
-                              padding,
-                              dilations=(1, 1),
-                              test_grappler_layout_optimizer=False,
-                              tol=1e-5):
+  def _VerifyValuesParameters(
+      self,
+      tensor_in_sizes,
+      filter_in_sizes,
+      strides,
+      padding,
+      expected,
+      data_format,
+      dtype,
+      use_gpu,
+      op_name,
+      dilations=(1, 1),
+      gpu_only=False,
+      test_grappler_layout_optimizer=False,
+      tol=1e-5,
+  ):
+    if (gpu_only and not use_gpu) or not test.is_gpu_available(cuda_only=True):
+      self.skipTest("GPU not available")
+    if (
+        test_grappler_layout_optimizer or data_format != "NHWC"
+    ) and dtype == dtypes.int32:
+      self.skipTest("int32 not supported")
+
+    tensors = []
+    dilations = list(dilations)
+    result = self._SetupValuesForDevice(
+        tensor_in_sizes,
+        filter_in_sizes,
+        dilations,
+        strides,
+        padding,
+        data_format,
+        dtype,
+        use_gpu=use_gpu,
+        op_name=op_name,
+    )
+    if test_grappler_layout_optimizer and data_format == "NHWC" and use_gpu:
+      # Grappler's layout optimizer will not optimize a fetch node, so
+      # this identity allows Grappler to optimize the Conv2D node.
+      result = array_ops.identity(result)
+    tensors.append(result)
+    values = self.evaluate(tensors)
+    for i in range(len(tensors)):
+      conv = tensors[i]
+      value = values[i]
+      tf_logging.debug("expected = %s", expected)
+      tf_logging.debug("actual = %s", value)
+      if np.issubdtype(value.dtype, np.integer):
+        self.assertAllEqual(np.rint(expected), np.ravel(value))
+      else:
+        self.assertAllCloseAccordingToType(
+            expected, np.ravel(value), atol=tol, rtol=tol
+        )
+      self.assertShapeEqual(value, conv)
+      self.assertEqual(value.dtype, conv.dtype.as_numpy_dtype)
+
+  def _VerifyExplicitPaddings(
+      self,
+      tensor_in_sizes,
+      filter_in_sizes,
+      strides,
+      padding,
+      data_format,
+      dtype,
+      use_gpu,
+      op_name,
+      dilations=(1, 1),
+      test_grappler_layout_optimizer=False,
+      tol=1e-5,
+  ):
     """Verifies Conv2D with explicit padding generates correct values.
 
     It does this by comparing with Conv2D without explicit padding. This
@@ -391,6 +643,10 @@ class Conv2DTest(test.TestCase):
         input_depth, output_depth].
       strides: [row_stride, col_stride] for the convolution;
       padding: Explicit padding amounts.
+      data_format: "NCHW" or "NHWC"
+      dtype: data type to perform test
+      use_gpu: True if testing on the GPU
+      op_name: "Conv" or "Conv2D"
       dilations: Dilation values
       test_grappler_layout_optimizer: If True, allow the Grappler layout
         optimizer to run, which turns NHWC Conv2Ds on the GPU to NCHW Conv2Ds.
@@ -406,28 +662,39 @@ class Conv2DTest(test.TestCase):
         "VALID",
         dilations=[1] + dilations + [1])
     expected = list(self.evaluate(array_ops.reshape(conv2d_result, [-1])))
-    self._VerifyValues(
+    self._VerifyValuesParameters(
         tensor_in_sizes,
         filter_in_sizes,
         strides,
         padding,
         expected,
+        data_format,
+        dtype,
+        use_gpu,
+        op_name,
         dilations,
         test_grappler_layout_optimizer=test_grappler_layout_optimizer,
-        tol=tol)
+        tol=tol,
+    )
 
+  @parameterized.named_parameters(*TEST_PARAMS)
   @test_util.run_in_graph_and_eager_modes
-  def testConv2D1x1Filter(self):
+  def testConv2D1x1Filter(self, data_format, dtype, use_gpu, op_name):
     expected_output = [
         30.0, 36.0, 42.0, 66.0, 81.0, 96.0, 102.0, 126.0, 150.0, 138.0, 171.0,
         204.0, 174.0, 216.0, 258.0, 210.0, 261.0, 312.0
     ]
-    self._VerifyValues(
+    self._VerifyValuesParameters(
         tensor_in_sizes=[1, 2, 3, 3],
         filter_in_sizes=[1, 1, 3, 3],
         strides=[1, 1],
         padding="VALID",
-        expected=expected_output)
+        expected=expected_output,
+        data_format=data_format,
+        dtype=dtype,
+        use_gpu=use_gpu,
+        op_name=op_name,
+    )
 
   @test_util.run_in_graph_and_eager_modes
   def testConv2DExpandedBatch(self):
@@ -452,6 +719,29 @@ class Conv2DTest(test.TestCase):
     self.assertAllEqual(
         conv1,
         self.evaluate(conv2).reshape(conv1.shape))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConvExpandedBatch(self):
+    tensor_in_sizes_batch = [10, 2, 3, 3]
+    tensor_in_sizes_expanded_batch = [2, 5, 2, 3, 3]
+    batch_dims = 2
+    filter_in_sizes = [1, 1, 3, 3]
+    filter_in = self._CreateNumpyTensor(filter_in_sizes)
+    x1 = self._CreateNumpyTensor(tensor_in_sizes_batch)
+    x2 = x1.reshape(tensor_in_sizes_expanded_batch)
+    conv1 = gen_nn_ops.conv(
+        x1, filter_in, strides=[1, 1, 1, 1], padding="VALID"
+    )
+    conv2 = gen_nn_ops.conv(
+        x2,
+        filter_in,
+        strides=[1, 1, 1, 1],
+        padding="VALID",
+        batch_dims=batch_dims,
+    )
+    self.assertEqual(conv1.shape, tensor_in_sizes_batch)
+    self.assertEqual(conv2.shape, tensor_in_sizes_expanded_batch)
+    self.assertAllEqual(conv1, self.evaluate(conv2).reshape(conv1.shape))
 
   @test_util.run_in_graph_and_eager_modes
   def testConvolutionClass2DExpandedBatch(self):
@@ -505,269 +795,459 @@ class Conv2DTest(test.TestCase):
         conv1,
         self.evaluate(conv2).reshape(conv1.shape))
 
+  @parameterized.named_parameters(*DILATED_PARAMS)
   @test_util.run_in_graph_and_eager_modes
-  def testConv2D2x2Filter2x1Dilation(self):
-    self._VerifyDilatedConvValues(
+  def testConv2D2x2Filter2x1Dilation(self, data_format, use_gpu, op_name):
+    self._VerifyDilatedConvValuesParameters(
         tensor_in_sizes=[1, 4, 4, 1],
         filter_in_sizes=[2, 2, 1, 1],
         strides=[1, 1],
         dilations=[2, 1],
-        padding="VALID")
+        padding="VALID",
+        data_format=data_format,
+        use_gpu=use_gpu,
+        op_name=op_name,
+    )
 
+  @parameterized.named_parameters(*TEST_PARAMS)
   @test_util.run_in_graph_and_eager_modes
-  def testConv2DEmpty(self):
+  def testConv2DEmpty(self, data_format, dtype, use_gpu, op_name):
     expected_output = []
-    self._VerifyValues(
+    self._VerifyValuesParameters(
         tensor_in_sizes=[0, 2, 3, 3],
         filter_in_sizes=[1, 1, 3, 3],
         strides=[1, 1],
         padding="VALID",
-        expected=expected_output)
+        expected=expected_output,
+        data_format=data_format,
+        dtype=dtype,
+        use_gpu=use_gpu,
+        op_name=op_name,
+    )
 
+  @parameterized.named_parameters(*DILATED_PARAMS)
   @test_util.run_in_graph_and_eager_modes
-  def testConv2DEmptyDilation(self):
-    self._VerifyDilatedConvValues(
+  def testConv2DEmptyDilation(self, data_format, use_gpu, op_name):
+    self._VerifyDilatedConvValuesParameters(
         tensor_in_sizes=[0, 2, 3, 3],
         filter_in_sizes=[1, 1, 3, 3],
         strides=[1, 1],
         dilations=[2, 1],
-        padding="VALID")
+        padding="VALID",
+        data_format=data_format,
+        use_gpu=use_gpu,
+        op_name=op_name,
+    )
 
+  @parameterized.named_parameters(*TEST_PARAMS)
   @test_util.run_in_graph_and_eager_modes
-  def testConv2D2x2Filter(self):
+  def testConv2D2x2Filter(self, data_format, dtype, use_gpu, op_name):
     # The outputs are computed using third_party/py/IPython/notebook.
     expected_output = [2271.0, 2367.0, 2463.0, 2901.0, 3033.0, 3165.0]
-    self._VerifyValues(
+    self._VerifyValuesParameters(
         tensor_in_sizes=[1, 2, 3, 3],
         filter_in_sizes=[2, 2, 3, 3],
         strides=[1, 1],
         padding="VALID",
-        expected=expected_output)
+        expected=expected_output,
+        data_format=data_format,
+        dtype=dtype,
+        use_gpu=use_gpu,
+        op_name=op_name,
+    )
 
+  @parameterized.named_parameters(*DILATED_PARAMS)
   @test_util.run_in_graph_and_eager_modes
-  def testConv2D2x2FilterDilation(self):
-    self._VerifyDilatedConvValues(
+  def testConv2D2x2FilterDilation(self, data_format, use_gpu, op_name):
+    self._VerifyDilatedConvValuesParameters(
         tensor_in_sizes=[1, 2, 3, 3],
         filter_in_sizes=[2, 2, 3, 3],
         strides=[1, 1],
         dilations=[1, 2],
-        padding="VALID")
+        padding="VALID",
+        data_format=data_format,
+        use_gpu=use_gpu,
+        op_name=op_name,
+    )
 
+  @parameterized.named_parameters(*TEST_PARAMS)
   @test_util.run_in_graph_and_eager_modes
-  def testConv2D1x2Filter(self):
+  def testConv2D1x2Filter(self, data_format, dtype, use_gpu, op_name):
     # The outputs are computed using third_party/py/IPython/notebook.
     expected_output = [
         231.0, 252.0, 273.0, 384.0, 423.0, 462.0, 690.0, 765.0, 840.0, 843.0,
         936.0, 1029.0
     ]
-    self._VerifyValues(
+    self._VerifyValuesParameters(
         tensor_in_sizes=[1, 2, 3, 3],
         filter_in_sizes=[1, 2, 3, 3],
         strides=[1, 1],
         padding="VALID",
-        expected=expected_output)
+        expected=expected_output,
+        data_format=data_format,
+        dtype=dtype,
+        use_gpu=use_gpu,
+        op_name=op_name,
+    )
 
+  @parameterized.named_parameters(*DILATED_PARAMS)
   @test_util.run_in_graph_and_eager_modes
-  def testConv2D1x2FilterDilation(self):
-    self._VerifyDilatedConvValues(
+  def testConv2D1x2FilterDilation(self, data_format, use_gpu, op_name):
+    self._VerifyDilatedConvValuesParameters(
         tensor_in_sizes=[1, 2, 3, 3],
         filter_in_sizes=[1, 2, 3, 3],
         strides=[1, 1],
         dilations=[2, 1],
-        padding="VALID")
+        padding="VALID",
+        data_format=data_format,
+        use_gpu=use_gpu,
+        op_name=op_name,
+    )
 
+  @parameterized.named_parameters(*TEST_PARAMS)
   @test_util.run_in_graph_and_eager_modes
-  def testConv2D2x2FilterStride2(self):
+  def testConv2D2x2FilterStride2(self, data_format, dtype, use_gpu, op_name):
     expected_output = [2271.0, 2367.0, 2463.0]
-    self._VerifyValues(
+    self._VerifyValuesParameters(
         tensor_in_sizes=[1, 2, 3, 3],
         filter_in_sizes=[2, 2, 3, 3],
         strides=[2, 2],
         padding="VALID",
-        expected=expected_output)
+        expected=expected_output,
+        data_format=data_format,
+        dtype=dtype,
+        use_gpu=use_gpu,
+        op_name=op_name,
+    )
 
+  @parameterized.named_parameters(*TEST_PARAMS)
   @test_util.run_in_graph_and_eager_modes
-  def testConv2D2x2FilterStride2Same(self):
+  def testConv2D2x2FilterStride2Same(
+      self, data_format, dtype, use_gpu, op_name
+  ):
     expected_output = [2271.0, 2367.0, 2463.0, 1230.0, 1305.0, 1380.0]
-    self._VerifyValues(
+    self._VerifyValuesParameters(
         tensor_in_sizes=[1, 2, 3, 3],
         filter_in_sizes=[2, 2, 3, 3],
         strides=[2, 2],
         padding="SAME",
-        expected=expected_output)
+        expected=expected_output,
+        data_format=data_format,
+        dtype=dtype,
+        use_gpu=use_gpu,
+        op_name=op_name,
+    )
 
+  @parameterized.named_parameters(*TEST_PARAMS)
   @test_util.run_in_graph_and_eager_modes
-  def testConv2D2x2FilterStride1x2(self):
+  def testConv2D2x2FilterStride1x2(self, data_format, dtype, use_gpu, op_name):
     expected_output = [58.0, 78.0, 98.0, 118.0, 138.0, 158.0]
-    self._VerifyValues(
+    self._VerifyValuesParameters(
         tensor_in_sizes=[1, 3, 6, 1],
         filter_in_sizes=[2, 2, 1, 1],
         strides=[1, 2],
         padding="VALID",
-        expected=expected_output)
+        expected=expected_output,
+        data_format=data_format,
+        dtype=dtype,
+        use_gpu=use_gpu,
+        op_name=op_name,
+    )
 
+  @parameterized.named_parameters(*TEST_PARAMS)
   @test_util.run_in_graph_and_eager_modes
-  def testConv2DKernelSmallerThanStrideValid(self):
+  def testConv2DKernelSmallerThanStrideValid(
+      self, data_format, dtype, use_gpu, op_name
+  ):
     expected_output = [65, 95, 275, 305]
-    self._VerifyValues(
+    self._VerifyValuesParameters(
         tensor_in_sizes=[1, 7, 7, 1],
         filter_in_sizes=[2, 2, 1, 1],
         strides=[3, 3],
         padding="VALID",
-        expected=expected_output)
+        expected=expected_output,
+        data_format=data_format,
+        dtype=dtype,
+        use_gpu=use_gpu,
+        op_name=op_name,
+    )
 
+  @parameterized.named_parameters(*TEST_PARAMS)
   @test_util.run_in_graph_and_eager_modes
-  def testConv2DKernelSmallerThanStrideSame(self):
-    self._VerifyValues(
+  def testConv2DKernelSmallerThanStrideSame(
+      self, data_format, dtype, use_gpu, op_name
+  ):
+    self._VerifyValuesParameters(
         tensor_in_sizes=[1, 3, 3, 1],
         filter_in_sizes=[1, 1, 1, 1],
         strides=[2, 2],
         padding="SAME",
-        expected=[1, 3, 7, 9])
+        expected=[1, 3, 7, 9],
+        data_format=data_format,
+        dtype=dtype,
+        use_gpu=use_gpu,
+        op_name=op_name,
+    )
 
-    self._VerifyValues(
+    self._VerifyValuesParameters(
         tensor_in_sizes=[1, 4, 4, 1],
         filter_in_sizes=[1, 1, 1, 1],
         strides=[2, 2],
         padding="SAME",
-        expected=[1, 3, 9, 11])
+        expected=[1, 3, 9, 11],
+        data_format=data_format,
+        dtype=dtype,
+        use_gpu=use_gpu,
+        op_name=op_name,
+    )
 
-    self._VerifyValues(
+    self._VerifyValuesParameters(
         tensor_in_sizes=[1, 4, 4, 1],
         filter_in_sizes=[2, 2, 1, 1],
         strides=[3, 3],
         padding="SAME",
-        expected=[44, 28, 41, 16])
+        expected=[44, 28, 41, 16],
+        data_format=data_format,
+        dtype=dtype,
+        use_gpu=use_gpu,
+        op_name=op_name,
+    )
 
+  @parameterized.named_parameters(*TEST_PARAMS)
   @test_util.run_in_graph_and_eager_modes
-  def testConv2DKernelSizeMatchesInputSize(self):
-    self._VerifyValues(
+  def testConv2DKernelSizeMatchesInputSize(
+      self, data_format, dtype, use_gpu, op_name
+  ):
+    self._VerifyValuesParameters(
         tensor_in_sizes=[1, 2, 2, 1],
         filter_in_sizes=[2, 2, 1, 2],
         strides=[1, 1],
         padding="VALID",
-        expected=[50, 60])
+        expected=[50, 60],
+        data_format=data_format,
+        dtype=dtype,
+        use_gpu=use_gpu,
+        op_name=op_name,
+    )
 
+  @parameterized.named_parameters(*DILATED_PARAMS)
   @test_util.run_in_graph_and_eager_modes
-  def testConv2DKernelSizeMatchesInputSizeDilation(self):
-    self._VerifyDilatedConvValues(
+  def testConv2DKernelSizeMatchesInputSizeDilation(
+      self, data_format, use_gpu, op_name
+  ):
+    self._VerifyDilatedConvValuesParameters(
         tensor_in_sizes=[1, 3, 3, 1],
         filter_in_sizes=[2, 2, 1, 2],
         strides=[1, 1],
         dilations=[2, 2],
-        padding="VALID")
+        padding="VALID",
+        data_format=data_format,
+        use_gpu=use_gpu,
+        op_name=op_name,
+    )
 
+  @parameterized.named_parameters(*TEST_PARAMS)
   @test_util.run_in_graph_and_eager_modes()
-  def testConv2D0x0Padding(self):
+  def testConv2D0x0Padding(self, data_format, dtype, use_gpu, op_name):
     self._VerifyExplicitPaddings(
         tensor_in_sizes=[1, 2, 3, 3],
         filter_in_sizes=[2, 2, 3, 3],
         strides=[1, 1],
-        padding=[[0, 0], [0, 0]])
+        padding=[[0, 0], [0, 0]],
+        data_format=data_format,
+        dtype=dtype,
+        use_gpu=use_gpu,
+        op_name=op_name,
+    )
 
     self._VerifyExplicitPaddings(
         tensor_in_sizes=[3, 4, 3, 2],
         filter_in_sizes=[1, 1, 2, 1],
         strides=[2, 2],
-        padding=[[0, 0], [0, 0]])
+        padding=[[0, 0], [0, 0]],
+        data_format=data_format,
+        dtype=dtype,
+        use_gpu=use_gpu,
+        op_name=op_name,
+    )
 
+  @parameterized.named_parameters(*TEST_PARAMS)
   @test_util.run_in_graph_and_eager_modes()
-  def testConv2D1x1Padding(self):
+  def testConv2D1x1Padding(self, data_format, dtype, use_gpu, op_name):
     self._VerifyExplicitPaddings(
         tensor_in_sizes=[1, 2, 3, 2],
         filter_in_sizes=[2, 2, 2, 2],
         strides=[1, 1],
-        padding=[[1, 1], [1, 1]])
+        padding=[[1, 1], [1, 1]],
+        data_format=data_format,
+        dtype=dtype,
+        use_gpu=use_gpu,
+        op_name=op_name,
+    )
 
     self._VerifyExplicitPaddings(
         tensor_in_sizes=[1, 2, 2, 1],
         filter_in_sizes=[1, 1, 1, 2],
         strides=[1, 1],
-        padding=[[1, 1], [1, 1]])
+        padding=[[1, 1], [1, 1]],
+        data_format=data_format,
+        dtype=dtype,
+        use_gpu=use_gpu,
+        op_name=op_name,
+    )
 
+  @parameterized.named_parameters(*TEST_PARAMS)
   @test_util.run_in_graph_and_eager_modes()
-  def testConv2D2x2Padding(self):
+  def testConv2D2x2Padding(self, data_format, dtype, use_gpu, op_name):
     self._VerifyExplicitPaddings(
         tensor_in_sizes=[1, 2, 1, 2],
         filter_in_sizes=[2, 1, 2, 1],
         strides=[1, 1],
-        padding=[[2, 2], [2, 2]])
+        padding=[[2, 2], [2, 2]],
+        data_format=data_format,
+        dtype=dtype,
+        use_gpu=use_gpu,
+        op_name=op_name,
+    )
 
     self._VerifyExplicitPaddings(
         tensor_in_sizes=[1, 2, 1, 2],
         filter_in_sizes=[1, 1, 2, 1],
         strides=[2, 1],
-        padding=[[2, 2], [2, 2]])
+        padding=[[2, 2], [2, 2]],
+        data_format=data_format,
+        dtype=dtype,
+        use_gpu=use_gpu,
+        op_name=op_name,
+    )
 
+  @parameterized.named_parameters(*TEST_PARAMS)
   @test_util.run_in_graph_and_eager_modes()
-  def testConv2DOnlyBottomPadding(self):
+  def testConv2DOnlyBottomPadding(self, data_format, dtype, use_gpu, op_name):
     self._VerifyExplicitPaddings(
         tensor_in_sizes=[1, 2, 3, 3],
         filter_in_sizes=[2, 2, 3, 2],
         strides=[1, 1],
-        padding=[[0, 3], [0, 0]], tol=2e-5)
+        padding=[[0, 3], [0, 0]],
+        tol=2e-5,
+        data_format=data_format,
+        dtype=dtype,
+        use_gpu=use_gpu,
+        op_name=op_name,
+    )
 
     self._VerifyExplicitPaddings(
         tensor_in_sizes=[2, 2, 4, 3],
         filter_in_sizes=[1, 2, 3, 2],
         strides=[2, 2],
-        padding=[[0, 3], [0, 0]])
+        padding=[[0, 3], [0, 0]],
+        data_format=data_format,
+        dtype=dtype,
+        use_gpu=use_gpu,
+        op_name=op_name,
+    )
 
+  @parameterized.named_parameters(*TEST_PARAMS)
   @test_util.run_in_graph_and_eager_modes()
-  def testConv2DOnlyTopRightPadding(self):
+  def testConv2DOnlyTopRightPadding(self, data_format, dtype, use_gpu, op_name):
     self._VerifyExplicitPaddings(
         tensor_in_sizes=[1, 2, 3, 3],
         filter_in_sizes=[2, 2, 3, 2],
         strides=[1, 1],
         padding=[[1, 0], [0, 2]],
-        tol=5e-5)
+        tol=5e-5,
+        data_format=data_format,
+        dtype=dtype,
+        use_gpu=use_gpu,
+        op_name=op_name,
+    )
 
     self._VerifyExplicitPaddings(
         tensor_in_sizes=[1, 2, 4, 2],
         filter_in_sizes=[2, 2, 2, 2],
         strides=[1, 3],
-        padding=[[1, 0], [0, 2]])
+        padding=[[1, 0], [0, 2]],
+        data_format=data_format,
+        dtype=dtype,
+        use_gpu=use_gpu,
+        op_name=op_name,
+    )
 
+  @parameterized.named_parameters(*TEST_PARAMS)
   @test_util.run_in_graph_and_eager_modes()
-  def testConv2DLotsPadding(self):
+  def testConv2DLotsPadding(self, data_format, dtype, use_gpu, op_name):
     self._VerifyExplicitPaddings(
         tensor_in_sizes=[1, 1, 1, 3],
         filter_in_sizes=[2, 2, 3, 3],
         strides=[1, 1],
-        padding=[[3, 4], [4, 2]])
+        padding=[[3, 4], [4, 2]],
+        data_format=data_format,
+        dtype=dtype,
+        use_gpu=use_gpu,
+        op_name=op_name,
+    )
 
     self._VerifyExplicitPaddings(
         tensor_in_sizes=[1, 2, 1, 1],
         filter_in_sizes=[2, 2, 1, 3],
         strides=[2, 1],
-        padding=[[3, 4], [4, 2]])
+        padding=[[3, 4], [4, 2]],
+        data_format=data_format,
+        dtype=dtype,
+        use_gpu=use_gpu,
+        op_name=op_name,
+    )
 
+  @parameterized.named_parameters(*TEST_PARAMS)
   @test_util.run_in_graph_and_eager_modes()
-  def testConv2DExplicitPaddingWithDilations(self):
+  def testConv2DExplicitPaddingWithDilations(
+      self, data_format, dtype, use_gpu, op_name
+  ):
     self._VerifyExplicitPaddings(
         tensor_in_sizes=[1, 3, 2, 1],
         filter_in_sizes=[1, 2, 1, 2],
         strides=[1, 1],
         padding=[[1, 0], [0, 1]],
-        dilations=[2, 1])
+        dilations=[2, 1],
+        data_format=data_format,
+        dtype=dtype,
+        use_gpu=use_gpu,
+        op_name=op_name,
+    )
 
     self._VerifyExplicitPaddings(
         tensor_in_sizes=[1, 2, 3, 2],
         filter_in_sizes=[3, 2, 2, 1],
         strides=[1, 1],
         padding=[[2, 1], [1, 2]],
-        dilations=[2, 3])
+        dilations=[2, 3],
+        data_format=data_format,
+        dtype=dtype,
+        use_gpu=use_gpu,
+        op_name=op_name,
+    )
 
+  @parameterized.named_parameters(*TEST_PARAMS)
   @test_util.run_in_graph_and_eager_modes()
-  def testConv2dOnlyPaddingReturnsZeros(self):
-    self._VerifyValues(
+  def testConv2dOnlyPaddingReturnsZeros(
+      self, data_format, dtype, use_gpu, op_name
+  ):
+    self._VerifyValuesParameters(
         tensor_in_sizes=[1, 0, 2, 1],
         filter_in_sizes=[1, 1, 1, 1],
         strides=[1, 1],
         padding=[[1, 1], [1, 1]],
-        expected=[0, 0, 0, 0, 0, 0, 0, 0])
+        expected=[0, 0, 0, 0, 0, 0, 0, 0],
+        data_format=data_format,
+        dtype=dtype,
+        use_gpu=use_gpu,
+        op_name=op_name,
+    )
 
-  def testConv2DExplicitPaddingWithLayoutOptimizer(self):
+  @parameterized.named_parameters(*TEST_PARAMS)
+  def testConv2DExplicitPaddingWithLayoutOptimizer(
+      self, data_format, dtype, use_gpu, op_name
+  ):
     # Test with Grappler's layout optimizer, to ensure the layout optimizer
     # handles explicit padding correctly.
     self._VerifyExplicitPaddings(
@@ -776,7 +1256,12 @@ class Conv2DTest(test.TestCase):
         strides=[1, 1],
         padding=[[1, 0], [0, 1]],
         dilations=[2, 1],
-        test_grappler_layout_optimizer=True)
+        test_grappler_layout_optimizer=True,
+        data_format=data_format,
+        dtype=dtype,
+        use_gpu=use_gpu,
+        op_name=op_name,
+    )
 
     self._VerifyExplicitPaddings(
         tensor_in_sizes=[1, 2, 3, 2],
@@ -784,7 +1269,12 @@ class Conv2DTest(test.TestCase):
         strides=[1, 1],
         padding=[[2, 1], [1, 2]],
         dilations=[2, 3],
-        test_grappler_layout_optimizer=True)
+        test_grappler_layout_optimizer=True,
+        data_format=data_format,
+        dtype=dtype,
+        use_gpu=use_gpu,
+        op_name=op_name,
+    )
 
   def _VerifyGroupConvFwd(self, tensor_in_sizes, filter_in_sizes, dilations,
                           strides, padding, data_format, dtype):
@@ -2626,6 +3116,44 @@ class Conv2DTest(test.TestCase):
               out_backprop_val,
               strides=[1, 1, 1, 1],
               padding=[[0, 0], [-1, 0], [0, 0], [0, 0]]))
+
+  def testConvOpEdgeCases(self):
+    # Illegal strides.
+    with self.assertRaisesRegex(
+        (errors_impl.InvalidArgumentError, errors_impl.UnimplementedError),
+        "strides in the batch and depth",
+    ):
+      input_val = np.ones([2, 4, 10, 10])
+      filter_val = np.ones([2, 4, 10, 10])
+      self.evaluate(
+          gen_nn_ops.conv(
+              input_val, filter_val, strides=[2, 1, 1, 1], padding="SAME"
+          )
+      )
+    with self.assertRaisesRegex(
+        (errors_impl.InvalidArgumentError, errors_impl.UnimplementedError),
+        "strides in the batch and depth",
+    ):
+      input_val = np.ones([2, 4, 10, 10])
+      filter_val = np.ones([2, 4, 10, 10])
+      self.evaluate(
+          gen_nn_ops.conv(
+              input_val, filter_val, strides=[1, 1, 1, 2], padding="SAME"
+          )
+      )
+
+    # Filter dimensions must be greater than 0.
+    with self.assertRaisesRegex(
+        errors_impl.InvalidArgumentError,
+        "filter must not have zero elements|has a non-positive dimension",
+    ):
+      input_val = np.ones([1, 1, 1, 1])
+      filter_val = np.ones([1, 0, 1, 1])
+      self.evaluate(
+          gen_nn_ops.conv(
+              input_val, filter_val, strides=[1, 1, 1, 1], padding="SAME"
+          )
+      )
 
   def testConv2DBackpropInputInvalidOutBackpropRaiseError(self):
     with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):

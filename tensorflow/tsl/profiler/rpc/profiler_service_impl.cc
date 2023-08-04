@@ -79,7 +79,7 @@ class ProfilerServiceImpl : public tensorflow::grpc::ProfilerService::Service {
     Status status = profiler->Status();
     if (!status.ok()) {
       return ::grpc::Status(::grpc::StatusCode::INTERNAL,
-                            status.error_message());
+                            std::string(status.message()));
     }
 
     Env* env = Env::Default();
@@ -100,7 +100,7 @@ class ProfilerServiceImpl : public tensorflow::grpc::ProfilerService::Service {
     status = CollectDataToRepository(*req, profiler.get(), response);
     if (!status.ok()) {
       return ::grpc::Status(::grpc::StatusCode::INTERNAL,
-                            status.error_message());
+                            std::string(status.message()));
     }
 
     return ::grpc::Status::OK;

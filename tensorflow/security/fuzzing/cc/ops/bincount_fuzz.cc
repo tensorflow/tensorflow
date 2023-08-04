@@ -17,42 +17,51 @@
 #include <gtest/gtest.h>
 #include "fuzztest/fuzztest.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/security/fuzzing/cc/core/framework/tensor_domains.h"
+#include "tensorflow/security/fuzzing/cc/core/framework/tensor_shape_domains.h"
 #include "tensorflow/security/fuzzing/cc/fuzz_session.h"
 
 namespace tensorflow {
 namespace fuzzing {
 
 // Creates FuzzBincount class that wraps a single operation node session.
-class FuzzBincount : public FuzzSession<Tensor, int32> {
+class FuzzBincount : public FuzzSession<Tensor, int32, Tensor> {
   void BuildGraph(const Scope& scope) override {
-    auto op_node1 =
-        tensorflow::ops::Placeholder(scope.WithOpName("input1"), DT_INT32);
-    auto op_node2 =
-        tensorflow::ops::Placeholder(scope.WithOpName("input2"), DT_INT32);
-    auto op_node3 =
-        tensorflow::ops::Placeholder(scope.WithOpName("input3"), DT_INT32);
-    tensorflow::ops::Bincount(scope.WithOpName("output"), op_node1, op_node2,
-                              op_node3);
+    auto arr = tensorflow::ops::Placeholder(scope.WithOpName("arr"), DT_INT32);
+    auto size =
+        tensorflow::ops::Placeholder(scope.WithOpName("size"), DT_INT32);
+    auto weights =
+        tensorflow::ops::Placeholder(scope.WithOpName("weights"), DT_INT32);
+    tensorflow::ops::Bincount(scope.WithOpName("output"), arr, size, weights);
   }
-  void FuzzImpl(const Tensor& data, const int32& nbins) final {
-    Tensor size(DT_INT32, TensorShape({1}));
+  void FuzzImpl(const Tensor& arr, const int32& nbins,
+                const Tensor& weights) final {
+    Tensor size(DT_INT32, {});
     size.flat<int32>()(0) = nbins;
 
-    // weights must be the same shape as data or a length 0
-    // in which case it acts as all weights equal to 1
-    Tensor weights(DT_INT32, TensorShape({0}));
-
     Status s = RunInputsWithStatus(
-        {{"input1", data}, {"input2", size}, {"input3", weights}});
+        {{"arr", arr}, {"size", size}, {"weights", weights}});
     if (!s.ok()) {
-      LOG(ERROR) << "Execution failed: " << s.error_message();
+      LOG(ERROR) << "Execution failed: " << s.message();
     }
   }
 };
 
 // Setup up fuzzing test.
+// TODO(unda, b/275737422): Make the values in arr be within [0, size) with high
+// chance
 FUZZ_TEST_F(FuzzBincount, Fuzz)
-    .WithDomains(AnyTensor<int32>(), fuzztest::Arbitrary<int32>());
+    .WithDomains(fuzzing::AnyValidTensor(fuzzing::AnyValidTensorShape(
+                                             /*max_rank=*/5,
+                                             /*dim_lower_bound=*/0,
+                                             /*dim_upper_bound=*/10),
+                                         fuzztest::Just(DT_INT32)),
+                 fuzztest::InRange<int32>(0, 10),
+                 fuzzing::AnyValidTensor(fuzzing::AnyValidTensorShape(
+                                             /*max_rank=*/5,
+                                             /*dim_lower_bound=*/0,
+                                             /*dim_upper_bound=*/10),
+                                         fuzztest::Just(DT_INT32)));
 
 }  // end namespace fuzzing
 }  // end namespace tensorflow

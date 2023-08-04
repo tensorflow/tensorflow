@@ -16,7 +16,17 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_functional_ops.h"
 
 #include <algorithm>
+#include <functional>
+#include <map>
 #include <memory>
+#include <numeric>
+#include <optional>
+#include <set>
+#include <string>
+#include <tuple>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "absl/strings/match.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
@@ -145,7 +155,7 @@ Status ParseTPUVariableInfor(const Node* node, const int num_cores_per_replica,
     if (next != edge->dst()) {
       VLOG(3) << "Looked through Enter/Switch node " << next->DebugString();
     }
-    TF_ASSIGN_OR_RETURN(absl::optional<xla::OpSharding> sharding,
+    TF_ASSIGN_OR_RETURN(std::optional<xla::OpSharding> sharding,
                         ParseShardingFromDevice(*next, num_cores_per_replica,
                                                 /*add_metadata=*/false));
     if (sharding.has_value() && sharding->tile_assignment_devices_size() > 0) {
@@ -197,7 +207,7 @@ bool IsSupportedTPUOp(const string& op_name) {
 // Sets the sharding attributes for an XlaSharding node.
 void SetXlaShardingNodeAttr(Node* xla_sharding_node, int num_cores_per_replica,
                             int rank, int shard_dim) {
-  auto sharding = absl::make_optional<xla::OpSharding>();
+  auto sharding = std::make_optional<xla::OpSharding>();
   sharding->set_type(xla::OpSharding::OTHER);
 
   std::vector<int64_t> dims(rank, 1LL);
@@ -528,7 +538,7 @@ Status MaybeRegisterFingerprint(
   auto status =
       tpu::ComputeArgumentShapes(metadata_proto, input_shapes, &arg_shapes);
   if (!status.ok()) {
-    VLOG(2) << status.error_message();
+    VLOG(2) << status.message();
     return OkStatus();
   }
   uint64 tf_fingerprint =
@@ -1225,11 +1235,16 @@ void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
     TPUMetadata tpu_metadata;
     {
       absl::MutexLock l(&mu_);
-      OP_REQUIRES_OK_ASYNC(
-          ctx,
-          GetGraphFromFunction(graph.get(), /*device_ordinal=*/0,
-                               &enable_spmd_xla_partitioning, &tpu_metadata),
-          done);
+      // We are not using OP_REQUIRES_OK_ASYNC here as we are inside the
+      // call_once. It will be checked later whether `ordinal_selector_` is
+      // initialized.
+      if (auto status = GetGraphFromFunction(graph.get(), /*device_ordinal=*/0,
+                                             &enable_spmd_xla_partitioning,
+                                             &tpu_metadata);
+          !status.ok()) {
+        init_status = std::move(status);
+        return;
+      }
     }
     if (enable_spmd_xla_partitioning) {
       ordinal_selector_ = std::make_shared<tpu::TPUOrdinalSelector>(
@@ -1241,9 +1256,11 @@ void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
     metrics::RecordTPUXlaSpmdCoresPerReplica(
         tpu_metadata.num_cores_per_replica);
   });
-  OP_REQUIRES_ASYNC(
-      ctx, ordinal_selector_ != nullptr,
-      errors::Internal("The TPUOrdinalSelector is not initialized."), done);
+  OP_REQUIRES_ASYNC(ctx, ordinal_selector_ != nullptr,
+                    absl::InternalError(absl::StrCat(
+                        "The TPUOrdinalSelector is not initialized: ",
+                        init_status.message())),
+                    done);
 
   uint64 input_hash = GetInputHash(ctx);
   int64_t ordinal_selector_req_id = -1;
@@ -2005,7 +2022,7 @@ Status TPUPartitionedCallOp::InferShapesWithResourceVar(
     std::map<int, InferredShape>& arg_shapes,
     GraphShapeInfo* tpu_inferred_info) {
   auto shape_inference_graph_interim =
-      absl::make_unique<Graph>(graph->flib_def());
+      std::make_unique<Graph>(graph->flib_def());
   CopyGraph(*graph, shape_inference_graph_interim.get());
 
   for (Node* node : shape_inference_graph_interim->nodes()) {
@@ -2079,7 +2096,7 @@ Status TPUPartitionedCallOp::ShardInputsWithXlaSharding(
     if (!input_node_status.ok()) {
       VLOG(2) << "Skip because cannot retrieve input node 0 of "
               << replicated_input_node->name() << " because "
-              << input_node_status.ToString();
+              << input_node_status;
       continue;
     }
 
@@ -2121,7 +2138,7 @@ Status TPUPartitionedCallOp::ShardInputsWithXlaSharding(
         continue;
       }
 
-      auto sharding = absl::make_optional<xla::OpSharding>();
+      auto sharding = std::make_optional<xla::OpSharding>();
       sharding->set_type(xla::OpSharding::OTHER);
 
       // Sets up tile_assignment_dimensions.

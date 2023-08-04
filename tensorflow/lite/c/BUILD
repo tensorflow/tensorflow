@@ -9,7 +9,7 @@ load(
     "tflite_self_contained_libs_test_suite",
 )
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
-load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+load("//tensorflow/lite:special_rules.bzl", "c_api_opaque_internal_visibility_allowlist", "tflite_portable_test_suite")
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite_with_c_headers_test")
 
 package(
@@ -58,9 +58,9 @@ cc_library_with_tflite_with_c_headers_test(
     tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
     deps = [
         ":c_api_without_op_resolver",
+        "//tensorflow/lite/core/async/c:types",
         "//tensorflow/lite/core/c:c_api",
     ],
-    alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
 )
 
 tflite_cc_library_with_c_headers_test(
@@ -89,7 +89,6 @@ cc_library_with_tflite_with_c_headers_test(
         ":c_api_types",
         "//tensorflow/lite/core/c:c_api_without_op_resolver",
     ],
-    alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
 )
 
 # TODO(b/248514738): Deprecate this target in favour
@@ -125,7 +124,6 @@ cc_library_with_tflite_with_c_headers_test(
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
     ],
-    alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
 )
 
 # Same as ":c_api_experimental", but without linking in the default CreateOpResolver implementation.
@@ -135,43 +133,22 @@ cc_library_with_tflite_with_c_headers_test(
         "c_api_experimental.h",
         "c_api_opaque.h",
     ],
-    aspect_hints = ["//tools/build_defs/swift:auto_module"],
     copts = tflite_copts() + tflite_copts_warnings(),
     tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
-    deps = [
-        ":c_api_opaque_internal",
-        ":c_api_without_op_resolver",
-        ":common_internal",
-        "//tensorflow/lite/core:subgraph",
-        "//tensorflow/lite/core/c:c_api_experimental_without_op_resolver",
-        "//tensorflow/lite/core/c:c_api_types",
-        "//tensorflow/lite/core/c:c_api_without_op_resolver",
-        "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/kernels:kernel_util",
-    ],
-    alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
+    deps = ["//tensorflow/lite/core/c:c_api_experimental_without_op_resolver"],
 )
 
-# Same as ":c_api_experimental", but without linking in the default CreateOpResolver implementation.
+# Same as ":c_api_experimental", but without linking in the default CreateOpResolver implementation,
+# and without depending on targets that use alwayslink=1.
 cc_library_with_tflite_with_c_headers_test(
     name = "c_api_experimental_without_op_resolver_without_alwayslink",
     hdrs = [
         "c_api_experimental.h",
         "c_api_opaque.h",
     ],
-    aspect_hints = ["//tools/build_defs/swift:auto_module"],
     copts = tflite_copts() + tflite_copts_warnings(),
     tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
-    deps = [
-        ":c_api_opaque_internal_without_alwayslink",
-        ":c_api_without_op_resolver_without_alwayslink",
-        "//tensorflow/lite/core:subgraph",
-        "//tensorflow/lite/core/c:c_api_experimental_without_op_resolver_without_alwayslink",
-        "//tensorflow/lite/core/c:c_api_types",
-        "//tensorflow/lite/core/c:c_api_without_op_resolver_without_alwayslink",
-        "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/kernels:kernel_util",
-    ],
+    deps = ["//tensorflow/lite/core/c:c_api_experimental_without_op_resolver_without_alwayslink"],
 )
 
 cc_library_with_tflite_with_c_headers_test(
@@ -277,9 +254,9 @@ cc_library_with_tflite_with_c_headers_test(
         ":c_api_types",
     ],
     deps = [
-        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite:tflite_kernel_use_xnnpack_optional",
         "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
     ] + select({
         "//tensorflow/lite:tensorflow_profiler_config": [
             "//tensorflow/lite:macros",
@@ -308,16 +285,34 @@ cc_library(
     name = "c_api_opaque_internal",
     srcs = ["c_api_opaque_internal.cc"],
     hdrs = ["c_api_opaque_internal.h"],
+    compatible_with = get_compatible_with_portable(),
     tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
     visibility = [
         "//tensorflow/lite:__subpackages__",
-    ],
+    ] + c_api_opaque_internal_visibility_allowlist(),
     deps = [
         ":c_api_types",
-        ":c_api_without_op_resolver",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/core/api:op_resolver",
         "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/c:registration_external",
+    ],
+)
+
+cc_test(
+    name = "c_api_opaque_internal_test",
+    srcs = ["c_api_opaque_internal_test.cc"],
+    data = [
+        "//tensorflow/lite:testdata/add.bin",
+    ],
+    deps = [
+        ":c_api_internal",
+        ":c_api_opaque_internal",
+        "//tensorflow/lite:builtin_ops",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -333,14 +328,16 @@ cc_library(
     ],
     deps = [
         ":c_api_types",
-        ":c_api_without_op_resolver_without_alwayslink",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/core/api:op_resolver",
         "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/c:registration_external_without_alwayslink",
     ],
 )
 
 # For use with library targets that can't use relative paths.
+# LINT.IfChange(exported_headers)
 exports_files([
     "c_api.h",
     "c_api_experimental.h",
@@ -362,6 +359,7 @@ alias(
     name = "tensorflowlite_c_impl_hdrs_filegroup",
     actual = "//tensorflow/lite/core/c:headers_filegroup",
 )
+# LINT.ThenChange(../java/BUILD:TFLITE_HEADERS)
 
 # Test the C extension API code.
 test_suite(

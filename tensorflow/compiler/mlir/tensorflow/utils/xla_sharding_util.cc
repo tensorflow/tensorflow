@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_sharding_util.h"
 
 #include <numeric>
+#include <string>
 #include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
@@ -24,16 +25,20 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/Error.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/xla/client/sharding_builder.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace tensorflow {
@@ -186,14 +191,9 @@ mlir::LogicalResult HandleTileShardedInputs(
   // from which sharded data will be fed into TPUExcute ops -- sorted by
   // row major order.
   tiled_inputs->reserve(input_sharding.tile_assignment_devices_size());
-  // No split happens. Insert the original value.
-  if (split_ops_for_tiled_input.empty()) {
-    tiled_inputs->push_back(original_source);
-  } else {
-    for (auto split_op : split_ops_for_tiled_input)
-      tiled_inputs->append(split_op.getResults().begin(),
-                           split_op.getResults().end());
-  }
+  for (auto split_op : split_ops_for_tiled_input)
+    tiled_inputs->append(split_op.getResults().begin(),
+                         split_op.getResults().end());
 
   return mlir::success();
 }
@@ -204,6 +204,76 @@ bool UnsupportedPartitionedShardingType(xla::OpSharding::Type sharding) {
 }
 
 }  // namespace
+
+int GetDimsFromXLAShardingTiled(const xla::OpSharding& xla_sharding) {
+  return xla_sharding.tile_assignment_dimensions_size() -
+         (xla_sharding.replicate_on_last_tile_dim() ? 1 : 0) -
+         xla_sharding.last_tile_dims_size();
+}
+
+bool IsOtherReplicatedSharding(const xla::OpSharding& xla_sharding) {
+  int max_dim = GetDimsFromXLAShardingTiled(xla_sharding);
+  for (int i = 0; i < max_dim; ++i) {
+    if (xla_sharding.tile_assignment_dimensions(i) != 1) {
+      return false;
+    }
+  }
+  return xla_sharding.type() == xla::OpSharding::OTHER &&
+         (xla_sharding.replicate_on_last_tile_dim() ||
+          !xla_sharding.last_tile_dims().empty());
+}
+
+bool IsSplitSharding(const xla::OpSharding& sharding) {
+  return sharding.type() == xla::OpSharding::OTHER &&
+         !IsOtherReplicatedSharding(sharding);
+}
+
+bool IsReplicatedSharding(const xla::OpSharding& sharding) {
+  return sharding.type() == xla::OpSharding::REPLICATED ||
+         IsOtherReplicatedSharding(sharding);
+}
+
+mlir::LogicalResult DecodeShardingAttribute(const std::string& shard_str,
+                                            xla::OpSharding& sharding,
+                                            bool report_error) {
+  if (sharding.ParseFromString(shard_str)) return mlir::success();
+  // TODO(b/287299845) MLIR should only have human readable representation
+  // going forward. So, remove parsing binary sharding.
+  absl::StatusOr<xla::HloSharding> sharding_hlo = xla::ParseSharding(shard_str);
+  if (sharding_hlo.ok()) {
+    sharding = sharding_hlo->ToProto();
+    return mlir::success();
+  }
+  if (report_error) llvm::errs() << sharding_hlo.status().message() << "\n";
+  return mlir::failure();
+}
+
+mlir::LogicalResult DecodeShardingAttribute(mlir::Attribute shard_attr,
+                                            xla::OpSharding& sharding,
+                                            bool report_error) {
+  if (!shard_attr.isa<mlir::StringAttr>()) return mlir::failure();
+
+  auto shard_str = shard_attr.cast<mlir::StringAttr>().getValue().str();
+  return DecodeShardingAttribute(shard_str, sharding, report_error);
+}
+
+void EncodeSharding(mlir::Operation* op, absl::string_view shard_str) {
+  if (!op->hasAttrOfType<mlir::StringAttr>(shard_str)) return;
+
+  ::xla::OpSharding sharding;
+  auto sharding_proto_str =
+      op->getAttrOfType<mlir::StringAttr>(shard_str).getValue().str();
+  if (!sharding.ParseFromString(sharding_proto_str)) return;
+
+  auto hlosharding = xla::HloSharding::FromProto(sharding);
+  if (!hlosharding.ok()) {
+    op->emitError("Unable to encode sharding to human readable ")
+        << hlosharding.status().message();
+    return;
+  }
+  op->setAttr(shard_str,
+              mlir::StringAttr::get(op->getContext(), hlosharding->ToString()));
+}
 
 mlir::LogicalResult ExtractInputsForLogicalDevices(
     const int num_cores_per_replica,
@@ -236,8 +306,11 @@ mlir::LogicalResult ExtractInputsForLogicalDevices(
     const auto& input_value = cluster_func_inputs[input_index];
 
     xla::OpSharding sharding;
-    sharding.ParseFromString(
-        sharding_attr.cast<mlir::StringAttr>().getValue().str());
+    if (DecodeShardingAttribute(
+            sharding_attr.cast<mlir::StringAttr>().getValue().str(), sharding)
+            .failed()) {
+      return cluster_func.emitError("incorrect sharding format for inputs");
+    }
 
     const auto input_sharding_type = sharding.type();
 
@@ -282,7 +355,7 @@ mlir::LogicalResult ExtractInputsForLogicalDevices(
       continue;
     }
 
-    if (input_sharding_type == xla::OpSharding::OTHER) {
+    if (IsSplitSharding(sharding)) {
       llvm::SmallVector<mlir::Value, 4> tiled_inputs;
       auto result = HandleTileShardedInputs(
           cluster_func.getLoc(), sharding, input_value, builder, &tiled_inputs);
@@ -296,7 +369,7 @@ mlir::LogicalResult ExtractInputsForLogicalDevices(
         const int assigned_logical_device = sharding.tile_assignment_devices(i);
         (*input_list)[assigned_logical_device].emplace_back(tiled_inputs[i]);
       }
-    } else if (input_sharding_type == xla::OpSharding::REPLICATED) {
+    } else if (IsReplicatedSharding(sharding)) {
       for (auto& inputs : *input_list) inputs.emplace_back(input_value);
     } else {
       assert(input_sharding_type == xla::OpSharding::MAXIMAL);
@@ -332,9 +405,11 @@ mlir::LogicalResult ParseAndValidateOutputSharding(
           "non-string output sharding at index {0}", sharding_index));
 
     xla::OpSharding sharding;
-    if (!sharding.ParseFromString(
-            output_sharding.cast<mlir::StringAttr>().getValue().str()))
+    if (DecodeShardingAttribute(
+            output_sharding.cast<mlir::StringAttr>().getValue().str(), sharding)
+            .failed()) {
       return cluster_func.emitError("incorrect sharding format for outputs");
+    }
 
     if (sharding.type() == xla::OpSharding::OTHER &&
         sharding.tile_assignment_devices_size() != num_cores_per_replica)
@@ -525,14 +600,13 @@ mlir::LogicalResult GetOutputTypesForLogicalDeviceComputation(
        llvm::enumerate(cluster_func.getResults())) {
     const auto output_index = result_and_index.index();
     const auto& output_sharding = output_sharding_config[output_index];
-    const auto output_sharding_type = output_sharding.type();
     const auto cluster_func_output_type =
         result_and_index.value().getType().cast<mlir::TensorType>();
 
     // If output shape of cluster func is statically known and output is tiled
     // sharded, then the corresponding output shape of cluster func must be
     // evenly divisible number of shardings.
-    if (output_sharding_type == xla::OpSharding::OTHER) {
+    if (IsSplitSharding(output_sharding)) {
       mlir::Type tiled_logical_computation_type;
       if (cluster_func_output_type.hasRank()) {
         auto result = ValidateAndGetTiledExecuteOutputShape(
@@ -544,7 +618,7 @@ mlir::LogicalResult GetOutputTypesForLogicalDeviceComputation(
       }
       cluster_to_core_index->emplace_back(core_index++);
       output_types->emplace_back(tiled_logical_computation_type);
-    } else if (output_sharding_type == xla::OpSharding::REPLICATED ||
+    } else if (IsReplicatedSharding(output_sharding) ||
                IsAssignedToLogicalDevice(core_id, output_sharding)) {
       cluster_to_core_index->emplace_back(core_index++);
       output_types->emplace_back(cluster_func_output_type);
@@ -612,10 +686,11 @@ mlir::LogicalResult RemapOutputsFromLogicalDevices(
       if (output_sharding_type == xla::OpSharding::REPLICATED) {
         for (const auto& index_and_output :
              llvm::enumerate(partitioned_output.getOutput())) {
+          auto idx = (cluster_idx + index_and_output.index()) %
+                     new_parallel_execute->getNumRegions();
           const auto output_from_logical_device =
               new_parallel_execute.GetRegionOutputs(
-                  cluster_idx +
-                  index_and_output.index())[tpu_cluster_output_index];
+                  idx)[tpu_cluster_output_index];
           index_and_output.value().replaceAllUsesWith(
               output_from_logical_device);
         }
@@ -634,7 +709,7 @@ mlir::LogicalResult RemapOutputsFromLogicalDevices(
       continue;
     }
 
-    if (output_sharding_type == xla::OpSharding::OTHER) {
+    if (IsSplitSharding(output_sharding)) {
       if (failed(HandleTileShardedOutputs(
               tpu_cluster_output_index, output_sharding_config,
               cluster_to_core_index, location, old_parallel_execute_output,

@@ -21,7 +21,9 @@ from typing import Any, Callable, Optional, Sequence
 from tensorflow.dtensor.python import dtensor_device
 from tensorflow.dtensor.python import gen_dtensor_ops
 from tensorflow.dtensor.python import layout as layout_lib
+from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
@@ -53,9 +55,12 @@ def call_with_layout(fn: Callable[...,
     The return value of `fn` transformed to a DTensor if requested.
   """
   if layout is not None:
-    with default_mesh(layout.mesh):
-      with _dtensor_device()._default_layout(layout):  # pylint: disable=protected-access
-        return fn(*args, **kwargs)
+    if context.executing_eagerly():
+      with default_mesh(layout.mesh):
+        with _dtensor_device()._default_layout(layout):  # pylint: disable=protected-access
+          return fn(*args, **kwargs)
+    else:
+      return relayout(fn(*args, **kwargs), layout)
   return fn(*args, **kwargs)
 
 
@@ -107,6 +112,22 @@ def default_mesh(mesh: layout_lib.Mesh):
       yield
 
 
+@tf_export("experimental.dtensor.get_default_mesh", v1=[])
+def get_default_mesh() -> Optional[layout_lib.Mesh]:
+  """Return the default mesh under the current dtensor device context.
+
+  In the case that dtensor device system is not initialized, this function
+  will return None.
+
+  Returns:
+    The current default mesh for the dtensor device context.
+  """
+  if _dtensor_singleton is None:
+    return None
+  else:
+    return _dtensor_singleton._current_default_mesh   # pylint: disable=protected-access
+
+
 @tf_export("experimental.dtensor.device_name", v1=[])
 def device_name() -> str:
   """Returns the singleton DTensor device's name.
@@ -147,7 +168,7 @@ def is_dtensor(tensor) -> bool:
 def copy_to_mesh(
     tensor: Any,
     layout: layout_lib.Layout,
-    source_layout: Optional[layout_lib.Layout] = None) -> ops.Tensor:
+    source_layout: Optional[layout_lib.Layout] = None) -> tensor_lib.Tensor:
   """Copies a tf.Tensor onto the DTensor device with the given layout.
 
   Copies a regular tf.Tensor onto the DTensor device. Use the mesh attached to
@@ -164,8 +185,7 @@ def copy_to_mesh(
     A DTensor on the DTensor device with the given layout.
   """
   del source_layout
-  with default_mesh(layout.mesh):
-    return gen_dtensor_ops.copy_to_mesh(tensor, layout.to_string())
+  return relayout(tensor, layout)
 
 
 @tf_export("experimental.dtensor.pack", v1=[])
@@ -357,7 +377,7 @@ def unpack(tensor: Any) -> Sequence[Any]:
 
 
 @tf_export("experimental.dtensor.fetch_layout", v1=[])
-def fetch_layout(tensor: ops.Tensor) -> layout_lib.Layout:
+def fetch_layout(tensor: tensor_lib.Tensor) -> layout_lib.Layout:
   """Fetches the layout of a DTensor.
 
   Args:
@@ -373,7 +393,7 @@ def fetch_layout(tensor: ops.Tensor) -> layout_lib.Layout:
 
 
 @tf_export("experimental.dtensor.check_layout", v1=[])
-def check_layout(tensor: ops.Tensor, layout: layout_lib.Layout) -> None:
+def check_layout(tensor: tensor_lib.Tensor, layout: layout_lib.Layout) -> None:
   """Asserts that the layout of the DTensor is `layout`.
 
   Args:
@@ -389,7 +409,11 @@ def check_layout(tensor: ops.Tensor, layout: layout_lib.Layout) -> None:
 
 
 @tf_export("experimental.dtensor.relayout", v1=[])
-def relayout(tensor: ops.Tensor, layout: layout_lib.Layout) -> ops.Tensor:
+def relayout(
+    tensor: tensor_lib.Tensor,
+    layout: layout_lib.Layout,
+    name: Optional[str] = None,
+) -> tensor_lib.Tensor:
   """Changes the layout of `tensor`.
 
   Changes the layout of `tensor` to `layout`. This is used to fine-tune the
@@ -415,13 +439,67 @@ def relayout(tensor: ops.Tensor, layout: layout_lib.Layout) -> ops.Tensor:
   Args:
     tensor: A DTensor to specify a new layout for.
     layout: A Layout object specifying a new sharding spec.
+    name: name of the Op.
 
   Returns:
     A DTensor output from the Relayout op.
   """
   layout_str = layout.to_string()
   with default_mesh(layout.mesh):
-    return gen_dtensor_ops.relayout(tensor, layout_str)
+    return gen_dtensor_ops.relayout(tensor, layout_str, name=name)
+
+
+@tf_export("experimental.dtensor.relayout_like", v1=[])
+def relayout_like(
+    tensor: tensor_lib.Tensor,
+    layout_tensor: tensor_lib.Tensor,
+    name: Optional[str] = None,
+) -> tensor_lib.Tensor:
+  """Changes the layout of `tensor` to the same as `layout_tensor`.
+
+  `relayout_like` is often used inside a `tf.function`, to ensure a tensor is
+  placed to the same mesh and with the same layout as another tensor.
+
+  The backward gradient of a `relayout` is a `relayout_like` operation, to
+  ensure the backward tensor has the same layout as the forward input tensor:
+
+  ```
+  @ops.RegisterGradient("Relayout")
+  def _relayout_gradient(op, grad):
+    return relayout_like(grad, layout_input=op.inputs[0])
+  ```
+
+  Here is another illustrative example:
+
+  ```
+  @tf.function
+  def func(x):
+    z = tf.ones(x.shape)
+    z = dtensor.relayout_like(z, x)
+    return x + z
+
+  with dtensor.default_mesh(cpu_mesh):
+    x = tf.ones((4, 4))
+
+  with dtensor.default_mesh(gpu_mesh):
+    y = func(x)
+
+  # y would be on the cpu mesh, following the mesh of x.
+  ```
+
+  Args:
+    tensor: A DTensor to specify a new layout for.
+    layout_tensor: A Tensor object whose layout will be used for the layout of
+      result. The shape and type of layout_tensor are irrelevant.
+    name: name of the Op.
+
+  Returns:
+    A DTensor output from the RelayoutLike op.
+  """
+
+  return gen_dtensor_ops.relayout_like(
+      input=tensor, layout_input=layout_tensor, name=name
+  )
 
 
 def _set_dtensor_device(device: dtensor_device.DTensorDevice) -> None:
@@ -451,14 +529,14 @@ def _reset() -> None:
 
 @ops.RegisterGradient("Relayout")
 def _relayout_gradient(op, grad):
-  grad = gen_dtensor_ops.relayout_grad(grad, forward_input=op.inputs[0])
+  grad = gen_dtensor_ops.relayout_like(grad, layout_input=op.inputs[0])
   return grad
 
 
-@ops.RegisterGradient("RelayoutGrad")
+@ops.RegisterGradient("RelayoutLike")
 def _relayout_grad_gradient(op, grad):
   # Gradient of RelayoutGrad is relayout to the original Relayout's output.
-  grad = gen_dtensor_ops.relayout_grad(grad, forward_input=op.inputs[0])
+  grad = gen_dtensor_ops.relayout_like(grad, layout_input=op.inputs[0])
   # Return None for forward_input's partial gradient since it is not connected
   # to the target's gradient.
   return grad, None
@@ -469,7 +547,6 @@ def _copy_to_mesh_gradient(op, grad):
   grad = gen_dtensor_ops.copy_to_mesh_grad(
       grad,
       forward_input=op.inputs[0],
-      reference_layout=op.get_attr("layout"),
   )
   return grad
 
@@ -479,6 +556,5 @@ def _copy_to_mesh_grad_gradient(op, grad):
   grad = gen_dtensor_ops.copy_to_mesh_grad(
       grad,
       forward_input=op.inputs[0],
-      reference_layout=op.get_attr("reference_layout"),
   )
   return grad, None

@@ -42,7 +42,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
-from tensorflow.python.ops import variables
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
@@ -385,7 +385,7 @@ def _wait_for_variable_initialization(session):
 
   while True:
     is_initialized = session.run(
-        [variables.is_variable_initialized(v) for v in candidate_vars])
+        [variable_v1.is_variable_initialized(v) for v in candidate_vars])
     uninitialized_vars = []
     for flag, v in zip(is_initialized, candidate_vars):
       if not flag:

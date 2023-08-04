@@ -45,7 +45,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
+#include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/sharding_op_util.h"
+#include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
@@ -811,9 +814,9 @@ StatusOr<XlaComputation> XlaBuilder::Build(int64_t root_id,
     module->add_computations()->Swap(&e.second);
   }
   module->add_computations()->Swap(&entry);
-  if (!input_output_aliases_.empty()) {
-    TF_RETURN_IF_ERROR(
-        PopulateInputOutputAlias(module, program_shape, input_output_aliases_));
+  if (!input_output_aliases_.empty() || !buffer_donors_.empty()) {
+    TF_RETURN_IF_ERROR(PopulateInputOutputAliasAndBufferDonor(
+        module, program_shape, input_output_aliases_, buffer_donors_));
   }
   *(module->mutable_dynamic_parameter_binding()) =
       dynamic_parameter_binding_.ToProto();
@@ -828,10 +831,13 @@ StatusOr<XlaComputation> XlaBuilder::Build(int64_t root_id,
   return std::move(computation);
 }
 
-/* static */ Status XlaBuilder::PopulateInputOutputAlias(
+/* static */ Status XlaBuilder::PopulateInputOutputAliasAndBufferDonor(
     HloModuleProto* module, const ProgramShape& program_shape,
-    const std::vector<InputOutputAlias>& input_output_aliases) {
-  HloInputOutputAliasConfig config(program_shape.result());
+    const std::vector<InputOutputAlias>& input_output_aliases,
+    const absl::flat_hash_set<HloBufferDonorConfig::BufferDonor>&
+        buffer_donors) {
+  // Step 1: populate input output alias information.
+  HloInputOutputAliasConfig io_alias_config(program_shape.result());
   for (auto& alias : input_output_aliases) {
     // The HloInputOutputAliasConfig does not do parameter validation as it only
     // carries the result shape. Maybe it should be constructed with a
@@ -849,10 +855,37 @@ StatusOr<XlaComputation> XlaBuilder::Build(int64_t root_id,
                              alias.param_number,
                              alias.param_index.ToString().c_str());
     }
-    TF_RETURN_IF_ERROR(config.SetUpAlias(alias.output_index, alias.param_number,
-                                         alias.param_index, alias.kind));
+    TF_RETURN_IF_ERROR(io_alias_config.SetUpAlias(
+        alias.output_index, alias.param_number, alias.param_index, alias.kind));
   }
-  *module->mutable_input_output_alias() = config.ToProto();
+  *module->mutable_input_output_alias() = io_alias_config.ToProto();
+
+  // Step 2: populate buffer donor information.
+  HloBufferDonorConfig buffer_donor_config;
+  for (auto& donor : buffer_donors) {
+    if (donor.param_number >= program_shape.parameters_size()) {
+      return InvalidArgument("Invalid parameter number %ld (total %ld)",
+                             donor.param_number,
+                             program_shape.parameters_size());
+    }
+    const Shape& parameter_shape = program_shape.parameters(donor.param_number);
+    if (!ShapeUtil::IndexIsValid(parameter_shape, donor.param_index)) {
+      return InvalidArgument("Invalid parameter %ld index: %s",
+                             donor.param_number,
+                             donor.param_index.ToString().c_str());
+    }
+    if (io_alias_config.ParameterHasAlias(donor.param_number,
+                                          donor.param_index)) {
+      return InvalidArgument(
+          "Parameter %ld index %s is already aliased with one output, thus it "
+          "cannot be added as a buffer donor for any output.",
+          donor.param_number, donor.param_index.ToString().c_str());
+    }
+    TF_RETURN_IF_ERROR(buffer_donor_config.AddBufferDonor(donor.param_number,
+                                                          donor.param_index));
+  }
+  *module->mutable_buffer_donor() = buffer_donor_config.ToProto();
+
   return OkStatus();
 }
 
@@ -1090,7 +1123,7 @@ XlaOp XlaBuilder::TernaryOp(HloOpcode triop, XlaOp lhs, XlaOp rhs, XlaOp ehs) {
     if (!status_or_shape.status().ok()) {
       return InvalidArgument(
           "%s Input scalar shapes may have been changed to non-scalar shapes.",
-          status_or_shape.status().error_message());
+          status_or_shape.status().message());
     }
 
     return AddOpWithShape(triop, status_or_shape.value(),
@@ -2603,30 +2636,15 @@ XlaOp XlaBuilder::RngBitGenerator(RandomAlgorithm algorithm,
     TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(shape));
     TF_ASSIGN_OR_RETURN(Shape state_shape, GetShape(initial_state));
     Shape output_shape = shape;
-    switch (output_shape.element_type()) {
-      case PrimitiveType::S8:
-      case PrimitiveType::U8:
-        output_shape.set_element_type(PrimitiveType::U8);
-        break;
-      case PrimitiveType::BF16:
-      case PrimitiveType::F16:
-      case PrimitiveType::S16:
-      case PrimitiveType::U16:
-        output_shape.set_element_type(PrimitiveType::U16);
-        break;
-      case PrimitiveType::F32:
-      case PrimitiveType::S32:
-      case PrimitiveType::U32:
-        output_shape.set_element_type(PrimitiveType::U32);
-        break;
-      case PrimitiveType::F64:
-      case PrimitiveType::S64:
-      case PrimitiveType::U64:
-        output_shape.set_element_type(PrimitiveType::U64);
-        break;
-      default:
-        return InvalidArgument("Unsupported shape for RngBitGenerator: %s",
-                               PrimitiveType_Name(output_shape.element_type()));
+    output_shape.set_element_type(PRIMITIVE_TYPE_INVALID);
+    if (primitive_util::IsArrayType(shape.element_type())) {
+      output_shape.set_element_type(
+          primitive_util::UnsignedIntegralTypeForBitWidth(
+              primitive_util::BitWidth(shape.element_type())));
+    }
+    if (!primitive_util::IsUnsignedIntegralType(output_shape.element_type())) {
+      return InvalidArgument("Unsupported shape for RngBitGenerator: %s",
+                             PrimitiveType_Name(shape.element_type()));
     }
     return RngBitGeneratorInternal(
         ShapeUtil::MakeTupleShapeWithPtrs({&state_shape, &output_shape}),
@@ -4992,6 +5010,18 @@ XlaOp AllReduce(const XlaOp operand, const XlaComputation& computation,
   return operand.builder()->AllReduce(operand, computation, replica_groups,
                                       channel_id, shape_with_layout,
                                       use_global_device_ids);
+}
+
+XlaOp AllReduceTuple(const absl::Span<const XlaOp> operands,
+                     const XlaComputation& computation,
+                     absl::Span<const ReplicaGroup> replica_groups,
+                     const std::optional<ChannelHandle>& channel_id,
+                     const std::optional<Shape>& shape_with_layout,
+                     const std::optional<bool> use_global_device_ids) {
+  CHECK(!operands.empty());
+  return operands[0].builder()->AllReduce(
+      operands[0].builder()->Tuple(operands), computation, replica_groups,
+      channel_id, shape_with_layout, use_global_device_ids);
 }
 
 XlaOp ReduceScatter(const XlaOp operand, const XlaComputation& computation,

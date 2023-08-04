@@ -23,6 +23,7 @@ load(
     "//tensorflow/tsl/mkl:build_defs.bzl",
     "if_enable_mkl",
     "if_mkl",
+    "onednn_v3_define",
 )
 load(
     "//third_party/mkl_dnn:build_defs.bzl",
@@ -230,7 +231,6 @@ def tsl_copts(
     android_copts = [
         "-DTF_LEAN_BINARY",
         "-Wno-narrowing",
-        "-fomit-frame-pointer",
     ]
     if android_optimization_level_override:
         android_copts.append(android_optimization_level_override)
@@ -254,10 +254,11 @@ def tsl_copts(
         # optimizations for Intel builds using oneDNN if configured
         if_enable_mkl(["-DENABLE_MKL"]) +
         if_mkldnn_openmp(["-DENABLE_ONEDNN_OPENMP"]) +
+        onednn_v3_define() +
         if_mkldnn_aarch64_acl(["-DDNNL_AARCH64_USE_ACL=1"]) +
         if_mkldnn_aarch64_acl_openmp(["-DENABLE_ONEDNN_OPENMP"]) +
         if_enable_acl(["-DXLA_CPU_USE_ACL=1", "-fexceptions"]) +
-        if_android_arm(["-mfpu=neon"]) +
+        if_android_arm(["-mfpu=neon", "-fomit-frame-pointer"]) +
         if_linux_x86_64(["-msse3"]) +
         if_ios_x86_64(["-msse4.1"]) +
         if_no_default_logger(["-DNO_DEFAULT_LOGGER"]) +
@@ -380,7 +381,7 @@ def _check_deps_impl(ctx):
                     _dep_label(input_dep) + " must depend on " +
                     _dep_label(required_dep),
                 )
-    return struct()  # buildifier: disable=rule-impl-return
+    return []
 
 check_deps = rule(
     _check_deps_impl,
@@ -424,7 +425,7 @@ def tsl_grpc_cc_dependencies():
 # Bazel rule for collecting the header files that a target depends on.
 def _transitive_hdrs_impl(ctx):
     outputs = _get_transitive_headers([], ctx.attr.deps)
-    return struct(files = outputs)
+    return DefaultInfo(files = outputs)
 
 _transitive_hdrs = rule(
     attrs = {
@@ -736,3 +737,8 @@ def tsl_pybind_extension_opensource(
 
 # Export open source version of pybind_extension under base name as well.
 tsl_pybind_extension = tsl_pybind_extension_opensource
+
+# Used for specifying external visibility constraints. In non-monorepo situations, this needs to be
+# public, but monorepos can have more precise constraints.
+def set_external_visibility(monorepo_paths):
+    return if_oss(["//visibility:public"], monorepo_paths)

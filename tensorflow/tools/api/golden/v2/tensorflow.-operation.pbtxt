@@ -1,14 +1,18 @@
 path: "tensorflow.Operation"
 tf_class {
   is_instance: "<class \'tensorflow.python.framework.ops.Operation\'>"
-  is_instance: "<class \'tensorflow.python.client._pywrap_tf_session.OperationHandle\'>"
-  is_instance: "<class \'pybind11_builtins.pybind11_object\'>"
+  is_instance: "<class \'tensorflow.python.client._pywrap_tf_session.PyOperation\'>"
+  is_instance: "<type \'object\'>"
   member {
     name: "control_inputs"
     mtype: "<type \'property\'>"
   }
   member {
     name: "device"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "graph"
     mtype: "<type \'property\'>"
   }
   member {

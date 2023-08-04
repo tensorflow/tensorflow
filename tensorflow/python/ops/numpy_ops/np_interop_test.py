@@ -19,8 +19,11 @@ import tensorflow.compat.v2 as tf
 
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import numpy_ops as np
 from tensorflow.python.ops.numpy_ops import np_math_ops
+
+# Used instead of "import tensorflow(dot)experimental.numpy as np" due to
+# copybara issues.
+np = tf.experimental.numpy
 
 
 # Tests for code snippet put in README.md
@@ -452,7 +455,7 @@ class VariableTest(InteropTest):
 
 
 if __name__ == '__main__':
-  ops.enable_numpy_style_type_promotion()
+  ops.set_dtype_conversion_mode('legacy')
   np_math_ops.enable_numpy_methods_on_tensor()
   tf.compat.v1.enable_eager_execution()
   tf.test.main()

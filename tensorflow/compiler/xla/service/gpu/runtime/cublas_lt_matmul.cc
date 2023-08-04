@@ -15,7 +15,6 @@ limitations under the License.1
 
 #include "tensorflow/compiler/xla/service/gpu/runtime/cublas_lt_matmul.h"
 
-#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -34,12 +33,17 @@ limitations under the License.1
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/tsl/platform/status.h"
 
+#if GOOGLE_CUDA || TF_HIPBLASLT
 #if GOOGLE_CUDA
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_lt.h"
-#endif  // GOOGLE_CUDA
+#else
+#include "rocm/rocm_config.h"
+#include "tensorflow/compiler/xla/stream_executor/rocm/hip_blas_lt.h"
+#endif
+#endif  // GOOGLE_CUDA || TF_HIPBLASLT
 
 namespace xla {
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TF_HIPBLASLT
 
 using xla::runtime::CustomCall;
 using xla::runtime::CustomCallAttrEncodingSet;
@@ -54,7 +58,7 @@ namespace lmhlo_gpu = ::mlir::lmhlo_gpu;
 //===----------------------------------------------------------------------===//
 
 namespace runtime {
-XLA_RUNTIME_REGISTER_ENUM_ATTR_DECODING(se::cuda::BlasLt::Epilogue);
+XLA_RUNTIME_REGISTER_ENUM_ATTR_DECODING(se::gpu::BlasLt::Epilogue);
 }  // namespace runtime
 
 //===----------------------------------------------------------------------===//
@@ -66,9 +70,8 @@ namespace gpu {
 void PopulateCublasLtMatmulAttrEncoding(CustomCallAttrEncodingSet& encoding) {
   encoding.Add<EnumAttrEncoding<lmhlo_gpu::CublasLtMatmulEpilogueAttr,
                                 lmhlo_gpu::CublasLtMatmulEpilogue,
-                                se::cuda::BlasLt::Epilogue>>(
-      [](lmhlo_gpu::CublasLtMatmulEpilogue value)
-          -> se::cuda::BlasLt::Epilogue {
+                                se::gpu::BlasLt::Epilogue>>(
+      [](lmhlo_gpu::CublasLtMatmulEpilogue value) -> se::gpu::BlasLt::Epilogue {
         return cublas_lt::AsBlasLtEpilogue(value).value();
       });
 }
@@ -89,28 +92,27 @@ static absl::Status CublasLtMatmulImpl(
     std::optional<StridedMemrefView> d_scale,
     std::optional<StridedMemrefView> d_amax, int64_t algorithm,
     double alpha_real, double alpha_imag, double beta,
-    DotDimensionNumbers dot_dims, se::cuda::BlasLt::Epilogue epilogue,
+    DotDimensionNumbers dot_dims, se::gpu::BlasLt::Epilogue epilogue,
     absl::Span<const int32_t> precision) {
   VLOG(3) << "Running CublasLtMatmul";
   se::Stream* stream = run_options->stream();
 
   // Find the gemm config for this instance of matmul.
-  absl::StatusOr<GemmConfig*> config = gemm_config.GetOrCreate([&] {
+  TF_ASSIGN_OR_RETURN(GemmConfig * config, gemm_config.GetOrCreate([&] {
     return ToAbsl(GetGemmConfig(
         a, b, c, algorithm, alpha_real, alpha_imag, beta, dot_dims.lhs_batch,
         dot_dims.lhs_contract, dot_dims.rhs_batch, dot_dims.rhs_contract,
         precision.empty() ? se::blas::kDefaultComputePrecision
                           : *absl::c_max_element(precision)));
-  });
-  if (!config.ok()) return config.status();
+  }));
 
   // Get the matmul plan for this instance of matmul.
-  absl::StatusOr<cublas_lt::MatmulPlan*> plan = matmul_plan.GetOrCreate(
-      [&] { return ToAbsl(cublas_lt::MatmulPlan::From(**config, epilogue)); });
-  if (!plan.ok()) return plan.status();
+  TF_ASSIGN_OR_RETURN(
+      cublas_lt::MatmulPlan * plan, matmul_plan.GetOrCreate([&] {
+        return ToAbsl(cublas_lt::MatmulPlan::From(*config, epilogue));
+      }));
 
-  auto algos = (*plan)->GetAlgorithms(stream);
-  if (!algos.ok()) return ToAbslStatus(algos.status());
+  TF_ASSIGN_OR_RETURN(auto algos, plan->GetAlgorithms(stream));
 
   se::DeviceMemoryBase a_data = GetDeviceAddress(a);
   se::DeviceMemoryBase b_data = GetDeviceAddress(b);
@@ -135,13 +137,10 @@ static absl::Status CublasLtMatmulImpl(
   se::OwningScratchAllocator<> scratch_allocator(
       stream->parent()->device_ordinal(), stream->parent()->GetAllocator());
 
-  auto st = (*plan)->ExecuteOnStream(
-      stream, a_data, b_data, c_data, d_data, bias_data, aux_data, a_scale_data,
-      b_scale_data, c_scale_data, d_scale_data, d_amax_data,
-      (*algos)[algorithm], scratch_allocator);
-  if (!st.ok()) return ToAbslStatus(st);
-
-  return absl::OkStatus();
+  return plan->ExecuteOnStream(stream, a_data, b_data, c_data, d_data,
+                               bias_data, aux_data, a_scale_data, b_scale_data,
+                               c_scale_data, d_scale_data, d_amax_data,
+                               algos[algorithm], scratch_allocator);
 }
 
 //===----------------------------------------------------------------------===//
@@ -156,7 +155,7 @@ auto BindMatmulAttributes(runtime::CustomCallBinding<Ts...> binding) {
       .template Attr<double>("alpha_imag")
       .template Attr<double>("beta")
       .template Attr<DotDimensionNumbers>("dot_dims")
-      .template Attr<se::cuda::BlasLt::Epilogue>("epilogue")
+      .template Attr<se::gpu::BlasLt::Epilogue>("epilogue")
       .template Attr<absl::Span<const int32_t>>("precision");
 }
 

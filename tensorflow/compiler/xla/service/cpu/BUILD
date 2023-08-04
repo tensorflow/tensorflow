@@ -57,6 +57,7 @@ cc_library(
 # When using mlir based HloLowering, the following utils will sometimes be needed to define used symbols.
 cc_library(
     name = "runtime_mlir_utils",
+    visibility = ["//visibility:public"],
     deps = [
         "@llvm-project//mlir:mlir_c_runner_utils",
     ],
@@ -73,13 +74,25 @@ filegroup(
         "runtime_single_threaded_conv2d.cc",
         "runtime_single_threaded_conv3d.cc",
         "runtime_single_threaded_fft.cc",
-        "runtime_single_threaded_matmul.cc",
+        "runtime_single_threaded_matmul_c128.cc",
+        "runtime_single_threaded_matmul_c64.cc",
+        "runtime_single_threaded_matmul_common.h",
+        "runtime_single_threaded_matmul_f16.cc",
+        "runtime_single_threaded_matmul_f32.cc",
+        "runtime_single_threaded_matmul_f64.cc",
+        "runtime_single_threaded_matmul_s32.cc",
         "runtime_topk.cc",
         # Multi-threaded support.
         "runtime_conv2d.cc",
         "runtime_conv3d.cc",
         "runtime_fft.cc",
-        "runtime_matmul.cc",
+        "runtime_matmul_c128.cc",
+        "runtime_matmul_c64.cc",
+        "runtime_matmul_common.h",
+        "runtime_matmul_f16.cc",
+        "runtime_matmul_f32.cc",
+        "runtime_matmul_f64.cc",
+        "runtime_matmul_s32.cc",
         "runtime_fork_join.cc",
     ],
     visibility = [":friends"],
@@ -88,6 +101,8 @@ filegroup(
 filegroup(
     name = "runtime_hdrs",
     srcs = [
+        # XLA Runtime support.
+        "buffer_desc.h",
         # Single-threaded support.
         "runtime_custom_call_status.h",
         "runtime_conv_impl.h",
@@ -173,13 +188,14 @@ cc_library(
     hdrs = ["buffer_info_util.h"],
     deps = [
         "//tensorflow/compiler/xla:cpu_function_runtime",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "@com_google_absl//absl/types:span",
     ],
 )
 
 cc_library(
-    name = "cpu_compiler",
+    name = "cpu_compiler_pure",
     srcs = ["cpu_compiler.cc"],
     hdrs = ["cpu_compiler.h"],
     deps = [
@@ -200,40 +216,6 @@ cc_library(
         ":simple_orc_jit",
         ":target_machine_features",
         ":xla_framework",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/base:dynamic_annotations",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Core",
-        "@llvm-project//llvm:MC",
-        "@llvm-project//llvm:Object",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//llvm:Target",
-        "@llvm-project//llvm:TargetParser",
-        "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
-        "@llvm-project//mlir:AffineDialect",
-        "@llvm-project//mlir:AffineToStandard",
-        "@llvm-project//mlir:ArithDialect",
-        "@llvm-project//mlir:ArithTransforms",
-        "@llvm-project//mlir:BufferizationTransforms",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:LLVMDialect",
-        "@llvm-project//mlir:LLVMToLLVMIRTranslation",
-        "@llvm-project//mlir:LinalgDialect",
-        "@llvm-project//mlir:LinalgTransforms",
-        "@llvm-project//mlir:MemRefTransforms",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:ReconcileUnrealizedCasts",
-        "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:TensorDialect",
-        "@llvm-project//mlir:ToLLVMIRTranslation",
-        "@llvm-project//mlir:TransformUtils",
-        "@llvm-project//mlir:Transforms",
-        "@llvm-project//mlir:VectorDialect",
         "//tensorflow/compiler/xla:cpu_function_runtime",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:protobuf_util",
@@ -244,10 +226,11 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/mlir/framework/ir:xla_framework",
-        "//tensorflow/compiler/xla/mlir/framework/transforms:passes",
+        "//tensorflow/compiler/xla/mlir/runtime/ir:rt",
         "//tensorflow/compiler/xla/mlir/runtime/transforms:calling_convention",
         "//tensorflow/compiler/xla/mlir/runtime/transforms:compilation_pipeline_cpu",
         "//tensorflow/compiler/xla/mlir/runtime/transforms:compiler",
+        "//tensorflow/compiler/xla/mlir/runtime/transforms:jit_compiler",
         "//tensorflow/compiler/xla/mlir/tools/mlir_replay/public:compiler_trace_instrumentation",
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/xla/mlir_hlo:all_passes",
@@ -327,21 +310,58 @@ cc_library(
         "//tensorflow/compiler/xla/service:while_loop_simplifier",
         "//tensorflow/compiler/xla/service:zero_sized_hlo_elimination",
         "//tensorflow/compiler/xla/service/cpu/runtime:collectives",
+        "//tensorflow/compiler/xla/service/cpu/runtime:convolution_call",
         "//tensorflow/compiler/xla/service/cpu/runtime:custom_call",
         "//tensorflow/compiler/xla/service/cpu/runtime:fft_call",
-        "//tensorflow/compiler/xla/service/cpu/runtime:rng",
+        "//tensorflow/compiler/xla/service/cpu/runtime:retain",
+        "//tensorflow/compiler/xla/service/cpu/runtime:rng_call",
         "//tensorflow/compiler/xla/service/cpu/runtime:xfeed",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_command_line_options",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/compiler/xla/service/spmd:stateful_rng_spmd_partitioner",
         "//tensorflow/compiler/xla/stream_executor",
-        "//tensorflow/compiler/xla/stream_executor/host:host_platform",
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_pimpl",  # fixdeps: keep
         "//tensorflow/compiler/xla/stream_executor/host:host_platform_id",
         "//tensorflow/compiler/xla/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
         "//tensorflow/compiler/xla/translate/hlo_to_mhlo:hlo_utils",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:dynamic_annotations",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:MC",
+        "@llvm-project//llvm:Object",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:Target",
+        "@llvm-project//llvm:TargetParser",
+        "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
+        "@llvm-project//mlir:AffineDialect",
+        "@llvm-project//mlir:AffineToStandard",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:ArithTransforms",
+        "@llvm-project//mlir:BufferizationTransforms",
+        "@llvm-project//mlir:BuiltinToLLVMIRTranslation",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMDialect",
+        "@llvm-project//mlir:LLVMToLLVMIRTranslation",
+        "@llvm-project//mlir:LinalgDialect",
+        "@llvm-project//mlir:LinalgTransforms",
+        "@llvm-project//mlir:MemRefTransforms",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:ReconcileUnrealizedCasts",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:ToLLVMIRTranslation",
+        "@llvm-project//mlir:TransformUtils",
+        "@llvm-project//mlir:Transforms",
+        "@llvm-project//mlir:VectorDialect",
     ] + select({
         "//tensorflow/tsl:arm_any": [
             "@llvm-project//llvm:AArch64CodeGen",  # fixdeps: keep
@@ -357,6 +377,30 @@ cc_library(
     }) + if_llvm_system_z_available([
         "@llvm-project//llvm:SystemZCodeGen",  # fixdeps: keep
     ]),
+)
+
+cc_library(
+    # The old target name will still be used so that dependencies won't break.
+    # In the future, dependencies should be cleaned up and relinked to the above
+    # target if registration is not necesary.
+    name = "cpu_compiler",
+    srcs = ["cpu_compiler_registerer.cc"],
+    hdrs = ["cpu_compiler.h"],
+    deps = [
+        "cpu_compiler_pure",
+        ":executable_proto_cc",
+        ":target_machine_features",
+        "//tensorflow/compiler/xla:cpu_function_runtime",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:compiler",
+        "//tensorflow/compiler/xla/service:executable",
+        "//tensorflow/compiler/xla/service:llvm_compiler",
+        "//tensorflow/compiler/xla/stream_executor",
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_pimpl",  # fixdeps: keep
+        "//tensorflow/compiler/xla/stream_executor/host:host_platform_id",
+        "@llvm-project//llvm:Target",
+    ],
     alwayslink = True,  # Contains compiler registration
 )
 
@@ -389,10 +433,11 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla/mlir/backends/cpu/transforms:passes",
-        "//tensorflow/compiler/xla/mlir/framework/transforms:passes",
         "//tensorflow/compiler/xla/mlir/runtime/transforms:compiler",
         "//tensorflow/compiler/xla/mlir_hlo:all_passes",
+        "//tensorflow/compiler/xla/mlir_hlo:gml_st_bufferizable_op_interface",
         "//tensorflow/compiler/xla/mlir_hlo:mhlo_passes",
+        "//tensorflow/compiler/xla/mlir_hlo:thlo_bufferizable_op_interface",
         "//tensorflow/compiler/xla/mlir_hlo:transforms_passes",
         "//tensorflow/compiler/xla/runtime:compiler",
         "//tensorflow/tsl/platform:errors",
@@ -402,11 +447,15 @@ cc_library(
         "@llvm-project//mlir:BufferizationTransforms",
         "@llvm-project//mlir:ComplexToStandard",
         "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:FuncTransforms",
+        "@llvm-project//mlir:GPUDialect",
+        "@llvm-project//mlir:GPUToNVVMTransforms",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:MemRefTransforms",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:ReconcileUnrealizedCasts",
+        "@llvm-project//mlir:SCFToControlFlow",
         "@llvm-project//mlir:SCFTransforms",
         "@llvm-project//mlir:ShapeToStandard",
         "@llvm-project//mlir:ShapeTransforms",
@@ -414,6 +463,7 @@ cc_library(
         "@llvm-project//mlir:TensorToLinalg",
         "@llvm-project//mlir:TensorTransforms",
         "@llvm-project//mlir:Transforms",
+        "@llvm-project//mlir:VectorToLLVM",
         "@llvm-project//mlir:VectorToSCF",
         "@llvm-project//mlir:VectorTransforms",
     ],
@@ -451,6 +501,10 @@ cc_library(
         ":runtime_single_threaded_fft",
         ":runtime_single_threaded_matmul",
         ":runtime_topk",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/service:custom_call_target_registry",
+        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/memory",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:ExecutionEngine",
@@ -460,10 +514,6 @@ cc_library(
         "@llvm-project//llvm:Target",  # fixdeps: keep
         "@llvm-project//llvm:TargetParser",
         "@llvm-project//mlir:mlir_c_runner_utils",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla/service:custom_call_target_registry",
-        "//tensorflow/tsl/platform:logging",
     ] + ORC_JIT_MEMORY_MAPPER_TARGETS,
 )
 
@@ -499,10 +549,16 @@ cc_library(
 )
 
 cc_library(
+    name = "buffer_desc",
+    hdrs = ["buffer_desc.h"],
+)
+
+cc_library(
     name = "cpu_executable",
     srcs = ["cpu_executable.cc"],
     hdrs = ["cpu_executable.h"],
     deps = [
+        ":buffer_desc",
         ":simple_orc_jit",
         ":xla_framework",
         "//tensorflow/compiler/xla:shape_tree",
@@ -755,6 +811,7 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/runtime:execution_engine",
         "//tensorflow/compiler/xla/service:llvm_compiler",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/tsl/platform:logging",
@@ -895,11 +952,11 @@ cc_library(
     deps = [
         ":runtime_conv2d",
         ":runtime_single_threaded_conv2d",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/base:dynamic_annotations",
-        "//third_party/eigen3",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/tsl/framework/convolution:eigen_helpers",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:dynamic_annotations",
     ] + mkl_deps(),
 )
 
@@ -925,7 +982,15 @@ cc_library(
 
 cc_library(
     name = "runtime_matmul",
-    srcs = ["runtime_matmul.cc"],
+    srcs = [
+        "runtime_matmul_c128.cc",
+        "runtime_matmul_c64.cc",
+        "runtime_matmul_common.h",
+        "runtime_matmul_f16.cc",
+        "runtime_matmul_f32.cc",
+        "runtime_matmul_f64.cc",
+        "runtime_matmul_s32.cc",
+    ],
     hdrs = ["runtime_matmul.h"],
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
@@ -947,8 +1012,8 @@ cc_library(
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        "//third_party/eigen3",
         "//tensorflow/compiler/xla:executable_run_options",
+        "//third_party/eigen3",
     ] + mkl_deps(),
 )
 
@@ -961,11 +1026,11 @@ cc_library(
     deps = [
         ":runtime_lightweight_check",
         ":runtime_matmul",
-        "//third_party/eigen3",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/tsl/platform:dynamic_annotations",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:types",
+        "//third_party/eigen3",
     ] + acl_deps(),
 )
 
@@ -980,12 +1045,12 @@ cc_library(
     deps = [
         ":runtime_conv2d",
         ":runtime_single_threaded_conv2d",
-        "//third_party/eigen3",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/tsl/framework/convolution:eigen_helpers",
         "//tensorflow/tsl/platform:dynamic_annotations",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:types",
+        "//third_party/eigen3",
     ] + acl_deps(),
 )
 
@@ -1047,7 +1112,15 @@ cc_library(
 
 cc_library(
     name = "runtime_single_threaded_matmul_impl",
-    srcs = ["runtime_single_threaded_matmul.cc"],
+    srcs = [
+        "runtime_single_threaded_matmul_c128.cc",
+        "runtime_single_threaded_matmul_c64.cc",
+        "runtime_single_threaded_matmul_common.h",
+        "runtime_single_threaded_matmul_f16.cc",
+        "runtime_single_threaded_matmul_f32.cc",
+        "runtime_single_threaded_matmul_f64.cc",
+        "runtime_single_threaded_matmul_s32.cc",
+    ],
     hdrs = ["runtime_single_threaded_matmul.h"],
     compatible_with = get_compatible_with_portable(),
     copts = runtime_copts(),

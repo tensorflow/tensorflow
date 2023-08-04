@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/macros.h"
@@ -34,6 +35,27 @@ class Device;
 
 namespace test {
 
+struct TestJob {
+  std::string name;
+  int num_tasks;
+  int num_replicas = 1;
+};
+
+struct TestClusterConfig {
+  std::string binary_path;
+  SessionOptions options;
+  std::vector<TestJob> jobs;
+
+  TestClusterConfig& Options(const SessionOptions& options) {
+    this->options = options;
+    return *this;
+  }
+  TestClusterConfig& Jobs(const std::vector<TestJob>& jobs) {
+    this->jobs = jobs;
+    return *this;
+  }
+};
+
 // Provides a handle to a set of TensorFlow servers (masters and
 // workers) for testing purposes.
 //
@@ -47,18 +69,15 @@ class TestCluster {
   // processes `n`. On success, the test cluster is stored in
   // *out_cluster, and this function returns OK. Otherwise an error is
   // returned.
-  static Status MakeTestCluster(const SessionOptions& options, int n,
-                                std::unique_ptr<TestCluster>* out_cluster);
-
-  // As above, but allows overridding the server binary path via `binary_path`.
-  static Status MakeTestCluster(const string& binary_path,
-                                const SessionOptions& options, int n,
+  static Status MakeTestCluster(const TestClusterConfig& config,
                                 std::unique_ptr<TestCluster>* out_cluster);
   ~TestCluster();
 
   // Returns a vector of string "<hostname>:<port>" pairs that may be
   // used as targets to construct a GrpcSession.
-  const std::vector<string>& targets() const { return targets_; }
+  const std::vector<string>& targets(std::string job_name = "localhost") {
+    return targets_.at(job_name);
+  }
 
   // Returns a vector of devices available in this test cluster.
   const std::vector<DeviceAttributes>& devices() const { return devices_; }
@@ -67,7 +86,7 @@ class TestCluster {
   TestCluster() = default;
 
   std::vector<std::unique_ptr<SubProcess>> subprocesses_;
-  std::vector<string> targets_;
+  absl::flat_hash_map<std::string, std::vector<std::string>> targets_;
   std::vector<DeviceAttributes> devices_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(TestCluster);

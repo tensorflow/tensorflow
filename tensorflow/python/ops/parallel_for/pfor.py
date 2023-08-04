@@ -34,8 +34,8 @@ from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
@@ -158,9 +158,11 @@ def _stack(t, length):
       raise ValueError(
           "Attempted to stack an unhandled variant-dtype tensor of "
           f"type {shapes_and_types[0].type!r} ({t!r}).")
-  ones = array_ops.ones_like(array_ops.shape(t))
+  shape = array_ops.shape(t)
+  ones = array_ops.ones_like(shape)
   ones = array_ops.reshape(ones, [-1])
   length = array_ops.reshape(length, [-1])
+  length = math_ops.cast(length, shape.dtype)
   multiples = array_ops.concat([length, ones], 0)
   t = array_ops.tile(array_ops.expand_dims(t, 0), multiples)
   return wrap(t, True)
@@ -227,7 +229,7 @@ class WhileOp:
     self._pfor_config = pfor_config
     self._pfor_ops = set(pfor_ops)
     self._pfor_op_ids = set(x._id for x in pfor_ops)
-    assert isinstance(exit_node, ops.Tensor)
+    assert isinstance(exit_node, tensor_lib.Tensor)
     self._while_context = exit_node.op._get_control_flow_context()
     assert isinstance(self._while_context, control_flow_ops.WhileContext)
     self._context_name = self._while_context.name
@@ -258,13 +260,13 @@ class WhileOp:
     # to different Operations/Tensors of a single cycle as illustrated above.
     # List of Switch ops (ops.Operation) that feed into an Exit Node.
     self._exit_switches = []
-    # List of inputs (ops.Tensor) to NextIteration.
+    # List of inputs (tensor_lib.Tensor) to NextIteration.
     self._body_outputs = []
     # List of list of control inputs of the NextIteration nodes.
     self._next_iter_control_inputs = []
     # List of Merge ops (ops.Operation).
     self._enter_merges = []
-    # List of output (ops.Tensor) of Exit nodes.
+    # List of output (tensor_lib.Tensor) of Exit nodes.
     self._outputs = []
 
     # List of Enter Tensors.
@@ -855,7 +857,8 @@ class _PforInput:
       if inp.is_stacked:
         shape = array_ops.shape(inp.t)
         rank_diff = array_ops.reshape(max_rank - ranks[i], [1])
-        ones = array_ops.tile([1], rank_diff)
+        ones = constant_op.constant([1], dtype=shape.dtype)
+        ones = array_ops.tile(ones, rank_diff)
         new_shape = array_ops.concat([shape[:1], ones, shape[1:]], axis=0)
         self._inputs[i] = wrap(array_ops.reshape(inp.t, new_shape), True)
 
@@ -1068,7 +1071,7 @@ def wrap(tensor, is_stacked=True, is_sparse_stacked=False):
   """Helper to create a WrappedTensor object."""
   assert isinstance(is_stacked, bool)
   assert isinstance(is_sparse_stacked, bool)
-  assert isinstance(tensor, ops.Tensor)
+  assert isinstance(tensor, tensor_lib.Tensor)
   assert not is_sparse_stacked or is_stacked, ("If the wrapped tensor is "
                                                "stacked via a sparse "
                                                "conversion, it must also be "
@@ -1113,7 +1116,7 @@ def _fallback_converter(pfor_input, root_cause="", warn=False):
     # TODO(agarwal): Add tf.debugging asserts to check that the shapes across
     # the different iterations are the same.
     for out, ta in zip(op_outputs, ta_list):
-      assert isinstance(out, ops.Tensor)
+      assert isinstance(out, tensor_lib.Tensor)
       outputs.append(ta.write(i, out))
     return tuple([i + 1] + outputs)
 
@@ -1140,7 +1143,7 @@ class PForConfig:
 
   def _set_iters(self, iters):
     """Set number of pfor iterations."""
-    if isinstance(iters, ops.Tensor):
+    if isinstance(iters, tensor_lib.Tensor):
       iters = tensor_util.constant_value(iters)
     self._maybe_iters = iters
 
@@ -1167,12 +1170,12 @@ class PForConfig:
     # Creates a concrete function that will be used for reduction.
     tensor_specs = []
     for arg in args:
-      if not isinstance(arg, ops.Tensor):
+      if not isinstance(arg, tensor_lib.Tensor):
         raise ValueError(f"Got a non-Tensor argument {arg} in reduce.")
       batched_shape = tensor_shape.TensorShape([self._maybe_iters
                                                ]).concatenate(arg.shape)
       tensor_specs.append(
-          tensor_spec.TensorSpec(shape=batched_shape, dtype=arg.dtype))
+          tensor_lib.TensorSpec(shape=batched_shape, dtype=arg.dtype))
     concrete_function = def_function.function(fn).get_concrete_function(
         *tensor_specs)
 
@@ -1181,7 +1184,7 @@ class PForConfig:
     pl_outputs = []
     with ops.control_dependencies(args):
       for output in concrete_function.outputs:
-        if not isinstance(output, ops.Tensor):
+        if not isinstance(output, tensor_lib.Tensor):
           raise ValueError(f"Got a non-Tensor output {output} while running "
                            "reduce.")
         # Note that we use placeholder_with_default just to make XLA happy since
@@ -1246,7 +1249,7 @@ class PForConfig:
 
   def _lookup_reduction(self, t):
     """Lookups Tensor `t` in the reduction maps."""
-    assert isinstance(t, ops.Tensor), t
+    assert isinstance(t, tensor_lib.Tensor), t
     return self._reduce_map.get(t.op)
 
 
@@ -1295,7 +1298,7 @@ class PFor:
     """Creates an object to rewrite a parallel-for loop.
 
     Args:
-      loop_var: ops.Tensor output of a Placeholder operation. The value should
+      loop_var: Tensor output of a Placeholder operation. The value should
         be an int32 scalar representing the loop iteration number.
       loop_len: A scalar or scalar Tensor representing the number of iterations
         the loop is run for.
@@ -1313,7 +1316,7 @@ class PFor:
       pfor_config: PForConfig object used while constructing the loop body.
       warn: Whether or not to warn on while loop conversions.
     """
-    assert isinstance(loop_var, ops.Tensor)
+    assert isinstance(loop_var, tensor_lib.Tensor)
     assert loop_var.op.type == "PlaceholderWithDefault"
     self._loop_var = loop_var
     loop_len_value = tensor_util.constant_value(loop_len)
@@ -1422,7 +1425,7 @@ class PFor:
     """Returns the converted value corresponding to y.
 
     Args:
-      y: A ops.Tensor or a ops.Operation object. If latter, y should not have
+      y: A Tensor or a ops.Operation object. If latter, y should not have
         any outputs.
 
     Returns:
@@ -1433,10 +1436,10 @@ class PFor:
       return None
     if isinstance(y, sparse_tensor.SparseTensor):
       return self._convert_sparse(y)
-    assert isinstance(y, (ops.Tensor, ops.Operation)), y
+    assert isinstance(y, (tensor_lib.Tensor, ops.Operation)), y
     output = self._convert_helper(y)
     if isinstance(output, WrappedTensor):
-      assert isinstance(y, ops.Tensor)
+      assert isinstance(y, tensor_lib.Tensor)
       return self._unwrap_or_tile(output)
     else:
       assert isinstance(y, ops.Operation)
@@ -1450,7 +1453,8 @@ class PFor:
     return converted_t.t is not t
 
   def _add_conversion(self, old_output, new_output):
-    assert isinstance(old_output, (ops.Tensor, ops.Operation)), old_output
+    assert isinstance(
+        old_output, (tensor_lib.Tensor, ops.Operation)), old_output
     assert isinstance(new_output, (WrappedTensor, ops.Operation)), new_output
     self._conversion_map[old_output] = new_output
 
@@ -1464,7 +1468,7 @@ class PFor:
     (reduction_fn, reduction_args) = reduction
     batched_args = []
     for reduction_arg in reduction_args:
-      assert isinstance(reduction_arg, ops.Tensor), reduction_arg
+      assert isinstance(reduction_arg, tensor_lib.Tensor), reduction_arg
       # Tensor being reduced should already be converted due to a control
       # dependency on the created placeholder.
       # Note that in cases where reduction_arg is in an outer context, one
@@ -1496,7 +1500,7 @@ class PFor:
             "Got %s", y)
         y_op = y
       else:
-        assert isinstance(y, ops.Tensor), y
+        assert isinstance(y, tensor_lib.Tensor), y
         y_op = y.op
 
       is_while_loop = y_op.type == "Exit"
@@ -1761,14 +1765,17 @@ def _convert_adjust_saturation(pfor_input):
 def _flatten_first_two_dims(x):
   """Merges first two dimensions."""
   old_shape = array_ops.shape(x)
-  new_shape = array_ops.concat([[-1], old_shape[2:]], axis=0)
+  first_dim = constant_op.constant([-1], dtype=old_shape.dtype)
+  new_shape = array_ops.concat([first_dim, old_shape[2:]], axis=0)
   return array_ops.reshape(x, new_shape)
 
 
 def _unflatten_first_dim(x, first_dim):
   """Splits first dimension into [first_dim, -1]."""
   old_shape = array_ops.shape(x)
-  new_shape = array_ops.concat([first_dim, [-1], old_shape[1:]], axis=0)
+  first_dim = math_ops.cast(first_dim, old_shape.dtype)
+  second_dim = constant_op.constant([-1], dtype=old_shape.dtype)
+  new_shape = array_ops.concat([first_dim, second_dim, old_shape[1:]], axis=0)
   return array_ops.reshape(x, new_shape)
 
 
@@ -1826,19 +1833,23 @@ def _convert_batch_to_space_nd(pfor_input):
   crops = pfor_input.unstacked_input(2)
 
   inp_shape = array_ops.shape(inp)
-  n = pfor_input.pfor.loop_len_vector
+  n = math_ops.cast(pfor_input.pfor.loop_len_vector, inp_shape.dtype)
+  block_shape = math_ops.cast(block_shape, inp_shape.dtype)
 
   # Reshape and transpose to move the vectorization axis inside the axes that
   # will move to space.
   # Reshape to 4D and transpose
   block_size = math_ops.reduce_prod(block_shape)
-  new_shape = [n[0], block_size, inp_shape[1] // block_size, -1]
+  neg_one = constant_op.constant(-1, dtype=inp_shape.dtype)
+  new_shape = [n[0], block_size, inp_shape[1] // block_size, neg_one]
   inp = array_ops.reshape(inp, new_shape)
+
   inp = array_ops.transpose(inp, [1, 0, 2, 3])
   # Reshape back to merge the block, vectorization and batch dimension, and
   # restore the other dimensions.
   new_shape = array_ops.concat([n * inp_shape[1], inp_shape[2:]], axis=0)
   inp = array_ops.reshape(inp, new_shape)
+
   # Call batch_to_space and then split the new batch axis.
   output = gen_array_ops.batch_to_space_nd(inp, block_shape, crops)
   output = _unflatten_first_dim(output, n)
@@ -1851,14 +1862,19 @@ def _convert_space_to_batch_nd(pfor_input):
   block_shape = pfor_input.unstacked_input(1)
   paddings = pfor_input.unstacked_input(2)
 
-  n = pfor_input.pfor.loop_len_vector
   inp_shape = array_ops.shape(inp)
+  n = math_ops.cast(pfor_input.pfor.loop_len_vector, inp_shape.dtype)
+  block_shape = math_ops.cast(block_shape, inp_shape.dtype)
+
   inp = _flatten_first_two_dims(inp)
   output = gen_array_ops.space_to_batch_nd(inp, block_shape, paddings)
   output_shape = array_ops.shape(output)
+
   block_size = math_ops.reduce_prod(block_shape)
-  new_shape = [block_size, n[0], -1]
+  neg_one = constant_op.constant(-1, dtype=inp_shape.dtype)
+  new_shape = [block_size, n[0], neg_one]
   output = array_ops.reshape(output, new_shape)
+
   output = array_ops.transpose(output, [1, 0, 2])
   new_shape = array_ops.concat(
       [n, block_size * inp_shape[1:2], output_shape[1:]], axis=0)
@@ -1876,7 +1892,7 @@ def _channel_flatten_input(x, data_format):
   We then merge the S and C dimension.
 
   Args:
-    x: ops.Tensor to transform.
+    x: tensor_lib.Tensor to transform.
     data_format: "NCHW" or "NHWC".
 
   Returns:
@@ -1888,13 +1904,14 @@ def _channel_flatten_input(x, data_format):
   cache_key = (graph, x.ref(), data_format)
   if cache_key not in _channel_flatten_input_cache:
     x_shape = array_ops.shape(x)
+    neg_ones = constant_op.constant([-1], dtype=x_shape.dtype)
     if data_format == b"NCHW":
       order = [1, 0, 2, 3, 4]
-      shape = array_ops.concat([x_shape[1:2], [-1], x_shape[3:]], axis=0)
+      shape = array_ops.concat([x_shape[1:2], neg_ones, x_shape[3:]], axis=0)
       reverse_order = order
     else:
       order = [1, 2, 3, 0, 4]
-      shape = array_ops.concat([x_shape[1:4], [-1]], axis=0)
+      shape = array_ops.concat([x_shape[1:4], neg_ones], axis=0)
       reverse_order = [3, 0, 1, 2, 4]
     # Move S dimension next to C dimension.
     x = array_ops.transpose(x, order)
@@ -2195,7 +2212,8 @@ def _convert_identity_n(pfor_input):
 def _convert_reshape(pfor_input):
   t = pfor_input.stacked_input(0)
   shape = pfor_input.unstacked_input(1)
-  new_shape = array_ops.concat([pfor_input.pfor.loop_len_vector, shape], axis=0)
+  n = math_ops.cast(pfor_input.pfor.loop_len_vector, shape.dtype)
+  new_shape = array_ops.concat([n, shape], axis=0)
   return wrap(array_ops.reshape(t, new_shape), True)
 
 
@@ -2218,15 +2236,18 @@ def _convert_fill(pfor_input):
 def _convert_broadcast_to(pfor_input):
   t = pfor_input.stacked_input(0)
   shape = pfor_input.unstacked_input(1)
-  new_shape = array_ops.concat([pfor_input.pfor.loop_len_vector, shape], axis=0)
+  n = pfor_input.pfor.loop_len_vector
+  new_shape = array_ops.concat([n, shape], axis=0)
 
   # Expand dims of stacked t to broadcast against the new shape.
   # TODO(davmre): consider factoring out common code with
   # `expanddim_inputs_for_broadcast`, which has similar logic but with
   # implicit shapes (of input Tensors) rather than explicit shapes.
-  rank_diff = array_ops.shape(new_shape)[0] - array_ops.rank(t)
-  ones = array_ops.tile([1], array_ops.reshape(rank_diff, [1]))
   t_shape = array_ops.shape(t)
+  t_rank = math_ops.cast(array_ops.rank(t), t_shape.dtype)
+  rank_diff = array_ops.shape(new_shape)[0] - t_rank
+  ones = array_ops.tile([1], array_ops.reshape(rank_diff, [1]))
+  ones = math_ops.cast(ones, t_shape.dtype)
   t_expanded_shape = array_ops.concat([t_shape[:1], ones, t_shape[1:]], axis=0)
 
   return wrap(
@@ -2376,9 +2397,12 @@ def _convert_slice(pfor_input):
     # the output would be ragged. This case is not supported. But `size` having
     # some negative values and some loop-variant `begin`s is OK (and it's hard
     # to tell the difference statically).
-    original_unstacked_shape = _stack(
-        array_ops.shape(t)[1:], pfor_input.pfor.loop_len_vector).t
-    broadcast_size = _stack(size, pfor_input.pfor.loop_len_vector).t
+    t_shape = array_ops.shape(t)
+    size = math_ops.cast(size, t_shape.dtype)
+    begin = math_ops.cast(begin, t_shape.dtype)
+    n = math_ops.cast(pfor_input.pfor.loop_len_vector, t_shape.dtype)
+    original_unstacked_shape = _stack(t_shape[1:], n).t
+    broadcast_size = _stack(size, n).t
     result_shape = array_ops.where(
         math_ops.less(broadcast_size, 0),
         original_unstacked_shape - begin + broadcast_size + 1, broadcast_size)
@@ -2565,7 +2589,7 @@ def _convert_gather(pfor_input):
   if param_stacked:
     pfor_input.stack_inputs(stack_indices=[1])
     indices = pfor_input.stacked_input(1)
-    if isinstance(axis, ops.Tensor):
+    if isinstance(axis, tensor_lib.Tensor):
       axis = array_ops.where(axis >= 0, axis + 1, axis)
     else:
       axis = axis + 1 if axis >= 0 else axis
@@ -3315,8 +3339,8 @@ def _convert_random(pfor_input, op_type, *args, **kw_args):
   del kw_args
   inputs = [pfor_input.unstacked_input(i) for i in range(pfor_input.num_inputs)]
   # inputs[0] is "shape"
-  inputs[0] = array_ops.concat([pfor_input.pfor.loop_len_vector, inputs[0]],
-                               axis=0)
+  n = math_ops.cast(pfor_input.pfor.loop_len_vector, inputs[0].dtype)
+  inputs[0] = array_ops.concat([n, inputs[0]], axis=0)
   # TODO(b/222761732): Turn this warning back on when legacy RNGs are
   #   deprecated.
   # logging.warning(
@@ -3350,7 +3374,8 @@ def _convert_random_with_param(pfor_input):
     loop_dim = array_ops.shape(shape)[0]
     stacked_samples = _transpose_dim_to_front(samples, loop_dim)
   else:
-    shape = array_ops.concat([pfor_input.pfor.loop_len_vector, shape], axis=0)
+    n = math_ops.cast(pfor_input.pfor.loop_len_vector, shape.dtype)
+    shape = array_ops.concat([n, shape], axis=0)
     stacked_samples = _create_op(
         pfor_input.op_type,
         inputs=[shape, param],
@@ -4096,8 +4121,8 @@ def _convert_tensor_array_push_back(pfor_input):
   else:
     # PopBack has an element shape set when it's the gradient of PushBack, only
     # used when the list is uninitialized.
-    vectorized_shape = array_ops.concat(
-        [pfor_input.pfor.loop_len_vector, element_shape], axis=0)
+    n = math_ops.cast(pfor_input.pfor.loop_len_vector, element_shape.dtype)
+    vectorized_shape = array_ops.concat([n, element_shape], axis=0)
 
   output_handle, tensor = gen_list_ops.tensor_list_pop_back(
       input_handle=handle, element_dtype=pfor_input.get_attr("element_dtype"),
@@ -4488,6 +4513,7 @@ def _convert_function_call(func, converter, inputs):
   assert isinstance(func.graph, func_graph.FuncGraph), func
   assert isinstance(converter, PFor)
 
+  graph_outputs = func.graph.outputs[:len(func.function_type.flat_outputs)]
   # TODO(agarwal): consider caching this function definition.
   @def_function.function
   def f(*args):
@@ -4497,17 +4523,16 @@ def _convert_function_call(func, converter, inputs):
     for inp, arg in zip(func.graph.inputs, args):
       converter._add_conversion(inp, arg)
     # Convert output tensors.
-    return tuple(
-        [converter._convert_helper(x).t for x in func._func_graph_outputs])
+    return tuple([converter._convert_helper(x).t for x in graph_outputs])
 
   call_outputs = f(*inputs)
-  assert len(call_outputs) == len(func._func_graph_outputs)
+  assert len(call_outputs) == len(graph_outputs)
   outputs = []
-  for call_output, output_tensor in zip(call_outputs, func._func_graph_outputs):
+  for call_output, output_tensor in zip(call_outputs, graph_outputs):
     func_output = converter._convert_helper(output_tensor)
     outputs.append(
-        wrap(call_output, func_output.is_stacked,
-             func_output.is_sparse_stacked))
+        wrap(call_output, func_output.is_stacked, func_output.is_sparse_stacked)
+    )
   return outputs
 
 

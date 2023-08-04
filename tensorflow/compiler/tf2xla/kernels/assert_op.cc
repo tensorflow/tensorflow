@@ -26,7 +26,7 @@ namespace {
 class AssertOp : public XlaOpKernel {
  public:
   explicit AssertOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
-  ~AssertOp() override {}
+  ~AssertOp() override = default;
 
   void Compile(XlaOpKernelContext* ctx) override {
     static mutex mu(tensorflow::LINKER_INITIALIZED);

@@ -69,8 +69,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
-using llvm::dyn_cast;
-using llvm::isa;
 using mlir::BlockArgument;
 using mlir::Dialect;
 using mlir::Operation;
@@ -427,6 +425,22 @@ Status Exporter::GetControlRetNodes(
   return OkStatus();
 }
 
+// After conversion from MLIR the input names are all blank which causes
+// graph compilation to fail. This uses the edges to fix up the input names.
+void FixupInputNamesFromEdges(Graph* graph) {
+  for (Node* n : graph->nodes()) {
+    if (n->IsOp()) {
+      NodeDef* node_def = n->mutable_def();
+      node_def->clear_input();
+      for (const Edge* e : n->in_edges()) {
+        Node* src = e->src();
+        if (src->IsOp()) {
+          Graph::AddInput(node_def, src->name(), e->src_output());
+        }
+      }
+    }
+  }
+}
 StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
     const GraphExportConfig& configs, const Dialect* tf_dialect,
     const SymbolTable& symbol_table, FuncOp function, FunctionDefLibrary* flib,
@@ -557,7 +571,7 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
                    llvm::dyn_cast<mlir::tf_executor::IslandOp>(inst)) {
       Operation& inner_op = island.GetBody().front();
       auto op_name = GetTensorFlowOpName(inner_op.getName().getStringRef());
-      if (op_name.ok()) {
+      if (llvm::isa<FuncOp>(inner_op) && op_name.ok()) {
         // If it is TF Control dialect specific op, look up custom operation
         // in the module and first convert that, then add it to function
         // definition library
@@ -585,6 +599,8 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
   // Fixes the edges between the inserted nodes and special "_SOURCE" and
   // "_SINK".
   FixupSourceAndSinkEdges(graph.get());
+
+  FixupInputNamesFromEdges(graph.get());
 
   TF_RETURN_IF_ERROR(
       exporter.GetControlRetNodes(graph_op.GetFetch(), control_ret_nodes));

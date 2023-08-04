@@ -4,24 +4,17 @@
 #   The libraries in this package are not allowed to have ANY dependencies
 #   to other TF components outside of TSL.
 
-load(
-    "@local_config_cuda//cuda:build_defs.bzl",
-    "cuda_cc_test",
-    "cuda_library",
-)
-load(
-    "@local_config_rocm//rocm:build_defs.bzl",
-    "rocm_copts",
-)
 load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load(
     "//tensorflow/tsl:tsl.bzl",
     "if_not_fuchsia",
+    "set_external_visibility",
     "tsl_copts",
 )
 load(
     "//tensorflow/tsl/platform:build_config.bzl",
     "tf_cuda_libdevice_path_deps",
+    "tf_error_logging_deps",
     "tf_fingerprint_deps",
     "tf_google_mobile_srcs_no_runtime",
     "tf_logging_deps",
@@ -59,10 +52,10 @@ exports_files(
         "load_library.h",
         "stringpiece_test.cc",
     ],
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core/platform:__subpackages__",
         "//tensorflow/tsl:__subpackages__",
-    ],
+    ]),
 )
 
 cc_library(
@@ -100,6 +93,26 @@ cc_library(
         ":byte_order",
         ":stringpiece",
         ":types",
+    ],
+)
+
+cc_library(
+    name = "criticality",
+    compatible_with = get_compatible_with_portable(),
+    textual_hdrs = ["criticality.h"],
+    deps = tf_platform_deps("criticality"),
+)
+
+tsl_cc_test(
+    name = "criticality_test",
+    size = "small",
+    srcs = [
+        "criticality_test.cc",
+    ],
+    deps = [
+        ":criticality",
+        ":test",
+        ":test_main",
     ],
 )
 
@@ -271,6 +284,7 @@ cc_library(
         ":strcat",
         ":stringprintf",
         ":types",
+        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/functional:function_ref",
@@ -278,7 +292,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/types:optional",
-        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
     ] + tf_platform_deps("status"),
 )
 
@@ -310,21 +323,19 @@ cc_library(
 
 cc_library(
     name = "statusor",
-    srcs = [
-        "statusor.cc",
-        "statusor_internals.h",
-    ],
     hdrs = ["statusor.h"],
     deps = [
         ":errors",
         ":logging",
         ":macros",
+        ":platform",
         ":status",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
-    ],
+    ] + tf_platform_deps("statusor"),
 )
 
 cc_library(
@@ -336,11 +347,16 @@ cc_library(
 cc_library(
     name = "test",
     testonly = True,
+    srcs = ["test.cc"],
     compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["test.h"],
-    deps = tf_testing_deps("test") + [
+    deps = [
+        ":logging",
         ":macros",
+        ":net",
+        ":path",
         ":platform",
+        ":types",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -364,10 +380,10 @@ filegroup(
         "test_benchmark.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/platform:__pkg__",
-    ],
+    ]),
 )
 
 filegroup(
@@ -377,10 +393,10 @@ filegroup(
         "test.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/platform:__pkg__",
-    ],
+    ]),
 )
 
 cc_library(
@@ -422,6 +438,7 @@ filegroup(
         "context.h",
         "cpu_info.h",
         "crash_analysis.h",
+        "criticality.h",
         "dynamic_annotations.h",
         "env.h",
         "errors.h",
@@ -493,8 +510,8 @@ filegroup(
 filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
-        "abi.h",
         "abi.cc",
+        "abi.h",
         "base64.cc",
         "base64.h",
         "bfloat16.h",
@@ -506,6 +523,7 @@ filegroup(
         "context.h",
         "cpu_info.cc",
         "cpu_info.h",
+        "criticality.h",
         "demangle.h",
         "denormal.cc",
         "denormal.h",
@@ -540,8 +558,8 @@ filegroup(
         "protobuf_util.cc",
         "ram_file_system.h",
         "raw_coding.h",
-        "regexp.h",
         "refcount.h",
+        "regexp.h",
         "resource.h",
         "scanner.cc",
         "scanner.h",
@@ -551,9 +569,7 @@ filegroup(
         "stacktrace.h",
         "status.cc",
         "status.h",
-        "statusor.cc",
         "statusor.h",
-        "statusor_internals.h",
         "str_util.cc",
         "str_util.h",
         "strcat.cc",
@@ -569,9 +585,9 @@ filegroup(
     ] + select({
         "//tensorflow/tsl:fuchsia": tf_google_mobile_srcs_no_runtime(),
         "//conditions:default": [
-            "//tensorflow/tsl/platform/default:mobile_srcs_no_runtime",
             "file_system_helper.cc",
             "tracing.cc",
+            "//tensorflow/tsl/platform/default:mobile_srcs_no_runtime",
         ],
     }),
     compatible_with = get_compatible_with_portable(),
@@ -597,10 +613,10 @@ filegroup(
         "subprocess.h",
     ]),
     compatible_with = get_compatible_with_portable(),
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/platform:__pkg__",
-    ],
+    ]),
 )
 
 filegroup(
@@ -609,10 +625,10 @@ filegroup(
         "gif.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core/lib/gif:__pkg__",
         "//tensorflow/core/platform:__pkg__",
-    ],
+    ]),
 )
 
 filegroup(
@@ -629,9 +645,9 @@ filegroup(
         ],
     ) + [
         "//tensorflow/tsl/platform/profile_utils:android_armv7a_cpu_utils_helper.h",
+        "//tensorflow/tsl/platform/profile_utils:clock_cycle_profiler.h",
         "//tensorflow/tsl/platform/profile_utils:cpu_utils.h",
         "//tensorflow/tsl/platform/profile_utils:i_cpu_utils_helper.h",
-        "//tensorflow/tsl/platform/profile_utils:clock_cycle_profiler.h",
     ],
     compatible_with = get_compatible_with_portable(),
 )
@@ -645,11 +661,13 @@ exports_files(
         "cpu_info.h",
         "cpu_info.cc",
         "crash_analysis.h",
+        "criticality.h",
         "cuda_libdevice_path.h",
         "demangle.h",
         "env.cc",
         "env.h",
         "env_time.h",
+        "error_logging.h",
         "file_system.cc",
         "file_system.h",
         "file_system_helper.cc",
@@ -675,10 +693,10 @@ exports_files(
         "tracing.h",
         "tracing.cc",
     ],
-    visibility = [
+    visibility = set_external_visibility([
         ":__subpackages__",
         "//tensorflow:__subpackages__",
-    ],
+    ]),
 )
 
 filegroup(
@@ -691,9 +709,9 @@ filegroup(
         "stringpiece.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core:__pkg__",
-    ],
+    ]),
 )
 
 cc_library(
@@ -715,14 +733,15 @@ filegroup(
         "setround.h",
         "snappy.h",
         "status.h",
+        "statusor.h",
         "tracing.h",
         "unbounded_work_queue.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/platform:__pkg__",
-    ],
+    ]),
 )
 
 filegroup(
@@ -731,10 +750,10 @@ filegroup(
         "jpeg.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/lib/jpeg:__pkg__",
-    ],
+    ]),
 )
 
 cc_library(
@@ -753,10 +772,10 @@ filegroup(
         "platform.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/lib/jpeg:__pkg__",
-    ],
+    ]),
 )
 
 filegroup(
@@ -770,11 +789,11 @@ filegroup(
         "stringpiece.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/lib/jpeg:__pkg__",
         "//tensorflow/core/platform:__pkg__",
-    ],
+    ]),
 )
 
 filegroup(
@@ -787,11 +806,11 @@ filegroup(
         "platform.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/lib/gif:__pkg__",
         "//tensorflow/core/platform:__pkg__",
-    ],
+    ]),
 )
 
 cc_library(
@@ -994,9 +1013,9 @@ cc_library(
     hdrs = ["types.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        ":platform",
         ":bfloat16",
         ":float8",
+        ":platform",
         ":tstring",
     ] + tf_platform_deps("types"),
 )
@@ -1004,9 +1023,9 @@ cc_library(
 cc_library(
     name = "build_test",
     testonly = 1,
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core/platform:__pkg__",
-    ],
+    ]),
     deps = [
         ":byte_order",
         ":fingerprint",
@@ -1038,33 +1057,14 @@ cc_library(
     hdrs = ["float8.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "//third_party/eigen3",
-        "@com_google_absl//absl/numeric:bits",
+        "@ml_dtypes//:float8",
     ],
-)
-
-cuda_library(
-    name = "float8_test_lib",
-    testonly = 1,
-    srcs = ["float8_test.cu.cc"],
-    copts = rocm_copts(),
-    deps = [
-        ":float8",
-        ":test",
-        ":test_main",
-        "//third_party/eigen3",
-    ],
-)
-
-cuda_cc_test(
-    name = "float8_test",
-    deps = [":float8_test_lib"],
 )
 
 cc_library(
     name = "cuda",
     deps = [
-        "//tensorflow/tsl/platform/default/build_config:cuda",
+        "@local_config_cuda//cuda:cudart_static",
     ],
 )
 
@@ -1098,6 +1098,16 @@ cc_library(
         "//visibility:public",
     ],
     deps = tf_logging_deps(),
+)
+
+cc_library(
+    name = "error_logging",
+    compatible_with = get_compatible_with_portable(),
+    textual_hdrs = ["error_logging.h"],
+    visibility = [
+        "//visibility:public",
+    ],
+    deps = tf_error_logging_deps(),
 )
 
 cc_library(
@@ -1147,7 +1157,7 @@ filegroup(
         "str_util.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = set_external_visibility(["//tensorflow/core:__pkg__"]),
 )
 
 cc_library(
@@ -1369,6 +1379,7 @@ tsl_cc_test(
         ":test",
         ":test_benchmark",
         ":test_main",
+        "@com_google_absl//absl/base:config",
     ],
 )
 
@@ -1509,6 +1520,7 @@ tsl_cc_test(
         ":errors",
         ":test",
         ":test_main",
+        "@com_google_absl//absl/status",
     ],
 )
 

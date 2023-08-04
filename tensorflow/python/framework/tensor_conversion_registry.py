@@ -235,7 +235,14 @@ def convert(value,
 
     if ret is NotImplemented:
       continue
-
+    # Convert ret to Tensor if it is a core.Tensor type.
+    if isinstance(ret, core.Tensor):
+      to_tensor = getattr(ret, "__tf_tensor__", None)
+      ret = (
+          to_tensor()  #  pylint: disable=not-callable
+          if to_tensor is not None
+          else ret
+      )
     if not isinstance(ret, accepted_result_types):
       raise RuntimeError(
           _add_error_prefix(

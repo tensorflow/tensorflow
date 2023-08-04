@@ -1,6 +1,6 @@
 load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 load("//tensorflow/tsl/platform:build_config.bzl", "if_llvm_system_z_available")
 
@@ -12,7 +12,7 @@ package(
 
 gentbl_cc_library(
     name = "passes_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             [
@@ -37,7 +37,7 @@ cc_library(
         "rt_to_llvm.cc",
     ],
     hdrs = ["passes.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":custom_call_encoding",
         ":passes_inc_gen",
@@ -66,7 +66,7 @@ cc_library(
     name = "calling_convention",
     srcs = ["calling_convention.cc"],
     hdrs = ["calling_convention.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/compiler/xla/mlir/runtime/ir:rt",
         "@llvm-project//mlir:FuncDialect",
@@ -78,7 +78,7 @@ cc_library(
 xla_cc_test(
     name = "calling_convention_test",
     srcs = ["calling_convention_test.cc"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":calling_convention",
         "//tensorflow/compiler/xla/mlir/runtime/ir:rt",
@@ -95,7 +95,7 @@ cc_library(
     name = "compilation_pipeline_cpu",
     srcs = ["compilation_pipeline_cpu.cc"],
     hdrs = ["compilation_pipeline_cpu.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
     deps = [
         ":compilation_pipeline_options",
@@ -103,9 +103,9 @@ cc_library(
         ":custom_call_encoding",
         ":passes",
         "//tensorflow/compiler/xla/mlir/backends/cpu/transforms:passes",
-        "//tensorflow/compiler/xla/mlir/framework/transforms:passes",
         "//tensorflow/compiler/xla/mlir/math/transforms:passes",
         "//tensorflow/compiler/xla/mlir/memref/transforms:passes",
+        "//tensorflow/compiler/xla/mlir_hlo:transforms_passes",
         "//tensorflow/compiler/xla/runtime:compiler",
         "@llvm-project//mlir:AMXToLLVMIRTranslation",
         "@llvm-project//mlir:AffineDialect",
@@ -117,12 +117,15 @@ cc_library(
         "@llvm-project//mlir:AsyncDialect",
         "@llvm-project//mlir:AsyncToLLVM",
         "@llvm-project//mlir:AsyncTransforms",
+        "@llvm-project//mlir:BuiltinToLLVMIRTranslation",
         "@llvm-project//mlir:ComplexToLLVM",
         "@llvm-project//mlir:ControlFlowDialect",
         "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:FuncToLLVM",
+        "@llvm-project//mlir:GPUToGPURuntimeTransforms",
+        "@llvm-project//mlir:GPUTransforms",
         "@llvm-project//mlir:LLVMToLLVMIRTranslation",
-        "@llvm-project//mlir:LinalgToLLVM",
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:MathDialect",
         "@llvm-project//mlir:MathToLLVM",
@@ -146,7 +149,7 @@ cc_library(
     name = "compilation_pipeline_gpu",
     srcs = ["compilation_pipeline_gpu.cc"],
     hdrs = ["compilation_pipeline_gpu.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
     deps = [
         ":compilation_pipeline_options",
@@ -157,15 +160,18 @@ cc_library(
         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo_gpu",
         "//tensorflow/compiler/xla/runtime:compiler",
+        "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:AsyncDialect",
         "@llvm-project//mlir:AsyncToLLVM",
         "@llvm-project//mlir:AsyncTransforms",
+        "@llvm-project//mlir:BuiltinToLLVMIRTranslation",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FuncToLLVM",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMToLLVMIRTranslation",
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:MemRefToLLVM",
+        "@llvm-project//mlir:MemRefTransforms",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:ReconcileUnrealizedCasts",
         "@llvm-project//mlir:SCFDialect",
@@ -178,7 +184,7 @@ cc_library(
 cc_library(
     name = "compilation_pipeline_options",
     hdrs = ["compilation_pipeline_options.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":custom_call_encoding",
         "//tensorflow/compiler/xla/runtime:type_id",
@@ -190,8 +196,9 @@ cc_library(
     name = "custom_call_encoding",
     srcs = ["custom_call_encoding.cc"],
     hdrs = ["custom_call_encoding.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/mlir/runtime/ir:rt",
         "//tensorflow/compiler/xla/runtime:custom_call",
         "//tensorflow/compiler/xla/runtime:tracing",
@@ -212,28 +219,32 @@ cc_library(
     name = "jit_compiler",
     srcs = ["jit_compiler.cc"],
     hdrs = ["jit_compiler.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":calling_convention",
         ":compiler",
         ":passes",
         ":specialization",
         ":type_converter",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@llvm-project//llvm:Core",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:ExecutionEngineUtils",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Parser",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:ToLLVMIRTranslation",
         "//tensorflow/compiler/xla/mlir/runtime/ir:rt",
         "//tensorflow/compiler/xla/runtime:arguments",
         "//tensorflow/compiler/xla/runtime:compiler",
         "//tensorflow/compiler/xla/runtime:constraints",
         "//tensorflow/compiler/xla/runtime:executable",
         "//tensorflow/compiler/xla/runtime:symbolic_shape",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@llvm-project//llvm:Analysis",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:Passes",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:Target",
+        "@llvm-project//mlir:ExecutionEngineUtils",
+        "@llvm-project//mlir:FuncExtensions",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:ToLLVMIRTranslation",
     ] + select({
         "//tensorflow/tsl:arm_any": [
             "@llvm-project//llvm:AArch64AsmParser",
@@ -256,7 +267,7 @@ cc_library(
     name = "specialization",
     srcs = ["specialization.cc"],
     hdrs = ["specialization.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":type_converter",
         "//tensorflow/compiler/xla/mlir/runtime/utils:constraints",
@@ -281,11 +292,10 @@ cc_library(
     name = "type_converter",
     srcs = ["type_converter.cc"],
     hdrs = ["type_converter.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/mlir/runtime/ir:rt",
-        "//tensorflow/compiler/xla/runtime:errors",
         "//tensorflow/compiler/xla/runtime:types",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -299,7 +309,7 @@ cc_library(
 xla_cc_test(
     name = "type_converter_test",
     srcs = ["type_converter_test.cc"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":type_converter",
         "//tensorflow/compiler/xla/runtime:types",
@@ -312,7 +322,7 @@ xla_cc_test(
 cc_library(
     name = "compiler",
     hdrs = ["compiler.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",

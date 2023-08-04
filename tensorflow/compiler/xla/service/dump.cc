@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Support/ToolOutputFile.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "mlir/Transforms/LocationSnapshot.h"  // from @llvm-project
@@ -335,11 +336,14 @@ static std::optional<std::string> DumpToFileInDirImpl(
   return file_path;
 }
 
+static absl::Mutex stdout_dump_mutex(absl::kConstInit);
+
 static std::optional<std::string> DumpToFileInDirOrStdoutImpl(
     string_view filename, string_view contents,
     const CanonicalDebugOptions& opts) {
   // Dump to stdout if that's called for.
   if (opts.dumping_to_stdout()) {
+    absl::MutexLock lock(&stdout_dump_mutex);
     std::cout << "*** Begin " << filename << " ***\n"
               << contents << "\n*** End " << filename << " ***" << std::endl;
     return std::nullopt;
@@ -354,6 +358,7 @@ static std::optional<std::string> DumpToFileInDirOrStdoutImpl(
     const CanonicalDebugOptions& opts) {
   // Dump to stdout if that's called for.
   if (opts.dumping_to_stdout()) {
+    absl::MutexLock lock(&stdout_dump_mutex);
     std::cout << "*** Begin " << filename << " ***\n";
     while (auto next_producer = data_producer.Next()) {
       std::cout << next_producer();
@@ -395,6 +400,7 @@ static std::vector<std::string> DumpHloModuleImpl(
     print_options.set_print_operand_index_annotation_interval(5);
     print_options.set_print_backend_config(true);
     print_options.set_print_metadata(opts.dump_hlo_metadata);
+    print_options.set_print_name_after_closing_brace(true);
     file_paths.push_back(DumpToFileInDirOrStdoutImpl(
         StrCat(filename, ".txt"), module.ToString(print_options), opts));
     if (buffer_assn) {
@@ -613,27 +619,17 @@ void DumpToFileInDirOrStdout(const HloModule& module, string_view file_prefix,
   CanonicalDebugOptions opts(module.config().debug_options());
   if (opts.dumping_to_stdout()) return op->dump();
 
-  auto file_path =
-      GetDumpFilePath(FilenameFor(module, file_prefix, "mlir"), opts);
-  if (!file_path) return;
-
-  std::string error;
-  std::unique_ptr<llvm::ToolOutputFile> outputFile =
-      mlir::openOutputFile(llvm::SmallString<32>(*file_path), &error);
-  if (!outputFile) {
-    LOG(ERROR) << "Error: " << error << std::endl
-               << "Failed to open file: " << *file_path;
-    return;
-  }
-
   mlir::OpPrintingFlags print_flags = mlir::OpPrintingFlags().useLocalScope();
   // Enable debug info so that it is easier to see the corresponding HLO node.
   if (file_prefix == "lmhlo") {
     print_flags.enableDebugInfo(/*enable=*/true,
                                 /*prettyForm=*/opts.dump_mlir_pretty_form);
   }
-  op->print(outputFile->os(), print_flags);
-  outputFile->keep();
+  std::string content;
+  llvm::raw_string_ostream string_stream(content);
+  op->print(string_stream, print_flags);
+  DumpToFileInDirOrStdoutImpl(FilenameFor(module, file_prefix, "mlir"), content,
+                              opts);
 }
 
 void DumpProtobufToFile(const tsl::protobuf::Message& proto,

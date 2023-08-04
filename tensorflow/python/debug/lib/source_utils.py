@@ -19,7 +19,7 @@ import os
 import re
 import zipfile
 
-import absl
+from absl import app
 import numpy as np
 
 from tensorflow.python.debug.lib import profiling
@@ -29,7 +29,7 @@ _TENSORFLOW_BASEDIR = os.path.dirname(
     os.path.dirname(os.path.dirname(os.path.dirname(
         os.path.normpath(os.path.abspath(__file__))))))
 
-_ABSL_BASEDIR = os.path.dirname(absl.__file__)
+_ABSL_BASEDIR = os.path.dirname(app.__file__)
 
 
 UNCOMPILED_SOURCE_SUFFIXES = (".py")

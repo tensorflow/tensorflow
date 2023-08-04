@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_DISPATCHER_STATE_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_DISPATCHER_STATE_H_
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <queue>
@@ -25,9 +26,9 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/data/service/auto_shard_rewriter.h"
 #include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/common.pb.h"
+#include "tensorflow/core/data/service/graph_rewriters.h"
 #include "tensorflow/core/data/service/journal.h"
 #include "tensorflow/core/data/service/journal.pb.h"
 #include "tensorflow/core/platform/status.h"
@@ -289,11 +290,19 @@ class DispatcherState {
   // deterministically sharding a dataset among a fixed set of workers.
   StatusOr<int64_t> GetWorkerIndex(absl::string_view worker_address) const;
 
-  // Returns the paths of all snapshots inititated during the lifetime of this
+  // Returns the paths of all snapshots initiated during the lifetime of this
   // journal.
   const absl::flat_hash_set<std::string>& ListSnapshotPaths() const {
     return snapshot_paths_;
   }
+
+  // Returns a bool describing whether or not compression was disabled at
+  // runtime for the given dataset, if such a decision has been made.
+  std::optional<bool> CompressionDisabledAtRuntime(
+      const std::string& dataset_id) const;
+
+  // Returns the current number of registered workers.
+  int64_t GetNumberOfRegisteredWorkers() const { return workers_.size(); }
 
  private:
   void RegisterDataset(const RegisterDatasetUpdate& register_dataset);
@@ -313,6 +322,8 @@ class DispatcherState {
   void CreateTask(const CreateTaskUpdate& create_task);
   void FinishTask(const FinishTaskUpdate& finish_task);
   void Snapshot(const SnapshotUpdate& snapshot);
+  void CompressionDisabledAtRuntime(const CompressionDisabledAtRuntimeUpdate&
+                                        compression_disabled_at_runtime);
 
   // Updates the next available dataset ID.
   void UpdateNextAvailableDatasetId();
@@ -357,6 +368,9 @@ class DispatcherState {
   absl::flat_hash_map<std::string, TasksById> tasks_by_worker_;
   // Paths for all snapshots initiated during the lifetime of this journal.
   absl::flat_hash_set<std::string> snapshot_paths_;
+  // A mapping of dataset id to a boolean describing whether or not compression
+  // was disabled at runtime for that dataset.
+  absl::flat_hash_map<std::string, bool> compression_disabled_at_runtime_;
 };
 
 }  // namespace data

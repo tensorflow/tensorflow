@@ -9,8 +9,8 @@ load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow/compiler/xla:internal"],
-    licenses = ["notice"],
 )
 
 build_test(

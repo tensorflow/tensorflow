@@ -33,7 +33,6 @@ StatusOr<void*> GetCudaRuntimeDsoHandle();
 StatusOr<void*> GetCublasDsoHandle();
 StatusOr<void*> GetCublasLtDsoHandle();
 StatusOr<void*> GetCufftDsoHandle();
-StatusOr<void*> GetCurandDsoHandle();
 StatusOr<void*> GetCusolverDsoHandle();
 StatusOr<void*> GetCusparseDsoHandle();
 StatusOr<void*> GetCuptiDsoHandle();
@@ -72,7 +71,6 @@ StatusOr<void*> GetCudaRuntimeDsoHandle();
 StatusOr<void*> GetCublasDsoHandle();
 StatusOr<void*> GetCublasLtDsoHandle();
 StatusOr<void*> GetCufftDsoHandle();
-StatusOr<void*> GetCurandDsoHandle();
 StatusOr<void*> GetCusolverDsoHandle();
 StatusOr<void*> GetCusparseDsoHandle();
 StatusOr<void*> GetCuptiDsoHandle();
@@ -86,6 +84,7 @@ StatusOr<void*> GetRocsolverDsoHandle();
 StatusOr<void*> GetHipsolverDsoHandle();
 StatusOr<void*> GetRoctracerDsoHandle();
 StatusOr<void*> GetHipsparseDsoHandle();
+StatusOr<void*> GetHipblasltDsoHandle();
 StatusOr<void*> GetHipDsoHandle();
 }  // namespace CachedDsoLoader
 

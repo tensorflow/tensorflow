@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/mlir/backends/gpu/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir/runtime/ir/rt_dialect.h"
 #include "tensorflow/compiler/xla/mlir/runtime/ir/rt_ops.h"
@@ -40,24 +41,35 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
+#include "tensorflow/compiler/xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
 
-#define GEN_PASS_DEF_OUTLINECUDAGRAPHSPASS
+#define GEN_PASS_DEF_OUTLINEGPUGRAPHSPASS
 #include "tensorflow/compiler/xla/mlir/backends/gpu/transforms/passes.h.inc"
 
 using namespace mlir;  // NOLINT
 
 using mlir::gpu::LaunchFuncOp;
 
-class OutlineCudaGraphsPass
-    : public impl::OutlineCudaGraphsPassBase<OutlineCudaGraphsPass> {
+class OutlineGpuGraphsPass
+    : public impl::OutlineGpuGraphsPassBase<OutlineGpuGraphsPass> {
+ public:
+  OutlineGpuGraphsPass() = default;
+  explicit OutlineGpuGraphsPass(int gpu_graph_level, int min_graph_size)
+      : gpu_graph_level_(gpu_graph_level) {
+    this->min_graph_size_ = min_graph_size;
+  }
+
   void runOnOperation() override;
 
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<func::FuncDialect, runtime::RuntimeDialect>();
   }
+
+ private:
+  int gpu_graph_level_ = 3;
 };
 
 //===----------------------------------------------------------------------===//
@@ -147,9 +159,34 @@ struct GemmOpCapture : public OpCapturePattern {
   }
 };
 
+struct MemcpyOpCapture : public OpCapturePattern {
+  FailureOr<OpCapturePattern::Capture> match(Operation* op) final {
+    if (auto memcpy = llvm::dyn_cast<mlir::gpu::MemcpyOp>(op)) {
+      // We use a heuristic to identify the direction of the memcpy operation,
+      // if the operand was allocated by alloca op or is a global memref, then
+      // it must be a memref on the host.
+      auto IsHostMemRef = [](Value value) {
+        auto* op = value.getDefiningOp();
+        return llvm::isa_and_nonnull<memref::AllocaOp, memref::GetGlobalOp>(op);
+      };
+
+      auto IsDeviceToDevice = [&](mlir::gpu::MemcpyOp op) {
+        return !IsHostMemRef(op.getDst()) && !IsHostMemRef(op.getSrc());
+      };
+
+      // Device-to-host Memcpy cannot be captured by CUDA graphs.
+      if (IsDeviceToDevice(memcpy)) {
+        return kMove;
+      }
+    }
+    return failure();
+  }
+};
+
 // Capture pure operations by cloning them into graph capture function.
 struct ConstantOpCapture : public CloneOp<arith::ConstantOp> {};
 struct ViewOpCapture : public CloneOp<memref::ViewOp> {};
+struct ReinterpretCastOpCapture : public CloneOp<memref::ReinterpretCastOp> {};
 
 //===----------------------------------------------------------------------===//
 
@@ -283,21 +320,23 @@ static std::vector<Value> GetGraphCaptureFuncArgs(const CaptureSequence& seq) {
         [&](Value arg) { return !defined_by_seq.contains(arg); });
     args.insert(external_args.begin(), external_args.end());
   }
-
-  return args.takeVector();
+  llvm::SmallVector<Value, 0> args_sv = args.takeVector();
+  std::vector<Value> args_tv(args_sv.begin(), args_sv.end());
+  return args_tv;
 }
 
 // Given a sequence of operations, outline them into a graph capture function
 // and replace them with an XLA Gpu runtime function call.
 static LogicalResult Outline(unsigned ordinal,
                              CustomCallDeclarations& custom_calls,
-                             CaptureSequence& seq) {
+                             CaptureSequence& seq, int min_graph_size) {
   // Only operations that have to be moved into the graph capture function
   // represent Gpu computations.
   unsigned num_move_captures = llvm::count_if(seq, [](auto capture) {
     return capture.second == OpCapturePattern::Capture::kMove;
   });
-  if (num_move_captures < 2) return failure();
+  DebugOptions debug_options = GetDebugOptionsFromFlags();
+  if (num_move_captures < min_graph_size) return failure();
 
   SymbolTable& sym_table = custom_calls.sym_table();
   MLIRContext* ctx = sym_table.getOp()->getContext();
@@ -312,8 +351,46 @@ static LogicalResult Outline(unsigned ordinal,
 
   // Create a function in the compiled module.
   auto func = b.create<func::FuncOp>(
-      "xla.gpu.cuda.graph.capture",
+      "xla.gpu.graph.capture",
       FunctionType::get(ctx, TypeRange(ValueRange(args)), TypeRange()));
+
+  Operation* first_op = seq.front().first;
+  auto parent_func = first_op->getParentOfType<func::FuncOp>();
+
+  // If an argument to parent_func has the "lmhlo.constant_name" attribute and
+  // is passed to the graph capture function, we propagate the attribute the
+  // graph capture function.
+  for (unsigned i = 0; i < args.size(); ++i) {
+    Value arg = args[i];
+
+    // Check if arg is a function argument of parent_func.
+    if (!isa<BlockArgument>(arg)) continue;
+
+    // Function arguments are passed in as block arguments to the entry block.
+    auto block_arg = cast<BlockArgument>(arg);
+    Block* parent_block = block_arg.getParentBlock();
+    if (!parent_block->isEntryBlock()) continue;
+
+    // Check that the parent_block is in the SSACFG region of parent_func.
+    Region& parent_func_region = parent_func.getRegion();
+    if (parent_block->getParent() != &parent_func_region) continue;
+
+    unsigned parent_func_arg_index = block_arg.getArgNumber();
+    auto cst = parent_func.getArgAttrOfType<StringAttr>(parent_func_arg_index,
+                                                        "lmhlo.constant_name");
+    if (cst) {
+      func.setArgAttr(i, "lmhlo.constant_name", cst);
+    }
+  }
+
+  for (auto op : seq) {
+    mlir::Operation* captured_op = op.first;
+    if (isa<lmhlo_gpu::GEMMOp>(captured_op)) {
+      func->setAttr(b.getStringAttr("xla.requires_blas"),
+                    BoolAttr::get(ctx, true));
+      break;
+    }
+  }
 
   // Add graph capture function to the module.
   sym_table.insert(func);
@@ -325,7 +402,7 @@ static LogicalResult Outline(unsigned ordinal,
   // Create a custom call declaration corresponding to the outlined graph
   // capture function.
   func::FuncOp graph_launch = custom_calls.GetOrCreate(
-      b, "xla.gpu.cuda.graph.launch", TypeRange(ValueRange(args)), TypeRange());
+      b, "xla.gpu.graph.launch", TypeRange(ValueRange(args)), TypeRange());
 
   // Call the cuda graph launch custom call right before the first moved op.
   auto insertion_point = llvm::find_if(seq, [](auto capture) {
@@ -375,30 +452,47 @@ static LogicalResult Outline(unsigned ordinal,
 
 //===----------------------------------------------------------------------===//
 
-void OutlineCudaGraphsPass::runOnOperation() {
+void OutlineGpuGraphsPass::runOnOperation() {
   SymbolTable sym_table(getOperation());
   CustomCallDeclarations custom_calls(std::move(sym_table));
 
   OpCapturePatternSet patterns;
-  patterns.emplace_back(new LaunchFuncOpCapture());
-  patterns.emplace_back(new ConvForwardOpCapture());
-  patterns.emplace_back(new ConvBackwardInputOpCapture());
-  patterns.emplace_back(new ConvBackwardFilterOpCapture());
-  patterns.emplace_back(new ConvForwardFusedOpCapture());
-  patterns.emplace_back(new ConvForwardFusedSideInputOpCapture());
-  patterns.emplace_back(new ConstantOpCapture());
-  patterns.emplace_back(new GemmOpCapture());
-  patterns.emplace_back(new ViewOpCapture());
+
+  if (gpu_graph_level_ >= 1) {
+    // Enable capturing fusions and memcpies.
+    patterns.emplace_back(new LaunchFuncOpCapture());
+    patterns.emplace_back(new ConstantOpCapture());
+    patterns.emplace_back(new ViewOpCapture());
+    patterns.emplace_back(new MemcpyOpCapture());
+    patterns.emplace_back(new ReinterpretCastOpCapture());
+  }
+
+  if (gpu_graph_level_ >= 2) {
+    // Enable capturing conv/gemms.
+    patterns.emplace_back(new ConvForwardOpCapture());
+    patterns.emplace_back(new ConvBackwardInputOpCapture());
+    patterns.emplace_back(new ConvBackwardFilterOpCapture());
+    patterns.emplace_back(new ConvForwardFusedOpCapture());
+    patterns.emplace_back(new ConvForwardFusedSideInputOpCapture());
+    patterns.emplace_back(new GemmOpCapture());
+  }
 
   unsigned ordinal = 1;  // entry point will be exported with ordinal 0
   for (auto& seq : CollectCaptureSequences(getAnalysis<DominanceInfo>(),
                                            getOperation(), patterns)) {
-    if (succeeded(Outline(ordinal, custom_calls, seq))) ordinal++;
+    if (succeeded(Outline(ordinal, custom_calls, seq, min_graph_size_)))
+      ordinal++;
   }
 }
 
-std::unique_ptr<OperationPass<ModuleOp>> createOutlineCudaGraphsPass() {
-  return std::make_unique<OutlineCudaGraphsPass>();
+std::unique_ptr<OperationPass<ModuleOp>> createOutlineGpuGraphsPass() {
+  return std::make_unique<OutlineGpuGraphsPass>();
+}
+
+std::unique_ptr<OperationPass<ModuleOp>> createOutlineGpuGraphsPass(
+    int gpu_graph_level, int min_graph_size) {
+  return std::make_unique<OutlineGpuGraphsPass>(gpu_graph_level,
+                                                min_graph_size);
 }
 
 }  // namespace gpu

@@ -68,9 +68,9 @@ cc_library(
     copts = tf_profiler_copts(),
     visibility = ["//tensorflow/core/profiler:internal"],
     deps = [
-        "@com_google_absl//absl/container:flat_hash_map",
         "//tensorflow/core:lib",
         "//tensorflow/tsl/profiler/backends/cpu:traceme_recorder",
+        "@com_google_absl//absl/container:flat_hash_map",
     ] + if_static([
         ":traceme_recorder_impl",
     ]),
@@ -100,9 +100,9 @@ cc_library(
     copts = tf_profiler_copts(),
     visibility = ["//tensorflow/core/profiler:internal"],
     deps = [
-        "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
         "//tensorflow/tsl/profiler/backends/cpu:annotation_stack",
+        "@com_google_absl//absl/strings",
     ] + if_static([
         ":annotation_stack_impl",
     ]),
@@ -160,7 +160,6 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla/backends/profiler/cpu:metadata_utils",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
-        "//tensorflow/core/profiler/convert:xla_op_utils",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler/utils:xplane_builder",
         "//tensorflow/core/profiler/utils:xplane_schema",

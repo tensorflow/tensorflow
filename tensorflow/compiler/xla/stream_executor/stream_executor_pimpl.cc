@@ -33,7 +33,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
 #include "tensorflow/compiler/xla/stream_executor/fft.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
-#include "tensorflow/compiler/xla/stream_executor/rng.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
 #include "tensorflow/tsl/platform/errors.h"
@@ -262,38 +261,8 @@ bool StreamExecutor::SupportsBlas() const {
   return implementation_->SupportsBlas();
 }
 
-bool StreamExecutor::SupportsRng() const {
-  return implementation_->SupportsRng();
-}
-
 bool StreamExecutor::SupportsDnn() const {
   return implementation_->SupportsDnn();
-}
-
-bool StreamExecutor::GetConvolveAlgorithms(
-    dnn::ConvolutionKind kind, dnn::DataType input_type,
-    std::vector<dnn::AlgorithmDesc>* out_algorithms) {
-  dnn::DnnSupport* dnn_support = AsDnn();
-  if (!dnn_support) {
-    return false;
-  }
-  switch (kind) {
-    default:
-      return false;
-    case dnn::ConvolutionKind::FORWARD:
-    case dnn::ConvolutionKind::FORWARD_BIAS_ACTIVATION:
-      return dnn_support->GetConvolveAlgorithms(
-          GetDeviceDescription().cuda_compute_capability(), input_type,
-          out_algorithms);
-    case dnn::ConvolutionKind::BACKWARD_DATA:
-      return dnn_support->GetConvolveBackwardDataAlgorithms(
-          GetDeviceDescription().cuda_compute_capability(), input_type,
-          out_algorithms);
-    case dnn::ConvolutionKind::BACKWARD_FILTER:
-      return dnn_support->GetConvolveBackwardFilterAlgorithms(
-          GetDeviceDescription().cuda_compute_capability(), input_type,
-          out_algorithms);
-  }
 }
 
 tsl::Status StreamExecutor::GetConvolveRunners(
@@ -304,7 +273,7 @@ tsl::Status StreamExecutor::GetConvolveRunners(
     DeviceMemoryBase filter_data, const dnn::BatchDescriptor& output_descriptor,
     DeviceMemoryBase output_data,
     const dnn::ConvolutionDescriptor& convolution_descriptor, bool use_fallback,
-    ScratchAllocator* scratch_allocator,
+    ScratchAllocator* scratch_allocator, const NumericOptions& numeric_options,
     std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_exec_plans) {
   dnn::DnnSupport* dnn_support = AsDnn();
   if (!dnn_support) {
@@ -314,7 +283,27 @@ tsl::Status StreamExecutor::GetConvolveRunners(
       use_cudnn_frontend, kind, input_type, output_type, stream,
       input_descriptor, input_data, filter_descriptor, filter_data,
       output_descriptor, output_data, convolution_descriptor, use_fallback,
-      scratch_allocator, out_exec_plans);
+      scratch_allocator, numeric_options, out_exec_plans);
+}
+
+tsl::Status StreamExecutor::GetGraphConvolveRunners(
+    dnn::ConvolutionKind kind, dnn::DataType input_type,
+    dnn::DataType output_type, Stream* stream,
+    const dnn::BatchDescriptor& input_descriptor,
+    const dnn::FilterDescriptor& filter_descriptor,
+    const dnn::BatchDescriptor& output_descriptor,
+    const dnn::ConvolutionDescriptor& convolution_descriptor, bool use_fallback,
+    const NumericOptions& numeric_options,
+    std::vector<std::unique_ptr<const dnn::GraphConvRunner>>* out_exec_plans,
+    std::string serialized_graph) {
+  dnn::DnnSupport* dnn_support = AsDnn();
+  if (!dnn_support) {
+    return tsl::errors::Unimplemented("DNN library is not found.");
+  }
+  return dnn_support->GetGraphConvolveRunners(
+      kind, input_type, output_type, stream, input_descriptor,
+      filter_descriptor, output_descriptor, convolution_descriptor,
+      use_fallback, numeric_options, out_exec_plans, serialized_graph);
 }
 
 tsl::Status StreamExecutor::GetFusedConvolveRunners(
@@ -327,7 +316,7 @@ tsl::Status StreamExecutor::GetFusedConvolveRunners(
     const dnn::BatchDescriptor& bias_descriptor,
     const dnn::BatchDescriptor& output_descriptor,
     const dnn::ConvolutionDescriptor& convolution_descriptor, bool use_fallback,
-    dnn::ActivationMode activation_mode,
+    dnn::ActivationMode activation_mode, const NumericOptions& numeric_options,
     std::vector<std::unique_ptr<const dnn::FusedConvRunner>>* out_exec_plans) {
   dnn::DnnSupport* dnn_support = AsDnn();
   if (!dnn_support) {
@@ -337,7 +326,8 @@ tsl::Status StreamExecutor::GetFusedConvolveRunners(
       use_cudnn_frontend, kind, input_type, bias_type, output_type,
       conv_input_scale, side_input_scale, leakyrelu_alpha, stream,
       input_descriptor, filter_descriptor, bias_descriptor, output_descriptor,
-      convolution_descriptor, use_fallback, activation_mode, out_exec_plans);
+      convolution_descriptor, use_fallback, activation_mode, numeric_options,
+      out_exec_plans);
 }
 
 tsl::Status StreamExecutor::GetFusedMatmulRunners(
@@ -345,6 +335,7 @@ tsl::Status StreamExecutor::GetFusedMatmulRunners(
     dnn::DataType output_type, Stream* stream, bool trans_a, bool trans_b,
     uint64_t m, uint64_t n, uint64_t k, int64_t lda, int64_t ldb, int64_t ldc,
     dnn::ActivationMode activation_mode, bool use_fallback,
+    const NumericOptions& numeric_options,
     std::vector<std::unique_ptr<const dnn::FusedMatmulRunner>>*
         out_exec_plans) {
   dnn::DnnSupport* dnn_support = AsDnn();
@@ -355,7 +346,7 @@ tsl::Status StreamExecutor::GetFusedMatmulRunners(
   return dnn_support->GetFusedMatmulRunners(
       use_cudnn_frontend, input_type, bias_type, output_type, stream, trans_a,
       trans_b, m, n, k, lda, ldb, ldc, activation_mode, use_fallback,
-      out_exec_plans);
+      numeric_options, out_exec_plans);
 }
 
 bool StreamExecutor::GetMIOpenConvolveAlgorithms(
@@ -401,8 +392,8 @@ StreamExecutor::createRnnDescriptor(
     int batch_size, dnn::RnnInputMode input_mode,
     dnn::RnnDirectionMode direction_mode, dnn::RnnMode rnn_mode,
     dnn::DataType data_type, const dnn::AlgorithmConfig& algorithm_config,
-    float dropout, uint64_t seed, ScratchAllocator* state_allocator,
-    bool use_padded_io) {
+    const NumericOptions& numeric_options, float dropout, uint64_t seed,
+    ScratchAllocator* state_allocator, bool use_padded_io) {
   dnn::DnnSupport* dnn_support = AsDnn();
   if (!dnn_support) {
     return tsl::Status(absl::StatusCode::kUnknown,
@@ -410,8 +401,8 @@ StreamExecutor::createRnnDescriptor(
   }
   return dnn_support->createRnnDescriptor(
       num_layers, hidden_size, input_size, cell_size, batch_size, input_mode,
-      direction_mode, rnn_mode, data_type, algorithm_config, dropout, seed,
-      state_allocator, use_padded_io);
+      direction_mode, rnn_mode, data_type, algorithm_config, numeric_options,
+      dropout, seed, state_allocator, use_padded_io);
 }
 
 tsl::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
@@ -483,16 +474,6 @@ fft::FftSupport* StreamExecutor::AsFft() {
 
   fft_.reset(implementation_->CreateFft());
   return fft_.get();
-}
-
-rng::RngSupport* StreamExecutor::AsRng() {
-  absl::MutexLock lock(&mu_);
-  if (rng_ != nullptr) {
-    return rng_.get();
-  }
-
-  rng_.reset(implementation_->CreateRng());
-  return rng_.get();
 }
 
 tsl::Status StreamExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
@@ -808,22 +789,6 @@ void StreamExecutor::DeallocateStream(Stream* stream) {
 
 bool StreamExecutor::CreateStreamDependency(Stream* dependent, Stream* other) {
   return implementation_->CreateStreamDependency(dependent, other);
-}
-
-bool StreamExecutor::AllocateTimer(Timer* timer) {
-  return implementation_->AllocateTimer(timer);
-}
-
-void StreamExecutor::DeallocateTimer(Timer* timer) {
-  return implementation_->DeallocateTimer(timer);
-}
-
-bool StreamExecutor::StartTimer(Stream* stream, Timer* timer) {
-  return implementation_->StartTimer(stream, timer);
-}
-
-bool StreamExecutor::StopTimer(Stream* stream, Timer* timer) {
-  return implementation_->StopTimer(stream, timer);
 }
 
 std::unique_ptr<DeviceDescription> StreamExecutor::CreateDeviceDescription()

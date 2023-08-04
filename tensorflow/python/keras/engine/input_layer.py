@@ -15,7 +15,7 @@
 # pylint: disable=protected-access
 """Input layer code (`Input` and `InputLayer`)."""
 
-from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
@@ -26,7 +26,6 @@ from tensorflow.python.keras.engine import keras_tensor
 from tensorflow.python.keras.engine import node as node_module
 from tensorflow.python.keras.saving.saved_model import layer_serialization
 from tensorflow.python.keras.utils import tf_utils
-from tensorflow.python.util.tf_export import keras_export
 
 
 def _assert_other_arg_none(arg_name, arg):
@@ -36,7 +35,6 @@ def _assert_other_arg_none(arg_name, arg):
                      'but %s is not None.' % arg_name)
 
 
-@keras_export('keras.layers.InputLayer')
 class InputLayer(base_layer.Layer):
   """Layer to be used as an entry point into a Network (a graph of layers).
 
@@ -112,7 +110,7 @@ class InputLayer(base_layer.Layer):
     self._init_ragged = ragged
     self._init_type_spec = type_spec
 
-    strategy = distribution_strategy_context.get_strategy()
+    strategy = distribute_lib.get_strategy()
     if strategy and batch_size is not None and \
         distributed_training_utils.global_batch_size_supported(strategy):
       if batch_size % strategy.num_replicas_in_sync != 0:
@@ -254,7 +252,6 @@ class InputLayer(base_layer.Layer):
     return layer_serialization.InputLayerSavedModelSaver(self)
 
 
-@keras_export('keras.Input', 'keras.layers.Input')
 def Input(  # pylint: disable=invalid-name
     shape=None,
     batch_size=None,

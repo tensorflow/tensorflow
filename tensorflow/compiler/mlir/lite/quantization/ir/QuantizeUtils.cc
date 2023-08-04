@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantizeUtils.h"
 
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/ir/UniformSupport.h"
 
 using namespace mlir;
@@ -47,28 +49,11 @@ static DenseElementsAttr convertDenseFPElementsAttr(
     DenseFPElementsAttr realFPElementsAttr,
     quant::QuantizedType quantizedElementType,
     const UniformQuantizedValueConverter &converter) {
-  // Convert to corresponding quantized value attributes.
-  SmallVector<APInt, 8> quantValues;
-  if (realFPElementsAttr.isSplat()) {
-    quantValues.push_back(
-        converter.quantizeFloatToInt(*realFPElementsAttr.begin()));
-  } else {
-    quantValues.reserve(realFPElementsAttr.getNumElements());
-    for (APFloat realVal : realFPElementsAttr) {
-      quantValues.push_back(converter.quantizeFloatToInt(realVal));
-    }
-  }
-
-  // Cast from an expressed-type-based type to storage-type-based type,
-  // preserving the dense shape (i.e. tensor<4xf32> -> tensor<4xi8>).
-  ShapedType newDenseType =
-      quantizedElementType
-          .castExpressedToStorageType(realFPElementsAttr.getType())
-          .dyn_cast_or_null<ShapedType>();
-  if (!newDenseType) {
-    return nullptr;
-  }
-  return DenseIntElementsAttr::get(newDenseType, quantValues);
+  return realFPElementsAttr.mapValues(
+      quantizedElementType.getStorageType(),
+      [&converter](const APFloat &realVal) {
+        return converter.quantizeFloatToInt(realVal);
+      });
 }
 
 /// Converts a real expressed SplatElementsAttr to a corresponding

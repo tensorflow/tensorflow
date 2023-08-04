@@ -16,8 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_TYPES_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_TYPES_H_
 
+#include <algorithm>
 #include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
@@ -27,7 +29,6 @@ limitations under the License.
 #include "pybind11/stl.h"  // from @pybind11
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/python/status_casters.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -43,25 +44,31 @@ StatusOr<PrimitiveType> DtypeToPrimitiveType(const pybind11::dtype& np_type);
 // Converts a PrimitiveType to a Numpy dtype.
 StatusOr<pybind11::dtype> PrimitiveTypeToDtype(PrimitiveType type);
 
-// Returns a numpy-style format descriptor string for `type`.
-StatusOr<std::string> FormatDescriptorForPrimitiveType(PrimitiveType type);
+// Returns a Python buffer protocol (PEP 3118) format descriptor string for
+// `type`. Return nullptr if there is no suitable choice of format string.
+const char* PEP3118FormatDescriptorForPrimitiveType(PrimitiveType type);
 
 // Returns a numpy-style typestr for `type`, as returned by np.dtype(...).str
 StatusOr<pybind11::str> TypeDescriptorForPrimitiveType(PrimitiveType type);
 
 struct NumpyScalarTypes {
   pybind11::object np_bool;
+  pybind11::object np_int4;
   pybind11::object np_int8;
   pybind11::object np_int16;
   pybind11::object np_int32;
   pybind11::object np_int64;
+  pybind11::object np_uint4;
   pybind11::object np_uint8;
   pybind11::object np_uint16;
   pybind11::object np_uint32;
   pybind11::object np_uint64;
   pybind11::object np_bfloat16;
   pybind11::object np_float8_e4m3fn;
+  pybind11::object np_float8_e4m3b11fnuz;
+  pybind11::object np_float8_e4m3fnuz;
   pybind11::object np_float8_e5m2;
+  pybind11::object np_float8_e5m2fnuz;
   pybind11::object np_float16;
   pybind11::object np_float32;
   pybind11::object np_float64;
@@ -76,8 +83,13 @@ const NumpyScalarTypes& GetNumpyScalarTypes();
 PrimitiveType Squash64BitTypes(PrimitiveType type);
 
 // Returns the strides for `shape`.
-std::vector<ssize_t> ByteStridesForShape(const Shape& shape);
-std::vector<int64_t> ByteStridesForShapeInt64(const Shape& shape);
+std::vector<int64_t> ByteStridesForShape(const Shape& shape);
+std::vector<int64_t> ByteStridesForShape(PrimitiveType element_type,
+                                         absl::Span<const int64_t> dimensions,
+                                         const xla::Layout& layout);
+std::vector<int64_t> StridesForShape(PrimitiveType element_type,
+                                     absl::Span<const int64_t> dimensions,
+                                     const xla::Layout& layout);
 
 // Converts a literal to (possibly-nested tuples of) NumPy arrays.
 // The literal's leaf arrays are not copied; instead the NumPy arrays share

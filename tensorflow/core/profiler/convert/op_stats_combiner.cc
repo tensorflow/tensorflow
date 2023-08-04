@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/op_stats_combiner.h"
 
 #include <algorithm>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/profiler/convert/op_metrics_db_combiner.h"
@@ -101,6 +102,7 @@ void CombineRunEnvironment(const RunEnvironment& src, RunEnvironment* dst) {
     *(dst->add_host_dependent_job_info()) = job_info;
   }
   dst->set_host_trace_level(src.host_trace_level());
+  dst->set_is_training(src.is_training());
 }
 
 // Combines the src PerfEnv into the dst PerfEnv.

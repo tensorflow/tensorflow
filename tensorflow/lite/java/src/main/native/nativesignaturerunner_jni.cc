@@ -14,20 +14,21 @@ limitations under the License.
 ==============================================================================*/
 #include <jni.h>
 
-#include "tensorflow/lite/core/shims/cc/interpreter.h"
+#include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/java/src/main/native/jni_utils.h"
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/util.h"
 
+using tflite::Interpreter;
 using tflite::jni::ThrowException;
-using tflite_shims::Interpreter;
 
 #ifndef TFLITE_DISABLE_SELECT_JAVA_APIS
+
 namespace tflite {
 // A helper class to access private information of SignatureRunner class.
 class SignatureRunnerJNIHelper {
  public:
-  explicit SignatureRunnerJNIHelper(SignatureRunner* runner)
+  explicit SignatureRunnerJNIHelper(impl::SignatureRunner* runner)
       : signature_runner_(runner) {}
 
   // Gets the subgraph index associated with this SignatureRunner.
@@ -83,15 +84,15 @@ class SignatureRunnerJNIHelper {
   }
 
  private:
-  SignatureRunner* signature_runner_;
+  impl::SignatureRunner* signature_runner_;
 };
 }  // namespace tflite
 
-using tflite::SignatureRunner;
+using tflite::Interpreter;
 using tflite::SignatureRunnerJNIHelper;
+using tflite::impl::SignatureRunner;
 using tflite::jni::BufferErrorReporter;
 using tflite::jni::CastLongToPointer;
-using tflite_shims::Interpreter;
 #endif  // TFLITE_DISABLE_SELECT_JAVA_APIS
 
 extern "C" {

@@ -14,19 +14,26 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <exception>
 #include <functional>
+#include <memory>
+#include <optional>
+#include <set>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 // clang-format off
 // Must be included first
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
 #include "tensorflow/tsl/python/lib/core/numpy.h"  //NOLINT
 // clang-format on
 
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_format.h"
-#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "pybind11/attr.h"  // from @pybind11
 #include "pybind11/cast.h"  // from @pybind11
@@ -45,15 +52,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #endif  // XLA_PYTHON_ENABLE_GPU
 #include "tensorflow/compiler/xla/pjrt/interpreter_device.h"
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
-#include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_client.h"
-#ifdef XLA_PYTHON_ENABLE_PLUGIN_DEVICE
-#include "tensorflow/compiler/xla/pjrt/pjrt_plugin_device_client.h"
-#endif  // XLA_PYTHON_ENABLE_PLUGIN_DEVICE
-#include "tensorflow/compiler/xla/pjrt/tfrt_cpu_pjrt_client.h"
-#ifdef XLA_PYTHON_ENABLE_TPU
 #include "tensorflow/compiler/xla/pjrt/pjrt_c_api_client.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/pjrt/tfrt_cpu_pjrt_client.h"
+#include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_client.h"
+#ifdef XLA_PYTHON_ENABLE_TPU
 #include "tensorflow/compiler/xla/pjrt/tpu_client.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_initializer_framework_helper.h"  // NOLINT(unused-includes): required for tensorflow::tpu::FindAndLoadTpuLibrary
 #endif  // XLA_PYTHON_ENABLE_TPU
 #include "tensorflow/compiler/xla/pjrt/pjrt_api.h"
 #include "tensorflow/compiler/xla/python/custom_call_sharding.h"
@@ -68,10 +73,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/profiler.h"
 #include "tensorflow/compiler/xla/python/py_array.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
+#include "tensorflow/compiler/xla/python/py_compile_only_client.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/pytree.h"
 #include "tensorflow/compiler/xla/python/sharding.h"
+#include "tensorflow/compiler/xla/python/status_casters.h"
 #include "tensorflow/compiler/xla/python/traceback.h"
 #include "tensorflow/compiler/xla/python/transfer_guard_lib.h"
 #include "tensorflow/compiler/xla/python/types.h"
@@ -83,8 +90,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/distributed_runtime/preemption/preemption_sync_manager.h"
-#include "tensorflow/tsl/python/lib/core/bfloat16.h"
-#include "tensorflow/tsl/python/lib/core/float8.h"
 
 // TODO(phawkins): remove host_id properties after JAX is update to avoid them.
 
@@ -133,9 +138,6 @@ bool IsSanitized() { return IsAsan() || IsMsan() || IsTsan(); }
 
 PYBIND11_MODULE(xla_extension, m) {
   tsl::ImportNumpy();
-  CHECK(tsl::RegisterNumpyBfloat16());
-  CHECK(tsl::RegisterNumpyFloat8e4m3fn());
-  CHECK(tsl::RegisterNumpyFloat8e5m2());
 
   // Exceptions
   py::register_exception<XlaRuntimeError>(m, "XlaRuntimeError",
@@ -155,7 +157,10 @@ PYBIND11_MODULE(xla_extension, m) {
       .value("U64", U64)
       .value("F16", F16)
       .value("F8E4M3FN", F8E4M3FN)
+      .value("F8E4M3B11FNUZ", F8E4M3B11FNUZ)
+      .value("F8E4M3FNUZ", F8E4M3FNUZ)
       .value("F8E5M2", F8E5M2)
+      .value("F8E5M2FNUZ", F8E5M2FNUZ)
       .value("BF16", BF16)
       .value("F32", F32)
       .value("F64", F64)
@@ -165,20 +170,15 @@ PYBIND11_MODULE(xla_extension, m) {
       .value("OPAQUE_TYPE", OPAQUE_TYPE)
       .value("TOKEN", TOKEN);
 
-  m.def("bfloat16_dtype", []() { return py::handle(tsl::Bfloat16Dtype()); });
-  m.def("float8_e4m3fn_dtype",
-        []() { return py::handle(tsl::Float8e4m3fnDtype()); });
-  m.def("float8_e5m2_dtype",
-        []() { return py::handle(tsl::Float8e5m2Dtype()); });
-
   // Must be before PyClient.compile.
   BuildXlaCompilerSubmodule(m);
 
-  py::class_<PjRtDevice, ClientAndPtr<PjRtDevice>>(
+  py::class_<PjRtDevice, ClientAndPtr<PjRtDevice>> device(
       m, "Device",
       "A descriptor of an available device.\n\nSubclasses are used to "
       "represent specific types of devices, e.g. CPUs, GPUs. Subclasses may "
-      "have additional properties specific to that device type.")
+      "have additional properties specific to that device type.");
+  device
       .def_property_readonly(
           "id", &PjRtDevice::id,
           "Integer ID of this device.\n\nUnique across all available devices "
@@ -193,22 +193,23 @@ PYBIND11_MODULE(xla_extension, m) {
                              "Deprecated; please use process_index")
       .def_property_readonly("platform",
                              [](const ClientAndPtr<PjRtDevice>& device) {
-                               return device.client->platform_name();
+                               return device.client()->platform_name();
                              })
       .def_property_readonly("device_kind", &PjRtDevice::device_kind)
-      .def_property_readonly(
-          "client",
-          [](const ClientAndPtr<PjRtDevice>& device) { return device.client; })
+      .def_property_readonly("client",
+                             [](const ClientAndPtr<PjRtDevice>& device) {
+                               return device.client();
+                             })
       .def("__str__", &PjRtDevice::DebugString)
       .def("__repr__", &PjRtDevice::ToString)
       .def("transfer_to_infeed",
            [](PjRtDevice& device, const LiteralSlice& literal) {
              GlobalPyRefManager()->CollectGarbage();
              py::gil_scoped_release gil_release;
-             return device.TransferToInfeed(literal);
+             xla::ThrowIfError(device.TransferToInfeed(literal));
            })
       .def("transfer_from_outfeed",
-           [](PjRtDevice& device, const Shape& shape) -> StatusOr<py::object> {
+           [](PjRtDevice& device, const Shape& shape) -> py::object {
              GlobalPyRefManager()->CollectGarbage();
              std::shared_ptr<Literal> literal;
              {
@@ -221,28 +222,147 @@ PYBIND11_MODULE(xla_extension, m) {
                      }
                    });
                literal = std::make_shared<Literal>(shape_with_layout);
-               TF_RETURN_IF_ERROR(device.TransferFromOutfeed(literal.get()));
+               xla::ThrowIfError(device.TransferFromOutfeed(literal.get()));
              }
-             return LiteralToPython(std::move(literal));
+             return ValueOrThrow(LiteralToPython(std::move(literal)));
+           })
+      .def(
+          "memory",
+          [](const ClientAndPtr<PjRtDevice>& device, const std::string& kind) {
+            return jax::GetMemory(device, kind);
+          },
+          py::arg("kind"))
+      // Returns the default memory of a device.
+      .def("default_memory",
+           [](const ClientAndPtr<PjRtDevice>& device) {
+             auto* memory_space =
+                 xla::ValueOrThrow(device->default_memory_space());
+             return WrapWithClient(device.client(), memory_space);
+           })
+      // Returns all the memories that a device can address.
+      .def("addressable_memories",
+           [](const ClientAndPtr<PjRtDevice>& device) {
+             std::vector<ClientAndPtr<PjRtMemorySpace>> memory_spaces;
+             auto span = device->memory_spaces();
+             memory_spaces.reserve(span.size());
+             for (auto* memory_space : span) {
+               memory_spaces.push_back(
+                   WrapWithClient(device.client(), memory_space));
+             }
+             return memory_spaces;
            })
       .def("live_buffers",
            [](const ClientAndPtr<PjRtDevice>& device) {
              PythonDeprecationWarning(
                  "Per device live_buffers() is going to be deprecated. Please "
                  "use the jax.live_arrays() for jax.Arrays instead.");
-             return device.client->LiveBuffersOnDevice(device.get());
+             return py::list();
            })
       .def(
-          "__getattr__",
-          [](PjRtDevice& device, std::string name) -> py::object {
-            const auto& attrs = device.Attributes();
-            auto it = attrs.find(name);
-            if (it != attrs.end()) {
-              return std::visit([](auto&& v) { return py::cast(v); },
-                                it->second);
+          "memory_stats",
+          [](const PjRtDevice& device)
+              -> std::optional<std::map<std::string, int64_t>> {
+            GlobalPyRefManager()->CollectGarbage();
+            xla::StatusOr<tsl::AllocatorStats> maybe_stats =
+                device.GetAllocatorStats();
+            if (absl::IsUnimplemented(maybe_stats.status())) {
+              return std::nullopt;
             }
-            throw py::attribute_error(absl::StrCat("Unknown attribute ", name));
-          });
+            // Raise error if any status other than Unimplemented is returned.
+            ThrowIfError(maybe_stats.status());
+
+            std::map<std::string, int64_t> result;
+            result["num_allocs"] = maybe_stats->num_allocs;
+            result["bytes_in_use"] = maybe_stats->bytes_in_use;
+            result["peak_bytes_in_use"] = maybe_stats->peak_bytes_in_use;
+            result["largest_alloc_size"] = maybe_stats->largest_alloc_size;
+            if (maybe_stats->bytes_limit) {
+              result["bytes_limit"] = *maybe_stats->bytes_limit;
+            }
+            result["bytes_reserved"] = maybe_stats->bytes_reserved;
+            result["peak_bytes_reserved"] = maybe_stats->peak_bytes_reserved;
+            if (maybe_stats->bytes_reservable_limit) {
+              result["bytes_reservable_limit"] =
+                  *maybe_stats->bytes_reservable_limit;
+            }
+            result["largest_free_block_bytes"] =
+                maybe_stats->largest_free_block_bytes;
+            if (maybe_stats->pool_bytes) {
+              result["pool_bytes"] = *maybe_stats->pool_bytes;
+            }
+            if (maybe_stats->peak_pool_bytes) {
+              result["peak_pool_bytes"] = *maybe_stats->peak_pool_bytes;
+            }
+            return result;
+          },
+          "Returns memory statistics for this device keyed by name. May not be "
+          "implemented on all platforms, and different platforms may return "
+          "different stats, or -1 for unavailable stats. 'bytes_in_use' is "
+          "usually available. Intended for diagnostic use.");
+  static PyMethodDef get_attr_method = {
+      "__getattr__",
+      +[](PyObject* self, PyObject* args) -> PyObject* {
+        PyObject* key;
+        if (!PyArg_ParseTuple(args, "O", &key)) {
+          PyErr_SetString(PyExc_TypeError, "__getattr__ must take 1 argument.");
+          return nullptr;
+        }
+        try {
+          auto device = py::cast<PjRtDevice*>(py::handle(self));
+          auto name = py::cast<std::string>(py::handle(key));
+          const auto& attrs = device->Attributes();
+          auto it = attrs.find(name);
+          if (it != attrs.end()) {
+            auto result =
+                std::visit([](auto&& v) { return py::cast(v); }, it->second);
+            return result.release().ptr();
+          }
+          PyErr_SetNone(PyExc_AttributeError);
+          return nullptr;
+        } catch (std::exception& e) {
+          PyErr_Format(PyExc_SystemError,
+                       "Some unhandled pybind11 exception: %s", e.what());
+          return nullptr;
+        } catch (...) {
+          PyErr_SetString(PyExc_SystemError,
+                          "Some unhandled pybind11 exception.");
+          return nullptr;
+        }
+      },
+      METH_VARARGS,
+      nullptr,
+  };
+  device.attr("__getattr__") =
+      py::reinterpret_steal<py::object>(PyDescr_NewMethod(
+          reinterpret_cast<PyTypeObject*>(device.ptr()), &get_attr_method));
+
+  py::class_<PjRtMemorySpace, ClientAndPtr<PjRtMemorySpace>> memory_space(
+      m, "Memory");
+  memory_space
+      .def_property_readonly(
+          "process_index",
+          [](const ClientAndPtr<PjRtMemorySpace>& memory_space) {
+            return memory_space.client()->process_index();
+          })
+      .def_property_readonly(
+          "platform",
+          [](const ClientAndPtr<PjRtMemorySpace>& memory_space) {
+            return memory_space.client()->platform_name();
+          })
+      .def_property_readonly("kind", &PjRtMemorySpace::memory_space_kind)
+      .def("__str__", &PjRtMemorySpace::DebugString)
+      .def("__repr__", &PjRtMemorySpace::ToString)
+      // Returns the devices this `Memory` is attached to.
+      .def("attached_devices",
+           [](const ClientAndPtr<PjRtMemorySpace>& memory_space) {
+             std::vector<ClientAndPtr<PjRtDevice>> devices;
+             auto span = memory_space->devices();
+             devices.reserve(span.size());
+             for (PjRtDevice* device : span) {
+               devices.push_back(WrapWithClient(memory_space.client(), device));
+             }
+             return devices;
+           });
 
   // Local XLA client methods.
 
@@ -270,15 +390,10 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("host_id", &PyClient::process_index)
       .def("task_id", &PyClient::process_index)
       .def("get_default_device_assignment",
-           &PyClient::GetDefaultDeviceAssignment)
+           xla::ValueOrThrowWrapper(&PyClient::GetDefaultDeviceAssignment))
       // TODO(skye): delete after all callers can handle 2D output
       .def("get_default_device_assignment",
-           &PyClient::GetDefaultDeviceAssignment1D)
-      .def("create_channel_handle", &PyClient::CreateChannelHandle)
-      .def("create_device_to_host_channel_handle",
-           &PyClient::CreateDeviceToHostChannelHandle)
-      .def("create_host_to_device_channel_handle",
-           &PyClient::CreateHostToDeviceChannelHandle)
+           xla::ValueOrThrowWrapper(&PyClient::GetDefaultDeviceAssignment1D))
       .def(
           "buffer_from_pyval",
           [](py::handle py_client, py::handle argument, py::handle py_device,
@@ -288,71 +403,71 @@ PYBIND11_MODULE(xla_extension, m) {
             PjRtDevice* device = py_device.is_none()
                                      ? nullptr
                                      : fast_cast<PjRtDevice>(py_device);
-            return client->BufferFromPyval(argument, device, force_copy,
-                                           host_buffer_semantics);
+            return ValueOrThrow(client->BufferFromPyval(
+                argument, device, force_copy, host_buffer_semantics));
           },
           py::arg("argument"), py::arg("device") = nullptr,
           py::arg("force_copy") = false,
           py::arg("host_buffer_semantics") =
               PjRtClient::HostBufferSemantics::kZeroCopy)
       .def("make_cross_host_receive_buffers",
-           &PyClient::MakeCrossHostReceiveBuffers, py::arg("shapes"),
-           py::arg("device"))
-      .def("compile", &PyClient::Compile, py::arg("computation"),
+           xla::ValueOrThrowWrapper(&PyClient::MakeCrossHostReceiveBuffers),
+           py::arg("shapes"), py::arg("device"))
+      .def("compile", xla::ValueOrThrowWrapper(&PyClient::Compile),
+           py::arg("computation"),
            py::arg("compile_options") = CompileOptions(),
            py::arg("host_callbacks") = std::vector<py::capsule>())
-      .def("serialize_executable", &PyClient::SerializeExecutable)
+      .def("serialize_executable",
+           xla::ValueOrThrowWrapper(&PyClient::SerializeExecutable))
       .def("deserialize_executable",
-           py::overload_cast<const std::string&, CompileOptions,
-                             std::vector<py::capsule>>(
-               &PyClient::DeserializeExecutable),
-           py::arg("serialized"), py::arg("compile_options"),
+           xla::ValueOrThrowWrapper(&PyClient::DeserializeExecutable),
+           py::arg("serialized"), py::arg("compile_options") = std::nullopt,
            py::arg("host_callbacks") = std::vector<py::capsule>())
-      // TODO(skyewm): remove when jax stop providing hlo_module
-      .def("deserialize_executable",
-           py::overload_cast<const std::string&, std::shared_ptr<HloModule>,
-                             CompileOptions, std::vector<py::capsule>>(
-               &PyClient::DeserializeExecutable),
-           py::arg("serialized"), py::arg("hlo_module"),
-           py::arg("compile_options"),
-           py::arg("host_callbacks") = std::vector<py::capsule>())
-      .def("heap_profile", &PyClient::HeapProfile)
+      .def("heap_profile", xla::ValueOrThrowWrapper(&PyClient::HeapProfile))
       // TODO(zhangqiaorjc): Experimental.
-      .def("defragment", &PyClient::Defragment)
+      .def("defragment",
+           [](PyClient& self) { xla::ThrowIfError(self.Defragment()); })
       .def("get_emit_python_callback_descriptor",
-           &PyClient::GetEmitPythonCallbackDescriptor, py::arg("callable"),
-           py::arg("operand_shapes"), py::arg("result_shapes") = std::nullopt)
+           xla::ValueOrThrowWrapper(&PyClient::GetEmitPythonCallbackDescriptor),
+           py::arg("callable"), py::arg("operand_shapes"),
+           py::arg("result_shapes") = std::nullopt)
       .def("make_python_callback_from_host_send_and_recv",
-           &PyClient::MakePythonCallbackUsingHostSendAndRecv,
+           xla::ValueOrThrowWrapper(
+               &PyClient::MakePythonCallbackUsingHostSendAndRecv),
            py::arg("callable"), py::arg("operand_shapes"),
            py::arg("result_shapes"), py::arg("send_channel_ids"),
-           py::arg("recv_channel_ids"))
+           py::arg("recv_channel_ids"), py::arg("serializer") = py::none())
       // Deprecated: please use `get_emit_python_callback_descriptor` instead.
-      .def("emit_python_callback", &PyClient::EmitPythonCallback,
+      .def("emit_python_callback",
+           xla::ValueOrThrowWrapper(&PyClient::EmitPythonCallback),
            py::arg("callable"), py::arg("builder"), py::arg("operands"),
            py::arg("result_shapes"), py::arg("operand_layouts") = std::nullopt,
            py::arg("has_side_effects") = false);
 
   m.def(
       "get_tfrt_cpu_client",
-      [](bool asynchronous) -> StatusOr<std::shared_ptr<PyClient>> {
+      [](bool asynchronous) -> std::shared_ptr<PyClient> {
         py::gil_scoped_release gil_release;
-        TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
-                            GetTfrtCpuClient(asynchronous));
+        std::unique_ptr<PjRtClient> client =
+            xla::ValueOrThrow(GetTfrtCpuClient(asynchronous));
         return std::make_shared<PyClient>(
             ifrt::PjRtClient::Create(std::move(client)));
       },
       py::arg("asynchronous") = true);
-  m.def("get_interpreter_client", []() -> StatusOr<std::shared_ptr<PyClient>> {
+  m.def("get_interpreter_client", []() -> std::shared_ptr<PyClient> {
     py::gil_scoped_release gil_release;
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
-                        GetInterpreterClient());
+    std::unique_ptr<PjRtClient> client =
+        xla::ValueOrThrow(GetInterpreterClient());
     return std::make_shared<PyClient>(
         ifrt::PjRtClient::Create(std::move(client)));
   });
+  m.def("pjrt_plugin_loaded", [](std::string platform_name) -> bool {
+    xla::StatusOr<const PJRT_Api*> pjrt_api = pjrt::PjrtApi(platform_name);
+    return pjrt_api.ok();
+  });
   m.def("load_pjrt_plugin",
-        [](std::string platform_name, std::string library_path) -> Status {
-          return pjrt::LoadPjrtPlugin(platform_name, library_path);
+        [](std::string platform_name, std::string library_path) {
+          xla::ThrowIfError(pjrt::LoadPjrtPlugin(platform_name, library_path));
         });
 
 #ifdef XLA_PYTHON_ENABLE_GPU
@@ -371,65 +486,127 @@ PYBIND11_MODULE(xla_extension, m) {
       "get_gpu_client",
       [](bool asynchronous, const GpuAllocatorConfig& allocator_config,
          std::shared_ptr<DistributedRuntimeClient> distributed_client,
-         int node_id, std::optional<std::set<int>> allowed_devices,
+         int node_id, int num_nodes,
+         std::optional<std::set<int>> allowed_devices,
          std::optional<std::string> platform_name)
-          -> StatusOr<std::shared_ptr<PyClient>> {
+          -> std::shared_ptr<PyClient> {
         py::gil_scoped_release gil_release;
-        TF_ASSIGN_OR_RETURN(
-            std::unique_ptr<PjRtClient> client,
-            GetStreamExecutorGpuClient(asynchronous, allocator_config,
-                                       std::move(distributed_client), node_id,
-                                       allowed_devices, platform_name));
+        PjRtClient::KeyValueGetCallback kv_get = nullptr;
+        PjRtClient::KeyValuePutCallback kv_put = nullptr;
+        if (distributed_client != nullptr) {
+          // Use the plugin name as key prefix.
+          std::string key_prefix = "gpu:";
+          kv_get = [distributed_client, key_prefix](
+                       const std::string& k,
+                       absl::Duration timeout) -> xla::StatusOr<std::string> {
+            return distributed_client->BlockingKeyValueGet(
+                absl::StrCat(key_prefix, k), timeout);
+          };
+          kv_put = [distributed_client, key_prefix](
+                       const std::string& k,
+                       const std::string& v) -> xla::Status {
+            return distributed_client->KeyValueSet(absl::StrCat(key_prefix, k),
+                                                   v);
+          };
+        }
+        std::unique_ptr<PjRtClient> client =
+            xla::ValueOrThrow(GetStreamExecutorGpuClient(
+                asynchronous, allocator_config, node_id, num_nodes,
+                allowed_devices, platform_name,
+                /*should_stage_host_to_device_transfers=*/true, kv_get,
+                kv_put));
         return std::make_shared<PyClient>(
             ifrt::PjRtClient::Create(std::move(client)));
       },
       py::arg("asynchronous") = true,
       py::arg("allocator_config") = GpuAllocatorConfig(),
       py::arg("distributed_client") = nullptr, py::arg("node_id") = 0,
-      py::arg("allowed_devices") = std::nullopt,
+      py::arg("num_nodes") = 1, py::arg("allowed_devices") = std::nullopt,
       py::arg("platform_name") = std::nullopt);
 #endif  // XLA_PYTHON_ENABLE_GPU
 
 #ifdef XLA_PYTHON_ENABLE_TPU
   m.def(
       "get_tpu_client",
-      [](int max_inflight_computations) -> StatusOr<std::shared_ptr<PyClient>> {
+      [](int max_inflight_computations) -> std::shared_ptr<PyClient> {
         py::gil_scoped_release gil_release;
-        TF_ASSIGN_OR_RETURN(std::shared_ptr<PjRtClient> client,
-                            GetTpuClient(max_inflight_computations));
+        std::shared_ptr<PjRtClient> client =
+            xla::ValueOrThrow(GetTpuClient(max_inflight_computations));
         return std::make_shared<PyClient>(
             ifrt::PjRtClient::Create(std::move(client)));
       },
       py::arg("max_inflight_computations") = 32);
-  // TODO(b/262050449): move out from `#ifdef XLA_PYTHON_ENABLE_TPU` when
-  // GetCApiClient does not depend on TPU.
+#endif  // XLA_PYTHON_ENABLE_TPU
+
   m.def(
       "get_c_api_client",
       [](std::string platform_name,
-         const absl::flat_hash_map<std::string, PjRtValueType>& options)
-          -> StatusOr<std::shared_ptr<PyClient>> {
+         const absl::flat_hash_map<std::string, PjRtValueType>& options,
+         std::shared_ptr<DistributedRuntimeClient> distributed_client)
+          -> std::shared_ptr<PyClient> {
         py::gil_scoped_release gil_release;
-        TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> c_api_client,
-                            GetCApiClient(platform_name, options));
+#ifdef XLA_PYTHON_ENABLE_TPU
+    // TODO(b/262050449): use a common plugin discovery mechanism, rather than
+    // having TPU-specific code here.
+#if !defined(PLATFORM_GOOGLE) || defined(LIBTPU_STATIC)
+        if (absl::AsciiStrToLower(platform_name) == "tpu") {
+          // TODO(b/261484192): handle device specific initialization.
+          xla::ThrowIfError(tensorflow::tpu::FindAndLoadTpuLibrary());
+        }
+#endif
+#endif  // XLA_PYTHON_ENABLE_TPU
+        PjRtClient::KeyValueGetCallback kv_get = nullptr;
+        PjRtClient::KeyValuePutCallback kv_put = nullptr;
+        if (distributed_client != nullptr) {
+          kv_get = [distributed_client, platform_name](const std::string& k,
+                                                       absl::Duration timeout) {
+            return distributed_client->BlockingKeyValueGet(
+                absl::StrCat(platform_name, ":", k), timeout);
+          };
+          kv_put = [distributed_client, platform_name](const std::string& k,
+                                                       const std::string& v) {
+            return distributed_client->KeyValueSet(
+                absl::StrCat(platform_name, ":", k), v);
+          };
+        }
+        std::unique_ptr<PjRtClient> c_api_client = xla::ValueOrThrow(
+            GetCApiClient(platform_name, options, kv_get, kv_put));
         return std::make_shared<PyClient>(
             ifrt::PjRtClient::Create(std::move(c_api_client)));
       },
       py::arg("platform_name"),
-      py::arg("options") = absl::flat_hash_map<std::string, PjRtValueType>());
-#endif  // XLA_PYTHON_ENABLE_TPU
-
-#ifdef XLA_PYTHON_ENABLE_PLUGIN_DEVICE
-  m.def("get_plugin_device_client",
-        []() -> StatusOr<std::shared_ptr<PyClient>> {
-          py::gil_scoped_release gil_release;
-          TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
-                              GetTfrtPluginDeviceClient());
-          return std::make_shared<PyClient>(
-              ifrt::PjRtClient::Create(std::move(client)));
+      py::arg("options") = absl::flat_hash_map<std::string, PjRtValueType>(),
+      py::arg("distributed_client") = nullptr);
+  // TODO(b/262050449): move out from `#ifdef XLA_PYTHON_ENABLE_TPU` when
+  // GetCApiTopology does not depend on TPU.
+  m.def("get_default_c_api_topology",
+        [](std::string platform_name, std::string topology_name,
+           const absl::flat_hash_map<std::string, PjRtValueType>& options)
+            -> std::shared_ptr<PjRtTopologyDescription> {
+          return xla::ValueOrThrow(
+              GetCApiTopology(platform_name, topology_name, options));
         });
-#endif  // XLA_PYTHON_ENABLE_PLUGIN_DEVICE
+  m.def("get_topology_for_devices",
+        [](std::vector<ClientAndPtr<PjRtDevice>> devices_and_clients) {
+          if (devices_and_clients.empty()) {
+            throw py::value_error(
+                "get_topology_for_devices requires >= 1 devices.");
+          }
+          auto client = devices_and_clients[0].client();
+          std::vector<PjRtDevice*> devices;
+          devices.reserve(devices_and_clients.size());
+          for (const ClientAndPtr<PjRtDevice>& device : devices_and_clients) {
+            if (device.get_client() != client.get()) {
+              throw py::value_error(
+                  "devices passed to get_topology_for_devices come from "
+                  "different clients.");
+            }
+            devices.push_back(device.get());
+          }
+          return xla::ValueOrThrow(client->ifrt_client()->GetTopologyForDevices(
+              absl::MakeSpan(devices)));
+        });
 
-  TF_CHECK_OK(PyBuffer::RegisterTypes(m));
   TF_CHECK_OK(PyArray::RegisterTypes(m));
   jax::RegisterSharding(m);
 
@@ -486,27 +663,36 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("local_devices", &PyLoadedExecutable::AddressableDevices)
       .def("size_of_generated_code_in_bytes",
            &PyLoadedExecutable::SizeOfGeneratedCodeInBytes)
-      .def("get_compiled_memory_stats",
-           &PyLoadedExecutable::GetCompiledMemoryStats)
+      .def(
+          "get_compiled_memory_stats",
+          xla::ValueOrThrowWrapper(&PyLoadedExecutable::GetCompiledMemoryStats))
       .def("delete", &PyLoadedExecutable::Delete)
       .def("execute_sharded_on_local_devices",
-           &PyLoadedExecutable::ExecuteShardedOnLocalDevices,
+           xla::ValueOrThrowWrapper(
+               &PyLoadedExecutable::ExecuteShardedOnLocalDevices),
            py::arg("arguments"))
       .def("execute_sharded_on_local_devices_with_tokens",
-           &PyLoadedExecutable::ExecuteShardedOnLocalDevicesWithTokens,
+           xla::ValueOrThrowWrapper(
+               &PyLoadedExecutable::ExecuteShardedOnLocalDevicesWithTokens),
            py::arg("arguments"))
       // TODO(parkers): Switch execute_sharded_on_local_devices* to this.
-      .def("execute_sharded", &PyLoadedExecutable::ExecuteSharded,
+      .def("execute_sharded",
+           xla::ValueOrThrowWrapper(&PyLoadedExecutable::ExecuteSharded),
            py::arg("arguments"), py::arg("with_tokens") = false)
-      .def("hlo_modules", &PyLoadedExecutable::HloModules)
+      .def("hlo_modules",
+           xla::ValueOrThrowWrapper(&PyLoadedExecutable::HloModules))
+      .def("get_output_memory_kinds",
+           xla::ValueOrThrowWrapper(&PyLoadedExecutable::GetOutputMemoryKinds))
       .def("get_output_shardings", &PyLoadedExecutable::GetOutputShardings)
       .def("get_parameter_shardings",
            &PyLoadedExecutable::GetParameterShardings)
       .def("keep_alive", &PyLoadedExecutable::KeepAlive)
       .def("compile_options",
            [](const PyLoadedExecutable& self) {
-             return self.pjrt_executable()->GetCompileOptions();
+             return ValueOrThrow(self.pjrt_executable()->GetCompileOptions());
            })
+      .def("cost_analysis",
+           xla::ValueOrThrowWrapper(&PyLoadedExecutable::GetCostAnalysis))
       .def_property_readonly("traceback", &PyLoadedExecutable::traceback)
       .def_property_readonly("fingerprint",
                              [](PyLoadedExecutable* exec) -> py::object {
@@ -517,19 +703,23 @@ PYBIND11_MODULE(xla_extension, m) {
                                }
                              });
   py::class_<PyToken> token(m, "Token");
-  token.def("block_until_ready", &PyToken::Await);
+  token.def("block_until_ready",
+            [](PyToken& self) { xla::ThrowIfError(self.Await()); });
   py::class_<PyShardedToken> sharded_token(m, "ShardedToken");
-  sharded_token.def("block_until_ready", &PyShardedToken::Await);
+  sharded_token.def("block_until_ready", [](PyShardedToken& self) {
+    xla::ThrowIfError(self.Await());
+  });
   sharded_token.def("get_token", &PyShardedToken::GetPyToken);
 
-  m.def("buffer_to_dlpack_managed_tensor", BufferToDLPackManagedTensor,
+  m.def("buffer_to_dlpack_managed_tensor",
+        xla::ValueOrThrowWrapper(BufferToDLPackManagedTensor),
         py::arg("buffer"), py::arg("take_ownership") = true);
   m.def(
       "dlpack_managed_tensor_to_buffer",
       [](const pybind11::capsule& tensor, std::shared_ptr<PyClient> cpu_client,
          std::shared_ptr<PyClient> gpu_client) {
-        return DLPackManagedTensorToBuffer(tensor, std::move(cpu_client),
-                                           std::move(gpu_client));
+        return xla::ValueOrThrow(DLPackManagedTensorToBuffer(
+            tensor, std::move(cpu_client), std::move(gpu_client)));
       },
       py::arg("dlpack"), py::arg("cpu_backend") = nullptr,
       py::arg("gpu_backend") = nullptr);
@@ -554,9 +744,9 @@ PYBIND11_MODULE(xla_extension, m) {
           "initialize",
           [](tsl::PreemptionSyncManager& manager,
              DistributedRuntimeClient* client) {
-            TF_ASSIGN_OR_RETURN(tsl::CoordinationServiceAgent * agent,
-                                client->GetCoordinationServiceAgent());
-            return manager.Initialize(agent);
+            tsl::CoordinationServiceAgent* agent =
+                xla::ValueOrThrow(client->GetCoordinationServiceAgent());
+            xla::ThrowIfError(manager.Initialize(agent));
           },
           py::arg("distributed_client"))
       .def("reached_sync_point",
@@ -576,10 +766,16 @@ PYBIND11_MODULE(xla_extension, m) {
              std::shared_ptr<DistributedRuntimeClient>>
       distributed_runtime_client(m, "DistributedRuntimeClient");
   distributed_runtime_client
-      .def("connect", &DistributedRuntimeClient::Connect,
-           py::call_guard<py::gil_scoped_release>())
-      .def("shutdown", &DistributedRuntimeClient::Shutdown,
-           py::call_guard<py::gil_scoped_release>())
+      .def("connect",
+           [](DistributedRuntimeClient& self) {
+             py::gil_scoped_release gil_release;
+             xla::ThrowIfError(self.Connect());
+           })
+      .def("shutdown",
+           [](DistributedRuntimeClient& self) {
+             py::gil_scoped_release gil_release;
+             xla::ThrowIfError(self.Shutdown());
+           })
       // This method assumes that the value is a Python string. Use
       // `blocking_key_value_get_bytes()` if key_value_set() was called with a
       // Python bytes object as its value.
@@ -588,8 +784,8 @@ PYBIND11_MODULE(xla_extension, m) {
           [](DistributedRuntimeClient& client, std::string key,
              int64_t timeout_in_ms) {
             py::gil_scoped_release gil_release;
-            return client.BlockingKeyValueGet(
-                key, absl::Milliseconds(timeout_in_ms));
+            return xla::ValueOrThrow(client.BlockingKeyValueGet(
+                key, absl::Milliseconds(timeout_in_ms)));
           },
           py::arg("key"), py::arg("timeout_in_ms"))
       // Same as `blocking_key_value_get()`, but retrieves the raw Python byte
@@ -597,14 +793,11 @@ PYBIND11_MODULE(xla_extension, m) {
       .def(
           "blocking_key_value_get_bytes",
           [](DistributedRuntimeClient& client, std::string key,
-             int64_t timeout_in_ms) -> StatusOr<py::bytes> {
+             int64_t timeout_in_ms) -> py::bytes {
             py::gil_scoped_release gil_release;
-            xla::StatusOr<std::string> result = client.BlockingKeyValueGet(
-                key, absl::Milliseconds(timeout_in_ms));
-            if (!result.ok()) {
-              return result.status();
-            }
-            return py::bytes(*result);
+            std::string result = xla::ValueOrThrow(client.BlockingKeyValueGet(
+                key, absl::Milliseconds(timeout_in_ms)));
+            return py::bytes(result);
           },
           py::arg("key"), py::arg("timeout_in_ms"))
       .def(
@@ -612,8 +805,8 @@ PYBIND11_MODULE(xla_extension, m) {
           [](DistributedRuntimeClient& client, std::string barrier_id,
              int64_t timeout_in_ms) {
             py::gil_scoped_release gil_release;
-            return client.WaitAtBarrier(barrier_id,
-                                        absl::Milliseconds(timeout_in_ms));
+            xla::ThrowIfError(client.WaitAtBarrier(
+                barrier_id, absl::Milliseconds(timeout_in_ms)));
           },
           py::arg("barrier_id"), py::arg("timeout_in_ms"))
       // The key must be a string, but the value can either be a Python string
@@ -627,7 +820,7 @@ PYBIND11_MODULE(xla_extension, m) {
           [](DistributedRuntimeClient& client, std::string key,
              std::string value) {
             py::gil_scoped_release gil_release;
-            return client.KeyValueSet(key, value);
+            xla::ThrowIfError(client.KeyValueSet(key, value));
           },
           py::arg("key"), py::arg("value"))
       // Assumes that all values in the directory are Python strings.
@@ -635,7 +828,7 @@ PYBIND11_MODULE(xla_extension, m) {
           "key_value_dir_get",
           [](DistributedRuntimeClient& client, std::string key) {
             py::gil_scoped_release gil_release;
-            return client.KeyValueDirGet(key);
+            return xla::ValueOrThrow(client.KeyValueDirGet(key));
           },
           py::arg("key"))
       // Assumes that all values in the directory are Python byte objects.
@@ -644,17 +837,14 @@ PYBIND11_MODULE(xla_extension, m) {
       .def(
           "key_value_dir_get_bytes",
           [](DistributedRuntimeClient& client, std::string key)
-              -> StatusOr<std::vector<std::pair<std::string, py::bytes>>> {
+              -> std::vector<std::pair<std::string, py::bytes>> {
             py::gil_scoped_release gil_release;
-            xla::StatusOr<std::vector<std::pair<std::string, std::string>>>
-                result = client.KeyValueDirGet(key);
-            if (!result.ok()) {
-              return result.status();
-            }
+            std::vector<std::pair<std::string, std::string>> result =
+                xla::ValueOrThrow(client.KeyValueDirGet(key));
             // Convert std::string values to py::bytes.
             std::vector<std::pair<std::string, py::bytes>> kvs;
-            kvs.reserve(result->size());
-            for (const auto& kv : *result) {
+            kvs.reserve(result.size());
+            for (const auto& kv : result) {
               kvs.push_back(std::pair(kv.first, py::bytes(kv.second)));
             }
             return kvs;
@@ -675,7 +865,7 @@ PYBIND11_MODULE(xla_extension, m) {
          std::optional<int> max_missing_heartbeats,
          std::optional<int> enumerate_devices_timeout,
          std::optional<int> shutdown_timeout)
-          -> StatusOr<std::unique_ptr<DistributedRuntimeService>> {
+          -> std::unique_ptr<DistributedRuntimeService> {
         DistributedRuntimeServiceImpl::Options options;
         options.num_nodes = num_nodes;
         if (heartbeat_interval.has_value()) {
@@ -691,9 +881,9 @@ PYBIND11_MODULE(xla_extension, m) {
         if (shutdown_timeout.has_value()) {
           options.shutdown_timeout = absl::Seconds(*shutdown_timeout);
         }
-        TF_ASSIGN_OR_RETURN(std::unique_ptr<DistributedRuntimeService> service,
-                            GetDistributedRuntimeService(
-                                address, options, use_coordination_service));
+        std::unique_ptr<DistributedRuntimeService> service =
+            xla::ValueOrThrow(GetDistributedRuntimeService(
+                address, options, use_coordination_service));
         return service;
       },
       py::arg("address"), py::arg("num_nodes"),
@@ -714,7 +904,7 @@ PYBIND11_MODULE(xla_extension, m) {
                                           bool coordinator_reported_failure)>>
              missed_heartbeat_callback,
          std::optional<bool> shutdown_on_destruction)
-          -> StatusOr<std::shared_ptr<DistributedRuntimeClient>> {
+          -> std::shared_ptr<DistributedRuntimeClient> {
         DistributedRuntimeClient::Options options;
         options.node_id = node_id;
         if (rpc_timeout.has_value()) {
@@ -756,61 +946,59 @@ PYBIND11_MODULE(xla_extension, m) {
 
   m.def("is_optimized_build", &IsOptimizedBuild);
 
-  m.def("json_to_pprof_profile", &JsonToPprofProfile,
+  m.def("json_to_pprof_profile", xla::ValueOrThrowWrapper(JsonToPprofProfile),
         "Encodes the JSON representation of a pprof Profile into its binary "
         "protocol buffer encoding.");
-  m.def("pprof_profile_to_json", &PprofProfileToJson,
+  m.def("pprof_profile_to_json", xla::ValueOrThrowWrapper(PprofProfileToJson),
         "Decodes an uncompressed pprof Profile protocol buffer into a JSON "
         "representation");
 
-  py::class_<PjRtDeviceTopology>(m, "DeviceTopology")
-      .def_property_readonly("platform", [](PjRtDeviceTopology& topology) {
-        return topology.platform_name();
-      });
+  RegisterCompileOnlyClient(m);
+  py::class_<PjRtTopologyDescription, std::shared_ptr<PjRtTopologyDescription>>(
+      m, "DeviceTopology")
+      .def("_make_compile_only_devices",
+           [](std::shared_ptr<PjRtTopologyDescription> topology) {
+             return MakeCompileOnlyClient(topology)->Devices();
+           })
+      .def_property_readonly("platform",
+                             [](PjRtTopologyDescription& topology) {
+                               return topology.platform_name();
+                             })
+      .def_property_readonly("platform_version",
+                             [](PjRtTopologyDescription& topology) {
+                               return topology.platform_version();
+                             });
 
   py::class_<PjRtExecutable, std::shared_ptr<PjRtExecutable>>(m, "Executable")
-      .def("hlo_modules", &PjRtExecutable::GetHloModules)
+      .def("hlo_modules",
+           xla::ValueOrThrowWrapper(&PjRtExecutable::GetHloModules))
+      .def("get_output_memory_kinds",
+           xla::ValueOrThrowWrapper(&PjRtExecutable::GetOutputMemoryKinds))
       .def("get_output_shardings", &PjRtExecutable::GetOutputShardings)
       .def("get_parameter_shardings", &PjRtExecutable::GetParameterShardings)
-      .def("get_compiled_memory_stats", &PjRtExecutable::GetCompiledMemoryStats)
-      .def("compile_options", &PjRtExecutable::GetCompileOptions)
+      .def("get_compiled_memory_stats",
+           xla::ValueOrThrowWrapper(&PjRtExecutable::GetCompiledMemoryStats))
+      .def("compile_options",
+           xla::ValueOrThrowWrapper(&PjRtExecutable::GetCompileOptions))
       .def("serialize", [](const PjRtExecutable& exec) -> py::bytes {
         return ValueOrThrow(exec.SerializeExecutable());
       });
-
-  m.def(
-      "compile",
-      [](const PjRtDeviceTopology& topology, std::string mlir_module,
-         CompileOptions options) -> StatusOr<std::shared_ptr<PjRtExecutable>> {
-        std::unique_ptr<PjRtExecutable> executable;
-        std::optional<std::string> fingerprint;
-        {
-          py::gil_scoped_release gil_release;
-          mlir::MLIRContext context;
-          TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
-                              ParseMlirModuleString(mlir_module, context));
-          TF_ASSIGN_OR_RETURN(executable, PjRtCompile(std::move(options),
-                                                      module.get(), topology));
-        }
-        return std::shared_ptr<PjRtExecutable>(std::move(executable));
-      },
-      py::arg("topology"), py::arg("computation"),
-      py::arg("compile_options") = CompileOptions());
 
   m.def("is_asan", IsAsan);
   m.def("is_msan", IsMsan);
   m.def("is_tsan", IsTsan);
   m.def("is_sanitized", IsSanitized);
 
-  m.attr("batched_device_put") = py::cpp_function(
+  m.def(
+      "batched_device_put",
       [](py::object aval, py::object sharding, std::vector<py::object> xs,
          std::vector<ClientAndPtr<PjRtDevice>> dst_devices, bool committed,
-         bool force_copy, PjRtClient::HostBufferSemantics host_buffer_semantics)
-          -> StatusOr<PyArray> {
-        return PyArray::BatchedDevicePut(
+         bool force_copy,
+         PjRtClient::HostBufferSemantics host_buffer_semantics) -> PyArray {
+        return ValueOrThrow(PyArray::BatchedDevicePut(
             std::move(aval), std::move(sharding), std::move(xs),
             std::move(dst_devices), committed, force_copy,
-            host_buffer_semantics, jax::GetEnableX64());
+            host_buffer_semantics, jax::GetEnableX64()));
       },
       py::arg("aval"), py::arg("sharding"), py::arg("xs"), py::arg("devices"),
       py::arg("committed") = true, py::arg("force_copy") = false,

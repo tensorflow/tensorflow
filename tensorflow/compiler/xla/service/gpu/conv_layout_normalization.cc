@@ -60,7 +60,8 @@ StatusOr<HloInstruction*> UpdateLayoutForCudnnConvolution(
       gpu::GetCudnnConvKind(Cast<HloCustomCallInstruction>(hlo)));
   switch (conv_kind) {
     case gpu::CudnnConvKind::kForward:
-    case gpu::CudnnConvKind::kForwardActivation: {
+    case gpu::CudnnConvKind::kForwardActivation:
+    case gpu::CudnnConvKind::kForwardGraph: {
       input_shape = lhs->shape();
       filter_shape = rhs->shape();
       output_shape = conv_output_shape;
@@ -146,6 +147,7 @@ StatusOr<HloInstruction*> UpdateLayoutForCudnnConvolution(
   normalized_conv->set_feature_group_count(hlo->feature_group_count());
   normalized_conv->set_raw_backend_config_string(
       hlo->raw_backend_config_string());
+  *normalized_conv->mutable_precision_config() = hlo->precision_config();
   normalized_conv->parent()->parent()->SetAndUniquifyInstrName(normalized_conv,
                                                                hlo->name());
 

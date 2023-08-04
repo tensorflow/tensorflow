@@ -16,21 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_C_TF_STATUS_H_
 #define TENSORFLOW_C_TF_STATUS_H_
 
+#include "tensorflow/c/c_api_macros.h"
 #include "tensorflow/tsl/c/tsl_status.h"
-
-#ifdef SWIG
-#define TF_CAPI_EXPORT
-#else
-#if defined(_WIN32)
-#ifdef TF_COMPILE_LIBRARY
-#define TF_CAPI_EXPORT __declspec(dllexport)
-#else
-#define TF_CAPI_EXPORT __declspec(dllimport)
-#endif  // TF_COMPILE_LIBRARY
-#else
-#define TF_CAPI_EXPORT __attribute__((visibility("default")))
-#endif  // _WIN32
-#endif  // SWIG
 
 #ifdef __cplusplus
 extern "C" {
@@ -78,6 +65,14 @@ TF_CAPI_EXPORT extern void TF_SetStatus(TF_Status* s, TF_Code code,
 // is OK.
 TF_CAPI_EXPORT void TF_SetPayload(TF_Status* s, const char* key,
                                   const char* value);
+
+// Iterates over the stored payloads and calls the `visitor(key, value)`
+// callable for each one. `key` and `value` is only usable during the callback.
+// `capture` will be passed to the callback without modification.
+#define TF_PayloadVisitor TSL_PayloadVisitor
+TF_CAPI_EXPORT extern void TF_ForEachPayload(const TF_Status* s,
+                                             TF_PayloadVisitor visitor,
+                                             void* capture);
 
 // Convert from an I/O error code (e.g., errno) to a TF_Status value.
 // Any previous information is lost. Prefer to use this instead of TF_SetStatus

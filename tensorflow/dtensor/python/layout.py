@@ -15,16 +15,17 @@
 """Python definitions for `Mesh` and `Layout`."""
 
 import collections
+import functools
 import itertools
 from typing import List, Dict, Optional, Union
 
 import numpy as np
 
 from tensorflow.dtensor.proto import layout_pb2
-from tensorflow.dtensor.python import config
 from tensorflow.python import _pywrap_dtensor_device
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.util.tf_export import tf_export
 
 # UNSHARDED indicates a tensor dimension is not sharded over any mesh dimension.
@@ -62,6 +63,9 @@ class Mesh(_pywrap_dtensor_device.Mesh):
   also the topology of the underlying devices. For example, we can group 8 TPUs
   as a 1-D array for data parallelism or a `2x4` grid for (2-way) data
   parallelism and (4-way) model parallelism.
+
+  Refer to [DTensor Concepts](https://www.tensorflow.org/guide/dtensor_overview)
+  for in depth discussion and examples.
 
   Note: the utilities `dtensor.create_mesh` and
   `dtensor.create_distributed_mesh` provide a simpler API to create meshes for
@@ -217,6 +221,14 @@ class Mesh(_pywrap_dtensor_device.Mesh):
         use_xla_spmd,
     )
 
+  @classmethod
+  def _new_object(cls, *args, **kwargs):
+    # Need to explicitly invoke the base class __init__ because
+    # Mesh.__init__ overrode it with a different signature.
+    self = _pywrap_dtensor_device.Mesh.__new__(cls)
+    super().__init__(self, *args, **kwargs)
+    return self
+
   def global_device_ids(self) -> np.ndarray:
     """Returns a global device list as an array."""
     return np.array(super().global_device_ids(), dtype=np.int64).reshape(
@@ -230,74 +242,47 @@ class Mesh(_pywrap_dtensor_device.Mesh):
     return hash(self.as_proto().SerializeToString(deterministic=True))
 
   def __repr__(self) -> str:
-    dims = [tuple(self[dim_name]) for dim_name in self.dim_names]
-    return (
-        f'<Mesh object with dims={dims}, device_type="{self.device_type()}", '
-        f'num_local_devices={self.num_local_devices()}), '
-        f'size={self.size}>'
-    )
+    return f'Mesh.from_string({self.to_string()})'
 
   # TODO(panzf): change to pybind11 pickle implementation in the last step
   def __reduce__(self):
     return Mesh.from_string, (self.to_string(),)
 
   # TODO(b/242201545): implement this in Mesh C++ class
-  def coords(self, device_idx: int) -> ops.Tensor:
+  def coords(self, device_idx: int) -> tensor.Tensor:
     """Converts the device index into a tensor of mesh coordinates."""
     strides = ops.convert_to_tensor(self.strides)
     shape = ops.convert_to_tensor(self.shape())
     return (device_idx // strides) % shape
 
-  @staticmethod
-  def from_proto(proto: layout_pb2.MeshProto) -> 'Mesh':
+  @classmethod
+  def from_proto(cls, proto: layout_pb2.MeshProto) -> 'Mesh':
     """Construct a mesh instance from input `proto`."""
-    mesh = _pywrap_dtensor_device.Mesh.__new__(Mesh)
-    _pywrap_dtensor_device.Mesh.__init__(mesh, proto)
-    return mesh
+    return cls._new_object(mesh_proto=proto)
 
-  @staticmethod
-  def from_string(mesh_str: str) -> 'Mesh':
-    mesh = _pywrap_dtensor_device.Mesh.__new__(Mesh)
-    _pywrap_dtensor_device.Mesh.__init__(mesh, mesh_str)
-    return mesh
+  @classmethod
+  def from_string(cls, mesh_str: str) -> 'Mesh':
+    return cls._new_object(mesh_str=mesh_str)
 
-  # TODO(b/242201545): implement this in Mesh C++ class
-  def host_mesh(self):
-    """Returns the 1-1 mapped host mesh."""
-    if self.device_type().upper() == 'CPU':
-      return self
+  @classmethod
+  def from_device(cls, device: str) -> 'Mesh':
+    """Constructs a single device mesh from a device string."""
+    return cls._new_object(single_device=device)
 
-    v_cpus_counts = config.num_local_devices('CPU')
-    if v_cpus_counts < len(self.local_devices()):
-      raise ValueError(
-          'Must have at least {0} virtual CPUs for mesh : {1}, '
-          'but got : {2} virtual CPUs. '
-          'Call tf.experimental.dtensor.initialize_accelerator_system() '
-          'to initialize the host CPU devices with the accelerators.'.format(
-              len(self.local_devices()), self.to_string(), v_cpus_counts
-          )
-      )
-    local_device_specs = [
-        tf_device.DeviceSpec.from_string(d) for d in self.local_devices()
-    ]
-    global_device_specs = [
-        tf_device.DeviceSpec.from_string(d) for d in self.global_devices()
-    ]
+  @classmethod
+  def _from_mesh(cls, mesh: _pywrap_dtensor_device.Mesh):
+    """Creates a copy from an existing pywrap mesh object."""
+    return cls._new_object(mesh=mesh)
 
-    device_array = np.asarray(
-        [spec.replace(device_type='CPU') for spec in local_device_specs]
-    ).reshape((len(self.local_devices()), 1))
-    global_devices = [
-        spec.replace(device_type='CPU') for spec in global_device_specs
-    ]
-    h_mesh = Mesh(
-        self.dim_names,
-        self.global_device_ids(),
-        self.local_device_ids(),
-        np.ravel(device_array).tolist(),
-        global_devices=global_devices,
-    )
-    return h_mesh
+  @functools.cached_property
+  def _host_mesh(self) -> 'Mesh':
+    return Mesh._from_mesh(super().host_mesh())
+
+  def host_mesh(self) -> 'Mesh':
+    """Returns a host mesh."""
+    # TODO(b/242201545): Find a way to get the super class to return correct
+    # typed objects.
+    return self._host_mesh
 
   # TODO(b/242201545): implement this in Mesh C++ class
   def local_device_locations(self) -> List[Dict[str, int]]:
@@ -359,6 +344,9 @@ class Mesh(_pywrap_dtensor_device.Mesh):
     return mapping
 
 
+LayoutType = _pywrap_dtensor_device.LayoutType
+
+
 # TODO(hthu): Consider making this class immutable.
 @tf_export('experimental.dtensor.Layout', v1=[])
 class Layout(_pywrap_dtensor_device.Layout):
@@ -369,6 +357,9 @@ class Layout(_pywrap_dtensor_device.Layout):
   sharding spec indicates which dimension of the mesh it is sharded over. A
   special sharding spec `UNSHARDED` indicates that axis is replicated on
   all the devices of that mesh.
+
+  Refer to [DTensor Concepts](https://www.tensorflow.org/guide/dtensor_overview)
+  for in depth discussion and examples.
 
   For example, let's consider a 1-D mesh:
 
@@ -438,10 +429,20 @@ class Layout(_pywrap_dtensor_device.Layout):
              'valid mesh dimension or UNSHARDED.').format(
                  dim_sharding=dim_sharding))
 
-    super().__init__(sharding_specs, mesh)
+    super().__init__(
+        type=LayoutType.STATIC, sharding_specs=sharding_specs, mesh=mesh
+    )
+
+  @classmethod
+  def _new_object(cls, *args, **kwargs):
+    # Need to explicitly invoke the base class __init__ because
+    # Layout.__init__ overrode it with a different signature.
+    self = _pywrap_dtensor_device.Layout.__new__(cls)
+    super().__init__(self, *args, **kwargs)
+    return self
 
   def __repr__(self) -> str:
-    return f'Layout(sharding_specs={self.sharding_specs}, mesh={self.mesh})'
+    return f'Layout.from_string({self.to_string()})'
 
   def __hash__(self):
     return hash(self.as_proto().SerializeToString(deterministic=True))
@@ -450,30 +451,26 @@ class Layout(_pywrap_dtensor_device.Layout):
   def __reduce__(self):
     return Layout.from_string, (self.to_string(),)
 
-  # TODO(b/242201545): Find a way to return Mesh object from the pywrap module.
   @property
   def mesh(self):
-    return Mesh.from_proto(super().mesh.as_proto())
+    return Mesh._from_mesh(mesh=super().mesh)  # pylint: disable=protected-access
 
   @property
   def shape(self):
     return self.mesh.shape()
 
-  @staticmethod
+  @classmethod
   def batch_sharded(
-      mesh: Mesh, batch_dim: str, rank: int, axis: int = 0
+      cls, mesh: Mesh, batch_dim: str, rank: int, axis: int = 0
   ) -> 'Layout':
     """Returns a layout sharded on batch dimension."""
-    layout_obj = _pywrap_dtensor_device.Layout.__new__(Layout)
-    _pywrap_dtensor_device.Layout.__init__(
+    return cls._new_object(
         # Watchout for the different ordering.
-        layout_obj,
         mesh=mesh,
         rank=rank,
         batch_dim=batch_dim,
         axis=axis,
     )
-    return layout_obj
 
   # TODO(b/242201545): Move this to C++ / find the corresponding function there.
   def delete(self, dims: List[int]) -> 'Layout':
@@ -485,24 +482,40 @@ class Layout(_pywrap_dtensor_device.Layout):
     ]
     return Layout(new_specs, self.mesh)
 
-  @staticmethod
-  def from_proto(layout_proto: layout_pb2.LayoutProto) -> 'Layout':
+  @classmethod
+  def from_proto(cls, layout_proto: layout_pb2.LayoutProto) -> 'Layout':
     """Creates an instance from a LayoutProto."""
-    layout_obj = _pywrap_dtensor_device.Layout.__new__(Layout)
-    _pywrap_dtensor_device.Layout__init__(layout_obj, layout_proto)
-    return layout_obj
+    return cls._new_object(layout_proto=layout_proto)
 
-  @staticmethod
-  def from_string(layout_str: str) -> 'Layout':
+  @classmethod
+  def from_string(cls, layout_str: str) -> 'Layout':
     """Creates an instance from a human-readable string."""
-    layout_obj = _pywrap_dtensor_device.Layout.__new__(Layout)
-    _pywrap_dtensor_device.Layout.__init__(layout_obj, layout_str)
-    return layout_obj
+    return cls._new_object(layout_str=layout_str)
 
-  @staticmethod
-  def inner_sharded(mesh: Mesh, inner_dim: str, rank: int) -> 'Layout':
+  def to_parted(self) -> 'Layout':
+    """Returns a "parted" layout from a static layout.
+
+    A parted layout contains axes that are treated as independent by most of
+    SPMD expanders.
+
+    FIXME(b/285905569): The exact semantics is still being investigated.
+    """
+    return Layout._new_object(layout=super().to_parted())
+
+  @classmethod
+  def inner_sharded(cls, mesh: Mesh, inner_dim: str, rank: int) -> 'Layout':
     """Returns a layout sharded on inner dimension."""
-    return Layout.batch_sharded(mesh, inner_dim, rank, axis=rank - 1)
+    return cls.batch_sharded(mesh, inner_dim, rank, axis=rank - 1)
+
+  @classmethod
+  def from_single_device_mesh(cls, mesh: Mesh) -> 'Layout':
+    """Constructs a single device layout from a single device mesh."""
+    return cls._new_object(mesh=mesh)
+
+  @classmethod
+  def from_device(cls, device: str) -> 'Layout':
+    """Constructs a single device layout from a single device mesh."""
+    return cls.from_single_device_mesh(Mesh.from_device(device))
 
   # TODO(b/242201545): Move this to C++ / find the corresponding function there.
   def offset_to_shard(self):
@@ -531,9 +544,7 @@ class Layout(_pywrap_dtensor_device.Layout):
       index = index + m * o
     return index
 
-  @staticmethod
-  def replicated(mesh: Mesh, rank: int) -> 'Layout':
+  @classmethod
+  def replicated(cls, mesh: Mesh, rank: int) -> 'Layout':
     """Returns a replicated layout of rank `rank`."""
-    layout_obj = _pywrap_dtensor_device.Layout.__new__(Layout)
-    _pywrap_dtensor_device.Layout.__init__(layout_obj, mesh=mesh, rank=rank)
-    return layout_obj
+    return cls._new_object(mesh=mesh, rank=rank)

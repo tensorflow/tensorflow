@@ -80,7 +80,7 @@ Allocator* ProcessState::GetCPUAllocator(int numa_node) {
     Status status = ReadBoolFromEnvVar(
         "TF_CPU_ALLOCATOR_USE_BFC", alloc_visitors_defined, &use_bfc_allocator);
     if (!status.ok()) {
-      LOG(ERROR) << "GetCPUAllocator: " << status.error_message();
+      LOG(ERROR) << "GetCPUAllocator: " << status.message();
     }
     Allocator* allocator = nullptr;
     SubAllocator* sub_allocator =
@@ -96,7 +96,7 @@ Allocator* ProcessState::GetCPUAllocator(int numa_node) {
                                           1LL << 16 /*64GB max by default*/,
                                           &cpu_mem_limit_in_mb);
       if (!status.ok()) {
-        LOG(ERROR) << "GetCPUAllocator: " << status.error_message();
+        LOG(ERROR) << "GetCPUAllocator: " << status.message();
       }
       int64_t cpu_mem_limit = cpu_mem_limit_in_mb * (1LL << 20);
       DCHECK(sub_allocator);

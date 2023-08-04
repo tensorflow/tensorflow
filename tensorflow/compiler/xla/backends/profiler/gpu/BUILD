@@ -5,7 +5,6 @@ load(
     "tsl_copts",
     "tsl_gpu_library",
 )
-load("//tensorflow/tsl:tsl.default.bzl", "tsl_gpu_cc_test")
 load(
     "//tensorflow/tsl/platform:build_config.bzl",
     "tf_additional_device_tracer_srcs",
@@ -23,13 +22,17 @@ load(
     "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
+load(
+    "//tensorflow/compiler/xla:xla.bzl",
+    "xla_cc_test",
+)
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow/compiler/xla:internal"],
     features = [
         "-layering_check",
     ],
-    licenses = ["notice"],
 )
 
 tsl_gpu_library(
@@ -107,10 +110,11 @@ tsl_gpu_library(
     ],
 )
 
-tsl_gpu_cc_test(
+xla_cc_test(
     name = "cupti_error_manager_test",
     size = "small",
     srcs = ["cupti_error_manager_test.cc"],
+    copts = tf_profiler_copts() + tsl_copts(),
     tags = tf_cuda_tests_tags() + [
         "gpu_cupti",
         "nomac",
@@ -125,9 +129,7 @@ tsl_gpu_cc_test(
         ":cupti_wrapper",
         ":mock_cupti",
         "@com_google_absl//absl/memory",
-        "//tensorflow/tsl/platform:env_impl",
         "//tensorflow/tsl/profiler/utils:time_utils",
-        "//tensorflow/tsl/profiler/backends/cpu:annotation_stack_impl",
     ]),
 )
 
@@ -240,11 +242,6 @@ tsl_gpu_library(
     copts = tf_profiler_copts() + tsl_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        "@com_google_absl//absl/container:fixed_array",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/container:node_hash_set",
-        "@com_google_absl//absl/strings",
         "//tensorflow/tsl/platform:abi",
         "//tensorflow/tsl/platform:macros",
         "//tensorflow/tsl/platform:mutex",
@@ -257,6 +254,11 @@ tsl_gpu_library(
         "//tensorflow/tsl/profiler/utils:xplane_builder",
         "//tensorflow/tsl/profiler/utils:xplane_schema",
         "//tensorflow/tsl/profiler/utils:xplane_utils",
+        "@com_google_absl//absl/container:fixed_array",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:node_hash_set",
+        "@com_google_absl//absl/strings",
     ] + tf_additional_cupti_deps(),
 )
 

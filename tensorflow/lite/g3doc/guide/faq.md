@@ -13,7 +13,8 @@ The supported formats are listed [here](../models/convert/index#python_api)
 #### Why are some operations not implemented in TensorFlow Lite?
 
 In order to keep TFLite lightweight, only certain TF operators (listed in the
-[allowlist](op_select_allowlist)) are supported in TFLite.
+[allowlist](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/guide/op_select_allowlist.md))
+are supported in TFLite.
 
 #### Why doesn't my model convert?
 
@@ -104,7 +105,7 @@ like this:
     [TensorFlow Hub](https://tfhub.dev/s?deployment-format=lite&module-type=image-classification).
 *   *Tweak the number of threads.* Many TensorFlow Lite operators support
     multi-threaded kernels. You can use `SetNumThreads()` in the
-    [C++ API](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/interpreter.h#L345)
+    [C++ API](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/core/interpreter_builder.h#L110)
     to do this. However, increasing threads results in performance variability
     depending on the environment.
 *   *Use Hardware Accelerators.* TensorFlow Lite supports model acceleration for

@@ -42,9 +42,8 @@ UnsortedSegmentSumSPMDExpander::ComputeLayoutForward(
     const int segment_ids_rank =
         ValueRank(unsorted_segmented_sum.getSegmentIds());
 
-    TF_ASSIGN_OR_RETURN(
-        Layout input_layout_truncated,
-        input_layouts.lookup(0).Truncate(segment_ids_rank, /*end=*/true));
+    Layout input_layout_truncated =
+        input_layouts.lookup(0).Truncate(segment_ids_rank, /*end=*/true);
     return llvm::DenseMap<int, Layout>(
         {{0, input_layout_truncated.LeftPad(output_rank)}});
   }
@@ -67,8 +66,8 @@ UnsortedSegmentSumSPMDExpander::ComputeLayoutBackward(
     // If we have an output layout, we can send it backwards to the last few
     // dimension
     const int data_rank = ValueRank(unsorted_segmented_sum.getData());
-    TF_ASSIGN_OR_RETURN(Layout output_layout_truncated,
-                        output_layouts.lookup(0).Truncate(1, /*end=*/true));
+    Layout output_layout_truncated =
+        output_layouts.lookup(0).Truncate(1, /*end=*/true);
     return llvm::DenseMap<int, Layout>(
         {{0, output_layout_truncated.LeftPad(data_rank)},
          {1, segment_ids_layout},
@@ -105,8 +104,7 @@ StatusOr<mlir::Operation*> UnsortedSegmentSumSPMDExpander::ExpandOp(
   const int data_rank = data_layout.rank();
   const int segment_ids_rank = segment_ids_layout.rank();
 
-  TF_ASSIGN_OR_RETURN(Layout new_segment_ids_layout,
-                      data_layout.Truncate(segment_ids_rank));
+  Layout new_segment_ids_layout = data_layout.Truncate(segment_ids_rank);
 
   absl::flat_hash_set<std::string> reduce_dimensions;
   for (int i = 0; i < segment_ids_rank; i++)
@@ -124,8 +122,8 @@ StatusOr<mlir::Operation*> UnsortedSegmentSumSPMDExpander::ExpandOp(
 
   InferSPMDExpandedLocalShape(new_sum_op);
 
-  TF_ASSIGN_OR_RETURN(Layout data_layout_truncated,
-                      data_layout.Truncate(segment_ids_rank, /*end=*/true));
+  Layout data_layout_truncated =
+      data_layout.Truncate(segment_ids_rank, /*end=*/true);
   Layout result_output_layout = data_layout_truncated.LeftPad(
       data_rank - segment_ids_rank + 1);  // This is output rank.
 

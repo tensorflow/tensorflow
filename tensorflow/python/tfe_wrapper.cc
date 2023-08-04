@@ -15,6 +15,11 @@ limitations under the License.
 
 #include <memory>
 
+// Must be included first
+// clang-format off
+#include "tensorflow/tsl/python/lib/core/numpy.h" //NOLINT
+// clang-format on
+
 #include "Python.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
@@ -35,6 +40,7 @@ limitations under the License.
 #include "tensorflow/c/eager/tfe_cancellation_manager_internal.h"
 #include "tensorflow/c/eager/tfe_context_internal.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
+#include "tensorflow/c/safe_ptr.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/compiler/jit/flags.h"
@@ -45,7 +51,6 @@ limitations under the License.
 #include "tensorflow/python/lib/core/py_exception_registry.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 #include "tensorflow/python/lib/core/pybind11_status.h"
-#include "tensorflow/python/lib/core/safe_ptr.h"
 #include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
 #include "tensorflow/python/util/util.h"
 
@@ -515,7 +520,7 @@ static py::bytes TFE_GetCompilerIr(py::handle& ctx,
 
   if (!hlo_str.ok()) {
     ThrowValueError(absl::StrFormat("Failed getting HLO text: '%s'",
-                                    hlo_str.status().error_message())
+                                    hlo_str.status().message())
                         .c_str());
   }
   return py::bytes(*hlo_str);
@@ -621,6 +626,9 @@ class EagerContextThreadLocalDataWrapper {
 // are only assigning this to functions that return opaque types.
 
 PYBIND11_MODULE(_pywrap_tfe, m) {
+  // Numpy initialization code for array functions.
+  tsl::ImportNumpy();
+
   py::class_<TFE_Executor> TFE_Executor_class(m, "TFE_Executor");
   py::class_<TFE_ContextOptions> TFE_ContextOptions_class(m,
                                                           "TFE_ContextOptions");
@@ -818,6 +826,14 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
               tensorflow::make_safe(TF_NewStatus());
           TFE_ContextGetFunctionDef(tensorflow::InputTFE_Context(ctx),
                                     function_name, &buf, status.get());
+          tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+        });
+  m.def("TFE_ContextGetGraphDebugInfo",
+        [](py::handle& ctx, const char* function_name, TF_Buffer& buf) {
+          tensorflow::Safe_TF_StatusPtr status =
+              tensorflow::make_safe(TF_NewStatus());
+          TFE_ContextGetGraphDebugInfo(tensorflow::InputTFE_Context(ctx),
+                                       function_name, &buf, status.get());
           tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
         });
   m.def("TFE_ContextRemoveFunction", [](py::handle& ctx, const char* name) {
@@ -1118,7 +1134,9 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
         [](const py::handle& context, const py::handle& handles) {
           return tensorflow::TFE_Py_PackEagerTensors_wrapper(context, handles);
         });
-  m.def("TFE_Py_SetEagerTensorProfiler", &TFE_Py_SetEagerTensorProfiler);
+  m.def("TFE_Py_SetEagerTensorProfiler", [](const py::handle& o) {
+    return tensorflow::PyoOrThrow(TFE_Py_SetEagerTensorProfiler(o.ptr()));
+  });
   m.def("TFE_Py_RegisterJVPFunction", [](const py::handle& o) {
     return tensorflow::PyoOrThrow(TFE_Py_RegisterJVPFunction(o.ptr()));
   });

@@ -290,7 +290,7 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteParamsBroadcastForgotSender) {
   }
   for (int i = 0; i < NUM_DEVS; ++i) {
     EXPECT_EQ(statuses[i].code(), error::INTERNAL);
-    EXPECT_EQ(statuses[i].error_message(),
+    EXPECT_EQ(statuses[i].message(),
               strings::StrCat(
                   "Instance ", kInstanceKey,
                   " found no source for broadcast.  This could mean that there"
@@ -328,8 +328,9 @@ TEST_F(CollectiveParamResolverLocalTest, AbortPendingGroup) {
                                    /*is_source*/ i == 0);
       prl_->CompleteParamsAsync(GetDeviceAttributes(device), cp[i], &cancel_mgr,
                                 [&done, cp = cp[i]](const Status& s) {
-                                  EXPECT_EQ(s.code(), error::ABORTED);
-                                  EXPECT_EQ(s.error_message(), "__aborted__");
+                                  EXPECT_EQ(s.code(),
+                                            absl::StatusCode::kAborted);
+                                  EXPECT_EQ(s.message(), "__aborted__");
                                   done.DecrementCount();
                                   cp->Unref();
                                 });
@@ -337,7 +338,7 @@ TEST_F(CollectiveParamResolverLocalTest, AbortPendingGroup) {
     });
   }
   start.Wait();
-  prl_->StartAbort(Status(error::ABORTED, "__aborted__"));
+  prl_->StartAbort(Status(absl::StatusCode::kAborted, "__aborted__"));
   done.Wait();
 }
 
@@ -378,8 +379,9 @@ TEST_F(CollectiveParamResolverLocalTest, AbortPendingInstance) {
                                    /*is_source*/ i == 0);
       prl_->CompleteParamsAsync(GetDeviceAttributes(device), cp[i], &cancel_mgr,
                                 [&done, cp = cp[i]](const Status& s) {
-                                  EXPECT_EQ(s.code(), error::ABORTED);
-                                  EXPECT_EQ(s.error_message(), "__aborted__");
+                                  EXPECT_EQ(s.code(),
+                                            absl::StatusCode::kAborted);
+                                  EXPECT_EQ(s.message(), "__aborted__");
                                   done.DecrementCount();
                                   cp->Unref();
                                 });
@@ -387,7 +389,7 @@ TEST_F(CollectiveParamResolverLocalTest, AbortPendingInstance) {
     });
   }
   start.Wait();
-  prl_->StartAbort(Status(error::ABORTED, "__aborted__"));
+  prl_->StartAbort(Status(absl::StatusCode::kAborted, "__aborted__"));
   done.Wait();
 }
 
@@ -417,7 +419,7 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteParamsAfterAbortion) {
     }
     done.Wait();
   }
-  prl_->StartAbort(Status(error::ABORTED, "__aborted__"));
+  prl_->StartAbort(Status(absl::StatusCode::kAborted, "__aborted__"));
 
   auto complete_params = [this, &cancel_mgr](int group_key, int instance_key) {
     string device = "/job:localhost/replica:0/task:0/device:CPU:0";
@@ -427,8 +429,8 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteParamsAfterAbortion) {
     core::ScopedUnref unref(cp);
     prl_->CompleteParamsAsync(GetDeviceAttributes(device), cp, &cancel_mgr,
                               [&done](const Status& s) {
-                                EXPECT_EQ(s.code(), error::ABORTED);
-                                EXPECT_EQ(s.error_message(), "__aborted__");
+                                EXPECT_EQ(s.code(), absl::StatusCode::kAborted);
+                                EXPECT_EQ(s.message(), "__aborted__");
                                 done.Notify();
                               });
     done.WaitForNotification();
@@ -474,8 +476,8 @@ TEST_F(CollectiveParamResolverLocalTest, AbortNormalCompleteParamsAsync) {
               cp->Unref();
               // The status should be either OK or the aborted status.
               if (!status.ok()) {
-                EXPECT_EQ(status.code(), error::ABORTED);
-                EXPECT_EQ(status.error_message(), "__aborted__");
+                EXPECT_EQ(status.code(), absl::StatusCode::kAborted);
+                EXPECT_EQ(status.message(), "__aborted__");
                 done.DecrementCount();
                 return;
               }
@@ -488,7 +490,7 @@ TEST_F(CollectiveParamResolverLocalTest, AbortNormalCompleteParamsAsync) {
     // on different code points each time.
     int64_t delay_ms = random::New64() % 50000;
     Env::Default()->SleepForMicroseconds(delay_ms);
-    prl_->StartAbort(Status(error::ABORTED, "__aborted__"));
+    prl_->StartAbort(Status(absl::StatusCode::kAborted, "__aborted__"));
     done.Wait();
     ResetParamResolver(ConfigProto());
   }

@@ -50,12 +50,9 @@ absl::Status ConvReorderFilterImpl(
   auto input = se::DeviceMemory<int8_t>(GetDeviceAddress(input_view));
   auto output = se::DeviceMemory<int8_t>(GetDeviceAddress(output_view));
 
-  auto executed = run_options->stream()->CudnnReorderConvolutionFilterAndBias(
+  return run_options->stream()->CudnnReorderConvolutionFilterAndBias(
       GetFilterDescriptor(filter_dims), input, &output, std::nullopt,
       std::nullopt);
-  if (!executed.ok()) return ToAbslStatus(executed);
-
-  return absl::OkStatus();
 }
 
 absl::Status ConvReorderFilterAndBiasImpl(
@@ -71,12 +68,9 @@ absl::Status ConvReorderFilterAndBiasImpl(
   auto bias_output =
       se::DeviceMemory<float>(GetDeviceAddress(bias_output_view));
 
-  auto executed = run_options->stream()->CudnnReorderConvolutionFilterAndBias(
+  return run_options->stream()->CudnnReorderConvolutionFilterAndBias(
       GetFilterDescriptor(filter_dims), filter_input, &filter_output,
       std::make_optional(bias_input), std::make_optional(bias_output));
-  if (!executed.ok()) return ToAbslStatus(executed);
-
-  return absl::OkStatus();
 }
 
 }  // namespace

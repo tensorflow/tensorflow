@@ -40,12 +40,14 @@ class ParallelExecutor {
   virtual ~ParallelExecutor() = default;
 
   // Broadcasts `tensor` to `mesh` using replicated sharding and returns a
-  // DTensor representation.
+  // DTensor representation. `mesh` can be a single device mesh and in that case
+  // `const_value` is useless.
   virtual StatusOr<std::unique_ptr<TensorWithLayout>> Broadcast(
       const Tensor& tensor, const Mesh& mesh,
       std::optional<NodeDef> const_value) = 0;
 
-  // Takes input TensorWithLayouts, a MLIR module and the entry function name.
+  // Takes input TensorWithLayouts and a MLIR module.
+  // The MLIR module should have `main` as its entry function name.
   // Attributes are forwarded to executed operations unmodified.
   // The execute is non-blocking and returns a Future of output TensorWithLayout
   // raw pointers.
@@ -58,8 +60,7 @@ class ParallelExecutor {
   };
   virtual StatusOr<ExecutionResult> Execute(
       TFE_Context* context, const std::vector<TensorWithLayout*>& inputs,
-      mlir::ModuleOp module, llvm::StringRef entry_function_name,
-      const TFE_OpAttrs* attributes) const = 0;
+      mlir::ModuleOp module, const TFE_OpAttrs* attributes) const = 0;
 
   // Disassembles `t` into multiple TensorWithLayouts. `t` may or may not be
   // valid to use afterwards.

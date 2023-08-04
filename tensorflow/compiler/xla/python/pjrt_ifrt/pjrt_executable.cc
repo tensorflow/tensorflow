@@ -21,8 +21,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/pjrt/host_callback.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
 #include "tensorflow/compiler/xla/python/ifrt/device.h"
 #include "tensorflow/compiler/xla/python/ifrt/dtype.h"
 #include "tensorflow/compiler/xla/python/ifrt/sharding.h"
@@ -53,6 +57,59 @@ StatusOr<const xla::HloInstructionProto*> FindRootInstruction(
     }
   }
   return InvalidArgument("Entry computation not found");
+}
+
+// Returns the output shape of the first module in a `PjRtLoadedExecutable`.
+StatusOr<xla::Shape> GetFirstModuleOutputShape(
+    xla::PjRtLoadedExecutable* pjrt_loaded_executable) {
+  auto shapes = pjrt_loaded_executable->GetOutputShapes();
+  TF_RETURN_IF_ERROR(shapes.status());
+  if (shapes->empty()) {
+    return FailedPrecondition("No output shape found");
+  }
+  return shapes->front();
+}
+
+// Returns the output shardings of the first module in a
+// `PjRtLoadedExecutable`.
+StatusOr<std::optional<HloSharding>> GetFirstModuleOutputSharding(
+    xla::PjRtLoadedExecutable* pjrt_loaded_executable,
+    const xla::Shape& shape) {
+  auto output_shardings = pjrt_loaded_executable->GetOutputShardings();
+  std::optional<xla::HloSharding> result_hlo_sharding;
+  if (output_shardings.has_value()) {
+    std::vector<HloSharding> hlo_shardings;
+    hlo_shardings.reserve(output_shardings->size());
+    for (const auto& sharding : *output_shardings) {
+      TF_ASSIGN_OR_RETURN(auto hlo_sharding, HloSharding::FromProto(sharding));
+      hlo_shardings.push_back(hlo_sharding);
+    }
+    if (shape.IsTuple()) {
+      return HloSharding::Tuple(shape, hlo_shardings);
+    } else {
+      return hlo_shardings.front();
+    }
+  }
+  return std::nullopt;
+}
+
+// Returns the flattened output memory_kinds of the first module in a
+// `UnimplementedError` will be converted into `std::nullopt`.
+StatusOr<std::optional<std::vector<absl::string_view>>>
+GetFirstModuleOutputMemoryKinds(
+    xla::PjRtLoadedExecutable* pjrt_loaded_executable) {
+  auto output_memory_kinds = pjrt_loaded_executable->GetOutputMemoryKinds();
+  // Gracefully handle an unimplemented error.
+  if (absl::IsUnimplemented(output_memory_kinds.status())) {
+    return std::nullopt;
+  }
+  TF_RETURN_IF_ERROR(output_memory_kinds.status());
+  // Expect `xla::PjRtExecutable::GetOutputMemoryKinds()` to return at least
+  // one module's output memory_kinds if it returns any non-error result.
+  if (output_memory_kinds->empty()) {
+    return FailedPrecondition("No output memory kinds found");
+  }
+  return std::move(output_memory_kinds)->front();
 }
 
 }  // namespace
@@ -86,33 +143,30 @@ StatusOr<std::string> PjRtExecutable::Serialize() const {
 
 StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
     PjRtCompatibleClient* client,
-    std::unique_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable) {
-  return Create(client, std::shared_ptr<xla::PjRtLoadedExecutable>(
-                            pjrt_loaded_executable.release()));
+    std::unique_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
+    std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks) {
+  return Create(client,
+                std::shared_ptr<xla::PjRtLoadedExecutable>(
+                    pjrt_loaded_executable.release()),
+                std::move(loaded_host_callbacks));
 }
 
 StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
     PjRtCompatibleClient* client,
-    std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable) {
-  // TODO(hyeontaek): We should request output sharding instead of the entire
-  // HLO modules once PjRt supports it.
-  // TODO(hyeontaek): We would not need to use GetHloModules() if
-  // PjRtLoadedExecutable can return the result shape and op sharding when
-  // output sharding propagation is not used.
+    std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
+    std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks) {
+  // TODO(hyeontaek): Use a full shape and a sharding rather than a per-shard
+  // shape.
   VLOG(3) << "PjRtLoadedExecutable::Create";
-  VLOG(3) << "Requesting GetHloModules";
-  TF_ASSIGN_OR_RETURN(auto hlo_modules,
-                      pjrt_loaded_executable->GetHloModules());
-  if (hlo_modules.empty()) {
-    return FailedPrecondition("No HLO module found");
-  }
-  const auto& hlo_module = hlo_modules.front();
-  // result_shape already contains per-device shapes. Do not use HLO sharding
-  // (e.g., from hlo_module->spmd_output_sharding()), which would accidentally
-  // apply sharding twice.
-  const xla::Shape& result_shape = hlo_module->result_shape();
+  VLOG(3) << "Using per-shard shape";
+  TF_ASSIGN_OR_RETURN(auto result_shape,
+                      GetFirstModuleOutputShape(pjrt_loaded_executable.get()));
+  TF_ASSIGN_OR_RETURN(
+      auto result_memory_kinds,
+      GetFirstModuleOutputMemoryKinds(pjrt_loaded_executable.get()));
   return CreateInternal(client, std::move(pjrt_loaded_executable), result_shape,
-                        /*result_hlo_sharding=*/nullptr);
+                        /*result_hlo_sharding=*/std::nullopt,
+                        result_memory_kinds, loaded_host_callbacks);
 }
 
 static StatusOr<std::vector<xla::Shape>> ResultShapesOfModule(
@@ -133,13 +187,14 @@ static StatusOr<std::vector<xla::Shape>> ResultShapesOfModule(
 
 StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
     PjRtCompatibleClient* client, mlir::ModuleOp module,
-    CompileOptions options) {
+    xla::CompileOptions compile_options,
+    std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks) {
   VLOG(3) << "PjRtLoadedExecutable::Create";
   if (VLOG_IS_ON(3)) {
     module.dump();
   }
-  VLOG(3) << options.ToProto()->DebugString();
-  const auto& build_options = options.executable_build_options;
+  VLOG(3) << compile_options.ToProto()->DebugString();
+  const auto& build_options = compile_options.executable_build_options;
   const bool auto_spmd_partitioning =
       build_options.use_spmd_partitioning() &&
       build_options.num_partitions() > 1 &&
@@ -147,27 +202,23 @@ StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
        build_options.any_allow_spmd_sharding_propagation_to_output());
   TF_ASSIGN_OR_RETURN(
       auto pjrt_loaded_executable,
-      client->pjrt_client()->Compile(module, std::move(options)));
+      client->pjrt_client()->Compile(module, std::move(compile_options)));
 
   if (auto_spmd_partitioning) {
-    // TODO(hyeontaek): We should request output shapes and shardings instead of
-    // the entire HLO modules once PjRt supports it.
-    VLOG(3) << "Requesting GetHloModules";
-    TF_ASSIGN_OR_RETURN(auto hlo_modules,
-                        pjrt_loaded_executable->GetHloModules());
-    if (hlo_modules.empty()) {
-      return FailedPrecondition("No HLO module found");
-    }
-    const auto& hlo_module = hlo_modules.front();
-    // result_shape already contains per-device shapes. Do not use HLO sharding
-    // (e.g., from hlo_module->spmd_output_sharding()), which would accidentally
-    // apply sharding twice.
-    const xla::Shape& result_shape = hlo_module->result_shape();
-    return CreateInternal(client, std::move(pjrt_loaded_executable),
-                          result_shape,
-                          /*result_hlo_sharding=*/nullptr);
+    // TODO(hyeontaek): Use a full shape and a sharding rather than a per-shard
+    // shape.
+    VLOG(3) << "Using per-shard shape";
+    TF_ASSIGN_OR_RETURN(auto result_shape, GetFirstModuleOutputShape(
+                                               pjrt_loaded_executable.get()));
+    TF_ASSIGN_OR_RETURN(
+        auto result_memory_kinds,
+        GetFirstModuleOutputMemoryKinds(pjrt_loaded_executable.get()));
+    return CreateInternal(
+        client, std::move(pjrt_loaded_executable), result_shape,
+        /*result_hlo_sharding=*/std::nullopt, result_memory_kinds,
+        std::move(loaded_host_callbacks));
   } else {
-    VLOG(3) << "Not requesting GetHloModules";
+    VLOG(3) << "Using full shape";
     TF_ASSIGN_OR_RETURN(auto result_shapes, ResultShapesOfModule(module));
     bool tuple_output = result_shapes.size() != 1;
     xla::Shape result_shape;
@@ -177,79 +228,16 @@ StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
       result_shape = result_shapes.front();
     }
 
-    std::optional<HloSharding> result_hlo_sharding_holder;
-    const xla::HloSharding* result_hlo_sharding = nullptr;
-    std::optional<std::vector<OpSharding>> output_shardings =
-        pjrt_loaded_executable->GetOutputShardings();
-    if (output_shardings) {
-      std::vector<HloSharding> hlo_shardings;
-      hlo_shardings.reserve(output_shardings->size());
-      for (const auto& sharding : *output_shardings) {
-        TF_ASSIGN_OR_RETURN(auto hlo_sharding,
-                            HloSharding::FromProto(sharding));
-        hlo_shardings.push_back(hlo_sharding);
-      }
-      if (tuple_output) {
-        result_hlo_sharding_holder =
-            HloSharding::Tuple(result_shape, hlo_shardings);
-      } else {
-        result_hlo_sharding_holder = hlo_shardings.front();
-      }
-      result_hlo_sharding = &*result_hlo_sharding_holder;
-    }
+    TF_ASSIGN_OR_RETURN(auto result_hlo_sharding,
+                        GetFirstModuleOutputSharding(
+                            pjrt_loaded_executable.get(), result_shape));
+    TF_ASSIGN_OR_RETURN(
+        auto result_memory_kinds,
+        GetFirstModuleOutputMemoryKinds(pjrt_loaded_executable.get()));
     return CreateInternal(client, std::move(pjrt_loaded_executable),
-                          result_shape, result_hlo_sharding);
-  }
-}
-
-StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
-    PjRtCompatibleClient* client, const XlaComputation& computation,
-    CompileOptions options) {
-  VLOG(3) << "PjRtLoadedExecutable::Create";
-  VLOG(3) << computation.proto().DebugString();
-  VLOG(3) << options.ToProto()->DebugString();
-  const auto& build_options = options.executable_build_options;
-  const bool auto_spmd_partitioning =
-      build_options.use_spmd_partitioning() &&
-      build_options.num_partitions() > 1 &&
-      (build_options.use_auto_spmd_partitioning() ||
-       build_options.any_allow_spmd_sharding_propagation_to_output());
-  TF_ASSIGN_OR_RETURN(
-      auto pjrt_loaded_executable,
-      client->pjrt_client()->Compile(computation, std::move(options)));
-
-  if (auto_spmd_partitioning) {
-    // TODO(hyeontaek): We should request output shapes and shardings instead of
-    // the entire HLO modules once PjRt supports it.
-    VLOG(3) << "Requesting GetHloModules";
-    TF_ASSIGN_OR_RETURN(auto hlo_modules,
-                        pjrt_loaded_executable->GetHloModules());
-    if (hlo_modules.empty()) {
-      return FailedPrecondition("No HLO module found");
-    }
-    const auto& hlo_module = hlo_modules.front();
-    // result_shape already contains per-device shapes. Do not use HLO sharding
-    // (e.g., from hlo_module->spmd_output_sharding()), which would accidentally
-    // apply sharding twice.
-    const xla::Shape& result_shape = hlo_module->result_shape();
-    return CreateInternal(client, std::move(pjrt_loaded_executable),
-                          result_shape,
-                          /*result_hlo_sharding=*/nullptr);
-  } else {
-    VLOG(3) << "Not requesting GetHloModules";
-    TF_ASSIGN_OR_RETURN(const auto* root_instruction,
-                        FindRootInstruction(computation.proto()));
-    const xla::Shape result_shape(root_instruction->shape());
-    const xla::HloSharding* result_hlo_sharding = nullptr;
-    std::optional<xla::HloSharding> result_hlo_sharding_holder;
-    if (root_instruction->has_sharding()) {
-      TF_ASSIGN_OR_RETURN(
-          result_hlo_sharding_holder,
-          xla::HloSharding::FromProto(root_instruction->sharding()));
-      result_hlo_sharding = &*result_hlo_sharding_holder;
-    }
-    return CreateInternal(client, std::move(pjrt_loaded_executable),
-                          result_shape, result_hlo_sharding);
+                          result_shape, result_hlo_sharding,
+                          result_memory_kinds,
+                          std::move(loaded_host_callbacks));
   }
 }
 
@@ -258,7 +246,9 @@ PjRtLoadedExecutable::CreateInternal(
     PjRtCompatibleClient* client,
     std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
     const xla::Shape& result_shape,
-    const xla::HloSharding* result_hlo_sharding) {
+    const std::optional<xla::HloSharding>& result_hlo_sharding,
+    const std::optional<std::vector<absl::string_view>>& result_memory_kinds,
+    std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks) {
   DeviceList devices(
       DeviceList::Devices(pjrt_loaded_executable->addressable_devices().begin(),
                           pjrt_loaded_executable->addressable_devices().end()));
@@ -270,7 +260,8 @@ PjRtLoadedExecutable::CreateInternal(
   std::vector<std::shared_ptr<const Sharding>> output_shardings;
 
   auto append_arg = [&](const xla::Shape& shape,
-                        const xla::HloSharding* sharding) -> Status {
+                        const xla::HloSharding* sharding,
+                        MemoryKind memory_kind) -> Status {
     TF_ASSIGN_OR_RETURN(auto dtype, ToDType(shape.element_type()));
     output_dtypes.push_back(dtype);
     output_shapes.push_back(Shape(shape.dimensions()));
@@ -284,25 +275,34 @@ PjRtLoadedExecutable::CreateInternal(
     } else {
       tile_shape = shape;
     }
-    std::vector<Shape> per_device_shapes(
-        /*n=*/pjrt_loaded_executable->addressable_devices().size(),
-        /*v=*/Shape(tile_shape.dimensions()));
-    output_shardings.push_back(OpaqueSharding::Create(
-        devices, OpaqueSharding::MakeDisassembleFuncFromShapes(
-                     std::move(per_device_shapes))));
+    output_shardings.push_back(ifrt::ConcreteEvenSharding::Create(
+        devices, memory_kind,
+        /*shape=*/ifrt::Shape(shape.dimensions()),
+        /*shard_shape=*/ifrt::Shape(tile_shape.dimensions())));
     return OkStatus();
   };
   auto append_token = [&] {
     output_dtypes.push_back(DType(DType::kToken));
     output_shapes.push_back(Shape({}));
-    output_shardings.push_back(OpaqueSharding::Create(devices));
+    output_shardings.push_back(OpaqueSharding::Create(devices, MemoryKind()));
   };
 
   if (result_shape.IsArray()) {
     output_dtypes.reserve(1);
     output_shapes.reserve(1);
     output_shardings.reserve(1);
-    TF_RETURN_IF_ERROR(append_arg(result_shape, result_hlo_sharding));
+    const xla::HloSharding* element_hlo_sharding =
+        result_hlo_sharding.has_value() ? &*result_hlo_sharding : nullptr;
+    MemoryKind element_memory_kind;
+    if (result_memory_kinds.has_value()) {
+      if (result_memory_kinds->size() != 1) {
+        return FailedPrecondition(
+            "Output memory kinds are inconsistent with the non-tuple result");
+      }
+      element_memory_kind = MemoryKind(result_memory_kinds->front());
+    }
+    TF_RETURN_IF_ERROR(
+        append_arg(result_shape, element_hlo_sharding, element_memory_kind));
   } else if (result_shape.IsToken()) {
     output_dtypes.reserve(1);
     output_shapes.reserve(1);
@@ -312,25 +312,35 @@ PjRtLoadedExecutable::CreateInternal(
     output_dtypes.reserve(result_shape.tuple_shapes().size());
     output_shapes.reserve(result_shape.tuple_shapes().size());
     output_shardings.reserve(result_shape.tuple_shapes().size());
-    if (result_hlo_sharding != nullptr &&
+    if (result_hlo_sharding.has_value() &&
         (!result_hlo_sharding->IsTuple() ||
          result_hlo_sharding->tuple_elements().size() !=
              result_shape.tuple_shapes().size())) {
       return FailedPrecondition(
           "Output sharding is inconsistent with the tuple result");
     }
+    if (result_memory_kinds.has_value() &&
+        result_memory_kinds->size() != result_shape.tuple_shapes().size()) {
+      return FailedPrecondition(
+          "Output memory kinds are inconsistent with the tuple result");
+    }
     for (int i = 0; i < result_shape.tuple_shapes().size(); ++i) {
       const auto& element_shape = result_shape.tuple_shapes(i);
       if (element_shape.IsArray()) {
         const xla::HloSharding* element_hlo_sharding = nullptr;
-        if (result_hlo_sharding != nullptr) {
+        if (result_hlo_sharding.has_value()) {
           element_hlo_sharding = &result_hlo_sharding->tuple_elements()[i];
           if (element_hlo_sharding->IsTuple()) {
             return FailedPrecondition(
                 "Output sharding is inconsistent with the tuple result");
           }
         }
-        TF_RETURN_IF_ERROR(append_arg(element_shape, element_hlo_sharding));
+        MemoryKind element_memory_kind;
+        if (result_memory_kinds.has_value()) {
+          element_memory_kind = MemoryKind((*result_memory_kinds)[i]);
+        }
+        TF_RETURN_IF_ERROR(append_arg(element_shape, element_hlo_sharding,
+                                      element_memory_kind));
       } else if (element_shape.IsToken()) {
         append_token();
       } else {
@@ -343,10 +353,58 @@ PjRtLoadedExecutable::CreateInternal(
         "The computation result is not a support type (array, token, tuple)");
   }
 
+  std::vector<PjRtHostSendAndRecvLoadedHostCallback*>
+      host_send_and_recv_callbacks;
+  host_send_and_recv_callbacks.reserve(loaded_host_callbacks.size());
+  // Gather all `PjRtLoadedHostCallback` separately, as each execution will
+  // register `PjRtLoadedHostCallback` for host send and recv. All host
+  // callbacks will be referenced by the executable and any pending execution to
+  // guarantee the liveliness of host callbacks during executions.
+  for (auto& loaded_host_callback : loaded_host_callbacks) {
+    auto* host_send_and_recv_callback =
+        llvm::dyn_cast<PjRtHostSendAndRecvLoadedHostCallback>(
+            loaded_host_callback.get());
+    if (host_send_and_recv_callback != nullptr) {
+      host_send_and_recv_callbacks.push_back(host_send_and_recv_callback);
+    }
+  }
+  if (!loaded_host_callbacks.empty() &&
+      !client->pjrt_client()->SupportsSendRecvCallbacks()) {
+    return InternalError("Host callback not supported for runtime type: %s",
+                         client->runtime_type());
+  }
+
   return std::unique_ptr<LoadedExecutable>(new PjRtLoadedExecutable(
       client, std::move(pjrt_loaded_executable), std::move(devices),
+      std::move(loaded_host_callbacks), std::move(host_send_and_recv_callbacks),
       std::move(output_dtypes), std::move(output_shapes),
       std::move(output_shardings)));
+}
+
+PjRtLoadedExecutable::PjRtLoadedExecutable(
+    PjRtCompatibleClient* client,
+    std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
+    DeviceList devices,
+    std::vector<tsl::RCReference<LoadedHostCallback>> all_loaded_host_callbacks,
+    std::vector<PjRtHostSendAndRecvLoadedHostCallback*>
+        host_send_recv_callbacks,
+    std::vector<DType> output_dtypes, std::vector<Shape> output_shapes,
+    std::vector<std::shared_ptr<const Sharding>> output_shardings)
+    : client_(client),
+      pjrt_loaded_executable_(std::move(pjrt_loaded_executable)),
+      devices_(std::move(devices)),
+      all_loaded_host_callbacks_(
+          std::make_shared<std::vector<tsl::RCReference<LoadedHostCallback>>>(
+              std::move(all_loaded_host_callbacks))),
+      host_send_recv_callbacks_(std::move(host_send_recv_callbacks)),
+      output_dtypes_(std::move(output_dtypes)),
+      output_shapes_(std::move(output_shapes)),
+      output_shardings_(std::move(output_shardings)) {}
+
+PjRtLoadedExecutable::~PjRtLoadedExecutable() {
+  // Reset the PjRt executable before host callbacks.
+  pjrt_loaded_executable_ = nullptr;
+  all_loaded_host_callbacks_->clear();
 }
 
 StatusOr<PjRtLoadedExecutable::ExecuteResult> PjRtLoadedExecutable::Execute(
@@ -405,6 +463,38 @@ StatusOr<PjRtLoadedExecutable::ExecuteResult> PjRtLoadedExecutable::Execute(
   const bool returned_future_supported =
       pjrt_loaded_executable_->IsReturnedFutureSupported();
 
+  auto opts = options;
+
+  if (!all_loaded_host_callbacks_->empty() && !returned_future_supported) {
+    return InternalError(
+        "Host callback not supported without returned future support in "
+        "runtime: %s",
+        client_->runtime_type());
+  }
+
+  std::unique_ptr<HostCallbackStates> host_callback_states;
+  if (!host_send_recv_callbacks_.empty()) {
+    host_callback_states = std::make_unique<HostCallbackStates>();
+    for (int i = 0; i < num_computations; ++i) {
+      auto& contexts = host_callback_states->contexts.emplace_back();
+      auto& send_callbacks =
+          host_callback_states->send_callbacks.emplace_back();
+      auto& recv_callbacks =
+          host_callback_states->recv_callbacks.emplace_back();
+
+      for (const auto& host_send_recv_callback : host_send_recv_callbacks_) {
+        contexts.push_back(CreateHostCallbackStateAndAppendSendRecvCallbacks(
+            host_send_recv_callback->host_callback(),
+            /*host_memory_for_device_manager=*/nullptr, send_callbacks,
+            recv_callbacks,
+            /*use_major_to_minor_data_layout_for_callbacks=*/
+            options.use_major_to_minor_data_layout_for_callbacks));
+      }
+    }
+    opts.send_callbacks = host_callback_states->send_callbacks;
+    opts.recv_callbacks = host_callback_states->recv_callbacks;
+  }
+
   // Execute the computation.
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> pjrt_outputs;
   ExecuteResult result;
@@ -413,7 +503,7 @@ StatusOr<PjRtLoadedExecutable::ExecuteResult> PjRtLoadedExecutable::Execute(
     TF_ASSIGN_OR_RETURN(
         std::vector<std::unique_ptr<PjRtBuffer>> single_device_pjrt_results,
         pjrt_loaded_executable_->ExecutePortable(
-            argument_handles.front(), portable_execution_device, options,
+            argument_handles.front(), portable_execution_device, opts,
             returned_pjrt_future, /*fill_future=*/returned_future_supported));
 
     pjrt_outputs.push_back(std::move(single_device_pjrt_results));
@@ -428,15 +518,25 @@ StatusOr<PjRtLoadedExecutable::ExecuteResult> PjRtLoadedExecutable::Execute(
       returned_pjrt_futures.emplace();
     }
 
-    TF_ASSIGN_OR_RETURN(pjrt_outputs,
-                        pjrt_loaded_executable_->Execute(
-                            argument_handles, options, returned_pjrt_futures));
+    TF_ASSIGN_OR_RETURN(
+        pjrt_outputs, pjrt_loaded_executable_->Execute(argument_handles, opts,
+                                                       returned_pjrt_futures));
 
     if (returned_future_supported) {
       result.status = JoinFutures(absl::MakeSpan(*returned_pjrt_futures));
     } else {
       result.status = Future<Status>(OkStatus());
     }
+  }
+
+  if (!all_loaded_host_callbacks_->empty()) {
+    // For host callbacks to work, returned futures must be supported so that we
+    // can use the futures to extend the lifetime of the host callbacks until
+    // the execution finishes.
+    result.status.OnReady(
+        [all_loaded_host_callbacks = all_loaded_host_callbacks_,
+         host_callback_states = std::move(host_callback_states)](
+            Status) mutable { all_loaded_host_callbacks.reset(); });
   }
 
   // Convert 2-level PjRtBuffer vectors into an Array vector.
@@ -454,21 +554,45 @@ StatusOr<PjRtLoadedExecutable::ExecuteResult> PjRtLoadedExecutable::Execute(
                               num_outputs, output_dtypes_.size());
   }
   outputs.reserve(num_outputs);
-  std::shared_ptr<const Sharding> single_device_sharding;
-  if (portable_execution) {
-    single_device_sharding =
-        SingleDeviceSharding::Create(portable_execution_device);
-  }
+  // Single-device Shardings for portable execution. Outputs with the same
+  // memory_kind shares the same Sharding object.
+  absl::flat_hash_map<MemoryKind, std::shared_ptr<const Sharding>>
+      single_device_shardings;
   for (int i = 0; i < num_outputs; ++i) {
     PjRtArray::PjRtBuffers buffers;
     buffers.reserve(num_computations);
+    const MemoryKind first_memory_kind =
+        MakeMemoryKindFromPjRtBuffer(pjrt_outputs[0][i].get());
+    const MemoryKind canonical_first_memory_kind =
+        CanonicalizeMemoryKind(first_memory_kind, pjrt_outputs[0][i]->device());
     for (int j = 0; j < num_computations; ++j) {
+      if (j > 0) {
+        if (auto memory_kind =
+                MakeMemoryKindFromPjRtBuffer(pjrt_outputs[j][i].get());
+            canonical_first_memory_kind !=
+            CanonicalizeMemoryKind(memory_kind, pjrt_outputs[j][i]->device())) {
+          return FailedPrecondition(
+              "Memory kind mismatch between PjRtBuffers. Got one buffer with "
+              "memory kind '%s' and another with memory_kind '%s'",
+              first_memory_kind.DebugString(), memory_kind.DebugString());
+        }
+      }
       buffers.push_back(
           std::shared_ptr<PjRtBuffer>(pjrt_outputs[j][i].release()));
     }
     std::shared_ptr<const Sharding> sharding;
     if (portable_execution) {
-      sharding = single_device_sharding;
+      if (auto it = single_device_shardings.find(first_memory_kind);
+          it == single_device_shardings.end()) {
+        sharding =
+            single_device_shardings
+                .insert({first_memory_kind,
+                         SingleDeviceSharding::Create(portable_execution_device,
+                                                      first_memory_kind)})
+                .first->second;
+      } else {
+        sharding = it->second;
+      }
     } else {
       sharding = output_shardings_[i];
     }

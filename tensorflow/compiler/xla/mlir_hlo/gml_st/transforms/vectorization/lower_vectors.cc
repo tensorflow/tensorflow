@@ -19,10 +19,12 @@ limitations under the License.
 
 #include "gml_st/transforms/passes.h"
 #include "mlir/Conversion/VectorToSCF/VectorToSCF.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
+#include "mlir/Dialect/Vector/Transforms/LoweringPatterns.h"
 #include "mlir/Dialect/Vector/Transforms/VectorRewritePatterns.h"
 #include "mlir/Dialect/X86Vector/Transforms.h"
 #include "mlir/Transforms/DialectConversion.h"
@@ -64,11 +66,12 @@ LogicalResult rewriteVectorContract(MLIRContext* ctx, FuncOp funcOp) {
   vector::populateVectorToVectorCanonicalizationPatterns(patterns);
 
   // Currently we always lower vector.contract into vector.outerproduct.
-  patterns.add<vector::ContractionOpToOuterProductOpLowering,
-               vector::ContractionOpLowering>(
+  vector::populateVectorContractLoweringPatterns(
+      patterns,
       vector::VectorTransformsOptions().setVectorTransformsOptions(
           vector::VectorContractLowering::OuterProduct),
-      ctx, 2);
+      /*benefit=*/2,
+      /*disableOuterProductLowering*/ true);
   vector::populateVectorTransferPermutationMapLoweringPatterns(patterns);
 
   return applyPatternsAndFoldGreedily(funcOp, std::move(patterns));
@@ -185,7 +188,8 @@ class TransposeUnitDimToShapeCast
 };
 
 // Run optimization transformations on vector transfer operations.
-LogicalResult optimizeVectorTransfers(MLIRContext* ctx, FuncOp funcOp) {
+LogicalResult optimizeVectorTransfers(MLIRContext* ctx, FuncOp funcOp,
+                                      bool flatten) {
   // Generate vector.shape_cast for dropping leading one dimensions in vector
   // ops. This increases the chance that we can forward more transfer writes
   // to transfer reads.
@@ -212,7 +216,7 @@ LogicalResult optimizeVectorTransfers(MLIRContext* ctx, FuncOp funcOp) {
   }
 
   // Third stage of patterns to flatten transfer ops.
-  {
+  if (flatten) {
     RewritePatternSet patterns(ctx);
     mlir::vector::populateVectorTransferDropUnitDimsPatterns(patterns);
     mlir::vector::populateFlattenVectorTransferPatterns(patterns);
@@ -247,16 +251,18 @@ struct LowerVectorsPass : public impl::LowerVectorsPassBase<LowerVectorsPass> {
       signalPassFailure();
     if (failed(rewriteVectorReductionsND(ctx, funcOp))) signalPassFailure();
     if (failed(rewriteVectorReductions1D(ctx, funcOp))) signalPassFailure();
-    if (failed(optimizeVectorTransfers(ctx, funcOp))) signalPassFailure();
+    if (failed(optimizeVectorTransfers(ctx, funcOp, flatten)))
+      signalPassFailure();
     if (failed(lowerVectorOpsToSCF(ctx, funcOp))) signalPassFailure();
   }
 };
 }  // namespace
 
 std::unique_ptr<OperationPass<func::FuncOp>> createLowerVectorsPass(
-    bool enableAVX2) {
+    bool enableAVX2, bool flatten) {
   LowerVectorsPassOptions opts;
   opts.enableAVX2 = enableAVX2;
+  opts.flatten = flatten;
   return std::make_unique<LowerVectorsPass>(opts);
 }
 

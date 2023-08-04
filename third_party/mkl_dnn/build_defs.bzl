@@ -1,3 +1,10 @@
+"""Starlark macros for oneDNN.
+
+if_mkldnn_openmp checks if we are building x86 backend with OpenMP.
+if_mkldnn_aarch64_acl checks if we are building with Arm Compute Library.
+if_mkldnn_aarch64_acl_openmp checks if we are building ACL with OpenMP.
+"""
+
 def if_mkldnn_openmp(if_true, if_false = []):
     """Returns `if_true` if OpenMP is used with oneDNN.
 

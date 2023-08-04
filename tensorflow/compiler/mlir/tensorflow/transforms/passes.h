@@ -223,15 +223,8 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateTensorListOpsDecompositionPass();
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateTensorArrayOpsDecompositionPass();
 
-// Create a pass that legalize HLO to TF dialect.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateLegalizeHloToTfPass();
-
 // Create a pass that legalize TFG to TF dialect.
 std::unique_ptr<Pass> CreateLegalizeTFGToTFEPass();
-
-// Addds the HLO to TF rewrite patterns to the specified pattern list.
-void PopulateLegalizeHloToTfPatterns(RewritePatternSet* patterns,
-                                     MLIRContext* context);
 
 // Matches sequence of ops to TensorFlow fused kernels. This pass should not be
 // generally used beyond exporting to runtimes that supports these ops. In the
@@ -322,6 +315,20 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateSplitIntoIslandPerOpPass();
 // Populates the supplied passmanager with the passes required to run the
 // CPU/GPU bridge.
 void CreateTFXLABridgePipeline(OpPassManager& pm);
+
+//===----------------------------------------------------------------------===//
+// XlaCallModule
+//===----------------------------------------------------------------------===//
+
+// Creates a pass that deserializes functions in the StableHLO modules from
+// `tf.XlaCallModule` to the top-level module.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateXlaCallModuleDeserializationPass();
+
+// Creates a pass that serializes StableHLO functions referenced by
+// `tf.XlaCallModule` from the top-level module to `tf.XlaCallModule`'s
+// `module` attribute.
+std::unique_ptr<OperationPass<ModuleOp>> CreateXlaCallModuleSerializationPass();
 
 }  // namespace TF
 
@@ -432,6 +439,13 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateReplicateToIslandPass(
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreateReplicaIDToDeviceOrdinalPass();
 
+// Creates a pass that adds pipelining to a graph that contains device
+// accelerated embeddings. The EmbeddingSequencingPass is a temporary fallback
+// while developing full pipelining capabilities.
+std::unique_ptr<OperationPass<ModuleOp>> CreateEmbeddingSequencingPass();
+std::unique_ptr<OperationPass<ModuleOp>> CreateEmbeddingPipeliningPass();
+std::unique_ptr<OperationPass<func::FuncOp>> CreateEmbeddingProgramKeyPass();
+
 // Creates a pass that creates `tf_executor.island` from a single
 // `tf_device.parallel_execute` island.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateParallelExecuteToIslandsPass(
@@ -485,6 +499,13 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateXlaInlineDeviceOpsPass();
 // Creates a pass that rewrites partitioned calls with `_xla_compile_device
 // type` with `tf.XlaLaunch` ops.
 std::unique_ptr<OperationPass<ModuleOp>> CreateXlaRewritePass();
+
+// Creates a pass that rewrites partitioned calls with `tf._XlaCompile` op and
+// `tf.XlaRun` op.
+std::unique_ptr<OperationPass<ModuleOp>> CreateXlaRewriteV2Pass();
+
+// Create a pass that validates the input graph to the CPU/GPU bridge.
+std::unique_ptr<OperationPass<ModuleOp>> CreateXlaValidateInputsPass();
 }  // namespace TFDevice
 
 namespace TFTPU {
@@ -532,12 +553,13 @@ CreateTPUResourceReadsWritesPartitioningPass();
 // Creates a pass that looks for usage of the result of
 // TPUCopyWithDynamicShapeOp and annotate these values to be dynamic shape. This
 // ensures that the generated tpu program has the correct inputs annotation.
-std::unique_ptr<OperationPass<func::FuncOp>>
+std::unique_ptr<OperationPass<ModuleOp>>
 CreateTPUAnnotateDynamicShapeInputsPass();
 
 // Creates a pass that rewrites `tf_device.launch_func` on TPUs into TPU runtime
 // ops.
-std::unique_ptr<OperationPass<ModuleOp>> CreateTPURewritePass();
+std::unique_ptr<OperationPass<ModuleOp>> CreateTPURewritePass(
+    llvm::StringRef module_name = llvm::StringRef());
 
 // Creates a pass that identifies XLASharding ops in launch op for TPU
 // computation.
@@ -590,9 +612,13 @@ CreateTPUUpdateEmbeddingEnqueueOpInputsPass();
 // Creates a pass that propagates TPU devices to users.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateTPUDevicePropagationPass();
 
+// Create a pass that colocates each `Split` with its predecessor.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateTPUColocateSplitsPass();
+
 // Populates the supplied passmanager with the passes required to run the
 // bridge.
-void CreateTPUBridgePipeline(OpPassManager& pm);
+void CreateTPUBridgePipeline(OpPassManager& pm,
+                             llvm::StringRef module_name = llvm::StringRef());
 
 // Populates the supplied passmanager with the passes required to run the
 // bridge in V1 mode.
@@ -714,6 +740,9 @@ enum MoveTransposeDirection { kBegin, kEnd };
 #define GEN_PASS_DECL_TRANSFORMEINSUMPASS
 #define GEN_PASS_DECL_UNROLLBATCHMATMULPASS
 #define GEN_PASS_DECL_VERIFYSUITABLEFOREXPORTPASS
+#define GEN_PASS_DECL_XLACALLMODULEDESERIALIZATIONPASS
+#define GEN_PASS_DECL_XLACALLMODULESERIALIZATIONPASS
+#define GEN_PASS_DECL_XLACALLMODULECUSTOMCALLTFFUNCTIONRENAMINGPASS
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
 }  // namespace detail
 using namespace detail;  // NOLINT
@@ -735,6 +764,8 @@ namespace TFDevice {
 #define GEN_PASS_DECL_XLACLUSTERFORMATIONPASS
 #define GEN_PASS_DECL_XLAINLINEDEVICEOPSPASS
 #define GEN_PASS_DECL_XLAREWRITEPASS
+#define GEN_PASS_DECL_XLAREWRITEV2PASS
+#define GEN_PASS_DECL_XLAVALIDATEINPUTSPASS
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_device_passes.h.inc"
 }  // namespace TFDevice
 

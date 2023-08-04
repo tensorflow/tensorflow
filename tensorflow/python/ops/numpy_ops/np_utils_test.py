@@ -16,6 +16,7 @@
 
 from absl.testing import parameterized
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.ops.numpy_ops import np_utils
 from tensorflow.python.platform import test
 
@@ -112,6 +113,24 @@ f docstring.
 
 """
     self.assertEqual(expected, f.__doc__)
+
+  def testDtypeOfTensorLikeClass(self):
+
+    class TensorLike:
+
+      def __init__(self, dtype):
+        self._dtype = dtype
+
+      @property
+      def is_tensor_like(self):
+        return True
+
+      @property
+      def dtype(self):
+        return self._dtype
+
+    t = TensorLike(dtypes.float32)
+    self.assertEqual(np_utils._maybe_get_dtype(t), dtypes.float32)
 
   # pylint: disable=unused-variable
   def testSigMismatchIsError(self):

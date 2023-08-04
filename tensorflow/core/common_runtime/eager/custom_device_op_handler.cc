@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/custom_device_op_handler.h"
 
+#include <memory>
+#include <utility>
+
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 

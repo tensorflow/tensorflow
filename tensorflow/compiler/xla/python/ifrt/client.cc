@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/python/ifrt/client.h"
 
+#include "tensorflow/compiler/xla/statusor.h"
+
 namespace xla {
 namespace ifrt {
 
