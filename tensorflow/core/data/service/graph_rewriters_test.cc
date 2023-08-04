@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/data/service/auto_shard_rewriter.h"
+#include "tensorflow/core/data/service/graph_rewriters.h"
 
 #include <string>
 
