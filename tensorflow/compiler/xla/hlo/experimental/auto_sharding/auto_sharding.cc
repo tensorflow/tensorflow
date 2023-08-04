@@ -136,7 +136,7 @@ GenerateReshardingCostsAndMissingShardingsForAllOperands(
   }
   for (int64_t k = 0; k < ins->operand_count(); ++k) {
     auto operand = ins->operand(k);
-    if (operand->shape().rank() == 0) {
+    if (operand->shape().IsToken() || operand->shape().rank() == 0) {
       resharding_costs.push_back(std::vector<double>(
           strategy_map.at(operand)->leaf_vector.size(), 0.0));
       if (!input_shardings[k].has_value()) {
@@ -2044,6 +2044,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
         break;
       }
       case HloOpcode::kConditional:
+      case HloOpcode::kInfeed:
       case HloOpcode::kSort: {
         strategies =
             CreateAllStrategiesVector(
@@ -2282,9 +2283,10 @@ AutoShardingSolverResult CallSolver(
       const ShapeIndex& index = value->index();
       if (instruction->shape().IsTuple() && index.empty()) continue;
       const StrategyVector* strategies = strategy_map.at(instruction).get();
-      const int id = index.empty() ? strategies->id
-                                   : strategies->childs.at(index.front())->id;
-      request.live[t].push_back(id);
+      const int id = strategies->GetSubStrategyVector(index)->id;
+      if (id >= 0) {
+        request.live[t].push_back(id);
+      }
     }
   }
   const AutoShardingSolverResult result = CallORToolsSolver(request);
@@ -2404,18 +2406,29 @@ void SetHloSharding(const HloInstructionSequence& sequence,
       ShapeTree<HloSharding> output_tuple_sharding(out_shape, Undefined());
       std::vector<HloSharding> output_flattened_shardings;
 
+      std::function<void(const StrategyVector*)> extract_tuple_shardings;
       bool set_tuple_sharding = true;
-      for (const auto& t : strategies->childs) {
-        int node_idx = t->id;
-        int stra_idx = s_val[node_idx];
-        // Do not set completed sharding before the last iteration
-        if (t->leaf_vector[stra_idx].output_sharding.IsReplicated() &&
-            !last_iteration) {
-          set_tuple_sharding = false;
+
+      extract_tuple_shardings = [&](const StrategyVector* strategies) {
+        if (strategies->is_tuple) {
+          for (const auto& child_strategies : strategies->childs) {
+            extract_tuple_shardings(child_strategies.get());
+          }
+        } else {
+          int node_idx = strategies->id;
+          int stra_idx = s_val[node_idx];
+          // Do not set completed sharding before the last iteration
+          if (strategies->leaf_vector[stra_idx]
+                  .output_sharding.IsReplicated() &&
+              !last_iteration) {
+            set_tuple_sharding = false;
+          }
+          output_flattened_shardings.push_back(
+              strategies->leaf_vector[stra_idx].output_sharding);
         }
-        output_flattened_shardings.push_back(
-            t->leaf_vector[stra_idx].output_sharding);
-      }
+      };
+      extract_tuple_shardings(strategies);
+
       // Create Tuple HloSharding.
       int i = 0;
       for (auto& leaf : output_tuple_sharding.leaves()) {
@@ -2542,17 +2555,15 @@ void SetHloShardingPostProcessing(
       // ignore outfeed ops here.
       continue;
     } else {
-      // TODO(pratikf): We currently skip over tuple shaped instructions here as
-      // GetShardingStrategy, which is invoked below does not currently support
-      // such instructions. Implement this support.
       if (inst->shape().IsTuple()) {
         switch (inst->opcode()) {
           case HloOpcode::kReduce:
           case HloOpcode::kCustomCall:
           case HloOpcode::kSort: {
             for (size_t i = 0; i < inst->shape().tuple_shapes_size(); ++i) {
-              const ShardingStrategy& stra = GetShardingStrategyForTuple(
-                  inst, i, strategy_map, cost_graph, s_val);
+              const ShardingStrategy& stra =
+                  GetShardingStrategyForTuple(inst, {static_cast<int64_t>(i)},
+                                              strategy_map, cost_graph, s_val);
               if (stra.input_shardings.size() > i &&
                   stra.input_shardings[i].has_value()) {
                 FixMixedMeshShapeResharding(inst, i,
@@ -2564,8 +2575,9 @@ void SetHloShardingPostProcessing(
           }
           case HloOpcode::kTuple: {
             for (size_t i = 0; i < inst->shape().tuple_shapes_size(); ++i) {
-              const ShardingStrategy& stra = GetShardingStrategyForTuple(
-                  inst, i, strategy_map, cost_graph, s_val);
+              const ShardingStrategy& stra =
+                  GetShardingStrategyForTuple(inst, {static_cast<int64_t>(i)},
+                                              strategy_map, cost_graph, s_val);
               CHECK_EQ(stra.input_shardings.size(), 1);
               CHECK(stra.input_shardings[0].has_value());
               FixMixedMeshShapeResharding(inst, i,
@@ -2574,10 +2586,29 @@ void SetHloShardingPostProcessing(
             }
             break;
           }
-          case HloOpcode::kWhile:
-          case HloOpcode::kConditional: {
+          case HloOpcode::kGetTupleElement: {
+            std::vector<std::optional<HloSharding>> dst_shardings(
+                inst->shape().tuple_shapes_size(), std::nullopt);
+            for (size_t i = 0; i < inst->shape().tuple_shapes_size(); ++i) {
+              CHECK(!inst->shape().tuple_shapes(i).IsTuple())
+                  << "We currently do not support ops with nested tuples as "
+                     "output.";
+              const ShardingStrategy& stra =
+                  GetShardingStrategyForTuple(inst, {static_cast<int64_t>(i)},
+                                              strategy_map, cost_graph, s_val);
+              if (!stra.input_shardings.empty() &&
+                  stra.input_shardings[0].has_value()) {
+                dst_shardings[i] = stra.input_shardings[0].value();
+              }
+            }
+            FixMixedMeshShapeReshardingGetTupleElementWithTupleOutput(
+                inst, dst_shardings, device_mesh, preserve_shardings);
             break;
           }
+
+          case HloOpcode::kWhile:
+          case HloOpcode::kInfeed:
+          case HloOpcode::kConditional:
           case HloOpcode::kParameter: {
             break;
           }

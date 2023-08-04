@@ -30,12 +30,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
 #include "tensorflow/compiler/xla/service/hlo_value.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+
 namespace xla {
 namespace spmd {
 
@@ -165,6 +167,15 @@ struct StrategyVector {
       }
     }
     return str;
+  }
+
+  const StrategyVector* GetSubStrategyVector(const ShapeIndex& index) const {
+    const StrategyVector* result = this;
+    for (auto index_element : index) {
+      CHECK_LE(index_element, result->childs.size());
+      result = result->childs.at(index_element).get();
+    }
+    return result;
   }
 };
 

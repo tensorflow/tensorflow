@@ -74,6 +74,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_value",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -84,6 +85,7 @@ cc_library(
     deps = [
         ":auto_sharding_strategy",
         ":matrix",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -130,6 +132,7 @@ cc_library(
         "//tensorflow/compiler/xla/hlo/utils:hlo_sharding_util",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",

@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/matrix.h"
 namespace xla {
@@ -362,15 +363,19 @@ inline const ShardingStrategy& GetShardingStrategy(
 
 // Get the final sharding strategy according to the ilp solution.
 inline const ShardingStrategy& GetShardingStrategyForTuple(
-    const HloInstruction* inst, size_t index, const StrategyMap& strategy_map,
-    const CostGraph& cost_graph, absl::Span<const int64_t> s_val) {
+    const HloInstruction* inst, ShapeIndex index,
+    const StrategyMap& strategy_map, const CostGraph& cost_graph,
+    absl::Span<const int64_t> s_val) {
   const StrategyVector* tuple_strategies = strategy_map.at(inst).get();
   CHECK(tuple_strategies->is_tuple);
-  CHECK_LT(index, tuple_strategies->childs.size());
-  const auto& strategies = tuple_strategies->childs[index];
-  int node_idx = strategies->id;
+  for (auto index_element : index) {
+    CHECK_LT(index_element, tuple_strategies->childs.size());
+    const auto& strategies = tuple_strategies->childs[index_element];
+    tuple_strategies = strategies.get();
+  }
+  int node_idx = tuple_strategies->id;
   int stra_idx = cost_graph.RemapIndex(node_idx, s_val[node_idx]);
-  return strategies->leaf_vector[stra_idx];
+  return tuple_strategies->leaf_vector[stra_idx];
 }
 
 }  // namespace spmd
