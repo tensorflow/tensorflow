@@ -122,15 +122,13 @@ class BincountTest(test_util.TensorFlowTestCase):
     arr = np.random.randint(0, 1000, size=1000)
     with test_util.deterministic_ops(), self.assertRaisesRegex(
         errors_impl.UnimplementedError,
-        "Determinism is not yet supported in GPU implementation of "
-        "(Dense)?Bincount.",
-    ):
+        "Determinism is not yet supported in GPU implementation of Bincount."):
       self.evaluate(bincount_ops.bincount(arr, None, axis=None))
     arr = np.random.randint(0, 1000, size=(100, 100))
     with test_util.deterministic_ops(), self.assertRaisesRegex(
         errors_impl.UnimplementedError,
         "Determinism is not yet supported in GPU implementation of "
-        "(Dense)?Bincount."):
+        "DenseBincount."):
       self.evaluate(bincount_ops.bincount(arr, None, axis=-1))
 
   def test_zero_weights(self):

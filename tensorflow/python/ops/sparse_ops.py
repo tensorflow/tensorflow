@@ -3032,11 +3032,10 @@ def bincount(arr: sparse_tensor.SparseTensor,
   Here, index 1 in output has a value 6. This is the summation of weights
   corresponding to the value in `values`.
 
-  **Bin-counting matrix rows independently**
+  **Bin-counting on a certain axis**
 
-  This example uses `axis=-1` with a 2 dimensional input and returns a
-  `Tensor` with bincounting where axis 0 is **not** flattened, i.e. an
-  independent bincount for each matrix row.
+  This example takes a 2 dimensional input and returns a `Tensor` with
+  bincounting on each sample.
 
   >>> data = np.array([[1, 2, 3, 0], [0, 0, 1, 2]], dtype=np.int32)
   >>> tf.math.bincount(data, axis=-1)
@@ -3074,7 +3073,7 @@ def bincount(arr: sparse_tensor.SparseTensor,
       These tensors must have a rank of 2 if `axis=-1`.
     weights: If non-None, must be the same shape as arr. For each value in
       `arr`, the bin will be incremented by the corresponding weight instead of
-      1. If non-None, `binary_output` must be False.
+      1.
     minlength: If given, ensures the output has length at least `minlength`,
       padding with zeros at the end if necessary.
     maxlength: If given, skips values in `arr` that are equal or greater than
@@ -3089,8 +3088,8 @@ def bincount(arr: sparse_tensor.SparseTensor,
       reduce_add). Defaults to False.
 
   Returns:
-    A vector with the same dtype as `weights` or the given `dtype` containing
-    the bincount values.
+    A vector with the same dtype as `weights` or the given `dtype`. The bin
+    values.
 
   Raises:
     `InvalidArgumentError` if negative values are provided as an input.
