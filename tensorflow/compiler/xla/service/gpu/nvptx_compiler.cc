@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/cublas_padding_requirements.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_fused_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_fused_mha_rewriter.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_fused_mha_transpose_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_pad_for_convolutions.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_simplify_padding.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_vectorize_convolutions.h"
@@ -58,11 +59,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/triangular_solve_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/triton_autotuner.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
+#include "tensorflow/compiler/xla/service/hlo_cse.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
+#include "tensorflow/compiler/xla/service/layout_normalization.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
+#include "tensorflow/compiler/xla/service/reshape_decomposer.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.h"
@@ -71,6 +75,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/gpu/asm_compiler.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_driver.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/tsl/platform/path.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
@@ -200,6 +205,27 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
   if (hlo_module->config().debug_options().xla_gpu_enable_cudnn_fmha()) {
     HloPassPipeline mha_fusion_pipeline(
         "nvptx cudnn multi-headed attention fusion");
+    const DebugOptions& debug_options = hlo_module->config().debug_options();
+    // The LayoutAssignment pass may leave behind kCopy instructions which are
+    // duplicate or NOPs, so remove them with algebraic simplification and CSE.
+    AlgebraicSimplifierOptions alg_sim_options;
+    alg_sim_options.set_supports_non_canonical_dots(false);
+    alg_sim_options.set_is_layout_sensitive(true);
+    alg_sim_options.set_enable_conv_operand_swap(false);
+    // "slow" minmax means we propagate nan.
+    alg_sim_options.set_minmax_propagate_nan(
+        !hlo_module->config().debug_options().xla_gpu_enable_fast_min_max());
+    alg_sim_options.set_enable_unconditional_reduce_of_concat_replacement(
+        false);
+    if (debug_options.xla_gpu_normalize_layouts()) {
+      mha_fusion_pipeline.AddPass<ReshapeDecomposer>();
+      mha_fusion_pipeline.AddPass<LayoutNormalization>();
+    }
+    mha_fusion_pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
+    mha_fusion_pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(
+        alg_sim_options);
+    mha_fusion_pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
+
     // Rewrite Multi-Headed Attention modules to Fused MHA custom-calls.
     if (stream_exec) {
       mha_fusion_pipeline.AddPass<CudnnFusedMHARewriter>(
@@ -208,13 +234,10 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
       mha_fusion_pipeline.AddPass<CudnnFusedMHARewriter>(
           cuda_compute_capability, gpu_target_config.dnn_version_info);
     }
-    AlgebraicSimplifierOptions algebraic_simplifier_options({}, {});
-    algebraic_simplifier_options
-        .set_enable_unconditional_reduce_of_concat_replacement(false);
-    mha_fusion_pipeline.AddPass<AlgebraicSimplifier>(
-        algebraic_simplifier_options);
+    mha_fusion_pipeline.AddPass<AlgebraicSimplifier>(alg_sim_options);
+    mha_fusion_pipeline.AddPass<CudnnFusedMHATransposeFusion>();
     mha_fusion_pipeline.AddPass<HloDCE>();
-
+    mha_fusion_pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
     TF_RETURN_IF_ERROR(mha_fusion_pipeline.Run(hlo_module).status());
   }
 
