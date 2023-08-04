@@ -12,194 +12,89 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <string>
 
 #include "fuzztest/fuzztest.h"
-#include "absl/log/log.h"
-#include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/audio_ops.h"
 #include "tensorflow/cc/ops/image_ops.h"
-#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/tstring.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/security/fuzzing/cc/core/framework/tensor_domains.h"
 #include "tensorflow/security/fuzzing/cc/fuzz_session.h"
 
-namespace tensorflow {
-namespace fuzzing {
+namespace tensorflow::fuzzing {
 
 // Image op fuzzers
 // DecodePng
-class FuzzDecodePng : public FuzzSession<std::string> {
-  void BuildGraph(const Scope& scope) override {
-    auto op_node =
-        tensorflow::ops::Placeholder(scope.WithOpName("contents"), DT_STRING);
-    tensorflow::ops::DecodePng(scope.WithOpName("output"), op_node);
-  }
-
-  void FuzzImpl(const std::string& input_string) final {
-    Tensor input_tensor(DT_STRING, {});
-    input_tensor.scalar<tstring>()() =
-        string(input_string.c_str(), input_string.size());
-    Status s = RunInputsWithStatus({{"contents", input_tensor}});
-    if (!s.ok()) {
-      LOG(ERROR) << "Execution failed: " << s.message();
-    }
-  }
-
- public:
-  void FuzzValidInput(const std::string& input_string) { Fuzz(input_string); }
-
-  void FuzzArbitraryInput(const std::string& input_string) {
-    Fuzz(input_string);
-  }
-};
-FUZZ_TEST_F(FuzzDecodePng, FuzzValidInput)
-    .WithDomains(fuzztest::InRegexp("[-.0-9]+"));
-FUZZ_TEST_F(FuzzDecodePng, FuzzArbitraryInput);
+SINGLE_INPUT_OP_FUZZER(DT_STRING, DecodePng);
+class FuzzDecodePngValidInput : public FuzzDecodePng {};
+FUZZ_TEST_F(FuzzDecodePngValidInput, Fuzz)
+    .WithDomains(fuzzing::AnyValidStringTensor({},
+                                               fuzztest::InRegexp("[-.0-9]+")));
+class FuzzDecodePngArbitraryInput : public FuzzDecodePng {};
+FUZZ_TEST_F(FuzzDecodePngArbitraryInput, Fuzz)
+    .WithDomains(fuzzing::AnyValidStringTensor({}));
 
 // DecodeJpeg
-class FuzzDecodeJpeg : public FuzzSession<std::string> {
-  void BuildGraph(const Scope& scope) override {
-    auto op_node =
-        tensorflow::ops::Placeholder(scope.WithOpName("contents"), DT_STRING);
-    tensorflow::ops::DecodeJpeg(scope.WithOpName("output"), op_node);
-  }
-
-  void FuzzImpl(const std::string& input_string) final {
-    Tensor input_tensor(DT_STRING, {});
-    input_tensor.scalar<tstring>()() =
-        string(input_string.c_str(), input_string.size());
-    Status s = RunInputsWithStatus({{"contents", input_tensor}});
-    if (!s.ok()) {
-      LOG(ERROR) << "Execution failed: " << s.message();
-    }
-  }
-};
-FUZZ_TEST_F(FuzzDecodeJpeg, Fuzz)
-    .WithDomains(fuzztest::OneOf(fuzztest::InRegexp("[-.0-9]+"),
-                                 fuzztest::Arbitrary<std::string>()));
+SINGLE_INPUT_OP_FUZZER(DT_STRING, DecodeJpeg);
+class FuzzDecodeJpegValidInput : public FuzzDecodeJpeg {};
+FUZZ_TEST_F(FuzzDecodeJpegValidInput, Fuzz)
+    .WithDomains(fuzzing::AnyValidStringTensor({},
+                                               fuzztest::InRegexp("[-.0-9]+")));
+class FuzzDecodeJpegArbitraryInput : public FuzzDecodeJpeg {};
+FUZZ_TEST_F(FuzzDecodeJpegArbitraryInput, Fuzz)
+    .WithDomains(fuzzing::AnyValidStringTensor({}));
 
 // DecodeGif
-class FuzzDecodeGif : public FuzzSession<std::string> {
-  void BuildGraph(const Scope& scope) override {
-    auto op_node =
-        tensorflow::ops::Placeholder(scope.WithOpName("contents"), DT_STRING);
-    tensorflow::ops::DecodeGif(scope.WithOpName("output"), op_node);
-  }
+SINGLE_INPUT_OP_FUZZER(DT_STRING, DecodeGif);
+class FuzzDecodeGifValidInput : public FuzzDecodeGif {};
+FUZZ_TEST_F(FuzzDecodeGifValidInput, Fuzz)
+    .WithDomains(fuzzing::AnyValidStringTensor({},
+                                               fuzztest::InRegexp("[-.0-9]+")));
+class FuzzDecodeGifArbitraryInput : public FuzzDecodeGif {};
+FUZZ_TEST_F(FuzzDecodeGifArbitraryInput, Fuzz)
+    .WithDomains(fuzzing::AnyValidStringTensor({}));
 
-  void FuzzImpl(const std::string& input_string) final {
-    Tensor input_tensor(DT_STRING, {});
-    input_tensor.scalar<tstring>()() =
-        string(input_string.c_str(), input_string.size());
-    Status s = RunInputsWithStatus({{"contents", input_tensor}});
-    if (!s.ok()) {
-      LOG(ERROR) << "Execution failed: " << s.message();
-    }
-  }
-};
-FUZZ_TEST_F(FuzzDecodeGif, Fuzz)
-    .WithDomains(fuzztest::OneOf(fuzztest::InRegexp("[-.0-9]+"),
-                                 fuzztest::Arbitrary<std::string>()));
-
-// DecodeJpeg
-class FuzzDecodeImage : public FuzzSession<std::string> {
-  void BuildGraph(const Scope& scope) override {
-    auto op_node =
-        tensorflow::ops::Placeholder(scope.WithOpName("contents"), DT_STRING);
-    tensorflow::ops::DecodeImage(scope.WithOpName("output"), op_node);
-  }
-
-  void FuzzImpl(const std::string& input_string) final {
-    Tensor input_tensor(DT_STRING, {});
-    input_tensor.scalar<tstring>()() =
-        string(input_string.c_str(), input_string.size());
-    Status s = RunInputsWithStatus({{"contents", input_tensor}});
-    if (!s.ok()) {
-      LOG(ERROR) << "Execution failed: " << s.message();
-    }
-  }
-};
-FUZZ_TEST_F(FuzzDecodeImage, Fuzz)
-    .WithDomains(fuzztest::OneOf(fuzztest::InRegexp("[-.0-9]+"),
-                                 fuzztest::Arbitrary<std::string>()));
+// DecodeImage
+SINGLE_INPUT_OP_FUZZER(DT_STRING, DecodeImage);
+class FuzzDecodeImageValidInput : public FuzzDecodeImage {};
+FUZZ_TEST_F(FuzzDecodeImageValidInput, Fuzz)
+    .WithDomains(fuzzing::AnyValidStringTensor({},
+                                               fuzztest::InRegexp("[-.0-9]+")));
+class FuzzDecodeImageArbitraryInput : public FuzzDecodeImage {};
+FUZZ_TEST_F(FuzzDecodeImageArbitraryInput, Fuzz)
+    .WithDomains(fuzzing::AnyValidStringTensor({}));
 
 // DecodeBmp
-class FuzzDecodeBmp : public FuzzSession<std::string> {
-  void BuildGraph(const Scope& scope) override {
-    auto op_node =
-        tensorflow::ops::Placeholder(scope.WithOpName("contents"), DT_STRING);
-    tensorflow::ops::DecodeBmp(scope.WithOpName("output"), op_node);
-  }
-
-  void FuzzImpl(const std::string& input_string) final {
-    Tensor input_tensor(DT_STRING, {});
-    input_tensor.scalar<tstring>()() =
-        string(input_string.c_str(), input_string.size());
-    Status s = RunInputsWithStatus({{"contents", input_tensor}});
-    if (!s.ok()) {
-      LOG(ERROR) << "Execution failed: " << s.message();
-    }
-  }
-};
-FUZZ_TEST_F(FuzzDecodeBmp, Fuzz)
-    .WithDomains(fuzztest::OneOf(fuzztest::InRegexp("[-.0-9]+"),
-                                 fuzztest::Arbitrary<std::string>()));
+SINGLE_INPUT_OP_FUZZER(DT_STRING, DecodeBmp);
+class FuzzDecodeBmpValidInput : public FuzzDecodeBmp {};
+FUZZ_TEST_F(FuzzDecodeBmpValidInput, Fuzz)
+    .WithDomains(fuzzing::AnyValidStringTensor({},
+                                               fuzztest::InRegexp("[-.0-9]+")));
+class FuzzDecodeBmpArbitraryInput : public FuzzDecodeBmp {};
+FUZZ_TEST_F(FuzzDecodeBmpArbitraryInput, Fuzz)
+    .WithDomains(fuzzing::AnyValidStringTensor({}));
 
 // DecodeAndCropJpeg
-class FuzzDecodeAndCropJpeg : public FuzzSession<std::string, int32> {
-  void BuildGraph(const Scope& scope) override {
-    auto op_node =
-        tensorflow::ops::Placeholder(scope.WithOpName("contents"), DT_STRING);
-    auto crop_window =
-        tensorflow::ops::Placeholder(scope.WithOpName("crop_window"), DT_INT32);
-    tensorflow::ops::DecodeAndCropJpeg(scope.WithOpName("output"), op_node,
-                                       crop_window);
-  }
+BINARY_INPUT_OP_FUZZER(DT_STRING, DT_INT32, DecodeAndCropJpeg);
+class FuzzDecodeAndCropJpegValidInput : public FuzzDecodeAndCropJpeg {};
+FUZZ_TEST_F(FuzzDecodeAndCropJpegValidInput, Fuzz)
+    .WithDomains(fuzzing::AnyValidStringTensor({},
+                                               fuzztest::InRegexp("[-.0-9]+")),
+                 fuzzing::AnyValidNumericTensor({}, DT_INT32, 0, 4096));
+class FuzzDecodeAndCropJpegArbitraryInput : public FuzzDecodeAndCropJpeg {};
+FUZZ_TEST_F(FuzzDecodeAndCropJpegArbitraryInput, Fuzz)
+    .WithDomains(fuzzing::AnyValidStringTensor({}),
+                 fuzzing::AnyValidNumericTensor({}, DT_INT32, 0, 4096));
 
-  void FuzzImpl(const std::string& input_string,
-                const int32& crop_window_val) final {
-    Tensor input_tensor(DT_STRING, {});
-    input_tensor.scalar<tstring>()() =
-        string(input_string.c_str(), input_string.size());
-    Tensor crop_window(DT_INT32, {});
-    crop_window.scalar<int32>()() = crop_window_val;
+// Audio op fuzzers
+// DecodeWav
+SINGLE_INPUT_OP_FUZZER(DT_STRING, DecodeWav);
+class FuzzDecodeWavValidInput : public FuzzDecodeWav {};
+FUZZ_TEST_F(FuzzDecodeWavValidInput, Fuzz)
+    .WithDomains(fuzzing::AnyValidStringTensor({},
+                                               fuzztest::InRegexp("[-.0-9]+")));
+class FuzzDecodeWavArbitraryInput : public FuzzDecodeWav {};
+FUZZ_TEST_F(FuzzDecodeWavArbitraryInput, Fuzz)
+    .WithDomains(fuzzing::AnyValidStringTensor({}));
 
-    Status s = RunInputsWithStatus(
-        {{"contents", input_tensor}, {"crop_window", crop_window}});
-    if (!s.ok()) {
-      LOG(ERROR) << "Execution failed: " << s.message();
-    }
-  }
-};
-FUZZ_TEST_F(FuzzDecodeAndCropJpeg, Fuzz)
-    .WithDomains(fuzztest::OneOf(fuzztest::InRegexp("[-.0-9]+"),
-                                 fuzztest::Arbitrary<std::string>()),
-                 fuzztest::InRange<int32>(0, 4096));
-
-// Audio decoder
-class FuzzDecodeWav : public FuzzSession<std::string> {
-  void BuildGraph(const Scope& scope) override {
-    auto op_node =
-        tensorflow::ops::Placeholder(scope.WithOpName("contents"), DT_STRING);
-    tensorflow::ops::DecodeWav(scope.WithOpName("output"), op_node);
-  }
-
-  void FuzzImpl(const std::string& input_string) final {
-    Tensor input_tensor(DT_STRING, {});
-    input_tensor.scalar<tstring>()() =
-        string(input_string.c_str(), input_string.size());
-    Status s = RunInputsWithStatus({{"contents", input_tensor}});
-    if (!s.ok()) {
-      LOG(ERROR) << "Execution failed: " << s.message();
-    }
-  }
-};
-FUZZ_TEST_F(FuzzDecodeWav, Fuzz)
-    .WithDomains(fuzztest::OneOf(fuzztest::InRegexp("[-.0-9]+"),
-                                 fuzztest::Arbitrary<std::string>()));
-
-}  // end namespace fuzzing
-}  // end namespace tensorflow
+}  // end namespace tensorflow::fuzzing

@@ -26,6 +26,8 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/platform:statusor",
+        "//tensorflow/core/platform:tstring",
+        "//tensorflow/tsl/platform:errors",
         "@com_google_fuzztest//fuzztest",
     ],
 )
@@ -37,7 +39,6 @@ cc_library(
     hdrs = ["datatype_domains.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:framework",
         "//tensorflow/core/framework:types_proto_cc",
         "@com_google_fuzztest//fuzztest",
     ],
