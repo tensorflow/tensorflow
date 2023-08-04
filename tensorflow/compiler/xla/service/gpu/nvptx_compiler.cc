@@ -194,7 +194,8 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
 Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
-    const AutotuneResults* autotune_results) {
+    const AutotuneResults* autotune_results,
+    tsl::thread::ThreadPool* thread_pool) {
   HloPassPipeline pre_pipeline("nvptx post-layout_assignment part 1");
 
   // This needs to run before GemmRewriter, which is part of

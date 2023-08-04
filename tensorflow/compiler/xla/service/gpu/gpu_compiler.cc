@@ -306,6 +306,23 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
                                       const AutotuneResults* autotune_results) {
   const DebugOptions& debug_options = hlo_module->config().debug_options();
 
+  // By default use an externally provided thread pool.
+  tsl::thread::ThreadPool* thread_pool = options.thread_pool;
+  std::optional<tsl::thread::ThreadPool> overriding_thread_pool;
+  int num_threads = hlo_module->config()
+                        .debug_options()
+                        .xla_gpu_force_compilation_parallelism();
+  // If an external thread pool is provided or single-threaded operation is
+  // requested do not create a thread pool.
+  if (thread_pool == nullptr && num_threads != 1) {
+    // Zero means "default", treat it as "max parallelism" here.
+    if (num_threads == 0) {
+      num_threads = tsl::port::MaxParallelism();
+    }
+    overriding_thread_pool.emplace(tsl::Env::Default(), "", num_threads);
+    thread_pool = &*overriding_thread_pool;
+  }
+
   AlgebraicSimplifierOptions layout_insensitive_algsimp_opts({},
                                                              ConvIsLowerable);
 
@@ -709,7 +726,8 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
 
   // Run target-specific HLO optimization passes after layout assignment.
   TF_RETURN_IF_ERROR(OptimizeHloPostLayoutAssignment(
-      hlo_module, stream_exec, options, gpu_target_config, autotune_results));
+      hlo_module, stream_exec, options, gpu_target_config, autotune_results,
+      thread_pool));
 
   const GpuDeviceInfo& gpu_device_info = gpu_target_config.gpu_device_info;
   auto get_cuda_compute_capability = [&]() {
@@ -788,6 +806,10 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
     if (debug_options.xla_gpu_all_reduce_contiguous()) {
       pipeline.AddPass<AllReduceContiguous>();
     }
+
+    TF_RETURN_IF_ERROR(AddHloEmitterAutotuningPasses(
+        &pipeline, stream_exec, debug_options, options, gpu_target_config,
+        autotune_results, thread_pool));
 
     int32_t blueconnect_num_devices_per_host =
         debug_options.xla_gpu_all_reduce_blueconnect_num_devices_per_host();
@@ -905,7 +927,8 @@ Status GpuCompiler::PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
 Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
-    const AutotuneResults* autotune_results) {
+    const AutotuneResults* autotune_results,
+    tsl::thread::ThreadPool* thread_pool) {
   const DebugOptions& debug_options = hlo_module->config().debug_options();
 
   {
@@ -1021,23 +1044,6 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   // Triton compilation needs normalized operations on bf16 (i.e. converted to
   // f32).
   add_float_normalization(pipeline);
-
-  // By default use an externally provided thread pool.
-  tsl::thread::ThreadPool* thread_pool = options.thread_pool;
-  std::optional<tsl::thread::ThreadPool> overriding_thread_pool;
-  int num_threads = hlo_module->config()
-                        .debug_options()
-                        .xla_gpu_force_compilation_parallelism();
-  // If an external thread pool is provided or single-threaded operation is
-  // requested do not create a thread pool.
-  if (thread_pool == nullptr && num_threads != 1) {
-    // Zero means "default", treat it as "max parallelism" here.
-    if (num_threads == 0) {
-      num_threads = tsl::port::MaxParallelism();
-    }
-    overriding_thread_pool.emplace(tsl::Env::Default(), "", num_threads);
-    thread_pool = &*overriding_thread_pool;
-  }
 
   TF_RETURN_IF_ERROR(AddAutotuningPasses(
       &pipeline, hlo_module, stream_exec, debug_options, options,
