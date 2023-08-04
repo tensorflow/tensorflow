@@ -1199,7 +1199,6 @@ xla_cc_test(
         ":runtime_custom_call_status",
         ":runtime_matmul",
         ":runtime_matmul_acl",
-        ":runtime_matmul_mkl",
         ":runtime_single_threaded_matmul",
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:types",
