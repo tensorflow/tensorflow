@@ -221,7 +221,8 @@ void HloModule::MarkFusionDuplications(
   }
 }
 
-void HloModule::MoveComputationsFrom(HloModule* module) {
+void HloModule::MoveComputationsFrom(HloModule* module,
+                                     bool make_names_unique) {
   for (size_t i = 0; i < module->computation_count(); ++i) {
     for (auto* instruction : module->computations_[i]->instructions()) {
       instruction->ClearUniqueIdInternal();
@@ -236,6 +237,12 @@ void HloModule::MoveComputationsFrom(HloModule* module) {
         /*is_entry=*/computation_raw_ptr->IsEntryComputation(),
         /*uniquify_identifiers=*/false,
         /*preserve_entry_layouts=*/false);
+    if (make_names_unique) {
+      computation_raw_ptr->UniquifyName(&computation_name_uniquer_);
+      for (auto* instruction : computation_raw_ptr->instructions()) {
+        instruction->UniquifyName(&instruction_name_uniquer_);
+      }
+    }
     // Pick unique IDs for each instruction.
     for (auto* instruction : computation_raw_ptr->instructions()) {
       instruction->SetUniqueId(NewUniqueInstructionId());
@@ -246,6 +253,8 @@ void HloModule::MoveComputationsFrom(HloModule* module) {
     computation_raw_ptr->SetUniqueId(
         computation_raw_ptr->root_instruction()->unique_id());
   }
+  // Since the computations no longer belong to the old module, clear the list.
+  module->computations_.clear();
 }
 
 void HloModule::ReplaceComputations(
