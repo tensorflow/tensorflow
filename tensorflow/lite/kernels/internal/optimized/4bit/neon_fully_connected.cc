@@ -16,6 +16,8 @@ limitations under the License.
 #if defined(FC_4BIT_NEON) && (defined(__ARM_NEON__) || defined(__ARM_NEON))
 #include <arm_neon.h>
 #include <stdint.h>
+#include <sys/auxv.h>
+
 #include <algorithm>
 #include <vector>
 

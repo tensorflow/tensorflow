@@ -410,54 +410,34 @@ cc_library(
 )
 
 selects.config_setting_group(
-    name = "arm32_any",
-    match_any = [
-        ":armeabi-v7a",
-        ":armhf",
-        ":armv7a",
-        ":ios_armv7",
-    ],
-)
-
-selects.config_setting_group(
-    name = "aarch64_any",
-    match_any = [
-        ":arm",
-        ":aarch64",
-        ":arm64-v8a",
-        ":darwin_arm64",
-        ":ios_arm64",
-        ":ios_arm64e",
-        ":ios_sim_arm64",
-    ],
-)
-
-selects.config_setting_group(
-    name = "x86_64_any",
-    match_any = [
-        ":darwin_x86_64",
-        ":haswell",
-        ":ios_x86_64",
-        ":k8",
-        ":tvos_x86_64",
-        ":windows",
-        ":x86_64",
+    name = "linux_x86_64_opt",
+    match_all = [
+        "//tensorflow:linux_x86_64",
+        "//tensorflow:optimized",
     ],
 )
 
 cc_library(
     name = "optimized_4bit",
     srcs = select({
-        ":x86_64_any": [
+        ":linux_x86_64_opt": [
             "optimized/4bit/sse_fully_connected.cc",
         ],
-        ":aarch64_any": [
+        "//tensorflow:android_arm64": [
             "optimized/4bit/neon_fully_connected.cc",
             "optimized/4bit/neon_fully_connected_aarch64_nosdot.cc",
             "optimized/4bit/neon_fully_connected_aarch64_sdot.cc",
             "optimized/4bit/neon_fully_connected_impl.h",
         ],
-        ":arm32_any": [
+        # copybara:uncomment_begin(google-only)
+        # "//tools/cc_target_os:toyota-sa8155-aarch64-oe-linux": [
+        # "optimized/4bit/neon_fully_connected.cc",
+        # "optimized/4bit/neon_fully_connected_aarch64_nosdot.cc",
+        # "optimized/4bit/neon_fully_connected_aarch64_sdot.cc",
+        # "optimized/4bit/neon_fully_connected_impl.h",
+        # ],
+        # copybara:uncomment_end
+        "//tensorflow:android_arm": [
             "optimized/4bit/neon_fully_connected.cc",
             "optimized/4bit/neon_fully_connected_arm32.cc",
             "optimized/4bit/neon_fully_connected_impl.h",
@@ -472,32 +452,47 @@ cc_library(
         "optimized/4bit/fully_connected_reference.h",
         "optimized/fully_connected_4bit.h",
     ] + select({
-        ":x86_64_any": [
+        ":linux_x86_64_opt": [
             "optimized/4bit/sse_fully_connected.h",
             "optimized/4bit/sse_fully_connected_impl.h",
         ],
-        ":aarch64_any": [
+        "//tensorflow:android_arm64": [
             "optimized/4bit/neon_fully_connected.h",
         ],
-        ":arm32_any": [
+        # copybara:uncomment_begin(google-only)
+        # "//tools/cc_target_os:toyota-sa8155-aarch64-oe-linux": [
+        # "optimized/4bit/neon_fully_connected.h",
+        # ],
+        # copybara:uncomment_end
+        "//tensorflow:android_arm": [
             "optimized/4bit/neon_fully_connected.h",
         ],
         "//conditions:default": [],
     }),
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + select({
-        ":aarch64_any": [
+        "//tensorflow:android_arm64": [
             "-march=armv8.2-a+dotprod",
         ],
-        ":arm32_any": [],
+        # copybara:uncomment_begin(google-only)
+        # "//tools/cc_target_os:toyota-sa8155-aarch64-oe-linux": [
+        # "-march=armv8.2-a+dotprod",
+        # ],
+        # copybara:uncomment_end
+        "//tensorflow:android_arm": [],
         "//conditions:default": [],
     }) + NEON_FLAGS_IF_APPLICABLE,
     defines = select({
-        ":x86_64_any": ["FC_4BIT_SSE"],
-        ":aarch64_any": [
+        ":linux_x86_64_opt": ["FC_4BIT_SSE"],
+        "//tensorflow:android_arm64": [
             "FC_4BIT_NEON",
         ],
-        ":arm32_any": [
+        # copybara:uncomment_begin(google-only)
+        # "//tools/cc_target_os:toyota-sa8155-aarch64-oe-linux": [
+        # "FC_4BIT_NEON",
+        # ],
+        # copybara:uncomment_end
+        "//tensorflow:android_arm": [
             "FC_4BIT_NEON",
         ],
         "//conditions:default": [],
