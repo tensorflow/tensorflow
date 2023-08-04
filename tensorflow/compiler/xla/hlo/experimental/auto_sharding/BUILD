@@ -40,7 +40,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:dump",
         "//tensorflow/compiler/xla/service:heap_simulator",
         "//tensorflow/compiler/xla/service:hlo_memory_scheduler",
-        "//tensorflow/compiler/xla/service:hlo_ordering",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service:sharding_propagation",
         "//tensorflow/tsl/platform:errors",
@@ -49,6 +48,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -72,8 +72,10 @@ cc_library(
     name = "auto_sharding_strategy",
     hdrs = ["auto_sharding_strategy.h"],
     deps = [
+        "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_value",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
     ],

@@ -1748,7 +1748,8 @@ AliasSet BuildAliasSet(const HloModule* module,
                              dst_strategies->childs[i].get());
       }
     } else {
-      alias_set.insert(std::make_pair(src_strategies->id, dst_strategies->id));
+      alias_set.insert(
+          std::make_pair(src_strategies->node_idx, dst_strategies->node_idx));
     }
   };
   alias_config.ForEachAlias([&](const ShapeIndex& output_index,
@@ -1847,8 +1848,8 @@ void CheckAliasSetCompatibility(const AliasSet& alias_set,
                    << instructions.at(dst_strategies->instruction_id)->name()
                    << ")"
                    << "\n"
-                   << "(" << src_strategies->id << ", " << dst_strategies->id
-                   << ")\n"
+                   << "(" << src_strategies->node_idx << ", "
+                   << dst_strategies->node_idx << ")\n"
                    << src_strategies->ToString() << "\n"
                    << dst_strategies->ToString();
     }
@@ -1858,7 +1859,8 @@ void CheckAliasSetCompatibility(const AliasSet& alias_set,
         << ", " << instructions.at(dst_strategies->instruction_id)->name()
         << ")"
         << "\n"
-        << "(" << src_strategies->id << ", " << dst_strategies->id << ")\n"
+        << "(" << src_strategies->node_idx << ", " << dst_strategies->node_idx
+        << ")\n"
         << src_strategies->ToString() << "\n"
         << dst_strategies->ToString();
   }

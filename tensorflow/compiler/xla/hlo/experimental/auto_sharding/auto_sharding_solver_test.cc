@@ -74,13 +74,12 @@ TEST(CallORToolsSolverTest, SolvesOptimally) {
 
   const AutoShardingSolverResult result = CallORToolsSolver(request);
 
-  const std::vector<int64_t> chosen_strategy = {0, 0, 0, 0, 0};
-  const std::vector<int64_t> e_val = {0, 0};
+  const std::vector<NodeStrategyIdx> s_val = {0, 0, 0, 0, 0};
+  const std::vector<EdgeStrategyIdx> e_val = {0, 0};
   const double objective_value = 7650.0;
   const AutoShardingSolverResult expected_result = {
       std::make_tuple(
-          std::move(chosen_strategy), std::move(e_val), objective_value),
-      false};
+          std::move(s_val), std::move(e_val), objective_value), false};
   EXPECT_EQ(result, expected_result);
 }
 
@@ -90,13 +89,12 @@ TEST(CallORToolsSolverTest, AvoidsInfiniteNodeCosts) {
 
   const AutoShardingSolverResult result = CallORToolsSolver(request);
 
-  const std::vector<int64_t> chosen_strategy = {3, 0, 0, 0, 0};
-  const std::vector<int64_t> e_val = {12, 0};
+  const std::vector<NodeStrategyIdx> s_val = {3, 0, 0, 0, 0};
+  const std::vector<EdgeStrategyIdx> e_val = {12, 0};
   const double objective_value = 10683.0;
   const AutoShardingSolverResult expected_result = {
       std::make_tuple(
-          std::move(chosen_strategy), std::move(e_val), objective_value),
-      false};
+          std::move(s_val), std::move(e_val), objective_value), false};
   EXPECT_EQ(result, expected_result);
 }
 
@@ -106,25 +104,23 @@ TEST(CallORToolsSolverTest, AvoidsInfiniteEdgeCosts) {
 
   const AutoShardingSolverResult result = CallORToolsSolver(request);
 
-  const std::vector<int64_t> chosen_strategy = {0, 0, 1, 1, 0};
-  const std::vector<int64_t> e_val = {1, 1};
+  const std::vector<NodeStrategyIdx> s_val = {0, 0, 1, 1, 0};
+  const std::vector<EdgeStrategyIdx> e_val = {1, 1};
   const double objective_value = 7872.0;
   const AutoShardingSolverResult expected_result = {
       std::make_tuple(
-          std::move(chosen_strategy), std::move(e_val), objective_value),
-      false};
+          std::move(s_val), std::move(e_val), objective_value), false};
   EXPECT_EQ(result, expected_result);
 }
 
 TEST(AutoShardingEvaluatorTest, NoViolations) {
   const AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
-  const std::vector<int64_t> chosen_strategy = {3, 1, 2, 2, 1};
-  const std::vector<int64_t> e_val = {14, 6};
+  const std::vector<NodeStrategyIdx> s_val = {3, 1, 2, 2, 1};
+  const std::vector<EdgeStrategyIdx> e_val = {14, 6};
   const double objective_value = 12149.0;
   const AutoShardingSolverResult result = {
       std::make_tuple(
-          std::move(chosen_strategy), std::move(e_val), objective_value),
-      false};
+          std::move(s_val), std::move(e_val), objective_value), false};
 
   const AutoShardingEvaluation evaluation = Evaluate(request, result);
 
@@ -142,13 +138,12 @@ TEST(AutoShardingEvaluatorTest, NoViolations) {
 
 TEST(AutoShardingEvaluatorTest, ViolatesFollower) {
   const AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
-  const std::vector<int64_t> chosen_strategy = {3, 1, 2, 1 /* violates */, 1};
-  const std::vector<int64_t> e_val = {14, 6};
+  const std::vector<NodeStrategyIdx> s_val = {3, 1, 2, 1 /* violates */, 1};
+  const std::vector<EdgeStrategyIdx> e_val = {14, 6};
   const double objective_value = 12138.0;
   const AutoShardingSolverResult result = {
       std::make_tuple(
-          std::move(chosen_strategy), std::move(e_val), objective_value),
-      false};
+          std::move(s_val), std::move(e_val), objective_value), false};
 
   const AutoShardingEvaluation evaluation = Evaluate(request, result);
 
@@ -167,13 +162,12 @@ TEST(AutoShardingEvaluatorTest, ViolatesFollower) {
 
 TEST(AutoShardingEvaluatorTest, ViolatesAlias) {
   const AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
-  const std::vector<int64_t> chosen_strategy = {3, 1, 2, 2, 0 /* violates */};
-  const std::vector<int64_t> e_val = {14, 6};
+  const std::vector<NodeStrategyIdx> s_val = {3, 1, 2, 2, 0 /* violates */};
+  const std::vector<EdgeStrategyIdx> e_val = {14, 6};
   const double objective_value = 12138.0;
   const AutoShardingSolverResult result = {
       std::make_tuple(
-          std::move(chosen_strategy), std::move(e_val), objective_value),
-      false};
+          std::move(s_val), std::move(e_val), objective_value), false};
 
   const AutoShardingEvaluation evaluation = Evaluate(request, result);
 
@@ -192,13 +186,12 @@ TEST(AutoShardingEvaluatorTest, ViolatesAlias) {
 
 TEST(AutoShardingEvaluatorTest, ViolatesMemory) {
   const AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
-  const std::vector<int64_t> chosen_strategy = {2 /* violates */, 1, 2, 2, 1};
-  const std::vector<int64_t> e_val = {10, 6};
+  const std::vector<NodeStrategyIdx> s_val = {2 /* violates */, 1, 2, 2, 1};
+  const std::vector<EdgeStrategyIdx> e_val = {10, 6};
   const double objective_value = 11138.0;
   const AutoShardingSolverResult result = {
       std::make_tuple(
-          std::move(chosen_strategy), std::move(e_val), objective_value),
-      false};
+          std::move(s_val), std::move(e_val), objective_value), false};
 
   const AutoShardingEvaluation evaluation = Evaluate(request, result);
 
@@ -218,13 +211,12 @@ TEST(AutoShardingEvaluatorTest, ViolatesMemory) {
 TEST(AutoShardingEvaluatorTest, ViolatesInfiniteCostForNode) {
   AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
   request.c[0][0] = request.c[0][1] = request.c[0][2] = kInfinityCost;
-  const std::vector<int64_t> chosen_strategy = {0 /* violates */, 1, 2, 2, 1};
-  const std::vector<int64_t> e_val = {2, 6};
+  const std::vector<NodeStrategyIdx> s_val = {0 /* violates */, 1, 2, 2, 1};
+  const std::vector<EdgeStrategyIdx> e_val = {2, 6};
   const double objective_value = 1e+20;
   const AutoShardingSolverResult result = {
       std::make_tuple(
-          std::move(chosen_strategy), std::move(e_val), objective_value),
-      false};
+          std::move(s_val), std::move(e_val), objective_value), false};
 
   const AutoShardingEvaluation evaluation = Evaluate(request, result);
 
@@ -244,13 +236,12 @@ TEST(AutoShardingEvaluatorTest, ViolatesInfiniteCostForNode) {
 TEST(AutoShardingEvaluatorTest, ViolatesInfiniteCostForEdge) {
   AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
   request.r[0][2] = kInfinityCost;
-  const std::vector<int64_t> chosen_strategy = {0, 1, 2, 2, 1};
-  const std::vector<int64_t> e_val = {2 /* violates */, 6};
+  const std::vector<NodeStrategyIdx> s_val = {0, 1, 2, 2, 1};
+  const std::vector<EdgeStrategyIdx> e_val = {2 /* violates */, 6};
   const double objective_value = 1e+20;
   const AutoShardingSolverResult result = {
       std::make_tuple(
-          std::move(chosen_strategy), std::move(e_val), objective_value),
-      false};
+          std::move(s_val), std::move(e_val), objective_value), false};
 
   const AutoShardingEvaluation evaluation = Evaluate(request, result);
 
@@ -269,20 +260,18 @@ TEST(AutoShardingEvaluatorTest, ViolatesInfiniteCostForEdge) {
 
 TEST(AutoShardingRationalizerTest, RationalizesProperly) {
   const AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
-  const std::vector<int64_t> chosen_strategy = {0, 1, 2, 2, 1};
-  const std::vector<int64_t> e_val = {2, 6};
+  const std::vector<NodeStrategyIdx> s_val = {0, 1, 2, 2, 1};
+  const std::vector<EdgeStrategyIdx> e_val = {2, 6};
   const double objective_value = 9116.0;
   const AutoShardingSolverResult result = {
       std::make_tuple(
-          std::move(chosen_strategy), std::move(e_val), objective_value),
-      false};
-  const std::vector<int64_t> subopt_strategy = {3, 1, 2, 2, 1};
-  const std::vector<int64_t> subopt_val = {14, 6};
+          std::move(s_val), std::move(e_val), objective_value), false};
+  const std::vector<NodeStrategyIdx> s_subopt = {3, 1, 2, 2, 1};
+  const std::vector<EdgeStrategyIdx> e_subopt = {14, 6};
   const double subopt_value = 12149.0;
   const AutoShardingSolverResult subopt = {
       std::make_tuple(
-          std::move(subopt_strategy), std::move(subopt_val), subopt_value),
-      false};
+          std::move(s_subopt), std::move(e_subopt), subopt_value), false};
 
   const std::vector<std::string> rationales =
       Rationalize(request, result, subopt);
