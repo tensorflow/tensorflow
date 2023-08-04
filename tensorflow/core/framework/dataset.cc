@@ -540,14 +540,16 @@ Status IteratorBase::InitializeBase(IteratorContext* ctx,
   if (parent_) {
     parent_id_ = Hash64CombineUnordered(Hash64(parent_->prefix()),
                                         reinterpret_cast<uint64>(parent_));
-  }
-  if (const auto& model = ctx->model()) {
-    auto factory = [ctx, this](model::Node::Args args) {
-      return CreateNode(ctx, std::move(args));
-    };
-    model->AddNode(std::move(factory), prefix(),
-                   parent == nullptr ? nullptr : parent->model_node(), &node_);
-    cleanup_fns_.push_back([this, model]() { model->RemoveNode(node_); });
+    // This block of code is executed only when `parent_` is not a `nullptr`
+    // because we do not create a `Node` in the `Model` for `RootDataset`.
+    if (const auto& model = ctx->model()) {
+      auto factory = [ctx, this](model::Node::Args args) {
+        return CreateNode(ctx, std::move(args));
+      };
+      model->AddNode(std::move(factory), prefix(), parent->model_node(),
+                     &node_);
+      cleanup_fns_.push_back([this, model]() { model->RemoveNode(node_); });
+    }
   }
   return OkStatus();
 }

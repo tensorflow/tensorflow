@@ -432,7 +432,7 @@ message HloInputOutputAliasProto {
   //  parameter_shape_index={1, 2},
   // }
   //
-  // This entry indicates that the first paremter's {1, 2} element is
+  // This entry indicates that the first parameter's {1, 2} element is
   // aliased with the {1} element of the root instruction.
   message AliasEntryProto {
     // ShapeIndex of the root hlo.
@@ -446,6 +446,29 @@ message HloInputOutputAliasProto {
   }
 
   repeated AliasEntryProto entries = 1;
+}
+
+message HloBufferDonorProto {
+  // The following proto describes an input (described by parameter number and a
+  // ShapeIndex of the parameter) that can donate its butter to any output
+  // tensor. It is similar to HloInputOutputAliasProto, but without a paired
+  // output. For example:
+  //
+  // entry = {
+  //  parameter_number=0,
+  //  parameter_shape_index={1, 2},
+  // }
+  //
+  // This entry indicates that the first parameter's {1, 2} element can donate
+  // its buffer.
+  message BufferDonorEntryProto {
+    // Number of the parameter in entry computation.
+    int64 parameter_number = 1;
+    // ShapeIndex of the parameter instruction.
+    repeated int64 parameter_shape_index = 2;
+  }
+
+  repeated BufferDonorEntryProto entries = 1;
 }
 
 message DynamicParameterBindingProto {
@@ -489,6 +512,46 @@ message CrossProgramPrefetch {
   int64 offset = 3;
 }
 
+// Serialization of stack frames index representations.
+// Stack frames index presented in four flat arrays:
+// 1. File names array.
+// 2. Function names array.
+// 3. File location array.
+// 4. Frame array.
+// All reference ids in sub-protos are 1-based positions of the
+// entity in the flat array.
+// Ids are 1-based to keep 0 value as representation of non-set property.
+message StackFrameIndexProto {
+  // Serialization of file position.
+  message FileLocation {
+    // 1-based position of file name.
+    int32 file_name_id = 1;
+    // 1-based position of function name.
+    int32 function_name_id = 2;
+    // Line number.
+    int32 line = 3;
+    // Column number.
+    int32 column = 4;
+  }
+
+  // Serialization of frame.
+  message StackFrame {
+    // 1-based position of file location.
+    int32 file_location_id = 1;
+    // 1-based position of the parent frame.
+    int32 parent_frame_id = 2;
+  }
+
+  // Flat index array of file names.
+  repeated string file_names = 1;
+  // Flat index array of function names.
+  repeated string function_names = 2;
+  // Flat index array of file locations.
+  repeated FileLocation file_locations = 3;
+  // Flat index array of frames.
+  repeated StackFrame stack_frames = 4;
+}
+
 // Serialization of HloModule.
 message HloModuleProto {
   string name = 1;
@@ -510,6 +573,9 @@ message HloModuleProto {
 
   // Describes alias information between inputs and outputs.
   HloInputOutputAliasProto input_output_alias = 8;
+
+  // Describes the information of input buffer donors.
+  HloBufferDonorProto buffer_donor = 18;
 
   DynamicParameterBindingProto dynamic_parameter_binding = 9;
 
@@ -551,6 +617,9 @@ message HloModuleProto {
 
   // DeviceAssignment object information.
   DeviceAssignmentProto device_assignment = 15;
+
+  // Stack frames index.
+  StackFrameIndexProto stack_frame_index = 17;
 }
 
 // Serialization of LogicalBuffer.

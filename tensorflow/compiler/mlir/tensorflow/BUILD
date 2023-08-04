@@ -325,54 +325,6 @@ gentbl_cc_library(
     ],
 )
 
-gentbl_cc_library(
-    name = "hlo_legalize_tf_inc_gen",
-    compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-rewriters"],
-            "transforms/generated_legalize_hlo.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "transforms/legalize_hlo_patterns.td",
-    deps = [
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
-        "//tensorflow/compiler/xla/mlir_hlo:hlo_ops_td_files",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:FuncTdFiles",
-    ],
-)
-
-cc_library(
-    name = "tf_legalize_hlo",
-    srcs = [
-        "transforms/generated_legalize_hlo.inc",
-        "transforms/legalize_hlo.cc",
-        "transforms/passes.h",
-    ],
-    deps = [
-        ":lower_tf_lib",
-        ":tensorflow",
-        ":tf_device_pass_inc_gen",
-        ":tf_pass_inc_gen",
-        "//tensorflow/compiler/xla/mlir_hlo",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:Analysis",
-        "@llvm-project//mlir:ArithDialect",
-        "@llvm-project//mlir:Dialect",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:Transforms",
-        "@stablehlo//:broadcast_utils",
-        "@stablehlo//:chlo_ops",
-    ],
-)
-
 cc_library(
     name = "tfe_legalize_tfg",
     srcs = [
@@ -1367,7 +1319,6 @@ cc_library(
         ":tensorflow_types",
         ":tf_data_optimization",
         ":tf_device_pass_inc_gen",
-        ":tf_legalize_hlo",
         ":tf_ops_layout_helper",
         ":tf_pass_inc_gen",
         ":tf_savedmodel_pass_inc_gen",
@@ -1671,6 +1622,7 @@ cc_library(
         "translate/import_model.h",
     ],
     deps = [
+        ":attribute_utils",
         ":convert_attr",
         ":convert_tensor",
         ":convert_type",
@@ -1696,7 +1648,11 @@ cc_library(
         "//tensorflow/cc/saved_model:loader_util",
         "//tensorflow/compiler/jit:shape_inference_helpers",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
+        "//tensorflow/compiler/mlir/tensorflow:xla_sharding_util",
         "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla/client:sharding_builder",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -1746,6 +1702,20 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "tf_mlir_translate_registration_test",
+    size = "small",
+    srcs = ["translate/tf_mlir_translate_registration_test.cc"],
+    deps = [
+        ":translate_registration",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:TranslateLib",
+    ],
+)
+
 cc_library(
     name = "export_utils",
     srcs = [
@@ -1755,6 +1725,7 @@ cc_library(
         "utils/export_utils.h",
     ],
     deps = [
+        ":attribute_utils",
         ":convert_tensor",
         ":convert_type",
         ":location_utils",
@@ -1762,7 +1733,12 @@ cc_library(
         ":tensorflow",
         ":tensorflow_attributes",
         ":tensorflow_types",
+        "//tensorflow/compiler/mlir/tensorflow:xla_sharding_util",
         "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/client:sharding_builder",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
@@ -2201,6 +2177,17 @@ cc_library(
         ":tensorflow",
         ":translate_cl_options",
         ":translate_lib",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla/kernels:xla_ops",
+        "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/compiler/xla/client:compile_only_client",
+        "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
+        "//tensorflow/compiler/xla/service/cpu:cpu_transfer_manager",
+        "//tensorflow/compiler/xla/stream_executor",
+        "//tensorflow/compiler/xla/stream_executor/host:host_platform",
+        "//tensorflow/compiler/xla/stream_executor/host:host_platform_id",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
@@ -2330,6 +2317,12 @@ tf_gen_op_wrapper_py(
     name = "gen_mlir_passthrough_op_py",
     out = "gen_mlir_passthrough_op.py",
     compatible_with = [],
+    extra_py_deps = [
+        "//tensorflow/python:pywrap_tfe",
+        "//tensorflow/python/util:dispatch",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
+    ],
     py_lib_rule = py_strict_library,
     deps = [":mlir_passthrough_op"],
 )
@@ -2656,6 +2649,8 @@ cc_library(
     deps = [
         ":tensorflow",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/client:sharding_builder",
+        "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",

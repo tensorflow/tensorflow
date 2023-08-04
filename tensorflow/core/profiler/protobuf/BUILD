@@ -1,3 +1,4 @@
+# Placeholder: load py_proto_library
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 
 package(
@@ -249,6 +250,13 @@ tf_proto_library(
 tf_proto_library(
     name = "trace_events_raw_proto",
     srcs = ["trace_events_raw.proto"],
+    cc_api_version = 2,
+    visibility = [":friends"],
+)
+
+tf_proto_library(
+    name = "dcn_slack_analysis_proto",
+    srcs = ["dcn_slack_analysis.proto"],
     cc_api_version = 2,
     visibility = [":friends"],
 )

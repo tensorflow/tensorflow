@@ -1,3 +1,4 @@
+load("//tensorflow:py.default.bzl", "py_library")
 load(":gen_saved_model.bzl", "gen_saved_model")
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_binary")
@@ -194,7 +195,7 @@ pytype_strict_binary(
         "//tensorflow/python/distribute:input_lib",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:test_ops",
-        "//tensorflow/python/framework:test_ops_kernels",
+        # copybara:uncomment "//tensorflow/python/framework:test_ops_kernels",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:variable_scope",
@@ -614,7 +615,7 @@ cc_library(
         "//tensorflow/core/tfrt/saved_model:saved_model_mira_impl",
         "//tensorflow/core/tfrt/saved_model:saved_model_testutil",
         "//tensorflow/python/framework:test_ops_kernels",
-        "//testing/base/public:gunit_for_library_testonly",
+        "@com_google_googletest//:gtest",
         "@llvm-project//mlir:FuncDialect",
         "@tf_runtime//:core_runtime_alwayslink",
     ],

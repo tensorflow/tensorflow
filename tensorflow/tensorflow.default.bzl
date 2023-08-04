@@ -38,6 +38,7 @@ load(
     _tf_py_build_info_genrule = "tf_py_build_info_genrule",
     _tf_py_test = "tf_py_test",
     _tf_pybind_cc_library_wrapper = "tf_pybind_cc_library_wrapper",
+    _tf_python_framework_friends = "tf_python_framework_friends",
     _tf_python_pybind_extension = "tf_python_pybind_extension",
     _tf_selective_registration_deps = "tf_selective_registration_deps",
     _tf_version_info_genrule = "tf_version_info_genrule",
@@ -91,3 +92,4 @@ genrule = _genrule
 internal_tfrt_deps = _internal_tfrt_deps
 tf_disable_ptxas_warning_flags = _tf_disable_ptxas_warning_flags
 replace_with_portable_tf_lib_when_required = _replace_with_portable_tf_lib_when_required
+tf_python_framework_friends = _tf_python_framework_friends

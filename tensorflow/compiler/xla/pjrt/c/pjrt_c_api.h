@@ -53,7 +53,7 @@ extern "C" {
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 9
+#define PJRT_API_MINOR 17
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -167,6 +167,15 @@ struct PJRT_NamedValue {
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_NamedValue, value_size);
 
 // ---------------------------------- Plugin -----------------------------------
+
+struct PJRT_Plugin_Initialize_Args {
+  size_t struct_size;
+  void* priv;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Plugin_Initialize_Args, priv);
+
+// One-time plugin setup. Must be called before any other functions are called.
+typedef PJRT_Error* PJRT_Plugin_Initialize(PJRT_Plugin_Initialize_Args* args);
 
 struct PJRT_Plugin_Attributes_Args {
   size_t struct_size;
@@ -824,6 +833,36 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Device_LocalHardwareId_Args, local_hardware_id);
 typedef PJRT_Error* PJRT_Device_LocalHardwareId(
     PJRT_Device_LocalHardwareId_Args* args);
 
+typedef struct PJRT_Memory PJRT_Memory;
+
+struct PJRT_Device_AddressableMemories_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_Device* device;
+  // Has the lifetime of `device`.
+  PJRT_Memory** memories;  // out
+  size_t num_memories;     // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Device_AddressableMemories_Args, memories);
+
+// Returns the memories that a device can address.
+typedef PJRT_Error* PJRT_Device_AddressableMemories(
+    PJRT_Device_AddressableMemories_Args* args);
+
+struct PJRT_Device_DefaultMemory_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_Device* device;
+  // `memory` has the same lifetime as `device`.
+  PJRT_Memory* memory;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Device_DefaultMemory_Args, memory);
+
+// Returns the default memory of a device, i.e. which memory data processed by
+// this device should be stored in by default.
+typedef PJRT_Error* PJRT_Device_DefaultMemory(
+    PJRT_Device_DefaultMemory_Args* args);
+
 struct PJRT_Device_MemoryStats_Args {
   size_t struct_size;
   void* priv;
@@ -872,6 +911,57 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Device_MemoryStats_Args, peak_pool_bytes_is_set);
 // are optional and may not be returned by all platforms. Implementations may
 // also return PJRT_Error_Code_UNIMPLEMENTED. Intended for diagnostic purposes.
 typedef PJRT_Error* PJRT_Device_MemoryStats(PJRT_Device_MemoryStats_Args* args);
+
+//-------------------------------- Memory --------------------------------------
+
+struct PJRT_Memory_Id_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_Memory* memory;
+  int id;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Memory_Id_Args, id);
+
+// The ID of this memory. IDs are unique among memories of this type.
+typedef PJRT_Error* PJRT_Memory_Id(PJRT_Memory_Id_Args* args);
+
+struct PJRT_Memory_Kind_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_Memory* memory;
+  // `memory_kind` has same lifetime as `memory`.
+  const char* memory_kind;  // out
+  size_t memory_kind_size;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Memory_Kind_Args, memory_kind_size);
+
+// A platform-dependent string that uniquely identifies the kind of the memory.
+typedef PJRT_Error* PJRT_Memory_Kind(PJRT_Memory_Kind_Args* args);
+
+struct PJRT_Memory_DebugString_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_Memory* memory;
+  const char* debug_string;  // out
+  size_t debug_string_size;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Memory_DebugString_Args, debug_string_size);
+
+// Debug string suitable for logging when errors occur. Should be verbose
+// enough to describe the current memory unambiguously.
+typedef PJRT_Error* PJRT_Memory_DebugString(PJRT_Memory_DebugString_Args* args);
+
+struct PJRT_Memory_ToString_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_Memory* memory;
+  const char* to_string;  // out
+  size_t to_string_size;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Memory_ToString_Args, to_string_size);
+
+// Debug string suitable for reading by end users, should be reasonably terse.
+typedef PJRT_Error* PJRT_Memory_ToString(PJRT_Memory_ToString_Args* args);
 
 // ------------------------------- Executables ---------------------------------
 
@@ -1046,6 +1136,8 @@ typedef PJRT_Error* (*PJRT_SendCallback)(PJRT_Chunk* chunk,
                                          PJRT_CallbackError* callback_error,
                                          size_t total_size_in_bytes, bool done,
                                          void* user_arg);
+// The callback takes the ownership of the stream object. The callback must call
+// `PJRT_CopyToDeviceStream_Destroy` when it is done with the stream.
 typedef void (*PJRT_RecvCallback)(PJRT_CopyToDeviceStream* stream,
                                   void* user_arg);
 
@@ -1289,6 +1381,37 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_UnpaddedDimensions_Args, num_dims);
 typedef PJRT_Error* PJRT_Buffer_UnpaddedDimensions(
     PJRT_Buffer_UnpaddedDimensions_Args* args);
 
+struct PJRT_Buffer_DynamicDimensionIndices_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_Buffer* buffer;
+  // Has the lifetime of `buffer` and length `num_dynamic_dims`.
+  const size_t* dynamic_dim_indices;  // out
+  size_t num_dynamic_dims;            // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_DynamicDimensionIndices_Args,
+                          num_dynamic_dims);
+
+// Returns the indices of dynamically-sized dimensions, or an empty list if all
+// dimensions are static. ("Dynamic" dimensions are those whose length is
+// only known at runtime, vs. "static" dimensions whose size is fixed at compile
+// time.)
+typedef PJRT_Error* PJRT_Buffer_DynamicDimensionIndices(
+    PJRT_Buffer_DynamicDimensionIndices_Args* args);
+
+struct PJRT_Buffer_GetMemoryLayout_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_Buffer* buffer;
+  // Layout data is owned by and has the lifetime of `buffer`.
+  PJRT_Buffer_MemoryLayout layout;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_GetMemoryLayout_Args, layout);
+
+// Returns the memory layout of the data in this buffer.
+typedef PJRT_Error* PJRT_Buffer_GetMemoryLayout(
+    PJRT_Buffer_GetMemoryLayout_Args* args);
+
 // Maximum number of array elements to inline into structs for performance.
 #define PJRT_C_API_MAX_INLINED 6
 
@@ -1499,6 +1622,17 @@ typedef PJRT_Error* PJRT_Buffer_UnsafePointer(
 
 // ---------------------------- CopyToDeviceStream -----------------------------
 
+struct PJRT_CopyToDeviceStream_Destroy_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_CopyToDeviceStream* stream;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_CopyToDeviceStream_Destroy_Args, stream);
+
+// Frees `stream`. `stream` can be nullptr.
+typedef PJRT_Error* PJRT_CopyToDeviceStream_Destroy(
+    PJRT_CopyToDeviceStream_Destroy_Args* args);
+
 struct PJRT_CopyToDeviceStream_AddChunk_Args {
   size_t struct_size;
   void* priv;
@@ -1680,6 +1814,7 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Error_Message);
   _PJRT_API_STRUCT_FIELD(PJRT_Error_GetCode);
 
+  _PJRT_API_STRUCT_FIELD(PJRT_Plugin_Initialize);
   _PJRT_API_STRUCT_FIELD(PJRT_Plugin_Attributes);
 
   _PJRT_API_STRUCT_FIELD(PJRT_Event_Destroy);
@@ -1711,7 +1846,14 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Device_GetDescription);
   _PJRT_API_STRUCT_FIELD(PJRT_Device_IsAddressable);
   _PJRT_API_STRUCT_FIELD(PJRT_Device_LocalHardwareId);
+  _PJRT_API_STRUCT_FIELD(PJRT_Device_AddressableMemories);
+  _PJRT_API_STRUCT_FIELD(PJRT_Device_DefaultMemory);
   _PJRT_API_STRUCT_FIELD(PJRT_Device_MemoryStats);
+
+  _PJRT_API_STRUCT_FIELD(PJRT_Memory_Id);
+  _PJRT_API_STRUCT_FIELD(PJRT_Memory_Kind);
+  _PJRT_API_STRUCT_FIELD(PJRT_Memory_DebugString);
+  _PJRT_API_STRUCT_FIELD(PJRT_Memory_ToString);
 
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_Destroy);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_Name);
@@ -1738,6 +1880,8 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_ElementType);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Dimensions);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_UnpaddedDimensions);
+  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_DynamicDimensionIndices);
+  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_GetMemoryLayout);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_OnDeviceTrimmedShape);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_OnDeviceSizeInBytes);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Device);
@@ -1749,6 +1893,7 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_ReadyEvent);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_UnsafePointer);
 
+  _PJRT_API_STRUCT_FIELD(PJRT_CopyToDeviceStream_Destroy);
   _PJRT_API_STRUCT_FIELD(PJRT_CopyToDeviceStream_AddChunk);
   _PJRT_API_STRUCT_FIELD(PJRT_CopyToDeviceStream_TotalBytes);
   _PJRT_API_STRUCT_FIELD(PJRT_CopyToDeviceStream_GranuleSize);

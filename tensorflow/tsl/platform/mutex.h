@@ -235,6 +235,14 @@ class condition_variable {
   condition_variable();
 
   void wait(mutex_lock& lock);
+
+  template <class Predicate>
+  void wait(mutex_lock& lock, Predicate stop_waiting) {
+    while (!stop_waiting()) {
+      wait(lock);
+    }
+  }
+
   template <class Rep, class Period>
   std::cv_status wait_for(mutex_lock& lock,
                           std::chrono::duration<Rep, Period> dur);

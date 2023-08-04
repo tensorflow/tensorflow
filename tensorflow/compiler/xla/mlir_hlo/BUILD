@@ -1298,7 +1298,6 @@ cc_library(
         "@llvm-project//mlir:LLVMCommonConversion",
         "@llvm-project//mlir:LLVMDialect",
         "@llvm-project//mlir:LinalgDialect",
-        "@llvm-project//mlir:LinalgToLLVM",
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:LoopLikeInterface",
         "@llvm-project//mlir:MathDialect",
@@ -1577,6 +1576,7 @@ cc_library(
         "@llvm-project//mlir:LoopLikeInterface",
         "@llvm-project//mlir:MathDialect",
         "@llvm-project//mlir:MemRefDialect",
+        "@llvm-project//mlir:MemRefUtils",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:SCFTransforms",
@@ -1682,15 +1682,6 @@ cc_binary(
 
 # Python library.
 
-td_library(
-    name = "MhloOpsPyTdFiles",
-    srcs = ["@llvm-project//mlir:include/mlir/Bindings/Python/Attributes.td"],
-    deps = [
-        ":hlo_ops_td_files",
-        "@llvm-project//mlir:OpBaseTdFiles",
-    ],
-)
-
 gentbl_filegroup(
     name = "MhloOpsPyGen",
     tbl_outs = [
@@ -1704,7 +1695,10 @@ gentbl_filegroup(
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "bindings/python/mlir/dialects/MhloOps.td",
-    deps = [":MhloOpsPyTdFiles"],
+    deps = [
+        ":hlo_ops_td_files",
+        "@llvm-project//mlir:OpBaseTdFiles",
+    ],
 )
 
 filegroup(

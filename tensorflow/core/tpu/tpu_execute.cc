@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
+#include <functional>
 #include <memory>
 #include <string>
 #include <tuple>
@@ -26,7 +28,6 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/log/log.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
@@ -51,23 +52,23 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_defn.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/proto_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_c_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_node_context.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_op_executable.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/common_runtime/next_pluggable_device/c/outside_compilation_params.h"
+#include "tensorflow/core/common_runtime/next_pluggable_device/c/tf_rendezvous_c_api_conversions.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/tpu/kernels/tpu_executable_info.pb.h"
-#include "tensorflow/core/tpu/kernels/tpu_execute_op_options.h"
 #include "tensorflow/tsl/framework/cancellation.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/statusor.h"
@@ -77,6 +78,12 @@ namespace tensorflow {
 namespace {
 
 using ::tensorflow::tpu::TpuNodeContext;
+
+// Handler to invoke when a host command is received.
+// `program_stack_byte_offset` is the byte address of the current program stack.
+// This value is always 0 prior to TPU v4, but may vary per run on TPU v4+.
+using HostCommandHandler =
+    std::function<void(uint32_t command, int64_t program_stack_byte_offset)>;
 
 // These are placeholders for absl flags.
 static bool tpu_cancellation_terminates_process = false;
@@ -88,8 +95,6 @@ class HostTransferManager {
  public:
   explicit HostTransferManager(TpuNodeContext*, xla::Backend*) {}
 
-  using HostCommandHandler = TpuOpExecutable::HostCommandHandler;
-
   // Returns a function to be called when the TPU triggers a host command
   // interrupt while executing the current program.
   xla::StatusOr<HostCommandHandler> Initialize(
@@ -100,10 +105,9 @@ class HostTransferManager {
   TF_DISALLOW_COPY_AND_ASSIGN(HostTransferManager);
 };
 
-xla::StatusOr<HostTransferManager::HostCommandHandler>
-HostTransferManager::Initialize(const TPUHostTransferInfoProto& program,
-                                const std::string& rendezvous_key_base,
-                                OpKernelContext* ctx) {
+xla::StatusOr<HostCommandHandler> HostTransferManager::Initialize(
+    const TPUHostTransferInfoProto& program,
+    const std::string& rendezvous_key_base, OpKernelContext* ctx) {
   return HostCommandHandler([](uint32_t, int64_t) {
     LOG(WARNING) << "HostTransferManager is unimplemented.";
   });
@@ -406,7 +410,7 @@ void UnregisterCancellation(
     //   4) StartCancel() in (1) cannot complete until (3) is done.
     //
     // Instead, call TryDeregisterCallback. The functional difference is
-    // TryDeregisterCallback will not block if cancellation is in proress
+    // TryDeregisterCallback will not block if cancellation is in progress
     // so makes no guarantees as to the state of any callbacks.
     // This is not a problem, as our cancellation handler does not rely on
     // any external state.
@@ -423,6 +427,27 @@ void UnregisterCancellation(
     dec_num_deferred_ops_function();
   });
   stream->ReturnSubStream(deregister_stream);
+}
+
+std::unique_ptr<SE_OutsideCompilationParams,
+                std::function<void(SE_OutsideCompilationParams*)>>
+CreateOcParams(const std::string& rendezvous_key_base,
+               OpKernelContext* op_kernel_context,
+               const TPUHostTransferInfoProto& host_transfers) {
+  std::unique_ptr<SE_OutsideCompilationParams,
+                  std::function<void(SE_OutsideCompilationParams*)>>
+      oc_params(new SE_OutsideCompilationParams(), &DestroyOCParams);
+  const std::string& device_name = op_kernel_context->device()->name();
+  oc_params->device_name = new char[device_name.size() + 1];
+  std::strncpy(oc_params->device_name, device_name.c_str(),
+               device_name.size() + 1);
+  oc_params->rendezvous_key = new char[rendezvous_key_base.size() + 1];
+  std::strncpy(oc_params->rendezvous_key, rendezvous_key_base.c_str(),
+               rendezvous_key_base.size() + 1);
+  oc_params->rendezvous = ToC(op_kernel_context->rendezvous());
+  oc_params->host_transfers =
+      stream_executor::tpu::SerializeProto(host_transfers);
+  return oc_params;
 }
 
 }  // namespace
@@ -448,7 +473,7 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
   // Create a HostTransferManager to handle Send/Recv operations from the TPU.
   std::shared_ptr<HostTransferManager> host_transfer_manager =
       std::make_shared<HostTransferManager>(node_context, backend);
-  TF_ASSIGN_OR_RETURN(HostTransferManager::HostCommandHandler handler,
+  TF_ASSIGN_OR_RETURN(HostCommandHandler host_command_handler,
                       host_transfer_manager->Initialize(
                           host_transfers, rendezvous_key_base, ctx));
 
@@ -538,8 +563,12 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
     arguments.push_back(std::move(input));
   }
 
+  std::unique_ptr<SE_OutsideCompilationParams,
+                  std::function<void(SE_OutsideCompilationParams*)>>
+      oc_params = CreateOcParams(rendezvous_key_base, ctx, host_transfers);
+
   auto tpu_executable = std::make_unique<TpuOpExecutable>(
-      tpu_program, std::move(module), /*host_command_handler=*/handler);
+      tpu_program, std::move(module), oc_params.get());
 
   const int32_t device_ordinal = node_context->device_ordinal();
   CancellationToken token;

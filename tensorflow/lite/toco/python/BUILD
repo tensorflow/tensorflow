@@ -1,3 +1,4 @@
+load("//tensorflow:py.default.bzl", "py_library")
 load("//tensorflow:tensorflow.bzl", "py_binary", "tf_py_test")
 
 package(
@@ -47,6 +48,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/lite:model_builder",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/python/interpreter_wrapper:python_error_reporter",

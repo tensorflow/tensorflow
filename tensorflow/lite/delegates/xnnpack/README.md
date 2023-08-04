@@ -126,6 +126,8 @@ if (interpreter->ModifyGraphWithDelegate(xnnpack_delegate) != kTfLiteOk) {
   // Report error and fall back to another delegate, or the default backend
 }
 
+// IMPORTANT: AllocateTensors can be called only AFTER ModifyGraphWithDelegate
+
 ...
 
 // Run inference using XNNPACK

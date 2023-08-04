@@ -52,12 +52,6 @@ sudo chown -R ${CI_BUILD_USER}:${CI_BUILD_GROUP} /usr/lib/python3/dist-packages
 # Update bazel
 install_bazelisk
 
-# Set python version string
-python_version=$(python3 -c 'import sys; print("python"+str(sys.version_info.major)+"."+str(sys.version_info.minor))')
-
-# Setup virtual environment
-setup_venv_ubuntu ${python_version}
-
 # Need to use the python from the venv
 export PYTHON_BIN_PATH=$(which python3)
 
@@ -122,6 +116,3 @@ bazel test ${TF_TEST_FLAGS} \
     --local_test_jobs=$(grep -c ^processor /proc/cpuinfo) \
     --build_tests_only \
     -- ${TF_TEST_TARGETS}
-
-# Remove virtual environment
-remove_venv_ubuntu

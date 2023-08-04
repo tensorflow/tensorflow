@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-trap "docker rm -f tf" EXIT
 if [[ "$TFCI_DOCKER_PULL_ENABLE" == 1 ]]; then
   docker pull "$TFCI_DOCKER_IMAGE"
 fi

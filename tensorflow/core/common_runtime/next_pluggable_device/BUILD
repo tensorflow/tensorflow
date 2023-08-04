@@ -59,18 +59,11 @@ cc_library(
     hdrs = ["next_pluggable_device_api.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/c:tf_status_helper",
         "//tensorflow/core/common_runtime/next_pluggable_device/c:plugin_c_api_hdrs",
+        "//tensorflow/tsl/c:tsl_status_internal",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:statusor",
     ],
-)
-
-cc_library(
-    name = "next_pluggable_device_c_api_flag",
-    srcs = ["next_pluggable_device_c_api_flag.cc"],
-    hdrs = ["next_pluggable_device_c_api_flag.h"],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -185,6 +178,23 @@ config_setting(
 )
 
 cc_library(
+    name = "flags",
+    srcs = ["flags.cc"],
+    hdrs = ["flags.h"],
+    defines = select({
+        "//tensorflow/core/common_runtime/next_pluggable_device:tf_npd_use_c_api_enabled": [
+            "DEFAULT_TF_NEXT_PLUGGABLE_DEVICE_USE_C_API=true",
+        ],
+        "//conditions:default": [
+            "DEFAULT_TF_NEXT_PLUGGABLE_DEVICE_USE_C_API=false",
+        ],
+    }),
+    visibility = ["//visibility:public"],
+    deps = ["@com_google_absl//absl/flags:flag"],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "c_plugin_op_kernel",
     srcs = ["c_plugin_op_kernel.cc"],
     hdrs = ["c_plugin_op_kernel.h"],
@@ -223,10 +233,10 @@ cc_library(
         ":c_plugin_op_kernel",
         ":direct_plugin_op_kernel",
         ":loose_headers",
-        ":next_pluggable_device_c_api_flag",
         ":plugin_op_kernel",
         "//tensorflow/c:kernels_hdrs",
         "//tensorflow/c:tf_status_helper",
+        "//tensorflow/core/common_runtime/next_pluggable_device:flags",
     ],
 )
 
@@ -290,10 +300,10 @@ cc_library(
     deps = [
         ":c_plugin_coordination_service_agent",
         ":direct_plugin_coordination_service_agent",
-        ":next_pluggable_device_c_api_flag",
         ":plugin_coordination_service_agent",
         "//tensorflow/c:kernels_hdrs",
         "//tensorflow/c:tf_status_helper",
+        "//tensorflow/core/common_runtime/next_pluggable_device:flags",
     ],
 )
 

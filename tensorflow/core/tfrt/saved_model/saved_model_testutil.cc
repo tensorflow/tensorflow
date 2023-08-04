@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model.h"
 
+#if defined(PLATFORM_GOOGLE)
 ABSL_FLAG(bool, enable_optimizer, true,
           "enable optimizations in CoreRT dialect (e.g., constant-folding)");
 ABSL_FLAG(std::string, force_data_format, "",
@@ -41,6 +42,7 @@ ABSL_FLAG(
 
 ABSL_FLAG(bool, enable_mlrt, false,
           "If true, the runtime will use MLRT interpreter for host execution.");
+#endif
 
 namespace tensorflow {
 namespace tfrt_stub {
@@ -53,14 +55,24 @@ std::unique_ptr<tensorflow::tfrt_stub::Runtime> DefaultTfrtRuntime(
 }
 
 SavedModel::Options DefaultSavedModelOptions(
-    tensorflow::tfrt_stub::Runtime* runtime) {
+    tensorflow::tfrt_stub::Runtime* runtime,
+    std::optional<UserSavedModelOptions> user_options) {
   SavedModel::Options options(runtime);
+  auto& compile_options = options.graph_execution_options.compile_options;
+#if defined(PLATFORM_GOOGLE)
   options.graph_execution_options.enable_mlrt =
       absl::GetFlag(FLAGS_enable_mlrt);
-  auto& compile_options = options.graph_execution_options.compile_options;
   compile_options.enable_optimizer = absl::GetFlag(FLAGS_enable_optimizer);
   compile_options.enable_grappler = absl::GetFlag(FLAGS_enable_grappler);
   compile_options.force_data_format = absl::GetFlag(FLAGS_force_data_format);
+#endif
+
+  if (user_options) {
+    options.graph_execution_options.enable_mlrt = user_options->enable_mlrt;
+    compile_options.enable_optimizer = user_options->enable_optimizer;
+    compile_options.enable_grappler = user_options->enable_grappler;
+    compile_options.force_data_format = user_options->force_data_format;
+  }
   return options;
 }
 
@@ -168,9 +180,10 @@ SavedModel::Options DefaultTpuModelOptions(
     tensorflow::tfrt_stub::Runtime* runtime,
     tensorflow::TfrtDeviceInfraTarget device_target) {
   SavedModel::Options options(runtime);
+#if defined(PLATFORM_GOOGLE)
   options.graph_execution_options.enable_mlrt =
       absl::GetFlag(FLAGS_enable_mlrt);
-
+#endif
   auto& compile_options = options.graph_execution_options.compile_options;
   compile_options.variable_device =
       "/job:localhost/replica:0/task:0/device:CPU:0";

@@ -12,19 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-# Suite of verification tests for the SINGLE TensorFlow wheel in /tf/pkg
-# or whatever path is set as $TF_WHEEL.
+# Suite of verification tests for the SINGLE TensorFlow wheel in the "build"
+# directory, or whatever path is set as $TF_WHEEL.
 
 setup_file() {
-    cd "$TFCI_GIT_DIR/build"
+    python3 -m venv "$BATS_FILE_TMPDIR/venv"
+    cd build
     if [[ -z "$TF_WHEEL" ]]; then
-        export TF_WHEEL=$(find "$TFCI_GIT_DIR/build" -iname "*.whl")
+        export TF_WHEEL=$(find build -iname "*.whl")
     fi
 }
 
 teardown_file() {
     rm -rf "$BATS_FILE_TMPDIR/venv"
-    python3 -m venv 
 }
 
 @test "Wheel is manylinux2014 (manylinux_2_17) compliant" {
@@ -56,24 +56,23 @@ teardown_file() {
 # the venv and the venv is active when those tests run. The venv gets cleaned
 # up in teardown_file() above.
 @test "Wheel is installable" {
-    python3 -m venv "$BATS_FILE_TMPDIR/venv"
-    source "$BATS_FILE_TMPDIR/bin/activate"
+    source "$BATS_FILE_TMPDIR/venv/bin/activate"
     python3 -m pip install "$TF_WHEEL"
 }
 
 @test "TensorFlow is importable" {
-    source "$BATS_FILE_TMPDIR/bin/activate"
+    source "$BATS_FILE_TMPDIR/venv/bin/activate"
     python3 -c 'import tensorflow as tf; t1=tf.constant([1,2,3,4]); t2=tf.constant([5,6,7,8]); print(tf.add(t1,t2).shape)'
 }
 
 # Is this still useful?
 @test "TensorFlow has Keras" {
-    source "$BATS_FILE_TMPDIR/bin/activate"
+    source "$BATS_FILE_TMPDIR/venv/bin/activate"
     python3 -c 'import sys; import tensorflow as tf; sys.exit(0 if "_v2.keras" in tf.keras.__name__ else 1)'
 }
 
 # Is this still useful?
 @test "TensorFlow has Estimator" {
-    source "$BATS_FILE_TMPDIR/bin/activate"
+    source "$BATS_FILE_TMPDIR/venv/bin/activate"
     python3 -c 'import sys; import tensorflow as tf; sys.exit(0 if "_v2.estimator" in tf.estimator.__name__ else 1)'
 }

@@ -15,10 +15,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
 
+#include <cstdint>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"

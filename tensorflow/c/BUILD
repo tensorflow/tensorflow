@@ -672,11 +672,22 @@ tf_cuda_library(
     hdrs = ["tf_status_helper.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":tf_status",
-        ":tf_status_internal",
-        "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:status",
+        ":tf_status_headers",
         "//tensorflow/tsl/c:tsl_status_helper",
+        "//tensorflow/tsl/platform:status",
+    ],
+)
+
+tf_cc_test(
+    name = "tf_status_helper_test",
+    srcs = ["tf_status_helper_test.cc"],
+    deps = [
+        ":tf_status",
+        ":tf_status_helper",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
     ],
 )
 
@@ -686,6 +697,7 @@ tf_cuda_library(
     hdrs = ["checkpoint_reader.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":tf_status",
         ":tf_status_helper",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -811,6 +823,7 @@ tf_cuda_library(
         "//tensorflow/core/kernels/data:optional_ops_util",
         "//tensorflow/core/platform:abi",
     ]),
+    alwayslink = 1,
 )
 
 tf_cuda_library(

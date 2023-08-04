@@ -159,18 +159,6 @@ bool IsDstInputOnHost(const Edge* edge, const GraphInfo& info) {
   return true;
 }
 
-// Add an input to dst that comes from the "src_slot" output of the
-// node named by "src_name".
-void AddInput(NodeDef* dst, StringPiece src_name, int src_slot) {
-  if (src_slot == Graph::kControlSlot) {
-    dst->add_input(strings::StrCat("^", src_name));
-  } else if (src_slot == 0) {
-    dst->add_input(src_name.data(), src_name.size());
-  } else {
-    dst->add_input(strings::StrCat(src_name, ":", src_slot));
-  }
-}
-
 // Add a control edge from each input to each recv.
 void AddReadControl(const std::vector<NodeDef*>& recvs,
                     const std::vector<string>& inputs) {
@@ -923,7 +911,7 @@ Status AddControlEdges(const PartitionOptions& opts,
         dummys.push_back(dummy);
         if (j > 0) {
           string src_name = start_times[j - 1].first->name();
-          AddInput(dummy, src_name, Graph::kControlSlot);
+          Graph::AddInput(dummy, src_name, Graph::kControlSlot);
         }
         i++;
       }
@@ -937,7 +925,7 @@ Status AddControlEdges(const PartitionOptions& opts,
         const int recv_epoch = start_time / resolution;
         if (recv_epoch >= prefetch) {
           NodeDef* dummy = dummys[recv_epoch - prefetch];
-          AddInput(ndef, dummy->name(), Graph::kControlSlot);
+          Graph::AddInput(ndef, dummy->name(), Graph::kControlSlot);
         }
       }
     }
@@ -1078,7 +1066,7 @@ Status Partition(const PartitionOptions& opts, Graph* g,
       GraphDef* src_graph = &(*partitions)[opts.node_to_loc(src)];
       if (src_graph == dst_graph && !NeedSameDeviceSendRecv(edge, g_info)) {
         // Same partition and compatible memory types:
-        AddInput(dst_def, src->name(), edge->src_output());
+        Graph::AddInput(dst_def, src->name(), edge->src_output());
         if (edge->IsControlEdge() ||
             !IsRefType(src->output_type(edge->src_output()))) {
           ref_control_inputs.push_back(src->name());
@@ -1113,9 +1101,9 @@ Status Partition(const PartitionOptions& opts, Graph* g,
         // We found one. Reuse the data/control transferred already.
         const string& recv_node_name = iter->second.recv->name();
         if (edge->IsControlEdge()) {
-          AddInput(dst_def, recv_node_name, Graph::kControlSlot);
+          Graph::AddInput(dst_def, recv_node_name, Graph::kControlSlot);
         } else {
-          AddInput(dst_def, recv_node_name, 0);
+          Graph::AddInput(dst_def, recv_node_name, 0);
         }
         ref_control_inputs.push_back(recv_node_name);
 
@@ -1141,7 +1129,7 @@ Status Partition(const PartitionOptions& opts, Graph* g,
         if (opts.scheduling_for_recvs) {
           AddNodeAttr("_start_time", send_start_time, dummy);
         }
-        AddInput(dummy, src->name(), Graph::kControlSlot);
+        Graph::AddInput(dummy, src->name(), Graph::kControlSlot);
         send_from.Reset(dummy->name(), 0, DT_FLOAT);
       } else {
         send_from.Reset(src->name(), edge->src_output(), EdgeType(edge));
@@ -1172,13 +1160,13 @@ Status Partition(const PartitionOptions& opts, Graph* g,
         // For same device send/recv, add a control edge from send to recv.
         // This prevents the asynchronous recv kernel from being scheduled
         // before the data is available.
-        AddInput(real_recv, send->name(), Graph::kControlSlot);
+        Graph::AddInput(real_recv, send->name(), Graph::kControlSlot);
       } else if (control_flow_edge != nullptr) {
         // Redirect control edge to the real recv since this is not the same
         // device send/recv.
         --num_control_flow_edges;
-        AddInput(real_recv, control_flow_edge->src()->name(),
-                 Graph::kControlSlot);
+        Graph::AddInput(real_recv, control_flow_edge->src()->name(),
+                        Graph::kControlSlot);
       }
 
       if (!edge->IsControlEdge() &&
@@ -1200,10 +1188,10 @@ Status Partition(const PartitionOptions& opts, Graph* g,
 
       if (edge->IsControlEdge()) {
         ++num_control;
-        AddInput(dst_def, recv->name(), Graph::kControlSlot);
+        Graph::AddInput(dst_def, recv->name(), Graph::kControlSlot);
       } else {
         ++num_data;
-        AddInput(dst_def, recv->name(), 0);
+        Graph::AddInput(dst_def, recv->name(), 0);
       }
     }
 
@@ -1220,8 +1208,8 @@ Status Partition(const PartitionOptions& opts, Graph* g,
     // Add back the control edges for control flow that are not used.
     if (control_flow_edge != nullptr) {
       for (int i = 0; i < num_control_flow_edges; ++i) {
-        AddInput(dst_def, control_flow_edge->src()->name(),
-                 Graph::kControlSlot);
+        Graph::AddInput(dst_def, control_flow_edge->src()->name(),
+                        Graph::kControlSlot);
       }
     }
 
@@ -1235,7 +1223,7 @@ Status Partition(const PartitionOptions& opts, Graph* g,
       if (!builder) {
         builder = std::make_unique<GraphDebugInfoBuilder>();
       }
-      builder->AccumulateStackTrace(*stack_trace, dst->name());
+      builder->AccumulateStackTrace(stack_trace, dst->name());
     }
   }
 

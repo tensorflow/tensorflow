@@ -57,6 +57,10 @@ message CudnnConvBackendConfig {
     // compatible with NVidia's IMMA instruction (sm75+).
     bool reordered_int8_nchw_vect = 7;
   }
+
+  // Serialization of the graph described by the convolution and adjacent
+  // pointwise ops.
+  optional string serialized_graph = 9;
 }
 
 // Backend config for the GEMM operation running through cuBLAS.
@@ -136,17 +140,24 @@ message CudnnfMHABackendConfig {
   // Opaque algorithm number and tuning knobs chosen for this fMHA.
   stream_executor.dnn.AlgorithmProto algorithm = 8;
 
-  // The scaling factor multiplied with the BMM1 result. fmha_scale is 0 if the
+  // The scaling factor multiplied with the BMM1 result. fmha_scale is 1 if the
   // MHA pattern has no scaling.
   double fmha_scale = 10;
 
   // Dropout factor in MHA
   double dropout_rate = 13;
 
+  // Configs for mha bmms in the forward graph
   xla.DotDimensionNumbers bmm1_dot_dimension_numbers = 11;
   xla.DotDimensionNumbers bmm2_dot_dimension_numbers = 12;
 
   xla.ShapeProto intermediate_tensor_shape = 14;
+
+  // Configs for mha bmms in the backward graph
+  xla.DotDimensionNumbers bmm1_grad_gemm1_dot_dimension_numbers = 16;
+  xla.DotDimensionNumbers bmm1_grad_gemm2_dot_dimension_numbers = 17;
+  xla.DotDimensionNumbers bmm2_grad_gemm1_dot_dimension_numbers = 18;
+  xla.DotDimensionNumbers bmm2_grad_gemm2_dot_dimension_numbers = 19;
 
   // Random seed used by dropout
   int64 seed = 15;

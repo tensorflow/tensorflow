@@ -54,12 +54,6 @@ sudo chown -R ${CI_BUILD_USER}:${CI_BUILD_GROUP} /usr/lib/python3/dist-packages
 # Update bazel
 install_bazelisk
 
-# Set python version string
-python_version=$(python3 -c 'import sys; print("python"+str(sys.version_info.major)+"."+str(sys.version_info.minor))')
-
-# Setup virtual environment
-setup_venv_ubuntu ${python_version}
-
 # Need to update the version of auditwheel used for aarch64
 python3 -m pip install auditwheel~=5.3.0
 
@@ -178,6 +172,3 @@ bazel test ${TF_TEST_FLAGS} \
 
 # remove duplicate wheel and copy wheel to mounted volume for local access
 rm -rf ${WHL_DIR}/*linux_aarch64.whl && cp -r ${WHL_DIR} .
-
-# Remove virtual environment
-remove_venv_ubuntu

@@ -22,6 +22,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
+#include "absl/strings/numbers.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
 #include "tensorflow/compiler/xla/hlo/utils/hlo_query.h"
@@ -227,29 +232,28 @@ CanonicalAsyncOp GpuGetCanonicalAsyncOp(const HloInstruction& hlo) {
   }
 }
 
-SchedulerConfig GetSchedulerConfig(const GpuDeviceInfo& gpu_info) {
+SchedulerConfig GetSchedulerConfig(int64_t memory_limit) {
   SchedulerConfig config;
   config.all_reduce_overlap_limit = 1;
   config.collective_permute_overlap_limit = 1;
   config.use_real_cost_model = false;
   config.aggressive_scheduling_policies = true;
   config.schedule_send_recvs = true;
-
-  // Assume 75% of the total device memory is available for XLA.
-  config.memory_limit = gpu_info.device_memory_size * 0.95;
+  config.memory_limit = memory_limit;
   return config;
 }
 
 // GPU specific resources for latency hiding scheduler.
 //
-// We use two resources to model collective operations: a resource for sending
-// data and a resource for receiving data. All collective operations require
-// both resources while the Send and Recv operations requires only the single
-// resource corresponding to the operation.
+// We use two different set of resources to model the scheduling of asynchronous
+// collective operations and P2P Send and Recv operations. This corresponds to
+// the fact that the runtime use a stream to run asynchronous collective
+// operations and another stream to run P2P Send and Recv operations.
 enum class GpuResourceType {
-  kGpuAsyncStreamSend = 0,  // The resource for sending data.
-  kGpuAsyncStreamRecv = 1,  // The resource for receiving data.
-  kNumTargetResources = 2,
+  kGpuAsyncStreamSend = 0,         // The resource for P2P Send operation.
+  kGpuAsyncStreamRecv = 1,         // The resource for P2P Recv operation.
+  kGpuAsyncStreamCollectives = 2,  // The resource for collective operations.
+  kNumTargetResources = 3,
 };
 
 // Base GPU async tracker that enables async tracking only for async collectives
@@ -298,11 +302,12 @@ class GpuAsyncTracker : public GpuAsyncTrackerBase {
         resources.push_back(std::make_pair(gpu_stream_resource, usage));
       };
 
-      if (op.inner != HloOpcode::kRecv) {
+      if (op.inner == HloOpcode::kSend) {
         add_resource(GpuResourceType::kGpuAsyncStreamSend);
-      }
-      if (op.inner != HloOpcode::kSend) {
+      } else if (op.inner == HloOpcode::kRecv) {
         add_resource(GpuResourceType::kGpuAsyncStreamRecv);
+      } else {
+        add_resource(GpuResourceType::kGpuAsyncStreamCollectives);
       }
       return resources;
     }
@@ -343,11 +348,14 @@ class GpuAsyncTracker : public GpuAsyncTrackerBase {
     }
     CHECK_LE(resource_type,
              first_target_resource + GetNumTargetDefinedResources());
-    switch (resource_type - first_target_resource) {
-      case static_cast<int64_t>(GpuResourceType::kGpuAsyncStreamSend):
+    switch (
+        static_cast<GpuResourceType>(resource_type - first_target_resource)) {
+      case GpuResourceType::kGpuAsyncStreamSend:
         return "kGpuAsyncStreamSend";
-      case static_cast<int64_t>(GpuResourceType::kGpuAsyncStreamRecv):
+      case GpuResourceType::kGpuAsyncStreamRecv:
         return "kGpuAsyncStreamRecv";
+      case GpuResourceType::kGpuAsyncStreamCollectives:
+        return "kGpuAsyncStreamCollectives";
       default:
         return "kUnsupportedResource";
     }
@@ -405,6 +413,74 @@ class GpuLatencyEstimator : public ApproximateLatencyEstimator {
   }
 };
 
+tensorflow::profiler::ProfiledInstructionsProto GetProfileForFingerprint(
+    tensorflow::profiler::ProfiledInstructionsProto& profile,
+    const std::string& fingerprint) {
+  tensorflow::profiler::ProfiledInstructionsProto result;
+  bool merge_remat_clones = false;
+  for (const auto& cost : profile.costs()) {
+    absl::string_view cost_name = cost.name();
+    std::string new_cost_name = cost.name();
+    absl::string_view cost_sep = "::";
+    if (absl::StrContains(cost_name, cost_sep)) {
+      std::vector<std::string> split_names =
+          absl::StrSplit(cost_name, cost_sep);
+      if (split_names.size() != 2 || split_names[0] != fingerprint) {
+        continue;
+      }
+      new_cost_name = split_names[1];
+    }
+
+    // Check if we see instructions that have ".rematX" suffix. These are clones
+    // of original instructions created by HLO rematerialization pass. We will
+    // average the costs of the remat clones and the original instruction and
+    // use that as the new cost of the original one.
+    merge_remat_clones |= absl::StrContains(new_cost_name, ".remat");
+    auto* new_cost = result.add_costs();
+    new_cost->set_cost_us(cost.cost_us());
+    new_cost->set_name(new_cost_name);
+  }
+
+  if (!merge_remat_clones) {
+    return result;
+  }
+
+  auto strip_remat_suffix = [](absl::string_view name) -> absl::string_view {
+    absl::string_view suffix = ".remat";
+    size_t index = name.rfind(suffix);
+    if (index == std::string::npos) {
+      return name;
+    }
+    auto after_suffix = name.substr(index + suffix.size());
+    // Everything after ".remat" should be a digit or empty. If yes, strip the
+    // .rematN suffix.
+    int64_t numeric_suffix;
+    if (after_suffix.empty() ||
+        absl::SimpleAtoi(after_suffix, &numeric_suffix)) {
+      return name.substr(0, index);
+    }
+    return name;
+  };
+
+  // Map from stripped name -> pair<accumulated cost, count>
+  absl::flat_hash_map<absl::string_view, std::pair<double, int64_t>> costs;
+  for (const auto& cost : result.costs()) {
+    std::pair<double, int64_t>& data = costs[strip_remat_suffix(cost.name())];
+    data.first += cost.cost_us();
+    data.second++;
+  }
+
+  tensorflow::profiler::ProfiledInstructionsProto merged_result;
+  for (const auto& cost : costs) {
+    auto* new_cost = merged_result.add_costs();
+    double average = cost.second.first / cost.second.second;
+    new_cost->set_cost_us(average);
+    new_cost->set_name(std::string(cost.first));
+  }
+
+  return merged_result;
+}
+
 std::optional<tensorflow::profiler::ProfiledInstructionsProto> ReadPGLEProfile(
     const HloModule* module, const std::string& fingerprint) {
   tensorflow::profiler::ProfiledInstructionsProto profile;
@@ -416,14 +492,14 @@ std::optional<tensorflow::profiler::ProfiledInstructionsProto> ReadPGLEProfile(
     if (tsl::ParseProtoUnlimited(&profile, fdo_profile.data(),
                                  fdo_profile.size())) {
       LOG(INFO) << "Using PGLE profile for module from fdo_profile (binary)";
-      return profile;
+      return GetProfileForFingerprint(profile, fingerprint);
     }
     // If not a binary proto, attempt to parse it as a text proto.
     profile.Clear();
     if (tsl::protobuf::TextFormat::ParseFromString(std::string(fdo_profile),
                                                    &profile)) {
       LOG(INFO) << "Using PGLE profile for module from fdo_profile (text)";
-      return profile;
+      return GetProfileForFingerprint(profile, fingerprint);
     }
     LOG(ERROR) << "Unable to prase FDO profile: not a valid text or binary "
                   "ProfiledInstructionsProto";
@@ -437,20 +513,20 @@ std::optional<tensorflow::profiler::ProfiledInstructionsProto> ReadPGLEProfile(
     return std::nullopt;
   }
   tsl::Env* env = tsl::Env::Default();
-  auto read_text_or_binary_profile = [&profile, env](
+  auto read_text_or_binary_profile = [&profile, env, &fingerprint](
                                          const std::string& text_path,
                                          const std::string& binary_path)
       -> std::optional<tensorflow::profiler::ProfiledInstructionsProto> {
     Status s = tsl::ReadTextProto(env, text_path, &profile);
     if (s.ok()) {
       LOG(INFO) << "Using PGLE profile from " << text_path;
-      return profile;
+      return GetProfileForFingerprint(profile, fingerprint);
     }
     profile.Clear();
     s = tsl::ReadBinaryProto(env, binary_path, &profile);
     if (s.ok()) {
       LOG(INFO) << "Using PGLE profile from " << binary_path;
-      return profile;
+      return GetProfileForFingerprint(profile, fingerprint);
     }
     return std::nullopt;
   };
@@ -472,7 +548,7 @@ std::optional<tensorflow::profiler::ProfiledInstructionsProto> ReadPGLEProfile(
 
 // Return true if the profile is applicable to the module. That is true if every
 // instruction in the profile is present in the module.
-bool IsProfileApplicable(
+Status IsProfileApplicable(
     const HloModule* module,
     const tensorflow::profiler::ProfiledInstructionsProto& profile) {
   absl::flat_hash_set<absl::string_view> instruction_names;
@@ -484,16 +560,22 @@ bool IsProfileApplicable(
 
   for (const auto& cost : profile.costs()) {
     if (!instruction_names.contains(cost.name())) {
-      return false;
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "cost name %s not in module %s", cost.name(), module->name()));
     }
   }
   for (const auto& latency : profile.latencies()) {
-    if (!instruction_names.contains(latency.source()) ||
-        !instruction_names.contains(latency.target())) {
-      return false;
+    if (!instruction_names.contains(latency.source())) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "cost name %s not in module %s", latency.source(), module->name()));
+    }
+
+    if (!instruction_names.contains(latency.target())) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "cost name %s not in module %s", latency.target(), module->name()));
     }
   }
-  return true;
+  return OkStatus();
 }
 
 }  // end namespace
@@ -509,7 +591,7 @@ int64_t GetSizeOfShape(const Shape& shape, int pointer_size) {
 }
 
 Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
-                         const GpuDeviceInfo& gpu_info) {
+                         int64_t memory_limit) {
   TF_ASSIGN_OR_RETURN(
       HloSchedule schedule,
       ScheduleGpuModuleWithMemoryScheduler(module, pointer_size));
@@ -535,7 +617,7 @@ Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
     return OkStatus();
   }
 
-  SchedulerConfig config = GetSchedulerConfig(gpu_info);
+  SchedulerConfig config = GetSchedulerConfig(memory_limit);
   auto gpu_latency_estimator = std::make_unique<GpuLatencyEstimator>();
 
   std::unique_ptr<LatencyEstimator> latency_estimator;
@@ -545,8 +627,11 @@ Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
     latency_estimator = std::make_unique<ProfileGuidedLatencyEstimator>(
         config, std::move(gpu_latency_estimator), profile.value());
     LOG(INFO) << "Found profile, using profile guided latency estimator";
-    if (!IsProfileApplicable(module, profile.value())) {
-      LOG(ERROR) << "!!! PGLE profile likely not applicable to the module";
+    Status s = IsProfileApplicable(module, profile.value());
+    if (!s.ok()) {
+      LOG(INFO) << "PGLE profile may not applicable to the module, but will "
+                   "still be used : "
+                << s.message();
     }
   } else {
     latency_estimator = std::move(gpu_latency_estimator);
@@ -580,6 +665,52 @@ HloInstructionSequence PostProcessSchedule(
     const HloInstructionSequence& input) {
   HloInstructionSequence result = PostprocessorToScheduleSyncCollectives(input);
   return PostprocessorToScheduleAsEarlyOrLateAsPossible(result);
+}
+
+// Compute the device memory limit to be used by passes like scheduler and
+// HLO rematerialization.
+int64_t GetSchedulerMemoryLimit(const HloModule* module,
+                                const GpuDeviceInfo& gpu_device_info,
+                                int pointer_size) {
+  // There is a "base" value which is either specified in HloModuleConfig (this
+  // value should take into account the fact that we need to leave some memory
+  // free for allocations that happen outside of XLA's allocator) or
+  // obtained from GPU device info (we scale down this value to leave some space
+  // for these outside XLA's allocator allocation).
+  //
+  // From that base value, subtract any input and output sizes (assuming they
+  // are live throughout the execution) and then apply a slop factor.
+  const int64_t base_limit =
+      module->config().device_memory_size() != 0
+          ? module->config().device_memory_size()
+          : gpu_device_info.device_memory_size * 80 / 100;
+
+  // Find the total size of inputs and outputs.
+  int64_t total_io_size = 0;
+  for (HloInstruction* param :
+       module->entry_computation()->parameter_instructions()) {
+    ShapeUtil::ForEachSubshape(
+        param->shape(),
+        [&](const Shape& subshape, const ShapeIndex& /*index*/) {
+          total_io_size += GetSizeOfShape(subshape, pointer_size);
+        });
+  }
+  ShapeUtil::ForEachSubshape(
+      module->result_shape(),
+      [&](const Shape& subshape, const ShapeIndex& /*index*/) {
+        total_io_size += GetSizeOfShape(subshape, pointer_size);
+      });
+
+  // If any inputs and outputs are aliased, do not double count them.
+  module->input_output_alias_config().ForEachAlias(
+      [&](const ShapeIndex& output_index,
+          const HloInputOutputAliasConfig::Alias&) {
+        const Shape& subshape =
+            ShapeUtil::GetSubshape(module->result_shape(), output_index);
+        total_io_size -= GetSizeOfShape(subshape, pointer_size);
+      });
+
+  return (base_limit - total_io_size) * 95 / 100;
 }
 
 }  // namespace gpu

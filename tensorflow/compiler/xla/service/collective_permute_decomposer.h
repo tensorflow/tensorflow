@@ -45,6 +45,8 @@ namespace xla {
 //
 class CollectivePermuteDecomposer : public HloModulePass {
  public:
+  explicit CollectivePermuteDecomposer(int64_t threshold_in_bytes)
+      : threshold_in_bytes_(threshold_in_bytes) {}
   absl::string_view name() const override {
     return "collective-permute-decomposer";
   }
@@ -55,6 +57,10 @@ class CollectivePermuteDecomposer : public HloModulePass {
   StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+ private:
+  // Transform only if the size of the collective permute is >= threshold.
+  int64_t threshold_in_bytes_;
 };
 
 }  // namespace xla

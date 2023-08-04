@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_shared_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -10,6 +10,8 @@ package_group(
     name = "friends",
     packages = [
         # Authorized users go here.
+        "//tensorflow/core/tfrt/saved_model/...",
+        "//learning/brain/tfrt/cpp_tests/gpu_inference/...",
     ],
 )
 
@@ -22,6 +24,7 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/tsl/platform:env",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Support",
         "@tf_runtime//:bef",
@@ -29,12 +32,13 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+tf_cc_shared_test(
     name = "serialize_bef_utils_test",
     srcs = ["serialize_bef_utils_test.cc"],
     data = [
         "//tensorflow/compiler/mlir/tfrt/tests/saved_model:testdata",
     ],
+    tags = ["no_oss"],
     deps = [
         ":serialize_bef_utils",
         "//tensorflow/compiler/mlir/tensorflow",
@@ -45,6 +49,7 @@ tf_cc_test(
         "//tensorflow/core/platform:resource_loader",
         "//tensorflow/core/tfrt/saved_model:saved_model_testutil",
         "//tensorflow/core/tfrt/utils",
+        "//tensorflow/tsl/lib/core:status_test_util",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:Parser",
         "@tf_runtime//:bef",

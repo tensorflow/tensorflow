@@ -429,6 +429,14 @@ cc_library(
             "optimized/4bit/neon_fully_connected_aarch64_sdot.cc",
             "optimized/4bit/neon_fully_connected_impl.h",
         ],
+        # copybara:uncomment_begin(google-only)
+        # "//tools/cc_target_os:toyota-sa8155-aarch64-oe-linux": [
+        # "optimized/4bit/neon_fully_connected.cc",
+        # "optimized/4bit/neon_fully_connected_aarch64_nosdot.cc",
+        # "optimized/4bit/neon_fully_connected_aarch64_sdot.cc",
+        # "optimized/4bit/neon_fully_connected_impl.h",
+        # ],
+        # copybara:uncomment_end
         "//tensorflow:android_arm": [
             "optimized/4bit/neon_fully_connected.cc",
             "optimized/4bit/neon_fully_connected_arm32.cc",
@@ -451,6 +459,11 @@ cc_library(
         "//tensorflow:android_arm64": [
             "optimized/4bit/neon_fully_connected.h",
         ],
+        # copybara:uncomment_begin(google-only)
+        # "//tools/cc_target_os:toyota-sa8155-aarch64-oe-linux": [
+        # "optimized/4bit/neon_fully_connected.h",
+        # ],
+        # copybara:uncomment_end
         "//tensorflow:android_arm": [
             "optimized/4bit/neon_fully_connected.h",
         ],
@@ -461,6 +474,11 @@ cc_library(
         "//tensorflow:android_arm64": [
             "-march=armv8.2-a+dotprod",
         ],
+        # copybara:uncomment_begin(google-only)
+        # "//tools/cc_target_os:toyota-sa8155-aarch64-oe-linux": [
+        # "-march=armv8.2-a+dotprod",
+        # ],
+        # copybara:uncomment_end
         "//tensorflow:android_arm": [],
         "//conditions:default": [],
     }) + NEON_FLAGS_IF_APPLICABLE,
@@ -469,6 +487,11 @@ cc_library(
         "//tensorflow:android_arm64": [
             "FC_4BIT_NEON",
         ],
+        # copybara:uncomment_begin(google-only)
+        # "//tools/cc_target_os:toyota-sa8155-aarch64-oe-linux": [
+        # "FC_4BIT_NEON",
+        # ],
+        # copybara:uncomment_end
         "//tensorflow:android_arm": [
             "FC_4BIT_NEON",
         ],

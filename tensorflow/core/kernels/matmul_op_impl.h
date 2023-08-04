@@ -88,7 +88,7 @@ struct ParallelMatMulKernel {
   }
 
   static void Run(const OpKernelContext* context, const Tensor& in_x,
-                  const Tensor in_y, bool adj_x, bool adj_y, bool trans_x,
+                  const Tensor& in_y, bool adj_x, bool adj_y, bool trans_x,
                   bool trans_y, const MatMulBCast& bcast, Tensor* out,
                   int batch_size) {
     static_assert(IsComplex, "Complex type expected.");

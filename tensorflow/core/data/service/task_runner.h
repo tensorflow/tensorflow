@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_DATA_SERVICE_TASK_RUNNER_H_
 
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "tensorflow/core/data/service/common.pb.h"
@@ -61,6 +62,13 @@ class TaskIterator {
     return errors::Unimplemented(
         "Restoring from a tf.data service task iterator is unsupported.");
   }
+
+  // Returns the time it takes the pipeline associated with this task iterator
+  // to process an element.
+  // Returns std::nullopt if there is not currently enough information to
+  // determine the processing time, e.g. because not enough data has been
+  // produced yet from the iterator.
+  virtual std::optional<double> GetProcessingTimeNsec() const = 0;
 };
 
 // Implementation of TaskIterator wrapping a standalone iterator.
@@ -75,6 +83,7 @@ class StandaloneTaskIterator : public TaskIterator {
   int64_t Cardinality() const override;
   StatusOr<std::vector<Tensor>> Save() override;
   Status Restore(const std::vector<Tensor>& saved_iterator) override;
+  std::optional<double> GetProcessingTimeNsec() const override;
 
  private:
   std::unique_ptr<standalone::Dataset> dataset_;
@@ -93,6 +102,12 @@ class TaskRunner {
   // Gets the next element for the given request.
   virtual Status GetNext(const GetElementRequest& req,
                          GetElementResult& result) = 0;
+  // Returns the time it takes the pipeline associated with this task runner to
+  // process an element. Returns 0 if the model is null or empty.
+  // Returns std::nullopt if there is not currently enough information to
+  // determine the processing time, e.g. because not enough data has been
+  // produced yet from the iterator.
+  virtual std::optional<double> GetProcessingTimeNsec() = 0;
   // Cancels in-progress `GetNext` requests.
   virtual void Cancel() = 0;
 };
@@ -111,6 +126,8 @@ class FirstComeFirstServedTaskRunner : public TaskRunner {
   Status GetNext(GetElementResult& result);
 
   void Cancel() override;
+
+  std::optional<double> GetProcessingTimeNsec() override TF_LOCKS_EXCLUDED(mu_);
 
  private:
   // Function to continually prefetch the next element. Returns an error if the
@@ -153,6 +170,8 @@ class CachingTaskRunner : public TaskRunner {
   // Cancel the task runner. After cancelling, all the `GetNext` calls will
   // return a Cancelled status.
   void Cancel() override;
+
+  std::optional<double> GetProcessingTimeNsec() override;
 
  private:
   // The `GetElementResultSequence` generates a sequence of elements from the
@@ -202,6 +221,7 @@ class PrefetchThread {
                     std::vector<std::unique_ptr<Element>>& out);
   // Returns the status for any failures encountered by the prefetch thread.
   Status GetStatus();
+  std::optional<double> GetProcessingTimeNsec() const;
 
  private:
   const std::unique_ptr<TaskIterator> iterator_;
@@ -246,6 +266,7 @@ class RoundRobinTaskRunner : public TaskRunner {
   Status GetNext(const GetElementRequest& req,
                  GetElementResult& result) override;
   void Cancel() override;
+  std::optional<double> GetProcessingTimeNsec() override;
 
  private:
   // Prepares a full round of data. `wait_us` indicates how long to wait before

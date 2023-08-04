@@ -289,20 +289,25 @@ StatusOr<Layout> GetLayoutThroughIdentityOps(Node* op, int output_index) {
 char TensorWithLayoutTf::ID = 0;
 
 StatusOr<std::vector<int64_t>> GetTensorShapeAsVector(
+    const tensorflow::PartialTensorShape& shape) {
+  const int dims = shape.dims();
+  if (dims < 0) {
+    return absl::InvalidArgumentError("Unavailable tensor shape!");
+  }
+  std::vector<int64_t> result;
+  result.reserve(dims);
+  for (const TensorShapeDim& dim : shape) {
+    result.emplace_back(dim.size);
+  }
+  return result;
+}
+
+StatusOr<std::vector<int64_t>> GetTensorShapeAsVector(
     TFE_TensorHandle* tensor) {
   tensorflow::PartialTensorShape shape;
   const Status status = tensorflow::unwrap(tensor)->Shape(&shape);
   if (status.ok()) {
-    const int dims = shape.dims();
-    if (dims < 0) {
-      return absl::InvalidArgumentError("Unavailable tensor shape!");
-    }
-    std::vector<int64_t> result;
-    result.reserve(dims);
-    for (const TensorShapeDim& dim : shape) {
-      result.emplace_back(dim.size);
-    }
-    return result;
+    return GetTensorShapeAsVector(shape);
   } else {
     return status;
   }

@@ -20,16 +20,19 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "testing/base/public/benchmark.h"
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/executable.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/async_handle.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/builtin_kernels.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/execute.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/future.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/interpreter_testutil.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/platform/status_matchers.h"
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 
 namespace mlrt {
@@ -316,7 +319,7 @@ TEST(InterpreterTest, Call) {
                          absl::Span<Value>(&output, 1));
   Execute(execution_context);
 
-  ASSERT_OK(execution_context.status());
+  TF_ASSERT_OK(execution_context.status());
 
   EXPECT_EQ(output.Get<int>(), 123);
   EXPECT_TRUE(input.HasValue());
@@ -447,7 +450,7 @@ TEST(InterpreterTest, Cond) {
                          absl::Span<Value>(&output, 1));
   Execute(execution_context);
 
-  ASSERT_OK(execution_context.status());
+  TF_ASSERT_OK(execution_context.status());
 
   EXPECT_EQ(output.Get<int>(), 100);
 
@@ -461,7 +464,7 @@ TEST(InterpreterTest, Cond) {
                          absl::Span<Value>(&output, 1));
   Execute(execution_context);
 
-  ASSERT_OK(execution_context.status());
+  TF_ASSERT_OK(execution_context.status());
 
   EXPECT_EQ(output.Get<int>(), 200);
 }
@@ -561,7 +564,7 @@ TEST(InterpreterTest, NestedCall) {
                          absl::Span<Value>(&output, 1));
   Execute(execution_context);
 
-  ASSERT_OK(execution_context.status());
+  TF_ASSERT_OK(execution_context.status());
 
   EXPECT_EQ(output.Get<int>(), 123);
 }
@@ -623,9 +626,9 @@ TEST(InterpreterTest, Fail) {
                          absl::Span<Value>());
   Execute(execution_context);
 
-  EXPECT_THAT(execution_context.status(),
-              ::testing::status::CanonicalStatusIs(absl::StatusCode::kInternal,
-                                                   "test error"));
+  EXPECT_THAT(
+      execution_context.status(),
+      ::tsl::testing::StatusIs(absl::StatusCode::kInternal, "test error"));
 }
 
 bc::Buffer CreateAwaitExecutable() {
@@ -711,7 +714,7 @@ TEST(InterpreterTest, Await) {
   std::move(promise).Set<int32_t>(100);
 
   notification.WaitForNotification();
-  ASSERT_OK(execution_context.status());
+  TF_ASSERT_OK(execution_context.status());
 
   EXPECT_EQ(output.Get<int32_t>(), 100);
 }
@@ -778,7 +781,7 @@ TEST(InterpreterTest, AwaitMove) {
     std::move(promise).Set<TestPayload>(TestPayload{});
 
     notification.WaitForNotification();
-    ASSERT_OK(execution_context.status());
+    TF_ASSERT_OK(execution_context.status());
 
     EXPECT_EQ(output.Get<TestPayload>().copy, 0);
     EXPECT_EQ(output.Get<TestPayload>().move, 4);
@@ -803,7 +806,7 @@ TEST(InterpreterTest, AwaitMove) {
     Execute(execution_context);
 
     notification.WaitForNotification();
-    ASSERT_OK(execution_context.status());
+    TF_ASSERT_OK(execution_context.status());
 
     EXPECT_EQ(output.Get<TestPayload>().copy, 0);
     EXPECT_EQ(output.Get<TestPayload>().move, 4);
@@ -844,9 +847,9 @@ TEST(InterpreterTest, AwaitError) {
   std::move(promise).SetError(absl::InternalError("test error"));
 
   notification.WaitForNotification();
-  EXPECT_THAT(execution_context.status(),
-              ::testing::status::CanonicalStatusIs(absl::StatusCode::kInternal,
-                                                   "test error"));
+  EXPECT_THAT(
+      execution_context.status(),
+      ::tsl::testing::StatusIs(absl::StatusCode::kInternal, "test error"));
 }
 
 bc::Buffer CreateAwaitAllExecutable() {
@@ -937,7 +940,7 @@ TEST(InterpreterTest, AwaitAll) {
   std::move(p1).Set<int32_t>(200);
 
   notification.WaitForNotification();
-  ASSERT_OK(execution_context.status());
+  TF_ASSERT_OK(execution_context.status());
 
   EXPECT_EQ(outputs[0].Get<int32_t>(), 100);
   EXPECT_EQ(outputs[1].Get<int32_t>(), 200);
@@ -992,7 +995,7 @@ TEST(InterpreterTest, AwaitAllSingleProducerMultiConsumers) {
   });
 
   notification.WaitForNotification();
-  ASSERT_OK(execution_context.status());
+  TF_ASSERT_OK(execution_context.status());
 
   EXPECT_EQ(*outputs[0].Get<std::shared_ptr<int32_t>>(), 123);
   EXPECT_EQ(*outputs[1].Get<std::shared_ptr<int32_t>>(), 123);
@@ -1041,9 +1044,9 @@ TEST(InterpreterTest, AwaitAllError) {
   std::move(p1).SetError(absl::InternalError("test error"));
 
   notification.WaitForNotification();
-  EXPECT_THAT(execution_context.status(),
-              ::testing::status::CanonicalStatusIs(absl::StatusCode::kInternal,
-                                                   "test error"));
+  EXPECT_THAT(
+      execution_context.status(),
+      ::tsl::testing::StatusIs(absl::StatusCode::kInternal, "test error"));
 }
 
 struct TestState : UserContext<TestState> {
@@ -1150,7 +1153,7 @@ TEST(InterpreterTest, AwaitControl) {
   std::move(promise).Set<Control>();
 
   notification.WaitForNotification();
-  ASSERT_OK(execution_context.status());
+  TF_ASSERT_OK(execution_context.status());
   ASSERT_TRUE(output.HasValue());
   EXPECT_EQ(output.Get<int>(), 100);
 }
@@ -1254,7 +1257,7 @@ TEST(InterpreterTest, AwaitAllControl) {
 
   notification.WaitForNotification();
 
-  ASSERT_OK(execution_context.status());
+  TF_ASSERT_OK(execution_context.status());
   ASSERT_TRUE(output.HasValue());
   EXPECT_EQ(output.Get<int>(), 100);
 }
@@ -1309,9 +1312,9 @@ TEST(InterpreterTest, AwaitAllControlError) {
 
   notification.WaitForNotification();
 
-  EXPECT_THAT(execution_context.status(),
-              ::testing::status::CanonicalStatusIs(absl::StatusCode::kInternal,
-                                                   "test error"));
+  EXPECT_THAT(
+      execution_context.status(),
+      ::tsl::testing::StatusIs(absl::StatusCode::kInternal, "test error"));
 }
 
 class AddInPlaceI32 : public KernelFrame {
@@ -1446,7 +1449,7 @@ TEST(InterpreterTest, Async) {
   Execute(execution_context);
 
   notification.WaitForNotification();
-  ASSERT_OK(execution_context.status());
+  TF_ASSERT_OK(execution_context.status());
 
   EXPECT_EQ(output, 3);
 }
@@ -1488,9 +1491,9 @@ TEST(InterpreterTest, AsyncError) {
   Execute(execution_context);
 
   notification.WaitForNotification();
-  EXPECT_THAT(execution_context.status(),
-              ::testing::status::CanonicalStatusIs(absl::StatusCode::kInternal,
-                                                   "test error"));
+  EXPECT_THAT(
+      execution_context.status(),
+      ::tsl::testing::StatusIs(absl::StatusCode::kInternal, "test error"));
 }
 
 bc::Buffer CreateNestedAsyncExecutable() {
@@ -1645,7 +1648,7 @@ TEST(InterpreterTest, NestedAsync) {
   Execute(execution_context);
 
   notification.WaitForNotification();
-  ASSERT_OK(execution_context.status());
+  TF_ASSERT_OK(execution_context.status());
 
   EXPECT_EQ(output, 3);
 }
@@ -1683,9 +1686,9 @@ TEST(InterpreterTest, NestedAsyncError) {
   Execute(execution_context);
 
   notification.WaitForNotification();
-  EXPECT_THAT(execution_context.status(),
-              ::testing::status::CanonicalStatusIs(absl::StatusCode::kInternal,
-                                                   "test error"));
+  EXPECT_THAT(
+      execution_context.status(),
+      ::tsl::testing::StatusIs(absl::StatusCode::kInternal, "test error"));
 }
 
 bc::Buffer CreateAsyncControlPromiseAwaitExecutable() {
@@ -1849,7 +1852,7 @@ TEST(InterpreterTest, AsyncControlPromiseAwait) {
   Execute(execution_context);
 
   notification.WaitForNotification();
-  ASSERT_OK(execution_context.status());
+  TF_ASSERT_OK(execution_context.status());
 
   ASSERT_TRUE(output.HasValue());
   EXPECT_EQ(output.Get<int>(), 200);
@@ -1981,7 +1984,7 @@ TEST(InterpreterTest, AwaitAllhandle) {
   Execute(execution_context);
 
   notification.WaitForNotification();
-  ASSERT_OK(execution_context.status());
+  TF_ASSERT_OK(execution_context.status());
 
   EXPECT_EQ(z, 3);
   EXPECT_EQ(w, 3);
@@ -2243,9 +2246,9 @@ TEST(InterpreterTest, UnwindPromise) {
                          absl::Span<Value>(&output, 1));
   Execute(execution_context);
 
-  EXPECT_THAT(execution_context.status(),
-              ::testing::status::CanonicalStatusIs(absl::StatusCode::kCancelled,
-                                                   "test cancel"));
+  EXPECT_THAT(
+      execution_context.status(),
+      ::tsl::testing::StatusIs(absl::StatusCode::kCancelled, "test cancel"));
 }
 
 TEST(InterpreterTest, UnwindInvalidPromise) {
@@ -2276,9 +2279,9 @@ TEST(InterpreterTest, UnwindInvalidPromise) {
                          absl::Span<Value>(&output, 1));
   Execute(execution_context);
 
-  EXPECT_THAT(execution_context.status(),
-              ::testing::status::CanonicalStatusIs(absl::StatusCode::kCancelled,
-                                                   "test cancel"));
+  EXPECT_THAT(
+      execution_context.status(),
+      ::tsl::testing::StatusIs(absl::StatusCode::kCancelled, "test cancel"));
   EXPECT_EQ(future.Get<int32_t>(), 100);
 }
 
@@ -2319,9 +2322,9 @@ TEST(InterpreterTest, UnwindFuture) {
   std::move(promise).Set<int32_t>(100);
 
   notification.WaitForNotification();
-  EXPECT_THAT(execution_context.status(),
-              ::testing::status::CanonicalStatusIs(absl::StatusCode::kCancelled,
-                                                   "test cancel"));
+  EXPECT_THAT(
+      execution_context.status(),
+      ::tsl::testing::StatusIs(absl::StatusCode::kCancelled, "test cancel"));
   EXPECT_EQ(input.Get<Future>().Get<int32_t>(), 100);
 }
 
@@ -2366,12 +2369,12 @@ TEST(InterpreterTest, UnwindPromiseAndFuture) {
   Execute(execution_context);
 
   notification.WaitForNotification();
-  EXPECT_THAT(execution_context.status(),
-              ::testing::status::CanonicalStatusIs(absl::StatusCode::kCancelled,
-                                                   "test cancel"));
-  EXPECT_THAT(future.GetError(),
-              ::testing::status::CanonicalStatusIs(absl::StatusCode::kCancelled,
-                                                   "test cancel"));
+  EXPECT_THAT(
+      execution_context.status(),
+      ::tsl::testing::StatusIs(absl::StatusCode::kCancelled, "test cancel"));
+  EXPECT_THAT(
+      future.GetError(),
+      ::tsl::testing::StatusIs(absl::StatusCode::kCancelled, "test cancel"));
 }
 
 TEST(InterpreterTest, UnwindAsyncHandle) {
@@ -2412,9 +2415,9 @@ TEST(InterpreterTest, UnwindAsyncHandle) {
   std::move(promise).Finish(absl::OkStatus());
 
   notification.WaitForNotification();
-  EXPECT_THAT(execution_context.status(),
-              ::testing::status::CanonicalStatusIs(absl::StatusCode::kCancelled,
-                                                   "test cancel"));
+  EXPECT_THAT(
+      execution_context.status(),
+      ::tsl::testing::StatusIs(absl::StatusCode::kCancelled, "test cancel"));
 }
 
 bc::Buffer CreateCaseExecutable() {
@@ -2642,12 +2645,12 @@ TEST(InterpreterTest, UnwindComplex) {
   Execute(execution_context);
 
   notification.WaitForNotification();
-  EXPECT_THAT(execution_context.status(),
-              ::testing::status::CanonicalStatusIs(absl::StatusCode::kCancelled,
-                                                   "test cancel"));
-  EXPECT_THAT(future.GetError(),
-              ::testing::status::CanonicalStatusIs(absl::StatusCode::kCancelled,
-                                                   "test cancel"));
+  EXPECT_THAT(
+      execution_context.status(),
+      ::tsl::testing::StatusIs(absl::StatusCode::kCancelled, "test cancel"));
+  EXPECT_THAT(
+      future.GetError(),
+      ::tsl::testing::StatusIs(absl::StatusCode::kCancelled, "test cancel"));
 }
 
 bc::Buffer CreateUnwindNestedExecutable() {
@@ -2753,12 +2756,12 @@ TEST(InterpreterTest, UnwindNested) {
   Execute(execution_context);
 
   notification.WaitForNotification();
-  EXPECT_THAT(execution_context.status(),
-              ::testing::status::CanonicalStatusIs(absl::StatusCode::kCancelled,
-                                                   "test cancel"));
-  EXPECT_THAT(future.GetError(),
-              ::testing::status::CanonicalStatusIs(absl::StatusCode::kCancelled,
-                                                   "test cancel"));
+  EXPECT_THAT(
+      execution_context.status(),
+      ::tsl::testing::StatusIs(absl::StatusCode::kCancelled, "test cancel"));
+  EXPECT_THAT(
+      future.GetError(),
+      ::tsl::testing::StatusIs(absl::StatusCode::kCancelled, "test cancel"));
 }
 
 TEST(KernelTest, Case) {
@@ -3096,7 +3099,7 @@ TEST(KernelTest, PromiseReturnNotScheduleImmediately) {
   EXPECT_EQ(output.Get<int32_t>(), 100);
 }
 
-void BM_SequentialAdd(benchmark::State& state) {
+void BM_SequentialAdd(::testing::benchmark::State& state) {
   auto buffer = CreateSequentialAddExecutable(99);
 
   bc::Executable executable(buffer.data());
@@ -3141,7 +3144,7 @@ void BM_SequentialAdd(benchmark::State& state) {
 }
 BENCHMARK(BM_SequentialAdd);
 
-void BM_SequentialAddAttributes(benchmark::State& state) {
+void BM_SequentialAddAttributes(::testing::benchmark::State& state) {
   auto buffer = CreateSequentialAddAttributesExecutable(99);
 
   bc::Executable executable(buffer.data());

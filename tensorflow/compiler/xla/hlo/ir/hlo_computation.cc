@@ -15,12 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <list>
 #include <memory>
 #include <optional>
 #include <queue>
+#include <stack>
 #include <string>
 #include <utility>
 #include <vector>
@@ -42,6 +44,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
@@ -407,25 +410,6 @@ void HloComputation::set_root_instruction(HloInstruction* new_root_instruction,
   root_instruction_ = new_root_instruction;
 }
 
-namespace {
-
-// Helper which builds a post order of the HLO call graph.
-void ComputeComputationPostOrder(HloComputation* computation,
-                                 absl::flat_hash_set<HloComputation*>* visited,
-                                 std::vector<HloComputation*>* post_order) {
-  if (visited->insert(computation).second) {
-    for (auto* instruction : computation->instructions()) {
-      for (HloComputation* called_computation :
-           instruction->called_computations()) {
-        ComputeComputationPostOrder(called_computation, visited, post_order);
-      }
-    }
-    post_order->push_back(computation);
-  }
-}
-
-}  // namespace
-
 void HloComputation::ComputeInstructionPostOrder(
     HloInstruction* root, const ChannelDependencies& channel_dependencies,
     absl::flat_hash_map<HloInstruction*, VisitState>& visited,
@@ -566,6 +550,69 @@ std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrder(
   return post_order;
 }
 
+std::vector<HloInstruction*>
+HloComputation::MakeInstructionPostOrderWithReshapeFirst() const {
+  std::vector<HloInstruction*> frontier_std;
+  std::vector<HloInstruction*> frontier_reshapes;
+  std::vector<HloInstruction*> sorted;
+  absl::flat_hash_map<int, uint32_t> visitations;
+  sorted.reserve(instruction_count());
+  visitations.reserve(instruction_count());
+
+  auto pop_frontier_element = [&frontier_std, &frontier_reshapes]() mutable {
+    // Because the result of this sort is going to be reverse, check for
+    // Reshapes later, which we want to occur earlier in the final result
+    if (!frontier_std.empty()) {
+      HloInstruction* const to_return = frontier_std.back();
+      frontier_std.pop_back();
+      return to_return;
+    }
+    if (!frontier_reshapes.empty()) {
+      HloInstruction* const to_return = frontier_reshapes.back();
+      frontier_reshapes.pop_back();
+      return to_return;
+    }
+    return static_cast<HloInstruction*>(nullptr);
+  };
+
+  auto add_to_frontier = [&frontier_std, &frontier_reshapes](
+                             HloInstruction* const instruction_to_add) mutable {
+    if (instruction_to_add->opcode() == HloOpcode::kReshape) {
+      frontier_reshapes.push_back(instruction_to_add);
+    } else {
+      frontier_std.push_back(instruction_to_add);
+    }
+  };
+
+  // Add all instructions with no users inside the computation, including the
+  // root instruction
+  bool found_root_instruction = false;
+  for (HloInstruction* const inst : instructions()) {
+    if (inst->user_count() == 0) {
+      if (inst == root_instruction()) {
+        found_root_instruction = true;
+      }
+      add_to_frontier(inst);
+    }
+  }
+  CHECK(found_root_instruction);
+
+  while (HloInstruction* const inst = pop_frontier_element()) {
+    sorted.push_back(inst);
+    for (HloInstruction* const child : inst->operands()) {
+      // Will increment, or set to 1 if not present
+      visitations[child->unique_id()]++;
+      if (child->user_count() == visitations[child->unique_id()]) {
+        add_to_frontier(child);
+      }
+    }
+  }
+
+  std::reverse(sorted.begin(), sorted.end());
+  CHECK_EQ(sorted.size(), instruction_count());
+  return sorted;
+}
+
 void HloComputation::ForEachInstructionPostOrder(
     absl::FunctionRef<void(HloInstruction*)> func) const {
   absl::flat_hash_map<HloInstruction*, VisitState> visited;
@@ -583,21 +630,42 @@ std::vector<HloComputation*> HloComputation::MakeEmbeddedComputationsList()
     const {
   absl::flat_hash_set<HloComputation*> visited;
   std::vector<HloComputation*> post_order;
+  // The first element of the pair is the currently processed computation, the
+  // second is iterator inside the instructions list of the computation that is
+  // currently being processed.
+  std::stack<std::pair<HloComputation*, InstructionList::const_iterator>> st;
 
-  // To avoid special handling of this computation, cast away const of
-  // 'this'. 'this' is immediately removed from the post order after
-  // construction.
-  //
-  // TODO(b/78350259): This violates const-correctness, since while the original
-  // computation is not returned, we still retrieve non-const computations from
-  // a const one. Consider also avoiding const for HloComputation, or review XLA
-  // for const-correctness of non-HloInstruction* types like this.
-  ComputeComputationPostOrder(const_cast<HloComputation*>(this), &visited,
-                              &post_order);
-
-  // We don't want to include this computation in the post order.
-  CHECK_EQ(this, post_order.back());
-  post_order.pop_back();
+  // We cannot directly push (this, instructions_.cbegin()) to the stack, as the
+  // stack should contain only mutable computations. Also, we don't want to
+  // include the computation itself in the list of embedded computations.
+  for (auto* instruction : instructions()) {
+    auto process_called_computations =
+        [&](std::vector<HloComputation*> called_computations) {
+          // Put the called computations in reverse order onto the stack.
+          // Otherwise we don't match the recursive enumeration of
+          // computations, which processes the first called computation first.
+          absl::c_reverse(called_computations);
+          for (HloComputation* called_computation : called_computations) {
+            if (visited.insert(called_computation).second) {
+              st.emplace(called_computation,
+                         called_computation->instructions_.cbegin());
+            }
+          }
+        };
+    process_called_computations(instruction->called_computations());
+    while (!st.empty()) {
+      auto& cur = st.top();
+      HloComputation* computation = cur.first;
+      if (cur.second == computation->instructions_.cend()) {
+        st.pop();
+        post_order.push_back(computation);
+      } else {
+        HloInstruction* next_instruction = cur.second->get();
+        ++cur.second;
+        process_called_computations(next_instruction->called_computations());
+      }
+    }
+  }
 
   return post_order;
 }
@@ -675,6 +743,10 @@ void HloComputation::Print(
     printer->Append(", execution_thread=\"");
     printer->Append(execution_thread());
     printer->Append("\"");
+  }
+  if (options.print_name_after_closing_brace() && instruction_count() > 5) {
+    printer->Append(" // ");
+    printer->Append(name());
   }
 }
 
@@ -1279,7 +1351,6 @@ void SortClonedInstructionUsersAndControlLists(
     const HloCloneContext& context,
     absl::FunctionRef<const HloInstruction*(const HloInstruction*)> replace,
     const HloComputation::InstructionList& sorted_instructions) {
-  using InstructionSorter = MappedPtrContainerSorter<HloInstruction>;
   auto instruction_mapper = [&context, replace](const HloInstruction* i) {
     return context.FindInstruction(replace(i));
   };

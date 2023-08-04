@@ -724,6 +724,12 @@ ENTRY e {
 
 class TritonGemmLevel2Test : public TritonGemmTest {
  public:
+  void SetUp() override {
+    if (!GetCudaComputeCapability().IsAtLeast(
+            se::CudaComputeCapability::AMPERE)) {
+      GTEST_SKIP() << "Triton fusion on pre-Ampere GPUs is limited.";
+    }
+  }
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_triton_fusion_level(2);
@@ -814,30 +820,21 @@ ENTRY e {
 
 TEST_F(TritonGemmLevel2Test, LinkingLibdeviceTwiceWorks) {
   const std::string kHloText = R"(
-HloModule m
-
 ENTRY e {
   p0 = s8[7,3] parameter(0)
   c0 = f32[7,3] convert(p0)
-  e0 = f32[7,3] exponential(c0)
   p1 = f32[3,16] parameter(1)
   e1 = f32[3,16] exponential(p1)
   d0 = f32[7,16] dot(c0, e1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
-  d1 = f32[7,16] dot(e0, p1),
+  p2 = s8[7,3] parameter(2)
+  c2 = f32[7,3] convert(p2)
+  e2 = f32[7,3] exponential(c2)
+  p3 = f32[3,16] parameter(3)
+  d1 = f32[7,16] dot(e2, p3),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
   ROOT a = f32[7,16] add(d0, d1)
 })";
-
-  MatchOptimizedHlo(kHloText, R"(
-; CHECK: ENTRY
-; CHECK-NEXT: parameter
-; CHECK-NEXT: parameter
-; CHECK-NEXT: kCustom
-; CHECK-NEXT: kCustom
-; CHECK-NEXT: ROOT
-; CHECK-SAME: add
-)");
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           GetOptimizedModule(kHloText));
@@ -922,11 +919,6 @@ ENTRY e {
 }
 
 TEST_F(TritonGemmLevel2Test, ParameterAfterDotIsFused) {
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << "No BF16 before Ampere.";
-  }
-
   const std::string kHloText = R"(
 HloModule m
 
@@ -956,11 +948,6 @@ ENTRY e {
 }
 
 TEST_F(TritonGemmLevel2Test, OutputFusionExecutesCorrectly) {
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << "No BF16 before Ampere.";
-  }
-
   const std::string kHloText = R"(
 HloModule m
 
@@ -994,11 +981,6 @@ ENTRY e {
 }
 
 TEST_F(TritonGemmLevel2Test, SplitLHSOutputTransposeAloneIsNotFused) {
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << "No BF16 before Ampere.";
-  }
-
   const std::string kHloText = R"(
 HloModule m
 
@@ -1023,16 +1005,10 @@ ENTRY e {
 }
 
 TEST_F(TritonGemmLevel2Test, SplitLHSInputOutputIsFused) {
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << "No BF16 before Ampere.";
-  }
-
   const std::string kHloText = R"(
-HloModule m
-
 ENTRY e {
-  p0 = s8[5,18,20,150] parameter(0)
+  p0t = (s8[5,18,20,150]) parameter(0)
+  p0 = s8[5,18,20,150] get-tuple-element(p0t), index=0
   p0c = bf16[5,18,20,150] convert(p0)
   t0 = bf16[18,5,20,150] transpose(p0c), dimensions={1,0,2,3}
   r0 = bf16[18,15000] reshape(t0)
@@ -1047,7 +1023,7 @@ ENTRY e {
                           GetOptimizedModule(kHloText));
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
-      GmockMatch(m::Fusion(m::Parameter(), m::Parameter())
+      GmockMatch(m::Fusion(m::GetTupleElement(), m::Parameter())
                      .WithFusionKind(HloInstruction::FusionKind::kCustom)));
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
@@ -1970,6 +1946,13 @@ class TritonSoftmaxTest : public GpuCodegenTest {
     debug_options.set_xla_gpu_enable_triton_softmax_fusion(true);
     return debug_options;
   }
+
+  se::CudaComputeCapability GetCudaComputeCapability() {
+    return backend()
+        .default_stream_executor()
+        ->GetDeviceDescription()
+        .cuda_compute_capability();
+  }
 };
 
 TEST_F(TritonSoftmaxTest, CanFuseAndEmitExactSoftmaxF32) {
@@ -2042,44 +2025,6 @@ ENTRY main {
 ; CHECK-SAME:   __triton_softmax
 )");
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec(2e-3, 1e-5)));
-}
-
-TEST_F(TritonSoftmaxTest, CanFuseAndEmitExactSoftmaxF64) {
-  const std::string hlo_text = R"(
-HloModule softmax
-max_computation {
-  arg_0 = f64[] parameter(0)
-  arg_1 = f64[] parameter(1)
-  ROOT maximum = f64[] maximum(arg_0, arg_1)
-}
-add_computation {
-  arg_0.1 = f64[] parameter(0)
-  arg_1.1 = f64[] parameter(1)
-  ROOT add = f64[] add(arg_0.1, arg_1.1)
-}
-ENTRY main {
-  param_0 = f64[127,125]{1,0} parameter(0)
-  constant_neg_inf = f64[] constant(-inf)
-  reduce = f64[127]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
-  broadcast = f64[127,125]{1,0} broadcast(reduce), dimensions={0}
-  subtract = f64[127,125]{1,0} subtract(param_0, broadcast)
-  exponential = f64[127,125]{1,0} exponential(subtract)
-  constant_zero = f64[] constant(0)
-  second_reduce = f64[127]{0} reduce(exponential, constant_zero), dimensions={1}, to_apply=add_computation
-  second_broadcast = f64[127,125]{1,0} broadcast(second_reduce), dimensions={0}
-  ROOT divide = f64[127,125]{1,0} divide(exponential, second_broadcast)
-}
-)";
-
-  MatchOptimizedHlo(hlo_text, R"(
-; CHECK:    ENTRY
-; CHECK:      %[[P0:.*]] = f64[127,125]{1,0} parameter(0)
-; CHECK:      ROOT
-; CHECK-SAME: fusion(%[[P0]])
-; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   __triton_softmax
-)");
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec(1e-6, 1e-6)));
 }
 
 TEST_F(
@@ -2325,6 +2270,49 @@ ENTRY main {
 ; CHECK-SAME:   kind=kCustom
 ; CHECK-SAME:   __triton_softmax
 )");
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec(1e-6, 1e-6)));
+}
+
+TEST_F(
+    TritonSoftmaxTest,
+    CanFuseAndEmitConvertInvolvingBF16InputIntoSoftmaxDiamondCorrectlyForAmpereAndVoltaComputeCapability) {  // NOLINT(whitespace/line_length)
+  const std::string hlo_text = R"(
+HloModule softmax
+max_computation {
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(arg_0, arg_1)
+}
+ENTRY main {
+  param_0 = bf16[127,125]{1,0} parameter(0)
+  param_0_f32 = f32[127,125]{1,0} convert(param_0)
+  constant_neg_inf = f32[] constant(-inf)
+  reduce = f32[127]{0} reduce(param_0_f32, constant_neg_inf), dimensions={1}, to_apply=max_computation
+  broadcast = f32[127,125]{1,0} broadcast(reduce), dimensions={0}
+  ROOT subtract = f32[127,125]{1,0} subtract(param_0_f32, broadcast)
+}
+)";
+
+  if (GetCudaComputeCapability().IsAtLeast(se::CudaComputeCapability::AMPERE)) {
+    MatchOptimizedHlo(hlo_text, R"(
+; CHECK:    ENTRY
+; CHECK:      %[[P0:.*]] = bf16[127,125]{1,0} parameter(0)
+; CHECK:      ROOT
+; CHECK-SAME: fusion(%[[P0]])
+; CHECK-SAME:   kind=kCustom
+; CHECK-SAME:   __triton_softmax
+)");
+  } else {
+    MatchOptimizedHlo(hlo_text, R"(
+; CHECK:    ENTRY
+; CHECK:      %[[P0:.*]] = bf16[127,125]{1,0} parameter(0)
+; CHECK:      %[[CONVERT:.*]] = f32[127,125]{1,0} convert(%[[P0]])
+; CHECK:      ROOT
+; CHECK-SAME: fusion(%[[CONVERT]])
+; CHECK-SAME:   kind=kCustom
+; CHECK-SAME:   __triton_softmax
+)");
+  }
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec(1e-6, 1e-6)));
 }
 

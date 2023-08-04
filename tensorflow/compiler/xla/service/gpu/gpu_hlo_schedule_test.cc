@@ -46,7 +46,9 @@ class GpuHloScheduleTest : public HloTestBase {
     Backend& test_backend = backend();
     const GpuDeviceInfo gpu_device_info =
         GetGpuDeviceInfo(test_backend.default_stream_executor());
-    TF_CHECK_OK(ScheduleGpuModule(module, /*pointer_size=*/8, gpu_device_info));
+    TF_CHECK_OK(ScheduleGpuModule(
+        module, /*pointer_size=*/8,
+        /*memory_size=*/gpu_device_info.device_memory_size * 8 / 10));
     return SequentialHloOrdering{module->schedule()};
   }
 
@@ -415,6 +417,72 @@ TEST_F(GpuHloScheduleTest, ProfileGuidedCostModel) {
   }
 }
 
+TEST_F(GpuHloScheduleTest, ProfileGuidedCostModelWithRematData) {
+  const char* hlo_text = R"(
+  HloModule AsyncAR
+  apply_op {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT apply_op = f32[] add(x, y)
+  }
+
+  ENTRY ar {
+    p0 = f32[32] parameter(0)
+    p1 = f32[32, 32] parameter(1)
+    p2 = f32[32, 32] parameter(2)
+    p3 = f32[32] parameter(3)
+
+    // Independent compute
+    dot0 = f32[32,32]{1,0} custom-call(p1, p2), custom_call_target="__cublas$gemm"
+    dot1 = f32[32,32]{1,0} custom-call(p1, p2), custom_call_target="__cublas$gemm"
+    add0 = f32[32,32] add(dot0, dot1)
+
+    // Independent collectives.
+    ar-start = f32[32] all-reduce-start(p0), to_apply=apply_op
+    ar-done = f32[32] all-reduce-done(ar-start)
+
+    ar-start1 = f32[32] all-reduce-start(p3), to_apply=apply_op
+    ar-done1 = f32[32] all-reduce-done(ar-start1)
+
+    ROOT t = (f32[32], f32[32], f32[32,32]) tuple(ar-done, ar-done1, add0)
+  })";
+
+  // Costs of "ar-start" and "ar-start.remat100" should be averaged out and
+  // used as cost for "ar-start".
+  const std::string ar_long_latency_proto_text = R"pb(
+    costs { name: "dot0" cost_us: 100.0 }
+    costs { name: "dot1" cost_us: 100.0 }
+    costs { name: "add0" cost_us: 10.0 }
+    costs { name: "ar-start" cost_us: 1.0 }
+    costs { name: "ar-start1" cost_us: 1.0 }
+    costs { name: "ar-start.remat100" cost_us: 2000.0 }
+  )pb";
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      ParseAndReturnVerifiedModule(
+          hlo_text,
+          GetModuleConfig(/*enable_latency_hiding_scheduler=*/true,
+                          /*enable_gpu_async_tracker=*/true,
+                          /*fdo_profile=*/ar_long_latency_proto_text)));
+  SequentialHloOrdering order = BuildHloOrdering(module.get());
+
+  HloComputation* entry = module->entry_computation();
+
+  // We expect all the math instructions between ar-start/ar-done
+  bool between_target_collective_pair = false;
+  for (const HloInstruction* inst :
+       order.SequentialOrder(*entry)->instructions()) {
+    if (inst->name() == "ar-start") {
+      between_target_collective_pair = true;
+    } else if (inst->name() == "ar-done") {
+      between_target_collective_pair = false;
+    } else if (inst->opcode() == HloOpcode::kDot ||
+               inst->opcode() == HloOpcode::kAdd) {
+      EXPECT_TRUE(between_target_collective_pair);
+    }
+  }
+}
+
 // Checks that the Send and Recv sequence created by the CollectivePermute
 // decomposer is properly scheduled:
 //  recv
@@ -596,6 +664,98 @@ TEST_F(GpuHloScheduleTest, LHSSendRecvPairs2) {
 
   EXPECT_LT(get_index("recv-done-0"), get_index("recv-1"));
   EXPECT_LT(get_index("send-done-0"), get_index("send-1"));
+}
+
+// Checks that asynchronous AllReduce is scheduled to interleave with the Send
+// and Recv sequence.
+TEST_F(GpuHloScheduleTest, LHSSendRecvAllReduce) {
+  const char* hlo_text = R"(
+  HloModule test
+  add (x: f32[], y: f32[]) -> f32[] {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT add = f32[] add(f32[] x, f32[] y)
+  }
+
+  while_cond {
+    param = (u32[], f32[1, 1024, 1024]) parameter(0)
+    count = get-tuple-element(%param), index=0
+    ub = u32[] constant(25)
+    ROOT cond_result = pred[] compare(count, ub), direction=LT
+  }
+
+  while_body {
+    param = (u32[], f32[1, 1024, 1024]) parameter(0)
+    count = get-tuple-element(%param), index=0
+    send-data = get-tuple-element(%param), index=1
+
+    after-all = token[] after-all()
+    recv = (f32[1, 1024, 1024], u32[], token[]) recv(after-all), channel_id=1,
+      frontend_attributes={
+      _xla_send_recv_source_target_pairs="{{0, 1}}"
+    }
+    send = (f32[1, 1024, 1024], u32[], token[]) send(send-data, after-all),
+      channel_id=1, control-predecessors={recv}, frontend_attributes={
+      _xla_send_recv_source_target_pairs="{{0, 1}}"
+    }
+    recv-done = (f32[1, 1024, 1024], token[]) recv-done(recv), channel_id=1, control-predecessors={send}
+    send-done = token[] send-done(send), control-predecessors={recv-done}, channel_id=1
+    recv-data = f32[1, 1024, 1024] get-tuple-element(recv-done), index=0
+
+    c1 = u32[] constant(1)
+    new_count = u32[] add(count, c1)
+    replica = u32[] replica-id()
+    c10 = u32[] constant(10)
+    sum = u32[] add(replica, c10)
+    sum2 = u32[] add(sum, count)
+    conv = f32[] convert(sum2)
+    p = f32[1, 1024, 1024] broadcast(conv), dimensions={}
+    b = f32[1, 1024, 1024] add(p, recv-data)
+    c = f32[1, 1024, 1024] multiply(b, b)
+    d = f32[1, 1024, 1024] tan(c)
+    s = f32[1, 1024, 1024] dot(c, d), lhs_batch_dims={0},
+      lhs_contracting_dims={1}, rhs_batch_dims={0}, rhs_contracting_dims={1}
+
+    all-reduce-start = f32[1, 1024, 1024] all-reduce-start(f32[1, 1024, 1024] p),
+      replica_groups={{0,1}}, to_apply=add,  backend_config={"is_sync":false}
+    all-reduce-done = f32[1, 1024, 1024] all-reduce-done(f32[1, 1024, 1024] all-reduce-start)
+    new-data = f32[1, 1024, 1024] add(s, all-reduce-done)
+    ROOT result = (u32[], f32[1, 1024, 1024]) tuple(new_count, new-data)
+  }
+
+  ENTRY test_computation {
+    c0 = u32[] constant(0)
+    f0 = f32[] constant(0.0)
+    init = f32[1, 1024, 1024] broadcast(f0), dimensions={}
+    while_init = (u32[], f32[1, 1024, 1024]) tuple(c0, init)
+    while_result = (u32[], f32[1, 1024, 1024]) while(while_init),
+      body=while_body, condition=while_cond
+    ROOT entry_result = f32[1, 1024, 1024] get-tuple-element(while_result), index=1
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      ParseAndReturnVerifiedModule(
+          hlo_text, GetModuleConfig(/*enable_latency_hiding_scheduler=*/true,
+                                    /*enable_gpu_async_tracker=*/true)));
+  SequentialHloOrdering order = BuildHloOrdering(module.get());
+  HloComputation* while_body = module->GetComputationWithName("while_body");
+  const std::vector<HloInstruction*>& instruction_sequence =
+      order.SequentialOrder(*while_body)->instructions();
+  auto get_index = [&](absl::string_view hlo_name) {
+    return absl::c_find_if(instruction_sequence,
+                           [hlo_name](HloInstruction* instruction) {
+                             return instruction->name() == hlo_name;
+                           }) -
+           instruction_sequence.begin();
+  };
+
+  EXPECT_LT(get_index("recv"), get_index("send"));
+  EXPECT_LT(get_index("send"), get_index("recv-done"));
+  EXPECT_GE(get_index("send-done") - get_index("recv-done"), 9);
+  EXPECT_GT(get_index("send-done"), get_index("all-reduce-done"));
+  EXPECT_TRUE(HasValidFingerprint(module.get()));
 }
 
 class GpuHloScheduleParameterizedTest

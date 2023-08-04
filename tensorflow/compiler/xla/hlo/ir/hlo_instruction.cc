@@ -23,7 +23,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <ostream>
-#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -48,7 +47,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding_metadata.h"
-#include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/service/hlo_lexer.h"
@@ -56,13 +54,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/lib/gtl/map_util.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/human_readable_json.h"
-#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -3961,7 +3957,8 @@ using InternalCompareFunction =
 template <typename Visitor>
 static Status PostOrderDFS(HloInstruction* root, Visitor* visitor,
                            std::optional<InternalCompareFunction> operand_order,
-                           bool ignore_control_predecessors) {
+                           bool ignore_control_predecessors,
+                           bool cross_computation) {
   visitor->ReserveVisitStates(root->parent()->instruction_count());
 
   // dfs_stack holds pairs of <HloInstruction*->unique_id(), HloInstruction*>.
@@ -4023,6 +4020,24 @@ static Status PostOrderDFS(HloInstruction* root, Visitor* visitor,
       }
     }
 
+    // If `cross_computation` is enabled, and the current visiting instruction
+    // is a caller of other computations, we try to push the root instruction of
+    // those called computations onto the stack .
+    if (cross_computation) {
+      for (const HloComputation* called_computation :
+           current_node->called_computations()) {
+        HloInstruction* root_instruction =
+            called_computation->root_instruction();
+        if (!ABSL_PREDICT_TRUE(
+                PushDFSChild(visitor, &dfs_stack, root_instruction))) {
+          PrintCycle(root_instruction, &dfs_stack);
+          return FailedPrecondition(
+              "A cycle is detected while visiting instruction %s",
+              current_node->ToString());
+        }
+      }
+    }
+
     if (operand_order != std::nullopt) {
       std::sort(dfs_stack.begin() + old_dfs_stack_size, dfs_stack.end(),
                 *operand_order);
@@ -4039,10 +4054,12 @@ static Status PostOrderDFS(HloInstruction* root, Visitor* visitor,
 template <typename HloInstructionPtr>
 Status HloInstruction::Accept(DfsHloVisitorBase<HloInstructionPtr>* visitor,
                               bool call_finish_visit,
-                              bool ignore_control_predecessors) {
+                              bool ignore_control_predecessors,
+                              bool cross_computation) {
   VLOG(3) << "HloInstruction::Accept(%" << name() << ")";
-  TF_RETURN_IF_ERROR(
-      PostOrderDFS(this, visitor, std::nullopt, ignore_control_predecessors));
+  TF_RETURN_IF_ERROR(PostOrderDFS(this, visitor, std::nullopt,
+                                  ignore_control_predecessors,
+                                  cross_computation));
   if (call_finish_visit) {
     TF_RETURN_IF_ERROR(visitor->FinishVisit(this));
   }
@@ -4050,8 +4067,8 @@ Status HloInstruction::Accept(DfsHloVisitorBase<HloInstructionPtr>* visitor,
 }
 
 // Explicit instantiations.
-template Status HloInstruction::Accept(DfsHloVisitor*, bool, bool);
-template Status HloInstruction::Accept(ConstDfsHloVisitor*, bool, bool);
+template Status HloInstruction::Accept(DfsHloVisitor*, bool, bool, bool);
+template Status HloInstruction::Accept(ConstDfsHloVisitor*, bool, bool, bool);
 
 Status HloInstruction::AcceptWithOperandOrder(DfsHloVisitor* visitor,
                                               CompareFunction operand_order,
@@ -4064,7 +4081,8 @@ Status HloInstruction::AcceptWithOperandOrder(DfsHloVisitor* visitor,
     return operand_order(a.second, b.second);
   };
   TF_RETURN_IF_ERROR(PostOrderDFS(this, visitor, func,
-                                  /*ignore_control_predecessors=*/false));
+                                  /*ignore_control_predecessors=*/false,
+                                  /*cross_computation=*/false));
   if (call_finish_visit) {
     VLOG(3) << "HloInstruction::AcceptWithOperandOrder BEFORE FINISH VISIT";
     TF_RETURN_IF_ERROR(visitor->FinishVisit(this));
@@ -4826,13 +4844,13 @@ HloInstruction* HloInstruction::fused_expression_root() const {
   return Cast<HloFusionInstruction>(this)->fused_expression_root();
 }
 
-const tsl::gtl::iterator_range<UnwrappingIterator<
+tsl::gtl::iterator_range<UnwrappingIterator<
     std::list<std::unique_ptr<HloInstruction>>::const_iterator>>
 HloInstruction::fused_instructions() const {
   return Cast<HloFusionInstruction>(this)->fused_instructions();
 }
 
-const tsl::gtl::iterator_range<
+tsl::gtl::iterator_range<
     UnwrappingIterator<std::list<std::unique_ptr<HloInstruction>>::iterator>>
 HloInstruction::fused_instructions() {
   return Cast<HloFusionInstruction>(this)->fused_instructions();
@@ -4852,7 +4870,7 @@ const HloInstruction::InstructionVector& HloInstruction::fused_parameters()
   return Cast<HloFusionInstruction>(this)->fused_parameters();
 }
 
-const bool HloInstruction::IsMultiOutputFusion() const {
+bool HloInstruction::IsMultiOutputFusion() const {
   const HloFusionInstruction* fusion = DynCast<HloFusionInstruction>(this);
   return fusion != nullptr && fusion->IsMultiOutputFusion();
 }

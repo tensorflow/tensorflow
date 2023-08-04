@@ -241,7 +241,6 @@ cc_library(
         "infeed_ops_xla_adjust_layout.cc",
         "legalize_tf_collective.cc",
         "legalize_tf_communication.cc",
-        "legalize_tf_types.cc",
         "tf_xla_passes.h.inc",
         "tfxla_device_specific_transforms.cc",
         "verify_tfxla_legalization.cc",

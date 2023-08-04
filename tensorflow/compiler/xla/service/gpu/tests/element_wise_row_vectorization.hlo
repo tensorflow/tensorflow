@@ -152,7 +152,7 @@ ENTRY main {
 }
 // Check that we didn't do anything. The block size didn't change.
 // CHECK-LABEL: fusion_2
-// CHECK: .reqntid 256, 1, 1
+// CHECK: .reqntid 128, 1, 1
 // CHECK: ld.global.nc.f
 
 // -----
@@ -175,7 +175,7 @@ ENTRY main {
 }
 // Check that we didn't do anything. The block size didn't change.
 // CHECK-LABEL: fusion_3
-// CHECK: .reqntid 256, 1, 1
+// CHECK: .reqntid 128, 1, 1
 // CHECK: ld.global.nc.f
 
 // -----
@@ -199,7 +199,7 @@ ENTRY main {
 
 // Check that we didn't do anything. The block size didn't change.
 // CHECK-LABEL: fusion_4
-// CHECK: .reqntid 256, 1, 1
+// CHECK: .reqntid 128, 1, 1
 // CHECK: ld.global.nc.f
 
 // -----
@@ -244,7 +244,7 @@ ENTRY main {
 
 // Check that we didn't do anything. The block size didn't change.
 // CHECK-LABEL: fusion_6
-// CHECK: .reqntid 256, 1, 1
+// CHECK: .reqntid 128, 1, 1
 // CHECK: ld.global.nc.f
 
 // -----

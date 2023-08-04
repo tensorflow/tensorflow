@@ -96,6 +96,9 @@ struct GraphImportConfig {
   // If true, enables moving ops to different devices or moving unsupported ops
   // out of a compilation cluster.
   bool enable_soft_placement = false;
+  // If true, a function attribute, `tf._original_func_name`, will be set in
+  // functions which contains the corresponding original TF function name.
+  bool set_original_tf_func_name = false;
 };
 
 struct GraphExportConfig {

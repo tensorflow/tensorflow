@@ -24,8 +24,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/status.h"
-#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_lt.h"
 #include "tensorflow/tsl/platform/statusor.h"
+#if GOOGLE_CUDA
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_lt.h"
+#else
+#include "rocm/rocm_config.h"
+#include "tensorflow/compiler/xla/stream_executor/rocm/hip_blas_lt.h"
+#endif  // GOOGLE_CUDA
 
 namespace xla {
 namespace gpu {
@@ -33,8 +38,8 @@ namespace gpu {
 class CublasLtMatmulThunk : public Thunk {
  public:
   CublasLtMatmulThunk(ThunkInfo thunk_info, GemmConfig gemm_config,
-                      se::cuda::BlasLt::Epilogue epilogue,
-                      int64_t algorithm_idx, BufferAllocation::Slice a_buffer,
+                      se::gpu::BlasLt::Epilogue epilogue, int64_t algorithm_idx,
+                      BufferAllocation::Slice a_buffer,
                       BufferAllocation::Slice b_buffer,
                       BufferAllocation::Slice c_buffer,
                       BufferAllocation::Slice d_buffer,
@@ -58,7 +63,7 @@ class CublasLtMatmulThunk : public Thunk {
       matmul_plans_cache_ ABSL_GUARDED_BY(matmul_plans_cache_mutex_);
 
   GemmConfig gemm_config_;
-  se::cuda::BlasLt::Epilogue epilogue_;
+  se::gpu::BlasLt::Epilogue epilogue_;
   int64_t algorithm_idx_;
   BufferAllocation::Slice a_buffer_;
   BufferAllocation::Slice b_buffer_;
@@ -71,7 +76,7 @@ class CublasLtMatmulThunk : public Thunk {
   BufferAllocation::Slice c_scale_buffer_;
   BufferAllocation::Slice d_scale_buffer_;
   BufferAllocation::Slice d_amax_buffer_;
-  std::optional<se::cuda::BlasLt::MatmulAlgorithm> algorithm_;
+  std::optional<se::gpu::BlasLt::MatmulAlgorithm> algorithm_;
 };
 
 }  // namespace gpu

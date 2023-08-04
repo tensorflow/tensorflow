@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_autotuning.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_algorithm_denylist.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
+#include "tensorflow/compiler/xla/service/slow_operation_alarm.h"
 #include "tensorflow/compiler/xla/stream_executor/scratch_allocator.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
@@ -109,7 +110,7 @@ StatusOr<se::DeviceMemory<uint8_t>> ScratchAllocator::AllocateBytes(
   return se::DeviceMemory<uint8_t>(buffer_addr);
 }
 
-StatusOr<std::vector<MaybeFusedConvRunner>> GetAlgorithms(
+StatusOr<std::vector<GenericConvRunner>> GetAlgorithms(
     const GpuConvConfig& config, se::Stream* stream, bool use_cudnn_frontend,
     bool use_fallback, const se::NumericOptions& numeric_options) {
   TF_ASSIGN_OR_RETURN(se::dnn::ConvolutionKind kind,
@@ -122,8 +123,7 @@ StatusOr<std::vector<MaybeFusedConvRunner>> GetAlgorithms(
                       GetDNNDataTypeFromPrimitiveType(config.output_type));
 
   se::StreamExecutor* stream_exec = stream->parent();
-
-  std::vector<MaybeFusedConvRunner> result;
+  std::vector<GenericConvRunner> result;
 
   switch (kind) {
     default:
@@ -150,6 +150,24 @@ StatusOr<std::vector<MaybeFusedConvRunner>> GetAlgorithms(
         TF_ASSIGN_OR_RETURN(
             auto runner_cache,
             se::dnn::LazyOpRunner<se::dnn::FusedConvOp>::FromOpRunner(
+                std::move(runner)));
+        result.emplace_back(std::move(runner_cache));
+      }
+      break;
+    }
+
+    case se::dnn::ConvolutionKind::FORWARD_GRAPH: {
+      std::vector<std::unique_ptr<const se::dnn::GraphConvRunner>> runners;
+      // This path is cuDNN-only, where the DeviceMemoryBase arguments and the
+      // allocator are unused; so, they're all provided as nullptr.
+      TF_RETURN_IF_ERROR(stream_exec->GetGraphConvolveRunners(
+          kind, input_type, output_type, stream, config.input_descriptor,
+          config.filter_descriptor, config.output_descriptor, config.conv_desc,
+          use_fallback, numeric_options, &runners, config.serialized_graph));
+      for (auto& runner : runners) {
+        TF_ASSIGN_OR_RETURN(
+            auto runner_cache,
+            se::dnn::LazyOpRunner<se::dnn::GraphConvOp>::FromOpRunner(
                 std::move(runner)));
         result.emplace_back(std::move(runner_cache));
       }
@@ -446,7 +464,7 @@ GpuConvAlgorithmPicker::AutotuneRuntimeArguments::FromInstruction(
 // simply skips the engine/algorithm while recording a reason for skipping it.
 StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
     se::DeviceMemoryAllocator* allocator, se::Stream* stream,
-    MaybeFusedConvRunner* const runner,
+    GenericConvRunner* const runner,
     std::optional<ReferenceResult>* reference_result,
     absl::Span<const AlgorithmDesc> disabled_algos,
     std::optional<AutotuneCacheKey> instruction_info,
@@ -511,6 +529,12 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
 
   se::dnn::ProfileResult profile_result;
   VLOG(4) << "Trying algorithm " << alg.ToString() << " for " << instr_str;
+
+  SlowOperationAlarm alarm(absl::Seconds(1), [&] {
+    return absl::StrFormat(
+        "Trying algorithm %s for conv %s is taking a while...", alg.ToString(),
+        instr_str);
+  });
 
   std::optional<size_t> workspace_size =
       runner->ToAlgorithmDesc().workspace_size();
@@ -736,7 +760,7 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
   std::optional<ReferenceResult> reference_result;
 
   TF_ASSIGN_OR_RETURN(
-      std::vector<MaybeFusedConvRunner> runners,
+      std::vector<GenericConvRunner> runners,
       GetAlgorithms(runtime_arguments.gpu_conv_config, stream,
                     cudnn_frontend_enabled,
                     /* use_fallback = */ false, numeric_options));
@@ -760,7 +784,7 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
     }
 
     TF_ASSIGN_OR_RETURN(
-        std::vector<MaybeFusedConvRunner> fallback_runners,
+        std::vector<GenericConvRunner> fallback_runners,
         GetAlgorithms(runtime_arguments.gpu_conv_config, stream,
                       cudnn_frontend_enabled,
                       /* use_fallback = */ true, numeric_options));
@@ -940,7 +964,7 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
                           se::dnn::LazyOpRunner<se::dnn::ConvOp>::FromOpRunner(
                               std::move(runner)));
 
-      MaybeFusedConvRunner runner_cache(std::move(lazy_runner));
+      GenericConvRunner runner_cache(std::move(lazy_runner));
 
       // Use assignment instead of brace-list to make GCC 4.9 happy.
       RunConvOptions options;

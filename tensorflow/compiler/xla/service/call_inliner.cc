@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 
-#include <deque>
 #include <memory>
 
 #include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"

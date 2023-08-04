@@ -3,6 +3,7 @@
 #   and provide TensorRT operators and converter package.
 #   APIs are meant to change over time.
 
+# Placeholder: load py_proto_library
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
@@ -844,6 +845,7 @@ tf_cuda_cc_test(
         "no_cuda_on_cpu_tap",
         "no_windows",
         "nomac",
+        "notap",  # Fails w/ tensorrt 8.x
     ],
     deps = [
         ":testutils",
@@ -1039,13 +1041,6 @@ pybind_extension(
         "@llvm_zlib//:__subpackages__",
         "@local_config_cuda//:__subpackages__",
         "@local_config_git//:__subpackages__",
-        "@local_config_python//:__subpackages__",
-        "@python_x86_64-unknown-linux-gnu//:__subpackages__",
-        "@python_x86_64-pc-windows-msvc//:__subpackages__",
-        "@python_x86_64-apple-darwin//:__subpackages__",
-        "@python_aarch64-unknown-linux-gnu//:__subpackages__",
-        "@python_aarch64-apple-darwin//:__subpackages__",
-        "@pypi_numpy//:__subpackages__",
         "@local_config_rocm//:__subpackages__",
         "@local_config_tensorrt//:__subpackages__",
         "@local_execution_config_platform//:__subpackages__",

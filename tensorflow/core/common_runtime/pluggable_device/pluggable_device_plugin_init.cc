@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/c/experimental/pluggable_profiler/pluggable_profiler_internal.h"
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
 #include "tensorflow/compiler/jit/flags.h"
+#include "tensorflow/compiler/jit/pjrt_device_context.h"
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_api.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
@@ -127,6 +128,10 @@ static Status InitNextPluggableDeviceModule(void* dso_handle) {
     VLOG(1) << "Registered XlaCompileOnDemand op for device_type: "
             << device_type;
   }
+
+  TF_RETURN_IF_ERROR(CopyTensor::Register(
+      DeviceType(device_type), DeviceType(device_type), PjRtDeviceToDeviceCopy,
+      /*is_pluggable_device=*/true));  // Register the Copy tensor.
 
   VLOG(1) << "Successfully initialized NextPluggableDevice module.";
   return OkStatus();

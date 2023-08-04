@@ -35,6 +35,8 @@ def HasOnlyReadVariableOpUsers : Constraint<
   CPred<"llvm::all_of($0.getUsers(), [](mlir::OpOperand op) { "
         "return llvm::isa<mlir::TF::ReadVariableOp>(op.getOwner()); })">>;
 
+def SetAttrs: NativeCodeCall<"CopyAttributes($0.getOwner(), $1)">;
+
 //===----------------------------------------------------------------------===//
 // Add op patterns.
 //===----------------------------------------------------------------------===//
@@ -230,15 +232,15 @@ def QuantizeAndDequantizeV2ToQuantizeAndDequantizeV4 : Pat<
 // RealDiv op patterns.
 //===----------------------------------------------------------------------===//
 
-def RealDivWithSqrtDivisor : Pat<(TF_RealDivOp $arg0, (TF_SqrtOp $arg1)),
-                                 (TF_MulOp $arg0, (TF_RsqrtOp $arg1))>;
+def RealDivWithSqrtDivisor : Pat<(TF_RealDivOp:$src $arg0, (TF_SqrtOp $arg1)),
+                                 (SetAttrs $src, (TF_MulOp $arg0, (SetAttrs $src, (TF_RsqrtOp $arg1))))>;
 
 // Replace division by a constant with a multiplication by a reciprocal of that
 // constant. Floating point division can be ~10x more expensive than a
 // multiplication.
 def RealDivWithConstDivisor : Pat<
-  (TF_RealDivOp $arg0, (TF_ConstOp FloatElementsAttr<32>:$value)),
-  (TF_MulOp $arg0, (TF_ReciprocalOp (TF_ConstOp $value)))>;
+  (TF_RealDivOp:$src $arg0, (TF_ConstOp FloatElementsAttr<32>:$value)),
+  (SetAttrs $src, (TF_MulOp $arg0, (SetAttrs $src, (TF_ReciprocalOp (TF_ConstOp $value)))))>;
 
 //===----------------------------------------------------------------------===//
 // Reshape op patterns.

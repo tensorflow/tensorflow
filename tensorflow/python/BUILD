@@ -2,6 +2,9 @@
 # Public targets:
 #  ":platform" - Low-level and platform-specific Python code.
 
+# Placeholder: load py_proto_library
+load("//tensorflow:py.default.bzl", "py_library")
+load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.bzl", "VERSION", "cc_header_only_library", "clean_dep", "if_google", "if_mlir", "if_oss", "if_windows", "if_xla_available", "tf_enable_mlir_bridge", "tf_python_pybind_static_deps", "tsl_async_value_deps")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "pywrap_tensorflow_macro", "tf_external_workspace_visible", "tf_monitoring_python_deps", "tf_pybind_cc_library_wrapper", "tf_python_pybind_extension")
@@ -20,7 +23,6 @@ load(
     "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
-load("//third_party/mkl_dnn:build_defs.bzl", "if_onednn_v3")
 
 # TODO(mdan): Break into per-directory files.
 
@@ -81,21 +83,7 @@ py_library(
         "//tensorflow/python/ops:gradient_checker_v2",
         "//tensorflow/python/ops:stateful_random_ops",
         "//tensorflow/python/ops/structured:structured_ops",
-        "//tensorflow/python/platform:app",
-        "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/platform:flags",
-        "//tensorflow/python/platform:gfile",
-        "//tensorflow/python/platform:resource_loader",
-        "//tensorflow/python/platform:sysconfig",
-        "//tensorflow/python/platform:tf_logging",
-        "//tensorflow/python/summary:summary_py",
         "//tensorflow/python/tpu:tpu_estimator",
-        "//tensorflow/python/training",
-        "//tensorflow/python/training:quantize_training",
-        "//tensorflow/python/util:all_util",
-        "//tensorflow/python/util:compat",
-        "//tensorflow/python/util:dispatch",
-        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -147,6 +135,7 @@ py_library(
         ":_pywrap_quantize_training",
         ":distributed_framework_test_lib",
         ":keras_lib",
+        ":proto_exports",
         ":pywrap_tensorflow",
         ":pywrap_tfe",
         "//tensorflow/core:protos_all_py",
@@ -317,6 +306,7 @@ py_library(
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:dispatch",
         "//tensorflow/python/util:module_wrapper",
+        "//tensorflow/python/util:tf_decorator_export",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
     ],
@@ -346,8 +336,10 @@ py_library(
     ],
     deps = [
         ":no_contrib",
+        ":pywrap_tensorflow",
         ":tf2",
         "//tensorflow/core/function/trace_type",
+        "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/compiler/mlir",
         "//tensorflow/python/compiler/xla",
         "//tensorflow/python/compiler/xla:compiler_py",
@@ -366,6 +358,7 @@ py_library(
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/eager:remote",
+        "//tensorflow/python/feature_column:feature_column_py",
         "//tensorflow/python/framework",
         "//tensorflow/python/framework:combinations",
         "//tensorflow/python/framework:composite_tensor",
@@ -376,6 +369,7 @@ py_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_combinations_lib",
         "//tensorflow/python/framework:versions",
+        "//tensorflow/python/module",
         "//tensorflow/python/ops:audio_ops_gen",
         "//tensorflow/python/ops:bincount_ops",
         "//tensorflow/python/ops:bitwise_ops",
@@ -416,6 +410,24 @@ py_library(
         "//tensorflow/python/ops/ragged:ragged_ops",
         "//tensorflow/python/ops/signal",
         "//tensorflow/python/ops/structured:structured_ops",
+        "//tensorflow/python/platform:app",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:flags",
+        "//tensorflow/python/platform:gfile",
+        "//tensorflow/python/platform:resource_loader",
+        "//tensorflow/python/platform:sysconfig",
+        "//tensorflow/python/platform:tf_logging",
+        "//tensorflow/python/profiler",
+        "//tensorflow/python/profiler:profiler_client",
+        "//tensorflow/python/profiler:profiler_v2",
+        "//tensorflow/python/profiler:trace",
+        "//tensorflow/python/summary:summary_py",
+        "//tensorflow/python/training",
+        "//tensorflow/python/training:quantize_training",
+        "//tensorflow/python/user_ops:ops",
+        "//tensorflow/python/util:all_util",
+        "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:dispatch",
         "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
     ],
@@ -667,20 +679,14 @@ pywrap_tensorflow_macro(
         "@local_config_git//:__subpackages__",
         "@local_config_nccl//:__subpackages__",
         "@local_config_python//:__subpackages__",
-        "@python_x86_64-unknown-linux-gnu//:__subpackages__",
-        "@python_x86_64-pc-windows-msvc//:__subpackages__",
-        "@python_x86_64-apple-darwin//:__subpackages__",
-        "@python_aarch64-unknown-linux-gnu//:__subpackages__",
-        "@python_aarch64-apple-darwin//:__subpackages__",
-        "@pypi_numpy//:__subpackages__",
         "@local_config_rocm//:__subpackages__",
         "@local_config_tensorrt//:__subpackages__",
         "@local_execution_config_platform//:__subpackages__",
         "@mkl_dnn_acl_compatible//:__subpackages__",
-        "@mkl_dnn_v1//:__subpackages__",
         "@nccl_archive//:__subpackages__",
         "@nsync//:__subpackages__",
         "@nvtx_archive//:__subpackages__",
+        "@onednn//:__subpackages__",
         "@org_sqlite//:__subpackages__",
         "@platforms//:__subpackages__",
         "@png//:__subpackages__",
@@ -695,7 +701,7 @@ pywrap_tensorflow_macro(
         "@upb//:__subpackages__",
         "@XNNPACK//:__subpackages__",
         "@zlib//:__subpackages__",
-    ] + tsl_async_value_deps() + if_onednn_v3(["@onednn_v3//:__subpackages__"]),
+    ] + tsl_async_value_deps(),
     win_def_file = ":pywrap_tensorflow_filtered_def_file",
     deps = [
         "//tensorflow/c:c_api",
@@ -1322,3 +1328,12 @@ py_strict_library(
 #     ],
 # )
 # copybara:uncomment_end
+
+pytype_strict_library(
+    name = "proto_exports",
+    srcs = ["proto_exports.py"],
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/util:tf_export",
+    ],
+)

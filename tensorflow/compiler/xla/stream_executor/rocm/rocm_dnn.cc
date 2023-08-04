@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/rocm/rocm_dnn.h"
 
+#include <hip/hip_bfloat16.h>
+#include <hip/hip_fp16.h>
+
 #include <functional>
 #include <memory>
 
@@ -3851,6 +3854,185 @@ bool MIOpenSupport::DoBatchNormalizationBackwardImpl(
     return false;
   }
   return true;
+}
+
+template <typename T>
+void launchInplaceBiasActivation(hipStream_t stream, void* c_data,
+                                 const void* bias_data, int activation_mode,
+                                 uint64_t m, uint64_t n, int64_t ldc,
+                                 float param);
+
+class ROCmFusedMatmulRunner : public dnn::FusedMatmulRunner {
+  template <typename T>
+  tsl::Status gemm(Stream*, DeviceMemoryBase /* a_data */,
+                   DeviceMemoryBase /* b_data */,
+                   DeviceMemoryBase /* c_data */) const;
+
+  Stream* _stream;
+  dnn::DataType _input_type, _bias_type, _output_type;
+  bool _trans_a, _trans_b;
+  uint64_t _m, _n, _k;
+  int64_t _lda, _ldb, _ldc;
+  dnn::ActivationMode _activation_mode;
+
+ public:
+  std::string ToString() const override;
+  size_t GetWorkspaceSize() const override { return 0; }
+  // Convert to an AlgorithmDesc for AoT compilation or autotuning
+  tsl::StatusOr<AlgorithmDesc> ToAlgorithmDesc() const override;
+  // Launch the operation, with the signature determined by `Sig`.
+  tsl::Status operator()(Stream*, dnn::ProfileResult*,
+                         DeviceMemoryBase scratch_memory,
+                         DeviceMemoryBase /* a_data */,
+                         DeviceMemoryBase /* b_data */,
+                         DeviceMemoryBase /* bias_data */,
+                         DeviceMemoryBase /* c_data */) const override;
+
+  ROCmFusedMatmulRunner(Stream* stream, dnn::DataType input_type,
+                        dnn::DataType bias_type, dnn::DataType output_type,
+                        bool trans_a, bool trans_b, uint64_t m, uint64_t n,
+                        uint64_t k, int64_t lda, int64_t ldb, int64_t ldc,
+                        dnn::ActivationMode activation_mode);
+};
+
+ROCmFusedMatmulRunner::ROCmFusedMatmulRunner(
+    Stream* stream, dnn::DataType input_type, dnn::DataType bias_type,
+    dnn::DataType output_type, bool trans_a, bool trans_b, uint64_t m,
+    uint64_t n, uint64_t k, int64_t lda, int64_t ldb, int64_t ldc,
+    dnn::ActivationMode activation_mode)
+    : _stream(stream),
+      _input_type(input_type),
+      _bias_type(bias_type),
+      _output_type(output_type),
+      _trans_a(trans_a),
+      _trans_b(trans_b),
+      _m(m),
+      _n(n),
+      _k(k),
+      _lda(lda),
+      _ldb(ldb),
+      _ldc(ldc),
+      _activation_mode(activation_mode) {}
+
+tsl::StatusOr<AlgorithmDesc> ROCmFusedMatmulRunner::ToAlgorithmDesc() const {
+  std::vector<std::pair<int64_t, int64_t>> knobs;
+  knobs.emplace_back(0, static_cast<int64_t>(_input_type));
+  knobs.emplace_back(1, static_cast<int64_t>(_bias_type));
+  knobs.emplace_back(2, static_cast<int64_t>(_output_type));
+  knobs.emplace_back(3, static_cast<int64_t>(_trans_a));
+  knobs.emplace_back(4, static_cast<int64_t>(_trans_b));
+  knobs.emplace_back(5, static_cast<int64_t>(_m));
+  knobs.emplace_back(6, static_cast<int64_t>(_n));
+  knobs.emplace_back(7, static_cast<int64_t>(_k));
+  knobs.emplace_back(8, static_cast<int64_t>(_lda));
+  knobs.emplace_back(9, static_cast<int64_t>(_ldb));
+  knobs.emplace_back(10, static_cast<int64_t>(_ldc));
+  return AlgorithmDesc(0, knobs, 0);
+}
+
+std::string ROCmFusedMatmulRunner::ToString() const {
+  return ToAlgorithmDesc().value().ToString();
+}
+
+template <typename T>
+tsl::Status ROCmFusedMatmulRunner::gemm(Stream* stream, DeviceMemoryBase a_data,
+                                        DeviceMemoryBase b_data,
+                                        DeviceMemoryBase c_data) const {
+  blas::Transpose ta =
+      _trans_a ? blas::Transpose::kTranspose : blas::Transpose::kNoTranspose;
+  blas::Transpose tb =
+      _trans_b ? blas::Transpose::kTranspose : blas::Transpose::kNoTranspose;
+
+  return stream->ThenBlasGemm<T, T>(
+      tb, ta, _n, _m, _k, static_cast<DeviceMemory<T>>(b_data), _ldb,
+      static_cast<DeviceMemory<T>>(a_data), _lda,
+      static_cast<DeviceMemory<T>*>(&c_data), _ldc, NumericOptions{});
+}
+
+template <typename T>
+tsl::Status InplaceBiasActivation(Stream* stream, DeviceMemoryBase c_data,
+                                  DeviceMemoryBase bias_data,
+                                  dnn::ActivationMode activation_mode,
+                                  uint64_t m, uint64_t n, int64_t ldc,
+                                  float param) {
+  typedef typename std::conditional<
+      std::is_same_v<T, Eigen::half>, __half,
+      typename std::conditional<std::is_same_v<T, Eigen::bfloat16>,
+                                hip_bfloat16, T>::type>::type CT;
+
+  if (activation_mode == dnn::ActivationMode::kReluX ||
+      activation_mode == dnn::ActivationMode::kBandPass ||
+      activation_mode == dnn::ActivationMode::kLeakyRelu)
+
+    return tsl::Status(absl::StatusCode::kInvalidArgument,
+                       "ROCm InplaceBiasActivation can't be used with "
+                       "parametric activations yet");
+
+  launchInplaceBiasActivation<CT>(
+      AsGpuStreamValue(stream), c_data.opaque(), bias_data.opaque(),
+      static_cast<int>(activation_mode), m, n, ldc, param);
+  return tsl::OkStatus();
+}
+
+// Launch the operation, with the signature determined by `Sig`.
+tsl::Status ROCmFusedMatmulRunner::operator()(
+    Stream* stream, dnn::ProfileResult* prof, DeviceMemoryBase scratch_memory,
+    DeviceMemoryBase a_data, DeviceMemoryBase b_data,
+    DeviceMemoryBase bias_data, DeviceMemoryBase c_data) const {
+  tsl::Status status;
+  if (_input_type == dnn::DataType::kFloat)
+    status = gemm<float>(stream, a_data, b_data, c_data);
+  else if (_input_type == dnn::DataType::kHalf)
+    status = gemm<Eigen::half>(stream, a_data, b_data, c_data);
+  else if (_input_type == dnn::DataType::kBF16)
+    status = gemm<Eigen::bfloat16>(stream, a_data, b_data, c_data);
+  else if (_input_type == dnn::DataType::kDouble)
+    status = gemm<double>(stream, a_data, b_data, c_data);
+  else
+    return tsl::Status(absl::StatusCode::kInvalidArgument,
+                       "Unsupported input type");
+
+  if (!status.ok()) return status;
+  if (_input_type == dnn::DataType::kFloat)
+    return InplaceBiasActivation<float>(stream, c_data, bias_data,
+                                        _activation_mode, _m, _n, _ldc, 0.0f);
+  else if (_input_type == dnn::DataType::kHalf)
+    return InplaceBiasActivation<Eigen::half>(
+        stream, c_data, bias_data, _activation_mode, _m, _n, _ldc, 0.0f);
+  else if (_input_type == dnn::DataType::kBF16)
+    return InplaceBiasActivation<Eigen::bfloat16>(
+        stream, c_data, bias_data, _activation_mode, _m, _n, _ldc, 0.0f);
+  else if (_input_type == dnn::DataType::kDouble)
+    return InplaceBiasActivation<double>(stream, c_data, bias_data,
+                                         _activation_mode, _m, _n, _ldc, 0.0f);
+  else
+    return tsl::Status(absl::StatusCode::kInvalidArgument,
+                       "Unsupported input type");
+}
+
+tsl::Status MIOpenSupport::GetFusedMatmulRunners(
+    bool use_cudnn_frontend, dnn::DataType input_type, dnn::DataType bias_type,
+    dnn::DataType output_type, Stream* stream, bool trans_a, bool trans_b,
+    uint64_t m, uint64_t n, uint64_t k, int64_t lda, int64_t ldb, int64_t ldc,
+    dnn::ActivationMode activation_mode, bool use_fallback,
+    const NumericOptions& numeric_options,
+    std::vector<std::unique_ptr<const dnn::FusedMatmulRunner>>*
+        out_exec_plans) {
+  out_exec_plans->clear();
+  if (input_type != output_type)
+    return tsl::Status(
+        absl::StatusCode::kInvalidArgument,
+        "ROCm fused matmul does not support input/output type mismatch");
+  if (input_type != bias_type)
+    return tsl::Status(
+        absl::StatusCode::kInvalidArgument,
+        "ROCm fused matmul does not support input/bias type mismatch");
+  auto runner_ptr = new ROCmFusedMatmulRunner(
+      stream, input_type, bias_type, output_type, trans_a, trans_b, m, n, k,
+      lda, ldb, ldc, activation_mode);
+  out_exec_plans->push_back(
+      std::unique_ptr<const dnn::FusedMatmulRunner>(runner_ptr));
+  return tsl::OkStatus();
 }
 
 tsl::Status MIOpenSupport::DoFusedConvolve(

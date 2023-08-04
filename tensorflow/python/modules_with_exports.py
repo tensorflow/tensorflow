@@ -31,6 +31,9 @@ from tensorflow.core.protobuf.meta_graph_pb2 import MetaGraphDef
 from tensorflow.core.protobuf.config_pb2 import *
 from tensorflow.core.util.event_pb2 import *
 
+# Compat
+from tensorflow.python.compat import v2_compat
+
 # Compiler
 from tensorflow.python.compiler.xla import jit
 from tensorflow.python.compiler.xla import xla
@@ -63,6 +66,9 @@ _tf2_gauge = _monitoring.BoolGauge(
     '/tensorflow/api/tf2_enable', 'Environment variable TF2_BEHAVIOR is set".')
 _tf2_gauge.get_cell().set(_tf2.enabled())
 
+# Feature Column
+from tensorflow.python.feature_column import feature_column_lib as feature_column
+
 # Framework
 from tensorflow.python.framework.framework_lib import *  # pylint: disable=redefined-builtin
 from tensorflow.python.framework.versions import *
@@ -72,8 +78,11 @@ from tensorflow.python.framework import extension_type
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import ops
 
-# Session
-from tensorflow.python.client.client_lib import *
+# Function
+from tensorflow.core.function.trace_type import *
+
+# Module
+from tensorflow.python.module import module
 
 # Ops
 from tensorflow.python.ops.standard_ops import *  # pylint: disable=redefined-builtin
@@ -116,6 +125,18 @@ from tensorflow.python.ops.ragged import ragged_ops
 from tensorflow.python.ops.signal import signal
 from tensorflow.python.ops.structured import structured_ops as _structured_ops
 
+# Platform
+from tensorflow.python.platform import app
+from tensorflow.python.platform import flags
+from tensorflow.python.platform import gfile
+from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.platform import resource_loader
+from tensorflow.python.platform import sysconfig as sysconfig_lib
+from tensorflow.python.platform import test
+
+# Pywrap TF
+from tensorflow.python import pywrap_tensorflow as _pywrap_tensorflow
+
 # Update the RaggedTensor package docs w/ a list of ops that support dispatch.
 ragged.__doc__ += ragged_ops.ragged_dispatch.ragged_op_list()
 
@@ -128,9 +149,28 @@ nn.bidirectional_dynamic_rnn = rnn.bidirectional_dynamic_rnn
 nn.static_state_saving_rnn = rnn.static_state_saving_rnn
 nn.rnn_cell = rnn_cell
 
-# Function
-from tensorflow.core.function.trace_type import *
+# Profiler
+from tensorflow.python.profiler import profiler
+from tensorflow.python.profiler import profiler_client
+from tensorflow.python.profiler import profiler_v2
+from tensorflow.python.profiler import trace
 
+# Session
+from tensorflow.python.client.client_lib import *
+
+# Summary
+from tensorflow.python.summary import summary
+
+# Training
+from tensorflow.python.training import training as train
+from tensorflow.python.training import quantize_training as _quantize_training
+
+# User Ops
+from tensorflow.python.user_ops import user_ops
+
+# Util
+from tensorflow.python.util import compat
+from tensorflow.python.util import all_util
 from tensorflow.python.util.tf_export import tf_export
 
 # _internal APIs
@@ -152,28 +192,14 @@ from tensorflow.python.distribute.coordinator.cluster_coordinator import *
 from tensorflow.python.distribute.failure_handling.failure_handling import *
 from tensorflow.python.distribute.failure_handling.preemption_watcher import *
 
-tf_export('__internal__.decorator.make_decorator', v1=[])(make_decorator)
-tf_export('__internal__.decorator.unwrap', v1=[])(unwrap)
+from tensorflow.python.util import tf_decorator_export
+from tensorflow.python import proto_exports
+
+# Update dispatch decorator docstrings to contain lists of registered APIs.
+# (This should come after any imports that register APIs.)
+from tensorflow.python.util import dispatch
+dispatch.update_docstrings_with_api_lists()
 
 # Export protos
 # pylint: disable=undefined-variable
-tf_export(v1=['AttrValue'])(AttrValue)
-tf_export(v1=['ConfigProto'])(ConfigProto)
-tf_export(v1=['Event', 'summary.Event'])(Event)
-tf_export(v1=['GPUOptions'])(GPUOptions)
-tf_export(v1=['GraphOptions'])(GraphOptions)
-tf_export(v1=['HistogramProto'])(HistogramProto)
-tf_export(v1=['LogMessage'])(LogMessage)
-tf_export(v1=['MetaGraphDef'])(MetaGraphDef)
-tf_export(v1=['NameAttrList'])(NameAttrList)
-tf_export(v1=['NodeDef'])(NodeDef)
-tf_export(v1=['OptimizerOptions'])(OptimizerOptions)
-tf_export(v1=['RunMetadata'])(RunMetadata)
-tf_export(v1=['RunOptions'])(RunOptions)
-tf_export(v1=['SessionLog', 'summary.SessionLog'])(SessionLog)
-tf_export(v1=['Summary', 'summary.Summary'])(Summary)
-tf_export(v1=['summary.SummaryDescription'])(SummaryDescription)
-tf_export(v1=['SummaryMetadata'])(SummaryMetadata)
-tf_export(v1=['summary.TaggedRunMetadata'])(TaggedRunMetadata)
-tf_export(v1=['TensorInfo'])(TensorInfo)
 # pylint: enable=undefined-variable

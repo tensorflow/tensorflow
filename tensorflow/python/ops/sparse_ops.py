@@ -3032,10 +3032,11 @@ def bincount(arr: sparse_tensor.SparseTensor,
   Here, index 1 in output has a value 6. This is the summation of weights
   corresponding to the value in `values`.
 
-  **Bin-counting on a certain axis**
+  **Bin-counting matrix rows independently**
 
-  This example takes a 2 dimensional input and returns a `Tensor` with
-  bincounting on each sample.
+  This example uses `axis=-1` with a 2 dimensional input and returns a
+  `Tensor` with bincounting where axis 0 is **not** flattened, i.e. an
+  independent bincount for each matrix row.
 
   >>> data = np.array([[1, 2, 3, 0], [0, 0, 1, 2]], dtype=np.int32)
   >>> tf.math.bincount(data, axis=-1)
@@ -3054,12 +3055,26 @@ def bincount(arr: sparse_tensor.SparseTensor,
     array([[1, 1, 1, 1],
            [1, 1, 1, 0]], dtype=int32)>
 
+  **Missing zeros in SparseTensor**
+
+  Note that missing zeros (implict zeros) in SparseTensor are **NOT** counted.
+  This supports cases such as `0` in the values tensor indicates that index/id
+  `0`is present and a missing zero indicates that no index/id is present.
+
+  If counting missing zeros is desired, there are workarounds.
+  For the `axis=0` case, the number of missing zeros can computed by subtracting
+  the number of elements in the SparseTensor's `values` tensor from the
+  number of elements in the dense shape, and this difference can be added to the
+  first element of the output of `bincount`. For all cases, the SparseTensor
+  can be converted to a dense Tensor with `tf.sparse.to_dense` before calling
+  `tf.math.bincount`.
+
   Args:
     arr: A SparseTensor whose values should be counted.
       These tensors must have a rank of 2 if `axis=-1`.
     weights: If non-None, must be the same shape as arr. For each value in
       `arr`, the bin will be incremented by the corresponding weight instead of
-      1.
+      1. If non-None, `binary_output` must be False.
     minlength: If given, ensures the output has length at least `minlength`,
       padding with zeros at the end if necessary.
     maxlength: If given, skips values in `arr` that are equal or greater than
@@ -3074,8 +3089,8 @@ def bincount(arr: sparse_tensor.SparseTensor,
       reduce_add). Defaults to False.
 
   Returns:
-    A vector with the same dtype as `weights` or the given `dtype`. The bin
-    values.
+    A vector with the same dtype as `weights` or the given `dtype` containing
+    the bincount values.
 
   Raises:
     `InvalidArgumentError` if negative values are provided as an input.
@@ -3083,29 +3098,6 @@ def bincount(arr: sparse_tensor.SparseTensor,
   """
   name = "bincount" if name is None else name
   with ops.name_scope(name):
-    # TODO(b/255381064) Remove the following block which uses older kernels for
-    # backwards compatibility for certain cases once all tests pass with the
-    # newer (dense_bincount, ragged_bincount and sparse_bincount) kernels.
-    if not binary_output and axis is None:
-      arr = ops.convert_to_tensor(arr, name="arr", dtype=dtypes.int32)
-      array_is_nonempty = math_ops.reduce_prod(array_ops.shape(arr)) > 0
-      output_size = math_ops.cast(array_is_nonempty, dtypes.int32) * (
-          math_ops.reduce_max(arr) + 1)
-      if minlength is not None:
-        minlength = ops.convert_to_tensor(
-            minlength, name="minlength", dtype=dtypes.int32)
-        output_size = gen_math_ops.maximum(minlength, output_size)
-      if maxlength is not None:
-        maxlength = ops.convert_to_tensor(
-            maxlength, name="maxlength", dtype=dtypes.int32)
-        output_size = gen_math_ops.minimum(maxlength, output_size)
-      if weights is not None:
-        weights = ops.convert_to_tensor(weights, name="weights")
-        return gen_math_ops.unsorted_segment_sum(weights, arr, output_size)
-      weights = constant_op.constant([], dtype)
-      arr = array_ops.reshape(arr, [-1])
-      return gen_math_ops.bincount(arr, output_size, weights)
-
     if weights is not None and binary_output:
       raise ValueError("Arguments `binary_output` and `weights` are mutually "
                        "exclusive. Please specify only one.")
@@ -3119,9 +3111,12 @@ def bincount(arr: sparse_tensor.SparseTensor,
       raise ValueError(f"Unsupported value for argument axis={axis}. Only 0 and"
                        " -1 are currently supported.")
 
-    array_is_nonempty = array_ops.size(arr) > 0
-    output_size = math_ops.cast(array_is_nonempty, arr.dtype) * (
-        math_ops.reduce_max(arr.values) + 1)
+    total_size = array_ops.size(arr)
+    array_is_nonempty = total_size > 0
+    # For the case where all values are implicit zeros, reduce_max
+    # returns the integer closest to negative infinity.
+    max_value = math_ops.maximum(math_ops.reduce_max(arr.values), -1)
+    output_size = math_ops.cast(array_is_nonempty, arr.dtype) * (max_value + 1)
     if minlength is not None:
       minlength = ops.convert_to_tensor(
           minlength, name="minlength", dtype=arr.dtype)
@@ -3137,6 +3132,7 @@ def bincount(arr: sparse_tensor.SparseTensor,
       arr = arr.values
 
     if isinstance(arr, sparse_tensor.SparseTensor):
+      # axis != 0 case
       weights = validate_sparse_weights(arr, weights, dtype)
       return gen_math_ops.sparse_bincount(
           indices=arr.indices,
@@ -3146,6 +3142,7 @@ def bincount(arr: sparse_tensor.SparseTensor,
           weights=weights,
           binary_output=binary_output)
     else:
+      # axis == 0 case
       weights = bincount_ops.validate_dense_weights(arr, weights, dtype)
       return gen_math_ops.dense_bincount(
           input=arr,

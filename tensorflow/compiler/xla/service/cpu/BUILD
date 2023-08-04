@@ -195,7 +195,7 @@ cc_library(
 )
 
 cc_library(
-    name = "cpu_compiler",
+    name = "cpu_compiler_pure",
     srcs = ["cpu_compiler.cc"],
     hdrs = ["cpu_compiler.h"],
     deps = [
@@ -377,6 +377,30 @@ cc_library(
     }) + if_llvm_system_z_available([
         "@llvm-project//llvm:SystemZCodeGen",  # fixdeps: keep
     ]),
+)
+
+cc_library(
+    # The old target name will still be used so that dependencies won't break.
+    # In the future, dependencies should be cleaned up and relinked to the above
+    # target if registration is not necesary.
+    name = "cpu_compiler",
+    srcs = ["cpu_compiler_registerer.cc"],
+    hdrs = ["cpu_compiler.h"],
+    deps = [
+        "cpu_compiler_pure",
+        ":executable_proto_cc",
+        ":target_machine_features",
+        "//tensorflow/compiler/xla:cpu_function_runtime",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:compiler",
+        "//tensorflow/compiler/xla/service:executable",
+        "//tensorflow/compiler/xla/service:llvm_compiler",
+        "//tensorflow/compiler/xla/stream_executor",
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_pimpl",  # fixdeps: keep
+        "//tensorflow/compiler/xla/stream_executor/host:host_platform_id",
+        "@llvm-project//llvm:Target",
+    ],
     alwayslink = True,  # Contains compiler registration
 )
 

@@ -624,6 +624,7 @@ tf_cuda_library(
     deps = [
         ":c_api",
         ":c_api_experimental",
+        ":c_api_internal",
         "//tensorflow/c:c_test_util",
         "//tensorflow/c:tf_datatype",
         "//tensorflow/c:tf_tensor",
@@ -654,6 +655,9 @@ tf_cuda_cc_test(
         ":tfe_op_internal",
         ":tfe_tensorhandle_internal",
         "//tensorflow/c:c_test_util",
+        "//tensorflow/c:tf_datatype",
+        "//tensorflow/c:tf_status",
+        "//tensorflow/c:tf_tensor",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
@@ -662,6 +666,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
+        "//tensorflow/core/platform:env",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -816,6 +821,19 @@ cc_library(
 )
 
 tf_cuda_library(
+    name = "c_api_experimental_hdrs",
+    hdrs = [
+        "c_api.h",
+        "c_api_experimental.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/c:c_api_headers",
+        "//tensorflow/c:c_api_macros_hdrs",
+    ],
+)
+
+tf_cuda_library(
     name = "c_api_experimental",
     srcs = [
         "c_api_experimental.cc",
@@ -928,14 +946,15 @@ tf_cuda_cc_test(
     deps = [
         ":c_api",
         ":c_api_experimental",
+        ":c_api_internal",
         ":c_api_test_util",
         "//tensorflow/c:c_test_util",
-        "//tensorflow/c/eager:c_api_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/distributed_runtime:server_lib",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/strings",
     ],
@@ -1093,6 +1112,25 @@ cc_library(
         "@dlpack",
     ],
     alwayslink = 1,
+)
+
+tf_cuda_cc_test(
+    name = "dlpack_test",
+    size = "small",
+    srcs = [
+        "dlpack_test.cc",
+    ],
+    args = [],
+    tags = [],
+    deps = [
+        ":c_api",
+        ":dlpack",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/strings",
+        "@dlpack",
+    ],
 )
 
 # TODO(karllessard): only used by //tensorflow/core:mobile_srcs_only_runtime

@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "google/protobuf/text_format.h"
 #include "absl/base/optimization.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -46,6 +47,7 @@ struct BatchFunctionOp : mlrt::KernelFrame {
   using KernelFrame::KernelFrame;
 
   static constexpr char kName[] = "tf_mlrt.batch_function";
+  static constexpr bool kUseCustomDevice = false;
 
   mlrt::RegisterValueSpan<tfrt_stub::FallbackTensor> args() const {
     return arguments();
@@ -125,7 +127,15 @@ void BatchFunctionOp::Invoke() {
   auto attr_builder = [node_def_text = node_def_text(),
                        f = f()](tensorflow::AttrValueMap* attr_value_map) {
     tensorflow::NodeDef node_def;
-    if (!proto2::TextFormat::ParseFromString(node_def_text, &node_def)) {
+    // TODO(182876485): Remove the conditional selection after protobuf version
+    // is bumped up.
+    if (!google::protobuf::TextFormat::ParseFromString(
+#if defined(PLATFORM_GOOGLE)
+            node_def_text,
+#else
+            std::string(node_def_text),
+#endif
+            &node_def)) {
       return absl::InternalError(
           absl::StrCat("CreateOp: failed to parse NodeDef: ", node_def_text));
     }

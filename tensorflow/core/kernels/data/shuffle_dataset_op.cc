@@ -419,8 +419,10 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
         if (EnvTime::NowMicros() >
             ((num_log_entries + 1) * kLogIntervalMicros) + start_micros) {
           num_log_entries++;
-          LOG(INFO) << "Filling up shuffle buffer (this may take a while): "
-                    << num_elements_ << " of " << BufferSizeString();
+          LOG_EVERY_N_SEC(INFO, 10)
+              << dataset()->metadata().name() << ": "
+              << "Filling up shuffle buffer (this may take a while): "
+              << num_elements_ << " of " << BufferSizeString();
         }
         if (!input_impl_) {
           TF_RETURN_IF_ERROR(PrepareNextEpoch(ctx));

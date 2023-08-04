@@ -41,9 +41,10 @@ limitations under the License.
 
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
-#include "tensorflow/lite/core/async/async_signature_runner.h"
 #include "tensorflow/lite/core/api/profiler.h"
+#include "tensorflow/lite/core/async/async_signature_runner.h"
 #include "tensorflow/lite/core/c/common.h"  // IWYU pragma: export
+#include "tensorflow/lite/core/signature_runner.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/lite/experimental/resource/initialization_status.h"
@@ -54,7 +55,6 @@ limitations under the License.
 #include "tensorflow/lite/portable_type_to_tflitetype.h"
 #include "tensorflow/lite/profiling/root_profiler.h"
 #include "tensorflow/lite/profiling/telemetry/c/telemetry_setting_internal.h"
-#include "tensorflow/lite/signature_runner.h"
 #include "tensorflow/lite/stderr_reporter.h"
 #include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/type_to_tflitetype.h"
@@ -190,7 +190,7 @@ class Interpreter {
   }
 
   TfLiteStatus SetTensorParametersReadOnly(
-      int tensor_index, TfLiteType type, const char* name, const size_t rank,
+      int tensor_index, TfLiteType type, const char* name, size_t rank,
       const int* dims, TfLiteQuantizationParams quantization,
       const char* buffer, size_t bytes, const Allocation* allocation = nullptr);
 
@@ -221,9 +221,9 @@ class Interpreter {
         is_variable, rank_dims_signature, dims_signature_pointer);
   }
   TfLiteStatus SetTensorParametersReadWrite(
-      int tensor_index, TfLiteType type, const char* name, const size_t rank,
+      int tensor_index, TfLiteType type, const char* name, size_t rank,
       const int* dims, TfLiteQuantizationParams quantization,
-      bool is_variable = false, const size_t rank_dims_signature = 0,
+      bool is_variable = false, size_t rank_dims_signature = 0,
       const int* dims_signature = nullptr);
 
   /// Enables application to cancel in flight invocation with `Cancel`.
@@ -702,7 +702,7 @@ class Interpreter {
   /// When using hardware delegation, Interpreter will make the data of output
   /// tensors available in `tensor->data` by default. If the application can
   /// consume the buffer handle directly (e.g. reading output from OpenGL
-  /// texture), it can set this flag to false, so Interpreter won't copy the
+  /// texture), it can set this flag to true, so Interpreter won't copy the
   /// data from buffer handle to CPU memory.
   void SetAllowBufferHandleOutput(bool allow_buffer_handle_output) {
     allow_buffer_handle_output_ = allow_buffer_handle_output;

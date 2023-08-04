@@ -329,7 +329,10 @@ py_strict_library(
     deps = [
         ":packed_distributed_variable",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/tpu:tpu_replication",
     ],
 )
@@ -689,6 +692,7 @@ py_strict_library(
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//tensorflow/python/saved_model:save_context",
         "//tensorflow/python/tpu:device_assignment",
         "//tensorflow/python/tpu:tpu_hardware_feature",
         "//tensorflow/python/tpu:tpu_lib",
@@ -706,18 +710,19 @@ py_strict_library(
 distribute_py_strict_test(
     name = "random_generator_test",
     srcs = ["random_generator_test.py"],
-    exec_properties = {"mem": "24g"},
+    env = {
+        # multi-process test uses too much memory otherwise. b/289970206
+        "CUDA_MODULE_LOADING": "LAZY",
+    },
     main = "random_generator_test.py",
     shard_count = 12,
     tags = [
         "multi_and_single_gpu",
         "no_cuda_asan",  # b/213388775
         "no_oss",  # b/241013307
-        "notap",  # Flaky; TODO(b/289970206)
     ],
     tpu_tags = [
         "no_oss",
-        "no_gpu",  # b/276511061
     ],
     xla_enable_strict_auto_jit = False,  # PSStrategy doesn't work on _xla tests
     deps = [
@@ -1297,6 +1302,7 @@ distribute_py_strict_test(
         "multi_and_single_gpu",
         "no_cuda_asan",  # TODO(b/214574707): times out
         "no_oss",  # TODO(b/284980046): Breaking nightlies, fails when unable to start GRPC server.
+        "noasan",  # TODO(b/290508632)
     ],
     deps = [
         ":combinations",
@@ -2497,7 +2503,7 @@ distribute_py_strict_test(
     ],
 )
 
-py_strict_library(
+pytype_strict_library(
     name = "parameter_server_strategy_v2",
     srcs = ["parameter_server_strategy_v2.py"],
     srcs_version = "PY3",
@@ -2514,6 +2520,7 @@ py_strict_library(
         ":sharded_variable",
         ":values",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/distribute/cluster_resolver:base_cluster_resolver_py",
         "//tensorflow/python/distribute/coordinator:cluster_coordinator",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:remote",

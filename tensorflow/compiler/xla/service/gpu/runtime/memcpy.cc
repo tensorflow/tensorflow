@@ -33,9 +33,12 @@ template <MemcpyDirection direction>
 absl::Status MemcpyImpl(const ServiceExecutableRunOptions* run_options,
                         ConcurrentRegionStatus* region_status,
                         runtime::StridedMemrefView dst,
-                        runtime::StridedMemrefView src) {
+                        runtime::StridedMemrefView src, int64_t stream_id) {
   se::Stream* stream = run_options->stream();
-  if (region_status->IsInConcurrentRegion()) {
+  if (stream_id != 0) {
+    DCHECK(region_status->IsInConcurrentRegion());
+    TF_ASSIGN_OR_RETURN(stream, region_status->GetStream(stream_id));
+  } else if (region_status->IsInConcurrentRegion()) {
     stream = region_status->GetNextStream();
   }
 
@@ -83,7 +86,7 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL_TEMPLATE(
         .UserData<ConcurrentRegionStatus*>()
         .Arg<runtime::StridedMemrefView>()  // dst
         .Arg<runtime::StridedMemrefView>()  // src
-);
+        .Attr<int64_t>("stream"));
 
 void RegisterMemcpyCustomCalls(runtime::DirectCustomCallRegistry& registry) {
   registry.Register("xla.gpu.memcpy.d2d", Memcpy<MemcpyDirection::kD2D>);

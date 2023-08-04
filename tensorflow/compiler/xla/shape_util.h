@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <functional>
 #include <initializer_list>
+#include <iterator>
 #include <numeric>
 #include <optional>
 #include <ostream>
@@ -103,12 +104,12 @@ class ShapeUtil {
   static inline int64_t ElementsIn(const Shape& shape) {
     DCHECK(shape.IsArray()) << ShapeUtil::HumanString(shape);
     DCHECK_EQ(shape.dimensions_size(), shape.rank());
-    if (shape.dimensions().size() == 1) {
-      return shape.dimensions()[0];
+    if (shape.dimensions().empty()) {
+      return 1LL;
     }
-    return std::accumulate<decltype(shape.dimensions().begin()), int64_t>(
-        shape.dimensions().begin(), shape.dimensions().end(), 1LL,
-        std::multiplies<int64_t>());
+    auto begin = shape.dimensions().begin();
+    return std::accumulate(std::next(begin), shape.dimensions().end(), *begin,
+                           std::multiplies<int64_t>());
   }
 
   // As ElementsIn(), but recurses through tuples.
@@ -887,11 +888,6 @@ class ShapeUtil {
   // Returns the size of array data in bytes, ignoring the trailing padding
   // due to the tiling requirement.
   static int64_t ArrayDataSize(const Shape& shape);
-
-  // Returns the unsharded shape for an input `sharded_shape` that is
-  // partitioned among `num_shards`.
-  static Shape GetUnshardedShape(const Shape& sharded_shape,
-                                 int64_t num_shards);
 
  private:
   // Fills *shape. Returns true on success.

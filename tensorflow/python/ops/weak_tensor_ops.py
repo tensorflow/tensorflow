@@ -16,6 +16,8 @@
 
 import inspect
 
+from tensorflow.python.framework import composite_tensor
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import flexible_dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor
@@ -25,19 +27,21 @@ from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_bitwise_ops
 from tensorflow.python.ops import gen_math_ops
-from tensorflow.python.ops import gen_nn_ops
-from tensorflow.python.ops import image_ops_impl
+from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_impl
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops.numpy_ops import np_array_ops
 from tensorflow.python.ops.numpy_ops import np_math_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.types import core
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import tf_decorator
 
 
+ResourceVariable = resource_variable_ops.ResourceVariable
 # List of unary ops that have support for WeakTensor.
 _TF_UNARY_APIS = []
 _TF_BINARY_APIS = []
@@ -49,15 +53,23 @@ _TF_BINARY_APIS = []
 # pylint: disable=g-doc-args,g-doc-return-or-yield
 def _convert_or_cast(x, dtype, name):
   """Converts/casts the input x to dtype."""
-  # TODO(b/290216343): remove this branch once we fix the precision loss bug in
-  # tf.cast.
-  if isinstance(x, (int, float, complex)):
-    return ops.convert_to_tensor(x, dtype=dtype, name=name)
-  else:
+  # math_ops.cast calls convert_to_tensor(x) under the hood, which can cause
+  # infinite recursion if non-Tensor inputs are passed into tf.constant.
+  # For example, tf.constant([1, 2, 3]) -> cast([1, 2, 3], tf.int32) ->
+  # convert_to_tensor([1, 2, 3]) -> tf.constant([1, 2, 3])...
+  if isinstance(x, weak_tensor.WeakTensor):
+    x = x.to_tensor()
+  # CompositeTensor needs to call math_ops.cast because math_ops.cast may
+  # have a dispatch for that CompositeTensor.
+  if isinstance(x, core.Tensor) or isinstance(
+      x, composite_tensor.CompositeTensor
+  ):
     return math_ops.cast(x, dtype=dtype, name=name)
+  else:
+    return ops.convert_to_tensor(x, dtype=dtype, name=name)
 
 
-def weak_tensor_unary_op_wrapper(op):
+def weak_tensor_unary_op_wrapper(op, x_arg_name=None):
   """Infers input type and adds WeakTensor support to unary ops.
 
   This wrapper infers input type according to the auto dtype conversion
@@ -67,8 +79,9 @@ def weak_tensor_unary_op_wrapper(op):
   returns WeakTensor.
   """
   signature = inspect.signature(op)
-  arg_names = iter(signature.parameters.keys())
-  x_arg_name = next(arg_names)
+  if x_arg_name is None:
+    arg_names = iter(signature.parameters.keys())
+    x_arg_name = next(arg_names)
 
   def wrapper(*args, **kwargs):
     if not ops.is_auto_dtype_conversion_enabled():
@@ -77,9 +90,12 @@ def weak_tensor_unary_op_wrapper(op):
     bound_arguments.apply_defaults()
     bound_kwargs = bound_arguments.arguments
     x = bound_kwargs[x_arg_name]
-    # No input/output handling needed when input is a Tensor because Tensor
-    # input in unary op always outputs a Tensor.
-    if isinstance(x, tensor.Tensor):
+    # No input/output handling needed when input is a Tensor or dtype arg is
+    # specified because it always outputs a Tensor.
+    if (
+        isinstance(x, tensor.Tensor)
+        or bound_kwargs.get("dtype", None) is not None
+    ):
       return op(**bound_kwargs)
     # Infer input type and determine the result promotion type.
     try:
@@ -94,10 +110,9 @@ def weak_tensor_unary_op_wrapper(op):
       )
       return op(**bound_kwargs)
     bound_kwargs[x_arg_name] = _convert_or_cast(x, target_type, "x")
-    # Only return WeakTensor when dtype is NOT specified.
-    if bound_kwargs.get("dtype", None) is not None:
-      is_weak = False
-    return weak_tensor.maybe_convert_to_weak_tensor(op(**bound_kwargs), is_weak)
+    return weak_tensor.convert_to_weak_tensor_or_tensor(
+        op(**bound_kwargs), is_weak
+    )
 
   wrapper = tf_decorator.make_decorator(op, wrapper)
 
@@ -109,18 +124,18 @@ def weak_tensor_unary_op_wrapper(op):
   return wrapper
 
 
-def weak_tensor_binary_op_wrapper(op):
+def weak_tensor_binary_op_wrapper(op, y_arg_name=None, special_handling=None):
   """Determines result promotion type and adds WeakTensor support to binary ops.
 
   This wrapper first infers dtype of any Tensor, WeakTensor, python/numpy
   inputs. Then, both inputs are promoted to the correct promotion result dtype.
   If the result promotion dtype is "weak", returns WeakTensor.
   """
-
   signature = inspect.signature(op)
   arg_names = iter(signature.parameters.keys())
   x_arg_name = next(arg_names)
-  y_arg_name = next(arg_names)
+  if y_arg_name is None:
+    y_arg_name = next(arg_names)
 
   def wrapper(*args, **kwargs):
     if not ops.is_auto_dtype_conversion_enabled():
@@ -143,9 +158,46 @@ def weak_tensor_binary_op_wrapper(op):
       )
       return op(**bound_kwargs)
 
-    bound_kwargs[x_arg_name] = _convert_or_cast(x, target_type, "x")
-    bound_kwargs[y_arg_name] = _convert_or_cast(y, target_type, "y")
-    return weak_tensor.maybe_convert_to_weak_tensor(op(**bound_kwargs), is_weak)
+    if special_handling == "variable_method":
+      # Variable dtypes cannot be mutated. Hence we only allow the conversion
+      # of `y` and disallow the conversion of `x`.
+      if target_type != x.dtype:
+        raise TypeError(f"Variable dtype is immutable. Calling {op.__name__} "
+                        f"of Variable (with dtype {x.dtype}) on {y} requires "
+                        f"converting {y} to {x.dtype}. This is disabled in the "
+                        f"current promotion semantics. Please convert {y} "
+                        f"manually before calling {op.__name__}.")
+
+      bound_kwargs[y_arg_name] = _convert_or_cast(y, target_type, "y")
+      return op(**bound_kwargs)
+    # TODO(b/293935420): Remove this branch and make a separate patch function
+    # for tf.constant.
+    elif special_handling == "constant":
+      # Convert WeakTensor input to tensor because the dtype check in
+      # convert_to_eager_tensor only occurs if x is an EagerTensor.
+      if isinstance(x, weak_tensor.WeakTensor):
+        bound_kwargs[x_arg_name] = x.to_tensor()
+      # tf.constant(x, dtype) should always return a Tensor of specified dtype.
+      # Hence we only allow the one-way conversion from `x` to the dtype arg.
+      if y is not None:
+        is_weak = False
+        if target_type != y:
+          # If promtion is not successful, rely on tf.constant to handle the
+          # conversion.
+          return op(**bound_kwargs)
+        # Only need to explicity call convert_or_cast for Tensor/WeakTensor
+        # inputs. Other types are automatically converted to the specified
+        # dtype in tf.constant.
+        if isinstance(x, core.Tensor):
+          bound_kwargs[x_arg_name] = _convert_or_cast(x, target_type, "x")
+      else:
+        bound_kwargs["dtype"] = target_type
+    else:
+      bound_kwargs[x_arg_name] = _convert_or_cast(x, target_type, "x")
+      bound_kwargs[y_arg_name] = _convert_or_cast(y, target_type, "y")
+    return weak_tensor.convert_to_weak_tensor_or_tensor(
+        op(**bound_kwargs), is_weak
+    )
 
   wrapper = tf_decorator.make_decorator(op, wrapper)
 
@@ -235,22 +287,20 @@ nn_ops.gelu = weak_tensor_unary_op_wrapper(nn_ops.gelu)
 nn_ops.log_softmax = weak_tensor_unary_op_wrapper(nn_ops.log_softmax)
 nn_ops.log_softmax_v2 = weak_tensor_unary_op_wrapper(nn_ops.log_softmax_v2)
 nn_impl.swish = weak_tensor_unary_op_wrapper(nn_impl.swish)
-gen_nn_ops.elu = weak_tensor_unary_op_wrapper(gen_nn_ops.elu)
-gen_nn_ops.relu = weak_tensor_unary_op_wrapper(gen_nn_ops.relu)
-gen_nn_ops.selu = weak_tensor_unary_op_wrapper(gen_nn_ops.selu)
-gen_nn_ops.softsign = weak_tensor_unary_op_wrapper(gen_nn_ops.softsign)
-image_ops_impl.random_brightness = weak_tensor_unary_op_wrapper(
-    image_ops_impl.random_brightness
+nn_ops.elu = weak_tensor_unary_op_wrapper(nn_ops.elu)
+nn_ops.relu = weak_tensor_unary_op_wrapper(nn_ops.relu)
+nn_ops.selu = weak_tensor_unary_op_wrapper(nn_ops.selu)
+nn_ops.softsign = weak_tensor_unary_op_wrapper(nn_ops.softsign)
+image_ops.random_brightness = weak_tensor_unary_op_wrapper(
+    image_ops.random_brightness
 )
-image_ops_impl.stateless_random_brightness = weak_tensor_unary_op_wrapper(
-    image_ops_impl.stateless_random_brightness
+image_ops.stateless_random_brightness = weak_tensor_unary_op_wrapper(
+    image_ops.stateless_random_brightness
 )
-image_ops_impl.adjust_brightness = weak_tensor_unary_op_wrapper(
-    image_ops_impl.adjust_brightness
+image_ops.adjust_brightness = weak_tensor_unary_op_wrapper(
+    image_ops.adjust_brightness
 )
-image_ops_impl.adjust_gamma = weak_tensor_unary_op_wrapper(
-    image_ops_impl.adjust_gamma
-)
+image_ops.adjust_gamma = weak_tensor_unary_op_wrapper(image_ops.adjust_gamma)
 clip_ops.clip_by_value = weak_tensor_unary_op_wrapper(clip_ops.clip_by_value)
 special_math_ops.dawsn = weak_tensor_unary_op_wrapper(special_math_ops.dawsn)
 special_math_ops.expint = weak_tensor_unary_op_wrapper(special_math_ops.expint)
@@ -438,6 +488,7 @@ np_array_ops.prod = weak_tensor_unary_op_wrapper(np_array_ops.prod)
 np_array_ops.ravel = weak_tensor_unary_op_wrapper(np_array_ops.ravel)
 np_array_ops.real = weak_tensor_unary_op_wrapper(np_array_ops.real)
 np_array_ops.reshape = weak_tensor_unary_op_wrapper(np_array_ops.reshape)
+np_array_ops.repeat = weak_tensor_unary_op_wrapper(np_array_ops.repeat)
 np_array_ops.rot90 = weak_tensor_unary_op_wrapper(np_array_ops.rot90)
 np_array_ops.round = weak_tensor_unary_op_wrapper(np_array_ops.round)
 np_array_ops.squeeze = weak_tensor_unary_op_wrapper(np_array_ops.squeeze)
@@ -450,34 +501,78 @@ np_array_ops.vander = weak_tensor_unary_op_wrapper(np_array_ops.vander)
 np_array_ops.var = weak_tensor_unary_op_wrapper(np_array_ops.var)
 np_array_ops.zeros_like = weak_tensor_unary_op_wrapper(np_array_ops.zeros_like)
 
+# Binary ops
+math_ops.add = weak_tensor_binary_op_wrapper(math_ops.add)
+gen_math_ops.sub = weak_tensor_binary_op_wrapper(gen_math_ops.sub)
+math_ops.multiply = weak_tensor_binary_op_wrapper(math_ops.multiply)
+math_ops.multiply_no_nan = weak_tensor_binary_op_wrapper(
+    math_ops.multiply_no_nan
+)
+math_ops.matmul = weak_tensor_binary_op_wrapper(math_ops.matmul)
+# In scalar_mul(scalar, x), dtype should be solely inferred from the dtype of x.
+math_ops.scalar_mul = weak_tensor_unary_op_wrapper(math_ops.scalar_mul, "x")
+math_ops.divide = weak_tensor_binary_op_wrapper(math_ops.divide)
+math_ops.div_no_nan = weak_tensor_binary_op_wrapper(math_ops.div_no_nan)
+# pylint: disable=protected-access
+math_ops._truediv_python3 = weak_tensor_binary_op_wrapper(
+    math_ops._truediv_python3
+)
+gen_math_ops.real_div = weak_tensor_binary_op_wrapper(gen_math_ops.real_div)
+gen_math_ops.truncate_div = weak_tensor_binary_op_wrapper(
+    gen_math_ops.truncate_div
+)
+gen_math_ops.floor_div = weak_tensor_binary_op_wrapper(gen_math_ops.floor_div)
+gen_math_ops.truncate_mod = weak_tensor_binary_op_wrapper(
+    gen_math_ops.truncate_mod
+)
+gen_math_ops.floor_mod = weak_tensor_binary_op_wrapper(gen_math_ops.floor_mod)
+gen_math_ops._pow = weak_tensor_binary_op_wrapper(gen_math_ops._pow)
+ResourceVariable.assign = weak_tensor_binary_op_wrapper(
+    ResourceVariable.assign, special_handling="variable_method"
+)
+ResourceVariable.assign_add = weak_tensor_binary_op_wrapper(
+    ResourceVariable.assign_add, special_handling="variable_method"
+)
+ResourceVariable.assign_sub = weak_tensor_binary_op_wrapper(
+    ResourceVariable.assign_sub, special_handling="variable_method"
+)
+
+# Patching tf.constant does the following.
+# (1) If dtype arg is not specified and the input is a Python nested type,
+# return a WeakTensor.
+# (2) If dtype arg is specified and the input is a Tensor/WeakTensor type,
+# we allow one-way conversion from input's dtype to the specified dtype.
+# e.g. tf.constant(tf.constant(1, int16), int32) previously threw a TypeError
+# but with patching, tf.constant(tf.constant(1, tf.int16), tf.int32) ->
+# tf.Tensor(1, tf.int32).
+# (3) If none of the above conditions apply, the behavior is same as before.
+constant_op.constant = weak_tensor_binary_op_wrapper(
+    constant_op.constant, y_arg_name="dtype", special_handling="constant"
+)
 # ==============================================================================
 # Update old op references.
 # ==============================================================================
-# Update Tensor dunder methods.
-tensor.Tensor.__add__ = math_ops.add
-tensor.Tensor.__sub__ = math_ops.sub
-tensor.Tensor.__mul__ = math_ops.multiply
-tensor.Tensor.__div__ = math_ops.div
-tensor.Tensor.__truediv__ = math_ops.truediv
-tensor.Tensor.__floordiv__ = math_ops.floordiv
-tensor.Tensor.__mod__ = gen_math_ops.floor_mod
-tensor.Tensor.__pow__ = math_ops.pow
-tensor.Tensor.__matmul__ = math_ops.matmul
+math_ops.realdiv = gen_math_ops.real_div
+math_ops.truncatediv = gen_math_ops.truncate_div
+math_ops.floor_div = gen_math_ops.floor_div
+math_ops.truncatemod = gen_math_ops.truncate_mod
+math_ops.floormod = gen_math_ops.floor_mod
 
 # Set WeakTensor dunder methods.
+# Tensor unary ops do not need WeakTensor support.
 weak_tensor.WeakTensor.__invert__ = math_ops.invert_
 weak_tensor.WeakTensor.__neg__ = gen_math_ops.neg
 weak_tensor.WeakTensor.__abs__ = math_ops.abs
-weak_tensor.WeakTensor.__add__ = math_ops.add
-weak_tensor.WeakTensor.__sub__ = math_ops.sub
-weak_tensor.WeakTensor.__mul__ = math_ops.multiply
-weak_tensor.WeakTensor.__div__ = math_ops.div
-weak_tensor.WeakTensor.__truediv__ = math_ops.truediv
-weak_tensor.WeakTensor.__floordiv__ = math_ops.floordiv
-weak_tensor.WeakTensor.__mod__ = gen_math_ops.floor_mod
-weak_tensor.WeakTensor.__pow__ = math_ops.pow
-weak_tensor.WeakTensor.__matmul__ = math_ops.matmul
+
+# Inherit rest of the dunder methods from Tensor.
+unary_dunder_methods = ["__invert__", "__neg__", "__abs__"]
+for operator in tensor.Tensor.OVERLOADABLE_OPERATORS:
+  if operator in unary_dunder_methods:
+    continue
+  tensor_oper = getattr(tensor.Tensor, operator)
+  setattr(weak_tensor.WeakTensor, operator, tensor_oper)
 
 # Add/Update NumPy methods in Tensor and WeakTensor.
 np_math_ops.enable_numpy_methods_on_tensor()
-np_math_ops._enable_numpy_methods(weak_tensor.WeakTensor)  # pylint: disable=protected-access
+np_math_ops._enable_numpy_methods(weak_tensor.WeakTensor)
+# pylint: enable=protected-access

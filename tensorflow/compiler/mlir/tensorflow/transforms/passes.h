@@ -223,15 +223,8 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateTensorListOpsDecompositionPass();
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateTensorArrayOpsDecompositionPass();
 
-// Create a pass that legalize HLO to TF dialect.
-std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeHloToTfPass();
-
 // Create a pass that legalize TFG to TF dialect.
 std::unique_ptr<Pass> CreateLegalizeTFGToTFEPass();
-
-// Addds the HLO to TF rewrite patterns to the specified pattern list.
-void PopulateLegalizeHloToTfPatterns(RewritePatternSet* patterns,
-                                     MLIRContext* context);
 
 // Matches sequence of ops to TensorFlow fused kernels. This pass should not be
 // generally used beyond exporting to runtimes that supports these ops. In the

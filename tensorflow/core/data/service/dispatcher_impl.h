@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/time/time.h"
+#include "tensorflow/core/data/service/auto_scaler.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/dataset_store.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
@@ -180,6 +181,9 @@ class DataServiceDispatcherImpl {
                           GetSnapshotSplitResponse* response);
   Status GetSnapshotStreams(const GetSnapshotStreamsRequest* request,
                             GetSnapshotStreamsResponse* response);
+  Status DisableCompressionAtRuntime(
+      const DisableCompressionAtRuntimeRequest* request,
+      DisableCompressionAtRuntimeResponse* response);
 
   // Exports the dispatcher state for debugging.
   DispatcherStateExport ExportState() const;
@@ -246,6 +250,10 @@ class DataServiceDispatcherImpl {
       const absl::flat_hash_set<int64_t>& current_tasks,
       std::vector<std::shared_ptr<const DispatcherState::Task>>& assigned_tasks,
       WorkerHeartbeatResponse* response);
+  // Reports the processing time of each active task to `auto_scaler_`.
+  void ReportProcessingTimesFromActiveTasks(
+      const std::vector<ActiveTask>& active_tasks,
+      const std::string& worker_address) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Acquires an iteration client id to read from the given iteration and sets
   // `iteration_client_id`.
   Status AcquireIterationClientId(
@@ -306,8 +314,15 @@ class DataServiceDispatcherImpl {
   // used when recovering state when the dispatcher starts.
   Status ApplyWithoutJournaling(const Update& update)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // Removes the client with `client_id` from `auto_scaler_`
+  void RemoveClientFromAutoScaler(int64_t client_id)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Releases iteration clients that haven't heartbeated recently.
   Status ReleaseMissingClients() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // Removes the worker with `worker_address` from `auto_scaler_`, which is
+  // potentially associated with multiple iterations.
+  void RemoveWorkerFromAutoScaler(const std::string& worker_address)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Checks for workers that haven't heartbeated recently and alerts the
   // snapshot managers.
   void DetectMissingWorkers() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
@@ -326,6 +341,10 @@ class DataServiceDispatcherImpl {
   Status GetDatasetDef(const DispatcherState::Dataset& dataset,
                        std::shared_ptr<const DatasetDef>& dataset_def)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // Gets host information about a noncolocated worker from the dispatcher
+  // state. Returns null if no noncolocated worker has registered.
+  std::optional<absl::flat_hash_map<std::string, std::string>>
+  WorkerCompressionInfoByProtocol() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   const experimental::DispatcherConfig config_;
   Env* env_;
@@ -371,6 +390,7 @@ class DataServiceDispatcherImpl {
   // Condition variable for waking up the gc thread.
   condition_variable maintenance_thread_cv_;
   std::unique_ptr<Thread> maintenance_thread_;
+  MultipleIterationsAutoScaler auto_scaler_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(DataServiceDispatcherImpl);
 };

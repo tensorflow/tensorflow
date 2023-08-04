@@ -415,6 +415,10 @@ message OpMetadata {
   // Whether to preserve the layout of the HLO op.
   bool preserve_layout = 13;
 
+  // 1-based position of the frame in frames flat array.
+  // Ids are 1-based to keep 0 value as representation of non-set property.
+  int32 stack_frame_id = 15;
+
   reserved 14;
 }
 

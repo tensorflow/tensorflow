@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
+#include "tensorflow/tsl/platform/host_info.h"
 
 namespace tensorflow {
 namespace data {
@@ -344,11 +345,13 @@ DataServiceClient::CreateAlternativeWorkerClientWithGrpcFallback(
       CreateDataServiceWorkerClient(params_.protocol, transfer_server);
   if (worker.ok()) {
     LOG(INFO) << "Successfully started client for data transfer protocol '"
-              << transfer_server.protocol() << "'.";
+              << transfer_server.protocol() << "' for worker '"
+              << task_info.worker_address() << "'.";
     return worker;
   }
   LOG(ERROR) << "Failed to start client for data transfer protocol '"
-             << transfer_server.protocol() << "'; falling back to grpc. "
+             << transfer_server.protocol() << "' for worker '"
+             << task_info.worker_address() << "'; falling back to grpc. "
              << "Original error: " << worker.status();
   metrics::RecordTFDataServiceDataTransferProtocolFallback(
       transfer_server.protocol(),
@@ -359,7 +362,10 @@ DataServiceClient::CreateAlternativeWorkerClientWithGrpcFallback(
 
 StatusOr<std::unique_ptr<DataServiceWorkerClient>>
 DataServiceClient::CreateWorkerClient(const TaskInfo& task_info) {
-  if (LocalWorkers::Get(task_info.worker_address()) != nullptr) {
+  if (params_.data_transfer_protocol == kLocalTransferProtocol ||
+      // TODO(b/291994182): Use remote workers in unit tests.
+      (tsl::port::JobUid() != -1 &&
+       LocalWorkers::Get(task_info.worker_address()) != nullptr)) {
     DataTransferServerInfo info;
     info.set_protocol(kLocalTransferProtocol);
     info.set_address(task_info.worker_address());
@@ -374,8 +380,6 @@ DataServiceClient::CreateWorkerClient(const TaskInfo& task_info) {
   }
   if (std::string default_protocol = DefaultDataTransferProtocol();
       default_protocol != kGrpcTransferProtocol) {
-    LOG(INFO)
-        << "This task is participating in the \"data_transfer\" experiment.";
     StatusOr<DataTransferServerInfo> transfer_server =
         GetTransferServer(default_protocol, task_info);
     if (transfer_server.ok()) {
@@ -384,8 +388,9 @@ DataServiceClient::CreateWorkerClient(const TaskInfo& task_info) {
     }
     LOG(INFO)
         << "Failed to find transfer server for default data transfer protocol '"
-        << default_protocol << "'; falling back to grpc. "
-        << "Original error: " << transfer_server.status();
+        << default_protocol << "' for worker '" << task_info.worker_address()
+        << "'; falling back to grpc. Original error: "
+        << transfer_server.status();
   }
   return CreateGrpcWorkerClient(task_info);
 }
@@ -804,37 +809,29 @@ Status DataServiceClient::GetElement(Task* task, int64_t deadline_micros,
                                      std::shared_ptr<Result> result)
     TF_LOCKS_EXCLUDED(mu_) {
   GetElementResult get_element_result;
-  for (int num_retries = 0;; ++num_retries) {
+  while (true) {
     Status s = TryGetElement(*task, get_element_result);
-    if (s.ok()) break;
+    if (s.ok()) {
+      task->num_retries = 0;
+      break;
+    }
     if (!IsPreemptedError(s)) {
-      std::string data_transfer_protocol =
-          !params_.data_transfer_protocol.empty()
-              ? params_.data_transfer_protocol
-              : DefaultDataTransferProtocol();
-      if (data_transfer_protocol == kGrpcTransferProtocol ||
-          data_transfer_protocol == kLocalTransferProtocol) {
+      if (task->worker->GetDataTransferProtocol() == kGrpcTransferProtocol ||
+          task->worker->GetDataTransferProtocol() == kLocalTransferProtocol) {
         return s;
       }
+      LOG(ERROR) << "Failed to use alternative data transfer protocol '"
+                 << task->worker->GetDataTransferProtocol() << "' for worker '"
+                 << task->info.worker_address()
+                 << "'; falling back to grpc. Original error: " << s;
+      metrics::RecordTFDataServiceDataTransferProtocolError(
+          task->worker->GetDataTransferProtocol(),
+          static_cast<error::Code>(s.raw_code()), std::string(s.message()));
       mutex_lock l(mu_);
       TF_ASSIGN_OR_RETURN(std::unique_ptr<DataServiceWorkerClient> worker,
                           CreateGrpcWorkerClient(task->info));
       task->worker = std::move(worker);
-      LOG(ERROR) << "failed to use alternative data transfer protocol '"
-                 << data_transfer_protocol << "'; falling back to grpc. "
-                 << "Original error: " << s;
-      metrics::RecordTFDataServiceDataTransferProtocolError(
-          DefaultDataTransferProtocol(), static_cast<error::Code>(s.raw_code()),
-          std::string(s.message()));
       continue;
-    }
-    if (!IsCoordinatedRead()) {
-      mutex_lock l(mu_);
-      // Mark the result as skipped so that we try reading from a different
-      // task before returning to this one.
-      result->ready = true;
-      result->skip = true;
-      return OkStatus();
     }
     {
       mutex_lock l(mu_);
@@ -846,20 +843,28 @@ Status DataServiceClient::GetElement(Task* task, int64_t deadline_micros,
     if (now_micros > deadline_micros) {
       return s;
     }
-    if (IsCoordinatedRead() && num_retries > 0) {
+    if (IsCoordinatedRead() && task->num_retries > 0) {
       TF_RETURN_IF_ERROR(MaybeRemoveTask(*task, deadline_micros, *result));
       mutex_lock l(mu_);
       if (result->skip) {
         return OkStatus();
       }
     }
-    int64_t backoff_until = std::min(
-        deadline_micros,
-        now_micros + ::tensorflow::ComputeBackoffMicroseconds(num_retries));
+    int64_t backoff_until =
+        std::min(deadline_micros,
+                 now_micros + ComputeBackoffMicroseconds(task->num_retries++));
     VLOG(1) << "Failed to get an element from worker "
             << task->info.worker_address() << ": " << s << ". Will retry in "
             << (backoff_until - now_micros) << " microseconds";
     Env::Default()->SleepForMicroseconds(backoff_until - now_micros);
+    if (!IsCoordinatedRead()) {
+      mutex_lock l(mu_);
+      // Mark the result as skipped so that we try reading from a different
+      // task before returning to this one.
+      result->ready = true;
+      result->skip = true;
+      return OkStatus();
+    }
   }
   ProcessGetElementResponse(enqueue_result, get_element_result, result, *task);
   return OkStatus();

@@ -26,6 +26,7 @@ pipeline {
                     environment {
                         PYENV_ROOT="$HOME/.pyenv"
                         PATH="$PYENV_ROOT/shims:/opt/homebrew/bin/:$PATH"
+                        TF_PYTHON_VERSION=3.9
                     }
                     steps {
                         dir('tensorflow') {
@@ -52,7 +53,6 @@ pipeline {
 
                             sh '''
                                 /opt/homebrew/bin/bazel --bazelrc="${WORKSPACE}/tensorflow/tensorflow/tools/ci_build/osx/arm64/.macos.bazelrc" build \
-                                --action_env PYTHON_LIB_PATH="/Users/admin/.pyenv/versions/3.9.13/lib/python3.9/site-packages" \
                                 //tensorflow/tools/pip_package:build_pip_package
                                     
                                 ./bazel-bin/tensorflow/tools/pip_package/build_pip_package \
@@ -84,6 +84,7 @@ pipeline {
                     environment {
                         PYENV_ROOT="$HOME/.pyenv"
                         PATH="$PYENV_ROOT/shims:/opt/homebrew/bin/:$PATH"
+                        TF_PYTHON_VERSION=3.10
                     }
                     steps {
                         dir('tensorflow') {
@@ -109,7 +110,6 @@ pipeline {
 
                             sh '''
                                 /opt/homebrew/bin/bazel --bazelrc="${WORKSPACE}/tensorflow/tensorflow/tools/ci_build/osx/arm64/.macos.bazelrc" build \
-                                --action_env PYTHON_LIB_PATH="/Users/admin/.pyenv/versions/3.10.4/lib/python3.10/site-packages" \
                                 //tensorflow/tools/pip_package:build_pip_package
                                 
                                 ./bazel-bin/tensorflow/tools/pip_package/build_pip_package \
@@ -140,6 +140,7 @@ pipeline {
                     environment {
                         PYENV_ROOT="$HOME/.pyenv"
                         PATH="$PYENV_ROOT/shims:/opt/homebrew/bin/:$PATH"
+                        TF_PYTHON_VERSION=3.11
                     }
                     steps {
 
@@ -166,7 +167,6 @@ pipeline {
 
                             sh '''
                                 /opt/homebrew/bin/bazel --bazelrc="${WORKSPACE}/tensorflow/tensorflow/tools/ci_build/osx/arm64/.macos.bazelrc" build \
-                                --action_env PYTHON_LIB_PATH="/Users/admin/.pyenv/versions/3.11.2/lib/python3.11/site-packages" \
                                 //tensorflow/tools/pip_package:build_pip_package
                                 
                                 ./bazel-bin/tensorflow/tools/pip_package/build_pip_package \

@@ -83,6 +83,11 @@ void RecordTFDataBytesFetched(int64_t num_bytes);
 // Records the number of times tf.data experiment is applied to input pipelines.
 void RecordTFDataExperiment(const string& name);
 
+// Records the time (in microseconds) spent generating an element and
+// transferring it over the network for the given protocol.
+void RecordTFDataServiceGetElementDuration(const string& data_transfer_protocol,
+                                           uint64 duration_us);
+
 // Records the time (in microseconds) spent in a single invocation of
 // `ItertatorResource::GetNext()`.
 void RecordTFDataGetNextDuration(uint64 duration_us);
@@ -101,6 +106,10 @@ void RecordTFDataAutotuneMaxBufferBudgetRatio(const double ratio);
 // The `name` argument identifies the Dataset graph fingerprint,
 // created using GraphHash().
 void RecordTFDataFingerprint(const string& name);
+
+// Records the event of a tf.data service pipeline getting a runtime
+// compression decision.
+void RecordTFDataServiceRuntimeCompressionDecision(bool compression_decision);
 
 // Records the time (in microseconds) during which `IteratorResource` was busy
 // processing at least one `GetNext()` request.
@@ -190,6 +199,10 @@ void RecordTFDataAutoShardRewriteBatchSize(
 // Records the number of times each tf.data autotuning algorithm stopping
 // criterion is met.
 void RecordTFDataAutotuneStoppingCriteria(const string& name);
+
+// Records the number of times an error of this type occurred with this status
+// code.
+void RecordTFDataError(const string& error_type, const string& error_code);
 
 // Records parsing of dense tensor features.
 void RecordParseDenseFeature(int64_t num_features);

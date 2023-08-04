@@ -75,7 +75,6 @@ from tensorflow.python.trackable import data_structures
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import get_canonical_name_for_symbol
-from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
 
 # A module that only depends on `keras.layers` import these from here.
@@ -95,7 +94,6 @@ _AUTOCAST_TYPES = (tensor_lib.Tensor, sparse_tensor.SparseTensor,
                    ragged_tensor.RaggedTensor)
 
 
-@keras_export('keras.layers.Layer')
 class Layer(module.Module, version_utils.LayerVersionSelector):
   """This is the class from which all layers inherit.
 

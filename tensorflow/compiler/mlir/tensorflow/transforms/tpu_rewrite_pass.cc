@@ -185,17 +185,17 @@ LogicalResult SetMetadataProtoStepMarkerLocation(
 
 // Parses a xla::OpSharding from a string attribute.
 LogicalResult SetOpSharding(Operation* op, Attribute attr, llvm::StringRef name,
-                            int index, xla::OpSharding* sharding) {
-  auto sharding_str = attr.dyn_cast<StringAttr>();
-  if (!sharding_str)
+                            int index, xla::OpSharding* sharding_ptr) {
+  auto sharding_attr = attr.dyn_cast<StringAttr>();
+  if (!sharding_attr)
     return op->emitOpError(
         llvm::formatv(kBadStringArrayElementMsg, name, index));
-
-  if (!sharding->ParseFromString(sharding_str.getValue().str()))
+  if (tensorflow::DecodeShardingAttribute(sharding_attr, *sharding_ptr)
+          .failed()) {
     return op->emitOpError(llvm::formatv(kBadArrayElementMsg, name, index,
-                                         sharding_str.getValue(),
+                                         sharding_attr.getValue(),
                                          "xla::OpSharding"));
-
+  }
   return success();
 }
 
@@ -264,9 +264,9 @@ LogicalResult SetMetadataProtoArgs(
     // Populate set_is_same_data_across_replicas
     // Note: this information is duplicated and can be removed from the proto
     // and here once MLIR bridge phase 2 doesn't fallback to the old bridge.
-    mlir::UnitAttr attr = op.getFuncOp().getArgAttrOfType<mlir::UnitAttr>(
+    auto attr = op.getFuncOp().getArgAttrOfType<mlir::BoolAttr>(
         index, replication_attr_name);
-    arg->set_is_same_data_across_replicas(attr != nullptr);
+    arg->set_is_same_data_across_replicas(attr != nullptr && attr.getValue());
 
     // Currently only support first dimension to be bounded dynamic.
     arg->mutable_is_bounded_dynamic_dim()->Add(

@@ -1,7 +1,3 @@
-load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_cuda_library",
-)
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package_group(
@@ -35,13 +31,11 @@ cc_library(
     ],
 )
 
-tf_cuda_library(
+cc_library(
     name = "runtime_fallback_alwayslink",
     srcs = [
         "conversion_function.cc",
         "runtime_fallback_batch_tf_opkernels.cc",
-        "runtime_fallback_gpu_allocator.cc",
-        "runtime_fallback_gpu_allocator.h",
         "runtime_fallback_kernels.cc",
         "runtime_fallback_op_handler.cc",
         "static_registration.cc",
@@ -51,15 +45,6 @@ tf_cuda_library(
         "runtime_fallback_kernels.h",
         "runtime_fallback_op_handler.h",
         "runtime_fallback_tensor.h",
-    ],
-    cuda_deps = [
-        "//tensorflow/core/common_runtime/gpu:gpu_bfc_allocator",
-        "//tensorflow/core/common_runtime/gpu:gpu_runtime_impl",
-        "//tensorflow/core/platform:mutex",
-        "@tf_runtime//backends/gpu:gpu_config",
-        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform",
-        "@tf_runtime//backends/gpu:gpu_op_handler_alwayslink",
-        "//tensorflow/core/runtime_fallback/runtime:runtime_fallback_gpu_alwayslink",
     ],
     includes = [
         "third_party/tf_runtime/include",
@@ -123,14 +108,10 @@ tf_cuda_library(
     alwayslink = 1,
 )
 
-tf_cuda_library(
+cc_library(
     name = "runtime_fallback_tensor",
     srcs = ["runtime_fallback_tensor.cc"],
     hdrs = ["runtime_fallback_tensor.h"],
-    cuda_deps = [
-        "@tf_runtime//backends/gpu:gpu_config",
-        "@tf_runtime//backends/gpu:gpu_tensor",
-    ],
     visibility = [
         ":internal",
         "//tensorflow/core/runtime_fallback/conversion:__subpackages__",
@@ -171,6 +152,7 @@ cc_library(
         "//tensorflow/core/runtime_fallback:__subpackages__",
     ],
     deps = [
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@tf_runtime//:core_runtime",
@@ -208,6 +190,7 @@ cc_library(
         "//tensorflow/core/kernels/batching_util:adaptive_shared_batch_scheduler",
         "//tensorflow/core/kernels/batching_util:batch_resource_base",
         "//tensorflow/core/kernels/batching_util:bounded_executor",
+        "//tensorflow/core/kernels/batching_util:warmup",
         "//tensorflow/core/lib/core:refcount",
         "//tensorflow/core/lib/core:status",
         "//tensorflow/core/platform:errors",
@@ -223,47 +206,4 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@tf_runtime//:hostcontext",
     ],
-)
-
-tf_cuda_library(
-    name = "runtime_fallback_gpu_alwayslink",
-    srcs = [
-        "gpu/conversion_function.cc",
-        "gpu/static_registration.cc",
-    ],
-    hdrs = [
-        "gpu/conversion_function.h",
-    ],
-    compatible_with = [],
-    # Only build this library with --config=cuda.
-    tags = [
-        "manual",
-        "no_oss",
-        "requires_cuda",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":kernel_utils",
-        ":op_logger",
-        ":runtime_fallback_tensor",
-        "//tensorflow/core/runtime_fallback/util:attr_util",
-        "//tensorflow/core/runtime_fallback/util:gpu_util",
-        "//tensorflow/core/runtime_fallback/util:type_util",
-        "@com_google_absl//absl/strings",
-        "@tf_runtime//:hostcontext",
-        "@tf_runtime//:tensor",
-        "@tf_runtime//backends/gpu:gpu_config",
-        "@tf_runtime//backends/gpu:gpu_device",
-        "@tf_runtime//backends/gpu:gpu_op_handler_alwayslink",
-        "@tf_runtime//backends/gpu:gpu_tensor",
-    ] + select({
-        "//tensorflow:android": [
-            "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
-        ],
-        "//conditions:default": [
-            "//tensorflow/core:protos_all_cc",
-            "//tensorflow/core/common_runtime/eager:tensor_handle",
-        ],
-    }),
-    alwayslink = 1,
 )

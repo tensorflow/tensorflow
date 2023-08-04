@@ -182,7 +182,6 @@ cc_library(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
@@ -426,7 +425,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executable_interface",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_interface",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_initializer_helper",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_initializer_framework_helper",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_on_demand_compiler",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_platform_interface",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_topology_external",
@@ -510,6 +509,7 @@ xla_cc_test(
     srcs = ["tracked_tfrt_cpu_device_buffer_test.cc"],
     deps = [
         ":tracked_tfrt_cpu_device_buffer",
+        "//tensorflow/tsl/platform:env",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -720,16 +720,24 @@ cc_library(
         ":pjrt_executable",
         ":pjrt_future",
         "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",
+        "//tensorflow/compiler/xla/mlir_hlo:mhlo_passes",
         "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_hdrs",
         "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_helpers",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
+        "//tensorflow/compiler/xla/translate/mhlo_to_hlo:mlir_hlo_to_hlo",
         "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:BytecodeWriter",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Pass",
+        "@stablehlo//:register",
     ],
 )
 
@@ -765,7 +773,10 @@ cc_library(
     srcs = ["host_callback.cc"],
     hdrs = ["host_callback.h"],
     visibility = [":friends"],
-    deps = [":pjrt_client"],
+    deps = [
+        ":pjrt_client",
+        ":pjrt_future",
+    ],
 )
 
 xla_cc_test(

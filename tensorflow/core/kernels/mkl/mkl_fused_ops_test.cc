@@ -852,7 +852,6 @@ TEST_F(FilterCacheTest, Conv2DFilterCacheTest) {
   Run<float>(DT_FLOAT, image, filter, expected, true);
 }
 
-#ifndef ENABLE_ONEDNN_V3
 // Testing fusion of MatMul and BiasAdd
 template <typename T>
 class MklFusedMatMulOpTest : public OpsTestBase {
@@ -1128,7 +1127,6 @@ TEST_F(MklFusedMatMulCacheTest, WeightCachedTrue) { Run(true); }
 
 // Test that a non-const filter can not be cached.
 TEST_F(MklFusedMatMulCacheTest, WeightCachedFalse) { Run(false); }
-#endif  // !ENABLE_ONEDNN_V3
 
 class BiasCacheTest : public OpsTestBase {
  public:

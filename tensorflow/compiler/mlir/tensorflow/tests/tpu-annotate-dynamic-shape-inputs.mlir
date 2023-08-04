@@ -22,7 +22,10 @@ module attributes {tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/
    // CHECK: mhlo.type_extensions
    func.func @tpu_func (
       %arg0: tensor<2048xi32> {mhlo.sharding = "\08\01\1A\01\01\22\01\00"}, %arg1: tensor<2048xi32> {mhlo.sharding = "\08\01\1A\01\01\22\01\00"}) -> (tensor<2048xi32> {mhlo.sharding = "\08\01\1A\01\01\22\01\00"}) {
-    %0 = "tf.AddV2"(%arg0, %arg1) : (tensor<2048xi32>, tensor<2048xi32>) -> tensor<2048xi32>
-    return %0 : tensor<2048xi32>
+  // TODO(b/292540052): Below tf.addV2 instruction is replaced with just
+  // returning arg0 due to the workaround mentioned in the above bug. Revert
+  // this after the bug is fixed.
+    // %0 = "tf.AddV2"(%arg0, %arg1) : (tensor<2048xi32>, tensor<2048xi32>) -> tensor<2048xi32>
+    return %arg0 : tensor<2048xi32>
    }
 }

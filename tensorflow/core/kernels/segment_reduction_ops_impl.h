@@ -1372,6 +1372,27 @@ class SparseSegmentGradV2OpBase<CPUDevice, T, Index, SegmentId>
   const SparseSegmentReductionOperation operation_;
 };
 
+// The GPU implementation is asynchronous.
+template <class T, typename Index, typename SegmentId>
+class SparseSegmentGradV2OpBase<GPUDevice, T, Index, SegmentId>
+    : public AsyncOpKernel {
+ public:
+  explicit SparseSegmentGradV2OpBase(OpKernelConstruction* context,
+                                     SparseSegmentReductionOperation operation)
+      : AsyncOpKernel(context), operation_(operation) {}
+
+  void ComputeAsync(OpKernelContext* context, DoneCallback done) override {
+    OP_REQUIRES_OK_ASYNC(
+        context,
+        (SparseSegmentGradV2OpCommon<GPUDevice, T, Index, SegmentId>()(
+            context, operation_, done)),
+        done);
+  }
+
+ private:
+  const SparseSegmentReductionOperation operation_;
+};
+
 template <typename Device, class T, typename Index, typename SegmentId>
 class SparseSegmentSumGradV2Op
     : public SparseSegmentGradV2OpBase<Device, T, Index, SegmentId> {

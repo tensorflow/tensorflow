@@ -1,3 +1,4 @@
+# Placeholder: load py_proto_library
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 
@@ -915,7 +916,6 @@ tpu_py_strict_test(
     disable_experimental = True,
     disable_mlir_bridge = False,
     python_version = "PY3",
-    tags = ["no_oss"],
     deps = [
         ":functional",
         ":tpu_py",

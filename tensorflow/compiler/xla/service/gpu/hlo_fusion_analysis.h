@@ -25,9 +25,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/kernel_mapping_scheme.h"
 #include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
+#include "tensorflow/compiler/xla/service/gpu/reduction_utils.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/device_description.h"
 
@@ -63,9 +65,9 @@ class HloFusionAnalysis {
       }
     }
 
-    return HloFusionAnalysis(fusion, std::move(backend_config), device_info,
-                             compute_capability, root_with_tiled_transpose,
-                             tiled_transpose);
+    return HloFusionAnalysis(
+        fusion, std::move(backend_config), std::move(hlo_roots), device_info,
+        compute_capability, root_with_tiled_transpose, tiled_transpose);
   }
 
   const HloComputation* fused_computation() const { return fused_computation_; }
@@ -76,10 +78,10 @@ class HloFusionAnalysis {
   // Determines the fusion type for the emitter.
   EmitterFusionKind GetEmitterFusionKind() const;
 
-  // Determines the launch dimensions for the fusion. The fusion kind must be
-  // one of `kLoop`, `kReduction` or `kTranspose`.
+  // Determines the launch dimensions for the fusion. The fusion kind must not
+  // be `kTriton`.
   StatusOr<LaunchDimensions> GetLaunchDimensions(
-      bool use_experimental_block_size = false);
+      bool use_experimental_block_size);
 
   // Calculates the reduction information. Returns `nullptr` if the fusion is
   // not a reduction.
@@ -96,6 +98,7 @@ class HloFusionAnalysis {
  private:
   HloFusionAnalysis(const HloFusionInstruction* fusion,
                     FusionBackendConfig fusion_backend_config,
+                    std::vector<HloInstruction*> fusion_roots,
                     const GpuDeviceInfo* device_info,
                     se::CudaComputeCapability compute_capability,
                     HloInstruction* root_with_tiled_transpose,
@@ -103,7 +106,7 @@ class HloFusionAnalysis {
       : fusion_(fusion),
         fusion_backend_config_(std::move(fusion_backend_config)),
         fused_computation_(fusion->fused_instructions_computation()),
-        fusion_roots_(GetFusionRoots(fusion->fused_instructions_computation())),
+        fusion_roots_(std::move(fusion_roots)),
         device_info_(device_info),
         compute_capability_(compute_capability),
         root_with_tiled_transpose_(root_with_tiled_transpose),

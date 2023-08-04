@@ -50,7 +50,7 @@ bool IsDynamicSize(int64_t size);
 
 // Returns true if `shape` is a dynamic shape based on either MLIR and TF
 // standards.
-bool IsDynamicShape(const std::vector<int64_t>& shape);
+bool IsDynamicShape(absl::Span<const int64_t> shape);
 
 // The location of a device in a mesh.
 //
@@ -282,6 +282,17 @@ std::vector<DeviceLocation> ComputeDeviceLocations(const Mesh& mesh);
 
 class Layout {
  public:
+  enum class LayoutType {
+    kEmpty,
+    kStatic,
+    kSingleDevice,
+    kParted,
+  };
+
+  static constexpr const char* kPartedPrefix = "parted:";
+  static constexpr const char* kStaticPrefix = "sharding_specs:";
+  static constexpr const char* kSingleDevicePrefix = "maximal:";
+
   static constexpr const char* kUnshardedDim = "unsharded";
   // This spec should only be used to express no preferred sharding in the
   // Layout propagation algorithm.
@@ -318,6 +329,7 @@ class Layout {
   std::string ToString() const;
   StatusOr<LayoutProto> ToProto() const;
 
+  LayoutType type() const { return type_; }
   const Mesh& mesh() const { return mesh_; }
   static Layout ReplicatedOnMesh(const Mesh& mesh, int rank);
   static Layout BatchShardedOnMesh(const Mesh& mesh, int rank,
@@ -328,6 +340,8 @@ class Layout {
   static Layout AnyOnMesh(const Mesh& mesh, int rank);
   // Creates a mesh of unique shards.
   Mesh ReducedMesh() const;
+
+  // Deprecated: Replace calls with GetLayout that creates a new instance.
   void set_mesh(Mesh mesh) { mesh_ = mesh; }
 
   // Returns a layout for the transposed matrix for given layout. This assumes
@@ -341,14 +355,31 @@ class Layout {
     return !IsUnshardedDimension(name);
   }
   static StatusOr<Layout> GetLayout(
-      const std::vector<std::string>& sharding_spec_strs, const Mesh& mesh);
-  static StatusOr<Layout> GetSingleDeviceLayout(const Mesh& mesh);
+      LayoutType type, const std::vector<std::string>& sharding_spec_strs,
+      const Mesh& mesh);
+
+  // Deprecated: Update all call sites to GetLayout(LayoutType::kStatic, ...);
+  static StatusOr<Layout> GetLayout(
+      const std::vector<std::string>& sharding_spec_strs, const Mesh& mesh) {
+    return GetLayout(LayoutType::kStatic, sharding_spec_strs, mesh);
+  }
+
+  // Deprecated: Update all call sites to GetLayout(LayoutType::kSingleDevice,
+  // {}, ...);
+  static StatusOr<Layout> GetSingleDeviceLayout(const Mesh& mesh) {
+    return GetLayout(LayoutType::kSingleDevice, {}, mesh);
+  }
 
   // Makes a new layout from this one dropping the given dimensions.
   // If keep_dims is true, the dimensions are replicated rather than
   // deleted.
   StatusOr<Layout> GetLayoutWithReducedDims(
       const absl::flat_hash_set<int>& reduced_dims, bool keep_dims) const;
+
+  // Converts the Layout to Parted.
+  StatusOr<Layout> ToParted() const {
+    return GetLayout(LayoutType::kParted, sharding_specs_, mesh_);
+  }
 
   // Truncates a layout at the front or back, depending on the value of end.
   // end = false returns the layout up to the split point,
@@ -399,10 +430,13 @@ class Layout {
 
   const std::string& sharding_spec(int idx) const;
 
+  // Similar to IsEquivalentIgnoringType, but also verifies the layout type are
+  // equal.
+  bool IsEquivalent(const Layout& b) const;
   // Two layouts are equivalent if they would result in the same sharding for
   // the tensor. E.g. if one is unsharded and the other is sharded on a mesh
   // dimension of size 1.
-  bool IsEquivalent(const Layout& b) const;
+  bool IsEquivalentIgnoringType(const Layout& b) const;
   // Uses proto to compare the equality. If any conversion to proto fails,
   // returns false.
   bool operator==(const Layout& b) const;
@@ -413,6 +447,7 @@ class Layout {
 
  private:
   std::vector<std::string> sharding_specs_;
+  LayoutType type_;
   Mesh mesh_;
 };
 

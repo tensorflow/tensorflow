@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/lite/c/common_internal.h"
 #include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/api/tensor_utils.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
@@ -252,6 +253,7 @@ Subgraph::Subgraph(ErrorReporter* error_reporter,
                    resource::InitializationStatusMap* initialization_status_map,
                    int subgraph_index)
     : external_contexts_(external_contexts),
+      registration_externals_(new internal::RegistrationExternalsCache),
       error_reporter_(error_reporter),
       next_execution_plan_index_to_prepare_(0),
       next_execution_plan_index_to_plan_allocation_(0),
@@ -509,8 +511,34 @@ TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
   // The subgraph is taking ownership of the external registration, in case the
   // user has supplied an opaque delegate.
   if (TfLiteDelegateHasValidOpaqueDelegateBuilder(delegate)) {
-    registration_externals_.insert(std::unique_ptr<TfLiteRegistrationExternal>(
-        registration.registration_external));
+    // If the user has supplied an opaque delegate, then they _must_ also use
+    // TfLiteRegistrationExternal.
+    if (!registration.registration_external) {
+      TFLITE_LOG(
+          tflite::TFLITE_LOG_WARNING,
+          "For a delegate with the 'opaque_delegate_builder' field set, the "
+          "delegate kernel's TfLiteRegistration object must have the "
+          "'registration_external' field set.");
+      return kTfLiteDelegateError;
+    }
+
+    // In this case, the subgraph takes ownership of the external registration.
+    OpResolver::OpId op_id{registration.registration_external->builtin_code,
+                           registration.registration_external->custom_name,
+                           registration.registration_external->version};
+    auto [it, inserted] = registration_externals_->emplace(
+        op_id, std::unique_ptr<TfLiteRegistrationExternal>(
+                   registration.registration_external));
+    // If there was already an entry for this op_id in the
+    // registration_externals_ cache, the statement above will have
+    // no effect on the registration_externals_ cache,
+    // but will deallocate registration.registration_externals.
+    // To ensure that registration remains valid, we need to use the
+    // registration_externals value that was previously in the cache.
+    if (!inserted) {
+      auto registration_external_from_cache = it->second.get();
+      registration.registration_external = registration_external_from_cache;
+    }
   }
 
   // Ignore empty node replacement sets.
@@ -1754,6 +1782,7 @@ TfLiteStatus Subgraph::AddTensors(int tensors_to_add,
                                   int* first_new_tensor_index) {
   const size_t base_index = tensors_.size();
   if (first_new_tensor_index) *first_new_tensor_index = base_index;
+  if (tensors_to_add < 0) return kTfLiteError;
   tensors_.resize(tensors_.size() + tensors_to_add);
   for (size_t i = base_index; i < tensors_.size(); i++) {
     memset(&tensors_[i], 0, sizeof(tensors_[i]));

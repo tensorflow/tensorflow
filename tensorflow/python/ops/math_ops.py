@@ -1428,6 +1428,8 @@ def maybe_promote_tensors(*tensors, force_same_dtype=False):
   Returns:
     The promoted list of tensors.
   """
+  if ops.is_auto_dtype_conversion_enabled():
+    return tensors
   if not tensors:
     return tensors
   if not ops.is_numpy_style_type_promotion():
@@ -1774,8 +1776,28 @@ def multiply_no_nan(x, y, name=None):
     return gen_math_ops.mul_no_nan(x, y, name=name)
 
 
-# TODO(aselle): This should be removed
-mod = gen_math_ops.floor_mod
+def mod(x, y, name=None):
+  r"""Returns element-wise remainder of division.
+
+  This follows Python semantics in that the
+  result here is consistent with a flooring divide. E.g.
+  `floor(x / y) * y + floormod(x, y) = x`, regardless of the signs of x and y.
+
+  *NOTE*: `math.floormod` supports broadcasting. More about broadcasting
+  [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
+  Args:
+    x: A `Tensor`. Must be one of the following types: `int8`, `int16`, `int32`,
+      `int64`, `uint8`, `uint16`, `uint32`, `uint64`, `bfloat16`, `half`,
+      `float32`, `float64`.
+    y: A `Tensor`. Must have the same type as `x`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor`. Has the same type as `x`.
+  """
+  with ops.name_scope(name, "mod", [x, y]) as name:
+    return gen_math_ops.floor_mod(x, y, name=name)
 
 
 @tf_export("math.floordiv", v1=["math.floordiv", "floordiv"])
@@ -1837,13 +1859,13 @@ def _add_dispatch(x, y, name=None):
   Returns:
     The result of the elementwise `+` operation.
   """
-  if not isinstance(y, tensor_lib.Tensor) and not isinstance(
-      y, sparse_tensor.SparseTensor):
+  if (
+      not ops.is_auto_dtype_conversion_enabled()
+      and not isinstance(y, tensor_lib.Tensor)
+      and not isinstance(y, sparse_tensor.SparseTensor)
+  ):
     y = ops.convert_to_tensor(y, dtype_hint=x.dtype.base_dtype, name="y")
-  if x.dtype == dtypes.string:
-    return gen_math_ops.add(x, y, name=name)
-  else:
-    return gen_math_ops.add_v2(x, y, name=name)
+  return add(x, y, name=name)
 
 
 def _mul_dispatch(x, y, name=None):
@@ -1872,7 +1894,7 @@ _OverrideBinaryOperatorHelper(_mul_dispatch, "mul")
 _OverrideBinaryOperatorHelper(div, "div")
 _OverrideBinaryOperatorHelper(truediv, "truediv")
 _OverrideBinaryOperatorHelper(floordiv, "floordiv")
-_OverrideBinaryOperatorHelper(gen_math_ops.floor_mod, "mod")
+_OverrideBinaryOperatorHelper(mod, "mod")
 _OverrideBinaryOperatorHelper(pow, "pow")
 
 

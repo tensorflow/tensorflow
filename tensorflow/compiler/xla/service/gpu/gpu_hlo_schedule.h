@@ -16,9 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_HLO_SCHEDULE_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_HLO_SCHEDULE_H_
 
-#include <memory>
-#include <vector>
-
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 
@@ -29,8 +26,12 @@ int64_t GetSizeOfShape(const Shape& shape, int pointer_size);
 
 // Determines the schedule of HLO instructions for a module run on the GPU.
 Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
-                         const GpuDeviceInfo& gpu_info);
+                         int64_t memory_size);
 HloInstructionSequence PostProcessSchedule(const HloInstructionSequence& input);
+
+int64_t GetSchedulerMemoryLimit(const HloModule* module,
+                                const GpuDeviceInfo& gpu_device_info,
+                                int pointer_size);
 
 constexpr absl::string_view kFingerprintBeforeLHS = "fingerprint_before_lhs";
 

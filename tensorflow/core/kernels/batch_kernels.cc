@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/core/kernels/batch_kernels.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "absl/strings/str_cat.h"
@@ -35,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/batching_util/bounded_executor.h"
 #include "tensorflow/core/kernels/batching_util/concat_split_util.h"
 #include "tensorflow/core/kernels/batching_util/periodic_function.h"
+#include "tensorflow/core/kernels/batching_util/warmup.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/lib/random/random.h"
@@ -42,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/numbers.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/threadpool.h"
 
 namespace tensorflow {
@@ -331,8 +335,8 @@ bool BatchFunctionKernel::IsExpensive() { return false; }
 
 void BatchFunctionKernel::ComputeAsync(OpKernelContext* c, DoneCallback done) {
   RecordBatchSplitUsage(has_attribute_enable_large_batch_splitting_
-                            ? absl::make_optional(enable_large_batch_splitting_)
-                            : absl::nullopt,
+                            ? std::make_optional(enable_large_batch_splitting_)
+                            : std::nullopt,
                         GetModelName(c));
   // TODO(b/173255290): Add num_batch_threads_ parameter to TFRT batch kernel.
   RecordBatchParamNumBatchThreads(num_batch_threads_, GetModelName(c));
@@ -342,7 +346,7 @@ void BatchFunctionKernel::ComputeAsync(OpKernelContext* c, DoneCallback done) {
   FunctionLibraryRuntime::Handle handle;
   OP_REQUIRES_OK_ASYNC(c, GetOrCreateFunctionHandle(c, &handle), done);
 
-  if (adaptive_batch_scheduler_options_ != absl::nullopt) {
+  if (adaptive_batch_scheduler_options_ != std::nullopt) {
     creator = [this,
                session_metadata = c->session_metadata()](BatchResource** r) {
       serving::AdaptiveSharedBatchScheduler<
@@ -435,13 +439,19 @@ void BatchFunctionKernel::ComputeAsync(OpKernelContext* c, DoneCallback done) {
                        c->resource_manager()->LookupOrCreate(
                            container_, shared_name_, &br, creator),
                        done);
-  const Status status = br->RegisterInput(
-      random::New64(), c, batcher_queue_,
-      [handle]()
-          -> StatusOr<std::unique_ptr<serving::BatchResourceBase::BatchTask>> {
-        return {std::make_unique<BatchResource::BatchTask>(handle)};
-      },
-      done);
+  const uint64_t guid = random::New64();
+  auto create_batch_task_fn = [handle]()
+      -> StatusOr<std::unique_ptr<serving::BatchResourceBase::BatchTask>> {
+    return {std::make_unique<BatchResource::BatchTask>(handle)};
+  };
+  Status status;
+  if (serving::ShouldWarmupAllBatchSizes(c)) {
+    status = br->RegisterWarmupInputs(guid, c, batcher_queue_,
+                                      create_batch_task_fn, done);
+  } else {
+    status =
+        br->RegisterInput(guid, c, batcher_queue_, create_batch_task_fn, done);
+  }
   br->Unref();
   OP_REQUIRES_OK_ASYNC(c, status, done);
   // Assume br calls done, so nothing to do here.

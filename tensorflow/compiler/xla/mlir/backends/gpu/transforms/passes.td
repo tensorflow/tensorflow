@@ -152,8 +152,8 @@ def AddHloTraceAnnotationsPass :
 // Xla Gpu <-> Cuda Graphs integration.
 //===----------------------------------------------------------------------===//
 
-def OutlineCudaGraphsPass :
-    Pass<"xla-gpu-outline-cuda-graphs", "mlir::ModuleOp"> {
+def OutlineGpuGraphsPass :
+    Pass<"xla-gpu-outline-gpu-graphs", "mlir::ModuleOp"> {
   let summary = "Outline sequences of Xla Gpu operations into CUDA Graphs";
 
   let description = [{
@@ -178,13 +178,13 @@ def OutlineCudaGraphsPass :
     }
 
     // Replace a sequence of graph launch operations with a call to runtime API.
-    call @xla.gpu.cuda.graph.launch(%arg0: memref<?xf32>,
+    call @xla.gpu.graph.launch(%arg0: memref<?xf32>,
                                      %arg1: memref<?xf32>)
       attributes { capture = @capture }
     ```
   }];
 
-  let constructor = "createOutlineCudaGraphsPass()";
+  let constructor = "createOutlineGpuGraphsPass()";
 
   let options = [
     Option<"min_graph_size_", "min_graph_size", "int64_t", /*default=*/"2",
@@ -246,6 +246,57 @@ def AddConcurrentRegionsPass:
   }];
 
   let constructor = "createAddConcurrentRegionsPass()";
+}
+
+//===----------------------------------------------------------------------===//
+// Stream assignment.
+//===----------------------------------------------------------------------===//
+
+def StreamAssignmentPass:
+    Pass<"xla-gpu-stream-assignment", "mlir::ModuleOp"> {
+  let summary = "Identify and mark concurrent regions in CUDA graph capture "
+                "functions";
+
+  let description = [{
+    Assign a stream to each kernel launch in the capture function. Streams are
+    assigned to exploit parallelism, so that we can build parallel GPU graphs
+    duing graph capture.
+
+    Example:
+
+    ```mlir
+    func.func @capture.cuda.graph() {
+      // func1, func2, func3 can run in parallel
+      call @xla.gpu.launch.func1
+      call @xla.gpu.launch.func2
+      call @xla.gpu.launch.func3
+
+      // Depends on xla.gpu.launc.func1 and xla.gpu.launch.func2 to finish.
+      call @xla.gpu.launch.func
+      func.return
+    }
+    ```
+
+    becomes:
+
+    ```mlir
+    func.func @capture.cuda.graph() {
+      // func1, func2, func3 can run in parallel
+      call @xla.gpu.launch.func1 {stream = 0 : i64}
+      call @xla.gpu.launch.func2 {stream = 1 : i64}
+      call @xla.gpu.launch.func3 {stream = 2 : i64}
+
+      // Add explicit synchronization to wait for stream 1 to finish executing
+      // func2.
+      call @xla.stream.await {from = 0 : i64, to = [1]}
+      call @xla.gpu.launch.func {stream = 0: i64}
+      func.return
+    }
+    ```
+
+  }];
+
+  let constructor = "createStreamAssignmentPass()";
 }
 
 #endif  // XLA_GPU_PASSES

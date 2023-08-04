@@ -21,6 +21,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
@@ -657,6 +658,153 @@ TEST_F(HloSlicerTest, MultipleComputationBackwardSliceAndFrontier) {
     auto frontier_instructions = sliced_result.frontier_instructions();
     EXPECT_TRUE(frontier_instructions.contains(calculate_alpha_comp));
     EXPECT_TRUE(frontier_instructions[calculate_alpha_comp].contains(ret));
+  }
+}
+
+TEST_F(HloSlicerTest, ForwardSlicingNearestCommonAncestor) {
+  const std::string& hlo_string = R"(
+  HloModule module
+    ENTRY computation {
+      p.0 = f32[10] parameter(0)
+      p.1 = f32[10] parameter(1)
+      add.0 = f32[10] add(p.0, p.1)
+      p.2 = f32[10] parameter(2)
+      mul.0 = f32[10] multiply(p.1, p.2)
+      sub.0 = f32[10] subtract(add.0, mul.0)
+      add.1 = f32[10] add(add.0, p.2)
+      ROOT add.2 = f32[10] add(sub.0, add.1)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  auto p0 = FindInstruction(hlo_module.get(), "p.0");
+  auto p2 = FindInstruction(hlo_module.get(), "p.2");
+  auto mul0 = FindInstruction(hlo_module.get(), "mul.0");
+  auto add0 = FindInstruction(hlo_module.get(), "add.0");
+  auto sub0 = FindInstruction(hlo_module.get(), "sub.0");
+  auto add1 = FindInstruction(hlo_module.get(), "add.1");
+  const HloComputation* computation = hlo_module->entry_computation();
+
+  {
+    std::vector<const HloInstruction*> relevant_instructions({p0});
+    auto sliced_result =
+        SliceModule(hlo_module.get(), absl::MakeSpan(relevant_instructions),
+                    /*frontier_selector=*/nullptr,
+                    /*ignore_control_dependency=*/false, /*forward_slice=*/true,
+                    /*nearest_common_ancestor_as_root=*/true);
+
+    EXPECT_NE(sliced_result.nearest_common_ancestor_root(), nullptr);
+    EXPECT_EQ(sliced_result.nearest_common_ancestor_root(), p0);
+    EXPECT_EQ(sliced_result.NumSlicedInstructions(), 1);
+  }
+
+  {
+    std::vector<const HloInstruction*> relevant_instructions({p0, p2});
+    auto sliced_result =
+        SliceModule(hlo_module.get(), absl::MakeSpan(relevant_instructions),
+                    /*frontier_selector=*/nullptr,
+                    /*ignore_control_dependency=*/false, /*forward_slice=*/true,
+                    /*nearest_common_ancestor_as_root=*/true);
+
+    EXPECT_NE(sliced_result.nearest_common_ancestor_root(), nullptr);
+    EXPECT_TRUE(sliced_result.nearest_common_ancestor_root() == sub0 ||
+                sliced_result.nearest_common_ancestor_root() == add1);
+    EXPECT_TRUE(sliced_result.sliced_instructions().contains(computation));
+
+    auto sliced_instructions = sliced_result.sliced_instructions();
+    EXPECT_TRUE(sliced_instructions[computation].contains(add0));
+  }
+
+  {
+    std::vector<const HloInstruction*> relevant_instructions({p0, mul0});
+    auto sliced_result =
+        SliceModule(hlo_module.get(), absl::MakeSpan(relevant_instructions),
+                    /*frontier_selector=*/nullptr,
+                    /*ignore_control_dependency=*/false,
+                    /*forward_slice=*/true,
+                    /*nearest_common_ancestor_as_root=*/true);
+
+    EXPECT_NE(sliced_result.nearest_common_ancestor_root(), nullptr);
+    EXPECT_EQ(sliced_result.nearest_common_ancestor_root(), sub0);
+    EXPECT_EQ(sliced_result.NumSlicedInstructions(), 4);
+
+    EXPECT_TRUE(sliced_result.sliced_instructions().contains(computation));
+    auto sliced_instructions = sliced_result.sliced_instructions();
+    EXPECT_TRUE(sliced_instructions[computation].contains(p0));
+    EXPECT_TRUE(sliced_instructions[computation].contains(add0));
+    EXPECT_TRUE(sliced_instructions[computation].contains(mul0));
+    EXPECT_TRUE(sliced_instructions[computation].contains(sub0));
+  }
+}
+
+TEST_F(HloSlicerTest, MultipleComputationForwardSlicingNearestCommonAncestor) {
+  const std::string& hlo_string = R"(
+  HloModule axpy_module
+    calculate_alpha {
+      c.0 = f32[] constant(1)
+      c.1 = f32[] constant(2)
+      ROOT ret.0 = f32[] multiply(c.0, c.1)
+    }
+    
+    calculate_y {
+      c.2 = f32[] constant(2)
+      c.3 = f32[] constant(3)
+      ROOT ret.1 = f32[] add(c.2, c.3)
+    }
+    
+    ENTRY axpy_computation {
+      alpha = f32[] call(), to_apply=calculate_alpha
+      y = f32[] call(), to_apply=calculate_y
+      add.0 = f32[] add(alpha, y)
+      p.0 = f32[] parameter(0)
+      ROOT add.1 = f32[] add(add.0, p.0)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  auto c0 = FindInstruction(hlo_module.get(), "c.0");
+  auto ret0 = FindInstruction(hlo_module.get(), "ret.0");
+  auto c2 = FindInstruction(hlo_module.get(), "c.2");
+  auto ret1 = FindInstruction(hlo_module.get(), "ret.1");
+  auto alpha = FindInstruction(hlo_module.get(), "alpha");
+  auto y = FindInstruction(hlo_module.get(), "y");
+  auto add0 = FindInstruction(hlo_module.get(), "add.0");
+
+  const HloComputation* computation = hlo_module->entry_computation();
+  const HloComputation* calculate_alpha =
+      FindComputation(hlo_module.get(), "calculate_alpha");
+  const HloComputation* calculate_y =
+      FindComputation(hlo_module.get(), "calculate_y");
+
+  {
+    std::vector<const HloInstruction*> relevant_instructions({c0, c2});
+    auto sliced_result =
+        SliceModule(hlo_module.get(), absl::MakeSpan(relevant_instructions),
+                    /*frontier_selector=*/nullptr,
+                    /*ignore_control_dependency=*/false,
+                    /*forward_slice=*/true,
+                    /*nearest_common_ancestor_as_root=*/true);
+
+    EXPECT_NE(sliced_result.nearest_common_ancestor_root(), nullptr);
+    EXPECT_EQ(sliced_result.nearest_common_ancestor_root(), add0);
+
+    EXPECT_EQ(sliced_result.sliced_instructions().size(), 3);
+    EXPECT_TRUE(sliced_result.sliced_instructions().contains(computation));
+    EXPECT_TRUE(sliced_result.sliced_instructions().contains(calculate_alpha));
+    EXPECT_TRUE(sliced_result.sliced_instructions().contains(calculate_y));
+
+    auto sliced_instructions = sliced_result.sliced_instructions();
+    EXPECT_EQ(sliced_result.NumSlicedInstructions(), 7);
+    EXPECT_TRUE(sliced_instructions[calculate_alpha].contains(c0));
+    EXPECT_TRUE(sliced_instructions[calculate_alpha].contains(ret0));
+    EXPECT_TRUE(sliced_instructions[calculate_y].contains(c2));
+    EXPECT_TRUE(sliced_instructions[calculate_y].contains(ret1));
+    EXPECT_TRUE(sliced_instructions[computation].contains(alpha));
+    EXPECT_TRUE(sliced_instructions[computation].contains(y));
+    EXPECT_TRUE(sliced_instructions[computation].contains(add0));
   }
 }
 

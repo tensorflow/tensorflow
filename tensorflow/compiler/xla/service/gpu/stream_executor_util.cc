@@ -485,6 +485,8 @@ StatusOr<se::dnn::ConvolutionKind> GetDNNConvKindFromCudnnConvKind(
       return se::dnn::FORWARD;
     case CudnnConvKind::kForwardActivation:
       return se::dnn::FORWARD_BIAS_ACTIVATION;
+    case CudnnConvKind::kForwardGraph:
+      return se::dnn::FORWARD_GRAPH;
     default:
       break;
   }
@@ -496,15 +498,26 @@ StatusOr<se::dnn::FusedMHAKind> GetDNNFusedMHAKindFromCudnnfMHAKind(
   switch (kind) {
     case CudnnfMHAKind::kScaleBiasMaskSoftmaxDropout:
     case CudnnfMHAKind::kScaleMaskSoftmaxDropout:
-    case CudnnfMHAKind::kSoftmaxDropout:
     case CudnnfMHAKind::kBmmBmm:
     case CudnnfMHAKind::kScaleBiasMaskSoftmax:
     case CudnnfMHAKind::kScaleMaskSoftmax:
     case CudnnfMHAKind::kScaleBiasSoftmax:
     case CudnnfMHAKind::kScaleBiasSoftmaxDropout:
       return se::dnn::FusedMHAKind::BMM1_OUTPUT_INPUT_TYPE;
+    case CudnnfMHAKind::kSoftmaxDropout:
     case CudnnfMHAKind::kSoftmax:
       return se::dnn::FusedMHAKind::BMM1_OUTPUT_FLOAT;
+    // backward
+    case CudnnfMHAKind::kBackwardScaleBiasMaskSoftmaxDropout:
+    case CudnnfMHAKind::kBackwardScaleMaskSoftmaxDropout:
+    case CudnnfMHAKind::kBackwardBmmBmm:
+    case CudnnfMHAKind::kBackwardScaleBiasMaskSoftmax:
+    case CudnnfMHAKind::kBackwardScaleMaskSoftmax:
+    case CudnnfMHAKind::kBackwardScaleBiasSoftmax:
+    case CudnnfMHAKind::kBackwardScaleBiasSoftmaxDropout:
+    case CudnnfMHAKind::kBackwardSoftmaxDropout:
+    case CudnnfMHAKind::kBackwardSoftmax:
+      return se::dnn::FusedMHAKind::BMM1_OUTPUT_INPUT_TYPE;
   }
   return InternalError("Unexpected fMHA kind");
 }
@@ -524,6 +537,10 @@ StatusOr<se::dnn::DataType> GetDNNDataTypeFromPrimitiveType(
       return se::dnn::ToDataType<int32_t>::value;
     case BF16:
       return se::dnn::ToDataType<Eigen::bfloat16>::value;
+    case F8E4M3FN:
+      return se::dnn::ToDataType<tsl::float8_e4m3fn>::value;
+    case F8E5M2:
+      return se::dnn::ToDataType<tsl::float8_e5m2>::value;
     default:
       break;
   }

@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_MLRT_KERNEL_KERNEL_RUNNER_UTILS_H_
 #define TENSORFLOW_CORE_TFRT_MLRT_KERNEL_KERNEL_RUNNER_UTILS_H_
 
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -35,7 +36,8 @@ namespace tf_mlrt {
 void LaunchAsyncOpKernel(const tfrt_stub::OpKernelRunner& kernel_runner,
                          const tfrt_stub::OpKernelRunState& run_state,
                          const OpKernelContext::Params& params,
-                         mlrt::RegisterSpan results);
+                         mlrt::RegisterSpan results,
+                         std::shared_ptr<tensorflow::DeviceBase> custom_device);
 
 inline void SetUpParams(const tfrt_stub::OpKernelRunner& kernel_runner,
                         absl::Span<const TensorValue> input_tf_tensor_values,
@@ -100,7 +102,7 @@ void ExecuteKernelRunner(
       // If the kernel is using custom device, save the current device and
       // change to the custom device.
       device = params.device;
-      params.device = frame.device();
+      params.device = frame.device().get();
     }
 
     auto& op_kernel_context = context.op_kernel_context();
@@ -125,9 +127,13 @@ void ExecuteKernelRunner(
           std::move(*op_kernel_context.mutable_output(i)));
     }
   } else {
-    // TODO(chky): Add custom device support for async opkernel.
+    std::shared_ptr<tensorflow::DeviceBase> custom_device = nullptr;
+    if constexpr (Frame::kUseCustomDevice) {
+      custom_device = frame.device();
+    }
 
-    LaunchAsyncOpKernel(kernel_runner, run_state, params, results);
+    LaunchAsyncOpKernel(kernel_runner, run_state, params, results,
+                        std::move(custom_device));
   }
 
   auto reg_span = args.reg_span();

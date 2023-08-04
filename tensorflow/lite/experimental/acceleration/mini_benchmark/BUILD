@@ -752,7 +752,7 @@ cc_library(
     deps = [
         "//tensorflow/lite/experimental/acceleration/compatibility:android_info",
         "//tensorflow/lite/tools:logging",
-        "//testing/base/public:gunit_for_library_testonly",
+        "@com_google_googletest//:gtest",
     ] + select({
         clean_dep("//tensorflow:android"): [
             ":embedded_runner_executable",

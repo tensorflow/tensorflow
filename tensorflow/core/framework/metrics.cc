@@ -103,6 +103,24 @@ auto* tf_data_experiment_counter = tsl::monitoring::Counter<1>::New(
 auto* tf_data_fingerprint_counter = tsl::monitoring::Counter<1>::New(
     "/tensorflow/data/fingerprint", "tf.data fingerprint", "name");
 
+auto* tf_data_service_compression = tsl::monitoring::Counter<1>::New(
+    "/tensorflow/data/service/compression",
+    "The number of times a tf.data service pipeline performed a "
+    "compression-related action {'disabled_at_runtime', "
+    "'not_disabled_at_runtime'}.",
+    "action");
+
+auto* tf_data_service_get_element_duration_usecs_histogram =
+    tsl::monitoring::Sampler<1>::New(
+        {"/tensorflow/data/getelement_duration",
+         "Microseconds spent generating an element and transferring it over "
+         "the network for the given protocol.",
+         "data_transfer_protocol"},
+        // Power of 2 with bucket count 10 (1024 microseconds) and 10-1000 ms.
+        {tsl::monitoring::Buckets::Explicit({2., 4., 8., 16., 32., 64., 128.,
+                                             256., 512., 1024., 1e4, 1e5,
+                                             1e6})});
+
 auto* tf_data_get_next_duration_usecs_histogram =
     tsl::monitoring::Sampler<0>::New(
         {"/tensorflow/data/getnext_duration",
@@ -247,6 +265,11 @@ auto* tf_data_autotune_stopping_criteria_counter =
         "The number of times each tf.data autotune "
         "algorithm stopping criterion is met.",
         "name");
+
+auto* tf_data_error = tsl::monitoring::Counter<2>::New(
+    "/tensorflow/data/error",
+    "The number of times an error of this type occurred with this status code.",
+    "error_type", "status_code");
 
 auto* parse_dense_feature_counter = tsl::monitoring::Counter<0>::New(
     "/tensorflow/data/dense_feature",
@@ -425,6 +448,20 @@ void RecordTFDataFingerprint(const string& name) {
   tf_data_fingerprint_counter->GetCell(name)->IncrementBy(1);
 }
 
+void RecordTFDataServiceRuntimeCompressionDecision(bool compression_disabled) {
+  tf_data_service_compression
+      ->GetCell(compression_disabled ? "disabled_at_runtime"
+                                     : "not_disabled_at_runtime")
+      ->IncrementBy(1);
+}
+
+void RecordTFDataServiceGetElementDuration(const string& data_transfer_protocol,
+                                           uint64 duration_us) {
+  tf_data_service_get_element_duration_usecs_histogram
+      ->GetCell(data_transfer_protocol)
+      ->Add(duration_us);
+}
+
 void RecordTFDataGetNextDuration(uint64 duration_us) {
   static auto* tf_data_get_next_duration_cell =
       tf_data_get_next_duration_usecs_histogram->GetCell();
@@ -564,6 +601,10 @@ void RecordTFDataAutoShardRewriteBatchSize(
 
 void RecordTFDataAutotuneStoppingCriteria(const string& name) {
   tf_data_autotune_stopping_criteria_counter->GetCell(name)->IncrementBy(1);
+}
+
+void RecordTFDataError(const string& error_type, const string& status_code) {
+  tf_data_error->GetCell(error_type, status_code)->IncrementBy(1);
 }
 
 void RecordParseDenseFeature(int64 num_features) {

@@ -14,6 +14,7 @@
 # ==============================================================================
 
 import collections
+import dataclasses
 import functools
 import itertools
 import multiprocessing.pool
@@ -86,6 +87,7 @@ from tensorflow.python.saved_model import save_options
 from tensorflow.python.saved_model.load import load
 from tensorflow.python.saved_model.save import save
 from tensorflow.python.training import training_ops
+from tensorflow.python.types import trace
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
@@ -161,6 +163,84 @@ class FunctionBenchmark(test.Benchmark):
     duration = time.time() - start_time
 
     self.report_benchmark(iters=n_iters, wall_time=duration / float(n_iters))
+
+
+@dataclasses.dataclass
+class MaskedTensor:
+  mask: bool
+  value: ops.Tensor
+
+  def __tf_flatten__(self):
+    metadata = (self.mask,)
+    components = (self.value,)
+    return metadata, components
+
+  def __tf_unflatten__(self, metadata, leaves):
+    mask = metadata[0]
+    value = leaves[0]
+    return MaskedTensor(mask=mask, value=value)
+
+  def __tf_tracing_type__(self, signature_context):
+    del signature_context
+    return MaskedTensorTraceType(
+        mask=self.mask,
+        value_spec=tensor_lib.TensorSpec.from_tensor(self.value),
+    )
+
+
+class MaskedTensorTraceType(trace.TraceType):
+
+  def __init__(self, mask, value_spec):
+    self.mask = mask
+    self.value_spec = value_spec
+
+  def is_subtype_of(self, other):
+    if not isinstance(other, MaskedTensorTraceType):
+      return False
+
+    return self.value_spec.is_subtype_of(other.value_spec)
+
+  def most_specific_common_supertype(self, others):
+    if not all(isinstance(other, MaskedTensorTraceType) for other in others):
+      return None
+
+    if not all(self.mask == other.mask for other in others):
+      return None
+
+    supertyped_value = self.value_spec.most_specific_common_supertype(
+        [other.value_spec for other in others]
+    )
+    return MaskedTensorTraceType(self.mask, supertyped_value)
+
+  def __eq__(self, other):
+    if not isinstance(other, MaskedTensorTraceType):
+      return False
+
+    return self.mask == other.mask and self.value_spec == other.value_spec
+
+  def __hash__(self):
+    return hash((self.mask, self.value_spec))
+
+  def __repr__(self):
+    return (
+        f'{self.__class__.__name__}(mask={self.mask},'
+        f' value_spec={self.value_spec})'
+    )
+
+  def placeholder_value(self, placeholder_context):
+    return MaskedTensor(
+        self.mask, self.value_spec.placeholder_value(placeholder_context)
+    )
+
+  def _to_tensors(self, value):
+    assert isinstance(value, MaskedTensor)
+    return self.value_spec._to_tensors(value.value)
+
+  def _from_tensors(self, tensors):
+    return MaskedTensor(self.mask, self.value_spec._from_tensors(tensors))
+
+  def _flatten(self):
+    return [self.value_spec]
 
 
 # TODO(mdan): Organize these tests.
@@ -3233,7 +3313,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         return script_ops.eager_py_func(
             func=lambda: array_ops.constant([2.]), inp=(), Tout=dtypes.int32)
 
-    error_pattern = re.compile(r'Graph execution error.*func=lambda', re.DOTALL)
+    error_pattern = re.compile(r'Graph execution error.*test_fn', re.DOTALL)
     with self.assertRaisesRegex(errors.InvalidArgumentError, error_pattern):
       test_fn()
 
@@ -3414,7 +3494,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
   def testMethodExtensionType(self):
 
-    class MaskedTensor(extension_type.ExtensionType):
+    class MaskedTensorExtensionType(extension_type.ExtensionType):
       values: tensor_lib.Tensor
       mask: tensor_lib.Tensor
 
@@ -3431,7 +3511,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
             result += self.values[i]
         return result
 
-    mt = MaskedTensor([1, 2, 3], [True, False, True])
+    mt = MaskedTensorExtensionType([1, 2, 3], [True, False, True])
     self.assertAllEqual(mt.with_default(-1), [1, -1, 3])
     self.assertAllEqual(mt.sum(), 4)
 
@@ -4909,6 +4989,28 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
 
     with self.assertRaisesRegex(ValueError, 'not found'):
       graph._remove_function(func_name)
+
+  def testInputAndOutputDataclass(self):
+    @polymorphic_function.function
+    def f(x):
+      return x
+
+    mt = MaskedTensor(mask=True, value=constant_op.constant([1.0]))
+    result = f(mt)
+    self.assertEqual(result.mask, mt.mask)
+    self.assertAllEqual(result.value, mt.value)
+
+  def testInputAndCreatNewDataclass(self):
+    @polymorphic_function.function
+    def f(x, y):
+      return MaskedTensor(mask=x.mask, value=y.value)
+
+    mt = MaskedTensor(mask=False, value=constant_op.constant([1.0]))
+    mt2 = MaskedTensor(mask=True, value=constant_op.constant([2.0]))
+    result = f(mt, mt2)
+    self.assertEqual(result.mask, mt.mask)
+    self.assertAllEqual(result.value, mt2.value)
+
 
 if __name__ == '__main__':
   ops.enable_eager_execution()

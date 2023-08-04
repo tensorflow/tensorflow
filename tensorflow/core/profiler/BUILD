@@ -1,3 +1,4 @@
+# Placeholder: load py_proto_library
 # copybara:uncomment(oss-unused) load("//net/grpc/go/build_defs:go_grpc_library.bzl", "go_grpc_library")
 load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
@@ -123,6 +124,7 @@ tf_cc_binary(
     visibility = ["//visibility:public"],
     deps = [
         ":protos_all_cc",
+        "//tensorflow/c:tf_status",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_proto_parsing",

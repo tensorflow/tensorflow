@@ -44,6 +44,7 @@ cc_library(
         "//tensorflow/compiler/xla/pjrt:pjrt_future",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/tsl/platform:errors",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
@@ -65,6 +66,7 @@ cc_library(
         "//tensorflow/compiler/xla/pjrt:pjrt_future",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -106,6 +108,20 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "pjrt_c_api_test_base",
+    testonly = 1,
+    srcs = ["pjrt_c_api_test_base.cc"],
+    hdrs = ["pjrt_c_api_test_base.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pjrt_c_api_hdrs",
+        ":pjrt_c_api_wrapper_impl",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 xla_cc_test(
     name = "pjrt_c_api_gpu_test",
     srcs = ["pjrt_c_api_gpu_test.cc"],
@@ -114,6 +130,7 @@ xla_cc_test(
         ":pjrt_c_api_gpu",
         ":pjrt_c_api_hdrs",
         ":pjrt_c_api_helpers",
+        ":pjrt_c_api_test_base",
         ":pjrt_c_api_test_common",
         ":pjrt_c_api_wrapper_impl",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
@@ -143,10 +160,8 @@ xla_cc_test(
     srcs = ["pjrt_c_api_cpu_test.cc"],
     deps = [
         ":pjrt_c_api_cpu",
-        ":pjrt_c_api_hdrs",
         ":pjrt_c_api_test_common",
         ":pjrt_c_api_wrapper_impl",
-        "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -160,6 +175,7 @@ cc_library(
     deps = [
         ":pjrt_c_api_hdrs",
         ":pjrt_c_api_helpers",
+        ":pjrt_c_api_test_base",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",

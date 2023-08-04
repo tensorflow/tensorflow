@@ -17,11 +17,13 @@ limitations under the License.
 #include <stdint.h>
 
 #include <cstddef>
+#include <iostream>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 
+#include "google/protobuf/text_format.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Func/Transforms/FuncConversions.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -32,7 +34,6 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "third_party/protobuf/text_format.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
 #include "tensorflow/compiler/mlir/tfrt/constants.h"
@@ -399,7 +400,7 @@ class ExecuteOpConversion final : public mlir::ConversionPattern {
     CanonicalizeFunctionNameInNodeDef(symbol_table_, node_def);
 
     std::string node_def_text;
-    proto2::TextFormat::PrintToString(node_def, &node_def_text);
+    google::protobuf::TextFormat::PrintToString(node_def, &node_def_text);
 
     auto op_kernel_runner = op_kernel_cache_.GetOrCreate(
         tfrt::Location(nullptr, execute_key), node_def.op(), node_def.device(),
@@ -410,7 +411,10 @@ class ExecuteOpConversion final : public mlir::ConversionPattern {
         },
         fallback_state_.device_manager(),
         fallback_state_.process_function_library_runtime());
-    LOG_IF(ERROR, !op_kernel_runner.ok()) << op_kernel_runner.status();
+    // TODO(290630314): Use LOG_IF when absl logging is available
+    if (!op_kernel_runner.ok()) {
+      std::cerr << op_kernel_runner.status() << "\n";
+    }
 
     mlir::Value device;
     if (auto custom_device =
@@ -717,7 +721,7 @@ class BatchFunctionOpConversion
     const auto &node_def = **statusor_node_def;
 
     std::string node_def_text;
-    proto2::TextFormat::PrintToString(node_def, &node_def_text);
+    google::protobuf::TextFormat::PrintToString(node_def, &node_def_text);
 
     llvm::SmallVector<mlir::Type, 4> result_types(
         op->getNumResults(), rewriter.getType<mlrt::compiler::FutureType>());

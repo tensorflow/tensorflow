@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <unordered_set>
 
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
@@ -25,8 +26,9 @@ limitations under the License.
 namespace tensorflow::tfrt_stub {
 struct AotOptions {
   AotOptions();
+  std::unordered_set<std::string> tags = {};
 
-  std::unique_ptr<GraphExecutionOptions> graph_execution_options;
+  std::shared_ptr<GraphExecutionOptions> graph_execution_options;
 };
 
 // AOT Compiles saved_model in input_model_dir, writing output
@@ -34,7 +36,7 @@ struct AotOptions {
 // "{input_model_dir}/aot_packages" if output dir provided. Warmup requests
 // should be present in input_model_dir
 Status AotCompileSavedModel(absl::string_view input_model_dir,
-                            const AotOptions& aot_options = {},
+                            AotOptions aot_options = {},
                             absl::string_view output_model_dir = "");
 
 }  // namespace tensorflow::tfrt_stub

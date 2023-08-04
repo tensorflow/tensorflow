@@ -40,7 +40,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_performance_model.h"
-#include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/instruction_fusion.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -70,11 +69,9 @@ class GpuPriorityFusionQueue : public FusionQueue {
 
  public:
   GpuPriorityFusionQueue(
-      HloComputation* computation, const GpuDeviceInfo& d,
-      GpuHloCostAnalysis* cost_analysis,
+      HloComputation* computation, GpuHloCostAnalysis* cost_analysis,
       const std::function<bool(HloInstruction*, int64_t)>& can_fuse)
       : computation_(computation),
-        gpu_device_info_(d),
         cost_analysis_(cost_analysis),
         can_fuse_(can_fuse) {
     VLOG(2) << "Running full HLO cost analysis for " << computation_->name();
@@ -119,12 +116,13 @@ class GpuPriorityFusionQueue : public FusionQueue {
     }
 
     auto next_consumer = current_consumers_.back();
+    int64_t producer_operand_index =
+        next_consumer->operand_index(current_producer_);
     current_consumers_.pop_back();
     VLOG(5) << "next: " << next_consumer->name() << "(" << next_consumer
             << ") + " << current_producer_->name() << "(" << current_producer_
             << ")";
-    auto indices = next_consumer->OperandIndices(current_producer_);
-    return {next_consumer, {indices.begin(), indices.end()}};
+    return {next_consumer, {producer_operand_index}};
   }
 
   // Calculates the compute cost and free computation of the new fusion in the
@@ -243,26 +241,19 @@ class GpuPriorityFusionQueue : public FusionQueue {
     }
 
     GpuPerformanceModel::RunTimes run_times =
-        GpuPerformanceModel::EstimateRunTimes(
-            producer, cost_analysis_, gpu_device_info_,
-            use_experimental_block_size, std::nullopt, fusible_users);
+        GpuPerformanceModel::EstimateRunTimes(producer, cost_analysis_,
+                                              use_experimental_block_size,
+                                              std::nullopt, fusible_users);
     return absl::ToInt64Nanoseconds(run_times.time_unfused -
                                     run_times.time_fused);
   }
 
   std::vector<HloInstruction*> GetFusibleUsers(HloInstruction* producer) const {
-    auto is_fusible = [&](HloInstruction* user) {
-      for (int64_t i = 0; i < user->operand_count(); ++i) {
-        if (user->operand(i) == producer && can_fuse_(user, i)) {
-          return true;
-        }
-      }
-      return false;
-    };
     std::vector<HloInstruction*> fusible_users;
-    std::vector<HloInstruction*> prod_users(producer->users());
-    for (auto user : prod_users) {
-      if (is_fusible(user)) {
+    for (auto user : producer->users()) {
+      int64_t operand_index = user->operand_index(producer);
+
+      if (can_fuse_(user, operand_index)) {
         fusible_users.push_back(user);
       }
     }
@@ -272,9 +263,6 @@ class GpuPriorityFusionQueue : public FusionQueue {
 
   // Store computation for cost analysis.
   HloComputation* computation_;
-
-  // Data that describes the execution target.
-  const GpuDeviceInfo gpu_device_info_;
 
   // Reference to cost model that defines priorities in the queue.
   GpuHloCostAnalysis* cost_analysis_;
@@ -374,7 +362,8 @@ FusionDecision GpuPriorityFusion::ShouldFuse(HloInstruction* consumer,
   auto producer = consumer->operand(operand_index);
 
   // The following checks are potentially expensive.
-  if (auto fusible = FusionFitsInBudget(*consumer, *producer, device_info_,
+  if (auto fusible = FusionFitsInBudget(*consumer, *producer,
+                                        *cost_analysis_->device_info_,
                                         /*is_consumer_producer_fusion=*/true);
       !fusible) {
     return fusible;
@@ -408,14 +397,14 @@ HloInstruction* GpuPriorityFusion::FuseInstruction(
     result = InstructionFusion::FuseInstruction(fusion_instruction, producer);
   }
   GpuPerformanceModel::RecordEstimatedRunTime(fusion_instruction,
-                                              &*cost_analysis_, device_info_);
+                                              &*cost_analysis_);
   return result;
 }
 
 std::unique_ptr<FusionQueue> GpuPriorityFusion::GetFusionQueue(
     HloComputation* computation) {
   return std::unique_ptr<FusionQueue>(new GpuPriorityFusionQueue(
-      computation, device_info_, &*cost_analysis_,
+      computation, &*cost_analysis_,
       [this](HloInstruction* consumer, int64_t operand_index) {
         return ShouldFuse(consumer, operand_index).CanFuse();
       }));

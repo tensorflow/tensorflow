@@ -138,6 +138,11 @@ def FusedMhaDagSoftmax : I32EnumAttrCase<"Softmax", 6>;
 def FusedMhaDagScaleBiasSoftmaxDropout : I32EnumAttrCase<"ScaleBiasSoftmaxDropout", 7>;
 def FusedMhaDagScaleBiasSoftmax : I32EnumAttrCase<"ScaleBiasSoftmax", 8>;
 
+def FusedMhaBackwardDagScaleBiasSoftmaxDropout : I32EnumAttrCase<"BackwardScaleBiasSoftmaxDropout", 0>;
+def FusedMhaBackwardDagScaleBiasSoftmax : I32EnumAttrCase<"BackwardScaleBiasSoftmax", 1>;
+def FusedMhaBackwardDagScaleBiasMaskSoftmax : I32EnumAttrCase<"BackwardScaleBiasMaskSoftmax", 2>;
+def FusedMhaBackwardDagScaleBiasMaskSoftmaxDropout : I32EnumAttrCase<"BackwardScaleBiasMaskSoftmaxDropout", 3>;
+
 def FusedMhaDagSignature: I32EnumAttr<"FusedMhaDagSignature",
     "DAG configuration for Fused Multi-Headed Attention",
     [FusedMhaDagDefault, 
@@ -153,6 +158,17 @@ def FusedMhaDagSignature: I32EnumAttr<"FusedMhaDagSignature",
   let cppNamespace = "::mlir::lmhlo_gpu";
 }
 
-def FusedMhaDagSignatureAttr : EnumAttr<LmhloGpuDialect, FusedMhaDagSignature, "fused_mha_dag">;
+def FusedMhaBackwardDagSignature: I32EnumAttr<"FusedMhaBackwardDagSignature",
+    "DAG configuration for Fused Multi-Headed Attention Backward",
+    [
+    FusedMhaBackwardDagScaleBiasSoftmaxDropout,
+    FusedMhaBackwardDagScaleBiasSoftmax,
+    FusedMhaBackwardDagScaleBiasMaskSoftmax,
+    FusedMhaBackwardDagScaleBiasMaskSoftmaxDropout]> {
+  let genSpecializedAttr = 0;
+  let cppNamespace = "::mlir::lmhlo_gpu";
+}
 
+def FusedMhaDagSignatureAttr : EnumAttr<LmhloGpuDialect, FusedMhaDagSignature, "fused_mha_dag">;
+def FusedMhaBackwardDagSignatureAttr : EnumAttr<LmhloGpuDialect, FusedMhaBackwardDagSignature, "fused_mha_backward_dag">;
 #endif // LHLO_GPU_OPS_ENUMS

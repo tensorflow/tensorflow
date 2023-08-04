@@ -485,16 +485,25 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
         }
         return std::vector<int64_t>(location->begin(), location->end());
       });
+
+  py::enum_<Layout::LayoutType>(m, "LayoutType")
+      .value("STATIC", Layout::LayoutType::kStatic)
+      .value("PARTED", Layout::LayoutType::kParted)
+      .value("SINGLE_DEVICE", Layout::LayoutType::kSingleDevice);
+
   py::class_<Layout>(m, "Layout")
-      .def(py::init([](const std::vector<std::string>& sharding_specs,
+      .def(py::init([](Layout& layout) { return layout; }), py::arg("layout"),
+           "Create a copy of a layout.")
+      .def(py::init([](Layout::LayoutType type,
+                       const std::vector<std::string>& sharding_specs,
                        const Mesh& mesh) {
-             auto layout = Layout::GetLayout(sharding_specs, mesh);
+             auto layout = Layout::GetLayout(type, sharding_specs, mesh);
              if (!layout.ok()) {
                throw py::value_error(std::string(layout.status().message()));
              }
              return *layout;
            }),
-           py::arg("sharding_specs"), py::arg("mesh"))
+           py::arg("type"), py::arg("sharding_specs"), py::arg("mesh"))
       .def(py::init([](const tensorflow::dtensor::LayoutProto& proto) {
              auto layout = Layout::FromProto(proto);
              if (!layout.ok()) {
@@ -537,6 +546,8 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
           },
           "Returns the LayoutProto protobuf message.")
       .def("to_string", &Layout::ToString)
+      .def("to_parted", &Layout::ToParted)
+      .def_property_readonly("type", &Layout::type)
       .def_property_readonly("sharding_specs", &Layout::sharding_spec_strs)
       .def_property_readonly("rank", &Layout::rank)
       .def_property_readonly("mesh", &Layout::mesh)

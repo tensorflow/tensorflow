@@ -756,13 +756,14 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -789,6 +790,7 @@ cc_library(
     hdrs = ["sharding_util.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/compiler/mlir/tensorflow:xla_sharding_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla/client:sharding_builder",
         "//tensorflow/core:core_cpu",
@@ -873,6 +875,7 @@ tf_cc_test(
 tf_cc_test(
     name = "tf2xla_test",
     srcs = ["tf2xla_test.cc"],
+    tags = ["no_cuda_on_cpu_tap"],
     deps = [
         ":tf2xla",
         ":tf2xla_proto_cc",
@@ -923,6 +926,7 @@ tf_cc_test(
         "xla_compiler_test.cc",
         "xla_expression_test.cc",
     ],
+    tags = ["no_cuda_on_cpu_tap"],
     deps = [
         ":common",
         ":layout_util",

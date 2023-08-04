@@ -698,10 +698,14 @@ std::string HloDotDumper::DumpSubcomputation(
     const char* fillcolor;
     const char* strokecolor;
 
-    if (!highlight && parent_instr->has_statistics()) {
-      // Use color from the statistic
-      fillcolor =
-          NodeFillColorForStatistic(parent_instr->statistic_to_visualize());
+    if (!highlight && (parent_instr->module_has_statistics() ||
+                       parent_instr->has_statistics())) {
+      // Use color from the statistic if available, otherwise default to
+      // coloring all other nodes gray when any other nodes has statistics
+      fillcolor = parent_instr->has_statistics()
+                      ? NodeFillColorForStatistic(
+                            parent_instr->statistic_to_visualize())
+                      : "#f5f5f5";
       strokecolor = "#c2c2c2";
     } else if (debug_options_.xla_hlo_graph_sharding_color() && !highlight) {
       // Use the sharding color, if the node isn't highlighted.
@@ -890,6 +894,11 @@ std::string HloDotDumper::DumpInstruction(const HloInstruction* instr) {
     node_colors.fill_color = NodeFillColorForStatistic(statistic_to_visualize);
     node_colors.stroke_color = "#c2c2c2";
     node_colors.font_color = NodeFontColorForStatistic(statistic_to_visualize);
+  } else if (instr->module_has_statistics()) {
+    // all other nodes without statistics must be gray
+    node_colors.fill_color = "#f5f5f5";
+    node_colors.stroke_color = "#c2c2c2";
+    node_colors.font_color = "black";
   }
 
   // Build the node style
@@ -1252,6 +1261,21 @@ std::string HloDotDumper::GetInstructionNodeMetadata(
       instr->metadata().source_line() != 0) {
     lines.push_back(StrFormat("source: %s:%d", instr->metadata().source_file(),
                               instr->metadata().source_line()));
+  }
+  if (instr->metadata().stack_frame_id() != 0) {
+    auto hlo_module = instr->parent()->parent();
+    int frame_id = instr->metadata().stack_frame_id();
+    while (frame_id != 0) {
+      HloModule::StackFrame frame = hlo_module->get_stack_frame(frame_id);
+      if (frame.empty()) {
+        break;
+      }
+      frame_id = frame.parent_frame_id;
+
+      lines.push_back(StrFormat(
+          "%s:%s:%d%s", frame.file_name, frame.function_name, frame.line,
+          frame.column == 0 ? "" : StrFormat(":%d", frame.column)));
+    }
   }
 
   return StrJoin(lines, "\n");

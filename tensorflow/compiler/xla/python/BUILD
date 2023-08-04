@@ -189,6 +189,7 @@ cc_library(
     features = ["-use_header_modules"],
     deps = [
         "//tensorflow/compiler/xla:status",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -565,6 +566,7 @@ cc_library(
         ":jax_jit",
         ":py_client",
         ":python_utils",
+        ":pytree",
         ":status_casters",
         ":util",
         "//tensorflow/compiler/xla/pjrt:lru_cache",
@@ -592,6 +594,7 @@ cc_library(
         ":jax_jit",
         ":py_client",
         ":python_utils",
+        ":pytree",
         ":status_casters",
         ":types",
         ":util",
@@ -777,11 +780,11 @@ cc_library(
     deps = [
         ":status_casters",
         ":types",
+        ":xplane_to_profile_instructions",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla/backends/profiler:profiler_backends",
         "//tensorflow/compiler/xla/backends/profiler/cpu:python_tracer",
         "//tensorflow/compiler/xla/python/profiler/internal:traceme_wrapper",
-        "//tensorflow/tsl/profiler/convert:xplane_to_profile_instructions",
         "//tensorflow/tsl/profiler/lib:profiler_session",
         "//tensorflow/tsl/profiler/rpc:profiler_server_impl",
         "//tensorflow/tsl/profiler/rpc/client:capture_profile",
@@ -1041,6 +1044,7 @@ tsl_pybind_extension(
     ] + select({
         ":gpu_enabled": [
             "//tensorflow/compiler/xla/pjrt/gpu:se_gpu_pjrt_client",
+            "//tensorflow/tsl/platform/cloud:gcs_file_system",
         ],
         "//conditions:default": [],
     }) + select({
@@ -1051,8 +1055,53 @@ tsl_pybind_extension(
     }) + select({
         ":tpu_enabled": [
             "//tensorflow/compiler/xla/pjrt:tpu_client",
-            "//tensorflow/compiler/xla/stream_executor/tpu:tpu_initializer_helper",
+            "//tensorflow/compiler/xla/stream_executor/tpu:tpu_initializer_framework_helper",
         ],
         "//conditions:default": [],
     }),
+)
+
+cc_library(
+    name = "xplane_to_profile_instructions",
+    srcs = ["xplane_to_profile_instructions.cc"],
+    hdrs = ["xplane_to_profile_instructions.h"],
+    deps = [
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:xla_proto_cc",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:types",
+        "//tensorflow/tsl/profiler/convert:xla_op_utils",
+        "//tensorflow/tsl/profiler/protobuf:profiled_instructions_proto_cc",
+        "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/tsl/profiler/utils:file_system_utils",
+        "//tensorflow/tsl/profiler/utils:tf_xplane_visitor",
+        "//tensorflow/tsl/profiler/utils:xplane_schema",
+        "//tensorflow/tsl/profiler/utils:xplane_utils",
+        "//tensorflow/tsl/profiler/utils:xplane_visitor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+xla_cc_test(
+    name = "xplane_to_profile_instructions_test",
+    srcs = ["xplane_to_profile_instructions_test.cc"],
+    deps = [
+        ":xplane_to_profile_instructions",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
+        "//tensorflow/compiler/xla/tests:verified_hlo_module",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
+        "//tensorflow/tsl/profiler/convert:xla_op_utils",
+        "//tensorflow/tsl/profiler/protobuf:profiled_instructions_proto_cc_impl",
+        "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/tsl/profiler/rpc/client:save_profile",
+        "//tensorflow/tsl/profiler/utils:file_system_utils",
+        "//tensorflow/tsl/profiler/utils:xplane_builder",
+        "//tensorflow/tsl/profiler/utils:xplane_schema",
+    ],
 )

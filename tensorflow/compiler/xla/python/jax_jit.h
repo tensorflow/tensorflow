@@ -222,9 +222,17 @@ xla::Status ParseArguments(absl::Span<PyObject* const> positional_args,
                            pybind11::handle kwnames,
                            absl::Span<int const> static_argnums,
                            absl::Span<pybind11::str const> static_argnames,
+                           xla::PyTreeRegistry* pytree_registry,
                            ParsedArgumentsAsBuffers& arguments);
 
 // The function to call in `xla.cc` to add the bindings for this module.
+//
+// pybind11-index-annotation BEGIN
+// refs {
+//   module_path: "tensorflow/compiler/xla/python/xla.cc"
+//   module_arg {}
+// }
+// pybind11-index-annotation END
 void BuildJaxjitSubmodule(pybind11::module& m);
 
 }  // namespace jax

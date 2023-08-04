@@ -90,6 +90,13 @@ xla::Status ApplyTransferGuardToDeviceToHost(
     absl::FunctionRef<std::string()> formatter);
 
 // The function to call in `xla.cc` to add the bindings for this module.
+//
+// pybind11-index-annotation BEGIN
+// refs {
+//   module_path: "tensorflow/compiler/xla/python/xla.cc"
+//   module_arg {}
+// }
+// pybind11-index-annotation END
 void BuildTransferGuardSubmodule(pybind11::module& m);
 
 }  // namespace jax

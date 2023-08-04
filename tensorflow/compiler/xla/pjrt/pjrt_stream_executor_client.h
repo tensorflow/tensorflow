@@ -157,6 +157,10 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
 
   Status TransferFromOutfeed(MutableBorrowingLiteral literal) override;
 
+  absl::Span<PjRtMemorySpace* const> memory_spaces() const override;
+
+  StatusOr<PjRtMemorySpace*> default_memory_space() const override;
+
   std::unique_ptr<ScopedAsyncTrackingEvent> CreateAsyncTrackingEvent(
       absl::string_view description) const override {
     return nullptr;
@@ -203,6 +207,8 @@ class PjRtStreamExecutorClient : public PjRtClient {
 
   StatusOr<PjRtDevice*> LookupAddressableDevice(
       int local_hardware_id) const override;
+
+  absl::Span<PjRtMemorySpace* const> memory_spaces() const override;
 
   PjRtPlatformId platform_id() const override { return platform_id_; }
   absl::string_view platform_name() const override { return platform_name_; }
@@ -253,6 +259,9 @@ class PjRtStreamExecutorClient : public PjRtClient {
   StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
       const Shape& shape, PjRtDevice* device,
       std::shared_ptr<BufferSequencingEvent> definition_event);
+
+  StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
+      Status error, const Shape& shape, PjRtDevice* device) override;
 
   StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
   CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
@@ -807,6 +816,9 @@ class PjRtStreamExecutorExecutable : public PjRtLoadedExecutable {
 
   // Return an HloModule per partition.
   StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
+      const override;
+
+  StatusOr<std::vector<std::vector<absl::string_view>>> GetOutputMemoryKinds()
       const override;
 
   using PjRtLoadedExecutable::Execute;

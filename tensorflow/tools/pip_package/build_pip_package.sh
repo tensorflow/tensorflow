@@ -47,6 +47,22 @@ function cp_external() {
   cp "${src_dir}/local_config_cuda/cuda/cuda/cuda_config.h" "${dest_dir}/local_config_cuda/cuda/cuda/"
 }
 
+function cp_local_config_python() {
+  local src_dir=$1
+  local dest_dir=$2
+  pushd .
+  cd "$src_dir"
+  mkdir -p "${dest_dir}/local_config_python/numpy_include/"
+  cp -r "pypi_numpy/site-packages/numpy/core/include/numpy" "${dest_dir}/local_config_python/numpy_include/"
+  mkdir -p "${dest_dir}/local_config_python/python_include/"
+  if is_windows; then
+    cp -r python_*/include/* "${dest_dir}/local_config_python/python_include/"
+  else
+    cp -r python_*/include/python*/* "${dest_dir}/local_config_python/python_include/"
+  fi
+  popd
+}
+
 function copy_xla_aot_runtime_sources() {
   local src_dir=$1
   local dst_dir=$2
@@ -158,6 +174,9 @@ function prepare_src() {
     cp_external \
       bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles \
       "${EXTERNAL_INCLUDES}/"
+    cp_local_config_python \
+      bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles \
+      "${EXTERNAL_INCLUDES}/"
     copy_xla_aot_runtime_sources \
       bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles/org_tensorflow \
       "${XLA_AOT_RUNTIME_SOURCES}/"
@@ -201,9 +220,15 @@ function prepare_src() {
       cp_external \
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/external \
         "${EXTERNAL_INCLUDES}"
+      cp_local_config_python \
+        bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/external \
+        "${EXTERNAL_INCLUDES}"
     else
       # New-style runfiles structure (--nolegacy_external_runfiles).
       cp_external \
+        bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles \
+        "${EXTERNAL_INCLUDES}"
+      cp_local_config_python \
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles \
         "${EXTERNAL_INCLUDES}"
     fi

@@ -51,7 +51,6 @@ namespace {
 constexpr char kDeviceAttr[] = "device";
 constexpr char kReplicaIdAttr[] = "_xla_replica_id";
 constexpr char kDeviceOrdinalAttr[] = "device_ordinal";
-constexpr char kTPUCore0[] = "TPU_REPLICATED_CORE_0";
 
 #define GEN_PASS_DEF_REPLICATETOISLANDPASS
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
@@ -71,25 +70,31 @@ bool RequiresReplicaIDAttribute(Operation* op) {
                    TF::EnqueueTPUEmbeddingArbitraryTensorBatchOp>(op);
 }
 
-// Collects TPU device ordinal for outside compilation communication ops. This
-// currently assumes outside compilation only uses `TPU_REPLICATED_CORE_0`
-// aliased device for the device computation.
-std::optional<int64_t> GetDeviceOrdinal(
-    const std::optional<DictionaryAttr>& devices, Location loc,
-    unsigned replica_id) {
-  int64_t device_ordinal = 0;
-  if (devices.has_value()) {
-    if (auto tpu_replica_0 = devices.value().get(kTPUCore0)) {
-      llvm::StringRef tpu_device = tpu_replica_0.cast<ArrayAttr>()[replica_id]
-                                       .cast<StringAttr>()
-                                       .getValue();
-      if (succeeded(tensorflow::GetDeviceOrdinalFromDeviceString(
-              loc, tpu_device, &device_ordinal))) {
-        return std::optional<int64_t>(device_ordinal);
-      }
-    }
+// Returns the device ordinal (`device_ordinal`) for a replica (`replica_id`)
+// and logical core (`logical_core`).
+// `replica_id` is the index of the ancestor ReplicateOp in [0, num_replicas).
+// `logical_core` is the index of the TPU core in [0, num_cores_per_replica).
+// `device_ordinal` is the index of the TPU core relative to its host.
+LogicalResult GetDeviceOrdinal(const std::optional<DictionaryAttr>& devices,
+                               const unsigned replica_id,
+                               const uint64_t logical_core,
+                               int64_t& device_ordinal, Operation* op) {
+  if (!devices.has_value()) {
+    return op->emitOpError()
+           << "devices attribute is not present in 'tf.device.replicate' op";
   }
-  return std::nullopt;
+  auto logical_core_name =
+      tensorflow::GetDeviceAliasForLogicalCore(logical_core);
+  auto tpu_replica = devices.value().get(logical_core_name);
+  if (!tpu_replica) {
+    return op->emitOpError()
+           << "requires device ordinal from device " << logical_core_name
+           << " to be present in 'tf.device.replicate' op";
+  }
+  llvm::StringRef tpu_device =
+      tpu_replica.cast<ArrayAttr>()[replica_id].cast<StringAttr>().getValue();
+  return tensorflow::GetDeviceOrdinalFromDeviceString(op->getLoc(), tpu_device,
+                                                      &device_ordinal);
 }
 
 // Updates replica variant ops in a region based on replica `replica_id`.
@@ -101,26 +106,24 @@ std::optional<int64_t> GetDeviceOrdinal(
 LogicalResult UpdateRegionReplicateVariantOps(
     OpBuilder& builder, Location loc, Region& region, int replica_id,
     const std::optional<DictionaryAttr>& devices) {
-  std::optional<int64_t> device_ordinal =
-      GetDeviceOrdinal(devices, loc, replica_id);
-
   auto result = region.walk([&](Operation* op) -> WalkResult {
     if (RequiresReplicaIDAttribute(op)) {
       op->setAttr(kReplicaIdAttr, builder.getI64IntegerAttr(replica_id));
       return WalkResult::advance();
     }
 
-    if (isa<TF::_TPUDeviceOrdinalPlaceholderOp>(op)) {
-      if (!device_ordinal.has_value())
-        return op->emitOpError()
-               << "requires device ordinal from device " << kTPUCore0
-               << " to be present in 'tf.device.replicate' op";
+    if (auto placeholder = dyn_cast<TF::_TPUDeviceOrdinalPlaceholderOp>(op)) {
+      int64_t device_ordinal;
+      if (failed(GetDeviceOrdinal(devices, replica_id,
+                                  placeholder.getLogicalCore(), device_ordinal,
+                                  op)))
+        return failure();
 
       OpBuilder builder(op);
       auto const_op = builder.create<TF::ConstOp>(
           op->getLoc(), DenseIntElementsAttr::get(
                             RankedTensorType::get({}, builder.getI64Type()),
-                            {device_ordinal.value()}));
+                            {device_ordinal}));
       op->replaceAllUsesWith(const_op);
       op->erase();
       return WalkResult::advance();

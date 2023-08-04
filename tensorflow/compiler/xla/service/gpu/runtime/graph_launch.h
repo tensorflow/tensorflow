@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <atomic>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -28,9 +29,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
 
-#if GOOGLE_CUDA
-#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_graph.h"
-#endif  // #if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_graph.h"
+#endif  // #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace xla {
 namespace gpu {
@@ -47,37 +48,37 @@ class StreamExecutorGraphInstances;  // Forward declare
 class CapturedFunctionExecutionCount
     : public runtime::StateVector<std::unique_ptr<std::atomic<uint64_t>>> {};
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-// A state vector that owns all instantiated CUDA graphs. Graph capture function
+// A state vector that owns all instantiated GPU graphs. Graph capture function
 // ordinal is the key in this container.
 class StreamExecutorGraphInstances
     : public runtime::StateVector<GraphInstance> {};
 
-// Instantiated CUDA graph instance guarded with a mutex for exclusive access.
+// Instantiated GPU graph instance guarded with a mutex for exclusive access.
 struct GraphInstance {
-  GraphInstance(size_t ptr_hash, se::gpu::OwnedCudaGraphExec exec)
+  GraphInstance(size_t ptr_hash, se::gpu::OwnedGpuGraphExec exec)
       : ptr_hash(ptr_hash), exec(std::move(exec)), mutex(new absl::Mutex) {}
 
   // Graph instance is fully identified by the hash of its pointer arguments
   // because currently it's guaranteed that all shapes and launch dimensions
   // will be constant from run to run.
   size_t ptr_hash ABSL_GUARDED_BY(*mutex);
-  se::gpu::OwnedCudaGraphExec exec ABSL_GUARDED_BY(*mutex);
+  se::gpu::OwnedGpuGraphExec exec ABSL_GUARDED_BY(*mutex);
 
   // Access to a graph instance must be synchronized, because we potentially can
   // run concurrent graph instance updates.
   std::unique_ptr<absl::Mutex> mutex;
 };
 
-#else  // #if !GOOGLE_CUDA
+#else  // #if !GOOGLE_CUDA && !TENSORFLOW_USE_ROCM
 
-// Define empty struct and empty state when CUDA is not enabled.
+// Define empty struct and empty state when GPU is not enabled.
 struct GraphInstance {};
 class StreamExecutorGraphInstances
     : public runtime::StateVector<GraphInstance> {};
 
-#endif  // #if GOOGLE_CUDA
+#endif  // #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Xla executable keeps a mapping from stream executors to graph instances.
 //
@@ -87,48 +88,32 @@ class StreamExecutorGraphInstances
 // end up with thousands of unused (or rarely used) graphs in device memory.
 class GraphInstances {
  public:
+  struct Impl;
+
   GraphInstances(std::string module_name, int64_t num_graphs);
   ~GraphInstances();
 
-  StreamExecutorGraphInstances* operator()(se::StreamExecutor* executor);
+  std::shared_ptr<StreamExecutorGraphInstances> operator()(
+      se::StreamExecutor* executor);
 
   // Instantiates all Gpu graphs defined by the given executable using user
   // provided run options. This guarantees that once we start execution, all Gpu
   // graphs are ready, and will only require cheap update operation and will not
   // require allocating new resources (we avoid non deterministic OOM errors).
-  Status InstantiateAllGraphs(const ServiceExecutableRunOptions* run_options,
-                              const runtime::Executable& executable,
-                              const runtime::CustomCall::UserData& user_data,
-                              void* ptr);
+  //
+  // If timeout is not nullopt it will evict all previously instantiated graphs
+  // that were used more than `eviction_timeout_seconds` seconds ago.
+  Status InstantiateAllGraphs(
+      const ServiceExecutableRunOptions* run_options,
+      const runtime::Executable& executable,
+      const runtime::CustomCall::UserData& user_data, void* ptr,
+      std::optional<uint64_t> eviction_timeout_seconds = std::nullopt);
 
   // Returns true if all Gpu graphs were already instantiated.
   bool InstantiatedAllGraphs(const ServiceExecutableRunOptions* run_options,
                              const runtime::Executable& executable);
 
  private:
-  struct State {
-    // A flag signalling if `InstantiateAllGraphs` was already called and we
-    // have all Gpu graph instantiated ahead of time.
-    bool instantiated = false;
-
-    // Last time graph instances were used by a particular stream executor.
-    uint64_t last_use_micros = 0;
-
-    StreamExecutorGraphInstances instances;
-  };
-
-  struct Impl {
-    // XLA module name that owns graph instances. We use it only to produce logs
-    // that can be attributed back to XLA executables.
-    std::string module_name;
-
-    // Number of graphs in the parent module.
-    int64_t num_graphs;
-
-    mutable absl::Mutex mu;
-    absl::node_hash_map<se::StreamExecutor*, State> graphs ABSL_GUARDED_BY(mu);
-  };
-
   std::shared_ptr<Impl> impl_;
 };
 
