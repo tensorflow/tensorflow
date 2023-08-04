@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/python/py_array.h"
 
+#include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <new>
@@ -131,20 +132,6 @@ ifrt::MemoryKind CreateIfRtMemoryKindFromSharding(const py::object& sharding) {
     return ifrt::MemoryKind();
   }
   return ifrt::MemoryKind(py::cast<std::string>(py_memory_kind));
-}
-
-// Returns if the environment variable "JAX_FETCH_MEMORY_KIND_ON_EXECUTABLE" has
-// a non-empty string, indicating that JAX should get the memory_kind from the
-// executable and apply it to output arrays from executions.
-bool GetJaxFetchMemoryKindOnExecutable() {
-  static bool fetch_memory_kind_on_executable = [] {
-    char* v = getenv("JAX_FETCH_MEMORY_KIND_ON_EXECUTABLE");
-    if (v == nullptr || *v == '\0') {
-      return false;
-    }
-    return true;
-  }();
-  return fetch_memory_kind_on_executable;
 }
 
 struct PyArrayObject {
@@ -346,10 +333,10 @@ PyArray PyArray::MakeFromSingleDeviceArray(
   auto aval = MakeShapedArrayCached(key);
   auto dtype = PrimitiveTypeToDtype(key.dtype).value();
   const ifrt::MemoryKind memory_kind = ifrt_array->sharding().memory_kind();
-  auto py_memory_kind = (GetJaxFetchMemoryKindOnExecutable() &&
-                         memory_kind.memory_kind().has_value())
-                            ? py::object(py::str(*memory_kind.memory_kind()))
-                            : py::none();
+  auto py_memory_kind =
+      (jax::GetJaxEnableMemoryKind() && memory_kind.memory_kind().has_value())
+          ? py::object(py::str(*memory_kind.memory_kind()))
+          : py::none();
   auto sharding = py::cast(std::make_unique<jax::SingleDeviceSharding>(
       py::cast(
           WrapWithClient(py_client, ifrt_array->sharding().devices().front())),

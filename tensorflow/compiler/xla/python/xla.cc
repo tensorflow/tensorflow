@@ -1004,6 +1004,10 @@ PYBIND11_MODULE(xla_extension, m) {
       py::arg("committed") = true, py::arg("force_copy") = false,
       py::arg("host_buffer_semantics") =
           PjRtClient::HostBufferSemantics::kZeroCopy);
+  m.def("canonicalize_memory_kind",
+        [](py::object memory_kind, py::object device) -> py::object {
+          return jax::CanonicalizeMemoryKind(memory_kind, device);
+        });
 }  // NOLINT(readability/fn_size)
 
 }  // namespace xla
