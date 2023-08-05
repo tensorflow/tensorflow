@@ -302,7 +302,6 @@ def if_not_fuchsia(a):
 def if_linux_x86_64(a):
     return select({
         clean_dep("//tensorflow:linux_x86_64"): a,
-        clean_dep("//tensorflow:haswell"): a,
         "//conditions:default": [],
     })
 

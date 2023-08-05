@@ -1,4 +1,3 @@
-load("@bazel_skylib//lib:selects.bzl", "selects")
 load(
     "//tensorflow:tensorflow.bzl",
     "clean_dep",
@@ -196,12 +195,9 @@ tf_cuda_library(
         # Clean up so that PJRT can run on ARM.
         # Also it won't build with WeightWatcher which tracks OSS build binaries.
         # TODO(b/290533709): Clean up this build rule.
-        selects.with_or({
+        select({
             clean_dep("//tensorflow:linux_x86_64_with_weightwatcher"): [],
-            (
-                clean_dep("//tensorflow:linux_x86_64"),
-                clean_dep("//tensorflow:haswell"),
-            ): [
+            clean_dep("//tensorflow:linux_x86_64"): [
                 "//tensorflow/compiler/tf2xla:layout_util",
                 "//tensorflow/compiler/jit:flags",
                 "//tensorflow/compiler/jit:pjrt_device_context",
