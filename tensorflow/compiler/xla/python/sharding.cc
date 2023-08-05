@@ -244,7 +244,7 @@ void RegisterSharding(py::module& m) {
            py::arg("_parsed_pspec") = py::none())
       .def_property_readonly("mesh", &NamedSharding::mesh)
       .def_property_readonly("spec", &NamedSharding::spec)
-      .def_property_readonly("memory_kind", &NamedSharding::memory_kind)
+      .def_property_readonly("_memory_kind", &NamedSharding::memory_kind)
       .def_property("_parsed_pspec", &NamedSharding::parsed_pspec,
                     &NamedSharding::set_parsed_pspec);
 

@@ -681,7 +681,7 @@ class NamedSharding(XLACompatibleSharding):
                _parsed_pspec: Any = None): ...
   mesh: Any
   spec: Any
-  memory_kind: Optional[str]
+  _memory_kind: Optional[str]
   _parsed_pspec: Any
 
 class SingleDeviceSharding(XLACompatibleSharding):
