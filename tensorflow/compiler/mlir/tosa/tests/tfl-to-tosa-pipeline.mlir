@@ -2370,6 +2370,29 @@ func.func @test_gather_indices_dyn(%arg0: tensor<13x21x3xf32>, %arg1: tensor<?x7
 }
 
 // -----
+// CHECK-LABEL: test_gather_all_dynamic
+// CHECK-DAG: %[[C0:.*]] = arith.constant 0
+// CHECK-DAG: %[[C1:.*]] = arith.constant 1
+// CHECK-DAG: %[[C2:.*]] = arith.constant 2
+// CHECK-DAG: %[[DIM0:.*]] = tensor.dim %arg0, %[[C0]]
+// CHECK-DAG: %[[DIM1:.*]] = tensor.dim %arg0, %[[C1]]
+// CHECK-DAG: %[[DIM2:.*]] = tensor.dim %arg0, %[[C2]]
+// CHECK-DAG: %[[DIM3:.*]] = tensor.dim %arg1, %[[C0]]
+// CHECK-DAG: %[[DIM4:.*]] = tensor.dim %arg1, %[[C1]]
+// CHECK-DAG: %[[PROD:.*]] = arith.muli %[[DIM1]], %[[DIM2]]
+// CHECK-DAG: %[[SHAPE_VALUES:.*]] = tensor.from_elements %[[C1]], %[[DIM0]], %[[PROD]]
+// CHECK-DAG: %[[RESHAPED_VALUES:.*]] = tensor.reshape %arg0(%[[SHAPE_VALUES]])
+// CHECK-DAG: %[[RESHAPED_INDICES:.*]] = "tosa.reshape"(%arg1) <{new_shape = array<i64: 1, -1>}>
+// CHECK-DAG: %[[GATHER:.*]] = "tosa.gather"(%[[RESHAPED_VALUES]], %[[RESHAPED_INDICES]])
+// CHECK-DAG: %[[SHAPE_RESULT:.*]] = tensor.from_elements %[[DIM3]], %[[DIM4]], %[[DIM1]], %[[DIM2]]
+// CHECK-DAG: %[[RESULT:.*]] = tensor.reshape %[[GATHER]](%[[SHAPE_RESULT]])
+// CHECK return %[[RESULT]]
+func.func @test_gather_all_dynamic(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?xi32>) -> tensor<*xf32> {
+  %2 = "tfl.gather"(%arg0, %arg1) {axis = 0 : i32} : (tensor<?x?x?xf32>, tensor<?x?xi32>) -> tensor<*xf32>
+  func.return %2 : tensor<*xf32>
+}
+
+// -----
 // CHECK-LABEL: test_gather_batch
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"
 // CHECK-DAG: %[[VAR1:.*]] = "tosa.reshape"(%arg0) <{new_shape = array<i64: 1, 4, 16>}>
