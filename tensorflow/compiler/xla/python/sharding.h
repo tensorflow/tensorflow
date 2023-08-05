@@ -187,9 +187,9 @@ class GSPMDSharding : public XLACompatibleSharding {
     // devices. Currently in python this check is optimized but we want to
     // move that check to C++ after which we can remove this call.
     pybind11::cast(this).attr("_preprocess")();
-    if (!devices_.empty()) {
-      memory_kind_ = CanonicalizeMemoryKind(memory_kind_, devices_[0]);
-    }
+    CHECK(!devices_.empty())
+        << "Devices given to GSPMDSharding must not be empty";
+    memory_kind_ = CanonicalizeMemoryKind(memory_kind_, devices_[0]);
   }
 
   const pybind11::tuple& devices() const { return devices_; }
