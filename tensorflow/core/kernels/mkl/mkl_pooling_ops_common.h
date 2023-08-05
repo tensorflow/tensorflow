@@ -227,6 +227,7 @@ class MklPoolingFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
     key_creator.AddAsKey(fwdParams.padding_right);
     key_creator.AddAsKey<int>(static_cast<int>(fwdParams.alg_kind));
     key_creator.AddAsKey<int>(static_cast<int>(fwdParams.prop_kind));
+    key_creator.AddAsKey<int>(static_cast<int>(fwdParams.src_format));
     return key_creator.GetKey();
   }
 
