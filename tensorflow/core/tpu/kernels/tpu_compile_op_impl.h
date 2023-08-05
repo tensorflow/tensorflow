@@ -16,12 +16,10 @@ limitations under the License.
 #define TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILE_OP_IMPL_H_
 
 #include <string>
+#include <variant>
 #include <vector>
 
-#include "absl/types/variant.h"
-#include "tensorflow/compiler/jit/shape_inference.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
-#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_key.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_common.h"
 #include "tensorflow/core/tpu/kernels/tpu_program_group_interface.h"
@@ -52,7 +50,7 @@ class TpuCompileOpKernelImpl : public TpuCompileOpKernelCommon {
             unload_cache_on_session_close, /*persistent_cache=*/nullptr) {}
 
   Status Compile(
-      const absl::variant<MlirToHloArgs, FunctionToHloArgs>& computation,
+      const std::variant<MlirToHloArgs, FunctionToHloArgs>& computation,
       const XLA_TpuMeshState* mesh_state,
       const std::vector<TensorShape>& arg_shapes,
       const TpuCompilationCacheKey* key,

@@ -500,6 +500,17 @@ TfLiteStatus TfLiteOpaqueContextGetNodeInitDataMmapInfo(
     int64_t* custom_initial_data_offset_in_file,
     int64_t* custom_initial_data_size);
 
+// Add 'tensors_to_add' tensors, preserving pre-existing Tensor entries.  If
+// non-null, the value pointed to by 'first_new_tensor_index' will be set to
+// the index of the first new tensor.  Returns 'kTfLiteOk' when the tensors have
+// been added successfully.  Returns 'kTfLiteError' in case of failure. Suppling
+// a value equal to or smaller than 0 for 'tensors_to_add' will result in
+// 'kTfLiteError' being returned.
+TFL_CAPI_EXPORT
+TfLiteStatus TfLiteOpaqueContextAddTensors(TfLiteOpaqueContext* context,
+                                           int tensors_to_add,
+                                           int* first_new_tensor_index);
+
 /// Reports an error message formed by using the provided 'format' string in
 /// combination with the data provided via the unnamed arguments following
 /// the 'format' parameter ('...').  The intended usage and behavior is the same

@@ -349,19 +349,22 @@ HloModule BatchDynamicSlice
 
 ENTRY main {
   operand = s32[512, 512]{1,0} parameter(0)
-  indices = u8[6,2]{1,0} parameter(1)
-  gather = s32[6,1,1]{2,1,0} gather(operand, indices),
+  indices = u8[7,2]{1,0} parameter(1)
+  gather = s32[7,1,1]{2,1,0} gather(operand, indices),
       offset_dims={1,2},
       collapsed_slice_dims={},
       start_index_map={0,1},
       index_vector_dim=1,
       slice_sizes={1,1}
-  ROOT result = s32[6]{0} reshape(gather)
+  ROOT result = s32[7]{0} reshape(gather)
 }
 )";
-  Literal operand = LiteralUtil::MakeIdentityR2<int32_t>(512);
+  Literal operand =
+      LiteralUtil::CreateRandomLiteral<S32>(
+          ShapeUtil::MakeShape(S32, {512, 512}), /*mean=*/1000, /*stddev=*/500)
+          .value();
   Literal start_indices = LiteralUtil::CreateR2<uint8_t>(
-      {{2, 7}, {2, 1}, {1, 1}, {5, 1}, {7, 1}, {1, 2}});
+      {{2, 7}, {2, 1}, {1, 1}, {5, 1}, {7, 1}, {1, 2}, {0x80, 0x80}});
   RunTest(hlo_text, &operand, &start_indices);
 }
 

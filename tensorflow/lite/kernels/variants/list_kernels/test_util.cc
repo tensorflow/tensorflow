@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/variants/list_kernels/test_util.h"
 
+#include <cstdint>
+#include <optional>
 #include <utility>
 
 #include "tensorflow/lite/core/c/c_api_types.h"
@@ -79,4 +81,44 @@ void ListOpModel::ListSetItem(int index, int list_index,
 
   TF_LITE_ASSERT_EQ(arr->Set(list_index, std::move(item)), true);
 }
+
+std::optional<size_t> TfLiteTypeSizeOf(TfLiteType type) {
+  switch (type) {
+    case kTfLiteFloat16:
+      return sizeof(int16_t);
+    case kTfLiteFloat32:
+      return sizeof(float);
+    case kTfLiteFloat64:
+      return sizeof(double);
+    case kTfLiteInt16:
+      return sizeof(int16_t);
+    case kTfLiteInt32:
+      return sizeof(int32_t);
+    case kTfLiteUInt32:
+      return sizeof(uint32_t);
+    case kTfLiteUInt8:
+      return sizeof(uint8_t);
+    case kTfLiteInt8:
+      return sizeof(int8_t);
+    case kTfLiteInt64:
+      return sizeof(int64_t);
+    case kTfLiteUInt64:
+      return sizeof(uint64_t);
+    case kTfLiteBool:
+      return sizeof(bool);
+    case kTfLiteResource:
+      return sizeof(int32_t);
+    case kTfLiteComplex64:
+      return sizeof(float) * 2;
+    case kTfLiteComplex128:
+      return sizeof(double) * 2;
+    case kTfLiteInt4:
+      return sizeof(int8_t);
+    case kTfLiteUInt16:
+      return sizeof(uint16_t);
+    default:
+      return std::nullopt;
+  }
+}
+
 }  // namespace tflite

@@ -228,6 +228,7 @@ cc_library(
         ":spmd_expander",
         ":spmd_expander_common",
         ":tf_dtensor_dialect",
+        ":topological_iterator",
         ":value_utils",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:attribute_utils",
@@ -235,6 +236,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_analysis",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
@@ -502,6 +504,25 @@ cc_library(
         "@llvm-project//mlir:IR",
     ],
     alwayslink = True,
+)
+
+cc_library(
+    name = "topological_iterator",
+    srcs = ["topological_iterator.cc"],
+    hdrs = ["topological_iterator.h"],
+    deps = [
+        ":device_utils",
+        ":layout_parsing",
+        ":op_utils",
+        ":shape_utils",
+        ":tf_dtensor_dialect",
+        ":value_utils",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+    ],
 )
 
 tf_cc_test(

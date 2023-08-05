@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_util.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <iterator>
@@ -29,11 +30,13 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/btree_set.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/array.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
@@ -933,7 +936,7 @@ void RemoveDuplicatedStrategy(std::unique_ptr<StrategyVector>& strategies) {
       if (!strategies->leaf_vector[i].input_shardings.empty()) {
         for (const auto& sharding :
              strategies->leaf_vector[i].input_shardings) {
-          key += "/" + sharding.ToString();
+          key += "/" + (sharding.has_value() ? sharding->ToString() : "none");
         }
       }
       if (!added.contains(key)) {
@@ -1321,32 +1324,18 @@ Shape ComputeIntermediateShape(const HloSharding& src_sharding,
   return ShapeUtil::MakeShape(shape.element_type(), inter_shape_dims);
 }
 
-void FixMixedMeshShapeReshardingGetTupleElement(
-    HloInstruction* inst, const HloSharding& dst_sharding,
-    const Array<int64_t>& device_mesh,
-    absl::flat_hash_map<std::string, std::vector<HloSharding>>*
-        preserve_shardings) {
-  HloInstruction* operand = inst->mutable_operand(0);
-  auto input_tuple_sharding = operand->sharding();
-  size_t index = inst->tuple_index();
-  if (input_tuple_sharding.tuple_elements()[index] == dst_sharding) {
-    return;
-  }
-
-  const HloSharding& src_sharding =
-      input_tuple_sharding.tuple_elements()[index];
-  CHECK(operand->shape().IsTuple());
-  const Shape& shape = operand->shape().tuple_shapes(index);
+HloInstruction* ReshardTensor(HloInstruction* tensor,
+                              const HloSharding& src_sharding,
+                              const HloSharding& dst_sharding,
+                              const Array<int64_t>& device_mesh) {
+  const Shape& shape = tensor->shape();
+  auto computation = tensor->parent();
 
   int64_t src_n_dim = NumTileDimensions(src_sharding);
   int64_t dst_n_dim = NumTileDimensions(dst_sharding);
 
   HloInstruction* replace_with = nullptr;
-
-  auto inst_users = inst->users();
-  if (replace_with != nullptr) {
-    // Do nothing
-  } else if (src_n_dim != dst_n_dim && src_n_dim != -1 && dst_n_dim != -1) {
+  if (src_n_dim != dst_n_dim && src_n_dim != -1 && dst_n_dim != -1) {
     Shape inter_shape = ComputeIntermediateShape(src_sharding, dst_sharding,
                                                  shape, device_mesh);
 
@@ -1360,22 +1349,108 @@ void FixMixedMeshShapeReshardingGetTupleElement(
       LOG(WARNING) << "Invalid mixed mesh shape resharding.";
     }
 
-    HloInstruction* src_inter = inst->parent()->AddInstruction(
-        HloInstruction::CreateReshape(inter_shape, inst));
+    HloInstruction* src_inter = computation->AddInstruction(
+        HloInstruction::CreateReshape(inter_shape, tensor));
     src_inter->set_sharding(*src_inter_sharding);
 
-    HloInstruction* dst_inter = inst->parent()->AddInstruction(
+    HloInstruction* dst_inter = computation->AddInstruction(
         HloInstruction::CreateReshape(inter_shape, src_inter));
     dst_inter->set_sharding(*dst_inter_sharding);
 
-    replace_with = inst->parent()->AddInstruction(
+    replace_with = computation->AddInstruction(
         HloInstruction::CreateReshape(shape, dst_inter));
-    replace_with->set_sharding(dst_sharding);
   } else {
-    replace_with = inst->parent()->AddInstruction(
-        HloInstruction::CreateReshape(shape, inst));
-    replace_with->set_sharding(dst_sharding);
+    replace_with = computation->AddInstruction(
+        HloInstruction::CreateReshape(shape, tensor));
   }
+  replace_with->set_sharding(dst_sharding);
+
+  return replace_with;
+}
+
+void FixMixedMeshShapeReshardingGetTupleElementWithTupleOutput(
+    HloInstruction* inst,
+    const std::vector<std::optional<HloSharding>>& dst_shardings,
+    const Array<int64_t>& device_mesh,
+    absl::flat_hash_map<std::string, std::vector<HloSharding>>*
+        preserve_shardings) {
+  size_t tuple_size = inst->shape().tuple_shapes_size();
+  auto current_sharding = inst->sharding();
+
+  bool need_to_reshard = false;
+  for (size_t i = 0; i < tuple_size; ++i) {
+    CHECK(!inst->shape().tuple_shapes(i).IsTuple());
+    auto element_current_sharding = current_sharding.GetSubSharding(
+        inst->shape(), {static_cast<int64_t>(i)});
+    auto element_dst_sharding_opt = dst_shardings[i];
+
+    // Extract tuple element
+    if (element_dst_sharding_opt.has_value() &&
+        element_current_sharding != *element_dst_sharding_opt) {
+      need_to_reshard = true;
+    }
+  }
+
+  if (!need_to_reshard) {
+    return;
+  }
+
+  auto inst_users = inst->users();
+  std::vector<HloInstruction*> resharded;
+  std::vector<HloSharding> reassembled_tuple_shardings;
+  resharded.reserve(tuple_size);
+  reassembled_tuple_shardings.reserve(tuple_size);
+  for (size_t i = 0; i < tuple_size; ++i) {
+    auto element_current_sharding = current_sharding.GetSubSharding(
+        inst->shape(), {static_cast<int64_t>(i)});
+    auto element_dst_sharding_opt = dst_shardings[i];
+
+    // Extract tuple element
+    auto element =
+        inst->parent()->AddInstruction(HloInstruction::CreateGetTupleElement(
+            inst->shape().tuple_shapes(i), inst, i));
+    if (!element_dst_sharding_opt.has_value() ||
+        element_current_sharding == *element_dst_sharding_opt) {
+      resharded.push_back(std::move(element));
+      reassembled_tuple_shardings.push_back(element_current_sharding);
+    } else {
+      auto replace_with = ReshardTensor(element, element_current_sharding,
+                                        *element_dst_sharding_opt, device_mesh);
+      resharded.push_back(std::move(replace_with));
+      reassembled_tuple_shardings.push_back(*element_dst_sharding_opt);
+    }
+  }
+
+  auto reassembled_tuple =
+      inst->parent()->AddInstruction(HloInstruction::CreateTuple(resharded));
+  reassembled_tuple->set_sharding(
+      HloSharding::Tuple(inst->shape(), reassembled_tuple_shardings));
+
+  for (auto user : inst_users) {
+    TF_CHECK_OK(inst->ReplaceUseWith(user, reassembled_tuple));
+  }
+}
+
+void FixMixedMeshShapeReshardingGetTupleElement(
+    HloInstruction* inst, const HloSharding& dst_sharding,
+    const Array<int64_t>& device_mesh,
+    absl::flat_hash_map<std::string, std::vector<HloSharding>>*
+        preserve_shardings) {
+  HloInstruction* operand = inst->mutable_operand(0);
+  auto input_tuple_sharding = operand->sharding();
+  size_t index = inst->tuple_index();
+  if (input_tuple_sharding.tuple_elements()[index] == dst_sharding) {
+    return;
+  }
+
+  auto inst_users = inst->users();
+
+  const HloSharding& src_sharding =
+      input_tuple_sharding.tuple_elements()[index];
+  CHECK(operand->shape().IsTuple());
+
+  HloInstruction* replace_with =
+      ReshardTensor(inst, src_sharding, dst_sharding, device_mesh);
   inst->set_sharding(src_sharding);
   size_t size =
       GetInstructionSize(replace_with->shape()) / (1024 * 1024 * 1024);
@@ -1415,13 +1490,7 @@ void FixMixedMeshShapeResharding(HloInstruction* inst, int operand_num,
     operand->set_sharding(dst_sharding);
   } else {
     const HloSharding& src_sharding = operand->sharding();
-    const Shape& shape = operand->shape();
-
-    int64_t src_n_dim = NumTileDimensions(src_sharding);
-    int64_t dst_n_dim = NumTileDimensions(dst_sharding);
-
     HloInstruction* replace_with = nullptr;
-
     // Query cache first
     std::vector<std::pair<HloSharding, HloInstruction*>>* cache_vector =
         nullptr;
@@ -1436,42 +1505,14 @@ void FixMixedMeshShapeResharding(HloInstruction* inst, int operand_num,
 
     if (replace_with != nullptr) {
       // Do nothing
-    } else if (src_n_dim != dst_n_dim && src_n_dim != -1 && dst_n_dim != -1) {
-      Shape inter_shape = ComputeIntermediateShape(src_sharding, dst_sharding,
-                                                   shape, device_mesh);
-
-      std::optional<HloSharding> src_inter_sharding =
-          hlo_sharding_util::ReshapeSharding(shape, inter_shape, src_sharding);
-      std::optional<HloSharding> dst_inter_sharding =
-          hlo_sharding_util::ReshapeSharding(shape, inter_shape, dst_sharding);
-      if (!src_inter_sharding.has_value() || !dst_inter_sharding.has_value()) {
-        src_inter_sharding = HloSharding::Replicate();
-        dst_inter_sharding = HloSharding::Replicate();
-        LOG(WARNING) << "Invalid mixed mesh shape resharding.";
-      }
-
-      HloInstruction* src_inter = inst->parent()->AddInstruction(
-          HloInstruction::CreateReshape(inter_shape, operand));
-      src_inter->set_sharding(*src_inter_sharding);
-
-      HloInstruction* dst_inter = inst->parent()->AddInstruction(
-          HloInstruction::CreateReshape(inter_shape, src_inter));
-      dst_inter->set_sharding(*dst_inter_sharding);
-
-      replace_with = inst->parent()->AddInstruction(
-          HloInstruction::CreateReshape(shape, dst_inter));
-      replace_with->set_sharding(dst_sharding);
-      if (cache_vector != nullptr) {
-        cache_vector->push_back({dst_sharding, replace_with});
-      }
     } else {
-      replace_with = inst->parent()->AddInstruction(
-          HloInstruction::CreateReshape(operand->shape(), operand));
-      replace_with->set_sharding(dst_sharding);
+      replace_with =
+          ReshardTensor(operand, src_sharding, dst_sharding, device_mesh);
       if (cache_vector != nullptr) {
         cache_vector->push_back({dst_sharding, replace_with});
       }
     }
+
     size_t size =
         GetInstructionSize(replace_with->shape()) / (1024 * 1024 * 1024);
     if (size > 1) {
@@ -1707,7 +1748,8 @@ AliasSet BuildAliasSet(const HloModule* module,
                              dst_strategies->childs[i].get());
       }
     } else {
-      alias_set.insert(std::make_pair(src_strategies->id, dst_strategies->id));
+      alias_set.insert(
+          std::make_pair(src_strategies->node_idx, dst_strategies->node_idx));
     }
   };
   alias_config.ForEachAlias([&](const ShapeIndex& output_index,
@@ -1806,8 +1848,8 @@ void CheckAliasSetCompatibility(const AliasSet& alias_set,
                    << instructions.at(dst_strategies->instruction_id)->name()
                    << ")"
                    << "\n"
-                   << "(" << src_strategies->id << ", " << dst_strategies->id
-                   << ")\n"
+                   << "(" << src_strategies->node_idx << ", "
+                   << dst_strategies->node_idx << ")\n"
                    << src_strategies->ToString() << "\n"
                    << dst_strategies->ToString();
     }
@@ -1817,7 +1859,8 @@ void CheckAliasSetCompatibility(const AliasSet& alias_set,
         << ", " << instructions.at(dst_strategies->instruction_id)->name()
         << ")"
         << "\n"
-        << "(" << src_strategies->id << ", " << dst_strategies->id << ")\n"
+        << "(" << src_strategies->node_idx << ", " << dst_strategies->node_idx
+        << ")\n"
         << src_strategies->ToString() << "\n"
         << dst_strategies->ToString();
   }
@@ -2205,6 +2248,18 @@ void ComputeInstructionExecutionCountsHelper(
           while_body_condition_execution_count,
           /*loop_iteration_count_estimate*/ loop_iteration_count_estimate,
           instruction_execution_counts);
+    } else if (instruction->opcode() == HloOpcode::kConditional) {
+      // TODO(pratikf): For now, we do not scale down the execution counts of
+      // branch statements, though we should at some point.
+      auto branch_computations = instruction->branch_computations();
+      for (size_t i = 0; i < branch_computations.size(); ++i) {
+        ComputeInstructionExecutionCountsHelper(
+            branch_computations[i],
+            /*computation_execution_count */
+            computation_execution_count,
+            /*loop_iteration_count_estimate*/ loop_iteration_count_estimate,
+            instruction_execution_counts);
+      }
     }
   }
 }

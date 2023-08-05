@@ -36,7 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/runtime/kernel_launch.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/support.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
-#include "tensorflow/tsl/profiler/lib/scoped_annotation_stack.h"
+#include "tensorflow/tsl/profiler/lib/profiler_lock.h"
 #include "tensorflow/tsl/profiler/lib/traceme.h"
 #include "tensorflow/tsl/profiler/lib/traceme_encode.h"
 
@@ -482,7 +482,9 @@ static absl::StatusOr<OwnedGpuGraph> CaptureGraph(
   return std::move(*captured);
 }
 
-static absl::Status RunGraphWithoutCapture(
+// When graph execution is disabled we run the graph capture function in
+// "regular" mode and execute all operation one by one.
+static absl::Status RunGraphOpByOp(
     const ServiceExecutableRunOptions* run_options,
     runtime::FunctionRef function_ref, CustomCall::RemainingArgs fwd_args,
     CustomCall::UserData user_data) {
@@ -491,7 +493,7 @@ static absl::Status RunGraphWithoutCapture(
   opts.custom_call_data = &user_data;
 
   TraceMe trace([&] {
-    return TraceMeEncode("gpu.graph.run_no_capture",
+    return TraceMeEncode("gpu.graph.run_op_by_op_fallback",
                          {{"ordinal", function_ref.ordinal()}});
   });
 
@@ -511,7 +513,7 @@ static absl::Status RunGraphWithoutCapture(
   auto executed =
       function_ref(args, runtime::NoResultConverter{}, opts, InDebugMode());
   if (!executed.ok()) {
-    return InternalError("RunGraphWithoutCapture failed (%s): %s",
+    return InternalError("RunGraphOpByOp failed (%s): %s",
                          diagnostic.empty() ? "<no details>" : diagnostic,
                          executed.status().ToString());
   }
@@ -561,16 +563,13 @@ static absl::Status LaunchGraph(
   int64_t num_runs_to_instantiate =
       debug_options->xla_gpu_graph_num_runs_to_instantiate();
 
-  // TODO(ezhulenev): Cupti tracing leads to deadlocks in CUDA 11. Always fall
-  // back on regular execution if we detect tracing activity.
-  // HLO ops profiling can't capture individual kernels when cuda graphs are
-  // enabled, so we want to make sure they are disabled when profiling.
-  bool is_profiling = tsl::profiler::ScopedAnnotationStack::IsEnabled();
+  // TODO(b/290773547): Profiler + CUDA graphs lead to memory corruption. As a
+  // work around disable graph execution and run everything in op-by-op mode.
+  bool is_profiling = tsl::profiler::ProfilerLock::HasActiveSession();
 
   if (count < num_runs_to_instantiate || is_profiling) {
     VLOG(3) << "Run gpu graph in op-by-op mode: ordinal = " << capture.ordinal;
-    return RunGraphWithoutCapture(run_options, function_ref, fwd_args,
-                                  user_data());
+    return RunGraphOpByOp(run_options, function_ref, fwd_args, user_data());
   }
 
   // Instantiate Gpu graph by running graph capture function.

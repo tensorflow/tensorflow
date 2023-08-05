@@ -57,3 +57,72 @@ tf_cc_shared_object(
         "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_hdrs",
     ],
 )
+
+cc_library(
+    name = "outside_compilation_params",
+    hdrs = ["outside_compilation_params.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":tf_rendezvous_c_api",
+        "//tensorflow/compiler/xla/stream_executor/tpu:c_api_decl",
+    ],
+)
+
+cc_library(
+    name = "tf_rendezvous_c_api",
+    hdrs = ["tf_rendezvous_c_api.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/c:c_api_macros_hdrs",
+        "//tensorflow/c:tf_status_headers",
+        "//tensorflow/c:tf_tensor_hdrs",
+    ],
+)
+
+cc_library(
+    name = "tf_rendezvous_c_api_defn",
+    hdrs = ["tf_rendezvous_c_api_defn.h"],
+    deps = [
+        ":tf_rendezvous_c_api",
+        "//tensorflow/core:framework",
+    ],
+)
+
+cc_library(
+    name = "tf_rendezvous_c_api_conversions",
+    srcs = ["tf_rendezvous_c_api_conversions.cc"],
+    hdrs = ["tf_rendezvous_c_api_conversions.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":outside_compilation_params",
+        ":tf_rendezvous_c_api",
+        ":tf_rendezvous_c_api_defn",
+        "//tensorflow/c:tf_status_headers",
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c:tf_tensor_internal",
+        "//tensorflow/compiler/xla/stream_executor/tpu:proto_helper",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
+        "//tensorflow/tsl/framework:allocator",
+        "@com_google_absl//absl/log:check",
+    ],
+)
+
+tf_cc_test(
+    name = "tf_rendezvous_c_api_conversions_test",
+    srcs = ["tf_rendezvous_c_api_conversions_test.cc"],
+    tags = [
+        "no_mac",
+        "no_windows",
+    ],
+    deps = [
+        ":tf_rendezvous_c_api",
+        ":tf_rendezvous_c_api_conversions",
+        "//tensorflow/c:tf_status",
+        "//tensorflow/c:tf_tensor",
+        "//tensorflow/tsl/framework:allocator",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

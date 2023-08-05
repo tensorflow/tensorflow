@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/python/py_array.h"
 
+#include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <new>
@@ -26,9 +27,11 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/Support/Casting.h"
+#include "pybind11/pytypes.h"  // from @pybind11
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
 #include "tensorflow/compiler/xla/pjrt/lru_cache.h"
 #include "tensorflow/compiler/xla/python/ifrt/array.h"
+#include "tensorflow/compiler/xla/python/ifrt/memory.h"
 #include "tensorflow/compiler/xla/python/ifrt/sharding.h"
 #include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_array.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
@@ -61,11 +64,28 @@ tsl::RCReference<ifrt::Array> CreateIfRtArrayFromSingleDeviceShardedPyArrays(
   std::vector<ifrt::Shape> shapes;
   shapes.reserve(py_arrays.size());
 
+  const ifrt::MemoryKind first_memory_kind =
+      py_arrays.front().ifrt_array()->sharding().memory_kind();
+  // TODO(hyeontaek): Canonicalize every `ifrt::MemoryKind` at creation time to
+  // skip canonicalization here once JAX begins to do it for JAX shardings.
+  const ifrt::MemoryKind canonical_first_memory_kind =
+      ifrt::CanonicalizeMemoryKind(
+          first_memory_kind,
+          py_arrays.front().ifrt_array()->sharding().devices().front());
   for (const auto& py_array : py_arrays) {
     DCHECK_EQ(py_array.num_shards(), 1);
     ifrt_arrays.push_back(tsl::FormRef(py_array.ifrt_array()));
     devices.push_back(ifrt_arrays.back()->sharding().devices().front());
     shapes.push_back(ifrt_arrays.back()->shape());
+    if (canonical_first_memory_kind !=
+        ifrt::CanonicalizeMemoryKind(
+            ifrt_arrays.back()->sharding().memory_kind(), devices.back())) {
+      throw py::value_error(absl::StrFormat(
+          "Memory kind mismatch between PjRtBuffers. Got one buffer with "
+          "memory kind '%s' and another with memory_kind '%s'",
+          first_memory_kind.DebugString(),
+          ifrt_arrays.back()->sharding().memory_kind().DebugString()));
+    }
   }
   ifrt::Client* client = ifrt_arrays.front()->client();
 
@@ -77,6 +97,7 @@ tsl::RCReference<ifrt::Array> CreateIfRtArrayFromSingleDeviceShardedPyArrays(
   auto ifrt_array = client->AssembleArrayFromSingleDeviceArrays(
       ifrt::Shape(shape),
       ifrt::ConcreteSharding::Create(ifrt::DeviceList(std::move(devices)),
+                                     first_memory_kind,
                                      /*shape=*/ifrt::Shape(shape),
                                      /*shard_shapes=*/std::move(shapes)),
       absl::MakeSpan(ifrt_arrays), ifrt::ArrayCopySemantics::kReuseInput);
@@ -85,6 +106,32 @@ tsl::RCReference<ifrt::Array> CreateIfRtArrayFromSingleDeviceShardedPyArrays(
     throw py::value_error(ifrt_array.status().ToString());
   }
   return *std::move(ifrt_array);
+}
+
+// Creates an IFRT `MemoryKind` from a JAX `Sharding`.
+ifrt::MemoryKind CreateIfRtMemoryKindFromSharding(const py::object& sharding) {
+  py::object py_memory_kind = py::none();
+
+  // sharding.attr("memory_kind") can crash if sharding was originally created
+  // from C++ and casted into a Python Sharding object. Thus, we cast sharding
+  // to a C++ type and use C++ `memory_kind()` method, which bypasses any Python
+  // attribute access.
+  auto type = sharding.get_type();
+  if (type.is(jax::NamedSharding::type())) {
+    py_memory_kind = py::cast<jax::NamedSharding>(sharding).memory_kind();
+  }
+  if (type.is(jax::GSPMDSharding::type())) {
+    py_memory_kind = py::cast<jax::GSPMDSharding>(sharding).memory_kind();
+  }
+  if (type.is(jax::SingleDeviceSharding::type())) {
+    py_memory_kind =
+        py::cast<jax::SingleDeviceSharding>(sharding).memory_kind();
+  }
+
+  if (py_memory_kind.is_none()) {
+    return ifrt::MemoryKind();
+  }
+  return ifrt::MemoryKind(py::cast<std::string>(py_memory_kind));
 }
 
 struct PyArrayObject {
@@ -285,8 +332,15 @@ PyArray PyArray::MakeFromSingleDeviceArray(
   key.weak_type = weak_type;
   auto aval = MakeShapedArrayCached(key);
   auto dtype = PrimitiveTypeToDtype(key.dtype).value();
-  auto sharding = py::cast(std::make_unique<jax::SingleDeviceSharding>(py::cast(
-      WrapWithClient(py_client, ifrt_array->sharding().devices().front()))));
+  const ifrt::MemoryKind memory_kind = ifrt_array->sharding().memory_kind();
+  auto py_memory_kind =
+      (jax::GetJaxEnableMemoryKind() && memory_kind.memory_kind().has_value())
+          ? py::object(py::str(*memory_kind.memory_kind()))
+          : py::none();
+  auto sharding = py::cast(std::make_unique<jax::SingleDeviceSharding>(
+      py::cast(
+          WrapWithClient(py_client, ifrt_array->sharding().devices().front())),
+      std::move(py_memory_kind)));
   return PyArray(std::move(aval), weak_type, dtype, std::move(key.dims),
                  std::move(sharding), std::move(py_client),
                  std::move(traceback), std::move(ifrt_array), committed);
@@ -450,11 +504,32 @@ Status PyArray::set_arrays(py::object obj) {
                              py::cast<std::string>(py::str(obj.get_type())));
     }
   }
+  const ifrt::MemoryKind first_memory_kind =
+      ifrt_arrays.front()->sharding().memory_kind();
+  // TODO(hyeontaek): Canonicalize every `ifrt::MemoryKind` at creation time to
+  // skip canonicalization here once JAX begins to do it for JAX shardings.
+  const ifrt::MemoryKind canonical_first_memory_kind =
+      ifrt::CanonicalizeMemoryKind(
+          first_memory_kind, ifrt_arrays.front()->sharding().devices().front());
+  for (const auto& ifrt_array : ifrt_arrays) {
+    if (canonical_first_memory_kind !=
+        ifrt::CanonicalizeMemoryKind(
+            ifrt_array->sharding().memory_kind(),
+            ifrt_array->sharding().devices().front())) {
+      throw py::value_error(absl::StrFormat(
+          "Memory kind mismatch between single-device arrays. Got one array "
+          "with memory kind '%s' and another with memory_kind '%s'",
+          first_memory_kind.DebugString(),
+          ifrt_array->sharding().memory_kind().DebugString()));
+    }
+  }
+
   TF_ASSIGN_OR_RETURN(
       auto array,
       py_client()->ifrt_client()->AssembleArrayFromSingleDeviceArrays(
           ifrt::Shape(shape()),
           ifrt::ConcreteSharding::Create(ifrt::DeviceList(std::move(devices)),
+                                         first_memory_kind,
                                          /*shape=*/ifrt::Shape(shape()),
                                          /*shard_shapes=*/std::move(shapes)),
           absl::MakeSpan(ifrt_arrays), ifrt::ArrayCopySemantics::kReuseInput));
@@ -628,28 +703,32 @@ StatusOr<PyArray> PyArray::CopyToDeviceWithSharding(
     };
     TF_RETURN_IF_ERROR(
         jax::ApplyTransferGuardToDeviceToDevice(transfer_guard_formatter));
+    ifrt::MemoryKind memory_kind =
+        CreateIfRtMemoryKindFromSharding(dst_sharding);
     GlobalPyRefManager()->CollectGarbage();
     py::gil_scoped_release gil_release;
-
     std::shared_ptr<const ifrt::Sharding> ifrt_sharding;
     if (llvm::isa<ifrt::SingleDeviceSharding>(ifrt_array_ptr->sharding())) {
-      ifrt_sharding = ifrt::SingleDeviceSharding::Create(devices[0]);
+      ifrt_sharding =
+          ifrt::SingleDeviceSharding::Create(devices[0], memory_kind);
     } else if (const auto* in_sharding = llvm::dyn_cast<ifrt::OpaqueSharding>(
                    &ifrt_array_ptr->sharding());
                in_sharding != nullptr) {
-      ifrt_sharding = ifrt::OpaqueSharding::Create(std::move(devices));
+      ifrt_sharding =
+          ifrt::OpaqueSharding::Create(std::move(devices), memory_kind);
     } else if (const auto* in_sharding = llvm::dyn_cast<ifrt::ConcreteSharding>(
                    &ifrt_array_ptr->sharding());
                in_sharding != nullptr) {
       ifrt_sharding = ifrt::ConcreteSharding::Create(
-          std::move(devices), in_sharding->shape(),
+          std::move(devices), memory_kind, in_sharding->shape(),
           in_sharding->shard_shapes());
     } else if (const auto* in_sharding =
                    llvm::dyn_cast<ifrt::ConcreteEvenSharding>(
                        &ifrt_array_ptr->sharding());
                in_sharding != nullptr) {
       ifrt_sharding = ifrt::ConcreteEvenSharding::Create(
-          std::move(devices), in_sharding->shape(), in_sharding->shard_shape());
+          std::move(devices), memory_kind, in_sharding->shape(),
+          in_sharding->shard_shape());
     } else {
       return InvalidArgument(
           "resharding only supported for ifrt::SingleDeviceSharding, "
@@ -731,12 +810,13 @@ StatusOr<PyArray> PyArray::BatchedDevicePut(
   auto weak_type = pybind11::cast<bool>(aval.attr("weak_type"));
   auto dtype = aval.attr("dtype");
   auto shape = pybind11::cast<std::vector<int64_t>>(aval.attr("shape"));
+  ifrt::MemoryKind memory_kind = CreateIfRtMemoryKindFromSharding(sharding);
   TF_ASSIGN_OR_RETURN(
       auto ifrt_array,
       ifrt_arrays.front()->client()->AssembleArrayFromSingleDeviceArrays(
           ifrt::Shape(shape),
           xla::ifrt::ConcreteSharding::Create(
-              xla::ifrt::DeviceList(std::move(devices)),
+              xla::ifrt::DeviceList(std::move(devices)), memory_kind,
               /*shape=*/ifrt::Shape(shape),
               /*shard_shapes=*/std::move(shapes)),
           absl::MakeSpan(ifrt_arrays),
@@ -771,7 +851,7 @@ struct ExtraBufferInfo {
       : buffer(std::move(buffer)),
         external_reference_hold(std::move(external_reference_hold)) {}
 
-  std::vector<Py_ssize_t> strides;
+  std::vector<int64_t> strides;
   // We keep an external reference hold to the PjRtBuffer. This prevents a
   // use-after-free in the event that Delete() is called on a buffer with an
   // live buffer protocol view. It does however mean that Delete() sometimes
@@ -877,7 +957,8 @@ int PyArray_bf_getbuffer(PyObject* exporter, Py_buffer* view, int flags) {
         if ((flags & PyBUF_STRIDES) == PyBUF_STRIDES) {
           extra->strides = ByteStridesForShape(
               buffer.element_type(), buffer.dimensions(), buffer.layout());
-          view->strides = extra->strides.data();
+          view->strides = reinterpret_cast<Py_ssize_t*>(
+              const_cast<int64_t*>(extra->strides.data()));
         }
       }
     }

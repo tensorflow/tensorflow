@@ -76,7 +76,9 @@ inline bool DefaultOneDnnPolicy() {
          port::TestCPUFeature(port::CPUFeature::AVX_VNNI) ||
          port::TestCPUFeature(port::CPUFeature::AMX_TILE) ||
          port::TestCPUFeature(port::CPUFeature::AMX_INT8) ||
-         port::TestCPUFeature(port::CPUFeature::AMX_BF16);
+         port::TestCPUFeature(port::CPUFeature::AMX_BF16) ||
+         port::TestAarch64CPU(
+             port::Aarch64CPU::ARM_NEOVERSE_V1);  // ARM NEOVERSE V1
 #else
   return false;
 #endif  // !defined(INTEL_MKL)
@@ -106,17 +108,11 @@ bool IsMklEnabled() {
                    << oneDNN_enabled;
     }
     if (oneDNN_enabled) {
-#ifndef DNNL_AARCH64_USE_ACL
       LOG(INFO) << "oneDNN custom operations are on. "
                 << "You may see slightly different numerical results due to "
                 << "floating-point round-off errors from different computation "
                 << "orders. To turn them off, set the environment variable "
                 << "`TF_ENABLE_ONEDNN_OPTS=0`.";
-#else
-      LOG(INFO) << "Experimental oneDNN custom operations are on. "
-                << "If you experience issues, please turn them off by setting "
-                << "the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.";
-#endif  // !DNNL_AARCH64_USE_ACL
     }
   });
   return oneDNN_enabled;

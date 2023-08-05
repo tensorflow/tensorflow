@@ -78,7 +78,7 @@ module attributes {tf.devices = ["/job:localhost/replica:0/task:0/device:CPU:0"]
   func.func @outside_compilation_in_generic_pipeline(%arg0: tensor<2xi32>) -> tensor<2xi32> {
     // CHECK: tf_device.launch
     // CHECK: "tf._XlaCompile"() {function = @func, must_compile = true, operand_segment_sizes = array<i32: 0, 0, 0>}
-    // CHECK: {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+    // CHECK: {device = "/job:localhost/replica:0/task:0/device:GPU:0"}
     // CHECK: tf_device.parallel_execute
     // CHECK: tf_device.launch
     // CHECK: tf.B

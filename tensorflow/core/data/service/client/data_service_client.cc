@@ -345,11 +345,13 @@ DataServiceClient::CreateAlternativeWorkerClientWithGrpcFallback(
       CreateDataServiceWorkerClient(params_.protocol, transfer_server);
   if (worker.ok()) {
     LOG(INFO) << "Successfully started client for data transfer protocol '"
-              << transfer_server.protocol() << "'.";
+              << transfer_server.protocol() << "' for worker '"
+              << task_info.worker_address() << "'.";
     return worker;
   }
   LOG(ERROR) << "Failed to start client for data transfer protocol '"
-             << transfer_server.protocol() << "'; falling back to grpc. "
+             << transfer_server.protocol() << "' for worker '"
+             << task_info.worker_address() << "'; falling back to grpc. "
              << "Original error: " << worker.status();
   metrics::RecordTFDataServiceDataTransferProtocolFallback(
       transfer_server.protocol(),
@@ -378,8 +380,6 @@ DataServiceClient::CreateWorkerClient(const TaskInfo& task_info) {
   }
   if (std::string default_protocol = DefaultDataTransferProtocol();
       default_protocol != kGrpcTransferProtocol) {
-    LOG(INFO)
-        << "This task is participating in the \"data_transfer\" experiment.";
     StatusOr<DataTransferServerInfo> transfer_server =
         GetTransferServer(default_protocol, task_info);
     if (transfer_server.ok()) {
@@ -388,8 +388,9 @@ DataServiceClient::CreateWorkerClient(const TaskInfo& task_info) {
     }
     LOG(INFO)
         << "Failed to find transfer server for default data transfer protocol '"
-        << default_protocol << "'; falling back to grpc. "
-        << "Original error: " << transfer_server.status();
+        << default_protocol << "' for worker '" << task_info.worker_address()
+        << "'; falling back to grpc. Original error: "
+        << transfer_server.status();
   }
   return CreateGrpcWorkerClient(task_info);
 }
@@ -819,8 +820,9 @@ Status DataServiceClient::GetElement(Task* task, int64_t deadline_micros,
           task->worker->GetDataTransferProtocol() == kLocalTransferProtocol) {
         return s;
       }
-      LOG(ERROR) << "failed to use alternative data transfer protocol '"
-                 << task->worker->GetDataTransferProtocol()
+      LOG(ERROR) << "Failed to use alternative data transfer protocol '"
+                 << task->worker->GetDataTransferProtocol() << "' for worker '"
+                 << task->info.worker_address()
                  << "'; falling back to grpc. Original error: " << s;
       metrics::RecordTFDataServiceDataTransferProtocolError(
           task->worker->GetDataTransferProtocol(),

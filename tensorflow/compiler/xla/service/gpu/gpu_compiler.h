@@ -179,10 +179,12 @@ class GpuCompiler : public LLVMCompiler {
   // During compilation with device, stream_exec != null and autotune_results
   // == null. During deviceless AOT compilation, stream_exec == null and
   // autotune_results != null.
+  // thread_pool is used to speed up compilation during autotuning.
   virtual Status OptimizeHloPostLayoutAssignment(
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
       const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
-      const AutotuneResults* autotune_results);
+      const AutotuneResults* autotune_results,
+      tsl::thread::ThreadPool* thread_pool = nullptr);
 
   // Linearize collective schedule under SPMD partitioning if online autotuning
   // of convolutions is enabled.
@@ -214,6 +216,16 @@ class GpuCompiler : public LLVMCompiler {
                                      const GpuTargetConfig& gpu_target_config,
                                      const AutotuneResults* autotune_results,
                                      tsl::thread::ThreadPool* thread_pool) {
+    return OkStatus();
+  }
+
+  // Add autotuning passes for HLO emitters.
+  virtual Status AddHloEmitterAutotuningPasses(
+      HloPassPipeline* pipeline, se::StreamExecutor* stream_exec,
+      const DebugOptions& debug_options, const CompileOptions& options,
+      const GpuTargetConfig& gpu_target_config,
+      const AutotuneResults* autotune_results,
+      tsl::thread::ThreadPool* thread_pool) {
     return OkStatus();
   }
 

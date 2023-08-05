@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
@@ -119,14 +120,18 @@ PJRT_TopologyDescriptionDeleter MakeTopologyDescriptionDeleter(
   };
 }
 
-absl::StatusCode PjrtErrorToStatusCode(const PJRT_Error* error,
-                                       const PJRT_Api* api) {
+PJRT_Error_Code GetErrorCode(const PJRT_Error* error, const PJRT_Api* api) {
   PJRT_Error_GetCode_Args args;
   args.struct_size = PJRT_Error_GetCode_Args_STRUCT_SIZE;
   args.priv = nullptr;
   args.error = error;
-  api->PJRT_Error_GetCode(&args);
-  PJRT_Error_Code code = args.code;
+  pjrt::LogFatalIfPjrtError(api->PJRT_Error_GetCode(&args), api);
+  return args.code;
+}
+
+absl::StatusCode PjrtErrorToStatusCode(const PJRT_Error* error,
+                                       const PJRT_Api* api) {
+  PJRT_Error_Code code = GetErrorCode(error, api);
   switch (code) {
     case PJRT_Error_Code_CANCELLED:
     case PJRT_Error_Code_UNKNOWN:
@@ -607,6 +612,16 @@ PJRT_DeviceDescription* GetDeviceDescription(const PJRT_Api* api,
   args.device = device;
   pjrt::LogFatalIfPjrtError(api->PJRT_Device_GetDescription(&args), api);
   return args.device_description;
+}
+
+absl::Span<PJRT_Memory*> GetAddressableMemories(const PJRT_Api* api,
+                                                PJRT_Device* device) {
+  PJRT_Device_AddressableMemories_Args args;
+  args.struct_size = PJRT_Device_AddressableMemories_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.device = device;
+  pjrt::LogFatalIfPjrtError(api->PJRT_Device_AddressableMemories(&args), api);
+  return absl::MakeSpan(args.memories, args.num_memories);
 }
 
 static void PjRtValueDeleterCallback(char* value) { delete[] value; }

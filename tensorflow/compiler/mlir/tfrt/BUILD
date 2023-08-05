@@ -554,7 +554,6 @@ tf_cc_binary(
         "@tf_runtime//:dtype",
         "@tf_runtime//:simple_tracing_sink",
         "@tf_runtime//tools:bef_executor_expensive_kernels",
-        "@tf_runtime//tools:bef_executor_jit_kernels",
         "@tf_runtime//tools:bef_executor_lib",
         "@tf_runtime//tools:bef_executor_lightweight_kernels",
     ],
@@ -685,5 +684,27 @@ cc_library(
     deps = [
         "//tensorflow/core/tfrt/runtime",
         "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
+    name = "export",
+    srcs = ["utils/export.cc"],
+    hdrs = ["utils/export.h"],
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow:error_util",
+        "//tensorflow/compiler/mlir/tensorflow:export_graphdef",
+        "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/profiler/lib:traceme",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
     ],
 )

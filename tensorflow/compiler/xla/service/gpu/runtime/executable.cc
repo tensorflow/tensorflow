@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/runtime/executable.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -22,6 +23,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compilation_pipeline_gpu.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/runtime/ffi.h"
@@ -40,10 +42,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/runtime/memcpy.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/memset.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/send_recv.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/stream_synchronization.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/support.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/topk.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/tracing.h"
+#include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
+#include "tensorflow/compiler/xla/service/stream_pool.h"
+#include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/tsl/protobuf/dnn.pb.h"
 
 #if GOOGLE_CUDA
@@ -103,6 +110,7 @@ void RegisterXlaGpuRuntimeCustomCalls(DirectCustomCallRegistry& registry) {
   // Graph launch kernels depend on Cuda Graph API.
   RegisterGraphLaunchCustomCalls(registry);
   RegisterConcurrentRegionCustomCalls(registry);
+  RegisterStreamSynchronizationCustomCalls(registry);
 
   RegisterXlaClassicCustomCalls(registry);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -365,12 +373,17 @@ Status GpuRuntimeExecutable::Execute(
   }
 
   // Create the needed streams to support NcclCollectiveThunk.
-  absl::InlinedVector<se::Stream*, kAsyncStreamTotal> async_comm_streams;
-  for (int64_t i = 0; i < kAsyncStreamTotal; ++i) {
-    StatusOr<StreamPool::Ptr> async_comm_stream =
-        run_options->BorrowStream(executor->device_ordinal(), stream_priority);
-    async_comm_streams.push_back(
-        async_comm_stream.ok() ? async_comm_stream->get() : nullptr);
+  //
+  // Calling BorrowStream multiple times doesn't work as intended, see
+  // b/293945751.
+  absl::InlinedVector<se::Stream*, kAsyncStreamTotal> async_comm_streams(
+      kAsyncStreamTotal, nullptr);
+  StatusOr<std::vector<StreamPool::Ptr>> streams = run_options->BorrowStreams(
+      executor->device_ordinal(), kAsyncStreamTotal, stream_priority);
+  if (streams.ok()) {
+    for (int64_t i = 0; i < kAsyncStreamTotal; ++i) {
+      async_comm_streams[i] = streams->at(i).get();
+    }
   }
 
   // Async Collectives support and Send/Recv events instantiated for each Gpu

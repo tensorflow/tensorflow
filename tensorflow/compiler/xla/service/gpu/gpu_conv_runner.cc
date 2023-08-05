@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_runner.h"
 
+#include <vector>
+
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/layout_util.h"
@@ -85,6 +87,57 @@ Status RunGpuConvUnfused(const GpuConvParams& params, se::Stream* stream,
 
   return (*runner)(stream, options.profile_result, scratch_memory, input_buf,
                    filter_buf, output_buf);
+}
+
+template <typename ElementType, typename OutputType>
+Status RunGpuConvGraph(const GpuConvParams& params, se::Stream* stream,
+                       RunConvOptions options,
+                       DeviceMemory<ElementType> input_buf,
+                       DeviceMemory<ElementType> filter_buf,
+                       DeviceMemory<OutputType> output_buf,
+                       DeviceMemoryBase scratch_memory) {
+  if (params.config->conv_result_scale != 1) {
+    return InternalError(
+        "StreamExecutor doesn't support scaled convolution: %lf.",
+        params.config->conv_result_scale);
+  }
+
+  TF_ASSIGN_OR_RETURN(se::dnn::ConvolutionKind kind,
+                      GetDNNConvKindFromCudnnConvKind(params.config->kind));
+
+  TF_ASSIGN_OR_RETURN(
+      se::dnn::DataType input_type,
+      GetDNNDataTypeFromPrimitiveType(params.config->input_type));
+
+  TF_ASSIGN_OR_RETURN(
+      se::dnn::DataType output_type,
+      GetDNNDataTypeFromPrimitiveType(params.config->output_type));
+
+  se::dnn::LazyOpRunner<se::dnn::GraphConvOp>* lazy_runner =
+      options.runner_cache->AsGraphConvRunner();
+  std::optional<se::dnn::LazyOpRunner<se::dnn::GraphConvOp>> local_runner;
+  if (!lazy_runner) {
+    local_runner.emplace(params.config->algorithm);
+    lazy_runner = &*local_runner;
+  }
+
+  se::dnn::GraphConvOp::Config config{kind,
+                                      input_type,
+                                      output_type,
+                                      params.config->input_descriptor,
+                                      params.config->filter_descriptor,
+                                      params.config->output_descriptor,
+                                      params.config->conv_desc,
+                                      params.config->serialized_graph};
+  TF_ASSIGN_OR_RETURN(auto* runner,
+                      lazy_runner->GetOrCreateRunner(config, stream));
+
+  std::vector<DeviceMemoryBase> operands = {input_buf, filter_buf, output_buf};
+  // Insert the optional operands ahead of the output.
+  operands.insert(operands.end() - 1, params.operand_bufs.begin(),
+                  params.operand_bufs.end());
+
+  return (*runner)(stream, options.profile_result, scratch_memory, operands);
 }
 
 template <typename ElementType, typename BiasType, typename OutputType>
@@ -174,6 +227,9 @@ Status RunGpuConvInternalImpl(const GpuConvParams& params, se::Stream* stream,
       return RunGpuConvForwardActivation<ElementType, BiasType, OutputType>(
           params, stream, options, input_buf, filter_buf, output_buf,
           scratch_memory);
+      case CudnnConvKind::kForwardGraph:
+        return RunGpuConvGraph(params, stream, options, input_buf, filter_buf,
+                               output_buf, scratch_memory);
     }
   }
   return OkStatus();
@@ -272,10 +328,12 @@ StatusOr<GpuConvConfig> GetGpuConvConfig(
   config.kind = desc.kind;
   config.algorithm = se::dnn::AlgorithmDesc(backend_config.algorithm());
   config.conv_result_scale = backend_config.conv_result_scale();
+  config.serialized_graph = backend_config.serialized_graph();
 
   switch (config.kind) {
     case CudnnConvKind::kForward:
     case CudnnConvKind::kForwardActivation:
+    case CudnnConvKind::kForwardGraph:
       config.input_shape = operand0_shape;
       config.filter_shape = operand1_shape;
       config.output_shape = result_shape;
@@ -494,6 +552,7 @@ StatusOr<GpuConvParams> GetGpuConvParams(
   switch (config.kind) {
     case CudnnConvKind::kForward:
     case CudnnConvKind::kForwardActivation:
+    case CudnnConvKind::kForwardGraph:
       params.input_buf = operand_buffers[0];
       params.filter_buf = operand_buffers[1];
       params.output_buf = result_buffer;
@@ -508,6 +567,10 @@ StatusOr<GpuConvParams> GetGpuConvParams(
       params.filter_buf = result_buffer;
       params.output_buf = operand_buffers[1];
       break;
+  }
+
+  if (config.kind == CudnnConvKind::kForwardGraph) {
+    params.operand_bufs = {operand_buffers.begin() + 2, operand_buffers.end()};
   }
 
   if (config.kind == CudnnConvKind::kForwardActivation) {
@@ -532,6 +595,20 @@ Status RunGpuConv(const gpu::GpuConvConfig& config,
 
   PrimitiveType input_primitive_type = config.input_type;
   switch (input_primitive_type) {
+    case F8E4M3FN:
+      if (config.kind != CudnnConvKind::kForwardGraph) {
+        return InternalError("FP8 convolution requires graph mode.");
+      }
+      return RunGpuConvImpl<tsl::float8_e4m3fn, tsl::float8_e4m3fn,
+                            tsl::float8_e4m3fn>(params, stream, scratch_memory,
+                                                options);
+    case F8E5M2:
+      if (config.kind != CudnnConvKind::kForwardGraph) {
+        return InternalError("FP8 convolution requires graph mode.");
+      }
+      return RunGpuConvImpl<tsl::float8_e5m2, tsl::float8_e5m2,
+                            tsl::float8_e5m2>(params, stream, scratch_memory,
+                                              options);
     case F16:
       return RunGpuConvImpl<Eigen::half, Eigen::half, Eigen::half>(
           params, stream, scratch_memory, options);

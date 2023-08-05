@@ -300,7 +300,7 @@ class PackedVarAndDevice(object):
       return self._var.get_var_on_current_device().handle
 
   @property
-  def op(self):
+  def op(self) -> ops.Operation:
     with ops.device(self._device):
       return self._var.op
 

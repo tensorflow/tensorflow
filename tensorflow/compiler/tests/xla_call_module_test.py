@@ -13,7 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for XLA call module op wrapper."""
+
 import os
+import re
 from typing import Tuple
 import unittest
 
@@ -23,12 +25,12 @@ from tensorflow.compiler.mlir.stablehlo import stablehlo
 from tensorflow.compiler.tests import xla_test
 from tensorflow.compiler.tf2xla.ops import gen_xla_ops
 from tensorflow.compiler.tf2xla.python import xla
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
 
@@ -47,15 +49,10 @@ class XlaCallModuleOpTest(xla_test.XLATestCase):
                                      expected,
                                      equality_fn=None):
     """Asserts op(*args) == expected."""
-    with self.session() as session:
-      with self.test_scope():
-        placeholders = [
-            array_ops.placeholder(dtypes.as_dtype(arg.dtype), arg.shape)
-            for arg in args
-        ]
-        feeds = {placeholders[i]: args[i] for i in range(0, len(args))}
-        output = op(*placeholders)
-      result = session.run(output, feeds)
+    with self.test_scope():
+      tf_func = def_function.function(op, autograph=False, jit_compile=True)
+      result = tf_func(*args)
+
       if not equality_fn:
         equality_fn = self.assertAllClose
       equality_fn(result, expected, rtol=1e-3)
@@ -249,7 +246,7 @@ module @jit_f.0 attributes {jax.uses_shape_polymorphism = true} {
     # x: f32[a, 2], return x
     module, version = serialize("""
 module @jit_f.0 attributes {jax.uses_shape_polymorphism = true} {
-  func.func public @main(%arg0: tensor<?x2xf32>, %arg1: tensor<?x?xi32>) -> tensor<?x2xf32> {
+  func.func public @main(%arg0: tensor<?x2xf32>, %arg1: tensor<*xi32>) -> tensor<?x2xf32> {
     return %arg0 : tensor<?x2xf32>
   }
 }
@@ -279,7 +276,7 @@ module @jit_f.0 attributes {jax.uses_shape_polymorphism = true} {
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
         'Element type mismatch for argument 1 passed to XlaCallModule: '
-        r'expecting tensor<\?x\?xi32>, got tensor<2x3xf32>',
+        r'expecting tensor<\*xi32>, got tensor<2x3xf32>',
     ):
       self._assertOpOutputMatchesExpected(f, (x, y_bad_etype), (x,))
 
@@ -472,11 +469,13 @@ module @jit_fun.1 attributes {jax.uses_shape_polymorphism = true} {
   func.func public @main(%arg1: tensor<?x5xi32>) -> tensor<i32> {
     %b = "stablehlo.get_dimension_size"(%arg1) {dimension = 0 : i64} : (tensor<?x5xi32>) -> tensor<i32>
     %4 = stablehlo.constant dense<4> : tensor<i32>
+    %5 = stablehlo.constant dense<5> : tensor<i32>
+    %11 = stablehlo.constant dense<11> : tensor<i32>
     %ok = stablehlo.compare  EQ, %b, %4,  SIGNED : (tensor<i32>, tensor<i32>) -> tensor<i1>
-    stablehlo.custom_call @shape_assertion(%ok, %b, %4) {
-      error_message = "Expecting {0} == {1}",
+    stablehlo.custom_call @shape_assertion(%ok, %b, %4, %5, %4, %5, %4, %5, %4, %5, %4, %5, %11) {
+      error_message = "Expecting {0} == {1}. Extra {2,=5}, {3}, {{0}, {4}, {5}, {6}, {7}, {11}.",
       has_side_effect = true
-    } : (tensor<i1>, tensor<i32>, tensor<i32>) -> ()
+    } : (tensor<i1>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>) -> ()
     return %b : tensor<i32>
   }
 }
@@ -498,7 +497,7 @@ module @jit_fun.1 attributes {jax.uses_shape_polymorphism = true} {
     else:
       with self.assertRaisesRegex(
           errors.InvalidArgumentError,
-          'Expecting 3 == 4'):
+          re.escape('Expecting 3 == 4. Extra   5  , 4, {0}, 5, 4, 5, 4, 11.')):
         self._assertOpOutputMatchesExpected(f, (x,), (res,))
 
   def test_invalid_shape_assertion(self):
@@ -1393,7 +1392,7 @@ module @jit_f.0 {
 
 
 if __name__ == '__main__':
-  # This test is using Tensorflow sessions which are not compatible with eager
-  # mode.
-  ops.disable_eager_execution()
+  ops.enable_eager_execution(
+      config=config_pb2.ConfigProto(log_device_placement=True)
+  )
   googletest.main()

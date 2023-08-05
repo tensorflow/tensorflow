@@ -202,6 +202,13 @@ class ExecutableBuildOptions {
   }
   std::string* mutable_fdo_profile() { return &fdo_profile_; }
 
+  // The amount of device memory available for the executable.
+  int64_t device_memory_size() const { return device_memory_size_; }
+  ExecutableBuildOptions& set_device_memory_size(int64_t device_memory_size) {
+    device_memory_size_ = device_memory_size;
+    return *this;
+  }
+
   // Returns a string representation of the build options, suitable for
   // debugging.
   std::string ToString() const;
@@ -231,6 +238,7 @@ class ExecutableBuildOptions {
   tsl::thread::ThreadPool* compile_thread_pool_ = nullptr;
   LayoutCanonicalizationCallback layout_canonicalization_callback_;
   std::string fdo_profile_;
+  int64_t device_memory_size_ = 0;
 };
 
 StatusOr<ExecutableBuildOptions> ExecutableBuildOptionsFromProto(

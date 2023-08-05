@@ -16,17 +16,25 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_rematerialization.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <iterator>
+#include <limits>
 #include <memory>
+#include <optional>
 #include <set>
+#include <sstream>
 #include <string>
+#include <tuple>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -40,14 +48,20 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
 #include "tensorflow/compiler/xla/hlo/utils/hlo_query.h"
 #include "tensorflow/compiler/xla/map_util.h"
+#include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
+#include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
+
 namespace {
 
 using ::tsl::strings::HumanReadableNumBytes;
@@ -121,6 +135,8 @@ struct RematStrategy {
     // Change the layout into a compact form and uncompress it back at a later
     // program point.
     kCompress,
+    // Copy the data off the device to the host to be copied back later.
+    kHostOffload,
   } kind;
   Shape compact_shape;
 };
@@ -246,6 +262,9 @@ class InstructionList {
   //    for (auto item = q.first(); item != nullptr; item = q.next(item)) {...}
   Item* first() const { return first_; }
   Item* next(Item* item) const { return item->next; }
+  const Item* next(const Item* item) const { return item->next; }
+  Item* prev(Item* item) const { return item->prev; }
+  const Item* prev(const Item* item) const { return item->prev; }
 
   Item* first_skip_node() const { return first_skip_node_; }
   Item* next_skip_node(Item* item) const { return item->next_skip_node; }
@@ -507,7 +526,7 @@ class MemoryUsageTracker {
 
   int64_t RematerializationCost(const std::vector<Item*>& items,
                                 int64_t memory_reduced,
-                                int64_t memory_limit_bytes) {
+                                int64_t memory_limit_bytes) const {
     // If none of the users of any 'item' have been placed in the
     // sequence (as tracked by memory_tracker), then rematerialization of
     // 'item' is a zero-cost move of 'item->instruction' in the sequence.
@@ -537,7 +556,7 @@ class MemoryUsageTracker {
 
   // Returns the number of bytes that the current memory usage will be reduced
   // if the given instruction is compact.
-  int64_t MemoryReducedIfCompressed(Item* item,
+  int64_t MemoryReducedIfCompressed(const Item* item,
                                     const Shape& compact_shape) const;
 
   // Returns the number of bytes that the current memory usage will be reduced
@@ -555,6 +574,44 @@ class MemoryUsageTracker {
   // to uses).
   Status AddRematerializedInstruction(Item* original_item, Item* remat_item,
                                       absl::Span<Item*> indirect_users);
+
+  // Given a list of uses return two lists where one is the ones which are
+  // placed and the other is ones which are not yet placed.
+  std::tuple<UsesList, UsesList> GetPlacedAndUnplacedUsers(
+      const UsesList& uses) const;
+
+ public:
+  // Given the newly created instructions for host memory offload, create new
+  // buffers, link their uses to their users, and update the current memory
+  // usage.
+  Status AddHostOffloadCopyInstructions(Item* original_item,
+                                        Item* copy_start_to_host_item,
+                                        Item* copy_done_to_host_item,
+                                        Item* copy_start_to_device_item,
+                                        Item* copy_done_to_device_item);
+
+  // Counts the bytes that this item occupies by summing up the buffers defined
+  // by this item. If only_count_unplaced_users is true, only count users of
+  // buffers which are not yet placed. This will represent the current memory
+  // usage of the item. Otherwise, count all buffers. This will represent the
+  // peak memory usage of the item.
+  int64_t BytesUsedByBuffers(const Item* item,
+                             bool only_count_unplaced_users) const;
+
+  // Calculates the cost of compressing the candidate_item's output.
+  std::optional<int64_t> GetCostOfCompression(const Item* candidate_item,
+                                              int64_t memory_limit_bytes,
+                                              int64_t peak_memory_bytes);
+
+  // Calculates the cost of offloading the candidate_item's output to host
+  // memory.
+  std::optional<int64_t> GetCostOfHostOffload(const Item* candidate_item,
+                                              int64_t memory_limit_bytes) const;
+
+  // Calculates the cost of recomputing the candidate_item's output.
+  std::optional<int64_t> GetCostOfRecompute(
+      const std::vector<Item*>& candidate_items,
+      int64_t memory_limit_bytes) const;
 
   // Selects and returns the best candidate instructions for rematerialization.
   // A sequence of candidate instructions of length between min_block_size and
@@ -652,6 +709,18 @@ class MemoryUsageTracker {
     }
   };
 
+  // Adjust our tracked memory usage as a result of this new item coming into
+  // scope.
+  void CountAllocatedMemory(Item* item);
+
+  // Adjust our tracked memory usage as a result of this item going out of
+  // scope.
+  Status CountFreedMemory(Item* item);
+
+  // Buffers have users and users have buffers used, this function resolves
+  // outstanding issues in that bidirectional dependency.
+  void ReplaceUsesInUsersOfBuffer(Buffer& buffer, BufferId old_id) const;
+
   // Get the compact shape of given hlo instruction. An internal cache is used
   // to avoid computing the shape multiple times.
   StatusOr<Shape> GetCompactShape(const HloInstruction* hlo);
@@ -696,6 +765,12 @@ class MemoryUsageTracker {
     if (buffer.live_out || def_opcode == HloOpcode::kParameter) {
       return 0;
     } else {
+      if (options_.host_memory_offload_config && buffer.shape.has_layout() &&
+          buffer.shape.layout().memory_space() ==
+              options_.host_memory_offload_config->host_memory_space) {
+        // Host memory counts for nothing.
+        return 0;
+      }
       return buffer.size;
     }
   }
@@ -724,7 +799,7 @@ class MemoryUsageTracker {
 
   // Returns whether the given instruction is live at the current program
   // point.
-  bool IsInstructionCurrentlyLive(Item* instruction) const {
+  bool IsInstructionCurrentlyLive(const Item* instruction) const {
     // If the instruction has not started yet, it is not alive.
     if (!IsPlaced(instruction->instruction)) {
       return false;
@@ -752,8 +827,8 @@ class MemoryUsageTracker {
       return users_set.size();
     };
     buffers_.push_back(Buffer{buffer_id, defining_instruction,
-                              options_.size_function(shape), shape, live_out,
-                              has_indirect_uses, index, uses,
+                              options_.hlo_cost_analysis.GetShapeSize(shape),
+                              shape, live_out, has_indirect_uses, index, uses,
                               get_num_of_unique_users(uses)});
     return buffers_.back();
   }
@@ -857,6 +932,44 @@ MemoryUsageTracker::MemoryUsageTracker(
   DCHECK(Check());
 }
 
+void MemoryUsageTracker::CountAllocatedMemory(Item* item) {
+  // All buffers defined by this instruction need memory.
+  for (BufferId buffer_id : item->buffers_defined) {
+    VLOG(3) << "  Buffer " << buffers_.at(buffer_id).ToString()
+            << " is now live.";
+    memory_usage_ += AllocatedSize(buffer_id);
+  }
+}
+
+Status MemoryUsageTracker::CountFreedMemory(Item* item) {
+  for (BufferId buffer_id : item->buffers_used) {
+    Buffer& buffer = buffers_.at(buffer_id);
+    buffer.unfinished_user_count--;
+    TF_RET_CHECK(buffer.unfinished_user_count >= 0)
+        << buffer.ToString() << " has negative unfinished user count.";
+    if (buffer.unfinished_user_count == 0) {
+      // Buffer is now dead.
+      VLOG(3) << "  " << buffer.ToString() << " is now dead.";
+      memory_usage_ -= AllocatedSize(buffer_id);
+      // The memory usage can become negative inside the computation as we can
+      // free up the parameter space and reuse it for other tensors.
+    }
+  }
+
+  // If any buffer defined by this instruction has no uses, then memory can be
+  // reclaimed immediately.
+  for (BufferId buffer_id : item->buffers_defined) {
+    const Buffer& buffer = buffers_.at(buffer_id);
+    if (buffer.unfinished_user_count == 0) {
+      VLOG(3) << "  " << buffer.ToString() << " is immediately dead.";
+      memory_usage_ -= AllocatedSize(buffer_id);
+      // The memory usage can become negative inside the computation as we can
+      // free up the parameter space and reuse it for other tensors.
+    }
+  }
+  return OkStatus();
+}
+
 Status MemoryUsageTracker::BeginInstruction(Item* item) {
   const HloInstruction* instruction = item->instruction;
   VLOG(3) << "BeginInstruction " << instruction->name();
@@ -865,12 +978,7 @@ Status MemoryUsageTracker::BeginInstruction(Item* item) {
 
   item->placed = true;
 
-  // All buffers defined by this instruction need memory.
-  for (BufferId buffer_id : item->buffers_defined) {
-    VLOG(3) << "  Buffer " << buffers_.at(buffer_id).ToString()
-            << " is now live.";
-    memory_usage_ += AllocatedSize(buffer_id);
-  }
+  CountAllocatedMemory(item);
 
   // TODO(b/37686934): Elementwise instructions can share the buffer of a (dead)
   // operand. Account for this potential reuse here.
@@ -888,31 +996,7 @@ Status MemoryUsageTracker::EndInstruction() {
   TF_RET_CHECK(in_progress_item_ != nullptr);
   VLOG(3) << "EndInstruction " << in_progress_item_->instruction->name();
 
-  for (BufferId buffer_id : in_progress_item_->buffers_used) {
-    Buffer& buffer = buffers_.at(buffer_id);
-    buffer.unfinished_user_count--;
-    TF_RET_CHECK(buffer.unfinished_user_count >= 0)
-        << buffer.ToString() << " has negative unfinished user count.";
-    if (buffer.unfinished_user_count == 0) {
-      // Buffer is now dead.
-      VLOG(3) << "  " << buffer.ToString() << " is now dead.";
-      memory_usage_ -= AllocatedSize(buffer_id);
-      // The memory usage can become negative inside the computation as we can
-      // free up the parameter space and reuse it for other tensors.
-    }
-  }
-
-  // If any buffer defined by this instruction has no uses, then memory can be
-  // reclaimed immediately.
-  for (BufferId buffer_id : in_progress_item_->buffers_defined) {
-    const Buffer& buffer = buffers_.at(buffer_id);
-    if (buffer.unfinished_user_count == 0) {
-      VLOG(3) << "  " << buffer.ToString() << " is immediately dead.";
-      memory_usage_ -= AllocatedSize(buffer_id);
-      // The memory usage can become negative inside the computation as we can
-      // free up the parameter space and reuse it for other tensors.
-    }
-  }
+  TF_RETURN_IF_ERROR(CountFreedMemory(in_progress_item_));
 
   in_progress_item_ = nullptr;
 
@@ -926,7 +1010,7 @@ Status MemoryUsageTracker::EndInstruction() {
 }
 
 int64_t MemoryUsageTracker::MemoryReducedIfCompressed(
-    Item* item, const Shape& compact_shape) const {
+    const Item* item, const Shape& compact_shape) const {
   CHECK_NE(in_progress_item_, nullptr);
   if (!item->placed || item == in_progress_item_) {
     return 0;
@@ -942,7 +1026,8 @@ int64_t MemoryUsageTracker::MemoryReducedIfCompressed(
     const Buffer& buffer = buffers_.at(buffer_id);
     memory_reduced += buffer.size;
 
-    int64_t compact_shape_size = options_.size_function(compact_shape);
+    int64_t compact_shape_size =
+        options_.hlo_cost_analysis.GetShapeSize(compact_shape);
     // Account for buffers that are compressed after instruction.
     memory_reduced -= compact_shape_size;
   }
@@ -1007,58 +1092,96 @@ int64_t MemoryUsageTracker::MemoryReducedIfRematerialized(
   return memory_reduced;
 }
 
+std::tuple<UsesList, UsesList> MemoryUsageTracker::GetPlacedAndUnplacedUsers(
+    const UsesList& uses) const {
+  UsesList placed_users, unplaced_users;
+  for (const ItemUse& use : uses) {
+    if (use.user->placed) {
+      DCHECK(IsFinished(use.user)) << use.user->instruction->name();
+      placed_users.push_back(use);
+    } else {
+      unplaced_users.push_back(use);
+    }
+  }
+  return {placed_users, unplaced_users};
+}
+
+void MemoryUsageTracker::ReplaceUsesInUsersOfBuffer(Buffer& buffer,
+                                                    BufferId old_id) const {
+  // Loop over the users of this buffer. For each of those users look at their
+  // buffers used. If that buffer Id matches the passed in old_id, then replace
+  // it with the Id of this current buffer.
+  for (ItemUse& use : buffer.users) {
+    BufferIdList& buffers_used = use.user->buffers_used;
+    absl::c_replace(buffers_used, old_id, buffer.id);
+  }
+}
+
 Status MemoryUsageTracker::AddCompressInstructions(Item* original_item,
                                                    Item* compressed_item,
                                                    Item* uncompressed_item) {
-  // Original buffer is now dead.
-  memory_usage_ -= options_.size_function(original_item->instruction->shape());
-  // Compressed buffer is now alive.
-  memory_usage_ +=
-      options_.size_function(compressed_item->instruction->shape());
+  CHECK(original_item->placed)
+      << "Compressing instruction, but the original is not yet placed.";
+  CHECK_EQ(original_item->buffers_output.size(), 1)
+      << "Only compressing items which have a single output buffer";
 
-  UsesList placed_users;
-  UsesList unplaced_users;
-  CHECK_EQ(original_item->buffers_output.size(), 1);
+  // Update the memory usage by replacing the old instruction with the new one.
+  // Original buffer is now dead.
+  memory_usage_ -= options_.hlo_cost_analysis.GetShapeSize(
+      original_item->instruction->shape());
+  // Compressed buffer is now alive.
+  memory_usage_ += options_.hlo_cost_analysis.GetShapeSize(
+      compressed_item->instruction->shape());
+
+  // Update the original item's only output buffer.
   BufferId original_buffer_id = original_item->buffers_output[0];
   Buffer& original_buffer = buffers_.at(original_buffer_id);
-  for (ItemUse& user : original_buffer.users) {
-    if (user.user->placed) {
-      CHECK(IsFinished(user.user)) << user.user->instruction->name();
-      placed_users.push_back(user);
-    } else {
-      unplaced_users.push_back(user);
-    }
-  }
+  auto [placed_users, unplaced_users] =
+      GetPlacedAndUnplacedUsers(original_buffer.users);
+  // Update the list of users to only be placed_users.
   original_buffer.users = std::move(placed_users);
+  // Update to reflect that all users are finished, since any user after this
+  // point will be using the uncompressed version.
   original_buffer.unfinished_user_count = 0;
+  // Add the new compression instruction as a user of the original instruction.
   original_buffer.users.push_back(ItemUse{compressed_item, 0, std::nullopt});
+
   // We are reallocating the vector containing the buffers potentially,
   // invalidating the original_buffer reference, so copy the index that we need
   // across NewBuffer calls.
   ShapeIndex copied_index = original_buffer.index;
+
+  // Create a new buffer which is the one that the new compress instruction will
+  // define.
   Buffer& compressed_buffer =
       NewBuffer(compressed_item, compressed_item->instruction->shape(),
                 copied_index, {ItemUse{uncompressed_item, 0, std::nullopt}},
                 /*live_out=*/false,
                 /*has_indirect_uses=*/false);
+  // Update the compress item to only use the output buffer of the original
+  // item.
   compressed_item->buffers_used = original_item->buffers_output;
+  // Update the compress item to define & output this newly created buffer.
   compressed_item->buffers_output = {compressed_buffer.id};
   compressed_item->buffers_defined.push_back(compressed_buffer.id);
 
+  // Create a new buffer which is the one that the new uncompress instruction
+  // will define.
   Buffer& uncompressed_buffer =
       NewBuffer(uncompressed_item, uncompressed_item->instruction->shape(),
                 copied_index, std::move(unplaced_users), /*live_out=*/false,
                 /*has_indirect_uses=*/false);
-
+  // Update the uncompressed item to only use the output buffer of the compress
+  // item.
   uncompressed_item->buffers_used = {compressed_item->buffers_output[0]};
+  // Update the uncompressed item to define & output this newly created buffer.
   uncompressed_item->buffers_output = {uncompressed_buffer.id};
   uncompressed_item->buffers_defined = {uncompressed_buffer.id};
 
-  for (ItemUse& user : uncompressed_buffer.users) {
-    BufferIdList& buffers_used = user.user->buffers_used;
-    std::replace(buffers_used.begin(), buffers_used.end(), original_buffer_id,
-                 uncompressed_buffer.id);
-  }
+  // uncompressed_buffer inherited its users as the unplaced users of the
+  // original instruction. In each of these uses, replace the use of the
+  // original buffer with the newly created final buffer.
+  ReplaceUsesInUsersOfBuffer(uncompressed_buffer, original_buffer_id);
 
   return OkStatus();
 }
@@ -1208,6 +1331,149 @@ Status MemoryUsageTracker::AddRematerializedInstruction(
   return OkStatus();
 }
 
+Status MemoryUsageTracker::AddHostOffloadCopyInstructions(
+    Item* original_item, Item* copy_start_to_host_item,
+    Item* copy_done_to_host_item, Item* copy_start_to_device_item,
+    Item* copy_done_to_device_item) {
+  CHECK_EQ(original_item->buffers_defined.size(), 1);
+
+  // Split up the users of the original instruction into placed and unplaced.
+  CHECK_EQ(original_item->buffers_output.size(), 1);
+  BufferId original_buffer_id = original_item->buffers_output[0];
+  Buffer& original_buffer = buffers_.at(original_buffer_id);
+  auto [placed_users, unplaced_users] =
+      GetPlacedAndUnplacedUsers(original_buffer.users);
+
+  // Update the original item's buffer's users to be:
+  //  1. The placed_users only.
+  //  2. The newly created copy_start_to_host.
+  original_buffer.users = std::move(placed_users);
+  original_buffer.users.emplace_back(copy_start_to_host_item, 0, std::nullopt);
+  // Set the only unfinished user as the newly created copy_to_host instruction.
+  // We will later determine if that user is finished or not and update this
+  // value if so.
+  original_buffer.unfinished_user_count = 1;
+
+  // Create new buffers for all of the newly created instructions.
+  CHECK_EQ(copy_start_to_host_item->instruction->shape().tuple_shapes_size(), 3)
+      << "copy_start_to_host_item's shape is "
+      << copy_start_to_host_item->instruction->shape().ToString();
+  CHECK_EQ(copy_start_to_device_item->instruction->shape().tuple_shapes_size(),
+           3)
+      << "copy_start_to_device_item's shape is "
+      << copy_start_to_device_item->instruction->shape().ToString();
+
+  // The first copy-start is a tuple of 3 elements: (host_buffer, device_buffer,
+  // context). Since we're not tracking host memory, we'll only create buffers
+  // for the other two.
+  BufferId copy_start_to_host_device_buffer_id =
+      NewBuffer(copy_start_to_host_item,
+                copy_start_to_host_item->instruction->shape().tuple_shapes(1),
+                ShapeIndex(),
+                UsesList{ItemUse{copy_done_to_host_item, 0, std::nullopt}},
+                /*live_out=*/false, /*has_indirect_uses=*/false)
+          .id;
+  BufferId copy_start_to_host_context_buffer_id =
+      NewBuffer(copy_start_to_host_item,
+                copy_start_to_host_item->instruction->shape().tuple_shapes(2),
+                ShapeIndex(),
+                UsesList{ItemUse{copy_done_to_host_item, 0, std::nullopt}},
+                /*live_out=*/false, /*has_indirect_uses=*/false)
+          .id;
+
+  // The second copy-start is a tuple of 3 elements: (device_buffer,
+  // host_buffer, context). Since we're not tracking host memory, we'll only
+  // create buffers for the other two.
+  BufferId copy_start_to_device_device_buffer_id =
+      NewBuffer(copy_start_to_device_item,
+                copy_start_to_device_item->instruction->shape().tuple_shapes(0),
+                ShapeIndex(),
+                UsesList{ItemUse{copy_done_to_device_item, 0, std::nullopt}},
+                /*live_out=*/false, /*has_indirect_uses=*/false)
+          .id;
+  BufferId copy_start_to_device_context_buffer_id =
+      NewBuffer(copy_start_to_device_item,
+                copy_start_to_device_item->instruction->shape().tuple_shapes(2),
+                ShapeIndex(),
+                UsesList{ItemUse{copy_done_to_device_item, 0, std::nullopt}},
+                /*live_out=*/false, /*has_indirect_uses=*/false)
+          .id;
+
+  // The final copy-done outputs the final device buffer that is the
+  // rematerialized original buffer.
+  BufferId copy_done_to_device_buffer_id =
+      NewBuffer(copy_done_to_device_item,
+                copy_done_to_device_item->instruction->shape(), ShapeIndex(),
+                std::move(unplaced_users), /*live_out=*/false,
+                /*has_indirect_uses=*/false)
+          .id;
+
+  // Update items of the newly created instructions to reference the newly
+  // created buffers.
+  copy_start_to_host_item->buffers_used = original_item->buffers_output;
+  copy_start_to_host_item->buffers_output = {
+      copy_start_to_host_device_buffer_id,
+      copy_start_to_host_context_buffer_id};
+  copy_start_to_host_item->buffers_defined = {
+      copy_start_to_host_device_buffer_id,
+      copy_start_to_host_context_buffer_id};
+
+  copy_done_to_host_item->buffers_used =
+      copy_start_to_host_item->buffers_output;
+  // The only buffer that copy_done_to_host defines is a host buffer. Since
+  // we're not tracking host memory, we're not going to bother with that buffer
+  // for now.
+  copy_done_to_host_item->buffers_output = {};
+  copy_done_to_host_item->buffers_defined = {};
+
+  copy_start_to_device_item->buffers_used =
+      copy_done_to_host_item->buffers_output;
+  copy_start_to_device_item->buffers_output = {
+      copy_start_to_device_device_buffer_id,
+      copy_start_to_device_context_buffer_id};
+  copy_start_to_device_item->buffers_defined = {
+      copy_start_to_device_device_buffer_id,
+      copy_start_to_device_context_buffer_id};
+
+  copy_done_to_device_item->buffers_used =
+      copy_start_to_device_item->buffers_output;
+  copy_done_to_device_item->buffers_output = {copy_done_to_device_buffer_id};
+  copy_done_to_device_item->buffers_defined = {copy_done_to_device_buffer_id};
+
+  Buffer& copy_done_to_device_buffer =
+      buffers_.at(copy_done_to_device_buffer_id);
+  ReplaceUsesInUsersOfBuffer(copy_done_to_device_buffer, original_buffer_id);
+
+  // We know that the 4 newly created instructions are not in progress, so if
+  // they're marked as placed, we can count the allocation and deallocation of
+  // buffers. Calling these functions also does some user accounting. Since
+  // these instructions have a strict order, if one isn't placed, the following
+  // ones won't be either.
+  if (copy_start_to_host_item->placed) {
+    CountAllocatedMemory(copy_start_to_host_item);
+    TF_RETURN_IF_ERROR(CountFreedMemory(copy_start_to_host_item));
+    // This will account for the freed memory that is defined by the original
+    // item.
+
+    if (copy_done_to_host_item->placed) {
+      CountAllocatedMemory(copy_done_to_host_item);
+      TF_RETURN_IF_ERROR(CountFreedMemory(copy_done_to_host_item));
+
+      if (copy_start_to_device_item->placed) {
+        CountAllocatedMemory(copy_start_to_device_item);
+        TF_RETURN_IF_ERROR(CountFreedMemory(copy_start_to_device_item));
+
+        if (copy_done_to_device_item->placed) {
+          CountAllocatedMemory(copy_done_to_device_item);
+          TF_RETURN_IF_ERROR(CountFreedMemory(copy_done_to_device_item));
+        }
+      }
+    }
+  }
+
+  return OkStatus();
+}
+
 std::string MemoryUsageTracker::ToString() const {
   std::string output =
       absl::StrCat("MemoryUsageTracker for ", computation_->name(), "\n");
@@ -1311,33 +1577,6 @@ bool MemoryUsageTracker::Check() const {
   return true;
 }
 
-// Computes and returns the cost of rematerializing the given instruction.
-// Cost per rematerialized instruction is defined as:
-//
-// memory_limit_bytes / memory_reduced
-//
-// The idea is to choose the operation that will save the most memory for
-// rematerialization and do not worry about how much the compute costs since
-// running out of memory is more harmful than taking longer to get the answer.
-int64_t RematerializationCost(const HloInstruction* instruction,
-                              const MemoryUsageTracker& memory_tracker,
-                              int64_t memory_reduced,
-                              int64_t memory_limit_bytes) {
-  // If none of the users of 'instruction' have been placed in the sequence (as
-  // tracked by memory_tracker), then rematerialization of 'instruction' is a
-  // zero-cost move of 'instruction' in the sequence.
-  if (!absl::c_any_of(instruction->users(),
-                      [&memory_tracker](const HloInstruction* inst) {
-                        return memory_tracker.IsPlaced(inst);
-                      })) {
-    return 0;
-  }
-
-  CHECK_GT(memory_reduced, 0);
-  // Return the inverse of the benefit of rematerialization.
-  return memory_limit_bytes / memory_reduced;
-}
-
 // Returns a block of up to min_block_size consecutive candidate instructions
 // from instruction_list starting from start_item. Returns fewer than
 // min_block_size instructions if the block of unplaced instructions starting
@@ -1374,15 +1613,254 @@ bool AnyDenylistedOrNonRematerializable(
   return false;
 }
 
+int64_t MemoryUsageTracker::BytesUsedByBuffers(
+    const Item* item, bool only_count_unplaced_users) const {
+  int64_t bytes_used_by_buffers = 0;
+  for (const auto& buffer_id : item->buffers_defined) {
+    VLOG(3) << "  buffer " << buffer_id << "'s users are "
+            << absl::StrJoin(buffers_.at(buffer_id).users, ", ",
+                             [](std::string* str, const auto& use) {
+                               str->append(use.user->instruction->name());
+                             });
+    for (const auto& use : buffers_.at(buffer_id).users) {
+      if (!only_count_unplaced_users || !use.user->placed) {
+        // Found a non-placed user
+        bytes_used_by_buffers += AllocatedSize(buffer_id);
+        // Don't count uses of this buffer multiple times.
+        break;
+      }
+    }
+  }
+  return bytes_used_by_buffers;
+}
+
+std::optional<int64_t> MemoryUsageTracker::GetCostOfCompression(
+    const Item* candidate_item, int64_t memory_limit_bytes,
+    int64_t peak_memory_bytes) {
+  CHECK(candidate_item != nullptr);
+
+  // Only consider compressing single output instruction.
+  if (candidate_item->buffers_output.size() != 1) {
+    // TODO(b/291824123): Currently only handling single output buffers.
+    HloInstruction* candidate_instruction = candidate_item->instruction;
+    VLOG(2) << "  " << candidate_instruction->name()
+            << " has more than one output buffer; cannot offload to host.";
+    return {};
+  }
+
+  const Buffer& output_buffer = buffers_.at(candidate_item->buffers_output[0]);
+  if (!candidate_item->placed || candidate_item == in_progress_item_ ||
+      output_buffer.live_out) {
+    return {};
+  }
+
+  const Shape& original_shape = candidate_item->instruction->shape();
+  if (!original_shape.IsArray()) {
+    return {};
+  }
+
+  Shape compact_shape = GetCompactShape(candidate_item->instruction).value();
+  const int64_t memory_reduced =
+      MemoryReducedIfCompressed(candidate_item, compact_shape);
+  // Since the compressed and uncompressed buffers need to be alive
+  // while performing the compression/uncompression, only perform
+  // the compression if the sum of the two sizes is less than the
+  // peak memory.
+  const int64_t size = options_.hlo_cost_analysis.GetShapeSize(
+      candidate_item->instruction->shape());
+  const int64_t reduced_size =
+      options_.hlo_cost_analysis.GetShapeSize(compact_shape);
+  // TODO(victorstone): I don't think this size check is right.
+  if (memory_reduced > 0 && size + reduced_size < peak_memory_bytes) {
+    return memory_limit_bytes / memory_reduced;
+  } else {
+    return {};
+  }
+}
+
+std::optional<int64_t> MemoryUsageTracker::GetCostOfHostOffload(
+    const Item* candidate_item, int64_t memory_limit_bytes) const {
+  CHECK(candidate_item != nullptr);
+  HloInstruction* candidate_instruction = candidate_item->instruction;
+
+  VLOG(2)
+      << "Considering host offload as an option for remat. looking at instr "
+      << candidate_instruction->name();
+
+  if (candidate_item->buffers_output.size() != 1) {
+    // TODO(b/291824123): Currently only handling single output buffers.
+    VLOG(2) << "  " << candidate_instruction->name()
+            << " has more than one output buffer; cannot offload to host.";
+    return {};
+  }
+
+  // TODO(b/291823800): Bitcasts complicate things. Skip for now.
+  for (auto buffer_id : candidate_item->buffers_defined) {
+    for (auto use : buffers_.at(buffer_id).users) {
+      if (use.user->instruction->opcode() == HloOpcode::kBitcast) {
+        VLOG(3) << "  " << candidate_item->instruction->name()
+                << " has a user which is a bitcast instruction; cannot offload "
+                   "to host.";
+        return {};
+      }
+    }
+  }
+
+  const Buffer& output_buffer = buffers_.at(candidate_item->buffers_output[0]);
+  if (!candidate_item->placed || candidate_item == in_progress_item_ ||
+      output_buffer.live_out) {
+    VLOG(2) << "  " << candidate_instruction->name()
+            << " is not yet placed, is in progress, or is \"live_out\"; cannot "
+               "offload to host.";
+    return {};
+  }
+
+  // If the current instruction uses this buffer, it doesn't make sense to
+  // offload.
+  const bool current_instruction_uses_this_item = [&]() {
+    if (in_progress_item_ == nullptr) {
+      // There is no current instruction.
+      return false;
+    }
+    // Check if any of our output buffers' users are the current item.
+    const auto& output_buffer_ids = candidate_item->buffers_output;
+    for (const auto& output_buffer_id : output_buffer_ids) {
+      const Buffer& output_buffer = buffers_.at(output_buffer_id);
+      for (const auto& use : output_buffer.users) {
+        if (use.user == in_progress_item_) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }();
+  if (current_instruction_uses_this_item) {
+    VLOG(2) << "  " << candidate_instruction->name()
+            << " is used by the current instruction in mem tracker ("
+            << in_progress_item_->instruction->name()
+            << "); cannot offload to host.";
+    return {};
+  }
+
+  const int64_t bytes_used_by_buffers =
+      BytesUsedByBuffers(candidate_item, /*only_count_unplaced_users=*/true);
+
+  if (bytes_used_by_buffers == 0) {
+    VLOG(2) << "  " << candidate_instruction->name()
+            << " consumes no memory; no point in offloading.";
+    return {};
+  }
+
+  // How much compute is between this candidate's last placed user and its first
+  // non-placed user?
+  const auto [placed_uses, unplaced_uses] =
+      GetPlacedAndUnplacedUsers(output_buffer.users);
+  const Item* last_placed_user = nullptr;
+  const Item* first_unplaced_user = nullptr;
+  for (const auto* item = instruction_list_.first(); item != nullptr;
+       item = instruction_list_.next(item)) {
+    if (absl::c_find_if(placed_uses, [&](const auto& use) {
+          return use.user == item;
+        }) != placed_uses.end()) {
+      last_placed_user = item;
+    }
+    if (first_unplaced_user == nullptr &&
+        absl::c_find_if(unplaced_uses, [&](const auto& use) {
+          return use.user == item;
+        }) != unplaced_uses.end()) {
+      first_unplaced_user = item;
+      break;
+    }
+  }
+
+  if (last_placed_user == nullptr) {
+    VLOG(3) << "  " << candidate_instruction->name()
+            << " has no placed users, starting search at self.";
+    last_placed_user = candidate_item;
+  }
+  CHECK(first_unplaced_user != nullptr)
+      << "Didn't find any unplaced user for instruction \""
+      << candidate_instruction->name()
+      << "\". There must be a "
+         "bug in how we calculate how much memory this item uses.";
+
+  float time_spent_before_next_use = 0.0;
+  for (auto* item = last_placed_user; item != first_unplaced_user;
+       item = instruction_list_.next(item)) {
+    time_spent_before_next_use += std::max(
+        0.0f, options_.hlo_cost_analysis.optimal_seconds(*item->instruction));
+  }
+
+  if (time_spent_before_next_use <= 0.0) {
+    // Instructions between take no time.
+    return {};
+  }
+
+  const float time_spent_on_copies =
+      bytes_used_by_buffers / options_.host_memory_offload_config
+                                  ->bandwidth_to_host_bytes_per_second +
+      bytes_used_by_buffers / options_.host_memory_offload_config
+                                  ->bandwidth_from_host_bytes_per_second;
+  if (time_spent_before_next_use < time_spent_on_copies) {
+    // Host offload only considers cases where we can completely hide the copy
+    // times. In this case, there is not enough compute time to hide offloading
+    // and copying the data back in.
+    return {};
+  }
+  VLOG(3) << "  " << candidate_instruction->name() << " has enough time ("
+          << time_spent_before_next_use
+          << ") between itself and next use. The memcpy out and back will take "
+          << time_spent_on_copies << "s";
+  // TODO(b/293323448): Properly calculate a cost; this cost metric is not
+  // useful.
+  return memory_limit_bytes / bytes_used_by_buffers;
+}
+
+std::optional<int64_t> MemoryUsageTracker::GetCostOfRecompute(
+    const std::vector<Item*>& candidate_items,
+    int64_t memory_limit_bytes) const {
+  // If any of the candidate's control successor has been placed, we need
+  // to skip this candidate. Otherwise we will violate control dependency.
+  for (auto* item : candidate_items) {
+    HloInstruction* candidate = item->instruction;
+    if (std::any_of(
+            candidate->control_successors().begin(),
+            candidate->control_successors().end(),
+            [this](const HloInstruction* inst) { return IsPlaced(inst); })) {
+      return {};
+    }
+  }
+
+  // Evaluate this block as a candidate for recompute rematerialization.
+  VLOG(5) << "Block contains:";
+  for (auto* hlo : candidate_items) {
+    VLOG(5) << hlo->instruction->name();
+  }
+  const int64_t memory_reduced = MemoryReducedIfRematerialized(candidate_items);
+  if (memory_reduced <= 0) {
+    return {};
+  }
+
+  return RematerializationCost(candidate_items, memory_reduced,
+                               memory_limit_bytes);
+}
+
 std::tuple<std::vector<Item*>, RematStrategy, int>
 MemoryUsageTracker::PickRematerializationCandidates(
     const InstructionList& instruction_list, int64_t memory_limit_bytes,
     absl::flat_hash_map<const HloInstruction*, bool>* rematerializable_map,
     int min_block_size, int max_block_size, int64_t peak_memory_bytes) {
+  // Keep track of the cost of each rematerialization option.
+  // This cost is defined as:
+  //
+  // memory_limit_bytes / memory_reduced
+  //
+  // The idea is to choose the operation that will save the most memory for
+  // rematerialization and do not worry about how much the compute costs since
+  // running out of memory is more harmful than taking longer to get the answer.
   std::vector<Item*> best_items;
-  int64_t best_cost = 0;
+  int64_t best_cost = std::numeric_limits<int64_t>::max();
   RematStrategy best_strategy;
-
   int effort = 0;
   VLOG(5) << "Picking candidate block with size in [" << min_block_size << ", "
           << max_block_size << "]";
@@ -1397,110 +1875,74 @@ MemoryUsageTracker::PickRematerializationCandidates(
       // instructions.
       break;
     }
+
     // If any item in the starting block are denylisted or non-rematable, then
     // break and move on to next start_item (we can actually move to the last
     // invalid item in this block, but let's ignore that optimization for now).
     if (AnyDenylistedOrNonRematerializable(block, rematerializable_map)) {
       continue;
     }
+
+    // First, calculate the cost of compression rematerialziation for this
+    // instruction.
+    if (options_.remat_mode_config.compress && block.size() == 1) {
+      auto cost =
+          GetCostOfCompression(block[0], memory_limit_bytes, peak_memory_bytes);
+      ++effort;
+      if (cost && *cost < best_cost) {
+        VLOG(1) << "Found new best cost; from " << best_cost << " to " << *cost
+                << " with strategy kCompress on block of size " << block.size();
+        best_strategy.kind = RematStrategy::kCompress;
+        // TODO(b/293323448): This `best_strategy.compact_shape` is already
+        // computed inside GetCostOfCompression, should we get it from there? Or
+        // is it ok to recompute?
+        best_strategy.compact_shape =
+            GetCompactShape(block[0]->instruction).value();
+        best_items = block;
+        best_cost = *cost;
+      }
+    }
+
+    // Second, calculate the cost of host offload rematerialization for this
+    // instruction.
+    if (options_.remat_mode_config.host_offload && block.size() == 1) {
+      auto cost = GetCostOfHostOffload(block[0], memory_limit_bytes);
+      ++effort;
+      if (cost && *cost < best_cost) {
+        VLOG(1) << "Found new best cost; from " << best_cost << " to " << *cost
+                << " with strategy kHostOffload on block of size "
+                << block.size();
+        best_strategy.kind = RematStrategy::kHostOffload;
+        best_items = block;
+        best_cost = *cost;
+      }
+    }
+
+    // Finally, calculate the cost of recompute rematerialization for this
+    // instruction block. There is one difference between this rematerialization
+    // strategy and the other two: recompute can rematerialize more than one
+    // instruction at a time. Evaluate the cost of rematerializing the current
+    // block, add the next instruction to the block, and then repeat until we
+    // reach the configured max block size.
+    if (!options_.remat_mode_config.recompute) {
+      // Recompute is not enabled, nothing else to do for this block.
+      continue;
+    }
+
     while (block.size() <= max_block_size) {
-      // block size = 1 is treated separately since we consider compression in
-      // this case only.
-      if (block.size() == 1) {
-        auto* item = block[0];
-        auto* candidate = item->instruction;
-        if (item->buffers_output.size() == 1 &&
-            (options_.mode ==
-                 HloRematerialization::RematerializationMode::kCompressOnly ||
-             options_.mode == HloRematerialization::RematerializationMode::
-                                  kRecomputeAndCompress)) {
-          // Only consider compressing single output instruction.
-          const Buffer& output_buffer = buffers_.at(item->buffers_output[0]);
-
-          if (item->placed && item != in_progress_item_ &&
-              !output_buffer.live_out) {
-            const Shape& original_shape = item->instruction->shape();
-            if (original_shape.IsArray()) {
-              Shape compact_shape = GetCompactShape(item->instruction).value();
-              const int64_t memory_reduced =
-                  MemoryReducedIfCompressed(item, compact_shape);
-              // Since the compressed and uncompressed buffers need to be alive
-              // while performing the compression/uncompression, only perform
-              // the compression if the sum of the two sizes is less than the
-              // peak memory.
-              const int64_t size =
-                  options_.size_function(item->instruction->shape());
-              const int64_t reduced_size =
-                  options_.size_function(compact_shape);
-              effort++;
-              if (memory_reduced > 0 &&
-                  size + reduced_size < peak_memory_bytes) {
-                const int64_t cost = memory_limit_bytes / memory_reduced;
-                if (best_items.empty() || cost < best_cost) {
-                  VLOG(3) << "candidate " << candidate->name() << "("
-                          << candidate->ToShortString() << ")"
-                          << " now best when compressed into "
-                          << compact_shape.ToString(true);
-                  best_strategy.kind = RematStrategy::kCompress;
-                  best_strategy.compact_shape = compact_shape;
-                  best_items = block;
-                  best_cost = cost;
-                }
-              }
-            }
-          }
-        }
-      }
-      // Do not consider recomputation in compress-only mode.
-      if (options_.mode ==
-          HloRematerialization::RematerializationMode::kCompressOnly) {
-        // break out of this loop. Move on to the next start_item.
-        break;
-      }
-      // If any of the candidate's control successor has been placed, we need
-      // to skip this candidate. Otherwise we will violate control dependency.
-      bool control_successor_placed = false;
-      for (auto* item : block) {
-        HloInstruction* candidate = item->instruction;
-        if (std::any_of(candidate->control_successors().begin(),
-                        candidate->control_successors().end(),
-                        [this](const HloInstruction* inst) {
-                          return IsPlaced(inst);
-                        })) {
-          control_successor_placed = true;
-          break;
-        }
-      }
-      if (control_successor_placed) {
-        // break out of this loop. Move on to the next start_item.
-        break;
-      }
-      VLOG(5) << "Block contains:";
-      for (auto* hlo : block) {
-        VLOG(5) << hlo->instruction->name();
-      }
-      const int64_t memory_reduced = MemoryReducedIfRematerialized(block);
-      effort++;
-      if (memory_reduced > 0) {
-        const int cost =
-            RematerializationCost(block, memory_reduced, memory_limit_bytes);
-
-        VLOG(5) << "Candidate block of size " << block.size()
-                << " starting from " << block[0]->instruction->name()
-                << ", memory reduced " << memory_reduced << ", cost per byte "
-                << cost;
-
-        if (best_items.empty() || cost < best_cost) {
-          VLOG(5) << "Candidate block of size " << block.size()
-                  << " starting from " << block[0]->instruction->name()
-                  << " now best";
-          best_strategy.kind = RematStrategy::kRecompute;
-          best_items = block;
-          best_cost = cost;
-        }
+      auto cost = GetCostOfRecompute(block, memory_limit_bytes);
+      ++effort;
+      if (cost && *cost < best_cost) {
+        VLOG(1) << "Found new best cost; from " << best_cost << " to " << *cost
+                << " with strategy kRecompute on block of size "
+                << block.size();
+        best_strategy.kind = RematStrategy::kRecompute;
+        best_items = block;
+        best_cost = *cost;
       }
 
-      // Time to update the block to include the next instruction.
+      // Try to add the next instruction to this block to evaluate as a possibly
+      // better candidate for rematerialization.
       auto* last_item = block[block.size() - 1];
       auto* next_item = instruction_list.next(last_item);
       if (next_item == nullptr || next_item->denylisted || !next_item->placed ||
@@ -1543,8 +1985,6 @@ StatusOr<int64_t> RematerializeInstructions(
     InstructionList* instruction_list, HloSchedule* schedule,
     HloRematerialization* rematerialization) {
   int64_t net_instructions_added = 0;
-  int64_t total_memory_saved =
-      memory_tracker->MemoryReducedIfRematerialized(*best_items);
   std::vector<std::string> instruction_names(best_items->size());
   // Rematerialize the block of instructions in the reverse order to account for
   // dependencies between instructions in best_items.
@@ -1720,9 +2160,6 @@ StatusOr<int64_t> RematerializeInstructions(
       TF_RETURN_IF_ERROR(computation->RemoveInstruction(best));
     }
   }
-  VLOG(1) << "Rematerializing instructions ["
-          << absl::StrJoin(instruction_names, ", ") << "] (saving "
-          << HumanReadableNumBytes(total_memory_saved) << ")";
   return net_instructions_added;
 }
 
@@ -1773,12 +2210,272 @@ StatusOr<int64_t> CompressInstruction(MemoryUsageTracker* memory_tracker,
 
   instruction_list->Denylist(compressed_item->instruction);
   instruction_list->Denylist(uncompressed_item->instruction);
-
   instruction_list->InsertBeforeInstructions(uncompressed_item, place_before);
-
   instruction_list->InsertAfterInstructions(compressed_item, {best_item});
 
   return 2;
+}
+
+StatusOr<int64_t> OffloadInstruction(MemoryUsageTracker* memory_tracker,
+                                     Item* best_item,
+                                     InstructionList* instruction_list) {
+  HloInstruction* best_instruction = best_item->instruction;
+  HloComputation* computation = best_instruction->parent();
+  VLOG(2) << "Best_instruction's users: "
+          << absl::StrJoin(best_instruction->users(), ", ",
+                           [](std::string* str, const auto* x) {
+                             return str->append(x->name());
+                           });
+
+  // Set up shapes for different memory locations.
+  Shape instruction_shape_device = best_instruction->shape();
+  Shape instruction_shape_host = best_instruction->shape();
+  instruction_shape_host.mutable_layout()->set_memory_space(
+      memory_tracker->options().host_memory_offload_config->host_memory_space);
+  Shape context_shape = ShapeUtil::MakeShape(U32, {});
+
+  // Create copy instructions to and from host memory.
+  HloInstruction* copy_start_to_host =
+      computation->AddInstruction(HloInstruction::CreateCopyStart(
+          ShapeUtil::MakeTupleShape({instruction_shape_host,
+                                     instruction_shape_device, context_shape}),
+          best_instruction));
+  HloInstruction* copy_done_to_host =
+      computation->AddInstruction(HloInstruction::CreateUnary(
+          instruction_shape_host, HloOpcode::kCopyDone, copy_start_to_host));
+
+  HloInstruction* copy_start_to_device =
+      computation->AddInstruction(HloInstruction::CreateCopyStart(
+          ShapeUtil::MakeTupleShape({instruction_shape_device,
+                                     instruction_shape_host, context_shape}),
+          copy_done_to_host));
+  HloInstruction* copy_done_to_device = computation->AddInstruction(
+      HloInstruction::CreateUnary(instruction_shape_device,
+                                  HloOpcode::kCopyDone, copy_start_to_device));
+  VLOG(3) << "Created copy_start_to_host instr: "
+          << copy_start_to_host->ToString();
+  VLOG(3) << "Created copy_done_to_host instr: "
+          << copy_done_to_host->ToString();
+  VLOG(3) << "Created copy_start_to_device instr: "
+          << copy_start_to_device->ToString();
+  VLOG(3) << "Created copy_done_to_device instr: "
+          << copy_done_to_device->ToString();
+
+  // Update the HloCostAnalysis with the new instructions.
+  TF_RETURN_IF_ERROR(
+      copy_start_to_host->Visit(&memory_tracker->options().hlo_cost_analysis));
+  TF_RETURN_IF_ERROR(
+      copy_done_to_host->Visit(&memory_tracker->options().hlo_cost_analysis));
+  TF_RETURN_IF_ERROR(copy_start_to_device->Visit(
+      &memory_tracker->options().hlo_cost_analysis));
+  TF_RETURN_IF_ERROR(
+      copy_done_to_device->Visit(&memory_tracker->options().hlo_cost_analysis));
+
+  // Create an Item for each instruction. These items will be inserted into the
+  // InstructionList, which is essentially our schedule.
+  Item* copy_start_to_host_item =
+      instruction_list->CreateItem(copy_start_to_host);
+  Item* copy_done_to_host_item =
+      instruction_list->CreateItem(copy_done_to_host);
+  Item* copy_start_to_device_item =
+      instruction_list->CreateItem(copy_start_to_device);
+  Item* copy_done_to_device_item =
+      instruction_list->CreateItem(copy_done_to_device);
+
+  // Add the newly created instructions to the deny list to prevent them from
+  // becoming rematerialized later.
+  instruction_list->Denylist(copy_start_to_host);
+  instruction_list->Denylist(copy_done_to_host);
+  instruction_list->Denylist(copy_start_to_device);
+  instruction_list->Denylist(copy_done_to_device);
+
+  Item* place_before{nullptr};
+  // Find the first item that we need to place our final copy-done before. That
+  // will be the first unplaced user of best_instruction.
+  {
+    ItemList place_before_list;
+    for (auto user : best_instruction->users()) {
+      if (user == copy_start_to_host) {
+        // Skip the copy that we just added.
+        continue;
+      }
+      auto item_of_user = instruction_list->GetItem(user);
+      if (item_of_user->placed) {
+        // Skip placed items.
+        continue;
+      }
+      place_before_list.push_back(item_of_user);
+    }
+    CHECK(!place_before_list.empty()) << "Have nothing to place this before!";
+    for (auto* item = instruction_list->first(); item != nullptr;
+         item = instruction_list->next(item)) {
+      if (absl::c_linear_search(place_before_list, item)) {
+        place_before = item;
+        break;
+      }
+    }
+  }
+  CHECK_NE(place_before, nullptr)
+      << "Could not find an item to place this before.";
+
+  // This function walks along the instruction list (schedule) and returns first
+  // instruction which will be executed after `time_spent_on_copy` seconds of
+  // compute has elapsed. Returns a result in the range [start_item, end_item).
+  auto get_first_item_after_compute_time = [&](Item* start_item, Item* end_item,
+                                               auto successor_func,
+                                               float time_spent_on_copy) {
+    // Do not count the computation time of the first item.
+    // In the case of iterating forward in time, it is the output of this
+    // item which we want to offload. In the case of iterating backward in
+    // time, this buffer is a dependency of that start item.
+    float time_so_far = 0.0;
+    auto* current_item = start_item;
+    // Walk the instruction list and accumulate the computation time.
+    while (time_so_far < time_spent_on_copy) {
+      auto next_item = successor_func(current_item);
+      if (next_item == end_item) {
+        // TODO(b/293323448): This is a bad thing, but not an error. Previously,
+        // when evaluating whether or not to host offload this instruction we
+        // checked how much compute there was between uses. We found that there
+        // was enough total compute to cover the time required to copy the data
+        // to the host and back. However, that check does not necessarily
+        // guarantee that the compute is split in such a way that it will give
+        // us enough compute to hide both copies in series. For example lets say
+        // that the copies take this long: | <-------------  Copies take this
+        // long
+        // -------------->| Lets say the two copies take the same amount of
+        // time: | <----- Copy to host -----> <---- Copy to device ----> |
+
+        // And you have a compute sequence that looks like this:
+        // +-----------+ +-----------+   +-----------+ +-----------+
+        // | Compute-1 | | Compute-2 |   | Compute-3 | | Compute-4 |
+        // +-----------+ +-----------+   +-----------+ +-----------+
+        // It would make sense to insert the copy-start/done instructions
+        // as follows:
+        // ^ Copy-start to host
+        //          Copy-done to host ^
+        //        Copy-start to device ^
+        //                                     Copy-done to device ^
+
+        // However, if the compute sequence is not even, like this:
+        // +-----------------------------------------+ +-----------+
+        // |                Compute-1                | | Compute-2 |
+        // +-----------------------------------------+ +-----------+
+        // Then we would find enough compute to hide our copy on the forward
+        // pass, but on the backward pass, there wouldn't be enough compute
+        // remaining, even though we originally calculated that there was enough
+        // total compute for the two copies.
+        LOG(WARNING) << "Didn't find enough computation before end of window";
+        break;
+      }
+      current_item = next_item;
+      CHECK_NE(current_item, nullptr) << "current_item is null";
+      CHECK_NE(current_item->instruction, nullptr)
+          << "current_item's instruction is null";
+      // TODO(b/293321321): HloCostAnalysis has no knowledge of any newly
+      // rematerialized instructions via recompute or compression strategies.
+      // This should be fixed.
+      time_so_far += std::max(
+          0.0f, memory_tracker->options().hlo_cost_analysis.optimal_seconds(
+                    *current_item->instruction));
+    }
+    return current_item;
+  };
+
+  // Figure out how much time these copies will take.
+  const int64_t bytes_used_by_buffers = memory_tracker->BytesUsedByBuffers(
+      best_item, /*only_count_unplaced_users=*/false);
+  const float copy_to_host_time_seconds =
+      bytes_used_by_buffers /
+      memory_tracker->options()
+          .host_memory_offload_config->bandwidth_to_host_bytes_per_second;
+  const float copy_from_host_time_seconds =
+      bytes_used_by_buffers /
+      memory_tracker->options()
+          .host_memory_offload_config->bandwidth_from_host_bytes_per_second;
+  VLOG(2) << "Item uses " << bytes_used_by_buffers << "B and will take "
+          << copy_to_host_time_seconds << "s to copy to host and "
+          << copy_from_host_time_seconds << "s to copy from host.";
+
+  // Place the copy-start to host as early as possible.
+  VLOG(2) << "Inserting " << copy_start_to_host_item->instruction->name()
+          << " immediately after " << best_item->instruction->name();
+  instruction_list->InsertAfterInstructions(copy_start_to_host_item,
+                                            {best_item});
+
+  // Place the copy-done to device as late as possible.
+  VLOG(2) << "Inserting " << copy_done_to_device_item->instruction->name()
+          << " immediately before " << place_before->instruction->name();
+  instruction_list->InsertBeforeInstructions(copy_done_to_device_item,
+                                             {place_before});
+
+  // Place the first copy-done after enough runtime after the first copy-start
+  // to hide the memory transfer.
+  auto first_item_after_to_host_copy = get_first_item_after_compute_time(
+      copy_start_to_host_item, copy_done_to_device_item,
+      [&instruction_list](Item* item) { return instruction_list->next(item); },
+      copy_to_host_time_seconds);
+  VLOG(2) << "Inserting " << copy_done_to_host_item->instruction->name()
+          << " immediately after "
+          << first_item_after_to_host_copy->instruction->name();
+  instruction_list->InsertAfterInstructions(copy_done_to_host_item,
+                                            {first_item_after_to_host_copy});
+
+  // Place the second copy-start early enough so that there is enough
+  // runtime to hide the memory transfer before the second copy-done.
+  auto first_item_before_from_host_copy = get_first_item_after_compute_time(
+      copy_done_to_device_item, copy_done_to_host_item,
+      [&instruction_list](Item* item) { return instruction_list->prev(item); },
+      copy_from_host_time_seconds);
+  VLOG(2) << "Inserting " << copy_start_to_device_item->instruction->name()
+          << " immediately before "
+          << first_item_before_from_host_copy->instruction->name();
+  instruction_list->InsertBeforeInstructions(
+      copy_start_to_device_item, {first_item_before_from_host_copy});
+
+  // Once all of the items are in the proper place in the instruction list, mark
+  // them as placed or not depending on which item is the current item in the
+  // memory tracker.
+  {
+    auto item = instruction_list->first();
+    while (item != nullptr) {
+      if (item == copy_start_to_host_item || item == copy_done_to_host_item ||
+          item == copy_start_to_device_item ||
+          item == copy_done_to_device_item) {
+        item->placed = true;
+      } else if (memory_tracker->IsInProgressItem(item)) {
+        // Our newly added items are defaulted as not placed, so breaking here
+        // gives us our desired result.
+        break;
+      }
+      item = instruction_list->next(item);
+    }
+  }
+
+  // It is critical to only update the users after items have been marked as
+  // placed, since we will only want to update non-placed items.
+
+  // Replace uses of best_instruction with copy_done_to_device.
+  // Note that items must be created before this point.
+  std::vector<HloInstruction*> best_users_copy = best_instruction->users();
+  for (HloInstruction* user : best_users_copy) {
+    if (!memory_tracker->IsPlaced(user)) {
+      VLOG(3) << "  Replacing use of " << best_instruction->name() << " in "
+              << user->name() << " with " << copy_done_to_device->name();
+      TF_RETURN_IF_ERROR(
+          best_instruction->ReplaceUseWith(user, copy_done_to_device));
+    } else {
+      VLOG(3) << user->name() << " is placed, not going to update";
+    }
+  }
+
+  // Finally, update the MemoryUsageTracker. This will update the tracking of
+  // buffer creations and uses.
+  TF_RETURN_IF_ERROR(memory_tracker->AddHostOffloadCopyInstructions(
+      best_item, copy_start_to_host_item, copy_done_to_host_item,
+      copy_start_to_device_item, copy_done_to_device_item));
+
+  return 4;
 }
 
 // A simple struct to encapsulate the number of instructions added during
@@ -1826,7 +2523,7 @@ StatusOr<InstructionsAdded> RematerializeBestBlock(
     CHECK(best_items.size() == 1)
         << "More than one instruction compressed simultaneously.";
     HloInstruction* best = best_items[0]->instruction;
-    VLOG(1) << "Compressing instruction " << best->name() << " (saving "
+    VLOG(1) << "Remat via compression: " << best->name() << " (saving "
             << HumanReadableNumBytes(memory_tracker->MemoryReducedIfCompressed(
                    best_items[0], best_strategy.compact_shape))
             << ")";
@@ -1835,7 +2532,26 @@ StatusOr<InstructionsAdded> RematerializeBestBlock(
         num_instructions_added.net_instructions_added,
         CompressInstruction(memory_tracker, best_items[0],
                             best_strategy.compact_shape, instruction_list));
+
+  } else if (best_strategy.kind == RematStrategy::kHostOffload) {
+    CHECK_EQ(best_items.size(), 1)
+        << "More than one buffer offloaded simultaneously.";
+    VLOG(1) << "Remat via offload: " << best_items[0]->instruction->name();
+    TF_ASSIGN_OR_RETURN(
+        num_instructions_added.net_instructions_added,
+        OffloadInstruction(memory_tracker, best_items[0], instruction_list));
+    VLOG(4) << "Offload done, hlo computation:\n"
+            << memory_tracker->computation()->ToString();
+    VLOG(6) << "Memory tracker:\n" << memory_tracker->ToString();
   } else {
+    CHECK_EQ(best_strategy.kind, RematStrategy::kRecompute)
+        << "Expecting strategy to be Recompute";
+    VLOG(1) << "Remat via recomputation: {"
+            << absl::StrJoin(best_items, ", ",
+                             [](std::string* out, Item* item) {
+                               absl::StrAppend(out, item->instruction->name());
+                             })
+            << '}';
     TF_ASSIGN_OR_RETURN(
         num_instructions_added.net_instructions_added,
         RematerializeInstructions(memory_tracker, &best_items,
@@ -1879,20 +2595,14 @@ StatusOr<int64_t> HloRematerialization::CalledComputationsMemoryUsage(
   }
   int64_t callee_usage = 0;
   for (const HloComputation* computation : callsite->called_computations()) {
-    if (!IsExecutionThreadIncluded(execution_threads,
-                                   computation->execution_thread())) {
+    if (!HloInstruction::IsThreadIncluded(computation->execution_thread(),
+                                          execution_threads)) {
       continue;
     }
     TF_RET_CHECK(ContainsKey(computation_peak_memory_, computation));
     callee_usage += computation_peak_memory_.at(computation);
   }
   return callee_usage;
-}
-
-bool HloRematerialization::IsExecutionThreadIncluded(
-    const absl::flat_hash_set<absl::string_view>& execution_threads,
-    absl::string_view thread) const {
-  return execution_threads.empty() || execution_threads.contains(thread);
 }
 
 StatusOr<bool> HloRematerialization::RematerializeComputation(
@@ -1998,8 +2708,10 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
         } else {
           second_phase_effort += instructions_added.effort;
         }
-        VLOG(1) << "memory_usage after rematerialization = "
-                << HumanReadableNumBytes(memory_tracker.memory_usage());
+        if (instructions_added.net_instructions_added > 0) {
+          VLOG(1) << "memory_usage after rematerialization = "
+                  << HumanReadableNumBytes(memory_tracker.memory_usage());
+        }
         if (instructions_added.remat_count == 0) {
           // Unable to find a block to rematerialize.
           // Consider doubling the block size.
@@ -2098,8 +2810,23 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
 StatusOr<bool> HloRematerialization::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  if (options_.remat_mode_config.host_offload) {
+    CHECK(options_.host_memory_offload_config.has_value())
+        << "Host memory config is required when host memory offload strategy "
+           "is specified";
+  }
   VLOG(1) << "HloRematerialization() with memory limit of "
           << HumanReadableNumBytes(options_.memory_limit_bytes);
+  if (!options_.remat_mode_config.compress &&
+      !options_.remat_mode_config.recompute &&
+      !options_.remat_mode_config.host_offload) {
+    // All rematerialization strategies are disabled; nothing to do.
+    VLOG(1) << "All rematerialization strategies are disabled. Skipping.";
+    return false;
+  }
+  VLOG(2) << "HloRemat mode: compress: " << options_.remat_mode_config.compress
+          << ", host_offload: " << options_.remat_mode_config.host_offload
+          << ", recompute: " << options_.remat_mode_config.recompute;
   XLA_VLOG_LINES(3, "Before HloRematerialization:\n" + module->ToString());
 
   // Initialize pass object state.
@@ -2119,8 +2846,9 @@ StatusOr<bool> HloRematerialization::Run(
   int64_t module_output_size = 0;
   ShapeUtil::ForEachSubshape(
       module->result_shape(),
-      [&](const Shape& subshape, const ShapeIndex& output_index) {
-        module_output_size += options_.size_function(subshape);
+      [&module_output_size, this](const Shape& subshape,
+                                  const ShapeIndex& output_index) {
+        module_output_size += options_.hlo_cost_analysis.GetShapeSize(subshape);
       });
 
   const int64_t adjusted_memory_limit_bytes =
@@ -2135,8 +2863,8 @@ StatusOr<bool> HloRematerialization::Run(
   TF_RETURN_IF_ERROR(call_graph_->VisitNodes(
       [this, module, &execution_threads](const CallGraphNode& node) -> Status {
         if (node.context() == CallContext::kControlFlow &&
-            IsExecutionThreadIncluded(execution_threads,
-                                      node.computation()->execution_thread())) {
+            HloInstruction::IsThreadIncluded(
+                node.computation()->execution_thread(), execution_threads)) {
           TF_ASSIGN_OR_RETURN(
               computation_peak_memory_[node.computation()],
               ComputePeakMemory(node.computation(),
@@ -2156,6 +2884,13 @@ StatusOr<bool> HloRematerialization::Run(
       module_output_size;
   VLOG(1) << "Peak memory usage of module (before): "
           << HumanReadableNumBytes(before_peak_memory);
+
+  // Initialize the HloCostAnalysis on this computation.
+  for (auto* computation :
+       module->MakeComputationPostOrder(execution_threads)) {
+    TF_RETURN_IF_ERROR(computation->Accept(&options_.hlo_cost_analysis));
+  }
+
   // Subcomputations called by the entry computation will also be
   // rematerialized.
   TF_ASSIGN_OR_RETURN(

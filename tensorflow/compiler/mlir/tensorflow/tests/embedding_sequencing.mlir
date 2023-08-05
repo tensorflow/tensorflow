@@ -361,3 +361,34 @@ module {
     return %0 : tensor<i1>
   }
 }
+
+// -----
+// This test verifies that the WhileOp's parallel_iterations attribute is preserved.
+module {
+  func.func @main() {
+    %cst = "tf.Const"() {value = dense<2> : tensor<i32>} : () -> tensor<i32>
+    // CHECK: {{.*tf.While.*body = @while_body.* cond = @while_cond.* parallel_iterations = 3}}
+    %0 = "tf.While"(%cst) {body = @while_body, cond = @while_cond, is_stateless = false, parallel_iterations = 3} : (tensor<i32>) -> (tensor<i32>)
+    return
+  }
+  func.func private @while_body(%arg0: tensor<i32>) -> (tensor<i32>) {
+    // metadata ops
+    "tf.TPUReplicateMetadata"() {_has_manual_control_dependencies = true, _replication_info = "repl_info", num_replicas = 1 : i64} : () -> ()
+    %1 = "tf.TPUCompilationResult"() {_tpu_compilation_status = "repl_info"} : () -> tensor<!tf_type.string>
+
+    // forward_ops
+    %res_f = "tf.Identity"(%arg0) {_embedding_pipelining = "forward", _replication_info = "repl_info"} : (tensor<i32>) -> tensor<i32>
+
+    // core_tpu ops:
+    %res_t = "tf.Identity"(%res_f) {_replication_info = "repl_info"} : (tensor<i32>) -> tensor<i32>
+
+    // non_tpu_ops
+    %res_n = "tf.Const"() {value = dense<2> : tensor<i32>} : () -> tensor<i32>
+
+    return %res_n : tensor<i32>
+  }
+  func.func private @while_cond(%arg0: tensor<i32>) -> tensor<i1> {
+    %0 = "tf.Less"(%arg0, %arg0) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    return %0 : tensor<i1>
+  }
+}

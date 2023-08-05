@@ -19,15 +19,14 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <functional>
-#include <iostream>
 #include <memory>
 #include <optional>
-#include <ostream>
 #include <string>
 #include <utility>
 #include <variant>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
@@ -35,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
+#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
@@ -59,6 +59,15 @@ static PJRT_Device* GetCDevice(const PJRT_Client* client,
   auto c_device_map = client->c_device_from_cpp_device;
   auto iter = c_device_map.find(device);
   CHECK(iter != c_device_map.end());
+  return iter->second;
+}
+
+// Returns C memory from wrapped C++ memory.
+static PJRT_Memory* GetCMemory(const PJRT_Device* device,
+                               const xla::PjRtMemorySpace* memory) {
+  auto c_memory_map = device->c_memory_from_cpp_memory;
+  auto iter = c_memory_map.find(memory);
+  CHECK(iter != c_memory_map.end());
   return iter->second;
 }
 
@@ -212,7 +221,17 @@ PJRT_Error* PJRT_Error_GetCode(PJRT_Error_GetCode_Args* args) {
 // ---------------------------------- Plugin -----------------------------------
 
 PJRT_Error* PJRT_Plugin_Attributes(PJRT_Plugin_Attributes_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Plugin_Attributes_Args", PJRT_Plugin_Attributes_Args_STRUCT_SIZE,
+      args->struct_size));
   args->num_attributes = 0;
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Plugin_Initialize_NoOp(PJRT_Plugin_Initialize_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Plugin_Initialize_Args", PJRT_Plugin_Initialize_Args_STRUCT_SIZE,
+      args->struct_size));
   return nullptr;
 }
 
@@ -620,6 +639,26 @@ PJRT_Error* PJRT_Device_LocalHardwareId(
   return nullptr;
 }
 
+PJRT_Error* PJRT_Device_AddressableMemories(
+    PJRT_Device_AddressableMemories_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Device_AddressableMemories_Args",
+      PJRT_Device_AddressableMemories_Args_STRUCT_SIZE, args->struct_size));
+  args->memories = args->device->memories.data();
+  args->num_memories = args->device->memories.size();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Device_DefaultMemory(PJRT_Device_DefaultMemory_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Device_DefaultMemory_Args",
+      PJRT_Device_DefaultMemory_Args_STRUCT_SIZE, args->struct_size));
+  PJRT_ASSIGN_OR_RETURN(xla::PjRtMemorySpace * memory_space,
+                        args->device->device->default_memory_space());
+  args->memory = GetCMemory(args->device, memory_space);
+  return nullptr;
+}
+
 PJRT_Error* PJRT_Device_MemoryStats(PJRT_Device_MemoryStats_Args* args) {
   PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
       "PJRT_Device_MemoryStats_Args", PJRT_Device_MemoryStats_Args_STRUCT_SIZE,
@@ -665,6 +704,47 @@ PJRT_Error* PJRT_Device_MemoryStats(PJRT_Device_MemoryStats_Args* args) {
     args->peak_pool_bytes = *stats.peak_pool_bytes;
   }
 
+  return nullptr;
+}
+
+// ------------------------------- Memory --------------------------------------
+
+PJRT_Error* PJRT_Memory_Id(PJRT_Memory_Id_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes("PJRT_Memory_Id_Args",
+                                                PJRT_Memory_Id_Args_STRUCT_SIZE,
+                                                args->struct_size));
+
+  args->id = args->memory->memory_space->id();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Memory_Kind(PJRT_Memory_Kind_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Memory_Kind_Args", PJRT_Memory_Kind_Args_STRUCT_SIZE,
+      args->struct_size));
+  args->memory_kind = args->memory->memory_space->memory_space_kind().data();
+  args->memory_kind_size =
+      args->memory->memory_space->memory_space_kind().size();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Memory_DebugString(PJRT_Memory_DebugString_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Memory_DebugString_Args", PJRT_Memory_DebugString_Args_STRUCT_SIZE,
+      args->struct_size));
+
+  args->debug_string = args->memory->memory_space->DebugString().data();
+  args->debug_string_size = args->memory->memory_space->DebugString().size();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Memory_ToString(PJRT_Memory_ToString_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Memory_ToString_Args", PJRT_Memory_ToString_Args_STRUCT_SIZE,
+      args->struct_size));
+
+  args->to_string = args->memory->memory_space->ToString().data();
+  args->to_string_size = args->memory->memory_space->ToString().size();
   return nullptr;
 }
 
@@ -1713,6 +1793,18 @@ static void PopulatePjrtDeviceDescriptionAttributes(
   }
 }
 
+static void PopulatePjrtDeviceMemories(const xla::PjRtDevice& cpp_device,
+                                       PJRT_Device* c_device) {
+  c_device->owned_memories.reserve(cpp_device.memory_spaces().size());
+  c_device->memories.reserve(cpp_device.memory_spaces().size());
+  for (xla::PjRtMemorySpace* memory_space : cpp_device.memory_spaces()) {
+    c_device->owned_memories.push_back(PJRT_Memory{memory_space});
+    c_device->memories.push_back(&c_device->owned_memories.back());
+    c_device->c_memory_from_cpp_memory[memory_space] =
+        &c_device->owned_memories.back();
+  }
+}
+
 PJRT_Client* CreateWrapperClient(std::unique_ptr<xla::PjRtClient> cpp_client) {
   PJRT_Client* c_client = new PJRT_Client{std::move(cpp_client)};
 
@@ -1728,6 +1820,7 @@ PJRT_Client* CreateWrapperClient(std::unique_ptr<xla::PjRtClient> cpp_client) {
         PJRT_Device{device, {&device->description()}});
     PJRT_Device* c_device = &c_client->owned_devices.back();
     PopulatePjrtDeviceDescriptionAttributes(&c_device->description);
+    PopulatePjrtDeviceMemories(*device, c_device);
     c_client->devices.push_back(c_device);
     if (device->IsAddressable()) {
       c_client->addressable_devices.push_back(c_device);

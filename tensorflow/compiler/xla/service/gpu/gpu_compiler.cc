@@ -120,6 +120,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/reduction_dimension_grouper.h"
 #include "tensorflow/compiler/xla/service/gpu/reduction_layout_normalizer.h"
 #include "tensorflow/compiler/xla/service/gpu/reduction_splitter.h"
+#include "tensorflow/compiler/xla/service/gpu/reduction_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime_intrinsics.h"
 #include "tensorflow/compiler/xla/service/gpu/scatter_slice_simplifier.h"
 #include "tensorflow/compiler/xla/service/gpu/softmax_rewriter_triton.h"
@@ -304,6 +305,23 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
                                       const GpuTargetConfig& gpu_target_config,
                                       const AutotuneResults* autotune_results) {
   const DebugOptions& debug_options = hlo_module->config().debug_options();
+
+  // By default use an externally provided thread pool.
+  tsl::thread::ThreadPool* thread_pool = options.thread_pool;
+  std::optional<tsl::thread::ThreadPool> overriding_thread_pool;
+  int num_threads = hlo_module->config()
+                        .debug_options()
+                        .xla_gpu_force_compilation_parallelism();
+  // If an external thread pool is provided or single-threaded operation is
+  // requested do not create a thread pool.
+  if (thread_pool == nullptr && num_threads != 1) {
+    // Zero means "default", treat it as "max parallelism" here.
+    if (num_threads == 0) {
+      num_threads = tsl::port::MaxParallelism();
+    }
+    overriding_thread_pool.emplace(tsl::Env::Default(), "", num_threads);
+    thread_pool = &*overriding_thread_pool;
+  }
 
   AlgebraicSimplifierOptions layout_insensitive_algsimp_opts({},
                                                              ConvIsLowerable);
@@ -708,7 +726,8 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
 
   // Run target-specific HLO optimization passes after layout assignment.
   TF_RETURN_IF_ERROR(OptimizeHloPostLayoutAssignment(
-      hlo_module, stream_exec, options, gpu_target_config, autotune_results));
+      hlo_module, stream_exec, options, gpu_target_config, autotune_results,
+      thread_pool));
 
   const GpuDeviceInfo& gpu_device_info = gpu_target_config.gpu_device_info;
   auto get_cuda_compute_capability = [&]() {
@@ -788,6 +807,10 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
       pipeline.AddPass<AllReduceContiguous>();
     }
 
+    TF_RETURN_IF_ERROR(AddHloEmitterAutotuningPasses(
+        &pipeline, stream_exec, debug_options, options, gpu_target_config,
+        autotune_results, thread_pool));
+
     int32_t blueconnect_num_devices_per_host =
         debug_options.xla_gpu_all_reduce_blueconnect_num_devices_per_host();
     if (blueconnect_num_devices_per_host > 0) {
@@ -855,6 +878,8 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
 // Modifies the given HLO module so that it will be accepted by IrEmitter.
 // Unlike optimization passes, the passes are necessary for correctness.
 Status GpuCompiler::PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
+  const DebugOptions& debug_options = hlo_module->config().debug_options();
+
   // In some cases, we have to place the result of an instruction in a temporary
   // buffer. For instance, the buffer that holds an external parameter is
   // assumed immutable at this point, and should not be reused for output
@@ -878,7 +903,15 @@ Status GpuCompiler::PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
     pipeline.AddPass<AliasPassthroughParams>();
   }
   pipeline.AddPass<LoopScheduleLinearizer>(GetCanShareBuffer());
-  pipeline.AddPass<CopyInsertion>(GetCanShareBuffer());
+
+  if (debug_options.xla_gpu_copy_insertion_use_region_analysis()) {
+    constexpr int64_t kNoRegionBasedLiveRangeAnalysisLimit = -1;
+    pipeline.AddPass<CopyInsertion>(GetCanShareBuffer(),
+                                    kNoRegionBasedLiveRangeAnalysisLimit);
+  } else {
+    pipeline.AddPass<CopyInsertion>(GetCanShareBuffer());
+  }
+
   // We are using a sub-pipeline here, so that the verifier only runs after both
   // GpuHorizontalLoopFusion and HloDCE.
   auto& sub_pipeline =
@@ -894,7 +927,8 @@ Status GpuCompiler::PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
 Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
-    const AutotuneResults* autotune_results) {
+    const AutotuneResults* autotune_results,
+    tsl::thread::ThreadPool* thread_pool) {
   const DebugOptions& debug_options = hlo_module->config().debug_options();
 
   {
@@ -953,7 +987,9 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     // in the softmax codegen pipeline. However we should run before
     // ReductionDimensionGrouper, as that makes matching the softmax pattern
     // harder.
-    if (debug_options.xla_gpu_enable_triton_softmax_fusion()) {
+    if (debug_options.xla_gpu_enable_triton_softmax_fusion() &&
+        std::holds_alternative<se::CudaComputeCapability>(
+            gpu_target_config.gpu_version)) {
       pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
       pipeline.AddPass<SoftmaxRewriterTriton>(gpu_target_config.gpu_version);
     }
@@ -1008,23 +1044,6 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   // Triton compilation needs normalized operations on bf16 (i.e. converted to
   // f32).
   add_float_normalization(pipeline);
-
-  // By default use an externally provided thread pool.
-  tsl::thread::ThreadPool* thread_pool = options.thread_pool;
-  std::optional<tsl::thread::ThreadPool> overriding_thread_pool;
-  int num_threads = hlo_module->config()
-                        .debug_options()
-                        .xla_gpu_force_compilation_parallelism();
-  // If an external thread pool is provided or single-threaded operation is
-  // requested do not create a thread pool.
-  if (thread_pool == nullptr && num_threads != 1) {
-    // Zero means "default", treat it as "max parallelism" here.
-    if (num_threads == 0) {
-      num_threads = tsl::port::MaxParallelism();
-    }
-    overriding_thread_pool.emplace(tsl::Env::Default(), "", num_threads);
-    thread_pool = &*overriding_thread_pool;
-  }
 
   TF_RETURN_IF_ERROR(AddAutotuningPasses(
       &pipeline, hlo_module, stream_exec, debug_options, options,
@@ -1119,8 +1138,10 @@ StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPassesWithoutDevice(
 StatusOr<std::unique_ptr<BufferAssignment>> GpuCompiler::AssignBuffers(
     HloModule* hlo_module, se::StreamExecutor* stream_exec) {
   const GpuDeviceInfo gpu_device_info = GetGpuDeviceInfo(stream_exec);
+  const int64_t scheduler_mem_limit =
+      GetSchedulerMemoryLimit(hlo_module, gpu_device_info, pointer_size_);
   TF_RETURN_IF_ERROR(
-      ScheduleGpuModule(hlo_module, pointer_size_, gpu_device_info));
+      ScheduleGpuModule(hlo_module, pointer_size_, scheduler_mem_limit));
 
   auto buffer_size_bytes_function =
       [this](const BufferValue& buffer_value) -> int64_t {

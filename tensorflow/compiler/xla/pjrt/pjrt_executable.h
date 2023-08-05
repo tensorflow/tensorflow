@@ -102,6 +102,9 @@ struct CompileOptions {
   // Applies a single option to executable_build_options.debug_options().
   Status ApplyOption(const std::string& key, const OptionOverride& value);
 
+  Status ApplyOptionFromString(const tsl::protobuf::FieldDescriptor* field,
+                               const std::string& value);
+
   // Serialize the CompileOptions into a CompileOptionsProto.
   StatusOr<CompileOptionsProto> ToProto() const;
 

@@ -1782,6 +1782,7 @@ TfLiteStatus Subgraph::AddTensors(int tensors_to_add,
                                   int* first_new_tensor_index) {
   const size_t base_index = tensors_.size();
   if (first_new_tensor_index) *first_new_tensor_index = base_index;
+  if (tensors_to_add < 0) return kTfLiteError;
   tensors_.resize(tensors_.size() + tensors_to_add);
   for (size_t i = base_index; i < tensors_.size(); i++) {
     memset(&tensors_[i], 0, sizeof(tensors_[i]));

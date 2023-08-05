@@ -1,3 +1,4 @@
+load("//tensorflow:py.default.bzl", "py_binary", "py_library")
 load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 

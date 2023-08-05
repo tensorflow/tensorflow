@@ -1589,7 +1589,7 @@ class FromSessionTest(TestModels, parameterized.TestCase):
 
     # Check the add node in the inlined function is included.
     func = sess.graph.as_graph_def().library.function[0].signature.name
-    self.assertIn(('add@' + func), converter._debug_info.traces)
+    self.assertIn(('add@' + func), repr(converter._debug_info))
 
   def testOutputOnlyModel(self):
     with ops.Graph().as_default():

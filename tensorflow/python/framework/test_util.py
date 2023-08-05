@@ -15,8 +15,10 @@
 
 # pylint: disable=invalid-name
 """Test utils for tensorflow."""
+
 import collections
 from collections import OrderedDict
+from collections.abc import Iterator
 import contextlib
 import functools
 import gc
@@ -35,7 +37,6 @@ import numpy as np
 
 from google.protobuf import descriptor_pool
 from google.protobuf import text_format
-
 from tensorflow.core.config import flags
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
@@ -74,6 +75,8 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variables
+
+
 from tensorflow.python.ops.ragged import ragged_ops  # pylint: disable=unused-import
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_tensor_value
@@ -1092,7 +1095,8 @@ def run_all_in_graph_and_eager_modes(cls):
     if (not name.startswith(unittest.TestLoader.testMethodPrefix) or
         name.startswith("testSkipEager") or
         name.startswith("test_skip_eager") or
-        name == "test_session"):
+        name == "test_session" or
+        name == "test_scope"):
       continue
     value = getattr(cls, name, None)
     if callable(value):
@@ -1495,7 +1499,17 @@ def run_in_graph_and_eager_modes(func=None,
       logging.info("Running %s in GRAPH mode.", f.__name__)
       try:
         with context.graph_mode(), self.subTest("graph_mode"):
-          with self.test_session(use_gpu=use_gpu, config=config):
+          # XLATestCase uses `session`, which also doesn't take any args,
+          # instead of `test_session`
+          for class_ in self.__class__.mro():
+            if class_.__name__ == "XLATestCase":
+              session_func = self.session
+              session_kwargs = {}
+              break
+          else:
+            session_func = self.test_session
+            session_kwargs = dict(use_gpu=use_gpu, config=config)
+          with session_func(**session_kwargs):
             f(self, *args, **kwargs)
       except unittest.case.SkipTest:
         pass
@@ -1661,27 +1675,34 @@ def run_all_in_deprecated_graph_mode_only(cls):
   return cls
 
 
-def run_v1_only(reason, func=None):
-  """Execute the decorated test only if running in v1 mode.
+def _run_vn_only(func=None, v2=True, reason=None):
+  """Execute the decorated test only if running in the specified mode.
 
-  This function is intended to be applied to tests that exercise v1 only
-  functionality. If the test is run in v2 mode it will simply be skipped.
+  This function is intended to be applied to tests that exercise functionality
+   that belongs to either only v2, or v1.
+   If the test is run in the mode opposite of the specified one, it will simply
+   be skipped.
+
+   It shouldn't be used directly, instead, use the `run_v1_only` or
+   `run_v2_only` wrappers that call it.
 
   `deprecated_graph_mode_only`, `run_v1_only`, `run_v2_only`, and
   `run_in_graph_and_eager_modes` are available decorators for different
   v1/v2/eager/graph combinations.
 
   Args:
-    reason: string giving a reason for limiting the test to v1 only.
     func: function to be annotated. If `func` is None, this method returns a
       decorator the can be applied to a function. If `func` is not None this
       returns the decorator applied to `func`.
+    v2: a boolean value indicating whether the test should be skipped in v2,
+      or v1.
+    reason: string giving a reason for limiting the test to a particular mode.
 
   Returns:
     Returns a decorator that will conditionally skip the decorated test method.
   """
-  if not isinstance(reason, str):
-    raise ValueError("'reason' should be string, got {}".format(type(reason)))
+  if not reason:
+    reason = f"Test is only compatible with {'v2 ' if v2 else 'v1'}"
 
   def decorator(f):
     if tf_inspect.isclass(f):
@@ -1701,7 +1722,10 @@ def run_v1_only(reason, func=None):
     else:
       # If f is just a function, just create a decorator for it and return it
       def decorated(self, *args, **kwargs):
-        if tf2.enabled():
+        tf2_enabled = tf2.enabled()
+        # Skip if TF is in v2 mode, but the test is expected to only be run
+        # in v1, and vice versa
+        if (tf2_enabled and not v2) or (not tf2_enabled and v2):
           self.skipTest(reason)
 
         return f(self, *args, **kwargs)
@@ -1714,41 +1738,14 @@ def run_v1_only(reason, func=None):
   return decorator
 
 
-def run_v2_only(func=None):
-  """Execute the decorated test only if running in v2 mode.
+def run_v1_only(reason=None, func=None):
+  """Only execute the test if Tensorflow is in v1 mode."""
+  return _run_vn_only(func=func, v2=False, reason=reason)
 
-  This function is intended to be applied to tests that exercise v2 only
-  functionality. If the test is run in v1 mode it will simply be skipped.
 
-  `deprecated_graph_mode_only`, `run_v1_only`, `run_v2_only`, and
-  `run_in_graph_and_eager_modes` are available decorators for different
-  v1/v2/eager/graph combinations.
-
-  Args:
-    func: function to be annotated. If `func` is None, this method returns a
-      decorator the can be applied to a function. If `func` is not None this
-      returns the decorator applied to `func`.
-
-  Returns:
-    Returns a decorator that will conditionally skip the decorated test method.
-  """
-
-  def decorator(f):
-    if tf_inspect.isclass(f):
-      raise ValueError("`run_v2_only` only supports test methods.")
-
-    def decorated(self, *args, **kwargs):
-      if not tf2.enabled():
-        self.skipTest("Test is only compatible with v2")
-
-      return f(self, *args, **kwargs)
-
-    return decorated
-
-  if func is not None:
-    return decorator(func)
-
-  return decorator
+def run_v2_only(func=None, reason=None):
+  """Only execute the test if Tensorflow is in v2 mode."""
+  return _run_vn_only(func=func, v2=True, reason=reason)
 
 
 def run_gpu_only(func=None):
@@ -2710,8 +2707,11 @@ class TensorFlowTestCase(googletest.TestCase):
       return nest.pack_sequence_as(tensors, flattened_results)
 
   # pylint: disable=g-doc-return-or-yield
+  # pylint: disable=redefined-outer-name
   @contextlib.contextmanager
-  def session(self, graph=None, config=None, use_gpu=True, force_gpu=False):
+  def session(
+      self, graph=None, config=None, use_gpu=True, force_gpu=False
+  ) -> Iterator[session.Session]:
     """A context manager for a TensorFlow Session for use in executing tests.
 
     Note that this will set this session and the graph as global defaults.

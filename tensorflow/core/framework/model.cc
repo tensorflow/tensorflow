@@ -41,8 +41,8 @@ namespace {
 // This is the number of the latest gap times used to compute the target time
 // for stage based optimization.
 constexpr int32_t kGapTimeWindow = 100;
-// Gap time threshold: any gap time over the this duration will be dropped.
-constexpr uint64_t kGapDurationThresholdUsec = 10000000;  // 10 seconds
+// Gap time upper threshold: any gap time over this duration will be dropped.
+constexpr absl::Duration kGapDurationUpperThreshold = absl::Seconds(10);
 // In outlier computation, points that are larger than `kOutlierSigmas` standard
 // deviations are considered outliers.
 constexpr double kOutlierSigmas = 2.0;
@@ -91,7 +91,7 @@ class TargetTimeCalculator {
     ComputeMeanAndStandardDeviation(clean_points_usec, &mean,
                                     &standard_deviation);
     // Compute target time.
-    return mean - standard_deviation * target_time_sigmas_;
+    return std::max(0.0, mean - standard_deviation * target_time_sigmas_);
   }
 
  private:
@@ -2581,9 +2581,11 @@ void Model::OptimizeHillClimbHelper(
 void Model::RecordIteratorGapTime(uint64_t duration_usec) {
   mutex_lock l(gap_mu_);
   // Drop duration if it is too large.
-  if (duration_usec >= kGapDurationThresholdUsec) {
+  if (duration_usec >= absl::ToInt64Microseconds(kGapDurationUpperThreshold)) {
+    VLOG(3) << "Dropped tf.data Model gap duration: " << duration_usec;
     return;
   }
+  VLOG(3) << "Reported tf.data Model gap duration: " << duration_usec;
   gap_times_usec_.push_back(duration_usec);
   // Keep only the latest `window` gap times. Drop the oldest one.
   while (gap_times_usec_.size() > kGapTimeWindow) {
@@ -2603,6 +2605,22 @@ double Model::ComputeTargetTimeNsec() {
   return TargetTimeCalculator({gap_times_usec_.begin(), gap_times_usec_.end()},
                               kOutlierSigmas, target_time_sigmas)
              .GetTargetTimeUsec() *
+         1.0e3;
+}
+
+// TODO(armandouv): Evaluate replacing original target time computation for
+// this.
+double Model::ComputeExperimentalTargetTimeNsec() {
+  tf_shared_lock l(gap_mu_);
+  if (gap_times_usec_.size() < kGapTimeWindow) {
+    return 0.0;
+  }
+
+  uint64_t sum =
+      std::accumulate(gap_times_usec_.begin(), gap_times_usec_.end(), 0);
+  // Return average gap time.
+  return (static_cast<double>(sum) /
+          static_cast<double>(gap_times_usec_.size())) *
          1.0e3;
 }
 

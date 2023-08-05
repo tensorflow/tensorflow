@@ -39,6 +39,12 @@ struct StackFrame {
   }
 
   bool operator!=(const StackFrame& other) const { return !(*this == other); }
+
+  template <class H>
+  friend H AbslHashValue(H h, const StackFrame& frame) {
+    return h.combine(std::move(h), frame.file_name, frame.line_number,
+                     frame.function_name);
+  }
 };
 
 }  // namespace tsl

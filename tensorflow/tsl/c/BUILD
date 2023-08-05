@@ -58,9 +58,7 @@ tsl_gpu_library(
         "tsl_status.h",
         "tsl_status_internal.h",
     ],
-    visibility = [
-        "//tensorflow/c:__subpackages__",
-    ],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/tsl/platform:status",
     ],

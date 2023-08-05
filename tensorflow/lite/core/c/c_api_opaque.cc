@@ -456,6 +456,17 @@ TfLiteStatus TfLiteOpaqueContextGetNodeInitDataMmapInfo(
                                            custom_initial_data_size);
 }
 
+TfLiteStatus TfLiteOpaqueContextAddTensors(TfLiteOpaqueContext* context,
+                                           int tensors_to_add,
+                                           int* first_new_tensor_index) {
+  if (tensors_to_add <= 0) {
+    return kTfLiteError;
+  }
+  auto* tflite_context = Convert(context);
+  return tflite_context->AddTensors(tflite_context, tensors_to_add,
+                                    first_new_tensor_index);
+}
+
 void TfLiteOpaqueContextReportError(struct TfLiteOpaqueContext* opaque_context,
                                     const char* format, ...) {
   va_list vlist;

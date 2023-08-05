@@ -19,6 +19,7 @@ limitations under the License.
 #include <cmath>
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <queue>
@@ -28,6 +29,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -38,6 +42,7 @@ limitations under the License.
 #include "llvm/Linker/Linker.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/TargetParser/Triple.h"
 #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/IndexToLLVM/IndexToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"  // from @llvm-project
@@ -62,20 +67,24 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/NVVM/NVVMToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/autotuning.pb.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/utils/hlo_query.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/map_mhlo_to_scalar_op.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter_triton.h"
@@ -87,11 +96,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_function_importer.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/path.h"
+#include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/platform/tensor_float_32_utils.h"
 #include "triton/Conversion/TritonGPUToLLVM/TritonGPUToLLVMPass.h"
@@ -111,8 +124,11 @@ namespace mn = ::mlir::NVVM;
 namespace mt = ::mlir::triton;
 
 using ::llvm::SmallVector;
+using mlir::ArrayRef;
+using mlir::ImplicitLocOpBuilder;
 using ::mlir::Type;
 using ::mlir::Value;
+using mlir::ValueRange;
 
 namespace {
 
@@ -144,7 +160,7 @@ Type TritonType(mlir::OpBuilder b, PrimitiveType t) {
 }
 
 // Triton type conversions.
-Value Cast(mlir::ImplicitLocOpBuilder& b, Value value, Type dst_element_ty) {
+Value Cast(ImplicitLocOpBuilder& b, Value value, Type dst_element_ty) {
   Type src_ty = value.getType();
   Type src_element_ty = src_ty;
   Type fp32_ty = b.getF32Type();
@@ -233,7 +249,7 @@ T ScalarConstantValue(const HloInstruction& instr) {
 
 // Create a scalar constant.
 template <typename T>
-ma::ConstantOp CreateConst(mlir::ImplicitLocOpBuilder b, Type type, T value) {
+ma::ConstantOp CreateConst(ImplicitLocOpBuilder b, Type type, T value) {
   if (type.isa<mlir::IntegerType>()) {
     return b.create<ma::ConstantOp>(b.getIntegerAttr(type, value));
   }
@@ -246,8 +262,8 @@ ma::ConstantOp CreateConst(mlir::ImplicitLocOpBuilder b, Type type, T value) {
 
 // Create a tensor constant.
 template <typename T>
-ma::ConstantOp CreateConst(mlir::ImplicitLocOpBuilder& b, Type type, T value,
-                           mlir::ArrayRef<int64_t> shape) {
+ma::ConstantOp CreateConst(ImplicitLocOpBuilder& b, Type type, T value,
+                           ArrayRef<int64_t> shape) {
   auto tensor_type = mlir::RankedTensorType::get(shape, type);
   if (auto int_type = type.dyn_cast<mlir::IntegerType>()) {
     return b.create<ma::ConstantOp>(mlir::DenseElementsAttr::get(
@@ -260,7 +276,7 @@ ma::ConstantOp CreateConst(mlir::ImplicitLocOpBuilder& b, Type type, T value,
   LOG(FATAL) << "Constant type not supported: " << llvm_ir::DumpToString(type);
 }
 
-Value Subtract(mlir::ImplicitLocOpBuilder& b, mlir::ValueRange values) {
+Value Subtract(ImplicitLocOpBuilder& b, ValueRange values) {
   if (ElementType(values[0]).isa<mlir::IntegerType>()) {
     return b.create<ma::SubIOp>(values[0], values[1]);
   } else {
@@ -268,7 +284,7 @@ Value Subtract(mlir::ImplicitLocOpBuilder& b, mlir::ValueRange values) {
   }
 }
 
-Value Compare(mlir::ImplicitLocOpBuilder& b, mlir::ValueRange values,
+Value Compare(ImplicitLocOpBuilder& b, ValueRange values,
               ComparisonDirection direction) {
   if (ElementType(values[0]).isa<mlir::IntegerType>()) {
     return b.create<ma::CmpIOp>(
@@ -290,17 +306,17 @@ Value Compare(mlir::ImplicitLocOpBuilder& b, mlir::ValueRange values,
       values[0], values[1]);
 }
 
-Value Maximum(mlir::ImplicitLocOpBuilder& b, mlir::ValueRange values) {
+Value Maximum(ImplicitLocOpBuilder& b, ValueRange values) {
   auto cmp = Compare(b, values, ComparisonDirection::kGt);
   return b.create<ma::SelectOp>(cmp, values[0], values[1]);
 }
 
-Value Minimum(mlir::ImplicitLocOpBuilder& b, mlir::ValueRange values) {
+Value Minimum(ImplicitLocOpBuilder& b, ValueRange values) {
   auto cmp = Compare(b, values, ComparisonDirection::kLt);
   return b.create<ma::SelectOp>(cmp, values[0], values[1]);
 }
 
-Value ZerosLike(mlir::ImplicitLocOpBuilder& b, Value x) {
+Value ZerosLike(ImplicitLocOpBuilder& b, Value x) {
   if (auto src_shaped_ty = x.getType().dyn_cast<mlir::ShapedType>()) {
     Type src_ty = src_shaped_ty.getElementType();
     return CreateConst(b, src_ty, 0, src_shaped_ty.getShape());
@@ -308,7 +324,7 @@ Value ZerosLike(mlir::ImplicitLocOpBuilder& b, Value x) {
   return CreateConst(b, x.getType(), 0);
 }
 
-Value OnesLike(mlir::ImplicitLocOpBuilder& b, Value x) {
+Value OnesLike(ImplicitLocOpBuilder& b, Value x) {
   if (auto src_shaped_ty = x.getType().dyn_cast<mlir::ShapedType>()) {
     Type src_ty = src_shaped_ty.getElementType();
     return CreateConst(b, src_ty, 1, src_shaped_ty.getShape());
@@ -318,33 +334,31 @@ Value OnesLike(mlir::ImplicitLocOpBuilder& b, Value x) {
 
 // TODO(b/269489810): Contribute nicer builders to Triton, so we don't need to
 // define these utilities.
-Value Splat(mlir::ImplicitLocOpBuilder& b, Value value,
-            mlir::ArrayRef<int64_t> shape) {
+Value Splat(ImplicitLocOpBuilder& b, Value value, ArrayRef<int64_t> shape) {
   auto type = mlir::RankedTensorType::get(shape, value.getType());
   return b.create<mt::SplatOp>(type, value);
 }
 
 using TensorValue = mlir::TypedValue<mlir::RankedTensorType>;
 
-Value Broadcast(mlir::ImplicitLocOpBuilder& b, TensorValue value,
-                mlir::ArrayRef<int64_t> shape) {
+Value Broadcast(ImplicitLocOpBuilder& b, TensorValue value,
+                ArrayRef<int64_t> shape) {
   auto type =
       mlir::RankedTensorType::get(shape, value.getType().getElementType());
   return b.create<mt::BroadcastOp>(type, value);
 }
 
-Value Range(mlir::ImplicitLocOpBuilder& b, int32_t limit) {
+Value Range(ImplicitLocOpBuilder& b, int32_t limit) {
   auto type = mlir::RankedTensorType::get(limit, b.getI32Type());
   return b.create<mt::MakeRangeOp>(type, 0, limit);
 }
 
-Value AddPtr(mlir::ImplicitLocOpBuilder& b, Value ptr, Value offset) {
+Value AddPtr(ImplicitLocOpBuilder& b, Value ptr, Value offset) {
   return b.create<mt::AddPtrOp>(ptr.getType(), ptr, offset);
 }
 
-Value EmitElementwise(mlir::ImplicitLocOpBuilder& b,
-                      absl::string_view libdevice_path,
-                      const HloInstruction& hlo, mlir::ValueRange inputs) {
+Value EmitElementwise(ImplicitLocOpBuilder& b, absl::string_view libdevice_path,
+                      const HloInstruction& hlo, ValueRange inputs) {
   if (ElementType(inputs[0]).isF32() || ElementType(inputs[0]).isF64()) {
     auto dev_fn_id = GetTargetDeviceFunctionID(hlo.opcode());
     if (dev_fn_id.ok()) {
@@ -413,8 +427,8 @@ Value EmitElementwise(mlir::ImplicitLocOpBuilder& b,
   }
 }
 
-Value EmitParameterLoad(mlir::ImplicitLocOpBuilder& b, Value tensor_pointer,
-                        mlir::ArrayRef<int32_t> boundary_checks) {
+Value EmitParameterLoad(ImplicitLocOpBuilder& b, Value tensor_pointer,
+                        ArrayRef<int32_t> boundary_checks) {
   std::optional<mt::PaddingOption> padding;
   if (!boundary_checks.empty()) {
     padding = mt::PaddingOption::PAD_ZERO;
@@ -425,8 +439,7 @@ Value EmitParameterLoad(mlir::ImplicitLocOpBuilder& b, Value tensor_pointer,
                               /*isVolatile=*/false);
 }
 
-Value EmitConstant(mlir::ImplicitLocOpBuilder& b,
-                   const HloInstruction& constant) {
+Value EmitConstant(ImplicitLocOpBuilder& b, const HloInstruction& constant) {
   Type ty = TritonType(b, constant.shape().element_type());
   if (constant.shape().IsInteger()) {
     if (constant.shape().element_type() == U64) {
@@ -438,9 +451,8 @@ Value EmitConstant(mlir::ImplicitLocOpBuilder& b,
   return CreateConst(b, ty, ScalarConstantValue<double>(constant));
 }
 
-Value EmitBroadcast(mlir::ImplicitLocOpBuilder& b,
-                    const HloInstruction& broadcast, Value input,
-                    mlir::ArrayRef<int64_t> tile_shape) {
+Value EmitBroadcast(ImplicitLocOpBuilder& b, const HloInstruction& broadcast,
+                    Value input, ArrayRef<int64_t> tile_shape) {
   if (!input.dyn_cast<TensorValue>()) {
     return Splat(b, input, tile_shape);
   }
@@ -451,12 +463,12 @@ Value EmitBroadcast(mlir::ImplicitLocOpBuilder& b,
 }
 
 StatusOr<Value> EmitScope(
-    mlir::ImplicitLocOpBuilder& b, absl::string_view libdevice_path,
+    ImplicitLocOpBuilder& b, absl::string_view libdevice_path,
     absl::Span<const HloInstruction* const> instructions,
     absl::flat_hash_map<const HloInstruction*, Value>& values,
-    mlir::ArrayRef<int64_t> tile_shape, Value tile_mask);
+    ArrayRef<int64_t> tile_shape, Value tile_mask);
 
-StatusOr<Value> EmitReduce(mlir::ImplicitLocOpBuilder& b,
+StatusOr<Value> EmitReduce(ImplicitLocOpBuilder& b,
                            const HloInstruction& hlo_reduce,
                            absl::string_view libdevice_path, Value input,
                            Value tile_mask) {
@@ -534,10 +546,10 @@ StatusOr<Value> EmitReduce(mlir::ImplicitLocOpBuilder& b,
 // Emit sequence of instructions using compatible tiling ordered producers
 // before consumers.
 StatusOr<Value> EmitScope(
-    mlir::ImplicitLocOpBuilder& b, absl::string_view libdevice_path,
+    ImplicitLocOpBuilder& b, absl::string_view libdevice_path,
     absl::Span<const HloInstruction* const> instructions,
     absl::flat_hash_map<const HloInstruction*, Value>& values,
-    mlir::ArrayRef<int64_t> tile_shape, Value tile_mask) {
+    ArrayRef<int64_t> tile_shape, Value tile_mask) {
   for (const HloInstruction* hlo : instructions) {
     Value result;
     if (hlo->opcode() == HloOpcode::kParameter) {
@@ -582,6 +594,7 @@ void CreateTritonPipeline(mlir::OpPassManager& pm,
   pm.addPass(mt::createRewriteTensorPointerPass());
   pm.addPass(mlir::createInlinerPass());
   pm.addPass(mt::createCombineOpsPass());
+  pm.addPass(mt::createReorderBroadcastPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createLoopInvariantCodeMotionPass());
@@ -709,7 +722,7 @@ StatusOr<LaunchDimensions> MatMulImpl(
   // implicit loc builder so we don't have to pass around the location all the
   // time.
   auto loc = mlir::NameLoc::get(builder.getStringAttr(dot_instr->name()));
-  mlir::ImplicitLocOpBuilder b(loc, builder);
+  ImplicitLocOpBuilder b(loc, builder);
   Type i32_ty = b.getI32Type();
   Type i64_ty = b.getI64Type();
   Type int_ty;
@@ -718,17 +731,26 @@ StatusOr<LaunchDimensions> MatMulImpl(
   } else {
     int_ty = i32_ty;
   }
+
+  const int split_k = config.split_k();
+  const int block_m = config.block_m();
+  const int block_k = config.block_k();
+  const int block_n = config.block_n();
+  CHECK_GE(split_k, 1);
+  CHECK_GE(block_m, 16);
+  CHECK_GE(block_k, 16);
+  CHECK_GE(block_n, 16);
+
   const DotDimensionNumbers& dims = dot_instr->dot_dimension_numbers();
-  TF_ASSIGN_OR_RETURN(
-      const auto analysis,
-      DotFusionAnalysis::Execute(dot_instr->parent(), config.split_k()));
+  TF_ASSIGN_OR_RETURN(const auto analysis,
+                      DotFusionAnalysis::Execute(dot_instr->parent(), split_k));
 
   // Rely on dot decomposer: there is just one contracting and one
   // non-contracting dimension on each side + batch ones optionally.
   CHECK_EQ(dims.lhs_contracting_dimensions_size(), 1);
   CHECK_EQ(dims.rhs_contracting_dimensions_size(), 1);
 
-  const bool have_split_k = config.split_k() > 1;
+  const bool have_split_k = split_k > 1;
   if (have_split_k) {
     // Split-K dimension has to be the first batch one and have an index
     // just before the contracting one.
@@ -737,10 +759,10 @@ StatusOr<LaunchDimensions> MatMulImpl(
              dims.lhs_contracting_dimensions(0) - 1);
     CHECK_EQ(dims.rhs_batch_dimensions(0),
              dims.rhs_contracting_dimensions(0) - 1);
-    CHECK_EQ(config.split_k(), dot_instr->operand(0)->shape().dimensions(
-                                   dims.lhs_contracting_dimensions(0) - 1));
-    CHECK_EQ(config.split_k(), dot_instr->operand(1)->shape().dimensions(
-                                   dims.rhs_contracting_dimensions(0) - 1));
+    CHECK_EQ(split_k, dot_instr->operand(0)->shape().dimensions(
+                          dims.lhs_contracting_dimensions(0) - 1));
+    CHECK_EQ(split_k, dot_instr->operand(1)->shape().dimensions(
+                          dims.rhs_contracting_dimensions(0) - 1));
   }
 
   CHECK_LE(dims.lhs_batch_dimensions_size(), 1 + have_split_k);
@@ -767,8 +789,7 @@ StatusOr<LaunchDimensions> MatMulImpl(
   const int batch_out_idx = have_batch ? (have_split_k ? 1 : 0) : -1;
 
   // LHS non-contracting dimension length.
-  // LHS non-contracting can be split, so this holds its full size unlike the
-  // m_minor.
+  // LHS non-contracting can be split, this holds only its minor part.
   int m =
       analysis.IterSpec(DotFusionAnalysis::Scope::OUTPUT, root, lhs_nc_out_idx)
           ->at(0)
@@ -777,7 +798,7 @@ StatusOr<LaunchDimensions> MatMulImpl(
   // Contracting dimension length.
   const int k = dot_instr->operand(0)->shape().dimensions(
                     dims.lhs_contracting_dimensions(0)) *
-                config.split_k();
+                split_k;
 
   // For now all parameters of one scope (dot LHS, RHS) are required to have the
   // same physical layout = use the same indices in tiles. This is enforced by
@@ -862,35 +883,9 @@ StatusOr<LaunchDimensions> MatMulImpl(
           .count;
   CHECK_GE(n, 1);
 
-  const int block_m = config.block_m();
-  const int block_k = config.block_k();
-  const int block_n = config.block_n();
-
-  CHECK_GE(block_m, 16);
-  CHECK_GE(block_k, 16);
-  CHECK_GE(block_n, 16);
-
   const int grid_m = ceil(1.0 * m / block_m);
   const int grid_n = ceil(1.0 * n / block_n);
   const int width = group_m * grid_n;
-
-  Type dot_output_ty = TritonType(b, dot_instr->shape().element_type());
-
-  // Data type of dot() immediate inputs.
-  Type dot_input_ty = b.getF32Type();
-  {
-    const Type lhs_ty =
-        TritonType(b, dot_instr->operand(0)->shape().element_type());
-    const Type rhs_ty =
-        TritonType(b, dot_instr->operand(1)->shape().element_type());
-    CHECK(lhs_ty == rhs_ty);
-    dot_input_ty = lhs_ty;
-  }
-  // TODO(b/266862493): Accumulator can be integer too.
-  // Otherwise only f64 x f64 -> f64 uses f64 accumulator.
-  mlir::FloatType acc_ty = (dot_output_ty.isF64() && dot_input_ty.isF64())
-                               ? b.getF64Type()
-                               : b.getF32Type();
 
   // X block size is 32-bit, Y and Z are 16-bit. Use X for large dimensions.
   constexpr int64_t kBlockCountYZLimit = 65536;
@@ -906,11 +901,6 @@ StatusOr<LaunchDimensions> MatMulImpl(
   // this requires at least 256 GB of output.
   CHECK_LT(batch_size * grid_m * grid_n,
            kBlockCountYZLimit * kBlockCountYZLimit);
-
-  const LaunchDimensions launch_dimensions{
-      {large_batch ? batch_size : grid_m * grid_n,
-       large_batch ? grid_m * grid_n : batch_size, config.split_k()},
-      {config.num_warps() * WarpSize(), 1, 1}};
 
   auto group_id = b.create<ma::DivSIOp>(pid_nc, CreateConst(b, i32_ty, width));
   ma::ConstantOp group_m_op = CreateConst(b, i32_ty, group_m);
@@ -941,6 +931,22 @@ StatusOr<LaunchDimensions> MatMulImpl(
   auto pid_k_offset =
       b.create<ma::MulIOp>(pid_k, CreateConst(b, i32_ty, block_k));
 
+  Type dot_output_ty = TritonType(b, dot_instr->shape().element_type());
+  // Data type of dot() immediate inputs.
+  Type dot_input_ty = b.getF32Type();
+  {
+    const Type lhs_ty =
+        TritonType(b, dot_instr->operand(0)->shape().element_type());
+    const Type rhs_ty =
+        TritonType(b, dot_instr->operand(1)->shape().element_type());
+    CHECK(lhs_ty == rhs_ty);
+    dot_input_ty = lhs_ty;
+  }
+  // TODO(b/266862493): Accumulator can be integer too.
+  // Otherwise only f64 x f64 -> f64 uses f64 accumulator.
+  mlir::FloatType acc_ty = (dot_output_ty.isF64() && dot_input_ty.isF64())
+                               ? b.getF64Type()
+                               : b.getF32Type();
   ma::ConstantOp accumulator_init =
       CreateConst(b, acc_ty, 0, {block_m, block_n});
 
@@ -953,7 +959,7 @@ StatusOr<LaunchDimensions> MatMulImpl(
     boundary_checks_lhs.push_back(0);
     boundary_checks_out.push_back(0);
   }
-  if (k % (block_k * config.split_k()) != 0) {
+  if (k % (block_k * split_k) != 0) {
     boundary_checks_lhs.push_back(1);
     boundary_checks_rhs.push_back(0);
   }
@@ -967,7 +973,7 @@ StatusOr<LaunchDimensions> MatMulImpl(
   absl::flat_hash_map<int, const HloInstruction*> iter_args_to_parameters;
 
   auto body_builder = [&](mlir::OpBuilder&, mlir::Location, Value ki,
-                          mlir::ValueRange iter_args) {
+                          ValueRange iter_args) {
     SmallVector<Value> iter_args_next;
     iter_args_next.reserve(iter_args.size());
     absl::flat_hash_map<const HloInstruction*, Value> values_lhs;
@@ -976,8 +982,8 @@ StatusOr<LaunchDimensions> MatMulImpl(
     for (int i = 0; i < iter_args.size() - 1; ++i) {
       const bool is_lhs =
           i < analysis.ScopeParameters(DotFusionAnalysis::Scope::LHS).size();
-      const int increment_dim0 = block_k * config.split_k() * (is_lhs ? 0 : 1);
-      const int increment_dim1 = block_k * config.split_k() * (is_lhs ? 1 : 0);
+      const int increment_dim0 = block_k * split_k * (is_lhs ? 0 : 1);
+      const int increment_dim1 = block_k * split_k * (is_lhs ? 1 : 0);
       absl::flat_hash_map<const HloInstruction*, Value>& values =
           is_lhs ? values_lhs : values_rhs;
       CHECK(values
@@ -988,13 +994,13 @@ StatusOr<LaunchDimensions> MatMulImpl(
                 .second);
       iter_args_next.push_back(b.create<mt::AdvanceOp>(
           iter_args[i].getType(), iter_args[i],
-          mlir::ValueRange{CreateConst(b, i32_ty, increment_dim0),
-                           CreateConst(b, i32_ty, increment_dim1)}));
+          ValueRange{CreateConst(b, i32_ty, increment_dim0),
+                     CreateConst(b, i32_ty, increment_dim1)}));
     }
 
     // TODO(b/269726484): Peel the loop instead of inserting a masked load in
     // every iteration, even the ones that do not need it.
-    const bool need_masking = k % (block_k * config.split_k()) > 0;
+    const bool need_masking = k % (block_k * split_k) > 0;
     Value lhs_mask;
     Value rhs_mask;
     if (need_masking) {
@@ -1086,11 +1092,11 @@ StatusOr<LaunchDimensions> MatMulImpl(
     Value ptrs = b.create<mt::MakeTensorPtrOp>(
         /*base=*/AddPtr(b, base, lhs_offset_batch),
         /*shape=*/
-        mlir::ValueRange{CreateConst(b, i64_ty, m), CreateConst(b, i64_ty, k)},
+        ValueRange{CreateConst(b, i64_ty, m), CreateConst(b, i64_ty, k)},
         /*strides=*/
-        mlir::ValueRange{CreateConst(b, i64_ty, stride_lhs_m),
-                         CreateConst(b, i64_ty, stride_lhs_k)},
-        /*offsets=*/mlir::ValueRange{pid_m_offset, pid_k_offset},
+        ValueRange{CreateConst(b, i64_ty, stride_lhs_m),
+                   CreateConst(b, i64_ty, stride_lhs_k)},
+        /*offsets=*/ValueRange{pid_m_offset, pid_k_offset},
         /*tensorShape=*/std::vector<int32_t>{block_m, block_k},
         /*order=*/std::vector<int32_t>{1, 0});
     CHECK(iter_args_to_parameters.insert({iter_args.size(), parameter}).second)
@@ -1118,11 +1124,11 @@ StatusOr<LaunchDimensions> MatMulImpl(
     Value ptrs = b.create<mt::MakeTensorPtrOp>(
         /*base=*/AddPtr(b, base, rhs_offset_batch),
         /*shape=*/
-        mlir::ValueRange{CreateConst(b, i64_ty, k), CreateConst(b, i64_ty, n)},
+        ValueRange{CreateConst(b, i64_ty, k), CreateConst(b, i64_ty, n)},
         /*strides=*/
-        mlir::ValueRange{CreateConst(b, i64_ty, stride_rhs_k),
-                         CreateConst(b, i64_ty, stride_rhs_n)},
-        /*offsets=*/mlir::ValueRange{pid_k_offset, pid_n_offset},
+        ValueRange{CreateConst(b, i64_ty, stride_rhs_k),
+                   CreateConst(b, i64_ty, stride_rhs_n)},
+        /*offsets=*/ValueRange{pid_k_offset, pid_n_offset},
         /*tensorShape=*/std::vector<int32_t>{block_k, block_n},
         /*order=*/std::vector<int32_t>{1, 0});
     CHECK(iter_args_to_parameters.insert({iter_args.size(), parameter}).second)
@@ -1136,7 +1142,7 @@ StatusOr<LaunchDimensions> MatMulImpl(
            /*lowerBound=*/b.create<ma::ConstantIntOp>(0, /*width=*/32),
            /*upperBound=*/b.create<ma::ConstantIntOp>(k, /*width=*/32),
            /*step=*/
-           b.create<ma::ConstantIntOp>(block_k * config.split_k(),
+           b.create<ma::ConstantIntOp>(block_k * split_k,
                                        /*width=*/32),
            /*iterArgs=*/iter_args, body_builder)
           .getResult(iter_args.size() - 1);
@@ -1209,11 +1215,11 @@ StatusOr<LaunchDimensions> MatMulImpl(
     return b.create<mt::MakeTensorPtrOp>(
         /*base=*/base,
         /*shape=*/
-        mlir::ValueRange{CreateConst(b, i64_ty, m), CreateConst(b, i64_ty, n)},
+        ValueRange{CreateConst(b, i64_ty, m), CreateConst(b, i64_ty, n)},
         /*strides=*/
-        mlir::ValueRange{CreateConst(b, i64_ty, stride_m),
-                         CreateConst(b, i64_ty, stride_n)},
-        /*offsets=*/mlir::ValueRange{pid_m_offset, pid_n_offset},
+        ValueRange{CreateConst(b, i64_ty, stride_m),
+                   CreateConst(b, i64_ty, stride_n)},
+        /*offsets=*/ValueRange{pid_m_offset, pid_n_offset},
         /*tensorShape=*/std::vector<int32_t>{block_m, block_n},
         /*order=*/std::vector<int32_t>{1, 0});
   };
@@ -1275,7 +1281,9 @@ StatusOr<LaunchDimensions> MatMulImpl(
                           boundary_checks_out, mt::CacheModifier::NONE,
                           mt::EvictionPolicy::NORMAL);
   }
-  return launch_dimensions;
+  return LaunchDimensions{{large_batch ? batch_size : grid_m * grid_n,
+                           large_batch ? grid_m * grid_n : batch_size, split_k},
+                          {config.num_warps() * WarpSize(), 1, 1}};
 }
 
 }  // namespace
@@ -1312,7 +1320,7 @@ StatusOr<LaunchDimensions> SoftMax(mlir::OpBuilder builder,
                                    int) {
   const HloInstruction* root = computation->root_instruction();
   auto loc = mlir::NameLoc::get(builder.getStringAttr(root->name()));
-  mlir::ImplicitLocOpBuilder b(loc, builder);
+  ImplicitLocOpBuilder b(loc, builder);
 
   // Assumptions we make about the matcher:
   //   * matches Softmax "diamonds" on the last axis, along with any number of
@@ -1359,9 +1367,9 @@ StatusOr<LaunchDimensions> SoftMax(mlir::OpBuilder builder,
     Value offset = b.create<ma::MulIOp>(row_index, row_stride);
     return b.create<mt::MakeTensorPtrOp>(
         /*base=*/AddPtr(b, base, offset),
-        /*shape=*/mlir::ValueRange{CreateConst(b, b.getI64Type(), row_len)},
-        /*strides=*/mlir::ValueRange{CreateConst(b, b.getI64Type(), 1)},
-        /*offsets=*/mlir::ValueRange{CreateConst(b, b.getI32Type(), 0)},
+        /*shape=*/ValueRange{CreateConst(b, b.getI64Type(), row_len)},
+        /*strides=*/ValueRange{CreateConst(b, b.getI64Type(), 1)},
+        /*offsets=*/ValueRange{CreateConst(b, b.getI32Type(), 0)},
         /*tensorShape=*/std::vector<int32_t>{block_row},
         /*order=*/std::vector<int32_t>{0});
   };
@@ -1579,6 +1587,7 @@ StatusOr<LaunchDimensions> TritonWrapper(
   ll_triton_module->eraseNamedMDNode(
       ll_triton_module->getNamedMetadata("nvvm.annotations"));
   ll_triton_module->setDataLayout(llvm_module->getDataLayout());
+  ll_triton_module->setTargetTriple(llvm_module->getTargetTriple());
   // Use override flag because libdevice functions can be present in both.
   CHECK(!llvm::Linker::linkModules(*llvm_module, std::move(ll_triton_module),
                                    llvm::Linker::Flags::OverrideFromSrc));

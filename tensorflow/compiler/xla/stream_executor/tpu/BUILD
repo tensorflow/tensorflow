@@ -53,10 +53,9 @@ cc_library(
     hdrs = ["c_api_conversions.h"],
     deps = [
         ":c_api_decl",
-        ":host_command_handler",
         ":tpu_api",
         ":tpu_executor_c_api_hdrs",
-        ":tpu_platform_interface",
+        ":tpu_ops_c_api_hdrs",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
@@ -77,7 +76,6 @@ xla_cc_test(
     deps = [
         ":c_api_conversions",
         ":c_api_decl",
-        ":host_command_handler",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
@@ -110,7 +108,6 @@ cc_library(
         "//tensorflow/tsl/platform:platform_port",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/functional:function_ref",
-        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -270,6 +267,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/tsl/c:tsl_status",
         "//tensorflow/tsl/c:tsl_status_helper",
+        "//tensorflow/tsl/c:tsl_status_internal",
         "//tensorflow/tsl/platform:casts",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
@@ -298,16 +296,15 @@ cc_library(
     deps = [
         ":status_helper",
         ":tpu_api",
+        ":tpu_ops_c_api_hdrs",
         ":tpu_platform_interface",
         "//tensorflow/compiler/xla/service",
         "//tensorflow/compiler/xla/service:backend",
         "//tensorflow/compiler/xla/service:stream_pool",
-        "//tensorflow/compiler/xla/service:transfer_manager",
         "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",
         "//tensorflow/tsl/platform:macros",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
-        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -382,7 +379,6 @@ cc_library(
     deps = [
         ":c_api_conversions",
         ":c_api_decl",
-        ":host_command_handler",
         ":proto_helper",
         ":status_helper",
         ":tpu_api",
@@ -427,10 +423,10 @@ cc_library(
 )
 
 cc_library(
-    name = "tpu_initializer_helper",
-    srcs = ["tpu_initializer_helper.cc"],
+    name = "tpu_initializer_framework_helper",
+    srcs = ["tpu_initializer_framework_helper.cc"],
     hdrs = [
-        "tpu_initializer_helper.h",
+        "tpu_initializer_framework_helper.h",
     ],
     visibility = ["//visibility:public"],
     deps = [
@@ -439,14 +435,29 @@ cc_library(
         ":tpu_api_dlsym_set_fn",
         ":tpu_executor_base",
         ":tpu_executor_c_api_hdrs",
+        ":tpu_initialize_util",
         ":tpu_library_init_fns",
         ":tpu_ops_c_api_hdrs",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:status",
+    ],
+)
+
+cc_library(
+    name = "tpu_initialize_util",
+    srcs = ["tpu_initialize_util.cc"],
+    hdrs = [
+        "tpu_initialize_util.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
-        "//tensorflow/tsl/platform/cloud:gcs_file_system",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
     ],
@@ -465,18 +476,13 @@ cc_library(
         ":tpu_executor_c_api_hdrs",
         ":tpu_executor_hdrs",
         ":tpu_platform_id",
-        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/hlo/ir:hlo_module_group",
         "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service:hlo_cost_analysis",
-        "//tensorflow/compiler/xla/service:shaped_buffer",
-        "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",
         "@com_google_absl//absl/cleanup",
-        "@com_google_absl//absl/types:span",
     ],
     alwayslink = True,
 )
@@ -512,7 +518,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:transfer_manager",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -553,10 +558,4 @@ cc_library(
         ":tpu_api",
         "//tensorflow/tsl/platform:types",
     ],
-)
-
-cc_library(
-    name = "host_command_handler",
-    hdrs = ["host_command_handler.h"],
-    visibility = ["//visibility:public"],
 )

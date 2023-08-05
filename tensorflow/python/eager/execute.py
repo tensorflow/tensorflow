@@ -50,6 +50,13 @@ def quick_execute(op_name, num_outputs, inputs, attrs, ctx, name=None):
   # pylint: disable=protected-access
   try:
     ctx.ensure_initialized()
+    # Convert any objects of type core_types.Tensor to Tensor.
+    inputs = [
+        tensor_conversion_registry.convert(t)
+        if isinstance(t, core_types.Tensor)
+        else t
+        for t in inputs
+    ]
     tensors = pywrap_tfe.TFE_Py_Execute(ctx._handle, device_name, op_name,
                                         inputs, attrs, num_outputs)
   except core._NotOkStatusException as e:

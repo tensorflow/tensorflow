@@ -389,7 +389,8 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
       xla::ifrt::DeviceList::Devices ifrt_devices;
       ifrt_devices.push_back(addressable_devices[0].get());
       auto sharding = xla::ifrt::OpaqueSharding::Create(
-          xla::ifrt::DeviceList(std::move(ifrt_devices)));
+          xla::ifrt::DeviceList(std::move(ifrt_devices)),
+          ifrt_array->sharding().memory_kind());
       TF_ASSIGN_OR_RETURN(
           auto copied_ifrt_array,
           ifrt_array->Reshard(std::move(sharding),

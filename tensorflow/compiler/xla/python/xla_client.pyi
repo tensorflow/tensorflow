@@ -105,6 +105,10 @@ def make_tfrt_tpu_c_api_device_topology(topology_name: Optional[str] = None, **k
   ...
 
 
+def get_topology_for_devices(devices: List[Device]) -> DeviceTopology:
+  ...
+
+
 def make_tpu_client() -> Client:
   ...
 
@@ -223,6 +227,9 @@ def weakref_lru_cache(cache_context_fn: Callable, call: Callable, maxsize=...):
 def copy_array_to_devices_with_sharding(self: ArrayImpl, devices: List[Device], sharding: Any) -> ArrayImpl: ...
 
 def batched_device_put(aval: Any, sharding: Any, shards: Sequence[Any], devices: List[Device]) -> ArrayImpl: ...
+
+def canonicalize_memory_kind(
+    memory_kind: Optional[str], device: Device) -> Optional[str]: ...
 
 def array_result_handler(
                aval: Any,

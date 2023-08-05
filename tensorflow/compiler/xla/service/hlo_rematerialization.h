@@ -15,6 +15,7 @@
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_REMATERIALIZATION_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_REMATERIALIZATION_H_
 
+#include <optional>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
@@ -25,6 +26,7 @@
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
+#include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/shape.h"
@@ -53,31 +55,65 @@ class HloRematerialization : public HloModulePass {
   };
 
   // Mode in which the rematerialization algorithm should be run.
-  enum class RematerializationMode {
-    kRecomputeOnly,        // Only consider the kCompress RematStrategy.
-    kCompressOnly,         // Only consider the kRecompute RematStrategy.
-    kRecomputeAndCompress  // Consider both kRecompute and kRemat.
+  struct RematerializationModeConfig {
+    RematerializationModeConfig(bool recompute, bool compress,
+                                bool host_offload)
+        : recompute(recompute),
+          compress(compress),
+          host_offload(host_offload) {}
+    bool recompute;     // Enables the kCompress RematStrategy.
+    bool compress;      // Enables the kRecompute RematStrategy.
+    bool host_offload;  // Enables the kHostOffload RematStrategy.
+  };
+
+  // This is a struct containing configuration options that are specific to the
+  // Host Memory Offload strategy.
+  struct HostMemoryOffloadConfig {
+    explicit HostMemoryOffloadConfig(int64_t host_memory_space,
+                                     float bandwidth_to_host_bytes_per_second,
+                                     float bandwidth_from_host_bytes_per_second)
+        : host_memory_space(host_memory_space),
+          bandwidth_to_host_bytes_per_second(
+              bandwidth_to_host_bytes_per_second),
+          bandwidth_from_host_bytes_per_second(
+              bandwidth_from_host_bytes_per_second) {}
+
+    // The host memory space, which is used during the host offload strategy.
+    int64_t host_memory_space;
+
+    float bandwidth_to_host_bytes_per_second;
+
+    float bandwidth_from_host_bytes_per_second;
   };
 
   static Shape DefaultCompactShapeFunction(const Shape& shape) { return shape; }
 
   struct Options {
-    explicit Options(const ShapeSizeFunction& size_function,
-                     int64_t memory_limit_bytes, int block_size_limit,
-                     int block_rematerialization_factor,
-                     CompactShapeFunction compact_shape_function = nullptr,
-                     RematerializationMode mode =
-                         RematerializationMode::kRecomputeAndCompress,
-                     int64_t min_remat_size = 0)
-        : size_function(size_function),
+    explicit Options(
+        HloCostAnalysis& hlo_cost_analysis,
+        const RematerializationModeConfig& remat_mode_config,
+        int64_t memory_limit_bytes, int block_size_limit,
+        int block_rematerialization_factor, int64_t min_remat_size,
+        CompactShapeFunction compact_shape_function,
+        std::optional<HostMemoryOffloadConfig> host_memory_offload_config)
+        : hlo_cost_analysis(hlo_cost_analysis),
+          remat_mode_config(remat_mode_config),
           memory_limit_bytes(memory_limit_bytes),
           block_size_limit(block_size_limit),
           block_rematerialization_factor(block_rematerialization_factor),
+          min_remat_size(min_remat_size),
           compact_shape_function(compact_shape_function == nullptr
                                      ? DefaultCompactShapeFunction
                                      : std::move(compact_shape_function)),
-          mode(mode),
-          min_remat_size(min_remat_size) {}
+          host_memory_offload_config(host_memory_offload_config) {}
+
+    // The cost model used for decisions during rematerialization for host
+    // memory offload. It is also used for getting Shape size.
+    HloCostAnalysis& hlo_cost_analysis;
+
+    // Holds the rematerialization strategy configuration to be used by the
+    // pass.
+    RematerializationModeConfig remat_mode_config;
 
     // Function which computes the size of the top-level buffer of a shape.
     const ShapeSizeFunction size_function;
@@ -96,18 +132,16 @@ class HloRematerialization : public HloModulePass {
     // return for potentially reduced memory consumption.
     int block_rematerialization_factor;
 
-    // Converts a shape into compact form, returns the same shape if a shape is
-    // already considered compact.
-    const CompactShapeFunction compact_shape_function;
-
-    // Holds the rematerialization strategy configuration to be used by the
-    // pass.
-    RematerializationMode mode;
-
     // The minimim size, in bytes, of a tensor to be considered for
     // rematerialization. All tensors smaller than this size will be skipped
     // over.
     int64_t min_remat_size;
+
+    // Converts a shape into compact form, returns the same shape if a shape is
+    // already considered compact.
+    CompactShapeFunction compact_shape_function;
+
+    std::optional<HostMemoryOffloadConfig> host_memory_offload_config;
   };
 
   explicit HloRematerialization(Options options, RematerializationSizes& sizes)
@@ -167,12 +201,6 @@ class HloRematerialization : public HloModulePass {
   StatusOr<int64_t> CalledComputationsMemoryUsage(
       const HloInstruction* instruction,
       const absl::flat_hash_set<absl::string_view>& execution_threads) const;
-
-  // Returns true if `thread` is considered included within given
-  // `execution_threads`.
-  bool IsExecutionThreadIncluded(
-      const absl::flat_hash_set<absl::string_view>& execution_threads,
-      absl::string_view thread) const;
 
   const Options options_;
 

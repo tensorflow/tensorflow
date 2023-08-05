@@ -33,10 +33,8 @@ from tensorflow.python.keras.optimizer_v2 import rmsprop as rmsprop_v2
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.training import optimizer as tf_optimizer_module
-from tensorflow.python.util.tf_export import keras_export
 
 
-@keras_export('keras.optimizers.serialize')
 def serialize(optimizer):
   """Serialize the optimizer configuration to JSON compatible python dict.
 
@@ -57,7 +55,6 @@ def serialize(optimizer):
   return serialize_keras_object(optimizer)
 
 
-@keras_export('keras.optimizers.deserialize')
 def deserialize(config, custom_objects=None):
   """Inverse of the `serialize` function.
 
@@ -98,7 +95,6 @@ def deserialize(config, custom_objects=None):
       printable_module_name='optimizer')
 
 
-@keras_export('keras.optimizers.get')
 def get(identifier):
   """Retrieves a Keras Optimizer instance.
 

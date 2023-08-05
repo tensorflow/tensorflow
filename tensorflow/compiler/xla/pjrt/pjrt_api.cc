@@ -74,6 +74,15 @@ xla::Status InitPjrtPlugin(PjrtApiInitFn init_fn,
   }
   TF_RETURN_IF_ERROR(pjrt::CheckMatchingStructSizes(
       "PJRT_Api", PJRT_Api_STRUCT_SIZE, pjrt_api->struct_size));
+  if (pjrt_api->struct_size >= 592 &&
+      (pjrt_api->pjrt_api_version.major_version > 0 ||
+       pjrt_api->pjrt_api_version.minor_version >= 13)) {
+    PJRT_Plugin_Initialize_Args args;
+    args.struct_size = PJRT_Plugin_Initialize_Args_STRUCT_SIZE;
+    args.priv = nullptr;
+    RETURN_STATUS_IF_PJRT_ERROR(pjrt_api->PJRT_Plugin_Initialize(&args),
+                                pjrt_api);
+  }
   return SetPjrtApi(device_type, pjrt_api);
 }
 

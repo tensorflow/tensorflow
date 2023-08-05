@@ -16,11 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PJRT_C_PJRT_C_API_WRAPPER_IMPL_H_
 #define TENSORFLOW_COMPILER_XLA_PJRT_C_PJRT_C_API_WRAPPER_IMPL_H_
 
-#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
@@ -60,6 +58,17 @@ struct PJRT_Device {
   // The xla::PjRtDevice* is owned by the corresponding xla::PjRtClient.
   xla::PjRtDevice* device;
   PJRT_DeviceDescription description;
+  std::vector<PJRT_Memory> owned_memories;
+  // `memories` contains the addresses of the contents of `owned_memories`.
+  std::vector<PJRT_Memory*> memories;
+  // Map from wrapped C++ memories to C memories. The values are the same as
+  // `owned_memories`.
+  absl::flat_hash_map<xla::PjRtMemorySpace*, PJRT_Memory*>
+      c_memory_from_cpp_memory;
+};
+
+struct PJRT_Memory {
+  xla::PjRtMemorySpace* memory_space;
 };
 
 struct PJRT_Executable {
@@ -187,7 +196,15 @@ PJRT_Error* PJRT_DeviceDescription_ToString(
 PJRT_Error* PJRT_Device_GetDescription(PJRT_Device_GetDescription_Args* args);
 PJRT_Error* PJRT_Device_IsAddressable(PJRT_Device_IsAddressable_Args* args);
 PJRT_Error* PJRT_Device_LocalHardwareId(PJRT_Device_LocalHardwareId_Args* args);
+PJRT_Error* PJRT_Device_AddressableMemories(
+    PJRT_Device_AddressableMemories_Args* args);
+PJRT_Error* PJRT_Device_DefaultMemory(PJRT_Device_DefaultMemory_Args* args);
 PJRT_Error* PJRT_Device_MemoryStats(PJRT_Device_MemoryStats_Args* args);
+
+PJRT_Error* PJRT_Memory_Id(PJRT_Memory_Id_Args* args);
+PJRT_Error* PJRT_Memory_Kind(PJRT_Memory_Kind_Args* args);
+PJRT_Error* PJRT_Memory_DebugString(PJRT_Memory_DebugString_Args* args);
+PJRT_Error* PJRT_Memory_ToString(PJRT_Memory_ToString_Args* args);
 
 PJRT_Error* PJRT_Executable_Destroy(PJRT_Executable_Destroy_Args* args);
 PJRT_Error* PJRT_Executable_Name(PJRT_Executable_Name_Args* args);
@@ -316,11 +333,17 @@ xla::PjRtClient::KeyValueGetCallback ToCppKeyValueGetCallback(
 xla::PjRtClient::KeyValuePutCallback ToCppKeyValuePutCallback(
     PJRT_KeyValuePutCallback c_callback, void* user_arg);
 
+// A method that does not nothing other than returning a nullptr. Can be used as
+// the implementation of PJRT_Plugin_Initialize for plugins that do not require
+// specific initialization.
+PJRT_Error* PJRT_Plugin_Initialize_NoOp(PJRT_Plugin_Initialize_Args* args);
+
 // Creates a PJRT_Api with create_fn from the input and other functions in
 // pjrt_c_api_wrapper_impl.
 constexpr PJRT_Api CreatePjrtApi(
     PJRT_Client_Create* create_fn,
-    PJRT_TopologyDescription_Create* topology_create_fn) {
+    PJRT_TopologyDescription_Create* topology_create_fn,
+    PJRT_Plugin_Initialize* plugin_initialize_fn) {
   return PJRT_Api{
       /*struct_size=*/PJRT_Api_STRUCT_SIZE,
       /*priv=*/nullptr,
@@ -335,6 +358,7 @@ constexpr PJRT_Api CreatePjrtApi(
       /*PJRT_Error_Message=*/pjrt::PJRT_Error_Message,
       /*PJRT_Error_GetCode=*/pjrt::PJRT_Error_GetCode,
 
+      /*PJRT_Plugin_Initialize=*/plugin_initialize_fn,
       /*PJRT_Plugin_Attributes=*/pjrt::PJRT_Plugin_Attributes,
 
       /*PJRT_Event_Destroy=*/pjrt::PJRT_Event_Destroy,
@@ -374,7 +398,14 @@ constexpr PJRT_Api CreatePjrtApi(
       /*PJRT_Device_GetDescription=*/pjrt::PJRT_Device_GetDescription,
       /*PJRT_Device_IsAddressable=*/pjrt::PJRT_Device_IsAddressable,
       /*PJRT_Device_LocalHardwareId=*/pjrt::PJRT_Device_LocalHardwareId,
-      /*.PJRT_Device_MemoryStats=*/pjrt::PJRT_Device_MemoryStats,
+      /*PJRT_Device_AddressableMemories=*/pjrt::PJRT_Device_AddressableMemories,
+      /*PJRT_Device_DefaultMemory=*/pjrt::PJRT_Device_DefaultMemory,
+      /*PJRT_Device_MemoryStats=*/pjrt::PJRT_Device_MemoryStats,
+
+      /*PJRT_Memory_Id=*/pjrt::PJRT_Memory_Id,
+      /*PJRT_Memory_Kind=*/pjrt::PJRT_Memory_Kind,
+      /*PJRT_Memory_DebugString=*/pjrt::PJRT_Memory_DebugString,
+      /*PJRT_Memory_ToString=*/pjrt::PJRT_Memory_ToString,
 
       /*PJRT_Executable_Destroy=*/pjrt::PJRT_Executable_Destroy,
       /*PJRT_Executable_Name=*/pjrt::PJRT_Executable_Name,

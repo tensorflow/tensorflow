@@ -15,6 +15,9 @@ limitations under the License.
 
 // See docs in ../ops/nn_ops.cc.
 #if defined(INTEL_MKL) && !defined(ENABLE_ONEDNN_V3)
+// TODO(intel-tf): This file is no longer used and needs to be removed.
+// This file will be an empty compilation unit when building with oneDNN v3.x
+// (default behavior). It can be compiled only when building with oneDNN v2.x.
 
 #include <unordered_map>
 

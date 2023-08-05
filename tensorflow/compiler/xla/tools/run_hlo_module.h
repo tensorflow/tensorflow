@@ -48,6 +48,8 @@ struct RunHloModuleOptions {
   std::string input_format;
   std::string input_module;
   bool use_buffer_assignment_from_proto{false};
+  // The format and the usage of the option is platform-dependent.
+  std::string input_compilation_environments;
   int iterations{1};
   std::string output_literals_file;
   std::string input_literals_file;

@@ -60,7 +60,8 @@ StatusOr<HloInstruction*> UpdateLayoutForCudnnConvolution(
       gpu::GetCudnnConvKind(Cast<HloCustomCallInstruction>(hlo)));
   switch (conv_kind) {
     case gpu::CudnnConvKind::kForward:
-    case gpu::CudnnConvKind::kForwardActivation: {
+    case gpu::CudnnConvKind::kForwardActivation:
+    case gpu::CudnnConvKind::kForwardGraph: {
       input_shape = lhs->shape();
       filter_shape = rhs->shape();
       output_shape = conv_output_shape;

@@ -43,27 +43,12 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_cuda_data_dir("./cuda_sdk_lib");
   opts.set_xla_gpu_asm_extra_flags("");
 
-  // As of cudnn 8.9.0, enabling cudnn runtime fusion sometimes causes a
-  // situation where cudnn returns 0 algorithms for an otherwise-valid conv,
-  // causing compilation to fail.  Examples of failing convs:
-  //
-  // // failing kLeakyRelu, b/290967578
-  // (f16[2,256,768,16]{3,2,1,0}, u8[0]{0})
-  //   custom-call(f16[2,256,768,3]{3,2,1,0} %a, f16[16,3,3,3]{3,2,1,0} %b,
-  //   f16[16]{0} %c), window={size=3x3 pad=1_1x1_1},
-  //   dim_labels=b01f_o01i->b01f, operand_precision={highest,highest},
-  //   custom_call_target="__cudnn$convBiasActivationForward",
-  //   backend_config={"activation_mode":"kLeakyRelu","conv_result_scale":1,
-  //                   "side_input_scale":0,"leakyrelu_alpha":0.199951171875}
-  //
-  // // failing kRelu6, b/291011396
-  // (f16[1,384,1024,32]{3,2,1,0}, u8[0]{0})
-  //   custom-call(f16[1,769,2049,3]{3,2,1,0} %a, f16[32,3,3,3]{3,2,1,0} %b,
-  //   f16[32]{0} %c), window={size=3x3 stride=2x2}, dim_labels=b01f_o01i->b01f,
-  //   operand_precision={highest,highest},
-  //   custom_call_target="__cudnn$convBiasActivationForward",
-  //   backend_config={"activation_mode":"kRelu6","conv_result_scale":1,
-  //                   "side_input_scale":0,"leakyrelu_alpha":0}
+  // As of cudnn 8.9.0, runtime fusion creates convolutions that take about 7s
+  // seconds to run the first time we call them, at least on Ampere.  In
+  // contrast, non-runtime-fusion convs usually run in about 50ms.  Thus runtime
+  // fusion can cause a 100x slowdown when compiling models that have convs that
+  // use runtime fusion.  We therefore can't enable this by default today.
+  // Additional details in b/237009940#comment46.
   opts.set_xla_gpu_use_runtime_fusion(false);
 
   opts.set_xla_eliminate_hlo_implicit_broadcast(true);
@@ -92,6 +77,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   // TODO(AyanmoI): Remove this flag when cuDNN FMHA is fully supported.
   opts.set_xla_gpu_enable_cudnn_fmha(false);
+
+  opts.set_xla_gpu_fused_attention_use_cudnn_rng(false);
 
   // By default, copy TF's Eigen style min_max behavior with nans.
   opts.set_xla_cpu_enable_fast_min_max(true);
@@ -134,8 +121,9 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_nccl_termination_timeout_seconds(-1);
   opts.set_xla_gpu_enable_shared_constants(true);
 
-  // OpenXLA/IREE runtime flags.
-  opts.set_xla_gpu_enable_openxla_runtime(false);
+  // XLA:GPU + IREE runtime flags.
+  opts.set_xla_gpu_enable_gpu2_runtime(false);
+  opts.set_xla_gpu_enable_gpu2_hal(true);
 
   // Set 4GB space limit for redzone scratch allocator.
   opts.set_xla_gpu_redzone_scratch_max_megabytes(1LL << 12);
@@ -167,7 +155,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_cudnn_int8x32_convolution_reordering(true);
   opts.set_xla_gpu_triton_gemm_any(false);
   opts.set_xla_gpu_enable_triton_softmax_fusion(true);
-  opts.set_xla_gpu_triton_fusion_level(1);
+  opts.set_xla_gpu_triton_fusion_level(2);
 
   // Moving reduce-scatter out of while loops can increase memory footprint, so
   // turning it off by default.
@@ -182,6 +170,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_auto_spmd_partitioning_memory_budget_gb(0);
   opts.set_xla_gpu_auto_spmd_partitioning_memory_budget_ratio(1.1);
+
+  opts.set_xla_gpu_copy_insertion_use_region_analysis(true);
   return opts;
 }
 
@@ -891,6 +881,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "that dropout support and the developement of this feature as a whole is "
       "in progress. Attention with dropout may cause results to diverge with "
       "and without this  flag turned on."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_fused_attention_use_cudnn_rng",
+      bool_setter_for(&DebugOptions::set_xla_gpu_fused_attention_use_cudnn_rng),
+      debug_options->xla_gpu_fused_attention_use_cudnn_rng(),
+      "Use cudnn random number generator for fused attention kernel."));
   flag_list->push_back(
       tsl::Flag("xla_gpu_enable_cublaslt",
                 bool_setter_for(&DebugOptions::set_xla_gpu_enable_cublaslt),
@@ -964,11 +959,16 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_xla_runtime_executable),
       debug_options->xla_gpu_enable_xla_runtime_executable(),
       "Whether to enable XLA runtime for XLA:GPU backend"));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_enable_openxla_runtime",
-      bool_setter_for(&DebugOptions::set_xla_gpu_enable_openxla_runtime),
-      debug_options->xla_gpu_enable_openxla_runtime(),
-      "Whether to enable OpenXLA runtime for XLA:GPU backend"));
+  flag_list->push_back(
+      tsl::Flag("xla_gpu_enable_gpu2_runtime",
+                bool_setter_for(&DebugOptions::set_xla_gpu_enable_gpu2_runtime),
+                debug_options->xla_gpu_enable_gpu2_runtime(),
+                "Whether to enable experimental XLA:GPU runtime"));
+  flag_list->push_back(
+      tsl::Flag("xla_gpu_enable_gpu2_hal",
+                bool_setter_for(&DebugOptions::set_xla_gpu_enable_gpu2_hal),
+                debug_options->xla_gpu_enable_gpu2_hal(),
+                "Whether to enable CUDA HAL in experimental XLA:GPU runtime"));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_nccl_termination_timeout_seconds",
       int64_setter_for(
@@ -1191,6 +1191,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Dumps autotuned Triton fusions to the directory specified by "
       "xla_dump_to or stdout. Each fusion is dumped only once, as an optimized "
       "HLO."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_copy_insertion_use_region_analysis",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_copy_insertion_use_region_analysis),
+      debug_options->xla_gpu_copy_insertion_use_region_analysis(),
+      "If true, use the new fine-grain region-based live range interference"
+      " analysis in the copy insertion optimization pass."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

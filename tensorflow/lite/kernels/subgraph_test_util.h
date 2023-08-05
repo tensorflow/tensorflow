@@ -66,6 +66,9 @@ class SubgraphBuilder {
   // Build a subgraph whose output is not consumed by the parent subgraph.
   void BuildOutputNotConsumedSubgraph(Subgraph& subgraph);
 
+  // Build an if subgraph with float inputs and outputs.
+  void BuildFloatIfSubgraph(Subgraph* subgraph, int num_inputs);
+
   // Build a while subgraph with float inputs and outputs.
   void BuildFloatWhileSubgraph(Subgraph* subgraph, int num_inputs);
 
@@ -123,12 +126,24 @@ class SubgraphBuilder {
   //   Equivalent to (input < rhs).
   void BuildLessEqualCondSubgraph(Subgraph* subgraph, int rhs);
 
+  // Build an if subgraph which does not consume an output of ifs body
+  // subgraph.
+  void BuildOutputNotConsumedIfSubgraph(Subgraph* subgraph);
+
   // Build a while subgraph which does not consume an output of ifs body
   // subgraph.
   void BuildOutputNotConsumedWhileSubgraph(Subgraph* subgraph);
 
+  // Build a if subgraph with multiple inputs.
+  void BuildMultiInputIfSubgraph(Subgraph* subgraph, int num_inputs);
+
   // Build a while subgraph with multiple inputs.
   void BuildMultiInputWhileSubgraph(Subgraph* subgraph, int num_inputs);
+
+  // Build an if subgraph with multiple inputs and one output which is not
+  // consumed.
+  void BuildMultiInputIfSubgraphWithUnconsumedOutput(Subgraph* subgraph,
+                                                     int num_inputs);
 
   // Build a while subgraph with multiple inputs and one output which is not
   // consumed.
@@ -200,6 +215,10 @@ class SubgraphBuilder {
   //   Equivalent to (str1, str2, int_val) ->
   //                 (str1, Fill(str1, int_val + 1), int_val + 1).
   void BuildBodySubgraphWithDynamicTensor(Subgraph* subgraph);
+
+  // Build a subgraph with a single If op, that contains 4 inputs and 3
+  // outputs (str1, str2, int_val).
+  void BuildIfSubgraphWithDynamicTensor(Subgraph* subgraph);
 
   // Build a subgraph with a single While op, that contains 3 inputs and 3
   // outputs (str1, str2, int_val).

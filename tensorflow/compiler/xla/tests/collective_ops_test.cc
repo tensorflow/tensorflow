@@ -1729,9 +1729,7 @@ XLA_TEST_F(CollectiveOpsTest, AllGather_Dim1UnitDimensions) {
   }
 }
 
-// TODO(bixia): Enable for GPU after fixing a deadlock issue.
-XLA_TEST_F(CollectiveOpsTest,
-           DISABLED_ON_GPU(DISABLED_ON_CPU(SendRecv_Simple))) {
+XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(SendRecv_Simple)) {
   const char* const kModuleStr = R"(
   HloModule test
   ENTRY test_computation {

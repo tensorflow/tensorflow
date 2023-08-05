@@ -443,6 +443,13 @@ void FixMixedMeshShapeReshardingGetTupleElement(
     absl::flat_hash_map<std::string, std::vector<HloSharding>>*
         preserve_shardings);
 
+void FixMixedMeshShapeReshardingGetTupleElementWithTupleOutput(
+    HloInstruction* inst,
+    const std::vector<std::optional<HloSharding>>& dst_sharding,
+    const Array<int64_t>& device_mesh,
+    absl::flat_hash_map<std::string, std::vector<HloSharding>>*
+        preserve_shardings);
+
 void FixMixedMeshShapeResharding(HloInstruction* inst, int operand_num,
                                  const HloSharding& dst_sharding,
                                  const Array<int64_t>& device_mesh,
@@ -559,6 +566,8 @@ Array<T> Transpose(const Array<T> array, std::vector<int64_t> axes) {
 size_t VectorGreaterThanOneElementCount(absl::Span<const int64_t> span,
                                         bool omit_last_dim = false);
 
+// This functions returns the indices of all vector elements larger than 1, in
+// order.
 std::vector<int64_t> VectorGreaterThanOneElementIndices(
     absl::Span<const int64_t> span, bool omit_last_dim = false);
 

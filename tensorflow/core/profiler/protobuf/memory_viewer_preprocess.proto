@@ -94,6 +94,11 @@ message PreprocessResult {
 
   double maybe_live_out_mib = 15;
 
+  // total size of indefinite/global and temporary buffer allocations.
+  double total_buffer_allocation_mib = 18;
+  // total size of indefinite/global buffer allocations.
+  double indefinite_buffer_allocation_mib = 19;
+
   repeated BufferAllocation indefinite_lifetimes = 16;
 
   string allocation_timeline = 17;

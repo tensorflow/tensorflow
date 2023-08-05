@@ -241,7 +241,6 @@ cc_library(
         "infeed_ops_xla_adjust_layout.cc",
         "legalize_tf_collective.cc",
         "legalize_tf_communication.cc",
-        "legalize_tf_types.cc",
         "tf_xla_passes.h.inc",
         "tfxla_device_specific_transforms.cc",
         "verify_tfxla_legalization.cc",
@@ -330,27 +329,6 @@ cc_library(
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:Transforms",
         "@stablehlo//:chlo_ops",
-    ],
-)
-
-tf_cc_test(
-    name = "legalize_tf_types_test",
-    srcs = ["legalize_tf_types_test.cc"],
-    deps = [
-        ":test_utils",
-        ":xla_legalize_tf",
-        "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:serialize_mlir_module_utils",
-        "//tensorflow/core:test",
-        "//tensorflow/core/lib/monitoring:cell_reader",
-        "//tensorflow/tsl/platform:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest_main",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
     ],
 )
 

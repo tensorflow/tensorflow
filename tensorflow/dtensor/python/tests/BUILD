@@ -599,3 +599,33 @@ dtensor_test(
         "@absl_py//absl/testing:parameterized",
     ],
 )
+
+dtensor_test(
+    name = "variable_test",
+    srcs = ["variable_test.py"],
+    disable_tfrt = [
+        "tpu",
+        "gpu",
+    ],  # b/198521331 timeout on TFRT TPU.
+    main = "variable_test.py",
+    tags = [
+        "nomultivm",
+    ],
+    deps = [
+        ":test_util",
+        "//tensorflow/dtensor/python:api",
+        "//tensorflow/dtensor/python:d_variable",
+        "//tensorflow/dtensor/python:layout",
+        "//tensorflow/python/eager/polymorphic_function",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:array_ops_stack",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:variables",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)

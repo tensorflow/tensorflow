@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
 
+#include <string>
+#include <utility>
+#include <variant>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -90,5 +93,26 @@ TEST(ExecuteOptionsTest, SendRecvNotSupported) {
                "ExecuteOptions with send/recv calbacks is not serializable"));
 }
 
+TEST(ExecuteOptionsTest, ApplyOptionsCanParseStrings) {
+  using OptionOverride = std::variant<std::string, bool, int64_t>;
+  std::vector<std::pair<std::string, OptionOverride>> env_override_options;
+  env_override_options = {
+      {"xla_gpu_use_runtime_fusion", std::string("True")},
+      {"xla_gpu_graph_min_graph_size", std::string("2")},
+      {"xla_gpu_redzone_scratch_max_megabytes", std::string("3400")},
+      {"xla_gpu_auto_spmd_partitioning_memory_budget_ratio",
+       std::string("0.9")},
+      {"xla_gpu_pgle_profile_file_or_directory_path", std::string("abc")}};
+  CompileOptions src;
+  src.env_option_overrides = env_override_options;
+  auto s = src.ApplyAllOptionOverrides();
+  auto& debug_options = src.executable_build_options.debug_options();
+  EXPECT_EQ(debug_options.xla_gpu_use_runtime_fusion(), true);
+  EXPECT_EQ(debug_options.xla_gpu_graph_min_graph_size(), 2);
+  EXPECT_EQ(debug_options.xla_gpu_redzone_scratch_max_megabytes(), 3400);
+  EXPECT_FLOAT_EQ(
+      debug_options.xla_gpu_auto_spmd_partitioning_memory_budget_ratio(), 0.9);
+  EXPECT_EQ(debug_options.xla_gpu_pgle_profile_file_or_directory_path(), "abc");
+}
 }  // namespace
 }  // namespace xla

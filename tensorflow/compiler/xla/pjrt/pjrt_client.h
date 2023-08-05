@@ -26,7 +26,6 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
@@ -173,12 +172,26 @@ class PjRtDevice {
   }
 
   // Returns all memory spaces attached to this device.
-  virtual absl::Span<PjRtMemorySpace* const> memory_spaces() const {
-    return {};
-  }
+  virtual absl::Span<PjRtMemorySpace* const> memory_spaces() const = 0;
 
   // Returns the default memory space attached to this device.
   virtual StatusOr<PjRtMemorySpace*> default_memory_space() const = 0;
+
+  // Experimental: Poisons the earliest execution on this device with given
+  // launch_id if it's not finished yet, i.e. makes its output buffers error.
+  //
+  // Returns true if the output buffers have been successfully poisoned.
+  //
+  // Returns false if the output buffers were not successfully poisoned because
+  // launch_id is not in the list of executions that have not yet completed.
+  // This may happen either because the execution corresponding to launch_id has
+  // already completed, or because an incorrect launch_id was supplied.
+  //
+  // Returns error otherwise, including in the case that poisoning is not
+  // implemented by this client.
+  virtual StatusOr<bool> PoisonExecution(int32_t launch_id, Status error) {
+    return Unimplemented("PoisonExecution is not supported");
+  }
 };
 
 // Forward declaration.
@@ -463,9 +476,7 @@ class PjRtClient {
       int local_hardware_id) const = 0;
 
   // Return all memory spaces owned by the client.
-  virtual absl::Span<PjRtMemorySpace* const> memory_spaces() const {
-    return {};
-  }
+  virtual absl::Span<PjRtMemorySpace* const> memory_spaces() const = 0;
 
   // Return an ID that identifies the platform (CPU/GPU/TPU).
   virtual PjRtPlatformId platform_id() const = 0;

@@ -113,6 +113,8 @@ class TfrtCpuDevice final : public PjRtDevice {
 
   Status TransferFromOutfeed(MutableBorrowingLiteral literal) override;
 
+  absl::Span<PjRtMemorySpace* const> memory_spaces() const override;
+
   StatusOr<PjRtMemorySpace*> default_memory_space() const override;
 
   // Returns a semaphore for admission control on inflight computations.
@@ -160,6 +162,8 @@ class TfrtCpuClient final : public PjRtClient {
 
   StatusOr<PjRtDevice*> LookupAddressableDevice(
       int local_hardware_id) const override;
+
+  absl::Span<PjRtMemorySpace* const> memory_spaces() const override;
 
   PjRtPlatformId platform_id() const override {
     return tsl::Fingerprint64(CpuName());

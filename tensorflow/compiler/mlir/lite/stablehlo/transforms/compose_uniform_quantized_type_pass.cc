@@ -16,6 +16,8 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/algorithm/container.h"
+#include "llvm/ADT/Sequence.h"
 #include "llvm/Support/Debug.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project  // NOLINT: Required to register quantization dialect.
@@ -53,12 +55,74 @@ constexpr StringRef kUniformQuantizeFunctionNameSubstring = "uniform_quantize";
 constexpr StringRef kUniformDequantizeFunctionNameSubstring =
     "uniform_dequantize";
 
+// Tries casting `op` with a concrete op type `T`. If the cast fails or `op` is
+// a `nullptr`, returns `failure` and prints a debugging message identifying
+// the cast attempt as `name`.
+template <typename T>
+FailureOr<T> TryCast(Operation* op, const StringRef name) {
+  auto cast_op = dyn_cast_or_null<T>(op);
+  if (cast_op) {
+    return cast_op;
+  } else {
+    LLVM_DEBUG(llvm::dbgs() << "Failed to match " << name << " ("
+                            << T::getOperationName() << ").\n");
+    return failure();
+  }
+}
+
 class ComposeUniformQuantizedTypePass
     : public impl::ComposeUniformQuantizedTypePassBase<
           ComposeUniformQuantizedTypePass> {
  private:
   void runOnOperation() override;
 };
+
+// Tests whether a `stablehlo::ConvertOp` is a i8 -> f32 cast.
+bool IsI8ToF32Cast(stablehlo::ConvertOp convert_op) {
+  const bool is_i8_operand =
+      convert_op.getOperand().getType().getElementType().isInteger(/*width=*/8);
+  const bool is_f32_result =
+      convert_op.getResult().getType().getElementType().isa<Float32Type>();
+  return is_i8_operand && is_f32_result;
+}
+
+// Tests whether a `stablehlo::ConvertOp` is a i32 -> f32 cast.
+bool IsI32ToF32Cast(stablehlo::ConvertOp convert_op) {
+  const bool is_i32_operand =
+      convert_op.getOperand().getType().getElementType().isInteger(
+          /*width=*/32);
+  const bool is_f32_result =
+      convert_op.getResult().getType().getElementType().isa<Float32Type>();
+  return is_i32_operand && is_f32_result;
+}
+
+// Creates a `UniformQuantizedType` with the given `scale` and `zero_point`
+// values. The produced type has f32 as its expressed type and i8 as its
+// storage type with default storage type min and max values, set to -128 and
+// 127, respectively.
+UniformQuantizedType CreateI8F32UniformQuantizedType(Location loc,
+                                                     PatternRewriter& rewriter,
+                                                     const double scale,
+                                                     const int64_t zero_point) {
+  return UniformQuantizedType::getChecked(
+      loc, /*flags=*/true, /*storageType=*/rewriter.getI8Type(),
+      /*expressedType=*/rewriter.getF32Type(), scale, zero_point,
+      /*storageTypeMin=*/-128, /*storageTypeMax=*/127);
+}
+
+// Creates a `UniformQuantizedPerAxisType` with the given `scales` and
+// `zero_points` values. The produced type has f32 as its expressed type and
+// i8 as its storage type with default storage type min and max values, set to
+// -128 and 127, respectively.
+UniformQuantizedPerAxisType CreateI8F32UniformQuantizedPerAxisType(
+    Location loc, PatternRewriter& rewriter, const ArrayRef<double> scales,
+    const ArrayRef<int64_t> zero_points, const int quantization_dimension) {
+  return UniformQuantizedPerAxisType::getChecked(
+      loc, /*flags=*/true, /*storageType=*/rewriter.getI8Type(),
+      /*expressedType=*/rewriter.getF32Type(), scales, zero_points,
+      /*quantizedDimension=*/quantization_dimension, /*storageTypeMin=*/-128,
+      /*storageTypeMax=*/127);
+}
 
 // Matches the zero points operand for the uniform_quantize and
 // uniform_dequantize functions. Returns `failure()` if it doesn't match.
@@ -714,7 +778,7 @@ class ComposeUniformQuantizedConvolutionOp
 
     // Create a new constant op for the filter in i8.
     auto quantized_filter_constant_op = rewriter.create<stablehlo::ConstantOp>(
-        rewriter.getUnknownLoc(),
+        filter_op->getLoc(),
         /*output=*/
         filter_i8_value_attr.getType().clone(filter_quantized_element_type),
         /*value=*/filter_i8_value_attr);
@@ -784,33 +848,377 @@ class ComposeUniformQuantizedConvolutionOp
     rewriter.eraseOp(input_i8_to_f32_convert_op);
     rewriter.eraseOp(uniform_quantize_call_op);
   }
+};
 
- private:
-  // Creates a `UniformQuantizedType` with the given `scale` and `zero_point`
-  // values. The produced type has f32 as its expressed type and i8 as its
-  // storage type with default storage type min and max values, set to -128 and
-  // 127, respectively.
-  static UniformQuantizedType CreateI8F32UniformQuantizedType(
-      Location loc, PatternRewriter& rewriter, const double scale,
-      const int64_t zero_point) {
-    return UniformQuantizedType::getChecked(
-        loc, /*flags=*/true, /*storageType=*/rewriter.getI8Type(),
-        /*expressedType=*/rewriter.getF32Type(), scale, zero_point,
-        /*storageTypeMin=*/-128, /*storageTypeMax=*/127);
+// Matches the pattern for quantized dot_general op and rewrites it to use
+// uniform quantized types.
+//
+// Currently assumes asymmetric per-tensor quantization for activations and
+// symmetric per-channel quantization for filters.
+//
+// This pattern represents the following derived equation, where:
+// * rn = real (expressed) value for tensor n
+// * qn = quantized value for tensor n
+// * sn = scale for tensor n
+// * zn = zero point for tensor n
+//
+// r3 = r1 * r2
+//    = s1 (q1 - z1) * s2 (q2 - z2)
+//    = s1 s2 (q1 q2 - q1 z2 - q2 z1 + z1 z2)
+//
+// * z2 is zero, because it assumes symmetric quantization for the filter:
+//
+//    = s1 s2 (q1 q2 - q2 z1)
+//
+// In StableHLO text representation, the pattern is as the following
+// (simplified):
+//
+// ```
+// %0 = // Input tensor r1.
+// %1 = stablehlo.constant  // Input inverse scale 1 / s1.
+// %2 = stablehlo.constant  // Input zero point z1.
+// %3 = stablehlo.constant  // Quantized filter tensor q2.
+// %4 = stablehlo.constant  // Precalculated q2 * z1
+// %5 = stablehlo.constant  // Merged scale s1 * s2, precalculated.
+// %6 = call @uniform_quantize(%0, %1, %2)  // Quantize input (q1).
+// %7 = stablehlo.convert %6  // i8 -> f32 cast trick for input.
+// %8 = stablehlo.convert %3  // i8 -> f32 cast trick for filter.
+// %9 = stablehlo.dot_general(%7, %8)  // q1 * q2 (disguised in f32).
+// %10 = stablehlo.convert %4  // i32 -> f32 cast for q2 * z1.
+// %11 = stablehlo.broadcast_in_dim %10  // Optional.
+// %12 = stablehlo.subtract %9, %11  // q1 * q2 - q2 * z1
+// %13 = stablehlo.broadcast_in_dim %5  // Optional.
+// %14 = stablehlo.multiply %12 %13  // r3 = s1 s2 (q1 q2 - q2 z1)
+//
+// The following quant -> dequant pattern is a no-op, but is required to
+// retrieve the quantization parameters for the output tensor.
+//
+// %15 = stablehlo.constant  // Output inverse scale 1 / s3.
+// %16 = stablehlo.constant  // Output zero point z3.
+// %17 = call @uniform_quantize_0(%15, %15, %16)  // r3 -> q3
+// %18 = call @uniform_dequantize(%17, %15, %16)  // q3 -> r3
+// ```
+//
+// The rewritten pattern looks like:
+//
+// ```
+// %1 = stablehlo.uniform_quantize %0  // Input f32 -> uniform quantized type.
+// %2 = stablehlo.constant  // Filter uniform quantized type.
+// %3 = stablehlo.dot_general(%1, %2)   // In uniform quantized type.
+// %4 = stablehlo.uniform_dequantize %3  // Dequantize the output.
+// ```
+class ComposeUniformQuantizedDotGeneralOp
+    : public OpRewritePattern<stablehlo::DotGeneralOp> {
+ public:
+  using OpRewritePattern<stablehlo::DotGeneralOp>::OpRewritePattern;
+
+  LogicalResult match(stablehlo::DotGeneralOp op) const final {
+    auto input_i8_to_f32_convert_op =
+        TryCast<stablehlo::ConvertOp>(op.getOperand(0).getDefiningOp(),
+                                      /*name=*/"input_i8_to_f32_convert_op");
+    if (failed(input_i8_to_f32_convert_op)) return failure();
+
+    if (!IsI8ToF32Cast(*input_i8_to_f32_convert_op)) {
+      LLVM_DEBUG(llvm::dbgs() << "Failed to match input_i8_to_f32_convert_op. "
+                                 "It should be a i8->f32 cast.\n");
+      return failure();
+    }
+
+    auto filter_i8_to_f32_convert_op =
+        TryCast<stablehlo::ConvertOp>(op.getOperand(1).getDefiningOp(),
+                                      /*name=*/"filter_i8_to_f32_convert_op");
+    if (failed(filter_i8_to_f32_convert_op)) return failure();
+
+    if (!IsI8ToF32Cast(*filter_i8_to_f32_convert_op)) {
+      LLVM_DEBUG(llvm::dbgs() << "Failed to match filter_i8_to_f32_convert_op. "
+                                 "It should be a i8->f32 cast.\n");
+      return failure();
+    }
+
+    auto filter_constant_op = TryCast<stablehlo::ConstantOp>(
+        filter_i8_to_f32_convert_op->getOperand().getDefiningOp(),
+        /*name=*/"filter_constant_op");
+    if (failed(filter_constant_op)) return failure();
+
+    auto input_quantize_call_op = TryCast<func::CallOp>(
+        input_i8_to_f32_convert_op->getOperand().getDefiningOp(),
+        /*name=*/"input_quantize_call_op");
+    if (failed(input_quantize_call_op)) return failure();
+
+    // Uniform quantization pattern found for the input DotGeneralOp input.
+    auto input_uniform_quantize_call_pattern =
+        UniformQuantizeFunctionCallPattern::Match(*input_quantize_call_op);
+    if (failed(input_uniform_quantize_call_pattern)) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Failed to match input uniform quantize call pattern.\n");
+      return failure();
+    }
+
+    auto subtract_op = TryCast<stablehlo::SubtractOp>(
+        *op.getResult().user_begin(), /*name=*/"subtract_op");
+    if (failed(subtract_op)) return failure();
+
+    Value subtract_op_second_operand = subtract_op->getOperand(1);
+    if (auto broadcast_in_dim_op = TryCast<stablehlo::BroadcastInDimOp>(
+            subtract_op_second_operand.getDefiningOp(),
+            /*name=*/"broadcast_in_dim_for_subtract_op_operand");
+        succeeded(broadcast_in_dim_op)) {
+      subtract_op_second_operand = broadcast_in_dim_op->getOperand();
+    }
+
+    auto input_zp_filter_prod_convert_op = TryCast<stablehlo::ConvertOp>(
+        subtract_op_second_operand.getDefiningOp(),
+        /*name=*/"input_zp_filter_prod_convert_op");
+    if (failed(input_zp_filter_prod_convert_op)) return failure();
+
+    if (!IsI32ToF32Cast(*input_zp_filter_prod_convert_op)) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Failed to match input_zp_filter_prod_convert_op. "
+                    "It should be a i32->f32 cast.\n");
+      return failure();
+    }
+
+    // z1 * q2
+    auto input_zp_filter_prod_constant_op = TryCast<stablehlo::ConstantOp>(
+        input_zp_filter_prod_convert_op->getOperand().getDefiningOp(),
+        /*name=*/"input_zp_filter_prod_constant_op");
+    if (failed(input_zp_filter_prod_constant_op)) return failure();
+
+    auto multiply_op = TryCast<stablehlo::MulOp>(
+        *subtract_op->getResult().user_begin(), /*name=*/"multiply_op");
+    if (failed(multiply_op)) return failure();
+
+    Value multiply_op_second_operand = multiply_op->getOperand(1);
+    if (auto broadcast_in_dim_op = TryCast<stablehlo::BroadcastInDimOp>(
+            multiply_op_second_operand.getDefiningOp(),
+            /*name=*/"broadcast_in_dim_for_multiply_op_operand");
+        succeeded(broadcast_in_dim_op)) {
+      multiply_op_second_operand = broadcast_in_dim_op->getOperand();
+    }
+
+    auto merged_scale_constant_op = TryCast<stablehlo::ConstantOp>(
+        multiply_op_second_operand.getDefiningOp(),
+        /*name=*/"merged_scale_constant_op");
+    if (failed(merged_scale_constant_op)) return failure();
+
+    auto output_uniform_quantize_call_op =
+        TryCast<func::CallOp>(*multiply_op->getResult().user_begin(),
+                              /*name=*/"output_quantize_call_op");
+    if (failed(output_uniform_quantize_call_op)) return failure();
+
+    auto output_uniform_quantize_call_pattern =
+        UniformQuantizeFunctionCallPattern::Match(
+            *output_uniform_quantize_call_op);
+    if (failed(output_uniform_quantize_call_pattern)) {
+      llvm::dbgs() << "Failed match uniform quantize call pattern.\n";
+      return failure();
+    }
+
+    auto output_uniform_dequantize_call_op = TryCast<func::CallOp>(
+        *output_uniform_quantize_call_op->getResult(0).user_begin(),
+        /*name=*/"output_uniform_dequantize_call_op");
+    if (failed(output_uniform_dequantize_call_op)) return failure();
+
+    auto output_uniform_dequantize_call_pattern =
+        UniformDequantizeFunctionCallPattern::Match(
+            *output_uniform_dequantize_call_op);
+    if (failed(output_uniform_dequantize_call_pattern)) {
+      llvm::dbgs() << "Failed to match output uniform quantize call pattern.\n";
+      return failure();
+    }
+
+    return success();
   }
 
-  // Creates a `UniformQuantizedPerAxisType` with the given `scales` and
-  // `zero_points` values. The produced type has f32 as its expressed type and
-  // i8 as its storage type with default storage type min and max values, set to
-  // -128 and 127, respectively.
-  static UniformQuantizedPerAxisType CreateI8F32UniformQuantizedPerAxisType(
-      Location loc, PatternRewriter& rewriter, const ArrayRef<double> scales,
-      const ArrayRef<int64_t> zero_points, const int quantization_dimension) {
-    return UniformQuantizedPerAxisType::getChecked(
-        loc, /*flags=*/true, /*storageType=*/rewriter.getI8Type(),
-        /*expressedType=*/rewriter.getF32Type(), scales, zero_points,
-        /*quantizedDimension=*/quantization_dimension, /*storageTypeMin=*/-128,
-        /*storageTypeMax=*/127);
+  void rewrite(stablehlo::DotGeneralOp op,
+               PatternRewriter& rewriter) const final {
+    // Build uniform quantized type for input.
+    auto input_i8_to_f32_convert_op =
+        cast<stablehlo::ConvertOp>(op.getOperand(0).getDefiningOp());
+    auto input_uniform_quantize_call_op = cast<func::CallOp>(
+        input_i8_to_f32_convert_op.getOperand().getDefiningOp());
+    auto input_uniform_quantize_call_pattern =
+        UniformQuantizeFunctionCallPattern::Match(
+            input_uniform_quantize_call_op);
+
+    const float input_inverse_scale_value =
+        input_uniform_quantize_call_pattern->GetInverseScalesValueAttr()
+            .getSplatValue<APFloat>()
+            .convertToFloat();
+    const float input_scale_value = 1.0 / input_inverse_scale_value;
+
+    const int8_t input_zero_point_value =
+        input_uniform_quantize_call_pattern->GetZeroPointsValueAttr()
+            .getSplatValue<APInt>()
+            .getSExtValue();
+
+    const UniformQuantizedType input_uniform_quantized_type =
+        CreateI8F32UniformQuantizedType(input_uniform_quantize_call_op.getLoc(),
+                                        rewriter, input_scale_value,
+                                        input_zero_point_value);
+
+    Value input_value = input_uniform_quantize_call_pattern->GetInputValue();
+    auto input_uniform_quantize_op =
+        rewriter.create<stablehlo::UniformQuantizeOp>(
+            input_i8_to_f32_convert_op.getLoc(),
+            /*result=*/
+            input_value.getType().cast<TensorType>().clone(
+                input_uniform_quantized_type),
+            /*operand=*/input_value);
+
+    rewriter.replaceAllUsesWith(input_i8_to_f32_convert_op.getResult(),
+                                input_uniform_quantize_op.getResult());
+
+    // Build uniform quantized type for filter.
+    auto filter_i8_to_f32_convert_op =
+        cast<stablehlo::ConvertOp>(op.getOperand(1).getDefiningOp());
+    auto filter_constant_op = cast<stablehlo::ConstantOp>(
+        filter_i8_to_f32_convert_op.getOperand().getDefiningOp());
+
+    const auto filter_value_attr =
+        filter_constant_op.getValue().cast<DenseIntElementsAttr>();
+
+    auto subtractOp = cast<stablehlo::SubtractOp>(*op.getResult().user_begin());
+
+    Value subtract_op_second_operand = subtractOp.getOperand(1);
+    if (auto broadcast_in_dim_op =
+            dyn_cast_or_null<stablehlo::BroadcastInDimOp>(
+                subtract_op_second_operand.getDefiningOp());
+        broadcast_in_dim_op) {
+      // Ignore BroadcastInDimOp - it is optional.
+      subtract_op_second_operand = broadcast_in_dim_op.getOperand();
+    }
+
+    auto multiply_op =
+        cast<stablehlo::MulOp>(*subtractOp.getResult().user_begin());
+
+    Value multiply_op_second_operand = multiply_op.getOperand(1);
+    if (auto broadcast_in_dim_op =
+            dyn_cast_or_null<stablehlo::BroadcastInDimOp>(
+                multiply_op_second_operand.getDefiningOp());
+        broadcast_in_dim_op) {
+      // Ignore BroadcastInDimOp - it is optional.
+      multiply_op_second_operand = broadcast_in_dim_op.getOperand();
+    }
+
+    // s1 * s2
+    auto merged_scale_constant_op =
+        cast<stablehlo::ConstantOp>(multiply_op_second_operand.getDefiningOp());
+    SmallVector<double> filter_scale_values;
+    for (const auto merged_scale : merged_scale_constant_op.getValue()
+                                       .cast<DenseFPElementsAttr>()
+                                       .getValues<float>()) {
+      // (s1 * s2) * (1 / s1) = s2
+      filter_scale_values.push_back(merged_scale * input_inverse_scale_value);
+    }
+
+    SmallVector<int64_t> filter_zero_point_values(
+        /*Size=*/filter_scale_values.size(), /*Value=*/0);
+
+    const int quantization_dimension = GetFilterQuantizationDimension(
+        op.getDotDimensionNumbers(),
+        filter_value_attr.getType().cast<TensorType>().getRank());
+    const UniformQuantizedPerAxisType filter_uniform_quantized_type =
+        CreateI8F32UniformQuantizedPerAxisType(
+            filter_constant_op.getLoc(), rewriter, filter_scale_values,
+            filter_zero_point_values, quantization_dimension);
+
+    // Create a new constant op for the filter in i8.
+    auto quantized_filter_constant_op = rewriter.create<stablehlo::ConstantOp>(
+        filter_constant_op.getLoc(),
+        /*output=*/
+        filter_constant_op.getResult().getType().cast<TensorType>().clone(
+            filter_uniform_quantized_type),
+        /*value=*/filter_value_attr);
+
+    rewriter.replaceAllUsesWith(filter_i8_to_f32_convert_op.getResult(),
+                                quantized_filter_constant_op.getResult());
+
+    // Recreate stablehlo::DotGeneralOp with a uniform quantized output type.
+    auto output_uniform_quantize_call_op =
+        cast<func::CallOp>(*multiply_op.getResult().user_begin());
+
+    auto output_uniform_quantize_call_pattern =
+        UniformQuantizeFunctionCallPattern::Match(
+            output_uniform_quantize_call_op);
+
+    auto output_uniform_dequantize_call_op = cast<func::CallOp>(
+        *output_uniform_quantize_call_op.getResult(0).user_begin());
+
+    auto output_uniform_dequantize_call_pattern =
+        UniformDequantizeFunctionCallPattern::Match(
+            output_uniform_dequantize_call_op);
+
+    const auto inverse_output_scale_value =
+        output_uniform_quantize_call_pattern->GetInverseScalesValueAttr()
+            .getSplatValue<APFloat>()
+            .convertToFloat();
+    const float output_scale_value = 1.0 / inverse_output_scale_value;
+
+    const int64_t output_zero_point_value =
+        output_uniform_quantize_call_pattern->GetZeroPointsValueAttr()
+            .getSplatValue<APInt>()
+            .getSExtValue();
+
+    const UniformQuantizedType output_uniform_quantized_type =
+        CreateI8F32UniformQuantizedType(
+            output_uniform_quantize_call_op.getLoc(), rewriter,
+            output_scale_value, output_zero_point_value);
+
+    auto new_dot_general_op = rewriter.create<stablehlo::DotGeneralOp>(
+        op.getLoc(), /*resultType0=*/
+        op.getResult().getType().cast<TensorType>().clone(
+            output_uniform_quantized_type),
+        /*lhs=*/op.getLhs(), /*rhs=*/op.getRhs(),
+        /*dot_dimension_numbers=*/op.getDotDimensionNumbers(),
+        /*precision_config=*/op.getPrecisionConfigAttr());
+
+    rewriter.replaceAllUsesWith(op.getResult(), new_dot_general_op.getResult());
+
+    auto new_output_dequant_op =
+        rewriter.create<stablehlo::UniformDequantizeOp>(
+            output_uniform_dequantize_call_op.getLoc(),
+            /*operand=*/new_dot_general_op);
+
+    rewriter.replaceAllUsesWith(output_uniform_dequantize_call_op.getResult(0),
+                                new_output_dequant_op.getResult());
+
+    // Erase unused ops after the transformation.
+    rewriter.eraseOp(output_uniform_dequantize_call_pattern->GetCallOp());
+    rewriter.eraseOp(output_uniform_quantize_call_pattern->GetCallOp());
+    rewriter.eraseOp(multiply_op);
+    rewriter.eraseOp(subtractOp);
+    rewriter.eraseOp(input_i8_to_f32_convert_op);
+    rewriter.eraseOp(input_uniform_quantize_call_pattern->GetCallOp());
+  }
+
+  // Quantization dimension corresponds to the output feature dimension, i.e.
+  // not contracted nor batched.
+  int64_t GetFilterQuantizationDimension(
+      const stablehlo::DotDimensionNumbersAttr& dot_dimension_numbers,
+      const int64_t filter_rank) const {
+    // Register all dimensions as candidates.
+    auto seq_range = llvm::seq(int64_t{0}, filter_rank);
+    SmallVector<int64_t> quantization_dimension_candidates(seq_range.begin(),
+                                                           seq_range.end());
+
+    // Erase all contracting dimensions from the candidates.
+    for (const int64_t contracting_dim :
+         dot_dimension_numbers.getRhsContractingDimensions()) {
+      auto contracting_dim_itr =
+          absl::c_find(quantization_dimension_candidates, contracting_dim);
+      quantization_dimension_candidates.erase(contracting_dim_itr);
+    }
+
+    // Erase all batching dimensions from the candidates.
+    for (const int64_t batching_dim :
+         dot_dimension_numbers.getRhsBatchingDimensions()) {
+      auto batching_dim_itr =
+          absl::c_find(quantization_dimension_candidates, batching_dim);
+      quantization_dimension_candidates.erase(batching_dim_itr);
+    }
+
+    return quantization_dimension_candidates[0];
   }
 };
 
@@ -819,7 +1227,8 @@ void ComposeUniformQuantizedTypePass::runOnOperation() {
   MLIRContext& ctx = getContext();
 
   RewritePatternSet patterns(&ctx);
-  patterns.add<ComposeUniformQuantizedConvolutionOp>(&ctx);
+  patterns.add<ComposeUniformQuantizedConvolutionOp,
+               ComposeUniformQuantizedDotGeneralOp>(&ctx);
 
   if (failed(applyPatternsAndFoldGreedily(module_op, std::move(patterns)))) {
     module_op.emitError()

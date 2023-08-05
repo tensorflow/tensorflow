@@ -140,6 +140,9 @@ class DataServiceWorkerImpl {
   void HeartbeatThread() TF_LOCKS_EXCLUDED(mu_);
   // Performs a heartbeat to the dispatcher.
   Status Heartbeat();
+  // Check with the dispatcher to see whether or not to disable compression.
+  StatusOr<bool> DisableCompressionAtRuntime(
+      const std::string& dataset_id) const;
   // Returns the active tasks of this worker.
   std::vector<ActiveTask> GetActiveTasks() const TF_LOCKS_EXCLUDED(mu_);
   // Returns the task IDs of `active_tasks`.
