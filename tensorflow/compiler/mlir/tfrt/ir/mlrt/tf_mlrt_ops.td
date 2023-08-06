@@ -288,6 +288,21 @@ def TensorToIntOp : TensorflowMlrt_Op<"tensor_to_int32", [Pure]> {
   let assemblyFormat = "operands attr-dict";
 }
 
+def BoolToTensorOp : TensorflowMlrt_Op<"bool_to_tensor", [Pure]> {
+  let summary = "Cast a boolean to a tensor.";
+  let description = [{
+    Cast a boolean to a tensor.
+
+    Example:
+      %one = tf_mlrt.bool_to_tensor %src_bool
+  }];
+
+  let arguments = (ins I1: $src);
+  let results = (outs TFTensorType:$result);
+
+  let assemblyFormat = "operands attr-dict";
+}
+
 def PredicateOp : TensorflowMlrt_Op<"predicate", [Pure]> {
   let summary = "Converts a fallback tensor to a bool";
 
@@ -391,5 +406,25 @@ def MapFnOp : TensorflowMlrt_Op<"map_fn", [AttrSizedOperandSegments, Pure]> {
   let assemblyFormat = "`(`$max_iterations`,` $tensor_list_or_flow_in`,` $invariant_args `)` attr-dict `:` functional-type(operands, results)";
 }
 
+def AsyncWhileOp : TensorflowMlrt_Op<"async_while", [Pure]> {
+  let summary = "Asynchronously execution of while op for tf_mlrt";
+  let description = [{
+    cond: The boolean to control whether the first iteration should be executed.
+    arguments: the last $immutable_size elements are invariants between iterations.
+    results: a list of futures.
+    body_fn: its input are [predicate_promise, arg0_future, arg0_promise, arg1_future, arg1_promise, ..., invariant_args] and has no returned results.
+  }];
+
+  let arguments = (ins TFTensorType:$cond,
+                       Variadic<TFTensorType>:$arguments,
+                       FlatSymbolRefAttr:$body_fn,
+                       I32Attr:$invariant_size);
+
+  let results = (outs Variadic<MlrtFutureType>);
+
+  let assemblyFormat = [{
+    $body_fn `(` $cond `,` $arguments `)` attr-dict `:` `(` type($cond) `,` type($arguments) `)` `->` `(` type(results) `)`
+  }];
+}
 
 #endif

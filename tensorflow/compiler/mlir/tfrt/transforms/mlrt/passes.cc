@@ -14,23 +14,27 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/passes.h"
 
+#include "absl/log/check.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/assign_op_key.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/async_while.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/fuse_mlrt_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/parallelization.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/tf_to_mlrt.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/while_to_map_fn.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/tfrt_pipeline_options.h"
 #include "tensorflow/core/tfrt/fallback/cost_recorder.h"
+#include "tensorflow/core/tfrt/fallback/fallback_state.h"
 
 namespace tensorflow {
 namespace mlrt_compiler {
 
 void RegisterMlrtPasses() {
   mlir::registerPass([]() { return CreateAssignOpKeyPass(); });
+  mlir::registerPass([]() { return CreateAsyncWhilePass(); });
   mlir::registerPass([]() { return CreateParallelizationPass(); });
   mlir::registerPass([]() { return CreateWhileToMapFnPass(); });
   mlir::registerPass(
