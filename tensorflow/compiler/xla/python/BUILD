@@ -1055,7 +1055,7 @@ tsl_pybind_extension(
     }) + select({
         ":tpu_enabled": [
             "//tensorflow/compiler/xla/pjrt:tpu_client",
-            "//tensorflow/compiler/xla/stream_executor/tpu:tpu_initializer_helper",
+            "//tensorflow/compiler/xla/stream_executor/tpu:tpu_initializer_framework_helper",
         ],
         "//conditions:default": [],
     }),

@@ -463,38 +463,6 @@ class IrEmitterUnnested : public IrEmitter {
   // before passing it to a KernelThunk.
   static StatusOr<mlir::Value> RemoveTransformingOperations(mlir::Value value);
 
-  // Builds a thunk that calls a new or reused kernel for a fusion operation.
-  //
-  // The caller must specify the same launch dimensions for fusions which have
-  // the same computation.
-  //
-  // If a given fusion is implemented using multiple kernels, then for each
-  // kernel we should provide a discriminator, such as "init" and "impl".
-  //
-  // This returns an std::nullopt if the kernel was
-  // reused. In that case, the caller should not emit the code again for the
-  // implementation of the kernel.
-  //
-  // This is the typical usage pattern of this method:
-  //
-  // ```
-  // TF_ASSIGN_OR_RETURN(
-  //   std::optional<std::vector<llvm_ir::IrArray>> opt_ir_arrays,
-  //   BuildKernelThunkForFusion(fusion_op, launch_dimensions));
-  // if (!opt_ir_arrays.has_value()) {
-  //   // The kernel was reused, no need to emit code.
-  //   return OkStatus();
-  // }
-  // std::vector<llvm_ir::IrArray>& ir_arrays = opt_ir_arrays.value();
-  //
-  // EmitYourSpecificKernelCode(ir_arrays);
-  // ```
-  StatusOr<std::optional<std::pair<std::vector<llvm_ir::IrArray> /*inputs*/,
-                                   std::vector<llvm_ir::IrArray> /*outputs*/>>>
-  BuildKernelThunkForFusion(mlir::lmhlo::FusionOp fusion_op,
-                            const LaunchDimensions& launch_dimensions,
-                            absl::string_view discriminator = "");
-
   // Builds a kernel thunk for a non-fusion operation, without reuse.
   //
   // All input and output tensors of `op` are passed to the kernel.
@@ -516,19 +484,10 @@ class IrEmitterUnnested : public IrEmitter {
                                  mlir::ValueRange needed_operands,
                                  const LaunchDimensions& launch_dimensions);
 
-  // Returns a thunk that, given a reduce or select-and-scatter op,
-  // initializes its memory to the appropriate initial value.
-  std::unique_ptr<Thunk> BuildConstantInitializerThunk(
-      mlir::Operation* op, absl::Span<const uint8_t> init_value,
-      mlir::Value dest, const BufferAllocation::Slice& dest_slice,
-      const Shape& output_shape);
-
-  StatusOr<std::unique_ptr<Thunk>> TryBuildConstantInitializerThunk(
-      mlir::Operation* op, mlir::Value init_value, mlir::Value dest);
-
   Status BuildInitializerThunk(mlir::Operation* op, mlir::Value init_value,
                                mlir::Value dest);
   Status BuildFusedInitializerThunk(mlir::lmhlo::FusionOp fusion,
+                                    const HloFusionAnalysis& fusion_analysis,
                                     int output_index);
 
   // Returns a WhileThunk that invokes thunk sequences for 'condition' and

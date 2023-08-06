@@ -101,3 +101,22 @@ cc_library(
         "@llvm-project//llvm:ir_headers",
     ],
 )
+
+cc_library(
+    name = "thunk_util",
+    srcs = ["thunk_util.cc"],
+    hdrs = ["thunk_util.h"],
+    visibility = ["//tensorflow/compiler/xla/service/gpu:__subpackages__"],
+    deps = [
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/service/gpu:gpu_executable",
+        "//tensorflow/compiler/xla/service/gpu:ir_emission_utils",
+        "//tensorflow/compiler/xla/service/gpu:ir_emitter_context",
+        "//tensorflow/compiler/xla/service/gpu:thunk",
+        "//tensorflow/compiler/xla/translate/hlo_to_mhlo:hlo_utils",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MemRefDialect",
+    ],
+)

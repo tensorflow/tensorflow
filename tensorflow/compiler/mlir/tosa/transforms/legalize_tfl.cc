@@ -4082,9 +4082,9 @@ LogicalResult ConvertTFLGatherOp::matchAndRewrite(
     batch_dims = static_cast<int32_t>(batch_attr.getInt());
   }
 
-  std::optional<Value> result = convertGatherOp(
-      rewriter, op, tfl_gather_op.getResult(), tfl_gather_op.getParams(),
-      tfl_gather_op.getIndices(), batch_dims, axis);
+  std::optional<Value> result =
+      convertGatherOp(rewriter, op, tfl_gather_op.getParams(),
+                      tfl_gather_op.getIndices(), batch_dims, axis);
 
   if (!result) return failure();
 
@@ -4652,7 +4652,6 @@ void populateLegalizeTFLPatterns(MLIRContext* ctx,
   DEF_PATTERN_INSERT(TFLDequantize);
   DEF_PATTERN_INSERT(TFLConst);
   DEF_PATTERN_INSERT(TFLQConst);
-  DEF_PATTERN_INSERT(TFLGather);
   DEF_PATTERN_INSERT(TFLGatherNd);
   DEF_PATTERN_INSERT(TFLSparseToDense);
   DEF_PATTERN_INSERT(Constant);
@@ -4665,6 +4664,15 @@ void populateLegalizeTFLPatterns(MLIRContext* ctx,
   DEF_PATTERN_INSERT(TFLImag);
   DEF_PATTERN_INSERT(TFLRFFT2d);
   DEF_PATTERN_INSERT(TFLBroadcastTo);
+#undef DEF_PATTERN_INSERT
+
+  // Patterns which may optionally generate non-TOSA dialects
+#define DEF_PATTERN_INSERT(PAT) \
+  patterns.addWithLabel<Convert##PAT##Op>({#PAT "ToTensor"}, ctx);
+
+  DEF_PATTERN_INSERT(TFLGather);
+
+#undef DEF_PATTERN_INSERT
 }
 
 // Creates an instance of the TensorFlow Lite dialect LegalizeTFL pass.

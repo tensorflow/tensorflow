@@ -607,7 +607,8 @@ class ReadVariableXlaSplitNDOp : public XlaSplitNDBaseOp<Device, T> {
 
   void Compute(OpKernelContext* ctx) override {
     core::RefCountPtr<Var> variable;
-    const ResourceHandle& handle = HandleFromInput(ctx, 0);
+    ResourceHandle handle;
+    OP_REQUIRES_OK(ctx, HandleFromInput(ctx, 0, &handle));
     const Status status = LookupResource(ctx, handle, &variable);
     OP_REQUIRES(
         ctx, status.ok(),
@@ -878,7 +879,8 @@ class AssignVariableXlaConcatNDOp : public XlaConcatNDBaseOp<Device, T> {
                    this->GetInputsAndOutputShape(ctx, inputs, output_shape));
 
     core::RefCountPtr<Var> variable;
-    const ResourceHandle& handle = HandleFromInput(ctx, 0);
+    ResourceHandle handle;
+    OP_REQUIRES_OK(ctx, HandleFromInput(ctx, 0, &handle));
     if (handle.dtypes_and_shapes().size() == 1) {
       const DtypeAndPartialTensorShape dtype_and_shape =
           handle.dtypes_and_shapes().front();

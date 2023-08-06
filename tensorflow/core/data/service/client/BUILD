@@ -90,6 +90,7 @@ cc_library(
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/data/service:dispatcher_client",
         "//tensorflow/core/data/service:dispatcher_proto_cc",
@@ -98,6 +99,7 @@ cc_library(
         "//tensorflow/core/platform:statusor",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/protobuf:protos_all_cc",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
     ],

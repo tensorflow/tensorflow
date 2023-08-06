@@ -1,7 +1,7 @@
 #TFCI_UPLOAD_LIB_URI="gs://tensorflow-release-packages/$RELEASE_VERSION/$KOKORO_GIT_COMMIT_tensorflow"
 #TFCI_UPLOAD_WHL_GCS_URI="gs://tensorflow-release-packages/$RELEASE_VERSION/$KOKORO_GIT_COMMIT_tensorflow"
 TFCI_BAZEL_BAZELRC_ARGS=(--bazelrc ./ci/official/bazelrcs/cuda.bazelrc)
-TFCI_BAZEL_COMMON_ARGS=(--config sigbuild_remote_cache_push)
+TFCI_BAZEL_COMMON_ARGS=(--config sigbuild_remote_cache_push --repo_env=TF_PYTHON_VERSION=3.10)
 TFCI_BUILD_PIP_PACKAGE_ARGS=(--nightly_flag)
 TFCI_CAPTURE_LOGS_ENABLE=1
 TFCI_COPYBARA_ENABLE=0

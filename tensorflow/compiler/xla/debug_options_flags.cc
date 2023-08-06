@@ -78,6 +78,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   // TODO(AyanmoI): Remove this flag when cuDNN FMHA is fully supported.
   opts.set_xla_gpu_enable_cudnn_fmha(false);
 
+  opts.set_xla_gpu_fused_attention_use_cudnn_rng(false);
+
   // By default, copy TF's Eigen style min_max behavior with nans.
   opts.set_xla_cpu_enable_fast_min_max(true);
 
@@ -93,7 +95,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_graph_num_runs_to_instantiate(-1);
   opts.set_xla_gpu_enable_persistent_temp_buffers(false);
   opts.set_xla_gpu_graph_min_graph_size(5);
-  opts.set_xla_gpu_graph_enable_concurrent_region(true);
+  opts.set_xla_gpu_graph_enable_concurrent_region(false);
   opts.set_xla_gpu_graph_eviction_timeout_seconds(60);
 
   // Despite the name, fast min/max on GPUs does not seem to be any faster, and
@@ -168,6 +170,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_auto_spmd_partitioning_memory_budget_gb(0);
   opts.set_xla_gpu_auto_spmd_partitioning_memory_budget_ratio(1.1);
+
+  opts.set_xla_gpu_copy_insertion_use_region_analysis(true);
   return opts;
 }
 
@@ -877,6 +881,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "that dropout support and the developement of this feature as a whole is "
       "in progress. Attention with dropout may cause results to diverge with "
       "and without this  flag turned on."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_fused_attention_use_cudnn_rng",
+      bool_setter_for(&DebugOptions::set_xla_gpu_fused_attention_use_cudnn_rng),
+      debug_options->xla_gpu_fused_attention_use_cudnn_rng(),
+      "Use cudnn random number generator for fused attention kernel."));
   flag_list->push_back(
       tsl::Flag("xla_gpu_enable_cublaslt",
                 bool_setter_for(&DebugOptions::set_xla_gpu_enable_cublaslt),
@@ -1182,6 +1191,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Dumps autotuned Triton fusions to the directory specified by "
       "xla_dump_to or stdout. Each fusion is dumped only once, as an optimized "
       "HLO."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_copy_insertion_use_region_analysis",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_copy_insertion_use_region_analysis),
+      debug_options->xla_gpu_copy_insertion_use_region_analysis(),
+      "If true, use the new fine-grain region-based live range interference"
+      " analysis in the copy insertion optimization pass."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

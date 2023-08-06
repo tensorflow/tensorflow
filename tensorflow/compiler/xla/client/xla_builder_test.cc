@@ -22,20 +22,22 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/client/value_inference.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -1304,6 +1306,70 @@ TEST_F(XlaBuilderTest, CheckInputOutputAlias) {
   auto alias_p1 = config.GetAliasedOutput(1, {});
   ASSERT_TRUE(alias_p1.has_value());
   EXPECT_EQ(*alias_p1, ShapeIndex({0}));
+}
+
+TEST_F(XlaBuilderTest, CheckBufferDonor) {
+  XlaBuilder b(TestName());
+  auto p0 = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {8, 4}), "p0");
+  auto p1 = Parameter(&b, 1, ShapeUtil::MakeShape(F32, {8, 4}), "p1");
+  auto add = Add(p0, p1);
+  auto sub = Sub(p0, p1);
+  auto root = Tuple(&b, {add, sub});
+
+  b.AddBufferDonor(0, {});
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b, root));
+
+  const HloBufferDonorConfig& config = module->buffer_donor_config();
+  EXPECT_TRUE(config.ParameterIsBufferDonor(0, {}));
+  EXPECT_FALSE(config.ParameterIsBufferDonor(1, {}));
+}
+
+TEST_F(XlaBuilderTest, InvalidInputOutputAliasBufferDonor) {
+  XlaBuilder b(TestName());
+
+  auto p0 = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {8, 4}), "p0");
+  auto p1 = Parameter(&b, 1, ShapeUtil::MakeShape(F32, {8, 4}), "p1");
+  auto add = Add(p0, p1);
+  auto sub = Sub(p0, p1);
+  auto root = Tuple(&b, {add, sub});
+
+  b.SetUpAlias({1}, 0, {});
+  b.AddBufferDonor(0, {});
+
+  auto statusor = BuildHloModule(&b, root);
+  EXPECT_FALSE(statusor.ok());
+  EXPECT_THAT(statusor.status().message(),
+              HasSubstr("is already aliased with one output, thus it cannot be "
+                        "added as a buffer donor for any output."));
+}
+
+TEST_F(XlaBuilderTest, ValidInputOutputAliasBufferDonor) {
+  XlaBuilder b(TestName());
+
+  auto p0 = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {8, 4}), "p0");
+  auto p1 = Parameter(&b, 1, ShapeUtil::MakeShape(F32, {8, 4}), "p1");
+  auto add = Add(p0, p1);
+  auto sub = Sub(p0, p1);
+  auto root = Tuple(&b, {add, sub});
+
+  b.SetUpAlias({1}, 0, {});
+  b.AddBufferDonor(1, {});
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b, root));
+
+  const HloInputOutputAliasConfig& io_alias_config =
+      module->input_output_alias_config();
+  const HloBufferDonorConfig& buffer_donor_config =
+      module->buffer_donor_config();
+
+  EXPECT_TRUE(io_alias_config.ParameterHasAlias(0, {}));
+  EXPECT_FALSE(io_alias_config.ParameterHasAlias(1, {}));
+  EXPECT_FALSE(buffer_donor_config.ParameterIsBufferDonor(0, {}));
+  EXPECT_TRUE(buffer_donor_config.ParameterIsBufferDonor(1, {}));
+
+  auto alias_p0 = io_alias_config.GetAliasedOutput(0, {});
+  ASSERT_TRUE(alias_p0.has_value());
+  EXPECT_EQ(*alias_p0, ShapeIndex({1}));
 }
 
 void ExpectAttributesMatch(const FrontendAttributes& attr,

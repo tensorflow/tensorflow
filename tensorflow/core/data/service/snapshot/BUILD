@@ -178,6 +178,7 @@ cc_library(
         "//tensorflow/core/data/service:split_provider",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:path",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:status_to_from_proto",
         "//tensorflow/tsl/platform:statusor",

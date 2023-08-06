@@ -26,7 +26,7 @@ pipeline {
                     environment {
                         PYENV_ROOT="$HOME/.pyenv"
                         PATH="$PYENV_ROOT/shims:/opt/homebrew/bin/:$PATH"
-			TF_PYTHON_VERSION=3.9
+                        TF_PYTHON_VERSION=3.9
                     }
                     steps {
                         dir('tensorflow') {
@@ -84,7 +84,7 @@ pipeline {
                     environment {
                         PYENV_ROOT="$HOME/.pyenv"
                         PATH="$PYENV_ROOT/shims:/opt/homebrew/bin/:$PATH"
-			TF_PYTHON_VERSION=3.10
+                        TF_PYTHON_VERSION=3.10
                     }
                     steps {
                         dir('tensorflow') {
@@ -140,7 +140,7 @@ pipeline {
                     environment {
                         PYENV_ROOT="$HOME/.pyenv"
                         PATH="$PYENV_ROOT/shims:/opt/homebrew/bin/:$PATH"
-			TF_PYTHON_VERSION=3.11
+                        TF_PYTHON_VERSION=3.11
                     }
                     steps {
 

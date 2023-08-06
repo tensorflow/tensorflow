@@ -739,6 +739,18 @@ def ConvertTrasposeReshapeTransposeToReshape : Pat<
   [(IsTruncatedShapeEqualTo $first_transpose, $middle_reshape),
    (IsTruncatedShapeEqualTo $input, $second_transpose)]>;
 
+// TODO(b/294385379): This pattern only appears when we convert
+// from shlo due to differences in broadcasting behavior
+def UndoBroadcastFullyConnectedBiasAdd : Pat<
+  (TFL_AddOp $rhs, (Arith_ConstantOp:$const_op $bias), TFL_AF_None),
+  (TFL_AddOp $rhs, (Arith_ConstantOp (FlattenTo1D $bias)), TFL_AF_None),
+  [(AnyStaticShapeTensor $rhs),
+   (IsLastDimEqualToNumElements $bias, $bias),
+   (HasOneUse $const_op),
+   (HasRankAtMost<4> $bias),
+   (HasRankAtLeast<2> $bias),
+   (IsDefinedByFullyConnectedOp $rhs)]>;
+
 // Function to map final permutation to initial permutation
 // initial -> permutation1 -> permutation2 -> final
 def RemapPermutation: NativeCodeCall<"RemapPermutation($0, $1)">;

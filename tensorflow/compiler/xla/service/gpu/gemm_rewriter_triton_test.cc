@@ -15,17 +15,26 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter_triton.h"
 
+#include <memory>
 #include <string>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/layout.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_padding_requirements.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_types.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/status_matchers.h"
@@ -1240,6 +1249,25 @@ ENTRY e {
             DotFusionAnalysis::kMaxParameterPerScope * 2);
 }
 
+TEST_F(GemmRewriterTritonLevel2Test, FusionLevelIsLimitedOnVolta) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p0 = f32[1,53] parameter(0)
+  p0e = f32[1,53] exponential(p0)
+  p1 = s16[53,1] parameter(1)
+  p1c = f32[53,1] convert(p1)
+  ROOT dot = f32[1,1] dot(p0e, p1c),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})"));
+  EXPECT_TRUE(GemmRewriterTriton(se::CudaComputeCapability{
+                                     se::CudaComputeCapability::VOLTA, 0})
+                  .Run(module.get())
+                  .value());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch((m::Fusion(m::Parameter(), m::Exp()))));
+}
+
 TEST_F(GemmRewriterTritonLevel2Test, ParameterUsedElementwiseTwiceIsFused) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
@@ -1256,7 +1284,7 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })"));
   EXPECT_TRUE(GemmRewriterTriton(se::CudaComputeCapability{
-                                     se::CudaComputeCapability::VOLTA, 0})
+                                     se::CudaComputeCapability::AMPERE, 0})
                   .Run(module.get())
                   .value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -1286,12 +1314,37 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })"));
   EXPECT_TRUE(GemmRewriterTriton(se::CudaComputeCapability{
-                                     se::CudaComputeCapability::VOLTA, 0})
+                                     se::CudaComputeCapability::AMPERE, 0})
                   .Run(module.get())
                   .value());
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
       GmockMatch((m::Fusion(m::Parameter(), m::Transpose(), m::Parameter()))));
+}
+
+TEST_F(GemmRewriterTritonLevel2Test,
+       ComputationParameterWithMultipleUsersIsNotTrivialToFuse) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p0 = f32[400,400] parameter(0)
+
+  c0 = f16[400,400] convert(p0)
+  p1 = f16[400,400] parameter(1)
+  dot0 = f16[400,400] dot(c0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+
+  c1 = f16[400,400] convert(p0)
+  p2 = f16[400,400] parameter(2)
+  dot1 = f16[400,400] dot(c1, p2),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+
+  ROOT a = f16[400,400] add(dot0, dot1)
+})"));
+  EXPECT_FALSE(GemmRewriterTriton(se::CudaComputeCapability{
+                                      se::CudaComputeCapability::AMPERE, 0})
+                   .Run(module.get())
+                   .value());
 }
 
 }  // namespace

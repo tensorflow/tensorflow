@@ -50,6 +50,16 @@ class Sharding {
   std::optional<int> num_devices_;
 };
 
+// Returns if the environment variable "JAX_ENABLE_MEMORY_KIND" has
+// a non-empty string, indicating that JAX should get the memory_kind from the
+// executable and apply it to output arrays from executions.
+bool GetJaxEnableMemoryKind();
+
+// Canonicalizes the memory kind to default memory on backends that support
+// memories.
+pybind11::object CanonicalizeMemoryKind(pybind11::object memory_kind,
+                                        pybind11::object device);
+
 // Returns a hash that may sometimes return different hashes for equal values.
 // It is not a correct implementation of `__hash__` in python, but it's fine
 // for jit/pjit dispatch since it only causes spurious cache misses.
@@ -105,6 +115,7 @@ class SingleDeviceSharding : public XLACompatibleSharding {
       GetMemory(pybind11::cast<xla::ClientAndPtr<xla::PjRtDevice>>(device_),
                 pybind11::cast<std::string>(memory_kind_));
     }
+    memory_kind_ = CanonicalizeMemoryKind(memory_kind_, device_);
   }
 
   const pybind11::object& device() const { return device_; }
@@ -172,12 +183,13 @@ class GSPMDSharding : public XLACompatibleSharding {
         devices_(std::move(devices)),
         hlo_sharding_(std::move(op_sharding)),
         memory_kind_(std::move(memory_kind)) {
-    if (memory_kind_ != Py_None) {
-      // This function will check if the memory_kind is correct for the devices
-      // specified.
-      GetMemory(pybind11::cast<xla::ClientAndPtr<xla::PjRtDevice>>(devices_[0]),
-                pybind11::cast<std::string>(memory_kind_));
-    }
+    // This checks in python if the memory kind is correct for the given
+    // devices. Currently in python this check is optimized but we want to
+    // move that check to C++ after which we can remove this call.
+    pybind11::cast(this).attr("_preprocess")();
+    CHECK(!devices_.empty())
+        << "Devices given to GSPMDSharding must not be empty";
+    memory_kind_ = CanonicalizeMemoryKind(memory_kind_, devices_[0]);
   }
 
   const pybind11::tuple& devices() const { return devices_; }
@@ -209,15 +221,6 @@ class GSPMDSharding : public XLACompatibleSharding {
     return absl::Hash<xla::HloSharding>()(hlo_sharding_);
   }
 
-  bool IsOpShardingReplicated() const {
-    // For JAX, shardings with 1 device are considered as replicated in its
-    // semantics so that downstream things continue to work.
-    if (hlo_sharding_.tile_assignment().num_elements() == 1) {
-      return true;
-    }
-    return hlo_sharding().IsReplicated();
-  }
-
   static bool AreOpShardingsEqual(const GSPMDSharding& a,
                                   const GSPMDSharding& b) {
     // If the OpSharding object is the same, return true
@@ -229,6 +232,15 @@ class GSPMDSharding : public XLACompatibleSharding {
       return true;
     }
     return a.hlo_sharding() == b.hlo_sharding();
+  }
+
+  bool IsOpShardingReplicated() const {
+    // For JAX, shardings with 1 device are considered as replicated in its
+    // semantics so that downstream things continue to work.
+    if (hlo_sharding_.tile_assignment().num_elements() == 1) {
+      return true;
+    }
+    return hlo_sharding().IsReplicated();
   }
 
   pybind11::tuple devices_;

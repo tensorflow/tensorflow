@@ -45,10 +45,13 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/data/remove_compression_map.h"
 #include "tensorflow/core/kernels/data/experimental/auto_shard_dataset_op.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
+#include "tensorflow/core/protobuf/device_properties.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
+#include "tensorflow/core/protobuf/rewriter_config.pb.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {

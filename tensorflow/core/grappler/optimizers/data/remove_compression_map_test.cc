@@ -15,15 +15,18 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/remove_compression_map.h"
 
-#include "tensorflow/core/framework/attr_value_util.h"
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_testlib.h"
-#include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_test_utils.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/status_matchers.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace grappler {

@@ -1,3 +1,4 @@
+# Placeholder: load py_proto_library
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 

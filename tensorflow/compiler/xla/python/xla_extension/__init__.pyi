@@ -510,6 +510,8 @@ def batched_device_put(
 ) -> ArrayImpl:
   ...
 
+def canonicalize_memory_kind(
+    memory_kind: Optional[str], device: Device) -> Optional[str]: ...
 
 def array_result_handler(
                aval: Any,
@@ -679,7 +681,7 @@ class NamedSharding(XLACompatibleSharding):
                _parsed_pspec: Any = None): ...
   mesh: Any
   spec: Any
-  memory_kind: Optional[str]
+  _memory_kind: Optional[str]
   _parsed_pspec: Any
 
 class SingleDeviceSharding(XLACompatibleSharding):

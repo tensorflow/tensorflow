@@ -56,7 +56,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, kOutput, &output));
 
-  const TfLiteIntArray* const out_dims_sig = output->dims;
+  const TfLiteIntArray* const out_dims_sig = output->dims_signature;
 
   // Tensorflow python allows the passing of a `tf.TensorShape` at list
   // initialization and as an argument to this function as a hint. The compiler

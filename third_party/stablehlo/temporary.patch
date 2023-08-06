@@ -26,33 +26,16 @@ diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
      name = "interpreter_ops",
      srcs = [
          "stablehlo/reference/InterpreterOps.cpp",
-@@ -297,6 +315,7 @@
- 
- gentbl_cc_library(
-     name = "interpreter_ops_inc_gen",
-+    strip_include_prefix = ".",
-     tbl_outs = [
-         (
-             ["-gen-op-decls"],
-@@ -309,7 +328,6 @@
+@@ -292,6 +310,8 @@
+         ":reference_interpretervalue",
+         ":reference_ops",
+         ":reference_process",
++        "@llvm-project//llvm:Support",
++        "@llvm-project//mlir:FuncDialect",
+         "@llvm-project//mlir:IR",
+         "@llvm-project//mlir:Support",
      ],
-     tblgen = "@llvm-project//mlir:mlir-tblgen",
-     td_file = "stablehlo/reference/InterpreterOps.td",
--    strip_include_prefix = ".",
-     deps = [
-         ":interpreter_ops_td_files",
-     ],
-@@ -419,8 +437,8 @@
-         ":reference_element",
-         ":reference_errors",
-         ":reference_index",
-+        ":reference_interpretervalue",
-         ":reference_scope",
--        ":reference_interpretervalue",
-         ":reference_tensor",
-         ":reference_token",
-         ":reference_types",
-@@ -725,6 +743,7 @@
+@@ -737,6 +757,7 @@
      deps = [
          ":base",
          ":chlo_ops",
@@ -60,26 +43,14 @@ diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
          ":stablehlo_ops",
          ":stablehlo_ops_inc_gen",
          ":stablehlo_pass_inc_gen",
-@@ -850,8 +869,8 @@
-     ],
-     deps = [
-         ":register",
-+        "@llvm-project//mlir:AllExtensions",
-         "@llvm-project//mlir:AllPassesAndDialects",
--        "@llvm-project//mlir:AllExtensions",
-         "@llvm-project//mlir:MlirLspServerLib",
-     ],
- )
-@@ -862,8 +881,8 @@
-         "stablehlo/tools/StablehloTranslateMain.cpp",
+@@ -903,6 +924,7 @@
+         "stablehlo/tools/StablehloOptMain.cpp",
      ],
      deps = [
 +        ":interpreter_ops",
-         ":reference_errors",
--        ":interpreter_ops",
-         ":reference_ops",
-         ":reference_scope",
-         ":reference_tensor",
+         ":register",
+         ":stablehlo_passes",
+         ":tosa_passes",
 diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 --- stablehlo/CMakeLists.txt
 +++ stablehlo/CMakeLists.txt

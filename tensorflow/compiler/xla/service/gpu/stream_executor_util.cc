@@ -498,13 +498,13 @@ StatusOr<se::dnn::FusedMHAKind> GetDNNFusedMHAKindFromCudnnfMHAKind(
   switch (kind) {
     case CudnnfMHAKind::kScaleBiasMaskSoftmaxDropout:
     case CudnnfMHAKind::kScaleMaskSoftmaxDropout:
-    case CudnnfMHAKind::kSoftmaxDropout:
     case CudnnfMHAKind::kBmmBmm:
     case CudnnfMHAKind::kScaleBiasMaskSoftmax:
     case CudnnfMHAKind::kScaleMaskSoftmax:
     case CudnnfMHAKind::kScaleBiasSoftmax:
     case CudnnfMHAKind::kScaleBiasSoftmaxDropout:
       return se::dnn::FusedMHAKind::BMM1_OUTPUT_INPUT_TYPE;
+    case CudnnfMHAKind::kSoftmaxDropout:
     case CudnnfMHAKind::kSoftmax:
       return se::dnn::FusedMHAKind::BMM1_OUTPUT_FLOAT;
     // backward

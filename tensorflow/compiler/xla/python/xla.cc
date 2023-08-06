@@ -58,7 +58,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_client.h"
 #ifdef XLA_PYTHON_ENABLE_TPU
 #include "tensorflow/compiler/xla/pjrt/tpu_client.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_initializer_helper.h"  // NOLINT(unused-includes): required for tensorflow::tpu::FindAndLoadTpuLibrary
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_initializer_framework_helper.h"  // NOLINT(unused-includes): required for tensorflow::tpu::FindAndLoadTpuLibrary
 #endif  // XLA_PYTHON_ENABLE_TPU
 #include "tensorflow/compiler/xla/pjrt/pjrt_api.h"
 #include "tensorflow/compiler/xla/python/custom_call_sharding.h"
@@ -1004,6 +1004,10 @@ PYBIND11_MODULE(xla_extension, m) {
       py::arg("committed") = true, py::arg("force_copy") = false,
       py::arg("host_buffer_semantics") =
           PjRtClient::HostBufferSemantics::kZeroCopy);
+  m.def("canonicalize_memory_kind",
+        [](py::object memory_kind, py::object device) -> py::object {
+          return jax::CanonicalizeMemoryKind(memory_kind, device);
+        });
 }  // NOLINT(readability/fn_size)
 
 }  // namespace xla

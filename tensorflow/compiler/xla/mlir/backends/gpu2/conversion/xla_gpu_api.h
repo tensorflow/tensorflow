@@ -16,9 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_MLIR_BACKENDS_GPU2_CONVERSION_XLA_GPU_API_H_
 #define TENSORFLOW_COMPILER_XLA_MLIR_BACKENDS_GPU2_CONVERSION_XLA_GPU_API_H_
 
+#include <functional>
 #include <string_view>
 
 #include "third_party/iree/llvm-external-projects/iree-dialects/include/iree-dialects/Dialect/Input/InputDialect.h"
+#include "third_party/iree/llvm-external-projects/iree-dialects/include/iree-dialects/Dialect/Input/InputOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -31,8 +33,10 @@ namespace xla::gpu {
 // integration: device kernel launches and third party libraries.
 class XlaGpuApi {
  public:
+  mlir::SymbolTable &symTable(mlir::ModuleOp module);
+
   //===--------------------------------------------------------------------===//
-  // Helper functions to build XLA:GPU API arguments.
+  // Helper functions to build XLA:GPU API arguments
   //===--------------------------------------------------------------------===//
 
   // Returns `!iree_input.list<i32>` type.
@@ -54,6 +58,25 @@ class XlaGpuApi {
   static mlir::TypedValue<mlir::iree_compiler::IREE::Input::ListType>
   getBufferViewList(mlir::ImplicitLocOpBuilder &b,
                     llvm::ArrayRef<mlir::TypedValue<mlir::TensorType>> tensors);
+
+  //===---------------------------------------------------------------------===/
+  // Helper functions to build globals
+  //===--------------------------------------------------------------------===//
+
+  mlir::iree_compiler::IREE::Input::GlobalOp getOrCreateGlobal(
+      mlir::StringRef name, mlir::Type type, mlir::ModuleOp module,
+      mlir::ImplicitLocOpBuilder &b,
+      std::function<mlir::Value(mlir::ImplicitLocOpBuilder &)> initializer);
+
+  mlir::Value loadGlobal(mlir::ImplicitLocOpBuilder &b,
+                         mlir::iree_compiler::IREE::Input::GlobalOp global);
+
+  template <typename T>
+  mlir::TypedValue<T> loadGlobal(
+      mlir::ImplicitLocOpBuilder &b,
+      mlir::iree_compiler::IREE::Input::GlobalOp global) {
+    return mlir::cast<mlir::TypedValue<T>>(loadGlobal(b, global));
+  }
 
   //===--------------------------------------------------------------------===//
   // XLA:GPU kernel APIs
@@ -103,13 +126,15 @@ class XlaGpuApi {
   mlir::func::FuncOp getCreateTrace(mlir::OpBuilder &b, mlir::ModuleOp module);
 
  private:
-  mlir::SymbolTable &symTable(mlir::ModuleOp module);
-
   mlir::func::FuncOp addDecl(mlir::OpBuilder &b, mlir::ModuleOp module,
                              std::string_view name,
                              mlir::FunctionType function_type);
 
   mlir::SymbolTableCollection sym_table_;
+
+  using GlobalKey = std::tuple<mlir::ModuleOp, mlir::StringAttr, mlir::Type>;
+  llvm::DenseMap<GlobalKey, mlir::iree_compiler::IREE::Input::GlobalOp>
+      globals_;
 };
 
 }  // namespace xla::gpu
