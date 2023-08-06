@@ -229,6 +229,7 @@ cc_test(
 cc_library(
     name = "register_list_ops_for_benchmark",
     srcs = ["register_list_ops.cc"],
+    visibility = ["//visibility:public"],
     deps = [
         ":list_ops_lib",
         "//tensorflow/lite:mutable_op_resolver",
