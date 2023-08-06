@@ -184,6 +184,8 @@ TfLiteRegistration* Register_ASSIGN_VARIABLE();
 TfLiteRegistration* Register_BITCAST();
 TfLiteRegistration* Register_BITWISE_XOR();
 TfLiteRegistration* Register_RIGHT_SHIFT();
+TfLiteRegistration* Register_RFFT2D();
+TfLiteRegistration* Register_IRFFT2D();
 
 namespace {
 
