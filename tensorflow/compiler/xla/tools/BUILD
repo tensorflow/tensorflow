@@ -79,6 +79,7 @@ xla_cc_binary(
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/compiler/xla/service:interpreter_plugin",
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_pimpl",  # fixdeps: keep
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:platform_port",
@@ -171,6 +172,7 @@ xla_cc_binary(
         "//tensorflow/compiler/xla/service",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/compiler/xla/service:interpreter_plugin",
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_pimpl",  # fixdeps: keep
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:platform_port",
@@ -199,6 +201,7 @@ xla_cc_binary(
         "//tensorflow/compiler/xla/service",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/compiler/xla/service:interpreter_plugin",
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_pimpl",  # fixdeps: keep
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:platform_port",
