@@ -56,9 +56,10 @@ cc_library(
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:protobuf",
         "//tensorflow/tsl/platform:random",
-        "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:status_to_from_proto",
         "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
     ],
 )
