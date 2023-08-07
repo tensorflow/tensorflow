@@ -20,11 +20,14 @@ limitations under the License.
 #include <string>
 #include <unordered_set>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "tensorflow/cc/saved_model/constants.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/import_model.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/file_system_helper.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/status.h"
@@ -33,7 +36,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_executor.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
-#include "tensorflow/core/tfrt/saved_model/saved_model.h"
+#include "tensorflow/core/tfrt/saved_model/saved_model_util.h"
 #include "tensorflow/core/tfrt/saved_model/utils/serialize_bef_utils.h"
 #include "tensorflow/core/tfrt/utils/utils.h"
 #include "tensorflow/tsl/platform/env.h"
@@ -86,8 +89,7 @@ Status AotCompileSavedModel(absl::string_view input_model_dir,
   if (aot_options.tags.empty()) {
     aot_options.tags = {"serve", "gpu"};
   }
-  // TODO(cesarmagana) Refactor duplicated code from saved_model and
-  // saved_model_aot_compile into a shared util library for LoadSavedModel()
+
   TF_ASSIGN_OR_RETURN(tensorflow::MetaGraphDef meta_graph_def,
                       ReadSavedModel(input_model_dir, aot_options.tags));
 
@@ -138,20 +140,12 @@ Status AotCompileSavedModel(absl::string_view input_model_dir,
     model_context.set_meta_graph_def(nullptr);
   }
 
-  ASSIGN_OR_RETURN_WITH_STAGE_INFO(
-      "graph_executor creation",
-      std::unique_ptr<tensorflow::tfrt_stub::GraphExecutor> graph_executor,
-      GraphExecutor::Create(*aot_options.graph_execution_options,
-                            *fallback_state, std::move(resource_context),
-                            std::move(*meta_graph_def.mutable_graph_def()),
-                            std::move(kernel_registry)));
-
   tfrt::BefBuffer bef;
   RETURN_IF_ERROR_IN_COMPILE(tensorflow::ConvertTfMlirToBef(
       aot_options.graph_execution_options->compile_options, mlir_module.get(),
       &bef, model_context, fallback_state.get()));
   if (bef.empty()) {
-    LOG(ERROR) << "BefBuffer is empty.";
+    LOG(DFATAL) << "BefBuffer is empty.";
     return absl::InternalError("BefBuffer is empty.");
   }
 
@@ -182,20 +176,34 @@ Status AotCompileSavedModel(absl::string_view input_model_dir,
   }
   const std::string aot_directory =
       io::JoinPath(std::string(output_model_dir), "aot_packages");
-  TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(aot_directory, {}));
+  TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(aot_directory));
+
+  // Serialize MLIR to a file under aot_packages
+  const std::string mlir_module_file =
+      io::JoinPath(std::string(aot_directory), "serialized_mlir.mlir");
+  std::string mlir_module_string = SerializeMlirModule(mlir_module.get());
+  TF_RETURN_IF_ERROR(
+      WriteStringToFile(env, mlir_module_file, mlir_module_string));
+
+  // Serialize BEF buffer to a file under aot_packages
+  const std::string serialized_bef_path =
+      io::JoinPath(aot_directory, "serialized_bef.mlir.bef");
+  TF_RETURN_IF_ERROR(SerializeBEF(bef, serialized_bef_path));
+
   if (pb_found) {
     const std::string output_file_directory =
         io::JoinPath(std::string(output_model_dir),
                      absl::StrCat("aot_", kSavedModelFilenamePb));
-    // serialize bef to a file under output_model_dir
     return env->CopyFile(saved_model_pb_path, output_file_directory);
   } else {
     const std::string output_file_directory =
         io::JoinPath(std::string(output_model_dir),
                      absl::StrCat("aot_", kSavedModelFilenamePbTxt));
-    // serialize bef to a file under output_model_dir
     return env->CopyFile(saved_model_pbtxt_path, output_file_directory);
   }
 }
+
+// TODO: b/294095043 - Create a a function (ex Status
+// SerializeAotResult(AotResult)) to avoid using temp directories.
 
 }  // namespace tensorflow::tfrt_stub
