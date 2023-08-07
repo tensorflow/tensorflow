@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <climits>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <limits>
@@ -31,30 +32,55 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/array.h"
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_cost_graph.h"
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_solver.h"
+#include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_solver_option.h"
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_util.h"
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/cluster_environment.h"
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/matrix.h"
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/metrics.h"
+#include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/profiling_result.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_live_range.h"
 #include "tensorflow/compiler/xla/hlo/utils/hlo_sharding_util.h"
+#include "tensorflow/compiler/xla/service/buffer_value.h"
+#include "tensorflow/compiler/xla/service/call_graph.h"
+#include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/dump.h"
-#include "tensorflow/compiler/xla/service/heap_simulator.h"
+#include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
+#include "tensorflow/compiler/xla/service/hlo_buffer.h"
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
+#include "tensorflow/compiler/xla/service/hlo_value.h"
 #include "tensorflow/compiler/xla/service/sharding_propagation.h"
+#include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/shape_tree.h"
+#include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 namespace spmd {
@@ -118,7 +144,7 @@ std::optional<HloSharding> GetInputSharding(const HloInstruction* ins,
   ins_clone->set_sharding(output_sharding);
   auto operand_clone = operand->Clone();
   auto s = ins_clone->ReplaceOperandWith(op_index, operand_clone.get());
-  CHECK(s.ok());
+  CHECK_OK(s);
   return ShardingPropagation::GetShardingFromUser(*operand_clone, *ins_clone,
                                                   10, true, call_graph);
 }
@@ -196,7 +222,7 @@ GenerateReshardingCostsAndShardingsForAllOperands(
       GenerateReshardingCostsAndMissingShardingsForAllOperands(
           ins, output_sharding, strategy_map, cluster_env, call_graph,
           input_shardings_optional);
-  for (auto sharding_optional : input_shardings_optional) {
+  for (const auto& sharding_optional : input_shardings_optional) {
     CHECK(sharding_optional.has_value());
   }
 
@@ -1427,7 +1453,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                   ins, output_spec, strategy_map, cluster_env, call_graph,
                   input_shardings_optional);
 
-          for (auto sharding_optional : input_shardings_optional) {
+          for (const auto& sharding_optional : input_shardings_optional) {
             CHECK(sharding_optional.has_value());
           }
 
@@ -2161,7 +2187,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
   // If gradient accumulation is used, adjust the cost of all-reduce for
   // gradient synchronization.
   if (solver_option.grad_acc_num_micro_batches > 1) {
-    // find gradientt-computation instructions
+    // find gradient-computation instructions
     std::vector<const HloInstruction*> grad_insts =
         GetGradientComputationInstructions(instructions);
     for (const HloInstruction* inst : grad_insts) {
@@ -2292,19 +2318,22 @@ AutoShardingSolverResult CallSolver(
     }
   }
   const AutoShardingSolverResult result = CallORToolsSolver(request);
-  const AutoShardingEvaluation evaluation = Evaluate(request, result);
-  LOG(INFO) << "Total Communication Cost: "
-            << evaluation.total_communication_cost
-            << " (lower bound: " << evaluation.lower_bound_communication_cost
-            << ")";
-  LOG(INFO) << "Total Computation Cost: " << evaluation.total_computation_cost
-            << " (lower bound: " << evaluation.lower_bound_computation_cost
-            << ")";
-  LOG(INFO) << "Total Resharding Cost: " << evaluation.total_resharding_cost
-            << " (lower bound: " << evaluation.lower_bound_resharding_cost
-            << ")";
-  LOG(INFO) << "Total Cost: " << evaluation.total_cost
-            << " (lower bound: " << evaluation.lower_bound_cost << ")";
+  if (result.status.ok()) {
+    const AutoShardingEvaluation evaluation = Evaluate(request, result);
+    LOG(INFO) << "Total Communication Cost: "
+              << evaluation.total_communication_cost
+              << " (lower bound: " << evaluation.lower_bound_communication_cost
+              << ")";
+    LOG(INFO) << "Total Computation Cost: " << evaluation.total_computation_cost
+              << " (lower bound: " << evaluation.lower_bound_computation_cost
+              << ")";
+    LOG(INFO) << "Total Resharding Cost: " << evaluation.total_resharding_cost
+              << " (lower bound: " << evaluation.lower_bound_resharding_cost
+              << ")";
+    LOG(INFO) << "Total Cost: " << evaluation.total_cost
+              << " (lower bound: " << evaluation.lower_bound_cost << ")";
+    LOG(INFO) << "Total Violations: " << evaluation.violation_codes.size();
+  }
   return result;
 }
 
@@ -3985,7 +4014,7 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
     CheckAliasSetCompatibility(alias_set, leaf_strategies, sequence);
     XLA_VLOG_LINES(8, PrintStrategyMap(strategy_map, sequence));
 
-    // ----- Build cost graph and merge unimporant nodes -----
+    // ----- Build cost graph and merge unimportant nodes -----
     spmd::CostGraph cost_graph(leaf_strategies, associative_dot_pairs);
     cost_graph.Simplify(option_.simplify_graph);
 
@@ -4089,9 +4118,9 @@ StatusOr<bool> AutoSharding::Run(
                  absl::StrCat("Before auto sharding:\n", module->ToString()));
   DumpHloModuleIfEnabled(*module, "before_auto_spmd_sharding");
 
+  absl::Time start_time = absl::Now();
 #if !defined(__APPLE__)
   // Streamz metrics.
-  absl::Time start_time = absl::Now();
   metrics::RecordAutoShardingInvocations();
 #endif
 
@@ -4229,9 +4258,11 @@ StatusOr<bool> AutoSharding::Run(
     }
   }
 
-#if !defined(__APPLE__)
   absl::Time end_time = absl::Now();
   auto duration = end_time - start_time;
+  LOG(INFO) << "Auto Sharding took " << absl::ToInt64Seconds(duration)
+            << " seconds";
+#if !defined(__APPLE__)
   metrics::RecordAutoShardingCompilationTime(
       absl::ToInt64Microseconds(duration));
 #endif
