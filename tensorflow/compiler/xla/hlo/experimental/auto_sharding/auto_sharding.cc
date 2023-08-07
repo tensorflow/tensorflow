@@ -2192,7 +2192,8 @@ AutoShardingSolverResult CallSolver(
     const StrategyMap& strategy_map, const LeafStrategies& leaf_strategies,
     const CostGraph& cost_graph, const AliasSet& alias_set,
     int64_t memory_budget_per_device, bool crash_at_infinity_costs_check,
-    int64_t solver_timeout_in_seconds) {
+    int64_t solver_timeout_in_seconds,
+    bool allow_alias_to_follower_conversion) {
   // Serialize edges and edge costs to 1d numpy arrays
   AutoShardingSolverRequest request;
   request.num_nodes = leaf_strategies.size();
@@ -2234,6 +2235,7 @@ AutoShardingSolverResult CallSolver(
 
   // Serialize special edges that forces a alias pair have the same sharding
   // spec
+  std::vector<std::pair<NodeIdx, NodeIdx>> new_followers;
   for (const auto& pair : alias_set) {
     const StrategyVector* src_strategies = leaf_strategies[pair.first];
     const StrategyVector* dst_strategies = leaf_strategies[pair.second];
@@ -2273,14 +2275,40 @@ AutoShardingSolverResult CallSolver(
     CHECK_EQ(request.s_len[idx_a], row_indices.size());
     CHECK_EQ(request.s_len[idx_b], col_indices.size());
 
-    request.a.push_back(std::make_pair(idx_a, idx_b));
     std::vector<double> vij;
     for (NodeStrategyIdx i : row_indices) {
       for (NodeStrategyIdx j : col_indices) {
         vij.push_back(raw_cost(i, j));
       }
     }
-    request.v.push_back(vij);
+    bool convertable = (row_indices.size() == col_indices.size());
+    for (NodeStrategyIdx i = 0; i < row_indices.size(); ++i) {
+      for (NodeStrategyIdx j = 0; j < col_indices.size(); ++j) {
+        if (vij[i * col_indices.size() + j] == (i == j ? 0.0 : 1.0)) continue;
+        convertable = false;
+      }
+    }
+    if (convertable && allow_alias_to_follower_conversion) {
+      new_followers.push_back(std::make_pair(idx_a, idx_b));
+    } else {
+      request.a.push_back(std::make_pair(idx_a, idx_b));
+      request.v.push_back(vij);
+    }
+  }
+
+  // Process any new followers that had originally been modeled as aliases.
+  std::vector<NodeIdx>& s_follow = request.s_follow;
+  for (auto [follower, followee] : new_followers) {
+    // New followers may have introduced chains, so find the root nodes.
+    while (s_follow[follower] >= 0) follower = s_follow[follower];
+    while (s_follow[followee] >= 0) followee = s_follow[followee];
+    if (follower != followee) s_follow[follower] = followee;
+  }
+
+  // Flatten the follower indices to remove any transitive arcs.
+  for (NodeIdx i = 0; i < request.num_nodes; ++i) {
+    if (s_follow[i] < 0) continue;
+    while (s_follow[s_follow[i]] >= 0) s_follow[i] = s_follow[s_follow[i]];
   }
 
   // Serialize liveness_set
@@ -3796,6 +3824,8 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
   solver_option.nd_sharding_iteratively_strict_search_space = false;
   solver_option.allow_replicated_strategy_for_dot_and_conv =
       option_.allow_replicated_strategy_for_dot_and_conv;
+  solver_option.allow_alias_to_follower_conversion =
+      option_.allow_alias_to_follower_conversion;
 
   // Remove CustomCalls with custom_call_target="Sharding" and move their
   // shardings to their input ops.
@@ -3999,7 +4029,8 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
           sequence, liveness_set, strategy_map, leaf_strategies, cost_graph,
           alias_set, option_.memory_budget_per_device,
           /*crash_at_infinity_costs_check*/
-          !option_.try_multiple_mesh_shapes, option_.solver_timeout_in_seconds);
+          !option_.try_multiple_mesh_shapes, option_.solver_timeout_in_seconds,
+          option_.allow_alias_to_follower_conversion);
       if (solver_result.skip_auto_sharding) {
         return AutoShardingResult::kModuleUnchangedNoShardingPerfomed;
       } else if (!solver_result.status.ok()) {
