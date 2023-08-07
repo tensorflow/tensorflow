@@ -13,11 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <cstdint>
+#include <iterator>
 #include <limits>
 #include <memory>
 #include <string>
 #include <utility>
 
+#include "absl/algorithm/container.h"
 #include "llvm/Support/Debug.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project  // NOLINT: Required to register quantization dialect.
@@ -241,6 +243,7 @@ class RewriteUniformDequantizeOp
 //   * The filter tensor's format is `[0, 1, i, o]`.
 //   * Not a depthwise convolution.
 //   * Does not consider bias add fusion.
+// TODO: b/294771704 - Support bias quantization.
 class RewriteQuantizedConvolutionOp
     : public OpRewritePattern<stablehlo::ConvolutionOp> {
  public:
@@ -400,6 +403,15 @@ class RewriteQuantizedConvolutionOp
         filter_op->getLoc(), /*output=*/TypeAttr::get(new_filter_result_type),
         new_filter_value_attr);
 
+    SmallVector<double> bias_scales =
+        GetBiasScales(/*input_scale=*/op.getOperand(0)
+                          .getType()
+                          .cast<TensorType>()
+                          .getElementType()
+                          .cast<UniformQuantizedType>()
+                          .getScale(),
+                      /*filter_scales=*/new_filter_quantized_type.getScales());
+
     // Create a bias filled with zeros. Mimics the behavior of no bias add.
     const int64_t num_output_features = new_filter_result_type.getShape()[0];
     const SmallVector<int64_t, 1> bias_shape = {num_output_features};
@@ -407,9 +419,8 @@ class RewriteQuantizedConvolutionOp
         op.getLoc(), /*flags=*/true,
         /*storageType=*/rewriter.getI32Type(),  // i32 for bias
         /*expressedType=*/rewriter.getF32Type(),
-        // TODO: b/292886169 - Set this to be s1 * s2.
-        /*scales=*/new_filter_quantized_type.getScales(),
-        /*zeroPoints=*/new_filter_quantized_type.getZeroPoints(),
+        /*scales=*/std::move(bias_scales),
+        /*zeroPoints=*/new_filter_quantized_type.getZeroPoints(),  // Zeros.
         /*quantizedDimension=*/0,
         /*storageTypeMin=*/std::numeric_limits<int32_t>::min(),
         /*storageTypeMax=*/std::numeric_limits<int32_t>::max());
@@ -544,6 +555,18 @@ class RewriteQuantizedConvolutionOp
     // It is guaranteed from the spec that it has two values:
     // https://github.com/openxla/stablehlo/blob/main/docs/spec.md#convolution.
     return {lhs_dilation_attr_value[0], lhs_dilation_attr_value[1]};
+  }
+
+  // Bias scales should be input scale * filter scale. Here it is assumed that
+  // the filter is per-channel quantized.
+  SmallVector<double> GetBiasScales(
+      const double input_scale, const ArrayRef<double> filter_scales) const {
+    SmallVector<double> bias_scales;
+    absl::c_transform(filter_scales, std::back_inserter(bias_scales),
+                      [input_scale](const double filter_scale) -> double {
+                        return filter_scale * input_scale;
+                      });
+    return bias_scales;
   }
 };
 
