@@ -56,8 +56,8 @@ std::optional<tfrt::TaskFunction> TfThreadPoolWorkQueue::AddBlockingTask(
 }
 
 void TfThreadPoolWorkQueue::Quiesce() {
-  // TODO(b/186668821): implement this
-  CHECK(false);  // Crash OK
+  // We don't need Quiesce() in most cases. And for the rest cases, we can rely
+  // on the destructor the thread pools.
 }
 
 // From
