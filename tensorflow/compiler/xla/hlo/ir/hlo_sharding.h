@@ -31,7 +31,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array.h"
-#include "tensorflow/compiler/xla/hlo/ir/tile_assignment.h"
+#include "tensorflow/compiler/xla/hlo/ir/tile_assignment.h"  // IWYU pragma: export
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
