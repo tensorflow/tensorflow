@@ -560,13 +560,9 @@ xla_cc_test(
     tags = tf_cuda_tests_tags(),
     deps = [
         ":gpu_codegen_test",
-        "//tensorflow/compiler/xla/service:hlo_module_config",
-        "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service/gpu:gpu_device_info_for_tests",
         "//tensorflow/compiler/xla/service/gpu:gpu_fusible",
         "//tensorflow/compiler/xla/service/gpu:instruction_fusion",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
     ],
 )
