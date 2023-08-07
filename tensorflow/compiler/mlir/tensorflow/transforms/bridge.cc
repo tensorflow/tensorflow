@@ -245,6 +245,7 @@ void CreateTPUBridgePipelineImpl(
   pm.addPass(CreateTPUAnnotateDynamicShapeInputsPass());
   pm.addPass(CreateTPURewritePass(module_name));
   pm.addPass(createSymbolDCEPass());
+  pm.addNestedPass<func::FuncOp>(TFDevice::CreateEmbeddingProgramKeyPass());
   pm.addNestedPass<func::FuncOp>(
       TFDevice::CreateReplicateInvariantOpHoistingPass());
   pm.addPass(CreateTPUMergeVariablesWithExecutePass());
