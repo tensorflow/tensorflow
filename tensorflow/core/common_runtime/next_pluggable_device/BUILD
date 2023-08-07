@@ -106,7 +106,6 @@ cc_library(
     deps = [
         ":next_pluggable_device_api",
         "//tensorflow/c:tf_status_headers",
-        "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:framework",
         "//tensorflow/core/common_runtime:device_factory",
         "//tensorflow/core/common_runtime/next_pluggable_device/c:plugin_c_api_hdrs",
