@@ -151,7 +151,8 @@ StatusOr<Shape> GetConsistentInputShapeForRootSlices(
 
 }  // namespace
 
-StatusOr<LaunchDimensions> InputSlicesFusion::launch_dimensions() const {
+StatusOr<LaunchDimensions> InputSlicesFusion::launch_dimensions(
+    int kernel_index) const {
   bool use_experimental_block_size =
       ir_emitter_context()
           .debug_options()

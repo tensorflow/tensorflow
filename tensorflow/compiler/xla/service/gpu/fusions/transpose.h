@@ -60,7 +60,8 @@ class TransposeFusion : public KernelFusionEmitterBase {
       : KernelFusionEmitterBase(ir_emitter_context, elemental_emitter,
                                 fusion_op, fusion),
         analysis_(analysis) {}
-  StatusOr<LaunchDimensions> launch_dimensions() const override {
+  StatusOr<LaunchDimensions> launch_dimensions(
+      int kernel_index) const override {
     return analysis_.GetLaunchDimensions(false);
   }
 
