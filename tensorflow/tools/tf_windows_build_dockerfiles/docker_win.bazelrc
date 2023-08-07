@@ -1,0 +1,18 @@
+build:docker_win --crosstool_top="//tensorflow/tools/toolchains/win/tf_win_05022023:toolchain"
+build:docker_win --extra_toolchains="//tensorflow/tools/toolchains/win/tf_win_05022023:cc-toolchain-x64_windows"
+build:docker_win --extra_execution_platforms="//tensorflow/tools/toolchains/win:rbe_windows_ltsc2019"
+build:docker_win --host_platform="//tensorflow/tools/toolchains/win:rbe_windows_ltsc2019"
+build:docker_win --platforms="//tensorflow/tools/toolchains/win:rbe_windows_ltsc2019"
+build:docker_win --shell_executable=C:\\tools\\msys64\\usr\\bin\\bash.exe
+build:docker_win --experimental_strict_action_env=true
+build:docker_win --define=override_eigen_strong_inline=true
+build:docker_win --remote_download_minimal
+build:docker_win --enable_runfiles
+build:docker_win --nobuild_python_zip
+
+build:docker_win_py --repo_env=PYTHON_BIN_PATH=C:\\Python\\python.exe
+build:docker_win_py --repo_env=PYTHON_LIB_PATH=C:\\Python\\lib\\site-packages
+build:docker_win_py --python_path=C:\\Python\\python.exe
+
+build:docker_win_py38 --repo_env=TF_PYTHON_CONFIG_REPO=//tensorflow/tools/toolchains/win_1803/py38
+build:docker_win_py39 --repo_env=TF_PYTHON_CONFIG_REPO=//tensorflow/tools/toolchains/win_1803/py39
