@@ -452,6 +452,24 @@ class HloSharding {
         manual_(false),
         replicate_on_last_tile_dim_(false) {}
 
+  // Test-only constructor for sharding format code coverage. Copies the
+  // original sharding with provided tile assignment.
+  explicit HloSharding(const HloSharding& other, TileAssignment tile_assignment)
+      : tile_assignment_(std::move(tile_assignment)),
+        tuple_elements_(other.tuple_elements_),
+        metadata_(other.metadata_),
+        subgroup_types_(other.subgroup_types_),
+        replicated_(other.replicated_),
+        maximal_(other.maximal_),
+        tuple_(other.tuple_),
+        manual_(other.manual_),
+        replicate_on_last_tile_dim_(other.replicate_on_last_tile_dim_) {
+    CHECK(tile_assignment_ == other.tile_assignment_)
+        << tile_assignment_.ToString() << " v.s. "
+        << other.tile_assignment_.ToString();
+  }
+  friend class HloShardingTestHelper;
+
   // Checks that the number of elements in tuple_elements_ is consistent with
   // the tuple shape passes as argument.
   Status CheckLeafCount(const Shape& shape) const;
