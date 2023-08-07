@@ -195,10 +195,9 @@ mlir::LogicalResult InferMeshFromInputs(
   // inputs. `tf.CopyToMesh` specifies that all operations following the
   // operation is executed on target device mesh cluster specified by
   // `tf.CopyToMesh`.
-  if (llvm::isa<mlir::TF::CopyToMeshOp>(&cluster.GetBody().front())) {
-    return result;
-  }
-  if (llvm::isa<mlir::TF::CopyToMeshGradOp>(&cluster.GetBody().front())) {
+  if (llvm::isa<mlir::TF::CopyToMeshOp, mlir::TF::RelayoutOp,
+                mlir::TF::CopyToMeshGradOp, mlir::TF::RelayoutLikeOp>(
+          &cluster.GetBody().front())) {
     return result;
   }
 
@@ -288,7 +287,10 @@ mlir::LogicalResult InferMeshFromConsumers(
     // `tf.CopyToMesh`. Therefore, if `consumer` operation is `tf.CopyToMesh`
     // do not propagate mesh backwards to `cluster`.
     if (llvm::isa<mlir::TF::CopyToMeshOp>(consumer)) continue;
+    if (llvm::isa<mlir::TF::RelayoutOp>(consumer)) continue;
     if (llvm::isa<mlir::TF::CopyToMeshGradOp>(&cluster.GetBody().front()))
+      continue;
+    if (llvm::isa<mlir::TF::RelayoutLikeOp>(&cluster.GetBody().front()))
       continue;
 
     Mesh extracted_mesh;
@@ -672,23 +674,20 @@ mlir::LogicalResult DTensorMeshPropagation::PropagateMeshFromConsumers(
   return mlir::success();
 }
 
-mlir::LogicalResult RewriteCopyToMeshGradOp(
+mlir::LogicalResult PropagateLikeMesh(
     const llvm::DenseMap<mlir::OpOperand*, std::vector<mlir::Value>>& producers,
     mlir::tf_device::ClusterOp cluster, mlir::OpBuilder* builder,
     bool* mesh_changed) {
-  auto backward_op = llvm::dyn_cast_or_null<mlir::TF::CopyToMeshGradOp>(
-      &cluster.GetBody().front());
-  if (!backward_op) {
+  mlir::Operation* backward_op = &cluster.GetBody().front();
+
+  if (!mlir::isa<mlir::TF::CopyToMeshGradOp>(backward_op) &&
+      !mlir::isa<mlir::TF::RelayoutLikeOp>(backward_op)) {
     // No CopyToMeshGradOp is found. Either the cluster did not have one,
     // or it has been rewritten from previous iterations.
     return mlir::success();
   }
 
-  if (cluster->getAttrOfType<mlir::StringAttr>(kMeshAttr)) {
-    return backward_op.emitOpError(
-        "A cluster with CopyToMeshGrad is already assigned a mesh. "
-        "This indicates an internal error.");
-  }
+  auto old_mesh = cluster->getAttrOfType<mlir::StringAttr>(kMeshAttr);
 
   std::optional<Mesh> mesh;
   mlir::OpOperand& operand = backward_op->getOpOperand(1);  // forward_input();
@@ -697,27 +696,14 @@ mlir::LogicalResult RewriteCopyToMeshGradOp(
   if (mlir::failed(ExtractMeshFromOperand(producers, &operand, &mesh))) {
     return mlir::success();
   }
+  if (old_mesh != nullptr) {
+    if (old_mesh.getValue().str() == mesh->ToString()) {
+      return mlir::success();
+    }
+  }
+
   cluster->setAttr(kMeshAttr, builder->getStringAttr(mesh->ToString()));
 
-  // Rewrites to CopyToMesh, by combining the sharding spec of the reference
-  // layout with the mesh.
-  // This assumes the CopyToMesh maintains the layout of the input and only
-  // changes the mesh.
-  builder->setInsertionPoint(backward_op);
-  StatusOr<Layout> layout =
-      Layout::FromString(backward_op.getReferenceLayout().str());
-  if (!layout.ok()) {
-    return backward_op.emitOpError("Failure passing layout: ")
-           << backward_op.getReferenceLayout().str();
-  }
-  layout->set_mesh(mesh.value());
-
-  auto op = builder->create<mlir::TF::CopyToMeshOp>(
-      backward_op->getLoc(), backward_op->getResult(0).getType(),
-      backward_op.getInput(), layout->ToString());
-
-  backward_op->replaceAllUsesWith(op);
-  backward_op->erase();
   *mesh_changed = true;
   return mlir::success();
 }
@@ -760,8 +746,8 @@ mlir::LogicalResult DTensorMeshPropagation::PropagateMesh(
       return mlir::failure();
   }
   for (auto cluster : llvm::reverse(cluster_ops)) {
-    if (mlir::failed(RewriteCopyToMeshGradOp(producers, cluster, builder,
-                                             mesh_changed))) {
+    if (mlir::failed(
+            PropagateLikeMesh(producers, cluster, builder, mesh_changed))) {
       return mlir::failure();
     }
   }

@@ -20,8 +20,6 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
-#include "tensorflow/compiler/xla/autotune_results.pb.h"
-#include "tensorflow/compiler/xla/autotuning.pb.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_clone_context.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
@@ -36,8 +34,6 @@ namespace gpu {
 
 // Autotuning utils which require compiling fusions separately. Requires a
 // separate target, as runtime autotuning cannot perform compilation.
-//
-// Uses a global cache, *not* unique per instance.
 class AutotunerCompileUtil {
  public:
   using GenerateModuleFn =
@@ -64,34 +60,24 @@ class AutotunerCompileUtil {
   // Runs the resulting executable with the given extractor, cached with
   // `(cache_key, config)`. Returns `std::nullopt` on expected failure, bad
   // `Status` otherwise.
-  StatusOr<std::optional<ProfilingOutput>> GenerateAndProfileExecutable(
-      const AutotuneResult& config, const AutotuneCacheKey& cache_key,
-      se::Stream* stream, absl::Span<se::DeviceMemoryBase const> input_buffers,
-      GenerateModuleFn extractor);
+  StatusOr<std::optional<ProfilingOutput>> ProfileExecutable(
+      Executable* executable, se::Stream* stream,
+      absl::Span<se::DeviceMemoryBase const> input_buffers);
 
   // Generic method to compile a generated module from `extractor` in isolation.
-  //
-  // On *expected* failures we will store an empty unique_ptr in cache.
   //
   // Returns:
   //  - `nullptr` on *expected* failure
   //  - `Executable` if everything goes fine.
   //  - `Status` on *unexpected* failure.
-  StatusOr<Executable*> Compile(
-      const AutotuneResult& res, const AutotuneCacheKey& cache_key,
+  StatusOr<std::unique_ptr<Executable>> Compile(
       AutotunerCompileUtil::GenerateModuleFn extractor);
-
-  // Clears the global compilation cache.
-  static void ClearCompilationCache();
 
  private:
   AutotunerCompileUtil(const AutotuneConfig& config, Compiler* compiler,
                        se::StreamExecutor& stream_executor, se::Stream& stream,
                        se::DeviceMemoryAllocator& allocator,
                        const DebugOptions& opts);
-
-  StatusOr<std::unique_ptr<Executable>> CompileNoCache(
-      AutotunerCompileUtil::GenerateModuleFn module_extractor);
 
   StatusOr<ExecutionOutput> Execute(Executable& executable,
                                     std::vector<ExecutionInput> arguments);

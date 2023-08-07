@@ -1770,8 +1770,7 @@ namespace {
 // Matching a pattern like [..,X,..,Y] -> [..,X*Y,..,1] or [..,X,..,Y] ->
 // [..,1,..,X*Y].
 // Output tuple:
-// - HloSharding: The original sharding with an extra dimension dimension added
-//                of size 1.
+// - HloSharding: The original sharding with an extra dimension added of size 1.
 // - HloSharding: The sharding with the dimension we want to merge moved in
 //                place of the dimension of size 1 we added.
 // - int: Dimension in the input that is going to be merged with another
@@ -1797,14 +1796,14 @@ PatternMatchMergeSharding(const Shape& shape, const HloSharding& source,
     if (source.tile_assignment().dim(i) < target.tile_assignment().dim(i) &&
         (target.tile_assignment().dim(i) % source.tile_assignment().dim(i)) ==
             0) {
-      const int64_t dimension_size =
-          target.tile_assignment().dim(i) / source.tile_assignment().dim(i);
       auto get_reshaped_sharding =
           [&](int64_t target_idx) -> std::optional<HloSharding> {
         if (target.tile_assignment().dim(target_idx) != 1) {
           return std::nullopt;
         }
-        if (dimension_size != source.tile_assignment().dim(target_idx)) {
+        if (target.tile_assignment().dim(i) !=
+            source.tile_assignment().dim(i) *
+                source.tile_assignment().dim(target_idx)) {
           return std::nullopt;
         }
         if (shape.dimensions(i) % source.tile_assignment().dim(target_idx) !=
@@ -1866,8 +1865,7 @@ PatternMatchMergeSharding(const Shape& shape, const HloSharding& source,
 // Matching a pattern like  [..,X*Y,..,1] -> [..,X,..,Y] or [..,1,..,X*Y] ->
 // [..,X,..,Y].
 // Output tuple:
-// - HloSharding: The original sharding with an extra dimension dimension added
-//                of size Y.
+// - HloSharding: The original sharding with an extra dimension added of size Y.
 // - HloSharding: The sharding with the new dimension added moved in the place
 // where we expect the target dimension to be.
 // - int: Dimension in the input that is going to be unmerged (getting split).
@@ -1895,16 +1893,14 @@ PatternMatchUnmergeSharding(const Shape& shape, const Shape& base_shape,
         base_shape.dimensions(i) % source.tile_assignment().dim(i) == 0 &&
         source.tile_assignment().dim(i) % target.tile_assignment().dim(i) ==
             0) {
-      const int64_t dimension_size =
-          source.tile_assignment().dim(i) / target.tile_assignment().dim(i);
       auto get_reshaped_sharding =
           [&](int64_t target_dim) -> std::optional<HloSharding> {
-        if (target.tile_assignment().dim(target_dim) == 1) {
-          VLOG(10) << "Skipped for target dim being 1" << target_dim;
+        if (source.tile_assignment().dim(target_dim) != 1) {
           return std::nullopt;
         }
-        if (source.tile_assignment().dim(target_dim) * dimension_size !=
-            target.tile_assignment().dim(target_dim)) {
+        if (source.tile_assignment().dim(i) !=
+            target.tile_assignment().dim(i) *
+                target.tile_assignment().dim(target_dim)) {
           VLOG(10) << "Skipped for target dim different from dimension_size "
                    << target_dim
                    << " src size: " << source.tile_assignment().dim(i)
@@ -1913,9 +1909,7 @@ PatternMatchUnmergeSharding(const Shape& shape, const Shape& base_shape,
           return std::nullopt;
         }
         return hlo_sharding_util::SplitShardingDimension(
-            source, i,
-            source.tile_assignment().dim(i) /
-                target.tile_assignment().dim(target_dim));
+            source, i, target.tile_assignment().dim(i));
       };
       for (int j = i - 1; j >= 0; --j) {
         if (auto reshaped_sharding = get_reshaped_sharding(j)) {

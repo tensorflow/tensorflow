@@ -78,8 +78,8 @@ from tensorflow.python.framework import ops
 # Function
 from tensorflow.core.function.trace_type import *
 
-# Session
-from tensorflow.python.client.client_lib import *
+# Module
+from tensorflow.python.module import module
 
 # Ops
 from tensorflow.python.ops.standard_ops import *  # pylint: disable=redefined-builtin
@@ -122,6 +122,15 @@ from tensorflow.python.ops.ragged import ragged_ops
 from tensorflow.python.ops.signal import signal
 from tensorflow.python.ops.structured import structured_ops as _structured_ops
 
+# Platform
+from tensorflow.python.platform import app
+from tensorflow.python.platform import flags
+from tensorflow.python.platform import gfile
+from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.platform import resource_loader
+from tensorflow.python.platform import sysconfig as sysconfig_lib
+from tensorflow.python.platform import test
+
 # Update the RaggedTensor package docs w/ a list of ops that support dispatch.
 ragged.__doc__ += ragged_ops.ragged_dispatch.ragged_op_list()
 
@@ -139,6 +148,9 @@ from tensorflow.python.profiler import profiler
 from tensorflow.python.profiler import profiler_client
 from tensorflow.python.profiler import profiler_v2
 from tensorflow.python.profiler import trace
+
+# Session
+from tensorflow.python.client.client_lib import *
 
 # Summary
 from tensorflow.python.summary import summary

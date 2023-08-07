@@ -39,22 +39,12 @@ from tensorflow.python import pywrap_tensorflow as _pywrap_tensorflow
 
 # from tensorflow.python import keras
 # from tensorflow.python.layers import layers
-from tensorflow.python.module import module
 from tensorflow.python.saved_model import saved_model
 from tensorflow.python.tpu import api
 from tensorflow.python.user_ops import user_ops
 
 # Sub-package for performing i/o directly instead of via ops in a graph.
 from tensorflow.python.lib.io import python_io
-
-# Make some application and test modules available.
-from tensorflow.python.platform import app
-from tensorflow.python.platform import flags
-from tensorflow.python.platform import gfile
-from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.platform import resource_loader
-from tensorflow.python.platform import sysconfig as sysconfig_lib
-from tensorflow.python.platform import test
 
 from tensorflow.python.compat import v2_compat
 

@@ -176,6 +176,8 @@ class MockDevice final : public Device {
   MOCK_METHOD(Status, TransferToInfeed, (const LiteralSlice& literal), (final));
   MOCK_METHOD(Status, TransferFromOutfeed, (MutableBorrowingLiteral literal),
               (final));
+  MOCK_METHOD(StatusOr<xla::PjRtMemorySpace*>, default_memory_space, (),
+              (const, final));
   MOCK_METHOD(StatusOr<tsl::AllocatorStats>, GetAllocatorStats, (),
               (const, final));
   MOCK_METHOD(absl::Span<xla::PjRtMemorySpace* const>, memory_spaces, (),
@@ -229,6 +231,8 @@ class MockLoadedExecutable final
               (const, final));
   MOCK_METHOD(std::optional<std::vector<OpSharding>>, GetOutputShardings, (),
               (const, final));
+  MOCK_METHOD(absl::StatusOr<std::vector<std::vector<absl::string_view>>>,
+              GetOutputMemoryKinds, (), (const, final));
   MOCK_METHOD(StatusOr<std::vector<std::shared_ptr<HloModule>>>, GetHloModules,
               (), (const, final));
   MOCK_METHOD((StatusOr<absl::flat_hash_map<std::string,

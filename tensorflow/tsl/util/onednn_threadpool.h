@@ -161,7 +161,9 @@ class OneDnnThreadPool : public threadpool_iface {
         num_threads == -1 ? eigen_interface_->NumThreads() : num_threads;
 #if DNNL_VERSION_MAJOR >= 3 || \
     (DNNL_VERSION_MAJOR == 2 && DNNL_VERSION_MINOR >= 7)
+#ifndef DNNL_AARCH64_USE_ACL
     dnnl_threadpool_interop_set_max_concurrency(num_threads_);
+#endif  // DNNL_AARCH64_USE_ACL
 #endif  // DNNL_VERSION_MAJOR >= 3 ||
         // (DNNL_VERSION_MAJOR == 2 && DNNL_VERSION_MINOR >= 7)
   }

@@ -196,8 +196,8 @@ static inline bool IsMklOp(const string& op_name, DataType T,
   string label = is_native_op ? kMklNameChangeOpLabelPattern
                               : kMklLayoutDependentOpLabelPattern;
   string registered_kernels_key = op_name + label + std::to_string(T);
-  thread_local static auto* registered_kernels_map =
-      new absl::flat_hash_map<string, bool>();
+  thread_local static auto registered_kernels_map =
+      std::make_unique<absl::flat_hash_map<string, bool>>();
   auto kernel_element = registered_kernels_map->find(registered_kernels_key);
   bool kernel_registered = false;
 
@@ -288,6 +288,7 @@ static inline bool IsMklElementWiseOp(const string& op_name, DataType T) {
                  0 == op_name.compare(GetMklOpName("Sub")) ||
                  0 == op_name.compare(GetMklOpName("Mul")) ||
                  0 == op_name.compare(GetMklOpName("Maximum")) ||
+                 0 == op_name.compare(GetMklOpName("Sigmoid")) ||
                  0 == op_name.compare(GetMklOpName("SquaredDifference")));
 
   return result;

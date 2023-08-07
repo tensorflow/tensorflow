@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
+#include "tensorflow/tsl/platform/host_info.h"
 
 namespace tensorflow {
 namespace data {
@@ -359,7 +360,10 @@ DataServiceClient::CreateAlternativeWorkerClientWithGrpcFallback(
 
 StatusOr<std::unique_ptr<DataServiceWorkerClient>>
 DataServiceClient::CreateWorkerClient(const TaskInfo& task_info) {
-  if (LocalWorkers::Get(task_info.worker_address()) != nullptr) {
+  if (params_.data_transfer_protocol == kLocalTransferProtocol ||
+      // TODO(b/291994182): Use remote workers in unit tests.
+      (tsl::port::JobUid() != -1 &&
+       LocalWorkers::Get(task_info.worker_address()) != nullptr)) {
     DataTransferServerInfo info;
     info.set_protocol(kLocalTransferProtocol);
     info.set_address(task_info.worker_address());
@@ -374,8 +378,6 @@ DataServiceClient::CreateWorkerClient(const TaskInfo& task_info) {
   }
   if (std::string default_protocol = DefaultDataTransferProtocol();
       default_protocol != kGrpcTransferProtocol) {
-    LOG(INFO)
-        << "This task is participating in the \"data_transfer\" experiment.";
     StatusOr<DataTransferServerInfo> transfer_server =
         GetTransferServer(default_protocol, task_info);
     if (transfer_server.ok()) {
@@ -811,24 +813,20 @@ Status DataServiceClient::GetElement(Task* task, int64_t deadline_micros,
       break;
     }
     if (!IsPreemptedError(s)) {
-      std::string data_transfer_protocol =
-          !params_.data_transfer_protocol.empty()
-              ? params_.data_transfer_protocol
-              : DefaultDataTransferProtocol();
-      if (data_transfer_protocol == kGrpcTransferProtocol ||
-          data_transfer_protocol == kLocalTransferProtocol) {
+      if (task->worker->GetDataTransferProtocol() == kGrpcTransferProtocol ||
+          task->worker->GetDataTransferProtocol() == kLocalTransferProtocol) {
         return s;
       }
+      LOG(ERROR) << "failed to use alternative data transfer protocol '"
+                 << task->worker->GetDataTransferProtocol()
+                 << "'; falling back to grpc. Original error: " << s;
+      metrics::RecordTFDataServiceDataTransferProtocolError(
+          task->worker->GetDataTransferProtocol(),
+          static_cast<error::Code>(s.raw_code()), std::string(s.message()));
       mutex_lock l(mu_);
       TF_ASSIGN_OR_RETURN(std::unique_ptr<DataServiceWorkerClient> worker,
                           CreateGrpcWorkerClient(task->info));
       task->worker = std::move(worker);
-      LOG(ERROR) << "failed to use alternative data transfer protocol '"
-                 << data_transfer_protocol << "'; falling back to grpc. "
-                 << "Original error: " << s;
-      metrics::RecordTFDataServiceDataTransferProtocolError(
-          DefaultDataTransferProtocol(), static_cast<error::Code>(s.raw_code()),
-          std::string(s.message()));
       continue;
     }
     {

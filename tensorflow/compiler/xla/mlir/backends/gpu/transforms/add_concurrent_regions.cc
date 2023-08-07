@@ -142,6 +142,16 @@ llvm::SmallVector<RegionInfo> GetRegionInfos(
     region.clear();
   };
 
+  auto append_node_to_region = [&](const DataflowAnalysis::Node& node) {
+    if (region.empty()) {
+      if (!IsNoOp(node.operation)) {
+        region.push_back(node);
+      }
+    } else {
+      region.push_back(node);
+    }
+  };
+
   for (const DataflowAnalysis::Node& node : dataflow_graph) {
     if (isa<func::ReturnOp>(node.operation)) {
       break;
@@ -157,15 +167,13 @@ llvm::SmallVector<RegionInfo> GetRegionInfos(
       }
     }
 
-    if (has_dependency || IsKernelMemoryBound(node.operation)) {
+    if (IsKernelMemoryBound(node.operation)) {
       store_region_and_start_new_region();
+    } else if (has_dependency) {
+      store_region_and_start_new_region();
+      append_node_to_region(node);
     } else {
-      // No dependency with the current region.
-      if (region.empty() && IsNoOp(node.operation)) {
-        continue;
-      } else {
-        region.push_back(node);
-      }
+      append_node_to_region(node);
     }
   }
 
@@ -202,22 +210,25 @@ void InsertConcurrentRegions(FuncOp capture_func,
 //===----------------------------------------------------------------------===//
 
 void AddConcurrentRegionsPass::runOnOperation() {
-  FuncOp func_op = getOperation();
-
-  if (!absl::StrContains(func_op.getSymNameAttr().str(),
-                         "xla.gpu.cuda.graph.capture")) {
-    return;
-  }
-
-  SymbolTable sym_table(func_op->getParentOfType<mlir::ModuleOp>());
+  ModuleOp module = getOperation();
+  SymbolTable sym_table(module);
   CustomCallDeclarations custom_calls(std::move(sym_table));
-  InsertConcurrentRegions(func_op, custom_calls,
-                          getAnalysis<DataflowAnalysis>());
+
+  auto func_ops = llvm::to_vector(module.getOps<FuncOp>());
+
+  for (auto func_op : func_ops) {
+    // Find the gpu graph capture function.
+    if (absl::StrContains(func_op.getSymNameAttr().str(),
+                          "xla.gpu.graph.capture")) {
+      InsertConcurrentRegions(func_op, custom_calls,
+                              getAnalysis<DataflowAnalysis>());
+    }
+  }
 }
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createAddConcurrentRegionsPass() {
+std::unique_ptr<OperationPass<ModuleOp>> createAddConcurrentRegionsPass() {
   return std::make_unique<AddConcurrentRegionsPass>();
 }
 

@@ -191,6 +191,9 @@ MockDevice::MockDevice(Device* delegated) : delegated_(delegated) {
       .WillByDefault([this](MutableBorrowingLiteral literal) {
         return delegated_->TransferFromOutfeed(std::move(literal));
       });
+  ON_CALL(*this, default_memory_space).WillByDefault([this]() {
+    return delegated_->default_memory_space();
+  });
   ON_CALL(*this, GetAllocatorStats).WillByDefault([this]() {
     return delegated_->GetAllocatorStats();
   });

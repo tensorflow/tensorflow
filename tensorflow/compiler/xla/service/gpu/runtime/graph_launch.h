@@ -29,9 +29,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
 
-#if GOOGLE_CUDA
-#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_graph.h"
-#endif  // #if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_graph.h"
+#endif  // #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace xla {
 namespace gpu {
@@ -48,37 +48,37 @@ class StreamExecutorGraphInstances;  // Forward declare
 class CapturedFunctionExecutionCount
     : public runtime::StateVector<std::unique_ptr<std::atomic<uint64_t>>> {};
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-// A state vector that owns all instantiated CUDA graphs. Graph capture function
+// A state vector that owns all instantiated GPU graphs. Graph capture function
 // ordinal is the key in this container.
 class StreamExecutorGraphInstances
     : public runtime::StateVector<GraphInstance> {};
 
-// Instantiated CUDA graph instance guarded with a mutex for exclusive access.
+// Instantiated GPU graph instance guarded with a mutex for exclusive access.
 struct GraphInstance {
-  GraphInstance(size_t ptr_hash, se::gpu::OwnedCudaGraphExec exec)
+  GraphInstance(size_t ptr_hash, se::gpu::OwnedGpuGraphExec exec)
       : ptr_hash(ptr_hash), exec(std::move(exec)), mutex(new absl::Mutex) {}
 
   // Graph instance is fully identified by the hash of its pointer arguments
   // because currently it's guaranteed that all shapes and launch dimensions
   // will be constant from run to run.
   size_t ptr_hash ABSL_GUARDED_BY(*mutex);
-  se::gpu::OwnedCudaGraphExec exec ABSL_GUARDED_BY(*mutex);
+  se::gpu::OwnedGpuGraphExec exec ABSL_GUARDED_BY(*mutex);
 
   // Access to a graph instance must be synchronized, because we potentially can
   // run concurrent graph instance updates.
   std::unique_ptr<absl::Mutex> mutex;
 };
 
-#else  // #if !GOOGLE_CUDA
+#else  // #if !GOOGLE_CUDA && !TENSORFLOW_USE_ROCM
 
-// Define empty struct and empty state when CUDA is not enabled.
+// Define empty struct and empty state when GPU is not enabled.
 struct GraphInstance {};
 class StreamExecutorGraphInstances
     : public runtime::StateVector<GraphInstance> {};
 
-#endif  // #if GOOGLE_CUDA
+#endif  // #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Xla executable keeps a mapping from stream executors to graph instances.
 //

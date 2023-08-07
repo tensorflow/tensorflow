@@ -2506,7 +2506,7 @@ distribute_py_strict_test(
     ],
 )
 
-py_strict_library(
+pytype_strict_library(
     name = "parameter_server_strategy_v2",
     srcs = ["parameter_server_strategy_v2.py"],
     srcs_version = "PY3",
@@ -2523,6 +2523,7 @@ py_strict_library(
         ":sharded_variable",
         ":values",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/distribute/cluster_resolver:base_cluster_resolver_py",
         "//tensorflow/python/distribute/coordinator:cluster_coordinator",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:remote",

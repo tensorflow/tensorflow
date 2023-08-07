@@ -13,6 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for tensorflow.ops.math_ops on WeakTensor."""
+
+import itertools
 from absl.testing import parameterized
 import numpy as np
 
@@ -21,14 +23,18 @@ from tensorflow.python import tf2
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework.weak_tensor import WeakTensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.ops import weak_tensor_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import weak_tensor_test_util
 from tensorflow.python.ops.ragged import ragged_factory_ops
@@ -50,7 +56,7 @@ class ReduceTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   )
   def testReduceAllDims(self, input_type, result_type):
     test_input = _convert_to_input_type(
-        [[1, 2, 3], [4, 5, 6]], input_type, np.int32
+        [[1, 2, 3], [4, 5, 6]], input_type, dtypes.int32
     )
     with test_util.device(use_gpu=True):
       res = math_ops.reduce_sum(test_input)
@@ -88,7 +94,7 @@ class ReduceTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       ("Tensor", tensor.Tensor),
   )
   def testReduceExplicitAxes(self, input_type, result_type):
-    x = _convert_to_input_type([[1, 2, 3], [4, 5, 6]], input_type, np.int32)
+    x = _convert_to_input_type([[1, 2, 3], [4, 5, 6]], input_type, dtypes.int32)
     with test_util.device(use_gpu=True):
       for axis in (0, -2):
         res = math_ops.reduce_sum(x, axis=axis)
@@ -452,6 +458,459 @@ class CastTest(test_util.TensorFlowTestCase):
       return ta.stack()
 
     self.assertAllEqual(self.evaluate(test_fn()), [1])
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class BinaryOpsTest(test_util.TensorFlowTestCase):
+
+  def testRHSDispatchingAndErrorRaising(self):
+    if context.executing_eagerly():
+      error = ValueError
+      error_message = r"Attempt to convert a value .* with an unsupported type"
+    else:
+      error = TypeError
+      error_message = r"Failed to convert elements of .* to Tensor"
+
+    class RHSReturnsTrue:
+
+      def __radd__(self, other):
+        return True
+
+      def __rmod__(self, other):
+        return False
+
+    a = array_ops.ones([1], dtype=dtypes.int32) + RHSReturnsTrue()
+    self.assertEqual(a, True)
+
+    a = _get_weak_tensor(5, dtype=dtypes.int32) + RHSReturnsTrue()
+    self.assertEqual(a, True)
+
+    a = array_ops.ones([1], dtype=dtypes.float32) % RHSReturnsTrue()
+    self.assertEqual(a, False)
+
+    a = _get_weak_tensor(5, dtype=dtypes.float32) % RHSReturnsTrue()
+    self.assertEqual(a, False)
+
+    class RHSRaisesError:
+
+      def __radd__(self, other):
+        raise TypeError("RHS not implemented")
+
+    with self.assertRaisesRegex(error, error_message):
+      a = array_ops.ones([1], dtype=dtypes.int32) + RHSRaisesError()
+      self.evaluate(a)
+
+    with self.assertRaisesRegex(error, error_message):
+      a = _get_weak_tensor([1], dtype=dtypes.int32) + RHSRaisesError()
+      self.evaluate(a)
+
+    class RHSReturnsNotImplemented:
+
+      def __radd__(self, other):
+        return NotImplemented
+
+    with self.assertRaisesRegex(error, error_message):
+      a = array_ops.ones([1], dtype=dtypes.int32) + RHSReturnsNotImplemented()
+      self.evaluate(a)
+
+      a = _get_weak_tensor([1], dtype=dtypes.int32) + RHSReturnsNotImplemented()
+      self.evaluate(a)
+
+    class RHSNotImplemented:
+      pass
+
+    with self.assertRaisesRegex(error, error_message):
+      a = array_ops.ones([1], dtype=dtypes.int32) + RHSNotImplemented()
+      self.evaluate(a)
+
+      a = _get_weak_tensor([1], dtype=dtypes.int32) + RHSNotImplemented()
+      self.evaluate(a)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class ScalarMulTest(test_util.TensorFlowTestCase):
+
+  def testAcceptsRefs(self):
+    if context.executing_eagerly():
+      var = resource_variable_ops.ResourceVariable(10, name="var")
+    else:
+      var = variables.Variable(10)
+    result = math_ops.scalar_mul(3, var)
+    init = variables.global_variables_initializer()
+    with test_util.device(use_gpu=True):
+      self.evaluate(init)
+      self.assertEqual(30, self.evaluate(result))
+
+  def testAcceptsIndexedSlices(self):
+    values = constant_op.constant([2, 3, 5, 7, 0, -1], shape=[3, 2])
+    indices = constant_op.constant([0, 2, 5])
+    # Test that patched scalar_mul works with IndexedSlices.
+    x = math_ops.scalar_mul(-3, indexed_slices.IndexedSlices(values, indices))
+    with test_util.device(use_gpu=True):
+      self.assertAllEqual(
+          self.evaluate(x.values), [[-6, -9], [-15, -21], [0, 3]]
+      )
+      self.assertAllEqual(self.evaluate(x.indices), [0, 2, 5])
+
+
+allowed_var_op_input_combinations = [
+    (dtypes.uint8, 10),
+    (dtypes.uint8, "weak_i64"),
+    (dtypes.uint8, dtypes.uint8),
+    (dtypes.uint16, 10),
+    (dtypes.uint16, "weak_i64"),
+    (dtypes.uint16, dtypes.uint8),
+    (dtypes.uint16, dtypes.uint16),
+    (dtypes.uint32, 10),
+    (dtypes.uint32, "weak_i64"),
+    (dtypes.uint32, dtypes.uint8),
+    (dtypes.uint32, dtypes.uint32),
+    (dtypes.uint64, 10),
+    (dtypes.uint64, "weak_i64"),
+    (dtypes.uint64, dtypes.uint32),
+    (dtypes.uint64, dtypes.uint64),
+    (dtypes.int8, 10),
+    (dtypes.int8, "weak_i64"),
+    (dtypes.int8, dtypes.int8),
+    (dtypes.int16, 10),
+    (dtypes.int16, "weak_i64"),
+    (dtypes.int16, dtypes.uint8),
+    (dtypes.int16, dtypes.int8),
+    (dtypes.int16, dtypes.int16),
+    (dtypes.int32, 10),
+    (dtypes.int32, "weak_i64"),
+    (dtypes.int32, dtypes.uint16),
+    (dtypes.int32, dtypes.int16),
+    (dtypes.int32, dtypes.int32),
+    (dtypes.int64, 10),
+    (dtypes.int64, "weak_i64"),
+    (dtypes.int64, dtypes.uint32),
+    (dtypes.int64, dtypes.int32),
+    (dtypes.int64, dtypes.int64),
+    (dtypes.bfloat16, 10),
+    (dtypes.bfloat16, "weak_i64"),
+    (dtypes.bfloat16, 1.0),
+    (dtypes.bfloat16, "weak_f64"),
+    (dtypes.bfloat16, dtypes.int32),
+    (dtypes.bfloat16, dtypes.bfloat16),
+    (dtypes.float16, 10),
+    (dtypes.float16, "weak_i64"),
+    (dtypes.float16, 1.0),
+    (dtypes.float16, "weak_f64"),
+    (dtypes.float16, dtypes.int32),
+    (dtypes.float16, dtypes.float16),
+    (dtypes.float32, 10),
+    (dtypes.float32, "weak_i64"),
+    (dtypes.float32, 1.0),
+    (dtypes.float32, "weak_f64"),
+    (dtypes.float32, dtypes.int32),
+    (dtypes.float32, dtypes.float32),
+    (dtypes.float64, 10),
+    (dtypes.float64, "weak_i64"),
+    (dtypes.float64, 1.0),
+    (dtypes.float64, "weak_f64"),
+    (dtypes.float64, dtypes.int32),
+    (dtypes.float64, dtypes.float64),
+    (dtypes.complex64, 10),
+    (dtypes.complex64, "weak_i64"),
+    (dtypes.complex64, 1.0),
+    (dtypes.complex64, "weak_f64"),
+    (dtypes.complex64, 1.0 + 2.0j),
+    (dtypes.complex64, "weak_c128"),
+    (dtypes.complex64, dtypes.int32),
+    (dtypes.complex64, dtypes.complex64),
+    (dtypes.complex128, 10),
+    (dtypes.complex128, "weak_i64"),
+    (dtypes.complex128, 1.0),
+    (dtypes.complex128, "weak_f64"),
+    (dtypes.complex128, 1.0 + 2.0j),
+    (dtypes.complex128, "weak_c128"),
+    (dtypes.complex128, dtypes.int32),
+    (dtypes.complex128, dtypes.float64),
+    (dtypes.complex128, dtypes.complex128),
+]
+
+
+disallowed_var_op_input_combinations = [
+    (dtypes.uint8, 1.0),
+    (dtypes.uint8, "weak_f64"),
+    (dtypes.uint8, dtypes.int8),
+    (dtypes.uint8, dtypes.uint16),
+    (dtypes.uint16, 1.0),
+    (dtypes.uint16, "weak_f64"),
+    (dtypes.uint16, dtypes.int8),
+    (dtypes.uint16, dtypes.uint32),
+    (dtypes.uint32, 1.0),
+    (dtypes.uint32, "weak_f64"),
+    (dtypes.uint32, dtypes.int32),
+    (dtypes.uint32, dtypes.uint64),
+    (dtypes.uint64, 1.0),
+    (dtypes.uint64, "weak_f64"),
+    (dtypes.uint64, dtypes.int8),
+    (dtypes.uint64, dtypes.float16),
+    (dtypes.int8, 1.0),
+    (dtypes.int8, "weak_f64"),
+    (dtypes.int8, dtypes.int16),
+    (dtypes.int8, dtypes.float32),
+    (dtypes.int8, dtypes.complex64),
+    (dtypes.int16, 1.0),
+    (dtypes.int16, "weak_f64"),
+    (dtypes.int16, dtypes.int32),
+    (dtypes.int16, dtypes.float32),
+    (dtypes.int16, dtypes.complex64),
+    (dtypes.int32, 1.0),
+    (dtypes.int32, "weak_f64"),
+    (dtypes.int32, dtypes.int64),
+    (dtypes.int32, dtypes.float16),
+    (dtypes.int32, dtypes.complex64),
+    (dtypes.int64, 1.0),
+    (dtypes.int64, "weak_f64"),
+    (dtypes.int64, dtypes.uint64),
+    (dtypes.int64, dtypes.float16),
+    (dtypes.int64, dtypes.complex64),
+    (dtypes.bfloat16, 1.0 + 2.0j),
+    (dtypes.bfloat16, "weak_c128"),
+    (dtypes.bfloat16, dtypes.float16),
+    (dtypes.bfloat16, dtypes.float32),
+    (dtypes.float16, 1.0 + 2.0j),
+    (dtypes.float16, "weak_c128"),
+    (dtypes.float16, dtypes.bfloat16),
+    (dtypes.float16, dtypes.float32),
+    (dtypes.float64, 1.0 + 2.0j),
+    (dtypes.float64, "weak_c128"),
+    (dtypes.float64, dtypes.complex64),
+    (dtypes.complex64, dtypes.float64),
+    (dtypes.complex64, dtypes.complex128),
+]
+
+
+def _weak_tensor_from_str(s):
+  if s == "weak_i64":
+    return _get_weak_tensor(1, dtype=dtypes.int64)
+  elif s == "weak_f64":
+    return _get_weak_tensor(1.0, dtype=dtypes.float64)
+  elif s == "weak_c128":
+    return _get_weak_tensor(1.0 + 2.0j, dtype=dtypes.complex128)
+  else:
+    raise ValueError(f"Unsupported str: {s}")
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class VariableInplaceOpsTest(
+    parameterized.TestCase, test_util.TensorFlowTestCase):
+
+  @parameterized.parameters(
+      itertools.product(
+          allowed_var_op_input_combinations,
+          ("assign", "assign_add", "assign_sub")))
+  def testAllowedDtypes(self, v_dtype_and_delta, op):
+    v_dtype, delta = v_dtype_and_delta
+    if isinstance(delta, dtypes.DType):
+      delta = constant_op.constant(1, delta)
+    elif isinstance(delta, str):
+      delta = _weak_tensor_from_str(delta)
+
+    var = resource_variable_ops.ResourceVariable(10, dtype=v_dtype)
+    result = getattr(var, op)(delta)
+    with test_util.device(use_gpu=True):
+      self.assertEqual(result.dtype, v_dtype)
+
+  @parameterized.parameters(
+      itertools.product(
+          disallowed_var_op_input_combinations,
+          ("assign", "assign_add", "assign_sub")))
+  def testDisallowedDtypes(self, v_dtype_and_delta, op):
+    v_dtype, delta = v_dtype_and_delta
+    if isinstance(delta, dtypes.DType):
+      delta = constant_op.constant(1, delta)
+    elif isinstance(delta, str):
+      delta = _weak_tensor_from_str(delta)
+
+    var = resource_variable_ops.ResourceVariable(10, dtype=v_dtype)
+    with self.assertRaises(TypeError):
+      _ = getattr(var, op)(delta)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class DivAndModTest(test_util.TensorFlowTestCase):
+
+  def numpySafeFloorDivInt(self, x, y):
+    z = x // y
+    # Numpy produces 0 for INT_MIN/-1, but we expect an overflow to INT_MIN
+    # so that (INT_MIN/-1) + (INT_MIN % -1) = INT_MIN + 0 = INT_MIN.
+    z[(x == np.iinfo(x.dtype).min) & (y == -1)] = np.iinfo(x.dtype).min
+    return z
+
+  def numpySafeFloorModInt(self, x, y):
+    # Numpy crashes with a FPE for INT_MIN % -1.
+    z = self.numpySafeFloorDivInt(x, y)
+    return x - z * y
+
+  def numpySafeTruncateDivInt(self, x, y):
+    z = self.numpySafeFloorDivInt(x, y)
+    # Round up if non-zero remainder and inputs have opposite signs.
+    z[(x != z * y) & ((x < 0) != (y < 0))] += 1
+    return z
+
+  def numpySafeTruncateModInt(self, x, y):
+    # Numpy crashes with a FPE for INT_MIN % -1.
+    z = self.numpySafeTruncateDivInt(x, y)
+    return x - z * y
+
+  def intEdgeTestData(self, dtype):
+    """Edge-case test data for integer types."""
+    # INT_MIN/-1 expected to produce signed-integer overflow,
+    # INT_MIN/INT_MAX expected to work.
+    nums = np.array(
+        [np.iinfo(dtype).min, -1, 1, np.iinfo(dtype).max], dtype=dtype
+    ).reshape([4, 1])
+    divs = nums.reshape([1, 4])
+    return nums, divs
+
+  @test_util.disable_asan("Expected signed integer overflow.")
+  @test_util.disable_ubsan("Expected signed integer overflow.")
+  def testFloorDivModIntEdges(self):
+    for dtype in [np.int32, np.int64]:
+      x, y = self.intEdgeTestData(dtype)
+      x_weak, y_weak = _get_weak_tensor(x), _get_weak_tensor(y)
+      tf_floor_div = math_ops.floor_div(x_weak, y_weak)
+      np_floor_div = self.numpySafeFloorDivInt(x, y)
+      self.assertIsInstance(tf_floor_div, WeakTensor)
+      self.assertAllEqual(tf_floor_div, np_floor_div)
+
+      tf_floor_mod = math_ops.floormod(x_weak, y_weak)
+      np_floor_mod = self.numpySafeFloorModInt(x, y)
+      self.assertIsInstance(tf_floor_div, WeakTensor)
+      self.assertAllEqual(tf_floor_mod, np_floor_mod)
+      z = math_ops.add(math_ops.multiply(tf_floor_div, y_weak), tf_floor_mod)
+      # x = floor_div(x, y) * y + floor_mod(x, y)
+      self.assertIsInstance(z, WeakTensor)
+      self.assertAllEqual(z, np.broadcast_to(x, z.shape))
+
+  @test_util.disable_asan("Expected signed integer overflow.")
+  @test_util.disable_ubsan("Expected signed integer overflow.")
+  def testTruncateDivModIntEdges(self):
+    for dtype in [np.int32, np.int64]:
+      x, y = self.intEdgeTestData(dtype)
+      x_weak, y_weak = _get_weak_tensor(x), _get_weak_tensor(y)
+      tf_truncate_div = math_ops.truncatediv(x_weak, y_weak)
+      np_truncate_div = self.numpySafeTruncateDivInt(x, y)
+      self.assertIsInstance(tf_truncate_div, WeakTensor)
+      self.assertAllEqual(tf_truncate_div, np_truncate_div)
+
+      tf_truncate_mod = math_ops.truncatemod(x_weak, y_weak)
+      np_truncate_mod = self.numpySafeTruncateModInt(x, y)
+      self.assertIsInstance(tf_truncate_mod, WeakTensor)
+      self.assertAllEqual(tf_truncate_mod, np_truncate_mod)
+      z = math_ops.add(
+          math_ops.multiply(tf_truncate_div, y_weak), tf_truncate_mod
+      )
+      self.assertIsInstance(z, WeakTensor)
+      # x = truncatediv(x, y) * y + truncatemod(x, y)
+      self.assertAllEqual(z, np.broadcast_to(x, z.shape))
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class DivNoNanTest(test_util.TensorFlowTestCase, parameterized.TestCase):
+  _SUPPORTED_DTYPES = [
+      dtypes.int32,
+      dtypes.int64,
+      dtypes.float32,
+      dtypes.float64,
+      dtypes.complex128,
+  ]
+
+  @parameterized.parameters(*_SUPPORTED_DTYPES)
+  def testBasic(self, dtype):
+    if dtype.is_unsigned:
+      nums = np.arange(0, 120, 3).reshape(40, 1)
+      divs = np.arange(0, 48, 4).reshape(1, 12)
+    elif dtype.is_integer:
+      nums = np.arange(-120, 120, 3).reshape(80, 1)
+      divs = np.arange(-48, 48, 4).reshape(1, 24)
+    else:
+      nums = np.arange(-10, 10, 0.25).reshape(80, 1)
+      divs = np.arange(-3, 3, 0.25).reshape(1, 24)
+    assert 0 in divs, "Bad test set-up"
+
+    tf_nums = _get_weak_tensor(nums, dtype=dtype)
+    tf_divs = _get_weak_tensor(divs, dtype=dtype)
+
+    # Use tf versions for expected value to ensure inputs are identical
+    np_nums = self.evaluate(tf_nums)
+    np_divs = self.evaluate(tf_divs)
+    np_result = np.true_divide(np_nums, np_divs)
+    np_result[:, np_divs[0] == 0] = 0
+
+    with test_util.use_gpu():
+      tf_result = math_ops.div_no_nan(tf_nums, tf_divs)
+      self.assertIsInstance(tf_result, WeakTensor)
+      self.assertAllCloseAccordingToType(tf_result, np_result)
+
+  @parameterized.product(
+      type_x=_SUPPORTED_DTYPES + [float, int],
+      type_y=_SUPPORTED_DTYPES + [float, int],
+  )
+  def testSameSupportedTypesAsDivide(self, type_x, type_y):
+    def one(type_):
+      if type_ is int:
+        return 1
+      elif type_ is float:
+        return 1.0
+      else:
+        return _get_weak_tensor(1, dtype=type_)
+
+    x = one(type_x)
+    y = one(type_y)
+
+    divide_raises = False
+    try:
+      divide_result = math_ops.divide(x, y)
+    except TypeError:
+      divide_raises = True
+
+    if divide_raises:
+      with self.assertRaises(TypeError):
+        _ = math_ops.div_no_nan(x, y)
+    else:
+      divide_no_nan_result = math_ops.div_no_nan(x, y)
+      self.assertIsInstance(divide_no_nan_result, WeakTensor)
+      self.assertIsInstance(divide_result, WeakTensor)
+      self.assertEqual(divide_no_nan_result.dtype, divide_result.dtype)
+      self.assertAllEqual(divide_no_nan_result, divide_result)
+
+  @parameterized.parameters(
+      (dtypes.float32),
+      (dtypes.float64),
+      (dtypes.complex128),
+  )
+  def testSmall(self, dtype):
+    # Choose values whose squared magnitude underflows to zero/subnormal.
+    zero = _get_weak_tensor([0, 0, 0, 0], dtype=dtype)
+    divs = _get_weak_tensor([1e-25, -1e-20, 1e-165, -1e-160], dtype=dtype)
+    tf_result = math_ops.div_no_nan(zero, divs)
+
+    # Results should always be exactly zero.
+    self.assertAllEqual(tf_result, zero)
+    self.assertIsInstance(tf_result, WeakTensor)
+
+  @parameterized.parameters(
+      (dtypes.float32),
+      (dtypes.float64),
+      (dtypes.complex128),
+  )
+  def testNonFiniteInNumerator(self, dtype):
+    nums = _get_weak_tensor([np.nan, np.inf, np.NINF], dtype=dtype)
+    zeros = _get_weak_tensor([0, 0, 0], dtype=dtype)
+    ones = _get_weak_tensor([1, 1, 1], dtype=dtype)
+    with test_util.use_gpu():
+      tf_result_zeros = math_ops.div_no_nan(nums, zeros)
+      self.assertAllEqual([0, 0, 0], tf_result_zeros)
+      self.assertIsInstance(tf_result_zeros, WeakTensor)
+      tf_result_ones = math_ops.div_no_nan(nums, ones)
+      self.assertAllEqual(nums / ones, tf_result_ones)
+      self.assertIsInstance(tf_result_ones, WeakTensor)
+
 
 if __name__ == "__main__":
   ops.set_dtype_conversion_mode("all")

@@ -74,10 +74,14 @@ using ReplaceStatsWithQDQs =
     quant::ConvertStatsToQDQs<quantfork::QuantizeCastOp,
                               quantfork::DequantizeCastOp>;
 
+#include "tensorflow/compiler/mlir/quantization/stablehlo/passes/prepare_srq_quantize.inc"
+
 void PrepareSrqQuantizePass::runOnOperation() {
   func::FuncOp func = getOperation();
   MLIRContext* ctx = func.getContext();
   RewritePatternSet patterns(ctx);
+
+  populateWithGenerated(patterns);
 
   // TODO: b/288046643 - Implement different activation bit width per op/op
   // instance.

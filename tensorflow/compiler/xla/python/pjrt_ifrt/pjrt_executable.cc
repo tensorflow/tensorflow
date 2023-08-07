@@ -277,15 +277,17 @@ PjRtLoadedExecutable::CreateInternal(
     } else {
       tile_shape = shape;
     }
+    // TODO(hyeontaek): Get memory kinds using
+    // `PjRtExecutable::GetOutputMemoryKinds`.
     output_shardings.push_back(ifrt::ConcreteEvenSharding::Create(
-        devices, /*shape=*/ifrt::Shape(shape.dimensions()),
+        devices, MemoryKind(), /*shape=*/ifrt::Shape(shape.dimensions()),
         /*shard_shape=*/ifrt::Shape(tile_shape.dimensions())));
     return OkStatus();
   };
   auto append_token = [&] {
     output_dtypes.push_back(DType(DType::kToken));
     output_shapes.push_back(Shape({}));
-    output_shardings.push_back(OpaqueSharding::Create(devices));
+    output_shardings.push_back(OpaqueSharding::Create(devices, MemoryKind()));
   };
 
   if (result_shape.IsArray()) {
@@ -536,8 +538,9 @@ StatusOr<PjRtLoadedExecutable::ExecuteResult> PjRtLoadedExecutable::Execute(
   outputs.reserve(num_outputs);
   std::shared_ptr<const Sharding> single_device_sharding;
   if (portable_execution) {
+    // TODO(hyeontaek): Use the original array's memory kind.
     single_device_sharding =
-        SingleDeviceSharding::Create(portable_execution_device);
+        SingleDeviceSharding::Create(portable_execution_device, MemoryKind());
   }
   for (int i = 0; i < num_outputs; ++i) {
     PjRtArray::PjRtBuffers buffers;

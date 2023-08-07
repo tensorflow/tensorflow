@@ -90,9 +90,9 @@ class DataTransferClient {
                       std::unique_ptr<DataTransferClient>* out);
 
   // Returns an error if the client is incompatible with a server which has the
-  // properties described in `compatibility_info`.
+  // properties described in `server_compatibility_info`.
   virtual Status CheckCompatibility(
-      const std::string& compatibility_info) const {
+      const std::string& server_compatibility_info) const {
     return OkStatus();
   }
 
@@ -113,7 +113,7 @@ class DataTransferServer {
   virtual Status Start() = 0;
 
   // Return the port that this server is listening on.
-  virtual int get_port() = 0;
+  virtual int Port() const = 0;
 
   // Register a DataTransferServer factory under `name`.
   static void Register(std::string name, ServerFactoryT factory);

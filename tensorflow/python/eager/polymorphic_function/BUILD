@@ -62,6 +62,7 @@ pytype_strict_library(
         "//tensorflow/python/types:core",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:function_utils",
+        "//tensorflow/python/util:tf_stack",
     ],
 )
 

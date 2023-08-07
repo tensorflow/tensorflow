@@ -360,6 +360,8 @@ typedef struct SE_TpuHostCommandHandler {
   void* context;
 } SE_TpuHostCommandHandler;
 
+typedef struct SE_OutsideCompilationParams SE_OutsideCompilationParams;
+
 #ifdef __cplusplus
 }
 #endif

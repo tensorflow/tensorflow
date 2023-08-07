@@ -186,14 +186,11 @@ tsl::Status AutoScaler::RemoveConsumer(int64_t consumer_id)
   return tsl::OkStatus();
 }
 
-tsl::Status MultipleIterationsAutoScaler::RegisterIteration(
-    int64_t iteration_id) TF_LOCKS_EXCLUDED(mu_) {
-  tsl::mutex_lock l(mu_);
-  if (auto_scalers_.contains(iteration_id))
-    return absl::AlreadyExistsError(absl::StrCat(
-        "AutoScaler for iteration_id ", iteration_id, " already exists"));
-  auto_scalers_[iteration_id] = std::make_unique<AutoScaler>();
-  return tsl::OkStatus();
+void MultipleIterationsAutoScaler::EnsureIterationIsRegistered(
+    int64_t iteration_id) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  if (!auto_scalers_.contains(iteration_id)) {
+    auto_scalers_[iteration_id] = std::make_unique<AutoScaler>();
+  }
 }
 
 tsl::Status MultipleIterationsAutoScaler::UnregisterIteration(
@@ -216,9 +213,8 @@ tsl::Status MultipleIterationsAutoScaler::UpdateOptimalNumberOfWorkersMetric()
         "no reported processing and target processing times for at least one "
         "iteration");
 
-  constexpr float FIVE_MINUTES = 60.0 * 5.0;
-  LOG_EVERY_N_SEC(INFO, FIVE_MINUTES) << "Estimated optimal number of workers: "
-                                      << optimal_number_of_workers.value();
+  VLOG(3) << "Estimated optimal number of workers: "
+          << optimal_number_of_workers.value();
   metrics::RecordTFDataServiceOptimalNumberOfWorkers(
       optimal_number_of_workers.value());
 
@@ -249,10 +245,8 @@ std::optional<int64_t> MultipleIterationsAutoScaler::GetOptimalNumberOfWorkers()
 tsl::Status MultipleIterationsAutoScaler::ReportProcessingTime(
     int64_t iteration_id, const std::string& worker_address,
     absl::Duration processing_time) TF_LOCKS_EXCLUDED(mu_) {
-  tsl::tf_shared_lock l(mu_);
-  if (!auto_scalers_.contains(iteration_id))
-    return absl::NotFoundError(absl::StrCat(
-        "Could not find AutoScaler for iteration_id ", iteration_id));
+  tsl::mutex_lock l(mu_);
+  EnsureIterationIsRegistered(iteration_id);
 
   tsl::Status status = auto_scalers_[iteration_id]->ReportProcessingTime(
       worker_address, processing_time);
@@ -262,10 +256,8 @@ tsl::Status MultipleIterationsAutoScaler::ReportProcessingTime(
 tsl::Status MultipleIterationsAutoScaler::ReportTargetProcessingTime(
     int64_t iteration_id, int64_t consumer_id,
     absl::Duration target_processing_time) TF_LOCKS_EXCLUDED(mu_) {
-  tsl::tf_shared_lock l(mu_);
-  if (!auto_scalers_.contains(iteration_id))
-    return absl::NotFoundError(absl::StrCat(
-        "Could not find AutoScaler for iteration_id ", iteration_id));
+  tsl::mutex_lock l(mu_);
+  EnsureIterationIsRegistered(iteration_id);
 
   tsl::Status status = auto_scalers_[iteration_id]->ReportTargetProcessingTime(
       consumer_id, target_processing_time);
@@ -278,7 +270,7 @@ tsl::Status MultipleIterationsAutoScaler::RemoveWorker(
   tsl::tf_shared_lock l(mu_);
   if (!auto_scalers_.contains(iteration_id))
     return absl::NotFoundError(absl::StrCat(
-        "Could not find AutoScaler for iteration_id ", iteration_id));
+        "There are no reported times for iteration_id ", iteration_id));
 
   tsl::Status status =
       auto_scalers_[iteration_id]->RemoveWorker(worker_address);
@@ -291,7 +283,7 @@ tsl::Status MultipleIterationsAutoScaler::RemoveConsumer(int64_t iteration_id,
   tsl::tf_shared_lock l(mu_);
   if (!auto_scalers_.contains(iteration_id))
     return absl::NotFoundError(absl::StrCat(
-        "Could not find AutoScaler for iteration_id ", iteration_id));
+        "There are no reported times for iteration_id ", iteration_id));
 
   tsl::Status status = auto_scalers_[iteration_id]->RemoveConsumer(consumer_id);
   return status;

@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/ifrt/device.h"
 #include "tensorflow/compiler/xla/python/ifrt/index.h"
 #include "tensorflow/compiler/xla/python/ifrt/index_domain.h"
+#include "tensorflow/compiler/xla/python/ifrt/memory.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 
@@ -107,7 +108,7 @@ class MajorToMinorIter {
 //
 // For example, when `dim_shards` is {2, 3}, the result is
 //   {0, 0}, {0, 1}, {0, 2}, {1, 0}, {1, 1}, {1, 2}
-std::vector<Index> GetTileIndicies(absl::Span<const int64_t> dim_shards) {
+std::vector<Index> GetTileIndices(absl::Span<const int64_t> dim_shards) {
   std::vector<std::vector<int64_t>> indices;
   indices.reserve(dim_shards.size());
   for (const int64_t dim_shard : dim_shards) {
@@ -160,9 +161,9 @@ std::ostream& operator<<(std::ostream& os, const Sharding& sharding) {
 }
 
 std::unique_ptr<SingleDeviceSharding> SingleDeviceSharding::Create(
-    Device* device) {
+    Device* device, MemoryKind memory_kind) {
   return std::unique_ptr<SingleDeviceSharding>(
-      new SingleDeviceSharding(device));
+      new SingleDeviceSharding(device, memory_kind));
 }
 
 StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
@@ -170,7 +171,8 @@ SingleDeviceSharding::Disassemble(const Shape& shape) const {
   DCHECK(this);
   std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>> result;
   result.reserve(1);
-  result.push_back({shape, SingleDeviceSharding::Create(devices_[0])});
+  result.push_back(
+      {shape, SingleDeviceSharding::Create(devices_[0], memory_kind_)});
   return result;
 }
 
@@ -185,17 +187,20 @@ StatusOr<std::vector<IndexDomain>> SingleDeviceSharding::IndexDomains(
 
 std::string SingleDeviceSharding::DebugString() const {
   DCHECK(this);
-  return absl::StrFormat("SingleDeviceSharding(%s)",
-                         devices_.front()->ToString());
+  return absl::StrFormat("SingleDeviceSharding(%s, memory_kind: %s)",
+                         devices_.front()->ToString(),
+                         memory_kind_.DebugString());
 }
 
-std::unique_ptr<OpaqueSharding> OpaqueSharding::Create(DeviceList devices) {
+std::unique_ptr<OpaqueSharding> OpaqueSharding::Create(DeviceList devices,
+                                                       MemoryKind memory_kind) {
   return std::unique_ptr<OpaqueSharding>(
-      new OpaqueSharding(std::move(devices)));
+      new OpaqueSharding(std::move(devices), memory_kind));
 }
 
-OpaqueSharding::OpaqueSharding(DeviceList devices)
-    : llvm::RTTIExtends<OpaqueSharding, Sharding>(std::move(devices)) {}
+OpaqueSharding::OpaqueSharding(DeviceList devices, MemoryKind memory_kind)
+    : llvm::RTTIExtends<OpaqueSharding, Sharding>(std::move(devices),
+                                                  memory_kind) {}
 
 StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
 OpaqueSharding::Disassemble(const Shape& shape) const {
@@ -214,22 +219,27 @@ StatusOr<std::vector<IndexDomain>> OpaqueSharding::IndexDomains(
 std::string OpaqueSharding::DebugString() const {
   DCHECK(this);
   return absl::StrFormat(
-      "OpaqueSharding(devices: %s)",
-      absl::StrJoin(devices_, ",", [](std::string* out, const Device* device) {
-        absl::StrAppend(out, device->ToString());
-      }));
+      "OpaqueSharding(devices: %s, memory_kind: %s)",
+      absl::StrJoin(devices_, ",",
+                    [](std::string* out, const Device* device) {
+                      absl::StrAppend(out, device->ToString());
+                    }),
+      memory_kind_.DebugString());
 }
 
 std::unique_ptr<ConcreteSharding> ConcreteSharding::Create(
-    DeviceList devices, Shape shape, std::vector<Shape> shard_shapes) {
+    DeviceList devices, MemoryKind memory_kind, Shape shape,
+    std::vector<Shape> shard_shapes) {
   CHECK_EQ(devices.size(), shard_shapes.size());
-  return std::unique_ptr<ConcreteSharding>(new ConcreteSharding(
-      std::move(devices), std::move(shape), std::move(shard_shapes)));
+  return std::unique_ptr<ConcreteSharding>(
+      new ConcreteSharding(std::move(devices), memory_kind, std::move(shape),
+                           std::move(shard_shapes)));
 }
 
-ConcreteSharding::ConcreteSharding(DeviceList devices, Shape shape,
-                                   std::vector<Shape> shard_shapes)
-    : llvm::RTTIExtends<ConcreteSharding, Sharding>(std::move(devices)),
+ConcreteSharding::ConcreteSharding(DeviceList devices, MemoryKind memory_kind,
+                                   Shape shape, std::vector<Shape> shard_shapes)
+    : llvm::RTTIExtends<ConcreteSharding, Sharding>(std::move(devices),
+                                                    memory_kind),
       shape_(std::move(shape)),
       shard_shapes_(std::move(shard_shapes)) {}
 
@@ -245,8 +255,8 @@ ConcreteSharding::Disassemble(const Shape& shape) const {
   std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>> result;
   result.reserve(devices_.size());
   for (int i = 0; i < devices_.size(); ++i) {
-    result.push_back(
-        {shard_shapes_[i], SingleDeviceSharding::Create(devices_[i])});
+    result.push_back({shard_shapes_[i],
+                      SingleDeviceSharding::Create(devices_[i], memory_kind_)});
   }
   return result;
 }
@@ -261,7 +271,8 @@ StatusOr<std::vector<IndexDomain>> ConcreteSharding::IndexDomains(
 std::string ConcreteSharding::DebugString() const {
   DCHECK(this);
   return absl::StrFormat(
-      "ConcreteSharding(devices: %s, shape: %s, shard_shapes: %s)",
+      "ConcreteSharding(devices: %s, shape: %s, shard_shapes: %s, memory_kind: "
+      "%s)",
       absl::StrJoin(devices_, ",",
                     [](std::string* out, const Device* device) {
                       absl::StrAppend(out, device->ToString());
@@ -270,18 +281,23 @@ std::string ConcreteSharding::DebugString() const {
       absl::StrJoin(shard_shapes_, ",",
                     [](std::string* out, const Shape& shard_shape) {
                       absl::StrAppend(out, shard_shape.DebugString());
-                    }));
+                    }),
+      memory_kind_.DebugString());
 }
 
 std::unique_ptr<ConcreteEvenSharding> ConcreteEvenSharding::Create(
-    DeviceList devices, Shape shape, Shape shard_shape) {
-  return std::unique_ptr<ConcreteEvenSharding>(new ConcreteEvenSharding(
-      std::move(devices), std::move(shape), std::move(shard_shape)));
+    DeviceList devices, MemoryKind memory_kind, Shape shape,
+    Shape shard_shape) {
+  return std::unique_ptr<ConcreteEvenSharding>(
+      new ConcreteEvenSharding(std::move(devices), memory_kind,
+                               std::move(shape), std::move(shard_shape)));
 }
 
-ConcreteEvenSharding::ConcreteEvenSharding(DeviceList devices, Shape shape,
+ConcreteEvenSharding::ConcreteEvenSharding(DeviceList devices,
+                                           MemoryKind memory_kind, Shape shape,
                                            Shape shard_shape)
-    : llvm::RTTIExtends<ConcreteEvenSharding, Sharding>(std::move(devices)),
+    : llvm::RTTIExtends<ConcreteEvenSharding, Sharding>(std::move(devices),
+                                                        memory_kind),
       shape_(std::move(shape)),
       shard_shape_(std::move(shard_shape)) {}
 
@@ -297,7 +313,8 @@ ConcreteEvenSharding::Disassemble(const Shape& shape) const {
   std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>> result;
   result.reserve(devices_.size());
   for (int i = 0; i < devices_.size(); ++i) {
-    result.push_back({shard_shape_, SingleDeviceSharding::Create(devices_[i])});
+    result.push_back({shard_shape_,
+                      SingleDeviceSharding::Create(devices_[i], memory_kind_)});
   }
   return result;
 }
@@ -312,16 +329,18 @@ StatusOr<std::vector<IndexDomain>> ConcreteEvenSharding::IndexDomains(
 std::string ConcreteEvenSharding::DebugString() const {
   DCHECK(this);
   return absl::StrFormat(
-      "ConcreteEvenSharding(devices: %s, shape: %s, shard_shape: %s)",
+      "ConcreteEvenSharding(devices: %s, shape: %s, shard_shape: %s, "
+      "memory_kind: %s)",
       absl::StrJoin(devices_, ",",
                     [](std::string* out, const Device* device) {
                       absl::StrAppend(out, device->ToString());
                     }),
-      shape_.DebugString(), shard_shape_.DebugString());
+      shape_.DebugString(), shard_shape_.DebugString(),
+      memory_kind_.DebugString());
 }
 
 StatusOr<std::unique_ptr<ShardingParamSharding>> ShardingParamSharding::Create(
-    ShardingParam sharding_param, DeviceList devices) {
+    ShardingParam sharding_param, DeviceList devices, MemoryKind memory_kind) {
   int64_t device_count =
       absl::c_accumulate(sharding_param.minor_to_major().axis_sizes, 1,
                          std::multiplies<int64_t>());
@@ -331,8 +350,8 @@ StatusOr<std::unique_ptr<ShardingParamSharding>> ShardingParamSharding::Create(
         "%d",
         device_count, devices.size());
   }
-  return std::unique_ptr<ShardingParamSharding>(
-      new ShardingParamSharding(std::move(sharding_param), std::move(devices)));
+  return std::unique_ptr<ShardingParamSharding>(new ShardingParamSharding(
+      std::move(sharding_param), std::move(devices), memory_kind));
 }
 
 StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
@@ -349,7 +368,8 @@ ShardingParamSharding::Disassemble(const Shape& shape) const {
 
   std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>> result;
   for (Device* device : devices_) {
-    result.push_back({local_shape, SingleDeviceSharding::Create(device)});
+    result.push_back(
+        {local_shape, SingleDeviceSharding::Create(device, memory_kind_)});
   }
 
   return result;
@@ -363,7 +383,7 @@ StatusOr<std::vector<IndexDomain>> ShardingParamSharding::IndexDomains(
   TF_ASSIGN_OR_RETURN(Shape local_shape,
                       GetDisassembledShape(sharding_param_, shape));
   std::vector<Index> tile_indices =
-      GetTileIndicies(sharding_param_.dim_shards());
+      GetTileIndices(sharding_param_.dim_shards());
   std::vector<Index> origins;
   origins.reserve(tile_indices.size());
   for (const Index& tile_index : tile_indices) {
@@ -397,10 +417,13 @@ StatusOr<std::vector<IndexDomain>> ShardingParamSharding::IndexDomains(
 std::string ShardingParamSharding::DebugString() const {
   DCHECK(this);
   return absl::StrFormat(
-      "ShardingParamSharding(%s, devices: %s)", sharding_param_.DebugString(),
-      absl::StrJoin(devices_, ",", [](std::string* out, const Device* device) {
-        absl::StrAppend(out, device->ToString());
-      }));
+      "ShardingParamSharding(%s, devices: %s, memory_kind: %s)",
+      sharding_param_.DebugString(),
+      absl::StrJoin(devices_, ",",
+                    [](std::string* out, const Device* device) {
+                      absl::StrAppend(out, device->ToString());
+                    }),
+      memory_kind_.DebugString());
 }
 
 }  // namespace ifrt

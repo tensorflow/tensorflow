@@ -17,7 +17,7 @@
 import dataclasses
 import traceback
 import typing
-from typing import Any, Dict, List, Sequence, Optional, Union
+from typing import Any, Dict, List, Optional, Sequence, Union
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
@@ -39,6 +39,7 @@ from tensorflow.python.ops import handle_data_util
 from tensorflow.python.types import core
 from tensorflow.python.util import compat
 from tensorflow.python.util import function_utils
+from tensorflow.python.util import tf_stack
 
 
 # TODO(fmuham): Should be lowered to FunctionDef/FunctionRecord.
@@ -635,24 +636,17 @@ class InterpolateRuntimeError(object):
   def interpolate(self, message, node_names, graph_debug_info):
     """Uses the GraphDebugInfo to generate an error message."""
     error_message = ["Graph execution error:", ""]
+    traces = tf_stack.LoadTracesFromDebugInfo(graph_debug_info)
+
     for node_name in node_names:
       error_message.append(
           f"Detected at node {node_name} defined at (most recent call last):"
       )
-      if node_name in graph_debug_info.traces:
-        stack_trace = graph_debug_info.traces[node_name]
-        tb_frames = []
-        for frame in stack_trace.file_line_cols:
-          tb_frames.append(
-              traceback.FrameSummary(
-                  graph_debug_info.files[frame.file_index],
-                  frame.line,
-                  frame.func,
-              )
-          )
-          for formatted_frame in traceback.format_list(tb_frames):
-            if not any(p in formatted_frame for p in self.DENY_LIST_PHRASES):
-              error_message.append(formatted_frame)
+      if node_name in traces:
+        stack_trace = traces[node_name]
+        for formatted_frame in traceback.format_list(stack_trace):
+          if not any(p in formatted_frame for p in self.DENY_LIST_PHRASES):
+            error_message.append(formatted_frame)
       else:
         error_message.append("<stack traces unavailable>")
 

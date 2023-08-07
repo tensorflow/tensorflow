@@ -72,7 +72,7 @@ IfrtIrExecutableImplTestBase::CreateArray(
       << " vs device_list " << device_list.devices().size();
   TF_ASSIGN_OR_RETURN(
       std::shared_ptr<const Sharding> sharding,
-      ShardingParamSharding::Create(sharding_param, device_list));
+      ShardingParamSharding::Create(sharding_param, device_list, MemoryKind()));
   TF_ASSIGN_OR_RETURN(auto per_shard, sharding->Disassemble(shape));
   // All shards have the same shape. Just pick 0.
   Shape per_shard_shape = per_shard[0].first;
@@ -84,7 +84,7 @@ IfrtIrExecutableImplTestBase::CreateArray(
         client_->MakeArrayFromHostBuffer(
             per_shard_data[i], dtype, per_shard_shape,
             /*byte_strides=*/std::nullopt,
-            SingleDeviceSharding::Create(device_list[i]),
+            SingleDeviceSharding::Create(device_list[i], MemoryKind()),
             Client::HostBufferSemantics::kImmutableOnlyDuringCall,
             /*on_done_with_host_buffer=*/nullptr));
     per_shard_arrays.push_back(per_shard_array);

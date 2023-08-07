@@ -47,13 +47,6 @@ bool IsMatrixMultiplication(const HloInstruction& dot);
 
 inline constexpr int64_t WarpSize() { return 32; }
 
-// Need at least 1024 threads/block for reasonable tree reduction
-// performance (assuming all data fits).
-int64_t MinThreadsXRowReduction(const HloModuleConfig& hlo_module_config);
-
-// When doing batched row reduction, how big the batch dimension could be.
-inline constexpr int64_t BatchedReductionRaceFreeBound() { return 8; }
-
 // Fusions that use Triton have FusionBackendConfig.kind equal to this string.
 inline constexpr absl::string_view kTritonGemmFusionKind = "__triton_gemm";
 
@@ -78,39 +71,11 @@ bool IsCustomCallToCusolver(const HloInstruction& hlo);
 // is a success/failure code per batch element.
 extern const char* const kCusolverCholeskyCallTarget;
 
-// Returns true if either the dimensions being reduced or the dimensions being
-// kept are contiguous in the input of the reduce instruction.
-bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce);
-
 // Returns whether unnested_hlo is an input fusion whose root is either a slice
 // or a tuple of slices. If verify_no_strides is true, returns false unless all
 // ROOT slices have no strides.
 bool IsInputFusibleSlices(mlir::Operation* unnested_hlo,
                           bool verify_no_strides);
-
-struct ReductionDimensions {
-  // Indicates whether the reduction is a row reduction or a column reduction.
-  bool is_row_reduction;
-
-  // Contains the size of the three contiguous components for
-  // the reduction [depth, height, width] (major-to-minor ordering).
-  //
-  // For row reduction, we do: [D, H, W] -> [D, H].
-  // For column reduction, we do: [D, H, W] -> [D, W].
-  Vector3 dimensions;
-};
-
-// Given the input shape and dimensions to reduce for a reduction, returns
-// ReductionDimensions.
-//
-// Prerequisite: the reduction instruction passes the check
-// IsReductionFromOrToContiguousDimensions, which guarantees either the
-// dimensions to reduce or the dimensions to keep are consecutive.
-ReductionDimensions GetReductionKindAndContiguousComponents(
-    const HloInstruction& reduce);
-
-// Get tiling per thread for the given reduction in dimensions [D, H, W].
-Vector3 GetReductionTiling(const ReductionDimensions& reduction_dimensions);
 
 // Emits call to "vprintf" with given format and arguments.
 llvm::Value* EmitPrintf(absl::string_view fmt,
@@ -171,12 +136,7 @@ GetOutputDefiningDynamicUpdateSliceOps(mlir::lmhlo::FusionOp fusion);
 
 Shape GetShape(mlir::Value value);
 
-// Returns whether the given reduction can be safely generated without atomics:
-// that is, at most one block will write to every output element.
-bool ReductionIsRaceFree(const HloModuleConfig& hlo_module_config,
-                         const ReductionDimensions& reduction_dimensions);
-
-// Description of how to emit a given transposition.
+/// Description of how to emit a given transposition.
 //
 // On a group of input parameters that are 0-2-1 transpose of the outputs
 // of a fusion kernel, stores the input parameters that are safe for the
@@ -204,39 +164,7 @@ struct TransposeDimsAndParams {
   }
 };
 
-// Returns instructions which are roots of the fusion, following the operands of
-// GTE instructions in the root tuple. Groups multiple subsequent instructions
-// with the same root. CHECKs that the fusion never outputs the same instruction
-// twice, as well as that there are no explicitly created tuples or nested gtes
-// in fusion output.
-//
-// For input: (tuple (gte R1) (gte R1) O2)
-// Expected output: [R1, O2]
-//
-// For input: (tuple R1 R2 O2)
-// Expected output: [R1, R2, O2]
-//
-// For input: (tuple (gte R1) (gte R1) R2 O3)
-// Expected output: [R1, R2, O3]
-//
-// For input: R1
-// Expected output: [R1]
-std::vector<HloInstruction*> GetFusionRoots(HloComputation* computation);
-
-// Returns whether the computation has at least one root triggering unnested
-// reduction emitter.
-bool HasAnyUnnestedReductionRoot(HloComputation* computation);
-
-// Returns the hero reduction of the computation.
-// We always use the first reduce root that triggers unnested reduction emitter
-// as the hero reduction, since all the reductions are required to have the same
-// shape and layout as verified by `IsFusedReductionOutputConsistent()`.
-HloInstruction* FindHeroReduction(absl::Span<HloInstruction*> roots);
-
 const HloInstruction& FindNonTrivialHero(const HloInstruction& instr);
-
-// Whether there is a fusion root triggering transposition emitter.
-bool HasAnyTiledTransposeRoot(HloComputation* computation);
 
 struct TransposeDescription {
   Vector3 dimensions;

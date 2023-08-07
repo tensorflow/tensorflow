@@ -9,6 +9,7 @@ func.func @main(%arg0: memref<12xi8>) {
 }
 
 // CHECK-LABEL: func @main(
+// CHECK:   %[[CTX:.*]]: !xla_gpu.execution_context,
 // CHECK:   %[[ARG0:.*]]: tensor<12xi8>
 // CHECK: ) {
 // CHECK:   %[[C0:.*]] = arith.constant 0 : index
@@ -35,6 +36,7 @@ func.func @main(%arg0: memref<12xi8>) {
 }
 
 // CHECK-LABEL: func @main(
+// CHECK:   %[[CTX:.*]]: !xla_gpu.execution_context,
 // CHECK:   %[[ARG0:.*]]: tensor<12xi8>
 // CHECK: ) {
 // CHECK:   %[[C8:.*]] = arith.constant 8 : index
@@ -65,6 +67,7 @@ func.func @main(%arg0: memref<8xi8> {lmhlo.constant_name = "cst"}) {
 // with an argument itself.
 
 // CHECK-LABEL: func @main(
+// CHECK:   %[[CTX:.*]]: !xla_gpu.execution_context,
 // CHECK:   %[[ARG0:.*]]: tensor<8xi8>
 // CHECK: ) {
 // CHECK:   %[[BUF:.*]] = iree_input.tensor.export %[[ARG0]]
@@ -92,6 +95,7 @@ func.func @main(%arg0: memref<66560xi8>) {
 // either the buffer view itself, or as a separate metadata object.
 
 // CHECK-LABEL: func @main(
+// CHECK:   %[[CTX:.*]]: !xla_gpu.execution_context,
 // CHECK:   %[[ARG0:.*]]: tensor<66560xi8>
 // CHECK: ) {
 // CHECK:   %[[C0:.*]] = arith.constant 0 : index

@@ -2376,8 +2376,13 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       if alias == 'conv_func':
         for func in meta_graph_def.graph_def.library.function:
           if func.signature.name == func_name:
-            self._contains_op_with_name_and_attribute(
-                func.node_def, op_name='XlaConvV2', attr_name='', attr_val=None
+            self.assertTrue(
+                self._contains_op_with_name_and_attribute(
+                    func.node_def,
+                    op_name='XlaConvV2',
+                    attr_name='',
+                    attr_val=None,
+                )
             )
 
   @test_util.run_in_graph_and_eager_modes
@@ -2438,8 +2443,13 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       if alias == 'einsum_with_kernel':
         for func in meta_graph_def.graph_def.library.function:
           if func.signature.name == func_name:
-            self._contains_op_with_name_and_attribute(
-                func.node_def, op_name='XlaDotV2', attr_name='', attr_val=None
+            self.assertTrue(
+                self._contains_op_with_name_and_attribute(
+                    func.node_def,
+                    op_name='XlaDotV2',
+                    attr_name='',
+                    attr_val=None,
+                )
             )
 
   def test_matmul_ptq_model_with_unfreeze_constants(self):
@@ -4530,7 +4540,8 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     # StatusNotOk error. `Exception` is used here because importing
     # `StatusNotOk` may break the open-sourced version of TensorFlow.
     with self.assertRaisesRegex(
-        Exception, 'Failed to import SavedModel'
+        Exception,
+        'could not be found in SavedModel, with available tags',
     ) as raises:
       quantize_model.quantize(
           self._input_saved_model_path,
@@ -4541,7 +4552,7 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           representative_dataset=data_gen,
       )
 
-    self.assertEqual(raises.exception.__class__.__name__, 'StatusNotOk')
+    self.assertEqual(raises.exception.__class__.__name__, 'RuntimeError')
 
   @parameterized.named_parameters(
       ('quantize', True, 0),
@@ -5284,6 +5295,67 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertSizeRatioLessThan(
         self._output_saved_model_path, self._input_saved_model_path, 1 / 3
     )
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_function_alias_preserved(self):
+    # Prepare test model
+    function_alias = 'conv_func'
+    tags = {tag_constants.SERVING}
+    input_type, filter_shape = dtypes.int64, (2, 3, 3, 2)
+    model = self._create_simple_gather_and_conv_model(input_type, filter_shape)
+    save_opts = save_options.SaveOptions(
+        function_aliases={function_alias: model.model}
+    )
+    signatures = {
+        'serving_default': model.model.get_concrete_function(),
+    }
+    saved_model_save.save(
+        model, self._input_saved_model_path, signatures, save_opts
+    )
+
+    # Quantize the model
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=quant_opts_pb2.QuantizationMethod.ExperimentalMethod.WEIGHT_ONLY
+        ),
+        op_set=quant_opts_pb2.XLA,
+        min_num_elements_for_weights=1,
+    )
+
+    converted_model = quantize_model.quantize(
+        self._input_saved_model_path,
+        ['serving_default'],
+        tags,
+        self._output_saved_model_path,
+        quantization_options,
+    )
+    self.assertIsNotNone(converted_model)
+    self.assertCountEqual(
+        converted_model.signatures._signatures.keys(), {'serving_default'}
+    )
+
+    # Check if function alias is preserved
+    output_loader = saved_model_loader.SavedModelLoader(
+        self._output_saved_model_path
+    )
+    meta_graph_def = output_loader.get_meta_graph_def_from_tags(tags)
+    function_aliases = meta_graph_def.meta_info_def.function_aliases
+    self.assertNotEmpty(function_aliases)
+    self.assertCountEqual(function_aliases.values(), {function_alias})
+
+    # Test that the aliased function contains a quantized op.
+    for func_name, alias in function_aliases.items():
+      if alias == function_alias:
+        for func in meta_graph_def.graph_def.library.function:
+          if func.signature.name == func_name:
+            self.assertTrue(
+                self._contains_op_with_name_and_attribute(
+                    func.node_def,
+                    op_name='Const',
+                    attr_name='dtype',
+                    attr_val=attr_value_pb2.AttrValue(type=types_pb2.DT_INT8),
+                )
+            )
 
 
 if __name__ == '__main__':

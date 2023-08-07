@@ -430,10 +430,13 @@ class Layout {
 
   const std::string& sharding_spec(int idx) const;
 
+  // Similar to IsEquivalentIgnoringType, but also verifies the layout type are
+  // equal.
+  bool IsEquivalent(const Layout& b) const;
   // Two layouts are equivalent if they would result in the same sharding for
   // the tensor. E.g. if one is unsharded and the other is sharded on a mesh
   // dimension of size 1.
-  bool IsEquivalent(const Layout& b) const;
+  bool IsEquivalentIgnoringType(const Layout& b) const;
   // Uses proto to compare the equality. If any conversion to proto fails,
   // returns false.
   bool operator==(const Layout& b) const;

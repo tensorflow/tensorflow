@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_compiler.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
@@ -37,7 +38,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/tools/hlo_control_flow_flattening.h"
 #include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
@@ -743,6 +743,24 @@ StatusOr<std::unique_ptr<PjRtLoadedExecutable>> FunctionalHloRunner::Compile(
   VLOG(1) << "FunctionalHloRunner: compilation started.";
   TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> executable,
                       client.Compile(computation, modified_compile_options));
+  VLOG(1) << "FunctionalHloRunner: compile succeeded.";
+  return executable;
+}
+
+StatusOr<std::unique_ptr<PjRtExecutable>> FunctionalHloRunner::Compile(
+    PjRtClient& client, HloModule* hlo_module,
+    const PreprocessingOptions& preproc_options,
+    const CompileOptions& compile_options,
+    const PjRtTopologyDescription& topology) {
+  TF_RETURN_IF_ERROR(
+      PrepareHloModuleForCompilation(hlo_module, preproc_options));
+  CompileOptions modified_compile_options =
+      CompleteCompileOptions(*hlo_module, compile_options);
+  XlaComputation computation(hlo_module->ToProto());
+  VLOG(1) << "FunctionalHloRunner: compilation started.";
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<PjRtExecutable> executable,
+      PjRtCompile(modified_compile_options, computation, topology, &client));
   VLOG(1) << "FunctionalHloRunner: compile succeeded.";
   return executable;
 }

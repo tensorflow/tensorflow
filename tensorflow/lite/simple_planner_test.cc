@@ -46,7 +46,7 @@ class TestOp {
   std::vector<int> inputs_;
   std::vector<int> outputs_;
   std::vector<int> temporaries_;
-  TfLiteRegistration registration_;
+  TfLiteRegistration registration_{};
 };
 
 // A test graph where inputs are processed by the given nodes to produce

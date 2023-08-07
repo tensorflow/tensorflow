@@ -111,8 +111,11 @@ namespace mn = ::mlir::NVVM;
 namespace mt = ::mlir::triton;
 
 using ::llvm::SmallVector;
+using mlir::ArrayRef;
+using mlir::ImplicitLocOpBuilder;
 using ::mlir::Type;
 using ::mlir::Value;
+using mlir::ValueRange;
 
 namespace {
 
@@ -144,7 +147,7 @@ Type TritonType(mlir::OpBuilder b, PrimitiveType t) {
 }
 
 // Triton type conversions.
-Value Cast(mlir::ImplicitLocOpBuilder& b, Value value, Type dst_element_ty) {
+Value Cast(ImplicitLocOpBuilder& b, Value value, Type dst_element_ty) {
   Type src_ty = value.getType();
   Type src_element_ty = src_ty;
   Type fp32_ty = b.getF32Type();
@@ -233,7 +236,7 @@ T ScalarConstantValue(const HloInstruction& instr) {
 
 // Create a scalar constant.
 template <typename T>
-ma::ConstantOp CreateConst(mlir::ImplicitLocOpBuilder b, Type type, T value) {
+ma::ConstantOp CreateConst(ImplicitLocOpBuilder b, Type type, T value) {
   if (type.isa<mlir::IntegerType>()) {
     return b.create<ma::ConstantOp>(b.getIntegerAttr(type, value));
   }
@@ -246,8 +249,8 @@ ma::ConstantOp CreateConst(mlir::ImplicitLocOpBuilder b, Type type, T value) {
 
 // Create a tensor constant.
 template <typename T>
-ma::ConstantOp CreateConst(mlir::ImplicitLocOpBuilder& b, Type type, T value,
-                           mlir::ArrayRef<int64_t> shape) {
+ma::ConstantOp CreateConst(ImplicitLocOpBuilder& b, Type type, T value,
+                           ArrayRef<int64_t> shape) {
   auto tensor_type = mlir::RankedTensorType::get(shape, type);
   if (auto int_type = type.dyn_cast<mlir::IntegerType>()) {
     return b.create<ma::ConstantOp>(mlir::DenseElementsAttr::get(
@@ -260,7 +263,7 @@ ma::ConstantOp CreateConst(mlir::ImplicitLocOpBuilder& b, Type type, T value,
   LOG(FATAL) << "Constant type not supported: " << llvm_ir::DumpToString(type);
 }
 
-Value Subtract(mlir::ImplicitLocOpBuilder& b, mlir::ValueRange values) {
+Value Subtract(ImplicitLocOpBuilder& b, ValueRange values) {
   if (ElementType(values[0]).isa<mlir::IntegerType>()) {
     return b.create<ma::SubIOp>(values[0], values[1]);
   } else {
@@ -268,7 +271,7 @@ Value Subtract(mlir::ImplicitLocOpBuilder& b, mlir::ValueRange values) {
   }
 }
 
-Value Compare(mlir::ImplicitLocOpBuilder& b, mlir::ValueRange values,
+Value Compare(ImplicitLocOpBuilder& b, ValueRange values,
               ComparisonDirection direction) {
   if (ElementType(values[0]).isa<mlir::IntegerType>()) {
     return b.create<ma::CmpIOp>(
@@ -290,17 +293,17 @@ Value Compare(mlir::ImplicitLocOpBuilder& b, mlir::ValueRange values,
       values[0], values[1]);
 }
 
-Value Maximum(mlir::ImplicitLocOpBuilder& b, mlir::ValueRange values) {
+Value Maximum(ImplicitLocOpBuilder& b, ValueRange values) {
   auto cmp = Compare(b, values, ComparisonDirection::kGt);
   return b.create<ma::SelectOp>(cmp, values[0], values[1]);
 }
 
-Value Minimum(mlir::ImplicitLocOpBuilder& b, mlir::ValueRange values) {
+Value Minimum(ImplicitLocOpBuilder& b, ValueRange values) {
   auto cmp = Compare(b, values, ComparisonDirection::kLt);
   return b.create<ma::SelectOp>(cmp, values[0], values[1]);
 }
 
-Value ZerosLike(mlir::ImplicitLocOpBuilder& b, Value x) {
+Value ZerosLike(ImplicitLocOpBuilder& b, Value x) {
   if (auto src_shaped_ty = x.getType().dyn_cast<mlir::ShapedType>()) {
     Type src_ty = src_shaped_ty.getElementType();
     return CreateConst(b, src_ty, 0, src_shaped_ty.getShape());
@@ -308,7 +311,7 @@ Value ZerosLike(mlir::ImplicitLocOpBuilder& b, Value x) {
   return CreateConst(b, x.getType(), 0);
 }
 
-Value OnesLike(mlir::ImplicitLocOpBuilder& b, Value x) {
+Value OnesLike(ImplicitLocOpBuilder& b, Value x) {
   if (auto src_shaped_ty = x.getType().dyn_cast<mlir::ShapedType>()) {
     Type src_ty = src_shaped_ty.getElementType();
     return CreateConst(b, src_ty, 1, src_shaped_ty.getShape());
@@ -318,33 +321,31 @@ Value OnesLike(mlir::ImplicitLocOpBuilder& b, Value x) {
 
 // TODO(b/269489810): Contribute nicer builders to Triton, so we don't need to
 // define these utilities.
-Value Splat(mlir::ImplicitLocOpBuilder& b, Value value,
-            mlir::ArrayRef<int64_t> shape) {
+Value Splat(ImplicitLocOpBuilder& b, Value value, ArrayRef<int64_t> shape) {
   auto type = mlir::RankedTensorType::get(shape, value.getType());
   return b.create<mt::SplatOp>(type, value);
 }
 
 using TensorValue = mlir::TypedValue<mlir::RankedTensorType>;
 
-Value Broadcast(mlir::ImplicitLocOpBuilder& b, TensorValue value,
-                mlir::ArrayRef<int64_t> shape) {
+Value Broadcast(ImplicitLocOpBuilder& b, TensorValue value,
+                ArrayRef<int64_t> shape) {
   auto type =
       mlir::RankedTensorType::get(shape, value.getType().getElementType());
   return b.create<mt::BroadcastOp>(type, value);
 }
 
-Value Range(mlir::ImplicitLocOpBuilder& b, int32_t limit) {
+Value Range(ImplicitLocOpBuilder& b, int32_t limit) {
   auto type = mlir::RankedTensorType::get(limit, b.getI32Type());
   return b.create<mt::MakeRangeOp>(type, 0, limit);
 }
 
-Value AddPtr(mlir::ImplicitLocOpBuilder& b, Value ptr, Value offset) {
+Value AddPtr(ImplicitLocOpBuilder& b, Value ptr, Value offset) {
   return b.create<mt::AddPtrOp>(ptr.getType(), ptr, offset);
 }
 
-Value EmitElementwise(mlir::ImplicitLocOpBuilder& b,
-                      absl::string_view libdevice_path,
-                      const HloInstruction& hlo, mlir::ValueRange inputs) {
+Value EmitElementwise(ImplicitLocOpBuilder& b, absl::string_view libdevice_path,
+                      const HloInstruction& hlo, ValueRange inputs) {
   if (ElementType(inputs[0]).isF32() || ElementType(inputs[0]).isF64()) {
     auto dev_fn_id = GetTargetDeviceFunctionID(hlo.opcode());
     if (dev_fn_id.ok()) {
@@ -413,8 +414,8 @@ Value EmitElementwise(mlir::ImplicitLocOpBuilder& b,
   }
 }
 
-Value EmitParameterLoad(mlir::ImplicitLocOpBuilder& b, Value tensor_pointer,
-                        mlir::ArrayRef<int32_t> boundary_checks) {
+Value EmitParameterLoad(ImplicitLocOpBuilder& b, Value tensor_pointer,
+                        ArrayRef<int32_t> boundary_checks) {
   std::optional<mt::PaddingOption> padding;
   if (!boundary_checks.empty()) {
     padding = mt::PaddingOption::PAD_ZERO;
@@ -425,8 +426,7 @@ Value EmitParameterLoad(mlir::ImplicitLocOpBuilder& b, Value tensor_pointer,
                               /*isVolatile=*/false);
 }
 
-Value EmitConstant(mlir::ImplicitLocOpBuilder& b,
-                   const HloInstruction& constant) {
+Value EmitConstant(ImplicitLocOpBuilder& b, const HloInstruction& constant) {
   Type ty = TritonType(b, constant.shape().element_type());
   if (constant.shape().IsInteger()) {
     if (constant.shape().element_type() == U64) {
@@ -438,9 +438,8 @@ Value EmitConstant(mlir::ImplicitLocOpBuilder& b,
   return CreateConst(b, ty, ScalarConstantValue<double>(constant));
 }
 
-Value EmitBroadcast(mlir::ImplicitLocOpBuilder& b,
-                    const HloInstruction& broadcast, Value input,
-                    mlir::ArrayRef<int64_t> tile_shape) {
+Value EmitBroadcast(ImplicitLocOpBuilder& b, const HloInstruction& broadcast,
+                    Value input, ArrayRef<int64_t> tile_shape) {
   if (!input.dyn_cast<TensorValue>()) {
     return Splat(b, input, tile_shape);
   }
@@ -451,12 +450,12 @@ Value EmitBroadcast(mlir::ImplicitLocOpBuilder& b,
 }
 
 StatusOr<Value> EmitScope(
-    mlir::ImplicitLocOpBuilder& b, absl::string_view libdevice_path,
+    ImplicitLocOpBuilder& b, absl::string_view libdevice_path,
     absl::Span<const HloInstruction* const> instructions,
     absl::flat_hash_map<const HloInstruction*, Value>& values,
-    mlir::ArrayRef<int64_t> tile_shape, Value tile_mask);
+    ArrayRef<int64_t> tile_shape, Value tile_mask);
 
-StatusOr<Value> EmitReduce(mlir::ImplicitLocOpBuilder& b,
+StatusOr<Value> EmitReduce(ImplicitLocOpBuilder& b,
                            const HloInstruction& hlo_reduce,
                            absl::string_view libdevice_path, Value input,
                            Value tile_mask) {
@@ -534,10 +533,10 @@ StatusOr<Value> EmitReduce(mlir::ImplicitLocOpBuilder& b,
 // Emit sequence of instructions using compatible tiling ordered producers
 // before consumers.
 StatusOr<Value> EmitScope(
-    mlir::ImplicitLocOpBuilder& b, absl::string_view libdevice_path,
+    ImplicitLocOpBuilder& b, absl::string_view libdevice_path,
     absl::Span<const HloInstruction* const> instructions,
     absl::flat_hash_map<const HloInstruction*, Value>& values,
-    mlir::ArrayRef<int64_t> tile_shape, Value tile_mask) {
+    ArrayRef<int64_t> tile_shape, Value tile_mask) {
   for (const HloInstruction* hlo : instructions) {
     Value result;
     if (hlo->opcode() == HloOpcode::kParameter) {
@@ -709,7 +708,7 @@ StatusOr<LaunchDimensions> MatMulImpl(
   // implicit loc builder so we don't have to pass around the location all the
   // time.
   auto loc = mlir::NameLoc::get(builder.getStringAttr(dot_instr->name()));
-  mlir::ImplicitLocOpBuilder b(loc, builder);
+  ImplicitLocOpBuilder b(loc, builder);
   Type i32_ty = b.getI32Type();
   Type i64_ty = b.getI64Type();
   Type int_ty;
@@ -967,7 +966,7 @@ StatusOr<LaunchDimensions> MatMulImpl(
   absl::flat_hash_map<int, const HloInstruction*> iter_args_to_parameters;
 
   auto body_builder = [&](mlir::OpBuilder&, mlir::Location, Value ki,
-                          mlir::ValueRange iter_args) {
+                          ValueRange iter_args) {
     SmallVector<Value> iter_args_next;
     iter_args_next.reserve(iter_args.size());
     absl::flat_hash_map<const HloInstruction*, Value> values_lhs;
@@ -988,8 +987,8 @@ StatusOr<LaunchDimensions> MatMulImpl(
                 .second);
       iter_args_next.push_back(b.create<mt::AdvanceOp>(
           iter_args[i].getType(), iter_args[i],
-          mlir::ValueRange{CreateConst(b, i32_ty, increment_dim0),
-                           CreateConst(b, i32_ty, increment_dim1)}));
+          ValueRange{CreateConst(b, i32_ty, increment_dim0),
+                     CreateConst(b, i32_ty, increment_dim1)}));
     }
 
     // TODO(b/269726484): Peel the loop instead of inserting a masked load in
@@ -1086,11 +1085,11 @@ StatusOr<LaunchDimensions> MatMulImpl(
     Value ptrs = b.create<mt::MakeTensorPtrOp>(
         /*base=*/AddPtr(b, base, lhs_offset_batch),
         /*shape=*/
-        mlir::ValueRange{CreateConst(b, i64_ty, m), CreateConst(b, i64_ty, k)},
+        ValueRange{CreateConst(b, i64_ty, m), CreateConst(b, i64_ty, k)},
         /*strides=*/
-        mlir::ValueRange{CreateConst(b, i64_ty, stride_lhs_m),
-                         CreateConst(b, i64_ty, stride_lhs_k)},
-        /*offsets=*/mlir::ValueRange{pid_m_offset, pid_k_offset},
+        ValueRange{CreateConst(b, i64_ty, stride_lhs_m),
+                   CreateConst(b, i64_ty, stride_lhs_k)},
+        /*offsets=*/ValueRange{pid_m_offset, pid_k_offset},
         /*tensorShape=*/std::vector<int32_t>{block_m, block_k},
         /*order=*/std::vector<int32_t>{1, 0});
     CHECK(iter_args_to_parameters.insert({iter_args.size(), parameter}).second)
@@ -1118,11 +1117,11 @@ StatusOr<LaunchDimensions> MatMulImpl(
     Value ptrs = b.create<mt::MakeTensorPtrOp>(
         /*base=*/AddPtr(b, base, rhs_offset_batch),
         /*shape=*/
-        mlir::ValueRange{CreateConst(b, i64_ty, k), CreateConst(b, i64_ty, n)},
+        ValueRange{CreateConst(b, i64_ty, k), CreateConst(b, i64_ty, n)},
         /*strides=*/
-        mlir::ValueRange{CreateConst(b, i64_ty, stride_rhs_k),
-                         CreateConst(b, i64_ty, stride_rhs_n)},
-        /*offsets=*/mlir::ValueRange{pid_k_offset, pid_n_offset},
+        ValueRange{CreateConst(b, i64_ty, stride_rhs_k),
+                   CreateConst(b, i64_ty, stride_rhs_n)},
+        /*offsets=*/ValueRange{pid_k_offset, pid_n_offset},
         /*tensorShape=*/std::vector<int32_t>{block_k, block_n},
         /*order=*/std::vector<int32_t>{1, 0});
     CHECK(iter_args_to_parameters.insert({iter_args.size(), parameter}).second)
@@ -1209,11 +1208,11 @@ StatusOr<LaunchDimensions> MatMulImpl(
     return b.create<mt::MakeTensorPtrOp>(
         /*base=*/base,
         /*shape=*/
-        mlir::ValueRange{CreateConst(b, i64_ty, m), CreateConst(b, i64_ty, n)},
+        ValueRange{CreateConst(b, i64_ty, m), CreateConst(b, i64_ty, n)},
         /*strides=*/
-        mlir::ValueRange{CreateConst(b, i64_ty, stride_m),
-                         CreateConst(b, i64_ty, stride_n)},
-        /*offsets=*/mlir::ValueRange{pid_m_offset, pid_n_offset},
+        ValueRange{CreateConst(b, i64_ty, stride_m),
+                   CreateConst(b, i64_ty, stride_n)},
+        /*offsets=*/ValueRange{pid_m_offset, pid_n_offset},
         /*tensorShape=*/std::vector<int32_t>{block_m, block_n},
         /*order=*/std::vector<int32_t>{1, 0});
   };
@@ -1312,7 +1311,7 @@ StatusOr<LaunchDimensions> SoftMax(mlir::OpBuilder builder,
                                    int) {
   const HloInstruction* root = computation->root_instruction();
   auto loc = mlir::NameLoc::get(builder.getStringAttr(root->name()));
-  mlir::ImplicitLocOpBuilder b(loc, builder);
+  ImplicitLocOpBuilder b(loc, builder);
 
   // Assumptions we make about the matcher:
   //   * matches Softmax "diamonds" on the last axis, along with any number of
@@ -1359,9 +1358,9 @@ StatusOr<LaunchDimensions> SoftMax(mlir::OpBuilder builder,
     Value offset = b.create<ma::MulIOp>(row_index, row_stride);
     return b.create<mt::MakeTensorPtrOp>(
         /*base=*/AddPtr(b, base, offset),
-        /*shape=*/mlir::ValueRange{CreateConst(b, b.getI64Type(), row_len)},
-        /*strides=*/mlir::ValueRange{CreateConst(b, b.getI64Type(), 1)},
-        /*offsets=*/mlir::ValueRange{CreateConst(b, b.getI32Type(), 0)},
+        /*shape=*/ValueRange{CreateConst(b, b.getI64Type(), row_len)},
+        /*strides=*/ValueRange{CreateConst(b, b.getI64Type(), 1)},
+        /*offsets=*/ValueRange{CreateConst(b, b.getI32Type(), 0)},
         /*tensorShape=*/std::vector<int32_t>{block_row},
         /*order=*/std::vector<int32_t>{0});
   };

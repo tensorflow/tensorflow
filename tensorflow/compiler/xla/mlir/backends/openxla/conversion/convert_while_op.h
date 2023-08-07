@@ -16,8 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_MLIR_BACKENDS_OPENXLA_CONVERSION_CONVERT_WHILE_OP_H_
 #define TENSORFLOW_COMPILER_XLA_MLIR_BACKENDS_OPENXLA_CONVERSION_CONVERT_WHILE_OP_H_
 
-#include <memory>
-
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/backends/openxla/conversion/de_bufferization.h"
@@ -28,7 +26,7 @@ namespace gpu {
 // Appends patterns to convert while loops to scf.while operations.
 void populateWhileOpConversionPatterns(mlir::RewritePatternSet &patterns,
                                        mlir::TypeConverter &converter,
-                                       std::shared_ptr<DeBufferization> state);
+                                       DeBufferization &state);
 
 }  // namespace gpu
 }  // namespace xla

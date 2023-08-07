@@ -29,6 +29,10 @@ inline constexpr llvm::StringLiteral kIfrtFunctionAttrName = "ifrt.function";
 // Must be used in a FuncOp with `ifrt.function` attr.
 inline constexpr llvm::StringLiteral kIfrtDonatedArgAttrName = "ifrt.donated";
 
+// Name of UnitAttr on CallOp used to indicate that the atom program is
+// in "local" view (i.e., already sharded).
+inline constexpr llvm::StringLiteral kIfrtLocalViewAttrName = "ifrt.local_view";
+
 }  // namespace ifrt
 }  // namespace xla
 

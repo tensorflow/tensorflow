@@ -514,9 +514,11 @@ TEST_F(PjRtExecutionUtilTest, PopulateCtxOutputsResourceUpdates) {
 }
 
 TEST(XlaLaunchUtilTest, GetPjRtExecuteOptions) {
-  xla::ExecuteOptions options = GetPjRtExecuteOptions({});
+  xla::ExecuteOptions options =
+      GetPjRtExecuteOptions(DeviceType(DEVICE_GPU), {});
   EXPECT_FALSE(options.arguments_are_tupled);
   EXPECT_TRUE(options.untuple_result);
+  EXPECT_FALSE(options.strict_shape_checking);
   EXPECT_TRUE(options.use_major_to_minor_data_layout_for_callbacks);
 }
 

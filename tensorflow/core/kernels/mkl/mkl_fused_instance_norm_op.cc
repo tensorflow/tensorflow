@@ -80,7 +80,7 @@ class MklFusedInstanceNormOp : public OpKernel {
       std::shared_ptr<stream> engine_stream_ptr;
       engine_stream_ptr.reset(CreateStream(&eigen_tp, cpu_engine_));
 
-      const int batch_size = src_tensor.shape().dim_size(0);
+      const int64_t batch_size = src_tensor.shape().dim_size(0);
       const int64_t elems_per_batch =
           src_tensor.shape().num_elements() / batch_size;
 

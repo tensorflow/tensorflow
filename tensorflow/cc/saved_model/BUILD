@@ -286,7 +286,6 @@ py_strict_binary(
 #     python_version = "PY3",
 #     srcs_version = "PY3",
 #     deps = [
-#         "//third_party/py/numpy",
 #         "//tensorflow/python/compat:v2_compat",
 #         "//tensorflow/python/eager:def_function",
 #         "//tensorflow/python/framework:constant_op",
@@ -298,6 +297,7 @@ py_strict_binary(
 #         "//tensorflow/python/util:compat",
 #         "//tensorflow/tools/proto_splitter:constants",
 #         "//tensorflow/tools/proto_splitter/python:saved_model",
+#         "//third_party/py/numpy",
 #         "@absl_py//absl:app",
 #         "@absl_py//absl/flags",
 #     ],
@@ -417,8 +417,23 @@ cc_library(
     srcs = ["util.cc"],
     hdrs = ["util.h"],
     deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core/framework:tensor_proto_cc",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
         "//tensorflow/core/protobuf:for_core_protos_cc",
     ] + if_not_mobile(["//tensorflow/core:lib"]) + if_android(["//tensorflow/core:portable_tensorflow_lib_lite"]),
+)
+
+cc_library(
+    name = "test_utils",
+    testonly = True,
+    hdrs = ["test_utils.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:test",
+        "//tensorflow/core/platform:protobuf",
+    ],
 )
 
 tf_cc_test(
@@ -426,11 +441,15 @@ tf_cc_test(
     size = "small",
     srcs = ["util_test.cc"],
     deps = [
+        ":test_utils",
         ":util",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/framework:tensor_shape_proto_cc",
+        "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/protobuf:for_core_protos_cc",
+        "//tensorflow/tsl/platform:status_matchers",
     ],
 )
 
@@ -500,9 +519,6 @@ cc_library(
 #     ],
 #     deps = [
 #         ":constants",
-#         "@com_google_absl//absl/status",
-#         "@com_google_absl//absl/status:statusor",
-#         "@com_google_absl//absl/strings",
 #         "//tensorflow/core:lib",
 #         "//tensorflow/core:protos_all_cc",
 #         "//tensorflow/core/graph/regularization:simple_delete",
@@ -512,6 +528,9 @@ cc_library(
 #         "//tensorflow/tools/proto_splitter:merge",
 #         "//tensorflow/tools/proto_splitter/cc:util",
 #         "//tensorflow/tsl/platform:protobuf",
+#         "@com_google_absl//absl/status",
+#         "@com_google_absl//absl/status:statusor",
+#         "@com_google_absl//absl/strings",
 #         "@riegeli//riegeli/bytes:file_reader",
 #         "@riegeli//riegeli/records:record_reader",
 #     ],
@@ -548,9 +567,6 @@ cc_library(
 #     ],
 #     deps = [
 #         ":fingerprinting_utils",
-#         "@com_google_absl//absl/status",
-#         "@com_google_absl//absl/strings",
-#         "//third_party/protobuf",
 #         "//tensorflow/core:protos_all_cc",
 #         "//tensorflow/core/platform:errors",
 #         "//tensorflow/core/platform:path",
@@ -559,6 +575,9 @@ cc_library(
 #         "//tensorflow/tools/proto_splitter:chunk_proto_cc",
 #         "//tensorflow/tools/proto_splitter/cc:util",
 #         "//tensorflow/tools/proto_splitter/testdata:test_message_proto_cc",
+#         "//third_party/protobuf",
+#         "@com_google_absl//absl/status",
+#         "@com_google_absl//absl/strings",
 #         "@com_google_googletest//:gtest_main",
 #         "@riegeli//riegeli/bytes:file_reader",
 #         "@riegeli//riegeli/records:record_reader",
@@ -575,10 +594,10 @@ cc_library(
 #     ],
 #     deps = [
 #         ":fingerprinting",
-#         "@com_google_absl//absl/container:flat_hash_set",
 #         "//tensorflow/core:protos_all_cc",
 #         "//tensorflow/core:test",
 #         "//tensorflow/core/platform:path",
+#         "@com_google_absl//absl/container:flat_hash_set",
 #         "@com_google_googletest//:gtest_main",
 #     ],
 # )

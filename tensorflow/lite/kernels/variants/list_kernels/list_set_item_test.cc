@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstddef>
 #include <cstring>
 #include <optional>
 #include <vector>
@@ -27,7 +28,6 @@ limitations under the License.
 #include "tensorflow/lite/kernels/variants/tensor_array.h"
 #include "tensorflow/lite/portable_type_to_tflitetype.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "third_party/tflite_micro/tensorflow/lite/micro/memory_helpers.h"
 
 using ::testing::Each;
 
@@ -77,10 +77,10 @@ void CheckItemAt(const TensorArray& arr, int idx,
   ASSERT_NE(tensor, nullptr);
   ASSERT_EQ(tensor->type, expected_type);
 
-  size_t type_size;
-  TfLiteTypeSizeOf(expected_type, &type_size);
+  std::optional<size_t> type_size = TfLiteTypeSizeOf(expected_type);
+  TFLITE_CHECK(type_size.has_value());
 
-  EXPECT_EQ(tensor->bytes, type_size * NumElements(tensor));
+  EXPECT_EQ(tensor->bytes, type_size.value() * NumElements(tensor));
   ASSERT_THAT(tensor, DimsAre(expected_dims));
 
   const TypeParam* element_data =
@@ -136,11 +136,11 @@ TYPED_TEST_P(SetItemWithTypeTest, SetItemOnEmptyTensorList_ListShapeDefined) {
   const TfLiteTensor* element_tensor = arr->At(0);
   ASSERT_NE(element_tensor, nullptr);
 
-  size_t type_size;
-  TfLiteTypeSizeOf(tfl_type, &type_size);
+  std::optional<size_t> type_size = TfLiteTypeSizeOf(tfl_type);
+  TFLITE_CHECK(type_size.has_value());
 
   EXPECT_EQ(element_tensor->type, tfl_type);
-  EXPECT_EQ(element_tensor->bytes, type_size * 4);
+  EXPECT_EQ(element_tensor->bytes, type_size.value() * 4);
   ASSERT_THAT(element_tensor, DimsAre({2, 2}));
 
   const TypeParam* element_data =

@@ -97,13 +97,13 @@ void RegisterXlaGpuRuntimeCustomCalls(DirectCustomCallRegistry& registry) {
   RegisterTopkCustomCall(registry);
 
 #if GOOGLE_CUDA
+  RegisterMatmulCustomCalls(registry);
+#endif  // GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   // Graph launch kernels depend on Cuda Graph API.
   RegisterGraphLaunchCustomCalls(registry);
   RegisterConcurrentRegionCustomCalls(registry);
-  RegisterMatmulCustomCalls(registry);
-#endif  // GOOGLE_CUDA
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   RegisterXlaClassicCustomCalls(registry);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }
@@ -151,9 +151,9 @@ GpuRuntimeExecutable::GpuRuntimeExecutable(
       buffer_sizes_(std::move(buffer_sizes)),
       executable_(std::move(jit_executable)),
       debug_options_(std::move(debug_options)),
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
       graph_instances_(module_name_, GetNumGraphs(executable())),
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
       modules_state_(std::move(modules_state)),
       ffi_modules_state_(std::move(ffi_modules_state)) {
   ExportModules(dynamic_custom_calls_);     // export runtime modules
@@ -168,9 +168,9 @@ GpuRuntimeExecutable::GpuRuntimeExecutable(
       buffer_sizes_(std::move(buffer_sizes)),
       executable_(std::move(aot_executable)),
       debug_options_(std::move(debug_options)),
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
       graph_instances_(module_name_, GetNumGraphs(executable())),
-#endif  // GOOGL_CUDA
+#endif  // GOOGL_CUDA || TENSORFLOW_USE_ROCM
       modules_state_(std::move(modules_state)),
       ffi_modules_state_(std::move(ffi_modules_state)) {
   ExportModules(dynamic_custom_calls_);     // export runtime modules
@@ -364,14 +364,19 @@ Status GpuRuntimeExecutable::Execute(
     stream_priority = se::StreamPriority::Highest;
   }
 
-  StatusOr<StreamPool::Ptr> async_comms_stream =
-      run_options->BorrowStream(executor->device_ordinal(), stream_priority);
+  // Create the needed streams to support NcclCollectiveThunk.
+  absl::InlinedVector<se::Stream*, kAsyncStreamTotal> async_comm_streams;
+  for (int64_t i = 0; i < kAsyncStreamTotal; ++i) {
+    StatusOr<StreamPool::Ptr> async_comm_stream =
+        run_options->BorrowStream(executor->device_ordinal(), stream_priority);
+    async_comm_streams.push_back(
+        async_comm_stream.ok() ? async_comm_stream->get() : nullptr);
+  }
 
   // Async Collectives support and Send/Recv events instantiated for each Gpu
   // executable run, so that concurrent executions can run independently using a
   // separate set of events for communication.
-  AsyncCollectivesSupport async_collectives(
-      async_comms_stream.ok() ? async_comms_stream->get() : nullptr);
+  AsyncCollectivesSupport async_collectives(async_comm_streams);
   SendRecvEvents send_recv_events;
 
   // Always pass in the temp buffer, even if it is null, to accommodate the
@@ -385,7 +390,7 @@ Status GpuRuntimeExecutable::Execute(
   StreamExecutorConvRunners::Snapshot conv_runners =
       conv_runners_(executor)->snapshot();
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   std::shared_ptr<StreamExecutorGraphInstances> executor_graphs =
       graph_instances_(executor);
 
@@ -393,7 +398,7 @@ Status GpuRuntimeExecutable::Execute(
       executor_graphs->snapshot();
   CapturedFunctionExecutionCount::Snapshot execution_count =
       captured_function_counts_(executor)->snapshot();
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
   // Kernels in concurrent regions should be launched on borrowed stream, so
   // that the cuda graph won't record dependencies between kernels.
@@ -420,12 +425,17 @@ Status GpuRuntimeExecutable::Execute(
       &collectives_, &fft_plans, &send_recv_events, &gpu_lock,
 #if GOOGLE_CUDA
       // Auxiliary data that is available only if compiled with CUDA support.
-      &matmul_plans, &graph_instances, &execution_count,
+      &matmul_plans,
 #endif  // GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+      &graph_instances, &execution_count,
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
       &concurrent_region_status,
       // Null pointer will be interpreted as an absence of async collectives
       // support and custom calls will safely return an error.
-      async_collectives.async_comm_stream() ? &async_collectives : nullptr);
+      async_collectives.async_comm_stream(kAsyncStreamCollective)
+          ? &async_collectives
+          : nullptr);
 
   // Initialize state required for running functions from registered modules.
   auto state_ref = modules_state_.InitializeUserData(user_data);
@@ -433,9 +443,9 @@ Status GpuRuntimeExecutable::Execute(
     return InternalError("Failed to initialize runtime modules state: %s",
                          state_ref.status().message());
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   // Instantiate all CUDA graphs before executing the main function.
-  if (debug_options_.xla_gpu_cuda_graph_num_runs_to_instantiate() < 0 &&
+  if (debug_options_.xla_gpu_graph_num_runs_to_instantiate() < 0 &&
       !graph_instances_.InstantiatedAllGraphs(run_options, executable)) {
     // To instantiate all Gpu graphs we have to pass a valid device pointer
     // because some device operations in XLA (e.g. memcpy) query device
@@ -455,13 +465,13 @@ Status GpuRuntimeExecutable::Execute(
 
     if (auto instantiated = graph_instances_.InstantiateAllGraphs(
             run_options, executable, user_data, device_ptr,
-            debug_options_.xla_gpu_cuda_graph_eviction_timeout_seconds());
+            debug_options_.xla_gpu_graph_eviction_timeout_seconds());
         !instantiated.ok()) {
-      return InternalError("Failed to instantiate CUDA graphs: %s",
+      return InternalError("Failed to instantiate GPU graphs: %s",
                            instantiated.message());
     }
   }
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
   // Collect all emitted diagnostic messages.
   std::string diagnostic;

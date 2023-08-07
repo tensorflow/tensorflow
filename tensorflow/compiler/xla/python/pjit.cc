@@ -388,8 +388,10 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
                                          addressable_devices[0].get()) {
       xla::ifrt::DeviceList::Devices ifrt_devices;
       ifrt_devices.push_back(addressable_devices[0].get());
+      // TODO(hyeontaek,yashkatariya): Use the original array's memory_kind.
       auto sharding = xla::ifrt::OpaqueSharding::Create(
-          xla::ifrt::DeviceList(std::move(ifrt_devices)));
+          xla::ifrt::DeviceList(std::move(ifrt_devices)),
+          xla::ifrt::MemoryKind());
       TF_ASSIGN_OR_RETURN(
           auto copied_ifrt_array,
           ifrt_array->Reshard(std::move(sharding),

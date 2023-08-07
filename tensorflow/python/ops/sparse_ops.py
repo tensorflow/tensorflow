@@ -3055,6 +3055,7 @@ def bincount(arr: sparse_tensor.SparseTensor,
            [1, 1, 1, 0]], dtype=int32)>
 
   **Missing zeros in SparseTensor**
+
   Note that missing zeros (implict zeros) in SparseTensor are **NOT** counted.
   This supports cases such as `0` in the values tensor indicates that index/id
   `0`is present and a missing zero indicates that no index/id is present.

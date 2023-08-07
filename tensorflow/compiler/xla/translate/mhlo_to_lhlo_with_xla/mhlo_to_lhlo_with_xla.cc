@@ -1276,6 +1276,13 @@ tsl::StatusOr<Operation*> LhloDialectEmitter::EmitDnnConvolution(
       TF_RETURN_IF_ERROR(set_activation(cnn_fused_side_input));
       return set_common_conv_attributes(cnn_fused_side_input);
     }
+    case xla::gpu::CudnnConvKind::kForwardGraph: {
+      TF_ASSIGN_OR_RETURN(
+          auto cnn_graph,
+          CreateOpWithoutAttrs<lmhlo_gpu::ConvForwardGraphOp>(custom_call));
+      cnn_graph.setSerializedGraph(backend_config.serialized_graph());
+      return set_common_conv_attributes(cnn_graph);
+    }
   }
 }
 

@@ -53,6 +53,8 @@ const absl::string_view kCudnnConvBackwardFilterCallTarget =
 const absl::string_view kCudnnConvBiasActivationForwardCallTarget =
     "__cudnn$convBiasActivationForward";
 const absl::string_view kCudnnConvForwardCallTarget = "__cudnn$convForward";
+const absl::string_view kCudnnConvForwardGraphCallTarget =
+    "__cudnn$convForwardGraph";
 const absl::string_view kCudnnConvReorderFilterCallTarget =
     "__cudnn$convReorderFilter";
 const absl::string_view kCudnnConvReorderFilterAndBiasCallTarget =
@@ -103,6 +105,7 @@ bool IsCustomCallToDnnConvolution(const HloInstruction& hlo) {
   }
   const auto& target = hlo.custom_call_target();
   return target == kCudnnConvForwardCallTarget ||
+         target == kCudnnConvForwardGraphCallTarget ||
          target == kCudnnConvBackwardInputCallTarget ||
          target == kCudnnConvBackwardFilterCallTarget ||
          target == kCudnnConvBiasActivationForwardCallTarget;
@@ -170,6 +173,9 @@ StatusOr<CudnnConvKind> GetCudnnConvKind(
   if (target == kCudnnConvForwardCallTarget) {
     return CudnnConvKind::kForward;
   }
+  if (target == kCudnnConvForwardGraphCallTarget) {
+    return CudnnConvKind::kForwardGraph;
+  }
   if (target == kCudnnConvBackwardInputCallTarget) {
     return CudnnConvKind::kBackwardInput;
   }
@@ -192,6 +198,8 @@ std::string CudnnConvKindToString(CudnnConvKind kind) {
       return "backward_input";
     case CudnnConvKind::kForwardActivation:
       return "forward with activation";
+    case CudnnConvKind::kForwardGraph:
+      return "forward with pointwise operations";
   }
 }
 

@@ -49,7 +49,8 @@ limitations under the License.
 #include "tensorflow/lite/version.h"
 
 // aligned_alloc is available (via cstdlib/stdlib.h) with C++17/C11.
-#if __cplusplus >= 201703L || __STDC_VERSION__ >= 201112L
+// (introduced in stdc11 but realized in C++17)
+#if __cplusplus >= 201703L && __STDC_VERSION__ >= 201112L
 #if !defined(__ANDROID__) || __ANDROID_API__ >= 28
 // Neither Apple nor Windows provide aligned_alloc.
 #if !defined(__APPLE__) && !defined(_WIN32)

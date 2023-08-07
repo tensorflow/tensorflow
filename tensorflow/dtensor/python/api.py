@@ -185,8 +185,7 @@ def copy_to_mesh(
     A DTensor on the DTensor device with the given layout.
   """
   del source_layout
-  with default_mesh(layout.mesh):
-    return gen_dtensor_ops.copy_to_mesh(tensor, layout.to_string())
+  return relayout(tensor, layout)
 
 
 @tf_export("experimental.dtensor.pack", v1=[])
@@ -548,7 +547,6 @@ def _copy_to_mesh_gradient(op, grad):
   grad = gen_dtensor_ops.copy_to_mesh_grad(
       grad,
       forward_input=op.inputs[0],
-      reference_layout=op.get_attr("layout"),
   )
   return grad
 
@@ -558,6 +556,5 @@ def _copy_to_mesh_grad_gradient(op, grad):
   grad = gen_dtensor_ops.copy_to_mesh_grad(
       grad,
       forward_input=op.inputs[0],
-      reference_layout=op.get_attr("reference_layout"),
   )
   return grad, None

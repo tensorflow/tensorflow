@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/nccl_collective_thunk.h"
 
+#include <cstdint>
 #include <cstdlib>
 #include <memory>
 #include <string>
@@ -44,7 +45,7 @@ bool IsTypeSupportedByNccl(PrimitiveType element_type,
     case F16:
     case F32:
     case F64:
-#if defined(__CUDA_BF16_TYPES_EXIST__)
+#if defined(__CUDA_BF16_TYPES_EXIST__) || TENSORFLOW_USE_ROCM
     case BF16:
 #endif
     case C64:
@@ -224,7 +225,7 @@ Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
 #if XLA_ENABLE_XCCL
   VLOG(1) << absl::StreamFormat("Starting %s %s.", IsAsync() ? "async" : "sync",
                                 Thunk::KindToString(kind()));
-  const int64_t stream_id = IsAsync() ? 1 : 0;
+  const int64_t stream_id = GetStreamId();
   TF_ASSIGN_OR_RETURN(
       NcclComm::Lock comm,
       LockNcclComm(params.nccl_params, config().replica_groups,
@@ -240,7 +241,7 @@ Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
                ncclComm_t comm) {
           return RunNcclCollective(params, stream, comm);
         },
-        params, *comm);
+        params, *comm, GetAsyncStreamKind());
   }();
   TF_RETURN_IF_ERROR(status);
 
@@ -249,7 +250,9 @@ Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
   // continue enqueuing operations. Otherwise, the allocations can cause
   // deadlock in the CUDA driver (b/215649390).
   if (first_call_to_execute_) {
-    se::Stream* stream = IsAsync() ? params.async_comms_stream : params.stream;
+    se::Stream* stream = IsAsync()
+                             ? params.async_comms_streams[GetAsyncStreamKind()]
+                             : params.stream;
     TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
     first_call_to_execute_ = false;
   }
@@ -274,8 +277,8 @@ std::string NcclCollectiveThunk::GetDeviceString(
 
 Status NcclCollectiveThunk::AsyncExecutor::Execute(
     absl::FunctionRef<Status(const ExecuteParams&, se::Stream&, ncclComm_t)> fn,
-    const ExecuteParams& params, ncclComm_t comm) {
-  se::Stream& async_comms_stream = *params.async_comms_stream;
+    const ExecuteParams& params, ncclComm_t comm, AsyncStreamKind stream_kind) {
+  se::Stream& async_comms_stream = *params.async_comms_streams[stream_kind];
   // Wait until compute inputs are ready.
   async_comms_stream.ThenWaitFor(params.stream);
 

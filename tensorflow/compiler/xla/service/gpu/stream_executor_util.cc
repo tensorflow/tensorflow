@@ -485,6 +485,8 @@ StatusOr<se::dnn::ConvolutionKind> GetDNNConvKindFromCudnnConvKind(
       return se::dnn::FORWARD;
     case CudnnConvKind::kForwardActivation:
       return se::dnn::FORWARD_BIAS_ACTIVATION;
+    case CudnnConvKind::kForwardGraph:
+      return se::dnn::FORWARD_GRAPH;
     default:
       break;
   }
@@ -535,6 +537,10 @@ StatusOr<se::dnn::DataType> GetDNNDataTypeFromPrimitiveType(
       return se::dnn::ToDataType<int32_t>::value;
     case BF16:
       return se::dnn::ToDataType<Eigen::bfloat16>::value;
+    case F8E4M3FN:
+      return se::dnn::ToDataType<tsl::float8_e4m3fn>::value;
+    case F8E5M2:
+      return se::dnn::ToDataType<tsl::float8_e5m2>::value;
     default:
       break;
   }

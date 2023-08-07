@@ -428,6 +428,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   for (int i = 0; i < shape.dimensions_size(); ++i) {
     new_shape.set_dynamic_dimension(i, shape.is_dynamic_dimension(i));
   }
+  new_shape.mutable_layout()->set_memory_space(shape.layout().memory_space());
   return new_shape;
 }
 

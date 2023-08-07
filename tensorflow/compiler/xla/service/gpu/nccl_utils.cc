@@ -105,7 +105,7 @@ StatusOr<ncclDataType_t> ToNcclDataType(PrimitiveType element_type,
       // For collectives that just move data around, we can use ncclFloat16 for
       // 16-bit integer data types.
       return ncclFloat16;
-#if defined(__CUDA_BF16_TYPES_EXIST__)
+#if defined(__CUDA_BF16_TYPES_EXIST__) || TENSORFLOW_USE_ROCM
     case BF16:
       return ncclBfloat16;
 #endif
@@ -152,6 +152,20 @@ std::shared_ptr<StatusOr<NcclClique::Lock>> AcquireNcclClique(
     size_t num_local_participants) {
   static auto& cliques = *new ThreadSafeMap<NcclCliqueKey, NcclClique>;
 
+  // RendezvousSingle should only be used to guard nccl communicator
+  // initialization. Return the clique state when we are done with such
+  // initialization.
+  {
+    // Destruct clique if it hasn't been notified.
+    NcclClique::Lock clique = cliques[clique_key].Acquire();
+    if (clique->ready.HasBeenNotified() && clique->run_id == run_id.ToInt()) {
+      return std::make_shared<StatusOr<NcclClique::Lock>>(std::move(clique));
+    }
+  }
+
+  VLOG(2) << "AcquireNcclClique Rendezvous key (clique_key:"
+          << clique_key.ToString() << ", run" << run_id.ToString() << ", op"
+          << op_id.value() << ")";
   auto rendezvous_key = std::make_tuple(run_id, op_id, std::move(clique_key));
 
   int64_t terminate_timeout = xla::GetDebugOptionsFromFlags()

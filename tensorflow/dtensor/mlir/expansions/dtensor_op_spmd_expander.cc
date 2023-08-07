@@ -40,6 +40,8 @@ namespace tensorflow {
 namespace dtensor {
 namespace {
 
+// FIXME(feyu): This function should take layouts as arguments. It doesn't need
+// the ops.
 // Validates send/recv layout and mesh configurations. Among other things, this
 // checks for below constraints.
 // 1. Src/target layouts have non empty mesh.
@@ -60,11 +62,14 @@ Status ValidateSendRecvLayoutConfiguration(mlir::TF::DTensorSend dtensor_send,
     return absl::InvalidArgumentError(
         "Input to DTensorSend must have specified layout.");
 
+  TF_ASSIGN_OR_RETURN(const Layout output_layout,
+                      ExtractRequiredSingleLayoutFromOp(dtensor_recv));
+
   const Layout& send_layout = send_layout_or_null.value();
-  const Layout recv_layout = dtensor_recv.getLayout();
+  const Layout& recv_layout = output_layout;
+  const Mesh& recv_mesh = dtensor_recv.getMesh();
 
   const Mesh& send_mesh = send_layout.mesh();
-  const Mesh& recv_mesh = recv_layout.mesh();
 
   // If any one of send/recv mesh are empty, return error.
   if (send_mesh.IsEmpty() || recv_mesh.IsEmpty())
@@ -322,7 +327,7 @@ DTensorRecvSPMDExpander::ComputeLayoutForward(
     return absl::InvalidArgumentError(
         llvm::formatv("Expecting DTensorRecvOp but got {0}", OpName(op)).str());
   }
-  return llvm::DenseMap<int, Layout>({{0, dtensor_recv.getLayout()}});
+  return llvm::DenseMap<int, Layout>();
 }
 
 StatusOr<llvm::DenseMap<int, Layout>>

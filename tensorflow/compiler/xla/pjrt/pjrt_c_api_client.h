@@ -79,6 +79,10 @@ class PjRtCApiDevice : public PjRtDevice {
     return Unimplemented("PJRT C API does not support TransferFromOutfeed");
   }
 
+  StatusOr<PjRtMemorySpace*> default_memory_space() const override {
+    return Unimplemented("PJRT C API does not support default_memory_space");
+  }
+
   std::unique_ptr<ScopedAsyncTrackingEvent> CreateAsyncTrackingEvent(
       absl::string_view description) const override {
     LOG(FATAL) << "PJRT C API does not support CreateAsyncTrackingEvent";
@@ -384,6 +388,11 @@ class PjRtCApiExecutable : public PjRtExecutable {
   StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
       const override;
 
+  StatusOr<std::vector<std::vector<absl::string_view>>> GetOutputMemoryKinds()
+      const override {
+    return Unimplemented("PJRT C API does not support GetOutputMemoryKinds");
+  }
+
   const PJRT_Api* pjrt_c_api() const { return c_api_; }
   PJRT_Executable* c_executable() const { return executable_.get(); }
 
@@ -430,6 +439,11 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
   StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
       const override {
     return executable_->GetHloModules();
+  }
+
+  StatusOr<std::vector<std::vector<absl::string_view>>> GetOutputMemoryKinds()
+      const override {
+    return executable_->GetOutputMemoryKinds();
   }
 
   StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(

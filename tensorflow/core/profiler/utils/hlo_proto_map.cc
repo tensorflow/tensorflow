@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/hlo_proto_map.h"
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -47,30 +48,37 @@ int NumHeapSimulatorTraceEvents(const xla::HloProto* hlo) {
 
 }  // namespace
 
-std::vector<std::pair<uint64_t, std::unique_ptr<xla::HloProto>>>
+absl::flat_hash_map<uint64_t, std::unique_ptr<xla::HloProto>>
 ParseHloProtosFromXSpace(const XSpace& space) {
-  std::vector<std::pair<uint64_t, std::unique_ptr<xla::HloProto>>> hlo_protos;
-  const XPlane* raw_plane = FindPlaneWithName(space, kMetadataPlaneName);
-  if (raw_plane != nullptr) {
-    XPlaneVisitor plane = tsl::profiler::CreateTfXPlaneVisitor(raw_plane);
+  absl::flat_hash_map<uint64_t, std::unique_ptr<xla::HloProto>> hlo_protos;
+  std::vector<const XPlane*> planes =
+      FindPlanesWithNames(space, {kMetadataPlaneName});
+  for (const XPlane* raw_plane : planes) {
+    if (raw_plane != nullptr) {
+      XPlaneVisitor plane = tsl::profiler::CreateTfXPlaneVisitor(raw_plane);
 
-    const XStatMetadata* hlo_proto_stat_metadata =
-        plane.GetStatMetadataByType(StatType::kHloProto);
-    if (hlo_proto_stat_metadata != nullptr) {
-      plane.ForEachEventMetadata(
-          [&](const XEventMetadataVisitor& event_metadata) {
-            auto hlo_proto_stat = event_metadata.GetStat(
-                StatType::kHloProto, *hlo_proto_stat_metadata);
-            if (!hlo_proto_stat) return;
-            if (hlo_proto_stat->ValueCase() != XStat::kBytesValue) return;
-            auto hlo_proto = std::make_unique<xla::HloProto>();
-            absl::string_view byte_value = hlo_proto_stat->BytesValue();
-            if (hlo_proto->ParseFromArray(byte_value.data(),
-                                          byte_value.size())) {
-              hlo_protos.emplace_back(event_metadata.Id(),
-                                      std::move(hlo_proto));
-            }
-          });
+      const XStatMetadata* hlo_proto_stat_metadata =
+          plane.GetStatMetadataByType(StatType::kHloProto);
+      if (hlo_proto_stat_metadata != nullptr) {
+        plane.ForEachEventMetadata(
+            [&](const XEventMetadataVisitor& event_metadata) {
+              auto hlo_proto_stat = event_metadata.GetStat(
+                  StatType::kHloProto, *hlo_proto_stat_metadata);
+              if (!hlo_proto_stat) return;
+              if (hlo_proto_stat->ValueCase() != XStat::kBytesValue) return;
+              auto hlo_proto = std::make_unique<xla::HloProto>();
+              absl::string_view byte_value = hlo_proto_stat->BytesValue();
+              if (hlo_proto->ParseFromArray(byte_value.data(),
+                                            byte_value.size())) {
+                if (!hlo_protos
+                         .try_emplace(event_metadata.Id(), std::move(hlo_proto))
+                         .second) {
+                  LOG(WARNING) << "Insert failed for hlo_proto with program_id"
+                               << event_metadata.Id();
+                }
+              }
+            });
+      }
     }
   }
   return hlo_protos;

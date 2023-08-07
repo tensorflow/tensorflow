@@ -933,7 +933,7 @@ void RemoveDuplicatedStrategy(std::unique_ptr<StrategyVector>& strategies) {
       if (!strategies->leaf_vector[i].input_shardings.empty()) {
         for (const auto& sharding :
              strategies->leaf_vector[i].input_shardings) {
-          key += "/" + sharding.ToString();
+          key += "/" + (sharding.has_value() ? sharding->ToString() : "none");
         }
       }
       if (!added.contains(key)) {
@@ -2205,6 +2205,18 @@ void ComputeInstructionExecutionCountsHelper(
           while_body_condition_execution_count,
           /*loop_iteration_count_estimate*/ loop_iteration_count_estimate,
           instruction_execution_counts);
+    } else if (instruction->opcode() == HloOpcode::kConditional) {
+      // TODO(pratikf): For now, we do not scale down the execution counts of
+      // branch statements, though we should at some point.
+      auto branch_computations = instruction->branch_computations();
+      for (size_t i = 0; i < branch_computations.size(); ++i) {
+        ComputeInstructionExecutionCountsHelper(
+            branch_computations[i],
+            /*computation_execution_count */
+            computation_execution_count,
+            /*loop_iteration_count_estimate*/ loop_iteration_count_estimate,
+            instruction_execution_counts);
+      }
     }
   }
 }

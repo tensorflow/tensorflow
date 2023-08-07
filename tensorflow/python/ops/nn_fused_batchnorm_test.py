@@ -411,8 +411,6 @@ class BatchNormalizationTest(test.TestCase):
     factors = [1.0, 0.6]
     for dtype in [np.float16, np.float32, dtypes.bfloat16.as_numpy_dtype]:
       for use_gpu in use_gpu_vals:
-        if dtype == dtypes.bfloat16.as_numpy_dtype and not use_gpu:
-          continue
         for data_format in data_format_list:
           if data_format == 'NHWC' or data_format == 'NDHWC':
             scale_shape = x_shape[-1:]

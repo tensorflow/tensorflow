@@ -88,11 +88,12 @@ StatusOr<DevicePutResult> HandlePythonScalar(py::handle obj,
   // decide to block/sleep for device buffer allocation.
   py::gil_scoped_release gil_release;
   TF_ASSIGN_OR_RETURN(auto ifrt_dtype, xla::ifrt::ToDType(type));
+  // TODO(yashkatariya): Plumb sharding or memory_kind here.
   TF_ASSIGN_OR_RETURN(
       auto ifrt_array,
       client->MakeArrayFromHostBuffer(
           ptr, ifrt_dtype, /*shape=*/ifrt::Shape({}), /*byte_strides=*/{},
-          ifrt::SingleDeviceSharding::Create(to_device),
+          ifrt::SingleDeviceSharding::Create(to_device, ifrt::MemoryKind()),
           ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall,
           /*on_done_with_host_buffer=*/{}));
   return DevicePutResult(std::move(ifrt_array), /*weak_type=*/true);
@@ -135,11 +136,12 @@ StatusOr<DevicePutResult> HandlePythonInt(py::handle obj, ifrt::Client* client,
   // decide to block/sleep for device buffer allocation.
   py::gil_scoped_release gil_release;
   TF_ASSIGN_OR_RETURN(auto ifrt_dtype, xla::ifrt::ToDType(type));
+  // TODO(yashkatariya): Plumb sharding or memory_kind here.
   TF_ASSIGN_OR_RETURN(
       auto ifrt_array,
       client->MakeArrayFromHostBuffer(
           ptr, ifrt_dtype, /*shape=*/xla::ifrt::Shape({}), /*byte_strides=*/{},
-          ifrt::SingleDeviceSharding::Create(to_device),
+          ifrt::SingleDeviceSharding::Create(to_device, ifrt::MemoryKind()),
           ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall,
           /*on_done_with_host_buffer=*/nullptr));
   return DevicePutResult(std::move(ifrt_array), /*weak_type=*/true);
@@ -192,11 +194,12 @@ StatusOr<DevicePutResult> HandleNumpyScalar(py::handle h, ifrt::Client* client,
   // decide to block/sleep for device buffer allocation.
   py::gil_scoped_release gil_release;
   TF_ASSIGN_OR_RETURN(auto ifrt_dtype, xla::ifrt::ToDType(type));
+  // TODO(yashkatariya): Plumb sharding or memory_kind here.
   TF_ASSIGN_OR_RETURN(
       auto ifrt_array,
       client->MakeArrayFromHostBuffer(
           ptr, ifrt_dtype, /*shape=*/xla::ifrt::Shape({}), /*byte_strides=*/{},
-          ifrt::SingleDeviceSharding::Create(to_device),
+          ifrt::SingleDeviceSharding::Create(to_device, ifrt::MemoryKind()),
           ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall,
           /*on_done_with_host_buffer=*/nullptr));
   return DevicePutResult(std::move(ifrt_array), /*weak_type=*/false);
@@ -245,11 +248,13 @@ StatusOr<DevicePutResult> HandleNumpyArray(py::handle h, ifrt::Client* client,
   // decide to block/sleep for device buffer allocation.
   py::gil_scoped_release gil_release;
   TF_ASSIGN_OR_RETURN(auto ifrt_dtype, xla::ifrt::ToDType(squashed_type));
+  // TODO(yashkatariya): Plumb sharding or memory_kind here.
   TF_ASSIGN_OR_RETURN(
       auto ifrt_array,
       client->MakeArrayFromHostBuffer(
           data, ifrt_dtype, ifrt::Shape(dims), byte_strides,
-          xla::ifrt::SingleDeviceSharding::Create(to_device),
+          xla::ifrt::SingleDeviceSharding::Create(to_device,
+                                                  ifrt::MemoryKind()),
           host_buffer_semantics, std::move(on_done_with_host_buffer)));
   return DevicePutResult(std::move(ifrt_array), /*weak_type=*/false);
 }
@@ -282,10 +287,12 @@ StatusOr<DevicePutResult> HandlePyArray(py::handle obj, ifrt::Client* client,
         tsl::FormRef(ifrt_array), py_array.weak_type(),
         /*owning_pybuffer=*/py::reinterpret_borrow<py::object>(obj));
   } else {
+    // TODO(yashkatariya): Plumb sharding or memory_kind here.
     TF_ASSIGN_OR_RETURN(
         tsl::RCReference<ifrt::Array> copied_ifrt_array,
-        ifrt_array->Reshard(ifrt::SingleDeviceSharding::Create(to_device),
-                            ifrt::ArrayCopySemantics::kReuseInput));
+        ifrt_array->Reshard(
+            ifrt::SingleDeviceSharding::Create(to_device, ifrt::MemoryKind()),
+            ifrt::ArrayCopySemantics::kReuseInput));
     return DevicePutResult(std::move(copied_ifrt_array), py_array.weak_type());
   }
 }
@@ -317,26 +324,20 @@ StatusOr<DevicePutResult> DevicePut(py::handle arg, ifrt::Client* client,
         // Numpy scalar types. For some of them, we share the handler with
         // Python types (np_int64, np_float64, np_complex128).
         (*p)[dtypes.np_bool.ptr()] = HandleNumpyScalar<bool>;
-        if (dtypes.np_int4) {
-          (*p)[dtypes.np_int4->ptr()] = HandleNumpyScalar<xla::s4>;
-        }
+        (*p)[dtypes.np_int4.ptr()] = HandleNumpyScalar<xla::s4>;
         (*p)[dtypes.np_int8.ptr()] = HandleNumpyScalar<int8_t>;
         (*p)[dtypes.np_int16.ptr()] = HandleNumpyScalar<int16_t>;
         (*p)[dtypes.np_int32.ptr()] = HandleNumpyScalar<int32_t>;
         (*p)[dtypes.np_int64.ptr()] = HandleNumpyScalar<int64_t, int32_t>;
-        if (dtypes.np_uint4) {
-          (*p)[dtypes.np_uint4->ptr()] = HandleNumpyScalar<xla::u4>;
-        }
+        (*p)[dtypes.np_uint4.ptr()] = HandleNumpyScalar<xla::u4>;
         (*p)[dtypes.np_uint8.ptr()] = HandleNumpyScalar<uint8_t>;
         (*p)[dtypes.np_uint16.ptr()] = HandleNumpyScalar<uint16_t>;
         (*p)[dtypes.np_uint32.ptr()] = HandleNumpyScalar<uint32_t>;
         (*p)[dtypes.np_uint64.ptr()] = HandleNumpyScalar<uint64_t, uint32_t>;
         (*p)[dtypes.np_float8_e4m3fn.ptr()] =
             HandleNumpyScalar<tsl::float8_e4m3fn>;
-        if (dtypes.np_float8_e4m3b11fnuz) {
-          (*p)[dtypes.np_float8_e4m3b11fnuz->ptr()] =
-              HandleNumpyScalar<tsl::float8_e4m3b11>;
-        }
+        (*p)[dtypes.np_float8_e4m3b11fnuz.ptr()] =
+            HandleNumpyScalar<tsl::float8_e4m3b11>;
         (*p)[dtypes.np_float8_e5m2.ptr()] = HandleNumpyScalar<tsl::float8_e5m2>;
         (*p)[dtypes.np_float8_e4m3fnuz.ptr()] =
             HandleNumpyScalar<tsl::float8_e4m3fnuz>;
@@ -519,7 +520,7 @@ StatusOr<PyArgSignature> PyArgSignatureOfValue(py::handle arg,
         (*p)[dtypes.np_uint32.ptr()] = numpy_array_handler;
         (*p)[dtypes.np_uint64.ptr()] = np_uint64_handler;
         (*p)[dtypes.np_float8_e4m3fn.ptr()] = numpy_array_handler;
-        (*p)[dtypes.np_float8_e4m3b11fnuz->ptr()] = numpy_array_handler;
+        (*p)[dtypes.np_float8_e4m3b11fnuz.ptr()] = numpy_array_handler;
         (*p)[dtypes.np_float8_e5m2.ptr()] = numpy_array_handler;
         (*p)[dtypes.np_float8_e4m3fnuz.ptr()] = numpy_array_handler;
         (*p)[dtypes.np_float8_e5m2fnuz.ptr()] = numpy_array_handler;

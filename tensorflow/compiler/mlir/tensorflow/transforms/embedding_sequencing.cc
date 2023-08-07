@@ -765,6 +765,7 @@ LogicalResult ExtractOpsAsFunc(
 }
 
 void EmbeddingSequencingPass::runOnOperation() {
+  VLOG(3) << "EmbeddingSequencingPass::runOnOperation()";
   ModuleOp module = getOperation();
 
   llvm::SetVector<Operation*> forward_pass_ops;
@@ -802,6 +803,7 @@ void EmbeddingSequencingPass::runOnOperation() {
       return signalPassFailure();
     }
   }
+  VLOG(1) << "Embedding sequencing rewrite enabled.";
 
   // Ensure that all ops are in the same region, and have the same replication
   // info.
@@ -912,6 +914,8 @@ void EmbeddingSequencingPass::runOnOperation() {
 
   metadata_op->erase();
   compilation_op->erase();
+
+  VLOG(3) << "EmbeddingSequencingPass::runOnOperation done.";
 }
 
 }  // namespace

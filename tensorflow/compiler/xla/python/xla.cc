@@ -232,6 +232,13 @@ PYBIND11_MODULE(xla_extension, m) {
             return jax::GetMemory(device, kind);
           },
           py::arg("kind"))
+      // Returns the default memory of a device.
+      .def("default_memory",
+           [](const ClientAndPtr<PjRtDevice>& device) {
+             auto* memory_space =
+                 xla::ValueOrThrow(device->default_memory_space());
+             return WrapWithClient(device.client(), memory_space);
+           })
       // Returns all the memories that a device can address.
       .def("addressable_memories",
            [](const ClientAndPtr<PjRtDevice>& device) {
@@ -654,6 +661,8 @@ PYBIND11_MODULE(xla_extension, m) {
            py::arg("arguments"), py::arg("with_tokens") = false)
       .def("hlo_modules",
            xla::ValueOrThrowWrapper(&PyLoadedExecutable::HloModules))
+      .def("get_output_memory_kinds",
+           xla::ValueOrThrowWrapper(&PyLoadedExecutable::GetOutputMemoryKinds))
       .def("get_output_shardings", &PyLoadedExecutable::GetOutputShardings)
       .def("get_parameter_shardings",
            &PyLoadedExecutable::GetParameterShardings)
@@ -943,6 +952,8 @@ PYBIND11_MODULE(xla_extension, m) {
   py::class_<PjRtExecutable, std::shared_ptr<PjRtExecutable>>(m, "Executable")
       .def("hlo_modules",
            xla::ValueOrThrowWrapper(&PjRtExecutable::GetHloModules))
+      .def("get_output_memory_kinds",
+           xla::ValueOrThrowWrapper(&PjRtExecutable::GetOutputMemoryKinds))
       .def("get_output_shardings", &PjRtExecutable::GetOutputShardings)
       .def("get_parameter_shardings", &PjRtExecutable::GetParameterShardings)
       .def("get_compiled_memory_stats",

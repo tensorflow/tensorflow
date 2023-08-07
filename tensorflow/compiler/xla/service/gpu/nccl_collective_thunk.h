@@ -113,7 +113,8 @@ class NcclCollectiveThunk : public Thunk {
     Status Execute(
         absl::FunctionRef<Status(const ExecuteParams&, se::Stream&, ncclComm_t)>
             fn,
-        const ExecuteParams& params, ncclComm_t comm);
+        const ExecuteParams& params, ncclComm_t comm,
+        AsyncStreamKind stream_kind);
     // Blocks the compute stream until async communication is complete.
     Status Await(const ExecuteParams& params);
 
@@ -142,9 +143,16 @@ class NcclCollectiveThunk : public Thunk {
   virtual Status RunNcclCollective(const ExecuteParams& params,
                                    se::Stream& stream, ncclComm_t comm) = 0;
   virtual const NcclCollectiveConfig& config() const = 0;
+  virtual AsyncStreamKind GetAsyncStreamKind() const {
+    return kAsyncStreamCollective;
+  }
 
  private:
   bool IsAsync() const { return async_ != nullptr; }
+  int64_t GetStreamId() const {
+    return IsAsync() ? 1 + GetAsyncStreamKind() : 0;
+  }
+
 #if XLA_ENABLE_XCCL
   bool first_call_to_execute_ = true;
 #endif  // XLA_ENABLE_XCCL

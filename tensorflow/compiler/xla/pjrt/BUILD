@@ -510,6 +510,7 @@ xla_cc_test(
     srcs = ["tracked_tfrt_cpu_device_buffer_test.cc"],
     deps = [
         ":tracked_tfrt_cpu_device_buffer",
+        "//tensorflow/tsl/platform:env",
         "@com_google_googletest//:gtest_main",
     ],
 )

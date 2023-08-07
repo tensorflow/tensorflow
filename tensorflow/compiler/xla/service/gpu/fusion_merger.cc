@@ -120,8 +120,7 @@ Status FusionInstructionMerger::FuseIntoAllUsers(HloInstruction* producer) {
                           *consumer);
     }
 
-    GpuPerformanceModel::RecordEstimatedRunTime(consumer, &*cost_analysis_,
-                                                gpu_device_info_);
+    GpuPerformanceModel::RecordEstimatedRunTime(consumer, &*cost_analysis_);
     changed_ = true;
   }
 
@@ -266,7 +265,8 @@ FusionDecision FusionInstructionMerger::ShouldFuse(HloInstruction* producer) {
     cost_analysis_.emplace(
         GpuHloCostAnalysis::Options{shape_size_function_,
                                     /*per_second_rates=*/{},
-                                    /*count_multiple_input_accesses=*/true});
+                                    /*count_multiple_input_accesses=*/true},
+        &gpu_device_info_);
     TF_CHECK_OK(computation_->Accept(&cost_analysis_.value()));
   }
 
@@ -285,7 +285,7 @@ FusionDecision FusionInstructionMerger::ShouldFuse(HloInstruction* producer) {
           .xla_gpu_enable_experimental_block_size();
 
   GpuPerformanceModel::RunTimes t = GpuPerformanceModel::EstimateRunTimes(
-      producer, &*cost_analysis_, gpu_device_info_, use_experimental_block_size,
+      producer, &*cost_analysis_, use_experimental_block_size,
       compute_capability_, producer->users());
   if (t.time_fused > t.time_unfused) {
     ++num_fail_slower_if_fused_;

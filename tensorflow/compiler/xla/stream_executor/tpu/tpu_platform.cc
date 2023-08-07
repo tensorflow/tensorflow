@@ -23,8 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_id.h"
-#include "tensorflow/tsl/c/tsl_status.h"
-#include "tensorflow/tsl/c/tsl_status_helper.h"
+#include "tensorflow/tsl/c/tsl_status_internal.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -164,35 +163,29 @@ void TpuPlatform::EraseEvent(stream_executor::internal::EventInterface* key) {
 }
 
 tsl::Status TpuPlatform::TpusPerHost(int* tpus) {
-  TSL_Status* status = TSL_NewStatus();
-
   if (stream_executor::tpu::OpsApiFn()->TpuConfigurationApi_TpusPerHostFn ==
       nullptr) {
     *tpus = 0;
     return tsl::OkStatus();
   }
 
+  TSL_Status status;
   stream_executor::tpu::OpsApiFn()->TpuConfigurationApi_TpusPerHostFn(tpus,
-                                                                      status);
-  auto ret_status = tsl::StatusFromTSL_Status(status);
-  TSL_DeleteStatus(status);
-  return ret_status;
+                                                                      &status);
+  return status.status;
 }
 
 tsl::Status TpuPlatform::TpuMemoryLimit(int64_t* memory_limit) {
-  TSL_Status* status = TSL_NewStatus();
-
   if (stream_executor::tpu::OpsApiFn()->TpuConfigurationApi_TpuMemoryLimitFn ==
       nullptr) {
     *memory_limit = 0;
     return tsl::OkStatus();
   }
 
+  TSL_Status status;
   stream_executor::tpu::OpsApiFn()->TpuConfigurationApi_TpuMemoryLimitFn(
-      reinterpret_cast<int64_t*>(memory_limit), status);
-  auto ret_status = tsl::StatusFromTSL_Status(status);
-  TSL_DeleteStatus(status);
-  return ret_status;
+      reinterpret_cast<int64_t*>(memory_limit), &status);
+  return status.status;
 }
 
 bool RegisterTpuPlatform() {

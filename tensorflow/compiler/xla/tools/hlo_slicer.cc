@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
@@ -53,7 +54,7 @@ void IntraComputationSlicing(
     worklist.pop_back();
 
     // If `inst` is at the frontier, bookkeep it, and continue.
-    if (!frontier_selector(inst)) {
+    if (frontier_selector && !frontier_selector(inst)) {
       frontier_instructions.insert(inst);
       continue;
     }
@@ -87,13 +88,11 @@ void IntraComputationSlicing(
   }
 }
 
-}  // namespace
-
-SliceOutput SliceModule(
+SliceOutput SliceModuleHelper(
     const HloModule* hlo_module,
     absl::Span<const HloInstruction*> slice_starting_instructions,
     FrontierSelector frontier_selector, bool ignore_control_dependency,
-    bool forward_slice) {
+    bool forward_slice, bool nearest_common_ancestor_as_root) {
   // Initialize `sliced_computation_instructions_map`, which keeps track of all
   // the sliced instructions.
   absl::flat_hash_map<const HloComputation*,
@@ -133,8 +132,28 @@ SliceOutput SliceModule(
           : std::vector<HloComputation*>(post_order_computations.rbegin(),
                                          post_order_computations.rend());
 
+  // If `nearest_common_ancestor_as_root` is enabled, we compute the
+  // HloComputations that hold the `nearest_common_ancestor` instruction, which
+  // are the stopping points when iterating through `computations_to_traverse`.
+  absl::flat_hash_set<const HloComputation*>
+      nearest_common_ancestor_computations;
+  if (nearest_common_ancestor_as_root) {
+    std::vector<const HloComputation*> starting_computations;
+    for (const auto& [computation, instructions] :
+         sliced_computation_instructions_map) {
+      starting_computations.push_back(computation);
+    }
+    nearest_common_ancestor_computations =
+        call_graph->NearestCommonAncestorComputations(starting_computations);
+    CHECK(!nearest_common_ancestor_computations.empty());
+  }
+
   for (auto computation : computations_to_traverse) {
     if (sliced_computation_instructions_map.contains(computation)) {
+      auto slicing_starting_instructions = std::vector<const HloInstruction*>(
+          sliced_computation_instructions_map[computation].begin(),
+          sliced_computation_instructions_map[computation].end());
+
       // Do intra-computation slicing, starting from the instructions that has
       // been inserted in `sliced_computation_instructions_map[computation]`.
       IntraComputationSlicing(
@@ -142,7 +161,25 @@ SliceOutput SliceModule(
           frontier_computation_instructions_map[computation], forward_slice,
           frontier_selector, ignore_control_dependency);
 
+      // The block below propagate the slicing results from the current visiting
+      // computation to the next ones.
       if (forward_slice) {
+        // Check if the current computation is one of the
+        // `nearest_common_ancestor_computations`. If yes, we find the
+        // `nearest_common_ancestor` as an instruction, and stop here.
+        if (nearest_common_ancestor_as_root &&
+            nearest_common_ancestor_computations.contains(computation)) {
+          // We use one of the nearest common ancestor instructions.
+          const HloInstruction* nearest_common_ancestor_instruction =
+              *(call_graph->NearestCommonAncestorInstructions(
+                    slicing_starting_instructions))
+                   .begin();
+          CHECK_NE(nearest_common_ancestor_instruction, nullptr);
+          return SliceOutput{sliced_computation_instructions_map,
+                             frontier_computation_instructions_map,
+                             nearest_common_ancestor_instruction};
+        }
+
         // Skip propagating if the ROOT instruction of the current computation
         // is NOT sliced. It is either because (1) the sliced instructions are
         // actually dead code or (2) `frontier_selector` finds frontier and stop
@@ -187,6 +224,84 @@ SliceOutput SliceModule(
 
   return SliceOutput{sliced_computation_instructions_map,
                      frontier_computation_instructions_map};
+}
+
+}  // namespace
+
+SliceOutput SliceModule(
+    const HloModule* hlo_module,
+    absl::Span<const HloInstruction*> slice_starting_instructions,
+    FrontierSelector frontier_selector, bool ignore_control_dependency,
+    bool forward_slice, bool nearest_common_ancestor_as_root) {
+  if (forward_slice) {
+    if (!nearest_common_ancestor_as_root) {
+      // Forward slicing with the original root as the root.
+      return SliceModuleHelper(hlo_module, slice_starting_instructions,
+                               frontier_selector, ignore_control_dependency,
+                               /*forward_slice=*/true,
+                               /*nearest_common_ancestor_as_root=*/false);
+    } else {
+      // Forward slicing with the nearest common ancestor (NCA) as the root.
+      //
+      // Internally, this feature is implemented by the following two steps:
+      //  1. Conducting a pass of forward slicing and looking for the NCA
+      //     instruction.  We first compute the "NCA computation", which is the
+      //     NCA, of the computations that hold the
+      //     `slice_starting_instructions`. This computation is achieved by
+      //     invoking "NearestCommonAncestorComputations" in the call graph.
+      //     Then, when we reach the "NCA computation", we compute the NCA of
+      //     the instructions that calls the computations which are on the path
+      //     from the `slice_starting_instructions` to this NCA computation.
+      //  2. The slice from step 1 contains some redundant instructions,
+      //     because, when we do forward slicing, we do not know the exact path
+      //     to the NCA, and there could some nodes that cannot be reached from
+      //     the NCA. Therefore, in this step, we conduct a pass of backward
+      //     slicing from the NCA and filter out the redundant instructions, by
+      //     taking the intersection between the backward slicing results and
+      //     the forward slicing results from step 1.
+
+      // Sanity check.
+      CHECK(forward_slice) << "Option `nearest_common_ancestor_as_root` can "
+                              "only be enabled when "
+                              "forward slicing";
+      CHECK((frontier_selector == nullptr))
+          << "Option `nearest_common_ancestor_as_root` can not be specified "
+             "with `frontier_selector`";
+
+      // Forward slicing to identify nearest common ancestor
+      SliceOutput forward_slice_output =
+          SliceModuleHelper(hlo_module, slice_starting_instructions,
+                            /*frontier_selector=*/nullptr,
+                            ignore_control_dependency, /*forward_slice=*/true,
+                            /*nearest_common_ancestor_as_root=*/true);
+      std::vector<const HloInstruction*> nearest_common_ancestor(
+          {forward_slice_output.nearest_common_ancestor_root()});
+      CHECK_EQ(nearest_common_ancestor.size(), 1);
+
+      // Backward slicing from the nearest common ancestor to filter out
+      // the redundant computations/instructions in the sliced result in step 1.
+      SliceOutput backward_slice_output =
+          SliceModuleHelper(hlo_module, /*slice_starting_instructions=*/
+                            absl::MakeSpan(nearest_common_ancestor),
+                            /*frontier_selector=*/nullptr,
+                            ignore_control_dependency, /*forward_slice=*/false,
+                            /*nearest_common_ancestor_as_root=*/false);
+
+      // Intersect the sliced instructions between forward slicing pass and
+      // backward slicing pass as the the new sliced instructions, and return
+      // the new SliceOutput.
+      return SliceOutput{SliceOutput::IntersectSlicedInstructions(
+                             forward_slice_output, backward_slice_output),
+                         backward_slice_output.frontier_instructions(),
+                         forward_slice_output.nearest_common_ancestor_root()};
+    }
+  } else {
+    // Backward slicing.
+    return SliceModuleHelper(hlo_module, slice_starting_instructions,
+                             frontier_selector, ignore_control_dependency,
+                             /*forward_slice=*/false,
+                             /*nearest_common_ancestor_as_root=*/false);
+  }
 }
 
 }  // namespace xla

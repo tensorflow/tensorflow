@@ -19,11 +19,11 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "absl/base/casts.h"
 #include "absl/functional/function_ref.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/mem.h"

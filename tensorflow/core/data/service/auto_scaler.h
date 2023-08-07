@@ -115,10 +115,6 @@ class AutoScaler {
 class MultipleIterationsAutoScaler {
  public:
   MultipleIterationsAutoScaler() = default;
-  // Registers iteration with `iteration_id`, allowing its future reported times
-  // to be considered for the current workload estimation. Returns an error if
-  // the specified iteration already exists.
-  tsl::Status RegisterIteration(int64_t iteration_id) TF_LOCKS_EXCLUDED(mu_);
   // Unregisters iteration with `iteration_id`, removing its reported
   // times from consideration of the current workload estimation.
   // Returns an error if the specified iteration does not exist.
@@ -134,37 +130,40 @@ class MultipleIterationsAutoScaler {
       TF_LOCKS_EXCLUDED(mu_);
   // Reports the latest observed processing time from the worker with
   // `worker_address` for iteration with `iteration_id`. Returns an error if
-  // the specified iteration was not previously registered, or `processing_time`
-  // is ZeroDuration or negative.
+  // `processing_time` is ZeroDuration or negative.
   tsl::Status ReportProcessingTime(int64_t iteration_id,
                                    const std::string& worker_address,
                                    absl::Duration processing_time)
       TF_LOCKS_EXCLUDED(mu_);
   // Reports the latest observed target processing time from the consumer
   // identified by `consumer_id` for iteration with `iteration_id`. Returns an
-  // error if the specified iteration was not previously registered, or
-  // `target_processing_time` is ZeroDuration or negative.
+  // error if `target_processing_time` is ZeroDuration or negative.
   tsl::Status ReportTargetProcessingTime(int64_t iteration_id,
                                          int64_t consumer_id,
                                          absl::Duration target_processing_time)
       TF_LOCKS_EXCLUDED(mu_);
   // Unregisters the worker with `worker_address` for iteration with
   // `iteration_id`, removing its reported processing time from consideration of
-  // the current workload estimation. Returns an error if iteration with
-  // `iteration_id` was not previously registered, or the specified worker does
-  // not exist.
+  // the current workload estimation. Returns an error if there are no
+  // previously reported processing times for iteration with `iteration_id` and
+  // the specified worker.
   tsl::Status RemoveWorker(int64_t iteration_id,
                            const std::string& worker_address)
       TF_LOCKS_EXCLUDED(mu_);
   // Unregisters the consumer identified by `consumer_id` for iteration with
   // `iteration_id`, removing its reported target processing time from
-  // consideration of the current workload estimation. Returns an error if
-  // iteration with `iteration_id` was not previously registered, or the
-  // specified consumer does not exist.
+  // consideration of the current workload estimation. Returns an error if there
+  // are no previously reported processing times for iteration with
+  // `iteration_id` and the specified consumer.
   tsl::Status RemoveConsumer(int64_t iteration_id, int64_t consumer_id)
       TF_LOCKS_EXCLUDED(mu_);
 
  private:
+  // Registers iteration with `iteration_id` if it does not exist already,
+  // allowing its future reported times to be considered for the current
+  // workload estimation.
+  void EnsureIterationIsRegistered(int64_t iteration_id)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   mutable tsl::mutex mu_;
   // Map from iteration id to AutoScaler.
   absl::flat_hash_map<int64_t, std::unique_ptr<AutoScaler>> auto_scalers_

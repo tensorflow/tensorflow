@@ -133,6 +133,7 @@ TEST_F(CollectivePermuteDecomposerTest, TransformedDefaultChannelId) {
       HasSubstr(
           "_xla_send_recv_source_target_pairs=\"{{0,1},{1,2},{2,3},{3,4}}\""));
   check_metadata(send);
+  EXPECT_EQ(recv_done->control_predecessors()[0], send);
   HloInstruction* send_done = FindInstruction(module.get(), "send-done");
   EXPECT_EQ(send_done->operand(0), send);
   EXPECT_EQ(send_done->control_predecessors()[0], recv_done);

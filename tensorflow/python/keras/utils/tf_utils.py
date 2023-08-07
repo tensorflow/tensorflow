@@ -37,7 +37,6 @@ from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.util import nest
-from tensorflow.python.util.tf_export import keras_export
 
 
 def is_tensor_or_tensor_list(v):
@@ -334,7 +333,6 @@ def is_symbolic_tensor(tensor):
     return False
 
 
-@keras_export('keras.__internal__.utils.register_symbolic_tensor_type', v1=[])
 def register_symbolic_tensor_type(cls):
   """Allows users to specify types regarded as symbolic `Tensor`s.
 

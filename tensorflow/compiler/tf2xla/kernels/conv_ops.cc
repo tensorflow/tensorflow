@@ -15,6 +15,9 @@ limitations under the License.
 
 // XLA-specific Ops for 2D convolution.
 
+#include <cstdint>
+#include <vector>
+
 #include "tensorflow/compiler/tf2xla/kernels/conv_op_helpers.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
@@ -29,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/ops_util.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -64,6 +68,82 @@ class ConvOp : public XlaOpKernel {
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(ConvOp);
 };
+
+class ConvNDOp : public XlaOpKernel {
+ public:
+  explicit ConvNDOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
+    StatusOr<ConvNDOpAttrs> attrs = ConvNDOpAttrs::Create(ctx);
+    OP_REQUIRES_OK(ctx, attrs.status());
+    attrs_ = attrs.value();
+  }
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    // Need to know input rank ahead of time to determine type of convolution.
+    OP_REQUIRES_VALUE(xla::Shape input_shape, ctx, ctx->InputXlaShape(0));
+    int num_spatial_dims = input_shape.rank() - 1 - attrs_.batch_dims;
+    OP_REQUIRES_OK(ctx,
+                   CheckValidPadding(attrs_.padding, attrs_.explicit_paddings,
+                                     /*num_dims=*/num_spatial_dims + 2,
+                                     attrs_.data_format));
+
+    ConvOpAttrs forward_attrs;
+    forward_attrs.depthwise = false;
+    forward_attrs.num_spatial_dims = num_spatial_dims;
+    forward_attrs.dilations = attrs_.dilations.empty()
+                                  ? std::vector<int32>(num_spatial_dims + 2, 1)
+                                  : attrs_.dilations;
+    forward_attrs.strides = attrs_.strides;
+    forward_attrs.padding = attrs_.padding;
+    forward_attrs.explicit_paddings = attrs_.explicit_paddings;
+    forward_attrs.data_format = attrs_.data_format;
+
+    xla::XlaOp input = ctx->Input(0);
+    xla::XlaOp filter = ctx->Input(1);
+
+    if (attrs_.batch_dims == 0) {
+      // Expand dummy batch dimension.
+      xla::Shape expanded_input_shape(input_shape);
+      for (int i = 0; i < expanded_input_shape.rank() - 1; ++i) {
+        expanded_input_shape.set_dimensions(i + 1, input_shape.dimensions(i));
+      }
+      expanded_input_shape.set_dimensions(0, 1);
+      input = xla::Reshape(input, expanded_input_shape.dimensions());
+    } else if (attrs_.batch_dims > 1) {
+      // Flatten batch_dims.
+      std::vector<int64_t> to_collapse(attrs_.batch_dims);
+      for (int i = 0; i < attrs_.batch_dims; ++i) {
+        to_collapse[i] = i;
+      }
+      input = xla::Collapse(input, to_collapse);
+    }
+
+    StatusOr<xla::XlaOp> forward = MakeXlaForwardConvOp(
+        ctx->op_kernel().type_string(), input, filter, forward_attrs);
+    OP_REQUIRES_OK(ctx, forward.status());
+
+    xla::XlaOp out = forward.value();
+    auto* builder = out.builder();
+    OP_REQUIRES_VALUE(xla::Shape out_shape, ctx, builder->GetShape(out));
+    // Reshape output.
+    if (attrs_.batch_dims == 0) {
+      xla::Shape no_batch_shape(out_shape);
+      no_batch_shape.DeleteDimension(0);
+      out = xla::Reshape(out, no_batch_shape.dimensions());
+    } else if (attrs_.batch_dims > 1) {
+      xla::Shape expanded_out_shape(input_shape);
+      for (int i = attrs_.batch_dims; i < input_shape.rank(); ++i) {
+        expanded_out_shape.set_dimensions(
+            i, out_shape.dimensions(i - (attrs_.batch_dims - 1)));
+      }
+      out = xla::Reshape(out, expanded_out_shape.dimensions());
+    }
+    ctx->SetOutput(0, out);
+  }
+
+ protected:
+  ConvNDOpAttrs attrs_;
+};
+REGISTER_XLA_CONV_OP(Name("Conv"), ConvNDOp);
 
 class Conv2DOp : public ConvOp {
  public:

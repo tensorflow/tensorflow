@@ -27,9 +27,6 @@ TSL_Code TSLCodeFromStatusCode(absl::StatusCode code);
 
 absl::StatusCode StatusCodeFromTSLCode(TSL_Code code);
 
-// Returns a "status" from "tsl_status".
-Status StatusFromTSL_Status(const TSL_Status* tsl_status);
-
 }  // namespace tsl
 
 #endif  // TENSORFLOW_TSL_C_TSL_STATUS_HELPER_H_

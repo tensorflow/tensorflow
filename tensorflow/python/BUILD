@@ -20,7 +20,6 @@ load(
     "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
-load("//third_party/mkl_dnn:build_defs.bzl", "if_onednn_v3")
 
 # TODO(mdan): Break into per-directory files.
 
@@ -81,13 +80,6 @@ py_library(
         "//tensorflow/python/ops:gradient_checker_v2",
         "//tensorflow/python/ops:stateful_random_ops",
         "//tensorflow/python/ops/structured:structured_ops",
-        "//tensorflow/python/platform:app",
-        "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/platform:flags",
-        "//tensorflow/python/platform:gfile",
-        "//tensorflow/python/platform:resource_loader",
-        "//tensorflow/python/platform:sysconfig",
-        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/tpu:tpu_estimator",
     ],
 )
@@ -370,6 +362,7 @@ py_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_combinations_lib",
         "//tensorflow/python/framework:versions",
+        "//tensorflow/python/module",
         "//tensorflow/python/ops:audio_ops_gen",
         "//tensorflow/python/ops:bincount_ops",
         "//tensorflow/python/ops:bitwise_ops",
@@ -410,6 +403,13 @@ py_library(
         "//tensorflow/python/ops/ragged:ragged_ops",
         "//tensorflow/python/ops/signal",
         "//tensorflow/python/ops/structured:structured_ops",
+        "//tensorflow/python/platform:app",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:flags",
+        "//tensorflow/python/platform:gfile",
+        "//tensorflow/python/platform:resource_loader",
+        "//tensorflow/python/platform:sysconfig",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/profiler",
         "//tensorflow/python/profiler:profiler_client",
         "//tensorflow/python/profiler:profiler_v2",
@@ -675,10 +675,10 @@ pywrap_tensorflow_macro(
         "@local_config_tensorrt//:__subpackages__",
         "@local_execution_config_platform//:__subpackages__",
         "@mkl_dnn_acl_compatible//:__subpackages__",
-        "@mkl_dnn_v1//:__subpackages__",
         "@nccl_archive//:__subpackages__",
         "@nsync//:__subpackages__",
         "@nvtx_archive//:__subpackages__",
+        "@onednn//:__subpackages__",
         "@org_sqlite//:__subpackages__",
         "@platforms//:__subpackages__",
         "@png//:__subpackages__",
@@ -693,7 +693,7 @@ pywrap_tensorflow_macro(
         "@upb//:__subpackages__",
         "@XNNPACK//:__subpackages__",
         "@zlib//:__subpackages__",
-    ] + tsl_async_value_deps() + if_onednn_v3(["@onednn_v3//:__subpackages__"]),
+    ] + tsl_async_value_deps(),
     win_def_file = ":pywrap_tensorflow_filtered_def_file",
     deps = [
         "//tensorflow/c:c_api",

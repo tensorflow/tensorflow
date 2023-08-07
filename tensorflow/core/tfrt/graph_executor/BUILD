@@ -33,6 +33,7 @@ cc_library(
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/core/tfrt/runtime:work_queue_interface",
         "//tensorflow/core/tfrt/utils:bridge_graph_analysis",
+        "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
     ],
 )
@@ -147,6 +148,7 @@ tf_cc_test(
         "//tensorflow/core/tfrt/saved_model:saved_model_testutil",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
         "@tf_runtime//:tensor",
         "@tf_runtime//cpp_tests:common",
@@ -177,6 +179,15 @@ tf_proto_library(
     srcs = ["config.proto"],
     visibility = ["//visibility:public"],
 )
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "config_proto_py_pb2",
+#     api_version = 2,
+#     visibility = ["//visibility:public"],
+#     deps = [":config_proto"],
+# )
+# copybara:uncomment_end
 
 tf_proto_library(
     name = "test_config_proto",
