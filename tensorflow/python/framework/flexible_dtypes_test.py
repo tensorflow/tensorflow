@@ -828,6 +828,14 @@ class DtypesUtilTest(tf_test.TestCase, parameterized.TestCase):
           (dtypes.float32, False),
       )
 
+  # Test bool type inference.
+  def testResultTypeBool(self):
+    with DtypeConversionTestEnv('all'):
+      self.assertEqual(
+          flexible_dtypes.result_type(True, False),
+          (dtypes.bool, False),
+      )
+
   # Test Tensor shape type inference.
   def testResultTypeTensorShape(self):
     with DtypeConversionTestEnv('all'):
