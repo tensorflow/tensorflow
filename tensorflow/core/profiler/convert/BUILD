@@ -972,3 +972,40 @@ tf_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+cc_library(
+    name = "xspace_to_dcn_slack_analysis",
+    srcs = ["xspace_to_dcn_slack_analysis.cc"],
+    hdrs = ["xspace_to_dcn_slack_analysis.h"],
+    deps = [
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:side_effect_util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/core/profiler/protobuf:dcn_slack_analysis_proto_cc",
+        "//tensorflow/core/profiler/utils:hlo_module_utils",
+        "//tensorflow/core/profiler/utils:hlo_proto_map",
+        "//tensorflow/core/profiler/utils:hlo_proto_to_module",
+        "//tensorflow/tsl/platform:statusor",
+        "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/tsl/profiler/utils:math_utils",
+        "//tensorflow/tsl/profiler/utils:tf_xplane_visitor",
+        "//tensorflow/tsl/profiler/utils:xplane_schema",
+        "//tensorflow/tsl/profiler/utils:xplane_utils",
+        "//tensorflow/tsl/profiler/utils:xplane_visitor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "dcn_slack_analysis_combiner",
+    srcs = ["dcn_slack_analysis_combiner.cc"],
+    hdrs = ["dcn_slack_analysis_combiner.h"],
+    deps = [
+        "//tensorflow/core/profiler/protobuf:dcn_slack_analysis_proto_cc",
+        "//tensorflow/tsl/profiler/utils:math_utils",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
