@@ -493,6 +493,7 @@ cc_library(
         ":status_casters",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/hlo/utils:hlo_query",
         "//tensorflow/compiler/xla/hlo/utils:hlo_sharding_util",
         "//tensorflow/compiler/xla/service:custom_call_sharding_helper",
         "//tensorflow/compiler/xla/service/spmd:spmd_partitioner",
