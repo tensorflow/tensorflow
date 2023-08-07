@@ -745,7 +745,7 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
     return self._primary.to_proto(export_scope=export_scope)
 
   @property
-  def op(self):
+  def op(self) -> ops.Operation:
     if values_util.is_saving_non_distributed():
       return self._primary.op
     # We want cross-replica code that does some var.op.X calls

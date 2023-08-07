@@ -15,15 +15,66 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/python/sharding.h"
 
+#include <cstdlib>
+#include <optional>
 #include <string>
 #include <utility>
 
+#include "absl/strings/match.h"
+#include "pybind11/cast.h"  // from @pybind11
+#include "pybind11/pytypes.h"  // from @pybind11
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
+#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/python/py_client.h"
 #include "tensorflow/compiler/xla/python/util.h"
+#include "tensorflow/compiler/xla/statusor.h"
 
 namespace jax {
 
 namespace py = pybind11;
+
+bool GetJaxEnableMemoryKind() {
+  static bool fetch_memory_kind_on_executable = [] {
+    char* v = getenv("JAX_ENABLE_MEMORY_KIND");
+    if (v == nullptr || *v == '\0') {
+      return false;
+    }
+    return true;
+  }();
+  return fetch_memory_kind_on_executable;
+}
+
+pybind11::object CanonicalizeMemoryKind(pybind11::object memory_kind,
+                                        pybind11::object device) {
+  if (memory_kind != py::none()) {
+    return memory_kind;
+  }
+
+  pybind11::detail::make_caster<xla::ClientAndPtr<xla::PjRtDevice>> conv;
+  if (!conv.load(device, /*convert=*/true)) {
+    return py::none();
+  }
+  xla::ClientAndPtr<xla::PjRtDevice> pjrt_device =
+      pybind11::detail::cast_op<xla::ClientAndPtr<xla::PjRtDevice>>(
+          std::move(conv));
+
+  if (!GetJaxEnableMemoryKind() ||
+      absl::StrContains(pjrt_device.client()->platform_version(),
+                        "PJRT C API")) {
+    return py::none();
+  }
+  // TODO(hyeontaek): Replace this with
+  // DeviceList.addressable_device_assignment[0]->default_memory_space();
+  xla::StatusOr<xla::PjRtMemorySpace*> default_memory =
+      pjrt_device.client()
+          ->ifrt_client()
+          ->addressable_devices()[0]
+          ->default_memory_space();
+  if (!default_memory.ok()) {
+    return py::none();
+  }
+  return py::str(default_memory.value()->memory_space_kind());
+}
 
 int Sharding::SafeNumDevices(pybind11::handle sharding) {
   // Pure python shardings are not initialized, so we should not
@@ -166,6 +217,9 @@ NamedSharding::NamedSharding(py::object mesh, py::object spec,
       memory_kind_(std::move(memory_kind)),
       parsed_pspec_(std::move(parsed_pspec)) {
   py::cast(this).attr("_preprocess")();
+  py::tuple flat_devices =
+      py::cast<py::tuple>(mesh_.attr("_flat_devices_tuple"));
+  memory_kind_ = CanonicalizeMemoryKind(memory_kind_, flat_devices[0]);
 }
 
 void RegisterSharding(py::module& m) {
@@ -190,7 +244,7 @@ void RegisterSharding(py::module& m) {
            py::arg("_parsed_pspec") = py::none())
       .def_property_readonly("mesh", &NamedSharding::mesh)
       .def_property_readonly("spec", &NamedSharding::spec)
-      .def_property_readonly("memory_kind", &NamedSharding::memory_kind)
+      .def_property_readonly("_memory_kind", &NamedSharding::memory_kind)
       .def_property("_parsed_pspec", &NamedSharding::parsed_pspec,
                     &NamedSharding::set_parsed_pspec);
 

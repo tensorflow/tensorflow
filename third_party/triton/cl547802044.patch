@@ -1,0 +1,16 @@
+# Potential PR to fix this issue upstream:
+#   (https://github.com/openai/triton/pull/1996) 
+
+diff --git a/lib/Analysis/Utility.cpp b/lib/Analysis/Utility.cpp
+index ae46b79b2..d3ea844cd 100644
+--- a/lib/Analysis/Utility.cpp
++++ b/lib/Analysis/Utility.cpp
+@@ -119,7 +119,7 @@ unsigned ReduceOpHelper::getScratchSizeInBytes() {
+ 
+   unsigned bytesPerElem = 0;
+   for (const auto &ty : srcElementTypes) {
+-    bytesPerElem += ty.getIntOrFloatBitWidth() / 8;
++    bytesPerElem += (ty.getIntOrFloatBitWidth() + 7) / 8;
+   }
+   return bytesPerElem * elems;
+ }

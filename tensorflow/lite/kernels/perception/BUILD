@@ -60,7 +60,11 @@ pybind_extension(
     ],
     hdrs = ["perception_ops.h"],
     additional_exported_symbols = ["PerceptionOpsRegisterer"],
+    enable_stub_generation = True,
     link_in_framework = True,
+    pytype_srcs = [
+        "pywrap_perception_ops.pyi",
+    ],
     deps = [
         ":perception_ops",
         "//tensorflow/lite:mutable_op_resolver",

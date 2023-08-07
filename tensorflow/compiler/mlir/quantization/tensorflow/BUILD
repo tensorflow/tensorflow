@@ -1,3 +1,4 @@
+# Placeholder: load py_proto_library
 load("//tensorflow:strict.default.bzl", "py_strict_binary")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")

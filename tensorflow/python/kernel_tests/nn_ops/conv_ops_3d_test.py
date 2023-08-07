@@ -67,16 +67,14 @@ TEST_PARAMS = [
     ("Conv_NDHWC_half_cpu", "NDHWC", dtypes.float16, False, "Conv"),
     # ("Conv_NDHWC_double_cpu", "NDHWC", dtypes.float64, False, "Conv"),
     ("Conv_NDHWC_bfloat16_cpu", "NDHWC", dtypes.bfloat16, False, "Conv"),
-    # TODO(b/291785218): Enable GPU configs for Conv when GPU implementation is
-    # done.
-    # ("Conv_NDHWC_float_gpu", "NDHWC", dtypes.float32, True, "Conv"),
-    # ("Conv_NDHWC_half_gpu", "NDHWC", dtypes.float16, True, "Conv"),
-    # ("Conv_NDHWC_double_gpu", "NDHWC", dtypes.float64, True, "Conv"),
-    # ("Conv_NDHWC_bfloat16_gpu", "NDHWC", dtypes.bfloat16, True, "Conv"),
-    # ("Conv_NCDHW_float_gpu", "NCDHW", dtypes.float32, True, "Conv"),
-    # ("Conv_NCDHW_half_gpu", "NCDHW", dtypes.float16, True, "Conv"),
-    # ("Conv_NCDHW_double_gpu", "NCDHW", dtypes.float64, True, "Conv"),
-    # ("Conv_NCDHW_bfloat16_gpu", "NCDHW", dtypes.bfloat16, True, "Conv")
+    ("Conv_NDHWC_float_gpu", "NDHWC", dtypes.float32, True, "Conv"),
+    ("Conv_NDHWC_half_gpu", "NDHWC", dtypes.float16, True, "Conv"),
+    ("Conv_NDHWC_double_gpu", "NDHWC", dtypes.float64, True, "Conv"),
+    ("Conv_NDHWC_bfloat16_gpu", "NDHWC", dtypes.bfloat16, True, "Conv"),
+    ("Conv_NCDHW_float_gpu", "NCDHW", dtypes.float32, True, "Conv"),
+    ("Conv_NCDHW_half_gpu", "NCDHW", dtypes.float16, True, "Conv"),
+    ("Conv_NCDHW_double_gpu", "NCDHW", dtypes.float64, True, "Conv"),
+    ("Conv_NCDHW_bfloat16_gpu", "NCDHW", dtypes.bfloat16, True, "Conv"),
 ]
 
 DILATED_PARAMS = [
@@ -84,10 +82,8 @@ DILATED_PARAMS = [
     ("Conv3D_NDHWC_gpu", "NDHWC", True, "Conv3D"),
     ("Conv3D_NCDHW_gpu", "NCDHW", True, "Conv3D"),
     ("Conv_NDHWC_cpu", "NDHWC", False, "Conv"),
-    # TODO(b/291785218): Enable GPU configs for Conv when GPU implementation is
-    # done.
-    # ("Conv_NDHWC_gpu", "NDHWC", True, "Conv"),
-    # ("Conv_NCDHW_gpu", "NCDHW", True, "Conv")
+    ("Conv_NDHWC_gpu", "NDHWC", True, "Conv"),
+    ("Conv_NCDHW_gpu", "NCDHW", True, "Conv"),
 ]
 
 

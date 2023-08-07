@@ -354,12 +354,6 @@ def TransformEinsumPass : Pass<"tf-einsum", "mlir::func::FuncOp"> {
   let constructor = "TF::CreateTransformEinsumPass()";
 }
 
-def LegalizeHloToTfPass : Pass<"tf-legalize-hlo", "ModuleOp"> {
-  let summary = "Legalize from HLO to the TF dialect";
-  let dependentDialects = ["TF::TensorFlowDialect"];
-  let constructor = "TF::CreateLegalizeHloToTfPass()";
-}
-
 def LegalizeTFGToTFPass : Pass<"tfe-legalize-tfg", "ModuleOp"> {
   let summary = "Legalize from TFG to the TFE dialect";
   let constructor = "TF::CreateLegalizeTFGToTFEPass()";

@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/host_command_handler.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/proto_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
@@ -32,21 +31,12 @@ limitations under the License.
 
 namespace tensorflow {
 
-TpuOpExecutable::TpuOpExecutable(const XLA_TpuProgram* core_program,
-                                 std::unique_ptr<xla::HloModule> hlo_module,
-                                 HostCommandHandler host_command_handler)
-    : TpuExecutableInterface(std::move(hlo_module)),
-      core_program_(core_program),
-      host_command_handler_(std::move(host_command_handler)),
-      outside_compilation_params_(nullptr) {}
-
 TpuOpExecutable::TpuOpExecutable(
     const XLA_TpuProgram* core_program,
     std::unique_ptr<xla::HloModule> hlo_module,
     SE_OutsideCompilationParams* outside_compilation_params)
     : TpuExecutableInterface(std::move(hlo_module)),
       core_program_(core_program),
-      host_command_handler_(nullptr),
       outside_compilation_params_(outside_compilation_params) {}
 
 xla::Status TpuOpExecutable::LoadProgramAndEnqueueToStream(
@@ -109,7 +99,6 @@ xla::Status TpuOpExecutable::LoadProgramAndEnqueueToStream(
   params.rng_seed = rng_seed;
   params.device_assignment = &c_dev_assign;
   params.stream = stream;
-  params.host_command_handler = ApiConverter::ToC(host_command_handler_);
   params.outside_compilation_params = outside_compilation_params_;
   params.status = status.c_status;
 
@@ -119,7 +108,6 @@ xla::Status TpuOpExecutable::LoadProgramAndEnqueueToStream(
   if (dev_assign != nullptr) {
     stream_executor::tpu::SerializedProto_Free(dev_assign_serialized);
   }
-  ApiConverter::Destroy(params.host_command_handler);
   return status.status();
 }
 

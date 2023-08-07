@@ -86,6 +86,31 @@ bool ShouldUseCudnnRuntimeFusion(const DebugOptions& debug_opts,
   return debug_opts.xla_gpu_use_runtime_fusion() && cc.IsAtLeast(7, 5);
 }
 
+bool IsSuitableForCudnnRuntimeFusion(HloInstruction* conv) {
+  // cudnn runtime fusion is pathologically slow on convs with side-inputs.
+  // TODO(kaixih@nvidia): remove this check when cuDNN fixes it.
+  if (conv->operands().size() > 3) {
+    return false;
+  }
+
+  // cuDNN runtime funsion kernels require 32-bit aligned data access, which
+  // means that the number of in/out channels must be divisible by 2 for fp16.
+  // (We don't currently do runtime fusion for int8.)
+  if (conv->operand(0)->shape().element_type() != F16) {
+    return false;
+  }
+  const Shape& shape = conv->operand(1)->shape();
+  int64_t num_input_features = shape.dimensions(
+      conv->convolution_dimension_numbers().kernel_input_feature_dimension());
+  int64_t num_output_features = shape.dimensions(
+      conv->convolution_dimension_numbers().kernel_output_feature_dimension());
+  if (num_input_features % 2 != 0 || num_output_features % 2 != 0) {
+    return false;
+  }
+
+  return true;
+}
+
 // Can instr be converted to type `dst_ty` without losing any precision?  For
 // our purposes, this is true if:
 //
@@ -821,26 +846,7 @@ StatusOr<bool> FuseElu(HloComputation* comp, se::CudaComputeCapability cc) {
       continue;
     }
 
-    // In some cases, the XLA optimizes the inputs of the convolution by
-    // moving and broadcasting the bias to the side input, e.g., when the input
-    // spatial dimensions are all ones and filter spatial dimentsions are all
-    // non-ones. However, there is a known issue that the side input is not well
-    // supported in the cuDNN runtime fusion. Therefore, we skip these cases.
-    // TODO(kaixih@nvidia): remove this check when cuDNN fixes it.
-    if (conv->operands().size() > 3) {
-      continue;
-    }
-
-    // cuDNN runtime funsion kernels require 32-bit aligned data access. Since
-    // we only allow fp16 datatype, we need to check if the in and out channels
-    // of filter are even numbers.
-    const Shape& shape = conv->operand(1)->shape();
-    int64_t num_input_features = shape.dimensions(
-        conv->convolution_dimension_numbers().kernel_input_feature_dimension());
-    int64_t num_output_features =
-        shape.dimensions(conv->convolution_dimension_numbers()
-                             .kernel_output_feature_dimension());
-    if (num_input_features % 2 != 0 || num_output_features % 2 != 0) {
+    if (!IsSuitableForCudnnRuntimeFusion(conv)) {
       continue;
     }
 
@@ -927,9 +933,7 @@ StatusOr<bool> FuseRelu6(HloComputation* comp, se::CudaComputeCapability cc) {
       continue;
     }
 
-    // cudnn runtime fusions seem to be very slow when a side input is present.
-    // TODO(kaixih@nvidia): remove this check when cuDNN fixes it.
-    if (conv->operands().size() > 3) {
+    if (!IsSuitableForCudnnRuntimeFusion(conv)) {
       continue;
     }
 
@@ -986,9 +990,7 @@ StatusOr<bool> FuseLeakyRelu(HloComputation* comp,
       continue;
     }
 
-    // cudnn runtime fusions seem to be very slow when a side input is present.
-    // TODO(kaixih@nvidia): remove this check when cuDNN fixes it.
-    if (conv->operands().size() > 3) {
+    if (!IsSuitableForCudnnRuntimeFusion(conv)) {
       continue;
     }
 

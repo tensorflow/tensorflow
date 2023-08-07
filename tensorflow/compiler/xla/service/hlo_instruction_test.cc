@@ -626,6 +626,48 @@ TEST_F(HloInstructionTest, PostProcessAllVisitedNodes) {
   EXPECT_TRUE(Distinct(visitor.visited_nodes()));
 }
 
+TEST_F(HloInstructionTest, PostProcessAllVisitedNodesMultiComputation) {
+  // Verifies all the nodes are visited and post-processed in the same order,
+  // and that each node is visited exactly once.
+  const std::string& hlo_string = R"(
+  HloModule axpy_module
+    calculate_alpha {
+      c.1 = f32[] constant(1)
+      c.2 = f32[] constant(2)
+      c.3 = f32[] add(c.1, c.2)
+      c.4 = f32[] constant(4)
+      ROOT ret = f32[] multiply(c.4, c.3)
+    }
+    
+    ENTRY axpy_computation {
+      p.0 = f32[10] parameter(0)
+      p.1 = f32[10] parameter(1)
+      add.0 = f32[10] add(p.0, p.1)
+      alpha = f32[] call(), to_apply=calculate_alpha
+      broadcast = f32[10] broadcast(alpha), dimensions={}
+      p.2 = f32[10] parameter(2)
+      y = f32[10] multiply(broadcast, p.2)
+      x = f32[10] subtract(y, add.0)
+      p.3 = f32[10] parameter(3)
+      ROOT add.1 = f32[10] add(x, p.3)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* add1 = FindInstruction(module.get(), "add.1");
+  EXPECT_EQ(add1, module->entry_computation()->root_instruction());
+
+  NodeCollectorAndPostProcessor visitor;
+  ASSERT_IS_OK(add1->Accept(&visitor, /*call_finish_visit=*/true,
+                            /*ignore_control_predecessors=*/false,
+                            /*cross_computation=*/true));
+  // Verifies all the nodes are visited and post-processed in the same order.
+  EXPECT_EQ(visitor.visited_nodes(), visitor.post_processed_nodes());
+  // Verifies each node is visited exactly once.
+  EXPECT_TRUE(Distinct(visitor.visited_nodes()));
+}
+
 TEST_F(HloInstructionTest, SingletonFusionOp) {
   HloComputation::Builder builder(TestName());
   // Create a fusion instruction containing a single unary operation.

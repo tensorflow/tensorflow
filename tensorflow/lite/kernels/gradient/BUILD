@@ -70,7 +70,11 @@ pybind_extension(
     ],
     hdrs = ["gradient_ops.h"],
     additional_exported_symbols = ["GradientOpsRegisterer"],
+    enable_stub_generation = True,
     link_in_framework = True,
+    pytype_srcs = [
+        "pywrap_gradient_ops.pyi",
+    ],
     deps = [
         ":gradient_ops",
         "//tensorflow/lite:mutable_op_resolver",

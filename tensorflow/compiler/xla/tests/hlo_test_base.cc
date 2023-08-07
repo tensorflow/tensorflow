@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_runner_interface.h"
 #include "tensorflow/compiler/xla/service/hlo_runner_pjrt.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/tests/filecheck.h"
@@ -62,7 +63,7 @@ bool ProgramShapesEqual(const ProgramShape& lhs, const ProgramShape& rhs) {
       return false;
     }
   }
-  return ShapeUtil::Equal(lhs.result(), rhs.result());
+  return Shape::Equal().IgnoreElementSizeInLayout()(lhs.result(), rhs.result());
 }
 
 ProgramShape GetProgramShapeWithLayout(const HloModule& module) {
@@ -236,9 +237,11 @@ DebugOptions HloTestBase::GetDebugOptionsForTest() {
 void HloTestBase::RunAndFilecheckHloRewrite(
     absl::string_view hlo, HloPassInterface&& hlo_pass,
     std::optional<absl::string_view> expected,
-    std::function<void(HloModule*)> after_pass_checks) {
+    std::function<void(HloModule*)> after_pass_checks,
+    const HloModuleConfig* config) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+                          config ? ParseAndReturnVerifiedModule(hlo, *config)
+                                 : ParseAndReturnVerifiedModule(hlo));
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&hlo_pass, module.get()));
   EXPECT_EQ(changed, expected.has_value()) << module->ToString();
   if (changed) {

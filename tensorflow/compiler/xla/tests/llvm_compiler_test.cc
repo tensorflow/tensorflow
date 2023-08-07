@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
-#include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/platform/threadpool.h"
 
 namespace xla {
 namespace gpu {
@@ -56,7 +56,8 @@ class GpuDummyCompiler : public GpuCompiler {
   Status OptimizeHloPostLayoutAssignment(
       HloModule* hlo_module, se::StreamExecutor* stream_executor,
       const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
-      const AutotuneResults* autotune_results) override {
+      const AutotuneResults* autotune_results,
+      tsl::thread::ThreadPool* thread_pool) override {
     return OkStatus();
   }
 

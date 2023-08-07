@@ -32,3 +32,7 @@ void RegisterListOps(MutableOpResolver* resolver) {
 }  // namespace ops
 }  // namespace variants
 }  // namespace tflite
+
+void RegisterSelectedOps(tflite::MutableOpResolver* resolver) {
+  tflite::variants::ops::RegisterListOps(resolver);
+}

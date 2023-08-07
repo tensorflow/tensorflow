@@ -59,6 +59,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/UniformSupport.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/dilated_conv.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
@@ -1225,7 +1226,7 @@ LogicalResult ConvertTf2XlaOps(func::FuncOp func, MLIRContext *context) {
   mhlo::PopulateLegalizeTfWithTf2XlaPatterns("XLA_CPU_JIT", patterns, context,
                                              converter);
   mhlo::PopulateLegalizeTfPatterns(context, &patterns);
-  TF::PopulateLegalizeHloToTfPatterns(&patterns, context);
+  mlir::odml::PopulateLegalizeHloToTfPatterns(&patterns, context);
   mhlo::GatherOp::getCanonicalizationPatterns(patterns, context);
 
   return applyPartialConversion(func, target, std::move(patterns));

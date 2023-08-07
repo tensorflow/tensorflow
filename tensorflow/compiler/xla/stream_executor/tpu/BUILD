@@ -53,7 +53,6 @@ cc_library(
     hdrs = ["c_api_conversions.h"],
     deps = [
         ":c_api_decl",
-        ":host_command_handler",
         ":tpu_api",
         ":tpu_executor_c_api_hdrs",
         ":tpu_ops_c_api_hdrs",
@@ -77,7 +76,6 @@ xla_cc_test(
     deps = [
         ":c_api_conversions",
         ":c_api_decl",
-        ":host_command_handler",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
@@ -381,7 +379,6 @@ cc_library(
     deps = [
         ":c_api_conversions",
         ":c_api_decl",
-        ":host_command_handler",
         ":proto_helper",
         ":status_helper",
         ":tpu_api",
@@ -426,10 +423,10 @@ cc_library(
 )
 
 cc_library(
-    name = "tpu_initializer_helper",
-    srcs = ["tpu_initializer_helper.cc"],
+    name = "tpu_initializer_framework_helper",
+    srcs = ["tpu_initializer_framework_helper.cc"],
     hdrs = [
-        "tpu_initializer_helper.h",
+        "tpu_initializer_framework_helper.h",
     ],
     visibility = ["//visibility:public"],
     deps = [
@@ -438,8 +435,24 @@ cc_library(
         ":tpu_api_dlsym_set_fn",
         ":tpu_executor_base",
         ":tpu_executor_c_api_hdrs",
+        ":tpu_initialize_util",
         ":tpu_library_init_fns",
         ":tpu_ops_c_api_hdrs",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:status",
+    ],
+)
+
+cc_library(
+    name = "tpu_initialize_util",
+    srcs = ["tpu_initialize_util.cc"],
+    hdrs = [
+        "tpu_initialize_util.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:logging",
@@ -545,10 +558,4 @@ cc_library(
         ":tpu_api",
         "//tensorflow/tsl/platform:types",
     ],
-)
-
-cc_library(
-    name = "host_command_handler",
-    hdrs = ["host_command_handler.h"],
-    visibility = ["//visibility:public"],
 )

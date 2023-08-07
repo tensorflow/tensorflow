@@ -71,6 +71,9 @@ void AddMhloOptimizationPasses(OpPassManager& pm) {
   pm.addNestedPass<func::FuncOp>(createUnfuseBatchNormPass());
   pm.addNestedPass<func::FuncOp>(createFuseConvolutionPass());
   pm.addNestedPass<func::FuncOp>(createOptimizePass());
+  pm.addNestedPass<func::FuncOp>(mhlo::createLegalizeEinsumToDotGeneralPass());
+  pm.addNestedPass<func::FuncOp>(
+      mhlo::createLegalizeTorchIndexSelectToGatherPass());
   pm.addPass(mlir::createCanonicalizerPass());
 }
 

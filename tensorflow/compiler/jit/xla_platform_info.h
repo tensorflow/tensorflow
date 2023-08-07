@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/pjrt_base_device.h"
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/xla/stream_executor/tf_allocator_adapter.h"
+#include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
 
@@ -125,7 +126,8 @@ Status BuildXlaDeviceCompiler(
 // 1. PjRtClient doesn't support data transfer for non-XLA devices yet
 // 2. Fetching the PjRtClient for non-XLA devices is also not supported yet
 Status GetOrCreatePjRtDeviceCompilerAndProfiler(
-    const XlaPlatformInfo& platform_info, FunctionLibraryRuntime* flr,
+    const OpKernelContext& ctx, const XlaPlatformInfo& platform_info,
+    FunctionLibraryRuntime* flr,
     DeviceCompiler<xla::PjRtLoadedExecutable, xla::PjRtClient>**
         pjrt_device_compiler,
     DeviceCompilationProfiler** profiler);

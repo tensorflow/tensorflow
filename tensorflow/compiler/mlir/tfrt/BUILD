@@ -686,3 +686,25 @@ cc_library(
         "@llvm-project//mlir:IR",
     ],
 )
+
+cc_library(
+    name = "export",
+    srcs = ["utils/export.cc"],
+    hdrs = ["utils/export.h"],
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow:error_util",
+        "//tensorflow/compiler/mlir/tensorflow:export_graphdef",
+        "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/profiler/lib:traceme",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+    ],
+)

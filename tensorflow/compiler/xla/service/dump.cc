@@ -336,11 +336,14 @@ static std::optional<std::string> DumpToFileInDirImpl(
   return file_path;
 }
 
+static absl::Mutex stdout_dump_mutex(absl::kConstInit);
+
 static std::optional<std::string> DumpToFileInDirOrStdoutImpl(
     string_view filename, string_view contents,
     const CanonicalDebugOptions& opts) {
   // Dump to stdout if that's called for.
   if (opts.dumping_to_stdout()) {
+    absl::MutexLock lock(&stdout_dump_mutex);
     std::cout << "*** Begin " << filename << " ***\n"
               << contents << "\n*** End " << filename << " ***" << std::endl;
     return std::nullopt;
@@ -355,6 +358,7 @@ static std::optional<std::string> DumpToFileInDirOrStdoutImpl(
     const CanonicalDebugOptions& opts) {
   // Dump to stdout if that's called for.
   if (opts.dumping_to_stdout()) {
+    absl::MutexLock lock(&stdout_dump_mutex);
     std::cout << "*** Begin " << filename << " ***\n";
     while (auto next_producer = data_producer.Next()) {
       std::cout << next_producer();

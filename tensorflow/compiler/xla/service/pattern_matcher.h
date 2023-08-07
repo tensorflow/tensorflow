@@ -2342,6 +2342,7 @@ XLA_UNOP_PATTERN(Sqrt)
 XLA_UNOP_PATTERN(Tan)
 XLA_UNOP_PATTERN(Tanh)
 XLA_UNOP_PATTERN(Transpose)
+XLA_UNOP_PATTERN(AllGather)
 #undef XLA_UNOP_PATTERN
 
 // Helpers for binary instructions.

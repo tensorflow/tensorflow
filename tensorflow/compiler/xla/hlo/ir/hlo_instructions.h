@@ -2304,6 +2304,11 @@ class HloDotInstruction : public HloInstruction {
     return dot_dimension_numbers_;
   }
 
+  // Sets dimension numbers used for a dot operation.
+  DotDimensionNumbers* mutable_dot_dimension_numbers() {
+    return &dot_dimension_numbers_;
+  }
+
   // Returns the information used to tell the implementation information about
   // what sort of precision is requested. The meaning of the field is backend
   // specific. At the moment, it is only supported for kConvolution and kDot.

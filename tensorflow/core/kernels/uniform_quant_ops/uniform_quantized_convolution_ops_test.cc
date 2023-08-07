@@ -12,15 +12,22 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstdint>
 #include <limits>
+#include <vector>
 
+#include <gtest/gtest.h>
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
+#include "tensorflow/core/framework/numeric_types.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/quantization/uniform_quant_ops_attr.pb.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 
@@ -213,6 +220,56 @@ TEST_F(UniformQuantizedConvolutionTest, PerTensorQuantizedSetExplicitPadding) {
        70,    30,    -10,   -74,   -72,   -16,   -130,  -170,  -202,  -146,
        -152,  -296,  -328,  -272,  -162,  1030,  1566,  1718,  1142,  568,
        1456,  2174,  2326,  1526,  750,   712,   1048,  1112,  720,   350});
+  test::ExpectTensorEqual<qint32>(expected, *GetOutput(0));
+}
+
+TEST_F(UniformQuantizedConvolutionTest, PerTensorQuantizedSetSamePadding) {
+  TF_ASSERT_OK(NodeDefBuilder("test", "UniformQuantizedConvolution")
+                   .Input(FakeInput(DT_QINT8))
+                   .Input(FakeInput(DT_QINT8))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_INT32))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_INT32))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_INT32))
+                   .Attr("Tin", DT_QINT8)
+                   .Attr("Tout", DT_QINT32)
+                   .Attr("lhs_quantization_min_val", kInt8Min)
+                   .Attr("lhs_quantization_max_val", kInt8Max)
+                   .Attr("rhs_quantization_min_val", kInt8Min)
+                   .Attr("rhs_quantization_max_val", kInt8Max)
+                   .Attr("output_quantization_min_val", kInt32Min)
+                   .Attr("output_quantization_max_val", kInt32Max)
+                   .Attr("padding", "SAME")
+                   .Finalize(node_def()));
+  // strides = [1, 1]
+  // dimension_numbers = [b, f, 0, 1]x[o, i, 0, 1]->[b, f, 0, 1]
+  // batch_group_count = 1
+  // feature_group_count = 1
+  // lhs_dilation = [1, 1]
+  // rhs_dilation = [1, 1]
+  TF_ASSERT_OK(InitOp());
+
+  // lhs (quantized) tensor.
+  AddInputFromArray<qint8>(TensorShape({1, 1, 2, 2}), Arange<qint8>(-2, 2));
+  // rhs (quantized) tensor.
+  AddInputFromArray<qint8>(TensorShape({1, 1, 2, 1}), Arange<qint8>(1, 3));
+  // lhs scales and zero_points.
+  AddInputFromArray<float>(TensorShape({}), {2.0});
+  AddInputFromArray<int32>(TensorShape({}), {1});
+  // rhs scales and zero_points.
+  AddInputFromArray<float>(TensorShape({}), {2.0});
+  AddInputFromArray<int32>(TensorShape({}), {2});
+  // output scales and zero_points.
+  AddInputFromArray<float>(TensorShape({}), {4.0});
+  AddInputFromArray<int32>(TensorShape({}), {3});
+
+  TF_ASSERT_OK(RunOpKernel());
+  Tensor expected(allocator(), DT_QINT32, TensorShape({1, 1, 2, 2}));
+  // Dequantized output [(output - 3) * 4.0] should be equal to
+  // conv([(lhs - 1) * 2.0], [(rhs - 2) * 2.0])
+  test::FillValues<qint32>(&expected, {6, 5, 4, 3});
   test::ExpectTensorEqual<qint32>(expected, *GetOutput(0));
 }
 

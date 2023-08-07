@@ -134,6 +134,7 @@ tf_kernel_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
         "//tensorflow/compiler/xla/stream_executor/tpu:proto_helper",
+        "//tensorflow/compiler/xla/stream_executor/tpu:status_helper",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_api",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_ops_c_api_hdrs",
         "//tensorflow/core:core_cpu_base",
@@ -1008,8 +1009,10 @@ cc_library(
         ":tpu_compilation_cache_service",
         "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
+        "//tensorflow/compiler/xla/stream_executor/tpu:status_helper",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_api",
         "//tensorflow/core:framework",
+        "//tensorflow/tsl/platform:errors",
         "@com_google_absl//absl/cleanup",
     ],
 )

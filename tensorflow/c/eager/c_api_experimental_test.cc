@@ -213,8 +213,35 @@ TEST(CAPI, MonitoringMultipleSampler) {
 TEST(CAPI, CancellationManager) {
   TFE_CancellationManager* c_mgr = TFE_NewCancellationManager();
   EXPECT_FALSE(TFE_CancellationManagerIsCancelled(c_mgr));
+
+  TFE_CancelCallback callback1;
+  callback1.callback = [](void* context) {
+    ADD_FAILURE() << "Callback1 should be deregistered.";
+  };
+  TFE_CancellationToken token1 = TFE_CancellationManagerGetToken(c_mgr);
+  EXPECT_TRUE(TFE_CancellationManagerRegisterCallback(c_mgr, token1, &callback1,
+                                                      "callback1"));
+
+  TFE_CancelCallback callback2;
+  bool callback2_invoked = false;
+  callback2.context = &callback2_invoked;
+  callback2.callback = [](void* context) {
+    *reinterpret_cast<bool*>(context) = true;
+  };
+  TFE_CancellationToken token2 = TFE_CancellationManagerGetToken(c_mgr);
+  EXPECT_TRUE(TFE_CancellationManagerRegisterCallback(c_mgr, token2, &callback2,
+                                                      "callback2"));
+
+  TFE_CancellationToken token3 = TFE_CancellationManagerGetToken(c_mgr);
+  EXPECT_TRUE(TFE_CancellationManagerRegisterCallback(c_mgr, token3, &callback1,
+                                                      "callback3"));
+
+  EXPECT_TRUE(TFE_CancellationManagerDeregisterCallback(c_mgr, token1));
+  EXPECT_TRUE(TFE_CancellationManagerTryDeregisterCallback(c_mgr, token3));
+
   TFE_CancellationManagerStartCancel(c_mgr);
   EXPECT_TRUE(TFE_CancellationManagerIsCancelled(c_mgr));
+  EXPECT_TRUE(callback2_invoked);
   TFE_DeleteCancellationManager(c_mgr);
 }
 

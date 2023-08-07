@@ -22,7 +22,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/cleanup/cleanup.h"
 #include "absl/strings/string_view.h"
 #include "mlir/Bytecode/BytecodeWriter.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
@@ -41,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -217,6 +217,10 @@ StatusOr<PjRtDevice*> PjRtCApiClient::LookupAddressableDevice(
   RETURN_STATUS_IF_PJRT_ERROR(
       c_api_->PJRT_Client_LookupAddressableDevice(&args), c_api_);
   return GetCppDevice(args.addressable_device);
+}
+
+absl::Span<PjRtMemorySpace* const> PjRtCApiClient::memory_spaces() const {
+  return {};
 }
 
 // Initializes `PJRT_Client_Compile_Args`, which will be used to call
@@ -533,7 +537,23 @@ PjRtCApiDevice::PjRtCApiDevice(PJRT_Device* device, PjRtCApiClient* client)
     : client_(client),
       device_(device),
       description_(client->pjrt_c_api(),
-                   pjrt::GetDeviceDescription(client->pjrt_c_api(), device)) {}
+                   pjrt::GetDeviceDescription(client->pjrt_c_api(), device)) {
+  PJRT_Device_AddressableMemories_Args args;
+  args.struct_size = PJRT_Device_AddressableMemories_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.device = device_;
+  pjrt::LogFatalIfPjrtError(
+      client->pjrt_c_api()->PJRT_Device_AddressableMemories(&args),
+      client->pjrt_c_api());
+  memory_spaces_.reserve(args.num_memories);
+  memory_space_pointers_.reserve(args.num_memories);
+  c_to_cpp_memory_map_.reserve(args.num_memories);
+  for (int i = 0; i < args.num_memories; ++i) {
+    memory_spaces_.emplace_back(PjRtCApiMemorySpace(client_, args.memories[i]));
+    memory_space_pointers_.emplace_back(&memory_spaces_.back());
+    c_to_cpp_memory_map_[args.memories[i]] = &memory_spaces_.back();
+  }
+}
 
 PjRtClient* PjRtCApiDevice::client() const { return client_; }
 
@@ -555,6 +575,16 @@ int PjRtCApiDevice::local_hardware_id() const {
   const PJRT_Api* api = client_->pjrt_c_api();
   pjrt::LogFatalIfPjrtError(api->PJRT_Device_LocalHardwareId(&args), api);
   return args.local_hardware_id;
+}
+
+StatusOr<PjRtMemorySpace*> PjRtCApiDevice::default_memory_space() const {
+  PJRT_Device_DefaultMemory_Args args;
+  args.struct_size = PJRT_Device_DefaultMemory_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.device = device_;
+  const PJRT_Api* api = client_->pjrt_c_api();
+  RETURN_STATUS_IF_PJRT_ERROR(api->PJRT_Device_DefaultMemory(&args), api);
+  return GetCppMemory(args.memory);
 }
 
 StatusOr<tsl::AllocatorStats> PjRtCApiDevice::GetAllocatorStats() const {
@@ -615,6 +645,55 @@ StatusOr<tsl::AllocatorStats> PjRtCApiDevice::GetAllocatorStats() const {
     result.peak_pool_bytes = args.peak_pool_bytes;
   }
   return result;
+}
+
+// ------------------------------- Memory --------------------------------------
+
+const PJRT_Api* PjRtCApiMemorySpace::pjrt_c_api() const {
+  return client_->pjrt_c_api();
+}
+
+PjRtClient* PjRtCApiMemorySpace::client() const { return client_; }
+
+int PjRtCApiMemorySpace::id() const {
+  PJRT_Memory_Id_Args args;
+  args.struct_size = PJRT_Memory_Id_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.memory = c_memory_;
+  pjrt::LogFatalIfPjrtError(pjrt_c_api()->PJRT_Memory_Id(&args), pjrt_c_api());
+  return args.id;
+}
+
+absl::string_view PjRtCApiMemorySpace::memory_space_kind() const {
+  PJRT_Memory_Kind_Args args;
+  args.struct_size = PJRT_Memory_Kind_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.memory = c_memory_;
+
+  pjrt::LogFatalIfPjrtError(pjrt_c_api()->PJRT_Memory_Kind(&args),
+                            pjrt_c_api());
+
+  return absl::string_view(args.memory_kind, args.memory_kind_size);
+}
+
+absl::string_view PjRtCApiMemorySpace::DebugString() const {
+  PJRT_Memory_DebugString_Args args;
+  args.struct_size = PJRT_Memory_DebugString_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.memory = c_memory_;
+  pjrt::LogFatalIfPjrtError(pjrt_c_api()->PJRT_Memory_DebugString(&args),
+                            pjrt_c_api());
+  return absl::string_view(args.debug_string, args.debug_string_size);
+}
+
+absl::string_view PjRtCApiMemorySpace::ToString() const {
+  PJRT_Memory_ToString_Args args;
+  args.struct_size = PJRT_Memory_ToString_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.memory = c_memory_;
+  pjrt::LogFatalIfPjrtError(pjrt_c_api()->PJRT_Memory_ToString(&args),
+                            pjrt_c_api());
+  return absl::string_view(args.to_string, args.to_string_size);
 }
 
 // ------------------------------- Executables ---------------------------------

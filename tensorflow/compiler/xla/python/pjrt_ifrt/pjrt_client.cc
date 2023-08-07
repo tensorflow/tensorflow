@@ -18,12 +18,15 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_array.h"
 #include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_tuple.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/platform/statusor.h"
 #include "tfrt/concurrency/ref_count.h"  // from @tf_runtime
 
@@ -65,11 +68,43 @@ StatusOr<tsl::RCReference<Array>> PjRtClient::MakeArrayFromHostBuffer(
         sharding->DebugString());
   }
   TF_ASSIGN_OR_RETURN(auto primitive_type, ToPrimitiveType(dtype));
-  TF_ASSIGN_OR_RETURN(
-      auto buffer,
-      pjrt_client_->BufferFromHostBuffer(
-          data, primitive_type, shape.dims(), byte_strides, semantics,
-          std::move(on_done_with_host_buffer), sharding->devices().front()));
+
+  std::unique_ptr<PjRtBuffer> buffer;
+  // If the sharding has memory_kind specified, use a version of
+  // `PjRtClient::BufferFromHostBuffer` that accepts `PjRtMemorySpace`.
+  // Otherwise, use a non-`PjRtMemorySpace` version that is compatible with PjRt
+  // implementations without memories support.
+  if (sharding->memory_kind().memory_kind().has_value()) {
+    // Find `PjRtMemorySpace` that is associated with the sharding's device and
+    // matches the sharding's memory_kind.
+    PjRtMemorySpace* memory_space;
+    for (PjRtMemorySpace* ms : sharding->devices().front()->memory_spaces()) {
+      if (ms->memory_space_kind() == *sharding->memory_kind().memory_kind()) {
+        memory_space = ms;
+        break;
+      }
+    }
+    if (memory_space == nullptr) {
+      return InvalidArgument(
+          "Invalid memory kind: %s; available memory kinds: %s",
+          *sharding->memory_kind().memory_kind(),
+          absl::StrJoin(sharding->devices().front()->memory_spaces(), ", ",
+                        [](std::string* out, PjRtMemorySpace* ms) {
+                          absl::StrAppend(out, ms->memory_space_kind());
+                        }));
+    }
+    TF_ASSIGN_OR_RETURN(
+        buffer, pjrt_client_->BufferFromHostBuffer(
+                    data, primitive_type, shape.dims(), byte_strides, semantics,
+                    std::move(on_done_with_host_buffer), memory_space,
+                    /*device_layout=*/nullptr));
+  } else {
+    TF_ASSIGN_OR_RETURN(
+        buffer,
+        pjrt_client_->BufferFromHostBuffer(
+            data, primitive_type, shape.dims(), byte_strides, semantics,
+            std::move(on_done_with_host_buffer), sharding->devices().front()));
+  }
   return PjRtArray::Create(
       this, dtype, std::move(shape), std::move(sharding),
       PjRtArray::PjRtBuffers({std::shared_ptr<PjRtBuffer>(buffer.release())}));
@@ -147,6 +182,15 @@ PjRtClient::AssembleArrayFromSingleDeviceArrays(
 StatusOr<tsl::RCReference<Tuple>> PjRtClient::MakeTuple(
     absl::Span<tsl::RCReference<Value>> values) {
   return PjRtTuple::Create(this, values);
+}
+
+StatusOr<std::shared_ptr<const xla::PjRtTopologyDescription>>
+PjRtClient::GetTopologyForDevices(absl::Span<Device* const> devices) const {
+  // TODO(parkers): Consider constructing a sub-slice topology based on the
+  // provided devices.
+  TF_ASSIGN_OR_RETURN(auto topology, pjrt_client_->GetTopologyDescription());
+  return std::shared_ptr<const xla::PjRtTopologyDescription>(pjrt_client_,
+                                                             topology);
 }
 
 }  // namespace ifrt

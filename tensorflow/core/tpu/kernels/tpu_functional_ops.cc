@@ -1689,9 +1689,10 @@ Status TPUPartitionedCallOp::ReplaceResourceArgsWithVarHandleOps(
   // the same underlying resource. In that case, only one variable node needs
   // to be mirrored to the TPU for that resource.
   absl::flat_hash_map<uint64, Node*> tpu_variables;
+  ResourceHandle handle;
   for (int i = 0; i < tpu_resource_args.size(); i++) {
     Node* node = tpu_resource_args[i];
-    ResourceHandle handle = HandleFromInput(ctx, arg_indices[i]);
+    TF_RETURN_IF_ERROR(HandleFromInput(ctx, arg_indices[i], &handle));
 
     if (tpu_metadata.num_cores_per_replica > 1 &&
         enable_spmd_xla_partitioning) {
@@ -2060,7 +2061,8 @@ Status TPUPartitionedCallOp::InferShapesWithResourceVar(
 
     // Get resource variable tensor
     core::RefCountPtr<Var> variable;
-    const ResourceHandle& handle = HandleFromInput(ctx, resource_arg_index);
+    ResourceHandle handle;
+    TF_RETURN_IF_ERROR(HandleFromInput(ctx, resource_arg_index, &handle));
     TF_RETURN_IF_ERROR(LookupResource(ctx, handle, &variable));
 
     const Tensor* variable_tensor = variable->tensor();

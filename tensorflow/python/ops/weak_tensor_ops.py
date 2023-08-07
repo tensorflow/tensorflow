@@ -572,7 +572,6 @@ for operator in tensor.Tensor.OVERLOADABLE_OPERATORS:
   tensor_oper = getattr(tensor.Tensor, operator)
   setattr(weak_tensor.WeakTensor, operator, tensor_oper)
 
-# Add/Update NumPy methods in Tensor and WeakTensor.
-np_math_ops.enable_numpy_methods_on_tensor()
+# Add NumPy methods in WeakTensor.
 np_math_ops._enable_numpy_methods(weak_tensor.WeakTensor)
 # pylint: enable=protected-access

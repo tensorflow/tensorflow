@@ -95,9 +95,17 @@ class MemcpyOpLowering : public OpRewritePattern<MemcpyOp> {
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
     func::FuncOp callee = custom_calls_.GetOrCreate(b, Target(op), op);
 
+    auto stream = op->getAttrOfType<IntegerAttr>("stream");
+
     // Create a function launch call operation.
-    rewriter.replaceOpWithNewOp<func::CallOp>(op, callee.getName(), TypeRange(),
-                                              op.getOperands());
+    auto call = rewriter.replaceOpWithNewOp<func::CallOp>(
+        op, callee.getName(), TypeRange(), op.getOperands());
+
+    if (stream) {
+      call->setAttr(b.getStringAttr("stream"), stream);
+    } else {
+      call->setAttr(b.getStringAttr("stream"), b.getI64IntegerAttr(0));
+    }
 
     return success();
   }
@@ -181,6 +189,14 @@ class LaunchFuncOpLowering : public OpRewritePattern<LaunchFuncOp> {
 
     // Assign a unique id to this instance of a kernel launch operation.
     call->setAttr(b.getStringAttr("uid"), b.getI64IntegerAttr(uid_.uid()));
+
+    // Set assigned stream for the kernel launch.
+    auto stream = op->getAttrOfType<IntegerAttr>("stream");
+    if (stream) {
+      call->setAttr(b.getStringAttr("stream"), stream);
+    } else {
+      call->setAttr(b.getStringAttr("stream"), b.getI64IntegerAttr(0));
+    }
 
     // Erase the original gpu launch operation.
     rewriter.eraseOp(op);

@@ -35,6 +35,7 @@ cc_library(
         ":meta_optimizer",
         ":noop_elimination",
         ":parallel_batch",
+        ":remove_compression_map",
         ":replicate_on_split",
         ":shuffle_and_repeat_fusion",
         ":slack",
@@ -842,6 +843,48 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/grappler:grappler_item",
+    ],
+)
+
+cc_library(
+    name = "remove_compression_map",
+    srcs = ["remove_compression_map.cc"],
+    hdrs = ["remove_compression_map.h"],
+    deps = [
+        ":graph_utils",
+        ":optimizer_base",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:mutable_graph_view",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:statusor",
+    ] + tf_protos_all(),
+    alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "remove_compression_map_test",
+    size = "small",
+    srcs = ["remove_compression_map_test.cc"],
+    deps = [
+        ":graph_test_utils",
+        ":graph_utils",
+        ":remove_compression_map",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/framework:graph_proto_cc",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/platform:status_matchers",
+        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

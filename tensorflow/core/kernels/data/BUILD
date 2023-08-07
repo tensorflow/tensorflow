@@ -1169,7 +1169,6 @@ tf_kernel_library(
         "//tensorflow/core/data:dataset_utils",
         "//tensorflow/core/data:name_utils",
         "//tensorflow/core/data:serialization_utils",
-        "@com_google_absl//absl/log",
         "@com_google_absl//absl/random",
     ],
 )

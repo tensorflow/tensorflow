@@ -403,6 +403,7 @@ message DebugOptions {
   bool xla_gpu_enable_cudnn_frontend = 160;
 
   bool xla_gpu_enable_cudnn_fmha = 218;
+  bool xla_gpu_fused_attention_use_cudnn_rng = 235;
 
   // Disable dumping metadata in HLO dumps.
   bool xla_dump_disable_metadata = 153;
@@ -429,12 +430,12 @@ message DebugOptions {
   //
   // Note: this mode disables thunks and the "classic" gpu runtime, which
   // is defined above.
-  bool xla_gpu_enable_openxla_runtime = 233;
+  bool xla_gpu_enable_gpu2_runtime = 233;
 
   // If true, use OpenXLA hardware abstraction layer (aka CUDA HAL) to dispatch
   // device kernels, otherwise use StreamExecutor kernel launch APIs. Has any
-  // effect only if `xla_gpu_enable_openxla_runtime` is set to true.
-  bool xla_gpu_enable_openxla_hal = 234;
+  // effect only if `xla_gpu_enable_gpu2_runtime` is set to true.
+  bool xla_gpu_enable_gpu2_hal = 234;
 
   // Timeout in seconds before terminating jobs that are stuck in a NCCL
   // Rendezvous. Negative value disables the timeout and will not terminate.
@@ -541,6 +542,10 @@ message DebugOptions {
   bool xla_gpu_enable_pipelined_all_gather = 227;
   bool xla_gpu_enable_pipelined_reduce_scatter = 231;
 
+  // The minimum data size in bytes to trigger collective-permute-decomposer
+  // transformation.
+  int64 xla_gpu_collective_permute_decomposer_threshold = 237;
+
   enum PartitioningAlgorithm {
     PARTITIONING_ALGORITHM_NOOP = 0;
     PARTITIONING_ALGORITHM_EXP0 = 1;
@@ -594,7 +599,9 @@ message DebugOptions {
 
   bool xla_gpu_dump_autotuned_triton_fusions = 232;
 
-  // Next id: 235
+  bool xla_gpu_copy_insertion_use_region_analysis = 236;
+
+  // Next id: 238
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

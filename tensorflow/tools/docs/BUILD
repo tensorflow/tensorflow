@@ -1,6 +1,7 @@
 # Description:
 #   Doc generator
 
+load("//tensorflow:py.default.bzl", "py_binary", "py_library")
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")

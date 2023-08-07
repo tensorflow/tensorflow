@@ -1,5 +1,6 @@
 # Tests of tf.io.*proto.
 
+# Placeholder: load py_proto_library
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_shared_object")
 load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test")

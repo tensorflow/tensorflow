@@ -20,6 +20,8 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/node_hash_set.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/python/ifrt/device.h"
 
 namespace xla {
 namespace ifrt {
@@ -52,6 +54,17 @@ std::string MemoryKind::DebugString() const {
     return std::string(*memory_kind_);
   }
   return "(default)";
+}
+
+MemoryKind CanonicalizeMemoryKind(MemoryKind memory_kind, Device* device) {
+  if (memory_kind.memory_kind().has_value()) {
+    return memory_kind;
+  }
+  auto default_memory_space = device->default_memory_space();
+  if (default_memory_space.ok()) {
+    return MemoryKind((*default_memory_space)->memory_space_kind());
+  }
+  return MemoryKind();
 }
 
 }  // namespace ifrt

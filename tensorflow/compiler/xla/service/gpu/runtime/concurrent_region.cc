@@ -61,6 +61,20 @@ se::Stream* ConcurrentRegionStatus::GetNextStream() {
   return borrowed_streams_[index - 1].get();
 }
 
+absl::StatusOr<se::Stream*> ConcurrentRegionStatus::GetStream(int index) {
+  DCHECK(IsInConcurrentRegion());
+
+  if (index < 0 || index >= region_size_) {
+    return absl::OutOfRangeError("Invalid stream index");
+  }
+
+  if (index == 0) {
+    return capture_stream_;
+  }
+
+  return borrowed_streams_[index - 1].get();
+}
+
 absl::Status ConcurrentRegionStatus::StartConcurrentRegion(
     se::Stream* capture_stream, int64_t size) {
   DCHECK(!IsInConcurrentRegion());

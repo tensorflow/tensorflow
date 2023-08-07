@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/test_util.h"
 #include "tensorflow/compiler/xla/pjrt/tfrt_cpu_pjrt_client.h"
+#include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -47,6 +48,11 @@ class XlaPlatformInfoTest : public ::testing::Test {
   }
 
   DeviceSetup device_setup_;
+};
+
+class StubDevice : public DeviceBase {
+ public:
+  StubDevice() : DeviceBase(nullptr) {}
 };
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -90,10 +96,17 @@ TEST_F(XlaPlatformInfoTest, GetOrCreatePjRtDeviceCompilerAndProfilerXlaDevice) {
   TF_CHECK_OK(XlaDevice::GetMetadataFromDevice(device, &metadata));
   XlaPlatformInfo platform_info = XlaPlatformInfoFromDevice(device);
 
+  ResourceMgr resource_mgr("");
+  OpKernelContext::Params params;
+  params.resource_manager = &resource_mgr;
+  params.device = device;
+  OpKernelContext ctx(&params, 0);
+
   PjRtDeviceCompiler* pjrt_device_compiler = nullptr;
   DeviceCompilationProfiler* profiler = nullptr;
   TF_EXPECT_OK(GetOrCreatePjRtDeviceCompilerAndProfiler(
-      platform_info, device_setup_.flr(), &pjrt_device_compiler, &profiler));
+      ctx, platform_info, device_setup_.flr(), &pjrt_device_compiler,
+      &profiler));
   core::ScopedUnref pjrt_device_compiler_ref(pjrt_device_compiler);
   core::ScopedUnref profiler_ref(profiler);
 
@@ -106,10 +119,18 @@ TEST_F(XlaPlatformInfoTest, GetOrCreatePjRtDeviceCompilerAndProfilerGpuDevice) {
   device_setup_.AddDevicesAndSetUp({DEVICE_GPU});
   Device* device = device_setup_.GetDevice(DEVICE_GPU);
   XlaPlatformInfo platform_info = XlaPlatformInfoFromDevice(device);
+
+  ResourceMgr resource_mgr("");
+  OpKernelContext::Params params;
+  params.resource_manager = &resource_mgr;
+  params.device = device;
+  OpKernelContext ctx(&params, 0);
+
   PjRtDeviceCompiler* pjrt_device_compiler = nullptr;
   DeviceCompilationProfiler* profiler = nullptr;
   TF_EXPECT_OK(GetOrCreatePjRtDeviceCompilerAndProfiler(
-      platform_info, device_setup_.flr(), &pjrt_device_compiler, &profiler));
+      ctx, platform_info, device_setup_.flr(), &pjrt_device_compiler,
+      &profiler));
   core::ScopedUnref pjrt_device_compiler_ref(pjrt_device_compiler);
   core::ScopedUnref profiler_ref(profiler);
 }
@@ -161,10 +182,15 @@ TEST_F(XlaPlatformInfoTest, GetOrCreatePjRtDeviceCompilerAndProfilerTpuDevice) {
                                 /*pjrt_device_metadata=*/nullptr,
                                 /*device_allocator=*/nullptr);
 
+  OpKernelContext::Params params;
+  StubDevice stub_device;
+  params.device = &stub_device;
+  OpKernelContext ctx(&params, 0);
+
   PjRtDeviceCompiler* pjrt_device_compiler = nullptr;
   DeviceCompilationProfiler* profiler = nullptr;
   TF_EXPECT_OK(GetOrCreatePjRtDeviceCompilerAndProfiler(
-      platform_info, nullptr, &pjrt_device_compiler, &profiler));
+      ctx, platform_info, nullptr, &pjrt_device_compiler, &profiler));
   core::ScopedUnref pjrt_device_compiler_ref(pjrt_device_compiler);
   core::ScopedUnref profiler_ref(profiler);
 

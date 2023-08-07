@@ -12,19 +12,29 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstdint>
+#include <iterator>
 #include <limits>
 #include <memory>
 #include <string>
 #include <utility>
 
+#include "absl/algorithm/container.h"
 #include "llvm/Support/Debug.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project  // NOLINT: Required to register quantization dialect.
+#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
@@ -36,8 +46,9 @@ namespace mlir {
 namespace odml {
 namespace {
 
-using quant::UniformQuantizedPerAxisType;
-using quant::UniformQuantizedType;
+using ::mlir::quant::QuantizedType;
+using ::mlir::quant::UniformQuantizedPerAxisType;
+using ::mlir::quant::UniformQuantizedType;
 
 #define GEN_PASS_DEF_UNIFORMQUANTIZEDSTABLEHLOTOTFLPASS
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h.inc"
@@ -232,6 +243,7 @@ class RewriteUniformDequantizeOp
 //   * The filter tensor's format is `[0, 1, i, o]`.
 //   * Not a depthwise convolution.
 //   * Does not consider bias add fusion.
+// TODO: b/294771704 - Support bias quantization.
 class RewriteQuantizedConvolutionOp
     : public OpRewritePattern<stablehlo::ConvolutionOp> {
  public:
@@ -391,6 +403,15 @@ class RewriteQuantizedConvolutionOp
         filter_op->getLoc(), /*output=*/TypeAttr::get(new_filter_result_type),
         new_filter_value_attr);
 
+    SmallVector<double> bias_scales =
+        GetBiasScales(/*input_scale=*/op.getOperand(0)
+                          .getType()
+                          .cast<TensorType>()
+                          .getElementType()
+                          .cast<UniformQuantizedType>()
+                          .getScale(),
+                      /*filter_scales=*/new_filter_quantized_type.getScales());
+
     // Create a bias filled with zeros. Mimics the behavior of no bias add.
     const int64_t num_output_features = new_filter_result_type.getShape()[0];
     const SmallVector<int64_t, 1> bias_shape = {num_output_features};
@@ -398,9 +419,8 @@ class RewriteQuantizedConvolutionOp
         op.getLoc(), /*flags=*/true,
         /*storageType=*/rewriter.getI32Type(),  // i32 for bias
         /*expressedType=*/rewriter.getF32Type(),
-        // TODO: b/292886169 - Set this to be s1 * s2.
-        /*scales=*/new_filter_quantized_type.getScales(),
-        /*zeroPoints=*/new_filter_quantized_type.getZeroPoints(),
+        /*scales=*/std::move(bias_scales),
+        /*zeroPoints=*/new_filter_quantized_type.getZeroPoints(),  // Zeros.
         /*quantizedDimension=*/0,
         /*storageTypeMin=*/std::numeric_limits<int32_t>::min(),
         /*storageTypeMax=*/std::numeric_limits<int32_t>::max());
@@ -536,6 +556,196 @@ class RewriteQuantizedConvolutionOp
     // https://github.com/openxla/stablehlo/blob/main/docs/spec.md#convolution.
     return {lhs_dilation_attr_value[0], lhs_dilation_attr_value[1]};
   }
+
+  // Bias scales should be input scale * filter scale. Here it is assumed that
+  // the filter is per-channel quantized.
+  SmallVector<double> GetBiasScales(
+      const double input_scale, const ArrayRef<double> filter_scales) const {
+    SmallVector<double> bias_scales;
+    absl::c_transform(filter_scales, std::back_inserter(bias_scales),
+                      [input_scale](const double filter_scale) -> double {
+                        return filter_scale * input_scale;
+                      });
+    return bias_scales;
+  }
+};
+
+// Rewrites full-integer quantized `stablehlo.dot_general` ->`tfl.batch_matmul`
+// when it accepts uniform quantized tensors.
+//
+// Since transpose and reshape of quantized tensors is not natively supported at
+// the moment, the conversion condition is relative strict, following
+// (https://www.tensorflow.org/api_docs/cc/class/tensorflow/ops/batch-mat-mul-v3)
+// Conditions for the conversion :
+//   * size(batching_dimensions) <= 3 (TFLite support restriction)
+//   * size(contracting_dimensions) = 1
+//   * Input (lhs) and output tensors are per-tensor uniform quantized (i8->f32)
+//     tensors (full integer) with shape [..., r_x, c_x]
+//     or [..., c_x, r_x]
+//   * The rhs tensor is a per-tensor symmetric uniform quantized
+//   (i8->f32) tensor (constant or activation) with shape [..., r_y, c_y] or
+//   [..., c_y, r_y]
+// TODO: b/293650675 - relax the conversion condition to support dot_general in
+// general
+class RewriteFullIntegerQuantizedDotGeneralOp
+    : public OpRewritePattern<stablehlo::DotGeneralOp> {
+ public:
+  using OpRewritePattern<stablehlo::DotGeneralOp>::OpRewritePattern;
+
+  static LogicalResult MatchLhs(
+      Value lhs, stablehlo::DotDimensionNumbersAttr dimension_numbers) {
+    auto lhs_type = lhs.getType().cast<TensorType>();
+    if (!(IsI8F32UniformQuantizedType(lhs_type.getElementType()))) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Expected a per-tensor uniform "
+                    "quantized (i8->f32) input for dot_general. Got: "
+                 << lhs_type << "\n");
+      return failure();
+    }
+    if (!lhs_type.hasRank()) {
+      LLVM_DEBUG(llvm::dbgs() << "Expected lhs of dot_general has rank. Got: "
+                              << lhs_type << "\n");
+      return failure();
+    }
+    const int lhs_rank = lhs_type.getRank();
+    auto lhs_contracting_dim =
+        dimension_numbers.getLhsContractingDimensions()[0];
+    if ((lhs_contracting_dim != lhs_rank - 1) &&
+        (lhs_contracting_dim != lhs_rank - 2)) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Not supported lhs contracting dim for dot_general.\n");
+      return failure();
+    }
+    return success();
+  }
+
+  static LogicalResult MatchRhs(
+      Value rhs, stablehlo::DotDimensionNumbersAttr dimension_numbers) {
+    if (!rhs.getType().cast<TensorType>().hasRank()) {
+      LLVM_DEBUG(llvm::dbgs() << "Expected rhs of dot_general has rank. Got: "
+                              << rhs.getType() << "\n");
+      return failure();
+    }
+    const int rhs_rank = rhs.getType().cast<TensorType>().getRank();
+    auto rhs_contracting_dim =
+        dimension_numbers.getRhsContractingDimensions()[0];
+    if ((rhs_contracting_dim != rhs_rank - 1) &&
+        (rhs_contracting_dim != rhs_rank - 2)) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Not supported rhs contracting dim for dot_general.\n");
+      return failure();
+    }
+
+    auto rhs_type = rhs.getType().cast<TensorType>();
+    if (!(IsI8F32UniformQuantizedType(rhs_type.getElementType()))) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Expected a per-tensor uniform "
+                    "quantized (i8->f32) weight for dot_general. Got: "
+                 << rhs_type << "\n");
+      return failure();
+    }
+    auto rhs_uniform_quantized_type =
+        rhs_type.getElementType().cast<UniformQuantizedType>();
+    if (rhs_uniform_quantized_type.getZeroPoint() != 0) {
+      LLVM_DEBUG(
+          llvm::dbgs()
+          << "Expected per-tensor uniform "
+             "quantized (i8->f32) weight to be symmetric for dot_general. Got: "
+          << rhs_type << "\n");
+      return failure();
+    }
+    return success();
+  }
+
+  LogicalResult match(stablehlo::DotGeneralOp op) const override {
+    stablehlo::DotDimensionNumbersAttr dimension_numbers =
+        op.getDotDimensionNumbers();
+
+    // Check one side is enough since
+    // (C1) size(lhs_batching_dimensions) = size(rhs_batching_dimensions).
+    if (dimension_numbers.getLhsBatchingDimensions().size() > 3) {
+      LLVM_DEBUG(
+          llvm::dbgs()
+          << "Failed to match batch dimention for quantized dot_general.\n");
+      return failure();
+    }
+    // Check one side is enough since
+    // (C2) size(lhs_contracting_dimensions) = size(rhs_contracting_dimensions).
+    if (dimension_numbers.getLhsContractingDimensions().size() != 1) {
+      LLVM_DEBUG(
+          llvm::dbgs()
+          << "Failed to match contract dimention for quantized dot_general.\n");
+      return failure();
+    }
+
+    if (failed(MatchLhs(op.getLhs(), dimension_numbers))) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Failed to match input for quantized dot_general.\n");
+      return failure();
+    }
+    if (failed(MatchRhs(op.getRhs(), dimension_numbers))) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Failed to match weight for quantized dot_general.\n");
+      return failure();
+    }
+
+    return success();
+  }
+
+  void rewrite(stablehlo::DotGeneralOp op,
+               PatternRewriter& rewriter) const override {
+    Value rhs_value = op.getRhs();
+    Operation* rhs_op = rhs_value.getDefiningOp();
+
+    stablehlo::DotDimensionNumbersAttr dimension_numbers =
+        op.getDotDimensionNumbers();
+    Value input_value = op.getLhs();
+    const int lhs_rank = input_value.getType().cast<TensorType>().getRank();
+    auto lhs_contracting_dim =
+        dimension_numbers.getLhsContractingDimensions()[0];
+    BoolAttr adj_x =
+        (lhs_contracting_dim == lhs_rank - 2 ? rewriter.getBoolAttr(true)
+                                             : rewriter.getBoolAttr(false));
+    auto rhs_contracting_dim =
+        dimension_numbers.getRhsContractingDimensions()[0];
+    const int rhs_rank = rhs_value.getType().cast<TensorType>().getRank();
+    BoolAttr adj_y =
+        (rhs_contracting_dim == rhs_rank - 1 ? rewriter.getBoolAttr(true)
+                                             : rewriter.getBoolAttr(false));
+    auto input_uniform_quantized_type = input_value.getType()
+                                            .cast<TensorType>()
+                                            .getElementType()
+                                            .cast<UniformQuantizedType>();
+    BoolAttr asym_quantized_input =
+        input_uniform_quantized_type.getZeroPoint() != 0
+            ? rewriter.getBoolAttr(true)
+            : rewriter.getBoolAttr(false);
+    // Create BMM assume rhs is activation
+    auto tfl_batchmatmul_op = rewriter.create<TFL::BatchMatMulOp>(
+        op.getLoc(), /*output=*/op.getResult().getType(),
+        /*input=*/input_value,
+        /*filter=*/rhs_value, adj_x, adj_y, asym_quantized_input);
+
+    // update BMM if rhs is a constant
+    auto const_rhs = dyn_cast_or_null<stablehlo::ConstantOp>(rhs_op);
+    if (const_rhs) {
+      auto rhs_uniform_quantized_type = rhs_value.getType().cast<ShapedType>();
+      auto rhs_constant_value_attr =
+          cast<DenseIntElementsAttr>(const_rhs.getValue());
+      auto rhs_constant_op = rewriter.create<TFL::QConstOp>(
+          rhs_op->getLoc(),
+          /*output=*/TypeAttr::get(rhs_uniform_quantized_type),
+          rhs_constant_value_attr);
+      tfl_batchmatmul_op = rewriter.create<TFL::BatchMatMulOp>(
+          op.getLoc(), /*output=*/op.getResult().getType(),
+          /*input=*/input_value,
+          /*filter=*/rhs_constant_op.getResult(), adj_x, adj_y,
+          asym_quantized_input);
+    }
+
+    rewriter.replaceAllUsesWith(op.getResult(), tfl_batchmatmul_op.getResult());
+    rewriter.eraseOp(op);
+  }
 };
 
 void UniformQuantizedStablehloToTflPass::runOnOperation() {
@@ -544,7 +754,8 @@ void UniformQuantizedStablehloToTflPass::runOnOperation() {
 
   RewritePatternSet patterns(&ctx);
   patterns.add<RewriteUniformQuantizeOp, RewriteUniformDequantizeOp,
-               RewriteQuantizedConvolutionOp>(&ctx);
+               RewriteQuantizedConvolutionOp,
+               RewriteFullIntegerQuantizedDotGeneralOp>(&ctx);
 
   if (failed(applyPatternsAndFoldGreedily(func_op, std::move(patterns)))) {
     func_op.emitError() << "Failed to convert stablehlo ops with uniform "

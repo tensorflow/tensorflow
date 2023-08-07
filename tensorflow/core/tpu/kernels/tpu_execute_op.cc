@@ -240,6 +240,7 @@ xla::StatusOr<std::unique_ptr<InputBuffers>> BuildComputationInputs(
   std::vector<VariableInfo> variables;
   std::vector<int> variable_index(arg_list.size(), -1);
   variables.reserve(arg_list.size());
+  ResourceHandle handle;
   for (int i = 0; i < arg_list.size(); ++i) {
     // Arguments are assumed to be variables if they have a resource type.
     // (Non-variable resources are not supported.)
@@ -247,7 +248,7 @@ xla::StatusOr<std::unique_ptr<InputBuffers>> BuildComputationInputs(
       variable_index[i] = variables.size();
       // TODO(phawkins): we may be looking up many variables here; it would be
       // better if we did not repeatedly acquire the resource manager's lock.
-      const ResourceHandle& handle = HandleFromInput(context, i);
+      TF_RETURN_IF_ERROR(HandleFromInput(context, i, &handle));
       Var* variable;
       TF_RETURN_IF_ERROR(LookupResource(context, handle, &variable));
       variables.push_back(VariableInfo(i, handle.name(), variable));

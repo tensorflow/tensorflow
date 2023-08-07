@@ -107,6 +107,10 @@ void RecordTFDataAutotuneMaxBufferBudgetRatio(const double ratio);
 // created using GraphHash().
 void RecordTFDataFingerprint(const string& name);
 
+// Records the event of a tf.data service pipeline getting a runtime
+// compression decision.
+void RecordTFDataServiceRuntimeCompressionDecision(bool compression_decision);
+
 // Records the time (in microseconds) during which `IteratorResource` was busy
 // processing at least one `GetNext()` request.
 void RecordTFDataIteratorBusy(uint64 duration_us);

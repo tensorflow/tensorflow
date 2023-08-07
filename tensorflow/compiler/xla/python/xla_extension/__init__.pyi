@@ -369,19 +369,16 @@ class Memory:
   def __str__(self) -> str: ...
   def attached_devices(self) -> List[Device]: ...
 
-class _GpuAllocatorKind(enum.IntEnum):
-    DEFAULT: int
-    PLATFORM: int
-    BFC: int
-    CUDA_ASYNC: int
-
 class GpuAllocatorConfig:
-  # TODO(b/194673104): Remove once pytype correctly resolves a nested enum.
-  Kind = _GpuAllocatorKind
+  class Kind(enum.IntEnum):
+      DEFAULT: int
+      PLATFORM: int
+      BFC: int
+      CUDA_ASYNC: int
 
   def __init__(
       self,
-      kind: _GpuAllocatorKind = ...,
+      kind: Kind = ...,
       memory_fraction: float = ...,
       preallocate: bool = ...) -> None: ...
 
@@ -465,6 +462,8 @@ def get_default_c_api_topology(
     options: Dict[str, Union[str, int, List[int], float]],
 ) -> DeviceTopology:
   ...
+def get_topology_for_devices(devices: List[Device]) -> DeviceTopology:
+  ...
 
 
 def load_pjrt_plugin(platform_name: str, library_path: str) -> _Status: ...
@@ -511,6 +510,8 @@ def batched_device_put(
 ) -> ArrayImpl:
   ...
 
+def canonicalize_memory_kind(
+    memory_kind: Optional[str], device: Device) -> Optional[str]: ...
 
 def array_result_handler(
                aval: Any,
@@ -680,7 +681,7 @@ class NamedSharding(XLACompatibleSharding):
                _parsed_pspec: Any = None): ...
   mesh: Any
   spec: Any
-  memory_kind: Optional[str]
+  _memory_kind: Optional[str]
   _parsed_pspec: Any
 
 class SingleDeviceSharding(XLACompatibleSharding):

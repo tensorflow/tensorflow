@@ -24,12 +24,14 @@ limitations under the License.
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/proto_helper.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/refcount.h"
@@ -225,9 +227,7 @@ void WaitForDistributedTpuOp::Compute(OpKernelContext* ctx) {
 
   size_t tpu_topology_output_size;
   char* tpu_topology_output = nullptr;
-  TF_Status* status = TF_NewStatus();
-  auto cleanup = absl::MakeCleanup([&status, &tpu_topology_output]() {
-    TF_DeleteStatus(status);
+  auto cleanup = absl::MakeCleanup([&tpu_topology_output]() {
     stream_executor::tpu::OpsApiFn()->TpuConfigurationApi_FreeCharArrayFn(
         tpu_topology_output);
   });
@@ -244,11 +244,12 @@ void WaitForDistributedTpuOp::Compute(OpKernelContext* ctx) {
   params.tpu_mesh_common_state = mesh_common_state;
   params.tpu_topology_output_size = &tpu_topology_output_size;
   params.tpu_topology_output = &tpu_topology_output;
-  params.status = status;
+  StatusHelper status;
+  params.status = status.c_status;
 
   stream_executor::tpu::OpsApiFn()->WaitForDistributedTpuOp_DoWorkFn(&params);
 
-  OP_REQUIRES_OK(ctx, StatusFromTF_Status(status));
+  OP_REQUIRES_OK(ctx, status.status());
 
   Tensor* ctx_output;
   OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &ctx_output));
@@ -325,11 +326,9 @@ void InitializeHostForDistributedTpuOp::Compute(OpKernelContext* ctx) {
     local_compilation_cache = nullptr;
   }
 
-  TF_Status* status = TF_NewStatus();
   size_t device_id_output_size;
   int32_t* device_id_output = nullptr;
-  auto cleanup = absl::MakeCleanup([&status, &device_id_output]() {
-    TF_DeleteStatus(status);
+  auto cleanup = absl::MakeCleanup([&device_id_output]() {
     stream_executor::tpu::OpsApiFn()->TpuConfigurationApi_FreeInt32ArrayFn(
         device_id_output);
   });
@@ -343,11 +342,12 @@ void InitializeHostForDistributedTpuOp::Compute(OpKernelContext* ctx) {
   params.is_master_worker = is_master_worker;
   params.core_id_output_size = &device_id_output_size;
   params.core_id_output = &device_id_output;
-  params.status = status;
+  StatusHelper status;
+  params.status = status.c_status;
 
   stream_executor::tpu::OpsApiFn()->InitializeHostForDistributedTpuOp_DoWorkFn(
       &params);
-  OP_REQUIRES_OK(ctx, StatusFromTF_Status(status));
+  OP_REQUIRES_OK(ctx, status.status());
 
   if (local_compilation_cache != nullptr) {
     local_compilation_cache->Unref();
@@ -379,12 +379,12 @@ void InitializeHostForDistributedTpuOp::Compute(OpKernelContext* ctx) {
     params.tpu_host_config = tpu_host_config.data();
     params.server_address_output_size = &server_address_output_size;
     params.server_address_output = &server_address_output;
-    params.status = status;
+    params.status = status.c_status;
 
     stream_executor::tpu::OpsApiFn()
         ->TpuConfigurationApi_CompilationCacheServerAddressFromConfigFn(
             &params);
-    OP_REQUIRES_OK(ctx, StatusFromTF_Status(status));
+    OP_REQUIRES_OK(ctx, status.status());
 
     std::string server_address(server_address_output,
                                server_address_output_size);
@@ -458,13 +458,12 @@ void SetGlobalTPUArrayOp::Compute(OpKernelContext* ctx) {
       errors::InvalidArgument("Expected argument 0 to be a scalar. Received",
                               ctx->input(0).DebugString()));
   auto tpu_topology = ctx->input(0).scalar<tstring>()();
-  TF_Status* status = TF_NewStatus();
 
+  StatusHelper status;
   stream_executor::tpu::OpsApiFn()->SetGlobalTPUArrayOp_DoWorkFn(
-      tpu_topology.size(), tpu_topology.data(), status);
+      tpu_topology.size(), tpu_topology.data(), status.c_status);
 
-  OP_REQUIRES_OK(ctx, StatusFromTF_Status(status));
-  TF_DeleteStatus(status);
+  OP_REQUIRES_OK(ctx, status.status());
 
   VLOG(1) << "SetGlobalTPUArrayOp done";
 }
@@ -473,18 +472,17 @@ void DisconnectDistributedTpuChipsOp::Compute(OpKernelContext* ctx) {
   VLOG(1) << "DisconnectDistributedTpuChipsOp";
   XLA_SCOPED_LOGGING_TIMER("DisconnectDistributedTpuChipsOp");
 
-  TF_Status* status = TF_NewStatus();
   int32_t number_of_chips_output = 0;
 
+  StatusHelper status;
   stream_executor::tpu::OpsApiFn()->DisconnectDistributedTpuChipsOp_DoWorkFn(
-      &number_of_chips_output, status);
+      &number_of_chips_output, status.c_status);
 
   Tensor* ctx_output;
   OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &ctx_output));
   ctx_output->scalar<int32_t>()() = number_of_chips_output;
 
-  OP_REQUIRES_OK(ctx, StatusFromTF_Status(status));
-  TF_DeleteStatus(status);
+  OP_REQUIRES_OK(ctx, status.status());
 
   VLOG(1) << "DisconnectDistributedTpuChipsOp done";
 }

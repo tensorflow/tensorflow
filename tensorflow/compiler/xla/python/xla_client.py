@@ -43,8 +43,8 @@ ops = _xla.ops
 profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
-# changes.
-_version = 174
+# changes. In JAX, reference this via jax._src.lib.xla_extension_version.
+_version = 178
 
 # Version number for MLIR:Python components.
 mlir_api_version = 54
@@ -108,6 +108,7 @@ def make_tfrt_tpu_c_api_client(options: Optional[_NameValueMapping] = None):
 
 
 DeviceTopology = _xla.DeviceTopology
+get_topology_for_devices = _xla.get_topology_for_devices
 
 
 def make_tfrt_tpu_c_api_device_topology(
@@ -786,3 +787,4 @@ weakref_lru_cache = _xla.weakref_lru_cache
 array_result_handler = _xla.array_result_handler
 copy_array_to_devices_with_sharding = _xla.copy_array_to_devices_with_sharding
 batched_device_put = _xla.batched_device_put
+canonicalize_memory_kind = _xla.canonicalize_memory_kind
