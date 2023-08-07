@@ -69,8 +69,8 @@ class HloFusionAnalysis {
   }
 
   const HloComputation* fused_computation() const { return fused_computation_; }
-  absl::Span<HloInstruction* const> fusion_roots() const {
-    return absl::MakeSpan(fusion_roots_);
+  const std::vector<HloInstruction*>& fusion_roots() const {
+    return fusion_roots_;
   }
 
   // Determines the fusion type for the emitter.

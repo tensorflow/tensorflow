@@ -352,7 +352,7 @@ namespace {
 // We always use the first reduce root that triggers unnested reduction emitter
 // as the hero reduction, since all the reductions are required to have the same
 // shape and layout as verified by `IsFusedReductionOutputConsistent()`.
-HloInstruction* FindHeroReduction(absl::Span<HloInstruction*> roots) {
+HloInstruction* FindHeroReduction(const std::vector<HloInstruction*>& roots) {
   auto it = absl::c_find_if(roots, [](HloInstruction* instr) {
     return IsReductionFromOrToContiguousDimensions(*instr);
   });
@@ -368,8 +368,7 @@ const ReductionCodegenInfo* HloFusionAnalysis::GetReductionCodegenInfo() {
     return &reduction_codegen_info_.value();
   }
 
-  HloInstruction* hero_reduction =
-      FindHeroReduction(absl::Span<HloInstruction*>(fusion_roots_));
+  HloInstruction* hero_reduction = FindHeroReduction(fusion_roots());
   CHECK_NE(hero_reduction, nullptr);
 
   auto reduction_codegen_info = ComputeReductionCodegenInfo(hero_reduction);
