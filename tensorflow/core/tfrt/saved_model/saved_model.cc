@@ -395,12 +395,6 @@ void UpdateCompileOptions(SavedModel::Options& options) {
   options.graph_execution_options.compile_options
       .fuse_get_resource_ops_in_hoisting =
       !options.graph_execution_options.enable_mlrt;
-
-  if (options.graph_execution_options.enable_mlrt) {
-    options.graph_execution_options.compile_options
-        .enable_while_parallel_iterations = true;
-    LOG(INFO) << "enable_while_parallel_iterations is always true for MLRT";
-  }
 }
 
 }  // namespace
