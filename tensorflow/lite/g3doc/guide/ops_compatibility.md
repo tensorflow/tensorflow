@@ -9,7 +9,7 @@ The converter tool allows you to include additional operators, but converting
 a model this way also requires you to modify the TensorFlow Lite runtime
 environment you use to execute your model, which can limit your ability
 use standard runtime deployment options, such as
-[Google Play services](../android/play_services).
+[Google Play services](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/android/play_services.md).
 
 The TensorFlow Lite Converter is designed to analyze model
 structure and apply optimizations in order to make it compatible with the
