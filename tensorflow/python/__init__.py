@@ -37,9 +37,6 @@ import traceback
 from tensorflow.python.saved_model import saved_model
 from tensorflow.python.tpu import api
 
-# Sub-package for performing i/o directly instead of via ops in a graph.
-from tensorflow.python.lib.io import python_io
-
 # Special dunders that we choose to export:
 _exported_dunders = set([
     '__version__',
