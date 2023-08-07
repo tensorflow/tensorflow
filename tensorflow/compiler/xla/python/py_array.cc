@@ -119,13 +119,13 @@ ifrt::MemoryKind CreateIfRtMemoryKindFromSharding(const py::object& sharding) {
   auto type = sharding.get_type();
   if (type.is(jax::NamedSharding::type())) {
     py_memory_kind = py::cast<jax::NamedSharding>(sharding).memory_kind();
-  }
-  if (type.is(jax::GSPMDSharding::type())) {
+  } else if (type.is(jax::GSPMDSharding::type())) {
     py_memory_kind = py::cast<jax::GSPMDSharding>(sharding).memory_kind();
-  }
-  if (type.is(jax::SingleDeviceSharding::type())) {
+  } else if (type.is(jax::SingleDeviceSharding::type())) {
     py_memory_kind =
         py::cast<jax::SingleDeviceSharding>(sharding).memory_kind();
+  } else {
+    py_memory_kind = sharding.attr("memory_kind");
   }
 
   if (py_memory_kind.is_none()) {
