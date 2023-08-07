@@ -300,22 +300,6 @@ class IrEmitterUnnested : public IrEmitter {
         shape, ir_emitter_context_->llvm_module()->getDataLayout());
   }
 
-  // Generates code for input-fusible slices.
-  //
-  // Prerequisite: ROOT is either a slice or a tuple of slices. The input shapes
-  // of all ROOT slices need to be the same while their output shapes can be
-  // different. On the other hand, the input ranges of slices can be
-  // overlapping. Further generalization/specialization when the needs are seen
-  // in the future.
-  Status EmitInputFusibleNonStridedSlices(mlir::Operation* op,
-                                          HloFusionAnalysis& fusion_analysis);
-
-  Status EmitElementForInputFusibleSlices(
-      const HloComputation* fused_computation,
-      absl::Span<const llvm_ir::IrArray> inputs,
-      absl::Span<const llvm_ir::IrArray> outputs,
-      const llvm_ir::IrArray::Index& index);
-
   // Emits code for an in-place scatter, modifying `thunk`s launch dimensions in
   // the process. Scatter indices are taken from `scatter_indices_gen`, updates
   // from `updates_gen`. The output buffer is expected to have the operand
@@ -351,13 +335,6 @@ class IrEmitterUnnested : public IrEmitter {
   // description.
   Status EmitScatter(const ScatterDescriptor& desc,
                      const LaunchDimensions& launch_dimensions);
-
-  Status EmitTransposeTile(mlir::lmhlo::FusionOp fusion,
-                           const HloComputation* fusion_hlo,
-                           absl::Span<const llvm_ir::IrArray> operand_arrays,
-                           absl::Span<const llvm_ir::IrArray> output_arrays,
-                           const TilingScheme& tiling_scheme,
-                           const LaunchDimensions& launch_dimensions);
 
   Status EmitScatter(mlir::lmhlo::FusionOp fusion_op,
                      const HloComputation* fused_computation,
