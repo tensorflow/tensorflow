@@ -2624,7 +2624,6 @@ tf_xla_py_strict_test(
     srcs = ["where_op_test.py"],
     args = [
         "--tpu_use_tfrt=true",
-        # TODO(b/274633087): Set tf_use_pjrt=true after fixing bug.
     ],
     disabled_backends = [
         "cpu",
