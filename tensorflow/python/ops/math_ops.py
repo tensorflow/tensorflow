@@ -1859,13 +1859,15 @@ def _add_dispatch(x, y, name=None):
   Returns:
     The result of the elementwise `+` operation.
   """
-  if (
-      not ops.is_auto_dtype_conversion_enabled()
-      and not isinstance(y, tensor_lib.Tensor)
-      and not isinstance(y, sparse_tensor.SparseTensor)
-  ):
+  if ops.is_auto_dtype_conversion_enabled():
+    return add(x, y, name=name)
+  if not isinstance(y, tensor_lib.Tensor) and not isinstance(
+      y, sparse_tensor.SparseTensor):
     y = ops.convert_to_tensor(y, dtype_hint=x.dtype.base_dtype, name="y")
-  return add(x, y, name=name)
+  if x.dtype == dtypes.string:
+    return gen_math_ops.add(x, y, name=name)
+  else:
+    return gen_math_ops.add_v2(x, y, name=name)
 
 
 def _mul_dispatch(x, y, name=None):
