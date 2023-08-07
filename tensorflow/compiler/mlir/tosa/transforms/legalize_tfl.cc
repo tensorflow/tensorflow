@@ -4667,8 +4667,8 @@ void populateLegalizeTFLPatterns(MLIRContext* ctx,
 #undef DEF_PATTERN_INSERT
 
   // Patterns which may optionally generate non-TOSA dialects
-#define DEF_PATTERN_INSERT(PAT)                                  \
-  patterns.addWithLabel<Convert##PAT##Op>({#PAT"ToTensor"}, ctx);
+#define DEF_PATTERN_INSERT(PAT) \
+  patterns.addWithLabel<Convert##PAT##Op>({#PAT "ToTensor"}, ctx);
 
   DEF_PATTERN_INSERT(TFLGather);
 

@@ -1155,3 +1155,12 @@ tf_python_pybind_extension(
         "@pybind11_abseil//pybind11_abseil:status_casters",
     ],
 )
+
+py_strict_library(
+    name = "tf_decorator_export",
+    srcs = ["tf_decorator_export.py"],
+    deps = [
+        ":tf_decorator",
+        ":tf_export",
+    ],
+)

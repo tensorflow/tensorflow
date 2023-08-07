@@ -226,6 +226,7 @@ tf_kernel_library(
         "//tensorflow/core/data:captured_function",
         "//tensorflow/core/data:dataset_utils",
         "//tensorflow/core/data:name_utils",
+        "//tensorflow/core/data:utils",
         "//tensorflow/core/data/service:common",
         "//tensorflow/core/data/service:common_proto_cc",
         "//tensorflow/core/data/service:dispatcher_proto_cc",

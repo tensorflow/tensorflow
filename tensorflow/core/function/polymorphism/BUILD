@@ -1,3 +1,4 @@
+# Placeholder: load py_proto_library
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_test")
 load(

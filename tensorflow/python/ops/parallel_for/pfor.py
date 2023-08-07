@@ -792,7 +792,7 @@ class _PforInput:
 
   __slots__ = ["pfor", "_op", "_inputs"]
 
-  def __init__(self, pfor, op, inputs):
+  def __init__(self, pfor, op: ops.Operation, inputs):
     """Creates a _PforInput object.
 
     Args:
@@ -903,7 +903,7 @@ class _PforInput:
     return t
 
   @property
-  def op(self):
+  def op(self) -> ops.Operation:
     return self._op
 
   @property

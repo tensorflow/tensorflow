@@ -26,8 +26,8 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-StatusOr<LaunchDimensions> InPlaceDynamicUpdateSliceEmitter::launch_dimensions()
-    const {
+StatusOr<LaunchDimensions> InPlaceDynamicUpdateSliceEmitter::launch_dimensions(
+    int kernel_index) const {
   const auto& update_shape = dus_ops_.front()->operand(1)->shape();
   return CalculateLaunchDimensions(
       update_shape, ir_emitter_context().gpu_device_info(),

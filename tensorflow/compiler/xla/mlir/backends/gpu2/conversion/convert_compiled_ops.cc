@@ -38,6 +38,7 @@ limitations under the License.
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
@@ -513,20 +514,32 @@ LogicalResult ConvertCompiledOpToApiCall<OpTy>::matchAndRewrite(
   // Dispatch all kernels defined by thunks.
   for (KernelThunk *kernel : kernels) {
     // Get kernel launch parameters from a compiled fusion.
-    auto [kernel_name, dims] = getKernelLaunchParams(kernel);
+    auto launch_params = getKernelLaunchParams(kernel);
+    auto [kernel_name, dims] = launch_params;
 
     // Create XLA:GPU device kernel (it will own loaded PTX/CUBIN at run time).
-    Value name = b.create<IREE::Input::ByteBufferConstantOp>(
-        b.getType<IREE::Input::ByteBufferType>(),
-        /*name=*/b.getStringAttr("kernel_name"), /*value=*/kernel_name,
-        /*alignment=*/nullptr, /*mime_type=*/nullptr);
-    Value shmem = b.create<ConstantIntOp>(dims.SharedMemBytes(), 32);
-
     func::FuncOp create_kernel = api.getCreateKernel(b, module);
-    Value loaded_kernel = b.create<func::CallOp>(create_kernel.getSymName(),
-                                                 create_kernel.getResultTypes(),
-                                                 ValueRange({name, shmem}))
-                              .getResult(0);
+    auto kernel_type = b.getType<KernelType>();
+
+    auto initializer = [&](ImplicitLocOpBuilder &initializer_builder) -> Value {
+      auto [kernel_name, dims] = launch_params;  // capture requires C++20
+
+      Value name = b.create<IREE::Input::ByteBufferConstantOp>(
+          b.getType<IREE::Input::ByteBufferType>(),
+          b.getStringAttr("kernel_name"), kernel_name,
+          /*alignment=*/nullptr, /*mime_type=*/nullptr);
+      Value shmem = b.create<ConstantIntOp>(dims.SharedMemBytes(), 32);
+
+      return initializer_builder
+          .create<func::CallOp>(api.getCreateKernel(b, module).getSymName(),
+                                kernel_type, ValueRange({name, shmem}))
+          .getResult(0);
+    };
+
+    // Keep loaded device kernel as a module global.
+    IREE::Input::GlobalOp kernel_global = api.getOrCreateGlobal(
+        "__xla_gpu_kernel." + kernel_name, kernel_type, module, b, initializer);
+    auto loaded_kernel = api.loadGlobal<KernelType>(b, kernel_global);
 
     // Prepare arguments for kernel dispatch.
     SmallVector<Value> workgroup_size = {
@@ -668,8 +681,10 @@ SmallVector<int64_t> getTiedOperands(lmhlo::SortOp op) {
 
 struct TerminatorOpLowering : public OpConversionPattern<lmhlo::TerminatorOp> {
   TerminatorOpLowering(TypeConverter &converter, MLIRContext *ctx,
-                       DeBufferization &state)
-      : OpConversionPattern(converter, ctx), state(state) {}
+                       DeBufferization &state, bool add_opt_barrier = true)
+      : OpConversionPattern(converter, ctx),
+        state(state),
+        add_opt_barrier(add_opt_barrier) {}
 
   LogicalResult matchAndRewrite(
       lmhlo::TerminatorOp op, OpAdaptor adaptor,
@@ -678,6 +693,14 @@ struct TerminatorOpLowering : public OpConversionPattern<lmhlo::TerminatorOp> {
 
     auto func = dyn_cast<func::FuncOp>(op->getParentOp());
     if (!func) return rewriter.notifyMatchFailure(op, "unsupported terminator");
+
+    // When lowering for StreamExecutor backend we don't need to add
+    // optimization barriers because API calls mutate buffers in place and
+    // external functions calls are not dead-code-eliminated.
+    if (!add_opt_barrier) {
+      rewriter.replaceOpWithNewOp<func::ReturnOp>(op);
+      return success();
+    }
 
     // Collect block arguments corresponding to output buffers.
     SmallVector<BlockArgument> results;
@@ -712,6 +735,7 @@ struct TerminatorOpLowering : public OpConversionPattern<lmhlo::TerminatorOp> {
   }
 
   DeBufferization &state;
+  bool add_opt_barrier;
 };
 
 }  // namespace
@@ -737,7 +761,8 @@ void populateCompiledOpsConversionPatterns(mlir::RewritePatternSet &patterns,
   auto *ctx = patterns.getContext();
   patterns.insert<ConvertFusionOpToApiCall, ConvertSortOpToApiCall>(
       converter, ctx, thunk_sequence, state, api);
-  patterns.insert<TerminatorOpLowering>(converter, ctx, state);
+  patterns.insert<TerminatorOpLowering>(converter, ctx, state,
+                                        /*add_opt_barrier=*/false);
 }
 
 }  // namespace xla::gpu

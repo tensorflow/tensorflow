@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_IFRT_DEVICE_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_IFRT_DEVICE_H_
 
-#include <utility>
+#include <memory>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
@@ -44,10 +44,16 @@ class DeviceList {
   // better performance.
   using Devices = absl::InlinedVector<Device*, kInlineDeviceSize>;
 
+  // Constructor with a pre-populated `devices`.
+  explicit DeviceList(Devices devices);
+
+  DeviceList(const DeviceList& devices) = default;
+  DeviceList(DeviceList&& devices) = default;
+  DeviceList& operator=(const DeviceList& other) = default;
+  DeviceList& operator=(DeviceList&& other) = default;
+
   // Function that matches the semantics of `Client::LookupDevice()`.
   using LookupDeviceFunc = absl::FunctionRef<StatusOr<Device*>(int)>;
-
-  explicit DeviceList(Devices devices) : devices_(std::move(devices)) {}
 
   // Constructs `DeviceList` from `DeviceListProto`. Devices are looked up using
   // `lookup_device`. Device ids in the proto must be consistent with the
@@ -58,27 +64,46 @@ class DeviceList {
   // Returns a `DeviceListProto` representation.
   DeviceListProto ToProto() const;
 
-  absl::Span<Device* const> devices() const { return devices_; }
+  absl::Span<Device* const> devices() const { return state_->devices; }
 
-  int size() const { return devices_.size(); }
-  bool empty() const { return devices_.empty(); }
+  bool operator==(const DeviceList& other) const {
+    return devices() == other.devices();
+  }
+  bool operator!=(const DeviceList& other) const {
+    return devices() != other.devices();
+  }
 
-  Device* operator[](int i) const { return devices_[i]; }
-  Device* at(int i) const { return devices_.at(i); }
-  Device* front() const { return devices_.front(); }
-  Device* back() const { return devices_.back(); }
+  int size() const { return state_->devices.size(); }
+  bool empty() const { return state_->devices.empty(); }
 
-  auto begin() const { return devices_.begin(); }
-  auto cbegin() const { return devices_.cbegin(); }
-  auto end() const { return devices_.end(); }
-  auto cend() const { return devices_.cend(); }
+  Device* operator[](int i) const { return state_->devices[i]; }
+  Device* at(int i) const { return state_->devices.at(i); }
+  Device* front() const { return state_->devices.front(); }
+  Device* back() const { return state_->devices.back(); }
+
+  auto begin() const { return state_->devices.begin(); }
+  auto cbegin() const { return state_->devices.cbegin(); }
+  auto end() const { return state_->devices.end(); }
+  auto cend() const { return state_->devices.cend(); }
 
  private:
-  Devices devices_;
+  // Internal state that may be shared across `DeviceList` instances.
+  struct State {
+    Devices devices;
+  };
+
+  std::shared_ptr<State> state_;
 };
 
 // Returns the id of each device in `device_list`.
 std::vector<int> GetDeviceIds(DeviceList device_list);
+
+// Hash function for `DeviceList`. Assumes that every device has a unique
+// `Device*` address ("d1 == d2 if d1->id() == d2->id()").
+template <typename H>
+H AbslHashValue(H h, const DeviceList& devices) {
+  return H::combine(std::move(h), devices.devices());
+}
 
 }  // namespace ifrt
 }  // namespace xla

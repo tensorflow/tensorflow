@@ -103,6 +103,13 @@ auto* tf_data_experiment_counter = tsl::monitoring::Counter<1>::New(
 auto* tf_data_fingerprint_counter = tsl::monitoring::Counter<1>::New(
     "/tensorflow/data/fingerprint", "tf.data fingerprint", "name");
 
+auto* tf_data_service_compression = tsl::monitoring::Counter<1>::New(
+    "/tensorflow/data/service/compression",
+    "The number of times a tf.data service pipeline performed a "
+    "compression-related action {'disabled_at_runtime', "
+    "'not_disabled_at_runtime'}.",
+    "action");
+
 auto* tf_data_service_get_element_duration_usecs_histogram =
     tsl::monitoring::Sampler<1>::New(
         {"/tensorflow/data/getelement_duration",
@@ -439,6 +446,13 @@ void RecordTFDataExperiment(const string& name) {
 
 void RecordTFDataFingerprint(const string& name) {
   tf_data_fingerprint_counter->GetCell(name)->IncrementBy(1);
+}
+
+void RecordTFDataServiceRuntimeCompressionDecision(bool compression_disabled) {
+  tf_data_service_compression
+      ->GetCell(compression_disabled ? "disabled_at_runtime"
+                                     : "not_disabled_at_runtime")
+      ->IncrementBy(1);
 }
 
 void RecordTFDataServiceGetElementDuration(const string& data_transfer_protocol,

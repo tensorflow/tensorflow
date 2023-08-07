@@ -1,3 +1,4 @@
+load("//tensorflow:py.default.bzl", "py_binary", "py_library", "py_test")
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_py_library")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist")

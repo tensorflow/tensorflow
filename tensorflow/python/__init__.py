@@ -30,12 +30,7 @@ import traceback
 # If you are adding a new file with @tf_export decorators,
 # import it in modules_with_exports.py instead.
 
-# go/tf-wildcard-import
-# pylint: disable=wildcard-import,g-bad-import-order,g-import-not-at-top
-
-from tensorflow.python import pywrap_tensorflow as _pywrap_tensorflow
-
-# pylint: enable=wildcard-import
+# pylint: disable=g-bad-import-order,g-import-not-at-top
 
 # from tensorflow.python import keras
 # from tensorflow.python.layers import layers

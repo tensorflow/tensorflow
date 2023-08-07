@@ -17,6 +17,7 @@
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import variable_pb2
 from tensorflow.python.eager import context
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_conversion_registry
@@ -1203,7 +1204,7 @@ class RefVariable(variable_v1.VariableV1, core.Tensor):
     return self._name
 
   @property
-  def initializer(self):
+  def initializer(self) -> ops.Operation:
     """The initializer operation for this variable."""
     return self._initializer_op
 
@@ -1213,17 +1214,17 @@ class RefVariable(variable_v1.VariableV1, core.Tensor):
     return self._variable.device
 
   @property
-  def dtype(self):
+  def dtype(self) -> dtypes.DType:
     """The `DType` of this variable."""
     return self._variable.dtype
 
   @property
-  def op(self):
+  def op(self) -> ops.Operation:
     """The `Operation` of this variable."""
     return self._variable.op
 
   @property
-  def graph(self):
+  def graph(self) -> ops.Graph:
     """The `Graph` of this variable."""
     return self._variable.graph
 

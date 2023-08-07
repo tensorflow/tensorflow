@@ -432,7 +432,7 @@ message HloInputOutputAliasProto {
   //  parameter_shape_index={1, 2},
   // }
   //
-  // This entry indicates that the first paremter's {1, 2} element is
+  // This entry indicates that the first parameter's {1, 2} element is
   // aliased with the {1} element of the root instruction.
   message AliasEntryProto {
     // ShapeIndex of the root hlo.
@@ -446,6 +446,29 @@ message HloInputOutputAliasProto {
   }
 
   repeated AliasEntryProto entries = 1;
+}
+
+message HloBufferDonorProto {
+  // The following proto describes an input (described by parameter number and a
+  // ShapeIndex of the parameter) that can donate its butter to any output
+  // tensor. It is similar to HloInputOutputAliasProto, but without a paired
+  // output. For example:
+  //
+  // entry = {
+  //  parameter_number=0,
+  //  parameter_shape_index={1, 2},
+  // }
+  //
+  // This entry indicates that the first parameter's {1, 2} element can donate
+  // its buffer.
+  message BufferDonorEntryProto {
+    // Number of the parameter in entry computation.
+    int64 parameter_number = 1;
+    // ShapeIndex of the parameter instruction.
+    repeated int64 parameter_shape_index = 2;
+  }
+
+  repeated BufferDonorEntryProto entries = 1;
 }
 
 message DynamicParameterBindingProto {
@@ -550,6 +573,9 @@ message HloModuleProto {
 
   // Describes alias information between inputs and outputs.
   HloInputOutputAliasProto input_output_alias = 8;
+
+  // Describes the information of input buffer donors.
+  HloBufferDonorProto buffer_donor = 18;
 
   DynamicParameterBindingProto dynamic_parameter_binding = 9;
 

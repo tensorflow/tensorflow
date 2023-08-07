@@ -103,14 +103,17 @@ package_group(
 #     deps = [
 #         ":hal",
 #         ":vm",
+#         "@com_google_absl//absl/container:flat_hash_map",
 #         "@com_google_absl//absl/container:inlined_vector",
 #         "@com_google_absl//absl/log",
+#         "@com_google_absl//absl/synchronization",
 #         "//tensorflow/compiler/xla:status",
 #         "//tensorflow/compiler/xla:statusor",
 #         "//tensorflow/compiler/xla/service:executable",
 #         "//tensorflow/compiler/xla/service/gpu:launch_dimensions",
 #         "//tensorflow/compiler/xla/service/gpu:stream_executor_util",
 #         "//tensorflow/compiler/xla/stream_executor:device_memory",
+#         "//tensorflow/compiler/xla/stream_executor:kernel",
 #         "//tensorflow/tsl/profiler/lib:scoped_annotation",
 #     ] + if_gpu2([
 #         "//third_party/iree/runtime/src/iree/hal",
@@ -185,6 +188,8 @@ package_group(
 #     deps = [
 #         "@com_google_absl//absl/container:inlined_vector",
 #         "@com_google_absl//absl/strings:str_format",
+#         "//tensorflow/compiler/xla:status",
+#         "//tensorflow/compiler/xla:statusor",
 #     ] + if_gpu2([
 #         "//third_party/iree/runtime/src/iree/vm",
 #         "//third_party/iree/runtime/src/iree/vm:cc",

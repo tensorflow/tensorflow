@@ -229,26 +229,18 @@ bool HloFusionAnalysis::HasConsistentTransposeHeros() const {
     return false;
   }
 
-  const HloInstruction* first_transpose =
-      &FindNonTrivialHero(*root_with_tiled_transpose_);
-  const Shape& transpose_in_shape = first_transpose->operand(0)->shape();
-  std::optional<TransposeDescription> first_tiled_transpose =
-      FindAnyTiledTranspose(*first_transpose);
-
   // We need the following invariant:
   // For every tuple element:
   //  -> EITHER it's a kCopy: S{L} -> S{L'}
   //  -> OR it's an elementwise op of shape S{L}
   for (HloInstruction* root : fusion_roots()) {
-    std::optional<TransposeDescription> tiled_transpose =
-        FindAnyTiledTranspose(*root);
-    if (tiled_transpose) {
-      if (*tiled_transpose != *first_tiled_transpose) {
+    if (auto td = FindAnyTiledTranspose(*root)) {
+      if (!tiled_transpose_->IsEquivalent(*td)) {
         return false;
       }
     } else {
       if (!ShapeUtil::IsReshapeOrTransposeBitcast(
-              root->shape(), transpose_in_shape,
+              root->shape(), tiled_transpose_->input_shape(),
               /*ignore_element_type=*/true)) {
         return false;
       }
@@ -360,7 +352,7 @@ namespace {
 // We always use the first reduce root that triggers unnested reduction emitter
 // as the hero reduction, since all the reductions are required to have the same
 // shape and layout as verified by `IsFusedReductionOutputConsistent()`.
-HloInstruction* FindHeroReduction(absl::Span<HloInstruction*> roots) {
+HloInstruction* FindHeroReduction(const std::vector<HloInstruction*>& roots) {
   auto it = absl::c_find_if(roots, [](HloInstruction* instr) {
     return IsReductionFromOrToContiguousDimensions(*instr);
   });
@@ -376,8 +368,7 @@ const ReductionCodegenInfo* HloFusionAnalysis::GetReductionCodegenInfo() {
     return &reduction_codegen_info_.value();
   }
 
-  HloInstruction* hero_reduction =
-      FindHeroReduction(absl::Span<HloInstruction*>(fusion_roots_));
+  HloInstruction* hero_reduction = FindHeroReduction(fusion_roots());
   CHECK_NE(hero_reduction, nullptr);
 
   auto reduction_codegen_info = ComputeReductionCodegenInfo(hero_reduction);
@@ -536,14 +527,11 @@ int64_t HloFusionAnalysis::MaxBeneficialColumnReductionUnrollBasedOnBlockSize()
 // instructions into the same group so long as they share any predecessors.
 std::vector<std::vector<HloInstruction*>>
 HloFusionAnalysis::GroupDisjointReductions() const {
-  const Shape& root_shape = fused_computation_->root_instruction()->shape();
-  int num_fusion_outputs =
-      fused_computation_->root_instruction()->opcode() == HloOpcode::kTuple
-          ? root_shape.tuple_shapes_size()
-          : 1;
+  const int num_fusion_outputs = fusion_roots().size();
+
   CHECK_NE(0, num_fusion_outputs);
   if (num_fusion_outputs == 1) {
-    return {{fused_computation_->root_instruction()}};
+    return {{fusion_roots()[0]}};
   }
 
   HloInstructionMap<tensorflow::UnionFind<HloInstruction*>> disjoint_sets;

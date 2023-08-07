@@ -53,7 +53,7 @@ extern "C" {
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 16
+#define PJRT_API_MINOR 17
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -848,6 +848,20 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Device_AddressableMemories_Args, memories);
 // Returns the memories that a device can address.
 typedef PJRT_Error* PJRT_Device_AddressableMemories(
     PJRT_Device_AddressableMemories_Args* args);
+
+struct PJRT_Device_DefaultMemory_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_Device* device;
+  // `memory` has the same lifetime as `device`.
+  PJRT_Memory* memory;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Device_DefaultMemory_Args, memory);
+
+// Returns the default memory of a device, i.e. which memory data processed by
+// this device should be stored in by default.
+typedef PJRT_Error* PJRT_Device_DefaultMemory(
+    PJRT_Device_DefaultMemory_Args* args);
 
 struct PJRT_Device_MemoryStats_Args {
   size_t struct_size;
@@ -1833,6 +1847,7 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Device_IsAddressable);
   _PJRT_API_STRUCT_FIELD(PJRT_Device_LocalHardwareId);
   _PJRT_API_STRUCT_FIELD(PJRT_Device_AddressableMemories);
+  _PJRT_API_STRUCT_FIELD(PJRT_Device_DefaultMemory);
   _PJRT_API_STRUCT_FIELD(PJRT_Device_MemoryStats);
 
   _PJRT_API_STRUCT_FIELD(PJRT_Memory_Id);

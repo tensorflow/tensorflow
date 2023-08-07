@@ -220,6 +220,7 @@ class MathTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
 if __name__ == '__main__':
   tensor.enable_tensor_equality()
+  np_math_ops.enable_numpy_methods_on_tensor()
   ops.enable_eager_execution()
   ops.set_dtype_conversion_mode('all')
   googletest.main()

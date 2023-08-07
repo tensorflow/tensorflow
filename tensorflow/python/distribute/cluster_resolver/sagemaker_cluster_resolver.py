@@ -19,7 +19,6 @@ import os
 
 from tensorflow.python.distribute.cluster_resolver.cluster_resolver import ClusterResolver
 from tensorflow.python.training.server_lib import ClusterSpec
-from tensorflow.python.util.tf_export import tf_export
 
 # List of envs
 # https://github.com/aws/sagemaker-training-toolkit/blob/master/ENVIRONMENT_VARIABLES.md
@@ -76,7 +75,6 @@ def _get_value_in_tfconfig(key, port, default=None):
   return tf_config[key] if key in tf_config else default
 
 
-@tf_export('distribute.cluster_resolver.SageMakerClusterResolver')
 class SageMakerClusterResolver(ClusterResolver):
   """Implementation of a ClusterResolver which reads the Sagemaker EnvVars. This is an implementation of cluster resolvers when running in a SageMaker environment to set information about the cluster.
 

@@ -228,6 +228,9 @@ def copy_array_to_devices_with_sharding(self: ArrayImpl, devices: List[Device], 
 
 def batched_device_put(aval: Any, sharding: Any, shards: Sequence[Any], devices: List[Device]) -> ArrayImpl: ...
 
+def canonicalize_memory_kind(
+    memory_kind: Optional[str], device: Device) -> Optional[str]: ...
+
 def array_result_handler(
                aval: Any,
                sharding: Any,

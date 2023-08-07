@@ -1188,7 +1188,7 @@ class Operation(pywrap_tf_session.PyOperation):
     self._init(g)
     return self
 
-  def _init(self, graph):
+  def _init(self, graph: "Graph"):
     """Initializes Operation from a TF_Operation."""
     self.graph = graph
     self._original_op = None

@@ -19,6 +19,7 @@ limitations under the License.
 #include <cmath>
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <queue>
@@ -28,6 +29,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -38,6 +42,7 @@ limitations under the License.
 #include "llvm/Linker/Linker.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/TargetParser/Triple.h"
 #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/IndexToLLVM/IndexToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"  // from @llvm-project
@@ -62,20 +67,24 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/NVVM/NVVMToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/autotuning.pb.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/utils/hlo_query.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/map_mhlo_to_scalar_op.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter_triton.h"
@@ -87,11 +96,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_function_importer.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/path.h"
+#include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/platform/tensor_float_32_utils.h"
 #include "triton/Conversion/TritonGPUToLLVM/TritonGPUToLLVMPass.h"
@@ -718,17 +731,26 @@ StatusOr<LaunchDimensions> MatMulImpl(
   } else {
     int_ty = i32_ty;
   }
+
+  const int split_k = config.split_k();
+  const int block_m = config.block_m();
+  const int block_k = config.block_k();
+  const int block_n = config.block_n();
+  CHECK_GE(split_k, 1);
+  CHECK_GE(block_m, 16);
+  CHECK_GE(block_k, 16);
+  CHECK_GE(block_n, 16);
+
   const DotDimensionNumbers& dims = dot_instr->dot_dimension_numbers();
-  TF_ASSIGN_OR_RETURN(
-      const auto analysis,
-      DotFusionAnalysis::Execute(dot_instr->parent(), config.split_k()));
+  TF_ASSIGN_OR_RETURN(const auto analysis,
+                      DotFusionAnalysis::Execute(dot_instr->parent(), split_k));
 
   // Rely on dot decomposer: there is just one contracting and one
   // non-contracting dimension on each side + batch ones optionally.
   CHECK_EQ(dims.lhs_contracting_dimensions_size(), 1);
   CHECK_EQ(dims.rhs_contracting_dimensions_size(), 1);
 
-  const bool have_split_k = config.split_k() > 1;
+  const bool have_split_k = split_k > 1;
   if (have_split_k) {
     // Split-K dimension has to be the first batch one and have an index
     // just before the contracting one.
@@ -737,10 +759,10 @@ StatusOr<LaunchDimensions> MatMulImpl(
              dims.lhs_contracting_dimensions(0) - 1);
     CHECK_EQ(dims.rhs_batch_dimensions(0),
              dims.rhs_contracting_dimensions(0) - 1);
-    CHECK_EQ(config.split_k(), dot_instr->operand(0)->shape().dimensions(
-                                   dims.lhs_contracting_dimensions(0) - 1));
-    CHECK_EQ(config.split_k(), dot_instr->operand(1)->shape().dimensions(
-                                   dims.rhs_contracting_dimensions(0) - 1));
+    CHECK_EQ(split_k, dot_instr->operand(0)->shape().dimensions(
+                          dims.lhs_contracting_dimensions(0) - 1));
+    CHECK_EQ(split_k, dot_instr->operand(1)->shape().dimensions(
+                          dims.rhs_contracting_dimensions(0) - 1));
   }
 
   CHECK_LE(dims.lhs_batch_dimensions_size(), 1 + have_split_k);
@@ -767,8 +789,7 @@ StatusOr<LaunchDimensions> MatMulImpl(
   const int batch_out_idx = have_batch ? (have_split_k ? 1 : 0) : -1;
 
   // LHS non-contracting dimension length.
-  // LHS non-contracting can be split, so this holds its full size unlike the
-  // m_minor.
+  // LHS non-contracting can be split, this holds only its minor part.
   int m =
       analysis.IterSpec(DotFusionAnalysis::Scope::OUTPUT, root, lhs_nc_out_idx)
           ->at(0)
@@ -777,7 +798,7 @@ StatusOr<LaunchDimensions> MatMulImpl(
   // Contracting dimension length.
   const int k = dot_instr->operand(0)->shape().dimensions(
                     dims.lhs_contracting_dimensions(0)) *
-                config.split_k();
+                split_k;
 
   // For now all parameters of one scope (dot LHS, RHS) are required to have the
   // same physical layout = use the same indices in tiles. This is enforced by
@@ -862,35 +883,9 @@ StatusOr<LaunchDimensions> MatMulImpl(
           .count;
   CHECK_GE(n, 1);
 
-  const int block_m = config.block_m();
-  const int block_k = config.block_k();
-  const int block_n = config.block_n();
-
-  CHECK_GE(block_m, 16);
-  CHECK_GE(block_k, 16);
-  CHECK_GE(block_n, 16);
-
   const int grid_m = ceil(1.0 * m / block_m);
   const int grid_n = ceil(1.0 * n / block_n);
   const int width = group_m * grid_n;
-
-  Type dot_output_ty = TritonType(b, dot_instr->shape().element_type());
-
-  // Data type of dot() immediate inputs.
-  Type dot_input_ty = b.getF32Type();
-  {
-    const Type lhs_ty =
-        TritonType(b, dot_instr->operand(0)->shape().element_type());
-    const Type rhs_ty =
-        TritonType(b, dot_instr->operand(1)->shape().element_type());
-    CHECK(lhs_ty == rhs_ty);
-    dot_input_ty = lhs_ty;
-  }
-  // TODO(b/266862493): Accumulator can be integer too.
-  // Otherwise only f64 x f64 -> f64 uses f64 accumulator.
-  mlir::FloatType acc_ty = (dot_output_ty.isF64() && dot_input_ty.isF64())
-                               ? b.getF64Type()
-                               : b.getF32Type();
 
   // X block size is 32-bit, Y and Z are 16-bit. Use X for large dimensions.
   constexpr int64_t kBlockCountYZLimit = 65536;
@@ -906,11 +901,6 @@ StatusOr<LaunchDimensions> MatMulImpl(
   // this requires at least 256 GB of output.
   CHECK_LT(batch_size * grid_m * grid_n,
            kBlockCountYZLimit * kBlockCountYZLimit);
-
-  const LaunchDimensions launch_dimensions{
-      {large_batch ? batch_size : grid_m * grid_n,
-       large_batch ? grid_m * grid_n : batch_size, config.split_k()},
-      {config.num_warps() * WarpSize(), 1, 1}};
 
   auto group_id = b.create<ma::DivSIOp>(pid_nc, CreateConst(b, i32_ty, width));
   ma::ConstantOp group_m_op = CreateConst(b, i32_ty, group_m);
@@ -941,6 +931,22 @@ StatusOr<LaunchDimensions> MatMulImpl(
   auto pid_k_offset =
       b.create<ma::MulIOp>(pid_k, CreateConst(b, i32_ty, block_k));
 
+  Type dot_output_ty = TritonType(b, dot_instr->shape().element_type());
+  // Data type of dot() immediate inputs.
+  Type dot_input_ty = b.getF32Type();
+  {
+    const Type lhs_ty =
+        TritonType(b, dot_instr->operand(0)->shape().element_type());
+    const Type rhs_ty =
+        TritonType(b, dot_instr->operand(1)->shape().element_type());
+    CHECK(lhs_ty == rhs_ty);
+    dot_input_ty = lhs_ty;
+  }
+  // TODO(b/266862493): Accumulator can be integer too.
+  // Otherwise only f64 x f64 -> f64 uses f64 accumulator.
+  mlir::FloatType acc_ty = (dot_output_ty.isF64() && dot_input_ty.isF64())
+                               ? b.getF64Type()
+                               : b.getF32Type();
   ma::ConstantOp accumulator_init =
       CreateConst(b, acc_ty, 0, {block_m, block_n});
 
@@ -953,7 +959,7 @@ StatusOr<LaunchDimensions> MatMulImpl(
     boundary_checks_lhs.push_back(0);
     boundary_checks_out.push_back(0);
   }
-  if (k % (block_k * config.split_k()) != 0) {
+  if (k % (block_k * split_k) != 0) {
     boundary_checks_lhs.push_back(1);
     boundary_checks_rhs.push_back(0);
   }
@@ -976,8 +982,8 @@ StatusOr<LaunchDimensions> MatMulImpl(
     for (int i = 0; i < iter_args.size() - 1; ++i) {
       const bool is_lhs =
           i < analysis.ScopeParameters(DotFusionAnalysis::Scope::LHS).size();
-      const int increment_dim0 = block_k * config.split_k() * (is_lhs ? 0 : 1);
-      const int increment_dim1 = block_k * config.split_k() * (is_lhs ? 1 : 0);
+      const int increment_dim0 = block_k * split_k * (is_lhs ? 0 : 1);
+      const int increment_dim1 = block_k * split_k * (is_lhs ? 1 : 0);
       absl::flat_hash_map<const HloInstruction*, Value>& values =
           is_lhs ? values_lhs : values_rhs;
       CHECK(values
@@ -994,7 +1000,7 @@ StatusOr<LaunchDimensions> MatMulImpl(
 
     // TODO(b/269726484): Peel the loop instead of inserting a masked load in
     // every iteration, even the ones that do not need it.
-    const bool need_masking = k % (block_k * config.split_k()) > 0;
+    const bool need_masking = k % (block_k * split_k) > 0;
     Value lhs_mask;
     Value rhs_mask;
     if (need_masking) {
@@ -1136,7 +1142,7 @@ StatusOr<LaunchDimensions> MatMulImpl(
            /*lowerBound=*/b.create<ma::ConstantIntOp>(0, /*width=*/32),
            /*upperBound=*/b.create<ma::ConstantIntOp>(k, /*width=*/32),
            /*step=*/
-           b.create<ma::ConstantIntOp>(block_k * config.split_k(),
+           b.create<ma::ConstantIntOp>(block_k * split_k,
                                        /*width=*/32),
            /*iterArgs=*/iter_args, body_builder)
           .getResult(iter_args.size() - 1);
@@ -1275,7 +1281,9 @@ StatusOr<LaunchDimensions> MatMulImpl(
                           boundary_checks_out, mt::CacheModifier::NONE,
                           mt::EvictionPolicy::NORMAL);
   }
-  return launch_dimensions;
+  return LaunchDimensions{{large_batch ? batch_size : grid_m * grid_n,
+                           large_batch ? grid_m * grid_n : batch_size, split_k},
+                          {config.num_warps() * WarpSize(), 1, 1}};
 }
 
 }  // namespace
@@ -1579,6 +1587,7 @@ StatusOr<LaunchDimensions> TritonWrapper(
   ll_triton_module->eraseNamedMDNode(
       ll_triton_module->getNamedMetadata("nvvm.annotations"));
   ll_triton_module->setDataLayout(llvm_module->getDataLayout());
+  ll_triton_module->setTargetTriple(llvm_module->getTargetTriple());
   // Use override flag because libdevice functions can be present in both.
   CHECK(!llvm::Linker::linkModules(*llvm_module, std::move(ll_triton_module),
                                    llvm::Linker::Flags::OverrideFromSrc));

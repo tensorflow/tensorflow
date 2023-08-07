@@ -35,7 +35,7 @@ func.func @main(%arg0: memref<16xi8>, %arg1: memref<16xi8>,
 // CHECK:   %[[O:.*]] = iree_input.tensor.import {{.*}} -> tensor<4xf32>
 // CHECK:   %[[TMP:.*]] = iree_input.tensor.import {{.*}} -> tensor<4xi32>
 //
-// CHECK:   %[[KERNEL:.*]] = call @xla_gpu.kernel.create
+// CHECK:   %[[KERNEL:.*]] = iree_input.global.load @[[KERNEL_NAME:.*]] :
 //
 // CHECK:   %[[C4:.*]] = arith.constant 4 : index
 // CHECK:   %[[ARGS:.*]] = iree_input.list.create %[[C4]]

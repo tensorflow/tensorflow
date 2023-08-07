@@ -1,6 +1,7 @@
 # Description:
 #   TensorFlow C++ inference example for labeling images.
 
+load("//tensorflow:py.default.bzl", "py_binary")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 package(

@@ -655,6 +655,9 @@ tf_cuda_cc_test(
         ":tfe_op_internal",
         ":tfe_tensorhandle_internal",
         "//tensorflow/c:c_test_util",
+        "//tensorflow/c:tf_datatype",
+        "//tensorflow/c:tf_status",
+        "//tensorflow/c:tf_tensor",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
@@ -663,6 +666,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
+        "//tensorflow/core/platform:env",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -813,6 +817,19 @@ cc_library(
         ":abstract_function",
         "//tensorflow/core/lib/llvm_rtti",
         "//tensorflow/core/platform:errors",
+    ],
+)
+
+tf_cuda_library(
+    name = "c_api_experimental_hdrs",
+    hdrs = [
+        "c_api.h",
+        "c_api_experimental.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/c:c_api_headers",
+        "//tensorflow/c:c_api_macros_hdrs",
     ],
 )
 

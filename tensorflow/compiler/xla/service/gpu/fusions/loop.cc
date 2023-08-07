@@ -47,7 +47,8 @@ Status LoopFusion::EmitKernel(const LaunchDimensions& launch_dims,
       .EmitLoop(GetIrNameFromLoc(fusion_op()->getLoc()), index_type);
 }
 
-StatusOr<LaunchDimensions> LoopFusion::launch_dimensions() const {
+StatusOr<LaunchDimensions> LoopFusion::launch_dimensions(
+    int kernel_index) const {
   return analysis_.GetLaunchDimensions(
       ir_emitter_context()
           .hlo_module()

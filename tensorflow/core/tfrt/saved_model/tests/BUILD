@@ -1,3 +1,4 @@
+load("//tensorflow:py.default.bzl", "py_library")
 load(":gen_saved_model.bzl", "gen_saved_model")
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_binary")

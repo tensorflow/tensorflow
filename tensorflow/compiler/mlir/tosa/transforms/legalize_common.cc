@@ -36,20 +36,26 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/Arith/Utils/Utils.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/Utils/Utils.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/Utils/QuantUtils.h"  // from @llvm-project
+#include "mlir/Dialect/Utils/StaticValueUtils.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/Dialect/Utils/StaticValueUtils.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
+#include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"
+
 #include "mlir/IR/Value.h"  // from @llvm-project
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
@@ -84,7 +90,7 @@ static OpFoldResult multiplyDims(ImplicitLocOpBuilder& builder,
 
 static OpFoldResult multiplyDims(ImplicitLocOpBuilder& builder,
                                  ArrayRef<OpFoldResult> dims) {
-  if (dims.size() == 0) {
+  if (dims.empty()) {
     return OpFoldResult{builder.getIndexAttr(1)};
   }
 
@@ -4111,13 +4117,13 @@ std::optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
   auto paramsLow = llvm::ArrayRef(params_shape).take_front(batch_dims);
 
   auto paramsMid =
-    llvm::ArrayRef(params_shape).slice(batch_dims, axis - batch_dims);
+      llvm::ArrayRef(params_shape).slice(batch_dims, axis - batch_dims);
 
   auto paramsHigh =
-    llvm::ArrayRef(params_shape).slice(axis + 1, params_rank - axis - 1);
+      llvm::ArrayRef(params_shape).slice(axis + 1, params_rank - axis - 1);
 
-  auto indicesMid =
-    llvm::ArrayRef(indices_shape).slice(batch_dims, indices_rank - batch_dims);
+  auto indicesMid = llvm::ArrayRef(indices_shape)
+                        .slice(batch_dims, indices_rank - batch_dims);
 
   ImplicitLocOpBuilder builder(op->getLoc(), rewriter);
   OpFoldResult lowProduct = multiplyDims(builder, paramsMid);
@@ -4148,13 +4154,15 @@ std::optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
   // LeftChannels
   for (int i = 0; i < params_left_channels.size(); i++) {
     params_transpose_perm.push_back(params_idx_left_channels[i]);
-    params_transpose_shape.push_back(extractStaticDimension(params_left_channels[i]));
+    params_transpose_shape.push_back(
+        extractStaticDimension(params_left_channels[i]));
   }
 
   // RightChannels
   for (int i = 0; i < params_right_channels.size(); i++) {
     params_transpose_perm.push_back(params_idx_right_channels[i]);
-    params_transpose_shape.push_back(extractStaticDimension(params_right_channels[i]));
+    params_transpose_shape.push_back(
+        extractStaticDimension(params_right_channels[i]));
   }
 
   /////////////////////////////////////////////
@@ -4223,7 +4231,7 @@ std::optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
   Value tosa_indices_reshape_op = buildReshape(builder, indices_value, {N, W});
 
   auto tosa_gather_static_shape =
-    llvm::map_to_vector(tosa_gather_result_shape, extractStaticDimension);
+      llvm::map_to_vector(tosa_gather_result_shape, extractStaticDimension);
 
   auto tosa_gather_op = CreateOpAndInfer<tosa::GatherOp>(
       builder,

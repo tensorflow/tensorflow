@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/tsl/lib/io/compression.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/path.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/status_to_from_proto.h"
 #include "tensorflow/tsl/platform/statusor.h"
@@ -201,13 +202,13 @@ Status SnapshotManager::ReadOnDiskMetadata() {
 
 Status SnapshotManager::ReadOnDiskStreams() {
   std::string streams_path = StreamsDirectory(path_);
-  TF_ASSIGN_OR_RETURN(std::vector<std::string> stream_directories,
+  TF_ASSIGN_OR_RETURN(const std::vector<std::string> stream_directories,
                       GetChildren(streams_path, env_));
   streams_.resize(stream_directories.size(), Stream(num_sources()));
 
   absl::flat_hash_set<int64_t> global_split_indices;
   for (const auto& stream_directory : stream_directories) {
-    std::string stream_path = io::JoinPath(streams_path, stream_directory);
+    std::string stream_path = tsl::io::JoinPath(streams_path, stream_directory);
 
     // `stream_directory` must have this format: "stream_<stream_index>".
     std::vector<std::string> tokens = absl::StrSplit(stream_directory, '_');
@@ -219,7 +220,18 @@ Status SnapshotManager::ReadOnDiskStreams() {
           ": filename must have the format stream_<stream_index>.");
     }
 
-    TF_RETURN_IF_ERROR(ReadOnDiskStream(stream_index, global_split_indices));
+    tsl::StatusOr<std::string> worker_address = OwnerWorkerAddress(stream_path);
+    if (!worker_address.ok()) {
+      // The dispatcher may get preempted when it writes the owner_worker file.
+      // If that happens, we skip the last stream directory.
+      if (stream_index < stream_directories.size() - 1) {
+        return worker_address.status();
+      }
+      streams_.pop_back();
+      continue;
+    }
+    TF_RETURN_IF_ERROR(
+        ReadOnDiskStream(stream_index, *worker_address, global_split_indices));
   }
 
   for (int64_t i = 0; i < global_split_indices.size(); ++i) {
@@ -241,13 +253,18 @@ Status SnapshotManager::ReadOnDiskStreams() {
   return OkStatus();
 }
 
-Status SnapshotManager::ReadOnDiskStream(
-    int64_t stream_index, absl::flat_hash_set<int64_t>& global_split_indices) {
+tsl::StatusOr<std::string> SnapshotManager::OwnerWorkerAddress(
+    const std::string& stream_directory) const {
   std::string worker_address;
-  TF_RETURN_IF_ERROR(
-      env_->FileExists(StreamWorkerFilePath(path_, stream_index)));
+  TF_RETURN_IF_ERROR(env_->FileExists(StreamWorkerFilePath(stream_directory)));
   TF_RETURN_IF_ERROR(ReadFileToString(
-      env_, StreamWorkerFilePath(path_, stream_index), &worker_address));
+      env_, StreamWorkerFilePath(stream_directory), &worker_address));
+  return worker_address;
+}
+
+Status SnapshotManager::ReadOnDiskStream(
+    int64_t stream_index, const std::string& worker_address,
+    absl::flat_hash_set<int64_t>& global_split_indices) {
   auto [it, success] = assignments_.insert({worker_address, stream_index});
   if (!success) {
     return InvalidArgument("tf.data dispatcher failed to assign stream ",

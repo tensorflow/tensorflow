@@ -659,7 +659,7 @@ class BaseResourceVariable(variables.Variable, core.Tensor):
     return self._constraint
 
   @property
-  def op(self):
+  def op(self) -> ops.Operation:
     """The op for this variable."""
     return self.handle.op
 
@@ -2448,7 +2448,7 @@ class _UnreadVariable(BaseResourceVariable):
       return super(_UnreadVariable, self).scatter_nd_min(indices, updates, name)
 
   @property
-  def op(self):
+  def op(self) -> ops.Operation:
     """The op for this variable."""
     return self._parent_op
 

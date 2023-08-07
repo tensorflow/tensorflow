@@ -842,18 +842,12 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       }
     }
 
-    PrimitiveType c_type;
     switch (instr->shape().element_type()) {
       case F8E4M3FN:
       case F8E5M2:
       case BF16:
-        c_type = BF16;
-        break;
       case F16:
-        c_type = F16;
-        break;
       case F32:
-        c_type = F32;
         break;
       default:
         VLOG(1) << "Failed to rewrite " << instr->ToShortString()

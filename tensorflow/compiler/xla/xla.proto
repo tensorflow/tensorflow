@@ -403,6 +403,7 @@ message DebugOptions {
   bool xla_gpu_enable_cudnn_frontend = 160;
 
   bool xla_gpu_enable_cudnn_fmha = 218;
+  bool xla_gpu_fused_attention_use_cudnn_rng = 235;
 
   // Disable dumping metadata in HLO dumps.
   bool xla_dump_disable_metadata = 153;
@@ -594,7 +595,9 @@ message DebugOptions {
 
   bool xla_gpu_dump_autotuned_triton_fusions = 232;
 
-  // Next id: 235
+  bool xla_gpu_copy_insertion_use_region_analysis = 236;
+
+  // Next id: 237
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
