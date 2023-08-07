@@ -202,8 +202,11 @@ std::string StreamDoneFilePath(absl::string_view snapshot_path,
 
 std::string StreamWorkerFilePath(absl::string_view snapshot_path,
                                  int64_t stream_index) {
-  return tsl::io::JoinPath(StreamDirectory(snapshot_path, stream_index),
-                           kWorkerFileName);
+  return StreamWorkerFilePath(StreamDirectory(snapshot_path, stream_index));
+}
+
+std::string StreamWorkerFilePath(absl::string_view stream_path) {
+  return tsl::io::JoinPath(stream_path, kWorkerFileName);
 }
 
 std::string SnapshotDoneFilePath(absl::string_view snapshot_path) {
