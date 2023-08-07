@@ -35,7 +35,7 @@ docker exec tf tensorflow/tools/ci_build/windows/cpu/pip/run.bat --extra_test_fl
 
 Running non-pip Test:
 ```
-docker exec tf bazel --output_user_root=C:/tmp --bazelrc=C:/tmp/docker_win.bazelrc test  --jobs=150 --flaky_test_attempts=5 --config=docker_win --config=docker_win_py39 --dynamic_mode=off --config=xla --config=short_logs --announce_rc --build_tag_filters=-no_windows,-windows_excluded,-no_oss,-oss_excluded --build_tests_only --config=monolithic --keep_going --test_output=errors --test_tag_filters=-no_windows,-windows_excluded,-no_oss,-oss_excluded,-gpu,-tpu --test_size_filters=small,medium --test_timeout="300,450,1200,3600" --verbose_failures --copt=/d2ReducedOptimizeHugeFunctions --host_copt=/d2ReducedOptimizeHugeFunctions -- //tensorflow/... -//tensorflow/java/... -//tensorflow/lite/... -//tensorflow/compiler/xla/python/tpu_driver/... -//tensorflow/compiler/...
+docker exec tf bazel --output_user_root=C:/tmp --bazelrc=C:/tmp/docker_win.bazelrc test  --jobs=150 --flaky_test_attempts=5 --config=docker_win --config=docker_win_py --config=docker_win_py39 --dynamic_mode=off --config=xla --config=short_logs --announce_rc --build_tag_filters=-no_windows,-windows_excluded,-no_oss,-oss_excluded --build_tests_only --config=monolithic --keep_going --test_output=errors --test_tag_filters=-no_windows,-windows_excluded,-no_oss,-oss_excluded,-gpu,-tpu --test_size_filters=small,medium --test_timeout="300,450,1200,3600" --verbose_failures --copt=/d2ReducedOptimizeHugeFunctions --host_copt=/d2ReducedOptimizeHugeFunctions -- //tensorflow/... -//tensorflow/java/... -//tensorflow/lite/... -//tensorflow/compiler/xla/python/tpu_driver/... -//tensorflow/compiler/...
 ```
 
 
