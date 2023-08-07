@@ -92,6 +92,27 @@ def TFMapFnOp : TensorflowMlrt_Op<"tf_map_fn", [AttrSizedOperandSegments, Pure]>
   let assemblyFormat = "`(`$max_iterations`,` $tensor_list_or_flow_in`,` $invariant_args `)` attr-dict `:` functional-type(operands, results)";
 }
 
+def TFAsyncWhileOp : TensorflowMlrt_Op<"tf_async_while", [Pure]> {
+  let summary = "Asynchronously execution of while op for tf_mlrt";
+  let description = [{
+    cond: The boolean to control whether the first iteration should be executed.
+    arguments: The last $invariant_size elements are invariants between iterations.
+    results: a list of futures.
+    body_fn: input is [predicate_promise, arg0_future, arg0_promise, arg1_future, arg1_promise, ..., invariant_args] and has no returned results.
+  }];
+
+  let arguments = (ins TF_Tensor:$cond,
+                       Variadic<TF_Tensor>:$arguments,
+                       FlatSymbolRefAttr:$body_fn,
+                       I32Attr:$invariant_size);
+
+  let results = (outs Variadic<MlrtFutureType>);
+
+  let assemblyFormat = [{
+    $body_fn `(` $cond `,` $arguments `)` attr-dict `:` `(` type($cond) `,` type($arguments) `)` `->` `(` type(results) `)`
+  }];
+}
+
 def TFTPUCompileAndExecuteOp : TensorflowMlrt_Op<"tf_tpu_compile_and_execute", [TF_MustExecute]> {
   let summary = "tpu compile and execute operation";
   let description = [{

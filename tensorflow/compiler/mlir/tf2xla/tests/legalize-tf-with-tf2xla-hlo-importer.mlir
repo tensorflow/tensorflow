@@ -719,8 +719,9 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 
   // Verifies that the following functions are added from xla_call_module. Note this must be at the end of the file.
   // CHECK: func.func private @main.2(%arg0: tensor<f32> {mhlo.sharding = "{replicated}"}) -> tensor<f32> {
-  // CHECK:   %0 = mhlo.sine %arg0 : tensor<f32>
-  // CHECK:   return %0 : tensor<f32>
+  // CHECK:   %0 = mhlo.bitcast_convert %arg0 : (tensor<f32>) -> tensor<f32> 
+  // CHECK:   %1 = mhlo.sine %0 : tensor<f32>
+  // CHECK:   return %1 : tensor<f32>
   // CHECK: }
 
 }

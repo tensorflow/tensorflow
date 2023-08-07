@@ -536,14 +536,11 @@ int64_t HloFusionAnalysis::MaxBeneficialColumnReductionUnrollBasedOnBlockSize()
 // instructions into the same group so long as they share any predecessors.
 std::vector<std::vector<HloInstruction*>>
 HloFusionAnalysis::GroupDisjointReductions() const {
-  const Shape& root_shape = fused_computation_->root_instruction()->shape();
-  int num_fusion_outputs =
-      fused_computation_->root_instruction()->opcode() == HloOpcode::kTuple
-          ? root_shape.tuple_shapes_size()
-          : 1;
+  const int num_fusion_outputs = fusion_roots().size();
+
   CHECK_NE(0, num_fusion_outputs);
   if (num_fusion_outputs == 1) {
-    return {{fused_computation_->root_instruction()}};
+    return {{fusion_roots()[0]}};
   }
 
   HloInstructionMap<tensorflow::UnionFind<HloInstruction*>> disjoint_sets;
