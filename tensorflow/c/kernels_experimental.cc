@@ -297,7 +297,7 @@ struct TmpVar : public ResourceBase {
 };
 
 // Makes a unique name for a temporary variable inside a while loop body,
-//  because loop can be executed in multiple iterations in parallel.
+// because loop can be executed in multiple iterations in parallel.
 std::string TemporaryVariableName(
     const std::string& var_name,
     const tensorflow::FrameAndIter& control_frame) {
