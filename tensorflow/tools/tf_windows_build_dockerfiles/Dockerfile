@@ -64,6 +64,9 @@ RUN powershell -ExecutionPolicy Bypass -File bazelisk.ps1
 
 RUN Remove-Item -Path "*.ps1", "vs.bat"
 
+# Enable long path support
+RUN reg.exe add "HKLM\SYSTEM\CurrentControlSet\Control\FileSystem" /v "LongPathsEnabled" /t REG_DWORD /d 1 /f
+
 # Restore default shell for Windows containers.
 SHELL ["cmd.exe", "/s", "/c"]
 # Default to PowerShell if no other command specified.
