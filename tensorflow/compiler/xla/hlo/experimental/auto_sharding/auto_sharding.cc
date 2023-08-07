@@ -229,16 +229,6 @@ GenerateReshardingCostsAndShardingsForAllOperands(
   return std::make_pair(resharding_costs, input_shardings_optional);
 }
 
-std::vector<std::vector<double>> GenerateReshardingCostsForAllOperands(
-    const HloInstruction* ins, const HloSharding& output_sharding,
-    const StrategyMap& strategy_map, const ClusterEnvironment& cluster_env,
-    const CallGraph& call_graph,
-    std::vector<std::optional<HloSharding>> input_shardings) {
-  return GenerateReshardingCostsAndMissingShardingsForAllOperands(
-      ins, output_sharding, strategy_map, cluster_env, call_graph,
-      input_shardings);
-}
-
 std::unique_ptr<StrategyVector> MaybeFollowInsStrategyVector(
     const StrategyVector* src_strategies, const Shape& shape,
     size_t instruction_id, bool have_memory_cost,
@@ -298,7 +288,6 @@ std::unique_ptr<StrategyVector> MaybeFollowInsStrategyVector(
                             communication_cost,
                             memory_cost,
                             {std::move(resharding_costs)},
-                            // {}}));
                             {*output_spec}}));
     }
   }
@@ -497,6 +486,8 @@ void GenerateOutfeedStrategy(const HloInstruction* ins, const Shape& shape,
   HloSharding output_spec = HloSharding::Replicate();
   std::vector<std::vector<double>> resharding_costs;
   std::vector<std::optional<HloSharding>> input_shardings;
+
+  int tuple_size = ins->operand(0)->shape().tuple_shapes_size();
   if (ins->has_sharding()) {
     std::vector<Shape> operand_shapes(ins->operand_count());
     for (int i = 0; i < ins->operand_count(); ++i) {
@@ -515,7 +506,6 @@ void GenerateOutfeedStrategy(const HloInstruction* ins, const Shape& shape,
       }
     };
 
-    int tuple_size = ins->operand(0)->shape().tuple_shapes_size();
     for (size_t i = 0; i < tuple_size; ++i) {
       auto input_sharding = get_input_sharding(i);
       input_shardings.push_back(input_sharding);
@@ -527,7 +517,6 @@ void GenerateOutfeedStrategy(const HloInstruction* ins, const Shape& shape,
     auto input_sharding = get_input_sharding(-1);
     input_shardings.push_back(input_sharding);
   } else {
-    int tuple_size = ins->operand(0)->shape().tuple_shapes_size();
     for (size_t i = 0; i < tuple_size; ++i) {
       resharding_costs.push_back(std::vector<double>(
           strategy_map.at(ins->operand(0))->childs[i].get()->leaf_vector.size(),
@@ -635,9 +624,10 @@ void EnumerateAll1DPartition(const HloInstruction* ins, const Shape& shape,
         auto replicated_sharding = HloSharding::Replicate();
         input_shardings.push_back(HloSharding::SingleTuple(
             ins->operand(0)->shape(), replicated_sharding));
-        resharding_costs = GenerateReshardingCostsForAllOperands(
-            ins, output_spec, strategy_map, cluster_env, call_graph,
-            {replicated_sharding});
+        resharding_costs =
+            GenerateReshardingCostsAndMissingShardingsForAllOperands(
+                ins, output_spec, strategy_map, cluster_env, call_graph,
+                input_shardings);
       } else {
         std::tie(resharding_costs, input_shardings) =
             GenerateReshardingCostsAndShardingsForAllOperands(
@@ -1369,18 +1359,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
   const std::vector<HloInstruction*>& instructions = sequence.instructions();
 
   // Count the non-one mesh dimension.
-  int mesh_nn_dims = 0;
-  for (int dim : device_mesh.dimensions()) {
-    if (dim > 1) {
-      mesh_nn_dims++;
-    }
-  }
-
-  // Gather all output values
-  absl::flat_hash_set<const HloInstruction*> output_set;
-  for (size_t i = 0; i < instructions.back()->operand_count(); ++i) {
-    output_set.insert(instructions.back()->operand(i));
-  }
+  int mesh_nn_dims = VectorGreaterThanOneElementCount(device_mesh.dimensions());
 
   // Add penalty for replicated tensors
   double replicated_penalty = std::round(cluster_env.AllReduceCost(1, 0) +
@@ -1746,7 +1725,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
           double compute_cost = 0, communication_cost = 0;
           double memory_cost = GetBytes(ins->shape()) / output_spec->NumTiles();
           std::vector<std::vector<double>> resharding_costs =
-              GenerateReshardingCostsForAllOperands(
+              GenerateReshardingCostsAndMissingShardingsForAllOperands(
                   ins, *output_spec, strategy_map, cluster_env, call_graph,
                   input_shardings);
 
@@ -2574,14 +2553,6 @@ void SetHloShardingPostProcessing(
                                       device_mesh, resharding_cache);
         }
       }
-    } else if (inst->opcode() == HloOpcode::kReshape) {
-      const ShardingStrategy& stra =
-          GetShardingStrategy(inst, strategy_map, cost_graph, s_val);
-      if (!stra.input_shardings.empty() &&
-          stra.input_shardings[0].has_value()) {
-        FixMixedMeshShapeResharding(inst, 0, stra.input_shardings[0].value(),
-                                    device_mesh, resharding_cache);
-      }
     } else if (inst->opcode() == HloOpcode::kOutfeed) {
       // Outfeed operand shardings are handled in downstream passes and so we
       // ignore outfeed ops here.
@@ -2850,6 +2821,7 @@ void SaveShardingForInstruction(
     preserve_shardings[inst->name()] = inst->sharding().tuple_elements();
   }
 }
+
 // Saves the user shardings that need to be preserved, and check whether they
 // are preserved after this pass.
 absl::flat_hash_map<std::string, std::vector<HloSharding>> SaveUserShardings(

@@ -1482,11 +1482,10 @@ void FixMixedMeshShapeResharding(HloInstruction* inst, int operand_num,
   }
 
   if (operand->shape().IsToken()) {
-    // This is the tokten operand for outfeed. We directly set the dst_sharding
+    // This is the token operand for outfeed. We directly set the dst_sharding
     // for the operand in this case, as it doesn't make sense to reshard a
     // token.
     CHECK_EQ(operand_num, 1);
-    auto operand = inst->mutable_operand(operand_num);
     operand->set_sharding(dst_sharding);
   } else {
     const HloSharding& src_sharding = operand->sharding();
