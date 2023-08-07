@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/core/common_runtime/next_pluggable_device/c/outside_compilation_params.h"
+#include "tensorflow/core/common_runtime/next_pluggable_device/c/outside_compilation_params.h"  // IWYU pragma: keep
 #include "tensorflow/core/common_runtime/next_pluggable_device/c/tf_rendezvous_c_api.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/tsl/framework/allocator.h"
@@ -27,7 +27,7 @@ namespace tensorflow {
 
 namespace c_api {
 
-class TfCThunkRendezvous final : public ::tensorflow::Rendezvous {
+class TfCThunkRendezvous final : public ::tensorflow::RendezvousInterface {
  public:
   explicit TfCThunkRendezvous(const TF_RendezvousThunk* thunk)
       : thunk_(thunk) {}
