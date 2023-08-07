@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/location_exporter.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/type_to_shape.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
@@ -115,7 +116,6 @@ bool IsCustomCallToCusolver(const HloInstruction& hlo) {
   return hlo.custom_call_target() == kCusolverCholeskyCallTarget;
 }
 
-
 bool IsInputFusibleSlices(mlir::Operation* unnested_hlo,
                           bool verify_no_strides) {
   auto fusion = mlir::dyn_cast<mlir::lmhlo::FusionOp>(unnested_hlo);
@@ -140,7 +140,6 @@ bool IsInputFusibleSlices(mlir::Operation* unnested_hlo,
   }
   return true;
 }
-
 
 // This emits a device-side call to
 // "i32 vprintf(i8* fmt, arguments_type* arguments)" in the driver; see
@@ -656,7 +655,8 @@ std::optional<TransposeDescription> FindTiledTranspose(
         (tr->at(1) >= kMinDimensionToTransposeTiled2 &&
          tr->at(2) >= kMinDimensionToTransposeTiled2 &&
          tr->at(1) * tr->at(2) >= kMinTotalDimensionsToTransposeTiled)) {
-      return TransposeDescription{*tr, /*permutation=*/Vector3{0, 2, 1}};
+      return TransposeDescription{&instr, *tr,
+                                  /*permutation=*/Vector3{0, 2, 1}};
     }
   }
   if (std::optional<Vector3> tr = ShapeUtil::GetNormalizedTransposeShape(
@@ -666,7 +666,8 @@ std::optional<TransposeDescription> FindTiledTranspose(
         (tr->at(0) >= kMinDimensionToTransposeTiled2 &&
          tr->at(2) >= kMinDimensionToTransposeTiled2 &&
          tr->at(0) * tr->at(2) >= kMinTotalDimensionsToTransposeTiled)) {
-      return TransposeDescription{*tr, /*permutation=*/Vector3{2, 1, 0}};
+      return TransposeDescription{&instr, *tr,
+                                  /*permutation=*/Vector3{2, 1, 0}};
     }
   }
   return std::nullopt;
@@ -688,7 +689,8 @@ std::optional<TransposeDescription> FindTiledLogicalTranspose(
         (tr->at(1) >= kMinDimensionToTransposeTiled2 &&
          tr->at(2) >= kMinDimensionToTransposeTiled2 &&
          tr->at(1) * tr->at(2) >= kMinTotalDimensionsToTransposeTiled)) {
-      return TransposeDescription{*tr, /*permutation=*/Vector3{0, 2, 1}};
+      return TransposeDescription{&instr, *tr,
+                                  /*permutation=*/Vector3{0, 2, 1}};
     }
   }
   if (std::optional<Vector3> tr = ShapeUtil::GetNormalizedLogicalTransposeShape(
@@ -699,7 +701,8 @@ std::optional<TransposeDescription> FindTiledLogicalTranspose(
         (tr->at(0) >= kMinDimensionToTransposeTiled2 &&
          tr->at(2) >= kMinDimensionToTransposeTiled2 &&
          tr->at(0) * tr->at(2) >= kMinTotalDimensionsToTransposeTiled)) {
-      return TransposeDescription{*tr, /*permutation=*/Vector3{2, 1, 0}};
+      return TransposeDescription{&instr, *tr,
+                                  /*permutation=*/Vector3{2, 1, 0}};
     }
   }
   return std::nullopt;

@@ -229,26 +229,18 @@ bool HloFusionAnalysis::HasConsistentTransposeHeros() const {
     return false;
   }
 
-  const HloInstruction* first_transpose =
-      &FindNonTrivialHero(*root_with_tiled_transpose_);
-  const Shape& transpose_in_shape = first_transpose->operand(0)->shape();
-  std::optional<TransposeDescription> first_tiled_transpose =
-      FindAnyTiledTranspose(*first_transpose);
-
   // We need the following invariant:
   // For every tuple element:
   //  -> EITHER it's a kCopy: S{L} -> S{L'}
   //  -> OR it's an elementwise op of shape S{L}
   for (HloInstruction* root : fusion_roots()) {
-    std::optional<TransposeDescription> tiled_transpose =
-        FindAnyTiledTranspose(*root);
-    if (tiled_transpose) {
-      if (*tiled_transpose != *first_tiled_transpose) {
+    if (auto td = FindAnyTiledTranspose(*root)) {
+      if (!tiled_transpose_->IsEquivalent(*td)) {
         return false;
       }
     } else {
       if (!ShapeUtil::IsReshapeOrTransposeBitcast(
-              root->shape(), transpose_in_shape,
+              root->shape(), tiled_transpose_->input_shape(),
               /*ignore_element_type=*/true)) {
         return false;
       }
