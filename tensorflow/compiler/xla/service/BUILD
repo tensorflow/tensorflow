@@ -4373,6 +4373,7 @@ xla_cc_test(
     deps = [
         ":copy_insertion",
         ":hlo_graph_dumper",
+        ":hlo_parser",
         ":hlo_runner",
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:literal",
@@ -4384,7 +4385,10 @@ xla_cc_test(
         "//tensorflow/compiler/xla/hlo/utils:hlo_matchers",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/platform:test_benchmark",
+        "@com_google_absl//absl/log",
+        "@com_google_googletest//:gtest",
     ],
 )
 
