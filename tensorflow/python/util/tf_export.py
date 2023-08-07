@@ -292,21 +292,9 @@ class api_export(object):  # pylint: disable=invalid-name
       allow_multiple_exports: Deprecated.
     """
     self._names = args
-<<<<<<< HEAD
-    self._names_v1 = kwargs.get('v1', args)
-    if 'v2' in kwargs:
-      raise ValueError('You passed a "v2" argument to tf_export. This is not '
-                       'what you want. Pass v2 names directly as positional '
-                       'arguments instead.')
-    self._api_name = kwargs.get('api_name', TENSORFLOW_API_NAME)
-    self._overrides = kwargs.get('overrides', [])
-    self._allow_multiple_exports = kwargs.get('allow_multiple_exports', False)
-    self._deprecation_inst = kwargs.get('deprecation_inst', None)
-=======
     self._names_v1 = v1 if v1 is not None else args
     self._api_name = api_name
 
->>>>>>> upstream/master
     self._validate_symbol_names()
 
   def _validate_symbol_names(self) -> None:
@@ -437,21 +425,9 @@ class ExportType(Protocol):
     ...
 
 
-<<<<<<< HEAD
-tf_export = functools.partial(api_export, api_name=TENSORFLOW_API_NAME)
-# TODO(b/263286841): Remove in favor of
-# `tensorflow_estimator.python.estimator.estimator_export`.
-estimator_export = functools.partial(
-    api_export,
-    api_name=ESTIMATOR_API_NAME,
-    is_deprecated=True,
-    deprecation_inst='Use tf.keras instead.')
-keras_export = functools.partial(api_export, api_name=KERAS_API_NAME)
-=======
 tf_export: ExportType = functools.partial(
     api_export, api_name=TENSORFLOW_API_NAME
 )
 keras_export: ExportType = functools.partial(
     api_export, api_name=KERAS_API_NAME
 )
->>>>>>> upstream/master
