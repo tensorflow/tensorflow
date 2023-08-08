@@ -573,20 +573,20 @@ class RewriteQuantizedConvolutionOp
 // Rewrites full-integer quantized `stablehlo.dot_general` ->`tfl.batch_matmul`
 // when it accepts uniform quantized tensors.
 //
-// Since transpose and reshape of quantized tensors is not natively supported at
-// the moment, the conversion condition is relative strict, following
+// Since transpose and reshape of quantized tensors are not natively supported
+// at the moment, the conversion condition is relatively strict, following
 // (https://www.tensorflow.org/api_docs/cc/class/tensorflow/ops/batch-mat-mul-v3)
+//
 // Conditions for the conversion :
 //   * size(batching_dimensions) <= 3 (TFLite support restriction)
 //   * size(contracting_dimensions) = 1
 //   * Input (lhs) and output tensors are per-tensor uniform quantized (i8->f32)
-//     tensors (full integer) with shape [..., r_x, c_x]
-//     or [..., c_x, r_x]
-//   * The rhs tensor is a per-tensor symmetric uniform quantized
-//   (i8->f32) tensor (constant or activation) with shape [..., r_y, c_y] or
-//   [..., c_y, r_y]
-// TODO: b/293650675 - relax the conversion condition to support dot_general in
-// general
+//     tensors (full integer) with shape [..., r_x, c_x] or [..., c_x, r_x].
+//   * The rhs tensor is a per-tensor uniform quantized (i8->f32) tensor
+//     (constant or activation) with shape [..., r_y, c_y] or [..., c_y, r_y].
+//
+// TODO: b/293650675 - Relax the conversion condition to support dot_general in
+// general.
 class RewriteFullIntegerQuantizedDotGeneralOp
     : public OpRewritePattern<stablehlo::DotGeneralOp> {
  public:
@@ -642,16 +642,6 @@ class RewriteFullIntegerQuantizedDotGeneralOp
                  << "Expected a per-tensor uniform "
                     "quantized (i8->f32) weight for dot_general. Got: "
                  << rhs_type << "\n");
-      return failure();
-    }
-    auto rhs_uniform_quantized_type =
-        rhs_type.getElementType().cast<UniformQuantizedType>();
-    if (rhs_uniform_quantized_type.getZeroPoint() != 0) {
-      LLVM_DEBUG(
-          llvm::dbgs()
-          << "Expected per-tensor uniform "
-             "quantized (i8->f32) weight to be symmetric for dot_general. Got: "
-          << rhs_type << "\n");
       return failure();
     }
     return success();
