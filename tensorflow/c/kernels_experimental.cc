@@ -297,7 +297,7 @@ struct TmpVar : public ResourceBase {
 };
 
 // Makes a unique name for a temporary variable inside a while loop body,
-//  because loop can be executed in multiple iterations in parallel.
+// because loop can be executed in multiple iterations in parallel.
 std::string TemporaryVariableName(
     const std::string& var_name,
     const tensorflow::FrameAndIter& control_frame) {
@@ -355,7 +355,11 @@ void TF_DestroyTemporaryVariable(TF_OpKernelContext* ctx, const int index,
                                  TF_StringView* var_name,
                                  TF_Status* tf_status) {
   auto* context = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
-  CHECK(IsRefType(context->input_dtype(0)));
+  if (!IsRefType(context->input_dtype(0))) {
+    tf_status->status =
+        InvalidArgument("TF_DestroyTemporaryVariable requires input is ref");
+    return;
+  }
   Tensor tmpvar = context->mutable_input(0, false);
   context->set_output(0, tmpvar);
 
