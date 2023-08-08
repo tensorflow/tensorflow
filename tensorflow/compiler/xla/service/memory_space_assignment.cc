@@ -6530,6 +6530,10 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::CheckPrefetchFit(
               /*size=*/chunk.size,
               /*start=*/start_time,
               /*end=*/slice_start_times.back() - 1,
+              // We only use the final_buffer_interval for colocations because
+              // slices start at different offsets, and the colocation
+              // infrastructure expects all colocated buffers to start at the
+              // same offset.
               /*colocations=*/{},
               /*need_allocation=*/true,
           },

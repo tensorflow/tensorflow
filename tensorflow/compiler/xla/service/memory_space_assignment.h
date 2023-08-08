@@ -2441,6 +2441,10 @@ class AlternateMemoryBestFitHeap
   // Since the allocations are recorded to the AllocationSequence, we don't
   // maintain result_ in GlobalDecreasingSizeBestFitHeap. Override AddToChunkMap
   // to avoid unnecessarily adding the chunk to the chunk map.
+  //
+  // Sliced prefetching requires that we override this method because we
+  // associate more than one chunk with a buffer (i.e., 1 chunk per slice),
+  // which would cause the original implementation of this method to CHECK fail.
   void AddToChunkMap(const HloValue* buffer, Chunk chunk) override {}
 
   // Returns true if the addition of num_additional_copies asynchronous copies
