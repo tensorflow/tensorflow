@@ -21,7 +21,6 @@ limitations under the License.
 #include <cstring>
 #include <functional>
 #include <iterator>
-#include <map>
 #include <memory>
 #include <numeric>
 #include <optional>
@@ -33,7 +32,6 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -71,7 +69,6 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Dialect/NVVM/NVVMToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/ROCDL/ROCDLToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
@@ -81,7 +78,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/transforms/gpu_passes.h"
-#include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
@@ -95,7 +91,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/fused_mha_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/fusions/fusions.h"
 #include "tensorflow/compiler/xla/service/gpu/fusions/thunk_util.h"
-#include "tensorflow/compiler/xla/service/gpu/fusions/tiling_util.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_runner.h"
@@ -114,7 +109,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/kernel_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
-#include "tensorflow/compiler/xla/service/gpu/memset_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_gather_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_to_all_thunk.h"
@@ -165,7 +159,6 @@ namespace xla {
 namespace gpu {
 namespace {
 
-using TypedPointer = std::pair<llvm::Value* const, llvm::Type* const>;
 
 // Fusion root -> array of indexes, one per reduction output.
 using ReductionOutputMap =
@@ -203,38 +196,6 @@ class UnreachableThunk : public Thunk {
  private:
   std::string error_message_;
 };
-
-// Gets the input shape of the ROOT slices, which will be used as the kernel
-// launch dims. The slice input fusion requires the input shapes of the ROOT
-// slices to be the same although the (slice) output shapes can be different.
-//
-// Returns the input shape of the ROOT slices if all the input shapes of ROOT
-// slices are the same and the slices are non-strided. Otherwise, returns
-// FailedPrecondition.
-StatusOr<Shape> GetConsistentInputShapeForRootSlices(
-    const HloComputation* fused_computation) {
-  const HloInstruction& root = *fused_computation->root_instruction();
-  if (root.opcode() == HloOpcode::kSlice) {
-    return root.operands()[0]->shape();
-  }
-
-  CHECK_EQ(root.opcode(), HloOpcode::kTuple);
-  const Shape& first_slice_operand_shape =
-      root.operands()[0]->operands()[0]->shape();
-  for (size_t i = 1; i < root.operands().size(); ++i) {
-    const HloInstruction* slice = root.operands()[i];
-    const Shape& operand_shape = slice->operands()[0]->shape();
-    if (!ShapeUtil::EqualIgnoringElementType(first_slice_operand_shape,
-                                             operand_shape)) {
-      return FailedPrecondition(
-          "Fused slices do not have the same input shape, fused computation = "
-          "%s.",
-          root.parent()->name());
-    }
-  }
-
-  return first_slice_operand_shape;
-}
 
 StatusOr<xla::gpu::CudnnfMHAKind> AsCudnnfMHAKind(
     mlir::lmhlo_gpu::FusedMhaDagSignature signature) {
@@ -281,41 +242,6 @@ StatusOr<xla::gpu::CudnnfMHAKind> AsCudnnBackwardfMHAKind(
     default:
       return xla::InternalError("Unsupported fused_mha_backward_dag_signature");
   }
-}
-
-// Allocates a shared tile of given dimensions, applying scaling specified in
-// tilng_scheme as a major-most dimension to avoid collisions.
-llvm::GlobalVariable* AllocateShared(
-    llvm::IRBuilder<>* builder, const TilingScheme& tiling_scheme,
-    llvm::Type* element_type,
-    absl::Span<int64_t const> dimensions_major_to_minor,
-    absl::string_view buffer_name) {
-  CHECK(!dimensions_major_to_minor.empty());
-  llvm::Type* ty = element_type;
-  for (auto dim : llvm::reverse(dimensions_major_to_minor)) {
-    ty = llvm::ArrayType::get(ty, dim);
-  }
-  ty = llvm::ArrayType::get(ty, tiling_scheme.GetThreadIdScalingFactor());
-  return llvm_ir::AllocateSharedMemoryTile(
-      builder->GetInsertBlock()->getModule(), ty, buffer_name);
-}
-
-void MaybeEmitFenceForAMDGPU(llvm::IRBuilder<>* builder,
-                             IrEmitterContext& ir_emitter_context) {
-  auto* module = builder->GetInsertBlock()->getModule();
-  if (IsAMDGPU(module) &&
-      ir_emitter_context.rocm_compute_capability().gcn_arch_name().substr(
-          0, 6) == "gfx90a") {
-    builder->CreateFence(
-        llvm::AtomicOrdering::SequentiallyConsistent,
-        builder->getContext().getOrInsertSyncScopeID("workgroup"));
-  }
-}
-
-void EmitSyncThreads(llvm::IRBuilder<>* builder,
-                     IrEmitterContext& ir_emitter_context) {
-  MaybeEmitFenceForAMDGPU(builder, ir_emitter_context);
-  EmitCallToTargetIntrinsic(TargetIntrinsicID::kBarrierId, {}, {}, builder);
 }
 
 // Builds a thunk that calls a new or reused kernel for a fusion operation.
@@ -1892,30 +1818,6 @@ Status IrEmitterUnnested::EmitTritonFusion(
 
 #endif  // GOOGLE_CUDA
 
-Status IrEmitterUnnested::EmitUnnestedTranspose(
-    mlir::lmhlo::FusionOp fusion, HloFusionAnalysis& fusion_analysis) {
-  // Set flag to false as Transpose has it's own custom logic of choosing a
-  // block size.
-  TF_ASSIGN_OR_RETURN(auto launch_dimensions,
-                      fusion_analysis.GetLaunchDimensions(
-                          /*use_experimental_block_size=*/false));
-
-  auto builder_fn = [&](std::vector<llvm_ir::IrArray> inputs,
-                        std::vector<llvm_ir::IrArray> outputs) -> Status {
-    return EmitTransposeTile(
-        fusion, fusion_analysis.fused_computation(), inputs, outputs,
-        *fusion_analysis.GetTransposeTilingScheme(), launch_dimensions);
-  };
-
-  TF_ASSIGN_OR_RETURN(
-      auto thunk, BuildKernelThunkForFusion(
-                      *ir_emitter_context_, kernel_reuse_cache_, fusion,
-                      fusion_analysis.fused_computation(), launch_dimensions,
-                      /*discriminator=*/"", builder_fn, &b_));
-  AddThunkToThunkSequence(std::move(thunk));
-  return OkStatus();
-}
-
 Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
   auto fusion_op = mlir::cast<mlir::lmhlo::FusionOp>(op);
 
@@ -1991,14 +1893,12 @@ Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
 #endif
       LOG(FATAL) << "Unsupported fusion kind: " << backend_config.kind();
     }
-    case HloFusionAnalysis::EmitterFusionKind::kTranspose:
-      return EmitUnnestedTranspose(fusion_op, fusion_analysis);
-    case HloFusionAnalysis::EmitterFusionKind::kInputSlices:
-      return EmitInputFusibleNonStridedSlices(op, fusion_analysis);
     case HloFusionAnalysis::EmitterFusionKind::kScatter:
       return EmitScatter(fusion_op, fused_computation, fusion_analysis);
+    case HloFusionAnalysis::EmitterFusionKind::kInputSlices:
     case HloFusionAnalysis::EmitterFusionKind::kLoop:
     case HloFusionAnalysis::EmitterFusionKind::kReduction:
+    case HloFusionAnalysis::EmitterFusionKind::kTranspose:
       return FailedPrecondition(
           "Fusion should have been handled by GetFusionEmitter.");
   }
@@ -3230,305 +3130,6 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildForThunk(
 Status IrEmitterUnnested::EmitTargetElementLoop(
     const HloInstruction& hlo, const llvm_ir::ElementGenerator& body_emitter) {
   return InternalError("This should be unreachable");
-}
-
-llvm::CallInst* IrEmitterUnnested::EmitSyncThreads() {
-  MaybeEmitFenceForAMDGPU(llvm::AtomicOrdering::SequentiallyConsistent,
-                          "workgroup");
-  return EmitCallToTargetIntrinsic(TargetIntrinsicID::kBarrierId, {}, {}, &b_);
-}
-
-static llvm_ir::IrArray::Index PermuteIndex(
-    const llvm_ir::IrArray::Index& index,
-    absl::Span<const int64_t> permutation) {
-  return llvm_ir::IrArray::Index{Permute(index.multidim(), permutation),
-                                 Permute(index.dims(), permutation),
-                                 index.GetType()};
-}
-
-Status IrEmitterUnnested::EmitTransposeTile(
-    mlir::lmhlo::FusionOp fusion, const HloComputation* fusion_hlo,
-    absl::Span<const llvm_ir::IrArray> operand_arrays,
-    absl::Span<const llvm_ir::IrArray> output_arrays,
-    const TilingScheme& tiling_scheme,
-    const LaunchDimensions& launch_dimensions) {
-  std::vector<HloInstruction*> hlo_roots =
-      GetFusionRoots(const_cast<HloComputation*>(fusion_hlo));
-  FusedIrEmitter fused_emitter(elemental_emitter_);
-  for (int i = 0; i < fusion_hlo->num_parameters(); i++) {
-    llvm_ir::IrArray ir_array = operand_arrays[i];
-    HloInstruction* fused_operand = fusion_hlo->parameter_instruction(i);
-    fused_emitter.BindGenerator(
-        *fused_operand,
-        [this, ir_array, fused_operand](const llvm_ir::IrArray::Index& index) {
-          return ir_array.EmitReadArrayElement(index, &b_,
-                                               fused_operand->name());
-        });
-  }
-
-  absl::flat_hash_map<const HloInstruction*, llvm::GlobalVariable*> tiles;
-  Vector3 permutation;
-  for (const auto& [tile_idx, root] : llvm::enumerate(hlo_roots)) {
-    if (auto tr = FindAnyTiledTranspose(*root)) {
-      permutation = tr->permutation;
-      const HloInstruction& hero = FindNonTrivialHero(*root);
-      tiles[&hero] = AllocateShared(
-          &b_, tiling_scheme,
-          llvm_ir::PrimitiveTypeToIrType(
-              hero.operand(0)->shape().element_type(), module_),
-          {tiling_scheme.GetBlockTileSizeFor(permutation[TilingScheme::DimX]),
-           tiling_scheme.GetBlockTileSizeFor(TilingScheme::DimX) + 1},
-          absl::StrCat("tr_tile_", tile_idx));
-    }
-  }
-
-  TileElementGenerator tile_generator =
-      [&](const TilingThreadIdInfo& thread_id_info,
-          const llvm_ir::IrArray::Index& index, ValueVector2 tile_dimensions) {
-        // Copy input parameter values to shared memory buffers:
-        // tile[thread_id_y, thread_id_x] = input[index]
-        // Note that tile_width and tile_height are flipped here because we
-        // are reading a transposed tile.
-        EmitTile(
-            &b_, tiling_scheme, index, thread_id_info, tile_dimensions,
-            [&](const TilingThreadIdInfo& thread_id_info,
-                const llvm_ir::IrArray::Index& index, llvm::Value* y_loc,
-                llvm::Value* x_loc) {
-              // Compute all extra output values before writing them. This
-              // avoids overwriting aliased input/output values before all
-              // reads occurred.
-              std::vector<std::tuple<llvm_ir::IrArray, llvm_ir::IrArray::Index,
-                                     llvm::Value*>>
-                  scheduled_writes;
-
-              for (const auto& [output_idx, root] :
-                   llvm::enumerate(hlo_roots)) {
-                if (FindAnyTiledTranspose(*root)) {
-                  const HloInstruction& hero = FindNonTrivialHero(*root);
-                  llvm_ir::ElementGenerator input_gen =
-                      *fused_emitter.GetGenerator(*hero.operand(0));
-                  llvm_ir::IrArray::Index untiled_index =
-                      GetUnnormalizedIndex(index, hero.operand(0)->shape(), &b_,
-                                           tiling_scheme.GetDimsInElems());
-                  llvm::Value* value = *input_gen(untiled_index);
-                  llvm::Value* addr = thread_id_info.GEPIntoSharedMemory(
-                      &b_, tiles[&hero], {y_loc, x_loc});
-
-                  b_.CreateStore(value, addr);
-                } else {
-                  llvm_ir::IrArray::Index untiled_index =
-                      GetUnnormalizedIndex(index, root->shape(), &b_,
-                                           tiling_scheme.GetDimsInElems());
-                  llvm_ir::ElementGenerator output_gen =
-                      *fused_emitter.GetGenerator(*root);
-                  llvm::Value* output_value = *output_gen(untiled_index);
-                  scheduled_writes.emplace_back(output_arrays[output_idx],
-                                                untiled_index, output_value);
-                }
-              }
-
-              for (const auto& [output, idx, value] : scheduled_writes) {
-                output.EmitWriteArrayElement(idx, value, &b_);
-              }
-            });
-
-        EmitSyncThreads();
-
-        llvm_ir::IrArray::Index output_tile_index =
-            PermuteIndex(index, permutation);
-        ValueVector2 transposed_tile_dimensions = {tile_dimensions[1],
-                                                   tile_dimensions[0]};
-
-        EmitTile(
-            &b_, tiling_scheme, output_tile_index, thread_id_info,
-            transposed_tile_dimensions,
-            /*emit_elem_function=*/
-            [&](const TilingThreadIdInfo& thread_id_info,
-                const llvm_ir::IrArray::Index& index, llvm::Value* y_loc,
-                llvm::Value* x_loc) {
-              for (const auto& [output_idx, root] :
-                   llvm::enumerate(hlo_roots)) {
-                if (FindAnyTiledTranspose(*root)) {
-                  const HloInstruction& hero = FindNonTrivialHero(*root);
-
-                  std::vector<llvm::Value*> idx = {x_loc, y_loc};
-                  llvm::Value* gep = thread_id_info.GEPIntoSharedMemory(
-                      &b_, tiles[&hero], idx);
-                  llvm::Type* type =
-                      thread_id_info.GEPIntoSharedMemoryType(tiles[&hero], idx);
-                  llvm::Value* loaded =
-                      b_.CreateLoad(type, gep, "tiled_buffer");
-
-                  FusedIrEmitter fused_emitter(elemental_emitter_);
-                  fused_emitter.BindGenerator(
-                      hero, [&](const llvm_ir::IrArray::Index& index) {
-                        return loaded;
-                      });
-                  for (int64_t i = 0; i < fusion_hlo->num_parameters(); ++i) {
-                    llvm_ir::IrArray ir_array = operand_arrays[i];
-                    HloInstruction* fused_operand =
-                        fusion_hlo->parameter_instruction(i);
-                    fused_emitter.BindGenerator(
-                        *fused_operand,
-                        [this, ir_array,
-                         fused_operand](const llvm_ir::IrArray::Index& index) {
-                          return ir_array.EmitReadArrayElement(
-                              index, &b_, fused_operand->name());
-                        });
-                  }
-
-                  // Apply codegeneration for the code after the real hero.
-                  TF_ASSIGN_OR_RETURN(llvm_ir::ElementGenerator gen,
-                                      fused_emitter.GetGenerator(*root));
-
-                  // Both for emission and writing it should be
-                  // index-as-transformed by the computation.
-                  llvm_ir::IrArray::Index untiled_index = GetUnnormalizedIndex(
-                      index, root->shape(), &b_,
-                      Permute(tiling_scheme.GetDimsInElems(), permutation));
-                  TF_ASSIGN_OR_RETURN(llvm::Value * generated,
-                                      gen(untiled_index));
-                  output_arrays[output_idx].EmitWriteArrayElement(
-                      untiled_index, generated, &b_);
-                }
-              }
-              return OkStatus();
-            });
-      };
-
-  llvm::Type* index_type = GetIndexTypeForKernel(
-      fusion.getOperation(), launch_dimensions.launch_bound(), &b_);
-  return EmitTilingKernel(&b_, tiling_scheme, index_type, tile_generator)
-      .status();
-}
-
-// Emits code for slices based on the below structure. An if statement with
-// a guarding condition is generated for each ROOT slice.
-//
-// Pseudo code:
-//
-// Compute values of slice input operands
-//
-// Compute guarding_cond0
-// if (guarding_cond0) {
-//   Write to output of slice0
-// }
-//
-// Compute guarding_cond1
-// if (guarding_cond1) {
-//   Write to output of slice1
-// }
-//
-Status IrEmitterUnnested::EmitElementForInputFusibleSlices(
-    const HloComputation* fused_computation,
-    absl::Span<const llvm_ir::IrArray> inputs,
-    absl::Span<const llvm_ir::IrArray> outputs,
-    const llvm_ir::IrArray::Index& index) {
-  VLOG(10) << "Emitting slice input fusion for "
-           << fused_computation->ToString();
-
-  HloInstruction* slice_or_tuple = fused_computation->root_instruction();
-  auto slice_instructions = [&]() -> absl::Span<HloInstruction* const> {
-    if (slice_or_tuple->opcode() == HloOpcode::kSlice) {
-      return absl::Span<HloInstruction* const>(&slice_or_tuple, 1);
-    }
-    CHECK_EQ(slice_or_tuple->opcode(), HloOpcode::kTuple);
-    return slice_or_tuple->operands();
-  }();
-
-  // Emit input operand values of slices.
-  std::vector<llvm::Value*> input_ir_values;
-  FusedIrEmitter fused_emitter(elemental_emitter_);
-  for (int i = 0; i < fused_computation->num_parameters(); i++) {
-    fused_emitter.BindGenerator(
-        *fused_computation->parameter_instruction(i),
-        [this, input = inputs[i]](llvm_ir::IrArray::Index index) {
-          return input.EmitReadArrayElement(index, &b_);
-        });
-  }
-  for (const HloInstruction* slice : slice_instructions) {
-    auto input_generator = *fused_emitter.GetGenerator(*slice->operand(0));
-    input_ir_values.push_back(input_generator(index).value());
-  }
-
-  // Emit for slice_instructions.
-  KernelSupportLibrary ksl(&b_, llvm_ir::UnrollMode::kDefaultUnroll);
-  for (int64_t i = 0; i < slice_instructions.size(); ++i) {
-    HloInstruction* slice = slice_instructions[i];
-
-    // guarding_cond := index >= start && index < limit, for each dim.
-    std::vector<llvm::Value*> index_within_ranges;
-    for (size_t dim = 0; dim < slice->slice_starts().size(); ++dim) {
-      CHECK_EQ(slice->slice_strides(dim), 1);
-      auto larger_or_equal_than_start = b_.CreateICmpSGE(
-          index.multidim()[dim],
-          index.GetConstantWithIndexType(slice->slice_starts(dim)));
-      llvm::Value* smaller_than_limit = b_.CreateICmpSLT(
-          index.multidim()[dim],
-          index.GetConstantWithIndexType(slice->slice_limits(dim)));
-      llvm::Value* within_range =
-          b_.CreateAnd(larger_or_equal_than_start, smaller_than_limit);
-      index_within_ranges.push_back(within_range);
-    }
-    llvm::Value* guarding_cond = b_.CreateAnd(index_within_ranges);
-
-    auto emit_slice_elem_func = [&] {
-      const std::vector<llvm::Value*>& src_multidim = index.multidim();
-      std::vector<llvm::Value*> dst_multidim(src_multidim.size());
-      for (size_t dim = 0; dim < src_multidim.size(); ++dim) {
-        dst_multidim[dim] =
-            Sub(src_multidim[dim],
-                index.GetConstantWithIndexType(slice->slice_starts(dim)));
-      }
-      llvm_ir::IrArray::Index slice_dst_index(dst_multidim, slice->shape(),
-                                              index.GetType());
-      outputs[i].EmitWriteArrayElement(slice_dst_index, input_ir_values[i],
-                                       &b_);
-    };
-
-    ksl.If(absl::StrCat("slice", i), guarding_cond, emit_slice_elem_func);
-  }
-  return OkStatus();
-}
-
-Status IrEmitterUnnested::EmitInputFusibleNonStridedSlices(
-    mlir::Operation* op, HloFusionAnalysis& fusion_analysis) {
-  auto fusion = mlir::cast<mlir::lmhlo::FusionOp>(op);
-
-  TF_ASSIGN_OR_RETURN(const HloComputation* fused_computation,
-                      GetOrCreateSubComputationFromRegion(&fusion.getRegion(),
-                                                          /*is_fusion=*/true));
-
-  bool use_experimental_block_size =
-      ir_emitter_context_->debug_options()
-          .xla_gpu_enable_experimental_block_size();
-  TF_ASSIGN_OR_RETURN(
-      LaunchDimensions launch_dimensions,
-      fusion_analysis.GetLaunchDimensions(use_experimental_block_size));
-
-  auto builder_fn = [&](std::vector<llvm_ir::IrArray> inputs,
-                        std::vector<llvm_ir::IrArray> outputs) -> Status {
-    TF_ASSIGN_OR_RETURN(
-        Shape element_shape,
-        GetConsistentInputShapeForRootSlices(fused_computation));
-    return ParallelLoopEmitter(
-               [&](const llvm_ir::IrArray::Index index) -> Status {
-                 return EmitElementForInputFusibleSlices(
-                     fused_computation, inputs, outputs, index);
-               },
-               element_shape, launch_dimensions, &b_)
-        .EmitLoop(llvm_ir::IrName(GetIrNameFromLoc(fusion.getLoc())),
-                  GetIndexTypeForKernel(fusion,
-                                        launch_dimensions.launch_bound(), &b_));
-  };
-
-  TF_ASSIGN_OR_RETURN(
-      auto thunk, BuildKernelThunkForFusion(
-                      *ir_emitter_context_, kernel_reuse_cache_, fusion,
-                      fusion_analysis.fused_computation(), launch_dimensions,
-                      /*discriminator=*/"", builder_fn, &b_));
-  AddThunkToThunkSequence(std::move(thunk));
-  return OkStatus();
 }
 
 Status IrEmitterUnnested::EmitScatter(mlir::lmhlo::FusionOp fusion_op,

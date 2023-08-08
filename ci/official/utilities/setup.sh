@@ -85,13 +85,3 @@ fi
 if [[ "$TFCI_INDEX_HTML_ENABLE" == 1 ]]; then
   ./ci/official/utilities/generate_index_html.sh build/index.html
 fi
-
-# If enabled, gather test logs into a format that the CI system Kokoro can
-# parse into a list of individual targets.
-if [[ "$TFCI_CAPTURE_LOGS_ENABLE" == 1 ]]; then
-  capture_test_logs() {
-    # Uses tfrun to avoid permissions issues with the generated log files
-    tfrun ./ci/official/utilities/capture_test_logs.sh "$TFCI_GIT_DIR" "$TFCI_GIT_DIR/build/logs"
-  }
-  trap capture_test_logs EXIT 
-fi

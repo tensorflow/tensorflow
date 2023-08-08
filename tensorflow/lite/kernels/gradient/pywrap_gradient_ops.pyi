@@ -1,4 +1,3 @@
-#!/bin/bash
 # Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,12 +12,5 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-ROOT_DIR=$1
-OUTPUT_DIR=$2
-mkdir -p $OUTPUT_DIR
-cd $ROOT_DIR
-find -L bazel-testlogs -name "test.log" -exec cp --parents {} "$OUTPUT_DIR" \;
-find -L bazel-testlogs -name "test.xml" -exec cp --parents {} "$OUTPUT_DIR" \;
-find -L "$OUTPUT_DIR" -name "test.log" -exec chmod -x {} \;
-find -L "$OUTPUT_DIR" -name "test.log" -execdir mv test.log sponge_log.log \;
-find -L "$OUTPUT_DIR" -name "test.xml" -execdir mv test.xml sponge_log.xml \;
+
+def GradientOpsRegisterer(arg0: int) -> None: ...

@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_executor.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
+#include "tensorflow/core/tfrt/saved_model/saved_model_util.h"
 #include "tfrt/host_context/function.h"  // from @tf_runtime
 #include "tfrt/host_context/request_deadline_tracker.h"  // from @tf_runtime
 #include "tfrt/host_context/resource_context.h"  // from @tf_runtime
@@ -48,38 +49,6 @@ class HostContext;
 
 namespace tensorflow {
 namespace tfrt_stub {
-
-// TODO(tfrt-dev): Replace tfrt::TensorSpec with tensorflow::TensorSpec once the
-// latter is checked in.
-struct TensorSpec {
-  tensorflow::DataType dtype;
-  tensorflow::PartialTensorShape shape;
-
-  explicit TensorSpec(tensorflow::DataType dtype) : dtype(dtype) {}
-  TensorSpec(tensorflow::DataType dtype, tensorflow::PartialTensorShape shape)
-      : dtype(dtype), shape(std::move(shape)) {}
-};
-
-inline bool operator==(const TensorSpec& a, const TensorSpec& b) {
-  return a.dtype == b.dtype && a.shape.IsIdenticalTo(b.shape);
-}
-
-namespace internal {
-
-struct Signature {
-  // The following three fields should have the same size.
-  std::vector<std::string> input_names;
-  std::vector<TensorSpec> input_specs;
-  std::vector<std::string> input_devices;
-
-  // The following two fields should have the same size.
-  std::vector<std::string> output_names;
-  std::vector<TensorSpec> output_specs;
-
-  proto2::Map<std::string, TensorProto> default_inputs;
-};
-
-}  // namespace internal
 
 class FunctionMetadata {
  public:
@@ -209,34 +178,8 @@ class SavedModel {
   const Options options_;
 };
 
-// TODO(cesarmagana) Create new library saved_model_utils and move (refactor)
-// functions to the anonymous space of the util file. Making only one API public
-// for use in both LoadSavedModel and AotCompileSavedModel.
-StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
-    mlir::MLIRContext* context, const tensorflow::MetaGraphDef& meta_graph_def,
-    const FallbackState& fallback_state, std::string saved_model_dir,
-    bool import_user_signatures, bool run_placer_grappler_on_functions);
-
-StatusOr<tensorflow::MetaGraphDef> ReadSavedModel(
-    absl::string_view saved_model_dir,
-    const std::unordered_set<std::string>& tags);
-
 using SignatureMap = absl::flat_hash_map<std::string, internal::Signature>;
 using ::tensorflow::StatusOr;
-
-struct Initializer {
-  std::string name;
-};
-
-struct InitializersAndSignatures {
-  // Initializers are kept in a certain order as they need to be executed in
-  // that order.
-  std::vector<Initializer> initializers;
-  SignatureMap signature_map;
-};
-
-StatusOr<InitializersAndSignatures> GetInitializersAndSignatures(
-    mlir::ModuleOp module);
 
 class SavedModelImpl final : public SavedModel {
  public:

@@ -56,9 +56,10 @@ cc_library(
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:protobuf",
         "//tensorflow/tsl/platform:random",
-        "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:status_to_from_proto",
         "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -92,9 +93,9 @@ cc_library(
     hdrs = ["path_utils.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:path",
-        "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -229,9 +230,8 @@ cc_library(
         "//tensorflow/core/data:snapshot_utils",
         "//tensorflow/core/data:utils",
         "//tensorflow/tsl/platform:env",
-        "//tensorflow/tsl/platform:errors",
-        "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:tstring",
+        "@com_google_absl//absl/status",
     ],
 )
 

@@ -1750,6 +1750,69 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       else:
         self.assertTrue(self._contains_quantized_function_call(output_graphdef))
 
+  @test_util.run_v2_only
+  def test_while_op_model(
+      self,
+  ):
+    input_shape = (1, 5, 5, 32)
+    model = self._create_while_model(input_shape)
+    saved_model_save.save(model, self._input_saved_model_path)
+
+    tags = {tag_constants.SERVING}
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.STATIC_RANGE
+        ),
+        op_set=quant_opts_pb2.XLA,
+    )
+
+    def data_gen() -> repr_dataset.RepresentativeDataset:
+      for _ in range(2):
+        yield {
+            'input_tensor': ops.convert_to_tensor(
+                np.random.uniform(low=0, high=150, size=input_shape).astype(
+                    'f4'
+                )
+            ),
+        }
+
+    converted_model = quantize_model.quantize(
+        self._input_saved_model_path,
+        ['serving_default'],
+        tags,
+        self._output_saved_model_path,
+        quantization_options,
+        representative_dataset=data_gen(),
+    )
+    self.assertIsNotNone(converted_model)
+    self.assertCountEqual(
+        converted_model.signatures._signatures.keys(), {'serving_default'}
+    )
+
+    loader = saved_model_loader.SavedModelLoader(self._output_saved_model_path)
+    output_graphdef = loader.get_meta_graph_def_from_tags(tags).graph_def
+
+    # Convolution ouside the while op is quantized.
+    self.assertTrue(
+        self._contains_op(
+            output_graphdef,
+            op_name='XlaConvV2',
+            attr_name='RhsT',
+            attr_val=attr_value_pb2.AttrValue(type=types_pb2.DT_INT8),
+        )
+    )
+    # TODO: b/294783597 - [Converter][TF-Quantizer] Support quantization for the
+    # ops in the while op body for both SRQ and WO
+    # Convolution inside the while op is not quantized.
+    self.assertTrue(
+        self._contains_op(
+            output_graphdef,
+            op_name='Conv2D',
+            attr_name='T',
+            attr_val=attr_value_pb2.AttrValue(type=types_pb2.DT_FLOAT),
+        )
+    )
+
   # Check only the most simple case and the most complicated cases.
   @parameterized.named_parameters(
       {
@@ -5356,6 +5419,57 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
                     attr_val=attr_value_pb2.AttrValue(type=types_pb2.DT_INT8),
                 )
             )
+
+  @test_util.run_v2_only
+  def test_while_op_model(
+      self,
+  ):
+    model = self._create_while_model()
+    saved_model_save.save(model, self._input_saved_model_path)
+
+    tags = {tag_constants.SERVING}
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.WEIGHT_ONLY
+        ),
+        op_set=quant_opts_pb2.XLA,
+    )
+
+    converted_model = quantize_model.quantize(
+        self._input_saved_model_path,
+        ['serving_default'],
+        tags,
+        self._output_saved_model_path,
+        quantization_options,
+    )
+    self.assertIsNotNone(converted_model)
+    self.assertCountEqual(
+        converted_model.signatures._signatures.keys(), {'serving_default'}
+    )
+
+    loader = saved_model_loader.SavedModelLoader(self._output_saved_model_path)
+    output_graphdef = loader.get_meta_graph_def_from_tags(tags).graph_def
+
+    # Convolution ouside the while op is quantized.
+    self.assertTrue(
+        self._contains_op(
+            output_graphdef,
+            op_name='XlaConvV2',
+            attr_name='RhsT',
+            attr_val=attr_value_pb2.AttrValue(type=types_pb2.DT_INT8),
+        )
+    )
+    # TODO: b/294783597 - [Converter][TF-Quantizer] Support quantization for the
+    # ops in the while op body for both SRQ and WO
+    # Convolution inside the while op is not quantized.
+    self.assertTrue(
+        self._contains_op(
+            output_graphdef,
+            op_name='Conv2D',
+            attr_name='T',
+            attr_val=attr_value_pb2.AttrValue(type=types_pb2.DT_FLOAT),
+        )
+    )
 
 
 if __name__ == '__main__':

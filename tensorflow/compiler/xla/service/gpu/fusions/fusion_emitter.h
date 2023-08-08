@@ -59,7 +59,8 @@ class KernelFusionEmitterBase : public FusionInterface {
 
   StatusOr<FusionEmissionResult> Emit(KernelReuseCache& kernel_cache,
                                       llvm::IRBuilder<>* builder) const final;
-  virtual StatusOr<LaunchDimensions> launch_dimensions() const = 0;
+  virtual StatusOr<LaunchDimensions> launch_dimensions(
+      int kernel_index) const = 0;
 
  protected:
   virtual Status EmitKernel(const LaunchDimensions& launch_dims,

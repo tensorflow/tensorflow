@@ -860,13 +860,13 @@ PYBIND11_MODULE(xla_extension, m) {
 
   m.def(
       "get_distributed_runtime_service",
-      [](std::string address, int num_nodes, bool use_coordination_service,
+      [](std::string address, int num_nodes,
          std::optional<int> heartbeat_interval,
          std::optional<int> max_missing_heartbeats,
          std::optional<int> enumerate_devices_timeout,
          std::optional<int> shutdown_timeout)
           -> std::unique_ptr<DistributedRuntimeService> {
-        DistributedRuntimeServiceImpl::Options options;
+        CoordinationServiceImpl::Options options;
         options.num_nodes = num_nodes;
         if (heartbeat_interval.has_value()) {
           options.heartbeat_interval = absl::Seconds(*heartbeat_interval);
@@ -882,12 +882,10 @@ PYBIND11_MODULE(xla_extension, m) {
           options.shutdown_timeout = absl::Seconds(*shutdown_timeout);
         }
         std::unique_ptr<DistributedRuntimeService> service =
-            xla::ValueOrThrow(GetDistributedRuntimeService(
-                address, options, use_coordination_service));
+            xla::ValueOrThrow(GetDistributedRuntimeService(address, options));
         return service;
       },
-      py::arg("address"), py::arg("num_nodes"),
-      py::arg("use_coordination_service"), py::kw_only(),
+      py::arg("address"), py::arg("num_nodes"), py::kw_only(),
       py::arg("heartbeat_interval") = std::nullopt,
       py::arg("max_missing_heartbeats") = std::nullopt,
       py::arg("enumerate_devices_timeout") = std::nullopt,
@@ -895,9 +893,8 @@ PYBIND11_MODULE(xla_extension, m) {
 
   m.def(
       "get_distributed_runtime_client",
-      [](std::string address, int node_id, bool use_coordination_service,
-         std::optional<int> rpc_timeout, std::optional<int> init_timeout,
-         std::optional<int> shutdown_timeout,
+      [](std::string address, int node_id, std::optional<int> rpc_timeout,
+         std::optional<int> init_timeout, std::optional<int> shutdown_timeout,
          std::optional<int> heartbeat_interval,
          std::optional<int> max_missing_heartbeats,
          std::optional<std::function<void(xla::Status,
@@ -929,11 +926,9 @@ PYBIND11_MODULE(xla_extension, m) {
         if (shutdown_on_destruction.has_value()) {
           options.shutdown_on_destruction = *shutdown_on_destruction;
         }
-        return GetDistributedRuntimeClient(address, options,
-                                           use_coordination_service);
+        return GetDistributedRuntimeClient(address, options);
       },
-      py::arg("address"), py::arg("node_id"),
-      py::arg("use_coordination_service"), py::kw_only(),
+      py::arg("address"), py::arg("node_id"), py::kw_only(),
       py::arg("rpc_timeout") = std::nullopt,
       py::arg("init_timeout") = std::nullopt,
       py::arg("shutdown_timeout") = std::nullopt,

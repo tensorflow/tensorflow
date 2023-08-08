@@ -39,6 +39,7 @@ from tensorflow.python.ops import sort_ops
 from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.numpy_ops import np_dtypes
 from tensorflow.python.ops.numpy_ops import np_utils
+from tensorflow.python.types import core as core_tf_types
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_export
 
@@ -2045,7 +2046,7 @@ def _getitem(self, slice_spec):
   if (
       isinstance(slice_spec, bool)
       or (
-          isinstance(slice_spec, tensor_lib.Tensor)
+          isinstance(slice_spec, core_tf_types.Tensor)
           and slice_spec.dtype == dtypes.bool
       )
       or (
@@ -2067,7 +2068,7 @@ def _with_index_update_helper(update_method, a, slice_spec, updates):
   if (
       isinstance(slice_spec, bool)
       or (
-          isinstance(slice_spec, tensor_lib.Tensor)
+          isinstance(slice_spec, core_tf_types.Tensor)
           and slice_spec.dtype == dtypes.bool
       )
       or (

@@ -58,7 +58,7 @@ class InPlaceDynamicUpdateSliceEmitter : public KernelFusionEmitterBase {
                                 fusion_op, fusion),
         dus_ops_(GetOutputDefiningDynamicUpdateSlices(
             fusion.fused_instructions_computation())) {}
-  StatusOr<LaunchDimensions> launch_dimensions() const override;
+  StatusOr<LaunchDimensions> launch_dimensions(int kernel_index) const override;
 
  protected:
   Status EmitKernel(const LaunchDimensions& launch_dims,

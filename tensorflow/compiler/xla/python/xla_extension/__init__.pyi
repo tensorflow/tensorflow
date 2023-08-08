@@ -628,7 +628,6 @@ class DistributedRuntimeClient:
 def get_distributed_runtime_service(
     address: str,
     num_nodes: int,
-    use_coordination_service: bool = ...,
     heartbeat_interval: Optional[int] = ...,
     max_missing_heartbeats: Optional[int] = ...,
     enumerate_devices_timeout: Optional[int] = ...,
@@ -636,7 +635,6 @@ def get_distributed_runtime_service(
 def get_distributed_runtime_client(
     address: str,
     node_id: int,
-    use_coordination_service: bool = ...,
     rpc_timeout: Optional[int] = ...,
     init_timeout: Optional[int] = ...,
     shutdown_timeout: Optional[int] = ...,

@@ -16,16 +16,26 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PJRT_C_PJRT_C_API_WRAPPER_IMPL_H_
 #define TENSORFLOW_COMPILER_XLA_PJRT_C_PJRT_C_API_WRAPPER_IMPL_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_compiler.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_device_description.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
+#include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/status.h"
 
 struct PJRT_Error {
   xla::Status status;
@@ -82,6 +92,11 @@ struct PJRT_Executable {
   bool cost_analysis_ran ABSL_GUARDED_BY(mutex) = false;
   std::vector<std::string> cost_analysis_names;
   std::vector<PJRT_NamedValue> cost_analysis_properties;
+
+  mutable absl::Mutex memory_kind_mutex;
+  bool memory_kind_ran ABSL_GUARDED_BY(memory_kind_mutex) = false;
+  std::vector<const char*> memory_kinds;
+  std::vector<size_t> memory_kind_sizes;
 
   explicit PJRT_Executable(std::shared_ptr<xla::PjRtExecutable> executable);
 
@@ -218,6 +233,8 @@ PJRT_Error* PJRT_Executable_SizeOfGeneratedCodeInBytes(
     PJRT_Executable_SizeOfGeneratedCodeInBytes_Args* args);
 PJRT_Error* PJRT_Executable_GetCostAnalysis(
     PJRT_Executable_GetCostAnalysis_Args* args);
+PJRT_Error* PJRT_Executable_OutputMemoryKinds(
+    PJRT_Executable_OutputMemoryKinds_Args* args);
 PJRT_Error* PJRT_Executable_OptimizedProgram(
     PJRT_Executable_OptimizedProgram_Args* args);
 PJRT_Error* PJRT_Executable_Serialize(PJRT_Executable_Serialize_Args* args);
@@ -416,6 +433,8 @@ constexpr PJRT_Api CreatePjrtApi(
       /*PJRT_Executable_SizeOfGeneratedCodeInBytes=*/
       pjrt::PJRT_Executable_SizeOfGeneratedCodeInBytes,
       /*PJRT_Executable_GetCostAnalysis=*/pjrt::PJRT_Executable_GetCostAnalysis,
+      /*PJRT_Executable_OutputMemoryKinds=*/
+      pjrt::PJRT_Executable_OutputMemoryKinds,
       /*PJRT_Executable_OptimizedProgram=*/
       pjrt::PJRT_Executable_OptimizedProgram,
       /*PJRT_Executable_Serialize=*/pjrt::PJRT_Executable_Serialize,

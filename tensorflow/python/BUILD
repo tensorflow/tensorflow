@@ -369,6 +369,7 @@ py_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_combinations_lib",
         "//tensorflow/python/framework:versions",
+        "//tensorflow/python/lib/io:lib",
         "//tensorflow/python/module",
         "//tensorflow/python/ops:audio_ops_gen",
         "//tensorflow/python/ops:bincount_ops",

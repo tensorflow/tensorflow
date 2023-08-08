@@ -1,1 +1,32 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+@@ -157,6 +157,7 @@
+     hdrs = ["src/__support/CPP/bit.h"],
+     deps = [
+         ":__support_cpp_type_traits",
++        ":__support_macros_attributes",
+         ":__support_macros_config",
+         ":libc_root",
+     ],
+@@ -165,7 +166,10 @@
+ libc_support_library(
+     name = "__support_cpp_bitset",
+     hdrs = ["src/__support/CPP/bitset.h"],
+-    deps = [":libc_root"],
++    deps = [
++        ":__support_macros_attributes",
++        ":libc_root",
++    ],
+ )
+ 
+ libc_support_library(
+@@ -173,6 +177,7 @@
+     hdrs = ["src/__support/CPP/cstddef.h"],
+     deps = [
+         ":__support_cpp_type_traits",
++        ":__support_macros_attributes",
+         ":libc_root",
+     ],
+ )

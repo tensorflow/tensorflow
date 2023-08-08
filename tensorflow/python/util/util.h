@@ -152,6 +152,24 @@ bool IsTensorSpec(PyObject* o);
 //   True if the object is an eager tensor (or mimicking as one).
 bool IsEagerTensorSlow(PyObject* o);
 
+// Returns a true if its input subclasses TensorProtocol.
+//
+// Args:
+//   o: the input to be checked.
+//
+// Returns:
+//   True if the object implements TensorProtocol.
+bool IsTensorProtocol(PyObject* o);
+
+// Returns a true if its input is a core.Value type.
+//
+// Args:
+//   o: the input to be checked.
+//
+// Returns:
+//   True if the object is a core.Value type.
+bool IsCoreTypeValue(PyObject* o);
+
 // Returns a true if its input is a ResourceVariable.
 //
 // Args:

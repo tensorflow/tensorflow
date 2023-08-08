@@ -752,6 +752,32 @@ class ComputeRelativeLocation {
       VLOG(3) << "Setting interception due to parameter/root relation\n";
       return Relation(order, true);
     }
+
+    // If the modification is inside the while body, it will not intercept the
+    // def-use chain outside of the while body. For the following example, %add
+    // does not intercept the def-use chain of %while - %root
+    //
+    // body = {
+    //   ...
+    //   add = ...  // modify buffer1
+    // }
+    // %while = While (param, cond, body) // def buffer1
+    // %root = get-tuple-element(%while), index=1 // use buffer1
+
+    if (use->parent() == def->parent() &&
+        ComputeRuntimeOrdering(use, entry2.first) == Relation::kAfterEnd &&
+        def->opcode() == HloOpcode::kWhile &&
+        entry2.first->parent() == def->while_body()) {
+      return Relation(order, false);
+    }
+
+    if (use->parent() == def->parent() &&
+        ComputeRuntimeOrdering(def, entry2.first) == Relation::kBeforeStart &&
+        use->opcode() == HloOpcode::kWhile &&
+        entry2.first->parent() == use->while_body()) {
+      return Relation(order, false);
+    }
+
     if (Relation::UseImpliesInterception(order)) {
       auto order2 = ComputeRuntimeOrdering(entry2.first, def);
       if (Relation::DefinitionImpliesInterception(order2)) {

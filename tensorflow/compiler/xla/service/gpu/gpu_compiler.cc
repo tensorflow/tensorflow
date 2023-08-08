@@ -62,6 +62,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/broadcast_canonicalizer.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
+#include "tensorflow/compiler/xla/service/collective_permute_decomposer.h"
 #include "tensorflow/compiler/xla/service/collective_pipeliner.h"
 #include "tensorflow/compiler/xla/service/collectives_schedule_linearizer.h"
 #include "tensorflow/compiler/xla/service/comparison_expander.h"
@@ -854,6 +855,8 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
       };
       pipeline.AddPass<GpuAsyncCollectiveAnnotator>(convert_to_async);
     }
+    pipeline.AddPass<CollectivePermuteDecomposer>(
+        debug_options.xla_gpu_collective_permute_decomposer_threshold());
 
     if (!hlo_module->config().use_spmd_partitioning()) {
       pipeline.AddPass<CollectivesScheduleLinearizer>();

@@ -81,6 +81,9 @@ from tensorflow.python.framework import ops
 # Function
 from tensorflow.core.function.trace_type import *
 
+# IO
+from tensorflow.python.lib.io import python_io
+
 # Module
 from tensorflow.python.module import module
 

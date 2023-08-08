@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 
+#include <cstdint>
 #include <cstdlib>
+#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
@@ -28,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/debug_options_parsers.h"
 #include "tensorflow/compiler/xla/parse_flags_from_env.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
+#include "tensorflow/tsl/util/command_line_flags.h"
 
 namespace xla {
 
@@ -139,6 +142,9 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_pipelined_all_reduce(false);
   opts.set_xla_gpu_enable_pipelined_all_gather(false);
   opts.set_xla_gpu_enable_pipelined_reduce_scatter(false);
+
+  opts.set_xla_gpu_collective_permute_decomposer_threshold(
+      std::numeric_limits<int64_t>::max());
 
   opts.set_xla_cpu_enable_mlir_tiling_and_fusion(true);
   opts.set_xla_cpu_enable_custom_matmul_tiling(false);
@@ -1095,6 +1101,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                     &DebugOptions::set_xla_gpu_enable_pipelined_reduce_scatter),
                 debug_options->xla_gpu_enable_pipelined_reduce_scatter(),
                 "Enable pipelinling of reduce-scatter instructions."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_collective_permute_decomposer_threshold",
+      int64_setter_for(
+          &DebugOptions::set_xla_gpu_collective_permute_decomposer_threshold),
+      debug_options->xla_gpu_collective_permute_decomposer_threshold(),
+      "Collective permute decomposer threshold."));
   flag_list->push_back(tsl::Flag(
       "xla_partitioning_algorithm", setter_for_xla_partitioning_algorithm,
       DebugOptions::PartitioningAlgorithm_Name(

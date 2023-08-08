@@ -94,7 +94,7 @@ struct AutoShardingSolverOption {
 
   bool only_allow_divisible_intermediate;
 
-  // If true, trictly limit the following iterations to use the same number of
+  // If true, strictly limit the following iterations to use the same number of
   // shards for sharded tensor dimensions; if false, the following iterations
   // can choose different number of shards for sharded tensor dimensions.
   // Enabling it can hurt the performance of dot ops, but can make the search
@@ -105,6 +105,11 @@ struct AutoShardingSolverOption {
   // ops. Generating these seems to be beneficial for LLM serving models, but
   // can increase the search space, so this feature is exposed as an option.
   bool allow_replicated_strategy_for_dot_and_conv;
+
+  // Allows the conversion of aliases to followers if their pairwise strategy
+  // compatibilities are embodied by the identity matrix (which makes for a
+  // smaller Mixed ILP).
+  bool allow_alias_to_follower_conversion;
 };
 }  // namespace spmd
 }  // namespace xla

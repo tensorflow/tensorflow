@@ -2461,29 +2461,6 @@ tf_kernel_library(
     alwayslink = 1,
 )
 
-tf_gen_op_wrapper_py(
-    name = "test_ops_2",
-    out = "test_ops_2.py",
-    extra_py_deps = [
-        "//tensorflow/python:pywrap_tfe",
-        "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:dispatch",
-        "//tensorflow/python/util:tf_export",
-    ],
-    py_lib_rule = py_strict_library,
-    deps = [
-        ":test_ops_2_kernels",
-    ],
-)
-
-cc_library(
-    name = "test_ops_2_kernels",
-    srcs = ["test_ops_2.cc"],
-    linkstatic = 1,
-    deps = ["//tensorflow/core:framework"],
-    alwayslink = 1,
-)
-
 tf_py_strict_test(
     name = "common_shapes_test",
     size = "small",
@@ -2504,7 +2481,7 @@ tf_py_strict_test(
     srcs = ["ops_test.py"],
     main = "ops_test.py",
     python_version = "PY3",
-    tags = ["no_pip"],  # test_ops_2 is not available in pip.
+    tags = ["no_pip"],
     deps = [
         ":composite_tensor",
         ":config",

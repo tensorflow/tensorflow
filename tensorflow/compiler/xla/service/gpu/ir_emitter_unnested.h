@@ -300,49 +300,6 @@ class IrEmitterUnnested : public IrEmitter {
         shape, ir_emitter_context_->llvm_module()->getDataLayout());
   }
 
-  // Emits a kernel for the given hlo instruction using a tiled 0-2-1 transpose
-  // algorithm to improve the memory access patterns for the input parameters
-  // with a shape that is a 0-2-1 transpose of the output tensor shape. The
-  // caller is responsible for making sure that it is safe to apply the shared
-  // memory transpose on the input parameters.
-  //
-  //
-  // For the purpose of tiling, the output tensors have a logical shape of three
-  // components 0-2-1 while the relevant input parameters have a logical shape
-  // of three components 0-1-2 in the order major to minor. The x- and y-
-  // dimensions of the tensors are tiled in square tiles with an edge length
-  // `kTileSize`. Each thread block of `kTileSize` x `kNumRows` threads
-  // transposes one tile: each thread copies kTileSize/kNumRows elements from
-  // the input to a shared memory tile, then the otherwise "regular HLO kernel"
-  // reads from the shared memory instead of the original input.
-  //
-  // This is similar to the following CUDA algorithm in TensorFlow:
-  // https://goo.gl/MStRV6.
-  //
-  // `kTileSize` should usually be same as warp size. We currently choose 32 for
-  // `kTileSize` and 4 for `kNumRows`. The CUDA algorithm uses 8 for `kNumRows`.
-  //
-  // TODO(b/33320379): Here each block transposes 1 tile. It may be more
-  // efficient to launch fewer blocks so each transposes many tiles.
-  Status EmitUnnestedTranspose(mlir::lmhlo::FusionOp fusion,
-                               HloFusionAnalysis& fusion_analysis);
-
-  // Generates code for input-fusible slices.
-  //
-  // Prerequisite: ROOT is either a slice or a tuple of slices. The input shapes
-  // of all ROOT slices need to be the same while their output shapes can be
-  // different. On the other hand, the input ranges of slices can be
-  // overlapping. Further generalization/specialization when the needs are seen
-  // in the future.
-  Status EmitInputFusibleNonStridedSlices(mlir::Operation* op,
-                                          HloFusionAnalysis& fusion_analysis);
-
-  Status EmitElementForInputFusibleSlices(
-      const HloComputation* fused_computation,
-      absl::Span<const llvm_ir::IrArray> inputs,
-      absl::Span<const llvm_ir::IrArray> outputs,
-      const llvm_ir::IrArray::Index& index);
-
   // Emits code for an in-place scatter, modifying `thunk`s launch dimensions in
   // the process. Scatter indices are taken from `scatter_indices_gen`, updates
   // from `updates_gen`. The output buffer is expected to have the operand
@@ -379,20 +336,9 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitScatter(const ScatterDescriptor& desc,
                      const LaunchDimensions& launch_dimensions);
 
-  Status EmitTransposeTile(mlir::lmhlo::FusionOp fusion,
-                           const HloComputation* fusion_hlo,
-                           absl::Span<const llvm_ir::IrArray> operand_arrays,
-                           absl::Span<const llvm_ir::IrArray> output_arrays,
-                           const TilingScheme& tiling_scheme,
-                           const LaunchDimensions& launch_dimensions);
-
   Status EmitScatter(mlir::lmhlo::FusionOp fusion_op,
                      const HloComputation* fused_computation,
                      HloFusionAnalysis& fusion_analysis);
-
-  // Removes some unneeded defining operations from the calculation of `value`,
-  // before passing it to a KernelThunk.
-  static StatusOr<mlir::Value> RemoveTransformingOperations(mlir::Value value);
 
   // Builds a kernel thunk for a non-fusion operation, without reuse.
   //
@@ -438,9 +384,6 @@ class IrEmitterUnnested : public IrEmitter {
   StatusOr<std::unique_ptr<Thunk>> BuildConditionalThunk(
       const HloInstruction* conditional);
 
-  // Emit __syncthreads(), synchronization barrier for all threads in a block.
-  llvm::CallInst* EmitSyncThreads();
-
   StatusOr<HloComputation*> GetOrCreateSubComputationFromRegion(
       mlir::Region* region, bool is_fusion);
 
@@ -458,11 +401,6 @@ class IrEmitterUnnested : public IrEmitter {
   absl::flat_hash_map<const mlir::Region*, std::unique_ptr<HloModule>>
       scratch_nested_computations_;
   // End optional members for XLA HLO -> LMHLO.
-
-  // __shared__ memory uses a different address space, so we cast it to
-  // global address space before writing or reading.
-  llvm::Value* CastSharedToGlobal(llvm::Value* input, llvm::Type* element_type,
-                                  llvm::Twine name = "");
 
   // Returns the ShapedSlices for the given operands.
   StatusOr<std::vector<ShapedSlice>> GetShapedSlices(

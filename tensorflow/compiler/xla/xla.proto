@@ -542,6 +542,10 @@ message DebugOptions {
   bool xla_gpu_enable_pipelined_all_gather = 227;
   bool xla_gpu_enable_pipelined_reduce_scatter = 231;
 
+  // The minimum data size in bytes to trigger collective-permute-decomposer
+  // transformation.
+  int64 xla_gpu_collective_permute_decomposer_threshold = 237;
+
   enum PartitioningAlgorithm {
     PARTITIONING_ALGORITHM_NOOP = 0;
     PARTITIONING_ALGORITHM_EXP0 = 1;
@@ -597,7 +601,7 @@ message DebugOptions {
 
   bool xla_gpu_copy_insertion_use_region_analysis = 236;
 
-  // Next id: 237
+  // Next id: 238
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

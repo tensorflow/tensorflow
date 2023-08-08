@@ -1017,6 +1017,10 @@ pybind_extension(
         "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION],
         "//tensorflow:windows": [],
     }),
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_py_utils.pyi",
+    ],
     static_deps = [
         "@bazel_tools//:__subpackages__",
         "@boringssl//:__subpackages__",

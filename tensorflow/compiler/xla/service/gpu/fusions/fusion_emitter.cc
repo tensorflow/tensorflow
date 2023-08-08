@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/xla/service/gpu/fusions/fusion_emitter.h"
 
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <tuple>
@@ -21,16 +22,17 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_cat.h"
-#include "llvm/Support/Casting.h"
-#include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/IR/Argument.h"
+#include "llvm/IR/Function.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_to_ir_bindings.h"
+#include "tensorflow/compiler/xla/service/gpu/kernel_arguments.h"
+#include "tensorflow/compiler/xla/service/gpu/kernel_reuse_cache.h"
 #include "tensorflow/compiler/xla/service/gpu/kernel_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
-#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/location_exporter.h"
 
 namespace xla {
 namespace gpu {
@@ -180,11 +182,11 @@ StatusOr<FusionEmissionResult> KernelFusionEmitterBase::Emit(
   TF_ASSIGN_OR_RETURN(
       auto kernel_arguments,
       KernelArguments::Create(ir_emitter_context_.allocations(), fusion_op_));
-  TF_ASSIGN_OR_RETURN(auto launch_dims, launch_dimensions());
   auto* fused_computation = fusion_.fused_instructions_computation();
 
   FusionEmissionResult result;
-  for (int i = 0; i < num_kernels(); ++i) {
+  for (int i = 0, n = num_kernels(); i < n; ++i) {
+    TF_ASSIGN_OR_RETURN(auto launch_dims, launch_dimensions(i));
     std::vector<llvm_ir::IrArray> inputs, outputs;
     auto [entry, cached] = kernel_cache.Get(
         fused_computation, kernel_arguments.args(), absl::StrCat(i),

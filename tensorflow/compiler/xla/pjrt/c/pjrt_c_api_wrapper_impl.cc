@@ -26,26 +26,44 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/layout.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
+#include "tensorflow/compiler/xla/pjrt/compile_options.pb.h"
 #include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_common.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_compiler.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_device_description.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
+#include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla.pb.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/framework/allocator.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace pjrt {
 
@@ -119,6 +137,39 @@ static xla::Status PopulateExecutableCostAnalysisIfNeeded(
       ++i;
     }
     executable->cost_analysis_ran = true;
+  }
+  return xla::OkStatus();
+}
+
+static xla::Status PopulateExecutableOutputMemoryKindsIfNeeded(
+    PJRT_Executable* executable) {
+  absl::MutexLock lock(&executable->memory_kind_mutex);
+  if (!executable->memory_kind_ran) {
+    TF_ASSIGN_OR_RETURN(
+        std::vector<std::vector<absl::string_view>> output_memories,
+        executable->get()->GetOutputMemoryKinds());
+    if (output_memories.empty()) {
+      return xla::InvalidArgument(
+          "Can't get output memory kinds, the list is empty for executable %s.",
+          executable->get()->name());
+    }
+    if (output_memories.size() != 1) {
+      return xla::Unimplemented(
+          "MPMD execution not supported by PJRT C API (in "
+          "function PJRT_Executable_GetOutputMemoryKinds).");
+    }
+
+    std::vector<absl::string_view>& inner_output_memories = output_memories[0];
+    std::vector<const char*>& memory_kinds = executable->memory_kinds;
+    std::vector<size_t>& memory_kind_sizes = executable->memory_kind_sizes;
+    memory_kinds.reserve(inner_output_memories.size());
+    memory_kind_sizes.reserve(inner_output_memories.size());
+    for (absl::string_view memory : inner_output_memories) {
+      memory_kinds.push_back(memory.data());
+      memory_kind_sizes.push_back(memory.size());
+    }
+
+    executable->memory_kind_ran = true;
   }
   return xla::OkStatus();
 }
@@ -928,6 +979,19 @@ PJRT_Error* PJRT_Executable_GetCostAnalysis(
   } else {
     args->properties = nullptr;
   }
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Executable_OutputMemoryKinds(
+    PJRT_Executable_OutputMemoryKinds_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Executable_OutputMemoryKinds_Args",
+      PJRT_Executable_OutputMemoryKinds_Args_STRUCT_SIZE, args->struct_size));
+  PJRT_RETURN_IF_ERROR(
+      PopulateExecutableOutputMemoryKindsIfNeeded(args->executable));
+  args->num_outputs = args->executable->memory_kinds.size();
+  args->memory_kinds = args->executable->memory_kinds.data();
+  args->memory_kind_sizes = args->executable->memory_kind_sizes.data();
   return nullptr;
 }
 
