@@ -26,16 +26,7 @@ diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
      name = "interpreter_ops",
      srcs = [
          "stablehlo/reference/InterpreterOps.cpp",
-@@ -292,6 +310,8 @@
-         ":reference_interpretervalue",
-         ":reference_ops",
-         ":reference_process",
-+        "@llvm-project//llvm:Support",
-+        "@llvm-project//mlir:FuncDialect",
-         "@llvm-project//mlir:IR",
-         "@llvm-project//mlir:Support",
-     ],
-@@ -737,6 +757,7 @@
+@@ -739,6 +757,7 @@
      deps = [
          ":base",
          ":chlo_ops",
@@ -43,14 +34,6 @@ diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
          ":stablehlo_ops",
          ":stablehlo_ops_inc_gen",
          ":stablehlo_pass_inc_gen",
-@@ -903,6 +924,7 @@
-         "stablehlo/tools/StablehloOptMain.cpp",
-     ],
-     deps = [
-+        ":interpreter_ops",
-         ":register",
-         ":stablehlo_passes",
-         ":tosa_passes",
 diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 --- stablehlo/CMakeLists.txt
 +++ stablehlo/CMakeLists.txt
