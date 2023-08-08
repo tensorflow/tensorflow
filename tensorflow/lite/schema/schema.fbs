@@ -420,6 +420,9 @@ enum BuiltinOperator : int32 {
   BITCAST = 159,
   BITWISE_XOR = 160,
   RIGHT_SHIFT = 161,
+  // All Operators start with STABLEHLO_ prefixes are subject to change
+  // Many of the ops below can not be executed by TFlite runtime
+  STABLEHLO_LOGISTIC = 162, // WARNING: Do not have runtime support
 }
 // LINT.ThenChange(nnapi_linter/linter.proto)
 

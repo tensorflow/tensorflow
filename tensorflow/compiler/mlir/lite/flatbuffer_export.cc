@@ -77,6 +77,7 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector_inst.h"
@@ -567,6 +568,9 @@ class Translator {
         module.getContext()->getOrLoadDialect<mlir::TF::TensorFlowDialect>();
     tfl_dialect_ = module.getContext()
                        ->getOrLoadDialect<mlir::TFL::TensorFlowLiteDialect>();
+    stablehlo_dialect_ =
+        module.getContext()
+            ->getOrLoadDialect<mlir::stablehlo::StablehloDialect>();
     // Right now the TF executor dialect is still needed to build NodeDef.
     module.getContext()
         ->getOrLoadDialect<mlir::tf_executor::TensorFlowExecutorDialect>();
@@ -753,6 +757,7 @@ class Translator {
   // dialect is not registered.
   const Dialect* tf_dialect_;
   const Dialect* tfl_dialect_;
+  const Dialect* stablehlo_dialect_;
 
   // The failed ops during legalization.
   std::map<std::string, std::set<std::string>> failed_flex_ops_;
@@ -822,6 +827,8 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
   } else if (auto cst = dyn_cast<tfl::ConstOp>(inst)) {
     attr = cst.getValue();
   } else if (auto cst = dyn_cast<tfl::QConstOp>(inst)) {
+    attr = cst.getValue();
+  } else if (auto cst = dyn_cast<mlir::stablehlo::ConstantOp>(inst)) {
     attr = cst.getValue();
   } else if (auto cst = dyn_cast<tfl::SparseConstOp>(inst)) {
     attr = cst.getCompressedData();
@@ -1420,6 +1427,20 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
       inst->emitOpError("is not a supported TFLite op");
     }
     return offset;
+  }
+
+  // EXPERIMENTAL: If the source is in stablehlo dialect, also create them as
+  // builtin ops
+  if (dialect == stablehlo_dialect_) {
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::LogisticOp>(inst)) {
+      std::string op_name = inst->getName().getStringRef().str();
+      uint32_t opcode_index =
+          GetOpcodeIndex(op_name, tflite::BuiltinOperator_STABLEHLO_LOGISTIC);
+
+      return tflite::CreateOperator(
+          builder_, opcode_index, builder_.CreateVector(operands),
+          builder_.CreateVector(results), tflite::BuiltinOptions_NONE, 0);
+    }
   }
 
   if (dialect == tf_dialect_) {

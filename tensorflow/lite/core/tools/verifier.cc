@@ -665,7 +665,7 @@ bool VerifyOps(const Model& model, const OpResolver& resolver,
     return true;
   }
 
-  // Track whichs ops are used in only the validation subgraphs. Validation
+  // Track which ops are used in only the validation subgraphs. Validation
   // subgraphs are allowed to contain custom ops that are not in the resolver,
   // as they will be run with a custom resolver.
   absl::flat_hash_set<int> regular_code_indices;

@@ -1088,11 +1088,12 @@ enum BuiltinOperator : int32_t {
   BuiltinOperator_BITCAST = 159,
   BuiltinOperator_BITWISE_XOR = 160,
   BuiltinOperator_RIGHT_SHIFT = 161,
+  BuiltinOperator_STABLEHLO_LOGISTIC = 162,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_RIGHT_SHIFT
+  BuiltinOperator_MAX = BuiltinOperator_STABLEHLO_LOGISTIC
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[162] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[163] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -1255,13 +1256,14 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[162] {
     BuiltinOperator_SIGN,
     BuiltinOperator_BITCAST,
     BuiltinOperator_BITWISE_XOR,
-    BuiltinOperator_RIGHT_SHIFT
+    BuiltinOperator_RIGHT_SHIFT,
+    BuiltinOperator_STABLEHLO_LOGISTIC
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOperator() {
-  static const char * const names[163] = {
+  static const char * const names[164] = {
     "ADD",
     "AVERAGE_POOL_2D",
     "CONCATENATION",
@@ -1424,13 +1426,14 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "BITCAST",
     "BITWISE_XOR",
     "RIGHT_SHIFT",
+    "STABLEHLO_LOGISTIC",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOperator(BuiltinOperator e) {
-  if (::flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_RIGHT_SHIFT)) return "";
+  if (::flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_STABLEHLO_LOGISTIC)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOperator()[index];
 }

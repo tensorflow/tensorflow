@@ -225,6 +225,11 @@ class OpOptionData {
     op_to_option_["BITCAST"] = "";
     op_to_option_["BITWISE_XOR"] = "";
     op_to_option_["RIGHT_SHIFT"] = "";
+    // HACK(b/293937201): currently we're hitting the Flatbuffer Java API limit
+    // for union structs
+    //  for all new ops thta uses none option, manually map it here, instead of
+    //  adding a new option
+    op_to_option_["STABLEHLO_LOGISTIC"] = "";
 
     // TODO(aselle): These are undesirable hacks. Consider changing C structs
     option_to_struct_["Pool2DOptions"] = "TfLitePoolParams";

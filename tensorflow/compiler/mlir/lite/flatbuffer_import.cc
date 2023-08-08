@@ -67,6 +67,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
@@ -75,6 +76,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/low_bit_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/size_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -1601,11 +1603,11 @@ OwningOpRef<mlir::ModuleOp> tflite::FlatBufferToMlir(
     const std::vector<std::string>& ordered_output_arrays,
     bool experimental_prune_unreachable_nodes_unconditionally) {
   mlir::DialectRegistry registry;
-  registry
-      .insert<mlir::arith::ArithDialect, mlir::func::FuncDialect,
-              mlir::quant::QuantizationDialect,
-              mlir::quantfork::QuantizationForkDialect,
-              mlir::TFL::TensorFlowLiteDialect, mlir::TF::TensorFlowDialect>();
+  registry.insert<mlir::arith::ArithDialect, mlir::func::FuncDialect,
+                  mlir::quant::QuantizationDialect,
+                  mlir::quantfork::QuantizationForkDialect,
+                  mlir::TFL::TensorFlowLiteDialect, mlir::TF::TensorFlowDialect,
+                  mlir::stablehlo::StablehloDialect>();
   mlir::func::registerAllExtensions(registry);
   context->appendDialectRegistry(registry);
 
@@ -1613,7 +1615,8 @@ OwningOpRef<mlir::ModuleOp> tflite::FlatBufferToMlir(
                        mlir::quant::QuantizationDialect,
                        mlir::quantfork::QuantizationForkDialect,
                        mlir::TFL::TensorFlowLiteDialect,
-                       mlir::TF::TensorFlowDialect>();
+                       mlir::TF::TensorFlowDialect,
+                       mlir::stablehlo::StablehloDialect>();
 
   auto model_ptr =
       FlatBufferModel::VerifyAndBuildFromBuffer(buffer.data(), buffer.length());
