@@ -651,7 +651,8 @@ class MklFusedBatchNormBwdPrimitive : public MklPrimitive {
     std::vector<std::unordered_map<int, memory>> net_args;
 
     BatchNormBwdContext()
-        : src_mem(nullptr),
+        : flags(0),
+          src_mem(nullptr),
           mean_mem(nullptr),
           variance_mem(nullptr),
           diff_dst_mem(nullptr),
