@@ -15,16 +15,20 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/tools/hlo_slicer.h"
 
+#include <deque>
 #include <memory>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
+#include "tensorflow/compiler/xla/tools/hlo_extractor.h"
 
 namespace xla {
 namespace {
@@ -302,6 +306,78 @@ SliceOutput SliceModule(
                              /*forward_slice=*/false,
                              /*nearest_common_ancestor_as_root=*/false);
   }
+}
+
+std::unique_ptr<HloModule> SliceModuleAndExtract(
+    const HloModule* hlo_module,
+    absl::Span<const HloInstruction*> slice_starting_instructions,
+    ForwardSliceConfig forward_slicing_config, bool backward_slicing_config) {
+  // Forward slicing.
+  SliceOutput forward_slice_output;
+  if (forward_slicing_config == ForwardSliceConfig::kRoot) {
+    // Slice to the root instruction of the entry computation of `hlo_module`.
+    forward_slice_output = SliceModule(
+        hlo_module, slice_starting_instructions, /*frontier_selector=*/nullptr,
+        /*ignore_control_dependency=*/false, /*forward_slice=*/true,
+        /*nearest_common_ancestor_as_root=*/false);
+  } else if (backward_slicing_config) {
+    // slice to the nearest common ancestors of `slice_starting_instructions`
+    forward_slice_output = SliceModule(
+        hlo_module, slice_starting_instructions, /*frontier_selector=*/nullptr,
+        /*ignore_control_dependency=*/false, /*forward_slice=*/true,
+        /*nearest_common_ancestor_as_root=*/true);
+  }
+  VLOG(1) << "[Num of forward sliced insts]: "
+          << forward_slice_output.NumSlicedInstructions();
+
+  // Backward slicing.
+  SliceOutput backward_slice_output;
+  if (backward_slicing_config) {
+    backward_slice_output = SliceModule(
+        hlo_module, slice_starting_instructions, /*frontier_selector=*/nullptr,
+        /*ignore_control_dependency=*/false, /*forward_slice=*/false);
+  } else {
+    // Return the empty SliceOutput if backward slicing is not enabled.
+    backward_slice_output = SliceOutput();
+  }
+
+  // Combine forward slicing output and backward slicing output.
+  auto sliced_result = SliceOutput(SliceOutput::UnionSlicedInstructions(
+      forward_slice_output, backward_slice_output));
+
+  // Decide Root to start extraction based on `forward_slicing_config`.
+  const HloInstruction* extraction_root =
+      forward_slicing_config == ForwardSliceConfig::kNca
+          ? forward_slice_output.nearest_common_ancestor_root()
+          : hlo_module->entry_computation()->root_instruction();
+  VLOG(1) << "[Root instruction of the sliced module]: "
+          << extraction_root->ToString();
+
+  // Exclude the instructions that are not in the slicing results.
+  auto extract_selector = [&sliced_result](const HloInstruction* hlo_inst) {
+    for (const auto& [computation, instructions] :
+         sliced_result.sliced_instructions()) {
+      if (instructions.contains(hlo_inst)) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  // Replace the excluded instructions in the entry computation with zeros.
+  auto replace_type_selector =
+      [](const HloInstruction* hlo_inst) -> ReplaceType {
+    return ReplaceType::kReplaceZeroBroadcast;
+  };
+
+  // Extract from the original module.
+  auto extracted_module =
+      ExtractModule(/*instruction=*/extraction_root, /*height=*/-1,
+                    /*extract_selector=*/extract_selector,
+                    /*replace_type_selector=*/replace_type_selector,
+                    /*cross_computation=*/true);
+
+  return extracted_module;
 }
 
 }  // namespace xla

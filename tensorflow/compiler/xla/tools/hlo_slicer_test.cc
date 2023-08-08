@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/tools/hlo_slicer.h"
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -26,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -805,6 +807,156 @@ TEST_F(HloSlicerTest, MultipleComputationForwardSlicingNearestCommonAncestor) {
     EXPECT_TRUE(sliced_instructions[computation].contains(alpha));
     EXPECT_TRUE(sliced_instructions[computation].contains(y));
     EXPECT_TRUE(sliced_instructions[computation].contains(add0));
+  }
+}
+
+TEST_F(HloSlicerTest, TestSliceModuleAndExtract) {
+  const std::string& hlo_string = R"(
+  HloModule axpy_module
+    calculate_alpha {
+      c.0 = f32[] constant(1)
+      c.1 = f32[] constant(2)
+      ROOT ret.0 = f32[] multiply(c.0, c.1)
+    }
+    
+    calculate_y {
+      c.2 = f32[] constant(2)
+      c.3 = f32[] constant(3)
+      ROOT ret.1 = f32[] add(c.2, c.3)
+    }
+    
+    ENTRY axpy_computation {
+      alpha = f32[] call(), to_apply=calculate_alpha
+      y = f32[] call(), to_apply=calculate_y
+      add.0 = f32[] add(alpha, y)
+      p.0 = f32[] parameter(0)
+      ROOT add.1 = f32[] add(add.0, p.0)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  auto alpha = FindInstruction(hlo_module.get(), "alpha");
+  auto y = FindInstruction(hlo_module.get(), "y");
+  auto add0 = FindInstruction(hlo_module.get(), "add.0");
+
+  // slice_starting_instructions: {alpha, y}.
+  // forward_slicing_config: kNca.
+  // backward_slicing_config: true.
+  {
+    std::vector<const HloInstruction*> relevant_instructions({alpha, y});
+    std::unique_ptr<HloModule> sliced_module = SliceModuleAndExtract(
+        hlo_module.get(),
+        /*slice_starting_instructions=*/absl::MakeSpan(relevant_instructions),
+        /*forward_slicing_config=*/ForwardSliceConfig::kNca,
+        /*backward_slicing_config=*/true);
+
+    // Test forward slicing: the extracted module should root at `add.0`, which
+    // is the nearest common ancestor of `alpha` and `y`.
+    EXPECT_EQ(sliced_module->entry_computation()->root_instruction()->name(),
+              "add.0");
+    EXPECT_EQ(sliced_module->entry_computation()->root_instruction()->opcode(),
+              HloOpcode::kAdd);
+
+    // Test backward slicing: the extracted module should contain all three
+    // computations and all the "leaf instructions".
+    EXPECT_EQ(sliced_module->computation_count(), 3);
+    HloInstruction* c0 = FindInstruction(sliced_module.get(), "c.0");
+    EXPECT_NE(c0, nullptr);
+    HloInstruction* c1 = FindInstruction(sliced_module.get(), "c.1");
+    EXPECT_NE(c1, nullptr);
+    HloInstruction* c2 = FindInstruction(sliced_module.get(), "c.2");
+    EXPECT_NE(c2, nullptr);
+    HloInstruction* c3 = FindInstruction(sliced_module.get(), "c.3");
+    EXPECT_NE(c3, nullptr);
+  }
+
+  // slice_starting_instructions: {alpha, y}.
+  // forward_slicing_config: kRoot.
+  // backward_slicing_config: true.
+  {
+    std::vector<const HloInstruction*> relevant_instructions({alpha, y});
+    std::unique_ptr<HloModule> sliced_module = SliceModuleAndExtract(
+        hlo_module.get(),
+        /*slice_starting_instructions=*/absl::MakeSpan(relevant_instructions),
+        /*forward_slicing_config=*/ForwardSliceConfig::kRoot,
+        /*backward_slicing_config=*/true);
+
+    // Test forward slicing: the extracted module should root at `add.1`, which
+    // is the original root instruction of entry computation.
+    EXPECT_EQ(sliced_module->entry_computation()->root_instruction()->name(),
+              "add.1");
+    EXPECT_EQ(sliced_module->entry_computation()->root_instruction()->opcode(),
+              HloOpcode::kAdd);
+
+    // Test backward slicing: the extracted module should contain all three
+    // computations and all the "leaf instructions".
+    EXPECT_EQ(sliced_module->computation_count(), 3);
+    HloInstruction* c0 = FindInstruction(sliced_module.get(), "c.0");
+    EXPECT_NE(c0, nullptr);
+    HloInstruction* c1 = FindInstruction(sliced_module.get(), "c.1");
+    EXPECT_NE(c1, nullptr);
+    HloInstruction* c2 = FindInstruction(sliced_module.get(), "c.2");
+    EXPECT_NE(c2, nullptr);
+    HloInstruction* c3 = FindInstruction(sliced_module.get(), "c.3");
+    EXPECT_NE(c3, nullptr);
+  }
+
+  // slice_starting_instructions: {y}.
+  // forward_slicing_config: kRoot.
+  // backward_slicing_config: true.
+  {
+    std::vector<const HloInstruction*> relevant_instructions({y});
+    std::unique_ptr<HloModule> sliced_module = SliceModuleAndExtract(
+        hlo_module.get(),
+        /*slice_starting_instructions=*/absl::MakeSpan(relevant_instructions),
+        /*forward_slicing_config=*/ForwardSliceConfig::kRoot,
+        /*backward_slicing_config=*/true);
+
+    // Test forward slicing: the extracted module should root at `add.1`, which
+    // is the original root instruction of entry computation.
+    EXPECT_EQ(sliced_module->entry_computation()->root_instruction()->name(),
+              "add.1");
+    EXPECT_EQ(sliced_module->entry_computation()->root_instruction()->opcode(),
+              HloOpcode::kAdd);
+
+    // Test backward slicing: The computation `axpy_computation` and
+    // `calculate_y` should be included (so as instructions `c2` and `c3`),
+    // while the computation `calculate_alpha` should not be included (so as
+    // instructions `c0` and `c1`).
+    EXPECT_EQ(sliced_module->computation_count(), 2);
+    HloInstruction* c0 = FindInstruction(sliced_module.get(), "c.0");
+    EXPECT_EQ(c0, nullptr);
+    HloInstruction* c1 = FindInstruction(sliced_module.get(), "c.1");
+    EXPECT_EQ(c1, nullptr);
+    HloInstruction* c2 = FindInstruction(sliced_module.get(), "c.2");
+    EXPECT_NE(c2, nullptr);
+    HloInstruction* c3 = FindInstruction(sliced_module.get(), "c.3");
+    EXPECT_NE(c3, nullptr);
+  }
+
+  // slice_starting_instructions: {alpha, y}.
+  // forward_slicing_config: kRoot.
+  // backward_slicing_config: false.
+  {
+    std::vector<const HloInstruction*> relevant_instructions({add0});
+    std::unique_ptr<HloModule> sliced_module = SliceModuleAndExtract(
+        hlo_module.get(),
+        /*slice_starting_instructions=*/absl::MakeSpan(relevant_instructions),
+        /*forward_slicing_config=*/ForwardSliceConfig::kRoot,
+        /*backward_slicing_config=*/false);
+
+    // Test forward slicing: the extracted module should root at `add.1`, which
+    // is the original root instruction of entry computation.
+    EXPECT_EQ(sliced_module->entry_computation()->root_instruction()->name(),
+              "add.1");
+    EXPECT_EQ(sliced_module->entry_computation()->root_instruction()->opcode(),
+              HloOpcode::kAdd);
+
+    // Test backward slicing: The computation `calculate_alpha` and
+    // `calculate_y` should not be included.
+    EXPECT_EQ(sliced_module->computation_count(), 1);
   }
 }
 
