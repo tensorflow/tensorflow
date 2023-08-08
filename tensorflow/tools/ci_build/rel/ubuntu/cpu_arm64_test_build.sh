@@ -111,7 +111,7 @@ sudo sed -i '/^build --profile/d' /usertools/aarch64.bazelrc
 sudo sed -i '\@^build.*=\"/usr/local/bin/python3\"$@d' /usertools/aarch64.bazelrc
 sudo sed -i '/^build --profile/d' /usertools/aarch64_clang.bazelrc
 sudo sed -i '\@^build.*=\"/usr/local/bin/python3\"$@d' /usertools/aarch64_clang.bazelrc
-sed -i '$ aimport /usertools/aarch64.bazelrc' .bazelrc
+sed -i '$ aimport /usertools/aarch64_clang.bazelrc' .bazelrc
 
 # Override breaking change in setuptools v60 (https://github.com/pypa/setuptools/pull/2896)
 export SETUPTOOLS_USE_DISTUTILS=stdlib

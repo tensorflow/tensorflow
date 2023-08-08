@@ -82,7 +82,9 @@ fi
 
 sudo sed -i '/^build --profile/d' /usertools/aarch64.bazelrc
 sudo sed -i '\@^build.*=\"/usr/local/bin/python3\"$@d' /usertools/aarch64.bazelrc
-sed -i '$ aimport /usertools/aarch64.bazelrc' .bazelrc
+sudo sed -i '/^build --profile/d' /usertools/aarch64_clang.bazelrc
+sudo sed -i '\@^build.*=\"/usr/local/bin/python3\"$@d' /usertools/aarch64_clang.bazelrc
+sed -i '$ aimport /usertools/aarch64_clang.bazelrc' .bazelrc
 
 bazel test ${TF_TEST_FLAGS} \
     --repo_env=PYTHON_BIN_PATH="$(which python)" \
