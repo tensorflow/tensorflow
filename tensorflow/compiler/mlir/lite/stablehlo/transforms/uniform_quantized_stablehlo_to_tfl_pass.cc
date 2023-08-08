@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/algorithm/container.h"
+#include "absl/log/check.h"
 #include "llvm/Support/Debug.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project  // NOLINT: Required to register quantization dialect.
@@ -437,19 +438,29 @@ class RewriteQuantizedConvolutionOp
         /*value=*/bias_value);
 
     // Determine the attributes for the TFL::Conv2DOp.
-    const std::string padding = GetPadding(op);
+    // TODO: b/294808863 - Use `padding = "SAME"` if the padding attribute
+    // matches the semantics.
+    Value input_value = op.getOperand(0);
+    if (const DenseIntElementsAttr padding_attr = op.getPaddingAttr();
+        !IsPaddingValid(padding_attr)) {
+      // Add an extra tfl.pad_op if there are explicit padding values. This
+      // extra pad op will allow us to always set the `padding` attribute of the
+      // newly created tfl.conv_2d op as "VALID".
+      TFL::PadOp pad_op =
+          CreateTflPadOp(op.getLoc(), padding_attr, input_value, rewriter);
+      input_value = pad_op.getResult();
+    }
+
     const auto [stride_h, stride_w] = GetStrides(op);
     const auto [dilation_h_factor, dilation_w_factor] = GetDilationFactors(op);
 
-    Value input_value = op.getOperand(0);
     auto tfl_conv2d_op = rewriter.create<TFL::Conv2DOp>(
-        op.getLoc(), /*output=*/op.getResult().getType(),
-        /*input=*/input_value,
+        op.getLoc(), /*output=*/op.getResult().getType(), /*input=*/input_value,
         /*filter=*/new_filter_constant_op, /*bias=*/bias.getResult(),
         /*dilation_h_factor=*/rewriter.getI32IntegerAttr(dilation_h_factor),
         /*dilation_w_factor=*/rewriter.getI32IntegerAttr(dilation_w_factor),
         /*fused_activation_function=*/rewriter.getStringAttr("NONE"),
-        /*padding=*/rewriter.getStringAttr(padding),
+        /*padding=*/rewriter.getStringAttr("VALID"),
         /*stride_h=*/rewriter.getI32IntegerAttr(stride_h),
         /*stride_w=*/rewriter.getI32IntegerAttr(stride_w));
 
@@ -458,6 +469,68 @@ class RewriteQuantizedConvolutionOp
   }
 
  private:
+  // Create a `tfl.pad` op to apply explicit padding to the input tensor that
+  // correspond to the `padding` attribute from the `stablehlo.convolution` op.
+  TFL::PadOp CreateTflPadOp(Location loc,
+                            const DenseIntElementsAttr& padding_attr,
+                            Value input_value,
+                            PatternRewriter& rewriter) const {
+    auto padding_values = padding_attr.getValues<int64_t>();
+    // [[h_l, h_r], [w_l, w_r]].
+    DCHECK_EQ(padding_attr.size(), 4);
+
+    // In StableHLO the padding attribute doesn't include the padding values for
+    // input and output feature dimensions (because they are 0 anyways). In
+    // TFLite, padding values for input and output feature dimensions should be
+    // explicitly set to 0s. Note that TFLite's input tensor is formatted as
+    // OHWI. The resulting pad values becomes: [[0, 0], [h_l, h_r], [w_l, w_r],
+    // [0, 0]]
+    SmallVector<int32_t, 8> tfl_pad_values = {0, 0};  // For output feature dim.
+    for (const int64_t padding_value : padding_values) {
+      tfl_pad_values.push_back(static_cast<int32_t>(padding_value));
+    }
+    // For input feature dim.
+    tfl_pad_values.push_back(0);
+    tfl_pad_values.push_back(0);
+
+    const auto input_tensor_type =
+        input_value.getType().cast<RankedTensorType>();
+    const int64_t rank = input_tensor_type.getRank();
+
+    SmallVector<int64_t> padded_output_tensor_shape =
+        InferPaddedTensorShape(input_tensor_type.getShape(), tfl_pad_values);
+
+    auto padded_output_tensor_type = RankedTensorType::get(
+        padded_output_tensor_shape, input_tensor_type.getElementType());
+
+    // The pad values is provided as a const op.
+    auto pad_value_const_op = rewriter.create<TFL::ConstOp>(
+        loc, /*value=*/DenseIntElementsAttr::get(
+            RankedTensorType::get({rank, 2}, rewriter.getIntegerType(32)),
+            tfl_pad_values));
+
+    return rewriter.create<TFL::PadOp>(
+        loc, /*output=*/padded_output_tensor_type, input_value,
+        /*padding=*/pad_value_const_op.getResult());
+  }
+
+  // Infers the output tensor's shape after padding `tfl_pad_values` to the
+  // `tensor_shape`. `tfl_pad_values` should be formatted as `[[l_0, r_0], [l_1,
+  // r_1], ..., [l_n, r_n]]`, where `l_x` and `r_x` are the left and paddings
+  // for the x-th dimension, respectively.
+  SmallVector<int64_t> InferPaddedTensorShape(
+      const ArrayRef<int64_t> tensor_shape,
+      const ArrayRef<int32_t> tfl_pad_values) const {
+    SmallVector<int64_t> padded_shape(tensor_shape.begin(), tensor_shape.end());
+    for (int i = 0; i < padded_shape.size(); ++i) {
+      // Left padding + right padding.
+      const int32_t padded = tfl_pad_values[i * 2] + tfl_pad_values[i * 2 + 1];
+      padded_shape[i] += padded;
+    }
+
+    return padded_shape;
+  }
+
   // Transposes the filter tensor to match the filter tensor format for
   // `tfl.conv_2d`. This function performs the following index permutation
   // only: (3, 0, 1, 2). The filter value is assumed to be of `[0, 1, i, o]`
@@ -515,18 +588,12 @@ class RewriteQuantizedConvolutionOp
     return new_filter_constant_value_attr;
   }
 
-  // Returns the padding attribute used for tfl.conv_2d derived by the padding
-  // attribute of `op`.
-  // TODO: b/291599812 - Validate the values for "SAME" padding.
-  std::string GetPadding(stablehlo::ConvolutionOp op) const {
-    const DenseIntElementsAttr padding_attr = op.getPaddingAttr();
-    if (!padding_attr) {
-      return "VALID";
-    }
-    if (padding_attr.isSplat() && padding_attr.getSplatValue<int64_t>() == 0) {
-      return "VALID";
-    }
-    return "SAME";
+  // Determines if the padding attribute corresponds to "VALID"
+  // (https://www.tensorflow.org/api_docs/python/tf/nn).
+  bool IsPaddingValid(const DenseIntElementsAttr& padding_attr) const {
+    // If padding_attr is empty, it defaults to splat 0s.
+    return !padding_attr || (padding_attr.isSplat() &&
+                             padding_attr.getSplatValue<int64_t>() == 0);
   }
 
   // Returns the stride amount for the height and width, respectively.
