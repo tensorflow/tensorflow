@@ -93,9 +93,9 @@ cc_library(
     hdrs = ["path_utils.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:path",
-        "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
     ],
 )
