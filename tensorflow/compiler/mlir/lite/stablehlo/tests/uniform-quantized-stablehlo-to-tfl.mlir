@@ -189,47 +189,47 @@ func.func @convolution_strides(%arg0: tensor<1x3x3x4x!quant.uniform<i8:f32, 1.00
 
 // -----
 
-// Test full integer quantized dot_general with asymmetric quantized input
+// Test full integer quantized dot_general with asymmetric quantized input.
 
 // CHECK-LABEL: dot_general_full_integer_asym_input
 func.func @dot_general_full_integer_asym_input(%arg0: tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+0:-100>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+0>> {
   %0 = stablehlo.constant() {value = dense<1> : tensor<1x2x4x5xi8>} : () -> tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+0>>
   %1 = "stablehlo.dot_general"(%arg0, %0) {
-  dot_dimension_numbers = #stablehlo.dot<
-    lhs_batching_dimensions = [0, 1],
-    rhs_batching_dimensions = [0, 1],
-    lhs_contracting_dimensions = [3],
-    rhs_contracting_dimensions = [2]>, precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>]} : (tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+0:-100>>, tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+0>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+0>>
-
+    dot_dimension_numbers = #stablehlo.dot<
+      lhs_batching_dimensions = [0, 1],
+      rhs_batching_dimensions = [0, 1],
+      lhs_contracting_dimensions = [3],
+      rhs_contracting_dimensions = [2]>,
+      precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>]
+  } : (tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+0:-100>>, tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+0>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+0>>
   return %1 : tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+0>>
 }
 // CHECK-SAME: %[[ARG:.*]]: tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+00:-100>>
 // CHECK: %[[QCONST_0:.*]] =  "tfl.pseudo_qconst"() {qtype = tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+00>>, value = dense<1> : tensor<1x2x4x5xi8>} : () -> tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+00>>
-// CHECK: %[[BMM:.*]] = "tfl.batch_matmul"(%[[ARG]], %[[QCONST_0]]) {adj_x = false, adj_y = false, asymmetric_quantize_inputs = true} : (tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+00:-100>>, tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+00>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+00>>
+// CHECK: %[[BMM:.*]] = "tfl.batch_matmul"(%[[ARG]], %[[QCONST_0]]) {adj_x = false, adj_y = false} : (tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+00:-100>>, tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+00>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+00>>
 
 // -----
 
-// Test full integer quantized dot_general with symmetric quantized input
+// Test full integer quantized dot_general with symmetric quantized input.
 
 // CHECK-LABEL: dot_general_full_integer_sym_input
 func.func @dot_general_full_integer_sym_input(%arg0: tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+0>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+0>> {
   %0 = stablehlo.constant() {value = dense<1> : tensor<1x2x4x5xi8>} : () -> tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+0>>
   %1 = "stablehlo.dot_general"(%arg0, %0) {
-  dot_dimension_numbers = #stablehlo.dot<
-    lhs_batching_dimensions = [0, 1],
-    rhs_batching_dimensions = [0, 1],
-    lhs_contracting_dimensions = [3],
-    rhs_contracting_dimensions = [2]
-  >,
-  precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>]
-} : (tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+0>>, tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+0>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+0>>
-
+    dot_dimension_numbers = #stablehlo.dot<
+      lhs_batching_dimensions = [0, 1],
+      rhs_batching_dimensions = [0, 1],
+      lhs_contracting_dimensions = [3],
+      rhs_contracting_dimensions = [2]
+    >,
+    precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>]
+  } : (tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+0>>, tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+0>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+0>>
   return %1 : tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+0>>
 }
 
 // CHECK-SAME: %[[ARG:.*]]: tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+00>>
 // CHECK: %[[QCONST_0:.*]] =  "tfl.pseudo_qconst"()
-// CHECK: "tfl.batch_matmul"(%[[ARG]], %[[QCONST_0]]) {adj_x = false, adj_y = false, asymmetric_quantize_inputs = false}
+// CHECK: "tfl.batch_matmul"(%[[ARG]], %[[QCONST_0]]) {adj_x = false, adj_y = false}
 
 // -----
 
@@ -238,18 +238,17 @@ func.func @dot_general_full_integer_sym_input(%arg0: tensor<1x2x3x4x!quant.unifo
 // CHECK-LABEL: dot_general_full_integer_activation_rhs
 func.func @dot_general_full_integer_activation_rhs(%arg0: tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+0>>, %arg1: tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+0>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+0>> {
   %0 = "stablehlo.dot_general"(%arg0, %arg1) {
-  dot_dimension_numbers = #stablehlo.dot<
-    lhs_batching_dimensions = [0, 1],
-    rhs_batching_dimensions = [0, 1],
-    lhs_contracting_dimensions = [3],
-    rhs_contracting_dimensions = [2]
-  >,
-  precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>]
-} : (tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+0>>, tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+0>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+0>>
-
+    dot_dimension_numbers = #stablehlo.dot<
+      lhs_batching_dimensions = [0, 1],
+      rhs_batching_dimensions = [0, 1],
+      lhs_contracting_dimensions = [3],
+      rhs_contracting_dimensions = [2]
+    >,
+    precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>]
+  } : (tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+0>>, tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+0>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+0>>
   return %0 : tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+0>>
 }
-// CHECK: "tfl.batch_matmul"(%arg0, %arg1) {adj_x = false, adj_y = false, asymmetric_quantize_inputs = false} : (tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+00>>, tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+00>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+00>>
+// CHECK: "tfl.batch_matmul"(%arg0, %arg1) {adj_x = false, adj_y = false} : (tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+00>>, tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+00>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+00>>
 
 // -----
 
@@ -259,22 +258,21 @@ func.func @dot_general_full_integer_activation_rhs(%arg0: tensor<1x2x3x4x!quant.
 func.func @dot_general_full_integer_adj_x(%arg0: tensor<1x2x4x3x!quant.uniform<i8:f32, 1.000000e+0>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+0>> {
   %0 = stablehlo.constant() {value = dense<1> : tensor<1x2x4x5xi8>} : () -> tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+0>>
   %1 = "stablehlo.dot_general"(%arg0, %0) {
-  dot_dimension_numbers = #stablehlo.dot<
-    lhs_batching_dimensions = [0, 1],
-    rhs_batching_dimensions = [0, 1],
-    // implicit transpose of lhs
-    lhs_contracting_dimensions = [2],
-    rhs_contracting_dimensions = [2]
-  >,
-  precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>]
-} : (tensor<1x2x4x3x!quant.uniform<i8:f32, 1.000000e+0>>, tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+0>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+0>>
-
+    dot_dimension_numbers = #stablehlo.dot<
+      lhs_batching_dimensions = [0, 1],
+      rhs_batching_dimensions = [0, 1],
+      // implicit transpose of lhs
+      lhs_contracting_dimensions = [2],
+      rhs_contracting_dimensions = [2]
+    >,
+    precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>]
+  } : (tensor<1x2x4x3x!quant.uniform<i8:f32, 1.000000e+0>>, tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+0>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+0>>
   return %1 : tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+0>>
 }
 
 // CHECK-SAME: %[[ARG:.*]]: tensor<1x2x4x3x!quant.uniform<i8:f32, 1.000000e+00>>
 // CHECK: %[[QCONST_0:.*]] =  "tfl.pseudo_qconst"() {qtype = tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+00>>, value = dense<1> : tensor<1x2x4x5xi8>} : () -> tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+00>>
-// CHECK: "tfl.batch_matmul"(%[[ARG]], %[[QCONST_0]]) {adj_x = true, adj_y = false, asymmetric_quantize_inputs = false}
+// CHECK: "tfl.batch_matmul"(%[[ARG]], %[[QCONST_0]]) {adj_x = true, adj_y = false}
 
 // -----
 
@@ -284,22 +282,21 @@ func.func @dot_general_full_integer_adj_x(%arg0: tensor<1x2x4x3x!quant.uniform<i
 func.func @dot_general_full_integer_adj_y(%arg0: tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+0>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+0>> {
   %0 = stablehlo.constant() {value = dense<1> : tensor<1x2x5x4xi8>} : () -> tensor<1x2x5x4x!quant.uniform<i8:f32, 1.000000e+0>>
   %1 = "stablehlo.dot_general"(%arg0, %0) {
-  dot_dimension_numbers = #stablehlo.dot<
-    lhs_batching_dimensions = [0, 1],
-    rhs_batching_dimensions = [0, 1],
-    lhs_contracting_dimensions = [3],
-    // implicit transpose of rhs
-    rhs_contracting_dimensions = [3]
-  >,
-  precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>]
-} : (tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+0>>, tensor<1x2x5x4x!quant.uniform<i8:f32, 1.000000e+0>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+0>>
-
+    dot_dimension_numbers = #stablehlo.dot<
+      lhs_batching_dimensions = [0, 1],
+      rhs_batching_dimensions = [0, 1],
+      lhs_contracting_dimensions = [3],
+      // implicit transpose of rhs
+      rhs_contracting_dimensions = [3]
+    >,
+    precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>]
+  } : (tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+0>>, tensor<1x2x5x4x!quant.uniform<i8:f32, 1.000000e+0>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+0>>
   return %1 : tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+0>>
 }
 
 // CHECK-SAME: %[[ARG:.*]]: tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+00>>
 // CHECK: %[[QCONST_0:.*]] =  "tfl.pseudo_qconst"() {qtype = tensor<1x2x5x4x!quant.uniform<i8:f32, 1.000000e+00>>, value = dense<1> : tensor<1x2x5x4xi8>} : () -> tensor<1x2x5x4x!quant.uniform<i8:f32, 1.000000e+00>>
-// CHECK: "tfl.batch_matmul"(%[[ARG]], %[[QCONST_0]]) {adj_x = false, adj_y = true, asymmetric_quantize_inputs = false}
+// CHECK: "tfl.batch_matmul"(%[[ARG]], %[[QCONST_0]]) {adj_x = false, adj_y = true}
 
 // -----
 
@@ -309,15 +306,14 @@ func.func @dot_general_full_integer_adj_y(%arg0: tensor<1x2x3x4x!quant.uniform<i
 func.func @dot_general_full_integer_too_many_batches(%arg0: tensor<1x1x1x2x3x4x!quant.uniform<i8:f32, 1.000000e+0>>) -> tensor<1x1x1x2x3x5x!quant.uniform<i8:f32, 4.000000e+0>> {
   %0 = stablehlo.constant() {value = dense<1> : tensor<1x1x1x2x4x5xi8>} : () -> tensor<1x1x1x2x4x5x!quant.uniform<i8:f32, 1.000000e+0>>
   %1 = "stablehlo.dot_general"(%arg0, %0) {
-  dot_dimension_numbers = #stablehlo.dot<
-    lhs_batching_dimensions = [0, 1, 2, 3],
-    rhs_batching_dimensions = [0, 1, 2, 3],
-    lhs_contracting_dimensions = [5],
-    rhs_contracting_dimensions = [4]
-  >,
-  precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>]
-} : (tensor<1x1x1x2x3x4x!quant.uniform<i8:f32, 1.000000e+0>>, tensor<1x1x1x2x4x5x!quant.uniform<i8:f32, 1.000000e+0>>) -> tensor<1x1x1x2x3x5x!quant.uniform<i8:f32, 4.000000e+0>>
-
+    dot_dimension_numbers = #stablehlo.dot<
+      lhs_batching_dimensions = [0, 1, 2, 3],
+      rhs_batching_dimensions = [0, 1, 2, 3],
+      lhs_contracting_dimensions = [5],
+      rhs_contracting_dimensions = [4]
+    >,
+    precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>]
+  } : (tensor<1x1x1x2x3x4x!quant.uniform<i8:f32, 1.000000e+0>>, tensor<1x1x1x2x4x5x!quant.uniform<i8:f32, 1.000000e+0>>) -> tensor<1x1x1x2x3x5x!quant.uniform<i8:f32, 4.000000e+0>>
   return %1 : tensor<1x1x1x2x3x5x!quant.uniform<i8:f32, 4.000000e+0>>
 }
 // Only support size(batching_dimensions) <= 3
@@ -332,15 +328,14 @@ func.func @dot_general_full_integer_too_many_batches(%arg0: tensor<1x1x1x2x3x4x!
 func.func @dot_general_full_integer_too_many_contractions(%arg0: tensor<1x2x3x4x4x!quant.uniform<i8:f32, 1.000000e+0>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+0>> {
   %0 = stablehlo.constant() {value = dense<1> : tensor<1x2x4x4x5xi8>} : () -> tensor<1x2x4x4x5x!quant.uniform<i8:f32, 1.000000e+0>>
   %1 = "stablehlo.dot_general"(%arg0, %0) {
-  dot_dimension_numbers = #stablehlo.dot<
-    lhs_batching_dimensions = [0, 1],
-    rhs_batching_dimensions = [0, 1],
-    lhs_contracting_dimensions = [3, 4],
-    rhs_contracting_dimensions = [2, 3]
-  >,
-  precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>]
-} : (tensor<1x2x3x4x4x!quant.uniform<i8:f32, 1.000000e+0>>, tensor<1x2x4x4x5x!quant.uniform<i8:f32, 1.000000e+0>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+0>>
-
+    dot_dimension_numbers = #stablehlo.dot<
+      lhs_batching_dimensions = [0, 1],
+      rhs_batching_dimensions = [0, 1],
+      lhs_contracting_dimensions = [3, 4],
+      rhs_contracting_dimensions = [2, 3]
+    >,
+    precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>]
+  } : (tensor<1x2x3x4x4x!quant.uniform<i8:f32, 1.000000e+0>>, tensor<1x2x4x4x5x!quant.uniform<i8:f32, 1.000000e+0>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+0>>
   return %1 : tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+0>>
 }
 // Only support size(contracting_dimensions) == 1
@@ -355,15 +350,14 @@ func.func @dot_general_full_integer_too_many_contractions(%arg0: tensor<1x2x3x4x
 func.func @dot_general_full_integer_wrong_contracting(%arg0: tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+0>>) -> tensor<1x4x3x5x!quant.uniform<i8:f32, 4.000000e+0>> {
   %0 = stablehlo.constant() {value = dense<1> : tensor<1x2x4x5xi8>} : () -> tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+0>>
   %1 = "stablehlo.dot_general"(%arg0, %0) {
-  dot_dimension_numbers = #stablehlo.dot<
-    lhs_batching_dimensions = [0, 3],
-    rhs_batching_dimensions = [0, 2],
-    lhs_contracting_dimensions = [1],
-    rhs_contracting_dimensions = [1]
-  >,
-  precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>]
-} : (tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+0>>, tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+0>>) -> tensor<1x4x3x5x!quant.uniform<i8:f32, 4.000000e+0>>
-
+    dot_dimension_numbers = #stablehlo.dot<
+      lhs_batching_dimensions = [0, 3],
+      rhs_batching_dimensions = [0, 2],
+      lhs_contracting_dimensions = [1],
+      rhs_contracting_dimensions = [1]
+    >,
+    precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>]
+  } : (tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+0>>, tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+0>>) -> tensor<1x4x3x5x!quant.uniform<i8:f32, 4.000000e+0>>
   return %1 : tensor<1x4x3x5x!quant.uniform<i8:f32, 4.000000e+0>>
 }
 
@@ -378,15 +372,14 @@ func.func @dot_general_full_integer_wrong_contracting(%arg0: tensor<1x2x3x4x!qua
 // CHECK-LABEL: dot_general_full_integer_float_operands
 func.func @dot_general_full_integer_float_operands(%arg0: tensor<1x2x3x4xf32>, %arg1: tensor<1x2x4x5xf32>) -> tensor<1x2x3x5xf32> {
   %0 = "stablehlo.dot_general"(%arg0, %arg1) {
-  dot_dimension_numbers = #stablehlo.dot<
-    lhs_batching_dimensions = [0, 1],
-    rhs_batching_dimensions = [0, 1],
-    lhs_contracting_dimensions = [3],
-    rhs_contracting_dimensions = [2]
-  >,
-  precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>]
-} : (tensor<1x2x3x4xf32>, tensor<1x2x4x5xf32>) -> tensor<1x2x3x5xf32>
-
+    dot_dimension_numbers = #stablehlo.dot<
+      lhs_batching_dimensions = [0, 1],
+      rhs_batching_dimensions = [0, 1],
+      lhs_contracting_dimensions = [3],
+      rhs_contracting_dimensions = [2]
+    >,
+    precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>]
+  } : (tensor<1x2x3x4xf32>, tensor<1x2x4x5xf32>) -> tensor<1x2x3x5xf32>
   return %0 : tensor<1x2x3x5xf32>
 }
 // Do nothing for float operands
@@ -405,4 +398,4 @@ func.func @dot_general_full_integer_asym_weight(%arg0: tensor<1x2x3x4x!quant.uni
 }
 // CHECK-SAME: %[[ARG:.*]]: tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+00:-100>>
 // CHECK: %[[QCONST_0:.*]] =  "tfl.pseudo_qconst"() {qtype = tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+00:5>>, value = dense<1> : tensor<1x2x4x5xi8>} : () -> tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+00:5>>
-// CHECK: %[[BMM:.*]] = "tfl.batch_matmul"(%[[ARG]], %[[QCONST_0]]) {adj_x = false, adj_y = false, asymmetric_quantize_inputs = true} : (tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+00:-100>>, tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+00:5>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+00>>
+// CHECK: %[[BMM:.*]] = "tfl.batch_matmul"(%[[ARG]], %[[QCONST_0]]) {adj_x = false, adj_y = false} : (tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+00:-100>>, tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+00:5>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+00>>

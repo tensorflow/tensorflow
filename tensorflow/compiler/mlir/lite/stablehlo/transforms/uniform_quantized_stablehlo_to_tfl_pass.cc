@@ -702,21 +702,17 @@ class RewriteFullIntegerQuantizedDotGeneralOp
     BoolAttr adj_y =
         (rhs_contracting_dim == rhs_rank - 1 ? rewriter.getBoolAttr(true)
                                              : rewriter.getBoolAttr(false));
-    auto input_uniform_quantized_type = input_value.getType()
-                                            .cast<TensorType>()
-                                            .getElementType()
-                                            .cast<UniformQuantizedType>();
-    BoolAttr asym_quantized_input =
-        input_uniform_quantized_type.getZeroPoint() != 0
-            ? rewriter.getBoolAttr(true)
-            : rewriter.getBoolAttr(false);
-    // Create BMM assume rhs is activation
-    auto tfl_batchmatmul_op = rewriter.create<TFL::BatchMatMulOp>(
-        op.getLoc(), /*output=*/op.getResult().getType(),
-        /*input=*/input_value,
-        /*filter=*/rhs_value, adj_x, adj_y, asym_quantized_input);
 
-    // update BMM if rhs is a constant
+    // Set to `nullptr` because this attribute only matters when the input is
+    // dynamic-range quantized.
+    BoolAttr asymmetric_quantize_inputs = nullptr;
+
+    // Create BMM assuming rhs is activation.
+    auto tfl_batchmatmul_op = rewriter.create<TFL::BatchMatMulOp>(
+        op.getLoc(), /*output=*/op.getResult().getType(), /*input=*/input_value,
+        /*filter=*/rhs_value, adj_x, adj_y, asymmetric_quantize_inputs);
+
+    // Update BMM if rhs is a constant.
     auto const_rhs = dyn_cast_or_null<stablehlo::ConstantOp>(rhs_op);
     if (const_rhs) {
       auto rhs_uniform_quantized_type = rhs_value.getType().cast<ShapedType>();
@@ -728,9 +724,8 @@ class RewriteFullIntegerQuantizedDotGeneralOp
           rhs_constant_value_attr);
       tfl_batchmatmul_op = rewriter.create<TFL::BatchMatMulOp>(
           op.getLoc(), /*output=*/op.getResult().getType(),
-          /*input=*/input_value,
-          /*filter=*/rhs_constant_op.getResult(), adj_x, adj_y,
-          asym_quantized_input);
+          /*input=*/input_value, /*filter=*/rhs_constant_op.getResult(), adj_x,
+          adj_y, asymmetric_quantize_inputs);
     }
 
     rewriter.replaceAllUsesWith(op.getResult(), tfl_batchmatmul_op.getResult());
