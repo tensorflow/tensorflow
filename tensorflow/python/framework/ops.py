@@ -257,7 +257,7 @@ class SymbolicTensor(pywrap_tf_session.PyTensor, tensor_lib.Tensor):
 
 def _create_graph_constant(
     value, dtype, shape, name, verify_shape, allow_broadcast
-):
+) -> "Operation":
   """Create a graph constant and invoke constant callbacks."""
   g = get_default_graph()
   tensor_value = attr_value_pb2.AttrValue()
@@ -2605,7 +2605,7 @@ class Graph(pywrap_tf_session.PyGraph):
       name=None,
       attrs=None,
       op_def=None,
-      compute_device=True):
+      compute_device=True) -> "Operation":
     """Creates an `Operation` in this graph.
 
     Implements `Graph.create_op()` without the overhead of the deprecation
