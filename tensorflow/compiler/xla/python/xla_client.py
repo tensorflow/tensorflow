@@ -115,11 +115,6 @@ def make_tfrt_tpu_c_api_device_topology(
     topology_name: str = '', **kwargs
 ) -> DeviceTopology:
   """Creates a PJRT C API TopologyDescription."""
-
-  if not _use_pjrt_c_api():
-    raise NotImplementedError(
-        'make_tfrt_tpu_c_api_device_topology only works with the pjrt c-api.'
-    )
   return _xla.get_default_c_api_topology('tpu', topology_name, dict(**kwargs))
 
 
@@ -154,33 +149,12 @@ def make_c_api_client(
   return _xla.get_c_api_client(plugin_name, options, distributed_client)
 
 
-def _use_pjrt_c_api() -> bool:
-  use_pjrt_c_api = os.getenv('JAX_USE_PJRT_C_API_ON_TPU', 'false')
-  if use_pjrt_c_api not in ('1', '0', 'true', 'false'):
-    raise ValueError(
-        'JAX_USE_PJRT_C_API_ON_TPU env var must be "0", "1", "true" or '
-        f'"false", got "{use_pjrt_c_api}"')
-  return use_pjrt_c_api in ('1', 'true')
-
-
-def make_tpu_client(use_pjrt_c_api: bool = False):
+def make_tpu_client():
   """Returns a TPU client. Defaults to allowing 32 in-flight computations."""
-  if use_pjrt_c_api or _use_pjrt_c_api():
-    if not pjrt_plugin_loaded('tpu'):
-      library_path = os.getenv('TPU_LIBRARY_PATH', 'libtpu.so')
-      load_pjrt_plugin_dynamically('tpu', library_path)
-    return make_tfrt_tpu_c_api_client()
-
-  max_inflight_computations = os.getenv(
-      'JAX_TPU_MAX_INFLIGHT_COMPUTATIONS', '32')
-  try:
-    max_inflight_computations = int(max_inflight_computations)
-  except ValueError as e:
-    raise ValueError(
-        f'JAX_TPU_MAX_INFLIGHT_COMPUTATIONS env var must be an int, '
-        f'got {max_inflight_computations}') from e
-  return _xla.get_tpu_client(
-      max_inflight_computations=max_inflight_computations)
+  if not pjrt_plugin_loaded('tpu'):
+    library_path = os.getenv('TPU_LIBRARY_PATH', 'libtpu.so')
+    load_pjrt_plugin_dynamically('tpu', library_path)
+  return make_tfrt_tpu_c_api_client()
 
 
 class OpMetadata:

@@ -525,19 +525,6 @@ PYBIND11_MODULE(xla_extension, m) {
       py::arg("platform_name") = std::nullopt);
 #endif  // XLA_PYTHON_ENABLE_GPU
 
-#ifdef XLA_PYTHON_ENABLE_TPU
-  m.def(
-      "get_tpu_client",
-      [](int max_inflight_computations) -> std::shared_ptr<PyClient> {
-        py::gil_scoped_release gil_release;
-        std::shared_ptr<PjRtClient> client =
-            xla::ValueOrThrow(GetTpuClient(max_inflight_computations));
-        return std::make_shared<PyClient>(
-            ifrt::PjRtClient::Create(std::move(client)));
-      },
-      py::arg("max_inflight_computations") = 32);
-#endif  // XLA_PYTHON_ENABLE_TPU
-
   m.def(
       "get_c_api_client",
       [](std::string platform_name,
