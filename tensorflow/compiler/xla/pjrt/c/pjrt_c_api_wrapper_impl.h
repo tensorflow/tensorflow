@@ -83,6 +83,11 @@ struct PJRT_Executable {
   std::vector<std::string> cost_analysis_names;
   std::vector<PJRT_NamedValue> cost_analysis_properties;
 
+  mutable absl::Mutex memory_kind_mutex;
+  bool memory_kind_ran ABSL_GUARDED_BY(memory_kind_mutex) = false;
+  std::vector<const char*> memory_kinds;
+  std::vector<size_t> memory_kind_sizes;
+
   explicit PJRT_Executable(std::shared_ptr<xla::PjRtExecutable> executable);
 
   const xla::PjRtExecutable* get() const { return executable.get(); }
@@ -218,6 +223,8 @@ PJRT_Error* PJRT_Executable_SizeOfGeneratedCodeInBytes(
     PJRT_Executable_SizeOfGeneratedCodeInBytes_Args* args);
 PJRT_Error* PJRT_Executable_GetCostAnalysis(
     PJRT_Executable_GetCostAnalysis_Args* args);
+PJRT_Error* PJRT_Executable_OutputMemoryKinds(
+    PJRT_Executable_OutputMemoryKinds_Args* args);
 PJRT_Error* PJRT_Executable_OptimizedProgram(
     PJRT_Executable_OptimizedProgram_Args* args);
 PJRT_Error* PJRT_Executable_Serialize(PJRT_Executable_Serialize_Args* args);
@@ -416,6 +423,8 @@ constexpr PJRT_Api CreatePjrtApi(
       /*PJRT_Executable_SizeOfGeneratedCodeInBytes=*/
       pjrt::PJRT_Executable_SizeOfGeneratedCodeInBytes,
       /*PJRT_Executable_GetCostAnalysis=*/pjrt::PJRT_Executable_GetCostAnalysis,
+      /*PJRT_Executable_OutputMemoryKinds=*/
+      pjrt::PJRT_Executable_OutputMemoryKinds,
       /*PJRT_Executable_OptimizedProgram=*/
       pjrt::PJRT_Executable_OptimizedProgram,
       /*PJRT_Executable_Serialize=*/pjrt::PJRT_Executable_Serialize,

@@ -123,6 +123,39 @@ static xla::Status PopulateExecutableCostAnalysisIfNeeded(
   return xla::OkStatus();
 }
 
+static xla::Status PopulateExecutableOutputMemoryKindsIfNeeded(
+    PJRT_Executable* executable) {
+  absl::MutexLock lock(&executable->memory_kind_mutex);
+  if (!executable->memory_kind_ran) {
+    TF_ASSIGN_OR_RETURN(
+        std::vector<std::vector<absl::string_view>> output_memories,
+        executable->get()->GetOutputMemoryKinds());
+    if (output_memories.empty()) {
+      return xla::InvalidArgument(
+          "Can't get output memory kinds, the list is empty for executable %s.",
+          executable->get()->name());
+    }
+    if (output_memories.size() != 1) {
+      return xla::Unimplemented(
+          "MPMD execution not supported by PJRT C API (in "
+          "function PJRT_Executable_GetOutputMemoryKinds).");
+    }
+
+    std::vector<absl::string_view>& inner_output_memories = output_memories[0];
+    std::vector<const char*>& memory_kinds = executable->memory_kinds;
+    std::vector<size_t>& memory_kind_sizes = executable->memory_kind_sizes;
+    memory_kinds.reserve(inner_output_memories.size());
+    memory_kind_sizes.reserve(inner_output_memories.size());
+    for (absl::string_view memory : inner_output_memories) {
+      memory_kinds.push_back(memory.data());
+      memory_kind_sizes.push_back(memory.size());
+    }
+
+    executable->memory_kind_ran = true;
+  }
+  return xla::OkStatus();
+}
+
 xla::PjRtClient::KeyValueGetCallback ToCppKeyValueGetCallback(
     PJRT_KeyValueGetCallback c_callback, void* user_arg) {
   if (c_callback == nullptr) {
@@ -928,6 +961,19 @@ PJRT_Error* PJRT_Executable_GetCostAnalysis(
   } else {
     args->properties = nullptr;
   }
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Executable_OutputMemoryKinds(
+    PJRT_Executable_OutputMemoryKinds_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Executable_OutputMemoryKinds_Args",
+      PJRT_Executable_OutputMemoryKinds_Args_STRUCT_SIZE, args->struct_size));
+  PJRT_RETURN_IF_ERROR(
+      PopulateExecutableOutputMemoryKindsIfNeeded(args->executable));
+  args->num_outputs = args->executable->memory_kinds.size();
+  args->memory_kinds = args->executable->memory_kinds.data();
+  args->memory_kind_sizes = args->executable->memory_kind_sizes.data();
   return nullptr;
 }
 

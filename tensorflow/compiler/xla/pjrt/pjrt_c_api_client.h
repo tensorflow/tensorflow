@@ -428,9 +428,7 @@ class PjRtCApiExecutable : public PjRtExecutable {
       const override;
 
   StatusOr<std::vector<std::vector<absl::string_view>>> GetOutputMemoryKinds()
-      const override {
-    return Unimplemented("PJRT C API does not support GetOutputMemoryKinds");
-  }
+      const override;
 
   const PJRT_Api* pjrt_c_api() const { return c_api_; }
   PJRT_Executable* c_executable() const { return executable_.get(); }
