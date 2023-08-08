@@ -97,9 +97,9 @@ TF_CAPI_EXPORT extern void TF_TemporaryVariable(
 // Expose higher level temporary variable operator for Pluggable vendors to
 // implement in the plugin for destroying temporary variables. The API takes in
 // the context with indices for the input and variable name. This function will
-// return an error when the following conditions are met:
+// return an error when either of the following conditions is met:
 //   1. `input data type` is not ref type
-//   2. Cannot find temporary variable by name in auguments
+//   2. Cannot find temporary variable by name in arguments
 TF_CAPI_EXPORT extern void TF_DestroyTemporaryVariable(TF_OpKernelContext* ctx,
                                                        const int index,
                                                        TF_StringView* var_name,
