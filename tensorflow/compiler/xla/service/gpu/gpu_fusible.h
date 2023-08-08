@@ -186,16 +186,19 @@ bool HasAnyTiledTransposeRoot(const HloComputation& computation);
 // Returns whether the computation has at least one root triggering unnested
 // reduction emitter.
 bool HasAnyUnnestedReductionRoot(const HloComputation& computation);
+bool HasAnyUnnestedReductionRoot(
+    const std::vector<HloInstruction*>& fusion_roots);
 
-// Finds the first real reduction hero for the fusion.
-const HloInstruction* FindFirstRealReductionHero(const HloComputation& cmp);
+// Finds the first real reduction hero for the fusion roots.
+const HloInstruction* FindFirstRealReductionHero(
+    const std::vector<HloInstruction*>& fusion_roots);
 // Find the real reduction hero for the given instruction in a fusion.
 const HloInstruction* FindRealReductionHero(const HloInstruction* hlo);
 
-// Whether there exists a real reduction hero for the computation.
-bool HasFirstRealReductionHero(const HloComputation& cmp);
-// Whether there exists a real reduction hero for the instruction.
+// Whether there exists a real reduction hero for the instruction or a set of
+// roots.
 bool HasRealReductionHero(const HloInstruction* hlo);
+bool HasRealReductionHero(const std::vector<HloInstruction*>& fusion_roots);
 
 }  // namespace gpu
 }  // namespace xla
