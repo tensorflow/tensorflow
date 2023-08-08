@@ -536,6 +536,8 @@ ResourceVariable.assign_add = weak_tensor_binary_op_wrapper(
 ResourceVariable.assign_sub = weak_tensor_binary_op_wrapper(
     ResourceVariable.assign_sub, special_handling="variable_method"
 )
+ops.convert_to_tensor_or_composite = weak_tensor_unary_op_wrapper(
+    ops.convert_to_tensor_or_composite)
 
 # Patching tf.constant does the following.
 # (1) If dtype arg is not specified and the input is a Python nested type,

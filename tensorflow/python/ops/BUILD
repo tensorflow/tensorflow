@@ -4507,6 +4507,7 @@ py_strict_test(
         ":math_ops_gen",
         ":weak_tensor_ops",
         ":weak_tensor_test_util",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:extension_type",
