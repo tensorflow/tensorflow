@@ -215,27 +215,6 @@ cc_library(
 )
 
 cc_library(
-    name = "saved_model_mira_impl",
-    srcs = ["saved_model_mira_impl.cc"],
-    hdrs = ["saved_model_mira_impl.h"],
-    deps = [
-        ":saved_model",
-    ] + if_google([
-        "@com_google_absl//absl/status:statusor",
-        "//learning/infra/mira/tfrt:tfrt_executable",
-        "//learning/infra/mira/tfrt:tfrt_module",
-        "//third_party/mira/mlarchive:status_macro",
-        "//third_party/mira/mlvalue:value",
-        "//third_party/mira/runtime:module",
-        "//third_party/mira/runtime:vm",
-        "//third_party/mira/runtime:vm_session",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/core/platform:status",
-        "//tensorflow/core/tfrt/runtime",
-    ]),
-)
-
-cc_library(
     name = "saved_model_util",
     srcs = ["saved_model_util.cc"],
     hdrs = ["saved_model_util.h"],
