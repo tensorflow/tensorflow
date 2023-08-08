@@ -159,7 +159,6 @@ namespace xla {
 namespace gpu {
 namespace {
 
-
 // Fusion root -> array of indexes, one per reduction output.
 using ReductionOutputMap =
     ConstHloInstructionMap<absl::Span<llvm_ir::IrArray const>>;
@@ -1855,10 +1854,12 @@ Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
                           ir_emitter_context_->cuda_compute_capability()));
 
   auto emitter = GetFusionEmitter(fusion_analysis, *ir_emitter_context_,
-                                  elemental_emitter_, fusion_op, fusion);
+                                  fusion_op, fusion);
   if (emitter != std::nullopt) {
-    TF_ASSIGN_OR_RETURN(auto emission_result,
-                        (*emitter)->Emit(kernel_reuse_cache_, &b_));
+    TF_ASSIGN_OR_RETURN(
+        auto emission_result,
+        (*emitter)->Emit(*ir_emitter_context_, elemental_emitter_, fusion_op,
+                         fusion, kernel_reuse_cache_, &b_));
     for (auto& thunk : emission_result.thunks) {
       AddThunkToThunkSequence(std::move(thunk));
     }

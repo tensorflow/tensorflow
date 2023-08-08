@@ -32,8 +32,7 @@ namespace gpu {
 // type is not yet supported.
 std::optional<std::unique_ptr<FusionInterface>> GetFusionEmitter(
     HloFusionAnalysis& analysis, IrEmitterContext& ir_emitter_context,
-    ElementalIrEmitter& elemental_emitter, mlir::lmhlo::FusionOp fusion_op,
-    const HloFusionInstruction& fusion);
+    mlir::lmhlo::FusionOp fusion_op, const HloFusionInstruction& fusion);
 
 }  // namespace gpu
 }  // namespace xla

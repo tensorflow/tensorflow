@@ -49,18 +49,15 @@ bool IsSingleInstructionFusion(mlir::lmhlo::FusionOp fusion) {
 
 std::optional<std::unique_ptr<FusionInterface>> GetFusionEmitter(
     HloFusionAnalysis& analysis, IrEmitterContext& ir_emitter_context,
-    ElementalIrEmitter& elemental_emitter, mlir::lmhlo::FusionOp fusion_op,
-    const HloFusionInstruction& fusion) {
+    mlir::lmhlo::FusionOp fusion_op, const HloFusionInstruction& fusion) {
   switch (analysis.GetEmitterFusionKind()) {
     case HloFusionAnalysis::EmitterFusionKind::kInputSlices:
-      return std::make_unique<InputSlicesFusion>(
-          ir_emitter_context, elemental_emitter, fusion_op, fusion, analysis);
+      return std::make_unique<InputSlicesFusion>(analysis);
     case HloFusionAnalysis::EmitterFusionKind::kLoop: {
       bool is_single = IsSingleInstructionFusion(fusion_op);
       if (!is_single && CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
                             fusion_op, ir_emitter_context.allocations())) {
-        return std::make_unique<InPlaceDynamicUpdateSliceEmitter>(
-            ir_emitter_context, elemental_emitter, fusion_op, fusion, analysis);
+        return std::make_unique<InPlaceDynamicUpdateSliceEmitter>(analysis);
       }
       if (is_single &&
           fusion.fused_expression_root()->opcode() == HloOpcode::kCopy) {
@@ -71,19 +68,15 @@ std::optional<std::unique_ptr<FusionInterface>> GetFusionEmitter(
         if (LayoutUtil::Equal(operand_shape.layout(), output_shape.layout()) &&
             GetAllocationSlice(operand, ir_emitter_context.allocations())
                 .ok()) {
-          return std::make_unique<MemcpyFusion>(ir_emitter_context, fusion_op,
-                                                operand, output);
+          return std::make_unique<MemcpyFusion>(operand, output);
         }
       }
-      return std::make_unique<LoopFusion>(ir_emitter_context, elemental_emitter,
-                                          fusion_op, fusion, analysis);
+      return std::make_unique<LoopFusion>(analysis);
     }
     case HloFusionAnalysis::EmitterFusionKind::kReduction:
-      return std::make_unique<ReductionFusion>(
-          ir_emitter_context, elemental_emitter, fusion_op, fusion, analysis);
+      return std::make_unique<ReductionFusion>(analysis);
     case HloFusionAnalysis::EmitterFusionKind::kTranspose:
-      return std::make_unique<TransposeFusion>(
-          ir_emitter_context, elemental_emitter, fusion_op, fusion, analysis);
+      return std::make_unique<TransposeFusion>(analysis);
     default:
       break;
   }

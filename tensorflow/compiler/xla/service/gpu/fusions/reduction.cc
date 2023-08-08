@@ -966,6 +966,8 @@ Status EmitIRForReduction(llvm::IRBuilder<>* builder,
 }  // namespace
 
 StatusOr<FusionEmissionResult> ReductionFusion::Emit(
+    IrEmitterContext& ir_emitter_context, ElementalIrEmitter& elemental_emitter,
+    mlir::lmhlo::FusionOp fusion_op, const HloFusionInstruction& fusion,
     KernelReuseCache& kernel_cache, llvm::IRBuilder<>* builder) const {
   auto* reduction_codegen_info = analysis_.GetReductionCodegenInfo();
   // Set `use_experimental_block_size` flag to false since the reduction code
@@ -976,7 +978,7 @@ StatusOr<FusionEmissionResult> ReductionFusion::Emit(
 
   FusionEmissionResult result;
   VLOG(3) << "Launch dimensions of "
-          << mlir::mhlo::GetDebugNameFromLocation(fusion_op().getLoc()) << ": "
+          << mlir::mhlo::GetDebugNameFromLocation(fusion_op.getLoc()) << ": "
           << launch_dimensions.ToString();
   if (!reduction_codegen_info->IsRaceFree()) {
     absl::Span<HloInstruction* const> fusion_roots = analysis_.fusion_roots();
@@ -984,15 +986,15 @@ StatusOr<FusionEmissionResult> ReductionFusion::Emit(
       if (HasRealReductionHero(fusion_roots[i])) {
         TF_ASSIGN_OR_RETURN(result.thunks.emplace_back(),
                             BuildFusedInitializerThunk(
-                                ir_emitter_context_, fusion_op(), analysis_,
-                                elemental_emitter_, kernel_cache, i, builder));
+                                ir_emitter_context, fusion_op, analysis_,
+                                elemental_emitter, kernel_cache, i, builder));
       }
     }
   }
 
   auto builder_fn = [&, this](std::vector<llvm_ir::IrArray> inputs,
                               std::vector<llvm_ir::IrArray> outputs) -> Status {
-    FusedIrEmitter fused_emitter(elemental_emitter_);
+    FusedIrEmitter fused_emitter(elemental_emitter);
     const HloComputation* fused_computation = analysis_.fused_computation();
     for (int i = 0; i < fused_computation->num_parameters(); i++) {
       HloInstruction* fused_operand =
@@ -1035,10 +1037,10 @@ StatusOr<FusionEmissionResult> ReductionFusion::Emit(
       TF_RETURN_IF_ERROR(ksl.IfWithStatus(
           absl::StrCat("reduce-group-", i),
           builder->CreateICmpEQ(raw_block_id_y, builder->getInt32(i)), [&] {
-            return EmitIRForReduction(builder, ir_emitter_context_, fusion_op(),
+            return EmitIRForReduction(builder, ir_emitter_context, fusion_op,
                                       instr_index_groups[i], fused_emitter,
                                       result_ir_arrays, *reduction_codegen_info,
-                                      reduce_operand_shape, elemental_emitter_);
+                                      reduce_operand_shape, elemental_emitter);
           }));
     }
 
@@ -1047,7 +1049,7 @@ StatusOr<FusionEmissionResult> ReductionFusion::Emit(
 
   TF_ASSIGN_OR_RETURN(
       result.thunks.emplace_back(),
-      BuildKernelThunkForFusion(ir_emitter_context_, kernel_cache, fusion_op(),
+      BuildKernelThunkForFusion(ir_emitter_context, kernel_cache, fusion_op,
                                 analysis_.fused_computation(),
                                 launch_dimensions, "", builder_fn, builder));
   return result;
