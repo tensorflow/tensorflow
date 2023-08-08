@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/functional/any_invocable.h"
+#include "absl/status/status.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/core/framework/function.pb.h"
 
