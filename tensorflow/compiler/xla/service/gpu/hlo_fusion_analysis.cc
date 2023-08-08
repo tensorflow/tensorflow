@@ -51,21 +51,24 @@ const auto kDimX = TilingScheme::DimX;
 const auto kLinearIndexingX = TilingScheme::LinearIndexingX;
 const auto kStridedIndexingX = TilingScheme::StridedIndexingX;
 
-// Returns true if the fusion output contains non-strided slices only.
-bool IsInputFusibleNonStridedSlices(const HloInstruction* root) {
-  if (root->opcode() == HloOpcode::kTuple) {
-    return absl::c_all_of(root->operands(), IsInputFusibleNonStridedSlices);
-  }
-  auto slice = DynCast<HloSliceInstruction>(root);
+// Returns true if `instr` is a non-strided slice.
+bool IsSliceWithUnitStrides(const HloInstruction* instr) {
+  auto slice = DynCast<HloSliceInstruction>(instr);
   return slice && absl::c_all_of(slice->slice_strides(),
                                  [](int64_t stride) { return stride == 1; });
 }
 
+// Returns true if the fusion output contains non-strided slices only.
+bool IsInputFusibleNonStridedSlices(
+    const std::vector<HloInstruction*>& fusion_roots) {
+  return absl::c_all_of(fusion_roots, IsSliceWithUnitStrides);
+}
+
 // Returns true if all slice inputs in a tuple are equal (ignoring type).
-bool AllSliceInputsAreCompatible(const HloInstruction* root) {
-  const Shape& first_slice_operand_shape =
-      root->operand(0)->operand(0)->shape();
-  return absl::c_all_of(root->operands(), [&](const HloInstruction* slice) {
+bool AllSliceInputsAreCompatible(
+    const std::vector<HloInstruction*>& fusion_roots) {
+  const Shape& first_slice_operand_shape = fusion_roots[0]->operand(0)->shape();
+  return absl::c_all_of(fusion_roots, [&](const HloInstruction* slice) {
     return ShapeUtil::EqualIgnoringElementType(slice->operand(0)->shape(),
                                                first_slice_operand_shape);
   });
@@ -305,18 +308,15 @@ HloFusionAnalysis::EmitterFusionKind HloFusionAnalysis::GetEmitterFusionKind()
     return EmitterFusionKind::kTranspose;
   }
 
-  const HloInstruction* fusion_root = fused_computation_->root_instruction();
-  if (fusion_->shape().tuple_shapes_size() > 1 &&
-      IsInputFusibleNonStridedSlices(fusion_root)) {
-    // The emitter doesn't support all cases. If it's not supported, fallback
-    // to ElementalIrEmitter.
-    if (fusion_root->opcode() == HloOpcode::kTuple &&
-        !AllSliceInputsAreCompatible(fusion_root)) {
-      return EmitterFusionKind::kLoop;
+  if (roots.size() > 1) {
+    if (IsInputFusibleNonStridedSlices(roots) &&
+        AllSliceInputsAreCompatible(roots)) {
+      return EmitterFusionKind::kInputSlices;
     }
-    return EmitterFusionKind::kInputSlices;
+    return EmitterFusionKind::kLoop;
   }
-  if (fusion_root->opcode() == HloOpcode::kScatter) {
+
+  if (roots[0]->opcode() == HloOpcode::kScatter) {
     return EmitterFusionKind::kScatter;
   }
 
