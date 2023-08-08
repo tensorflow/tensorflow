@@ -691,7 +691,7 @@ def convert_to_tensor(
     # TODO(b/268347915): Remove argument.
     ctx=None,  # pylint: disable=unused-argument
     accepted_result_types=(tensor_lib.Tensor,),
-) -> tensor_lib.Tensor:
+) -> Union[EagerTensor, SymbolicTensor]:
   """Implementation of the public convert_to_tensor."""
   # TODO(b/142518781): Fix all call-sites and remove redundant arg
   preferred_dtype = preferred_dtype or dtype_hint
@@ -700,7 +700,8 @@ def convert_to_tensor(
   )
 
 
-internal_convert_to_tensor: Callable[..., tensor_lib.Tensor] = convert_to_tensor
+internal_convert_to_tensor: Callable[
+    ..., Union[EagerTensor, SymbolicTensor]] = convert_to_tensor
 
 
 def internal_convert_n_to_tensor(
@@ -710,7 +711,7 @@ def internal_convert_n_to_tensor(
     as_ref=False,
     preferred_dtype=None,
     # TODO(b/268347915): Remove argument.
-    ctx=None) -> List[Union[tensor_lib.Tensor, internal.IndexedSlices]]:  # pylint: disable=unused-argument
+    ctx=None) -> List[Union[EagerTensor, SymbolicTensor]]:  # pylint: disable=unused-argument
   """Converts `values` to a list of `Tensor` objects.
 
   Args:
@@ -752,7 +753,7 @@ def internal_convert_n_to_tensor(
 
 def convert_n_to_tensor(
     values, dtype=None, name=None, preferred_dtype=None
-) ->  List[Union[tensor_lib.Tensor, internal.IndexedSlices]]:
+) ->  List[Union[EagerTensor, SymbolicTensor]]:
   """Converts `values` to a list of `Tensor` objects.
 
   Args:
@@ -785,7 +786,7 @@ def convert_n_to_tensor(
 
 def convert_to_tensor_or_composite(
     value, dtype=None, name=None
-) -> Union[tensor_lib.Tensor, composite_tensor.CompositeTensor]:
+) -> Union[EagerTensor, SymbolicTensor, composite_tensor.CompositeTensor]:
   """Converts the given object to a `Tensor` or `CompositeTensor`.
 
   If `value` is a `CompositeTensor` it is returned unmodified. Otherwise, it
@@ -812,7 +813,7 @@ def internal_convert_to_tensor_or_composite(
     value, dtype=None,
     name=None,
     as_ref=False
-) -> List[Union[tensor_lib.Tensor, internal.IndexedSlices]]:
+) -> Union[EagerTensor, SymbolicTensor, composite_tensor.CompositeTensor]:
   """Converts the given object to a `Tensor` or `CompositeTensor`.
 
   If `value` is a `CompositeTensor` it is returned unmodified.  Otherwise, it
@@ -855,7 +856,7 @@ def internal_convert_n_to_tensor_or_composite(
     name=None,
     as_ref=False
 ) -> List[Union[
-    tensor_lib.Tensor, composite_tensor.CompositeTensor, type(None)]]:
+    EagerTensor, SymbolicTensor, composite_tensor.CompositeTensor, type(None)]]:
   """Converts `values` to a list of `Tensor` or `CompositeTensor` objects.
 
   Any `CompositeTensor` objects in `values` are returned unmodified.
@@ -895,7 +896,7 @@ def internal_convert_n_to_tensor_or_composite(
 def convert_n_to_tensor_or_composite(
     values, dtype=None, name=None
 ) -> List[Union[
-    tensor_lib.Tensor, composite_tensor.CompositeTensor, type(None)]]:
+    EagerTensor, SymbolicTensor, composite_tensor.CompositeTensor, type(None)]]:
   """Converts `values` to a list of `Output` or `CompositeTensor` objects.
 
   Any `CompositeTensor` objects in `values` are returned unmodified.
