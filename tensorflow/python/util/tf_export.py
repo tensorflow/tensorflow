@@ -344,15 +344,6 @@ class api_export(object):  # pylint: disable=invalid-name
     self.set_attr(undecorated_func, api_names_attr, self._names)
     self.set_attr(undecorated_func, api_names_attr_v1, self._names_v1)
 
-    # TODO(b/263286841): Remove functionality
-    if self._deprecation_inst is not None:
-      # Inline import to avoid dependency cycle between deprecation
-      # utility and tf_export
-      from tensorflow.python.util import deprecation  # pylint: disable=g-import-not-at-top
-      deprecation_wrapper = deprecation.deprecated(
-          None, self._deprecation_inst, warn_once=True)
-      func = deprecation_wrapper(func)
-    
     for name in self._names:
       _NAME_TO_SYMBOL_MAPPING[name] = func
     for name_v1 in self._names_v1:
