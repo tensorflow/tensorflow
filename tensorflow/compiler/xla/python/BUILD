@@ -1035,6 +1035,7 @@ tsl_pybind_extension(
         "//tensorflow/compiler/xla/python/pjrt_ifrt",
         "//tensorflow/tsl/distributed_runtime/preemption:preemption_sync_manager",
         "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform/cloud:gcs_file_system",
         "//tensorflow/tsl/python/lib/core:numpy",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/strings",
@@ -1044,7 +1045,6 @@ tsl_pybind_extension(
     ] + select({
         ":gpu_enabled": [
             "//tensorflow/compiler/xla/pjrt/gpu:se_gpu_pjrt_client",
-            "//tensorflow/tsl/platform/cloud:gcs_file_system",
         ],
         "//conditions:default": [],
     }) + select({
