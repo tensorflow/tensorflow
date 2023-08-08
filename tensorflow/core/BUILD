@@ -1305,18 +1305,7 @@ cc_library(
     srcs = [
         ":lib_internal_private_headers",
         "//tensorflow/core/platform:legacy_lib_internal_srcs",
-    ] + glob(
-        [
-            "lib/**/*.cc",
-        ],
-        exclude = [
-            "**/*test*",
-            "framework/variant.cc",
-            "lib/gif/**/*",
-            "lib/jpeg/**/*",
-            "lib/png/**/*",
-        ],
-    ),
+    ],
     hdrs = [":lib_internal_public_headers"],
     copts = tf_copts(),
     deps = tf_additional_lib_deps() + [
