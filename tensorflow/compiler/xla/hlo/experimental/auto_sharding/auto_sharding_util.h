@@ -17,26 +17,32 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_UTIL_H_
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
-#include <iostream>
-#include <memory>
 #include <optional>
-#include <ostream>
-#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array.h"
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 namespace spmd {
@@ -493,7 +499,7 @@ inline std::vector<const HloInstruction*> GetGradientComputationInstructions(
 // Gets the mapping vector from dim_from to dim_to.
 // Example: GetDimensionMapping([2], 3) = [0, 1, -1]
 std::vector<int64_t> GetDimensionMapping(
-    const absl::Span<const int64_t> reduced_dimensions, const int64_t op_count);
+    absl::Span<const int64_t> reduced_dimensions, int64_t op_count);
 
 // Checks whether denominator is divisible by numerator.
 bool IsDivisible(int64_t denominator, int64_t numerator);
@@ -523,7 +529,7 @@ bool TileAssignmentMatchesMesh(const HloSharding& spec,
 // is replicated on that dimension.
 // For example, returned value [1,2] means the 0th tensor dim maps to the 1st
 // mesh dim, and 1st tensor dim maps to the 2nd mesh dim.
-std::vector<int64_t> GetTensorDimToMeshDim(const int64_t tensor_shape_rank,
+std::vector<int64_t> GetTensorDimToMeshDim(int64_t tensor_shape_rank,
                                            const HloSharding& spec,
                                            const Array<int64_t>& device_mesh);
 
@@ -603,7 +609,7 @@ inline bool AdjustShardingsWithPartialMeshShape(
     const std::vector<int64_t>& mesh_shape, int64_t total_num_devices) {
   auto result = AdjustShardingsWithPartialMeshShape(instructions, mesh_shape,
                                                     total_num_devices, true);
-  CHECK(result.ok());
+  CHECK_OK(result);
   return *result;
 }
 
