@@ -4681,7 +4681,10 @@ class NumpyIterator(tracking_base.Trackable):
   def __next__(self):
 
     def to_numpy(x):
-      numpy = x._numpy()  # pylint: disable=protected-access
+      if hasattr(x, "_numpy"):
+        numpy = x._numpy()  # pylint: disable=protected-access
+      else:
+        numpy = x.numpy()
       if isinstance(numpy, np.ndarray):
         # `numpy` shares the same underlying buffer as the `x` Tensor.
         # Tensors are expected to be immutable, so we disable writes.

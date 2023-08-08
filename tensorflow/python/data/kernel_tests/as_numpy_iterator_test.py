@@ -86,10 +86,19 @@ class AsNumpyIteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(test_base.eager_only_combinations())
   def testRaggedElement(self):
     lst = [[1, 2], [3], [4, 5, 6]]
-    rt = ragged_factory_ops.constant(lst)
+    rt = ragged_factory_ops.constant([lst])
+    # This dataset consists of exactly one ragged tensor.
     ds = dataset_ops.Dataset.from_tensor_slices(rt)
-    for actual, expected in zip(ds.as_numpy_iterator(), lst):
-      self.assertTrue(np.array_equal(actual, expected))
+    expected = np.array([
+        np.array([1, 2], dtype=np.int32),
+        np.array([3], dtype=np.int32),
+        np.array([4, 5, 6], dtype=np.int32)
+    ], dtype=object)
+    for actual in ds.as_numpy_iterator():
+      self.assertEqual(len(actual), len(expected))
+      for actual_arr, expected_arr in zip(actual, expected):
+        self.assertTrue(np.array_equal(actual_arr, expected_arr),
+                        f'{actual_arr} != {expected_arr}')
 
   @combinations.generate(test_base.eager_only_combinations())
   def testDatasetElement(self):
