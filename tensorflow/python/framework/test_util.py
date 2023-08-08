@@ -3973,7 +3973,7 @@ class AbstractGradientTape:
     self._use_tape = use_tape
     self._persistent = persistent
 
-  def __enter__(self):
+  def __enter__(self) -> backprop.GradientTape:
     if self._use_tape:
       self._tape_impl = backprop.GradientTape(persistent=self._persistent)
     else:
