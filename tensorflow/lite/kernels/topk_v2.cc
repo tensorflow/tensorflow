@@ -328,6 +328,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_KERNEL_LOG(
           context, "Output index type %s is currently not supported by TopK.",
           TfLiteTypeGetName(output_values->type));
+      return kTfLiteError;
   }
 
   return kTfLiteOk;
