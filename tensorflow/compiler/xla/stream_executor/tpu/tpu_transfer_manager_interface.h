@@ -19,6 +19,8 @@ limitations under the License.
 #include <deque>
 
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
+#include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/noncopyable_buffer.h"
 
 namespace xla {

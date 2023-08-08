@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstddef>
 
+#include "absl/log/check.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
 #include "tensorflow/tsl/platform/logging.h"
 

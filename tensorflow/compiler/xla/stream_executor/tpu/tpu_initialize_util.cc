@@ -24,6 +24,7 @@ limitations under the License.
 #include <sys/types.h>
 #include <unistd.h>
 
+#include <cstdint>
 #include <cstring>
 #include <memory>
 #include <string>
@@ -37,6 +38,8 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace tpu {
