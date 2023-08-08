@@ -119,7 +119,7 @@ REQUIRED_PACKAGES = [
     # version name.
     # These are all updated during the TF release process.
     standard_or_nightly(
-        'tensorboard >= 2.13, < 2.14', 'tb-nightly ~= 2.14.0.a'
+        'tensorboard >= 2.14, < 2.15', 'tb-nightly ~= 2.14.0.a'
     ),
     standard_or_nightly(
         'tensorflow_estimator >= 2.13.0rc0, < 2.14',
