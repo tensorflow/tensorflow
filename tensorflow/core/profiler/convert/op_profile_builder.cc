@@ -241,14 +241,6 @@ void PopulateOpMetricsNode(
   double sram_wr_bytes = GibiToGiga(sram_wr_gibibytes_per_second) *
                          PicoToNano(op_metrics.time_ps());
 
-  // Check if number of bytes is consistent.
-  const auto total_bytes = op_metrics.bytes_accessed();
-  if ((hbm_bytes + sram_rd_bytes + sram_wr_bytes) < (0.99 * total_bytes)) {
-    // If inconsistent, assume total_bytes are all off-chip.
-    hbm_bytes = total_bytes;
-    sram_rd_bytes = 0;
-    sram_wr_bytes = 0;
-  }
   metrics->add_raw_bytes_accessed_array(hbm_bytes);
   metrics->add_raw_bytes_accessed_array(sram_rd_bytes);
   metrics->add_raw_bytes_accessed_array(sram_wr_bytes);
