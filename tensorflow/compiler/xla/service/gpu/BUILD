@@ -4087,6 +4087,7 @@ cc_library(
     srcs = ["copy_fusion.cc"],
     hdrs = ["copy_fusion.h"],
     deps = [
+        ":gpu_fusible",
         ":ir_emission_utils",
         ":reduction_utils",
         "//tensorflow/compiler/xla:statusor",

@@ -444,31 +444,17 @@ StatusOr<BufferAllocation::Slice> GetAllocationSlice(
 }
 
 std::vector<HloInstruction*> GetOutputDefiningDynamicUpdateSlices(
-    const HloComputation* fusion) {
+    const std::vector<HloInstruction*>& roots) {
   // Same as GetOutputDefiningDynamicUpdateSliceOps but on a HLO fusion
   // computation instead of a LMHLO FusionOp.
-  HloInstruction* root = fusion->root_instruction();
-
-  if (root->opcode() == HloOpcode::kDynamicUpdateSlice) {
-    return {root};
-  }
-
-  if (root->opcode() == HloOpcode::kBitcast &&
-      root->operand(0)->opcode() == HloOpcode::kDynamicUpdateSlice) {
-    return {root->mutable_operand(0)};
-  }
-
   std::vector<HloInstruction*> dus_ops;
+  for (HloInstruction* root : roots) {
+    while (root->opcode() == HloOpcode::kBitcast) {
+      root = root->mutable_operand(0);
+    }
 
-  if (root->opcode() == HloOpcode::kTuple) {
-    for (HloInstruction* operand : root->operands()) {
-      while (operand->opcode() == HloOpcode::kBitcast) {
-        operand = operand->mutable_operand(0);
-      }
-
-      if (operand->opcode() == HloOpcode::kDynamicUpdateSlice) {
-        dus_ops.push_back(operand);
-      }
+    if (root->opcode() == HloOpcode::kDynamicUpdateSlice) {
+      dus_ops.push_back(root);
     }
   }
 

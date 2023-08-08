@@ -60,7 +60,7 @@ std::optional<std::unique_ptr<FusionInterface>> GetFusionEmitter(
       if (!is_single && CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
                             fusion_op, ir_emitter_context.allocations())) {
         return std::make_unique<InPlaceDynamicUpdateSliceEmitter>(
-            ir_emitter_context, elemental_emitter, fusion_op, fusion);
+            ir_emitter_context, elemental_emitter, fusion_op, fusion, analysis);
       }
       if (is_single &&
           fusion.fused_expression_root()->opcode() == HloOpcode::kCopy) {

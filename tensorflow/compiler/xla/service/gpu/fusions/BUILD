@@ -4,6 +4,7 @@ cc_library(
     hdrs = ["in_place_dynamic_update_slice.h"],
     deps = [
         ":fusion_emitter",
+        "//tensorflow/compiler/xla/service/gpu:hlo_fusion_analysis",
         "//tensorflow/compiler/xla/service/gpu:ir_emission_utils",
         "//tensorflow/compiler/xla/service/gpu:launch_dimensions",
         "//tensorflow/compiler/xla/service/llvm_ir:dynamic_update_slice_util",
