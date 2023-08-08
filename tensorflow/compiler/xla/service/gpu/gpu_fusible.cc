@@ -818,14 +818,9 @@ bool HasAnyTiledTransposeRoot(const HloComputation& computation) {
 }
 
 bool HasAnyUnnestedReductionRoot(const HloComputation& computation) {
-  return HasAnyUnnestedReductionRoot(GetFusionRoots(computation));
-}
-
-bool HasAnyUnnestedReductionRoot(
-    const std::vector<HloInstruction*>& fusion_roots) {
-  return absl::c_any_of(fusion_roots, [&](const HloInstruction* instr) {
-    return IsReductionFromOrToContiguousDimensions(*instr);
-  });
+  return absl::c_any_of(
+      GetFusionRoots(computation),
+      [&](const HloInstruction* instr) { return HasRealReductionHero(instr); });
 }
 
 static const HloInstruction* FindNonTrivialReductionHero(
@@ -840,10 +835,10 @@ static const HloInstruction* FindNonTrivialReductionHero(
   return nullptr;
 }
 
-const HloInstruction* FindFirstRealReductionHero(
-    const std::vector<HloInstruction*>& fusion_roots) {
-  CHECK(!fusion_roots.empty());
-  for (HloInstruction* r : fusion_roots) {
+const HloInstruction* FindFirstRealReductionHero(const HloComputation& cmp) {
+  std::vector<HloInstruction*> roots = GetFusionRoots(cmp);
+  CHECK(!roots.empty());
+  for (HloInstruction* r : roots) {
     const HloInstruction* hero = FindRealReductionHero(r);
     if (hero != nullptr) {
       return hero;
@@ -864,12 +859,12 @@ const HloInstruction* FindRealReductionHero(const HloInstruction* hlo) {
   return nullptr;
 }
 
-bool HasRealReductionHero(const HloInstruction* hlo) {
-  return FindRealReductionHero(hlo) != nullptr;
+bool HasFirstRealReductionHero(const HloComputation& cmp) {
+  return FindFirstRealReductionHero(cmp) != nullptr;
 }
 
-bool HasRealReductionHero(const std::vector<HloInstruction*>& fusion_roots) {
-  return FindFirstRealReductionHero(fusion_roots) != nullptr;
+bool HasRealReductionHero(const HloInstruction* hlo) {
+  return FindRealReductionHero(hlo) != nullptr;
 }
 
 }  // namespace gpu
