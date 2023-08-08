@@ -1650,10 +1650,18 @@ Status BaseGPUDeviceFactory::CreateDevices(
   // tf_device_id.
   std::map<int, std::unique_ptr<xla::LocalDeviceState>> local_device_states;
 
-  // TODO(b/288965419): create allowed_devices in TF.
-  TF_ASSIGN_OR_RETURN(xla::LocalClient * xla_client,
-                      xla::GetGpuXlaClient(/*platform_name=*/std::nullopt,
-                                           /*allowed_devices=*/std::nullopt));
+  std::set<int> allowed_devices;
+  if (!gpu_options.visible_device_list().empty()) {
+    for (const TfDeviceSpec& tf_device_spec : tf_device_specs) {
+      allowed_devices.insert(tf_device_spec.platform_device_id.value());
+    }
+  }
+  TF_ASSIGN_OR_RETURN(
+      xla::LocalClient * xla_client,
+      xla::GetGpuXlaClient(
+          /*platform_name=*/std::nullopt,
+          allowed_devices.empty() ? std::nullopt
+                                  : std::make_optional(allowed_devices)));
 
   bool should_create_new_pjrt_client = true;
   xla::PjRtStreamExecutorClient* pjrt_se_client = nullptr;
