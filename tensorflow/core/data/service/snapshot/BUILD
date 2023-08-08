@@ -230,9 +230,8 @@ cc_library(
         "//tensorflow/core/data:snapshot_utils",
         "//tensorflow/core/data:utils",
         "//tensorflow/tsl/platform:env",
-        "//tensorflow/tsl/platform:errors",
-        "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:tstring",
+        "@com_google_absl//absl/status",
     ],
 )
 
