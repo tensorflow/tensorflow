@@ -47,6 +47,7 @@ struct AutoShardingSolverRequest {
   std::vector<std::string> instruction_names;
   std::optional<int64_t> solver_timeout_in_seconds;
   bool crash_at_infinity_costs_check = false;
+  bool compute_iis = true;
   double saltiplier = 0.0001;  // Modifies each objective term by at most 0.01%
 };
 
