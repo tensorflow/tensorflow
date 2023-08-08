@@ -175,6 +175,7 @@ static Status CreateHloXlaPipeline(
   // Transform HLO operations to Linalg.
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createLegalizeControlFlowPass());
+  pm.addNestedPass<FuncOp>(mlir::mhlo::createLegalizeDotGeneralToDotPass());
   pm.addPass(::mlir::mhlo::createLegalizeToArithmeticPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       xla::cpu::createLegalizeLibraryOpsPass());
