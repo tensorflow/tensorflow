@@ -14,17 +14,39 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/xla/service/gpu/fusions/reduction.h"
 
+#include <cstdint>
+#include <functional>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/Twine.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/Type.h"
+#include "llvm/IR/Value.h"
+#include "llvm/Support/AtomicOrdering.h"
+#include "llvm/Support/Casting.h"
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/fusions/fusion_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/fusions/thunk_util.h"
 #include "tensorflow/compiler/xla/service/gpu/fusions/tiling_util.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_nested.h"
@@ -33,11 +55,20 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/kernel_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/parallel_loop_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
+#include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/kernel_support_library.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/loop_emitter.h"
+#include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/location_exporter.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 namespace gpu {
@@ -433,12 +464,12 @@ void EmitFullWarpShuffleDownLoopForReduce(
   }
 }
 
-llvm::Value* GetOutputAddressForReduction(
+llvm_ir::IrArray::Index GetOutputIndexForReduction(
     llvm::IRBuilder<>* builder, int partial_result_idx, llvm::Type* index_ty,
     const ReductionCodegenState& reduction_codegen_state,
     const TilingKernelInfo& tiling_kernel_info,
-    const ReductionOutputMap& output_arrays,
-    const HloReduceInstruction* reduction, int output_idx) {
+    const HloReduceInstruction* reduction, const HloInstruction* root,
+    int output_idx) {
   auto constant = [&](uint64_t c) -> llvm::Constant* {
     return llvm::ConstantInt::get(index_ty, c);
   };
@@ -459,8 +490,6 @@ llvm::Value* GetOutputAddressForReduction(
         .AddOffsetToDim(start_offset_x, TilingScheme::DimX, builder);
   }();
 
-  const llvm_ir::IrArray& output_array =
-      output_arrays.at(reduction)[output_idx];
   const Shape& operand_shape = reduction->inputs()[output_idx]->shape();
   Shape reduction_kept_element_shape =
       ShapeUtil::DeleteDimensions(reduction->dimensions(), operand_shape);
@@ -495,12 +524,19 @@ llvm::Value* GetOutputAddressForReduction(
   llvm_ir::IrArray::Index element_index(
       /*linear=*/untransposed_output_linear_address,
       reduction_kept_element_shape, builder);
-  llvm_ir::IrArray::Index output_index(element_index.multidim(),
-                                       output_array.GetShape(),
+  const Shape& output_shape = !reduction->shape().IsTuple()
+                                  ? reduction->shape()
+                                  : reduction->shape().tuple_shapes(output_idx);
+  llvm_ir::IrArray::Index output_index(element_index.multidim(), output_shape,
                                        element_index.GetType());
-
-  return output_array.EmitArrayElementAddress(output_index, builder,
-                                              "output_element_address");
+  // We need to check for root == reduction separately, because for variadic
+  // reduce the root shape would be a tuple, while 'output_shape' is the
+  // subshape.
+  return (root == reduction ||
+          ShapeUtil::EqualIgnoringElementType(output_shape, root->shape()))
+             ? output_index
+             : output_index.SourceIndexOfBitcast(output_shape, root->shape(),
+                                                 builder);
 }
 
 llvm::Value* CastSharedToGlobal(llvm::IRBuilder<>* builder, llvm::Value* input,
@@ -519,19 +555,32 @@ void WriteReductionOutput(llvm::IRBuilder<>* builder,
                           const TilingKernelInfo& tiling_kernel_info,
                           const ReductionOutputMap& output_arrays,
                           const HloReduceInstruction* reduction,
-                          int partial_result_idx,
-                          const absl::Span<TypedPointer const> values) {
+                          const HloInstruction* root, int partial_result_idx,
+                          const absl::Span<TypedPointer const> values,
+                          ElementalIrEmitter& elemental_emitter) {
   const HloComputation* reducer = reduction->to_apply();
   for (const auto& [oidx, typed_ptr] : llvm::enumerate(values)) {
     auto [output_ptr, type] = typed_ptr;
-    llvm::Value* output_address = GetOutputAddressForReduction(
+    llvm_ir::IrArray::Index output_index = GetOutputIndexForReduction(
         builder, partial_result_idx, index_ty, reduction_codegen_state,
-        tiling_kernel_info, output_arrays, reduction, oidx);
+        tiling_kernel_info, reduction, root, oidx);
+
+    llvm::Value* output_address =
+        output_arrays.at(root)[oidx].EmitArrayElementAddress(
+            output_index, builder, "output_element_address");
     if (reduction_codegen_state.IsRaceFree()) {
-      builder->CreateStore(builder->CreateLoad(type, output_ptr, "output"),
-                           output_address);
+      FusedIrEmitter fused_emitter(elemental_emitter);
+      llvm::Value* loaded = builder->CreateLoad(type, output_ptr, "output");
+      fused_emitter.BindGenerator(
+          *reduction,
+          [&](const llvm_ir::IrArray::Index& index) { return loaded; });
+      llvm_ir::ElementGenerator gen = *fused_emitter.GetGenerator(*root);
+      llvm::Value* generated = *gen(output_index);
+      builder->CreateStore(generated, output_address);
     } else {
       CHECK_EQ(values.size(), 1);
+      CHECK_EQ(reduction, root)
+          << "output fusion is not allowed for racing reductions";
       TF_CHECK_OK(EmitAtomicOperationForNestedComputation(
           builder, ir_emitter_context, *reducer, output_address, output_ptr,
           type));
@@ -546,7 +595,8 @@ void EmitReductionOutputForRowReduction(
     const TilingKernelInfo& tiling_kernel_info,
     const ReductionCodegenState& reduction_codegen_state, llvm::Type* index_ty,
     const ReductionOutputMap& output_arrays,
-    const HloReduceInstruction* reduction, int partial_result_idx) {
+    const HloReduceInstruction* reduction, const HloInstruction* root,
+    int partial_result_idx, ElementalIrEmitter& elemental_emitter) {
   const HloComputation* reducer = reduction->to_apply();
   const auto& thread_id_info = tiling_kernel_info.thread_id_info;
   auto constant = [&](uint64_t c) -> llvm::Constant* {
@@ -585,8 +635,8 @@ void EmitReductionOutputForRowReduction(
     ksl.If("reduction_write_output", write_condition, [&] {
       WriteReductionOutput(builder, ir_emitter_context, index_ty,
                            reduction_codegen_state, tiling_kernel_info,
-                           output_arrays, reduction, partial_result_idx,
-                           values);
+                           output_arrays, reduction, root, partial_result_idx,
+                           values, elemental_emitter);
     });
   };
 
@@ -664,7 +714,8 @@ void EmitReductionOutputForColumnReduction(
     const TilingKernelInfo& tiling_kernel_info,
     const ReductionCodegenState& reduction_codegen_state, llvm::Type* index_ty,
     const ReductionOutputMap& output_arrays,
-    const HloReduceInstruction* reduction, int partial_result_idx) {
+    const HloReduceInstruction* reduction, const HloInstruction* root,
+    int partial_result_idx, ElementalIrEmitter& elemental_emitter) {
   KernelSupportLibrary ksl(builder);
   const HloComputation* reducer = reduction->to_apply();
   const auto& thread_id_info = tiling_kernel_info.thread_id_info;
@@ -740,10 +791,10 @@ void EmitReductionOutputForColumnReduction(
 
   ksl.If("reduction_write_output",
          builder->CreateAnd(has_output, is_zero(thread_id_info.lane_id)), [&] {
-           WriteReductionOutput(builder, ir_emitter_context, index_ty,
-                                reduction_codegen_state, tiling_kernel_info,
-                                output_arrays, reduction, partial_result_idx,
-                                shmem_transposed_addrs);
+           WriteReductionOutput(
+               builder, ir_emitter_context, index_ty, reduction_codegen_state,
+               tiling_kernel_info, output_arrays, reduction, root,
+               partial_result_idx, shmem_transposed_addrs, elemental_emitter);
          });
 }
 
@@ -811,19 +862,25 @@ Status EmitIRForReduction(llvm::IRBuilder<>* builder,
                           FusedIrEmitter& fused_emitter,
                           const ReductionOutputMap& result_ir_arrays,
                           const ReductionCodegenInfo& reduction_info,
-                          const Shape& input_shape) {
-  std::vector<const HloReduceInstruction*> reductions;
+                          const Shape& input_shape,
+                          ElementalIrEmitter& elemental_emitter) {
+  std::vector<const HloInstruction*> roots;
+  std::vector<const HloReduceInstruction*> heroes;
   ExtraOutputGensMap extra_output_gens;
 
   for (const HloInstruction* hlo : instr_index_group) {
-    if (IsReductionFromOrToContiguousDimensions(*hlo)) {
-      reductions.push_back(Cast<HloReduceInstruction>(hlo));
+    const HloInstruction* reduction_hero =
+        FindRealReductionHero(const_cast<HloInstruction*>(hlo));
+    if (reduction_hero != nullptr) {
+      auto hero = Cast<HloReduceInstruction>(reduction_hero);
+      roots.push_back(hlo);
+      heroes.push_back(hero);
     } else {
       extra_output_gens[hlo] = *fused_emitter.GetGenerator(*hlo);
     }
   }
 
-  CHECK(!reductions.empty()) << " expect at least one reduce instructions.";
+  CHECK(!heroes.empty()) << " expect at least one reduce instructions.";
   const TilingScheme& tiling_scheme = reduction_info.GetTilingScheme();
   CHECK_EQ(tiling_scheme.GetNumThreadsPerBlockPhysical() % WarpSize(), 0);
   llvm::Type* index_ty =
@@ -832,7 +889,7 @@ Status EmitIRForReduction(llvm::IRBuilder<>* builder,
                                 tiling_scheme.GetNumberOfBlocksPhysical(),
                             builder);
   ReductionCodegenState codegen_state = GenerateReductionCodegenState(
-      builder, fusion, reduction_info, reductions, fused_emitter);
+      builder, fusion, reduction_info, heroes, fused_emitter);
 
   EmitTileElementFunction emit_reduction_element =
       [&](const TilingThreadIdInfo& thread_id_info,
@@ -859,7 +916,7 @@ Status EmitIRForReduction(llvm::IRBuilder<>* builder,
 
         // Emit code to generate the input and perform the reduction computation
         // for each reduction instruction.
-        for (const HloReduceInstruction* reduce : reductions) {
+        for (const HloReduceInstruction* reduce : heroes) {
           GenerateElementForReducer(builder, ir_emitter_context, reduce,
                                     partial_result_index, codegen_state,
                                     index_without_linear, input_index,
@@ -885,18 +942,20 @@ Status EmitIRForReduction(llvm::IRBuilder<>* builder,
                        }));
 
   KernelSupportLibrary ksl(builder);
-  for (const HloReduceInstruction* reduce : reductions) {
+  for (auto [reduce, root] : llvm::zip(heroes, roots)) {
     for (int partial_result_idx = 0;
          partial_result_idx < reduction_info.GetNumPartialResults();
          ++partial_result_idx) {
       if (codegen_state.IsRowReduction()) {
         EmitReductionOutputForRowReduction(
             builder, ir_emitter_context, tiling_kernel_info, codegen_state,
-            index_ty, result_ir_arrays, reduce, partial_result_idx);
+            index_ty, result_ir_arrays, reduce, root, partial_result_idx,
+            elemental_emitter);
       } else {
         EmitReductionOutputForColumnReduction(
             builder, ir_emitter_context, tiling_kernel_info, codegen_state,
-            index_ty, result_ir_arrays, reduce, partial_result_idx);
+            index_ty, result_ir_arrays, reduce, root, partial_result_idx,
+            elemental_emitter);
       }
     }
   }
@@ -922,7 +981,7 @@ StatusOr<FusionEmissionResult> ReductionFusion::Emit(
   if (!reduction_codegen_info->IsRaceFree()) {
     absl::Span<HloInstruction* const> fusion_roots = analysis_.fusion_roots();
     for (int i = 0; i < fusion_roots.size(); ++i) {
-      if (IsReductionFromOrToContiguousDimensions(*fusion_roots[i])) {
+      if (HasRealReductionHero(fusion_roots[i])) {
         TF_ASSIGN_OR_RETURN(result.thunks.emplace_back(),
                             BuildFusedInitializerThunk(
                                 ir_emitter_context_, fusion_op(), analysis_,
@@ -979,7 +1038,7 @@ StatusOr<FusionEmissionResult> ReductionFusion::Emit(
             return EmitIRForReduction(builder, ir_emitter_context_, fusion_op(),
                                       instr_index_groups[i], fused_emitter,
                                       result_ir_arrays, *reduction_codegen_info,
-                                      reduce_operand_shape);
+                                      reduce_operand_shape, elemental_emitter_);
           }));
     }
 

@@ -105,7 +105,7 @@ class HloFusionAnalysis {
   int CalculateVirtualThreadScalingFactorForReduction(
       const ReductionDimensions& reduction_dimensions) const;
   ReductionCodegenInfo ComputeReductionCodegenInfo(
-      HloInstruction* hero_reduction) const;
+      const HloInstruction* hero_reduction) const;
   bool HasConsistentTransposeHeros() const;
 
   const HloFusionInstruction* fusion_;

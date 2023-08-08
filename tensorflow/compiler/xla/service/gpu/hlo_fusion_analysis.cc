@@ -272,7 +272,7 @@ StatusOr<HloFusionAnalysis> HloFusionAnalysis::Create(
   TF_ASSIGN_OR_RETURN(auto backend_config,
                       fusion->backend_config<FusionBackendConfig>());
 
-  auto hlo_roots = GetFusionRoots(fusion->fused_instructions_computation());
+  auto hlo_roots = GetFusionRoots(*fusion->fused_instructions_computation());
   std::optional<TransposeDescription> tiled_transpose_hero =
       FindConsistentTransposeHero(hlo_roots);
 
@@ -296,9 +296,10 @@ HloFusionAnalysis::EmitterFusionKind HloFusionAnalysis::GetEmitterFusionKind()
 #endif
 
   HloComputation* fused_computation = fusion_->fused_instructions_computation();
-  if (HasAnyUnnestedReductionRoot(fused_computation)) {
+  if (HasFirstRealReductionHero(*fused_computation)) {
     return EmitterFusionKind::kReduction;
   }
+
   // We expect that the last dimension is swapped with a different dimension.
   if (HasConsistentTransposeHeros() && tiled_transpose_->permutation[2] != 2) {
     return EmitterFusionKind::kTranspose;
@@ -389,14 +390,10 @@ namespace {
 // We always use the first reduce root that triggers unnested reduction emitter
 // as the hero reduction, since all the reductions are required to have the same
 // shape and layout as verified by `IsFusedReductionOutputConsistent()`.
-HloInstruction* FindHeroReduction(const std::vector<HloInstruction*>& roots) {
-  auto it = absl::c_find_if(roots, [](HloInstruction* instr) {
-    return IsReductionFromOrToContiguousDimensions(*instr);
-  });
-  if (it == roots.end()) {
-    return nullptr;
-  }
-  return *it;
+const HloInstruction* FindHeroReduction(const HloComputation& computation) {
+  const HloInstruction* first_reduce = FindFirstRealReductionHero(computation);
+  CHECK_NE(first_reduce, nullptr);
+  return first_reduce;
 }
 }  // namespace
 
@@ -405,8 +402,8 @@ const ReductionCodegenInfo* HloFusionAnalysis::GetReductionCodegenInfo() {
     return &reduction_codegen_info_.value();
   }
 
-  HloInstruction* hero_reduction = FindHeroReduction(fusion_roots());
-  CHECK_NE(hero_reduction, nullptr);
+  const HloInstruction* hero_reduction =
+      FindHeroReduction(*fused_computation());
 
   auto reduction_codegen_info = ComputeReductionCodegenInfo(hero_reduction);
   reduction_codegen_info_.emplace(std::move(reduction_codegen_info));
@@ -580,7 +577,7 @@ HloFusionAnalysis::GroupDisjointReductions() const {
 
   for (HloInstruction* root : fusion_roots()) {
     disjoint_sets[root].Get() = root;
-    if (!IsReductionFromOrToContiguousDimensions(*root)) {
+    if (!HasRealReductionHero(root)) {
       if (!first_non_reduction_root) {
         first_non_reduction_root = root;
       } else {
@@ -595,8 +592,8 @@ HloFusionAnalysis::GroupDisjointReductions() const {
     std::vector<HloInstruction*> reached_output_ids;
     bool added_to_reduce = false;
     for (HloInstruction* output : fusion_roots()) {
-      if (IsReductionFromOrToContiguousDimensions(*output) &&
-          (hlo_query::IsBroadcastedConstantOrScalar(*instr))) {
+      bool has_real_hero = HasRealReductionHero(output);
+      if (has_real_hero && (hlo_query::IsBroadcastedConstantOrScalar(*instr))) {
         if (added_to_reduce) {
           // Do not group more than one output reduce instructions through
           // broadcasted constants or scalars, as the recomputation should be
@@ -611,7 +608,7 @@ HloFusionAnalysis::GroupDisjointReductions() const {
         VLOG(3) << "Reaching " << output->ToString() << " from "
                 << instr->ToString();
         reached_output_ids.push_back(output);
-        if (IsReductionFromOrToContiguousDimensions(*output)) {
+        if (has_real_hero) {
           added_to_reduce = true;
         }
       }
@@ -730,7 +727,7 @@ int HloFusionAnalysis::CalculateVirtualThreadScalingFactorForReduction(
 }
 
 ReductionCodegenInfo HloFusionAnalysis::ComputeReductionCodegenInfo(
-    HloInstruction* hero_reduction) const {
+    const HloInstruction* hero_reduction) const {
   Shape input_shape = hero_reduction->operand(0)->shape();
   ReductionDimensions reduction_dimensions =
       GetReductionKindAndContiguousComponents(*hero_reduction);
