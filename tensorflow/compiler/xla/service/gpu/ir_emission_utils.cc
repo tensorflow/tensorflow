@@ -764,14 +764,21 @@ bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count) {
   }
 }
 
-const HloInstruction& FindNonTrivialHero(const HloInstruction& instr) {
+static bool IsParameter(const HloInstruction& instr) {
+  return instr.opcode() == HloOpcode::kParameter;
+}
+
+const HloInstruction& FindNonTrivialHero(
+    const HloInstruction& instr,
+    const std::function<bool(const HloInstruction& producer,
+                             const HloInstruction& consumer)>& is_boundary) {
   const HloInstruction* idx = &instr;
 
-  // Go up the chain of trivial elementwise(+bitcast, -copy) operations. Such
+  // Go up the chain of trivial element-wise(+bitcast, -copy) operations. Such
   // chains are bound to be quite small, as we restrict the number of users as
   // well. Note that no memoization is needed due to user number constraints: we
   // never have to revisit same nodes.
-  while (IsIntermediate(idx)) {
+  while (IsIntermediate(idx) && !is_boundary(*idx->operand(0), *idx)) {
     idx = idx->operand(0);
   }
   if (!IsIntermediate(idx, /*allowed_operand_count=*/3)) {
@@ -784,8 +791,33 @@ const HloInstruction& FindNonTrivialHero(const HloInstruction& instr) {
   absl::flat_hash_set<const HloInstruction*> visited;
   std::queue<const HloInstruction*> q;
   auto enqueue_operands = [&](const HloInstruction* idx) {
+    if (idx->opcode() == HloOpcode::kParameter) {
+      auto* fusion = idx->parent()->FusionInstruction();
+      // ir_emitter_unnested creates fusion instructions without parameters. We
+      // can't (and don't want to) follow edges outside of the fusion in this
+      // case.
+      if (fusion != nullptr &&
+          fusion->operand_count() > idx->parameter_number()) {
+        auto* operand = fusion->operand(idx->parameter_number());
+        if (!is_boundary(*operand, *idx) && visited.insert(operand).second) {
+          q.push(operand);
+        }
+      }
+      return;
+    }
+
+    if (idx->opcode() == HloOpcode::kFusion) {
+      if (!is_boundary(*idx->fused_expression_root(), *idx) &&
+          visited.insert(idx->fused_expression_root()).second) {
+        q.push(idx->fused_expression_root());
+      }
+      return;
+    }
+
+    if (!IsIntermediate(idx, /*allowed_operand_count=*/3)) return;
+
     for (HloInstruction* hlo : idx->operands()) {
-      if (visited.insert(hlo).second) {
+      if (!is_boundary(*hlo, *idx) && visited.insert(hlo).second) {
         q.push(hlo);
       }
     }
@@ -802,7 +834,7 @@ const HloInstruction& FindNonTrivialHero(const HloInstruction& instr) {
         return *idx;
       }
       non_trivial_hero = hlo;
-    } else if (IsIntermediate(hlo, /*allowed_operand_count=*/3)) {
+    } else {
       enqueue_operands(hlo);
     }
   }
@@ -810,6 +842,13 @@ const HloInstruction& FindNonTrivialHero(const HloInstruction& instr) {
     return *idx;
   }
   return *non_trivial_hero;
+}
+
+const HloInstruction& FindNonTrivialHero(const HloInstruction& instr) {
+  return FindNonTrivialHero(instr, [](const HloInstruction& producer,
+                                      const HloInstruction& consumer) {
+    return consumer.opcode() == HloOpcode::kParameter;
+  });
 }
 
 void LogAndVerify(const llvm::Module* m) {

@@ -235,6 +235,141 @@ ENTRY entry {
   EXPECT_EQ(&FindNonTrivialHero(*r), r);
 }
 
+TEST_F(IrEmissionUtilsTest, FindNonTrivialHeroOutsideFusion) {
+  const char* hlo = R"(
+HloModule module
+
+f {
+  p0 = f32[100,200,300]{2,1,0} parameter(0)
+  ROOT add = f32[100,200,300]{2,1,0} add(p0, p0)
+}
+
+ENTRY entry {
+  p0 = f32[300,200,100]{2,1,0} parameter(0)
+  t = f32[100,200,300]{2,1,0} transpose(p0), dimensions={2,1,0}
+  fusion = f32[100,200,300]{2,1,0} fusion(t), kind=kLoop, calls=f
+  ROOT add = f32[100,200,300]{2,1,0} add(t, fusion)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+
+  HloInstruction* r = module->GetComputationWithName("f")->root_instruction();
+  HloInstruction* transpose =
+      module->entry_computation()->parameter_instruction(0)->users().front();
+  EXPECT_EQ(
+      &FindNonTrivialHero(
+          *r,
+          [](const HloInstruction& producer, const HloInstruction& consumer) {
+            return consumer.opcode() == HloOpcode::kTranspose;
+          }),
+      transpose);
+}
+
+TEST_F(IrEmissionUtilsTest, FindNonTrivialHeroThroughFusion) {
+  const char* hlo = R"(
+HloModule module
+
+f {
+  p0 = f32[100,200,300]{2,1,0} parameter(0)
+  ROOT add = f32[100,200,300]{2,1,0} add(p0, p0)
+}
+
+ENTRY entry {
+  p0 = f32[300,200,100]{2,1,0} parameter(0)
+  p1 = f32[100,200,300]{2,1,0} parameter(1)
+  t = f32[100,200,300]{2,1,0} transpose(p0), dimensions={2,1,0}
+  fusion = f32[100,200,300]{2,1,0} fusion(t), kind=kLoop, calls=f
+  ROOT add = f32[100,200,300]{2,1,0} add(p1, fusion)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+
+  HloInstruction* r = module->entry_computation()->root_instruction();
+  HloInstruction* transpose =
+      module->entry_computation()->parameter_instruction(0)->users().front();
+  EXPECT_EQ(
+      &FindNonTrivialHero(
+          *r,
+          [](const HloInstruction& producer, const HloInstruction& consumer) {
+            return consumer.opcode() == HloOpcode::kTranspose;
+          }),
+      transpose);
+}
+
+TEST_F(IrEmissionUtilsTest, FindNonTrivialHeroInsideFusion) {
+  const char* hlo = R"(
+HloModule module
+
+f {
+  p0 = f32[300,200,100]{2,1,0} parameter(0)
+  t = f32[100,200,300]{2,1,0} transpose(p0), dimensions={2,1,0}
+  ROOT add = f32[100,200,300]{2,1,0} add(t, t)
+}
+
+ENTRY entry {
+  p0 = f32[300,200,100]{2,1,0} parameter(0)
+  p1 = f32[100,200,300]{2,1,0} parameter(1)
+  fusion = f32[100,200,300]{2,1,0} fusion(p0), kind=kLoop, calls=f
+  ROOT add = f32[100,200,300]{2,1,0} add(p1, fusion)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+
+  HloInstruction* r = module->entry_computation()->root_instruction();
+  HloInstruction* transpose = module->GetComputationWithName("f")
+                                  ->parameter_instruction(0)
+                                  ->users()
+                                  .front();
+  EXPECT_EQ(
+      &FindNonTrivialHero(
+          *r,
+          [](const HloInstruction& producer, const HloInstruction& consumer) {
+            return consumer.opcode() == HloOpcode::kParameter;
+          }),
+      transpose);
+}
+
+TEST_F(IrEmissionUtilsTest, FindNonTrivialHeroSomeOperandsInFusion) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY entry {
+  p0 = f32[300,200,100]{2,1,0} parameter(0)
+  p1 = f32[100,200,300]{2,1,0} parameter(1)
+
+  transpose = f32[100,200,300]{2,1,0} transpose(p0), dimensions={2,1,0}
+  subtract = f32[100,200,300]{2,1,0} subtract(transpose, p1)
+  ROOT add = f32[100,200,300]{2,1,0} add(subtract, p1)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+
+  HloInstruction* r = module->entry_computation()->root_instruction();
+  HloInstruction* transpose =
+      module->entry_computation()->parameter_instruction(0)->users().front();
+  // The transpose is the hero if everything is on one fusion.
+  EXPECT_EQ(&FindNonTrivialHero(
+                *r, [](const HloInstruction& producer,
+                       const HloInstruction& consumer) { return false; }),
+            transpose);
+  // The transpose isn't the hero if we cut the fusion at the subtraction.
+  EXPECT_EQ(
+      &FindNonTrivialHero(
+          *r,
+          [](const HloInstruction& producer, const HloInstruction& consumer) {
+            return producer.opcode() == HloOpcode::kSubtract;
+          }),
+      r);
+}
+
 TEST_F(IrEmissionUtilsTest, FindTiledTransposeOneSwapDimIsSmall) {
   const char* hlo = R"(
 HloModule module
