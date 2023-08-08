@@ -26,6 +26,7 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
@@ -1422,6 +1423,36 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
     return std::make_unique<Layout>(operand_layout);
   }
 
+  if (instruction->opcode() == HloOpcode::kReduce &&
+      !instruction->shape().IsTuple() &&
+      PropagateReductionLayoutToOperand(instruction)) {
+    // Pick the operand layout that makes the reduce a row reduction.
+    int64_t rank = instruction->shape().rank();
+    int64_t operand_rank = instruction->operand(0)->shape().rank();
+    std::vector<int64_t> new_minor_to_major;
+    new_minor_to_major.reserve(operand_rank);
+    new_minor_to_major.insert(new_minor_to_major.begin(),
+                              instruction->dimensions().rbegin(),
+                              instruction->dimensions().rend());
+    std::vector<int64_t> output_to_operand_mapping(rank);
+    absl::flat_hash_set<int64_t> reduction_dims(
+        instruction->dimensions().begin(), instruction->dimensions().end());
+    for (int64_t operand_dim = 0, output_dim = 0; operand_dim < operand_rank;
+         ++operand_dim) {
+      if (!reduction_dims.contains(operand_dim)) {
+        output_to_operand_mapping[output_dim++] = operand_dim;
+      }
+    }
+    for (int64_t i = 0; i < rank; ++i) {
+      int64_t output_dim = LayoutUtil::Minor(output_layout, i);
+      new_minor_to_major.push_back(output_to_operand_mapping[output_dim]);
+    }
+    Layout operand_layout = LayoutUtil::MakeLayout(new_minor_to_major);
+    TF_CHECK_OK(
+        LayoutUtil::ValidateLayoutForShape(operand_layout, operand->shape()));
+    return std::make_unique<Layout>(operand_layout);
+  }
+
   return nullptr;
 }
 
@@ -1464,6 +1495,7 @@ bool LayoutAssignment::OperandLayoutAlwaysPropagateToSiblings(
       return !InstructionCanChangeLayoutInstance(user);
   }
 }
+
 std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
     const Layout& operand_layout, const HloInstruction* user,
     int64_t operand_no) {

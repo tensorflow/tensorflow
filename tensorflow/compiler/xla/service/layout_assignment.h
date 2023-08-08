@@ -420,6 +420,12 @@ class LayoutAssignment : public HloModulePass {
   // Controls when all operands of user must have the same layout as the output.
   virtual bool OutputLayoutAlwaysPropagateToOperands(
       const HloInstruction* user);
+  // Whether to propagate the reduction layout to the operand by preserving the
+  // same relative order of the dimensions that are kept, and making the
+  // reduction dims the most minor dimensions.
+  virtual bool PropagateReductionLayoutToOperand(const HloInstruction* user) {
+    return false;
+  }
 
  protected:
   // These methods, invoked by PropagateConstraints, propagate a layout
