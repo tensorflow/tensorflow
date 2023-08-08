@@ -1,0 +1,60 @@
+import tensorflow as tf
+import tensorflow.experimental.dlpack as tfdlpack
+
+# Define a pre-processing network that runs on the TensorFlow framework and
+# consists of 3 matmuls in series.
+def pre_process_network(input_tensor):
+    w1 = tf.Variable(tf.random.normal([10000, 10000]))
+    w2 = tf.Variable(tf.random.normal([10000, 10000]))
+    w3 = tf.Variable(tf.random.normal([10000, 10000]))
+    x = tf.matmul(input_tensor, w1)
+    x = tf.matmul(x, w2)
+    x = tf.matmul(x, w3)
+    return x
+
+# Define an intermediate processing network that will actually run on another
+# inference framework. For the sake of demonstration, we use the TensorFlow
+# framework to simulate the execution of other inference engines. The input
+# and output of the model are both dlpack tensors, and the content is 3 matmuls
+# in series.
+def mid_process_network_async(input_tensor):
+    w1 = tf.Variable(tf.random.normal([10000, 100]))
+    w2 = tf.Variable(tf.random.normal([100, 100]))
+    w3 = tf.Variable(tf.random.normal([100, 10000]))
+    input_tensor = tfdlpack.from_dlpack(input_tensor)
+    x = tf.matmul(input_tensor, w1)
+    x = tf.matmul(x, w2)
+    x = tf.matmul(x, w3)
+    x = tfdlpack.to_dlpack(x)
+    return x
+
+# Define a post-processing network that runs on the TensorFlow framework and
+# consists of 3 matmuls in series.
+def post_process_network(input_tensor):
+    w1 = tf.Variable(tf.random.normal([10000, 10000]))
+    w2 = tf.Variable(tf.random.normal([10000, 10000]))
+    w3 = tf.Variable(tf.random.normal([10000, 10000]))
+    x = tf.matmul(input_tensor, w1)
+    x = tf.matmul(x, w2)
+    x = tf.matmul(x, w3)
+    return x
+
+# Main function: create input tensor and call pre-processing network to get
+# output pre_output, call mid-process network (other inference engine) with
+# pre_output passed to mid-process networkvia tfdlpack.to_dlpack to get output
+# mid_output, call post-process network with output mid_output passed via
+# tfdlpack.from_dlpack. This process is repeated 10 times through a loop,
+# print the final result.
+def main():
+    # Optimal performance: all three networks run asynchronously on the
+    # TensorFlow framework.
+    input_tensor = tf.ones([1, 10000])
+    for i in range(10):
+        pre_output = pre_process_network(input_tensor)
+        mid_output = tf.add(pre_output, 100)
+        post_output = post_process_network(mid_output)
+        input_tensor = post_output
+    print(post_output)
+
+if __name__ == '__main__':
+    main()
