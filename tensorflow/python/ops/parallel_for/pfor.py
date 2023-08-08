@@ -506,7 +506,7 @@ class WhileOp:
     cache[inp] = output
     return output
 
-  def _create_init_values(self, pfor_input):
+  def _create_init_values(self, pfor_input: "_PforInput"):
     """Create arguments passed to converted while_loop."""
     with ops.name_scope("while_init"):
       loop_len_vector = pfor_input.pfor.loop_len_vector
@@ -624,8 +624,15 @@ class WhileOp:
         new_output_tas.append(out_ta.scatter(done_indices, done_inp))
     return not_all_done, new_indices, new_inputs, new_output_tas
 
-  def _process_body(self, pfor_input, inputs_stacked, new_indices, cond_stacked,
-                    new_inputs, not_all_done):
+  def _process_body(
+      self,
+      pfor_input: "_PforInput",
+      inputs_stacked,
+      new_indices,
+      cond_stacked,
+      new_inputs,
+      not_all_done,
+  ):
     """Convert the body function."""
 
     def true_fn(control_inputs, body_pfor, body_output, stacked):
@@ -669,7 +676,7 @@ class WhileOp:
       new_outputs.append(new_output)
     return new_outputs
 
-  def __call__(self, pfor_input):
+  def __call__(self, pfor_input: "_PforInput"):
     """Converter for the while_loop.
 
     The conversion of a while_loop is another while_loop.
@@ -2022,8 +2029,8 @@ def _convert_fused_batch_norm_grad(pfor_input: _PforInput):
 @RegisterPForWithArgs("Conv2DBackpropInput", flatten_dims=[2], shape_dim=0)
 @RegisterPForWithArgs("AvgPoolGrad", flatten_dims=[1], shape_dim=0)
 @RegisterPForWithArgs("AvgPool3DGrad", flatten_dims=[1], shape_dim=0)
-def _convert_flatten_batch_shape_input(pfor_input, op_type, flatten_dims,
-                                       shape_dim):
+def _convert_flatten_batch_shape_input(
+    pfor_input: _PforInput, op_type, flatten_dims, shape_dim):
   del op_type
   inputs = _inputs_with_flattening(pfor_input, flatten_dims)
   n = pfor_input.pfor.loop_len_vector
@@ -2202,7 +2209,7 @@ def _convert_softmax(pfor_input: _PforInput, op_type, op_func):
 @RegisterPForWithArgs("MatrixDiag", array_ops.matrix_diag)
 @RegisterPForWithArgs("MatrixDiagPart", array_ops.matrix_diag_part)
 @RegisterPForWithArgs("_EagerConst", array_ops.identity)
-def _convert_identity(pfor_input, op_type, op_func):
+def _convert_identity(pfor_input: _PforInput, op_type, op_func):
   del op_type
   return wrap(op_func(*[x.t for x in pfor_input.inputs]), True)
 
@@ -2272,7 +2279,7 @@ def _convert_expanddims(pfor_input: _PforInput):
 
 @RegisterPForWithArgs("LowerBound", gen_array_ops.lower_bound)
 @RegisterPForWithArgs("UpperBound", gen_array_ops.upper_bound)
-def _convert_searchsorted(pfor_input, _, op_func):
+def _convert_searchsorted(pfor_input: _PforInput, _, op_func):
   pfor_input.stack_inputs()
   sorted_inputs = _flatten_first_two_dims(pfor_input.stacked_input(0))
   values = _flatten_first_two_dims(pfor_input.stacked_input(1))
@@ -2849,7 +2856,7 @@ def _convert_batch_mat_mul_v2(pfor_input: _PforInput):
 @RegisterPForWithArgs("Mean", math_ops.reduce_mean)
 @RegisterPForWithArgs("All", math_ops.reduce_all)
 @RegisterPForWithArgs("Any", math_ops.reduce_any)
-def _convert_reduction(pfor_input, _, op_func):
+def _convert_reduction(pfor_input: _PforInput, _, op_func):
   t = pfor_input.stacked_input(0)
   indices = pfor_input.unstacked_input(1)
   # Shift positive indices by one to account for the extra dimension.
@@ -2860,7 +2867,7 @@ def _convert_reduction(pfor_input, _, op_func):
 
 @RegisterPForWithArgs("ArgMax", math_ops.argmax)
 @RegisterPForWithArgs("ArgMin", math_ops.argmin)
-def _convert_argmax_argmin(pfor_input, _, op_func):
+def _convert_argmax_argmin(pfor_input: _PforInput, _, op_func):
   t = pfor_input.stacked_input(0)
   dimension = pfor_input.unstacked_input(1)
   dimension += math_ops.cast(dimension >= 0, dimension.dtype)
@@ -2886,7 +2893,7 @@ def _convert_clip_by_value(pfor_input: _PforInput):
 
 @RegisterPForWithArgs("Cumsum", math_ops.cumsum)
 @RegisterPForWithArgs("Cumprod", math_ops.cumprod)
-def _convert_cumfoo(pfor_input, _, op_func):
+def _convert_cumfoo(pfor_input: _PforInput, _, op_func):
   t = pfor_input.stacked_input(0)
   axis = pfor_input.unstacked_input(1)
   # Shift positive indices by one to account for the extra dimension.
@@ -2928,7 +2935,7 @@ def _convert_biasadd(pfor_input: _PforInput):
 @RegisterPForWithArgs("UnsortedSegmentMax", math_ops.unsorted_segment_max)
 @RegisterPForWithArgs("UnsortedSegmentMin", math_ops.unsorted_segment_min)
 @RegisterPForWithArgs("UnsortedSegmentProd", math_ops.unsorted_segment_prod)
-def _convert_unsortedsegmentsum(pfor_input, _, op_func):
+def _convert_unsortedsegmentsum(pfor_input: _PforInput, _, op_func):
   pfor_input.stack_inputs([0, 1])
   data = pfor_input.stacked_input(0)
   segment_ids = pfor_input.stacked_input(1)
@@ -2975,7 +2982,7 @@ def _flatten_array_with_offset(ids, offset_delta, num_rows):
                       math_ops.sparse_segment_mean_v2)
 @RegisterPForWithArgs("SparseSegmentSqrtNWithNumSegments",
                       math_ops.sparse_segment_sqrt_n_v2)
-def _convert_sparse_segment(pfor_input, _, op_func):
+def _convert_sparse_segment(pfor_input: _PforInput, _, op_func):
   _, segment_ids_stacked, _ = pfor_input.input(2)
   if segment_ids_stacked:
     pfor_input.stack_inputs([1])
@@ -3014,7 +3021,7 @@ def _convert_sparse_segment(pfor_input, _, op_func):
                       math_ops.sparse_segment_mean_grad)
 @RegisterPForWithArgs("SparseSegmentSqrtNGrad",
                       math_ops.sparse_segment_sqrt_n_grad)
-def _convert_sparse_segment_grad(pfor_input, _, op_func):
+def _convert_sparse_segment_grad(pfor_input: _PforInput, _, op_func):
   grad = pfor_input.stacked_input(0)
   indices = pfor_input.unstacked_input(1)
   segment_ids = pfor_input.unstacked_input(2)
@@ -3281,7 +3288,7 @@ def _convert_biasaddgrad(pfor_input: _PforInput):
 @RegisterPForWithArgs("SoftsignGrad")
 @RegisterPForWithArgs("SqrtGrad")
 @RegisterPForWithArgs("TanhGrad")
-def _convert_grads(pfor_input, op_type, *args, **kw_args):
+def _convert_grads(pfor_input: _PforInput, op_type, *args, **kw_args):
   del args
   del kw_args
   # TODO(agarwal): Looks like these ops don't support broadcasting. Hence we
@@ -3341,7 +3348,7 @@ def _transpose_dim_to_front(x, dim):
 @RegisterPForWithArgs("RandomUniformInt")
 @RegisterPForWithArgs("RandomStandardNormal")
 @RegisterPForWithArgs("TruncatedNormal")
-def _convert_random(pfor_input, op_type, *args, **kw_args):
+def _convert_random(pfor_input: _PforInput, op_type, *args, **kw_args):
   del args
   del kw_args
   inputs = [pfor_input.unstacked_input(i) for i in range(pfor_input.num_inputs)]
@@ -3453,7 +3460,7 @@ def _convert_stateless_multinomial(pfor_input: _PforInput):
 
 @RegisterPForWithArgs("XlaEinsum")
 @RegisterPForWithArgs("Einsum")
-def _convert_einsum(pfor_input, op_type):
+def _convert_einsum(pfor_input: _PforInput, op_type):
   # Einsum may have either 1 or 2 inputs.
   inputs, input_stacked, _ = zip(*[
       pfor_input.input(i)
@@ -3666,7 +3673,7 @@ def _convert_tensor_array_size_v3(pfor_input: _PforInput):
   return wrap(size, False)
 
 
-def _handle_inside_pfor(pfor_input, handle):
+def _handle_inside_pfor(pfor_input: _PforInput, handle):
   """Returns True if handle was created inside the pfor loop."""
   # We use some heuristic to find the original TensorArray creation op.
   # The logic should handle the common cases (except cond based subgraphs).
@@ -3936,7 +3943,7 @@ def _tile_variant_with_length(t, length):
     return result
 
 
-def _tile_variant(t, pfor_input):
+def _tile_variant(t, pfor_input: _PforInput):
   """stacks `t` according to its loop context."""
   return _tile_variant_with_length(t, pfor_input.pfor.loop_len_vector)
 
@@ -4384,7 +4391,7 @@ def _stack_cache_key(pfor_input: _PforInput):
   return ops.get_default_graph(), pfor_input.pfor, orig_handle
 
 
-def _stack_handle_inside_pfor(handle, pfor_input):
+def _stack_handle_inside_pfor(handle, pfor_input: _PforInput):
   while handle.op.type in ["Identity", "Enter"]:
     handle = handle.op.inputs[0]
   assert handle.op.type == "StackV2", ("Unable to find StackV2 op. Got %s" %
