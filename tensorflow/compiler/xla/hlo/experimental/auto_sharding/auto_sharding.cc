@@ -2191,6 +2191,7 @@ AutoShardingSolverResult CallSolver(
     const HloInstructionSequence& sequence, const LivenessSet& liveness_set,
     const StrategyMap& strategy_map, const LeafStrategies& leaf_strategies,
     const CostGraph& cost_graph, const AliasSet& alias_set,
+    const std::vector<NodeStrategyIdx>& s_hint,
     int64_t memory_budget_per_device, bool crash_at_infinity_costs_check,
     int64_t solver_timeout_in_seconds,
     bool allow_alias_to_follower_conversion) {
@@ -2200,6 +2201,7 @@ AutoShardingSolverResult CallSolver(
   request.memory_budget = memory_budget_per_device;
   request.s_len = cost_graph.node_lens_;
   request.s_follow = cost_graph.follow_idx_;
+  request.s_hint = s_hint;
   request.solver_timeout_in_seconds = solver_timeout_in_seconds;
   request.crash_at_infinity_costs_check = crash_at_infinity_costs_check;
   for (const auto& iter : cost_graph.edge_costs_) {
@@ -4027,7 +4029,7 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
     if (!solver_option.load_solution_vector) {
       auto solver_result = CallSolver(
           sequence, liveness_set, strategy_map, leaf_strategies, cost_graph,
-          alias_set, option_.memory_budget_per_device,
+          alias_set, /*s_hint*/ {}, option_.memory_budget_per_device,
           /*crash_at_infinity_costs_check*/
           !option_.try_multiple_mesh_shapes, option_.solver_timeout_in_seconds,
           option_.allow_alias_to_follower_conversion);

@@ -131,6 +131,21 @@ TEST(CallORToolsSolverTest, HandlesFollowedEdges) {
   EXPECT_EQ(result, expected_result);
 }
 
+TEST(CallORToolsSolverTest, UsesHint) {
+  AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
+  request.s_hint = {1, 0, 0, 0, 0};  // Not optimal, but close.
+
+  const AutoShardingSolverResult result = CallORToolsSolver(request);
+
+  const std::vector<NodeStrategyIdx> s_val = {0, 0, 0, 0, 0};
+  const std::vector<EdgeStrategyIdx> e_val = {0, 0};
+  const double objective_value = 7650.0;
+  const AutoShardingSolverResult expected_result = {
+      std::make_tuple(
+          std::move(s_val), std::move(e_val), objective_value), false};
+  EXPECT_EQ(result, expected_result);
+}
+
 TEST(AutoShardingEvaluatorTest, NoViolations) {
   const AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
   const std::vector<NodeStrategyIdx> s_val = {3, 1, 2, 2, 1};

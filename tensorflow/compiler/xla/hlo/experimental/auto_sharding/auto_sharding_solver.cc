@@ -400,6 +400,17 @@ AutoShardingSolverResult CallORToolsSolver(
     }
   }
 
+  if (!request.s_hint.empty()) {
+    std::vector<std::pair<const MPVariable*, double>> hint;
+    for (NodeIdx i = 0; i < request.num_nodes; ++i) {
+      if (request.s_follow[i] >= 0) continue;
+      for (NodeStrategyIdx j = 0; j < s[i].size(); ++j) {
+        hint.push_back({s[i][j], (request.s_hint[i] == j) ? 1.0 : 0.0});
+      }
+    }
+    solver->SetHint(hint);
+  }
+
 #ifdef PLATFORM_GOOGLE
   // Exports the model for debugging.
   bool dump_model = false;
