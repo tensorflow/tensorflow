@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/kernel_mapping_scheme.h"
 #include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
@@ -50,23 +49,7 @@ class HloFusionAnalysis {
 
   static StatusOr<HloFusionAnalysis> Create(
       const HloFusionInstruction* fusion, const GpuDeviceInfo* device_info,
-      se::CudaComputeCapability compute_capability) {
-    TF_ASSIGN_OR_RETURN(auto backend_config,
-                        fusion->backend_config<FusionBackendConfig>());
-
-    auto hlo_roots = GetFusionRoots(fusion->fused_instructions_computation());
-    std::optional<TransposeDescription> tiled_transpose;
-
-    for (auto* root : hlo_roots) {
-      if ((tiled_transpose = FindAnyTiledTranspose(*root))) {
-        break;
-      }
-    }
-
-    return HloFusionAnalysis(fusion, std::move(backend_config),
-                             std::move(hlo_roots), device_info,
-                             compute_capability, tiled_transpose);
-  }
+      se::CudaComputeCapability compute_capability);
 
   const HloComputation* fused_computation() const { return fused_computation_; }
   const std::vector<HloInstruction*>& fusion_roots() const {
