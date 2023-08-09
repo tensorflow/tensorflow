@@ -31,6 +31,7 @@ cc_library(
         "c_api_decl.h",
         "c_api_defn.h",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         ":libtftpu_header",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
