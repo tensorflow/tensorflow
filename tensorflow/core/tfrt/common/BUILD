@@ -23,6 +23,7 @@ package_group(
         # copybara:uncomment "//platforms/xla/megascale/tensorflow/...",
         "//tensorflow/c/...",
         "//tensorflow/compiler/jit/...",
+        "//tensorflow/compiler/tf2xla/...",
         "//tensorflow/core/common_runtime/...",
         "//tensorflow/core/common_runtime/next_pluggable_device/...",
         "//tensorflow/core/tfrt/...",
