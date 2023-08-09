@@ -74,6 +74,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/py_array.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/py_compile_only_client.h"
+#include "tensorflow/compiler/xla/python/py_device_list.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/pytree.h"
@@ -595,6 +596,7 @@ PYBIND11_MODULE(xla_extension, m) {
         });
 
   TF_CHECK_OK(PyArray::RegisterTypes(m));
+  jax::RegisterDeviceList(m);
   jax::RegisterSharding(m);
 
   py::class_<CompiledMemoryStats>(m, "CompiledMemoryStats")

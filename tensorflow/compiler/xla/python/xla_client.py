@@ -44,7 +44,7 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes. In JAX, reference this via jax._src.lib.xla_extension_version.
-_version = 180
+_version = 181
 
 # Version number for MLIR:Python components.
 mlir_api_version = 54
@@ -449,6 +449,7 @@ Client = _xla.Client
 Memory = _xla.Memory
 ArrayImpl = _xla.ArrayImpl
 LoadedExecutable = _xla.LoadedExecutable
+DeviceList = _xla.DeviceList
 OpSharding = _xla.OpSharding
 HloSharding = _xla.HloSharding
 Sharding = _xla.Sharding
