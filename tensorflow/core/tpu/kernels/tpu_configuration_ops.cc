@@ -14,27 +14,32 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tpu/kernels/tpu_configuration_ops.h"
 
+#include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/cleanup/cleanup.h"
-#include "tensorflow/c/tf_status.h"
-#include "tensorflow/c/tf_status_helper.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/proto_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
-#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/refcount.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_factory.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_interface.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_local_lookup.h"
@@ -47,19 +52,24 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_op_consts.h"
 #include "tensorflow/core/tpu/kernels/tpu_pod_state.h"
 #include "tensorflow/core/tpu/tpu_configuration.h"
-#include "tensorflow/core/tpu/tpu_defs.h"
+#include "tensorflow/core/tpu/tpu_defs.h"  // IWYU pragma: keep
+#include "tensorflow/core/util/device_name_utils.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/tstring.h"
+#include "tensorflow/tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
+
 namespace {
 Status GetTpuMeshStateInterface(const ResourceMgr* rmgr,
                                 tpu::TpuMeshStateInterface** state) {
   if (!rmgr->Lookup(rmgr->default_container(),
                     tpu::kTpuMeshStateInterfaceResourceName, state)
            .ok()) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "GetTpuMeshStateInterface: The TPU system has not been initialized.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status CreateTpuFingerprintLookup(ResourceMgr* rmgr) {
@@ -69,11 +79,11 @@ Status CreateTpuFingerprintLookup(ResourceMgr* rmgr) {
       rmgr->default_container(), tpu::kFingerprintLookupResourceName,
       &fingerprint_lookup, [&](tpu::TpuFingerprintLookup** new_lookup) {
         *new_lookup = tpu::TpuFingerprintLookup::Create();
-        return OkStatus();
+        return absl::OkStatus();
       }));
 
   core::ScopedUnref fingerprint_lookup_ref(fingerprint_lookup);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Attempt to delete resource_name from resource_manager's default_container.
@@ -87,11 +97,11 @@ Status DeleteIfExists(ResourceMgr* resource_manager,
       resource_manager->default_container(), resource_name);
   if (status.ok()) {
     VLOG(1) << "Removed existing resource " << resource_name;
-    return OkStatus();
+    return absl::OkStatus();
   }
   if (status.code() == error::NOT_FOUND) {
     VLOG(1) << "No resource " << resource_name << " to remove";
-    return OkStatus();
+    return absl::OkStatus();
   }
   VLOG(1) << "Error removing resource " << resource_name << " : " << status;
   return status;
@@ -104,28 +114,27 @@ Status CreateTpuCompilationCache(
       rmgr->default_container(), tpu::kCompilationCacheResourceName,
       compilation_cache, [&](tpu::TpuCompilationCacheInterface** new_cache) {
         *new_cache = tpu::GetCompilationCacheCreateFn()();
-        return OkStatus();
+        return absl::OkStatus();
       });
 }
 
-xla::StatusOr<std::vector<int32_t>> ConstructDevicesPerHost(
-    OpKernelContext* ctx) {
+StatusOr<std::vector<int32_t>> ConstructDevicesPerHost(OpKernelContext* ctx) {
   std::vector<int32_t> num_devices_per_host;
   int chips_per_host = -1;
   for (int i = 0; i < ctx->num_inputs(); ++i) {
     const Tensor& input_tensor = ctx->input(i);
     if (!TensorShapeUtils::IsScalar(input_tensor.shape())) {
-      return errors::InvalidArgument("Input ", i,
-                                     " should be a scalar but has ",
-                                     input_tensor.dims(), " dimensions");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Input ", i, " should be a scalar but has ",
+                       input_tensor.dims(), " dimensions"));
     }
     if (chips_per_host == -1) {
       chips_per_host = input_tensor.scalar<int32_t>()();
     } else {
-      if (chips_per_host != input_tensor.scalar<int32>()()) {
-        return errors::Internal("Host ", i, " has ",
-                                input_tensor.scalar<int32>()(),
-                                " TPU chips but host 0 has ", chips_per_host);
+      if (chips_per_host != input_tensor.scalar<int32_t>()()) {
+        return absl::InternalError(
+            absl::StrCat("Host ", i, " has ", input_tensor.scalar<int32_t>()(),
+                         " TPU chips but host 0 has ", chips_per_host));
       }
     }
     num_devices_per_host.push_back(input_tensor.scalar<int32_t>()());
@@ -137,7 +146,7 @@ void ConfigureDistributedTpuOp::Compute(OpKernelContext* ctx) {
   VLOG(1) << "ConfigureDistributedTpuOp";
   XLA_SCOPED_LOGGING_TIMER("ConfigureDistributedTpuOp");
 
-  xla::StatusOr<std::vector<int32_t>> num_devices_per_host =
+  StatusOr<std::vector<int32_t>> num_devices_per_host =
       ConstructDevicesPerHost(ctx);
   OP_REQUIRES_OK(ctx, num_devices_per_host.status());
   ResourceMgr* rmgr = GetTPUConfigResourceMgr();
@@ -163,7 +172,7 @@ void ConfigureDistributedTpuOp::Compute(OpKernelContext* ctx) {
 
   Tensor* ctx_output;
   OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &ctx_output));
-  ctx_output->scalar<tstring>()() = std::move(host_config_output);
+  ctx_output->scalar<tsl::tstring>()() = std::move(host_config_output);
 
   OP_REQUIRES_OK(ctx, CreateTpuFingerprintLookup(rmgr));
   VLOG(1) << "ConfigureDistributedTpuOp done";
@@ -173,16 +182,16 @@ void WaitForDistributedTpuOp::Compute(OpKernelContext* ctx) {
   VLOG(1) << "WaitForDistributedTpuOp";
   XLA_SCOPED_LOGGING_TIMER("WaitForDistributedTpuOp");
 
-  size_t num_devices_per_host = -1;
+  size_t num_devices_per_host = std::numeric_limits<size_t>::max();
   size_t num_hosts = ctx->num_inputs();
 
   for (int i = 0; i < ctx->num_inputs(); ++i) {
     const Tensor& host_ordinal_to_global_device_id_tensor = ctx->input(i);
     OP_REQUIRES(
         ctx, host_ordinal_to_global_device_id_tensor.dims() == 1,
-        errors::InvalidArgument("Input ", i, " should be a vector but has ",
-                                host_ordinal_to_global_device_id_tensor.dims(),
-                                " dimensions"));
+        absl::InvalidArgumentError(absl::StrCat(
+            "Input ", i, " should be a vector but has ",
+            host_ordinal_to_global_device_id_tensor.dims(), " dimensions")));
   }
 
   std::vector<std::vector<int32_t>> mapping;
@@ -201,10 +210,10 @@ void WaitForDistributedTpuOp::Compute(OpKernelContext* ctx) {
       OP_REQUIRES(ctx,
                   num_devices_per_host ==
                       host_ordinal_to_global_device_id_tensor.dim_size(0),
-                  errors::Internal(
+                  absl::InternalError(absl::StrCat(
                       "Host ", i, " has ",
                       host_ordinal_to_global_device_id_tensor.dim_size(0),
-                      " TPU devices but host 0 has ", num_devices_per_host));
+                      " TPU devices but host 0 has ", num_devices_per_host)));
     }
     for (int j = 0; j < host_ordinal_to_global_device_id_tensor.dim_size(0);
          ++j) {
@@ -253,7 +262,7 @@ void WaitForDistributedTpuOp::Compute(OpKernelContext* ctx) {
 
   Tensor* ctx_output;
   OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &ctx_output));
-  ctx_output->scalar<tstring>()() =
+  ctx_output->scalar<tsl::tstring>()() =
       std::string(tpu_topology_output, tpu_topology_output_size);
 
   VLOG(1) << "WaitForDistributedTpuOp done";
@@ -280,9 +289,10 @@ void InitializeHostForDistributedTpuOp::Compute(OpKernelContext* ctx) {
   XLA_SCOPED_LOGGING_TIMER("InitializeHostForDistributedTpuOp");
 
   auto* rmgr = GetTPUConfigResourceMgr();
-  OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(ctx->input(0).shape()),
-              errors::InvalidArgument("argument at 0 place must be a scalar"));
-  auto tpu_host_config = ctx->input(0).scalar<tstring>()();
+  OP_REQUIRES(
+      ctx, TensorShapeUtils::IsScalar(ctx->input(0).shape()),
+      absl::InvalidArgumentError("argument at 0 place must be a scalar"));
+  auto tpu_host_config = ctx->input(0).scalar<tsl::tstring>()();
 
   // Reset the TPU embedding engine interface if we are not the master.
   // We need to reset the interface before initializing the host because the
@@ -409,7 +419,7 @@ void InitializeHostForDistributedTpuOp::Compute(OpKernelContext* ctx) {
                &ctx_output));
 
   for (size_t i = 0; i < device_id_output_size; ++i) {
-    ctx_output->flat<int32>()(i) = device_id_output[i];
+    ctx_output->flat<int32_t>()(i) = device_id_output[i];
   }
   if (ctx->function_library() != nullptr &&
       ctx->function_library()->device_mgr() != nullptr) {
@@ -432,7 +442,7 @@ void InitializeHostForDistributedTpuOp::Compute(OpKernelContext* ctx) {
               accelerator_device_info->stream->parent()->device_ordinal();
           if (device_ordinal >= device_id_output_size) {
             OP_REQUIRES_OK(ctx,
-                           errors::Internal(absl::StrCat(
+                           absl::InternalError(absl::StrCat(
                                "TPU core with ordinal ", device_ordinal,
                                " out of range for device ", device->name(),
                                ". Expected ordinals in range [0, ",
@@ -453,11 +463,11 @@ void SetGlobalTPUArrayOp::Compute(OpKernelContext* ctx) {
   VLOG(1) << "SetGlobalTPUArrayOp";
   XLA_SCOPED_LOGGING_TIMER("SetGlobalTPUArrayOp");
 
-  OP_REQUIRES(
-      ctx, TensorShapeUtils::IsScalar(ctx->input(0).shape()),
-      errors::InvalidArgument("Expected argument 0 to be a scalar. Received",
-                              ctx->input(0).DebugString()));
-  auto tpu_topology = ctx->input(0).scalar<tstring>()();
+  OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(ctx->input(0).shape()),
+              absl::InvalidArgumentError(
+                  absl::StrCat("Expected argument 0 to be a scalar. Received",
+                               ctx->input(0).DebugString())));
+  auto tpu_topology = ctx->input(0).scalar<tsl::tstring>()();
 
   StatusHelper status;
   stream_executor::tpu::OpsApiFn()->SetGlobalTPUArrayOp_DoWorkFn(
