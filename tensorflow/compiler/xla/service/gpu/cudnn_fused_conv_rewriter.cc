@@ -330,46 +330,77 @@ StatusOr<bool> FuseConvAlpha(HloComputation* comp) {
 
 // The format of the serialized graph describing a sequence of ops fused
 // into the cuDNN convolution Custom Call is
-// "UID:[output_type]conv();UID[output_type]:op_name({operand
-// UIDs});UID:[output_type]op_name({operands UIDs});..." with the convolution
-// assumed to be the first op in the graph. Currently, multiplication and
-// division by a broadcast scalar, addition of a matrix bias, the application of
-// a ReLU activation and the calculation of the maximum of the absolute value
-// are supported.
+// "UID:[output_type]conv();UID[output_type]:op_name(operand
+// UID);UID:[output_type]op_name(operand UID);..." with the convolution assumed
+// to be the first op in the graph. Operand UIDs identifying ops outside the
+// serialized graph are elided. Currently, multiplication and division by a
+// broadcast scalar, addition of a matrix bias, the application of a ReLU
+// activation and the calculation of the maximum of the absolute value are
+// supported.
 class GraphString {
  public:
-  GraphString() : size_(0) {}
+  GraphString() = default;
 
   void AppendOp(std::string op_name, HloInstruction* op,
                 std::vector<HloInstruction*> operands = {}) {
-    graph_.append(
-        std::to_string(op->unique_id()) + ":[" +
-        primitive_util::LowercasePrimitiveTypeName(op->shape().element_type()) +
-        "]" + op_name + "(");
+    std::optional<int64_t> operand_uid;
     for (int i = 0; i < operands.size(); ++i) {
-      graph_.append(std::to_string(operands[i]->unique_id()));
-      if (i < operands.size() - 1) {
-        graph_.append(",");
+      if (OpInGraph(operands[i]->unique_id())) {
+        operand_uid = operands[i]->unique_id();
       }
     }
-    graph_.append(");");
-    size_++;
+    graph_.emplace_back(OpDescriptor(
+        {op->unique_id(), op->shape().element_type(), op_name, operand_uid}));
   }
 
   void ChangeDataType(PrimitiveType type) {
-    std::string::size_type m = graph_.find_last_of('[');
-    std::string::size_type n = graph_.find_last_of(']');
-    graph_.replace(m + 1, n - m - 1,
-                   primitive_util::LowercasePrimitiveTypeName(type));
+    DCHECK(!graph_.empty());
+    graph_.back().output_type = type;
   }
 
-  int Size() { return size_; }
+  int Size() { return graph_.size(); }
 
-  std::string Graph() { return graph_; }
+  std::string Graph() {
+    std::string graph;
+    for (OpDescriptor op : graph_) {
+      graph.append(std::to_string(op.uid));
+      graph.append(":[" +
+                   primitive_util::LowercasePrimitiveTypeName(op.output_type) +
+                   "]");
+      graph.append(op.name);
+      graph.append("(");
+      if (op.operand.has_value()) {
+        graph.append(std::to_string(*op.operand));
+      }
+      graph.append(");");
+    }
+    return graph;
+  }
+
+  bool OpInGraph(int64_t uid, std::string op_name = "") {
+    if (graph_.empty()) {
+      return false;
+    }
+    auto op_filter = [&](OpDescriptor op) -> bool {
+      if (op_name.empty()) {
+        return op.uid == uid;
+      } else {
+        return op.uid == uid && op.name == op_name;
+      }
+    };
+    return std::find_if(graph_.begin(), graph_.end(), op_filter) !=
+           graph_.end();
+  }
 
  private:
-  std::string graph_;
-  int size_;
+  struct OpDescriptor {
+    int64_t uid;
+    PrimitiveType output_type;
+    std::string name;
+    std::optional<int64_t> operand;
+  };
+
+  std::vector<OpDescriptor> graph_;
 };
 
 // Recursively captures and serializes the graph of pointwise operations
@@ -387,6 +418,22 @@ void CaptureConvGraphRecursive(HloInstruction* instr,
   final_instr = instr;
 
   HloInstruction *op, *operand0, *operand1;
+  auto fuse_amax = [&]() -> bool {
+    HloComputation* reduce_comp = op->to_apply();
+    HloInstruction* reduce_comp_root = reduce_comp->root_instruction();
+    if (ShapeUtil::IsScalar(op->shape()) &&
+        ShapeUtil::IsScalar(op->operand(1)->shape()) &&
+        op->operand(1)->IsConstant() &&
+        op->operand(1)->literal().GetAsDouble({}) <= 0. &&
+        reduce_comp_root->opcode() == HloOpcode::kMaximum &&
+        reduce_comp_root->operand(0)->opcode() == HloOpcode::kParameter &&
+        reduce_comp_root->operand(1)->opcode() == HloOpcode::kParameter) {
+      aux_outputs.emplace_back(op);
+      graph_string.AppendOp("amax", op, {operand0});
+      return true;
+    }
+    return false;
+  };
   for (HloInstruction* user : instr->users()) {
     // Add
     if (Match(user, m::AddAnyOrder(&op, m::Op(&operand0), m::Op(&operand1)))) {
@@ -424,46 +471,48 @@ void CaptureConvGraphRecursive(HloInstruction* instr,
                                 visited_instrs, final_instr);
       continue;
     }
+    //  Maximum of the absolute value (Amax) following ReLU (elided Abs)
+    if (Match(user, m::Reduce(&op, m::Op(&operand0), m::Op())) &&
+        graph_string.OpInGraph(operand0->unique_id(), "relu")) {
+      if (fuse_amax()) {
+        continue;
+      }
+    }
 
     // The following patterns match the user of `user`.
     if (!user->users().empty()) {
       HloInstruction* users_user = user->users()[0];
       // Convert with Clamp to FP8 types
       HloInstruction *clamp_lower, *clamp_upper;
+      auto is_saturating_cast_to_f8 = [&op, &clamp_lower,
+                                       &clamp_upper]() -> bool {
+        return (op->shape().element_type() == F8E4M3FN &&
+                clamp_lower->literal().IsAllFloat(static_cast<float>(
+                    std::numeric_limits<tsl::float8_e4m3fn>::lowest())) &&
+                clamp_upper->literal().IsAllFloat(static_cast<float>(
+                    std::numeric_limits<tsl::float8_e4m3fn>::max()))) ||
+               (op->shape().element_type() == F8E5M2 &&
+                clamp_lower->literal().IsAllFloat(static_cast<float>(
+                    std::numeric_limits<tsl::float8_e5m2>::lowest())) &&
+                clamp_upper->literal().IsAllFloat(static_cast<float>(
+                    std::numeric_limits<tsl::float8_e5m2>::max())));
+      };
       if (Match(users_user,
                 m::Convert(
                     &op,
                     m::Clamp(m::Broadcast(m::ConstantScalar(&clamp_lower)),
                              m::Op(),
-                             m::Broadcast(m::ConstantScalar(&clamp_upper)))))) {
-        if ((op->shape().element_type() == F8E4M3FN &&
-             clamp_lower->literal().IsAllFloat(static_cast<float>(
-                 std::numeric_limits<tsl::float8_e4m3fn>::lowest())) &&
-             clamp_upper->literal().IsAllFloat(static_cast<float>(
-                 std::numeric_limits<tsl::float8_e4m3fn>::max()))) ||
-            (op->shape().element_type() == F8E5M2 &&
-             clamp_lower->literal().IsAllFloat(static_cast<float>(
-                 std::numeric_limits<tsl::float8_e5m2>::lowest())) &&
-             clamp_upper->literal().IsAllFloat(static_cast<float>(
-                 std::numeric_limits<tsl::float8_e5m2>::max())))) {
-          graph_string.ChangeDataType(op->shape().element_type());
-          CaptureConvGraphRecursive(users_user, operands, aux_outputs,
-                                    graph_string, visited_instrs, final_instr);
-          continue;
-        }
+                             m::Broadcast(m::ConstantScalar(&clamp_upper))))) &&
+          is_saturating_cast_to_f8()) {
+        graph_string.ChangeDataType(op->shape().element_type());
+        CaptureConvGraphRecursive(users_user, operands, aux_outputs,
+                                  graph_string, visited_instrs, final_instr);
+        continue;
       }
       // Maximum of the absolute value (Amax)
       if (Match(users_user,
                 m::Reduce(&op, m::Abs(m::Op(&operand0)), m::Op()))) {
-        HloComputation* reduce_comp = op->to_apply();
-        HloInstruction* reduce_comp_root = reduce_comp->root_instruction();
-        if (ShapeUtil::IsScalar(op->shape()) &&
-            op->operand(1)->literal().GetAsDouble({}) <= 0. &&
-            reduce_comp_root->opcode() == HloOpcode::kMaximum &&
-            reduce_comp_root->operand(0)->opcode() == HloOpcode::kParameter &&
-            reduce_comp_root->operand(1)->opcode() == HloOpcode::kParameter) {
-          aux_outputs.emplace_back(op);
-          graph_string.AppendOp("amax", op, {operand0});
+        if (fuse_amax()) {
           continue;
         }
       }
@@ -477,33 +526,33 @@ StatusOr<std::tuple<std::vector<HloInstruction*>, std::vector<HloInstruction*>,
                     GraphString, HloInstruction*>>
 CaptureConvGraph(HloInstruction* instr, HloInstruction* convolution,
                  HloInstruction* wide_input, HloInstruction* wide_filter,
-                 HloInstruction* x_scale, HloInstruction* w_scale,
+                 HloInstruction* input_scale, HloInstruction* filter_scale,
                  bool x_mult_scale, bool w_mult_scale) {
   GraphString graph_string;
   graph_string.AppendOp("conv", instr);
 
   // Shift the scaling of the input and filter to the output of the convolution.
-  HloInstruction *x_scaled_conv, *w_scaled_conv;
-  if (x_scale) {
+  HloInstruction *input_scaled_conv, *filter_scaled_conv;
+  if (input_scale) {
     TF_RETURN_IF_ERROR(convolution->ReplaceOperandWith(0, wide_input));
-    HloInstruction* bcast_x_scale = instr->AddInstruction(
-        HloInstruction::CreateBroadcast(instr->shape(), x_scale, {}));
-    x_scaled_conv = instr->AddInstruction(HloInstruction::CreateBinary(
+    HloInstruction* bcast_input_scale = instr->AddInstruction(
+        HloInstruction::CreateBroadcast(instr->shape(), input_scale, {}));
+    input_scaled_conv = instr->AddInstruction(HloInstruction::CreateBinary(
         instr->shape(),
         x_mult_scale ? HloOpcode::kMultiply : HloOpcode::kDivide, instr,
-        bcast_x_scale));
-    TF_RETURN_IF_ERROR(instr->ReplaceAllUsesWith(x_scaled_conv));
+        bcast_input_scale));
+    TF_RETURN_IF_ERROR(instr->ReplaceAllUsesWith(input_scaled_conv));
   }
-  if (w_scale) {
+  if (filter_scale) {
     TF_RETURN_IF_ERROR(convolution->ReplaceOperandWith(1, wide_filter));
-    HloInstruction* bcast_w_scale = instr->AddInstruction(
-        HloInstruction::CreateBroadcast(instr->shape(), w_scale, {}));
-    w_scaled_conv = instr->AddInstruction(HloInstruction::CreateBinary(
+    HloInstruction* bcast_filter_scale = instr->AddInstruction(
+        HloInstruction::CreateBroadcast(instr->shape(), filter_scale, {}));
+    filter_scaled_conv = instr->AddInstruction(HloInstruction::CreateBinary(
         instr->shape(),
         w_mult_scale ? HloOpcode::kMultiply : HloOpcode::kDivide,
-        x_scale ? x_scaled_conv : instr, bcast_w_scale));
-    TF_RETURN_IF_ERROR(
-        (x_scale ? x_scaled_conv : instr)->ReplaceAllUsesWith(w_scaled_conv));
+        input_scale ? input_scaled_conv : instr, bcast_filter_scale));
+    TF_RETURN_IF_ERROR((input_scale ? input_scaled_conv : instr)
+                           ->ReplaceAllUsesWith(filter_scaled_conv));
   }
 
   std::vector<HloInstruction*> operands, aux_outputs;
@@ -546,8 +595,26 @@ StatusOr<bool> F8GraphConv(HloComputation* comp, se::CudaComputeCapability cc) {
     const DebugOptions& debug_options =
         instr->GetModule()->config().debug_options();
     HloInstruction *convolution, *gte, *input, *filter,
-        *x_scale = nullptr, *w_scale = nullptr, *x_scale_op = nullptr,
-        *w_scale_op = nullptr, *wide_input, *wide_filter;
+        *input_scale = nullptr, *filter_scale = nullptr,
+        *input_scale_op = nullptr, *filter_scale_op = nullptr,
+        *wide_input = nullptr, *wide_filter = nullptr;
+
+    auto conv_operand_maybe_scaled = [](HloInstruction** operand,
+                                        HloInstruction** wide_operand,
+                                        HloInstruction** scale_op,
+                                        HloInstruction** scale) {
+      return m::AnyOf<HloInstruction>(
+          m::Op(operand).WithPredicate(IsF8Type),
+          m::Convert(wide_operand, m::Op(operand).WithPredicate(IsF8Type)),
+          m::Divide(
+              scale_op,
+              m::Convert(wide_operand, m::Op(operand).WithPredicate(IsF8Type)),
+              m::Broadcast(m::Op(scale).WithPredicate(IsScalar))),
+          m::MultiplyAnyOrder(
+              scale_op,
+              m::Convert(wide_operand, m::Op(operand).WithPredicate(IsF8Type)),
+              m::Broadcast(m::Op(scale).WithPredicate(IsScalar))));
+    };
 
     // TODO(philipphack): Consider allowing ops between dequantization and
     // convolution.
@@ -555,33 +622,11 @@ StatusOr<bool> F8GraphConv(HloComputation* comp, se::CudaComputeCapability cc) {
         &gte,
         m::CustomCall(
             &convolution,
-            m::AnyOf<HloInstruction>(
-                m::Op(&input).WithPredicate(IsF8Type),
-                m::Convert(&wide_input, m::Op(&input).WithPredicate(IsF8Type)),
-                m::Divide(
-                    &x_scale_op,
-                    m::Convert(&wide_input,
-                               m::Op(&input).WithPredicate(IsF8Type)),
-                    m::Broadcast(m::Op(&x_scale).WithPredicate(IsScalar))),
-                m::MultiplyAnyOrder(
-                    &x_scale_op,
-                    m::Convert(&wide_input,
-                               m::Op(&input).WithPredicate(IsF8Type)),
-                    m::Broadcast(m::Op(&x_scale).WithPredicate(IsScalar)))),
-            m::AnyOf<HloInstruction>(
-                m::Op(&filter).WithPredicate(IsF8Type),
-                m::Convert(&wide_filter,
-                           m::Op(&filter).WithPredicate(IsF8Type)),
-                m::Divide(
-                    &w_scale_op,
-                    m::Convert(&wide_filter,
-                               m::Op(&filter).WithPredicate(IsF8Type)),
-                    m::Broadcast(m::Op(&w_scale).WithPredicate(IsScalar))),
-                m::MultiplyAnyOrder(
-                    &w_scale_op,
-                    m::Convert(&wide_filter,
-                               m::Op(&filter).WithPredicate(IsF8Type)),
-                    m::Broadcast(m::Op(&w_scale).WithPredicate(IsScalar))))),
+            conv_operand_maybe_scaled(&input, &wide_input, &input_scale_op,
+                                      &input_scale),
+            conv_operand_maybe_scaled(&filter, &wide_filter, &filter_scale_op,
+                                      &filter_scale))
+            .WithPredicate(IsConvCustomCall),
         0);
     if (Match(instr, pattern)) {
       if (!ConsumeFuel("cudnn-fused-convolution-rewriter", [&] {
@@ -597,24 +642,29 @@ StatusOr<bool> F8GraphConv(HloComputation* comp, se::CudaComputeCapability cc) {
       TF_ASSIGN_OR_RETURN(
           std::tie(operands, aux_outputs, graph_string, final_instr),
           CaptureConvGraph(
-              instr, convolution, wide_input, wide_filter, x_scale, w_scale,
-              x_scale_op ? x_scale_op->opcode() == HloOpcode::kMultiply : false,
-              w_scale_op ? w_scale_op->opcode() == HloOpcode::kMultiply
-                         : false));
+              instr, convolution, wide_input, wide_filter, input_scale,
+              filter_scale,
+              input_scale_op ? input_scale_op->opcode() == HloOpcode::kMultiply
+                             : false,
+              filter_scale_op
+                  ? filter_scale_op->opcode() == HloOpcode::kMultiply
+                  : false));
       TF_ASSIGN_OR_RETURN(
           auto config, convolution->backend_config<CudnnConvBackendConfig>());
       config.set_serialized_graph(graph_string.Graph());
       operands.insert(operands.begin(), input);
       operands.insert(operands.begin() + 1, filter);
 
-      std::vector<Shape> output_shapes = {
-          ShapeUtil::ChangeElementType(
-              ShapeUtil::GetTupleElementShape(convolution->shape(), 0),
-              final_instr->shape().element_type()),
-          ShapeUtil::GetTupleElementShape(convolution->shape(), 1)};
+      std::vector<Shape> output_shapes;
+      output_shapes.emplace_back(ShapeUtil::ChangeElementType(
+          ShapeUtil::GetTupleElementShape(convolution->shape(), 0),
+          final_instr->shape().element_type()));
       for (HloInstruction* aux_output : aux_outputs) {
-        output_shapes.insert(output_shapes.begin() + 1, aux_output->shape());
+        output_shapes.emplace_back(aux_output->shape());
       }
+      output_shapes.emplace_back(
+          ShapeUtil::GetTupleElementShape(convolution->shape(), 1));
+
       HloInstruction* new_convolution =
           comp->AddInstruction(convolution->CloneWithNewOperands(
               ShapeUtil::MakeTupleShape(output_shapes), operands));
