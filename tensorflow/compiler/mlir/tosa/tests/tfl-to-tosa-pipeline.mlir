@@ -1061,6 +1061,16 @@ func.func @test_reshape_dynamic(%arg0: tensor<13x21x?xf32>) -> tensor<*xf32> {
 
 // -----
 
+// CHECK-LABEL: test_reshape_dynamic_ranked_output
+// CHECK: %[[VAR0:.*]] = tosa.reshape %arg0 {new_shape = array<i64: 1, -1, 2>}
+func.func @test_reshape_dynamic_ranked_output(%arg0: tensor<?x52x52x2xf32>) -> tensor<1x?x2xf32> {
+  %cst = arith.constant dense<[1, -1, 2]> : tensor<3xi32>
+  %0 = "tfl.reshape"(%arg0, %cst) : (tensor<?x52x52x2xf32>, tensor<3xi32>) -> tensor<1x?x2xf32>
+  func.return %0 : tensor<1x?x2xf32>
+}
+
+// -----
+
 // CHECK-LABEL: test_transpose
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() <{value = dense<[2, 0, 1]> : tensor<3xi32>}>
 // CHECK: %[[VAR1:.*]] = tosa.transpose %arg0, %[[VAR0]]
