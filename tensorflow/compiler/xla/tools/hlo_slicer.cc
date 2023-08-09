@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <deque>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -27,11 +28,55 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
+#include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/tools/hlo_extractor.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 namespace {
+
+// Find and return the first custom-call instruction with "Sharding" as the
+// custom-call target.
+HloInstruction* FindShardingInstruction(HloModule* hlo_module) {
+  for (HloComputation* computation : hlo_module->computations()) {
+    for (HloInstruction* instruction : computation->instructions()) {
+      if (instruction->opcode() == HloOpcode::kCustomCall &&
+          instruction->custom_call_target() == "Sharding") {
+        CHECK_EQ(instruction->operand_count(), 1);
+        return instruction;
+      }
+    }
+  }
+  return nullptr;
+}
+
+// Remove all custom-calls to Sharding in the `hlo_module`. The sharding
+// custom-call will be removed, and its uses would be replaced with the operand
+// of the sharding custom-call.
+void RemoveSharding(HloModule* hlo_module) {
+  while (HloInstruction* custom_call_instruction =
+             FindShardingInstruction(hlo_module)) {
+    // Replace its uses with its operand.
+    for (HloInstruction* user_instruction : custom_call_instruction->users()) {
+      CHECK_OK(custom_call_instruction->ReplaceUseWith(
+          user_instruction, custom_call_instruction->mutable_operand(0)));
+    }
+
+    // Detach the custom-call from computation.
+    custom_call_instruction->DetachFromOperandsAndUsers();
+    CHECK_OK(custom_call_instruction->parent()->RemoveInstruction(
+        custom_call_instruction));
+    VLOG(1) << "Removed sharding custom-call: "
+            << custom_call_instruction->ToString();
+
+    // Verify if the module is still valid.
+    HloVerifier verifier(/*layout_sensitive=*/false,
+                         /*allow_mixed_precision=*/true);
+    TF_CHECK_OK(verifier.Run(hlo_module).status());
+  }
+}
 
 // Intra-Computation forward/backward slicing: Conduct slicing inside the given
 // computation, starting from the instructions passed in `sliced_instructions`.
@@ -308,19 +353,21 @@ SliceOutput SliceModule(
   }
 }
 
-std::unique_ptr<HloModule> SliceModuleAndExtract(
+std::vector<std::unique_ptr<HloModule>> SliceModuleAndExtract(
     const HloModule* hlo_module,
     absl::Span<const HloInstruction*> slice_starting_instructions,
-    ForwardSliceConfig forward_slicing_config, bool backward_slicing_config) {
+    const SlicingConfiguration& slicing_configuration) {
   // Forward slicing.
   SliceOutput forward_slice_output;
-  if (forward_slicing_config == ForwardSliceConfig::kRoot) {
+  if (slicing_configuration.forward_slicing ==
+      SlicingConfiguration::ForwardSlicingConfig::kRoot) {
     // Slice to the root instruction of the entry computation of `hlo_module`.
     forward_slice_output = SliceModule(
         hlo_module, slice_starting_instructions, /*frontier_selector=*/nullptr,
         /*ignore_control_dependency=*/false, /*forward_slice=*/true,
         /*nearest_common_ancestor_as_root=*/false);
-  } else if (backward_slicing_config) {
+  } else if (slicing_configuration.forward_slicing ==
+             SlicingConfiguration::ForwardSlicingConfig::kNca) {
     // slice to the nearest common ancestors of `slice_starting_instructions`
     forward_slice_output = SliceModule(
         hlo_module, slice_starting_instructions, /*frontier_selector=*/nullptr,
@@ -332,7 +379,7 @@ std::unique_ptr<HloModule> SliceModuleAndExtract(
 
   // Backward slicing.
   SliceOutput backward_slice_output;
-  if (backward_slicing_config) {
+  if (slicing_configuration.backward_slicing) {
     backward_slice_output = SliceModule(
         hlo_module, slice_starting_instructions, /*frontier_selector=*/nullptr,
         /*ignore_control_dependency=*/false, /*forward_slice=*/false);
@@ -347,7 +394,8 @@ std::unique_ptr<HloModule> SliceModuleAndExtract(
 
   // Decide Root to start extraction based on `forward_slicing_config`.
   const HloInstruction* extraction_root =
-      forward_slicing_config == ForwardSliceConfig::kNca
+      slicing_configuration.forward_slicing ==
+              SlicingConfiguration::ForwardSlicingConfig::kNca
           ? forward_slice_output.nearest_common_ancestor_root()
           : hlo_module->entry_computation()->root_instruction();
   VLOG(1) << "[Root instruction of the sliced module]: "
@@ -377,7 +425,20 @@ std::unique_ptr<HloModule> SliceModuleAndExtract(
                     /*replace_type_selector=*/replace_type_selector,
                     /*cross_computation=*/true);
 
-  return extracted_module;
+  // Remove the custom-call to sharding if `remove_sharding` is specified.
+  if (slicing_configuration.remove_sharding) {
+    RemoveSharding(extracted_module.get());
+  }
+
+  // Verify if the extracted module (after processing) is valid or not.
+  HloVerifier verifier(/*layout_sensitive=*/false,
+                       /*allow_mixed_precision=*/true);
+  TF_CHECK_OK(verifier.Run(extracted_module.get()).status());
+
+  // Return all the sliced modules.
+  std::vector<std::unique_ptr<HloModule>> sliced_modules;
+  sliced_modules.emplace_back(std::move(extracted_module));
+  return sliced_modules;
 }
 
 }  // namespace xla

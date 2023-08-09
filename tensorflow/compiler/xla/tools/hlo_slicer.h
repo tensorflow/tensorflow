@@ -194,27 +194,40 @@ SliceOutput SliceModule(
     bool ignore_control_dependency = false, bool forward_slice = true,
     bool nearest_common_ancestor_as_root = false);
 
-// Slice from the `hlo_module` from the `slicing_starting_instructions`,
-// following some configurations, and return the sliced hlo module. For example,
-// if forward slicing and backward slicing are specified at the same time, the
-// return module would include both the instructions from forward slicing and
-// backward slicing.
+// Specifies slicing configurations.
+//
+// `forward_slicing`: how forward slicing is conducted from the
+// the hlo instructions we are starting slicing from.
+//    kRoot: slice to the root instruction of the entry computation.
+//    kNca: slice to the nearest common ancestors of the starting hlo
+//    instructions.
+//
+// `backward_slicing`: if backward slicing is conducted from the hlo
+// instructions we are starting slicing from.
+//
+// `remove_sharding`: if the custom call to Sharding should be removed. If
+// specified as true, the custom call instruction to sharding (e.g.,
+// %custom-call = bf16[8] custom-call(bf16[8] %multiply),
+// custom_call_target="Sharding", sharding={replicated}) will be removed./
+struct SlicingConfiguration {
+  enum class ForwardSlicingConfig { kRoot, kNca };
+  ForwardSlicingConfig forward_slicing = ForwardSlicingConfig::kRoot;
+  bool backward_slicing = false;
+  bool remove_sharding = false;
+};
+
+// Slices from the `hlo_module` from the `slicing_starting_instructions`,
+// following configurations specified by `slicing_configuration`, and return
+// (multiple) sliced hlo modules.
 //
 // `slice_starting_instructions`: the starting HLO instructions of slicing.
 //
-// `forward_slicing_config`: how forward slicing is conducted from the
-// `slice_starting_instructions`.
-//    kRoot: slice to the root instruction of the entry computation.
-//    kNca: slice to the nearest common ancestors of
-//    `slice_starting_instructions`.
-//
-// `backward_slicing_config`: if backward slicing is conducted from the
-// `slice_starting_instructions`.
-enum class ForwardSliceConfig { kRoot, kNca };
-std::unique_ptr<HloModule> SliceModuleAndExtract(
+// `slicing_configuration`: specifies how the slicing is conducted. Please
+// check more details at the comments of `SlicingConfiguration`.
+std::vector<std::unique_ptr<HloModule>> SliceModuleAndExtract(
     const HloModule* hlo_module,
     absl::Span<const HloInstruction*> slice_starting_instructions,
-    ForwardSliceConfig forward_slicing_config, bool backward_slicing_config);
+    const SlicingConfiguration& slicing_configuration);
 
 }  // namespace xla
 
