@@ -111,6 +111,9 @@ class PresetAssignments {
   // Get debugging information.
   std::string buffer_info_str() const { return buffer_info_str_; }
   std::string allocation_info_str() const { return allocation_info_str_; }
+  std::string instruction_schedule_str() const {
+    return instruction_schedule_str_;
+  }
 
  private:
   std::vector<std::pair<HloPosition, HeapSimulator::Chunk>> chunks_;
@@ -119,6 +122,7 @@ class PresetAssignments {
   std::vector<std::pair<int64_t, AssignmentInformation>> assignment_info_;
   std::string buffer_info_str_;
   std::string allocation_info_str_;
+  std::string instruction_schedule_str_;
 };
 
 // A wrapper class around HloCostAnalysis with additional knowledge about the
@@ -2610,6 +2614,7 @@ class AlternateMemoryBestFitHeap
   // Debug strings.
   std::string buffer_info_str_;
   std::string allocation_info_str_;
+  std::string instruction_schedule_str_;
 };
 }  // namespace memory_space_assignment
 }  // namespace xla

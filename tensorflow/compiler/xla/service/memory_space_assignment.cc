@@ -1914,6 +1914,7 @@ void AlternateMemoryBestFitHeap::DumpDebugStringsIfEnabled() const {
   }
   options_.dump_fn("bufferinfo", buffer_info_str_);
   options_.dump_fn("allocinfo", allocation_info_str_);
+  options_.dump_fn("scheduleinfo", instruction_schedule_str_);
 }
 
 /*static*/ StatusOr<std::unique_ptr<MemoryBoundLoopOptimizer>>
@@ -3442,13 +3443,16 @@ HeapSimulator::Result<HloValue> AlternateMemoryBestFitHeap::Finish() {
 
   AddInputAndOutputRequiredAssignments();
 
-  if (VLOG_IS_ON(3)) {
+  if (VLOG_IS_ON(3) || options_.dump_fn != nullptr) {
     VLOG(3) << "Flattened instruction sequence:";
     const auto& instruction_sequence =
         hlo_live_range_.flattened_instruction_sequence().instructions();
+    absl::StrAppend(&instruction_schedule_str_, "time,instruction_name\n");
     for (int i = 0; i < instruction_sequence.size(); ++i) {
       VLOG(3) << " " << i << ": " << instruction_sequence[i]->parent()->name()
               << " " << instruction_sequence[i]->name();
+      absl::StrAppend(&instruction_schedule_str_, i, ",",
+                      instruction_sequence[i]->name(), "\n");
     }
   }
 
