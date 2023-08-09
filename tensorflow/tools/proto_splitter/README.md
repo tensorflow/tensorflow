@@ -2,7 +2,7 @@
 
 Utilities for splitting large protos.
 
-For a more detailed overview of the library, see our [in-depth guide](in-depth-guide.md).
+For a more detailed overview of the library, see our [in-depth guide](g3doc/in-depth-guide.md).
 
 ## The Python `Splitter` class
 
@@ -118,4 +118,4 @@ Merger::Read("path/to/saved_model", &my_other_proto);
 
 ##### In-Depth Guide
 
-Looking for a more detailed overview of the library? See our [in-depth guide](in-depth-guide.md).
+Looking for a more detailed overview of the library? See our [in-depth guide](g3doc/in-depth-guide.md).
