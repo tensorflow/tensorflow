@@ -154,8 +154,8 @@ OperandLayoutConstraint::OperandLayoutConstraint(
       instruction_(instruction),
       operand_no_(operand_no) {
   CHECK(shape_layout.LayoutIsSet());
-  CHECK(ShapeUtil::CompatibleIgnoringElementType(
-      shape_layout.shape(), instruction->operand(operand_no)->shape()))
+  CHECK(ShapeUtil::CompatibleKind(shape_layout.shape(),
+                                  instruction->operand(operand_no)->shape()))
       << shape_layout.shape() << " is not compatible with "
       << instruction->operand(operand_no)->shape() << " (for operand "
       << operand_no << " of instruction " << instruction->ToString() << ")";
