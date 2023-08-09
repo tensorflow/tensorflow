@@ -297,10 +297,9 @@ HloFusionAnalysis::EmitterFusionKind HloFusionAnalysis::GetEmitterFusionKind()
     return EmitterFusionKind::kTriton;
   }
 #endif
-
   const auto& roots = fusion_roots();
-  HloComputation* fused_computation = fusion_->fused_instructions_computation();
-  if (HasFirstRealReductionHero(*fused_computation)) {
+
+  if (HasRealReductionHero(roots)) {
     return EmitterFusionKind::kReduction;
   }
 
@@ -391,8 +390,9 @@ namespace {
 // We always use the first reduce root that triggers unnested reduction emitter
 // as the hero reduction, since all the reductions are required to have the same
 // shape and layout as verified by `IsFusedReductionOutputConsistent()`.
-const HloInstruction* FindHeroReduction(const HloComputation& computation) {
-  const HloInstruction* first_reduce = FindFirstRealReductionHero(computation);
+const HloInstruction* FindHeroReduction(
+    const std::vector<HloInstruction*>& fusion_roots) {
+  const HloInstruction* first_reduce = FindFirstRealReductionHero(fusion_roots);
   CHECK_NE(first_reduce, nullptr);
   return first_reduce;
 }
@@ -403,8 +403,7 @@ const ReductionCodegenInfo* HloFusionAnalysis::GetReductionCodegenInfo() {
     return &reduction_codegen_info_.value();
   }
 
-  const HloInstruction* hero_reduction =
-      FindHeroReduction(*fused_computation());
+  const HloInstruction* hero_reduction = FindHeroReduction(fusion_roots());
 
   auto reduction_codegen_info = ComputeReductionCodegenInfo(hero_reduction);
   reduction_codegen_info_.emplace(std::move(reduction_codegen_info));
