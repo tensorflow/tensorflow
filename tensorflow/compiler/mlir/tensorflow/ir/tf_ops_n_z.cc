@@ -666,6 +666,16 @@ LogicalResult RandomUniformOp::verify() {
   return success();
 }
 
+std::optional<std::string> RandomUniformOp::GetResourceInstanceStr() {
+  // We do not create dependencies among the ops. XLA will run the ops in a
+  // deterministic order. However, we cannot mark the op as Pure as that may
+  // lead to incorrect optimization, e.g. two ops with the same constant input
+  // may end up returning the same value, even though they should have returned
+  // different values.
+  static unsigned counter = 0;
+  return std::to_string(counter++);
+}
+
 //===----------------------------------------------------------------------===//
 // RangeOp
 //===----------------------------------------------------------------------===//
