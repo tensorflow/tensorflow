@@ -2285,11 +2285,8 @@ AutoShardingSolverResult CallSolver(
       }
     }
     bool convertable = (row_indices.size() == col_indices.size());
-    for (NodeStrategyIdx i = 0; i < row_indices.size(); ++i) {
-      for (NodeStrategyIdx j = 0; j < col_indices.size(); ++j) {
-        if (vij[i * col_indices.size() + j] == (i == j ? 0.0 : 1.0)) continue;
-        convertable = false;
-      }
+    for (NodeStrategyIdx i = 0; i < row_indices.size() && convertable; ++i) {
+      if (vij[i * col_indices.size() + i] != 0.0) convertable = false;
     }
     if (convertable && allow_alias_to_follower_conversion) {
       new_followers.push_back(std::make_pair(idx_a, idx_b));
