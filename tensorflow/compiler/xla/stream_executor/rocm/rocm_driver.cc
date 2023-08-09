@@ -1269,7 +1269,9 @@ static tsl::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
   if (gcnArchName.substr(0, 6) == "gfx908") {
     *reserve = RESERVED_GFX908;
   } else if (gcnArchName.substr(0, 6) == "gfx90a" ||
-             gcnArchName.substr(0, 6) == "gfx940") {
+             gcnArchName.substr(0, 6) == "gfx940" ||
+             gcnArchName.substr(0, 6) == "gfx941" ||
+             gcnArchName.substr(0, 6) == "gfx942" ) {
     *reserve = RESERVED_GFX9_X;
   }
   return true;
