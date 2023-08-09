@@ -1707,6 +1707,12 @@ std::optional<bool> GpuCompiler::FusionCanShareBufferHint(
     return std::nullopt;
   }
 
+  auto backend_config = user->backend_config<FusionBackendConfig>();
+  if (backend_config.ok() &&
+      backend_config.value().kind() == kTritonSoftmaxFusionKind) {
+    return true;
+  }
+
   // First, do the trivial check: if the fusion operand and the fusion output
   // have a different number of elements or have a different element byte size,
   // the buffer cannot be shared.
