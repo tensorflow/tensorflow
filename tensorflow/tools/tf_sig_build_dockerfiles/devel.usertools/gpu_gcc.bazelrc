@@ -184,4 +184,4 @@ test:pycpp_large --config=pycpp_large_filters -- //tensorflow/... -//tensorflow/
 # For XLA (rocm)
 test:xla_cpp_filters --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,gpu,requires-gpu,-no_gpu,-no_rocm --keep_going
 test:xla_cpp_filters --build_tag_filters=-no_oss,-oss_excluded,-oss_serial,gpu,requires-gpu,-no_gpu,-no_rocm
-test:xla_cpp --config=xla_cpp_filters -- //xla/... //build_tools/..
+test:xla_cpp --config=xla_cpp_filters -- //xla/... //build_tools/...
