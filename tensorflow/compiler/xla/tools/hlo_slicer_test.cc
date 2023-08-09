@@ -1031,5 +1031,55 @@ TEST_F(HloSlicerTest, TestSliceModuleAndExtractRemoveSharding) {
   }
 }
 
+TEST_F(HloSlicerTest, TestSliceModuleAndExtractReduceTupleParameter) {
+  const std::string& hlo_string = R"(
+  HloModule axpy_module
+    ENTRY axpy_computation (p.0: (s32[], s32[3]{0}), p.1: (s32[3]{0}, s32[])) -> s32[] {
+      p.0 = (s32[], s32[3]{0}) parameter(0)
+      gte.0 = s32[] get-tuple-element(p.0), index=0    
+      p.1 = (s32[3]{0}, s32[]) parameter(1)
+      gte.1 = s32[] get-tuple-element(p.1), index=1    
+      ROOT add.0 = s32[] add(gte.0, gte.1)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  HloInstruction* add_0 = FindInstruction(hlo_module.get(), "add.0");
+  CHECK_NE(add_0, nullptr);
+
+  // slice_starting_instructions: {add.0}.
+  // forward_slicing: kRoot.
+  // backward_slicing: true.
+  // remove_sharding: false.
+  // reduce_tuple_parameter: true.
+  {
+    // Slice the whole hlo module and reduce the tuple parameter (p.0 and p.1).
+    std::vector<const HloInstruction*> relevant_instructions({add_0});
+    SlicingConfiguration slicing_config = {
+        /*forward_slicing=*/SlicingConfiguration::ForwardSlicingConfig::kRoot,
+        /*backward_slicing=*/true, /*remove_sharding=*/false,
+        /*reduce_tuple_parameter=*/true};
+    std::vector<std::unique_ptr<HloModule>> sliced_modules =
+        SliceModuleAndExtract(hlo_module.get(),
+                              /*slice_starting_instructions=*/
+                              absl::MakeSpan(relevant_instructions),
+                              /*slicing_configuration=*/slicing_config);
+    CHECK_EQ(sliced_modules.size(), 1);
+    auto sliced_module = std::move(sliced_modules[0]);
+
+    // Check that the new p.0 only has one element.
+    HloInstruction* p_0 = FindInstruction(sliced_module.get(), "p.0");
+    CHECK_NE(p_0, nullptr);
+    CHECK_EQ(p_0->shape().tuple_shapes_size(), 1);
+
+    // Check that the new p.1 only has one element.
+    HloInstruction* p_1 = FindInstruction(sliced_module.get(), "p.1");
+    CHECK_NE(p_1, nullptr);
+    CHECK_EQ(p_1->shape().tuple_shapes_size(), 1);
+  }
+}
+
 }  // namespace
 }  // namespace xla

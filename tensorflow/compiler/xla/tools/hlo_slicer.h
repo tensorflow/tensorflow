@@ -209,11 +209,18 @@ SliceOutput SliceModule(
 // specified as true, the custom call instruction to sharding (e.g.,
 // %custom-call = bf16[8] custom-call(bf16[8] %multiply),
 // custom_call_target="Sharding", sharding={replicated}) will be removed./
+//
+// `reduce_tuple_parameter`: If specified as true, we will try to reduce the
+// size of parameters of entry computation if they are tuple. Specifically, for
+// each parameters of entry computation, if it is of tuple type, we will remove
+// the elements that are not used by any other instructions. This is useful when
+// slicing from a large module.
 struct SlicingConfiguration {
   enum class ForwardSlicingConfig { kRoot, kNca };
   ForwardSlicingConfig forward_slicing = ForwardSlicingConfig::kRoot;
   bool backward_slicing = false;
   bool remove_sharding = false;
+  bool reduce_tuple_parameter = false;
 };
 
 // Slices from the `hlo_module` from the `slicing_starting_instructions`,

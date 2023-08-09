@@ -284,6 +284,7 @@ cc_library(
     hdrs = ["hlo_slicer.h"],
     deps = [
         ":hlo_extractor",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:call_graph",
         "//tensorflow/compiler/xla/service:hlo_verifier",

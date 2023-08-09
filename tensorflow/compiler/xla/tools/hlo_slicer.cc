@@ -31,11 +31,81 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
+#include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tools/hlo_extractor.h"
 #include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 namespace {
+
+// A helper function of `ReduceTupleParameter` that tries to reduce the number
+// of elements of a specific parameter instruction of tuple type
+// (`tuple_parameter`). It only updates the shape of parameter instruction and
+// the index of all its uses (it only handle the case where all the uses are
+// GetTupleElement).
+void ReduceTupleParameterHelper(HloModule* hlo_module,
+                                HloInstruction* tuple_parameter) {
+  // Only handle the case where all the uses are GetTupleElement.
+  for (HloInstruction* user_inst : tuple_parameter->users()) {
+    if (user_inst->opcode() != HloOpcode::kGetTupleElement) {
+      return;
+    }
+  }
+
+  VLOG(1) << "Parameter instruction to be reduced: "
+          << tuple_parameter->ToString()
+          << " shape size: " << tuple_parameter->shape().tuple_shapes_size()
+          << " users size: " << tuple_parameter->users().size();
+
+  // Collect the shapes of the elements that have users.
+  std::vector<Shape> used_shapes;
+  for (HloInstruction* user_inst : tuple_parameter->users()) {
+    used_shapes.push_back(user_inst->shape());
+  }
+
+  // Change the shape of `tuple_parameter` to only include the shape of elements
+  // that have users.
+  Shape new_tuple_shape =
+      ShapeUtil::MakeTupleShape(absl::MakeSpan(used_shapes));
+  tuple_parameter->mutable_shape()->mutable_tuple_shapes()->clear();
+  for (const auto& shape : used_shapes) {
+    tuple_parameter->mutable_shape()->mutable_tuple_shapes()->push_back(shape);
+  }
+
+  // Update the tuple index of all of the users of `tuple_parameter`, so that
+  // they index into the right shape.
+  for (int i = 0; i < tuple_parameter->users().size(); ++i) {
+    tuple_parameter->users()[i]->set_tuple_index(i);
+  }
+
+  // Update HloModule shape.
+  hlo_module->config().SetComputationLayoutIfExists(
+      hlo_module->entry_computation()->ComputeProgramShape());
+}
+
+// Remove the unused elements in all parameter instructions of tuple type, and
+// update all the uses of the parameter instructions accordingly. Now it only
+// considers the case where all the uses of the (tuple) parameter instruction
+// are GetTupleElement instruction.
+void ReduceTupleParameter(HloModule* hlo_module) {
+  // Collect all the parameters instructions of tuple type.
+  std::vector<HloInstruction*> tuple_parameters;
+  for (HloInstruction* parameter :
+       hlo_module->entry_computation()->parameter_instructions()) {
+    if (parameter->shape().IsTuple()) {
+      tuple_parameters.push_back(parameter);
+    }
+  }
+
+  // For each parameter, invokes `ReduceTupleParameterHelper` to reduce its size
+  // of dimensions. No instruction is added or removed from `hlo_module` during
+  // this process, only shapes of parameter instructions and tuple indices of
+  // their uses are updated.
+  for (HloInstruction* tuple_parameter : tuple_parameters) {
+    ReduceTupleParameterHelper(hlo_module, tuple_parameter);
+  }
+}
 
 // Find and return the first custom-call instruction with "Sharding" as the
 // custom-call target.
@@ -428,6 +498,12 @@ std::vector<std::unique_ptr<HloModule>> SliceModuleAndExtract(
   // Remove the custom-call to sharding if `remove_sharding` is specified.
   if (slicing_configuration.remove_sharding) {
     RemoveSharding(extracted_module.get());
+  }
+
+  // Reduce the parameter instructions of tuple shape if
+  // `reduce_tuple_parameter` is specified.
+  if (slicing_configuration.reduce_tuple_parameter) {
+    ReduceTupleParameter(extracted_module.get());
   }
 
   // Verify if the extracted module (after processing) is valid or not.
