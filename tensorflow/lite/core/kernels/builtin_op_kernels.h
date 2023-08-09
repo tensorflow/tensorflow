@@ -199,6 +199,18 @@ TfLiteRegistration* Register_RIGHT_SHIFT();
 TfLiteRegistration*
 Register_STABLEHLO_LOGISTIC();  // WARNING: not implemented, using this op will
                                 // crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_ADD();  // WARNING: not implemented, using this op will crash
+                           // the runtime
+TfLiteRegistration*
+Register_STABLEHLO_DIVIDE();  // WARNING: not implemented, using this op will
+                              // crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_MULTIPLY();  // WARNING: not implemented, using this op will
+// crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_MAXIMUM();  // WARNING: not implemented, using this op will
+                               // crash the runtime
 }  // namespace builtin
 }  // namespace ops
 }  // namespace tflite

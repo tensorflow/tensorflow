@@ -1089,11 +1089,15 @@ enum BuiltinOperator : int32_t {
   BuiltinOperator_BITWISE_XOR = 160,
   BuiltinOperator_RIGHT_SHIFT = 161,
   BuiltinOperator_STABLEHLO_LOGISTIC = 162,
+  BuiltinOperator_STABLEHLO_ADD = 163,
+  BuiltinOperator_STABLEHLO_DIVIDE = 164,
+  BuiltinOperator_STABLEHLO_MULTIPLY = 165,
+  BuiltinOperator_STABLEHLO_MAXIMUM = 166,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_STABLEHLO_LOGISTIC
+  BuiltinOperator_MAX = BuiltinOperator_STABLEHLO_MAXIMUM
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[163] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[167] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -1257,13 +1261,17 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[163] {
     BuiltinOperator_BITCAST,
     BuiltinOperator_BITWISE_XOR,
     BuiltinOperator_RIGHT_SHIFT,
-    BuiltinOperator_STABLEHLO_LOGISTIC
+    BuiltinOperator_STABLEHLO_LOGISTIC,
+    BuiltinOperator_STABLEHLO_ADD,
+    BuiltinOperator_STABLEHLO_DIVIDE,
+    BuiltinOperator_STABLEHLO_MULTIPLY,
+    BuiltinOperator_STABLEHLO_MAXIMUM
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOperator() {
-  static const char * const names[164] = {
+  static const char * const names[168] = {
     "ADD",
     "AVERAGE_POOL_2D",
     "CONCATENATION",
@@ -1427,13 +1435,17 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "BITWISE_XOR",
     "RIGHT_SHIFT",
     "STABLEHLO_LOGISTIC",
+    "STABLEHLO_ADD",
+    "STABLEHLO_DIVIDE",
+    "STABLEHLO_MULTIPLY",
+    "STABLEHLO_MAXIMUM",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOperator(BuiltinOperator e) {
-  if (::flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_STABLEHLO_LOGISTIC)) return "";
+  if (::flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_STABLEHLO_MAXIMUM)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOperator()[index];
 }
