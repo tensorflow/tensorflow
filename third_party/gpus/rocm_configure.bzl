@@ -346,14 +346,14 @@ def _find_libs(repository_ctx, rocm_config, hipfft_or_rocfft, miopen_path, rccl_
     libs_paths = [
         (name, _rocm_lib_paths(repository_ctx, name, path))
         for name, path in [
-            ("amdhip64", rocm_config.rocm_toolkit_path + "/hip"),
+            ("amdhip64", rocm_config.rocm_toolkit_path),
             ("rocblas", rocm_config.rocm_toolkit_path),
             (hipfft_or_rocfft, rocm_config.rocm_toolkit_path),
             ("hiprand", rocm_config.rocm_toolkit_path),
             ("MIOpen", miopen_path),
             ("rccl", rccl_path),
             ("hipsparse", rocm_config.rocm_toolkit_path),
-            ("roctracer64", rocm_config.rocm_toolkit_path + "/roctracer"),
+            ("roctracer64", rocm_config.rocm_toolkit_path),
             ("rocsolver", rocm_config.rocm_toolkit_path),
         ]
     ]
@@ -752,11 +752,11 @@ def _create_local_rocm_repository(repository_ctx):
         tpl_paths["crosstool:clang/bin/crosstool_wrapper_driver_rocm"],
         {
             "%{cpu_compiler}": str(cc),
-            "%{hipcc_path}": rocm_config.rocm_toolkit_path + "/hip/bin/hipcc",
+            "%{hipcc_path}": rocm_config.rocm_toolkit_path + "/bin/hipcc",
             "%{hipcc_env}": _hipcc_env(repository_ctx),
             "%{rocr_runtime_path}": rocm_config.rocm_toolkit_path + "/lib",
             "%{rocr_runtime_library}": "hsa-runtime64",
-            "%{hip_runtime_path}": rocm_config.rocm_toolkit_path + "/hip/lib",
+            "%{hip_runtime_path}": rocm_config.rocm_toolkit_path + "/lib",
             "%{hip_runtime_library}": "amdhip64",
             "%{crosstool_verbose}": _crosstool_verbose(repository_ctx),
             "%{gcc_host_compiler_path}": str(cc),
