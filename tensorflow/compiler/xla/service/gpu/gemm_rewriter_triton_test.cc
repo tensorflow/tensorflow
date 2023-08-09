@@ -1021,12 +1021,10 @@ ENTRY e {
       DotFusionAnalysis::Execute(dot_computation, key.split_k()));
   EXPECT_EQ(dot_computation->root_instruction()->shape(),
             ShapeUtil::MakeShapeWithDescendingLayout(F16, {8, 7, 5}));
-  EXPECT_THAT(*analysis.IterSpec(DotFusionAnalysis::Scope::LHS, p0, 0),
-              ElementsAre(FieldsAre(/*stride=*/320, /*count=*/8,
-                                    /*subfragments=*/ElementsAre(4, 2))));
-  EXPECT_THAT(*analysis.IterSpec(DotFusionAnalysis::Scope::LHS, p0, 1),
-              ElementsAre(FieldsAre(/*stride=*/1, /*count=*/320,
-                                    /*subfragments=*/ElementsAre(20, 4, 4))));
+  EXPECT_THAT(
+      *analysis.IterSpec(DotFusionAnalysis::Scope::LHS, p0, 1),
+      ElementsAre(FieldsAre(/*stride=*/1, /*count=*/2560,
+                            /*subfragments=*/ElementsAre(20, 4, 4, 4, 2))));
 }
 
 TEST_F(SplitKTest, FragmentedKUnsupported) {

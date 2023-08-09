@@ -162,14 +162,24 @@ class DimensionOrder {
   // properties describing the dimensions are stored for later analysis.
   explicit DimensionOrder(
       const HloInstruction* hlo, const int64_t splittable_dimension_index = -1,
-      const int64_t splittable_dimension_supported_major_size = 0)
+      const int64_t splittable_dimension_supported_major_size = 0,
+      const int split_k_dimension_index = -1)
       : splittable_dimension_index_(splittable_dimension_index),
         splittable_dimension_supported_major_part_size_(
             splittable_dimension_supported_major_size) {
     tensor_fragments_order_.reserve(hlo->shape().rank());
     for (const int i : hlo->shape().layout().minor_to_major()) {
-      dim_fragments_orders_[i].push_back(tensor_fragments_order_.size());
-      tensor_fragments_order_.push_back({i, hlo->shape().dimensions(i)});
+      int target_dim_number = i;
+      if (i == split_k_dimension_index) {
+        CHECK(!tensor_fragments_order_.empty())
+            << "The split-K batch dimension has be preceded by the contracting "
+               "dimension it originates from by construction.";
+        target_dim_number = tensor_fragments_order_.back().dst_dim_number;
+      }
+      dim_fragments_orders_[target_dim_number].push_back(
+          tensor_fragments_order_.size());
+      tensor_fragments_order_.push_back(
+          {target_dim_number, hlo->shape().dimensions(i)});
     }
   }
 
@@ -192,11 +202,11 @@ class DimensionOrder {
   // Create dimension order describing a dot operand according to
   // the currently supported configurations.
   static DimensionOrder FromDotOperand(const HloInstruction& dot,
-                                       int operand_number, int64_t split_k = 1);
+                                       int operand_number, int split_k = 1);
 
   // Create dimension order describing dot's output.
   static DimensionOrder FromDotOutput(
-      const HloInstruction& dot, int64_t split_k = 1,
+      const HloInstruction& dot, int split_k = 1,
       int64_t splittable_dimension_supported_major_part_size = 0);
 
   enum class TransformDirection { kInputToOutput, kOutputToInput };
@@ -339,24 +349,31 @@ bool DimensionOrder::IsPhysicallyEquivalent(const DimensionOrder& other) const {
 
 DimensionOrder DimensionOrder::FromDotOperand(const HloInstruction& dot,
                                               const int operand_number,
-                                              const int64_t split_k) {
+                                              const int split_k) {
   const HloInstruction* operand = dot.operand(operand_number);
   // There can be either none or one split-K batch dimension.
   const int num_split_k_batch_dims = split_k > 1;
+  int split_k_dimension_index = -1;
+  if (split_k > 1) {
+    split_k_dimension_index =
+        ContractingDimensionIndex(dot, operand_number) - 1;
+  }
+  int splittable_dimension_index = -1;
   // LHS non-contracting dimension can be split if non-splitK batch is absent.
   if (operand_number == 0 &&
       dot.dot_dimension_numbers().lhs_batch_dimensions_size() -
               num_split_k_batch_dims ==
           0) {
-    return DimensionOrder(
-        operand, /*splittable_dimension_index=*/NonContractingDimensionIndex(
-            dot, operand_number));
+    splittable_dimension_index =
+        NonContractingDimensionIndex(dot, operand_number);
   }
-  return DimensionOrder(operand);
+  return DimensionOrder(operand, splittable_dimension_index,
+                        /*splittable_dimension_supported_major_size=*/0,
+                        split_k_dimension_index);
 }
 
 DimensionOrder DimensionOrder::FromDotOutput(
-    const HloInstruction& dot, const int64_t split_k,
+    const HloInstruction& dot, const int split_k,
     const int64_t splittable_dimension_supported_major_part_size) {
   // Allow non-contracting dimension originating from LHS to split if
   // this dimension is split at the output at the same ratio as
@@ -1091,8 +1108,10 @@ StatusOr<HloInstruction*> MakeSplitKOperand(
     // does not need analysis for fragmentation.
     const DimIterationSpec* spec =
         analysis.IterSpec(scope, param, contracting_dim_idx);
-    // Split contracting dimension is not implemented yet.
-    CHECK_EQ(spec->size(), 1);
+    if (spec->size() > 1) {
+      return UncompilableMatmul(
+          "Split contracting dimension is not implemented yet.");
+    }
     auto fragment = spec->at(0).subfragments.crbegin();
     int64_t size_to_split = tiling.split_k();
     while (size_to_split > *fragment) {
@@ -1447,14 +1466,14 @@ Status MakeDotSplitKBatch(HloInstruction* dot_fusion,
 }
 
 StatusOr<DotFusionAnalysis> DotFusionAnalysis::Execute(
-    const HloComputation* computation, const int64_t split_k) {
+    const HloComputation* computation, const int split_k) {
   DotFusionAnalysis analysis;
   TF_RETURN_IF_ERROR(analysis.ExecuteImpl(computation, split_k));
   return analysis;
 }
 
 Status DotFusionAnalysis::ExecuteImpl(const HloComputation* computation,
-                                      const int64_t split_k) {
+                                      const int split_k) {
   VLOG(5) << computation->ToString();
 
   const HloInstruction* dot =
