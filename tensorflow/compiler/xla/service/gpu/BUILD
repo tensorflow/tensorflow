@@ -2902,6 +2902,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_memory_scheduler",
         "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
         "//tensorflow/compiler/xla/service:latency_hiding_scheduler",
+        "//tensorflow/compiler/xla/service:latency_hiding_scheduler_preparation",
         "//tensorflow/compiler/xla/service:profile_guided_latency_estimator",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:protobuf",
