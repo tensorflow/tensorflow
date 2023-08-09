@@ -1853,8 +1853,8 @@ Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
                           &fusion, &device_info,
                           ir_emitter_context_->cuda_compute_capability()));
 
-  auto emitter = GetFusionEmitter(fusion_analysis, *ir_emitter_context_,
-                                  fusion_op, fusion);
+  auto emitter = GetFusionEmitter(
+      fusion_analysis, ir_emitter_context_->allocations(), fusion_op);
   if (emitter != std::nullopt) {
     TF_ASSIGN_OR_RETURN(
         auto emission_result,

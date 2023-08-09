@@ -67,12 +67,16 @@ cc_library(
         ":loop",
         ":reduction",
         ":transpose",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
+        "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:elemental_ir_emitter",
         "//tensorflow/compiler/xla/service/gpu:hlo_fusion_analysis",
         "//tensorflow/compiler/xla/service/gpu:ir_emission_utils",
         "//tensorflow/compiler/xla/service/gpu:ir_emitter_context",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//mlir:IR",
     ],
 )
 
