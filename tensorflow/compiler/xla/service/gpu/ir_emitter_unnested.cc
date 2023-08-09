@@ -454,14 +454,11 @@ Status IrEmitterUnnested::EmitPadToStatic(mlir::Operation* op) {
   std::string ir_name = GetIrNameFromLoc(pad_to_static.getLoc());
 
   const Shape& input_shape = GetShape(pad_to_static.getArgs().front());
-  bool use_experimental_block_size =
-      ir_emitter_context_->debug_options()
-          .xla_gpu_enable_experimental_block_size();
 
   TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
                       CalculateLaunchDimensions(
                           input_shape, ir_emitter_context_->gpu_device_info(),
-                          use_experimental_block_size, {unroll_factor}));
+                          {unroll_factor}));
   std::vector<llvm_ir::IrArray> input_arrays;
   std::vector<llvm_ir::IrArray> output_arrays;
   TF_ASSIGN_OR_RETURN(
@@ -585,14 +582,11 @@ Status IrEmitterUnnested::EmitSliceToDynamic(mlir::Operation* op) {
   std::string ir_name = GetIrNameFromLoc(slice_to_dynamic.getLoc());
 
   const Shape& input_shape = GetShape(slice_to_dynamic.getArgs().front());
-  bool use_experimental_block_size =
-      ir_emitter_context_->debug_options()
-          .xla_gpu_enable_experimental_block_size();
 
   TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
                       CalculateLaunchDimensions(
                           input_shape, ir_emitter_context_->gpu_device_info(),
-                          use_experimental_block_size, {unroll_factor}));
+                          {unroll_factor}));
   llvm::Type* index_ty = GetIndexTypeForKernel(
       slice_to_dynamic, launch_dimensions.launch_bound(), &b_);
   std::vector<llvm_ir::IrArray> input_arrays, output_arrays;
@@ -1941,14 +1935,11 @@ Status IrEmitterUnnested::EmitSelectAndScatter(mlir::Operation* op) {
   TF_RETURN_IF_ERROR(BuildInitializerThunk(op,
                                            select_and_scatter_op.getInitValue(),
                                            select_and_scatter_op.getOut()));
-  bool use_experimental_block_size =
-      ir_emitter_context_->debug_options()
-          .xla_gpu_enable_experimental_block_size();
 
-  TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
-                      CalculateLaunchDimensions(
-                          source_shape, ir_emitter_context_->gpu_device_info(),
-                          use_experimental_block_size));
+  TF_ASSIGN_OR_RETURN(
+      LaunchDimensions launch_dimensions,
+      CalculateLaunchDimensions(source_shape,
+                                ir_emitter_context_->gpu_device_info()));
 
   // Init value is not needed in IR emission.
   TF_ASSIGN_OR_RETURN(auto ir_arrays, BuildKernelThunkForNonFusionOp(
@@ -2245,15 +2236,10 @@ Status IrEmitterUnnested::EmitScatter(mlir::Operation* op) {
         /*destination_value=*/scatter_op.getOutput()));
   }
 
-  bool use_experimental_block_size =
-      ir_emitter_context_->debug_options()
-          .xla_gpu_enable_experimental_block_size();
-
   const Shape& data_shape = GetShape(scatter_op.getUpdates());
   TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
                       CalculateLaunchDimensions(
-                          data_shape, ir_emitter_context_->gpu_device_info(),
-                          use_experimental_block_size));
+                          data_shape, ir_emitter_context_->gpu_device_info()));
 
   // Create kernel thunk for all operands except the first one (`operand`). The
   // code generated for scatter below assumes that the input operand is already
@@ -2645,15 +2631,11 @@ Status IrEmitterUnnested::EmitSort(mlir::Operation* op) {
   uint64_t standard_num_iterations_in_sort_dim = 1ULL << (num_stages - 1);
   standard_iteration_shape.set_dimensions(dimension_to_sort,
                                           standard_num_iterations_in_sort_dim);
-  bool use_experimental_block_size =
-      ir_emitter_context_->debug_options()
-          .xla_gpu_enable_experimental_block_size();
 
   TF_ASSIGN_OR_RETURN(
       LaunchDimensions standard_launch_dimensions,
       CalculateLaunchDimensions(standard_iteration_shape,
-                                ir_emitter_context_->gpu_device_info(),
-                                use_experimental_block_size));
+                                ir_emitter_context_->gpu_device_info()));
 
   // Calculate the launch dimensions for the case where we use tiling. We split
   // the dimension that should be sorted into tiles of size 'kTileSize'. This
@@ -2999,14 +2981,10 @@ Status IrEmitterUnnested::BuildInitializerThunk(mlir::Operation* op,
   // Otherwise fall back to our slow initializer code. The thunk in this case
   // will just need the IR arrays for the initial value and the destination.
   const Shape dest_shape = GetShape(dest);
-  bool use_experimental_block_size =
-      ir_emitter_context_->debug_options()
-          .xla_gpu_enable_experimental_block_size();
 
   TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
                       CalculateLaunchDimensions(
-                          dest_shape, ir_emitter_context_->gpu_device_info(),
-                          use_experimental_block_size));
+                          dest_shape, ir_emitter_context_->gpu_device_info()));
   TF_ASSIGN_OR_RETURN(auto ir_arrays,
                       BuildKernelThunkForNonFusionOp(op, {init_value, dest},
                                                      launch_dimensions));
@@ -3043,14 +3021,10 @@ Status IrEmitterUnnested::BuildFusedInitializerThunk(
   }
 
   const Shape dest_shape = GetShape(dest);
-  bool use_experimental_block_size =
-      ir_emitter_context_->debug_options()
-          .xla_gpu_enable_experimental_block_size();
 
   TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
                       CalculateLaunchDimensions(
-                          dest_shape, ir_emitter_context_->gpu_device_info(),
-                          use_experimental_block_size));
+                          dest_shape, ir_emitter_context_->gpu_device_info()));
 
   auto builder_fn = [&, this](std::vector<llvm_ir::IrArray> inputs,
                               std::vector<llvm_ir::IrArray> outputs) -> Status {
@@ -3141,14 +3115,10 @@ Status IrEmitterUnnested::EmitScatter(mlir::lmhlo::FusionOp fusion_op,
   // The initialization from 'operand' is using different loop bounds, so
   // emit it in a separate kernel. Treat it like a loop fusion, writing to
   // the output buffer.
-  bool use_experimental_block_size =
-      ir_emitter_context_->debug_options()
-          .xla_gpu_enable_experimental_block_size();
 
   TF_RETURN_IF_ERROR([&, this] {
-    TF_ASSIGN_OR_RETURN(
-        LaunchDimensions launch_dimensions,
-        fusion_analysis.GetLaunchDimensions(use_experimental_block_size));
+    TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
+                        fusion_analysis.GetLaunchDimensions());
 
     auto builder_fn = [&, this](
                           std::vector<llvm_ir::IrArray> inputs,
@@ -3186,15 +3156,11 @@ Status IrEmitterUnnested::EmitScatter(mlir::lmhlo::FusionOp fusion_op,
   // filled output buffer.
   {
     const Shape& updates_shape = root->operand(2)->shape();
-    bool use_experimental_block_size =
-        ir_emitter_context_->debug_options()
-            .xla_gpu_enable_experimental_block_size();
 
     TF_ASSIGN_OR_RETURN(
         LaunchDimensions launch_dimensions,
         CalculateLaunchDimensions(updates_shape,
-                                  ir_emitter_context_->gpu_device_info(),
-                                  use_experimental_block_size));
+                                  ir_emitter_context_->gpu_device_info()));
 
     auto builder_fn = [&, this](
                           std::vector<llvm_ir::IrArray> inputs,

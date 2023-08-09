@@ -154,7 +154,7 @@ void UpdateBlockSizes(LaunchDimensionsConfig dim_config,
 
 StatusOr<LaunchDimensions> CalculateLaunchDimensions(
     const Shape& shape, const GpuDeviceInfo& gpu_device_info,
-    bool use_experimental_block_size, LaunchDimensionsConfig dim_config) {
+    LaunchDimensionsConfig dim_config) {
   int64_t num_elements = ShapeUtil::ElementsIn(shape);
   if (num_elements <= 1) {
     return LaunchDimensions();

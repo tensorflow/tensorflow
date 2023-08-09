@@ -3059,10 +3059,10 @@ cc_library(
     hdrs = ["gpu_performance_model.h"],
     deps = [
         ":backend_configs_cc",
-        ":gpu_device_info",
         ":gpu_hlo_cost_analysis",
         ":hlo_fusion_analysis",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/stream_executor:device_description",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/time",
     ],
@@ -3180,6 +3180,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
         "//tensorflow/compiler/xla/stream_executor/gpu:asm_compiler",
+        "//tensorflow/tsl/platform:statusor",
     ]),
 )
 

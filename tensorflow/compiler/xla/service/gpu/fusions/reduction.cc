@@ -69,6 +69,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/location_exporter.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -341,14 +342,10 @@ StatusOr<std::unique_ptr<Thunk>> BuildFusedInitializerThunk(
   }
 
   const Shape dest_shape = GetShape(dest);
-  bool use_experimental_block_size =
-      ir_emitter_context.debug_options()
-          .xla_gpu_enable_experimental_block_size();
 
   TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
                       CalculateLaunchDimensions(
-                          dest_shape, ir_emitter_context.gpu_device_info(),
-                          use_experimental_block_size));
+                          dest_shape, ir_emitter_context.gpu_device_info()));
 
   auto builder_fn = [&](std::vector<llvm_ir::IrArray> inputs,
                         std::vector<llvm_ir::IrArray> outputs) -> Status {
@@ -970,11 +967,7 @@ StatusOr<FusionEmissionResult> ReductionFusion::Emit(
     mlir::lmhlo::FusionOp fusion_op, const HloFusionInstruction& fusion,
     KernelReuseCache& kernel_cache, llvm::IRBuilder<>* builder) const {
   auto* reduction_codegen_info = analysis_.GetReductionCodegenInfo();
-  // Set `use_experimental_block_size` flag to false since the reduction code
-  // has its own custom logic of choosing a block size.
-  TF_ASSIGN_OR_RETURN(auto launch_dimensions,
-                      analysis_.GetLaunchDimensions(
-                          /*use_experimental_block_size=*/false));
+  TF_ASSIGN_OR_RETURN(auto launch_dimensions, analysis_.GetLaunchDimensions());
 
   FusionEmissionResult result;
   VLOG(3) << "Launch dimensions of "

@@ -323,17 +323,13 @@ HloFusionAnalysis::EmitterFusionKind HloFusionAnalysis::GetEmitterFusionKind()
   return EmitterFusionKind::kLoop;
 }
 
-StatusOr<LaunchDimensions> HloFusionAnalysis::GetLaunchDimensions(
-    bool use_experimental_block_size) {
+StatusOr<LaunchDimensions> HloFusionAnalysis::GetLaunchDimensions() {
   auto emitter_fusion_kind = GetEmitterFusionKind();
   switch (emitter_fusion_kind) {
     case EmitterFusionKind::kLoop: {
       // Disable experimental block size if few_waves or row_vectorized enabled.
       auto loop_fusion_config = GetLoopFusionConfig();
-      use_experimental_block_size &= !(loop_fusion_config->row_vectorized) &&
-                                     !(loop_fusion_config->few_waves);
       return CalculateLaunchDimensions(GetElementShape(), *device_info_,
-                                       use_experimental_block_size,
                                        *loop_fusion_config);
     }
     case EmitterFusionKind::kReduction: {
@@ -365,8 +361,7 @@ StatusOr<LaunchDimensions> HloFusionAnalysis::GetLaunchDimensions(
         shape = root->operands()[0]->operands()[0]->shape();
       }
       constexpr int kUnrollFactor = 1;
-      return CalculateLaunchDimensions(
-          shape, *device_info_, use_experimental_block_size, {kUnrollFactor});
+      return CalculateLaunchDimensions(shape, *device_info_, {kUnrollFactor});
     }
     case EmitterFusionKind::kScatter: {
       const auto& root_shape = fusion_->fused_instructions_computation()
@@ -377,7 +372,6 @@ StatusOr<LaunchDimensions> HloFusionAnalysis::GetLaunchDimensions(
                           : num_elements % 2 == 0 ? 2
                                                   : 1;
       return CalculateLaunchDimensions(root_shape, *device_info_,
-                                       use_experimental_block_size,
                                        {unroll_factor, /*few_waves=*/false});
     }
     case EmitterFusionKind::kTriton:

@@ -50,11 +50,7 @@ Status LoopFusion::EmitKernel(
 
 StatusOr<LaunchDimensions> LoopFusion::launch_dimensions(
     IrEmitterContext& ir_emitter_context, int kernel_index) const {
-  return analysis_.GetLaunchDimensions(
-      ir_emitter_context.hlo_module()
-          .config()
-          .debug_options()
-          .xla_gpu_enable_experimental_block_size());
+  return analysis_.GetLaunchDimensions();
 }
 
 }  // namespace gpu

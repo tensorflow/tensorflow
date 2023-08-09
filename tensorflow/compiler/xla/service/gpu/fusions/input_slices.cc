@@ -153,10 +153,7 @@ StatusOr<Shape> GetConsistentInputShapeForRootSlices(
 
 StatusOr<LaunchDimensions> InputSlicesFusion::launch_dimensions(
     IrEmitterContext& ir_emitter_context, int kernel_index) const {
-  bool use_experimental_block_size =
-      ir_emitter_context.debug_options()
-          .xla_gpu_enable_experimental_block_size();
-  return analysis_.GetLaunchDimensions(use_experimental_block_size);
+  return analysis_.GetLaunchDimensions();
 }
 
 Status InputSlicesFusion::EmitKernel(

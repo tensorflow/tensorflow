@@ -29,12 +29,8 @@ namespace gpu {
 StatusOr<LaunchDimensions> InPlaceDynamicUpdateSliceEmitter::launch_dimensions(
     IrEmitterContext& ir_emitter_context, int kernel_index) const {
   const auto& update_shape = dus_ops_.front()->operand(1)->shape();
-  return CalculateLaunchDimensions(
-      update_shape, ir_emitter_context.gpu_device_info(),
-      ir_emitter_context.hlo_module()
-          .config()
-          .debug_options()
-          .xla_gpu_enable_experimental_block_size());
+  return CalculateLaunchDimensions(update_shape,
+                                   ir_emitter_context.gpu_device_info());
 }
 
 Status InPlaceDynamicUpdateSliceEmitter::EmitKernel(

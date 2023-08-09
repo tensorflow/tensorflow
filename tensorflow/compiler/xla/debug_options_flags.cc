@@ -169,7 +169,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_collective_inflation_factor(1);
 
-  opts.set_xla_gpu_enable_experimental_block_size(true);
   opts.set_xla_gpu_exhaustive_tiling_search(false);
 
   opts.set_xla_gpu_enable_priority_fusion(false);
@@ -1135,12 +1134,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 debug_options->xla_gpu_triton_gemm_any(),
                 "Use Triton-based matrix multiplication for any GEMM it "
                 "supports without filtering only faster ones."));
-  flag_list->push_back(
-      tsl::Flag("xla_gpu_enable_experimental_block_size",
-                bool_setter_for(
-                    &DebugOptions::set_xla_gpu_enable_experimental_block_size),
-                debug_options->xla_gpu_enable_experimental_block_size(),
-                "Enable experimental block size."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_exhaustive_tiling_search",
       bool_setter_for(&DebugOptions::set_xla_gpu_exhaustive_tiling_search),

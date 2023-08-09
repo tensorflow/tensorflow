@@ -61,8 +61,7 @@ class HloFusionAnalysis {
 
   // Determines the launch dimensions for the fusion. The fusion kind must not
   // be `kTriton`.
-  StatusOr<LaunchDimensions> GetLaunchDimensions(
-      bool use_experimental_block_size);
+  StatusOr<LaunchDimensions> GetLaunchDimensions();
 
   // Calculates the reduction information. Returns `nullptr` if the fusion is
   // not a reduction.
