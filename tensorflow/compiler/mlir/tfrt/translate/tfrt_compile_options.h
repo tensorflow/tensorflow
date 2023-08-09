@@ -151,6 +151,10 @@ struct TfrtCompileOptions {
 
   // Whether to compile to sync TFRT dialect.
   bool compile_to_sync_tfrt_dialect = false;
+
+  // Whether to use gpurt.compile_and_execute for GPU.
+  // TODO(b/294895431): Remove the flag and default to the fused op.
+  bool use_gpu_compile_and_execute_op = false;
 };
 
 std::ostream& operator<<(std::ostream& os, const TfrtCompileOptions& options);

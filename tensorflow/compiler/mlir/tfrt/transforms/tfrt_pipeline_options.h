@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "llvm/Support/CommandLine.h"
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 
@@ -98,6 +99,12 @@ struct TfrtPipelineOptions
   Option<bool> target_gpu{
       *this, "target-gpu",
       llvm::cl::desc("If true, target GPU compiler passes."),
+      llvm::cl::init(false)};
+
+  // TODO(b/294895431): Remove the flag and default to the fused op.
+  Option<bool> use_gpu_compile_and_execute_op{
+      *this, "use-gpu-compile-and-execute-op",
+      llvm::cl::desc("If true, gpurt.compile_and_execute is used for GPU"),
       llvm::cl::init(false)};
 
   Option<bool> func_use_fallback_tensor{
