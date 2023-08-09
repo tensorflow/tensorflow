@@ -1565,6 +1565,10 @@ Status BaseGPUDeviceFactory::CreateDevices(
           valid_platform_device_ids == visible_gpu_order);
   }
 
+  if (num_gpus_to_use == 0) {
+    return OkStatus();
+  }
+
   struct TfDeviceSpec {
     tsl::PlatformDeviceId platform_device_id;
     int64_t memory_limit_bytes;
