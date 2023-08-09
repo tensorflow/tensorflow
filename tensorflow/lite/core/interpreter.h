@@ -115,7 +115,7 @@ class Interpreter {
   // used. Ownership of 'error_reporter' remains with the caller.
   // WARNING: Use of this constructor outside of an InterpreterBuilder is not
   // recommended.
-  explicit Interpreter(ErrorReporter* error_reporter = DefaultErrorReporter());
+Interpreter(const std::wstring& flex_dll_path_, ErrorReporter* error_reporter = DefaultErrorReporter());
 
   ~Interpreter();
 
@@ -738,6 +738,7 @@ class Interpreter {
   ErrorReporter* error_reporter() const { return error_reporter_; }
 
  private:
+  const std::wstring flex_dll_path_;
   friend class InterpreterBuilder;
   friend class tflite::InterpreterTest;
   friend class tflite::delegates::InterpreterUtils;
