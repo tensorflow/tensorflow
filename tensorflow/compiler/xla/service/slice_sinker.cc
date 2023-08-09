@@ -85,7 +85,7 @@ bool IsSimilarOperationOnSlices(const HloInstruction* operation_on_slices,
     return false;
   }
 
-  if (candidate->opcode() != operation_on_slices->opcode() ||
+  if (!candidate->SameOp(*operation_on_slices) ||
       operation_on_slices->shape().element_type() !=
           candidate->shape().element_type()) {
     return false;
