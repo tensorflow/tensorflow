@@ -21,9 +21,11 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
@@ -388,8 +390,14 @@ class ConvertUniformQuantizeOp
       return failure();
     }
 
-    rewriter.replaceOpWithNewOp<mhlo::UniformQuantizeOp>(op, *output_type,
-                                                         op.getInput());
+    auto result = rewriter.create<mhlo::UniformQuantizeOp>(
+        op->getLoc(), *output_type, op.getInput());
+    rewriter.replaceOpWithNewOp<mhlo::ConvertOp>(
+        op, result,
+        output_type->getElementType()
+            .dyn_cast<quant::QuantizedType>()
+            .getStorageType());
+
     return success();
   }
 };
@@ -409,6 +417,16 @@ class ConvertUniformDequantizeOp
       ConversionPatternRewriter &rewriter) const override {
     Value input = adaptor.getInput();
 
+    auto input_quant_type = GetUniformQuantizedType(
+        op, op.getInput().getType(), op.getScales(), op.getZeroPoints(),
+        /*expressed_type=*/rewriter.getF32Type(), op.getQuantizationMinVal(),
+        op.getQuantizationMaxVal(), op.getQuantizationAxis(), rewriter);
+    if (failed(input_quant_type)) {
+      return failure();
+    }
+    input = rewriter.create<mhlo::ConvertOp>(
+        op->getLoc(), input, input_quant_type->getElementType());
+
     rewriter.replaceOpWithNewOp<mhlo::UniformDequantizeOp>(
         op, op.getOutput().getType(), input);
     return success();
@@ -425,6 +443,16 @@ class ConvertUniformRequantizeOp
       ConversionPatternRewriter &rewriter) const override {
     Value input = adaptor.getInput();
 
+    auto input_quant_type = GetUniformQuantizedType(
+        op, op.getInput().getType(), op.getInputScales(),
+        op.getInputZeroPoints(),
+        /*expressed_type=*/rewriter.getF32Type(),
+        op.getInputQuantizationMinVal(), op.getInputQuantizationMaxVal(),
+        op.getInputQuantizationAxis(), rewriter);
+    if (failed(input_quant_type)) {
+      return failure();
+    }
+
     auto output_type = GetUniformQuantizedType(
         op, op.getOutput().getType(), op.getOutputScales(),
         op.getOutputZeroPoints(),
@@ -435,8 +463,15 @@ class ConvertUniformRequantizeOp
       return failure();
     }
 
-    rewriter.replaceOpWithNewOp<mhlo::UniformQuantizeOp>(op, *output_type,
-                                                         input);
+    auto input_quant = rewriter.create<mhlo::ConvertOp>(
+        op->getLoc(), input, input_quant_type->getElementType());
+    auto result = rewriter.create<mhlo::UniformQuantizeOp>(
+        op->getLoc(), *output_type, input_quant);
+    rewriter.replaceOpWithNewOp<mhlo::ConvertOp>(
+        op, result,
+        output_type->getElementType()
+            .dyn_cast<quant::QuantizedType>()
+            .getStorageType());
     return success();
   }
 };
@@ -450,6 +485,16 @@ class ConvertUniformQuantizedDotOp
       TF::UniformQuantizedDotOp op, TF::UniformQuantizedDotOpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     Value lhs = adaptor.getLhs();
+
+    auto lhs_quant_type = GetUniformQuantizedType(
+        op, op.getLhs().getType(), op.getLhsScales(), op.getLhsZeroPoints(),
+        /*expressed_type=*/rewriter.getF32Type(), op.getLhsQuantizationMinVal(),
+        op.getLhsQuantizationMaxVal(), op.getLhsQuantizationAxis(), rewriter);
+    if (failed(lhs_quant_type)) {
+      return failure();
+    }
+    lhs = rewriter.create<mhlo::ConvertOp>(op->getLoc(), adaptor.getLhs(),
+                                           lhs_quant_type->getElementType());
 
     // Uniform Quantized type for the rhs.
     int64_t rhs_quantized_dimension = op.getRhsQuantizationAxis();
@@ -483,8 +528,14 @@ class ConvertUniformQuantizedDotOp
       return failure();
     }
 
-    rewriter.replaceOpWithNewOp<mhlo::DotOp>(op, *output_type, lhs, *rhs_or,
-                                             /*precision_config=*/nullptr);
+    auto result =
+        rewriter.create<mhlo::DotOp>(op->getLoc(), *output_type, lhs, *rhs_or,
+                                     /*precision_config=*/nullptr);
+    rewriter.replaceOpWithNewOp<mhlo::ConvertOp>(
+        op, result,
+        output_type->getElementType()
+            .dyn_cast<quant::QuantizedType>()
+            .getStorageType());
     return success();
   }
 };
@@ -499,6 +550,16 @@ class ConvertUniformQuantizedConvolutionOp
       TF::UniformQuantizedConvolutionOpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     Value lhs = adaptor.getLhs();
+
+    auto lhs_quant_type = GetUniformQuantizedType(
+        op, op.getLhs().getType(), op.getLhsScales(), op.getLhsZeroPoints(),
+        /*expressed_type=*/rewriter.getF32Type(), op.getLhsQuantizationMinVal(),
+        op.getLhsQuantizationMaxVal(), op.getLhsQuantizationAxis(), rewriter);
+    if (failed(lhs_quant_type)) {
+      return failure();
+    }
+    lhs = rewriter.create<mhlo::ConvertOp>(op->getLoc(), adaptor.getLhs(),
+                                           lhs_quant_type->getElementType());
 
     auto rhs_type = GetUniformQuantizedType(
         op, adaptor.getRhs().getType(), op.getRhsScales(),
@@ -530,8 +591,13 @@ class ConvertUniformQuantizedConvolutionOp
       return failure();
     }
     SmallVector<Value, 2> operands{lhs, *rhs_or};
-    rewriter.replaceOpWithNewOp<mhlo::ConvolutionOp>(op, *output_type, operands,
-                                                     *converted_attrs_or);
+    auto result = rewriter.create<mhlo::ConvolutionOp>(
+        op->getLoc(), *output_type, operands, *converted_attrs_or);
+    rewriter.replaceOpWithNewOp<mhlo::ConvertOp>(
+        op, result,
+        output_type->getElementType()
+            .dyn_cast<quant::QuantizedType>()
+            .getStorageType());
     return success();
   }
 };
@@ -551,6 +617,17 @@ class ConvertUniformQuantizedAddOp
       return rewriter.notifyMatchFailure(
           op, "Legalization supports cases where only lhs rank known.");
     }
+
+    auto lhs_quant_type = GetUniformQuantizedType(
+        op, op.getLhs().getType(), op.getLhsScales(), op.getLhsZeroPoints(),
+        /*expressed_type=*/rewriter.getF32Type(), op.getLhsQuantizationMinVal(),
+        op.getLhsQuantizationMaxVal(), op.getLhsQuantizationAxis(), rewriter);
+    if (failed(lhs_quant_type)) {
+      return failure();
+    }
+    lhs = rewriter.create<mhlo::ConvertOp>(op->getLoc(), adaptor.getLhs(),
+                                           lhs_quant_type->getElementType());
+
     // rhs (bias) is always 1D that broadcasts to the last dim of lhs.
     auto broadcast_dims =
         mhlo::GetI64ElementsAttr({lhs_type.getRank() - 1}, &rewriter);
@@ -582,8 +659,13 @@ class ConvertUniformQuantizedAddOp
 
     // lhs, rhs, output scales and zero_points are guaranteed (by the TF
     // quantizer) to be identical, respectively.
-    rewriter.replaceOpWithNewOp<chlo::BroadcastAddOp>(op, *output_type, lhs,
-                                                      *rhs_or, broadcast_dims);
+    auto result = rewriter.create<chlo::BroadcastAddOp>(
+        op->getLoc(), *output_type, lhs, *rhs_or, broadcast_dims);
+    rewriter.replaceOpWithNewOp<mhlo::ConvertOp>(
+        op, result,
+        output_type->getElementType()
+            .dyn_cast<quant::QuantizedType>()
+            .getStorageType());
     return success();
   }
 };
@@ -632,11 +714,43 @@ class ConvertUniformQuantizedClipByValueOp
     if (failed(output_type)) {
       return failure();
     }
+    operand = rewriter.create<mhlo::ConvertOp>(op->getLoc(), operand,
+                                               output_type->getElementType());
 
     Value res_min_clipped = rewriter.create<chlo::BroadcastMaxOp>(
         op->getLoc(), *output_type, operand, *min_or, broadcast_dims);
     rewriter.replaceOpWithNewOp<chlo::BroadcastMinOp>(
         op, *output_type, res_min_clipped, *max_or, broadcast_dims);
+    return success();
+  }
+};
+
+// This pattern converts qint <-> int CastOp to int -> int ConvertOps.
+// The former are introduced in ConvertTFQuantTypes pass. The resulting int <->
+// int ConvertOps are no-ops and can be removed later in a Canonicalizer pass.
+class ConvertTfCastOp : public OpConversionPattern<TF::CastOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  explicit ConvertTfCastOp(PatternBenefit benefit)
+      : OpConversionPattern(getContext(), benefit) {}
+
+  LogicalResult matchAndRewrite(
+      TF::CastOp op, TF::CastOpAdaptor adaptor,
+      ConversionPatternRewriter &rewriter) const override {
+    Value input = adaptor.getX();
+    Type output_type = op.getDstT();
+    if (llvm::isa<TF::Qint8Type>(op.getSrcT()) ||
+        llvm::isa<TF::Qint8Type>(op.getDstT())) {
+      output_type = rewriter.getI8Type();
+    } else if (llvm::isa<TF::Qint32Type>(op.getSrcT()) ||
+               llvm::isa<TF::Qint32Type>(op.getDstT())) {
+      output_type = rewriter.getI32Type();
+    } else {
+      return failure();
+    }
+
+    rewriter.replaceOpWithNewOp<mhlo::ConvertOp>(op, input, output_type);
     return success();
   }
 };
@@ -663,6 +777,13 @@ void ConvertTFQuantOpsToMHLO::runOnOperation() {
       TF::UniformQuantizedConvolutionOp,
       TF::UniformQuantizedConvolutionHybridOp, TF::UniformQuantizedAddOp,
       TF::UniformQuantizedClipByValueOp>();
+  target.addDynamicallyLegalOp<TF::CastOp>([](Operation *op) {
+    auto cast_op = llvm::dyn_cast<TF::CastOp>(op);
+    return !llvm::isa<TF::Qint8Type>(cast_op.getSrcT()) &&
+           !llvm::isa<TF::Qint8Type>(cast_op.getDstT()) &&
+           !llvm::isa<TF::Qint32Type>(cast_op.getSrcT()) &&
+           !llvm::isa<TF::Qint32Type>(cast_op.getDstT());
+  });
 
   RewritePatternSet patterns(ctx);
   PopulateLegalizeTfQuantizationPatterns(ctx, &patterns);
@@ -682,6 +803,12 @@ void PopulateLegalizeTfQuantizationPatterns(MLIRContext *context,
             ConvertUniformDequantizeOp, ConvertUniformQuantizedDotOp,
             ConvertUniformQuantizedConvolutionOp, ConvertUniformQuantizedAddOp,
             ConvertUniformQuantizedClipByValueOp>(context);
+  // TODO: b/289560952 - These patterns are currently mixed with LegalizeTF
+  // patterns. Set benefit higher so that it is has higher priority than the
+  // generic conversion pattern for CastOp. Since the default benefit is 1, any
+  // number >1 should work. There is no specific reason for using 10. Will
+  // remove this after moving Quantization patterns to a separate pass.
+  patterns->add<ConvertTfCastOp>(context, /*benefit=*/10);
 }
 
 std::unique_ptr<OperationPass<func::FuncOp>>

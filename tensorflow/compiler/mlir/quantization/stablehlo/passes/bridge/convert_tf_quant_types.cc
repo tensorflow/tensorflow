@@ -22,13 +22,18 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/TypeSwitch.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -80,9 +85,20 @@ Type ToLegalElementType(Type type) {
       .Default([&type](Type) { return type; });
 }
 
-// Check if the op is a quantization op that supports quantized types.
-// TODO: b/289560952 - Narrow down the list of ops using prod metrics.
-bool IsUnSupportedOp(Operation *op) {
+bool IsIllegalType(Type type) {
+  return IsIllegalElementType(getElementTypeOrSelf(type));
+}
+
+Type ToLegalType(Type type) {
+  if (IsIllegalElementType(type)) return ToLegalElementType(type);
+  if (auto shaped = type.dyn_cast<ShapedType>()) {
+    Type elem = shaped.getElementType();
+    if (IsIllegalType(elem)) return shaped.clone(ToLegalType(elem));
+  }
+  return type;
+}
+
+bool IsUniformQuantizedOp(Operation *op) {
   return llvm::isa<
       // clang-format off
       // go/keep-sorted start
@@ -100,17 +116,54 @@ bool IsUnSupportedOp(Operation *op) {
       >(op);
 }
 
-bool IsIllegalType(Type type) {
-  return IsIllegalElementType(getElementTypeOrSelf(type));
+bool IsUniformQuantizedOpLegal(Operation *op) {
+  // Check if an op result value is consumed by qint -> int TF Cast OP.
+  auto IsQintValueQintToInCast = [](Value v) {
+    if (!IsIllegalType(v.getType())) {
+      return true;
+    }
+    if (v.getUsers().empty() || !llvm::isa<TF::CastOp>(*v.getUsers().begin())) {
+      return false;
+    }
+    auto cast_op = llvm::dyn_cast<TF::CastOp>(*v.getUsers().begin());
+    return v.getType() == cast_op.getX().getType() &&
+           ToLegalType(v.getType()) == cast_op.getY().getType();
+  };
+  // Check if an op operand value is defined by int -> qint TF Cast OP.
+  auto IsQintValueDefinedByIntToQinCast = [](Value v) {
+    if (!IsIllegalType(v.getType())) {
+      return true;
+    }
+    if (!v.getDefiningOp() || !llvm::isa<TF::CastOp>(v.getDefiningOp())) {
+      return false;
+    }
+    auto cast_op = llvm::dyn_cast<TF::CastOp>(v.getDefiningOp());
+    return v.getType() == cast_op.getY().getType() &&
+           ToLegalType(v.getType()) == cast_op.getX().getType();
+  };
+  // UniformQuantized Ops are considered legal if its qint operands and
+  // results are connected to TF CastOp.
+  return op && llvm::all_of(op->getResults(), IsQintValueQintToInCast) &&
+         llvm::all_of(op->getOperands(), IsQintValueDefinedByIntToQinCast);
 }
 
-Type ToLegalType(Type type) {
-  if (IsIllegalElementType(type)) return ToLegalElementType(type);
-  if (auto shaped = type.dyn_cast<ShapedType>()) {
-    Type elem = shaped.getElementType();
-    if (IsIllegalType(elem)) return shaped.clone(ToLegalType(elem));
+bool IsCastOpLegal(TF::CastOp cast_op) {
+  // Consider qint <-> qint casts illegal.
+  if (IsIllegalType(cast_op.getSrcT()) && IsIllegalType(cast_op.getDstT())) {
+    return false;
   }
-  return type;
+  // Consider CastOp illegal if either of its Src/Dst type is qint and is
+  // connected to a non-UQ op.
+  if (IsIllegalType(cast_op.getSrcT()) &&
+      !(cast_op.getX().getDefiningOp() &&
+        IsUniformQuantizedOp(cast_op.getX().getDefiningOp()))) {
+    return false;
+  }
+  if (IsIllegalType(cast_op.getDstT()) &&
+      !IsUniformQuantizedOp(*cast_op.getY().getUsers().begin())) {
+    return false;
+  }
+  return true;
 }
 
 class TFQuantTypeConverter : public TypeConverter {
@@ -129,9 +182,11 @@ class TFQuantTypeConversionTarget : public ConversionTarget {
                                        TFQuantTypeConverter &converter)
       : ConversionTarget(ctx), converter_(converter) {
     markUnknownOpDynamicallyLegal([this](Operation *op) {
-      // Do not convert UnifromQuantized ops.
-      if (IsUnSupportedOp(op)) {
-        return true;
+      // Consider UQ op legal if it has a CastOp next to the qint input/output.
+      if (IsUniformQuantizedOp(op)) {
+        return IsUniformQuantizedOpLegal(op);
+      } else if (auto cast_op = llvm::dyn_cast<TF::CastOp>(op)) {
+        return IsCastOpLegal(cast_op);
       }
       // The FuncOp type can contain types that the op's operand and result
       // types do not contain.
@@ -151,12 +206,14 @@ class TFQuantTypePattern : public ConversionPattern {
   TFQuantTypePattern(MLIRContext *ctx, TypeConverter &converter)
       : ConversionPattern(converter, MatchAnyOpTypeTag(), 1, ctx) {}
 
-  // The dialect conversion framework will call this matchAndRewrite on each
-  // Operation in the IR tree. This call matchAndRewrite needs to update the
-  // Operation's results and child regions.
   LogicalResult matchAndRewrite(
       Operation *op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const override {
+    // This pattern only handle non-UQ ops.
+    if (IsUniformQuantizedOp(op)) {
+      return failure();
+    }
+
     // Update the results.
     llvm::SmallVector<Type, 4> new_results;
     if (failed(getTypeConverter()->convertTypes(op->getResultTypes(),
@@ -183,16 +240,63 @@ class TFQuantTypePattern : public ConversionPattern {
   }
 };
 
+// This pattern adds qint <-> int Cast to all qint operands and results for UQ
+// ops.
+class TFUniformQuantizedOpsPattern : public ConversionPattern {
+ public:
+  TFUniformQuantizedOpsPattern(MLIRContext *ctx, TypeConverter &converter)
+      : ConversionPattern(converter, MatchAnyOpTypeTag(), 1, ctx) {}
+
+  LogicalResult matchAndRewrite(
+      Operation *op, ArrayRef<Value> operands,
+      ConversionPatternRewriter &rewriter) const override {
+    // This pattern only handle UQ ops.
+    if (!IsUniformQuantizedOp(op)) {
+      return failure();
+    }
+
+    // Add CastOp int->qint before input operands if its original type is qint.
+    llvm::SmallVector<Value, 4> new_operands;
+    for (int i = 0; i < operands.size(); ++i) {
+      Type orig_op_type = op->getOperandTypes()[i];
+      if (IsIllegalType(orig_op_type)) {
+        new_operands.push_back(rewriter.create<TF::CastOp>(
+            op->getLoc(), orig_op_type, operands[i]));
+      } else {
+        new_operands.push_back(operands[i]);
+      }
+    }
+
+    OperationState state(op->getLoc(), op->getName().getStringRef(),
+                         new_operands, op->getResultTypes(), op->getAttrs(),
+                         op->getSuccessors());
+    llvm::SmallVector<Value, 4> new_results =
+        rewriter.create(state)->getResults();
+
+    // Add qint->int CastOp after output result if its original type is qint.
+    for (int i = 0; i < new_results.size(); ++i) {
+      Value &result = new_results[i];
+      if (IsIllegalType(result.getType())) {
+        result = rewriter.create<TF::CastOp>(
+            op->getLoc(), getTypeConverter()->convertType(result.getType()),
+            result);
+      }
+    }
+    rewriter.replaceOp(op, new_results);
+    return success();
+  }
+};
+
 struct ConvertTFQuantTypes
     : public impl::ConvertTFQuantTypesBase<ConvertTFQuantTypes> {
   void runOnOperation() override;
 };
 
-// TODO: b/289560952 - add qint <-> int casts around TF UQ ops.
 void ConvertTFQuantTypes::runOnOperation() {
   TFQuantTypeConverter converter;
   RewritePatternSet patterns(&getContext());
-  patterns.add<TFQuantTypePattern>(&getContext(), converter);
+  patterns.add<TFQuantTypePattern, TFUniformQuantizedOpsPattern>(&getContext(),
+                                                                 converter);
   populateFunctionOpInterfaceTypeConversionPattern<func::FuncOp>(patterns,
                                                                  converter);
   TFQuantTypeConversionTarget target(getContext(), converter);

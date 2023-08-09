@@ -32,9 +32,11 @@ func.func @uniform_quantized_add(%input: tensor<3x2xf32>) -> () {
   %output_zps = "tf.Const"() { value = dense<4> : tensor<i32> } : () -> tensor<i32>
 
   // CHECK-DAG: %[[LHS:.*]] = mhlo.uniform_quantize %arg0 : (tensor<3x2xf32>) -> tensor<3x2x!quant.uniform<i32:f32, 2.000000e+00:4>>
+  // CHECK-DAG: %[[LHS1:.*]] = mhlo.convert %[[LHS]] : (tensor<3x2x!quant.uniform<i32:f32, 2.000000e+00:4>>) -> tensor<3x2xi32>
+  // CHECK-DAG: %[[LHS2:.*]] = mhlo.convert %[[LHS1]] : (tensor<3x2xi32>) -> tensor<3x2x!quant.uniform<i32:f32, 2.000000e+00:4>>
   // CHECK-DAG: %[[RHS:.*]] = mhlo.constant()
   // CHECK-SAME{LITERAL}: {value = dense<127> : tensor<2xi32>} : () -> tensor<2x!quant.uniform<i32:f32, 2.000000e+00:4>>
-  // CHECK: chlo.broadcast_add %[[LHS]], %[[RHS]] {broadcast_dimensions = dense<1> : tensor<1xi64>} :
+  // CHECK: chlo.broadcast_add %[[LHS2]], %[[RHS]] {broadcast_dimensions = dense<1> : tensor<1xi64>} :
   // CHECK-SAME: (tensor<3x2x!quant.uniform<i32:f32, 2.000000e+00:4>>, tensor<2x!quant.uniform<i32:f32, 2.000000e+00:4>>)
   // CHECK-SAME: -> tensor<3x2x!quant.uniform<i32:f32, 2.000000e+00:4>>
 

@@ -25,6 +25,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -658,6 +659,41 @@ class ConvertUniformQuantizedConvolutionOp
   }
 };
 
+// This pattern converts uq <-> int ConvertOps to int -> int ConvertOps.
+// The former are introduced in ConvertTFQuantToMHLO pass. The resulting int ->
+// int ConvertOps are no-ops and can be removed later in a Canonicalizer pass.
+class ConvertMhloConvertOp : public OpConversionPattern<mhlo::ConvertOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::ConvertOp op, mhlo::ConvertOpAdaptor adaptor,
+      ConversionPatternRewriter &rewriter) const override {
+    Value input = adaptor.getOperand();
+
+    Type output_type;
+    if (auto qtype = op.getOperand()
+                         .getType()
+                         .getElementType()
+                         .dyn_cast<quant::UniformQuantizedType>()) {
+      // This lowers uq->int mhlo.convert. Since the input type should be
+      // converted with the defining op. No explicit type conversion is done
+      // here.
+      output_type = qtype.getStorageType();
+    } else if (auto qtype = op.getResult()
+                                .getType()
+                                .getElementType()
+                                .dyn_cast<quant::UniformQuantizedType>()) {
+      output_type = qtype.getStorageType();
+    } else {
+      return failure();
+    }
+
+    rewriter.replaceOpWithNewOp<mhlo::ConvertOp>(op, input, output_type);
+    return success();
+  }
+};
+
 // Performs conversion of MHLO quant ops to primitive ops.
 void ConvertMHLOQuantToInt::runOnOperation() {
   Operation *op = getOperation();
@@ -667,7 +703,8 @@ void ConvertMHLOQuantToInt::runOnOperation() {
   // Populate MHLO quant ops conversion patterns.
   patterns.add<ConvertUniformQuantizeOp, ConvertUniformDequantizeOp,
                ConvertUniformQuantizedAddOp, ConvertUniformQuantizedDotOp,
-               ConvertUniformQuantizedConvolutionOp>(context);
+               ConvertUniformQuantizedConvolutionOp, ConvertMhloConvertOp>(
+      context);
 
   ConversionTarget target(*op->getContext());
   // An addDynamicallyLegalDialect callback that declares a given operation as
