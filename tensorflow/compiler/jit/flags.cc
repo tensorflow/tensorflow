@@ -157,6 +157,11 @@ void AppendMarkForCompilationPassFlagsInternal(std::vector<Flag>* flag_list) {
            &mark_for_compilation_flags->tf_xla_persistent_cache_directory,
            "If non-empty, JIT-compiled executables are saved to and loaded "
            "from the specified file system directory path. Empty by default."),
+      Flag("tf_xla_persistent_cache_device_types",
+           &mark_for_compilation_flags->tf_xla_persistent_cache_device_types,
+           "If non-empty, the persistent cache will only be used for the "
+           "specified devices (comma separated). Each device type should be "
+           "able to be converted to `DeviceType`."),
       Flag("tf_xla_disable_strict_signature_checks",
            &mark_for_compilation_flags->tf_xla_disable_strict_signature_checks,
            "If true, entires loaded into the XLA compile cache will not have "
@@ -214,6 +219,7 @@ void AllocateAndParseFlags() {
       ->tf_xla_disable_resource_variable_safety_checks_for_debugging = false;
   mark_for_compilation_flags->tf_xla_deterministic_cluster_names = false;
   mark_for_compilation_flags->tf_xla_persistent_cache_directory = "";
+  mark_for_compilation_flags->tf_xla_persistent_cache_device_types = "";
   mark_for_compilation_flags->tf_xla_disable_strict_signature_checks = false;
   mark_for_compilation_flags->tf_xla_persistent_cache_prefix =
       "xla_compile_cache";

@@ -96,6 +96,11 @@ struct MarkForCompilationPassFlags {
   // specified file system directory path.
   std::string tf_xla_persistent_cache_directory;
 
+  // If non-empty, the persistent cache will only be used for the specified
+  // devices (comma separated). Each device type should be able to be converted
+  // to `DeviceType`.
+  std::string tf_xla_persistent_cache_device_types;
+
   // If true, entries loaded into the XLA compile cache will not have their
   // signatures checked strictly. This should generally not be disabled except
   // for debugging. Defaults to false.
