@@ -41,7 +41,8 @@ class AMDGPUCompiler : public GpuCompiler {
   Status OptimizeHloPostLayoutAssignment(
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
       const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
-      const AutotuneResults* autotune_results) override;
+      const AutotuneResults* autotune_results,
+      tsl::thread::ThreadPool* thread_pool) override;
 
   bool EnableCollectiveScheduleLinearizerForSpmd(
       HloModule* hlo_module, se::StreamExecutor* stream_exec) override;
