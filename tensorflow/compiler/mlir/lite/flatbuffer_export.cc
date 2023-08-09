@@ -240,7 +240,8 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
 static bool IsConst(Operation* op) {
   return isa<mlir::func::ConstantOp, mlir::arith::ConstantOp, mlir::TF::ConstOp,
              tfl::ConstOp, tfl::QConstOp, tfl::SparseConstOp,
-             tfl::SparseQConstOp, mlir::TFL::NoValueOp>(op);
+             tfl::SparseQConstOp, mlir::TFL::NoValueOp,
+             mlir::stablehlo::ConstantOp>(op);
 }
 
 static bool IsTFResourceOp(Operation* op) {
