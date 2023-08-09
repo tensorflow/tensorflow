@@ -142,6 +142,7 @@ xla_cc_test(
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:test_main",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
     ] + if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
     ]),

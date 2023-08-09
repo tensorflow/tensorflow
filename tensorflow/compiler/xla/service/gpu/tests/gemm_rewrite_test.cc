@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/strings/str_replace.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
@@ -6692,6 +6693,65 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF8TF32E5M2) {
                             R"(
     ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
           )");
+}
+
+TEST_P(ParameterizedFp8GemmRewriteTest, FnuzTypeF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
+  // Test that FNUZ FP8 gemms are not rewritten, as cuBLAS does not support them
+  const char* hlo_text = R"(
+    HloModule test
+
+    ENTRY test {
+      x = f8e4m3fnuz[16,32] parameter(0)
+      y = f8e4m3fnuz[32,16] parameter(1)
+      x_f32 = f32[16,32] convert(x)
+      y_f32 = f32[32,16] convert(y)
+      x_scale = f32[] parameter(2)
+      y_scale = f32[] parameter(3)
+      x_scale_bcast = f32[16,32] broadcast(x_scale), dimensions={}
+      y_scale_bcast = f32[32,16] broadcast(y_scale), dimensions={}
+      x_unscaled = f32[16,32] multiply(x_f32, x_scale_bcast)
+      y_unscaled = f32[32,16] multiply(y_f32, y_scale_bcast)
+      ROOT out = f32[16,16] dot(x_unscaled, y_unscaled), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+          }
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-2, 1e-2}));
+  RunAndFilecheckHloRewrite(hlo_text,
+                            GemmRewriter(se::CudaComputeCapability{
+                                se::CudaComputeCapability::HOPPER, 0}),
+                            absl::StrReplaceAll(R"(
+; CHECK-LABEL: ENTRY %test (x: f8e4m3fnuz[16,32], y: f8e4m3fnuz[32,16], x_scale: f32[], y_scale: f32[]) -> f32[16,16] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fnuz[16,32]{1,0} parameter(0)
+; CHECK-NEXT:    [[P0_CV:%[^ ]+]] = f32[16,32]{1,0} convert([[P0]])
+; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[] parameter(2)
+; CHECK-NEXT:    [[P2_B:%[^ ]+]] = f32[16,32]{1,0} broadcast([[P2]]), dimensions={}
+; CHECK-NEXT:    [[P0_UNSCALED:%[^ ]+]] = f32[16,32]{1,0} multiply([[P0_CV]], [[P2_B]])
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fnuz[32,16]{1,0} parameter(1)
+; CHECK-NEXT:    [[P1_CV:%[^ ]+]] = f32[32,16]{1,0} convert([[P1]])
+; CHECK-NEXT:    [[P3:%[^ ]+]] = f32[] parameter(3)
+; CHECK-NEXT:    [[P3_B:%[^ ]+]] = f32[32,16]{1,0} broadcast([[P3]]), dimensions={}
+; CHECK-NEXT:    [[P1_UNSCALED:%[^ ]+]] = f32[32,16]{1,0} multiply([[P1_CV]], [[P3_B]])
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[16,16]{1,0} custom-call([[P0_UNSCALED]], [[P1_UNSCALED]]),
+; CHECK:           custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>",
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
+; CHECK-DAG:         }
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:         }
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
+      )",
+                                                replacements_));
 }
 
 INSTANTIATE_TEST_SUITE_P(Fp8CublasTestsBothLegacyAndLt,

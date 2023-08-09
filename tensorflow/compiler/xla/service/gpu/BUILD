@@ -1193,6 +1193,7 @@ cc_library(
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/protobuf:dnn_proto_cc",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
     ] + if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
