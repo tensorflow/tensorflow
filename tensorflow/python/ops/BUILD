@@ -1725,10 +1725,7 @@ py_strict_library(
     name = "filesystem_ops",
     srcs = ["filesystem_ops.py"],
     srcs_version = "PY3",
-    deps = [
-        ":filesystem_ops_gen",
-        "//tensorflow/python/util:tf_export",
-    ],
+    deps = [":filesystem_ops_gen"],
 )
 
 py_strict_library(
