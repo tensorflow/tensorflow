@@ -21,7 +21,9 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_driver.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_kernel.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_types.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/path.h"
@@ -98,6 +100,30 @@ OwnedGpuGraphExec::~OwnedGpuGraphExec() {
 //===----------------------------------------------------------------------===//
 // GPU Graph Helpers.
 //===----------------------------------------------------------------------===//
+
+tsl::StatusOr<OwnedGpuGraph> CreateGpuGraph() {
+  GpuGraphHandle graph;
+  TF_RETURN_IF_ERROR(GpuDriver::CreateGraph(&graph));
+  return OwnedGpuGraph(graph);
+}
+
+tsl::StatusOr<GpuGraphNodeHandle> AddKernelNode(
+    GpuGraphHandle graph, absl::Span<GpuGraphNodeHandle> deps,
+    ThreadDim threads, BlockDim blocks, const KernelBase& kernel,
+    const KernelArgsArrayBase& args) {
+  const GpuKernel* gpu_kernel = AsGpuKernel(&kernel);
+  GpuFunctionHandle gpu_func = gpu_kernel->AsGpuFunctionHandle();
+
+  void** kernel_params = const_cast<void**>(args.argument_addresses().data());
+
+  GpuGraphNodeHandle node;
+  TF_RETURN_IF_ERROR(GpuDriver::GraphAddKernelNode(
+      &node, graph, deps, kernel.name(), gpu_func, blocks.x, blocks.y, blocks.z,
+      threads.x, threads.y, threads.z, args.number_of_shared_bytes(),
+      kernel_params, /*extra=*/nullptr));
+
+  return node;
+}
 
 tsl::StatusOr<OwnedGpuGraph> CaptureGpuGraph(
     stream_executor::Stream* stream,

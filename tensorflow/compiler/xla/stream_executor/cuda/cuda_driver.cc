@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/stacktrace.h"
 #include "tensorflow/tsl/platform/static_threadlocal.h"
+#include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/threadpool.h"
 
 bool FLAGS_gpuexec_cuda_driver_inject_init_error = false;
@@ -647,6 +648,37 @@ static std::string_view StreamCaptureModeToString(
                            "Failed to check stream capturing status");
 
   return status == CU_STREAM_CAPTURE_STATUS_ACTIVE;
+}
+
+/* static */ tsl::Status GpuDriver::GraphAddKernelNode(
+    CUgraphNode* node, CUgraph graph, absl::Span<CUgraphNode> deps,
+    absl::string_view kernel_name, CUfunction function, unsigned int grid_dim_x,
+    unsigned int grid_dim_y, unsigned int grid_dim_z, unsigned int block_dim_x,
+    unsigned int block_dim_y, unsigned int block_dim_z,
+    unsigned int shared_mem_bytes, void** kernel_params, void** extra) {
+  VLOG(2) << "Add kernel node to a graph: " << graph
+          << "; kernel: " << kernel_name << "; gdx: " << grid_dim_x
+          << " gdy: " << grid_dim_y << " gdz: " << grid_dim_z
+          << " bdx: " << block_dim_x << " bdy: " << block_dim_y
+          << " bdz: " << block_dim_z << "; shmem: " << shared_mem_bytes;
+
+  CUDA_KERNEL_NODE_PARAMS params;
+  params.func = function;
+  params.gridDimX = grid_dim_x;
+  params.gridDimY = grid_dim_y;
+  params.gridDimZ = grid_dim_z;
+  params.blockDimX = block_dim_x;
+  params.blockDimY = block_dim_y;
+  params.blockDimZ = block_dim_z;
+  params.sharedMemBytes = shared_mem_bytes;
+  params.kernelParams = kernel_params;
+  params.extra = extra;
+
+  RETURN_IF_CUDA_RES_ERROR(
+      cuGraphAddKernelNode(node, graph, deps.data(), deps.size(), &params),
+      "Failed to add kernel node to a CUDA graph");
+
+  return ::tsl::OkStatus();
 }
 
 /* static */ tsl::Status GpuDriver::LaunchKernel(

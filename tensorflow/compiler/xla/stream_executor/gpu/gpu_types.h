@@ -56,6 +56,7 @@ using GpuDoubleComplexType = hipDoubleComplex;
 using GpuRngHandle = hiprandGenerator_t;
 using GpuGraphHandle = hipGraph_t;
 using GpuGraphExecHandle = hipGraphExec_t;
+using GpuGraphNodeHandle = hipGraphNode_t;
 
 #else  // CUDA
 
@@ -76,6 +77,7 @@ using GpuComplexType = cuComplex;
 using GpuDoubleComplexType = cuDoubleComplex;
 using GpuGraphHandle = CUgraph;
 using GpuGraphExecHandle = CUgraphExec;
+using GpuGraphNodeHandle = CUgraphNode;
 
 #endif
 

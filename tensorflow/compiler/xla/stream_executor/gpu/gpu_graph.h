@@ -23,7 +23,10 @@ limitations under the License.
 #include <type_traits>
 
 #include "absl/functional/any_invocable.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_types.h"
+#include "tensorflow/compiler/xla/stream_executor/kernel.h"
+#include "tensorflow/compiler/xla/stream_executor/launch_dim.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
@@ -99,6 +102,15 @@ class OwnedGpuGraphExec
 //===----------------------------------------------------------------------===//
 // Gpu Graph Helpers.
 //===----------------------------------------------------------------------===//
+
+// Creates new empty Gpu graph.
+tsl::StatusOr<OwnedGpuGraph> CreateGpuGraph();
+
+// Adds a kernel node to the graph.
+tsl::StatusOr<GpuGraphNodeHandle> AddKernelNode(
+    GpuGraphHandle graph, absl::Span<GpuGraphNodeHandle> deps,
+    ThreadDim threads, BlockDim blocks, const KernelBase& kernel,
+    const KernelArgsArrayBase& args);
 
 // Captures all operations added to a `stream` by the `capture` function into
 // the gpu graph instance.

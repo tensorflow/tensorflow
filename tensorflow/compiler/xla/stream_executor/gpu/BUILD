@@ -433,7 +433,12 @@ cc_library(
     hdrs = if_gpu_is_configured(["gpu_graph.h"]),
     deps = if_gpu_is_configured([
         ":gpu_driver_header",
+        ":gpu_kernel_header",
         ":gpu_types_header",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/functional:any_invocable",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_stream",
         "//tensorflow/compiler/xla/stream_executor",
