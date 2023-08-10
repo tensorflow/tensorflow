@@ -13548,6 +13548,52 @@ ENTRY entry {
   EXPECT_THAT(root, AllOf(op::Select(), op::Shape("f32[128,7,257]")));
 }
 
+TEST_P(SpmdPartitioningTest, MatchOutputPartitioningForContractingRHS) {
+  absl::string_view hlo_string = R"(
+HloModule extracted_module
+
+ENTRY %extracted_computation {
+  %param = bf16[256,1,114688]{2,1,0} parameter(0)
+  %reshape.788 = bf16[256,114688]{1,0} reshape(bf16[256,1,114688]{2,1,0} %param), sharding={devices=[1,4,2]<=[2,4]T(1,0) last_tile_dim_replicate}
+  %param.1 = bf16[1,114688,14336]{2,1,0} parameter(1)
+  %reshape.747 = bf16[114688,14336]{1,0} reshape(bf16[1,114688,14336]{2,1,0} %param.1), sharding={devices=[4,2]<=[2,4]T(1,0)}
+  %dot.89 = bf16[256,14336]{1,0} dot(bf16[256,114688]{1,0} %reshape.788, bf16[114688,14336]{1,0} %reshape.747), lhs_contracting_dims={1}, rhs_contracting_dims={0}, sharding={devices=[1,8]<=[8]}
+  %reshape.789 = bf16[256,1,14336]{2,1,0} reshape(bf16[256,14336]{1,0} %dot.89), sharding={devices=[1,1,8]<=[8]}
+  ROOT %copy = bf16[256,1,14336]{2,1,0} copy(bf16[256,1,14336]{2,1,0} %reshape.789)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+  auto* dot = FindInstruction(module.get(), HloOpcode::kDot);
+  EXPECT_NE(dot, nullptr);
+  EXPECT_NE(dot->operand(1)->opcode(), HloOpcode::kAllReduce);
+}
+
+TEST_P(SpmdPartitioningTest, MatchOutputPartitioningForContractingLHS) {
+  absl::string_view hlo_string = R"(
+HloModule extracted_module
+
+ENTRY %extracted_computation {
+  %param = bf16[256,1,114688]{2,1,0} parameter(0)
+  %reshape.788 = bf16[256,114688]{1,0} reshape(bf16[256,1,114688]{2,1,0} %param), sharding={devices=[2,4]<=[8]}
+  %param.1 = bf16[1,114688,14336]{2,1,0} parameter(1)
+  %reshape.747 = bf16[114688,14336]{1,0} reshape(bf16[1,114688,14336]{2,1,0} %param.1), sharding={devices=[4,1,2]<=[2,4]T(1,0) last_tile_dim_replicate}
+  %dot.89 = bf16[256,14336]{1,0} dot(bf16[256,114688]{1,0} %reshape.788, bf16[114688,14336]{1,0} %reshape.747), lhs_contracting_dims={1}, rhs_contracting_dims={0}, sharding={devices=[8,1]<=[8]}
+  %reshape.789 = bf16[256,1,14336]{2,1,0} reshape(bf16[256,14336]{1,0} %dot.89), sharding={devices=[8,1,1]<=[8]}
+  ROOT %copy = bf16[256,1,14336]{2,1,0} copy(bf16[256,1,14336]{2,1,0} %reshape.789)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+  auto* dot = FindInstruction(module.get(), HloOpcode::kDot);
+  EXPECT_NE(dot, nullptr);
+  EXPECT_NE(dot->operand(0)->opcode(), HloOpcode::kAllReduce);
+}
+
 }  // namespace
 }  // namespace spmd
 }  // namespace xla
