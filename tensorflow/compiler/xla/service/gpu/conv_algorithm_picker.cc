@@ -1079,7 +1079,6 @@ StatusOr<bool> GpuConvAlgorithmPicker::RunOnInstruction(HloInstruction* instr) {
 
   // Set the algorithm and update the shape of the convolution Custom Call to
   // account for the appropriate amount of scratch memory.
-  HloComputation* computation = instr->parent();
   ShapeUtil::UpdateTupleShape(
       ShapeUtil::MakeShape(U8, {best_algo.scratch_bytes()}),
       instr->shape().tuple_shapes_size() - 1, instr->mutable_shape());

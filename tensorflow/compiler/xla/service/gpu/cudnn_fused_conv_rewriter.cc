@@ -434,11 +434,18 @@ void CaptureConvGraphRecursive(HloInstruction* instr,
     }
     return false;
   };
+
+  // Copy the current state in case fusion will be unsuccessful or unfavorable.
+  GraphString init_graph_string = graph_string;
+  std::vector<HloInstruction*> init_operands = operands,
+                               init_aux_outputs = aux_outputs;
+  int linear_users = 0, nonlinear_users = 0;
   for (HloInstruction* user : instr->users()) {
     // Add
     if (Match(user, m::AddAnyOrder(&op, m::Op(&operand0), m::Op(&operand1)))) {
       graph_string.AppendOp("add", op, {operand0, operand1});
       operands.push_back(operand0 == instr ? operand1 : operand0);
+      linear_users++;
       CaptureConvGraphRecursive(user, operands, aux_outputs, graph_string,
                                 visited_instrs, final_instr);
       continue;
@@ -449,6 +456,7 @@ void CaptureConvGraphRecursive(HloInstruction* instr,
         ShapeUtil::IsScalar(operand1->shape())) {
       graph_string.AppendOp("scale", op, {operand0, operand1});
       operands.push_back(operand1);
+      linear_users++;
       CaptureConvGraphRecursive(user, operands, aux_outputs, graph_string,
                                 visited_instrs, final_instr);
       continue;
@@ -459,6 +467,7 @@ void CaptureConvGraphRecursive(HloInstruction* instr,
         ShapeUtil::IsScalar(operand1->shape())) {
       graph_string.AppendOp("invscale", op, {operand0, operand1});
       operands.push_back(operand1);
+      linear_users++;
       CaptureConvGraphRecursive(user, operands, aux_outputs, graph_string,
                                 visited_instrs, final_instr);
       continue;
@@ -467,16 +476,17 @@ void CaptureConvGraphRecursive(HloInstruction* instr,
     if (Match(user, m::MaximumAnyOrder(&op, m::Op(&operand0),
                                        m::Broadcast(m::ConstantScalar(0))))) {
       graph_string.AppendOp("relu", op, {operand0});
+      linear_users++;
       CaptureConvGraphRecursive(user, operands, aux_outputs, graph_string,
                                 visited_instrs, final_instr);
       continue;
     }
-    //  Maximum of the absolute value (Amax) following ReLU (elided Abs)
+    //  Maximum of the absolute value (Amax) following ReLU (elided Abs) -- not
+    //  a linear user
     if (Match(user, m::Reduce(&op, m::Op(&operand0), m::Op())) &&
-        graph_string.OpInGraph(operand0->unique_id(), "relu")) {
-      if (fuse_amax()) {
-        continue;
-      }
+        graph_string.OpInGraph(operand0->unique_id(), "relu") && fuse_amax()) {
+      nonlinear_users++;
+      continue;
     }
 
     // The following patterns match the user of `user`.
@@ -505,18 +515,29 @@ void CaptureConvGraphRecursive(HloInstruction* instr,
                              m::Broadcast(m::ConstantScalar(&clamp_upper))))) &&
           is_saturating_cast_to_f8()) {
         graph_string.ChangeDataType(op->shape().element_type());
+        linear_users++;
         CaptureConvGraphRecursive(users_user, operands, aux_outputs,
                                   graph_string, visited_instrs, final_instr);
         continue;
       }
-      // Maximum of the absolute value (Amax)
+      // Maximum of the absolute value (Amax) -- not a linear user
       if (Match(users_user,
-                m::Reduce(&op, m::Abs(m::Op(&operand0)), m::Op()))) {
-        if (fuse_amax()) {
-          continue;
-        }
+                m::Reduce(&op, m::Abs(m::Op(&operand0)), m::Op())) &&
+          fuse_amax()) {
+        nonlinear_users++;
+        continue;
       }
     }
+  }
+  // Do not fuse into the cuDNN convolution Custom Call when there are more than
+  // one linear or nonlinear users, or when the number of users eligible for
+  // fusion is less than the total number of users.
+  if (linear_users > 1 || nonlinear_users > 1 ||
+      linear_users + nonlinear_users < instr->user_count()) {
+    graph_string = init_graph_string;
+    operands = init_operands;
+    aux_outputs = init_aux_outputs;
+    final_instr = instr;
   }
 }
 

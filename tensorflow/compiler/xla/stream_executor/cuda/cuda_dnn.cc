@@ -4326,19 +4326,16 @@ GetGenericCudnnOperationGraph(
       m = serialized_graph.find('(', pos);
       std::string op_string = serialized_graph.substr(n + 1, m - n - 1);
       std::optional<int> operand;
-      do {
-        std::string::size_type l = serialized_graph.find_first_of(",)", m + 1);
-        if (l > m + 1) {
-          operand = std::stoi(serialized_graph.substr(m + 1, l - m - 1));
-        }
-        m = l;
-      } while (serialized_graph[m] != ')');
+      std::string::size_type l = serialized_graph.find(')', m + 1);
+      if (l > m + 1) {
+        operand = std::stoi(serialized_graph.substr(m + 1, l - m - 1));
+      }
 
-      if (serialized_graph.find(';', pos) != m + 1) {
+      if (serialized_graph.find(';', pos) != l + 1) {
         return tsl::errors::Internal(
             "Unexpected character in graph serialization.");
       }
-      pos = m + 2;
+      pos = l + 2;
 
       TF_ASSIGN_OR_RETURN(output_type,
                           PrimitiveTypeStringToDnnType(data_type_string));
