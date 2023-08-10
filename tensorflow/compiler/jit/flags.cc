@@ -254,6 +254,7 @@ void AllocateAndParseFlags() {
   bool enable_mlir_bridge_is_explicit = false;
   bool enable_mlir_merge_control_flow_pass = true;
   bool enable_mlir_convert_control_to_data_outputs_pass = false;
+  bool enable_mlir_strict_clusters = false;
   // Dump graphs in TFG dialect.
   bool use_tfg_graph_dumper = false;
   bool enable_mlir_generic_outside_compilation = false;
@@ -345,6 +346,8 @@ void AllocateAndParseFlags() {
             &enable_mlir_convert_control_to_data_outputs_pass,
             "Enables `tf-executor-convert-control-to-data-outputs` pass for "
             "MLIR-Based TensorFlow Compiler Bridge."),
+       Flag("tf_mlir_enable_strict_clusters", &enable_mlir_strict_clusters,
+            "Do not allow clusters that have cyclic control dependencies."),
        Flag("tf_dump_graphs_in_tfg", &use_tfg_graph_dumper,
             "When tf_dump_graphs_in_tfg is true, graphs after transformations "
             "are dumped in MLIR TFG dialect and not in GraphDef"),
@@ -371,6 +374,7 @@ void AllocateAndParseFlags() {
       enable_mlir_merge_control_flow_pass;
   mlir_flags->tf_mlir_enable_convert_control_to_data_outputs_pass =
       enable_mlir_convert_control_to_data_outputs_pass;
+  mlir_flags->tf_mlir_enable_strict_clusters = enable_mlir_strict_clusters;
   mlir_flags->tf_mlir_enable_generic_outside_compilation =
       enable_mlir_generic_outside_compilation;
 

@@ -132,6 +132,8 @@ void CreateTPUBridgePipelineImpl(
   const llvm::SmallVector<std::string, 4> ops_to_preserve = {
       "tf.TPUReplicateMetadata", "tf.TPUCompilationResult",
       "tf.TPUReplicatedOutput"};
+  bool strict_clusters =
+      tensorflow::GetMlirCommonFlags()->tf_mlir_enable_strict_clusters;
   pm.addNestedPass<func::FuncOp>(
       tf_executor::CreateTFExecutorGraphPruningPass(ops_to_preserve));
   // It is assumed at this stage there are no V1 control flow ops as Graph
@@ -156,7 +158,7 @@ void CreateTPUBridgePipelineImpl(
   // preserved and the sequencing rewrite will trigger.
   pm.addPass(TFDevice::CreateEmbeddingPipeliningPass());
   pm.addPass(TFDevice::CreateEmbeddingSequencingPass());
-  pm.addPass(CreateTPUClusterFormationPass());
+  pm.addPass(CreateTPUClusterFormationPass(strict_clusters));
   // CreateEmbeddingPipeliningPass may have created more functions, but
   // TPUClusterCleanup and OutsideCompiledToHostLaunch need every function to be
   // only called from one cluster. Here, we choose to fix the all-funcs-one-use
