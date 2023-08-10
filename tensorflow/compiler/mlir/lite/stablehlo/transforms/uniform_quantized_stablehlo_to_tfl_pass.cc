@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/MathExtras.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project  // NOLINT: Required to register quantization dialect.
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
@@ -135,6 +136,19 @@ bool IsI8F32UniformQuantizedPerAxisType(const Type type) {
   }
 
   return true;
+}
+
+// Bias scales for matmul-like ops should be input scale * filter scale. Here it
+// is assumed that the input is per-tensor quantized and filter is per-channel
+// quantized.
+SmallVector<double> GetBiasScales(const double input_scale,
+                                  const ArrayRef<double> filter_scales) {
+  SmallVector<double> bias_scales;
+  absl::c_transform(filter_scales, std::back_inserter(bias_scales),
+                    [input_scale](const double filter_scale) -> double {
+                      return filter_scale * input_scale;
+                    });
+  return bias_scales;
 }
 
 // stablehlo.uniform_quantize -> tfl.quantize
@@ -621,18 +635,6 @@ class RewriteQuantizedConvolutionOp
     // https://github.com/openxla/stablehlo/blob/main/docs/spec.md#convolution.
     return {lhs_dilation_attr_value[0], lhs_dilation_attr_value[1]};
   }
-
-  // Bias scales should be input scale * filter scale. Here it is assumed that
-  // the filter is per-channel quantized.
-  SmallVector<double> GetBiasScales(
-      const double input_scale, const ArrayRef<double> filter_scales) const {
-    SmallVector<double> bias_scales;
-    absl::c_transform(filter_scales, std::back_inserter(bias_scales),
-                      [input_scale](const double filter_scale) -> double {
-                        return filter_scale * input_scale;
-                      });
-    return bias_scales;
-  }
 };
 
 // Rewrites full-integer quantized `stablehlo.dot_general` ->`tfl.batch_matmul`
@@ -794,7 +796,272 @@ class RewriteFullIntegerQuantizedDotGeneralOp
     }
 
     rewriter.replaceAllUsesWith(op.getResult(), tfl_batchmatmul_op.getResult());
+  }
+};
+
+// Rewrites `stablehlo.dot_general` -> `tfl.fully_connected` when it accepts
+// uniform quantized tensors with per-axis quantized filter tensor (rhs).
+//
+// Conditions for the conversion:
+//   * Input and output tensors are per-tensor uniform quantized (i8->f32)
+//     tensors.
+//   * The filter tensor is constant a per-channel uniform quantized (i8->f32)
+//     tensor. The quantization dimension should be 1 (the non-contracting
+//     dimension).
+//   * The input tensor's rank is either 2 or 3. The last dimension of the input
+//     tensor should be the contracting dimension, i.e. [..., c_x, r_x].
+//   * The filter tensor's rank is 2. The contracting dimension should be the
+//     first dimension (dim 0), i.e. [c_y, r_y] where c_y == r_x.
+//   * Does not consider activation fusion.
+//   * Does not consider bias add fusion.
+//
+// TODO: b/294983811 - Merge this pattern into
+// `RewriteFullIntegerQuantizedDotGeneralOp`.
+// TODO: b/295264927 - `stablehlo.dot_general` with per-axis quantized operands
+// is not specified in the StableHLO dialect. Update the spec to allow this.
+class RewriteQuantizedDotGeneralOpToTflFullyConnectedOp
+    : public OpRewritePattern<stablehlo::DotGeneralOp> {
+  using OpRewritePattern<stablehlo::DotGeneralOp>::OpRewritePattern;
+
+ public:
+  LogicalResult match(stablehlo::DotGeneralOp op) const override {
+    const stablehlo::DotDimensionNumbersAttr dot_dimension_nums =
+        op.getDotDimensionNumbers();
+    if (const int num_rhs_contracting_dims =
+            dot_dimension_nums.getRhsContractingDimensions().size();
+        num_rhs_contracting_dims != 1) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Expected number of contracting dimensions to be 1. Got: "
+                 << num_rhs_contracting_dims << ".\n");
+      return failure();
+    }
+
+    if (failed(MatchInput(op.getOperand(0)))) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Failed to match input for quantized dot_general op.\n");
+      return failure();
+    }
+
+    if (failed(MatchFilter(op.getOperand(1)))) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Failed to match filter for quantized dot_general op.\n");
+      return failure();
+    }
+
+    if (failed(MatchOutput(op.getResult()))) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Failed to match output for quantized dot_general op.\n");
+      return failure();
+    }
+
+    return success();
+  }
+
+  void rewrite(stablehlo::DotGeneralOp op,
+               PatternRewriter& rewriter) const override {
+    // Create the new filter constant - transpose filter value
+    // from [i, o] -> [o, i]. This is because we assume `[i, o]` format for
+    // `stablehlo.dot_general` (i.e. contracting dimension == 1) whereas
+    // `tfl.fully_connected` accepts an OI format.
+    auto filter_constant_op =
+        cast<stablehlo::ConstantOp>(op.getOperand(1).getDefiningOp());
+
+    TFL::QConstOp new_filter_constant_op =
+        CreateTflConstOpForFilter(filter_constant_op, rewriter);
+    const Value input_value = op.getOperand(0);
+    const double input_scale = input_value.getType()
+                                   .cast<TensorType>()
+                                   .getElementType()
+                                   .cast<UniformQuantizedType>()
+                                   .getScale();
+    TFL::QConstOp bias_constant_op = CreateTflConstOpForBias(
+        op.getLoc(), input_scale, new_filter_constant_op, rewriter);
+
+    const Value result_value = op.getResult();
+    // Set to `nullptr` because this attribute only matters when the input is
+    // dynamic-range quantized.
+    const BoolAttr asymmetric_quantize_inputs = nullptr;
+    auto tfl_fully_connected_op = rewriter.create<TFL::FullyConnectedOp>(
+        op.getLoc(), /*output=*/result_value.getType(),
+        /*input=*/input_value, /*filter=*/new_filter_constant_op.getResult(),
+        /*bias=*/bias_constant_op.getResult(),
+        /*fused_activation_function=*/rewriter.getStringAttr("NONE"),
+        /*weights_format=*/rewriter.getStringAttr("DEFAULT"),
+        /*keep_num_dims=*/rewriter.getBoolAttr(false),
+        asymmetric_quantize_inputs);
+
+    rewriter.replaceAllUsesWith(result_value,
+                                tfl_fully_connected_op.getResult(0));
     rewriter.eraseOp(op);
+  }
+
+ private:
+  static LogicalResult MatchInput(Value input) {
+    auto input_type = input.getType().cast<TensorType>();
+    if (!input_type.hasRank() ||
+        !(input_type.getRank() == 2 || input_type.getRank() == 3)) {
+      LLVM_DEBUG(llvm::dbgs() << "Input expected to have rank of 2 or 3. Got: "
+                              << input_type << ".\n");
+      return failure();
+    }
+
+    if (const auto input_element_type = input_type.getElementType();
+        !IsI8F32UniformQuantizedType(input_element_type)) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Expected an i8->f32 uniform quantized type. Got: "
+                 << input_element_type << ".\n");
+      return failure();
+    }
+
+    return success();
+  }
+
+  static LogicalResult MatchFilter(Value filter) {
+    auto filter_type = filter.getType().cast<TensorType>();
+    if (!filter_type.hasRank() || filter_type.getRank() != 2) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Filter tensor expected to have a tensor rank of 2. Got: "
+                 << filter_type << ".\n");
+      return failure();
+    }
+
+    const Type filter_element_type = filter_type.getElementType();
+    if (!IsI8F32UniformQuantizedPerAxisType(filter_type.getElementType())) {
+      LLVM_DEBUG(
+          llvm::dbgs()
+          << "Expected a per-channel uniform quantized (i8->f32) type. Got: "
+          << filter_element_type << "\n");
+      return failure();
+    }
+
+    if (filter_element_type.cast<UniformQuantizedPerAxisType>()
+            .getQuantizedDimension() != 1) {
+      LLVM_DEBUG(llvm::dbgs() << "Quantized dimension should be 1. Got: "
+                              << filter_element_type << "\n");
+      return failure();
+    }
+
+    if (Operation* filter_op = filter.getDefiningOp();
+        filter_op == nullptr || !isa<stablehlo::ConstantOp>(filter_op)) {
+      LLVM_DEBUG(llvm::dbgs() << "Filter should be a constant.\n");
+      return failure();
+    }
+
+    return success();
+  }
+
+  static LogicalResult MatchOutput(Value output) {
+    const Type output_element_type =
+        output.getType().cast<TensorType>().getElementType();
+    if (!IsI8F32UniformQuantizedType(output_element_type)) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Expected a uniform quantized (i8->f32) type. Got: "
+                 << output_element_type << ".\n");
+      return failure();
+    }
+
+    return success();
+  }
+
+  // Creates a new `tfl.qconst` op for the quantized filter. Transposes the
+  // filter value from [i, o] -> [o, i]. This is because we assume `[i, o]`
+  // format for `stablehlo.dot_general` (i.e. contracting dimension == 1)
+  // whereas `tfl.fully_connected` accepts an OI format.
+  TFL::QConstOp CreateTflConstOpForFilter(
+      stablehlo::ConstantOp filter_constant_op,
+      PatternRewriter& rewriter) const {
+    const auto filter_values = filter_constant_op.getValue()
+                                   .cast<DenseIntElementsAttr>()
+                                   .getValues<int8_t>();
+
+    ArrayRef<int64_t> filter_shape =
+        filter_constant_op.getType().cast<TensorType>().getShape();
+
+    // Reverse the shapes. This makes sense because it assumes that the filter
+    // tensor has rank of 2 (no batch dimension).
+    SmallVector<int64_t, 2> new_filter_shape(filter_shape.rbegin(),
+                                             filter_shape.rend());
+
+    // Construct the value array of transposed filter. Assumes 2D matrix.
+    SmallVector<int8_t> new_filter_values(filter_values.size(), /*Value=*/0);
+    for (int i = 0; i < filter_shape[0]; ++i) {
+      for (int j = 0; j < filter_shape[1]; ++j) {
+        const int old_idx = i * filter_shape[1] + j;
+        const int new_idx = j * filter_shape[0] + i;
+        new_filter_values[new_idx] = filter_values[old_idx];
+      }
+    }
+
+    auto new_filter_value_attr_type = RankedTensorType::getChecked(
+        filter_constant_op.getLoc(), new_filter_shape,
+        /*elementType=*/rewriter.getI8Type());
+
+    auto filter_quantized_type = filter_constant_op.getResult()
+                                     .getType()
+                                     .cast<TensorType>()
+                                     .getElementType()
+                                     .cast<UniformQuantizedPerAxisType>();
+
+    auto new_filter_quantized_type = UniformQuantizedPerAxisType::getChecked(
+        filter_constant_op.getLoc(), /*flags=*/true,
+        /*storageType=*/filter_quantized_type.getStorageType(),
+        /*expressedType=*/filter_quantized_type.getExpressedType(),
+        /*scales=*/filter_quantized_type.getScales(),
+        /*zeroPoints=*/filter_quantized_type.getZeroPoints(),
+        /*quantizedDimension=*/0, /*storageTypeMin=*/llvm::minIntN(8),
+        /*storageTypeMax=*/llvm::maxIntN(8));
+
+    // Required because the quantized dimension is changed from 3 -> 0.
+    auto new_filter_result_type = RankedTensorType::getChecked(
+        filter_constant_op.getLoc(), /*shape=*/new_filter_shape,
+        /*type=*/new_filter_quantized_type);
+
+    auto new_filter_constant_value_attr = DenseIntElementsAttr::get(
+        new_filter_value_attr_type, new_filter_values);
+    return rewriter.create<TFL::QConstOp>(
+        filter_constant_op.getLoc(),
+        /*output=*/TypeAttr::get(new_filter_result_type),
+        /*value=*/new_filter_constant_value_attr);
+  }
+
+  // Creates a new `tfl.qconst` op for the bias. The bias values are 0s, because
+  // this bias a dummy bias (note that bias fusion is not considered for this
+  // transformation). The quantization scale for the bias is input scale *
+  // filter scale. `filter_const_op` is used to retrieve the filter scales and
+  // the size of the bias constant.
+  TFL::QConstOp CreateTflConstOpForBias(const Location loc,
+                                        const double input_scale,
+                                        TFL::QConstOp filter_const_op,
+                                        PatternRewriter& rewriter) const {
+    const ArrayRef<int64_t> filter_shape =
+        filter_const_op.getResult().getType().getShape();
+    const auto filter_quantized_element_type =
+        filter_const_op.getResult()
+            .getType()
+            .getElementType()
+            .cast<UniformQuantizedPerAxisType>();
+
+    // The storage type is i32 for bias, which is the precision used for
+    // accumulation.
+    auto bias_quantized_type = UniformQuantizedPerAxisType::getChecked(
+        loc, /*flags=*/true, /*storageType=*/rewriter.getI32Type(),
+        /*expressedType=*/rewriter.getF32Type(), /*scales=*/
+        GetBiasScales(input_scale, filter_quantized_element_type.getScales()),
+        /*zeroPoints=*/filter_quantized_element_type.getZeroPoints(),
+        /*quantizedDimension=*/0, /*storageTypeMin=*/llvm::minIntN(8),
+        /*storageTypeMax=*/llvm::maxIntN(8));
+
+    SmallVector<int64_t, 1> bias_shape = {filter_shape[0]};
+    auto bias_type =
+        RankedTensorType::getChecked(loc, bias_shape, bias_quantized_type);
+
+    auto bias_value_type = RankedTensorType::getChecked(
+        loc, std::move(bias_shape), rewriter.getI32Type());
+    auto bias_value = DenseIntElementsAttr::get(
+        bias_value_type, APInt(/*numBits=*/32, /*value=*/0, /*isSigned=*/true));
+
+    return rewriter.create<TFL::QConstOp>(
+        loc, /*output=*/TypeAttr::get(bias_type), /*value=*/bias_value);
   }
 };
 
@@ -805,7 +1072,8 @@ void UniformQuantizedStablehloToTflPass::runOnOperation() {
   RewritePatternSet patterns(&ctx);
   patterns.add<RewriteUniformQuantizeOp, RewriteUniformDequantizeOp,
                RewriteQuantizedConvolutionOp,
-               RewriteFullIntegerQuantizedDotGeneralOp>(&ctx);
+               RewriteFullIntegerQuantizedDotGeneralOp,
+               RewriteQuantizedDotGeneralOpToTflFullyConnectedOp>(&ctx);
 
   if (failed(applyPatternsAndFoldGreedily(func_op, std::move(patterns)))) {
     func_op.emitError() << "Failed to convert stablehlo ops with uniform "
