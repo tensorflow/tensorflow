@@ -2583,6 +2583,24 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "data_dumper_logger_config_test",
+    size = "small",
+    srcs = ["utils/data_dumper_logger_config_test.cc"],
+    deps = [
+        ":bridge_logger",
+        ":serialize_mlir_module_utils",
+        ":tensorflow",
+        ":tensorflow_passes",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:test",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
 cc_library(
     name = "bridge_logger",
     srcs = [
