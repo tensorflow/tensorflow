@@ -121,6 +121,18 @@ StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
     return InvalidArgument("device and buffer counts mismatch: %d vs. %d",
                            sharding->devices().size(), pjrt_buffers.size());
   }
+
+  for (int i = 0; i < sharding->devices().size(); ++i) {
+    if (pjrt_buffers[i]->device() != sharding->devices()[i]) {
+      return InvalidArgument(
+          "PjRtBuffer's memory space is addressed by device %s vs sharding is "
+          "on device %s",
+          pjrt_buffers[i]->device()->DebugString(),
+          sharding->devices()[i]->DebugString());
+    }
+    // TODO(yashkatariya): Check for memory kind after PJRT C API supports
+    // memories on PJRT_Buffer.
+  }
   return tsl::MakeRef<PjRtArray>(client, dtype, std::move(shape),
                                  std::move(sharding), std::move(pjrt_buffers));
 }
