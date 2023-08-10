@@ -558,17 +558,14 @@ tf_proto_library(
     srcs = ["quantization_options.proto"],
     cc_api_version = 2,
     make_default_target_header_only = True,
-    visibility = [
-        ":internal_visibility_allowlist_package",
-        # To be visible from `lib_internal_impl`.
-        "//tensorflow/core:__pkg__",
-    ],
+    visibility = ["//visibility:public"],
 )
 
 # copybara:uncomment_begin(google-only)
 # py_proto_library(
 #     name = "quantization_options_py_pb2",
 #     api_version = 2,
+#     visibility = ["//visibility:public"],
 #     deps = [":quantization_options_proto"],
 # )
 # copybara:uncomment_end
