@@ -489,6 +489,7 @@ cc_library(
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:status",
+        "@com_google_absl//absl/status",
     ],
 )
 
