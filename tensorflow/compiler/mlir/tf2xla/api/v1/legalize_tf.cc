@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/register.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/monitoring/sampler.h"
 #include "tensorflow/core/platform/status.h"
@@ -60,35 +61,12 @@ namespace tensorflow {
 namespace tf2xla {
 namespace v1 {
 
+using metrics::IncrementTfMlirBridgeSecondPhaseCounter;
+using metrics::MlirBridgeSecondPhaseMetric;
 using tpu::FunctionToHloArgs;
 using tpu::MlirToHloArgs;
 using tpu::ShardingAndIndex;
 
-auto* mlir_second_phase_count = tensorflow::monitoring::Counter<1>::New(
-    "/tensorflow/core/tf2xla/api/v1/phase2_compilation_status" /*metric_name*/,
-    "Counts the number of graphs that were analyzed prior deciding whether "
-    "the MLIR or the old bridge will be used" /* metric description */,
-    "status" /* metric label */);
-
-// The label `status` is used to count the following events:
-// MLIR bridge phase 2 was executed and the graph was processed successfully
-// (fallback enabled).
-constexpr char kMlirWithFallbackModeSuccess[] = "kMlirWithFallbackModeSuccess";
-// MLIR bridge phase 2 compilation was failure (fallback enabled).
-constexpr char kMlirWithFallbackModeFailure[] = "kMlirWithFallbackModeFailure";
-// Old bridge compilation was run successfully (was run because MLIR bridge
-// could not process the graph).
-constexpr char kOldBridgeMlirFilteredSuccess[] =
-    "kOldBridgeMlirFilteredSuccess";
-// Old bridge failed (was run b/c MLIR bridge could not process the graph).
-constexpr char kOldBridgeMlirFilteredFailure[] =
-    "kOldBridgeMlirFilteredFailure";
-// Old bridge compilation was successfully run after MLIR bridge ran and failed.
-constexpr char kOldBridgeWithFallbackModeSuccess[] =
-    "kOldBridgeWithFallbackModeSuccess";
-// Old Bridge failed in fallback (was run because MLIR bridge failed first).
-constexpr char kOldBridgeWithFallbackModeFailure[] =
-    "kOldBridgeWithFallbackModeFailure";
 // Name of component for error logging. This name is fixed and required to
 // enable logging.
 constexpr char kBridgeComponent[] = "TFXLABridge";
@@ -133,8 +111,10 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
       compilation_result.get());
 
   if (mlir_bridge_status.ok()) {
-    mlir_second_phase_count->GetCell(kMlirWithFallbackModeSuccess)
-        ->IncrementBy(1);
+    VLOG(1) << "Successfully compiled MLIR computation to XLA HLO using MLIR "
+               "tf2xla bridge";
+    IncrementTfMlirBridgeSecondPhaseCounter(
+        MlirBridgeSecondPhaseMetric::kMlirWithFallbackModeSuccess);
     return *compilation_result;
   }
 
@@ -144,8 +124,9 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
                "bridge. Falling back to old (non-MLIR) bridge.";
     filtered_graph = true;
   } else {
-    mlir_second_phase_count->GetCell(kMlirWithFallbackModeFailure)
-        ->IncrementBy(1);
+    IncrementTfMlirBridgeSecondPhaseCounter(
+        MlirBridgeSecondPhaseMetric::kMlirWithFallbackModeFailure);
+
     VLOG(1) << "Failed to compile MLIR computation to XLA HLO using MLIR "
                "tf2xla bridge. Falling back to old (non-MLIR) bridge. MLIR "
                "bridge compilation status: "
@@ -164,11 +145,11 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
     // invalid. This might be incorrect in case of old bridge bugs but that
     // should be rare.
     if (filtered_graph) {
-      mlir_second_phase_count->GetCell(kOldBridgeMlirFilteredFailure)
-          ->IncrementBy(1);
+      IncrementTfMlirBridgeSecondPhaseCounter(
+          MlirBridgeSecondPhaseMetric ::kOldBridgeMlirFilteredFailure);
     } else {
-      mlir_second_phase_count->GetCell(kOldBridgeWithFallbackModeFailure)
-          ->IncrementBy(1);
+      IncrementTfMlirBridgeSecondPhaseCounter(
+          MlirBridgeSecondPhaseMetric ::kOldBridgeWithFallbackModeFailure);
     }
     if (!old_bridge_status.ok()) {
       tsl::error_logging::Log(kBridgeComponent, "TFXLA_API_V1_OLD_BRIDGE",
@@ -199,11 +180,11 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
   }
 
   if (filtered_graph) {
-    mlir_second_phase_count->GetCell(kOldBridgeMlirFilteredSuccess)
-        ->IncrementBy(1);
+    IncrementTfMlirBridgeSecondPhaseCounter(
+        MlirBridgeSecondPhaseMetric ::kOldBridgeMlirFilteredSuccess);
   } else {
-    mlir_second_phase_count->GetCell(kOldBridgeWithFallbackModeSuccess)
-        ->IncrementBy(1);
+    IncrementTfMlirBridgeSecondPhaseCounter(
+        MlirBridgeSecondPhaseMetric ::kOldBridgeWithFallbackModeSuccess);
   }
   return *compilation_result;
 }

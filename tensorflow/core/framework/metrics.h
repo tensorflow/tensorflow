@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstdint>
 
-#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
@@ -293,6 +292,32 @@ void UpdateTfMlirBridgeFirstPhaseCounter(const std::string& device_type,
                                          const std::string& bridge_version,
                                          bool fallback_enabled,
                                          const std::string& result);
+
+enum class MlirBridgeSecondPhaseMetric {
+  // MLIR bridge phase 2 was executed and the graph was processed successfully
+  // (fallback enabled).
+  kMlirWithFallbackModeSuccess,
+  // MLIR bridge phase 2 compilation was failure (fallback enabled).
+  kMlirWithFallbackModeFailure,
+  // MLIR bridge phase 2 compilation was successful (manually enabled).
+  kMlirModeSuccess,
+  // MLIR bridge phase 2 compilation fails (manually enabled)
+  kMlirModeFailure,
+  // Old bridge compilation was run successfully (was run because MLIR bridge
+  // could not process the graph).
+  kOldBridgeMlirFilteredSuccess,
+  // Old bridge failed (was run b/c MLIR bridge could not process the graph).
+  kOldBridgeMlirFilteredFailure,
+  // Old bridge compilation was successfully run after MLIR bridge ran and
+  // failed.
+  kOldBridgeWithFallbackModeSuccess,
+  // Old Bridge failed in fallback (was run because MLIR bridge failed first).
+  kOldBridgeWithFallbackModeFailure,
+};
+
+// Records the activity of the second phase of the mlir bridge.
+void IncrementTfMlirBridgeSecondPhaseCounter(
+    MlirBridgeSecondPhaseMetric metric);
 
 // Records the activity per op using the
 // tf_metadata.tf_mlir_bridge_graph_analysis_per_op.

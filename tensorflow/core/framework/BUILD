@@ -1926,3 +1926,14 @@ tf_cc_fuzz_test(
         "//tensorflow/tsl/lib/core:status_test_util",
     ],
 )
+
+tf_cc_test(
+    name = "metrics_test",
+    srcs = ["metrics_test.cc"],
+    tags = ["no_oss"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core/lib/monitoring:cell_reader",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

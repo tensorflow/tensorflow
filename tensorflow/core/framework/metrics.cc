@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tensorflow/tsl/lib/monitoring/counter.h"
@@ -375,6 +376,12 @@ auto* mlir_bridge_first_phase_counter = tsl::monitoring::Counter<4>::New(
     "/tensorflow/core/tf_mlir_bridge_first_phase_count",
     "Tracks processing state in first phase of mlir bridge", "device",
     "version", "fallback", "result");
+
+auto* mlir_second_phase_count = tensorflow::monitoring::Counter<1>::New(
+    "/tensorflow/core/tf2xla/api/v1/phase2_compilation_status" /*metric_name*/,
+    "Counts the number of graphs that were analyzed prior deciding whether "
+    "the MLIR or the old bridge will be used" /* metric description */,
+    "status" /* metric label */);
 
 auto* tf1_features_by_graph_count = tsl::monitoring::Counter<5>::New(
     "/tensorflow/core/tf1_features_by_graph_count",
@@ -796,6 +803,32 @@ void UpdateTfMlirBridgeFirstPhaseCounter(const std::string& device_type,
       fallback_enabled ? "fallback_enabled" : "fallback_disabled";
   mlir_bridge_first_phase_counter
       ->GetCell(device_type, bridge_version, fallback_status, result)
+      ->IncrementBy(1);
+}
+
+// Records the activity of the second phase of the mlir bridge.
+void IncrementTfMlirBridgeSecondPhaseCounter(
+    MlirBridgeSecondPhaseMetric metric) {
+  static auto* mlir_bridge_second_phase_metric_names =
+      new absl::flat_hash_map<MlirBridgeSecondPhaseMetric, absl::string_view>{
+          {MlirBridgeSecondPhaseMetric::kMlirWithFallbackModeSuccess,
+           "kMlirWithFallbackModeSuccess"},
+          {MlirBridgeSecondPhaseMetric::kMlirWithFallbackModeFailure,
+           "kMlirWithFallbackModeFailure"},
+          {MlirBridgeSecondPhaseMetric::kMlirModeSuccess, "kMlirModeSuccess"},
+          {MlirBridgeSecondPhaseMetric::kMlirModeFailure, "kMlirModeFailure"},
+          {MlirBridgeSecondPhaseMetric::kOldBridgeMlirFilteredSuccess,
+           "kOldBridgeMlirFilteredSuccess"},
+          {MlirBridgeSecondPhaseMetric::kOldBridgeMlirFilteredFailure,
+           "kOldBridgeMlirFilteredFailure"},
+          {MlirBridgeSecondPhaseMetric::kOldBridgeWithFallbackModeSuccess,
+           "kOldBridgeWithFallbackModeSuccess"},
+          {MlirBridgeSecondPhaseMetric::kOldBridgeWithFallbackModeFailure,
+           "kOldBridgeWithFallbackModeFailure"},
+      };
+
+  mlir_second_phase_count
+      ->GetCell(std::string(mlir_bridge_second_phase_metric_names->at(metric)))
       ->IncrementBy(1);
 }
 
