@@ -28,13 +28,14 @@ deploy ML-powered applications.
 
 TensorFlow was originally developed by researchers and engineers working within
 the Machine Intelligence team at Google Brain to conduct research in machine
-learning and neural networks. However, the framework is versatile enough to be
+learning and neural networks and was written in C++. However, the framework is versatile enough to be
 used in other areas as well.
 
 TensorFlow provides stable [Python](https://www.tensorflow.org/api_docs/python)
 and [C++](https://www.tensorflow.org/api_docs/cc) APIs, as well as a
 non-guaranteed backward compatible API for
 [other languages](https://www.tensorflow.org/api_docs).
+
 
 Keep up-to-date with release announcements and security updates by subscribing
 to
