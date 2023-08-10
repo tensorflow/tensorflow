@@ -41,31 +41,9 @@ typedef struct TF_RendezvousArgsStruct {
   TFE_CancellationManager* cancellation_manager;
 } TF_RendezvousArgsStruct;
 
-typedef struct TF_DeviceUtilsParsedName {
-  char* job_str;
-  uint32_t job_str_size;
-  bool has_replica;
-  int replica;
-  bool has_task;
-  int task;
-  char* type_str;
-  uint32_t type_str_size;
-  bool has_id;
-  int id;
-} TF_DeviceUtilsParsedName;
-
 typedef struct TF_RendezvousParsedKey {
-  char* src_device_str;
-  uint32_t src_device_str_size;
-  TF_DeviceUtilsParsedName src_parsed_name;
-  uint64_t src_incarnation;
-
-  char* dst_device_str;
-  uint32_t dst_device_str_size;
-  TF_DeviceUtilsParsedName dst_parsed_name;
-
-  char* edge_name;
-  uint32_t edge_name_size;
+  char* full_key;
+  uint32_t full_key_size;
 } TF_RendezvousParsedKey;
 
 typedef struct TF_RendezvousSend_Params {

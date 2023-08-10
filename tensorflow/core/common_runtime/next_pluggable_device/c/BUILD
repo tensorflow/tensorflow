@@ -106,7 +106,9 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/tsl/framework:allocator",
+        "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
     ],
 )
 

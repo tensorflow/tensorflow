@@ -62,12 +62,6 @@ tensorflow::RendezvousInterface::Args FromC(
     const TF_RendezvousArgsStruct& c_args);
 void Destroy(TF_RendezvousArgsStruct* c_args);
 
-TF_DeviceUtilsParsedName ToC(
-    const tensorflow::DeviceNameUtils::ParsedName& name);
-tensorflow::DeviceNameUtils::ParsedName FromC(
-    const TF_DeviceUtilsParsedName& c_name);
-void Destroy(TF_DeviceUtilsParsedName* c_name);
-
 TF_RendezvousParsedKey ToC(
     const tensorflow::RendezvousInterface::ParsedKey& key);
 tensorflow::RendezvousInterface::ParsedKey FromC(
