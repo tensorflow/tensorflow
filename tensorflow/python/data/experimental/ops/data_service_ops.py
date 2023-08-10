@@ -444,7 +444,7 @@ def _distribute(processing_mode,
                 data_transfer_protocol=None,
                 compression="AUTO",
                 cross_trainer_cache=None,
-                target_workers="AUTO"):
+                target_workers="AUTO") -> dataset_ops.Dataset:
   """A transformation that moves dataset processing to the tf.data service.
 
   This transformation is similar to `distribute`, but supports additional
@@ -537,7 +537,7 @@ def distribute(processing_mode,
                data_transfer_protocol=None,
                compression="AUTO",
                cross_trainer_cache=None,
-               target_workers="AUTO"):
+               target_workers="AUTO") -> dataset_ops.Dataset:
   """A transformation that moves dataset processing to the tf.data service.
 
   When you iterate over a dataset containing the `distribute` transformation,
@@ -775,7 +775,8 @@ def distribute(processing_mode,
       target_workers=target_workers)
 
 
-def _register_dataset(service, dataset, compression, dataset_id=None):
+def _register_dataset(
+    service, dataset, compression, dataset_id=None) -> tensor.Tensor:
   """Registers a dataset with the tf.data service.
 
   This transformation is similar to `register_dataset`, but supports additional
@@ -835,7 +836,8 @@ def _register_dataset(service, dataset, compression, dataset_id=None):
 
 
 @tf_export("data.experimental.service.register_dataset")
-def register_dataset(service, dataset, compression="AUTO", dataset_id=None):
+def register_dataset(
+    service, dataset, compression="AUTO", dataset_id=None) -> tensor.Tensor:
   """Registers a dataset with the tf.data service.
 
   `register_dataset` registers a dataset with the tf.data service so that
@@ -900,7 +902,7 @@ def _from_dataset_id(processing_mode,
                      task_refresh_interval_hint_ms=None,
                      data_transfer_protocol=None,
                      cross_trainer_cache=None,
-                     target_workers="AUTO"):
+                     target_workers="AUTO") -> dataset_ops.Dataset:
   """Creates a dataset which reads data from the tf.data service.
 
   This transformation is similar to `from_dataset_id`, but supports additional
@@ -1050,7 +1052,7 @@ def from_dataset_id(processing_mode,
                     max_outstanding_requests=None,
                     data_transfer_protocol=None,
                     cross_trainer_cache=None,
-                    target_workers="AUTO"):
+                    target_workers="AUTO") -> dataset_ops.Dataset:
   """Creates a dataset which reads data from the tf.data service.
 
   This is useful when the dataset is registered by one process, then used in
