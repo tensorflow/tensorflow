@@ -29,6 +29,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -48,6 +49,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_layout.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -320,6 +322,27 @@ Status LayoutAssignment::SetBufferLayout(const Layout& layout,
   }
   VLOG(3) << "SUCC setting buffer constraint: " << iter->second.ToString();
   added_constraints_.push_back(&iter->second);
+  const HloInstruction* instruction = buffer.instruction();
+  if (dynamic_cast<const HloCallableInstruction*>(instruction) != nullptr) {
+    // Check and propagate via output-operand aliasing
+    VLOG(3) << "Propagating aliasing:" << instruction->ToString() << "\n";
+    for (const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>&
+             output_operand_pair : instruction->output_operand_aliasing()) {
+      if (output_operand_pair.first != buffer.index()) {
+        continue;
+      }
+      int operand_no = output_operand_pair.second.first;
+      const ShapeIndex& operand_index = output_operand_pair.second.second;
+      if (operand_index.empty()) {
+        Shape shape(instruction->operand(operand_no)->shape());
+        *shape.mutable_layout() = layout;
+        VLOG(3) << "operand_no=" << operand_no << ":" << shape.ToString(true);
+        TF_RETURN_IF_ERROR(LayoutUtil::ValidateLayoutInShape(shape));
+        TF_RETURN_IF_ERROR(SetOperandLayout(shape, instruction, operand_no,
+                                            mandatory, dfs, priority));
+      }
+    }
+  }
   return OkStatus();
 }
 
