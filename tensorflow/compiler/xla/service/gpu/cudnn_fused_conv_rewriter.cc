@@ -341,16 +341,23 @@ class GraphString {
  public:
   GraphString() = default;
 
-  void AppendOp(std::string op_name, HloInstruction* op,
+  bool AppendOp(std::string op_name, HloInstruction* op,
                 std::vector<HloInstruction*> operands = {}) {
     std::optional<int64_t> operand_uid;
-    for (int i = 0; i < operands.size(); ++i) {
-      if (OpInGraph(operands[i]->unique_id())) {
-        operand_uid = operands[i]->unique_id();
+    int num_operands_in_graph = 0;
+    for (HloInstruction* operand : operands) {
+      if (OpInGraph(operand->unique_id())) {
+        num_operands_in_graph++;
+        // Ops with more than one operand in the graph are not supported.
+        if (num_operands_in_graph > 1) {
+          return false;
+        }
+        operand_uid = operand->unique_id();
       }
     }
     graph_.emplace_back(OpDescriptor(
         {op->unique_id(), op->shape().element_type(), op_name, operand_uid}));
+    return true;
   }
 
   void ChangeDataType(PrimitiveType type) {
@@ -358,9 +365,7 @@ class GraphString {
     graph_.back().output_type = type;
   }
 
-  int Size() { return graph_.size(); }
-
-  std::string Graph() {
+  std::string Graph() const {
     std::string graph;
     for (OpDescriptor op : graph_) {
       graph.append(std::to_string(op.uid));
@@ -377,10 +382,7 @@ class GraphString {
     return graph;
   }
 
-  bool OpInGraph(int64_t uid, std::string op_name = "") {
-    if (graph_.empty()) {
-      return false;
-    }
+  bool OpInGraph(int64_t uid, std::string op_name = "") const {
     auto op_filter = [&](OpDescriptor op) -> bool {
       if (op_name.empty()) {
         return op.uid == uid;
@@ -403,6 +405,53 @@ class GraphString {
   std::vector<OpDescriptor> graph_;
 };
 
+bool IsF8Type(const HloInstruction* instr) {
+  return primitive_util::IsF8Type(instr->shape().element_type());
+}
+
+bool IsScalar(const HloInstruction* instr) {
+  return ShapeUtil::IsScalar(instr->shape());
+}
+
+std::optional<PrimitiveType> IsSaturatingCastToF8(HloInstruction* instr) {
+  HloInstruction *op, *clamp_lower, *clamp_upper;
+  if (Match(instr,
+            m::Convert(
+                &op,
+                m::Clamp(m::Broadcast(m::ConstantScalar(&clamp_lower)), m::Op(),
+                         m::Broadcast(m::ConstantScalar(&clamp_upper))))) &&
+      (op->shape().element_type() == F8E4M3FN &&
+           clamp_lower->literal().IsAllFloat(static_cast<float>(
+               std::numeric_limits<tsl::float8_e4m3fn>::lowest())) &&
+           clamp_upper->literal().IsAllFloat(static_cast<float>(
+               std::numeric_limits<tsl::float8_e4m3fn>::max())) ||
+       op->shape().element_type() == F8E5M2 &&
+           clamp_lower->literal().IsAllFloat(static_cast<float>(
+               std::numeric_limits<tsl::float8_e5m2>::lowest())) &&
+           clamp_upper->literal().IsAllFloat(static_cast<float>(
+               std::numeric_limits<tsl::float8_e5m2>::max())))) {
+    return op->shape().element_type();
+  }
+  return std::nullopt;
+}
+
+// Returns whether the HLO Computation applied by `op` calculates the largest
+// element.
+bool AppliesMaxReduce(HloInstruction* op) {
+  HloComputation* reduce_comp = op->to_apply();
+  HloInstruction* reduce_comp_root = reduce_comp->root_instruction();
+  if (ShapeUtil::IsScalar(op->shape()) &&
+      ShapeUtil::IsScalar(op->operand(1)->shape()) &&
+      op->operand(1)->IsConstant() &&
+      op->operand(1)->literal().GetAsDouble({}) <= 0. &&
+      reduce_comp_root->opcode() == HloOpcode::kMaximum &&
+      reduce_comp_root->operand(0)->opcode() == HloOpcode::kParameter &&
+      reduce_comp_root->operand(1)->opcode() == HloOpcode::kParameter) {
+    return true;
+  }
+  return false;
+};
+
 // Recursively captures and serializes the graph of pointwise operations
 // operating on the convolution.
 void CaptureConvGraphRecursive(HloInstruction* instr,
@@ -417,75 +466,77 @@ void CaptureConvGraphRecursive(HloInstruction* instr,
   }
   final_instr = instr;
 
-  HloInstruction *op, *operand0, *operand1;
-  auto fuse_amax = [&]() -> bool {
-    HloComputation* reduce_comp = op->to_apply();
-    HloInstruction* reduce_comp_root = reduce_comp->root_instruction();
-    if (ShapeUtil::IsScalar(op->shape()) &&
-        ShapeUtil::IsScalar(op->operand(1)->shape()) &&
-        op->operand(1)->IsConstant() &&
-        op->operand(1)->literal().GetAsDouble({}) <= 0. &&
-        reduce_comp_root->opcode() == HloOpcode::kMaximum &&
-        reduce_comp_root->operand(0)->opcode() == HloOpcode::kParameter &&
-        reduce_comp_root->operand(1)->opcode() == HloOpcode::kParameter) {
-      aux_outputs.emplace_back(op);
-      graph_string.AppendOp("amax", op, {operand0});
-      return true;
-    }
-    return false;
-  };
-
   // Copy the current state in case fusion will be unsuccessful or unfavorable.
   GraphString init_graph_string = graph_string;
   std::vector<HloInstruction*> init_operands = operands,
                                init_aux_outputs = aux_outputs;
-  int linear_users = 0, nonlinear_users = 0;
+  // The loop adds each user of `instr` that supports fusion into the
+  // cuDNN convolution Custom Call to GraphString. Most ops following the
+  // convolution describe a linear sequence that generates a single return
+  // tensor. The identification of one of these linear ops is followed by a
+  // recursive call of CaptureConvGraphRecursive to match and potentially fuse
+  // its users. The calculation of the scalar maximum of the absolute value
+  // (Amax) of a preceding op is considered a nonlinear user as it adds a
+  // return value to the convolution. The users of a nonlinear op are
+  // not considered for fusion into the Custom Call. The numbers of linear and
+  // nonlinear users of `instr` are stored in `num_linear_users` and
+  // `num_nonlinear_users`.
+  int num_linear_users = 0, num_nonlinear_users = 0;
   for (HloInstruction* user : instr->users()) {
+    HloInstruction *op, *operand0, *operand1;
     // Add
     if (Match(user, m::AddAnyOrder(&op, m::Op(&operand0), m::Op(&operand1)))) {
-      graph_string.AppendOp("add", op, {operand0, operand1});
-      operands.push_back(operand0 == instr ? operand1 : operand0);
-      linear_users++;
-      CaptureConvGraphRecursive(user, operands, aux_outputs, graph_string,
-                                visited_instrs, final_instr);
+      if (graph_string.AppendOp("add", op, {operand0, operand1})) {
+        operands.push_back(operand0 == instr ? operand1 : operand0);
+        num_linear_users++;
+        CaptureConvGraphRecursive(user, operands, aux_outputs, graph_string,
+                                  visited_instrs, final_instr);
+      }
       continue;
     }
     // Scale
     if (Match(user, m::MultiplyAnyOrder(&op, m::Op(&operand0),
                                         m::Broadcast(m::Op(&operand1)))) &&
         ShapeUtil::IsScalar(operand1->shape())) {
-      graph_string.AppendOp("scale", op, {operand0, operand1});
-      operands.push_back(operand1);
-      linear_users++;
-      CaptureConvGraphRecursive(user, operands, aux_outputs, graph_string,
-                                visited_instrs, final_instr);
+      if (graph_string.AppendOp("scale", op, {operand0, operand1})) {
+        operands.push_back(operand1);
+        num_linear_users++;
+        CaptureConvGraphRecursive(user, operands, aux_outputs, graph_string,
+                                  visited_instrs, final_instr);
+      }
       continue;
     }
     // Inverse Scale
     if (Match(user, m::Divide(&op, m::Op(&operand0),
                               m::Broadcast(m::Op(&operand1)))) &&
         ShapeUtil::IsScalar(operand1->shape())) {
-      graph_string.AppendOp("invscale", op, {operand0, operand1});
-      operands.push_back(operand1);
-      linear_users++;
-      CaptureConvGraphRecursive(user, operands, aux_outputs, graph_string,
-                                visited_instrs, final_instr);
+      if (graph_string.AppendOp("invscale", op, {operand0, operand1})) {
+        operands.push_back(operand1);
+        num_linear_users++;
+        CaptureConvGraphRecursive(user, operands, aux_outputs, graph_string,
+                                  visited_instrs, final_instr);
+      }
       continue;
     }
     // ReLU
     if (Match(user, m::MaximumAnyOrder(&op, m::Op(&operand0),
                                        m::Broadcast(m::ConstantScalar(0))))) {
-      graph_string.AppendOp("relu", op, {operand0});
-      linear_users++;
-      CaptureConvGraphRecursive(user, operands, aux_outputs, graph_string,
-                                visited_instrs, final_instr);
+      if (graph_string.AppendOp("relu", op, {operand0})) {
+        num_linear_users++;
+        CaptureConvGraphRecursive(user, operands, aux_outputs, graph_string,
+                                  visited_instrs, final_instr);
+      }
       continue;
     }
     //  Maximum of the absolute value (Amax) following ReLU (elided Abs) -- not
     //  a linear user
     if (Match(user, m::Reduce(&op, m::Op(&operand0), m::Op())) &&
-        graph_string.OpInGraph(operand0->unique_id(), "relu") && fuse_amax()) {
-      nonlinear_users++;
+        graph_string.OpInGraph(operand0->unique_id(), "relu") &&
+        AppliesMaxReduce(op)) {
+      if (graph_string.AppendOp("amax", op, {operand0})) {
+        aux_outputs.emplace_back(op);
+        num_nonlinear_users++;
+      }
       continue;
     }
 
@@ -493,29 +544,10 @@ void CaptureConvGraphRecursive(HloInstruction* instr,
     if (!user->users().empty()) {
       HloInstruction* users_user = user->users()[0];
       // Convert with Clamp to FP8 types
-      HloInstruction *clamp_lower, *clamp_upper;
-      auto is_saturating_cast_to_f8 = [&op, &clamp_lower,
-                                       &clamp_upper]() -> bool {
-        return (op->shape().element_type() == F8E4M3FN &&
-                clamp_lower->literal().IsAllFloat(static_cast<float>(
-                    std::numeric_limits<tsl::float8_e4m3fn>::lowest())) &&
-                clamp_upper->literal().IsAllFloat(static_cast<float>(
-                    std::numeric_limits<tsl::float8_e4m3fn>::max()))) ||
-               (op->shape().element_type() == F8E5M2 &&
-                clamp_lower->literal().IsAllFloat(static_cast<float>(
-                    std::numeric_limits<tsl::float8_e5m2>::lowest())) &&
-                clamp_upper->literal().IsAllFloat(static_cast<float>(
-                    std::numeric_limits<tsl::float8_e5m2>::max())));
-      };
-      if (Match(users_user,
-                m::Convert(
-                    &op,
-                    m::Clamp(m::Broadcast(m::ConstantScalar(&clamp_lower)),
-                             m::Op(),
-                             m::Broadcast(m::ConstantScalar(&clamp_upper))))) &&
-          is_saturating_cast_to_f8()) {
-        graph_string.ChangeDataType(op->shape().element_type());
-        linear_users++;
+      std::optional<PrimitiveType> f8_type = IsSaturatingCastToF8(users_user);
+      if (f8_type.has_value()) {
+        graph_string.ChangeDataType(f8_type.value());
+        num_linear_users++;
         CaptureConvGraphRecursive(users_user, operands, aux_outputs,
                                   graph_string, visited_instrs, final_instr);
         continue;
@@ -523,8 +555,11 @@ void CaptureConvGraphRecursive(HloInstruction* instr,
       // Maximum of the absolute value (Amax) -- not a linear user
       if (Match(users_user,
                 m::Reduce(&op, m::Abs(m::Op(&operand0)), m::Op())) &&
-          fuse_amax()) {
-        nonlinear_users++;
+          AppliesMaxReduce(op)) {
+        if (graph_string.AppendOp("amax", op, {operand0})) {
+          aux_outputs.emplace_back(op);
+          num_nonlinear_users++;
+        }
         continue;
       }
     }
@@ -532,8 +567,8 @@ void CaptureConvGraphRecursive(HloInstruction* instr,
   // Do not fuse into the cuDNN convolution Custom Call when there are more than
   // one linear or nonlinear users, or when the number of users eligible for
   // fusion is less than the total number of users.
-  if (linear_users > 1 || nonlinear_users > 1 ||
-      linear_users + nonlinear_users < instr->user_count()) {
+  if (num_linear_users > 1 || num_nonlinear_users > 1 ||
+      num_linear_users + num_nonlinear_users < instr->user_count()) {
     graph_string = init_graph_string;
     operands = init_operands;
     aux_outputs = init_aux_outputs;
@@ -582,14 +617,6 @@ CaptureConvGraph(HloInstruction* instr, HloInstruction* convolution,
   CaptureConvGraphRecursive(instr, operands, aux_outputs, graph_string,
                             visited_instrs, final_instr);
   return std::make_tuple(operands, aux_outputs, graph_string, final_instr);
-}
-
-bool IsF8Type(const HloInstruction* instr) {
-  return primitive_util::IsF8Type(instr->shape().element_type());
-}
-
-bool IsScalar(const HloInstruction* instr) {
-  return ShapeUtil::IsScalar(instr->shape());
 }
 
 // Matches convolutions operating on FP8 inputs and filters and rewrites into a

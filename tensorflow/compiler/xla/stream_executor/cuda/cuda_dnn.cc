@@ -4235,7 +4235,7 @@ struct OpDescriptor {
 // Custom Call.
 class OpGraph {
  public:
-  OpGraph() : ops_index_(0){};
+  OpGraph() = default;
 
   tsl::Status AddOp(int uid, std::optional<int> operand_uid, OpMode mode,
                     TensorKind operand_kind, TensorKind result_kind,
@@ -4264,11 +4264,11 @@ class OpGraph {
     return *it;
   }
 
-  std::optional<OpDescriptor> NextOpDescriptor() {
-    if (ops_.size() > ops_index_) {
-      return ops_[ops_index_++];
+  tsl::StatusOr<OpDescriptor> OpDescriptorAt(int index) const {
+    if (index >= Size()) {
+      return tsl::errors::Internal("Index exceeds bounds.");
     }
-    return std::nullopt;
+    return ops_[index];
   }
 
   tsl::Status SetSequenceIndex(int uid, int index) {
@@ -4286,7 +4286,6 @@ class OpGraph {
   int Size() const { return ops_.size(); }
 
  private:
-  int ops_index_;
   std::vector<OpDescriptor> ops_;
 };
 
@@ -4331,7 +4330,7 @@ GetGenericCudnnOperationGraph(
         operand = std::stoi(serialized_graph.substr(m + 1, l - m - 1));
       }
 
-      if (serialized_graph.find(';', pos) != l + 1) {
+      if (serialized_graph[l + 1] != ';') {
         return tsl::errors::Internal(
             "Unexpected character in graph serialization.");
       }
@@ -4345,6 +4344,10 @@ GetGenericCudnnOperationGraph(
           return tsl::errors::Internal(
               "The graph must not contain more than one convolution op.");
         }
+        if (operand.has_value()) {
+          return tsl::errors::Internal(
+              "Convolution op must not have operands in the graph.");
+        }
         mode = convolution_descriptor.convolution_not_crosscorr()
                    ? CUDNN_CONVOLUTION
                    : CUDNN_CROSS_CORRELATION;
@@ -4352,6 +4355,10 @@ GetGenericCudnnOperationGraph(
         if (op_graph.Empty()) {
           return tsl::errors::Internal(
               "The first op in the graph must be a convolution.");
+        }
+        if (!operand.has_value()) {
+          return tsl::errors::Internal(
+              "Non-convolution op must have one operand in the graph.");
         }
         TF_ASSIGN_OR_RETURN(std::tie(binary_operand_kind, output_kind, mode),
                             OpNameStringToOperandKindAndMode(op_string));
@@ -4433,9 +4440,9 @@ GetGenericCudnnOperationGraph(
                         /*is_virtual=*/false, tensor_ordering_type));
 
   // Result tensor.
-  std::optional<OpDescriptor> op_descriptor = op_graph.NextOpDescriptor();
+  TF_ASSIGN_OR_RETURN(OpDescriptor op_descriptor, op_graph.OpDescriptorAt(0));
   std::tie(vector_size, vector_dim) =
-      GetTensorVectorSizeAndDim(output_descriptor, op_descriptor->result_type);
+      GetTensorVectorSizeAndDim(output_descriptor, op_descriptor.result_type);
   std::vector<int64_t> output_dims = output_descriptor.vectorized_dims(
       dnn::DataLayout::kBatchDepthYX, vector_size, vector_dim);
   std::vector<int64_t> output_strides = output_descriptor.vectorized_strides(
@@ -4445,9 +4452,9 @@ GetGenericCudnnOperationGraph(
       auto tensor_y,
       CreateCudnnTensor(output_dims, output_strides,
                         next_uid(/*is_operand=*/false,
-                                 /*is_virtual=*/op_descriptor->is_virtual),
-                        op_descriptor->result_type, vector_size, vector_dim,
-                        /*is_virtual=*/op_descriptor->is_virtual));
+                                 /*is_virtual=*/op_descriptor.is_virtual),
+                        op_descriptor.result_type, vector_size, vector_dim,
+                        /*is_virtual=*/op_descriptor.is_virtual));
 
   auto accumulator_type = ToCudnnDataType(GetConvAccumulatorType(input_type));
   CHECK_NE(convolution_descriptor.pad_alignment(),
@@ -4458,7 +4465,7 @@ GetGenericCudnnOperationGraph(
   auto conv_desc =
       cudnn_frontend::ConvDescBuilder()
           .setComputeType(accumulator_type)
-          .setMathMode(std::get<cudnnConvolutionMode_t>(op_descriptor->mode))
+          .setMathMode(std::get<cudnnConvolutionMode_t>(op_descriptor.mode))
           .setSpatialDimCount(conv_dim)
           .setSpatialStride(conv_dim, convolution_descriptor.strides().data())
           .setPrePadding(conv_dim, convolution_descriptor.padding().data())
@@ -4483,7 +4490,7 @@ GetGenericCudnnOperationGraph(
   // Add the convolution to the cuDNN graph.
   ops.push_back(std::move(op));
   TF_RETURN_IF_ERROR(
-      op_graph.SetSequenceIndex(op_descriptor->uid, ops.size() - 1));
+      op_graph.SetSequenceIndex(op_descriptor.uid, ops.size() - 1));
 
   VLOG(4) << "\nTensor_x: " << tensor_x.describe()
           << "\nTensor_y: " << tensor_y.describe()
@@ -4491,14 +4498,15 @@ GetGenericCudnnOperationGraph(
           << "\nConv desc: " << conv_desc.describe()
           << "\nOp: " << ops.back().describe();
 
-  while (op_descriptor = op_graph.NextOpDescriptor()) {
-    std::optional<cudnn_frontend::Tensor> second_operand, result;
+  for (int op_index = 1; op_index < op_graph.Size(); ++op_index) {
+    TF_ASSIGN_OR_RETURN(op_descriptor, op_graph.OpDescriptorAt(op_index));
     TF_ASSIGN_OR_RETURN(
         OpDescriptor preceding_op,
-        op_graph.FindOpDescriptor(op_descriptor->operand_uid.value()));
+        op_graph.FindOpDescriptor(op_descriptor.operand_uid.value()));
+    std::optional<cudnn_frontend::Tensor> second_operand, result;
 
     // Create cuDNN tensors for operands of binary ops (side inputs).
-    if (op_descriptor->operand_kind == TensorKind::kScalar) {
+    if (op_descriptor.operand_kind == TensorKind::kScalar) {
       std::vector<int64_t> scale_dim(4, 1);
       TF_ASSIGN_OR_RETURN(
           second_operand,
@@ -4506,7 +4514,7 @@ GetGenericCudnnOperationGraph(
                             next_uid(/*is_operand=*/true, /*is_virtual=*/false),
                             preceding_op.result_type, 1, -1));
       VLOG(4) << "\nPointwise operand: " << second_operand->describe();
-    } else if (op_descriptor->operand_kind == TensorKind::kTensor) {
+    } else if (op_descriptor.operand_kind == TensorKind::kTensor) {
       TF_ASSIGN_OR_RETURN(
           second_operand,
           CreateCudnnTensor(tensor_y,
@@ -4517,30 +4525,30 @@ GetGenericCudnnOperationGraph(
     }
 
     // Create the result tensor of the op.
-    if (op_descriptor->result_kind == TensorKind::kScalar) {
+    if (op_descriptor.result_kind == TensorKind::kScalar) {
       std::vector<int64_t> scale_dim(4, 1);
       TF_ASSIGN_OR_RETURN(
           result, CreateCudnnTensor(
                       scale_dim, scale_dim,
                       next_uid(/*is_operand=*/false, /*is_virtual=*/false),
-                      op_descriptor->result_type, 1, -1));
+                      op_descriptor.result_type, 1, -1));
       VLOG(4) << "\nScalar result: " << result->describe();
-    } else if (op_descriptor->result_kind == TensorKind::kTensor) {
+    } else if (op_descriptor.result_kind == TensorKind::kTensor) {
       TF_ASSIGN_OR_RETURN(
           result,
           CreateCudnnTensor(tensor_y,
                             next_uid(/*is_operand=*/false,
-                                     /*is_virtual=*/op_descriptor->is_virtual),
-                            op_descriptor->result_type,
-                            /*is_virtual=*/op_descriptor->is_virtual));
+                                     /*is_virtual=*/op_descriptor.is_virtual),
+                            op_descriptor.result_type,
+                            /*is_virtual=*/op_descriptor.is_virtual));
       VLOG(4) << "\nTensor result: " << result->describe();
     }
 
-    if (std::holds_alternative<cudnnPointwiseMode_t>(op_descriptor->mode)) {
+    if (std::holds_alternative<cudnnPointwiseMode_t>(op_descriptor.mode)) {
       // Create the descriptor for the pointwise op.
       cudnn_frontend::PointWiseDesc desc =
           cudnn_frontend::PointWiseDescBuilder()
-              .setMode(std::get<cudnnPointwiseMode_t>(op_descriptor->mode))
+              .setMode(std::get<cudnnPointwiseMode_t>(op_descriptor.mode))
               .setMathPrecision(CUDNN_DATA_FLOAT)
               .build();
       VLOG(4) << "\nPointwise op desc: " << desc.describe();
@@ -4565,13 +4573,13 @@ GetGenericCudnnOperationGraph(
                 .build());
       }
     } else if (std::holds_alternative<cudnnReduceTensorOp_t>(
-                   op_descriptor->mode)) {
+                   op_descriptor.mode)) {
       // Create the descriptor for the reduction op.
       cudnn_frontend::ReductionDesc desc =
           cudnn_frontend::ReductionDescBuilder()
               .setMathPrecision(CUDNN_DATA_FLOAT)
               .setReductionOp(
-                  std::get<cudnnReduceTensorOp_t>(op_descriptor->mode))
+                  std::get<cudnnReduceTensorOp_t>(op_descriptor.mode))
               .build();
       VLOG(4) << "\nReduction op desc: " << desc.describe();
 
@@ -4585,7 +4593,7 @@ GetGenericCudnnOperationGraph(
               .build());
     }
     TF_RETURN_IF_ERROR(
-        op_graph.SetSequenceIndex(op_descriptor->uid, ops.size() - 1));
+        op_graph.SetSequenceIndex(op_descriptor.uid, ops.size() - 1));
   }
 
   // Construct the cuDNN OperationGraph.
