@@ -132,6 +132,9 @@ struct PJRT_Buffer {
   std::optional<std::vector<size_t>> dynamic_dim_indices;
   // Used to synchronize concurrent setting of cached values.
   absl::Mutex mu;
+  // Manages, holds, and takes ownership of external references.
+  std::vector<std::unique_ptr<xla::PjRtBuffer::ExternalReference>>
+      external_references;
 };
 
 struct PJRT_Event {
@@ -277,6 +280,12 @@ PJRT_Error* PJRT_Buffer_ToHostBuffer(PJRT_Buffer_ToHostBuffer_Args* args);
 PJRT_Error* PJRT_Buffer_IsOnCpu(PJRT_Buffer_IsOnCpu_Args* args);
 PJRT_Error* PJRT_Buffer_ReadyEvent(PJRT_Buffer_ReadyEvent_Args* args);
 PJRT_Error* PJRT_Buffer_UnsafePointer(PJRT_Buffer_UnsafePointer_Args* args);
+PJRT_Error* PJRT_Buffer_IncreaseExternalReferenceCount(
+    PJRT_Buffer_IncreaseExternalReferenceCount_Args* args);
+PJRT_Error* PJRT_Buffer_DecreaseExternalReferenceCount(
+    PJRT_Buffer_DecreaseExternalReferenceCount_Args* args);
+PJRT_Error* PJRT_Buffer_OpaqueDeviceMemoryDataPointer(
+    PJRT_Buffer_OpaqueDeviceMemoryDataPointer_Args* args);
 
 PJRT_Error* PJRT_CopyToDeviceStream_Destroy(
     PJRT_CopyToDeviceStream_Destroy_Args* args);
@@ -477,6 +486,12 @@ constexpr PJRT_Api CreatePjrtApi(
       /*PJRT_Buffer_IsOnCpu=*/pjrt::PJRT_Buffer_IsOnCpu,
       /*PJRT_Buffer_ReadyEvent=*/pjrt::PJRT_Buffer_ReadyEvent,
       /*PJRT_Buffer_UnsafePointer=*/pjrt::PJRT_Buffer_UnsafePointer,
+      /*PJRT_Buffer_IncreaseExternalReferenceCount=*/
+      pjrt::PJRT_Buffer_IncreaseExternalReferenceCount,
+      /*PJRT_Buffer_DecreaseExternalReferenceCount=*/
+      pjrt::PJRT_Buffer_DecreaseExternalReferenceCount,
+      /*PJRT_Buffer_OpaqueDeviceMemoryDataPointer=*/
+      pjrt::PJRT_Buffer_OpaqueDeviceMemoryDataPointer,
 
       /*PJRT_CopyToDeviceStream_Destroy=*/
       pjrt::PJRT_CopyToDeviceStream_Destroy,

@@ -1618,6 +1618,50 @@ PJRT_Error* PJRT_Buffer_UnsafePointer(PJRT_Buffer_UnsafePointer_Args* args) {
   return nullptr;
 }
 
+PJRT_Error* PJRT_Buffer_IncreaseExternalReferenceCount(
+    PJRT_Buffer_IncreaseExternalReferenceCount_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Buffer_IncreaseExternalReferenceCount_Args",
+      PJRT_Buffer_IncreaseExternalReferenceCount_Args_STRUCT_SIZE,
+      args->struct_size));
+  PJRT_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::PjRtBuffer::ExternalReference> external_reference,
+      args->buffer->buffer->AcquireExternalReference());
+  args->buffer->external_references.push_back(std::move(external_reference));
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Buffer_DecreaseExternalReferenceCount(
+    PJRT_Buffer_DecreaseExternalReferenceCount_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Buffer_DecreaseExternalReferenceCount_Args",
+      PJRT_Buffer_DecreaseExternalReferenceCount_Args_STRUCT_SIZE,
+      args->struct_size));
+
+  if (!args->buffer->external_references.empty()) {
+    args->buffer->external_references.pop_back();
+    return nullptr;
+  }
+  xla::Status status = xla::InvalidArgument(
+      "Attempting to decrease reference on a buffer with zero reference "
+      "count.");
+  PJRT_Error* error = new PJRT_Error{std::move(status)};
+  return error;
+}
+
+PJRT_Error* PJRT_Buffer_OpaqueDeviceMemoryDataPointer(
+    PJRT_Buffer_OpaqueDeviceMemoryDataPointer_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Buffer_OpaqueDeviceMemoryDataPointer_Args",
+      PJRT_Buffer_OpaqueDeviceMemoryDataPointer_Args_STRUCT_SIZE,
+      args->struct_size));
+  PJRT_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::PjRtBuffer::ExternalReference> external_reference,
+      args->buffer->buffer->AcquireExternalReference());
+  args->device_memory_ptr = external_reference->OpaqueDeviceMemoryDataPointer();
+  return nullptr;
+}
+
 // ---------------------------- CopyToDeviceStream -----------------------------
 
 PJRT_Error* PJRT_CopyToDeviceStream_Destroy(

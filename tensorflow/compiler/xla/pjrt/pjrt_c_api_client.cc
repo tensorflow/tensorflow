@@ -1806,6 +1806,46 @@ PjRtFuture<Status> PjRtCApiBuffer::GetReadyFuture() {
   return PjRtFuture<Status>{*readiness_promise_};
 }
 
+StatusOr<std::unique_ptr<PjRtBuffer::ExternalReference>>
+PjRtCApiBuffer::AcquireExternalReference() {
+  PJRT_Buffer_IncreaseExternalReferenceCount_Args increase_reference_count_args;
+  increase_reference_count_args.buffer = c_buffer();
+  increase_reference_count_args.struct_size =
+      PJRT_Buffer_IncreaseExternalReferenceCount_Args_STRUCT_SIZE;
+  increase_reference_count_args.priv = nullptr;
+  RETURN_STATUS_IF_PJRT_ERROR(
+      pjrt_c_api()->PJRT_Buffer_IncreaseExternalReferenceCount(
+          &increase_reference_count_args),
+      pjrt_c_api());
+
+  PJRT_Buffer_OpaqueDeviceMemoryDataPointer_Args
+      opaque_device_memory_data_pointer_args;
+  opaque_device_memory_data_pointer_args.struct_size =
+      PJRT_Buffer_OpaqueDeviceMemoryDataPointer_Args_STRUCT_SIZE;
+  opaque_device_memory_data_pointer_args.priv = nullptr;
+  opaque_device_memory_data_pointer_args.buffer = c_buffer();
+  RETURN_STATUS_IF_PJRT_ERROR(
+      pjrt_c_api()->PJRT_Buffer_OpaqueDeviceMemoryDataPointer(
+          &opaque_device_memory_data_pointer_args),
+      pjrt_c_api());
+
+  void* device_memory_ptr =
+      opaque_device_memory_data_pointer_args.device_memory_ptr;
+  return std::make_unique<PjRtCApiExternalReference>(client_, this,
+                                                     device_memory_ptr);
+}
+
+PjRtCApiExternalReference::~PjRtCApiExternalReference() {
+  PJRT_Buffer_DecreaseExternalReferenceCount_Args args;
+  args.struct_size =
+      PJRT_Buffer_DecreaseExternalReferenceCount_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.buffer = buffer_->c_buffer();
+  pjrt::LogFatalIfPjrtError(
+      client_->pjrt_c_api()->PJRT_Buffer_DecreaseExternalReferenceCount(&args),
+      client_->pjrt_c_api());
+}
+
 // ------------------------------ Device Topology ------------------------------
 
 PjRtCApiTopologyDescription::PjRtCApiTopologyDescription(

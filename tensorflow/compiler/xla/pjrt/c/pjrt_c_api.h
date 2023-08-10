@@ -53,7 +53,7 @@ extern "C" {
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 18
+#define PJRT_API_MINOR 19
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -1637,6 +1637,51 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_UnsafePointer_Args, buffer_pointer);
 typedef PJRT_Error* PJRT_Buffer_UnsafePointer(
     PJRT_Buffer_UnsafePointer_Args* args);
 
+struct PJRT_Buffer_IncreaseExternalReferenceCount_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_Buffer* buffer;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_IncreaseExternalReferenceCount_Args,
+                          buffer);
+
+// Increments the reference count for the buffer. The reference count indicates
+// the raw buffer data is being shared with another framework (e.g. NumPy,
+// dlpack) and should not be deleted or moved by the PJRT implementation (e.g.
+// for memory compaction). TODO(b/295230663): document more API contract
+// details, e.g. does this block, can the buffer be modified in-place.
+typedef PJRT_Error* PJRT_Buffer_IncreaseExternalReferenceCount(
+    PJRT_Buffer_IncreaseExternalReferenceCount_Args* args);
+
+struct PJRT_Buffer_DecreaseExternalReferenceCount_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_Buffer* buffer;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_DecreaseExternalReferenceCount_Args,
+                          buffer);
+
+// Decrements the reference count for the buffer. Returns an error if the
+// reference count is zero (i.e. PJRT_Buffer_IncreaseExternalReferenceCount is
+// not called beforehand).
+typedef PJRT_Error* PJRT_Buffer_DecreaseExternalReferenceCount(
+    PJRT_Buffer_DecreaseExternalReferenceCount_Args* args);
+
+struct PJRT_Buffer_OpaqueDeviceMemoryDataPointer_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_Buffer* buffer;
+  void* device_memory_ptr;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_OpaqueDeviceMemoryDataPointer_Args,
+                          device_memory_ptr);
+
+// Returns the opaque device memory data pointer of the buffer. The returned
+// data pointer may become invalid at any point unless the external reference
+// count is greater than 0 via PJRT_Buffer_IncreaseExternalReferenceCount.
+typedef PJRT_Error* PJRT_Buffer_OpaqueDeviceMemoryDataPointer(
+    PJRT_Buffer_OpaqueDeviceMemoryDataPointer_Args* args);
+
 // ---------------------------- CopyToDeviceStream -----------------------------
 
 struct PJRT_CopyToDeviceStream_Destroy_Args {
@@ -1910,6 +1955,9 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_IsOnCpu);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_ReadyEvent);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_UnsafePointer);
+  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_IncreaseExternalReferenceCount);
+  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_DecreaseExternalReferenceCount);
+  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_OpaqueDeviceMemoryDataPointer);
 
   _PJRT_API_STRUCT_FIELD(PJRT_CopyToDeviceStream_Destroy);
   _PJRT_API_STRUCT_FIELD(PJRT_CopyToDeviceStream_AddChunk);

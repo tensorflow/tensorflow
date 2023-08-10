@@ -335,10 +335,7 @@ class PjRtCApiBuffer : public PjRtBuffer {
   PjRtClient* client() const override { return client_; }
 
   StatusOr<std::unique_ptr<ExternalReference>> AcquireExternalReference()
-      override {
-    return Unimplemented(
-        "PJRT C API does not support AcquireExternalReference");
-  }
+      override;
 
   PjRtFuture<Status> ToLiteral(MutableLiteralBase* literal) override;
 
@@ -409,6 +406,20 @@ class PjRtCApiBuffer : public PjRtBuffer {
   mutable std::optional<xla::Layout> layout_;
   // Used to synchronize concurrent setting of cached values.
   mutable absl::Mutex mu_;
+};
+
+class PjRtCApiExternalReference : public PjRtBuffer::ExternalReference {
+ public:
+  PjRtCApiExternalReference(PjRtCApiClient* client, PjRtCApiBuffer* buffer,
+                            void* data_ptr)
+      : client_(client), buffer_(buffer) {
+    data_ptr_ = data_ptr;
+  }
+  ~PjRtCApiExternalReference() override;
+
+ private:
+  PjRtCApiClient* client_;
+  PjRtCApiBuffer* buffer_;
 };
 
 class PjRtCApiExecutable : public PjRtExecutable {
