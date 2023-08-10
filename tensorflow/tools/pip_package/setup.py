@@ -36,7 +36,7 @@ import re
 import sys
 
 from setuptools import Command
-from setuptools import find_packages
+from setuptools import find_namespace_packages
 from setuptools import setup
 from setuptools.command.install import install as InstallCommandBase
 from setuptools.dist import Distribution
@@ -372,7 +372,7 @@ else:
       },
       'headers': headers,
       'include_package_data': True,
-      'packages': find_packages(),
+      'packages': find_namespace_packages(),
       'package_data': {
           'tensorflow': [EXTENSION_NAME] + matches,
       },
