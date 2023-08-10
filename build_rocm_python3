@@ -25,6 +25,10 @@ while getopts "hrn" opt; do
 done
 shift "$((OPTIND-1))"
 
+# This is not a release branch, so force a nightly build
+# TODO remove this when branching for release
+nightly=true
+
 # First positional argument (if any) specifies the ROCM_INSTALL_DIR
 ROCM_INSTALL_DIR=/opt/rocm-5.6.0
 if [[ -n $1 ]]; then
