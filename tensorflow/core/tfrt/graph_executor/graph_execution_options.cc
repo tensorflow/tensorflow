@@ -16,6 +16,8 @@ limitations under the License.
 
 #include <ostream>
 
+#include "absl/log/log.h"
+#include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 // TODO(b/200579737): using FunctionRegistry is simpler than the OSS trick.
 #include "tensorflow/core/tfrt/utils/bridge_graph_analysis.h"
@@ -76,15 +78,25 @@ void UpdateTpuTargetByBridgeCompatibility(
           tensorflow::TfrtDeviceInfraTarget::kTpurt;
     }
   }
-  // TODO(linchai): Once native support for SPMD models is fully rollout, remove
-  // the fallback logic.
-  if (!(tfrt::CheckSpmdGraph(graph_def).ok() ||
-        options.compile_options.tpu_fuse_ops)) {
-    options.compile_options.device_target =
-        tensorflow::TfrtDeviceInfraTarget::kTfFallback;
+
+  // We don't need to check for SPMD fallback for non TFRT TPU path.
+  //
+  // TODO(b/288096487): Clean up the enums to reflect the device target better.
+  // One option is to use a  custom target enum for the opaque backend.
+  if (options.compile_options.device_target !=
+          tensorflow::TfrtDeviceInfraTarget::kCpu &&
+      options.compile_options.device_target !=
+          tensorflow::TfrtDeviceInfraTarget::kGpu) {
+    // TODO(linchai): Once native support for SPMD models is fully rollout,
+    // remove the fallback logic.
+    if (!(tfrt::CheckSpmdGraph(graph_def).ok() ||
+          options.compile_options.tpu_fuse_ops)) {
+      options.compile_options.device_target =
+          tensorflow::TfrtDeviceInfraTarget::kTfFallback;
+    }
+    LOG(INFO) << "TFRT uses device target "
+              << options.compile_options.device_target;
   }
-  LOG(INFO) << "TFRT uses device target "
-            << options.compile_options.device_target;
 }
 
 std::ostream& operator<<(std::ostream& os,

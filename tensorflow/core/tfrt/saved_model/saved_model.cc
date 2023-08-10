@@ -59,6 +59,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
+#include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/graph_executor/export_mlir.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_executor.h"
@@ -445,8 +446,17 @@ SavedModelImpl::LoadSavedModel(Options options,
   // without applying placer or grappler, it is OK for now because it's only
   // used for captured functions in certain tf.data ops
   const auto& fdef_lib = meta_graph_def.graph_def().library();
-  ASSIGN_OR_RETURN_IN_IMPORT(auto fallback_state,
-                             FallbackState::Create(session_options, fdef_lib));
+
+  std::unique_ptr<FallbackState> fallback_state;
+  if (options.graph_execution_options.compile_options.device_target ==
+      TfrtDeviceInfraTarget::kCpu) {
+    ASSIGN_OR_RETURN_IN_IMPORT(
+        fallback_state,
+        FallbackState::CreateWithCpuDevice(session_options, fdef_lib));
+  } else {
+    ASSIGN_OR_RETURN_IN_IMPORT(
+        fallback_state, FallbackState::Create(session_options, fdef_lib));
+  }
   ASSIGN_OR_RETURN_IN_IMPORT(
       auto mlir_module,
       ImportSavedModel(
