@@ -4814,9 +4814,13 @@ std::optional<Value> convertBroadcastToOp(PatternRewriter& rewriter,
       tensorflow::GetTypeFromTFTensorShape(new_shape, element_type);
 
   if (element_type.isa<FloatType>()) {
-    // F32: legalize to broadcastable Add with (0.f)
+    // F32: legalize to broadcastable Add with (-0.f), instead of 0.f.
+    // This is to preserve original values:
+    // for corner case where x = -0.f
+    // x + -0.f => -0.f (ie, equals x), whereas,
+    // x + 0.f => 0.f (ie, not equals x)
     auto const_attr =
-        DenseElementsAttr::get(output_type, rewriter.getZeroAttr(element_type));
+        DenseElementsAttr::get(output_type, FloatAttr::get(element_type, -0.0));
     Value f32_const_zero =
         rewriter.create<tosa::ConstOp>(op->getLoc(), output_type, const_attr);
     return CreateOpAndInfer<tosa::AddOp>(rewriter, op->getLoc(), output_type,
@@ -4835,34 +4839,32 @@ std::optional<Value> convertBroadcastToOp(PatternRewriter& rewriter,
         .getResult();
   }
 
-  if (isa<IntegerType>(element_type)) {
-    RankedTensorType cast_shaped_type = output_type.clone(element_type);
-    auto const_attr = DenseElementsAttr::get(
-        cast_shaped_type, rewriter.getZeroAttr(element_type));
-    Value const_zero = rewriter.create<tosa::ConstOp>(
-        op->getLoc(), cast_shaped_type, const_attr);
+  // cast type is always I32 type
+  // const_zero is always output shape with cast type
+  auto cast_type = rewriter.getI32Type();
+  RankedTensorType cast_shaped_type = output_type.clone(cast_type);
+  auto const_attr =
+      DenseElementsAttr::get(cast_shaped_type, rewriter.getZeroAttr(cast_type));
+  Value const_zero = rewriter.create<tosa::ConstOp>(
+      op->getLoc(), cast_shaped_type, const_attr);
+
+  if (element_type.isInteger(32)) {
     // I32: legalize to broadcastable Add with 0
     return CreateOpAndInfer<tosa::AddOp>(rewriter, op->getLoc(), output_type,
                                          input, const_zero)
         .getResult();
   }
 
-  if (auto quant_ty = dyn_cast<quant::UniformQuantizedType>(element_type)) {
-    auto cast_type = rewriter.getI32Type();
-    RankedTensorType cast_shaped_type = output_type.clone(cast_type);
-    auto const_attr = DenseElementsAttr::get(cast_shaped_type,
-                                             rewriter.getZeroAttr(cast_type));
-    Value const_zero = rewriter.create<tosa::ConstOp>(
-        op->getLoc(), cast_shaped_type, const_attr);
-
+  if (isa<IntegerType>(element_type) ||
+      isa<quant::UniformQuantizedType>(element_type)) {
     // for any other non-float element type:
-    // cast input to the storage type, perform an add 0, then cast back.
+    // cast input to the input_shape with cast type, perform an add 0 (with
+    // const_zero), then cast to output type.
     Value input_cast = CreateOpAndInfer<tosa::CastOp>(
         rewriter, op->getLoc(),
         /* I32 input type */ input_type.clone(cast_type), input);
     Value add_const = CreateOpAndInfer<tosa::AddOp>(
-        rewriter, op->getLoc(), output_type.clone(cast_type), input_cast,
-        const_zero);
+        rewriter, op->getLoc(), cast_shaped_type, input_cast, const_zero);
     return CreateOpAndInfer<tosa::CastOp>(rewriter, op->getLoc(), output_type,
                                           add_const)
         .getResult();
