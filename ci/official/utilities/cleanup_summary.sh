@@ -13,17 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-if [[ "$TFCI_DOCKER_PULL_ENABLE" == 1 ]]; then
-  docker pull "$TFCI_DOCKER_IMAGE"
-fi
 
-# Keep the existing "tf" container if it's already present.
-# The container is not cleaned up automatically! Remove it with:
-# docker rm tf
-if ! docker container inspect tf >/dev/null 2>&1 ; then
-  docker run "${TFCI_DOCKER_ARGS[@]}" --name tf -w "$TFCI_GIT_DIR" -itd --rm \
-      -v "$TFCI_GIT_DIR:$TFCI_GIT_DIR" \
-      "$TFCI_DOCKER_IMAGE" \
-    bash
-fi
-tfrun() { docker exec tf "$@"; }
+cat <<EOF
+IMPORTANT: For bazel invocations that uploaded to resultstore (e.g. RBE), you
+can view more detailed results that are probably easier to read than this log.
+Try the links below:
+EOF
+# Find any "Streaming build results to" line, then print the last word in it
+awk '/Streaming build results to/ {print $NF}' $TFCI_GIT_DIR/build/script.log | uniq

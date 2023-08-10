@@ -50,6 +50,11 @@ fi
 cd "$TFCI_GIT_DIR"
 mkdir -p build
 
+# In addition to dumping all script output to the terminal, place it into
+# build/script.log
+rm build/script.log
+exec > >(tee "build/script.log") 2>&1
+
 # Setup tfrun, a helper function for executing steps that can either be run
 # locally or run under Docker. docker.sh, below, redefines it as "docker exec".
 # Important: "tfrun foo | bar" is "( tfrun foo ) | bar", not tfrun (foo | bar).
@@ -85,3 +90,13 @@ fi
 if [[ "$TFCI_INDEX_HTML_ENABLE" == 1 ]]; then
   ./ci/official/utilities/generate_index_html.sh build/index.html
 fi
+
+# Single handler for all cleanup actions, triggered on an EXIT trap.
+# TODO(angerson) Making this use different scripts may be overkill.
+cleanup() {
+  if [[ "$TFCI_DOCKER_ENABLE" == 1 ]]; then
+    ./ci/official/utilities/cleanup_docker.sh
+  fi
+  ./ci/official/utilities/cleanup_summary.sh
+}
+trap cleanup EXIT

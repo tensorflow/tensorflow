@@ -13,17 +13,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-if [[ "$TFCI_DOCKER_PULL_ENABLE" == 1 ]]; then
-  docker pull "$TFCI_DOCKER_IMAGE"
-fi
+cat <<EOF
+IMPORTANT: These tests ran under docker. This script does not clean up the
+container for you! You can delete the container with:
 
-# Keep the existing "tf" container if it's already present.
-# The container is not cleaned up automatically! Remove it with:
-# docker rm tf
-if ! docker container inspect tf >/dev/null 2>&1 ; then
-  docker run "${TFCI_DOCKER_ARGS[@]}" --name tf -w "$TFCI_GIT_DIR" -itd --rm \
-      -v "$TFCI_GIT_DIR:$TFCI_GIT_DIR" \
-      "$TFCI_DOCKER_IMAGE" \
-    bash
-fi
-tfrun() { docker exec tf "$@"; }
+$ docker rm -f tf
+
+You can also execute more commands within the container with e.g.:
+
+$ docker exec tf bazel clean
+$ docker exec -it tf bash
+EOF
+
+docker ps
