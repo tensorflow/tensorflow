@@ -1221,8 +1221,12 @@ int FindReturnIndex(Value val) {
   return not_found;
 }
 
+// Skip the assertions because they currently create problematic dependencies.
+constexpr bool kDoAssertions = false;
+
 void AddAssertion(OpBuilder& builder, Location& loc, Value cond,
                   const std::string& message) {
+  if (!kDoAssertions) return;
   auto shape_type =
       RankedTensorType::get({1}, builder.getType<TF::StringType>());
   auto msg = builder.create<TF::ConstOp>(
