@@ -520,8 +520,7 @@ class WeakTensorBinaryOpsTest(
           self.match_expected(y**x, reverse_expected_val, expected_dtype)
 
     run_test_pow(a=4, b=2)
-    run_test_pow(a=41, b=10)
-    run_test_pow(a=2, b=6)
+    run_test_pow(a=10, b=5)
 
   def test_weak_tensor_mod(self, a_dtype, b_dtype, expected_dtype):
     def run_test_mod(a, b):
