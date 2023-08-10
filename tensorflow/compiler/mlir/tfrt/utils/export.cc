@@ -55,11 +55,13 @@ absl::Status ExportFunctionDefs(
       return diag_handler.ConsumeStatus();
     }
   }
+  tensorflow::GraphExportConfig configs;
+  configs.export_original_tf_func_name = true;
 
   for (auto func : module.getOps<mlir::func::FuncOp>()) {
     tensorflow::FunctionDef function_def;
     TF_RETURN_IF_ERROR(tensorflow::ConvertMlirFunctionToFunctionLibraryDef(
-        func, tensorflow::GraphExportConfig(), &function_def));
+        func, configs, &function_def));
     TF_RETURN_IF_ERROR(callback(std::move(function_def)));
   }
 

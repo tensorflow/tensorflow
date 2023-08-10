@@ -1,4 +1,4 @@
-// RUN: tf-mlir-translate -mlir-to-graphdef %s | tf-mlir-translate -graphdef-to-mlir | tf-mlir-translate -mlir-to-graphdef | FileCheck %s
+// RUN: tf-mlir-translate -mlir-to-graphdef %s -tf-export-original-func-name | tf-mlir-translate -graphdef-to-mlir | tf-mlir-translate -mlir-to-graphdef -tf-export-original-func-name | FileCheck %s
 
 // Tests #tf_type.func attributes are exported as AttrValue.NameAttrList attributes
 // with its attr field populated with nested attributes.
@@ -11,7 +11,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
     }
     func.return
   }
-  func.func @callee() {
+  func.func @callee() attributes {tf._original_func_name = "original_callee"} {
     tf_executor.graph {
       tf_executor.fetch
     }
@@ -24,7 +24,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
 // CHECK-NEXT:     key: "_f"
 // CHECK-NEXT:     value
 // CHECK-NEXT:       func
-// CHECK-NEXT:         name: [[FUNC_NAME:".*"]]
+// CHECK-NEXT:         name: "original_callee"
 // CHECK-NEXT:         attr
 // CHECK-NEXT:           key: "attr2"
 // CHECK-NEXT:           value
@@ -37,4 +37,4 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
 // CHECK:      library
 // CHECK-NEXT:   function
 // CHECK-NEXT:     signature
-// CHECK-NEXT:       name: [[FUNC_NAME]]
+// CHECK-NEXT:       name: "original_callee"
