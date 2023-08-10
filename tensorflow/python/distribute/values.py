@@ -27,6 +27,7 @@ from tensorflow.python.distribute import values_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import record
 from tensorflow.python.framework import composite_tensor
+from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor as tensor_lib
@@ -1077,6 +1078,27 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
           self._primary.handle]
       resource_list.append(self._packed_var.packed_handle)
     return resource_list
+
+  def _copy_trackable_to_cpu(self, object_map):
+    """For implementing `Trackable`."""
+    if self not in object_map:
+      # If not populated, initialize the cpu copy first.
+      op_device = pydev.DeviceSpec.from_string(self.device).replace(
+          device_type="CPU", device_index=0).to_string()
+      with ops.device(op_device):
+        new_var = resource_variable_ops.UninitializedVariable(
+            trainable=self.trainable,
+            shape=self.shape,
+            dtype=self.dtype,
+            name=self._shared_name,
+            distribute_strategy=self._distribute_strategy,
+            aggregation=self._aggregation)  # pylint: disable=protected-access
+      object_map[self] = new_var
+
+    # Then copy value of self to the copy.
+    destination_var = object_map[self]
+    with ops.device(destination_var.device):
+      destination_var.assign(self.read_value())
 
   def _write_object_proto(self, proto, options):
     """Update a SavedObject proto for the caller.
