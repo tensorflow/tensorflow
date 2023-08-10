@@ -138,3 +138,25 @@ module @handles_iterators attributes {tf_saved_model.semantics} {
     return
   }
 }
+
+// -----
+
+// CHECK-LABEL: module
+module attributes {tf_saved_model.semantics} {
+  "tf_saved_model.global_tensor"() { is_mutable, sym_name = "v", type = tensor<10xf32>, value = dense<[0.,1.,2.,3.,4.,5.,6.,7.,8.,9.]> : tensor<10xf32> } : () -> ()
+  // CHECK-LABEL: @use_if
+  func.func @use_if(%arg0: tensor<!tf_type.resource<tensor<10xf32>>> {tf_saved_model.bound_input = @v})
+  attributes {tf_saved_model.exported_names = ["read_from_global"]} {
+    // CHECK: [[name:%.*]] = "tf.VarHandleOp"
+    // CHECK: "tf.ReadVariableOp"([[name]])
+    %cond = builtin.unrealized_conversion_cast to tensor<i1>
+    %0 = "tf.IfRegion"(%cond) ({
+      "tf.Yield"(%arg0) : (tensor<!tf_type.resource<tensor<10xf32>>>) -> ()
+    }, {
+      "tf.Yield"(%arg0) : (tensor<!tf_type.resource<tensor<10xf32>>>) -> ()
+    }) { is_stateless = false} : (tensor<i1>) -> tensor<!tf_type.resource<tensor<10xf32>>>
+
+    %1 = "tf.ReadVariableOp"(%0) : (tensor<!tf_type.resource<tensor<10xf32>>>) -> tensor<10xf32>
+    return
+  }
+}

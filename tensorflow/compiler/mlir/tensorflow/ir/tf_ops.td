@@ -325,7 +325,14 @@ def TF_YieldOp : TF_Op<"Yield",
 }
 
 def TF_IfRegionOp : TF_Op<"IfRegion",
-      [SingleBlockImplicitTerminator<"YieldOp">, NoRegionArguments]> {
+      [SingleBlockImplicitTerminator<"YieldOp">, NoRegionArguments,
+       DeclareOpInterfaceMethods<RegionBranchOpInterface, [
+           "areTypesCompatible",
+           "getRegionInvocationBounds",
+           "getSuccessorEntryOperands",
+           "getSuccessorRegions"
+       ]>
+      ]> {
   let summary = "output = cond ? then_branch output : else_branch output";
 
   let description = [{
