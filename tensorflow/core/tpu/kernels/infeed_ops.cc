@@ -15,30 +15,20 @@ limitations under the License.
 
 #include "tensorflow/core/tpu/kernels/infeed_ops.h"
 
-#include <algorithm>
 #include <deque>
 #include <iterator>
 #include <memory>
 #include <utility>
 #include <vector>
 
-#include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
-#include "tensorflow/compiler/xla/stream_executor/multi_platform_manager.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_transfer_manager.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_transfer_manager_interface.h"
-#include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/allocator.h"
-#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
-#include "tensorflow/core/framework/function_handle_cache.h"
-#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
@@ -47,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/tpu/kernels/transfer_ops.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace {
@@ -216,9 +207,11 @@ Status AutoTransposeAndLinearize(OpKernelContext* ctx,
   xla::BorrowingLiteral literal;
   TF_RETURN_IF_ERROR(HostTensorToBorrowingLiteral(*tensor, &literal));
 
-  TF_RETURN_IF_ERROR(
-      xla::TpuTransferManagerInterface::GetRegisteredTpuTransferManager()
-          ->LinearizeToBuffers(literal, linearized_buffers));
+  auto* transfer_manager =
+      xla::TpuTransferManagerInterface::GetRegisteredTpuTransferManager();
+  TF_RETURN_IF_ERROR(transfer_manager->LinearizeToBuffers(
+      literal, transfer_manager->HostShapeToDeviceShape(literal.shape()),
+      linearized_buffers));
 
   // The input tensor is ref-counted. Save a handle on the input tensor if
   // its underlying storage is shared with linearized buffers to prevent

@@ -284,6 +284,8 @@ class ShapeUtil {
   static Shape ChangeElementType(const Shape& original, PrimitiveType type);
 
   // Returns a shape with same dimensions but with all dimensions set to static.
+  // If the shape has a layout, its dynamic_shape_metadata_prefix_bytes will be
+  // set to zero.
   static Shape MakeStaticShape(const Shape& original);
 
   // Creates a tuple shape from a slice of element shapes within the tuple.

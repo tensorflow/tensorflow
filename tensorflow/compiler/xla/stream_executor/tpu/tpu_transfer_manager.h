@@ -95,7 +95,7 @@ class TpuTransferManager : public xla::TpuTransferManagerInterface {
       stream_executor::DeviceMemoryBase* region) override;
 
   tsl::Status LinearizeToBuffers(
-      const xla::LiteralSlice& literal,
+      const xla::LiteralSlice& literal, const xla::Shape& device_shape,
       std::deque<tensorflow::tpu::NoncopyableBuffer>* buffers) override;
 
   tsl::Status ReadDynamicShapes(se::Stream* stream,

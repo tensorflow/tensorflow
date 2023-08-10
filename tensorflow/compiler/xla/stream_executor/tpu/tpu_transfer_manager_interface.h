@@ -32,7 +32,7 @@ class TpuTransferManagerInterface : public xla::TransferManager {
       const std::deque<tensorflow::tpu::NoncopyableBuffer>& buffers) = 0;
 
   virtual Status LinearizeToBuffers(
-      const LiteralSlice& literal,
+      const LiteralSlice& literal, const Shape& device_shape,
       std::deque<tensorflow::tpu::NoncopyableBuffer>* buffers) = 0;
 
   static TpuTransferManagerInterface* GetRegisteredTpuTransferManager();
