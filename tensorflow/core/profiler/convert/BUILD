@@ -29,6 +29,7 @@ cc_library(
         "//tensorflow/tsl/profiler/utils:tf_op_utils",
         "//tensorflow/tsl/profiler/utils:tf_xplane_visitor",
         "//tensorflow/tsl/profiler/utils:timespan",
+        "//tensorflow/tsl/profiler/utils:xplane_schema",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
