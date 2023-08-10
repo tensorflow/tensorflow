@@ -72,7 +72,8 @@ PjRtDeviceCompiler* CreatePjRtDeviceCompiler(DeviceType compilation_device_type,
   PjRtDeviceExecutablePersistor::Config persistor_config(
       persistent_cache_directory,
       GetMarkForCompilationPassFlags()->tf_xla_disable_strict_signature_checks,
-      GetMarkForCompilationPassFlags()->tf_xla_persistent_cache_prefix);
+      GetMarkForCompilationPassFlags()->tf_xla_persistent_cache_prefix,
+      GetMarkForCompilationPassFlags()->tf_xla_persistent_cache_read_only);
 
   return new PjRtDeviceCompiler(
       std::make_unique<PjRtDeviceExecutablePersistor>(
@@ -195,7 +196,8 @@ Status BuildXlaDeviceCompiler(DeviceBase* device, FunctionLibraryRuntime* flr,
   XlaDeviceExecutablePersistor::Config persistor_config(
       persistent_cache_directory,
       GetMarkForCompilationPassFlags()->tf_xla_disable_strict_signature_checks,
-      GetMarkForCompilationPassFlags()->tf_xla_persistent_cache_prefix);
+      GetMarkForCompilationPassFlags()->tf_xla_persistent_cache_prefix,
+      GetMarkForCompilationPassFlags()->tf_xla_persistent_cache_read_only);
 
   if (platform_info.xla_device_metadata()) {
     *xla_device_compiler = CreateXlaDeviceCompiler(

@@ -162,6 +162,9 @@ void AppendMarkForCompilationPassFlagsInternal(std::vector<Flag>* flag_list) {
            "If non-empty, the persistent cache will only be used for the "
            "specified devices (comma separated). Each device type should be "
            "able to be converted to `DeviceType`."),
+      Flag("tf_xla_persistent_cache_read_only",
+           &mark_for_compilation_flags->tf_xla_persistent_cache_read_only,
+           "If true, the persistent cache will be read-only."),
       Flag("tf_xla_disable_strict_signature_checks",
            &mark_for_compilation_flags->tf_xla_disable_strict_signature_checks,
            "If true, entires loaded into the XLA compile cache will not have "
@@ -220,6 +223,7 @@ void AllocateAndParseFlags() {
   mark_for_compilation_flags->tf_xla_deterministic_cluster_names = false;
   mark_for_compilation_flags->tf_xla_persistent_cache_directory = "";
   mark_for_compilation_flags->tf_xla_persistent_cache_device_types = "";
+  mark_for_compilation_flags->tf_xla_persistent_cache_read_only = false;
   mark_for_compilation_flags->tf_xla_disable_strict_signature_checks = false;
   mark_for_compilation_flags->tf_xla_persistent_cache_prefix =
       "xla_compile_cache";

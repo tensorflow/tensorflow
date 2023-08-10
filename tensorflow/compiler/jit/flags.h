@@ -101,6 +101,8 @@ struct MarkForCompilationPassFlags {
   // to `DeviceType`.
   std::string tf_xla_persistent_cache_device_types;
 
+  bool tf_xla_persistent_cache_read_only;
+
   // If true, entries loaded into the XLA compile cache will not have their
   // signatures checked strictly. This should generally not be disabled except
   // for debugging. Defaults to false.
