@@ -54,6 +54,8 @@ using GpuSharedMemConfig = hipSharedMemConfig;
 using GpuComplexType = hipComplex;
 using GpuDoubleComplexType = hipDoubleComplex;
 using GpuRngHandle = hiprandGenerator_t;
+using GpuGraphHandle = hipGraph_t;
+using GpuGraphExecHandle = hipGraphExec_t;
 
 #else  // CUDA
 
@@ -72,6 +74,8 @@ using GpuFuncCachePreference = CUfunc_cache;
 using GpuSharedMemConfig = CUsharedconfig;
 using GpuComplexType = cuComplex;
 using GpuDoubleComplexType = cuDoubleComplex;
+using GpuGraphHandle = CUgraph;
+using GpuGraphExecHandle = CUgraphExec;
 
 #endif
 

@@ -17,26 +17,16 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_GPU_GPU_GRAPH_H_
 
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <type_traits>
 
 #include "absl/functional/any_invocable.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_types.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
+#include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
-
-#if TENSORFLOW_USE_ROCM
-#include "tensorflow/compiler/xla/stream_executor/rocm/rocm_driver_wrapper.h"
-#else
-#include "third_party/gpus/cuda/include/driver_types.h"
-#endif
-
-#if TENSORFLOW_USE_ROCM
-using GpuGraphHandle = hipGraph_t;
-using GpuGraphExecHandle = hipGraphExec_t;
-#else
-using GpuGraphHandle = cudaGraph_t;
-using GpuGraphExecHandle = cudaGraphExec_t;
-#endif
 
 namespace stream_executor {
 namespace gpu {

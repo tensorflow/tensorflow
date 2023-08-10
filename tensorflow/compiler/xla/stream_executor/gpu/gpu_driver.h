@@ -278,6 +278,90 @@ class GpuDriver {
       unsigned int block_dim_z, unsigned int shared_mem_bytes,
       GpuStreamHandle stream, void** kernel_params, void** extra);
 
+  // Creates a new GPU graph.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1gd885f719186010727b75c3315f865fdf
+  static tsl::Status CreateGraph(GpuGraphHandle* graph);
+
+  // Destroys GPU graph.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g718cfd9681f078693d4be2426fd689c8
+  static tsl::Status DestroyGraph(GpuGraphHandle graph);
+
+  // Begins graph capture on a stream.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__STREAM.html#group__CUDA__STREAM_1g767167da0bbf07157dc20b6c258a2143
+  enum class StreamCaptureMode { kGlobal, kThreadLocal, kRelaxed };
+  static tsl::Status StreamBeginCapture(GpuStreamHandle stream,
+                                        StreamCaptureMode mode);
+
+  // Ends capture on a stream, returning the captured graph.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__STREAM.html#group__CUDA__STREAM_1g03dab8b2ba76b00718955177a929970c
+  static tsl::Status StreamEndCapture(GpuStreamHandle stream,
+                                      GpuGraphHandle* graph);
+
+  // Graph instantiation flags.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__TYPES.html#group__CUDA__TYPES_1g070bf5517d3a7915667c256eefce4956
+  struct GraphInstantiateFlags {
+    // Automatically free memory allocated in a graph before relaunching.
+    bool auto_free_on_launch = false;
+    // Automatically upload the graph after instantiation.
+    bool upload = false;
+    // Instantiate the graph to be launchable from the device.
+    bool device_launch = false;
+    // Run the graph using the per-node priority attributes rather than the
+    // priority of the stream it is launched into.
+    bool use_node_prirotiy = false;
+  };
+
+  // Creates an executable graph from a graph.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1gb53b435e178cccfa37ac87285d2c3fa1
+  static tsl::Status GraphInstantiate(GpuGraphExecHandle* exec,
+                                      GpuGraphHandle graph,
+                                      const GraphInstantiateFlags& flags);
+
+  // Launches an executable graph in a stream.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g6b2dceb3901e71a390d2bd8b0491e471
+  static tsl::Status GraphLaunch(GpuGraphExecHandle exec,
+                                 GpuStreamHandle stream);
+
+  // Graph update result.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__TYPES.html#group__CUDA__TYPES_1g8edc8969ff6ae00b7cd5d7292f812c3c
+  enum class GraphExecUpdateResult {
+    kSuccess,
+    kError,
+    kTopologyChanged,
+    kNodeTypeChanged,
+    kFunctionChanged,
+    kParametersChanged,
+    kNotSupported,
+    kUnsupportedFunctionChange,
+    kAttributesChanged
+  };
+
+  // Graph update result info.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/structCUgraphExecUpdateResultInfo__v1.html#structCUgraphExecUpdateResultInfo__v1
+  struct GraphExecUpdateResultInfo {
+    // TODO(ezhulenev): Add `errorFromNode` and `errorNode` members.
+    GraphExecUpdateResult result;
+  };
+
+  // Check whether an executable graph can be updated with a graph and perform
+  // the update if possible.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g96efefc56df46927da7297f122adfb9f
+  static tsl::Status GraphExecUpdate(GpuGraphExecHandle exec,
+                                     GpuGraphHandle graph,
+                                     GraphExecUpdateResultInfo* result);
+
+  // Destroys an executable graph.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1ga32ad4944cc5d408158207c978bc43a7
+  static tsl::Status DestroyGraphExec(GpuGraphExecHandle exec);
+
+  // Write a DOT file describing graph structure.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g0fb0c4d319477a0a98da005fcb0dacc4
+  static tsl::Status GraphDebugDotPrint(GpuGraphHandle graph, const char* path);
+
+  // Returns a stream's capture status.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__STREAM.html#group__CUDA__STREAM_1g37823c49206e3704ae23c7ad78560bca
+  static tsl::StatusOr<bool> StreamIsCapturing(GpuStreamHandle stream);
+
   // Loads ptx_contents with the CUDA driver's PTX JIT and stores the resulting
   // handle in "module". Any error logs that are produced are logged internally.
   // (supported on CUDA only)

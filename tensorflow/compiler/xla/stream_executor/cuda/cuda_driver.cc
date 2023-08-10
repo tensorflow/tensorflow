@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstdint>
 #include <map>
 #include <set>
+#include <string>
 #include <utility>
 
 #include "absl/base/casts.h"
@@ -49,13 +50,17 @@ bool FLAGS_gpuexec_cuda_driver_inject_init_error = false;
 bool FLAGS_gpuexec_cuda_sync_around_driver_calls = false;
 bool FLAGS_gpuexec_cuda_device_0_only = false;
 
-#define RETURN_IF_CUDA_RES_ERROR(expr, ...)                                 \
-  do {                                                                      \
-    CUresult _res = (expr);                                                 \
-    if (ABSL_PREDICT_FALSE(_res != CUDA_SUCCESS)) {                         \
-      return tsl::errors::Internal(__VA_ARGS__, ": ",                       \
-                                   ::stream_executor::gpu::ToString(_res)); \
-    }                                                                       \
+#define RETURN_IF_CUDA_RES_ERROR(expr, ...)                                   \
+  do {                                                                        \
+    CUresult _res = (expr);                                                   \
+    if (ABSL_PREDICT_FALSE(_res != CUDA_SUCCESS)) {                           \
+      if (_res == CUDA_ERROR_OUT_OF_MEMORY)                                   \
+        return tsl::errors::ResourceExhausted(                                \
+            __VA_ARGS__, ":", ::stream_executor::gpu::ToString(_res));        \
+      else                                                                    \
+        return tsl::errors::Internal(__VA_ARGS__, ": ",                       \
+                                     ::stream_executor::gpu::ToString(_res)); \
+    }                                                                         \
   } while (0)
 
 #define FAIL_IF_CUDA_RES_ERROR(expr, ...)                   \
@@ -457,6 +462,191 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
   RETURN_IF_CUDA_RES_ERROR(cuCtxSetSharedMemConfig(shared_mem_config),
                            "Failed to set shared memory config");
   return ::tsl::OkStatus();
+}
+
+/* static */ tsl::Status GpuDriver::CreateGraph(CUgraph* graph) {
+  VLOG(2) << "Create new CUDA graph";
+  RETURN_IF_CUDA_RES_ERROR(cuGraphCreate(graph, /*flags=*/0),
+                           "Failed to create CUDA graph");
+  VLOG(2) << "Created CUDA graph " << graph;
+  return ::tsl::OkStatus();
+}
+
+/* static */ tsl::Status GpuDriver::DestroyGraph(CUgraph graph) {
+  VLOG(2) << "Destroy CUDA graph " << graph;
+  RETURN_IF_CUDA_RES_ERROR(cuGraphDestroy(graph),
+                           "Failed to destroy CUDA graph");
+  return ::tsl::OkStatus();
+}
+
+static std::string_view StreamCaptureModeToString(
+    GpuDriver::StreamCaptureMode mode) {
+  switch (mode) {
+    case GpuDriver::StreamCaptureMode::kGlobal:
+      return "global";
+    case GpuDriver::StreamCaptureMode::kThreadLocal:
+      return "threadlocal";
+    case GpuDriver::StreamCaptureMode::kRelaxed:
+      return "relaxed";
+  }
+}
+
+/* static */ tsl::Status GpuDriver::StreamBeginCapture(CUstream stream,
+                                                       StreamCaptureMode mode) {
+  CUstreamCaptureMode cu_mode;
+  switch (mode) {
+    case StreamCaptureMode::kGlobal:
+      cu_mode = CU_STREAM_CAPTURE_MODE_GLOBAL;
+      break;
+    case StreamCaptureMode::kThreadLocal:
+      cu_mode = CU_STREAM_CAPTURE_MODE_THREAD_LOCAL;
+      break;
+    case StreamCaptureMode::kRelaxed:
+      cu_mode = CU_STREAM_CAPTURE_MODE_RELAXED;
+      break;
+  }
+
+  VLOG(2) << "Beging stream " << stream << " capture in "
+          << StreamCaptureModeToString(mode) << " mode";
+  RETURN_IF_CUDA_RES_ERROR(cuStreamBeginCapture(stream, cu_mode),
+                           "Failed to begin stream capture");
+  return ::tsl::OkStatus();
+}
+
+/* static */ tsl::Status GpuDriver::StreamEndCapture(CUstream stream,
+                                                     CUgraph* graph) {
+  VLOG(2) << "End stream " << stream << " capture";
+
+  RETURN_IF_CUDA_RES_ERROR(cuStreamEndCapture(stream, graph),
+                           "Failed to end stream capture");
+
+  return ::tsl::OkStatus();
+}
+
+/* static */ tsl::Status GpuDriver::GraphInstantiate(
+    CUgraphExec* exec, CUgraph graph, const GraphInstantiateFlags& flags) {
+  VLOG(2) << "Instante CUDA executable graph from graph " << graph << " ("
+          << "auto_free_on_launch=" << flags.auto_free_on_launch << ", "
+          << "device_launch=" << flags.device_launch << ", "
+          << "use_node_priority=" << flags.use_node_prirotiy << ", "
+          << "upload=" << flags.upload << ")";
+
+#if CUDA_VERSION >= 12000
+  uint64_t cu_flags = 0;
+  if (flags.auto_free_on_launch)
+    cu_flags |= CUDA_GRAPH_INSTANTIATE_FLAG_AUTO_FREE_ON_LAUNCH;
+  if (flags.use_node_prirotiy)
+    cu_flags |= CUDA_GRAPH_INSTANTIATE_FLAG_USE_NODE_PRIORITY;
+  if (flags.device_launch)
+    cu_flags |= CUDA_GRAPH_INSTANTIATE_FLAG_DEVICE_LAUNCH;
+  if (flags.upload) cu_flags |= CUDA_GRAPH_INSTANTIATE_FLAG_UPLOAD;
+
+  RETURN_IF_CUDA_RES_ERROR(cuGraphInstantiate(exec, graph, cu_flags),
+                           "Failed to instantiate CUDA graph");
+#else
+  RETURN_IF_CUDA_RES_ERROR(cuGraphInstantiate(exec, graph, nullptr, nullptr, 0),
+                           "Failed to instantiate CUDA graph");
+#endif  // CUDA_VERSION >= 12000
+
+  return ::tsl::OkStatus();
+}
+
+/* static */ tsl::Status GpuDriver::GraphLaunch(CUgraphExec exec,
+                                                CUstream stream) {
+  VLOG(2) << "Launching CUDA executable graph " << exec << " on a stream "
+          << stream;
+  RETURN_IF_CUDA_RES_ERROR(cuGraphLaunch(exec, stream),
+                           "Failed to launch CUDA graph");
+  return ::tsl::OkStatus();
+}
+
+/* static */ tsl::Status GpuDriver::GraphExecUpdate(
+    CUgraphExec exec, CUgraph graph, GraphExecUpdateResultInfo* result) {
+  VLOG(2) << "Update CUDA graph executable " << exec << " with graph " << graph;
+
+#if CUDA_VERSION >= 12000
+  CUgraphExecUpdateResultInfo cu_result;
+  RETURN_IF_CUDA_RES_ERROR(cuGraphExecUpdate(exec, graph, &cu_result),
+                           "Failed to update CUDA graph");
+  auto cu_result_enum = cu_result.result;
+#else
+  CUgraphExecUpdateResult cu_result;
+  RETURN_IF_CUDA_RES_ERROR(cuGraphExecUpdate(exec, graph, nullptr, &cu_result),
+                           "Failed to update CUDA graph");
+  auto cu_result_enum = cu_result;
+#endif  // CUDA_VERSION >= 12000
+
+  switch (cu_result_enum) {
+    case CU_GRAPH_EXEC_UPDATE_SUCCESS:
+      result->result = GraphExecUpdateResult::kSuccess;
+      break;
+    case CU_GRAPH_EXEC_UPDATE_ERROR:
+      result->result = GraphExecUpdateResult::kError;
+      break;
+    case CU_GRAPH_EXEC_UPDATE_ERROR_TOPOLOGY_CHANGED:
+      result->result = GraphExecUpdateResult::kTopologyChanged;
+      break;
+    case CU_GRAPH_EXEC_UPDATE_ERROR_NODE_TYPE_CHANGED:
+      result->result = GraphExecUpdateResult::kNodeTypeChanged;
+      break;
+    case CU_GRAPH_EXEC_UPDATE_ERROR_FUNCTION_CHANGED:
+      result->result = GraphExecUpdateResult::kFunctionChanged;
+      break;
+    case CU_GRAPH_EXEC_UPDATE_ERROR_PARAMETERS_CHANGED:
+      result->result = GraphExecUpdateResult::kParametersChanged;
+      break;
+    case CU_GRAPH_EXEC_UPDATE_ERROR_NOT_SUPPORTED:
+      result->result = GraphExecUpdateResult::kNotSupported;
+      break;
+    case CU_GRAPH_EXEC_UPDATE_ERROR_UNSUPPORTED_FUNCTION_CHANGE:
+      result->result = GraphExecUpdateResult::kUnsupportedFunctionChange;
+      break;
+
+    case CU_GRAPH_EXEC_UPDATE_ERROR_ATTRIBUTES_CHANGED:
+      result->result = GraphExecUpdateResult::kAttributesChanged;
+      break;
+  }
+
+  return ::tsl::OkStatus();
+}
+
+/* static */ tsl::Status GpuDriver::DestroyGraphExec(CUgraphExec exec) {
+  VLOG(2) << "Destroying CUDA executable graph" << exec;
+  RETURN_IF_CUDA_RES_ERROR(cuGraphExecDestroy(exec),
+                           "Failed to destroy CUDA graph");
+  return ::tsl::OkStatus();
+}
+
+/* static */ tsl::Status GpuDriver::GraphDebugDotPrint(CUgraph graph,
+                                                       const char* path) {
+#if CUDA_VERSION >= 12000
+  VLOG(2) << "Print CUDA graph " << graph << " debug dot file to " << path;
+
+  int flags = CU_GRAPH_DEBUG_DOT_FLAGS_VERBOSE;
+  RETURN_IF_CUDA_RES_ERROR(cuGraphDebugDotPrint(graph, path, flags),
+                           "Failed to print gpu graph debug file");
+
+  if (VLOG_IS_ON(100)) {
+    std::string data;
+    if (tsl::ReadFileToString(tsl::Env::Default(), path, &data).ok()) {
+      VLOG(200) << "CUDA graph " << graph << " debug file:\n" << data;
+    } else {
+      LOG(WARNING) << "failed to read gpu graph debug file " << path;
+    }
+  }
+#endif  // CUDA_VERSION >= 12000
+
+  return ::tsl::OkStatus();
+}
+
+/* static */ tsl::StatusOr<bool> GpuDriver::StreamIsCapturing(CUstream stream) {
+  VLOG(2) << "Checking if stream " << stream << " is capturing";
+
+  CUstreamCaptureStatus status;
+  RETURN_IF_CUDA_RES_ERROR(cuStreamIsCapturing(stream, &status),
+                           "Failed to check stream capturing status");
+
+  return status == CU_STREAM_CAPTURE_STATUS_ACTIVE;
 }
 
 /* static */ tsl::Status GpuDriver::LaunchKernel(
