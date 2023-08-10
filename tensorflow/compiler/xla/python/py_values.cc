@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 // Must be included first
 // clang-format off
+#include "tensorflow/compiler/xla/python/ifrt/memory.h"
 #include "tensorflow/tsl/python/lib/core/numpy.h" //NOLINT
 // clang-format on
 
@@ -261,7 +262,8 @@ StatusOr<DevicePutResult> HandleNumpyArray(py::handle h, ifrt::Client* client,
 
 StatusOr<DevicePutResult> HandlePyArray(py::handle obj, ifrt::Client* client,
                                         ifrt::Device* to_device,
-                                        const DevicePutOptions& options) {
+                                        const DevicePutOptions& options,
+                                        ifrt::MemoryKind to_memory_kind) {
   auto py_array = py::reinterpret_borrow<PyArray>(obj);
 
   // We only allow single device case for PyArray in device put.
@@ -282,16 +284,17 @@ StatusOr<DevicePutResult> HandlePyArray(py::handle obj, ifrt::Client* client,
     return HandleNumpyArray(obj.attr("_value"), client, to_device, options);
   }
 
-  if (ifrt_array->sharding().devices().front() == to_device) {
+  if (ifrt_array->sharding().devices().front() == to_device &&
+      (!to_memory_kind.memory_kind().has_value() ||
+       (ifrt_array->sharding().memory_kind() == to_memory_kind))) {
     return DevicePutResult(
         tsl::FormRef(ifrt_array), py_array.weak_type(),
         /*owning_pybuffer=*/py::reinterpret_borrow<py::object>(obj));
   } else {
-    // TODO(yashkatariya): Plumb sharding or memory_kind here.
     TF_ASSIGN_OR_RETURN(
         tsl::RCReference<ifrt::Array> copied_ifrt_array,
         ifrt_array->Reshard(
-            ifrt::SingleDeviceSharding::Create(to_device, ifrt::MemoryKind()),
+            ifrt::SingleDeviceSharding::Create(to_device, to_memory_kind),
             ifrt::ArrayCopySemantics::kReuseInput));
     return DevicePutResult(std::move(copied_ifrt_array), py_array.weak_type());
   }
@@ -301,7 +304,8 @@ StatusOr<DevicePutResult> HandlePyArray(py::handle obj, ifrt::Client* client,
 
 StatusOr<DevicePutResult> DevicePut(py::handle arg, ifrt::Client* client,
                                     ifrt::Device* to_device,
-                                    const DevicePutOptions& options) {
+                                    const DevicePutOptions& options,
+                                    ifrt::MemoryKind to_memory_kind) {
   tsl::profiler::TraceMe traceme("DevicePut");
   static const absl::flat_hash_map<PyObject*, DevicePutFunc>* const handlers =
       [] {
@@ -363,7 +367,7 @@ StatusOr<DevicePutResult> DevicePut(py::handle arg, ifrt::Client* client,
   if (arg.get_type() == PyArray::type()) {
     auto array = py::reinterpret_borrow<PyArray>(arg);
     if (array.fastpath_enabled()) {
-      return HandlePyArray(arg, client, to_device, options);
+      return HandlePyArray(arg, client, to_device, options, to_memory_kind);
     }
   }
 
