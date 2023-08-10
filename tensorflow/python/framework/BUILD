@@ -1452,6 +1452,7 @@ cuda_py_strict_test(
     tags = [
         "multi_gpu",
         "no_pip",
+        "nomac",  # TODO(b/295314609): fix nightly test failures for macos.
     ],  # test_ops are not available in pip.
     deps = [
         ":config",
