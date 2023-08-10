@@ -15,11 +15,13 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/core/framework/common_shape_fns.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace tensorflow {
 
@@ -40,9 +42,9 @@ REGISTER_OP("TPUPartitionedOutput")
       int num_splits;
       TF_RETURN_IF_ERROR(c->GetAttr("num_splits", &num_splits));
       if (dtype == DT_RESOURCE) {
-        return errors::Unimplemented("Not implemented.");
+        return absl::UnimplementedError("Not implemented.");
       } else if (c->num_inputs() == 0) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             "Expected at least one input to TPUPartitionedOutput.");
       }
 
@@ -51,8 +53,9 @@ REGISTER_OP("TPUPartitionedOutput")
       // limitation: can only validate rank when it is known
       if ((rank != InferenceContext::kUnknownRank && partition_dim >= rank) ||
           (partition_dim < -1))
-        return errors::InvalidArgument("Cannot partition dim ", partition_dim,
-                                       " of rank ", rank, " tensor.");
+        return absl::InvalidArgumentError(
+            absl::StrCat("Cannot partition dim ", partition_dim, " of rank ",
+                         rank, " tensor."));
 
       ShapeHandle newoutput0;
       if (partition_dim == -1) {
@@ -70,7 +73,7 @@ REGISTER_OP("TPUPartitionedOutput")
         c->set_output(i, newoutput0);
       }
 
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("TPUPartitionedOutputV2")
@@ -87,9 +90,9 @@ REGISTER_OP("TPUPartitionedOutputV2")
       int num_splits;
       TF_RETURN_IF_ERROR(c->GetAttr("num_splits", &num_splits));
       if (dtype == DT_RESOURCE) {
-        return errors::Unimplemented("Not implemented.");
+        return absl::UnimplementedError("Not implemented.");
       } else if (c->num_inputs() == 0) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             "Expected at least one input to TPUPartitionedOutputV2.");
       }
 
@@ -101,11 +104,11 @@ REGISTER_OP("TPUPartitionedOutputV2")
       }
 
       if (num_splits != num_cores_per_replica) {
-        return errors::InvalidArgument("Expected ", num_cores_per_replica,
-                                       " splits.");
+        return absl::InvalidArgumentError(
+            absl::StrCat("Expected ", num_cores_per_replica, " splits."));
       } else if (rank > (int)partition_dims.size()) {
-        return errors::InvalidArgument("Expected at least ", rank,
-                                       " partition dimensions.");
+        return absl::InvalidArgumentError(
+            absl::StrCat("Expected at least ", rank, " partition dimensions."));
       }
 
       for (int i = 0; i < rank; ++i) {
@@ -121,7 +124,7 @@ REGISTER_OP("TPUPartitionedOutputV2")
         c->set_output(i, handle);
       }
 
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 }  // namespace tensorflow
