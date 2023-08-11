@@ -558,7 +558,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -574,8 +573,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -585,7 +586,6 @@ tf_kernel_library(
         ":case_op",
         ":cwise_ops",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
@@ -600,8 +600,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/compiler/xla/client/lib:math",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -610,7 +612,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -626,8 +627,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client/lib:math",
         "//tensorflow/compiler/xla/client/lib:matrix",
         "//tensorflow/tsl/platform:tensor_float_32_hdr_lib",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -636,7 +639,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -657,9 +659,11 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
         "@com_google_absl//absl/strings",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -668,7 +672,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -687,8 +690,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client/lib:sorting",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -699,7 +704,6 @@ tf_kernel_library(
         ":cwise_ops",
         ":elu_op",
         ":if_op",
-        ":light_outside_compilation",
         ":relu_op",
         ":while_op",
         ":xla_call_module_op",
@@ -717,10 +721,12 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/compiler/xla/client/lib:math",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -729,7 +735,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -744,8 +749,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:sorting",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -755,7 +762,6 @@ tf_kernel_library(
         ":case_op",
         ":gather_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -770,8 +776,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -780,7 +788,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -796,10 +803,12 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/types:span",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -808,7 +817,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -828,10 +836,12 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client/lib:dynamic_shaped_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/types:span",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -840,7 +850,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -855,10 +864,12 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -867,7 +878,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
@@ -881,8 +891,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client/lib:slicing",
         "//tensorflow/compiler/xla/client/lib:svd",
         "//tensorflow/core:lib",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -892,7 +904,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -907,8 +918,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -917,7 +930,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
@@ -928,8 +940,10 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/compiler/xla/client:xla_builder",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -938,7 +952,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/mlir/tensorflow:xla_sharding_util",
@@ -955,8 +968,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -966,7 +981,6 @@ tf_kernel_library(
         ":case_op",
         ":conv_op_helpers",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
@@ -980,8 +994,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client/lib:math",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -990,7 +1006,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
@@ -1001,8 +1016,10 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -1011,7 +1028,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
@@ -1023,8 +1039,10 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -1033,7 +1051,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -1050,10 +1067,12 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -1062,7 +1081,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -1076,8 +1094,10 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:comparators",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -1086,7 +1106,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
@@ -1099,8 +1118,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:matrix",
         "//tensorflow/compiler/xla/client/lib:qr",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -1109,7 +1130,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -1124,8 +1144,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -1134,7 +1156,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -1149,8 +1170,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:value_inference",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -1159,7 +1182,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -1172,8 +1194,10 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -1182,7 +1206,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
@@ -1193,8 +1216,10 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/lib:scatter",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -1203,7 +1228,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -1217,8 +1241,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -1228,7 +1254,6 @@ tf_kernel_library(
         ":case_op",
         ":gather_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -1251,8 +1276,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client/lib:dynamic_shaped_ops",
         "//tensorflow/compiler/xla/client/lib:loops",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -1262,7 +1289,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -1280,9 +1306,11 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client/lib:slicing",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
         "@com_google_absl//absl/types:optional",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -1291,7 +1319,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -1306,8 +1333,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:value_inference",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:constants",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -1316,7 +1345,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -1336,9 +1364,11 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/tpu:tpu_defs",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
         "@com_google_absl//absl/algorithm:container",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -1347,7 +1377,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -1362,8 +1391,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -1372,7 +1403,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":tensor_list_utils",
         ":while_op",
         ":xla_call_module_op",
@@ -1384,8 +1414,10 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -1395,7 +1427,6 @@ tf_kernel_library(
         ":case_op",
         ":gather_op",
         ":if_op",
-        ":light_outside_compilation",
         ":tensor_list_utils",
         ":while_op",
         ":xla_call_module_op",
@@ -1413,8 +1444,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -1423,7 +1456,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
@@ -1434,8 +1466,10 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/compiler/xla/client:xla_builder",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -1444,7 +1478,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -1460,8 +1493,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client/lib:math",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -1470,7 +1505,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":random_ops_util",
         ":while_op",
         ":xla_call_module_op",
@@ -1487,8 +1521,10 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/kernels:stochastic_cast_op_header",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -1497,7 +1533,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -1512,8 +1547,10 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -1522,7 +1559,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
@@ -1534,8 +1570,10 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -1544,7 +1582,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -1559,8 +1596,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -1570,7 +1609,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
@@ -1581,8 +1619,10 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -1591,7 +1631,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
@@ -1604,8 +1643,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/core:lib",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -1614,7 +1655,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
@@ -1627,8 +1667,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -1637,7 +1679,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -1653,9 +1694,11 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
         "@com_google_absl//absl/algorithm:container",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -1664,7 +1707,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
@@ -1675,8 +1717,10 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/compiler/xla/client/lib:qr",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -1685,7 +1729,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -1703,9 +1746,11 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client/lib:dynamic_shaped_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
         "@com_google_absl//absl/types:span",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -1714,7 +1759,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -1729,8 +1773,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -1739,7 +1785,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -1755,8 +1800,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/compiler/xla/client/lib:math",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -1765,7 +1812,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -1779,8 +1825,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla:sharding_op_util",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -1789,7 +1837,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -1804,8 +1851,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -1814,7 +1863,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -1830,8 +1878,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -1841,7 +1891,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/jit:xla_activity_listener",
@@ -1861,10 +1910,12 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -1873,7 +1924,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
@@ -1885,8 +1935,10 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core/util:overflow",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -1895,7 +1947,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
@@ -1907,8 +1958,10 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -1918,7 +1971,6 @@ tf_kernel_library(
         ":case_op",
         ":cwise_ops",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -1937,8 +1989,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/compiler/xla/client/lib:math",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -1947,7 +2001,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
@@ -1960,8 +2013,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/compiler/xla/client/lib:slicing",
         "//tensorflow/core:lib",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -1971,7 +2026,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":rng_converter_utils",
         ":while_op",
         ":xla_call_module_op",
@@ -1991,9 +2045,11 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/kernels:stateless_random_ops_v2_header",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
         "@com_google_absl//absl/strings",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -2003,7 +2059,6 @@ tf_kernel_library(
         ":case_op",
         ":cwise_ops",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -2023,8 +2078,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/compiler/xla/client/lib:math",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -2034,7 +2091,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -2051,8 +2107,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -2061,7 +2119,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
@@ -2075,8 +2132,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -2086,7 +2145,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
@@ -2100,8 +2158,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:constants",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -2110,7 +2170,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":reduction_ops",
         ":while_op",
         ":xla_call_module_op",
@@ -2126,9 +2185,11 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
         "@com_google_absl//absl/strings",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -2137,7 +2198,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
@@ -2150,8 +2210,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:arithmetic",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -2160,7 +2222,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
@@ -2173,8 +2234,10 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -2183,7 +2246,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
@@ -2194,8 +2256,10 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -2204,7 +2268,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
@@ -2219,8 +2282,10 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/tsl/platform:tensor_float_32_hdr_lib",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -2229,7 +2294,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
@@ -2243,8 +2307,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:matrix",
         "//tensorflow/compiler/xla/client/lib:qr",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -2253,7 +2319,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":random_ops_util",
         ":while_op",
         ":xla_call_module_op",
@@ -2272,8 +2337,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client/lib:prng",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -2282,7 +2349,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -2296,8 +2362,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -2306,7 +2374,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
@@ -2323,8 +2390,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/compiler/xla/client/lib:loops",
         "//tensorflow/compiler/xla/client/lib:math",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -2333,7 +2402,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -2357,9 +2425,11 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/tpu:tpu_defs",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
         "@com_google_absl//absl/types:optional",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -2368,7 +2438,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -2384,8 +2453,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -2394,7 +2465,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -2416,8 +2486,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client/lib:pooling",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -2426,7 +2498,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
@@ -2440,8 +2511,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client/lib:slicing",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -2450,7 +2523,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -2465,8 +2537,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:quantize",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -2475,7 +2549,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -2489,8 +2562,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -2499,7 +2574,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":shape_util",
         ":tensor_list_utils",
         ":while_op",
@@ -2517,10 +2591,12 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings:str_format",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -2530,7 +2606,6 @@ tf_kernel_library(
         ":case_op",
         ":gather_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
@@ -2555,9 +2630,11 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
         "@com_google_absl//absl/types:span",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -2566,7 +2643,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -2580,8 +2656,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -2590,7 +2668,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -2607,8 +2684,10 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -2617,7 +2696,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -2631,9 +2709,11 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
         "@com_google_absl//absl/container:flat_hash_set",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -2642,7 +2722,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -2656,8 +2735,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -2667,7 +2748,6 @@ tf_kernel_library(
         ":case_op",
         ":conv_op_helpers",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -2684,8 +2764,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client/lib:matrix",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -2694,7 +2776,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
@@ -2709,8 +2790,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client/lib:matrix",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -2719,7 +2802,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -2733,8 +2815,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -2743,7 +2827,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -2762,8 +2845,10 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/tpu:tpu_defs",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -2772,7 +2857,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -2786,8 +2870,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -2796,7 +2882,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
@@ -2807,8 +2892,10 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -2817,7 +2904,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -2837,8 +2923,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client/lib:matrix",
         "//tensorflow/compiler/xla/client/lib:pooling",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -2848,7 +2936,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -2862,8 +2949,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/client/lib:arithmetic",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -2872,7 +2961,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -2886,8 +2974,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -2896,7 +2986,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
@@ -2909,8 +2998,10 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -2919,7 +3010,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -2933,8 +3023,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -2943,7 +3035,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -2959,8 +3050,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client/lib:arithmetic",
         "//tensorflow/compiler/xla/client/lib:comparators",
         "//tensorflow/compiler/xla/client/lib:constants",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -2969,7 +3062,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
@@ -2983,8 +3075,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client/lib:tridiagonal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -2993,7 +3087,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
@@ -3009,10 +3102,12 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/compiler/xla/client/lib:math",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -3021,7 +3116,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
@@ -3035,9 +3129,11 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:value_inference",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
         "@com_google_absl//absl/strings",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -3046,7 +3142,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":tensor_list_utils",
         ":while_op",
         ":xla_call_module_op",
@@ -3059,8 +3154,10 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:lib",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -3069,7 +3166,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -3084,8 +3180,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -3094,7 +3192,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
@@ -3106,8 +3203,10 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/compiler/xla/client:xla_builder",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -3116,7 +3215,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
@@ -3129,8 +3227,10 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -3139,7 +3239,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -3154,8 +3253,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -3164,7 +3265,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":random_ops_util",
         ":rng_converter_utils",
         ":while_op",
@@ -3186,8 +3286,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client/lib:prng",
         "//tensorflow/core:framework",
         "//tensorflow/core/kernels:stateless_random_ops_v2_header",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -3196,7 +3298,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
@@ -3215,9 +3316,11 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/tpu:tpu_defs",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
         "@com_google_absl//absl/strings",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -3226,7 +3329,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":random_ops_util",
         ":while_op",
         ":xla_call_module_op",
@@ -3247,8 +3349,10 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/kernels:stateful_random_ops_header",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -3257,7 +3361,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
@@ -3268,8 +3371,10 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -3278,7 +3383,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -3293,8 +3397,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -3303,7 +3409,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
@@ -3316,8 +3421,10 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:lib",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -3326,7 +3433,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
@@ -3342,8 +3448,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -3353,7 +3461,6 @@ tf_kernel_library(
         ":case_op",
         ":gather_op",
         ":if_op",
-        ":light_outside_compilation",
         ":shape_util",
         ":while_op",
         ":xla_call_module_op",
@@ -3372,8 +3479,10 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core/kernels:resource_variable_util",
         "//tensorflow/core/kernels:scatter_nd_util",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -3382,7 +3491,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
@@ -3399,8 +3507,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client/lib:matrix",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -3409,7 +3519,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -3424,8 +3533,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -3434,7 +3545,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -3451,8 +3561,10 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/tpu:tpu_defs",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -3461,7 +3573,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
@@ -3473,8 +3584,10 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/compiler/xla/client/lib:self_adjoint_eig",
         "//tensorflow/core:lib",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -3483,7 +3596,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -3503,8 +3615,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -3513,7 +3627,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -3527,8 +3640,10 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -3537,7 +3652,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
@@ -3552,8 +3666,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -3562,7 +3678,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -3575,10 +3690,12 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -3587,7 +3704,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -3598,8 +3714,10 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -3608,7 +3726,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -3623,8 +3740,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -3635,7 +3754,6 @@ tf_kernel_library(
         ":case_op",
         ":cwise_ops",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
@@ -3649,8 +3767,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -3659,7 +3779,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":relu_op",
         ":while_op",
         ":xla_call_module_op",
@@ -3676,8 +3795,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/compiler/xla/client/lib:math",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -3687,7 +3808,6 @@ tf_kernel_library(
         ":case_op",
         ":conv_op_helpers",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -3705,8 +3825,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client/lib:matrix",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -3715,7 +3837,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -3732,8 +3853,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -3742,7 +3865,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -3756,8 +3878,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:value_inference",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -3766,7 +3890,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":random_ops_util",
         ":while_op",
         ":xla_call_module_op",
@@ -3787,8 +3910,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client/lib:prng",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -3797,7 +3922,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
@@ -3811,8 +3935,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -3821,7 +3947,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
@@ -3835,8 +3960,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:matrix",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -3845,7 +3972,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
@@ -3857,8 +3983,10 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:matrix",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -3867,7 +3995,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -3885,8 +4012,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client/lib:math",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -3895,7 +4024,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
@@ -3909,8 +4037,10 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:arithmetic",
         "//tensorflow/core:lib",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_kernel_library(
@@ -3919,7 +4049,6 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
-        ":light_outside_compilation",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -3932,8 +4061,10 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/core:framework",
-        "//tensorflow/tsl/platform:tensor_float_32_utils",
-    ],
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
 )
 
 tf_cc_test(
