@@ -1087,6 +1087,8 @@ tpu_py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":tpu_replicated_variable",
+        "//tensorflow/python/checkpoint",
+        "//tensorflow/python/checkpoint:checkpoint_options",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/framework:combinations",
         "//tensorflow/python/framework:dtypes",
@@ -1821,6 +1823,8 @@ distribute_py_strict_test(
         ":combinations",
         ":ps_values",
         ":strategy_combinations",
+        "//tensorflow/python/checkpoint",
+        "//tensorflow/python/checkpoint:checkpoint_options",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/ops:variable_v1",
