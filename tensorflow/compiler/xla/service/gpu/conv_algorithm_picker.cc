@@ -1077,11 +1077,18 @@ StatusOr<bool> GpuConvAlgorithmPicker::RunOnInstruction(HloInstruction* instr) {
           << " of scratch memory: " << instr->ToString()
           << " tensor_ops_enabled: " << best_algo.conv().tensor_ops_enabled();
 
-  // Set the algorithm and update the shape of the convolution Custom Call to
-  // account for the appropriate amount of scratch memory.
-  ShapeUtil::UpdateTupleShape(
-      ShapeUtil::MakeShape(U8, {best_algo.scratch_bytes()}),
-      instr->shape().tuple_shapes_size() - 1, instr->mutable_shape());
+  // Replace instr with a new CustomCall which has the correct algorithm, and
+  // whose output shape has the appropriate amount of scratch memory.
+  HloComputation* computation = instr->parent();
+  std::vector<Shape> new_call_element_shapes;
+  // Add the shapes of the outputs of the convolution.
+  for (int i = 0; i < instr->shape().tuple_shapes_size() - 1; ++i) {
+    new_call_element_shapes.emplace_back(instr->shape().tuple_shapes(i));
+  }
+  // The final element is the size of the workspace.
+  new_call_element_shapes.emplace_back(
+      ShapeUtil::MakeShape(U8, {best_algo.scratch_bytes()}));
+  Shape new_call_shape = ShapeUtil::MakeTupleShape(new_call_element_shapes);
 
   TF_ASSIGN_OR_RETURN(CudnnConvBackendConfig backend_config,
                       instr->backend_config<CudnnConvBackendConfig>());
@@ -1089,8 +1096,34 @@ StatusOr<bool> GpuConvAlgorithmPicker::RunOnInstruction(HloInstruction* instr) {
   backend_config.mutable_algorithm()->mutable_workspace_size()->set_value(
       best_algo.scratch_bytes());
 
-  TF_RETURN_IF_ERROR(instr->set_backend_config(backend_config));
+  HloInstruction* new_call = computation->AddInstruction(
+      instr->CloneWithNewOperands(new_call_shape, instr->operands()));
 
+  // Preserve the name of the old instruction.  This is safe because we're going
+  // to remove the old one anyway, and it makes it easier to trace how our conv
+  // is transformed through all our passes.
+  new_call->SetAndSanitizeName(instr->name());
+
+  VLOG(3) << "Replacing convolution " << instr->ToString() << " with "
+          << new_call->ToString();
+
+  TF_RETURN_IF_ERROR(new_call->set_backend_config(backend_config));
+
+  std::vector<HloInstruction*> new_tuple_elements;
+  for (int i = 0; i < new_call->shape().tuple_shapes_size() - 1; ++i) {
+    new_tuple_elements.emplace_back(
+        computation->AddInstruction(HloInstruction::CreateGetTupleElement(
+            new_call->shape().tuple_shapes(i), new_call, i)));
+  }
+  new_tuple_elements.emplace_back(computation->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR1<uint8_t>({}))));
+
+  // Repackage new_call so it has the same shape as the original call, namely
+  // (conv_result, u8[0]).
+  HloInstruction* new_tuple = computation->AddInstruction(
+      HloInstruction::CreateTuple(new_tuple_elements));
+
+  TF_RETURN_IF_ERROR(instr->parent()->ReplaceInstruction(instr, new_tuple));
   return true;
 }
 

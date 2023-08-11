@@ -440,16 +440,13 @@ std::optional<PrimitiveType> IsSaturatingCastToF8(HloInstruction* instr) {
 bool AppliesMaxReduce(HloInstruction* op) {
   HloComputation* reduce_comp = op->to_apply();
   HloInstruction* reduce_comp_root = reduce_comp->root_instruction();
-  if (ShapeUtil::IsScalar(op->shape()) &&
-      ShapeUtil::IsScalar(op->operand(1)->shape()) &&
-      op->operand(1)->IsConstant() &&
-      op->operand(1)->literal().GetAsDouble({}) <= 0. &&
-      reduce_comp_root->opcode() == HloOpcode::kMaximum &&
-      reduce_comp_root->operand(0)->opcode() == HloOpcode::kParameter &&
-      reduce_comp_root->operand(1)->opcode() == HloOpcode::kParameter) {
-    return true;
-  }
-  return false;
+  return ShapeUtil::IsScalar(op->shape()) &&
+         ShapeUtil::IsScalar(op->operand(1)->shape()) &&
+         op->operand(1)->IsConstant() &&
+         op->operand(1)->literal().GetAsDouble({}) <= 0. &&
+         reduce_comp_root->opcode() == HloOpcode::kMaximum &&
+         reduce_comp_root->operand(0)->opcode() == HloOpcode::kParameter &&
+         reduce_comp_root->operand(1)->opcode() == HloOpcode::kParameter;
 };
 
 // Recursively captures and serializes the graph of pointwise operations
