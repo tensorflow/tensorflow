@@ -48,11 +48,14 @@ fi
 # ignores the "build" directory), and ensure all further commands are executed
 # inside of the $TFCI_GIT_DIR as well.
 cd "$TFCI_GIT_DIR"
+ # Kind of awkward, but handles the fact that Windows treats "build" (the output
+ # directory) and BUILD (the root BUILD file) as the same name, due to Windows
+ # ignoring uppercase/lowercase differences
+mv BUILD BUILD.bazel 
 mkdir -p build
 
 # In addition to dumping all script output to the terminal, place it into
 # build/script.log
-rm build/script.log
 exec > >(tee "build/script.log") 2>&1
 
 # Setup tfrun, a helper function for executing steps that can either be run
