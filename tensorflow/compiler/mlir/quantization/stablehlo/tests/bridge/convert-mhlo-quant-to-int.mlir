@@ -372,3 +372,22 @@ func.func @uniform_quantize_dot_hybrid_result_type_not_float(%arg0: tensor<?x?xf
   %1 = "mhlo.dot" (%arg0, %0): (tensor<?x?xf32>, tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>) -> tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>
   return
 }
+
+// -----
+
+// CHECK-LABEL: func @mhlo_constant_uniform_quantized
+func.func @mhlo_constant_uniform_quantized() -> tensor<1xf32> {
+  // CHECK: mhlo.constant dense<9> : tensor<1xi8>
+  %0 = mhlo.constant() {value = dense<9> : tensor<1xi8>} : () -> tensor<1x!quant.uniform<i8:f32, 1.000000e+00:3>>
+  %1 = mhlo.uniform_dequantize %0 : (tensor<1x!quant.uniform<i8:f32, 1.000000e+00:3>>) -> tensor<1xf32>
+  return %1 : tensor<1xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @mhlo_constant_int
+func.func @mhlo_constant_int() -> tensor<i32> {
+  // CHECK: mhlo.constant dense<-128> : tensor<i32>
+  %0 = mhlo.constant() {value = dense<-128> : tensor<i32>} : () -> tensor<i32>
+  return %0 : tensor<i32>
+}

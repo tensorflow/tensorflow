@@ -634,6 +634,26 @@ class ConvertMhloConvertOp : public OpConversionPattern<mhlo::ConvertOp> {
   }
 };
 
+class ConvertMhloConstantOp : public OpConversionPattern<mhlo::ConstantOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::ConstantOp op, mhlo::ConstantOpAdaptor adaptor,
+      ConversionPatternRewriter &rewriter) const override {
+    auto output_element_type = getElementTypeOrSelf(op.getOutput().getType());
+    // Convert mhlo.ConstantOp to int type for uq type only.
+    if (auto quant_type =
+            output_element_type.dyn_cast<quant::UniformQuantizedType>()) {
+      rewriter.replaceOpWithNewOp<mhlo::ConstantOp>(
+          op, op.getOutput().getType().clone(quant_type.getStorageType()),
+          op.getValue());
+      return success();
+    }
+    return failure();
+  }
+};
+
 // Performs conversion of MHLO quant ops to primitive ops.
 void ConvertMHLOQuantToInt::runOnOperation() {
   Operation *op = getOperation();
@@ -643,8 +663,8 @@ void ConvertMHLOQuantToInt::runOnOperation() {
   // Populate MHLO quant ops conversion patterns.
   patterns.add<ConvertUniformQuantizeOp, ConvertUniformDequantizeOp,
                ConvertUniformQuantizedAddOp, ConvertUniformQuantizedDotOp,
-               ConvertUniformQuantizedConvolutionOp, ConvertMhloConvertOp>(
-      context);
+               ConvertUniformQuantizedConvolutionOp, ConvertMhloConvertOp,
+               ConvertMhloConstantOp>(context);
 
   ConversionTarget target(*op->getContext());
   // An addDynamicallyLegalDialect callback that declares a given operation as
