@@ -1270,7 +1270,6 @@ cc_library(
         "transforms/xla_rewrite_v2.cc",
         "transforms/xla_validate_inputs.cc",
         "translate/breakup-islands.cc",
-        "translate/split_into_island_per_op_pass.cc",
         "translate/tf_executor_to_functional.cc",
         "translate/tf_functional_to_executor.cc",
     ],
@@ -1309,6 +1308,7 @@ cc_library(
         ":parallel_execute_util",
         ":serialize_mlir_module_utils",
         ":shape_inference_pass",
+        ":split_into_island_per_op_pass",
         ":stablehlo_custom_call_utils",
         ":string_util",
         ":tensorflow",
@@ -2899,6 +2899,27 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "split_into_island_per_op_pass",
+    srcs = ["translate/split_into_island_per_op_pass.cc"],
+    hdrs = [
+        "ir/tf_executor.h",
+        "translate/split_into_island_per_op_pass.h",
+    ],
+    deps = [
+        ":tensorflow",
+        ":tensorflow_executor_inc_gen",
+        ":tensorflow_types",
+        ":tf_pass_inc_gen",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Dialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InferTypeOpInterface",
+        "@llvm-project//mlir:Pass",
     ],
 )
 
