@@ -7,6 +7,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
   func.func @main() {
     tf_executor.graph {
       %control = tf_executor.island wraps "tf.NoOp"() {_f = #tf_type.func<@callee, {attr2 = true, attr3 = 8.0 : f32}>} : () -> ()
+      %control_1 = tf_executor.island(%control) wraps "tf.LegacyCall"() {f = @callee} : () -> ()
       tf_executor.fetch
     }
     func.return
@@ -33,6 +34,8 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
 // CHECK-NEXT:           key: "attr3"
 // CHECK-NEXT:           value
 // CHECK-NEXT:             f: 8
+
+// CHECK:        op: "original_callee"
 
 // CHECK:      library
 // CHECK-NEXT:   function

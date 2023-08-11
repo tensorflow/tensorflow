@@ -391,6 +391,10 @@ void Exporter::UseOriginalFunctionNames(NodeDef& node_def) {
     }
   };
 
+  // Change its op name if it is a legacy call.
+  try_use_original_func_name(node_def.mutable_op());
+
+  // Change any function attributes in the attrs.
   for (auto& iter : attrs) {
     auto& attr = iter.second;
     if (attr.has_func()) {
