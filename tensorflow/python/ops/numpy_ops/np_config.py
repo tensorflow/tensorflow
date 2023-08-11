@@ -15,12 +15,15 @@
 """Config functions for TF NumPy."""
 
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import weak_tensor_ops  # pylint: disable=unused-import
 from tensorflow.python.ops.numpy_ops import np_dtypes
-from tensorflow.python.ops.numpy_ops import np_export
 from tensorflow.python.ops.numpy_ops import np_math_ops
+from tensorflow.python.util import tf_export
 
 
-@np_export.np_export("experimental_enable_numpy_behavior")
+@tf_export.tf_export(
+    "experimental.numpy.experimental_enable_numpy_behavior", v1=[]
+)
 def enable_numpy_behavior(prefer_float32=False, dtype_conversion_mode="legacy"):
   """Enable NumPy behavior on Tensors.
 

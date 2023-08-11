@@ -75,6 +75,7 @@ cc_library(
     hdrs = ["kernel_runner_utils.h"],
     deps = [
         ":context",
+        "//tensorflow/core:framework",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_compat_request_state",
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_utils",
@@ -106,6 +107,7 @@ tf_cc_shared_test(
         ":batch_kernel",
         ":context",
         ":kernel",
+        "//tensorflow/core:framework",
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/kernels:math",
         "//tensorflow/core/ops:math_ops_op_lib",

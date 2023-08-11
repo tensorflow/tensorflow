@@ -706,11 +706,25 @@ Status PopulateCtxOutputsFromPjRtExecutableOutputs(
           << "Invalid input for outputs " << i << ": " << input_index;
       ctx->set_output(i, *inputs[input_index]);
     } else {
-      TF_ASSIGN_OR_RETURN(
-          xla::Shape device_shape,
-          executable_outputs[output_num]->logical_on_device_shape());
+      xla::PjRtBuffer* output_buffer = executable_outputs[output_num].get();
+      if (output_buffer->IsTuple()) {
+        return absl::InvalidArgumentError(
+            "Tuple PJRT buffer output is not supported.");
+      }
+      absl::Span<const int64_t> dims;
+      std::optional<std::vector<int64_t>> logical_dims_storage;
+      if (output_buffer->has_dynamic_dimensions()) {
+        TF_ASSIGN_OR_RETURN(std::vector<int64_t> logical_dims,
+                            output_buffer->logical_dimensions());
+        logical_dims_storage.emplace(std::move(logical_dims));
+        dims = *logical_dims_storage;
+      } else {
+        dims = output_buffer->dimensions();
+      }
       TensorShape tensor_shape;
-      TF_RETURN_IF_ERROR(XLAShapeToTensorShape(device_shape, &tensor_shape));
+      for (int i = 0; i < dims.size(); ++i) {
+        TF_RETURN_IF_ERROR(tensor_shape.AddDimWithStatus(dims[i]));
+      }
       if (use_pjrt_tensor_buffer) {
         Tensor output_tensor = MakeTensorFromPjRtStreamExecutorBuffer(
             type, tensor_shape, std::move(executable_outputs[output_num]));
@@ -754,11 +768,11 @@ Status PopulateCtxOutputsFromPjRtExecutableOutputs(
 
     if (use_pjrt_tensor_buffer) {
       PjRtTensorBufferUtil::UpdateOrMakeTensorWithPjRtStreamExecutorBuffer(
-          var->tensor()->dtype(), var->tensor()->shape(),
-          std::move(executable_outputs[output_num]), var->tensor());
+          write.type, write.shape, std::move(executable_outputs[output_num]),
+          var->tensor());
     } else {
-      TF_RETURN_IF_ERROR(ctx->allocate_temp(
-          var->tensor()->dtype(), var->tensor()->shape(), var->tensor()));
+      TF_RETURN_IF_ERROR(
+          ctx->allocate_temp(write.type, write.shape, var->tensor()));
       AsyncValueTensor::FromTensor(var->tensor())
           ->SetBuffer(std::move(executable_outputs[output_num]));
     }

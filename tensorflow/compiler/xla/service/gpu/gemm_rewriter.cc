@@ -220,15 +220,21 @@ bool IsSupportedF8Pattern(HloInstruction *instr, HloInstruction *&x,
     return ShapeUtil::SameElementType(instr->shape(),
                                       instr->operand(0)->shape());
   };
+  auto allgather_allowed = [](const HloInstruction *instr) -> bool {
+    return instr->GetModule()->config().use_spmd_partitioning();
+  };
   for (int i = 3; i < subgraph->size(); ++i) {
     // The remaining instructions must be commutative with dequantization.
-    // Bitcast, broadcast, copy, pad, reshape and slice instructions are
-    // supported.
-    if (!Match((*subgraph)[i],
-               m::AnyOf<HloInstruction>(
-                   m::Bitcast().WithPredicate(preserves_element_type),
-                   m::Broadcast(), m::Copy(), m::Pad(), m::Reshape(),
-                   m::Slice()))) {
+    // Bitcast, broadcast, copy, pad, reshape, slice and all-gather instructions
+    // are supported. Specifically, the 'all-gather' operation is permitted only
+    // in SPMD or no-partition cases since the optimization cannot be guaranteed
+    // to be applied to all replicas in the MPMD scenario.
+    if (!Match(
+            (*subgraph)[i],
+            m::AnyOf<HloInstruction>(
+                m::Bitcast().WithPredicate(preserves_element_type),
+                m::Broadcast(), m::Copy(), m::Pad(), m::Reshape(), m::Slice(),
+                m::AllGather().WithPredicate(allgather_allowed)))) {
       VLOG(1) << "Possible intended FP8 GEMM operating on "
               << instr->ToShortString()
               << " not rewritten into FP8 Custom Call.";
@@ -837,18 +843,12 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       }
     }
 
-    PrimitiveType c_type;
     switch (instr->shape().element_type()) {
       case F8E4M3FN:
       case F8E5M2:
       case BF16:
-        c_type = BF16;
-        break;
       case F16:
-        c_type = F16;
-        break;
       case F32:
-        c_type = F32;
         break;
       default:
         VLOG(1) << "Failed to rewrite " << instr->ToShortString()

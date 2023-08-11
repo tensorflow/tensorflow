@@ -109,26 +109,28 @@ struct RetainOpLowering : public ConvertOpToLLVMPattern<RetainOp> {
 
     auto i64Ty = rewriter.getI64Type();
     auto ptrPtrTy = getTypeConverter()->getPointerType(ptrTy);
+    Type indexType = ConvertOpToLLVMPattern::getIndexType();
     auto getBuffers = [&](ValueRange values) {
       auto ret = rewriter.create<LLVM::AllocaOp>(
           loc, ptrPtrTy, ptrTy,
-          createIndexConstant(rewriter, loc,
-                              values.size() *
-                                  getTypeConverter()->getPointerBitwidth() /
-                                  CHAR_BIT));
+          createIndexAttrConstant(rewriter, loc, indexType,
+                                  values.size() *
+                                      getTypeConverter()->getPointerBitwidth() /
+                                      CHAR_BIT));
       for (auto [index, value] : llvm::enumerate(values)) {
         auto ptr = rewriter.create<LLVM::GEPOp>(
             loc, ptrPtrTy, ptrTy, ret,
-            createIndexConstant(rewriter, loc, index));
+            createIndexAttrConstant(rewriter, loc, indexType, index));
         rewriter.create<LLVM::StoreOp>(loc, value, ptr);
       }
       return ret;
     };
 
-    Value numAllocs = createIndexConstant(rewriter, loc, op.getAllocs().size());
+    Value numAllocs = createIndexAttrConstant(rewriter, loc, indexType,
+                                              op.getAllocs().size());
     Value allocBuffers = getBuffers(adaptor.getAllocs());
-    Value numRetained =
-        createIndexConstant(rewriter, loc, op.getRetained().size());
+    Value numRetained = createIndexAttrConstant(rewriter, loc, indexType,
+                                                op.getRetained().size());
     Value retainedBuffers = getBuffers(adaptor.getRetained());
 
     auto retainFn =
@@ -143,7 +145,7 @@ struct RetainOpLowering : public ConvertOpToLLVMPattern<RetainOp> {
     for (auto index : llvm::seq<size_t>(0, op.getRetained().size())) {
       auto ptr = rewriter.create<LLVM::GEPOp>(
           loc, ptrPtrTy, ptrTy, retainedBuffers,
-          createIndexConstant(rewriter, loc, index));
+          createIndexAttrConstant(rewriter, loc, indexType, index));
       results.push_back(rewriter.create<LLVM::LoadOp>(loc, ptrTy, ptr));
     }
     rewriter.create<memref::AllocaScopeReturnOp>(loc, results);

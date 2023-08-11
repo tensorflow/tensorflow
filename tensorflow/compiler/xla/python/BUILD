@@ -1055,7 +1055,7 @@ tsl_pybind_extension(
     }) + select({
         ":tpu_enabled": [
             "//tensorflow/compiler/xla/pjrt:tpu_client",
-            "//tensorflow/compiler/xla/stream_executor/tpu:tpu_initializer_helper",
+            "//tensorflow/compiler/xla/stream_executor/tpu:tpu_initializer_framework_helper",
         ],
         "//conditions:default": [],
     }),
@@ -1072,6 +1072,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:types",
+        "//tensorflow/tsl/profiler/convert:xla_op_utils",
         "//tensorflow/tsl/profiler/protobuf:profiled_instructions_proto_cc",
         "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/tsl/profiler/utils:file_system_utils",

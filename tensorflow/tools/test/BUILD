@@ -1,6 +1,7 @@
 # Description:
 # Tools for testing
 
+load("//tensorflow:py.default.bzl", "py_binary", "py_library")
 load(
     "//tensorflow/tools/test:performance.bzl",
     "tf_cc_logged_benchmark",

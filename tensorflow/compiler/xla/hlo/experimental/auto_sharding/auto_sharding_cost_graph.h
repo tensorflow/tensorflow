@@ -17,11 +17,13 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_COST_GRAPH_H_
 
 #include <algorithm>
+#include <cstddef>
 #include <numeric>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/matrix.h"
 namespace xla {
@@ -45,15 +47,15 @@ class CostGraph {
 
       for (size_t i = 0; i < strategies->in_nodes.size(); ++i) {
         if (!strategies->in_nodes[i]->is_tuple) {
-          size_t src_idx = strategies->in_nodes[i]->id;
-          size_t dst_idx = strategies->id;
+          NodeIdx src_idx = strategies->in_nodes[i]->node_idx;
+          NodeIdx dst_idx = strategies->node_idx;
           Matrix edge_cost = CreateEdgeCost(src_idx, dst_idx, i, strategies);
           AddEdgeCost(src_idx, dst_idx, edge_cost);
         } else if (strategies->in_nodes[i]->is_tuple &&
                    strategies->in_nodes.size() > 1) {
           for (size_t l = 0; l < strategies->in_nodes[i]->childs.size(); l++) {
-            size_t src_idx = strategies->in_nodes[i]->childs.at(l)->id;
-            size_t dst_idx = strategies->id;
+            NodeIdx src_idx = strategies->in_nodes[i]->childs.at(l)->node_idx;
+            NodeIdx dst_idx = strategies->node_idx;
             Matrix edge_cost =
                 CreateEdgeCost(src_idx, dst_idx, i, strategies, true);
             AddEdgeCost(src_idx, dst_idx, edge_cost);
@@ -65,8 +67,8 @@ class CostGraph {
                  "operand. If this CHECK fails, we will need to fix "
                  "b/233412625.";
           for (size_t l = 0; l < strategies->in_nodes[i]->childs.size(); l++) {
-            size_t src_idx = strategies->in_nodes[i]->childs.at(l)->id;
-            size_t dst_idx = strategies->id;
+            NodeIdx src_idx = strategies->in_nodes[i]->childs.at(l)->node_idx;
+            NodeIdx dst_idx = strategies->node_idx;
             // TODO(b/233412625) Support more general case, e.g., multiple tuple
             // operands. If there is only one operand and it's a tuple, the
             // first index of resharding_costs is for the tuple element.
@@ -78,22 +80,23 @@ class CostGraph {
       }
 
       if (strategies->following) {
-        to_merge_pairs_.push_back({strategies->id, strategies->following->id});
+        to_merge_pairs_.push_back(
+            {strategies->node_idx, strategies->following->node_idx});
       }
     }
 
     // Adjust the edge costs for dot pairs that can be optimized by
     // AllReduceReassociate
     for (const auto& pair : associative_dot_pairs) {
-      size_t src_idx = pair.first->id;
-      size_t dst_idx = pair.second->id;
+      NodeIdx src_idx = pair.first->node_idx;
+      NodeIdx dst_idx = pair.second->node_idx;
 
       if (node_lens_[src_idx] != node_lens_[dst_idx]) {
         continue;
       }
 
       Matrix edge_cost(node_lens_[src_idx], node_lens_[dst_idx]);
-      for (size_t i = 0; i < node_lens_[src_idx]; ++i) {
+      for (NodeStrategyIdx i = 0; i < node_lens_[src_idx]; ++i) {
         if (leaf_strategies[src_idx]->leaf_vector[i].communication_cost > 0) {
           CHECK_LE(
               std::abs(
@@ -108,12 +111,12 @@ class CostGraph {
     }
   }
 
-  Matrix CreateEdgeCost(size_t src_idx, size_t dst_idx, size_t in_node_idx,
+  Matrix CreateEdgeCost(NodeIdx src_idx, NodeIdx dst_idx, size_t in_node_idx,
                         StrategyVector* strategies, bool zero_cost = false) {
     CHECK_GE(node_lens_.size(), src_idx);
     CHECK_GE(node_lens_.size(), dst_idx);
     Matrix edge_cost(node_lens_[src_idx], node_lens_[dst_idx]);
-    for (size_t k = 0; k < strategies->leaf_vector.size(); ++k) {
+    for (NodeStrategyIdx k = 0; k < strategies->leaf_vector.size(); ++k) {
       const ShardingStrategy& strategy = strategies->leaf_vector[k];
       size_t start_idx = 0;
       if (strategy.resharding_costs[in_node_idx].size() > node_lens_[src_idx]) {
@@ -130,14 +133,14 @@ class CostGraph {
     return edge_cost;
   }
 
-  Matrix GetEdgeCost(int i, int j) {
+  Matrix GetEdgeCost(NodeIdx i, NodeIdx j) {
     if (i <= j) {
       return edge_costs_[{i, j}];
     }
     return edge_costs_[{j, i}].Transpose();
   }
 
-  void AddEdgeCost(int i, int j, Matrix& cost) {
+  void AddEdgeCost(NodeIdx i, NodeIdx j, Matrix& cost) {
     if (i > j) {
       std::swap(i, j);
       cost = cost.Transpose();
@@ -154,7 +157,7 @@ class CostGraph {
     }
   }
 
-  void RemoveEdge(int i, int j) {
+  void RemoveEdge(NodeIdx i, NodeIdx j) {
     if (i > j) {
       std::swap(i, j);
     }
@@ -168,7 +171,7 @@ class CostGraph {
     edge_costs_.erase({i, j});
   }
 
-  void MergeNode(int src, int dst) {
+  void MergeNode(NodeIdx src, NodeIdx dst) {
     // Merge node src into node dst. This is used when we set one operator to
     // follow another operator's sharding spec. For the following computation
     // graph:
@@ -194,7 +197,7 @@ class CostGraph {
 
     Matrix edge_cost = GetEdgeCost(dst, src);
 
-    std::vector<int> reindexing(node_lens_[dst]);
+    std::vector<NodeStrategyIdx> reindexing(node_lens_[dst]);
     if (node_lens_[dst] == node_lens_[src]) {
       // Assume the orders of strategies in src and dst match
       // (i.e. i-th strategy in src follows i-th strategy in dst).
@@ -203,11 +206,11 @@ class CostGraph {
       std::iota(reindexing.begin(), reindexing.end(), 0);
     } else {
       // Otherwise, find the strategy to follow greedily.
-      // For every straetgy in dst, find the strategy in src with
+      // For every strategy in dst, find the strategy in src with
       // the lowest resharding cost.
       std::vector<int> arange(node_lens_[src]);
       std::iota(arange.begin(), arange.end(), 0);
-      for (int i = 0; i < node_lens_[dst]; ++i) {
+      for (NodeStrategyIdx i = 0; i < node_lens_[dst]; ++i) {
         std::vector<std::pair<double, int>> keys;
 
         // If there are multiple strategies with the same lowest costs,
@@ -215,7 +218,7 @@ class CostGraph {
         // Node: We assume the strategy "Repilcated" is always appended
         // as the last strategy in BuildStrategyAndCost.
         keys.reserve(node_lens_[src]);
-        for (int j = 0; j < node_lens_[src]; ++j) {
+        for (NodeStrategyIdx j = 0; j < node_lens_[src]; ++j) {
           keys.push_back({edge_cost(i, j), -j});
         }
 
@@ -232,18 +235,19 @@ class CostGraph {
     reindexing_vector_[src] = reindexing;
 
     // Merge edge cost matrix
-    std::vector<int> adj_list(adjacency_[src].begin(), adjacency_[src].end());
-    for (int adj : adj_list) {
+    std::vector<NodeIdx> adj_list(adjacency_[src].begin(),
+                                  adjacency_[src].end());
+    for (NodeIdx adj : adj_list) {
       if (adj == dst) {
-        for (int i = 0; i < node_lens_[dst]; ++i) {
+        for (NodeStrategyIdx i = 0; i < node_lens_[dst]; ++i) {
           extra_node_costs_[dst][i] += edge_cost(i, reindexing[i]);
         }
       } else {
         Matrix added_edge_cost(node_lens_[dst], node_lens_[adj]);
         Matrix edge_cost_src_adj = GetEdgeCost(src, adj);
 
-        for (int i = 0; i < node_lens_[dst]; ++i) {
-          for (int k = 0; k < node_lens_[adj]; ++k) {
+        for (NodeStrategyIdx i = 0; i < node_lens_[dst]; ++i) {
+          for (NodeStrategyIdx k = 0; k < node_lens_[adj]; ++k) {
             added_edge_cost(i, k) = edge_cost_src_adj(reindexing[i], k);
           }
         }
@@ -253,37 +257,38 @@ class CostGraph {
     }
 
     // Remove edges
-    for (int adj : adj_list) {
+    for (NodeIdx adj : adj_list) {
       RemoveEdge(src, adj);
     }
   }
 
-  int QueryDestination(int node) {
-    if (merged_to_.contains(node)) {
-      int old_dst = merged_to_[node];
-      int new_dst = QueryDestination(old_dst);
+  NodeIdx QueryDestination(NodeIdx node_idx) {
+    if (merged_to_.contains(node_idx)) {
+      NodeIdx old_dst = merged_to_[node_idx];
+      NodeIdx new_dst = QueryDestination(old_dst);
       if (old_dst != new_dst) {
         // Compresss path
-        absl::Span<const int> old_reindexing_vector = reindexing_vector_[node];
-        std::vector<int> new_reindexing_vector;
+        absl::Span<const NodeStrategyIdx> old_reindexing_vector =
+            reindexing_vector_[node_idx];
+        std::vector<NodeStrategyIdx> new_reindexing_vector;
         new_reindexing_vector.reserve(node_lens_.size());
-        for (int i = 0; i < node_lens_[new_dst]; ++i) {
+        for (NodeStrategyIdx i = 0; i < node_lens_[new_dst]; ++i) {
           new_reindexing_vector.push_back(
               old_reindexing_vector[reindexing_vector_[old_dst][i]]);
         }
-        reindexing_vector_[node] = new_reindexing_vector;
-        merged_to_[node] = new_dst;
+        reindexing_vector_[node_idx] = new_reindexing_vector;
+        merged_to_[node_idx] = new_dst;
       }
       return new_dst;
     }
-    return node;
+    return node_idx;
   }
 
   void Simplify(bool enable) {
     // Merge nodes
     for (const auto& pair : to_merge_pairs_) {
-      int src = pair.first;
-      int dst = pair.second;
+      NodeIdx src = pair.first;
+      NodeIdx dst = pair.second;
       dst = QueryDestination(dst);
       if (enable) {
         MergeNode(src, dst);
@@ -292,7 +297,7 @@ class CostGraph {
 
     // Build follow map
     follow_idx_.reserve(node_lens_.size());
-    for (int i = 0; i < node_lens_.size(); ++i) {
+    for (NodeIdx i = 0; i < node_lens_.size(); ++i) {
       if (merged_to_.contains(i)) {
         follow_idx_.push_back(QueryDestination(i));
       } else {
@@ -301,7 +306,7 @@ class CostGraph {
     }
   }
 
-  int RemapIndex(int node_id, int value) const {
+  NodeStrategyIdx RemapIndex(NodeIdx node_id, NodeStrategyIdx value) const {
     if (follow_idx_[node_id] < 0) {
       return value;
     }
@@ -312,7 +317,7 @@ class CostGraph {
     std::string str;
     absl::StrAppend(&str, "Cost Graph:\n");
 
-    for (int i = 0; i < node_lens_.size(); ++i) {
+    for (NodeIdx i = 0; i < node_lens_.size(); ++i) {
       absl::StrAppend(&str, "Node", i, ": ", node_lens_[i], "\n");
     }
     absl::StrAppend(&str, "\n");
@@ -332,45 +337,49 @@ class CostGraph {
   std::vector<StableHashSet<int>> adjacency_;
   // The cost matrix between two nodes.
 
-  StableHashMap<std::pair<int, int>, Matrix> edge_costs_;
+  StableHashMap<std::pair<NodeIdx, NodeIdx>, Matrix> edge_costs_;
   // The extra node costs introduced by merging nodes.
   std::vector<std::vector<double>> extra_node_costs_;
   // The reindexing vector of the node.
   // A reindexing vector maps a strategy index from the node being followed
-  // to a strategy index of the curret node.
-  StableHashMap<int, std::vector<int>> reindexing_vector_;
+  // to a strategy index of the current node.
+  StableHashMap<int, std::vector<NodeStrategyIdx>> reindexing_vector_;
   // Maps a node id to the node id that is being followed by this node.
   // The value is -1 if the current node does not follow any node.
-  std::vector<int> follow_idx_;
+  std::vector<NodeIdx> follow_idx_;
 
   // Save the destination of merged nodes.
-  StableHashMap<int, int> merged_to_;
+  StableHashMap<NodeIdx, NodeIdx> merged_to_;
   // Save pairs that need to be merged.
-  std::vector<std::pair<int, int>> to_merge_pairs_;
+  std::vector<std::pair<NodeIdx, NodeIdx>> to_merge_pairs_;
 };
 
 // Get the final sharding strategy according to the ilp solution.
 inline const ShardingStrategy& GetShardingStrategy(
     const HloInstruction* inst, const StrategyMap& strategy_map,
-    const CostGraph& cost_graph, absl::Span<const int64_t> s_val) {
+    const CostGraph& cost_graph, absl::Span<const NodeStrategyIdx> s_val) {
   const StrategyVector* strategies = strategy_map.at(inst).get();
   CHECK(!strategies->is_tuple);
-  int node_idx = strategies->id;
-  int stra_idx = cost_graph.RemapIndex(node_idx, s_val[node_idx]);
+  NodeIdx node_idx = strategies->node_idx;
+  NodeStrategyIdx stra_idx = cost_graph.RemapIndex(node_idx, s_val[node_idx]);
   return strategies->leaf_vector[stra_idx];
 }
 
 // Get the final sharding strategy according to the ilp solution.
 inline const ShardingStrategy& GetShardingStrategyForTuple(
-    const HloInstruction* inst, size_t index, const StrategyMap& strategy_map,
-    const CostGraph& cost_graph, absl::Span<const int64_t> s_val) {
+    const HloInstruction* inst, ShapeIndex index,
+    const StrategyMap& strategy_map, const CostGraph& cost_graph,
+    absl::Span<const NodeStrategyIdx> s_val) {
   const StrategyVector* tuple_strategies = strategy_map.at(inst).get();
   CHECK(tuple_strategies->is_tuple);
-  CHECK_LT(index, tuple_strategies->childs.size());
-  const auto& strategies = tuple_strategies->childs[index];
-  int node_idx = strategies->id;
-  int stra_idx = cost_graph.RemapIndex(node_idx, s_val[node_idx]);
-  return strategies->leaf_vector[stra_idx];
+  for (auto index_element : index) {
+    CHECK_LT(index_element, tuple_strategies->childs.size());
+    const auto& strategies = tuple_strategies->childs[index_element];
+    tuple_strategies = strategies.get();
+  }
+  NodeIdx node_idx = tuple_strategies->node_idx;
+  NodeStrategyIdx stra_idx = cost_graph.RemapIndex(node_idx, s_val[node_idx]);
+  return tuple_strategies->leaf_vector[stra_idx];
 }
 
 }  // namespace spmd

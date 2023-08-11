@@ -63,6 +63,7 @@ limitations under the License.
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
@@ -134,6 +135,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/trackable_object_graph.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/dump_graph.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 static inline absl::string_view StringRefToView(llvm::StringRef ref) {
   return {ref.data(), ref.size()};
@@ -4297,9 +4299,26 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertGraphToMlir(
                            const_cast<FunctionLibraryDefinition*>(&flib_def),
                            specs.restrict_functionalization_to_compiled_nodes));
   }
+
   std::unordered_map<std::string, std::string> tf_name_to_mlir_name;
-  return GraphDefImporter::Convert(context, graph, debug_info, flib_def, specs,
-                                   tf_name_to_mlir_name);
+  TF_ASSIGN_OR_RETURN(auto module, GraphDefImporter::Convert(
+                                       context, graph, debug_info, flib_def,
+                                       specs, tf_name_to_mlir_name));
+
+  if (specs.set_original_tf_func_name) {
+    // Set up the original function names in the imported TF MLIR.
+    mlir::Builder builder(module->getContext());
+    mlir::SymbolTable symbol_table(*module);
+    for (const auto& [tf_name, mlir_name] : tf_name_to_mlir_name) {
+      auto func_op = symbol_table.lookup<mlir::func::FuncOp>(mlir_name);
+      TF_RET_CHECK(func_op)
+          << "Graphdef importer should have created a function named "
+          << mlir_name << ".";
+      func_op->setAttr("tf._original_func_name",
+                       builder.getStringAttr(tf_name));
+    }
+  }
+  return module;
 }
 
 tsl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertFunctionToMlir(

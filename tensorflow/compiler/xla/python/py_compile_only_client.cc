@@ -22,8 +22,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "pybind11/stl.h"  // from @pybind11
 #include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
+#include "tensorflow/compiler/xla/python/ifrt/device.h"
 #include "tensorflow/compiler/xla/python/status_casters.h"
 #include "tensorflow/tsl/python/lib/core/numpy.h"  //NOLINT
 
@@ -52,6 +54,9 @@ class PjRtCompileOnlyDevice : public PjRtDevice {
   }
   Status TransferFromOutfeed(MutableBorrowingLiteral literal) override {
     return Unimplemented("TransferFromOutfeed is not supported");
+  }
+  absl::Span<PjRtMemorySpace* const> memory_spaces() const override {
+    return {};
   }
   StatusOr<PjRtMemorySpace*> default_memory_space() const override {
     return Unimplemented("default_memory_space is not supported");
@@ -154,6 +159,12 @@ class CompileOnlyIfRtClient final
   static char ID;  // NOLINT
 
   const PjRtTopologyDescription& topology() const { return *topology_; }
+
+  StatusOr<std::shared_ptr<const xla::PjRtTopologyDescription>>
+  GetTopologyForDevices(
+      absl::Span<ifrt::Device* const> devices) const override {
+    return topology_;
+  }
 
  private:
   InvalidIfrtCompiler default_compiler_;

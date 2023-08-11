@@ -187,7 +187,7 @@ FusionDecision FusionHeroesAreCompatible(const HloInstruction* hero1,
   } else if (hero1_is_unnested_transpose && hero2_is_unnested_transpose &&
              // After normalization to rank 3, the transposes should have the
              // same shape and permute the same dimensions.
-             *tiled_transpose_hero1 != *tiled_transpose_hero2) {
+             !tiled_transpose_hero1->IsEquivalent(*tiled_transpose_hero2)) {
     return "tiled transposes with different shapes";
   } else if ((hero1_is_unnested_transpose && hero2_is_unnested_reduce) ||
              (hero1_is_unnested_reduce && hero2_is_unnested_transpose)) {

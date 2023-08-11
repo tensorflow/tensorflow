@@ -1435,7 +1435,7 @@ class DatasetV2(
     # [1, 0, 2]
     ```
 
-    ### Fully shuffling all the data
+    #### Fully shuffling all the data
 
     To shuffle an entire dataset, set `buffer_size=dataset.cardinality(). This
     is equivalent to setting the `buffer_size` equal to the number of elements

@@ -59,7 +59,8 @@ class KernelFusionEmitterBase : public FusionInterface {
 
   StatusOr<FusionEmissionResult> Emit(KernelReuseCache& kernel_cache,
                                       llvm::IRBuilder<>* builder) const final;
-  virtual StatusOr<LaunchDimensions> launch_dimensions() const = 0;
+  virtual StatusOr<LaunchDimensions> launch_dimensions(
+      int kernel_index) const = 0;
 
  protected:
   virtual Status EmitKernel(const LaunchDimensions& launch_dims,
@@ -79,6 +80,15 @@ class KernelFusionEmitterBase : public FusionInterface {
   mlir::lmhlo::FusionOp fusion_op_;
   const HloFusionInstruction& fusion_;
 };
+
+std::tuple<llvm::Function*, std::vector<llvm_ir::IrArray /*inputs*/>,
+           std::vector<llvm_ir::IrArray> /*outputs*/>
+BuildKernelPrototype(IrEmitterContext& ir_emitter_context,
+                     const std::string& suggested_name,
+                     absl::Span<const KernelArgument> arguments,
+                     size_t num_inputs,
+                     const LaunchDimensions& launch_dimensions,
+                     llvm::IRBuilder<>* builder);
 
 }  // namespace gpu
 }  // namespace xla

@@ -805,7 +805,7 @@ class CondContext(ControlFlowContext):
       self._external_values[val.name] = result
     return result
 
-  def AddOp(self, op):
+  def AddOp(self, op: ops.Operation):
     self._AddOpInternal(op)
 
   def _AddOpInternal(self, op):
@@ -1229,7 +1229,7 @@ class WhileContext(ControlFlowContext):
         result = actual_val
     return result
 
-  def AddOp(self, op):
+  def AddOp(self, op: ops.Operation):
     """Add `op` to the current context."""
     # For a reduction op, if op is in a grad context and its input is from
     # its forward context, moving op to the forward context means we would

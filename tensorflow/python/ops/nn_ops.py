@@ -6621,14 +6621,18 @@ def in_top_k_v2(targets, predictions, k, name=None):
   return in_top_k(predictions, targets, k, name)
 
 
-tf_export(v1=["nn.quantized_avg_pool"])(
-    dispatch.add_dispatch_support(gen_nn_ops.quantized_avg_pool))
-tf_export(v1=["nn.quantized_conv2d"])(
-    dispatch.add_dispatch_support(gen_nn_ops.quantized_conv2d))
-tf_export(v1=["nn.quantized_relu_x"])(
-    dispatch.add_dispatch_support(gen_nn_ops.quantized_relu_x))
-tf_export(v1=["nn.quantized_max_pool"])(
-    dispatch.add_dispatch_support(gen_nn_ops.quantized_max_pool))
+quantized_avg_pool = tf_export(v1=["nn.quantized_avg_pool"])(
+    dispatch.add_dispatch_support(gen_nn_ops.quantized_avg_pool)
+)
+quantized_conv2d = tf_export(v1=["nn.quantized_conv2d"])(
+    dispatch.add_dispatch_support(gen_nn_ops.quantized_conv2d)
+)
+quantized_relu_x = tf_export(v1=["nn.quantized_relu_x"])(
+    dispatch.add_dispatch_support(gen_nn_ops.quantized_relu_x)
+)
+quantized_max_pool = tf_export(v1=["nn.quantized_max_pool"])(
+    dispatch.add_dispatch_support(gen_nn_ops.quantized_max_pool)
+)
 
 
 @tf_export("nn.isotonic_regression", v1=[])

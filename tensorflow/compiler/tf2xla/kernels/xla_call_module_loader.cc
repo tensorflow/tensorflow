@@ -375,40 +375,28 @@ tsl::Status XlaCallModuleLoader::RefineDynamicShapes(
     }
   }
 
-  // Refine 'main' argument types to use static input types instead.
-  // This will only change the argument types and will not propagate the
-  // additional type information further. For that, we'll need to run
-  // shape refinement as explained below.
-  // Before refining the argument types it is useful to run the inliner to
-  // remove calls that may be called with the input arguments.
-  {
-    mlir::StatusScopedDiagnosticHandler diag_handler(module_->getContext());
-
-    mlir::PassManager pm_inline(module_->getContext());
-    applyTensorflowAndCLOptions(pm_inline);
-    pm_inline.addPass(mlir::createInlinerPass());
-
-    if (mlir::failed(pm_inline.run(*module_))) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "Module inlining failed: ", diag_handler.ConsumeStatus().ToString()));
-    }
+  // Refine 'main' argument types to use static input types instead. The main
+  // arguments may occur as return values, or as inputs to called functions,
+  // and changing their types may invalidate the module. To prevent this
+  // we insert dummy conversion ops as the sole uses of the main arguments.
+  // If we use stablehlo.convert, we end up with "convert 3xf32 -> *xf32"
+  // after we set the static shapes for the main arguments. The "convert"
+  // op does not support unranked result for ranked inputs. So, we use
+  // "bitcast_convert", which is more flexible in the relationship between
+  // the input and the result.
+  mlir::OpBuilder op_builder(module_->getBodyRegion());
+  op_builder.setInsertionPointToStart(&main_body);
+  for (auto i = 0; i < main_body.getNumArguments(); ++i) {
+    mlir::BlockArgument arg = main_body.getArgument(i);
+    auto convert_op = op_builder.create<mlir::stablehlo::BitcastConvertOp>(
+        arg.getLoc(), arg.getType(), arg);
+    arg.replaceAllUsesExcept(convert_op, convert_op);
   }
 
   auto static_array_output_types = llvm::to_vector(main_.getResultTypes());
   for (auto i = 0; i < main_body.getNumArguments(); ++i) {
     auto arg = main_body.getArgument(i);
     arg.setType(static_array_input_types[i]);
-    // If the argument is used by `func.return`, then we also need to
-    // update the function result types. It's not great that we need this hack,
-    // but in the future when we have stablehlo.func, stablehlo.return, etc,
-    // this will not be needed.
-    // TODO(burmako): Once https://github.com/openxla/stablehlo/issues/425 is
-    // fixed, clean this up.
-    for (mlir::OpOperand &use : arg.getUses()) {
-      if (auto ret = llvm::dyn_cast<mlir::func::ReturnOp>(use.getOwner())) {
-        static_array_output_types[use.getOperandNumber()] = arg.getType();
-      }
-    }
   }
   main_.setType(builder.getFunctionType(static_array_input_types,
                                         static_array_output_types));

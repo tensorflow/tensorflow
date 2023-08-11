@@ -161,4 +161,4 @@ Here is a non-exhaustive list of differences:
 *   NumPy C API is not supported. NumPy's Cython and Swig integration are not
     supported.
 """
-# TODO(wangpeng): Append `np_export`ed symbols to the comments above.
+# TODO(wangpeng): Append `tf_export`ed symbols to the comments above.

@@ -871,6 +871,11 @@ class Model {
   // gap times to produce a good estimate.
   double ComputeTargetTimeNsec();
 
+  // Computes the target time in nsecs to use for estimating input bottlenecks.
+  // Returns 0 if there are not sufficient recorded iterator gap times to
+  // produce a good estimate.
+  double ComputeExperimentalTargetTimeNsec();
+
   // Returns the time in nanoseconds it takes the pipeline to produce an
   // element, according to the latest model snapshot obtained from optimization.
   // Returns 0 if the model snapshot is empty or null. This may be caused by not

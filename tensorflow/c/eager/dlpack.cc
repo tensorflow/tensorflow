@@ -254,15 +254,18 @@ void DeallocatorWrapperFunc(void* data, size_t len, void* dlmt_vptr) {
 // data.
 bool IsValidStrideCompactRowMajorData(int64_t* shape_arr, int64_t* stride_arr,
                                       int ndim) {
-  if (ndim >= 1 && stride_arr[ndim - 1] != 1) {
-    return false;
-  }
-  for (int i = ndim - 2; i >= 0; --i) {
-    if (stride_arr[i] != shape_arr[i + 1] * stride_arr[i + 1]) {
-      return false;
+  bool valid = true;
+  int64_t expected_stride = 1;
+  for (int i = ndim - 1; i >= 0; --i) {
+    // Empty tensors are always compact regardless of strides.
+    if (shape_arr[i] == 0) return true;
+    // Note that dimensions with size=1 can have any stride.
+    if (shape_arr[i] != 1 && stride_arr[i] != expected_stride) {
+      valid = false;
     }
+    expected_stride *= shape_arr[i];
   }
-  return true;
+  return valid;
 }
 }  // namespace
 
@@ -349,6 +352,13 @@ TFE_TensorHandle* TFE_HandleFromDLPack(void* dlm, TF_Status* status,
   int num_dims = dl_tensor->ndim;
   const int64_t* dims = dl_tensor->shape;
   void* data = dl_tensor->data;
+
+  if (dl_tensor->byte_offset != 0) {
+    status->status = tensorflow::errors::InvalidArgument(
+        "Unsupported byte_offset (", dl_tensor->byte_offset,
+        ") from DLPack, must be zero");
+    return nullptr;
+  }
 
   size_t total_bytes = dl_tensor->dtype.bits / 8;
   for (int i = 0; i < num_dims; i++) {

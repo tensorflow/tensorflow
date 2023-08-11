@@ -1852,11 +1852,3 @@ StatusOr<std::unique_ptr<AotCompilationResult>> CpuCompiler::Export(
 
 }  // namespace cpu
 }  // namespace xla
-
-static bool InitModule() {
-  xla::Compiler::RegisterCompilerFactory(
-      stream_executor::host::kHostPlatformId,
-      []() { return std::make_unique<xla::cpu::CpuCompiler>(); });
-  return true;
-}
-static bool module_initialized = InitModule();

@@ -5842,9 +5842,13 @@ GetCudnnFusedMHABackwardOperationGraph(
 
 #if (CUDNN_VERSION >= 8901 && TF_ENABLE_CUDNN_FRONTEND)
   // bias backward
-  TF_ASSIGN_OR_RETURN(auto tensor_dbias, CreateCudnnBiasBwdTensor(
-                                             intermediate_ops, p_dims,
-                                             p_strides, dtype, tensor_ds_mask));
+  if (use_bias) {
+    // bias backward
+    TF_ASSIGN_OR_RETURN(
+        auto tensor_dbias,
+        CreateCudnnBiasBwdTensor(intermediate_ops, p_dims, p_strides, dtype,
+                                 tensor_ds_mask));
+  }
 #else
   return absl::InternalError("Bias backward op requires cudnn >= 8.9.1");
 #endif
@@ -7952,7 +7956,7 @@ CudnnSupport::FusedMHAScaleMaskSoftmaxBackwardRunnerFromDesc(
       auto runner,
       CudnnExecutionPlanRunner<dnn::FusedMHAMaskBackwardSignature>::Create(
           parent_, cudnn_.get(), std::move(execution_plan), uids,
-          /*need_side_input*/ false, /*has_activation_output*/ false,
+          /*need_side_input*/ true, /*has_activation_output*/ false,
           scalar_uids, scalar_values, dropout_rng_seed,
           /*dropout_rng_offset*/ 0));
   return {std::make_unique<

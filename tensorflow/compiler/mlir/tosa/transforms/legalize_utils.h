@@ -54,6 +54,14 @@ std::optional<Value> buildReshapeWithDynamicDims(PatternRewriter& rewriter,
                                                  ShapedType output_type,
                                                  llvm::ArrayRef<Value> dims);
 
+// Create a TOSA rescale op from TFLite scaling multiplier, scaling shift, zero
+// points and rounding mode
+Value buildRescale(PatternRewriter& rewriter, Operation* op,
+                   ShapedType output_type, Value input_val,
+                   int32_t scale_multiplier, int32_t scale_shit,
+                   int64_t input_zp, int64_t output_zp, bool double_round,
+                   bool scale32);
+
 // Create a TOSA rescale op from TFLite scaling, zero points and rounding mode
 Value buildRescale(PatternRewriter& rewriter, Operation* op,
                    ShapedType output_type, Value input_val, double scale,
@@ -63,6 +71,11 @@ Value buildRescale(PatternRewriter& rewriter, Operation* op,
 // Removes the zero point and cast to int32, no need to handle roundings modes
 Value removeZeroPointAndCastToInt32(PatternRewriter& rewriter, Operation* op,
                                     Value input_val, int64_t input_zp);
+
+// Creates TOSA rescale op with int32 output
+Value buildRescaleToInt32(PatternRewriter& rewriter, Operation* op,
+                          Value input_val, int32_t input_scale_multiplier,
+                          int32_t input_scale_shift, int64_t input_zp);
 
 // Creates TOSA rescale op with int32 output
 Value buildRescaleToInt32(PatternRewriter& rewriter, Operation* op,
@@ -228,6 +241,14 @@ void TrimQuantizedIntegerRangeMax(mlir::quant::UniformQuantizedType dtype,
 
 void TrimQuantizedIntegerRange(mlir::quant::UniformQuantizedType dtype,
                                int64_t& val_min, int64_t& val_max);
+
+inline bool IsTFLDoubleRoundingMode() {
+#if TFLITE_SINGLE_ROUNDING
+  return false;
+#else
+  return true;
+#endif  // TFLITE_SINGLE_ROUNDING
+}
 
 }  // namespace tosa
 }  // namespace mlir

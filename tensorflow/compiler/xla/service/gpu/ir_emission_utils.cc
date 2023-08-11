@@ -36,8 +36,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/buffer_assignment_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/location_exporter.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/type_to_shape.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
@@ -114,7 +116,6 @@ bool IsCustomCallToCusolver(const HloInstruction& hlo) {
   return hlo.custom_call_target() == kCusolverCholeskyCallTarget;
 }
 
-
 bool IsInputFusibleSlices(mlir::Operation* unnested_hlo,
                           bool verify_no_strides) {
   auto fusion = mlir::dyn_cast<mlir::lmhlo::FusionOp>(unnested_hlo);
@@ -139,7 +140,6 @@ bool IsInputFusibleSlices(mlir::Operation* unnested_hlo,
   }
   return true;
 }
-
 
 // This emits a device-side call to
 // "i32 vprintf(i8* fmt, arguments_type* arguments)" in the driver; see
@@ -655,7 +655,8 @@ std::optional<TransposeDescription> FindTiledTranspose(
         (tr->at(1) >= kMinDimensionToTransposeTiled2 &&
          tr->at(2) >= kMinDimensionToTransposeTiled2 &&
          tr->at(1) * tr->at(2) >= kMinTotalDimensionsToTransposeTiled)) {
-      return TransposeDescription{*tr, /*permutation=*/Vector3{0, 2, 1}};
+      return TransposeDescription{&instr, *tr,
+                                  /*permutation=*/Vector3{0, 2, 1}};
     }
   }
   if (std::optional<Vector3> tr = ShapeUtil::GetNormalizedTransposeShape(
@@ -665,7 +666,8 @@ std::optional<TransposeDescription> FindTiledTranspose(
         (tr->at(0) >= kMinDimensionToTransposeTiled2 &&
          tr->at(2) >= kMinDimensionToTransposeTiled2 &&
          tr->at(0) * tr->at(2) >= kMinTotalDimensionsToTransposeTiled)) {
-      return TransposeDescription{*tr, /*permutation=*/Vector3{2, 1, 0}};
+      return TransposeDescription{&instr, *tr,
+                                  /*permutation=*/Vector3{2, 1, 0}};
     }
   }
   return std::nullopt;
@@ -687,7 +689,8 @@ std::optional<TransposeDescription> FindTiledLogicalTranspose(
         (tr->at(1) >= kMinDimensionToTransposeTiled2 &&
          tr->at(2) >= kMinDimensionToTransposeTiled2 &&
          tr->at(1) * tr->at(2) >= kMinTotalDimensionsToTransposeTiled)) {
-      return TransposeDescription{*tr, /*permutation=*/Vector3{0, 2, 1}};
+      return TransposeDescription{&instr, *tr,
+                                  /*permutation=*/Vector3{0, 2, 1}};
     }
   }
   if (std::optional<Vector3> tr = ShapeUtil::GetNormalizedLogicalTransposeShape(
@@ -698,7 +701,8 @@ std::optional<TransposeDescription> FindTiledLogicalTranspose(
         (tr->at(0) >= kMinDimensionToTransposeTiled2 &&
          tr->at(2) >= kMinDimensionToTransposeTiled2 &&
          tr->at(0) * tr->at(2) >= kMinTotalDimensionsToTransposeTiled)) {
-      return TransposeDescription{*tr, /*permutation=*/Vector3{2, 1, 0}};
+      return TransposeDescription{&instr, *tr,
+                                  /*permutation=*/Vector3{2, 1, 0}};
     }
   }
   return std::nullopt;
@@ -724,20 +728,40 @@ std::optional<TransposeDescription> FindAnyTiledTranspose(
 }
 
 bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count) {
-  return (
-      instr->operand_count() > 0 &&
-      instr->operand_count() <= allowed_operand_count &&
-      instr->user_count() <= 1 &&
-      ((instr->IsElementwise() &&
-        (instr->opcode() != HloOpcode::kCopy ||
-         instr->shape() == instr->operand(0)->shape())) ||
-       instr->opcode() == HloOpcode::kBitcast ||
-       (instr->opcode() == HloOpcode::kReshape &&
-        ShapeUtil::ReshapeIsBitcast(instr->operand(0)->shape(),
-                                    instr->shape())) ||
-       (instr->opcode() == HloOpcode::kTranspose &&
-        ShapeUtil::TransposeIsBitcast(instr->operand(0)->shape(),
-                                      instr->shape(), instr->dimensions()))));
+  // Number of operands should be in range [1, allowed_operand_count].
+  if (instr->operand_count() == 0 ||
+      instr->operand_count() > allowed_operand_count) {
+    return false;
+  }
+
+  // Intermediate `instr` can't have multiple users.
+  if (instr->user_count() > 1) {
+    return false;
+  }
+
+  if (instr->IsElementwise()) {
+    // All elementwise ops are considered intermediate, except for copies that
+    // modify the layout. Copies that do not modify the layout are used in
+    // CopyFusion.
+    if (instr->opcode() == HloOpcode::kCopy) {
+      return instr->shape() == instr->operand(0)->shape();
+    }
+    return true;
+  }
+
+  // `instr` is a bitcast or a bitcast-like operation.
+  switch (instr->opcode()) {
+    case HloOpcode::kBitcast:
+      return true;
+    case HloOpcode::kReshape:
+      return ShapeUtil::ReshapeIsBitcast(instr->operand(0)->shape(),
+                                         instr->shape());
+    case HloOpcode::kTranspose:
+      return ShapeUtil::TransposeIsBitcast(instr->operand(0)->shape(),
+                                           instr->shape(), instr->dimensions());
+    default:
+      return false;
+  }
 }
 
 const HloInstruction& FindNonTrivialHero(const HloInstruction& instr) {

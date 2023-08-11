@@ -58,7 +58,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_client.h"
 #ifdef XLA_PYTHON_ENABLE_TPU
 #include "tensorflow/compiler/xla/pjrt/tpu_client.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_initializer_helper.h"  // NOLINT(unused-includes): required for tensorflow::tpu::FindAndLoadTpuLibrary
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_initializer_framework_helper.h"  // NOLINT(unused-includes): required for tensorflow::tpu::FindAndLoadTpuLibrary
 #endif  // XLA_PYTHON_ENABLE_TPU
 #include "tensorflow/compiler/xla/pjrt/pjrt_api.h"
 #include "tensorflow/compiler/xla/python/custom_call_sharding.h"
@@ -586,6 +586,26 @@ PYBIND11_MODULE(xla_extension, m) {
           return xla::ValueOrThrow(
               GetCApiTopology(platform_name, topology_name, options));
         });
+  m.def("get_topology_for_devices",
+        [](std::vector<ClientAndPtr<PjRtDevice>> devices_and_clients) {
+          if (devices_and_clients.empty()) {
+            throw py::value_error(
+                "get_topology_for_devices requires >= 1 devices.");
+          }
+          auto client = devices_and_clients[0].client();
+          std::vector<PjRtDevice*> devices;
+          devices.reserve(devices_and_clients.size());
+          for (const ClientAndPtr<PjRtDevice>& device : devices_and_clients) {
+            if (device.get_client() != client.get()) {
+              throw py::value_error(
+                  "devices passed to get_topology_for_devices come from "
+                  "different clients.");
+            }
+            devices.push_back(device.get());
+          }
+          return xla::ValueOrThrow(client->ifrt_client()->GetTopologyForDevices(
+              absl::MakeSpan(devices)));
+        });
 
   TF_CHECK_OK(PyArray::RegisterTypes(m));
   jax::RegisterSharding(m);
@@ -984,6 +1004,10 @@ PYBIND11_MODULE(xla_extension, m) {
       py::arg("committed") = true, py::arg("force_copy") = false,
       py::arg("host_buffer_semantics") =
           PjRtClient::HostBufferSemantics::kZeroCopy);
+  m.def("canonicalize_memory_kind",
+        [](py::object memory_kind, py::object device) -> py::object {
+          return jax::CanonicalizeMemoryKind(memory_kind, device);
+        });
 }  // NOLINT(readability/fn_size)
 
 }  // namespace xla

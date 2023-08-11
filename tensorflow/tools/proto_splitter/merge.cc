@@ -195,7 +195,7 @@ absl::Status Merger::ReadFields(
             uint64_t index2 = tag2.index();
             if (index1 != index2) return index1 < index2;
           } else if (tag1.has_map_key() && tag2.has_map_key()) {
-            return true;
+            return false;
           } else {
             sort_status = absl::FailedPreconditionError("Field tag mismatch");
             return false;

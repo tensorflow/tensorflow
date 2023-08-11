@@ -387,6 +387,7 @@ py_strict_library(
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/eager/polymorphic_function",
+        "//tensorflow/python/eager/polymorphic_function:concrete_function",
         "//tensorflow/python/eager/polymorphic_function:saved_model_exported_concrete",
         "//tensorflow/python/eager/polymorphic_function:saved_model_utils",
         "//tensorflow/python/framework",

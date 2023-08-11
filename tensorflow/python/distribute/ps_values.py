@@ -168,7 +168,7 @@ class AggregatingVariable(resource_variable_ops.BaseResourceVariable,
     return self._v.initial_value
 
   @property
-  def op(self):
+  def op(self) -> ops.Operation:
     return self._v.op
 
   def value(self):
@@ -414,7 +414,7 @@ class CachingVariable(resource_variable_ops.BaseResourceVariable, core.Tensor):
     return self._v.initial_value
 
   @property
-  def op(self):
+  def op(self) -> ops.Operation:
     return self._v.op
 
   def value(self):

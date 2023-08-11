@@ -46,6 +46,8 @@ class ConcurrentRegionStatus {
   // graph.
   se::Stream* GetNextStream();
 
+  absl::StatusOr<se::Stream*> GetStream(int index);
+
   bool IsInConcurrentRegion();
 
  private:

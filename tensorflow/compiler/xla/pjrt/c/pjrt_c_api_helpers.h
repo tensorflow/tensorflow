@@ -175,6 +175,9 @@ xla::PjRtChunk ConvertToCppChunk(const PJRT_Chunk& chunk);
 PJRT_DeviceDescription* GetDeviceDescription(const PJRT_Api* api,
                                              PJRT_Device* device);
 
+absl::Span<PJRT_Memory*> GetAddressableMemories(const PJRT_Api* api,
+                                                PJRT_Device* device);
+
 using PJRT_KeyValueGetCFunc =
     std::function<PJRT_Error*(PJRT_KeyValueGetCallback_Args* args)>;
 

@@ -639,5 +639,18 @@ TEST(DispatcherState, ListSnapshotPaths) {
   EXPECT_EQ(state.ListSnapshotPaths(), snapshot_paths);
 }
 
+TEST(DispatcherState, GetNumberOfRegisteredWorkers) {
+  DispatcherState state;
+  std::string address_1 = "address_1";
+  std::string address_2 = "address_2";
+  EXPECT_EQ(state.GetNumberOfRegisteredWorkers(), 0);
+
+  TF_EXPECT_OK(RegisterWorker(address_1, state));
+  EXPECT_EQ(state.GetNumberOfRegisteredWorkers(), 1);
+
+  TF_EXPECT_OK(RegisterWorker(address_2, state));
+  EXPECT_EQ(state.GetNumberOfRegisteredWorkers(), 2);
+}
+
 }  // namespace data
 }  // namespace tensorflow

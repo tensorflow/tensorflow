@@ -1,3 +1,5 @@
+load("//tensorflow:py.default.bzl", "py_library")
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],

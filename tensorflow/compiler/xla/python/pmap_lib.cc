@@ -67,12 +67,9 @@ namespace {
 // from `sharding_specs` and the argument shape, we cache derived computations
 // for performance.
 struct InputSpec {
-  InputSpec(ShardingSpec sharding_spec, py::object indices,
-            py::object array_sharding)
-      : sharding_spec(std::move(sharding_spec)),
-        indices(std::move(indices)),
+  InputSpec(py::object indices, py::object array_sharding)
+      : indices(std::move(indices)),
         array_sharding(std::move(array_sharding)) {}
-  ShardingSpec sharding_spec;
   py::object indices;
   py::object array_sharding;
 };
@@ -81,15 +78,11 @@ struct InputSpec {
 // output buffers.
 struct ResultSpec {
  public:
-  ResultSpec(py::object aval, ShardingSpec out_spec, py::object out_indices)
+  explicit ResultSpec(py::object aval)
       : out_aval(std::move(aval)),
-        weak_type(py::cast<bool>(out_aval.attr("weak_type"))),
-        out_spec(std::move(out_spec)),
-        out_indices(std::move(out_indices)) {}
+        weak_type(py::cast<bool>(out_aval.attr("weak_type"))) {}
   py::object out_aval;
   bool weak_type;
-  ShardingSpec out_spec;
-  py::object out_indices;
 };
 
 // The result of `ShardArg`.
@@ -466,8 +459,6 @@ void PmapFunction::PopulateCacheEntry(PmapCacheEntry& cache_entry,
   }
 
   // Inputs shard args details.
-  auto input_sharding_specs = py::cast<std::vector<ShardingSpec>>(
-      pmap_data.attr("input_sharding_specs"));
   py::list input_indices = pmap_data.attr("input_indices");
 
   cache_entry.py_devices = pmap_data.attr("input_devices");
@@ -476,32 +467,17 @@ void PmapFunction::PopulateCacheEntry(PmapCacheEntry& cache_entry,
 
   py::list input_array_shardings = pmap_data.attr("input_array_shardings");
 
-  CHECK_EQ(input_sharding_specs.size(), input_indices.size());
-  cache_entry.input_specs.reserve(input_sharding_specs.size());
+  cache_entry.input_specs.reserve(input_array_shardings.size());
 
-  if (input_array_shardings.empty()) {
-    for (int i = 0; i < input_sharding_specs.size(); ++i) {
-      cache_entry.input_specs.emplace_back(input_sharding_specs[i],
-                                           input_indices[i],
-                                           /*array_sharding=*/py::object());
-    }
-  } else {
-    DCHECK_EQ(input_array_shardings.size(), input_sharding_specs.size());
-    for (int i = 0; i < input_sharding_specs.size(); ++i) {
-      cache_entry.input_specs.emplace_back(
-          input_sharding_specs[i], input_indices[i], input_array_shardings[i]);
-    }
+  for (int i = 0; i < input_array_shardings.size(); ++i) {
+    cache_entry.input_specs.emplace_back(input_indices[i],
+                                         input_array_shardings[i]);
   }
 
   // Outputs specs.
   auto out_tree = py::cast<xla::PyTreeDef>(pmap_data.attr("out_pytree_def"));
   cache_entry.out_pytree_def = std::move(out_tree);
   py::list out_avals = pmap_data.attr("out_avals");
-  py::list out_indices = pmap_data.attr("out_indices");
-  auto out_sharding_specs =
-      py::cast<std::vector<ShardingSpec>>(pmap_data.attr("out_sharding_specs"));
-  CHECK_EQ(out_avals.size(), out_indices.size());
-  CHECK_EQ(out_indices.size(), out_sharding_specs.size());
 
   cache_entry.out_result_specs.reserve(out_avals.size());
   cache_entry.out_dtypes.reserve(out_avals.size());
@@ -511,8 +487,7 @@ void PmapFunction::PopulateCacheEntry(PmapCacheEntry& cache_entry,
     cache_entry.out_dtypes.push_back(out_avals[i].attr("dtype"));
     cache_entry.out_shapes.push_back(
         py::cast<std::vector<int64_t>>(out_avals[i].attr("shape")));
-    cache_entry.out_result_specs.emplace_back(
-        out_avals[i], std::move(out_sharding_specs[i]), out_indices[i]);
+    cache_entry.out_result_specs.emplace_back(out_avals[i]);
   }
 
   py::list out_array_shardings = pmap_data.attr("out_array_shardings");
