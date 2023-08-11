@@ -21,7 +21,7 @@ import re
 import sys
 import threading
 import types
-from typing import Any, AnyStr, Callable, List, NoReturn, Pattern, Tuple, Type, Union, Optional
+from typing import Any, AnyStr, Callable, List, NoReturn, Pattern, Tuple, Union, Optional
 from absl import app
 import numpy as np
 
@@ -232,9 +232,6 @@ def value_text(tensor, is_repr=False) -> AnyStr:
     if is_repr:
       text = "numpy=" + text
   return text
-
-
-Tensor: Type[tensor_lib.Tensor] = tensor_lib.Tensor
 
 
 @tf_export("__internal__.SymbolicTensor")
