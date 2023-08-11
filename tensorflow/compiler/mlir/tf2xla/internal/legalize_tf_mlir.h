@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TF2XLA_API_V1_LEGALIZE_TF_MLIR_H_
-#define TENSORFLOW_COMPILER_MLIR_TF2XLA_API_V1_LEGALIZE_TF_MLIR_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TF2XLA_INTERNAL_LEGALIZE_TF_MLIR_H_
+#define TENSORFLOW_COMPILER_MLIR_TF2XLA_INTERNAL_LEGALIZE_TF_MLIR_H_
 
 #include <string>
 #include <vector>
@@ -29,6 +29,20 @@ limitations under the License.
 namespace tensorflow {
 namespace tf2xla {
 namespace internal {
+
+// Compiles a serialized MLIR module and returns a serialized MLIR module of the
+// result of running all the MLIR Bridge passes. If compile_to_xla_hlo is true
+// then those passes include all the Legalization to XLA HLO which is returned
+// in the compilation_result.
+tsl::StatusOr<std::string> CompileFromMlirToXlaHlo(
+    bool lower_to_xla_hlo, const tpu::MlirToHloArgs& computation,
+    const tpu::TPUCompileMetadataProto& metadata, llvm::StringRef device_type,
+    const XlaShapeLayoutHelpers::ShapeDeterminationFns& shape_determination_fns,
+    bool use_tuple_args, XlaCompiler::CompilationResult* compilation_result,
+    std::vector<std::unique_ptr<mlir::Pass>>& custom_legalization_passes,
+    const std::vector<TensorShape>& arg_shapes,
+    std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
+    std::vector<std::vector<xla::Shape>>* per_core_arg_shapes);
 
 // Compiles a serialized MLIR module into XLA HLO, generates all accompanying
 // metadata and stores them in CompilationResult.
@@ -47,4 +61,4 @@ tsl::StatusOr<XlaCompilationResult> LegalizeWithMlirBridge(
 };  // namespace tf2xla
 };  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TF2XLA_API_V1_LEGALIZE_TF_MLIR_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TF2XLA_INTERNAL_LEGALIZE_TF_MLIR_H_

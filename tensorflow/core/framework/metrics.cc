@@ -825,6 +825,14 @@ void IncrementTfMlirBridgeSecondPhaseCounter(
            "kOldBridgeWithFallbackModeSuccess"},
           {MlirBridgeSecondPhaseMetric::kOldBridgeWithFallbackModeFailure,
            "kOldBridgeWithFallbackModeFailure"},
+          {MlirBridgeSecondPhaseMetric::kMlirCombinedMlirSuccess,
+           "kMlirCombinedMlirSuccess"},
+          {MlirBridgeSecondPhaseMetric::kMlirCombinedMlirFailure,
+           "kMlirCombinedMlirFailure"},
+          {MlirBridgeSecondPhaseMetric::kMlirCombinedOldSuccess,
+           "kMlirCombinedOldSuccess"},
+          {MlirBridgeSecondPhaseMetric::kMlirCombinedOldFailure,
+           "kMlirCombinedOldFailure"},
       };
 
   mlir_second_phase_count

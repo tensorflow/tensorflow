@@ -14,46 +14,11 @@ package(
 package_group(name = "tf2xla_users")
 
 cc_library(
-    name = "legalize_tf_mlir",
-    srcs = ["legalize_tf_mlir.cc"],
-    hdrs = ["legalize_tf_mlir.h"],
-    visibility = ["//visibility:private"],
-    deps = [
-        "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:serialize_mlir_module_utils",
-        "//tensorflow/compiler/mlir/tensorflow:set_tpu_infeed_layout",
-        "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util",
-        "//tensorflow/compiler/mlir/tf2xla/api/v0:compile_tf_graph",
-        "//tensorflow/compiler/tf2xla:layout_util",
-        "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/compiler/tf2xla:xla_helpers",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/platform:statusor",
-        "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
-        "//tensorflow/core/tpu:tpu_compile",
-        "//tensorflow/core/tpu/kernels:tpu_compile_op_support",
-        "//tensorflow/tsl/platform:error_logging",
-        "//tensorflow/tsl/platform:status",
-        "//tensorflow/tsl/platform:statusor",
-        "@com_google_absl//absl/log",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@stablehlo//:register",
-    ],
-)
-
-cc_library(
     name = "legalize_tf",
     srcs = ["legalize_tf.cc"],
     hdrs = ["legalize_tf.h"],
     deps = [
         ":device_type_proto_cc",
-        ":legalize_tf_mlir",
         "//tensorflow/compiler/jit:flags_headers",
         "//tensorflow/compiler/jit:shape_inference",
         "//tensorflow/compiler/mlir/tensorflow",
@@ -67,6 +32,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:translate_utils",
         "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util",
         "//tensorflow/compiler/mlir/tf2xla/api/v0:compile_tf_graph",
+        "//tensorflow/compiler/mlir/tf2xla/internal:legalize_tf_mlir",
         "//tensorflow/compiler/tf2xla:layout_util",
         "//tensorflow/compiler/tf2xla:tf2xla_util",
         "//tensorflow/compiler/tf2xla:xla_helpers",
@@ -91,26 +57,6 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@stablehlo//:register",
-    ],
-)
-
-tf_cc_test(
-    name = "legalize_tf_mlir_test",
-    srcs = ["legalize_tf_mlir_test.cc"],
-    deps = [
-        ":legalize_tf_mlir",
-        "//tensorflow/compiler/jit",
-        "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util",
-        "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/compiler/tf2xla:xla_helpers",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
-        "//tensorflow/core/tpu/kernels:tpu_compile_op_support",
-        "//tensorflow/tsl/platform:statusor",
-        "@com_google_googletest//:gtest",
-        "@llvm-project//mlir:Pass",
     ],
 )
 

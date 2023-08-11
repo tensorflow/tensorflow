@@ -55,7 +55,9 @@ cc_library(
         "//tensorflow/core/platform:error_payloads",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:status",
         "//tensorflow/core/tpu:tpu_defs",
+        "//tensorflow/tsl/platform:errors",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
@@ -82,6 +84,7 @@ tf_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
     ],
 )
