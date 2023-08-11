@@ -509,6 +509,7 @@ math_ops.multiply_no_nan = weak_tensor_binary_op_wrapper(
     math_ops.multiply_no_nan
 )
 math_ops.matmul = weak_tensor_binary_op_wrapper(math_ops.matmul)
+np_math_ops.matmul = weak_tensor_binary_op_wrapper(np_math_ops.matmul)
 # In scalar_mul(scalar, x), dtype should be solely inferred from the dtype of x.
 math_ops.scalar_mul = weak_tensor_unary_op_wrapper(math_ops.scalar_mul, "x")
 math_ops.divide = weak_tensor_binary_op_wrapper(math_ops.divide)
@@ -576,4 +577,8 @@ for operator in tensor.Tensor.OVERLOADABLE_OPERATORS:
 
 # Add NumPy methods in WeakTensor.
 np_math_ops._enable_numpy_methods(weak_tensor.WeakTensor)
+setattr(weak_tensor.WeakTensor, "__round__", np_array_ops.around)
+setattr(weak_tensor.WeakTensor, "_numpy_style_getitem", np_array_ops._getitem)
+# Add support for batched matmul.
+setattr(weak_tensor.WeakTensor, "_matmul", np_math_ops.matmul)
 # pylint: enable=protected-access
