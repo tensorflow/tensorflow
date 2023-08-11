@@ -19,17 +19,34 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "tensorflow/compiler/xla/stream_executor/multi_platform_manager.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/jit/xla_device.h"
+#include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/noncopyable_buffer.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_node_context.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_transfer_manager_interface.h"
-#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/kernels/ops_util.h"
-#include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/ops_util.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/platform/threadpool.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -41,8 +58,8 @@ TpuTransferAsyncOpKernelBase::TpuTransferAsyncOpKernelBase(
       transfer_op_(std::move(transfer_op)),
       thread_pool_(new thread::ThreadPool(
           ctx->env(),
-          strings::StrCat(transfer_type, "_thread_",
-                          SanitizeThreadSuffix(def().name())),
+          absl::StrCat(transfer_type, "_thread_",
+                       SanitizeThreadSuffix(def().name())),
           /*num_threads=*/8)) {}
 
 void TpuTransferAsyncOpKernelBase::ComputeAsync(OpKernelContext* ctx,
@@ -63,7 +80,7 @@ void TpuTransferAsyncOpKernelBase::ComputeAsync(OpKernelContext* ctx,
         });
   }
   OP_REQUIRES_ASYNC(ctx, !already_cancelled,
-                    errors::Cancelled("Infeed was cancelled."), done);
+                    absl::CancelledError("Infeed was cancelled."), done);
   thread_pool_->Schedule(
       [this, ctx, done, token,
        traceme_context_id = schedule_activity.GetContextId()]() {
@@ -79,7 +96,6 @@ void TpuTransferAsyncOpKernelBase::ComputeAsync(OpKernelContext* ctx,
 
 Status TpuTransferAsyncOpKernelBase::RunTransferWithOrdinal(
     OpKernelContext* ctx, int device_ordinal) {
-
   int real_device_ordinal = device_ordinal;
   if (real_device_ordinal < 0) {
     TF_ASSIGN_OR_RETURN(real_device_ordinal,
