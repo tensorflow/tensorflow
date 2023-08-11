@@ -377,6 +377,7 @@ TF_RendezvousSenderImpl BindSendFunction(RendezvousInterface* rendezvous) {
   using SendFunction = std::function<void(TF_RendezvousSend_Params*)>;
   auto sender =
       new SendFunction([rendezvous](TF_RendezvousSend_Params* params) -> void {
+        printf("Calling SendFunction");
         RendezvousInterface::ParsedKey key = FromC(*params->key);
         RendezvousInterface::Args args = FromC(*params->args);
         Tensor tensor;
@@ -497,7 +498,7 @@ void TfCThunkRendezvous::StartAbort(const Status& status) {
 
 }  // namespace c_api
 
-void DestroyOCParams(SE_OutsideCompilationParams* params) {
+void DestroyOCParams::operator()(SE_OutsideCompilationParams* params) {
   if (params == nullptr) {
     return;
   }
