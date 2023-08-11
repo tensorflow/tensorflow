@@ -210,7 +210,7 @@ StatusOr<pybind11::dtype> IfrtDtypeToDtype(ifrt::DType dtype) {
     case ifrt::DType::kU64:
       return py::dtype::of<uint64_t>();
     case ifrt::DType::kF16:
-      return py::dtype("e");  // PEP 3118 code for "float16
+      return py::dtype("e");  // PEP 3118 code for "float16"
     case ifrt::DType::kF32:
       return py::dtype::of<float>();
     case ifrt::DType::kF64:
@@ -231,6 +231,14 @@ StatusOr<pybind11::dtype> IfrtDtypeToDtype(ifrt::DType dtype) {
       return custom_dtypes.float8_e5m2;
     case ifrt::DType::kF8E5M2FNUZ:
       return custom_dtypes.float8_e5m2fnuz;
+    case ifrt::DType::kString:
+      // PEP 3118 code for "pointer to Python Object". We use Python objects
+      // instead of 'U' (Unicode string) or 'V' (raw data) because the latter
+      // two are fixed length, and thus, require encoding the maximum length as
+      // part of dtype. Using 'O' allows us to represent variable-length bytes
+      // and is also consistent with TensorFlow's tensor -> ndarray conversion
+      // logic (see `TF_DataType_to_PyArray_TYPE`).
+      return py::dtype("O");
     default:
       return Unimplemented("Unimplemented primitive type %s",
                            dtype.DebugString());

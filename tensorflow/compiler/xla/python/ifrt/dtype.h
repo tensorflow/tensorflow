@@ -80,8 +80,10 @@ class DType {
 
     // Next = 26
 
-    // String is not support in XLA. DType.Kind needs to match xla.PrimitiveType
-    // enum, so choose a large enum to avoid collision.
+    // Variable-length string represented as raw bytes, as in `bytes` in Python,
+    // i.e., no encoding enforcement. String is not support in XLA. DType.Kind
+    // needs to match xla.PrimitiveType enum, so choose a large enum to avoid
+    // collision.
     kString = 99,
   };
 
