@@ -60,6 +60,7 @@ limitations under the License.
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -3426,11 +3427,16 @@ LogicalResult WhileOp::verifySymbolUses(SymbolTableCollection &symbol_table) {
 //===----------------------------------------------------------------------===//
 LogicalResult WhileRegionOp::verify() {
   WhileRegionOp op = *this;
+
   // Verify that the condition generates a single tensor<i1> result.
   Operation *cond_yield = op.getCond().front().getTerminator();
-  if (cond_yield->getNumOperands() != 1)
+
+  // Allow either the "yield cond" or "yield cond, arg1, ... argN" form,
+  // for the yield in the condition block.
+  if (cond_yield->getNumOperands() != 1 &&
+      cond_yield->getNumOperands() != op.getCond().getArguments().size() + 1)
     return op.emitOpError()
-           << "condition should have a single tensor<i1> result";
+           << "condition should yield a tensor<i1> and forward the arguments";
 
   auto cond_type =
       cond_yield->getOperand(0).getType().dyn_cast<RankedTensorType>();
@@ -3446,6 +3452,20 @@ LogicalResult WhileRegionOp::verify() {
                               /*body_result=*/body_yield->getOperandTypes(),
                               op.getShapeInvariant())))
     return failure();
+
+  if (cond_yield->getNumOperands() > 1) {
+    // Iteration variables on the "cond" block are not allowed to be modified,
+    // if they are yielded they always have to be forwarded 1:1.
+    auto forwarded_operands = cond_yield->getOperands().drop_front(1);
+    for (auto [arg, yield] :
+         llvm::zip(op.getCond().getArguments(), forwarded_operands)) {
+      if (arg != yield) {
+        return op.emitOpError()
+               << "arguments on condition block aren't forwarded to yield";
+      }
+    }
+  }
+
   return success();
 }
 
@@ -3506,24 +3526,34 @@ struct WhileRegionEliminatePassThrough
     int new_num_operands = old_num_operands;
     auto &body_block = while_op.getBody().front();
     auto &cond_block = while_op.getCond().front();
-    auto &yield = *body_block.getTerminator();
+    auto &body_yield = *body_block.getTerminator();
+    auto &cond_yield = *cond_block.getTerminator();
+
+    bool cond_forwards_args = cond_yield.getOperands().size() > 1;
 
     // Bit mask indicating which operands will be removed.
     llvm::BitVector removed_operand(old_num_operands);
 
     for (int op_idx : llvm::seq<int>(0, old_num_operands)) {
       auto body_arg = body_block.getArgument(op_idx);
-      auto yield_operand = LookThroughIdentity(yield.getOperand(op_idx));
+      auto cond_arg = cond_block.getArgument(op_idx);
+      auto body_yield_operand =
+          LookThroughIdentity(body_yield.getOperand(op_idx));
+      auto cond_yield_operand =
+          cond_forwards_args
+              ? LookThroughIdentity(cond_yield.getOperand(op_idx + 1))
+              : nullptr;
       auto while_operand = while_op.getOperand(op_idx);
-      if (body_arg == yield_operand || while_operand == yield_operand) {
+      if ((body_arg == body_yield_operand ||
+           while_operand == body_yield_operand) &&
+          (!cond_forwards_args || cond_arg == cond_yield_operand ||
+           while_operand == cond_yield_operand)) {
         // Replace the use of the passthrough value with the while operand
         // in the body and condition regions, as well as the while output (if
         // type match)
         // TODO(jurahul): Use PatternRewriter API for IR modification.
         if (body_arg.getType() == while_operand.getType())
           body_arg.replaceAllUsesWith(while_operand);
-
-        auto cond_arg = cond_block.getArgument(op_idx);
         if (cond_arg.getType() == while_operand.getType())
           cond_arg.replaceAllUsesWith(while_operand);
 
@@ -3568,14 +3598,21 @@ struct WhileRegionEliminatePassThrough
     rewriter.inlineRegionBefore(while_op.getBody(), new_while_op.getBody(),
                                 new_while_op.getBody().end());
 
-    auto &new_cond_block = new_while_op.getCond().front();
     auto &new_body_block = new_while_op.getBody().front();
-    auto &new_yield = *new_body_block.getTerminator();
+    auto &new_cond_block = new_while_op.getCond().front();
+    auto &new_body_yield = *new_body_block.getTerminator();
+    auto &new_cond_yield = *new_cond_block.getTerminator();
 
     // Patch up the region bodies and yield.
     new_cond_block.eraseArguments(removed_operand);
     new_body_block.eraseArguments(removed_operand);
-    new_yield.eraseOperands(removed_operand);
+    new_body_yield.eraseOperands(removed_operand);
+    if (cond_forwards_args) {
+      BitVector removed_operand_plus_one = removed_operand;
+      removed_operand_plus_one.resize(removed_operand.size() + 1);
+      removed_operand_plus_one <<= 1;
+      new_cond_yield.eraseOperands(removed_operand_plus_one);
+    }
 
     // Build a vector of new results. Also patch up the region bodies and
     // yield.

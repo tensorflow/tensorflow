@@ -2148,6 +2148,25 @@ func.func @testValidWhileRegionNoInputs() -> () {
 }
 
 // -----
+
+// WhileRegion with a yield that passes arguments to the body.
+// CHECK-LABEL: testWhileRegionWithFullConditionYield
+func.func @testWhileRegionWithFullConditionYield(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) -> tensor<*xf32> {
+  %0:2 = "tf.WhileRegion"(%arg0, %arg1) ({
+    ^bb0(%carg0: tensor<*xf32>, %carg1: tensor<i32>):
+      %cond = builtin.unrealized_conversion_cast to tensor<i1>
+      "tf.Yield"(%cond, %carg0, %carg1) : (tensor<i1>, tensor<*xf32>, tensor<i32>) -> ()
+  }, {
+    ^bb0(%barg0: tensor<*xf32>, %barg1: tensor<i32>):
+      %add0 = "tf.Add"(%barg0, %barg0) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+      %add1 = "tf.Add"(%barg1, %barg1) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+      "tf.Yield"(%add0, %add1) : (tensor<*xf32>, tensor<i32>) -> ()
+  }) { is_stateless = false } : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
+
+  func.return %0#0 : tensor<*xf32>
+}
+
+// -----
 // Invalid while tests. There are 5 sets of type matching that is required
 //   I = input, O = output, BI, BO = body input/output, CI = cond input.
 //   [I, O], [I, CI], [I, BI], [BO, BI], [BO, O].
@@ -2321,7 +2340,26 @@ func.func @testInvalidWhileRegion_I_O_TypeMismatch(%arg0: tensor<i32>, %arg1 : t
 // -----
 
 func.func @testInvalidWhileRegionConditionOutputCount2(%arg : tensor<i32>) -> (tensor<i32>) {
-  // expected-error @+1 {{'tf.WhileRegion' op condition should have a single tensor<i1> result}}
+  // expected-error @+1 {{'tf.WhileRegion' op condition should yield a tensor<i1> and forward the arguments}}
+  %0 = "tf.WhileRegion"(%arg) (
+     {
+       ^bb0(%carg: tensor<i32>):
+        %true = arith.constant dense<1> : tensor<i1>
+        "tf.Yield"(%true, %carg, %carg) : (tensor<i1>, tensor<i32>, tensor<i32>) -> ()
+     },
+     {
+       ^bb0(%barg: tensor<i32>):
+        "tf.Yield"(%barg) : (tensor<i32>) -> ()
+     }
+  ) {is_stateless = false} : (tensor<i32>) -> (tensor<i32>)
+
+  func.return %0 : tensor<i32>
+}
+
+// -----
+
+func.func @testInvalidWhileRegionForwarding(%arg : tensor<i32>) -> (tensor<i32>) {
+  // expected-error @+1 {{'tf.WhileRegion' op arguments on condition block aren't forwarded to yield}}
   %0 = "tf.WhileRegion"(%arg) (
      {
        ^bb0(%carg: tensor<i32>):
@@ -2340,7 +2378,7 @@ func.func @testInvalidWhileRegionConditionOutputCount2(%arg : tensor<i32>) -> (t
 // -----
 
 func.func @testInvalidWhileRegionConditionOutputCount0(%arg : tensor<i32>) -> (tensor<i32>) {
-  // expected-error @+1 {{'tf.WhileRegion' op condition should have a single tensor<i1> result}}
+  // expected-error @+1 {{'tf.WhileRegion' op condition should yield a tensor<i1> and forward the arguments}}
   %0 = "tf.WhileRegion"(%arg) (
      {
        ^bb0(%carg: tensor<i32>):
