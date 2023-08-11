@@ -363,9 +363,6 @@ class IrEmitterUnnested : public IrEmitter {
 
   Status BuildInitializerThunk(mlir::Operation* op, mlir::Value init_value,
                                mlir::Value dest);
-  Status BuildFusedInitializerThunk(mlir::lmhlo::FusionOp fusion,
-                                    const HloFusionAnalysis& fusion_analysis,
-                                    int output_index);
 
   // Returns a WhileThunk that invokes thunk sequences for 'condition' and
   // 'body' sub-computations of while instruction 'hlo'.
@@ -404,10 +401,6 @@ class IrEmitterUnnested : public IrEmitter {
 
   // Returns the ShapedSlices for the given operands.
   StatusOr<std::vector<ShapedSlice>> GetShapedSlices(
-      mlir::Operation::operand_range operands);
-
-  // Returns the buffer allocation Slice for the given operands.
-  StatusOr<std::vector<BufferAllocation::Slice>> GetSlices(
       mlir::Operation::operand_range operands);
 
   GpuElementalIrEmitter elemental_emitter_;

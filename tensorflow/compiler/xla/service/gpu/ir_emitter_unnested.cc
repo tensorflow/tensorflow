@@ -97,15 +97,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_fused_mha_runner.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_fusion_analysis.h"
-#include "tensorflow/compiler/xla/service/gpu/hlo_to_ir_bindings.h"
 #include "tensorflow/compiler/xla/service/gpu/infeed_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_nested.h"
 #include "tensorflow/compiler/xla/service/gpu/kernel_arguments.h"
-#include "tensorflow/compiler/xla/service/gpu/kernel_mapping_scheme.h"
 #include "tensorflow/compiler/xla/service/gpu/kernel_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
@@ -116,10 +113,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/nccl_collective_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/outfeed_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/parallel_loop_emitter.h"
-#include "tensorflow/compiler/xla/service/gpu/reduction_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/replica_id_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
-#include "tensorflow/compiler/xla/service/gpu/target_util.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/while_thunk.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/buffer_assignment_util.h"
@@ -158,12 +153,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 namespace {
-
-// Fusion root -> array of indexes, one per reduction output.
-using ReductionOutputMap =
-    ConstHloInstructionMap<absl::Span<llvm_ir::IrArray const>>;
-
-using ExtraOutputGensMap = ConstHloInstructionMap<llvm_ir::ElementGenerator>;
 
 // Some HLO operations are not implemented as Thunks, and only available when
 // XLA:GPU compiled for XLA runtime. However we still depend on emitting thunk
@@ -2895,17 +2884,6 @@ StatusOr<std::vector<ShapedSlice>> IrEmitterUnnested::GetShapedSlices(
   return shaped_slices;
 }
 
-StatusOr<std::vector<BufferAllocation::Slice>> IrEmitterUnnested::GetSlices(
-    mlir::Operation::operand_range operands) {
-  std::vector<BufferAllocation::Slice> slices;
-  slices.reserve(operands.size());
-  for (mlir::Value opnd : operands) {
-    TF_ASSIGN_OR_RETURN(auto slice, GetAllocationSlice(opnd));
-    slices.push_back(slice);
-  }
-  return slices;
-}
-
 Status IrEmitterUnnested::EmitInfeed(mlir::Operation* op) {
   mlir::Operation::operand_range operands =
       mlir::cast<mlir::lmhlo::InfeedOp>(op).getOutputs();
@@ -2998,69 +2976,6 @@ Status IrEmitterUnnested::BuildInitializerThunk(mlir::Operation* op,
                          },
                          {inputs[1]}, launch_dimensions, &b_)
                          .EmitLoop(GetIrNameFromLoc(op->getLoc())));
-  return OkStatus();
-}
-
-Status IrEmitterUnnested::BuildFusedInitializerThunk(
-    mlir::lmhlo::FusionOp fusion, const HloFusionAnalysis& fusion_analysis,
-    int output_index) {
-  auto reduce = mlir::dyn_cast_or_null<mlir::mhlo::ReduceOp>(
-      fusion.getFusionRoots()[output_index]);
-
-  TF_RET_CHECK(reduce);
-  TF_RET_CHECK(reduce.getNumResults() == 1);
-
-  mlir::Value init_value = reduce.getInitValues()[0];
-  mlir::Value dest = fusion.getOutputBuffers()[output_index];
-  TF_ASSIGN_OR_RETURN(std::optional<std::unique_ptr<Thunk>> constant_init_thunk,
-                      BuildConstantInitializerThunk(*ir_emitter_context_,
-                                                    fusion, init_value, dest));
-  if (constant_init_thunk) {
-    AddThunkToThunkSequence(std::move(*constant_init_thunk));
-    return OkStatus();
-  }
-
-  const Shape dest_shape = GetShape(dest);
-
-  TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
-                      CalculateLaunchDimensions(
-                          dest_shape, ir_emitter_context_->gpu_device_info()));
-
-  auto builder_fn = [&, this](std::vector<llvm_ir::IrArray> inputs,
-                              std::vector<llvm_ir::IrArray> outputs) -> Status {
-    const HloComputation* fused_computation =
-        fusion_analysis.fused_computation();
-
-    FusedIrEmitter fused_emitter(elemental_emitter_);
-    for (int i = 0; i < fused_computation->num_parameters(); i++) {
-      fused_emitter.BindGenerator(
-          *fused_computation->parameter_instruction(i),
-          [this, input = inputs[i]](llvm_ir::IrArray::Index index) {
-            return input.EmitReadArrayElement(index, &b_);
-          });
-    }
-    HloInstruction* instr = fused_computation->root_instruction();
-    if (instr->opcode() == HloOpcode::kTuple) {
-      instr = instr->mutable_operand(output_index);
-    } else {
-      CHECK_EQ(0, output_index);
-    }
-    TF_RET_CHECK(instr->shape().IsArray());
-    TF_ASSIGN_OR_RETURN(auto generator,
-                        fused_emitter.GetGenerator(*instr->operand(1)));
-    TF_RETURN_IF_ERROR(ParallelLoopEmitter(generator, {outputs[output_index]},
-                                           launch_dimensions, &b_)
-                           .EmitLoop(GetIrNameFromLoc(fusion.getLoc())));
-    return OkStatus();
-  };
-
-  TF_ASSIGN_OR_RETURN(
-      auto thunk, BuildKernelThunkForFusion(
-                      *ir_emitter_context_, kernel_reuse_cache_, fusion,
-                      fusion_analysis.fused_computation(), launch_dimensions,
-                      /*discriminator=*/absl::StrCat("init_", output_index),
-                      builder_fn, &b_));
-  AddThunkToThunkSequence(std::move(thunk));
   return OkStatus();
 }
 
