@@ -38,6 +38,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/quantization/stablehlo/utils/tf_type_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
@@ -55,45 +56,20 @@ auto *mlir_tf_quant_op_count = tensorflow::monitoring::Counter<1>::New(
     "Counts the number of ops that has qint types" /*metric description*/,
     "op_name" /*metric label*/);
 
-bool IsIllegalElementType(Type type) {
-  return type
-      .isa<mlir::TF::Qint8Type, mlir::TF::Qint16Type, mlir::TF::Qint32Type,
-           mlir::TF::Quint8Type, mlir::TF::Quint16Type>();
-}
-
-Type ToLegalElementType(Type type) {
-  return TypeSwitch<Type, Type>(type)
-      .Case<mlir::TF::Qint8Type>([&type](Type) {
-        return mlir::IntegerType::get(type.getContext(), 8);
-      })
-      .Case<mlir::TF::Qint16Type>([&type](Type) {
-        return mlir::IntegerType::get(type.getContext(), 16);
-      })
-      .Case<mlir::TF::Qint32Type>([&type](Type) {
-        return mlir::IntegerType::get(type.getContext(), 32);
-      })
-      .Case<mlir::TF::Quint8Type>([&type](Type) {
-        return mlir::IntegerType::get(
-            type.getContext(), 8,
-            mlir::IntegerType::SignednessSemantics::Unsigned);
-      })
-      .Case<mlir::TF::Quint16Type>([&type](Type) {
-        return mlir::IntegerType::get(
-            type.getContext(), 16,
-            mlir::IntegerType::SignednessSemantics::Unsigned);
-      })
-      .Default([&type](Type) { return type; });
-}
-
+// Returns wether a type is illegal. Here we consider TF qint types illegal.
+// See pass description in passes.td for more info about how illegal types are
+// treated in this pass.
 bool IsIllegalType(Type type) {
-  return IsIllegalElementType(getElementTypeOrSelf(type));
+  return IsTFQintType(getElementTypeOrSelf(type));
 }
 
+// Get the corresponding int type from TF qint types.
+// If input is not TF qint types, returns the original type.
 Type ToLegalType(Type type) {
-  if (IsIllegalElementType(type)) return ToLegalElementType(type);
+  if (IsTFQintType(type)) return GetIntTypeFromTFQint(type);
   if (auto shaped = type.dyn_cast<ShapedType>()) {
     Type elem = shaped.getElementType();
-    if (IsIllegalType(elem)) return shaped.clone(ToLegalType(elem));
+    if (IsTFQintType(elem)) return shaped.clone(ToLegalType(elem));
   }
   return type;
 }

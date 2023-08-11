@@ -20,7 +20,7 @@ func.func @quantized_matmul_fn(%input: tensor<*xf32>) -> tensor<*xf32> {
 // -----
 
 // CHECK-LABEL: func @uniform_quantized_add
-func.func @uniform_quantized_add(%input: tensor<3x2xf32>) -> () {
+func.func @uniform_quantized_add(%input: tensor<3x2xf32>) -> tensor<3x2xf32> {
   %input_scales = "tf.Const"() { value = dense<2.0> : tensor<f32> } : () -> tensor<f32>
   %input_zps = "tf.Const"() { value = dense<4> : tensor<i32> } : () -> tensor<i32>
   // tensor_proto that points to dense<127> of type !tf_type.qint32.
@@ -61,5 +61,8 @@ func.func @uniform_quantized_add(%input: tensor<3x2xf32>) -> () {
         tensor<f32>, tensor<i32>,
         tensor<f32>, tensor<i32>,
         tensor<f32>, tensor<i32>) -> tensor<3x2x!tf_type.qint32>
-  func.return
+  %2 = "tf.UniformDequantize"(%1, %output_scales, %output_zps) {
+    quantization_axis = -1 : i64, quantization_min_val = -2147483648 : i64, quantization_max_val = 2147483647 : i64
+  } : (tensor<3x2x!tf_type.qint32>, tensor<f32>, tensor<i32>) -> tensor<3x2xf32>
+  func.return %2 : tensor<3x2xf32>
 }
