@@ -130,6 +130,20 @@ td_library(
 )
 
 gentbl_cc_library(
+    name = "convert_tf_xla_op_to_tf_op_inc_gen",
+    compatible_with = get_compatible_with_portable(),
+    tbl_outs = [
+        (
+            ["-gen-rewriters"],
+            "passes/convert_tf_xla_op_to_tf_op.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "passes/convert_tf_xla_op_to_tf_op.td",
+    deps = [":quant_td_files"],
+)
+
+gentbl_cc_library(
     name = "cast_bf16_ops_to_f32_inc_gen",
     compatible_with = get_compatible_with_portable(),
     tbl_outs = [
@@ -373,6 +387,8 @@ cc_library(
         "passes/cast_bf16_ops_to_f32.inc",
         "passes/convert_custom_aggregation_op_to_quant_stats.cc",
         "passes/convert_fake_quant_to_qdq.cc",
+        "passes/convert_tf_xla_op_to_tf_op.cc",
+        "passes/convert_tf_xla_op_to_tf_op.inc",
         "passes/convert_tpu_model_to_cpu.cc",
         "passes/convert_tpu_model_to_cpu.inc",
         "passes/duplicate_shape_determining_constants.cc",
