@@ -3003,8 +3003,10 @@ def bincount(arr: sparse_tensor.SparseTensor,
              name=None,
              axis=None,
              binary_output=False):
-  # TODO(b/285398376): update docstring to use SparseTensor arr.
   """Counts the number of occurrences of each value in an integer array.
+
+  Only the values in the SparseTensor's `values` tensor are counted,
+  missing zeros are ignored.
 
   If `minlength` and `maxlength` are not given, returns a vector with length
   `tf.reduce_max(arr) + 1` if `arr` is non-empty, and length 0 otherwise.
@@ -3012,10 +3014,14 @@ def bincount(arr: sparse_tensor.SparseTensor,
   value in `weights` at each index where the corresponding value in `arr` is
   `i`.
 
-  ```python
-  values = tf.constant([1,1,2,3,2,4,4,5])
-  tf.math.bincount(values) #[0 2 2 1 2 1]
-  ```
+  >>> data = tf.sparse.SparseTensor(
+  ...     indices=[[0, 3], [1, 7], [2, 4], [3, 0],
+  ...              [4, 9], [5, 1], [6, 8], [7, 2]],
+  ...     values=[1,1,2,3,2,4,4,5],
+  ...     dense_shape=[8, 10])
+  >>> tf.math.bincount(data)
+  <tf.Tensor: ... numpy=array([0, 2, 2, 1, 2, 1], dtype=int32)>
+
   Vector length = Maximum element in vector `values` is 5. Adding 1, which is 6
                   will be the vector length.
 
@@ -3023,11 +3029,18 @@ def bincount(arr: sparse_tensor.SparseTensor,
   index. Here, index 1 in output has a value 2. This indicates value 1 occurs
   two times in `values`.
 
-  ```python
-  values = tf.constant([1,1,2,3,2,4,4,5])
-  weights = tf.constant([1,5,0,1,0,5,4,5])
-  tf.math.bincount(values, weights=weights) #[0 6 0 1 9 5]
-  ```
+  >>> indices=[[0, 3], [1, 7], [2, 4], [3, 0], [4, 9], [5, 1], [6, 8], [7, 2]]
+  >>> data = tf.sparse.SparseTensor(
+  ...     indices=indices,
+  ...     values=[1,1,2,3,2,4,4,5],
+  ...     dense_shape=[8, 10])
+  >>> weights = tf.sparse.SparseTensor(
+  ...     indices=indices,
+  ...     values=[1,5,0,1,0,5,4,5],
+  ...     dense_shape=[8, 10])
+  >>> tf.math.bincount(data, weights=weights)
+  <tf.Tensor: ... numpy=array([0, 6, 0, 1, 9, 5], dtype=int32)>
+
   Bin will be incremented by the corresponding weight instead of 1.
   Here, index 1 in output has a value 6. This is the summation of weights
   corresponding to the value in `values`.
@@ -3038,22 +3051,31 @@ def bincount(arr: sparse_tensor.SparseTensor,
   `Tensor` with bincounting where axis 0 is **not** flattened, i.e. an
   independent bincount for each matrix row.
 
-  >>> data = np.array([[1, 2, 3, 0], [0, 0, 1, 2]], dtype=np.int32)
+  >>> data = tf.sparse.SparseTensor(
+  ...     indices=[[0, 3], [0, 7], [1, 4], [1, 0],
+  ...              [1, 9], [2, 1], [2, 8], [2, 2]],
+  ...     values=[1,1,2,3,2,4,4,5],
+  ...     dense_shape=[3, 10])
   >>> tf.math.bincount(data, axis=-1)
-  <tf.Tensor: shape=(2, 4), dtype=int32, numpy=
-    array([[1, 1, 1, 1],
-           [2, 1, 1, 0]], dtype=int32)>
-
+    <tf.Tensor: shape=(3, 6), dtype=int32, numpy=
+    array([[0, 2, 0, 0, 0, 0],
+           [0, 0, 2, 1, 0, 0],
+           [0, 0, 0, 0, 2, 1]], dtype=int32)>
 
   **Bin-counting with binary_output**
 
   This example gives binary output instead of counting the occurrence.
 
-  >>> data = np.array([[1, 2, 3, 0], [0, 0, 1, 2]], dtype=np.int32)
+  >>> data = tf.sparse.SparseTensor(
+  ...     indices=[[0, 3], [0, 7], [1, 4], [1, 0],
+  ...              [1, 9], [2, 1], [2, 8], [2, 2]],
+  ...     values=[1,1,2,3,2,4,4,5],
+  ...     dense_shape=[3, 10])
   >>> tf.math.bincount(data, axis=-1, binary_output=True)
-  <tf.Tensor: shape=(2, 4), dtype=int32, numpy=
-    array([[1, 1, 1, 1],
-           [1, 1, 1, 0]], dtype=int32)>
+    <tf.Tensor: shape=(3, 6), dtype=int32, numpy=
+    array([[0, 1, 0, 0, 0, 0],
+           [0, 0, 1, 1, 0, 0],
+           [0, 0, 0, 0, 1, 1]], dtype=int32)>
 
   **Missing zeros in SparseTensor**
 
@@ -3069,12 +3091,33 @@ def bincount(arr: sparse_tensor.SparseTensor,
   can be converted to a dense Tensor with `tf.sparse.to_dense` before calling
   `tf.math.bincount`.
 
+  >>> data = tf.sparse.SparseTensor(
+  ...     indices=[[0, 3], [1, 7], [2, 4], [3, 0],
+  ...              [4, 9], [5, 1], [6, 8], [7, 2]],
+  ...     values=[1,1,2,3,2,4,4,5],
+  ...     dense_shape=[8, 10])
+  >>> counts = tf.math.bincount(data, dtype=tf.int64)
+  >>> dense_size = tf.math.reduce_prod(data.dense_shape)
+  >>> missing_zeros = dense_size - tf.size(data.values, out_type=tf.int64)
+  >>> tf.concat([[counts[0] + missing_zeros], counts[1:]], 0)
+  <tf.Tensor: ... numpy=array([72, 2, 2, 1, 2, 1])>
+
+  >>> data = tf.sparse.SparseTensor(
+  ...     indices=[[0, 3], [1, 7], [2, 4], [3, 0],
+  ...              [4, 9], [5, 1], [6, 8], [7, 2]],
+  ...     values=[1,1,2,3,2,4,4,5],
+  ...     dense_shape=[8, 10])
+  >>> tf.math.bincount(tf.sparse.to_dense(data), dtype=tf.int64)
+  <tf.Tensor: ... numpy=array([72, 2, 2, 1, 2, 1])>
+
+
   Args:
     arr: A SparseTensor whose values should be counted.
       These tensors must have a rank of 2 if `axis=-1`.
-    weights: If non-None, must be the same shape as arr. For each value in
-      `arr`, the bin will be incremented by the corresponding weight instead of
-      1. If non-None, `binary_output` must be False.
+    weights: If non-None, must be a SparseTensor with the same dense shape and
+      same indices as `arr`. For each value in `arr`, the bin will be
+      incremented by the corresponding weight instead of 1. If non-None,
+      `binary_output` must be False.
     minlength: If given, ensures the output has length at least `minlength`,
       padding with zeros at the end if necessary.
     maxlength: If given, skips values in `arr` that are equal or greater than
@@ -3171,9 +3214,10 @@ def sparse_bincount(values,
   Args:
     values: A Tensor, RaggedTensor, or SparseTensor whose values should be
       counted. These tensors must have a rank of 2 if `axis=-1`.
-    weights: If non-None, must be the same shape as arr. For each value in
-      `value`, the bin will be incremented by the corresponding weight instead
-      of 1.
+    weights: If non-None, must be the same shape as `arr`. If `arr` is a
+      SparseTensor, `weights` must be a SparseTensor with the same dense shape
+      and same indices as `arr`. For each value in `value`, the bin will be
+      incremented by the corresponding weight instead of 1.
     axis: The axis to slice over. Axes at and below `axis` will be flattened
       before bin counting. Currently, only `0`, and `-1` are supported. If None,
       all axes will be flattened (identical to passing `0`).
@@ -3205,8 +3249,7 @@ def sparse_bincount(values,
   number of times value j appears in batch i.
 
   >>> data = np.array([[10, 20, 30, 20], [11, 101, 11, 10001]], dtype=np.int64)
-  >>> output = tf.sparse.bincount(data, axis=-1)
-  >>> print(output)
+  >>> tf.sparse.bincount(data, axis=-1)
   SparseTensor(indices=tf.Tensor(
   [[    0    10]
    [    0    20]
@@ -3215,6 +3258,24 @@ def sparse_bincount(values,
    [    1   101]
    [    1 10001]], shape=(6, 2), dtype=int64),
    values=tf.Tensor([1 2 1 2 1 1], shape=(6,), dtype=int64),
+   dense_shape=tf.Tensor([    2 10002], shape=(2,), dtype=int64))
+
+  This example shows a sparse tensor input. Missing zeros are not counted.
+
+  >>> data = tf.sparse.SparseTensor(
+  ...     indices=[[0, 3], [0, 7], [0, 8], [0, 11],
+  ...              [1, 9], [1, 11], [1, 18], [1, 27]],
+  ...     values=[10, 20, 30, 20, 11, 101, 11, 10001],
+  ...     dense_shape=[2, 30])
+  >>> tf.sparse.bincount(data, axis=-1)
+  SparseTensor(indices=tf.Tensor(
+  [[    0    10]
+   [    0    20]
+   [    0    30]
+   [    1    11]
+   [    1   101]
+   [    1 10001]], shape=(6, 2), dtype=int64),
+   values=tf.Tensor([1 2 1 2 1 1], shape=(6,), dtype=int32),
    dense_shape=tf.Tensor([    2 10002], shape=(2,), dtype=int64))
 
   **Bin-counting with defined output shape**
@@ -3229,9 +3290,8 @@ def sparse_bincount(values,
 
   >>> minlength = maxlength = 500
   >>> data = np.array([[10, 20, 30, 20], [11, 101, 11, 10001]], dtype=np.int64)
-  >>> output = tf.sparse.bincount(
+  >>> tf.sparse.bincount(
   ...    data, axis=-1, minlength=minlength, maxlength=maxlength)
-  >>> print(output)
   SparseTensor(indices=tf.Tensor(
   [[  0  10]
    [  0  20]
@@ -3250,8 +3310,7 @@ def sparse_bincount(values,
   the 'values' tensor is all 1s.
 
   >>> data = np.array([[10, 20, 30, 20], [11, 101, 11, 10001]], dtype=np.int64)
-  >>> output = tf.sparse.bincount(data, binary_output=True, axis=-1)
-  >>> print(output)
+  >>> tf.sparse.bincount(data, binary_output=True, axis=-1)
   SparseTensor(indices=tf.Tensor(
   [[    0    10]
    [    0    20]
@@ -3274,8 +3333,7 @@ def sparse_bincount(values,
 
   >>> data = np.array([[10, 20, 30, 20], [11, 101, 11, 10001]], dtype=np.int64)
   >>> weights = [[2, 0.25, 15, 0.5], [2, 17, 3, 0.9]]
-  >>> output = tf.sparse.bincount(data, weights=weights, axis=-1)
-  >>> print(output)
+  >>> tf.sparse.bincount(data, weights=weights, axis=-1)
   SparseTensor(indices=tf.Tensor(
   [[    0    10]
    [    0    20]
