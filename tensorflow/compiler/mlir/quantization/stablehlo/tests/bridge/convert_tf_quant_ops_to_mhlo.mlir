@@ -66,3 +66,49 @@ func.func @uniform_quantized_add(%input: tensor<3x2xf32>) -> tensor<3x2xf32> {
   } : (tensor<3x2x!tf_type.qint32>, tensor<f32>, tensor<i32>) -> tensor<3x2xf32>
   func.return %2 : tensor<3x2xf32>
 }
+
+// -----
+
+// CHECK-LABEL: func @uniform_quantized_add_bias_not_const
+func.func @uniform_quantized_add_bias_not_const(%input1: tensor<3x2xi32>, %input2: tensor<2xi32>) -> tensor<3x2xi32> {
+  %input_scales = "tf.Const"() { value = dense<2.0> : tensor<f32> } : () -> tensor<f32>
+  %input_zps = "tf.Const"() { value = dense<4> : tensor<i32> } : () -> tensor<i32>
+  %bias_scales = "tf.Const"() { value = dense<2.0> : tensor<f32> } : () -> tensor<f32>
+  %bias_zps = "tf.Const"() { value = dense<4> : tensor<i32> } : () -> tensor<i32>
+  %output_scales = "tf.Const"() { value = dense<2.0> : tensor<f32> } : () -> tensor<f32>
+  %output_zps = "tf.Const"() { value = dense<4> : tensor<i32> } : () -> tensor<i32>
+
+  // CHECK-DAG: %[[LHS_1:.*]] = mhlo.convert %arg0 : tensor<3x2xi32>
+  // CHECK-DAG: %[[LHS_2:.*]] = mhlo.convert %[[LHS_1]] : (tensor<3x2xi32>) -> tensor<3x2x!quant.uniform<i32:f32, 2.000000e+00:4>>
+  // CHECK-DAG: %[[RHS_1:.*]] = mhlo.convert %arg1 : tensor<2xi32>
+  // CHECK-DAG: %[[RHS_2:.*]] = mhlo.convert %[[RHS_1]] : (tensor<2xi32>) -> tensor<2x!quant.uniform<i32:f32, 2.000000e+00:4>>
+  // CHECK: %[[RES:.*]] = chlo.broadcast_add %[[LHS_2]], %[[RHS_2]] {broadcast_dimensions = dense<1> : tensor<1xi64>} :
+  // CHECK-SAME: (tensor<3x2x!quant.uniform<i32:f32, 2.000000e+00:4>>, tensor<2x!quant.uniform<i32:f32, 2.000000e+00:4>>)
+  // CHECK-SAME: -> tensor<3x2x!quant.uniform<i32:f32, 2.000000e+00:4>>
+  // CHECK-NEXT: %[[RES_INT_1:.*]] = mhlo.convert %[[RES]] : (tensor<3x2x!quant.uniform<i32:f32, 2.000000e+00:4>>) -> tensor<3x2xi32>
+  // CHECK-NEXT: %[[RES_INT_2:.*]] = mhlo.convert %[[RES_INT_1]] : tensor<3x2xi32>
+  // CHECK-NEXT: return %[[RES_INT_2]] : tensor<3x2xi32>
+
+  %input1_qint = "tf.Cast"(%input1) {Truncate = false} : (tensor<3x2xi32>) -> tensor<3x2x!tf_type.qint32>
+  %input2_qint = "tf.Cast"(%input2) {Truncate = false} : (tensor<2xi32>) -> tensor<2x!tf_type.qint32>
+  %result = "tf.UniformQuantizedAdd"(
+    %input1_qint, %input2_qint,
+    %input_scales, %input_zps,
+    %bias_scales, %bias_zps,
+    %output_scales, %output_zps) {
+      lhs_quantization_axis = -1 : i64,
+      lhs_quantization_min_val = -2147483648 : i64,
+      lhs_quantization_max_val = 2147483647 : i64,
+      rhs_quantization_axis = -1 : i64,
+      rhs_quantization_min_val = -2147483648 : i64,
+      rhs_quantization_max_val = 2147483647 : i64,
+      output_quantization_axis = -1 : i64,
+      output_quantization_min_val = -2147483648 : i64,
+      output_quantization_max_val = 2147483647 : i64} : (
+        tensor<3x2x!tf_type.qint32>, tensor<2x!tf_type.qint32>,
+        tensor<f32>, tensor<i32>,
+        tensor<f32>, tensor<i32>,
+        tensor<f32>, tensor<i32>) -> tensor<3x2x!tf_type.qint32>
+  %result_int = "tf.Cast"(%result) {Truncate = false} : (tensor<3x2x!tf_type.qint32>) -> tensor<3x2xi32>
+  func.return %result_int : tensor<3x2xi32>
+}

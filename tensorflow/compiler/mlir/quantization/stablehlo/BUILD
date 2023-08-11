@@ -129,6 +129,7 @@ cc_library(
         ":tf_type_utils",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:mangling_util",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/mlir/tf2xla/transforms:legalize_utils",
         "//tensorflow/compiler/mlir/tf2xla/transforms:xla_legalize_targets",

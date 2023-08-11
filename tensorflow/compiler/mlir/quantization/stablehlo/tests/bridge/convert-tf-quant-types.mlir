@@ -1,4 +1,4 @@
-// RUN: stablehlo-quant-opt %s -convert-tf-quant-types  | FileCheck %s
+// RUN: stablehlo-quant-opt %s -convert-tf-quant-types -split-input-file -verify-diagnostics | FileCheck %s
 
 // CHECK-LABEL: func @relu_qint8
 func.func @relu_qint8(%arg0: tensor<1x!tf_type.qint8>) -> tensor<1x!tf_type.qint8> {
@@ -253,6 +253,35 @@ func.func @concat_uniform_dequantize(%arg0: tensor<3x3x!tf_type.qint8>, %arg1: t
     quantization_axis = -1 : i64, quantization_min_val = -128 : i64, quantization_max_val = 127 : i64
   } : (tensor<6x3x!tf_type.qint8>, tensor<f32>, tensor<i32>) -> tensor<6x3xf32>
   func.return %1 : tensor<6x3xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @tf_const_qint32
+func.func @tf_const_qint32() -> tensor<1x!tf_type.qint32> {
+  // CHECK: %[[result:.*]] = "tf.Const"() {value = dense<127> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK: return %[[result]] : tensor<1xi32>
+  %0 = "tf.Const"() { value = #tf_type<tensor_proto : "0x746674656E736F722464747970653A2044545F51494E5433322074656E736F725F7368617065207B207D2074656E736F725F636F6E74656E743A20225C3137375C3030305C3030305C30303022"> : tensor<1x!tf_type.qint32> } : () -> tensor<1x!tf_type.qint32>
+  func.return %0 :  tensor<1x!tf_type.qint32>
+}
+
+// -----
+
+// CHECK-LABEL: func @tf_const_qint8
+func.func @tf_const_qint8() -> tensor<2x!tf_type.qint8> {
+  // CHECK: %[[result:.*]] = "tf.Const"() {value = dense<[127, 18]> : tensor<2xi8>} : () -> tensor<2xi8>
+  // CHECK: return %[[result]] : tensor<2xi8>
+  %0 = "tf.Const"() { value = #tf_type<tensor_proto : "0x746674656e736f722464747970653a2044545f51494e54382074656e736f725f7368617065207b2064696d207b2073697a653a2032207d207d2074656e736f725f636f6e74656e743a20225c3137375c30323222"> : tensor<2x!tf_type.qint8> } : () -> tensor<2x!tf_type.qint8>
+  func.return %0 :  tensor<2x!tf_type.qint8>
+}
+
+// -----
+
+func.func @tf_const_invalid_proto() -> tensor<2x!tf_type.qint32> {
+  // expected-error@+2 {{failed to get DenseElementAttr}}
+  // expected-error@+1 {{failed to legalize operation 'tf.Const'}}
+  %0 = "tf.Const"() { value = #tf_type<tensor_proto : "0x2532"> : tensor<2x!tf_type.qint32> } : () -> tensor<2x!tf_type.qint32>
+  func.return %0 :  tensor<2x!tf_type.qint32>
 }
 
 // -----

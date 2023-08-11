@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -112,23 +113,24 @@ FailureOr<TensorType> GetUniformQuantizedType(
   return original_type.cast<TensorType>().clone(elem_ty);
 }
 
-template <typename TFQuantizedType, typename UniformQuantizedOp>
-FailureOr<mhlo::ConstantOp> CreateConstantOp(UniformQuantizedOp op,
-                                             Value original_operand,
-                                             TensorType new_operand_type,
-                                             PatternRewriter &rewriter) {
+// If operand is TF const op, create MHLO constant op from the contents.
+// Otherwise convert the operand to the desired type.
+FailureOr<Value> CreateConstantOrConvertOp(Operation *op, Value operand,
+                                           TensorType new_operand_type,
+                                           PatternRewriter &rewriter) {
   // Check whether the rhs operand has constant op.
   TF::TensorProtoAttr tensor_proto_attr;
-  if (!matchPattern(original_operand, m_Constant(&tensor_proto_attr))) {
-    return rewriter.notifyMatchFailure(op, "operand must be constant.");
+  if (!matchPattern(operand, m_Constant(&tensor_proto_attr))) {
+    return Value(rewriter.create<mhlo::ConvertOp>(
+        op->getLoc(), operand, new_operand_type.getElementType()));
   }
 
   auto dense_attr_or = GetDenseAttrFromTensorProtoAttr(
       tensor_proto_attr.getValue(), new_operand_type);
   if (failed(dense_attr_or)) return failure();
 
-  return rewriter.create<mhlo::ConstantOp>(op->getLoc(), new_operand_type,
-                                           *dense_attr_or);
+  return Value(rewriter.create<mhlo::ConstantOp>(op->getLoc(), new_operand_type,
+                                                 *dense_attr_or));
 }
 
 xla::ConvolutionDimensionNumbers ConvertConvolutionDimensionNumbers(
@@ -268,12 +270,14 @@ FailureOr<SmallVector<NamedAttribute>> ConvertToMhloConvolutionOpAttrs(
 // TODO(hinsu): Move this pattern to legalize_tf after resolving the dependency
 // on the tensor proto.
 class ConvertUniformQuantizedDotHybridOp
-    : public OpRewritePattern<TF::UniformQuantizedDotHybridOp> {
+    : public OpConversionPattern<TF::UniformQuantizedDotHybridOp> {
  public:
-  using OpRewritePattern::OpRewritePattern;
+  using OpConversionPattern::OpConversionPattern;
 
-  LogicalResult matchAndRewrite(TF::UniformQuantizedDotHybridOp op,
-                                PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(
+      TF::UniformQuantizedDotHybridOp op,
+      TF::UniformQuantizedDotHybridOpAdaptor adaptor,
+      ConversionPatternRewriter &rewriter) const override {
     // Uniform Quantized type for the rhs.
     int64_t rhs_quantized_dimension = op.getRhsQuantizationAxis();
     // Currently for dot, PTQ supports per-tensor quantization.
@@ -289,26 +293,28 @@ class ConvertUniformQuantizedDotHybridOp
       return failure();
     }
 
-    auto rhs = CreateConstantOp<tensorflow::qint8>(op, op.getRhs(), *rhs_type,
-                                                   rewriter);
-    if (failed(rhs)) {
+    auto rhs_or =
+        CreateConstantOrConvertOp(op, adaptor.getRhs(), *rhs_type, rewriter);
+    if (failed(rhs_or)) {
       return failure();
     }
 
     rewriter.replaceOpWithNewOp<mhlo::DotOp>(op, op.getType(), op.getLhs(),
-                                             *rhs,
+                                             *rhs_or,
                                              /*precision_config=*/nullptr);
     return success();
   }
 };
 
 class ConvertUniformQuantizedConvolutionHybridOp
-    : public OpRewritePattern<TF::UniformQuantizedConvolutionHybridOp> {
+    : public OpConversionPattern<TF::UniformQuantizedConvolutionHybridOp> {
  public:
-  using OpRewritePattern::OpRewritePattern;
+  using OpConversionPattern::OpConversionPattern;
 
-  LogicalResult matchAndRewrite(TF::UniformQuantizedConvolutionHybridOp op,
-                                PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(
+      TF::UniformQuantizedConvolutionHybridOp op,
+      TF::UniformQuantizedConvolutionHybridOpAdaptor adaptor,
+      ConversionPatternRewriter &rewriter) const override {
     // Uniform Quantized type for the rhs.
     auto rhs_type = GetUniformQuantizedType(
         op, op.getRhs().getType(), op.getRhsScales(), op.getRhsZeroPoints(),
@@ -318,9 +324,9 @@ class ConvertUniformQuantizedConvolutionHybridOp
       return failure();
     }
 
-    auto rhs = CreateConstantOp<tensorflow::qint8>(op, op.getRhs(), *rhs_type,
-                                                   rewriter);
-    if (failed(rhs)) {
+    auto rhs_or =
+        CreateConstantOrConvertOp(op, adaptor.getRhs(), *rhs_type, rewriter);
+    if (failed(rhs_or)) {
       return failure();
     }
 
@@ -328,7 +334,7 @@ class ConvertUniformQuantizedConvolutionHybridOp
     if (failed(converted_attrs_or)) {
       return failure();
     }
-    SmallVector<Value, 2> operands{op.getLhs(), *rhs};
+    SmallVector<Value, 2> operands{op.getLhs(), *rhs_or};
     rewriter.replaceOpWithNewOp<mhlo::ConvolutionOp>(op, op.getType(), operands,
                                                      *converted_attrs_or);
     return success();
@@ -464,16 +470,15 @@ class ConvertUniformQuantizedDotOp
           op, "Legalization supports only rhs_quantization_axis -1.");
     }
     auto rhs_type = GetUniformQuantizedType(
-        op, adaptor.getRhs().getType(), op.getRhsScales(),
-        op.getRhsZeroPoints(),
+        op, op.getRhs().getType(), op.getRhsScales(), op.getRhsZeroPoints(),
         /*expressed_type=*/rewriter.getF32Type(), op.getRhsQuantizationMinVal(),
         op.getRhsQuantizationMaxVal(), rhs_quantized_dimension, rewriter);
     if (failed(rhs_type)) {
       return failure();
     }
 
-    auto rhs_or = CreateConstantOp<tensorflow::qint8>(op, op.getRhs(),
-                                                      *rhs_type, rewriter);
+    auto rhs_or =
+        CreateConstantOrConvertOp(op, adaptor.getRhs(), *rhs_type, rewriter);
     if (failed(rhs_or)) {
       return failure();
     }
@@ -529,8 +534,8 @@ class ConvertUniformQuantizedConvolutionOp
       return failure();
     }
 
-    auto rhs_or = CreateConstantOp<tensorflow::qint8>(op, op.getRhs(),
-                                                      *rhs_type, rewriter);
+    auto rhs_or =
+        CreateConstantOrConvertOp(op, adaptor.getRhs(), *rhs_type, rewriter);
     if (failed(rhs_or)) {
       return failure();
     }
@@ -599,8 +604,8 @@ class ConvertUniformQuantizedAddOp
       return failure();
     }
 
-    auto rhs_or = CreateConstantOp<tensorflow::qint32>(op, op.getRhs(),
-                                                       *rhs_type, rewriter);
+    auto rhs_or =
+        CreateConstantOrConvertOp(op, adaptor.getRhs(), *rhs_type, rewriter);
     if (failed(rhs_or)) {
       return failure();
     }
@@ -654,13 +659,13 @@ class ConvertUniformQuantizedClipByValueOp
     if (failed(min_max_type)) {
       return failure();
     }
-    auto min_or = CreateConstantOp<tensorflow::qint32>(op, op.getMin(),
-                                                       *min_max_type, rewriter);
+    auto min_or = CreateConstantOrConvertOp(op, adaptor.getMin(), *min_max_type,
+                                            rewriter);
     if (failed(min_or)) {
       return failure();
     }
-    auto max_or = CreateConstantOp<tensorflow::qint32>(op, op.getMax(),
-                                                       *min_max_type, rewriter);
+    auto max_or = CreateConstantOrConvertOp(op, adaptor.getMax(), *min_max_type,
+                                            rewriter);
     if (failed(max_or)) {
       return failure();
     }
