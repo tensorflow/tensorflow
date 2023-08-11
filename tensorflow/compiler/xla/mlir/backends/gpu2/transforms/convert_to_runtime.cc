@@ -31,17 +31,20 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/backends/gpu2/conversion/convert_compiled_ops.h"
+#include "tensorflow/compiler/xla/mlir/backends/gpu2/conversion/convert_graph_region_op.h"
 #include "tensorflow/compiler/xla/mlir/backends/gpu2/conversion/convert_library_ops.h"
 #include "tensorflow/compiler/xla/mlir/backends/gpu2/conversion/convert_memref_ops.h"
 #include "tensorflow/compiler/xla/mlir/backends/gpu2/conversion/convert_while_op.h"
 #include "tensorflow/compiler/xla/mlir/backends/gpu2/conversion/de_bufferization.h"
 #include "tensorflow/compiler/xla/mlir/backends/gpu2/conversion/xla_gpu_api.h"
 #include "tensorflow/compiler/xla/mlir/backends/gpu2/ir/xla_gpu_dialect.h"
+#include "tensorflow/compiler/xla/mlir/backends/gpu2/ir/xla_gpu_ops.h"
 #include "tensorflow/compiler/xla/mlir/backends/gpu2/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 
@@ -161,6 +164,9 @@ class ConvertToXlaGpuRuntimePass
     // XLA:GPU API declarations for the custom module.
     XlaGpuApi api;
 
+    // XLA:GPU graphs help tracking dependencies between graph nodes.
+    XlaGpuGraphs graphs;
+
     RewritePatternSet patterns(&getContext());
     populateAnyFunctionOpInterfaceTypeConversionPattern(patterns, converter);
 
@@ -173,14 +179,15 @@ class ConvertToXlaGpuRuntimePass
       } break;
 
       case RuntimeBackend::kStreamExecutor: {
-        populateCompiledOpsConversionPatterns(patterns, converter,
-                                              thunk_sequence_, state, api);
+        populateCompiledOpsConversionPatterns(
+            patterns, converter, thunk_sequence_, state, api, graphs);
         populateWhileOpConversionPatterns(patterns, converter, state, api);
       } break;
     }
 
     populateLibraryOpsConversionPatterns(patterns, converter, state, api);
     populateMemrefConversionPatterns(patterns, converter, state);
+    populateGraphRegionConversionPatterns(patterns, converter, state);
 
     // Ensure all HLO and memref operations get lowered to IREEInput and XLA:GPU
     // runtime. For this we have to de-bufferize the IR and correctly tie
@@ -190,6 +197,11 @@ class ConvertToXlaGpuRuntimePass
     target.addLegalDialect<IREE::Input::IREEInputDialect, arith::ArithDialect,
                            func::FuncDialect, tensor::TensorDialect,
                            scf::SCFDialect>();
+
+    // Convert graph regions to explicit graph construction and dispatch.
+    target.addIllegalOp<GraphRegionOp>();
+    target.addLegalOp<GraphDispatchOp>();
+
     target.addDynamicallyLegalOp<func::FuncOp>([&](func::FuncOp op) {
       return converter.isSignatureLegal(op.getFunctionType()) &&
              converter.isLegal(&op.getBody());

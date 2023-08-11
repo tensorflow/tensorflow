@@ -40,4 +40,28 @@ def ConvertToXlaGpuRuntime : Pass<"xla-gpu2-convert-to-runtime",
   ];
 }
 
+//===----------------------------------------------------------------------===//
+// Transformation passes to support XLA:GPU graphs
+//===----------------------------------------------------------------------===//
+
+def CreateGraphRegions : Pass<"xla-gpu2-create-graph-regions",
+                              "mlir::ModuleOp"> {
+  let summary = "Create graph regions with LMHLO operations in them";
+
+  let constructor = "xla::gpu::createCreateGraphRegionsPass()";
+
+  let dependentDialects = ["xla::gpu::XlaGpuDialect"];
+
+  // TODO(ezhulenev): Add support for `--xla_gpu_graph_level` option.
+}
+
+def FinalizeGraphDispatches : Pass<"xla-gpu2-finalize-graph-dispatches",
+                                   "mlir::ModuleOp"> {
+  let summary = "Finalize graph dispatches by converting them to API calls";
+
+  let constructor = "xla::gpu::createFinalizeGraphDispatchesPass()";
+
+  let dependentDialects = ["xla::gpu::XlaGpuDialect"];
+}
+
 #endif  // XLA_GPU2_PASSES

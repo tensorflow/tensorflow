@@ -41,7 +41,8 @@ void populateCompiledOpsConversionPatterns(mlir::RewritePatternSet &patterns,
                                            mlir::TypeConverter &converter,
                                            ThunkSequence *thunk_sequence,
                                            DeBufferization &state,
-                                           XlaGpuApi &api);
+                                           XlaGpuApi &api,
+                                           XlaGpuGraphs &graphs);
 
 }  // namespace gpu
 }  // namespace xla
