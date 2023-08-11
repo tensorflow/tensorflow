@@ -488,7 +488,7 @@ class _EagerTensorBase(
     # pylint: enable=protected-access
 
   @property
-  def shape(self):
+  def shape(self) -> tensor_shape.TensorShape:
     if self._tensor_shape is None:  # pylint: disable=access-member-before-definition
       # pylint: disable=protected-access
       try:
