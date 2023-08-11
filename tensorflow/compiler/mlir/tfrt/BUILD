@@ -367,6 +367,8 @@ cc_library(
         "//tensorflow/core/tfrt/fallback:fallback_state",
         "//tensorflow/core/tfrt/runtime",
         "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
         "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
