@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
@@ -479,14 +480,7 @@ class ComposeUniformQuantizedConvolutionOp
       return failure();
     }
 
-    if (!(input_i8_to_f32_convert_op.getResult()
-              .getType()
-              .getElementType()
-              .isa<Float32Type>() &&
-          input_i8_to_f32_convert_op.getOperand()
-              .getType()
-              .getElementType()
-              .isa<IntegerType>())) {
+    if (!IsI8ToF32Cast(input_i8_to_f32_convert_op)) {
       LLVM_DEBUG(
           llvm::dbgs()
           << "Failed to match. The ConvertOp is not an i8->f32 type cast.\n");
@@ -723,8 +717,8 @@ class ComposeUniformQuantizedConvolutionOp
         filter_constant_op) {
       // This is i8 values disguised as f32 (due to the upcast trick). Simply
       // cast them to i8.
-      ElementsAttr filterValue = filter_constant_op.getValue();
-      filter_i8_value_attr = filterValue.cast<DenseFPElementsAttr>().mapValues(
+      ElementsAttr filter_value = filter_constant_op.getValue();
+      filter_i8_value_attr = filter_value.cast<DenseFPElementsAttr>().mapValues(
           rewriter.getI8Type(), [](const APFloat& val) -> APInt {
             APSInt convertedInt(/*BitWidth=*/8, /*isUnsigned=*/false);
             bool ignored;
@@ -882,7 +876,7 @@ class ComposeUniformQuantizedConvolutionOp
 // %5 = stablehlo.constant  // Merged scale s1 * s2, precalculated.
 // %6 = call @uniform_quantize(%0, %1, %2)  // Quantize input (q1).
 // %7 = stablehlo.convert %6  // i8 -> f32 cast trick for input.
-// %8 = stablehlo.convert %3  // i8 -> f32 cast trick for filter.
+// %8 = stablehlo.convert %3  // i8 -> f32 cast trick for filter, optional.
 // %9 = stablehlo.dot_general(%7, %8)  // q1 * q2 (disguised in f32).
 // %10 = stablehlo.convert %4  // i32 -> f32 cast for q2 * z1.
 // %11 = stablehlo.broadcast_in_dim %10  // Optional.
@@ -907,11 +901,14 @@ class ComposeUniformQuantizedConvolutionOp
 // %3 = stablehlo.dot_general(%1, %2)   // In uniform quantized type.
 // %4 = stablehlo.uniform_dequantize %3  // Dequantize the output.
 // ```
+//
+// Note that the i8->f32 cast trick for the filter (%8) is optional. When the
+// cast isn't present, the filter constant (%3) should be i8 quantized values
+// disguised in f32.
 class ComposeUniformQuantizedDotGeneralOp
     : public OpRewritePattern<stablehlo::DotGeneralOp> {
  public:
   using OpRewritePattern<stablehlo::DotGeneralOp>::OpRewritePattern;
-
   LogicalResult match(stablehlo::DotGeneralOp op) const final {
     auto input_i8_to_f32_convert_op =
         TryCast<stablehlo::ConvertOp>(op.getOperand(0).getDefiningOp(),
@@ -924,21 +921,7 @@ class ComposeUniformQuantizedDotGeneralOp
       return failure();
     }
 
-    auto filter_i8_to_f32_convert_op =
-        TryCast<stablehlo::ConvertOp>(op.getOperand(1).getDefiningOp(),
-                                      /*name=*/"filter_i8_to_f32_convert_op");
-    if (failed(filter_i8_to_f32_convert_op)) return failure();
-
-    if (!IsI8ToF32Cast(*filter_i8_to_f32_convert_op)) {
-      LLVM_DEBUG(llvm::dbgs() << "Failed to match filter_i8_to_f32_convert_op. "
-                                 "It should be a i8->f32 cast.\n");
-      return failure();
-    }
-
-    auto filter_constant_op = TryCast<stablehlo::ConstantOp>(
-        filter_i8_to_f32_convert_op->getOperand().getDefiningOp(),
-        /*name=*/"filter_constant_op");
-    if (failed(filter_constant_op)) return failure();
+    if (failed(MatchFilter(op.getOperand(1)))) return failure();
 
     auto input_quantize_call_op = TryCast<func::CallOp>(
         input_i8_to_f32_convert_op->getOperand().getDefiningOp(),
@@ -1070,17 +1053,29 @@ class ComposeUniformQuantizedDotGeneralOp
                                 input_uniform_quantize_op.getResult());
 
     // Build uniform quantized type for filter.
-    auto filter_i8_to_f32_convert_op =
-        cast<stablehlo::ConvertOp>(op.getOperand(1).getDefiningOp());
-    auto filter_constant_op = cast<stablehlo::ConstantOp>(
-        filter_i8_to_f32_convert_op.getOperand().getDefiningOp());
+    Value filter_value = op.getOperand(1);
+    stablehlo::ConstantOp filter_constant_op =
+        GetFilterConstantOp(filter_value);
+    auto filter_value_attr =
+        filter_constant_op.getValue().cast<DenseElementsAttr>();
+    if (filter_value_attr.getElementType().isF32()) {
+      // This is i8 values disguised as f32 (due to the upcast trick). Simply
+      // cast them to i8.
+      filter_value_attr =
+          filter_value_attr.cast<DenseFPElementsAttr>().mapValues(
+              rewriter.getI8Type(), [](const APFloat& val) -> APInt {
+                APSInt converted_int(/*BitWidth=*/8, /*isUnsigned=*/false);
+                bool ignored;
+                val.convertToInteger(converted_int, APFloat::rmTowardZero,
+                                     &ignored);
+                return converted_int;
+              });
+    }
 
-    const auto filter_value_attr =
-        filter_constant_op.getValue().cast<DenseIntElementsAttr>();
+    auto subtract_op =
+        cast<stablehlo::SubtractOp>(*op.getResult().user_begin());
 
-    auto subtractOp = cast<stablehlo::SubtractOp>(*op.getResult().user_begin());
-
-    Value subtract_op_second_operand = subtractOp.getOperand(1);
+    Value subtract_op_second_operand = subtract_op.getOperand(1);
     if (auto broadcast_in_dim_op =
             dyn_cast_or_null<stablehlo::BroadcastInDimOp>(
                 subtract_op_second_operand.getDefiningOp());
@@ -1090,7 +1085,7 @@ class ComposeUniformQuantizedDotGeneralOp
     }
 
     auto multiply_op =
-        cast<stablehlo::MulOp>(*subtractOp.getResult().user_begin());
+        cast<stablehlo::MulOp>(*subtract_op.getResult().user_begin());
 
     Value multiply_op_second_operand = multiply_op.getOperand(1);
     if (auto broadcast_in_dim_op =
@@ -1131,7 +1126,7 @@ class ComposeUniformQuantizedDotGeneralOp
             filter_uniform_quantized_type),
         /*value=*/filter_value_attr);
 
-    rewriter.replaceAllUsesWith(filter_i8_to_f32_convert_op.getResult(),
+    rewriter.replaceAllUsesWith(filter_value,
                                 quantized_filter_constant_op.getResult());
 
     // Recreate stablehlo::DotGeneralOp with a uniform quantized output type.
@@ -1187,7 +1182,7 @@ class ComposeUniformQuantizedDotGeneralOp
     rewriter.eraseOp(output_uniform_dequantize_call_pattern->GetCallOp());
     rewriter.eraseOp(output_uniform_quantize_call_pattern->GetCallOp());
     rewriter.eraseOp(multiply_op);
-    rewriter.eraseOp(subtractOp);
+    rewriter.eraseOp(subtract_op);
     rewriter.eraseOp(input_i8_to_f32_convert_op);
     rewriter.eraseOp(input_uniform_quantize_call_pattern->GetCallOp());
   }
@@ -1219,6 +1214,48 @@ class ComposeUniformQuantizedDotGeneralOp
     }
 
     return quantization_dimension_candidates[0];
+  }
+
+ private:
+  // Returns the filter constant op. The resulting constant's element type is
+  // either i8 (when i8->f32 cast is present) or f32.
+  stablehlo::ConstantOp GetFilterConstantOp(Value filter_value) const {
+    Operation* filter_op = filter_value.getDefiningOp();
+
+    auto f32_filter_constant_op = dyn_cast<stablehlo::ConstantOp>(filter_op);
+    if (f32_filter_constant_op) {
+      return f32_filter_constant_op;
+    } else {
+      // Build uniform quantized type for filter.
+      auto filter_i8_to_f32_convert_op = cast<stablehlo::ConvertOp>(filter_op);
+
+      return cast<stablehlo::ConstantOp>(
+          filter_i8_to_f32_convert_op.getOperand().getDefiningOp());
+    }
+  }
+
+  LogicalResult MatchFilter(Value filter_value) const {
+    auto filter_constant_op = TryCast<stablehlo::ConstantOp>(
+        filter_value.getDefiningOp(), /*name=*/"float_filter_constant_op");
+    if (succeeded(filter_constant_op) &&
+        filter_constant_op->getResult().getType().getElementType().isF32()) {
+      return success();
+    }
+
+    auto filter_i8_to_f32_convert_op =
+        TryCast<stablehlo::ConvertOp>(filter_value.getDefiningOp(),
+                                      /*name=*/"filter_i8_to_f32_convert_op");
+    if (failed(filter_i8_to_f32_convert_op)) return failure();
+
+    if (!IsI8ToF32Cast(*filter_i8_to_f32_convert_op)) {
+      LLVM_DEBUG(llvm::dbgs() << "Failed to match filter_i8_to_f32_convert_op. "
+                                 "It should be a i8->f32 cast.\n");
+      return failure();
+    }
+
+    return TryCast<stablehlo::ConstantOp>(
+        filter_i8_to_f32_convert_op->getOperand().getDefiningOp(),
+        /*name=*/"filter_constant_op");
   }
 };
 
