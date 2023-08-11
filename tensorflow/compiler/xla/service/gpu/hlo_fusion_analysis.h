@@ -79,6 +79,7 @@ class HloFusionAnalysis {
   HloFusionAnalysis(const HloFusionInstruction* fusion,
                     FusionBackendConfig fusion_backend_config,
                     std::vector<HloInstruction*> fusion_roots,
+                    std::vector<const HloInstruction*> fusion_heroes,
                     const GpuDeviceInfo* device_info,
                     se::CudaComputeCapability compute_capability,
                     std::optional<TransposeDescription> tiled_transpose)
@@ -86,6 +87,7 @@ class HloFusionAnalysis {
         fusion_backend_config_(std::move(fusion_backend_config)),
         fused_computation_(fusion->fused_instructions_computation()),
         fusion_roots_(std::move(fusion_roots)),
+        fusion_heroes_(std::move(fusion_heroes)),
         device_info_(device_info),
         compute_capability_(compute_capability),
         tiled_transpose_(tiled_transpose) {}
@@ -111,6 +113,7 @@ class HloFusionAnalysis {
   FusionBackendConfig fusion_backend_config_;
   const HloComputation* fused_computation_;
   std::vector<HloInstruction*> fusion_roots_;
+  std::vector<const HloInstruction*> fusion_heroes_;
   const GpuDeviceInfo* device_info_;
   se::CudaComputeCapability compute_capability_;
   std::optional<TransposeDescription> tiled_transpose_;

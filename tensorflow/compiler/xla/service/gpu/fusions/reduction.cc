@@ -866,12 +866,11 @@ Status EmitIRForReduction(llvm::IRBuilder<>* builder,
   ExtraOutputGensMap extra_output_gens;
 
   for (const HloInstruction* hlo : instr_index_group) {
-    const HloInstruction* reduction_hero =
-        FindRealReductionHero(const_cast<HloInstruction*>(hlo));
-    if (reduction_hero != nullptr) {
-      auto hero = Cast<HloReduceInstruction>(reduction_hero);
+    auto& hero = FindNonTrivialHero(*hlo);
+    if (IsRealReductionHero(*hlo, hero)) {
+      auto reduction = Cast<HloReduceInstruction>(&hero);
       roots.push_back(hlo);
-      heroes.push_back(hero);
+      heroes.push_back(reduction);
     } else {
       extra_output_gens[hlo] = *fused_emitter.GetGenerator(*hlo);
     }
@@ -976,7 +975,8 @@ StatusOr<FusionEmissionResult> ReductionFusion::Emit(
   if (!reduction_codegen_info->IsRaceFree()) {
     absl::Span<HloInstruction* const> fusion_roots = analysis_.fusion_roots();
     for (int i = 0; i < fusion_roots.size(); ++i) {
-      if (HasRealReductionHero(fusion_roots[i])) {
+      if (IsRealReductionHero(*fusion_roots[i],
+                              FindNonTrivialHero(*fusion_roots[i]))) {
         TF_ASSIGN_OR_RETURN(result.thunks.emplace_back(),
                             BuildFusedInitializerThunk(
                                 ir_emitter_context, fusion_op, analysis_,

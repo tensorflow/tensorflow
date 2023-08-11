@@ -19,6 +19,7 @@ limitations under the License.
 #include "llvm/IR/IRBuilder.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/service/gpu/fusions/tiling_util.h"
+#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
@@ -89,12 +90,21 @@ Status TransposeFusion::EmitKernel(
         });
   }
 
+  std::vector<const HloInstruction*> heroes;
+  std::vector<std::optional<TransposeDescription>> transposes;
+  heroes.reserve(hlo_roots.size());
+  for (const auto& root : hlo_roots) {
+    heroes.push_back(&FindNonTrivialHero(*root));
+    transposes.push_back(
+        GetDescriptionForTiledTransposeEmitter(*root, *heroes.back()));
+  }
+
   absl::flat_hash_map<const HloInstruction*, llvm::GlobalVariable*> tiles;
   Vector3 permutation;
   for (const auto& [tile_idx, root] : llvm::enumerate(hlo_roots)) {
-    if (auto tr = FindAnyTiledTranspose(*root)) {
+    if (const auto& tr = transposes[tile_idx]) {
+      const auto& hero = *heroes[tile_idx];
       permutation = tr->permutation;
-      const HloInstruction& hero = FindNonTrivialHero(*root);
       tiles[&hero] = AllocateShared(
           builder, tiling_scheme,
           llvm_ir::PrimitiveTypeToIrType(
@@ -128,8 +138,8 @@ Status TransposeFusion::EmitKernel(
 
               for (const auto& [output_idx, root] :
                    llvm::enumerate(hlo_roots)) {
-                if (FindAnyTiledTranspose(*root)) {
-                  const HloInstruction& hero = FindNonTrivialHero(*root);
+                if (transposes[output_idx].has_value()) {
+                  const HloInstruction& hero = *heroes[output_idx];
                   llvm_ir::ElementGenerator input_gen =
                       *fused_emitter.GetGenerator(*hero.operand(0));
                   llvm_ir::IrArray::Index untiled_index = GetUnnormalizedIndex(
@@ -173,8 +183,8 @@ Status TransposeFusion::EmitKernel(
                 llvm::Value* x_loc) {
               for (const auto& [output_idx, root] :
                    llvm::enumerate(hlo_roots)) {
-                if (FindAnyTiledTranspose(*root)) {
-                  const HloInstruction& hero = FindNonTrivialHero(*root);
+                if (transposes[output_idx].has_value()) {
+                  const HloInstruction& hero = *heroes[output_idx];
 
                   std::vector<llvm::Value*> idx = {x_loc, y_loc};
                   llvm::Value* gep = thread_id_info.GEPIntoSharedMemory(

@@ -233,12 +233,13 @@ int64_t NearestPowerOfTwo(int64_t v) {
 //   * Either the root has a traspose hero with the same normalized dimensions
 //   * Or the root output shape is equal to the the transpose input shape
 std::optional<TransposeDescription> FindConsistentTransposeHero(
-    const std::vector<HloInstruction*>& hlo_roots) {
+    const std::vector<HloInstruction*>& hlo_roots,
+    const std::vector<const HloInstruction*>& heroes) {
   std::optional<TransposeDescription> tiled_transpose_hero;
   std::vector<HloInstruction*> non_transpose_roots;
 
-  for (auto* root : hlo_roots) {
-    if (auto tr = FindAnyTiledTranspose(*root)) {
+  for (auto [root, hero] : llvm::zip(hlo_roots, heroes)) {
+    if (auto tr = GetDescriptionForTiledTransposeEmitter(*root, *hero)) {
       if (!tiled_transpose_hero) {
         // First transpose hero found.
         tiled_transpose_hero = tr;
@@ -276,11 +277,17 @@ StatusOr<HloFusionAnalysis> HloFusionAnalysis::Create(
                       fusion->backend_config<FusionBackendConfig>());
 
   auto hlo_roots = GetFusionRoots(*fusion->fused_instructions_computation());
+  std::vector<const HloInstruction*> heroes;
+  heroes.reserve(hlo_roots.size());
+  for (auto* root : hlo_roots) {
+    heroes.push_back(&FindNonTrivialHero(*root));
+  }
+
   std::optional<TransposeDescription> tiled_transpose_hero =
-      FindConsistentTransposeHero(hlo_roots);
+      FindConsistentTransposeHero(hlo_roots, heroes);
 
   return HloFusionAnalysis(fusion, std::move(backend_config),
-                           std::move(hlo_roots), device_info,
+                           std::move(hlo_roots), std::move(heroes), device_info,
                            compute_capability, tiled_transpose_hero);
 }
 
@@ -299,7 +306,9 @@ HloFusionAnalysis::EmitterFusionKind HloFusionAnalysis::GetEmitterFusionKind()
 #endif
   const auto& roots = fusion_roots();
 
-  if (absl::c_any_of(roots, HasRealReductionHero)) {
+  if (absl::c_any_of(roots, [](const HloInstruction* root) {
+        return IsRealReductionHero(*root, FindNonTrivialHero(*root));
+      })) {
     return EmitterFusionKind::kReduction;
   }
 
@@ -385,10 +394,15 @@ namespace {
 // as the hero reduction, since all the reductions are required to have the same
 // shape and layout as verified by `IsFusedReductionOutputConsistent()`.
 const HloInstruction* FindHeroReduction(
-    const std::vector<HloInstruction*>& fusion_roots) {
-  const HloInstruction* first_reduce = FindFirstRealReductionHero(fusion_roots);
-  CHECK_NE(first_reduce, nullptr);
-  return first_reduce;
+    const std::vector<HloInstruction*>& fusion_roots,
+    const std::vector<const HloInstruction*>& heroes) {
+  CHECK(!fusion_roots.empty());
+  for (auto [root, hero] : llvm::zip(fusion_roots, heroes)) {
+    if (IsRealReductionHero(*root, *hero)) {
+      return hero;
+    }
+  }
+  LOG(FATAL) << "Did not find a hero reduction";
 }
 }  // namespace
 
@@ -397,7 +411,8 @@ const ReductionCodegenInfo* HloFusionAnalysis::GetReductionCodegenInfo() {
     return &reduction_codegen_info_.value();
   }
 
-  const HloInstruction* hero_reduction = FindHeroReduction(fusion_roots());
+  const HloInstruction* hero_reduction =
+      FindHeroReduction(fusion_roots(), fusion_heroes_);
 
   auto reduction_codegen_info = ComputeReductionCodegenInfo(hero_reduction);
   reduction_codegen_info_.emplace(std::move(reduction_codegen_info));
@@ -570,9 +585,9 @@ HloFusionAnalysis::GroupDisjointReductions() const {
   HloInstruction* first_non_reduction_root = nullptr;
 
   absl::flat_hash_set<HloInstruction*> roots_with_reduction;
-  for (HloInstruction* root : fusion_roots()) {
+  for (auto [root, hero] : llvm::zip(fusion_roots(), fusion_heroes_)) {
     disjoint_sets[root].Get() = root;
-    if (HasRealReductionHero(root)) {
+    if (IsRealReductionHero(*root, *hero)) {
       roots_with_reduction.insert(root);
     } else if (first_non_reduction_root) {
       disjoint_sets[first_non_reduction_root].Merge(&disjoint_sets[root]);

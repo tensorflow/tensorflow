@@ -99,7 +99,7 @@ ENTRY entry {
 
   HloInstruction* tr = module->entry_computation()->root_instruction();
 
-  auto result = FindAnyTiledTranspose(*tr);
+  auto result = GetDescriptionForTiledTransposeEmitter(*tr, *tr);
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result->instr, tr);
   EXPECT_EQ(result->dimensions, Vector3({1, 64, 1536}));
@@ -119,7 +119,7 @@ ENTRY entry {
                           ParseAndReturnVerifiedModule(hlo));
 
   HloInstruction* r = module->entry_computation()->root_instruction();
-  auto result = FindAnyTiledTranspose(*r);
+  auto result = GetDescriptionForTiledTransposeEmitter(*r, *r);
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result->instr, r);
   EXPECT_EQ(result->dimensions, Vector3({64, 48, 32}));
@@ -140,7 +140,7 @@ ENTRY entry {
                           ParseAndReturnVerifiedModule(hlo));
 
   HloInstruction* r = module->entry_computation()->root_instruction();
-  auto result = FindAnyTiledTranspose(*r);
+  auto result = GetDescriptionForTiledTransposeEmitter(*r, *r->operand(0));
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result->instr, r->operand(0));
   EXPECT_EQ(result->dimensions, Vector3({64, 48, 32}));
@@ -163,7 +163,8 @@ ENTRY entry {
   HloInstruction* r = module->entry_computation()->root_instruction();
   // TODO(b/284431534): Update this test when the shared memory transpose
   // emitter is fast for S8 output.
-  EXPECT_FALSE(FindAnyTiledTranspose(*r).has_value());
+  EXPECT_FALSE(
+      GetDescriptionForTiledTransposeEmitter(*r, *r->operand(0)).has_value());
   EXPECT_EQ(&FindNonTrivialHero(*r), r->operand(0));
 }
 
@@ -183,7 +184,7 @@ ENTRY entry {
 
   HloInstruction* r = module->entry_computation()->root_instruction();
 
-  auto result = FindAnyTiledTranspose(*r);
+  auto result = GetDescriptionForTiledTransposeEmitter(*r, *r->operand(0));
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result->instr, r->operand(0));
   EXPECT_EQ(result->dimensions, Vector3({64, 48, 32}));
@@ -207,7 +208,8 @@ ENTRY entry {
                           ParseAndReturnVerifiedModule(hlo));
 
   HloInstruction* r = module->entry_computation()->root_instruction();
-  auto result = FindAnyTiledTranspose(*r);
+  auto result =
+      GetDescriptionForTiledTransposeEmitter(*r, FindNonTrivialHero(*r));
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result->instr, r->operand(0)->operand(0));
   EXPECT_EQ(result->dimensions, Vector3({64, 48, 32}));
@@ -231,7 +233,9 @@ ENTRY entry {
                           ParseAndReturnVerifiedModule(hlo));
 
   HloInstruction* r = module->entry_computation()->root_instruction();
-  EXPECT_FALSE(FindAnyTiledTranspose(*r).has_value());
+  EXPECT_FALSE(
+      GetDescriptionForTiledTransposeEmitter(*r, FindNonTrivialHero(*r))
+          .has_value());
   EXPECT_EQ(&FindNonTrivialHero(*r), r);
 }
 
@@ -383,7 +387,8 @@ ENTRY entry {
                           ParseAndReturnVerifiedModule(hlo));
 
   HloInstruction* copy = module->entry_computation()->root_instruction();
-  auto result = FindAnyTiledTranspose(*copy);
+  auto result =
+      GetDescriptionForTiledTransposeEmitter(*copy, FindNonTrivialHero(*copy));
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result->instr, copy);
   EXPECT_EQ(result->dimensions, Vector3({8, 12, 1100}));
@@ -403,7 +408,8 @@ ENTRY entry {
                           ParseAndReturnVerifiedModule(hlo));
 
   HloInstruction* tr = module->entry_computation()->root_instruction();
-  auto result = FindAnyTiledTranspose(*tr);
+  auto result =
+      GetDescriptionForTiledTransposeEmitter(*tr, FindNonTrivialHero(*tr));
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result->instr, tr);
   EXPECT_EQ(result->dimensions, Vector3({8, 12, 1100}));
@@ -423,7 +429,8 @@ ENTRY entry {
                           ParseAndReturnVerifiedModule(hlo));
 
   HloInstruction* copy = module->entry_computation()->root_instruction();
-  auto result = FindAnyTiledTranspose(*copy);
+  auto result =
+      GetDescriptionForTiledTransposeEmitter(*copy, FindNonTrivialHero(*copy));
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result->instr, copy);
   EXPECT_EQ(result->dimensions, Vector3({1100, 12, 8}));
@@ -443,7 +450,8 @@ ENTRY entry {
                           ParseAndReturnVerifiedModule(hlo));
 
   HloInstruction* tr = module->entry_computation()->root_instruction();
-  auto result = FindAnyTiledTranspose(*tr);
+  auto result =
+      GetDescriptionForTiledTransposeEmitter(*tr, FindNonTrivialHero(*tr));
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result->instr, tr);
   EXPECT_EQ(result->dimensions, Vector3({1100, 12, 8}));

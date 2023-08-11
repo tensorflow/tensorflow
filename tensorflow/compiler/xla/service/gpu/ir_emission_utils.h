@@ -184,8 +184,8 @@ std::optional<TransposeDescription> FindTiledTranspose(
 std::optional<TransposeDescription> FindTiledLogicalTranspose(
     const HloInstruction& instr);
 
-std::optional<TransposeDescription> FindAnyTiledTranspose(
-    const HloInstruction& instr);
+std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
+    const HloInstruction& root, const HloInstruction& hero);
 
 bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count = 1);
 

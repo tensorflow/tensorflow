@@ -180,15 +180,9 @@ size_t GetOutputSizeOfFusible(const HloInstruction& instr);
 // Expected output: [R1]
 std::vector<HloInstruction*> GetFusionRoots(const HloComputation& computation);
 
-// Finds the first real reduction hero for the fusion roots.
-const HloInstruction* FindFirstRealReductionHero(
-    const std::vector<HloInstruction*>& fusion_roots);
-// Find the real reduction hero for the given instruction in a fusion.
-const HloInstruction* FindRealReductionHero(const HloInstruction* hlo);
-
-// Whether there exists a real reduction hero for the instruction or a set of
-// roots.
-bool HasRealReductionHero(const HloInstruction* hlo);
+// Whether the instruction is a reduction hero for the given root.
+bool IsRealReductionHero(const HloInstruction& root,
+                         const HloInstruction& hero);
 
 }  // namespace gpu
 }  // namespace xla
