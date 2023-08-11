@@ -96,7 +96,7 @@ class ShardingPolicy(enum.IntEnum):
   HINT = 5
   # LINT.ThenChange()
 
-  def _to_proto(self):
+  def _to_proto(self) -> data_service_pb2.ProcessingModeDef.ShardingPolicy:
     """Converts the policy to ProcessingModeDef proto enum."""
 
     if self == ShardingPolicy.OFF:
@@ -151,11 +151,11 @@ class CrossTrainerCache:
       )
     self.trainer_id = trainer_id
 
-  def _to_proto(self):
+  def _to_proto(self) -> data_service_pb2.CrossTrainerCacheOptions:
     return data_service_pb2.CrossTrainerCacheOptions(trainer_id=self.trainer_id)
 
 
-def _get_validated_sharding_policy(processing_mode):
+def _get_validated_sharding_policy(processing_mode) -> ShardingPolicy:
   """Validates `processing_mode` and converts it to ShardingPolicy."""
 
   if isinstance(processing_mode, ShardingPolicy):
@@ -171,7 +171,7 @@ def _get_validated_sharding_policy(processing_mode):
                    f"{processing_mode!r}.")
 
 
-def _validate_job_name(job_name):
+def _validate_job_name(job_name) -> None:
   if job_name is None:
     return
   if not isinstance(job_name, str):
@@ -181,14 +181,15 @@ def _validate_job_name(job_name):
     raise ValueError("`job_name` must not be empty")
 
 
-def _validate_compression(compression):
+def _validate_compression(compression) -> None:
   valid_compressions = [COMPRESSION_AUTO, COMPRESSION_NONE]
   if compression not in valid_compressions:
     raise ValueError(f"Invalid `compression` argument: {compression}. "
                      f"Must be one of {valid_compressions}.")
 
 
-def _get_compression_proto(compression):
+def _get_compression_proto(
+    compression) -> data_service_pb2.DataServiceMetadata.Compression:
   if compression == COMPRESSION_AUTO:
     return data_service_pb2.DataServiceMetadata.COMPRESSION_SNAPPY
   if compression == COMPRESSION_NONE:
@@ -197,7 +198,7 @@ def _get_compression_proto(compression):
                    f"Must be one of {[COMPRESSION_AUTO, COMPRESSION_NONE]}.")
 
 
-def _to_tensor(dataset_id):
+def _to_tensor(dataset_id) -> tensor.Tensor:
   """Converts `dataset_id` to Tensor."""
 
   if isinstance(dataset_id, tensor.Tensor):
@@ -209,7 +210,7 @@ def _to_tensor(dataset_id):
       dataset_id, dtype=dtypes.int64, name="dataset_id")
 
 
-def _to_string(dataset_id):
+def _to_string(dataset_id) -> str:
   """Converts `dataset_id` to string."""
 
   if isinstance(dataset_id, tensor.Tensor):
@@ -406,7 +407,7 @@ else:
   _DataServiceDataset = _DataServiceDatasetV1
 
 
-def _parse_service(service):
+def _parse_service(service) -> tuple[str, str]:
   """Converts a tf.data service string into a (protocol, address) tuple.
 
   Args:
@@ -508,7 +509,7 @@ def _distribute(processing_mode,
   processing_mode = _get_validated_sharding_policy(processing_mode)
   _validate_compression(compression)
 
-  def _apply_fn(dataset):  # pylint: disable=missing-docstring
+  def _apply_fn(dataset) -> dataset_ops.Dataset:  # pylint: disable=missing-docstring
     dataset_id = _register_dataset(service, dataset, compression=compression)
     return _from_dataset_id(
         processing_mode,
