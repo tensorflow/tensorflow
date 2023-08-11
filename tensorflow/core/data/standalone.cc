@@ -207,6 +207,7 @@ Status Dataset::MakeIterator(
   params.thread_factory = unbounded_thread_pool_.get_thread_factory();
   params.thread_pool = &unbounded_thread_pool_;
   params.model = std::make_shared<model::Model>();
+  params.run_mode = RunMode::STANDALONE;
   ctx = std::make_unique<IteratorContext>(std::move(params));
   SerializationContext::Params serialization_params(&op_ctx);
   auto serialization_ctx =
