@@ -558,6 +558,38 @@ static std::string_view StreamCaptureModeToString(
   return status == hipStreamCaptureStatusActive;
 }
 
+/* static */ tsl::Status GpuDriver::GraphAddKernelNode(
+    hipGraphNode_t* node, hipGraph_t graph, absl::Span<hipGraphNode_t> deps,
+    absl::string_view kernel_name, hipFunction_t function,
+    unsigned int grid_dim_x, unsigned int grid_dim_y, unsigned int grid_dim_z,
+    unsigned int block_dim_x, unsigned int block_dim_y,
+    unsigned int block_dim_z, unsigned int shared_mem_bytes,
+    void** kernel_params, void** extra) {
+  VLOG(2) << "Add kernel node to a graph: " << graph
+          << "; kernel: " << kernel_name << "; gdx: " << grid_dim_x
+          << " gdy: " << grid_dim_y << " gdz: " << grid_dim_z
+          << " bdx: " << block_dim_x << " bdy: " << block_dim_y
+          << " bdz: " << block_dim_z << "; shmem: " << shared_mem_bytes;
+
+  hipKernelNodeParams params;
+  params.func = function;
+  params.gridDim.x = grid_dim_x;
+  params.gridDim.y = grid_dim_y;
+  params.gridDim.z = grid_dim_z;
+  params.blockDim.x = block_dim_x;
+  params.blockDim.y = block_dim_y;
+  params.blockDim.z = block_dim_z;
+  params.sharedMemBytes = shared_mem_bytes;
+  params.kernelParams = kernel_params;
+  params.extra = extra;
+
+  RETURN_IF_ROCM_ERROR(
+      hipGraphAddKernelNode(node, graph, deps.data(), deps.size(), &params),
+      "Failed to add kernel node to a HIP graph");
+
+  return ::tsl::OkStatus();
+}
+
 /* static */ tsl::Status GpuDriver::LaunchKernel(
     GpuContext* context, absl::string_view kernel_name, hipFunction_t function,
     unsigned int grid_dim_x, unsigned int grid_dim_y, unsigned int grid_dim_z,
