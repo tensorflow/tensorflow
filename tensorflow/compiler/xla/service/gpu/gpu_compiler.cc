@@ -624,7 +624,11 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
     collectives_pipeline.AddPass<WhileLoopAllReduceCodeMotion>(
         /*enable_reduce_scatter=*/debug_options
             .xla_gpu_enable_while_loop_reduce_scatter_code_motion());
-    if (debug_options.xla_gpu_enable_pipelined_all_reduce()) {
+
+    const bool enable_all_pipelined =
+        debug_options.xla_gpu_enable_pipelined_collectives();
+    if (enable_all_pipelined ||
+        debug_options.xla_gpu_enable_pipelined_all_reduce()) {
       CollectivePipeliner::Config config{
           /*op=*/HloOpcode::kAllReduce,
           /*level_to_operate_on=*/0,
@@ -636,7 +640,8 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
           /*should_process=*/HloPredicateTrue};
       collectives_pipeline.AddPass<CollectivePipeliner>(config);
     }
-    if (debug_options.xla_gpu_enable_pipelined_all_gather()) {
+    if (enable_all_pipelined ||
+        debug_options.xla_gpu_enable_pipelined_all_gather()) {
       CollectivePipeliner::Config config{
           /*op=*/HloOpcode::kAllGather,
           /*level_to_operate_on=*/0,
@@ -648,7 +653,8 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
           /*should_process=*/HloPredicateTrue};
       collectives_pipeline.AddPass<CollectivePipeliner>(config);
     }
-    if (debug_options.xla_gpu_enable_pipelined_reduce_scatter()) {
+    if (enable_all_pipelined ||
+        debug_options.xla_gpu_enable_pipelined_reduce_scatter()) {
       CollectivePipeliner::Config config{
           /*op=*/HloOpcode::kReduceScatter,
           /*level_to_operate_on=*/0,
@@ -831,20 +837,27 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
       pipeline.AddPass<AsyncCollectiveCreator>(std::move(config));
 
       auto convert_to_async = [&debug_options](const HloInstruction* inst) {
+        const bool enable_all_async =
+            debug_options.xla_gpu_enable_async_collectives();
         switch (inst->opcode()) {
           case HloOpcode::kAllReduceStart:
-            return debug_options.xla_gpu_enable_async_all_reduce();
+            return enable_all_async ||
+                   debug_options.xla_gpu_enable_async_all_reduce();
           case HloOpcode::kAllGatherStart:
-            return debug_options.xla_gpu_enable_async_all_gather();
+            return enable_all_async ||
+                   debug_options.xla_gpu_enable_async_all_gather();
           case HloOpcode::kCollectivePermuteStart:
-            return debug_options.xla_gpu_enable_async_collective_permute();
+            return enable_all_async ||
+                   debug_options.xla_gpu_enable_async_collective_permute();
           case HloOpcode::kAsyncStart: {
             auto async_inst = Cast<HloAsyncInstruction>(inst);
             switch (async_inst->async_wrapped_opcode()) {
               case HloOpcode::kReduceScatter:
-                return debug_options.xla_gpu_enable_async_reduce_scatter();
+                return enable_all_async ||
+                       debug_options.xla_gpu_enable_async_reduce_scatter();
               case HloOpcode::kAllToAll:
-                return debug_options.xla_gpu_enable_async_all_to_all();
+                return enable_all_async ||
+                       debug_options.xla_gpu_enable_async_all_to_all();
               default:
                 return false;
             }

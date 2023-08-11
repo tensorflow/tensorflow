@@ -112,7 +112,14 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_all_reduce_combine_threshold_bytes(kDefaultThreshold);
   opts.set_xla_gpu_all_gather_combine_threshold_bytes(kDefaultThreshold);
   opts.set_xla_gpu_reduce_scatter_combine_threshold_bytes(kDefaultThreshold);
+
+  opts.set_xla_gpu_enable_async_collectives(false);
   opts.set_xla_gpu_enable_async_all_reduce(true);
+  opts.set_xla_gpu_enable_async_all_gather(false);
+  opts.set_xla_gpu_enable_async_collective_permute(false);
+  opts.set_xla_gpu_enable_async_all_to_all(false);
+  opts.set_xla_gpu_enable_async_reduce_scatter(false);
+
   opts.set_xla_gpu_enable_reassociation_for_converted_ar(true);
 
   opts.set_xla_cpu_enable_xprof_traceme(false);
@@ -139,6 +146,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_lhs_enable_gpu_async_tracker(false);
   opts.set_xla_gpu_pgle_profile_file_or_directory_path("");
   opts.set_xla_gpu_enable_highest_priority_async_stream(false);
+
+  opts.set_xla_gpu_enable_pipelined_collectives(false);
   opts.set_xla_gpu_enable_pipelined_all_reduce(false);
   opts.set_xla_gpu_enable_pipelined_all_gather(false);
   opts.set_xla_gpu_enable_pipelined_reduce_scatter(false);
@@ -788,6 +797,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 debug_options->xla_gpu_deterministic_ops(),
                 "Guarantees run-to-run determinism on GPU."));
   flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_async_collectives",
+      bool_setter_for(&DebugOptions::set_xla_gpu_enable_async_collectives),
+      debug_options->xla_gpu_enable_async_collectives(),
+      "Converts synchronous collective ops into asynchronous."));
+  flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_async_all_reduce",
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_async_all_reduce),
       debug_options->xla_gpu_enable_async_all_reduce(),
@@ -1084,6 +1098,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
           &DebugOptions::set_xla_gpu_enable_highest_priority_async_stream),
       debug_options->xla_gpu_enable_highest_priority_async_stream(),
       "Enable async stream to have the highest priority."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_pipelined_collectives",
+      bool_setter_for(&DebugOptions::set_xla_gpu_enable_pipelined_collectives),
+      debug_options->xla_gpu_enable_pipelined_collectives(),
+      "Enable pipelinling of collective instructions (all-reduce, all-gather, "
+      "and reduce-scatter)."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_pipelined_all_reduce",
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_pipelined_all_reduce),
