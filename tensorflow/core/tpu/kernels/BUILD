@@ -501,6 +501,7 @@ cc_library(
     copts = tf_copts(),
     deps = [
         ":tpu_compilation_metrics_hdrs",
+        "@com_google_absl//absl/strings",
     ],
 )
 
