@@ -299,7 +299,7 @@ HloFusionAnalysis::EmitterFusionKind HloFusionAnalysis::GetEmitterFusionKind()
 #endif
   const auto& roots = fusion_roots();
 
-  if (HasRealReductionHero(roots)) {
+  if (absl::c_any_of(roots, HasRealReductionHero)) {
     return EmitterFusionKind::kReduction;
   }
 

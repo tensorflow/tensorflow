@@ -34,6 +34,16 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+namespace {
+
+bool HasAnyTiledTransposeRoot(const HloComputation& computation) {
+  return absl::c_any_of(GetFusionRoots(computation),
+                        [&](const HloInstruction* instr) {
+                          return FindAnyTiledTranspose(*instr);
+                        });
+}
+
+}  // namespace
 
 bool IfFusedReadsElementsMultipleTimes(const HloInstruction& instr) {
   CHECK_NE(instr.opcode(), HloOpcode::kFusion) << "`instr` has to be unfused.";
@@ -96,7 +106,8 @@ bool IsPhysicallyTransposing(const HloInstruction& instr) {
 
 bool IsReduceInputFusion(const HloInstruction& instr) {
   return instr.opcode() == HloOpcode::kFusion &&
-         HasAnyUnnestedReductionRoot(*instr.called_computations()[0]);
+         absl::c_any_of(GetFusionRoots(*instr.called_computations()[0]),
+                        HasRealReductionHero);
 }
 
 bool IsInputFusibleReduction(const HloInstruction& instr) {
@@ -132,6 +143,7 @@ const HloInstruction* GetRealHeroForMultiOutputFusion(
   }
   auto fused_expression_root = instr.fused_expression_root();
   if (!instr.IsMultiOutputFusion()) {
+    // TODO(jreiffers): Compute the non-trivial hero only once here.
     if (HasRealReductionHero(fused_expression_root) ||
         FindAnyTiledTranspose(*fused_expression_root)) {
       return &FindNonTrivialHero(*fused_expression_root);
@@ -143,6 +155,7 @@ const HloInstruction* GetRealHeroForMultiOutputFusion(
   // constraints. Note that we cannot have both kinds at the same time, so once
   // we find any, we can immediately return it.
   for (auto* inst : fused_expression_root->mutable_operands()) {
+    // TODO(jreiffers): Compute the non-trivial hero only once here.
     if (HasRealReductionHero(inst) || FindAnyTiledTranspose(*inst)) {
       return &FindNonTrivialHero(*inst);
     }
@@ -242,6 +255,7 @@ FusionDecision ShapesCompatibleForMultiOutputFusion(
   auto get_loop_shape = [&](const HloInstruction* element_instr) {
     // Special-case reduction-to-vector ops: The loop dimensions are determined
     // by the shape of the first operand.
+    // TODO(jreiffers): Compute the non-trivial hero only once here.
     if (IsReductionFromOrToContiguousDimensions(*element_instr) ||
         FindAnyTiledTranspose(*element_instr)) {
       return FindNonTrivialHero(*element_instr).operand(0)->shape();
@@ -348,6 +362,7 @@ static bool AllSatisfy(const HloInstruction& instr,
 
 FusionDecision IsProducerConsumerFusible(const HloInstruction& producer,
                                          const HloInstruction& consumer) {
+  // TODO(jreiffers): Compute the non-trivial hero only once here.
   if (!IsLoopFusibleAsProducer(producer) &&
       !(FindAnyTiledTranspose(producer) &&
         &FindNonTrivialHero(consumer) == &producer)) {
@@ -789,34 +804,10 @@ std::vector<HloInstruction*> GetFusionRoots(const HloComputation& computation) {
   return out;
 }
 
-bool HasAnyTiledTransposeRoot(const HloComputation& computation) {
-  return absl::c_any_of(GetFusionRoots(computation),
-                        [&](const HloInstruction* instr) {
-                          return FindAnyTiledTranspose(*instr);
-                        });
-}
-
-bool HasAnyUnnestedReductionRoot(const HloComputation& computation) {
-  return HasAnyUnnestedReductionRoot(GetFusionRoots(computation));
-}
-
-bool HasAnyUnnestedReductionRoot(
-    const std::vector<HloInstruction*>& fusion_roots) {
-  return absl::c_any_of(fusion_roots, [](const HloInstruction* instr) {
-    return HasRealReductionHero(instr);
-  });
-}
-
 static const HloInstruction* FindNonTrivialReductionHero(
     const HloInstruction& instr) {
-  const HloInstruction* idx = &instr;
-  while (IsIntermediate(idx, /*allowed_operand_count=*/1)) {
-    idx = idx->operand(0);
-  }
-  if (IsReductionFromOrToContiguousDimensions(*idx)) {
-    return idx;
-  }
-  return nullptr;
+  auto& hero = FindNonTrivialHero(instr);
+  return IsReductionFromOrToContiguousDimensions(hero) ? &hero : nullptr;
 }
 
 const HloInstruction* FindFirstRealReductionHero(
@@ -845,10 +836,6 @@ const HloInstruction* FindRealReductionHero(const HloInstruction* hlo) {
 
 bool HasRealReductionHero(const HloInstruction* hlo) {
   return FindRealReductionHero(hlo) != nullptr;
-}
-
-bool HasRealReductionHero(const std::vector<HloInstruction*>& fusion_roots) {
-  return FindFirstRealReductionHero(fusion_roots) != nullptr;
 }
 
 }  // namespace gpu
