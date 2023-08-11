@@ -5911,13 +5911,15 @@ cc_library(
     deps = [
         ":hlo_pass",
         "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/tsl/platform:errors",
-        "//tensorflow/tsl/platform:logging",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -5927,12 +5929,15 @@ xla_cc_test(
     deps = [
         ":optimize_input_output_buffer_alias",
         "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/tsl/platform:test",
+        "@com_google_googletest//:gtest",
     ],
 )
 

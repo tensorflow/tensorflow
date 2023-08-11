@@ -16,17 +16,23 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_OPTIMIZE_INPUT_OUTPUT_BUFFER_ALIAS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_OPTIMIZE_INPUT_OUTPUT_BUFFER_ALIAS_H_
 
+#include <cstdint>
+#include <functional>
+
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
 
-// This pass opportunistically finds input and output buffers that can be
-// aliased, and writes the alias config into the HloModule.
+// This pass finds input and output buffers that can be aliased, and writes the
+// alias config into the HloModule.
 //
 // The input and the output buffers can be in any shape, and each output buffer
 // can alias with an input buffer with the same shape. Each input buffer may
@@ -40,6 +46,12 @@ namespace xla {
 class OptimizeInputOutputBufferAlias : public HloModulePass {
  public:
   OptimizeInputOutputBufferAlias() = default;
+  explicit OptimizeInputOutputBufferAlias(
+      bool registered_buffer_donor_only,
+      std::function<int64_t(const Shape&)> shape_size_fn =
+          [](const Shape& shape) { return ShapeUtil::ByteSizeOf(shape); })
+      : registered_buffer_donor_only_(registered_buffer_donor_only),
+        shape_size_fn_(shape_size_fn) {}
   ~OptimizeInputOutputBufferAlias() override = default;
 
   absl::string_view name() const override {
@@ -54,8 +66,22 @@ class OptimizeInputOutputBufferAlias : public HloModulePass {
  private:
   friend class OptimizeInputOutputBufferAliasTest;
 
-  StatusOr<bool> Build(const Shape& input_shape, const Shape& output_shape,
-                       HloInputOutputAliasConfig* alias_config);
+  // If true, we only consider the registered buffer donor in
+  // HloBufferDonorConfig, ignoring unregistered input parameters. If false, we
+  // treat all input parameters as buffer donors.
+  bool registered_buffer_donor_only_ = false;
+
+  // Match buffer donors and donees and save the matched paired in the
+  // alias_config. The availability of buffer donors is controlled by the flag
+  // registered_buffer_donor_only_.
+  StatusOr<bool> Build(absl::Span<const Shape> input_shapes,
+                       const Shape& output_shape,
+                       HloInputOutputAliasConfig* alias_config,
+                       HloBufferDonorConfig* buffer_donor_config);
+
+  std::function<int64_t(const Shape&)> shape_size_fn_ = [](const Shape& shape) {
+    return ShapeUtil::ByteSizeOf(shape);
+  };
 };
 
 }  // namespace xla
