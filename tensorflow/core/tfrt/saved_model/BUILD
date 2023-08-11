@@ -178,7 +178,7 @@ cc_library(
         "//tensorflow/tsl/platform:protobuf",
         # TODO(chky): Remove kernel fallback tensor deps.
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_tensor_conversion_alwayslink",
-        "//tensorflow/core/runtime_fallback/kernel:gpurt_kernels",
+        "//tensorflow/core/tfrt/gpu/kernel:gpurt_kernels",
         "//tensorflow/core/runtime_fallback/runtime:runtime_fallback_alwayslink",
         "//tensorflow/core/tfrt/fallback:fallback_state",
         "//tensorflow/core/tfrt/graph_executor",

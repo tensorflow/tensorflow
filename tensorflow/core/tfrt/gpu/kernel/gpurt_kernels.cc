@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <utility>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -60,12 +61,12 @@ Status GetDevices(const tfrt::ExecutionContext& exec_ctx, Devices* devices) {
   const auto* fallback_request_state =
       req_ctx->GetDataIfExists<tfd::KernelFallbackCompatRequestState>();
   if (!fallback_request_state) {
-    return tensorflow::errors::Internal("Fallback request state is not found.");
+    return absl::InternalError("Fallback request state is not found.");
   }
 
   devices->cpu_device = fallback_request_state->device_manager().HostCPU();
   if (!devices->cpu_device) {
-    return tensorflow::errors::Internal(
+    return absl::InternalError(
         "Fallback request state must have a valid host cpu device.");
   }
   TF_RETURN_IF_ERROR(fallback_request_state->device_manager().LookupDevice(
