@@ -93,7 +93,7 @@ xla::StatusOr<xla::ifrt::DeviceList> PyDeviceList::ifrt_device_list() const {
   }
 }
 
-ssize_t PyDeviceList::Hash() {
+int64_t PyDeviceList::Hash() {
   if (!hash_.has_value()) {
     switch (device_list_.index()) {
       case 0:
