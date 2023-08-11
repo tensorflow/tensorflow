@@ -257,6 +257,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@tf_runtime//:bef",
         "@tf_runtime//:hostcontext",
     ],
 )

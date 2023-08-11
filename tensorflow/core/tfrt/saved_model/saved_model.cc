@@ -538,7 +538,7 @@ SavedModelImpl::LoadSavedModel(Options options,
 
     ASSIGN_OR_RETURN_IN_COMPILE(
         bef, LoadAotPackages(options.graph_execution_options.compile_options,
-                             mlir_module.get(), saved_model_dir_string, bef,
+                             mlir_module.get(), saved_model_dir_string,
                              fallback_state.get()));
   } else {
     tensorflow::tf_mlrt::RegisterTfMlrtKernels(*kernel_registry);

@@ -120,7 +120,7 @@ std::string GetBEFFilePath(std::string aot_package_directory);
 // redundant steps
 absl::StatusOr<tfrt::BefBuffer> LoadAotPackages(
     const TfrtCompileOptions& options, mlir::ModuleOp mlir_module,
-    const std::string& saved_model_dir, tfrt::BefBuffer bef,
+    const std::string& saved_model_dir,
     tfrt_stub::FallbackState* fallback_state);
 
 }  // namespace tfrt_stub

@@ -50,6 +50,7 @@ limitations under the License.
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/path.h"
 #include "tensorflow/tsl/platform/statusor.h"
+#include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace tfrt_stub {
@@ -229,13 +230,12 @@ std::string GetBEFFilePath(std::string aot_package_directory) {
 // redundant steps
 absl::StatusOr<tfrt::BefBuffer> LoadAotPackages(
     const TfrtCompileOptions& options, mlir::ModuleOp mlir_module,
-    const std::string& saved_model_dir, tfrt::BefBuffer bef,
+    const std::string& saved_model_dir,
     tfrt_stub::FallbackState* fallback_state) {
   const std::string aot_package_directory = GetAotPackagePath(saved_model_dir);
-  // Deserialize BEF buffer
   const std::string bef_file_path =
       tfrt_stub::GetBEFFilePath(aot_package_directory);
-  TF_ASSIGN_OR_RETURN(bef, DeserializeBEFBuffer(bef_file_path));
+  TF_ASSIGN_OR_RETURN(tfrt::BefBuffer bef, DeserializeBEFBuffer(bef_file_path));
 
   if (bef.empty()) {
     return absl::InternalError("BefBuffer is empty.");
