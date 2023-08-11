@@ -96,6 +96,11 @@ class DType {
   bool operator==(const DType& other) const { return kind_ == other.kind_; }
   bool operator!=(const DType& other) const { return kind_ != other.kind_; }
 
+  template <typename H>
+  friend H AbslHashValue(H h, const DType& value) {
+    return H::combine(std::move(h), value.kind());
+  }
+
   // Returns the byte size of a single element of this DType. Returns
   // std::nullopt if not aligned to a byte boundary or there is no fixed size
   // (such as kString).

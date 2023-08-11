@@ -216,7 +216,7 @@ PyArray::Storage* Construct(PyArrayObject* self, Args&&... args) {
 
 struct ShapedArrayCacheKey {
   std::vector<int64_t> dims;
-  PrimitiveType dtype;
+  ifrt::DType dtype{ifrt::DType::kInvalid};
   bool weak_type;
 
   template <typename H>
@@ -254,7 +254,7 @@ py::object MakeShapedArrayCached(const ShapedArrayCacheKey& key) {
       });
 
   if (!value->has_value()) {
-    auto dtype = PrimitiveTypeToDtype(key.dtype).value();
+    auto dtype = IfrtDtypeToDtype(key.dtype).value();
     py::object aval = (*shaped_array)(
         SpanToTuple(absl::Span<const int64_t>(key.dims)), dtype, key.weak_type);
     *value = aval;
@@ -328,10 +328,10 @@ PyArray PyArray::MakeFromSingleDeviceArray(
   auto shape_span = ifrt_array->shape().dims();
   ShapedArrayCacheKey key;
   key.dims = std::vector<int64_t>(shape_span.begin(), shape_span.end());
-  key.dtype = ifrt::ToPrimitiveType(ifrt_array->dtype()).value();
+  key.dtype = ifrt_array->dtype();
   key.weak_type = weak_type;
   auto aval = MakeShapedArrayCached(key);
-  auto dtype = PrimitiveTypeToDtype(key.dtype).value();
+  auto dtype = IfrtDtypeToDtype(key.dtype).value();
   const ifrt::MemoryKind memory_kind = ifrt_array->sharding().memory_kind();
   auto py_memory_kind =
       (jax::GetJaxEnableMemoryKind() && memory_kind.memory_kind().has_value())
@@ -353,10 +353,10 @@ PyArray PyArray::MakeFromIfrtArrayAndSharding(
   auto shape_span = ifrt_array->shape().dims();
   ShapedArrayCacheKey key;
   key.dims = std::vector<int64_t>(shape_span.begin(), shape_span.end());
-  key.dtype = ifrt::ToPrimitiveType(ifrt_array->dtype()).value();
+  key.dtype = ifrt_array->dtype();
   key.weak_type = weak_type;
   auto aval = MakeShapedArrayCached(key);
-  auto dtype = PrimitiveTypeToDtype(key.dtype).value();
+  auto dtype = IfrtDtypeToDtype(key.dtype).value();
   return PyArray(std::move(aval), weak_type, dtype, std::move(key.dims),
                  std::move(sharding), std::move(py_client),
                  std::move(traceback), std::move(ifrt_array), committed);
