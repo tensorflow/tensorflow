@@ -534,13 +534,13 @@ PYBIND11_MODULE(xla_extension, m) {
           -> std::shared_ptr<PyClient> {
         py::gil_scoped_release gil_release;
 #ifdef XLA_PYTHON_ENABLE_TPU
-#if defined(LIBTPU_ON_GCE)
+#if !defined(PLATFORM_GOOGLE)
         if (absl::AsciiStrToLower(platform_name) == "tpu") {
           // TODO(b/261484192): handle device specific initialization.
           xla::ThrowIfError(
               tensorflow::tpu::LoadTpuLibraryAndInitializeTpuStructFns());
         }
-#endif  // LIBTPU_ON_GCE
+#endif  // PLATFORM_GOOGLE
 #endif  // XLA_PYTHON_ENABLE_TPU
         PjRtClient::KeyValueGetCallback kv_get = nullptr;
         PjRtClient::KeyValuePutCallback kv_put = nullptr;

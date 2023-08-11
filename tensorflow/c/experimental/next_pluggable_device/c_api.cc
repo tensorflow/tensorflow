@@ -244,7 +244,7 @@ void TF_CoordinationServiceDeleteKeyValue(const char* key,
 void TF_CreateAndSetPjRtCApiClient(const char* device_type, TF_Status* status,
                                    PJRT_NamedValue* create_options,
                                    int num_options) {
-#if defined(LIBTPU_ON_GCE)
+#if !defined(PLATFORM_GOOGLE)
   if (absl::AsciiStrToLower(device_type) == "tpu") {
     // TODO(b/261484192): handle device specific initialization.
     tsl::Status tpu_status =
@@ -254,7 +254,7 @@ void TF_CreateAndSetPjRtCApiClient(const char* device_type, TF_Status* status,
       return;
     }
   }
-#endif  // LIBTPU_ON_GCE
+#endif  // PLATFORM_GOOGLE
   tsl::StatusOr<std::unique_ptr<xla::PjRtClient>> pjrt_client =
       xla::GetCApiClient(device_type, pjrt::ConvertFromPjRtNamedValueList(
                                           create_options, num_options));
