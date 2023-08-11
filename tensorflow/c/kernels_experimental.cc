@@ -320,14 +320,13 @@ void TF_TemporaryVariable(TF_OpKernelContext* ctx, TF_DataType dtype,
   auto* context = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
   tensorflow::ResourceMgr* rm = context->resource_manager();
   OP_REQUIRES(context, rm,
-              tensorflow::errors::Internal("No per-step resource manager."));
+              absl::InternalError("No per-step resource manager."));
 
   std::string unique_name =
       TemporaryVariableName(var_name->data, context->frame_iter());
   auto* tmp_var = new TmpVar;
-  OP_REQUIRES(
-      context, tmp_var,
-      tensorflow::errors::ResourceExhausted("Could not allocate TmpVar."));
+  OP_REQUIRES(context, tmp_var,
+              absl::ResourceExhaustedError("Could not allocate TmpVar."));
   tmp_var->name = unique_name;
 
   Status s;
@@ -365,7 +364,7 @@ void TF_DestroyTemporaryVariable(TF_OpKernelContext* ctx, const int index,
 
   tensorflow::ResourceMgr* rm = context->resource_manager();
   OP_REQUIRES(context, rm,
-              tensorflow::errors::Internal("No per-step resource manager."));
+              absl::InternalError("No per-step resource manager."));
   std::string unique_name =
       TemporaryVariableName(var_name->data, context->frame_iter());
   OP_REQUIRES_OK(context,
