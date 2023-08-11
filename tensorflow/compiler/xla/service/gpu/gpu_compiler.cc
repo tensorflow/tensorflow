@@ -1080,7 +1080,12 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
   }
 
-  pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
+  // Since this CSE runs after collective schedule linearizer which inserts
+  // control dependencies, ignore these control deps when replacing instructions
+  // with equivalent ones here.
+  pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
+                           /*only_fusion_computations*/ false,
+                           /*ignore_control_dependencies=*/true);
   TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
 
   return OkStatus();

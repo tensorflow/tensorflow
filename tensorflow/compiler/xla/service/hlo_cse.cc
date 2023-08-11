@@ -19,6 +19,7 @@ limitations under the License.
 #include <list>
 #include <map>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <utility>
@@ -286,8 +287,9 @@ StatusOr<bool> HloCSE::Run(
         HloInstruction* equivalent_instruction = pair.first->hlo;
         TF_RETURN_IF_ERROR(
             instruction->ReplaceAllUsesWith(equivalent_instruction));
-        TF_RETURN_IF_ERROR(
-            computation->RemoveInstructionAndUnusedOperands(instruction));
+        TF_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(
+            instruction, /*cleanup=*/std::nullopt,
+            ignore_control_dependencies_));
         changed = true;
         continue;
       }

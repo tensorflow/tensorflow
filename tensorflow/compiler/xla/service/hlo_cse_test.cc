@@ -850,6 +850,36 @@ TEST_F(HloCseTest, CustomCallSideEffects) {
   EXPECT_EQ(changed, false);
 }
 
+TEST_F(HloCseTest, IgnoreControlDependencies) {
+  const char* const hlo_string = R"(
+    HloModule m
+
+    %add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT x = f32[] add(p0, p1)
+    }
+
+    ENTRY entry {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+
+      ar0 = f32[] all-reduce(p0), replica_groups={}, to_apply=%add
+      ar1 = f32[] all-reduce(p1), replica_groups={}, to_apply=%add, control-predecessors={ar0}
+      ar2 = f32[] all-reduce(p0), replica_groups={}, to_apply=%add, control-predecessors={ar1}
+      ROOT root = tuple(ar0, ar1, ar2)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  HloCSE cse(/*is_layout_sensitive=*/false, /*only_fusion_computations=*/false,
+             /*ignore_control_dependencies=*/true);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&cse, m.get()));
+
+  SCOPED_TRACE(absl::StrCat("Module after CSE:\n", m->ToString()));
+  EXPECT_EQ(changed, true);
+}
+
 class HloCseCommutativeOpTest
     : public HloCseTest,
       public ::testing::WithParamInterface<std::string /*op*/> {};
