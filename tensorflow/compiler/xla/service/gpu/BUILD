@@ -576,6 +576,7 @@ xla_test(
         "no_oss",
         "nomac",
         "notap",
+        "requires-mem:16g",
     ],
     deps = [
         "//tensorflow/compiler/xla:error_spec",
@@ -667,7 +668,9 @@ xla_test(
     backends = [
         "gpu",
     ],
-    tags = ["nomac"],
+    tags = [
+        "nomac",
+    ],
     deps = [
         ":autotuner_util",
         ":backend_configs_cc",

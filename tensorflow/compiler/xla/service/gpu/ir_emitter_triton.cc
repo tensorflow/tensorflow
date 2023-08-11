@@ -1347,12 +1347,14 @@ StatusOr<LaunchDimensions> SoftMax(mlir::OpBuilder builder,
   for (int minor_axis = 1; minor_axis < reduce_input_shape.rank(); ++minor_axis)
     num_rows *= reduce_input_shape.dimensions_minor(minor_axis);
 
-  Value row_index = b.create<mt::GetProgramIdOp>(mt::ProgramIDDim::X);
+  Value row_index = b.create<ma::ExtSIOp>(
+      b.getI64Type(), b.create<mt::GetProgramIdOp>(mt::ProgramIDDim::X));
   Value row_stride = CreateConst(b, b.getI32Type(), row_len);
 
   absl::flat_hash_map<const HloInstruction*, Value> values_out;
   auto make_tensor_pointer = [&](Value base) {
-    Value offset = b.create<ma::MulIOp>(row_index, row_stride);
+    Value offset = b.create<ma::MulIOp>(
+        row_index, b.create<ma::ExtSIOp>(b.getI64Type(), row_stride));
     return b.create<mt::MakeTensorPtrOp>(
         /*base=*/AddPtr(b, base, offset),
         /*shape=*/ValueRange{CreateConst(b, b.getI64Type(), row_len)},
