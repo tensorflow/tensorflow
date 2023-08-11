@@ -84,26 +84,18 @@ class BatchDimensionMerger : public DfsHloRewriteVisitor {
       batch_size *= lhs_shape.dimensions(dimension_number);
     }
 
-    // Sizes of new dimensions of the operand where batch dimensions are merged
-    // into batch_dimension. Non-batch dimensions keep their sizes and order.
-    auto operand_merged_dimensions = [&](Shape shape, int batch_dimension) {
-      std::vector<int64_t> dimensions;
-      dimensions.reserve(shape.rank() + 1 - batch_dimension_count);
-      for (int i = 0; i < batch_dimension; ++i) {
-        dimensions.push_back(shape.dimensions(i));
+    auto merge_batch_dims = [&](Shape old_shape, int64_t batch_dim) {
+      Shape new_shape = old_shape;
+      for (int64_t i = 1; i < batch_dimension_count; ++i) {
+        // Note that the other batch dimensions shift with deletion.
+        new_shape.DeleteDimension(batch_dim + 1);
       }
-      dimensions.push_back(batch_size);
-      for (int i = batch_dimension + batch_dimension_count; i < shape.rank();
-           ++i) {
-        dimensions.push_back(shape.dimensions(i));
-      }
-      return dimensions;
+      new_shape.set_dimensions(batch_dim, batch_size);
+      return new_shape;
     };
 
-    std::vector<int64_t> lhs_reshape_dimensions =
-        operand_merged_dimensions(lhs_shape, lhs_batch_dimension);
-    std::vector<int64_t> rhs_reshape_dimensions =
-        operand_merged_dimensions(rhs_shape, rhs_batch_dimension);
+    Shape new_lhs_shape = merge_batch_dims(lhs_shape, lhs_batch_dimension);
+    Shape new_rhs_shape = merge_batch_dims(rhs_shape, rhs_batch_dimension);
 
     DotDimensionNumbers new_dot_dimension_numbers;
     new_dot_dimension_numbers.add_lhs_batch_dimensions(lhs_batch_dimension);
@@ -127,31 +119,18 @@ class BatchDimensionMerger : public DfsHloRewriteVisitor {
           shifted_contracting_dimensions.end());
     }
 
-    std::vector<int64_t> new_dot_output_dimensions;
-    new_dot_output_dimensions.reserve(dot->shape().rank() + 1 -
-                                      batch_dimension_count);
-    new_dot_output_dimensions.push_back(batch_size);
-    for (int i = batch_dimension_count; i < dot->shape().rank(); ++i) {
-      new_dot_output_dimensions.push_back(dot->shape().dimensions(i));
-    }
+    TF_ASSIGN_OR_RETURN(HloInstruction * reshaped_lhs,
+                        MakeReshapeHlo(new_lhs_shape, dot->mutable_operand(0)));
 
-    TF_ASSIGN_OR_RETURN(
-        HloInstruction * reshaped_lhs,
-        MakeReshapeHlo(ShapeUtil::MakeShape(lhs_shape.element_type(),
-                                            lhs_reshape_dimensions),
-                       dot->mutable_operand(0)));
+    TF_ASSIGN_OR_RETURN(HloInstruction * reshaped_rhs,
+                        MakeReshapeHlo(new_rhs_shape, dot->mutable_operand(1)));
 
-    TF_ASSIGN_OR_RETURN(
-        HloInstruction * reshaped_rhs,
-        MakeReshapeHlo(ShapeUtil::MakeShape(rhs_shape.element_type(),
-                                            rhs_reshape_dimensions),
-                       dot->mutable_operand(1)));
-
-    TF_ASSIGN_OR_RETURN(
-        HloInstruction * new_dot,
-        MakeDotHlo(reshaped_lhs, reshaped_rhs, new_dot_dimension_numbers,
-                   dot->precision_config(), dot->shape().element_type(),
-                   &dot->metadata()));
+    Shape new_dot_shape = merge_batch_dims(dot->shape(), /*batch_dim=*/0);
+    HloInstruction* new_dot = dot->parent()->AddInstruction(
+        HloInstruction::CreateDot(new_dot_shape, reshaped_lhs, reshaped_rhs,
+                                  new_dot_dimension_numbers,
+                                  dot->precision_config()),
+        &dot->metadata());
     dot->SetupDerivedInstruction(new_dot);
 
     std::unique_ptr<HloInstruction> out_reshape =
