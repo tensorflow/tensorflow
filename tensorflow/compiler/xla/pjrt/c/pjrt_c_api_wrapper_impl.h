@@ -52,6 +52,16 @@ struct PJRT_Client {
   // Map from wrapped C++ devices to C devices. The values are the same as
   // `owned_devices`.
   absl::flat_hash_map<xla::PjRtDevice*, PJRT_Device*> c_device_from_cpp_device;
+  // TODO(yueshengys): Add a `memories` member when global memories are
+  // supported.
+  std::vector<PJRT_Memory> owned_memories;
+  // `addressable_memories` contains pointers to the `owned_memories` that the
+  // client can transfer to and from.
+  std::vector<PJRT_Memory*> addressable_memories;
+  // Map from wrapped C++ memories to C memories. The values are the same as
+  // `owned_memories`.
+  absl::flat_hash_map<xla::PjRtMemorySpace*, PJRT_Memory*>
+      c_memory_from_cpp_memory;
 };
 
 // PJRT_DeviceDescriptions are owned by their corresponding PJRT_Device.
@@ -68,17 +78,15 @@ struct PJRT_Device {
   // The xla::PjRtDevice* is owned by the corresponding xla::PjRtClient.
   xla::PjRtDevice* device;
   PJRT_DeviceDescription description;
-  std::vector<PJRT_Memory> owned_memories;
-  // `memories` contains the addresses of the contents of `owned_memories`.
-  std::vector<PJRT_Memory*> memories;
-  // Map from wrapped C++ memories to C memories. The values are the same as
-  // `owned_memories`.
-  absl::flat_hash_map<xla::PjRtMemorySpace*, PJRT_Memory*>
-      c_memory_from_cpp_memory;
+  std::vector<PJRT_Memory*> addressable_memories;
+  PJRT_Client* client;
 };
 
 struct PJRT_Memory {
+  // The xla::PjRtMemorySpace* is owned by the corresponding xla::PjRtClient.
   xla::PjRtMemorySpace* memory_space;
+  std::vector<PJRT_Device*> devices;
+  PJRT_Client* client;
 };
 
 struct PJRT_Executable {
@@ -194,6 +202,8 @@ PJRT_Error* PJRT_Client_AddressableDevices(
 PJRT_Error* PJRT_Client_LookupDevice(PJRT_Client_LookupDevice_Args* args);
 PJRT_Error* PJRT_Client_LookupAddressableDevice(
     PJRT_Client_LookupAddressableDevice_Args* args);
+PJRT_Error* PJRT_Client_AddressableMemories(
+    PJRT_Client_AddressableMemories_Args* args);
 PJRT_Error* PJRT_Client_Compile(PJRT_Client_Compile_Args* args);
 PJRT_Error* PJRT_Client_DefaultDeviceAssignment(
     PJRT_Client_DefaultDeviceAssignment_Args* args);
@@ -223,6 +233,8 @@ PJRT_Error* PJRT_Memory_Id(PJRT_Memory_Id_Args* args);
 PJRT_Error* PJRT_Memory_Kind(PJRT_Memory_Kind_Args* args);
 PJRT_Error* PJRT_Memory_DebugString(PJRT_Memory_DebugString_Args* args);
 PJRT_Error* PJRT_Memory_ToString(PJRT_Memory_ToString_Args* args);
+PJRT_Error* PJRT_Memory_AddressableByDevices(
+    PJRT_Memory_AddressableByDevices_Args* args);
 
 PJRT_Error* PJRT_Executable_Destroy(PJRT_Executable_Destroy_Args* args);
 PJRT_Error* PJRT_Executable_Name(PJRT_Executable_Name_Args* args);
@@ -404,6 +416,7 @@ constexpr PJRT_Api CreatePjrtApi(
       /*PJRT_Client_LookupDevice=*/pjrt::PJRT_Client_LookupDevice,
       /*PJRT_Client_LookupAddressableDevice=*/
       pjrt::PJRT_Client_LookupAddressableDevice,
+      /*PJRT_Client_AddressableMemories=*/pjrt::PJRT_Client_AddressableMemories,
       /*PJRT_Client_Compile=*/pjrt::PJRT_Client_Compile,
       /*PJRT_Client_DefaultDeviceAssignment=*/
       pjrt::PJRT_Client_DefaultDeviceAssignment,
@@ -432,6 +445,8 @@ constexpr PJRT_Api CreatePjrtApi(
       /*PJRT_Memory_Kind=*/pjrt::PJRT_Memory_Kind,
       /*PJRT_Memory_DebugString=*/pjrt::PJRT_Memory_DebugString,
       /*PJRT_Memory_ToString=*/pjrt::PJRT_Memory_ToString,
+      /*PJRT_Memory_AddressableByDevices=*/
+      pjrt::PJRT_Memory_AddressableByDevices,
 
       /*PJRT_Executable_Destroy=*/pjrt::PJRT_Executable_Destroy,
       /*PJRT_Executable_Name=*/pjrt::PJRT_Executable_Name,

@@ -81,9 +81,9 @@ static PJRT_Device* GetCDevice(const PJRT_Client* client,
 }
 
 // Returns C memory from wrapped C++ memory.
-static PJRT_Memory* GetCMemory(const PJRT_Device* device,
+static PJRT_Memory* GetCMemory(const PJRT_Client* client,
                                const xla::PjRtMemorySpace* memory) {
-  auto c_memory_map = device->c_memory_from_cpp_memory;
+  auto c_memory_map = client->c_memory_from_cpp_memory;
   auto iter = c_memory_map.find(memory);
   CHECK(iter != c_memory_map.end());
   return iter->second;
@@ -363,6 +363,16 @@ PJRT_Error* PJRT_Client_LookupAddressableDevice(
       xla::PjRtDevice * addressable_device,
       args->client->client->LookupAddressableDevice(args->local_hardware_id));
   args->addressable_device = GetCDevice(args->client, addressable_device);
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Client_AddressableMemories(
+    PJRT_Client_AddressableMemories_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Client_AddressableMemories_Args",
+      PJRT_Client_AddressableMemories_Args_STRUCT_SIZE, args->struct_size));
+  args->num_addressable_memories = args->client->addressable_memories.size();
+  args->addressable_memories = args->client->addressable_memories.data();
   return nullptr;
 }
 
@@ -695,8 +705,8 @@ PJRT_Error* PJRT_Device_AddressableMemories(
   PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
       "PJRT_Device_AddressableMemories_Args",
       PJRT_Device_AddressableMemories_Args_STRUCT_SIZE, args->struct_size));
-  args->memories = args->device->memories.data();
-  args->num_memories = args->device->memories.size();
+  args->memories = args->device->addressable_memories.data();
+  args->num_memories = args->device->addressable_memories.size();
   return nullptr;
 }
 
@@ -706,7 +716,7 @@ PJRT_Error* PJRT_Device_DefaultMemory(PJRT_Device_DefaultMemory_Args* args) {
       PJRT_Device_DefaultMemory_Args_STRUCT_SIZE, args->struct_size));
   PJRT_ASSIGN_OR_RETURN(xla::PjRtMemorySpace * memory_space,
                         args->device->device->default_memory_space());
-  args->memory = GetCMemory(args->device, memory_space);
+  args->memory = GetCMemory(args->device->client, memory_space);
   return nullptr;
 }
 
@@ -796,6 +806,16 @@ PJRT_Error* PJRT_Memory_ToString(PJRT_Memory_ToString_Args* args) {
 
   args->to_string = args->memory->memory_space->ToString().data();
   args->to_string_size = args->memory->memory_space->ToString().size();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Memory_AddressableByDevices(
+    PJRT_Memory_AddressableByDevices_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Memory_AddressableByDevices_Args",
+      PJRT_Memory_AddressableByDevices_Args_STRUCT_SIZE, args->struct_size));
+  args->devices = args->memory->devices.data();
+  args->num_devices = args->memory->devices.size();
   return nullptr;
 }
 
@@ -1901,21 +1921,7 @@ static void PopulatePjrtDeviceDescriptionAttributes(
   }
 }
 
-static void PopulatePjrtDeviceMemories(const xla::PjRtDevice& cpp_device,
-                                       PJRT_Device* c_device) {
-  c_device->owned_memories.reserve(cpp_device.memory_spaces().size());
-  c_device->memories.reserve(cpp_device.memory_spaces().size());
-  for (xla::PjRtMemorySpace* memory_space : cpp_device.memory_spaces()) {
-    c_device->owned_memories.push_back(PJRT_Memory{memory_space});
-    c_device->memories.push_back(&c_device->owned_memories.back());
-    c_device->c_memory_from_cpp_memory[memory_space] =
-        &c_device->owned_memories.back();
-  }
-}
-
-PJRT_Client* CreateWrapperClient(std::unique_ptr<xla::PjRtClient> cpp_client) {
-  PJRT_Client* c_client = new PJRT_Client{std::move(cpp_client)};
-
+static void PopulatePjrtClientDevices(PJRT_Client* c_client) {
   absl::Span<xla::PjRtDevice* const> cpp_devices = c_client->client->devices();
   const size_t num_devices = cpp_devices.size();
   c_client->owned_devices.reserve(num_devices);
@@ -1927,8 +1933,8 @@ PJRT_Client* CreateWrapperClient(std::unique_ptr<xla::PjRtClient> cpp_client) {
     c_client->owned_devices.push_back(
         PJRT_Device{device, {&device->description()}});
     PJRT_Device* c_device = &c_client->owned_devices.back();
+    c_device->client = c_client;
     PopulatePjrtDeviceDescriptionAttributes(&c_device->description);
-    PopulatePjrtDeviceMemories(*device, c_device);
     c_client->devices.push_back(c_device);
     if (device->IsAddressable()) {
       c_client->addressable_devices.push_back(c_device);
@@ -1937,6 +1943,56 @@ PJRT_Client* CreateWrapperClient(std::unique_ptr<xla::PjRtClient> cpp_client) {
   }
   CHECK_EQ(c_client->addressable_devices.size(),
            c_client->client->addressable_device_count());
+}
+
+static void PopulatePjrtClientMemories(PJRT_Client* c_client) {
+  absl::Span<xla::PjRtMemorySpace* const> memory_spaces =
+      c_client->client->memory_spaces();
+  // TODO(yueshengys): After global memories are supported, `owned_memories`
+  // should eventually contain all memories not just addressable ones.
+  c_client->owned_memories.reserve(memory_spaces.size());
+  c_client->addressable_memories.reserve(memory_spaces.size());
+  for (xla::PjRtMemorySpace* memory_space : memory_spaces) {
+    c_client->owned_memories.push_back(PJRT_Memory{memory_space});
+    PJRT_Memory* c_memory = &c_client->owned_memories.back();
+    c_memory->client = c_client;
+    c_client->addressable_memories.push_back(c_memory);
+    c_client->c_memory_from_cpp_memory[memory_space] = c_memory;
+  }
+}
+
+static void AttachDevicesAndMemories(PJRT_Client* c_client) {
+  for (PJRT_Device* c_device : c_client->devices) {
+    // TODO(yueshengys): Remove this when global memories are supported.
+    if (!c_device->device->IsAddressable()) {
+      continue;
+    }
+    absl::Span<xla::PjRtMemorySpace* const> cpp_memories =
+        c_device->device->memory_spaces();
+    c_device->addressable_memories.reserve(cpp_memories.size());
+    for (xla::PjRtMemorySpace* memory_space : cpp_memories) {
+      c_device->addressable_memories.push_back(
+          GetCMemory(c_client, memory_space));
+    }
+  }
+
+  // TODO(yueshengys): Expand this to all memories when supported, not just
+  // addressable ones.
+  for (PJRT_Memory* c_memory : c_client->addressable_memories) {
+    absl::Span<xla::PjRtDevice* const> cpp_devices =
+        c_memory->memory_space->devices();
+    c_memory->devices.reserve(cpp_devices.size());
+    for (xla::PjRtDevice* cpp_device : cpp_devices) {
+      c_memory->devices.push_back(GetCDevice(c_client, cpp_device));
+    }
+  }
+}
+
+PJRT_Client* CreateWrapperClient(std::unique_ptr<xla::PjRtClient> cpp_client) {
+  PJRT_Client* c_client = new PJRT_Client{std::move(cpp_client)};
+  PopulatePjrtClientDevices(c_client);
+  PopulatePjrtClientMemories(c_client);
+  AttachDevicesAndMemories(c_client);
   return c_client;
 }
 

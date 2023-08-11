@@ -53,7 +53,7 @@ extern "C" {
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 19
+#define PJRT_API_MINOR 20
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -278,6 +278,7 @@ typedef PJRT_Error* PJRT_Event_OnReady(PJRT_Event_OnReady_Args* args);
 
 typedef struct PJRT_Client PJRT_Client;
 typedef struct PJRT_Device PJRT_Device;
+typedef struct PJRT_Memory PJRT_Memory;
 typedef struct PJRT_DeviceDescription PJRT_DeviceDescription;
 typedef struct PJRT_Executable PJRT_Executable;
 typedef struct PJRT_LoadedExecutable PJRT_LoadedExecutable;
@@ -475,6 +476,22 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Client_LookupAddressableDevice_Args,
 // PJRT_DeviceDescription_LocalHardwareId.
 typedef PJRT_Error* PJRT_Client_LookupAddressableDevice(
     PJRT_Client_LookupAddressableDevice_Args* args);
+
+struct PJRT_Client_AddressableMemories_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_Client* client;
+  PJRT_Memory** addressable_memories;  // out
+  size_t num_addressable_memories;     // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Client_AddressableMemories_Args,
+                          num_addressable_memories);
+
+// Returns a list of memories that are addressable from the client. Addressable
+// memories are those that the client can directly transfer data to and from.
+// All memories are addressable in a single-process environment.
+typedef PJRT_Error* PJRT_Client_AddressableMemories(
+    PJRT_Client_AddressableMemories_Args* args);
 
 struct PJRT_Program {
   size_t struct_size;
@@ -833,8 +850,6 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Device_LocalHardwareId_Args, local_hardware_id);
 typedef PJRT_Error* PJRT_Device_LocalHardwareId(
     PJRT_Device_LocalHardwareId_Args* args);
 
-typedef struct PJRT_Memory PJRT_Memory;
-
 struct PJRT_Device_AddressableMemories_Args {
   size_t struct_size;
   void* priv;
@@ -962,6 +977,19 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Memory_ToString_Args, to_string_size);
 
 // Debug string suitable for reading by end users, should be reasonably terse.
 typedef PJRT_Error* PJRT_Memory_ToString(PJRT_Memory_ToString_Args* args);
+
+struct PJRT_Memory_AddressableByDevices_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_Memory* memory;
+  PJRT_Device** devices;  // out
+  size_t num_devices;     // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Memory_AddressableByDevices_Args, num_devices);
+
+// Returns the devices that can address this memory.
+typedef PJRT_Error* PJRT_Memory_AddressableByDevices(
+    PJRT_Memory_AddressableByDevices_Args* args);
 
 // ------------------------------- Executables ---------------------------------
 
@@ -1894,6 +1922,7 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Client_AddressableDevices);
   _PJRT_API_STRUCT_FIELD(PJRT_Client_LookupDevice);
   _PJRT_API_STRUCT_FIELD(PJRT_Client_LookupAddressableDevice);
+  _PJRT_API_STRUCT_FIELD(PJRT_Client_AddressableMemories);
   _PJRT_API_STRUCT_FIELD(PJRT_Client_Compile);
   _PJRT_API_STRUCT_FIELD(PJRT_Client_DefaultDeviceAssignment);
   _PJRT_API_STRUCT_FIELD(PJRT_Client_BufferFromHostBuffer);
@@ -1916,6 +1945,7 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Memory_Kind);
   _PJRT_API_STRUCT_FIELD(PJRT_Memory_DebugString);
   _PJRT_API_STRUCT_FIELD(PJRT_Memory_ToString);
+  _PJRT_API_STRUCT_FIELD(PJRT_Memory_AddressableByDevices);
 
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_Destroy);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_Name);
