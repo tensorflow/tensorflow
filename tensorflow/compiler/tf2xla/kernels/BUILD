@@ -232,7 +232,6 @@ cc_library(
         "//tensorflow/core/kernels:stochastic_cast_op_header",
         "//tensorflow/core/tpu:tpu_defs",
         "//tensorflow/core/util:overflow",
-        "//tensorflow/tsl/platform:tensor_float_32_hdr_lib",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -248,7 +247,7 @@ cc_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_cuda_library(
@@ -569,7 +568,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -596,7 +595,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -656,7 +655,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -686,7 +685,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -719,7 +718,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -745,7 +744,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -772,7 +771,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -801,7 +800,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -834,7 +833,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -862,7 +861,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -887,7 +886,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -914,7 +913,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -936,7 +935,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -964,7 +963,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -990,7 +989,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -1012,7 +1011,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -1035,7 +1034,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -1065,7 +1064,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -1090,7 +1089,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -1114,7 +1113,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -1140,7 +1139,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -1166,7 +1165,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -1190,7 +1189,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -1212,7 +1211,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -1237,7 +1236,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -1272,7 +1271,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -1303,7 +1302,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -1329,7 +1328,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -1361,7 +1360,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -1387,7 +1386,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -1410,7 +1409,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -1440,7 +1439,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -1462,7 +1461,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -1489,7 +1488,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -1517,7 +1516,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -1543,7 +1542,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -1566,7 +1565,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -1592,7 +1591,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -1615,7 +1614,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -1639,7 +1638,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -1663,7 +1662,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -1691,7 +1690,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -1713,7 +1712,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -1743,7 +1742,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -1769,7 +1768,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -1796,7 +1795,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -1821,7 +1820,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -1847,7 +1846,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -1874,7 +1873,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -1908,7 +1907,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -1931,7 +1930,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -1954,7 +1953,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -1985,7 +1984,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -2009,7 +2008,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -2042,7 +2041,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -2074,7 +2073,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -2103,7 +2102,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -2128,7 +2127,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -2154,7 +2153,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -2182,7 +2181,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -2206,7 +2205,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -2230,7 +2229,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -2252,7 +2251,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -2303,7 +2302,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -2333,7 +2332,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -2358,7 +2357,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -2386,7 +2385,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -2422,7 +2421,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -2449,7 +2448,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -2482,7 +2481,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -2507,7 +2506,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -2533,7 +2532,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -2558,7 +2557,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -2589,7 +2588,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -2627,7 +2626,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -2652,7 +2651,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -2680,7 +2679,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -2706,7 +2705,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -2731,7 +2730,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -2760,7 +2759,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -2786,7 +2785,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -2811,7 +2810,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -2841,7 +2840,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -2866,7 +2865,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -2888,7 +2887,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -2919,7 +2918,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -2945,7 +2944,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -2970,7 +2969,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -2994,7 +2993,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -3019,7 +3018,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -3046,7 +3045,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -3071,7 +3070,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -3100,7 +3099,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -3126,7 +3125,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -3150,7 +3149,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -3176,7 +3175,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -3199,7 +3198,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -3223,7 +3222,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -3249,7 +3248,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -3282,7 +3281,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -3313,7 +3312,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -3345,7 +3344,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -3367,7 +3366,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -3393,7 +3392,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -3417,7 +3416,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -3444,7 +3443,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -3475,7 +3474,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -3503,7 +3502,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -3529,7 +3528,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -3557,7 +3556,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -3580,7 +3579,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -3611,7 +3610,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -3636,7 +3635,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -3662,7 +3661,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -3688,7 +3687,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -3710,7 +3709,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -3736,7 +3735,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -3763,7 +3762,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -3791,7 +3790,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -3821,7 +3820,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -3849,7 +3848,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -3874,7 +3873,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -3906,7 +3905,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -3931,7 +3930,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -3956,7 +3955,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -3979,7 +3978,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -4008,7 +4007,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -4033,7 +4032,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_kernel_library(
@@ -4057,7 +4056,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm(
         if_false = [],
         if_true = [":light_outside_compilation"],
-    ) + if_static(["//tensorflow/tsl/platform:tensor_float_32_utils"]),
+    ),
 )
 
 tf_cc_test(
