@@ -696,6 +696,7 @@ class OwnedIterator(IteratorBase):
           self._element_spec)
       self._flat_output_shapes = structure.get_flat_tensor_shapes(
           self._element_spec)
+      self._components = components
       self._iterator_resource, = components
     else:
       if (components is not None or element_spec is not None):
@@ -889,6 +890,21 @@ class OwnedIterator(IteratorBase):
     with ops.colocate_with(self._iterator_resource):
       return [gen_dataset_ops.deserialize_iterator(
           self._iterator_resource, restored_tensors["_STATE"])]
+
+  def _copy_trackable_to_cpu(self, object_map):
+    """Implements checkpointing protocols for `Trackable`."""
+    # Generate values to copy over
+    if self not in object_map:
+      # If self is not populated in object_map yet, instantiate the copy
+      if self._dataset is None:
+        object_map[self] = OwnedIterator(components=self._components,
+                                         element_spec=self._element_spec)
+      else:
+        object_map[self] = OwnedIterator(dataset=self._dataset)
+
+    # Copy values from `self` to copy of `self`
+    serialized = self._serialize_to_tensors()
+    object_map[self]._restore_from_tensors(serialized)  # pylint: disable=protected-access
 
   def __tf_tracing_type__(self, _):
     return self._type_spec

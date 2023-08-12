@@ -4711,6 +4711,7 @@ class NumpyIterator(tracking_base.Trackable):
 
   def __init__(self, dataset):
     self._iterator = iter(dataset)
+    self._dataset = dataset
 
   def __iter__(self):
     return self
@@ -4742,6 +4743,16 @@ class NumpyIterator(tracking_base.Trackable):
   def _restore_from_tensors(self, restored_tensors):
     # pylint: disable=protected-access
     return self._iterator._restore_from_tensors(restored_tensors)
+
+  # override
+  def _copy_trackable_to_cpu(self, object_map):
+    if self not in object_map:
+      # If self is not populated in object_map yet, instantiate the copy
+      object_map[self] = NumpyIterator(self._dataset)
+
+    # Copy values from `self` to copy of `self`
+    serialized = self._serialize_to_tensors()
+    object_map[self]._restore_from_tensors(serialized)  # pylint: disable=protected-access
 
   # TODO(b/284309865): Remove once `_save` is no longer used anywhere.
   def _save(self):
