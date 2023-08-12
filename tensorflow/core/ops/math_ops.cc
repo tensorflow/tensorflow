@@ -1843,8 +1843,10 @@ REGISTER_OP("DenseBincount")
 
       const Tensor* size_tensor = c->input_tensor(1);
       if (size_tensor == nullptr) {
-        // Return unknown shape if size is not known.
-        c->set_output(0, c->UnknownShape());
+        // Return "vector of unknown size", "matrix of unknown size" or
+        // "unknown shape" if size is unknown, based on whether the rank of the
+        // input is 1, 2 or unknown respectively.
+        c->set_output(0, c->UnknownShapeOfRank(c->Rank(c->input(0))));
         return OkStatus();
       }
       if (size_tensor->dims() != 0) {

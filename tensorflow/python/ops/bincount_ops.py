@@ -14,6 +14,7 @@
 # ==============================================================================
 """bincount ops."""
 
+from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -132,9 +133,14 @@ def bincount(arr,
   name = "bincount" if name is None else name
   with ops.name_scope(name):
     # TODO(b/255381064) Remove the following block which uses older kernels for
-    # backwards compatibility for certain cases once all tests pass with the
-    # newer (dense_bincount, ragged_bincount and sparse_bincount) kernels.
-    if not binary_output and axis is None:
+    # certain cases once the forward compatibility window expries (and remove
+    # the imports in this file and dependencies in the BUILD file for compat
+    # and constant_op which are only required for this block.)
+    if (
+        not compat.forward_compatible(2023, 9, 10)
+        and not binary_output
+        and axis is None
+    ):
       arr = ops.convert_to_tensor(arr, name="arr", dtype=dtypes.int32)
       array_is_nonempty = math_ops.reduce_prod(array_ops.shape(arr)) > 0
       output_size = math_ops.cast(array_is_nonempty, dtypes.int32) * (
