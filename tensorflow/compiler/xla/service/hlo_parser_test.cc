@@ -3409,6 +3409,58 @@ ENTRY entry {
                   "expects integer");
 }
 
+TEST_F(HloParserTest, SimpleBufferDonor) {
+  const std::string original = R"(
+HloModule Module, buffer_donor={ (0, {0}), (0, {1}) }
+
+ENTRY entry {
+  %p = (f32[], f32[]) parameter(0)
+  %p0 = f32[] get-tuple-element((f32[], f32[]) %p), index=0
+  %p1 = f32[] get-tuple-element((f32[], f32[]) %p), index=1
+  ROOT %out = (f32[], f32[]) tuple(%p0, %p1)
+}
+  )";
+  auto module = ParseAndReturnVerifiedModule(original);
+  TF_ASSERT_OK(module.status());
+  std::unique_ptr<HloModule> parsed_module = std::move(module).value();
+  EXPECT_TRUE(
+      parsed_module->buffer_donor_config().ParameterIsBufferDonor(0, {0}));
+  EXPECT_TRUE(
+      parsed_module->buffer_donor_config().ParameterIsBufferDonor(0, {1}));
+  EXPECT_FALSE(
+      parsed_module->buffer_donor_config().ParameterIsBufferDonor(0, {}));
+}
+
+TEST_F(HloParserTest, BufferDonorShapeIndexNotNumerical) {
+  const std::string original = R"(
+HloModule Module, buffer_donor={ (0, {0, a}), (0, {1}) }
+
+ENTRY entry {
+  %p = (f32[], f32[]) parameter(0)
+  %p0 = f32[] get-tuple-element((f32[], f32[]) %p), index=0
+  %p1 = f32[] get-tuple-element((f32[], f32[]) %p), index=1
+  ROOT %out = (f32[], f32[]) tuple(%p0, %p1)
+}
+  )";
+  ExpectHasSubstr(ParseAndReturnUnverifiedModule(original).status().message(),
+                  "expects integer");
+}
+
+TEST_F(HloParserTest, BufferDonorWrongFormatAlphaParam) {
+  const std::string original = R"(
+HloModule Module, buffer_donor={ (zero, {0}), (0, {1}) }
+
+ENTRY entry {
+  %p = (f32[], f32[]) parameter(0)
+  %p0 = f32[] get-tuple-element((f32[], f32[]) %p), index=0
+  %p1 = f32[] get-tuple-element((f32[], f32[]) %p), index=1
+  ROOT %out = (f32[], f32[]) tuple(%p0, %p1)
+}
+  )";
+  ExpectHasSubstr(ParseAndReturnUnverifiedModule(original).status().message(),
+                  "expects integer");
+}
+
 TEST_F(HloParserTest, MultipleRoots) {
   const std::string original = R"(HloModule multiple_roots:
 ENTRY consts {
