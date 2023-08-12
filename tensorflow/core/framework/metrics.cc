@@ -108,7 +108,7 @@ auto* tf_data_service_compression = tsl::monitoring::Counter<1>::New(
     "/tensorflow/data/service/compression",
     "The number of times a tf.data service pipeline performed a "
     "compression-related action {'disabled_at_runtime', "
-    "'not_disabled_at_runtime'}.",
+    "'not_disabled_at_runtime', 'not_eligible'}.",
     "action");
 
 auto* tf_data_service_get_element_duration_usecs_histogram =
@@ -460,6 +460,10 @@ void RecordTFDataServiceRuntimeCompressionDecision(bool compression_disabled) {
       ->GetCell(compression_disabled ? "disabled_at_runtime"
                                      : "not_disabled_at_runtime")
       ->IncrementBy(1);
+}
+
+void RecordTFDataServiceCompressionAction(const string& action) {
+  tf_data_service_compression->GetCell(action)->IncrementBy(1);
 }
 
 void RecordTFDataServiceGetElementDuration(const string& data_transfer_protocol,
