@@ -476,3 +476,27 @@ tf_cc_test(
         "//tensorflow/core/platform:stream_executor",
     ],
 )
+
+cc_library(
+    name = "gpu_serving_device_selector",
+    srcs = ["gpu_serving_device_selector.cc"],
+    hdrs = ["gpu_serving_device_selector.h"],
+    deps = [
+        "//tensorflow/core/common_runtime:serving_device_selector",
+        "@com_google_absl//absl/container:fixed_array",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+tf_cc_test(
+    name = "gpu_serving_device_selector_test",
+    size = "small",
+    srcs = ["gpu_serving_device_selector_test.cc"],
+    deps = [
+        ":gpu_serving_device_selector",
+        "//tensorflow/core/common_runtime:serving_device_selector",
+        "//tensorflow/core/common_runtime:serving_device_selector_policies",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
