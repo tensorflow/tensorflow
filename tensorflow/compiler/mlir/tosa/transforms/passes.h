@@ -27,12 +27,20 @@ limitations under the License.
 
 namespace mlir {
 
+namespace linalg {
+class LinalgDialect;
+}
+
 namespace quant {
 class QuantizationDialect;
 }
 
 namespace quantfork {
 class QuantizationForkDialect;
+}
+
+namespace scf {
+class SCFDialect;
 }
 
 namespace TFL {

@@ -32,11 +32,16 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/Linalg/IR/Linalg.h"  // from @llvm-project
+#include "mlir/Dialect/Math/IR/Math.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
+#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -54,6 +59,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_common.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_utils.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/passes.h"
+#include "tensorflow/core/ir/types/dialect.h"
 
 #define PASS_NAME "tosa-legalize-tfl"
 #define DEBUG_TYPE PASS_NAME
@@ -101,6 +107,21 @@ struct ConvertConstantOp : public RewritePattern {
     LogicalResult matchAndRewrite(Operation* op,                             \
                                   PatternRewriter& rewriter) const override; \
   }
+
+#define DECL_CONVERT_OP_TOSA_STANDARD(tfl_op)                                \
+  struct ConvertTFL##tfl_op##OpToTosa : public RewritePattern {              \
+    explicit ConvertTFL##tfl_op##OpToTosa(MLIRContext* context)              \
+        : RewritePattern(TFL::tfl_op##Op::getOperationName(), 2, context) {} \
+    LogicalResult matchAndRewrite(Operation* op,                             \
+                                  PatternRewriter& rewriter) const override; \
+  };                                                                         \
+  struct ConvertTFL##tfl_op##OpToStandard : public RewritePattern {          \
+    explicit ConvertTFL##tfl_op##OpToStandard(MLIRContext* context)          \
+        : RewritePattern(TFL::tfl_op##Op::getOperationName(), 1, context) {} \
+    LogicalResult matchAndRewrite(Operation* op,                             \
+                                  PatternRewriter& rewriter) const override; \
+  }
+
 DECL_CONVERT_OP(Gelu);
 DECL_CONVERT_OP(Relu);
 DECL_CONVERT_OP(Relu1);
@@ -126,7 +147,7 @@ DECL_CONVERT_OP(AddN);
 DECL_CONVERT_OP(AveragePool2D);
 DECL_CONVERT_OP(MaxPool2D);
 DECL_CONVERT_OP(Concatenation);
-DECL_CONVERT_OP(Reshape);
+DECL_CONVERT_OP_TOSA_STANDARD(Reshape);
 DECL_CONVERT_OP(Rank);
 DECL_CONVERT_OP(Shape);
 DECL_CONVERT_OP(ExpandDims);
@@ -2174,80 +2195,244 @@ LogicalResult ConvertTFLConcatenationOp::matchAndRewrite(
   return success();
 }
 
-LogicalResult ConvertTFLReshapeOp::matchAndRewrite(
+// Convert a type 'tensor<DIM0 x DIM1 x ... x complex<FLOAT_TYPE>>' into type
+// 'tensor<DIM0 x DIM1 x ... x FLOAT_TYPE>'. The given type is expected to be
+// a ranked tensor with a complex element type.
+Type expandComplexTensorType(Type type) {
+  auto tensor_type = type.cast<RankedTensorType>();
+  auto complex_type = tensor_type.getElementType().cast<ComplexType>();
+  auto element_type = complex_type.getElementType();
+  auto dim_sizes = llvm::to_vector(tensor_type.getShape());
+  dim_sizes.push_back(2);
+  return RankedTensorType::get(dim_sizes, element_type);
+}
+
+// Generate a 'builtin.unrealized_conversion_cast' op that converts a tensor of
+// type 'tensor<DIM0 x DIM1 x ... x complex<FLOAT_TYPE>>' into a flattened
+// tensor of type 'tensor<DIM0 x DIM1 x ... x 2 x FLOAT_TYPE>'. The given value
+// is expected to be a ranked tensor of type 'complex'.
+//
+// Example:
+// 
+//   %result = builtin.unrealized_conversion_cast %input :
+//             tensor<3x4xcomplex<f32>> to tensor<3x4x2xf32>
+//
+Value expandComplexTensor(PatternRewriter& rewriter, Location loc, Value tensor) {
+  auto expanded_type = expandComplexTensorType(tensor.getType());
+  return rewriter.create<UnrealizedConversionCastOp>(
+      loc, expanded_type, tensor).getResult(0);
+}
+
+// Generate a 'builtin.unrealized_conversion_cast' op that converts a tensor of
+// type 'tensor<DIM0 x DIM1 x ... x 2 x FLOAT_TYPE>' into a tensor of type
+// 'tensor<DIM0 x DIM1 x ... x complex<FLOAT_TYPE>>'. The given value is
+// expected to be a tensor of rank 1 or higher, of a float type, and with its
+// last dimension set to 2.
+Value contractComplexTensor(PatternRewriter& rewriter, Location loc, Value tensor) {
+  auto tensor_type = tensor.getType().cast<RankedTensorType>();
+  assert(tensor_type.getRank() > 0);
+  auto float_type = tensor_type.getElementType().cast<FloatType>();
+  auto complex_type = ComplexType::get(float_type);
+
+  auto shape = tensor_type.getShape();
+  assert(shape.back() == 2);
+  shape = shape.drop_back();
+  auto contracted_type = RankedTensorType::get(shape, complex_type);
+
+  return rewriter.create<UnrealizedConversionCastOp>(
+      loc, contracted_type, tensor).getResult(0);
+}
+
+// Given a target shape for a 'tfl.reshape' op, extend it with an additional
+// component set to 2. The input shape is expected to be a 1D ranked tesor of
+// an integer type.
+Value expandComplexShape(PatternRewriter& rewriter, Location loc, Value shape) {
+  auto tensor_type = shape.getType().cast<RankedTensorType>();
+  assert(tensor_type.getRank() == 1);
+  auto shape_element_type = tensor_type.getElementType().cast<IntegerType>();
+
+  // Emit 'tosa.const' op
+  auto constant_tensor_type = RankedTensorType::get({1}, shape_element_type);
+  Attribute two_attr = rewriter.getIntegerAttr(shape_element_type, 2);
+  auto two_dense_elements_attr = DenseElementsAttr::get(constant_tensor_type, {two_attr});
+  Value two = rewriter.create<arith::ConstantOp>(loc, constant_tensor_type,
+                                             two_dense_elements_attr);
+
+  // Emit 'tosa.concat' op
+  auto concat_operands = {shape, two};
+  Value extended_shape = rewriter.create<tosa::ConcatOp>(loc, concat_operands, 0);
+  return extended_shape;
+}
+
+// Return a value of type 'index' containing the total size of the input tensor.
+Value getTensorSize(OpBuilder& rewriter, Location loc, Value tensor) {
+
+  auto rank = rewriter.create<tensor::RankOp>(loc, tensor);
+  auto zero = rewriter.create<arith::ConstantOp>(loc, rewriter.getIndexAttr(0));
+  auto one = rewriter.create<arith::ConstantOp>(loc, rewriter.getIndexAttr(1));
+
+  auto createLoopBody = [&](OpBuilder& rewriter, Location loc, Value index, ValueRange iter_args) {
+    auto acc_size = iter_args.front();
+    auto dim_size = rewriter.create<tensor::DimOp>(loc, tensor, index);
+    Value next_size = rewriter.create<arith::MulIOp>(loc, acc_size, dim_size);
+    rewriter.create<scf::YieldOp>(loc, next_size);
+  };
+  auto for_op = rewriter.create<scf::ForOp>(loc, zero, rank, one,
+                                            ValueRange(one), createLoopBody);
+  return for_op.getResult(0);
+}
+
+// Multiply all elements in a 1D tensor and return a scalar value of the same
+// type as the tensor elements containing the product. The given value is
+// expected to be a ranked or unranked tensor.
+Value multiplyTensorElements(PatternRewriter& rewriter, Location loc, Value tensor) {
+  auto product_tensor = rewriter.create<tosa::ReduceProdOp>(loc, tensor, rewriter.getI64IntegerAttr(0));
+  auto zero = rewriter.create<arith::ConstantOp>(loc, rewriter.getIndexAttr(0));
+  return rewriter.create<tensor::ExtractOp>(loc, product_tensor, ValueRange{zero});
+}
+
+// Broadcast the given scalar value to a 1D tensor of the given size. Argument
+// 'size' must be an attribute or value of type 'index'.
+Value broadcastScalar(OpBuilder& builder, Location loc, Value input, OpFoldResult size, Type result_type) {
+  auto input_scalar_type = input.getType();
+  assert(!input_scalar_type.isa<ShapedType>());
+  if (size.is<Attribute>()) {
+    auto size_attr = size.get<Attribute>().cast<IntegerAttr>();
+    assert(size_attr.getType().isa<IndexType>());
+
+    // Create a splat tensor of type 'tensor<SIZE x INPUT_TYPE>'. The
+    // 'tensor.splat' op expects a static result shape.
+    auto temp_result_type = RankedTensorType::get({size_attr.getInt()}, input_scalar_type);
+    auto splat = builder.create<tensor::SplatOp>(loc, temp_result_type, input);
+
+    // Cast splat into the requested result type
+    return builder.create<tensor::CastOp>(loc, result_type, splat);
+
+  } else {
+
+    auto size_value = size.get<Value>();
+    assert(size_value.getType().isa<IndexType>());
+
+    auto input_tensor_type = RankedTensorType::get({}, input_scalar_type);
+    auto input_tensor = builder.create<tensor::FromElementsOp>(loc, input_tensor_type, input);
+
+    auto init_tensor_type = RankedTensorType::get({ShapedType::kDynamic}, input_scalar_type);
+    auto init_tensor = builder.create<tensor::EmptyOp>(loc, init_tensor_type, size_value);
+
+    auto result = builder.create<linalg::BroadcastOp>(
+        loc, input_tensor, init_tensor, std::initializer_list<int64_t>{0})
+        .getResult();
+    return builder.create<tensor::CastOp>(loc, result_type, result);
+  }
+}
+
+// Process argument 'shape' to eliminate a possible occurrence of -1. If
+// found, it is replaced with the total size of the 'input' tensor divided by
+// all remaining components of 'shape'.
+Value resolveShapeWildcard(PatternRewriter& rewriter, Location loc, Value input, Value shape) {
+  auto shape_type = shape.getType().cast<TensorType>();
+  auto shape_element_type = shape_type.getElementType();
+ 
+  // Calculate product of shape tensor elements and check if there was a
+  // dimension set to -1. We check this condition by looking at the sign of
+  // the product. If the product was negative due to any other reason than
+  // exactly one dimension being set to -1, the behavior is undefined.
+  auto shape_product = multiplyTensorElements(rewriter, loc, shape);
+  auto zero_attr = rewriter.getIntegerAttr(shape_element_type, 0);
+  auto zero = rewriter.create<arith::ConstantOp>(loc, zero_attr);
+  auto condition = rewriter.create<arith::CmpIOp>(loc, arith::CmpIPredicate::slt, shape_product, zero);
+
+  // Control flow
+  auto if_op = rewriter.create<scf::IfOp>(loc, condition, [&](OpBuilder& rewriter, Location loc) {
+
+    // Calculate size of input tensor and cast it to same type as shape tensor
+    auto input_size = getTensorSize(rewriter, loc, input);
+    input_size = rewriter.create<arith::IndexCastOp>(loc, shape_element_type, input_size);
+
+    auto abs_product = rewriter.create<math::AbsIOp>(loc, shape_product);
+
+    auto shape_size = linalg::createFoldedDimOp(rewriter, loc, shape, 0);
+
+    auto wildcard_dim_size = rewriter.create<arith::DivSIOp>(loc, input_size, abs_product);
+    auto wildcard_dim_size_splat = broadcastScalar(rewriter, loc, wildcard_dim_size, shape_size, shape.getType());
+
+    auto minus_one_attr = rewriter.getIntegerAttr(shape_element_type, -1);
+    auto minus_one = rewriter.create<arith::ConstantOp>(loc, minus_one_attr);
+    auto minus_one_splat = broadcastScalar(rewriter, loc, minus_one, shape_size, shape.getType());
+
+    auto condition = rewriter.create<arith::CmpIOp>(loc, arith::CmpIPredicate::eq, shape, minus_one_splat);
+    Value resolved_shape = rewriter.create<arith::SelectOp>(loc, condition, wildcard_dim_size_splat, shape);
+    rewriter.create<scf::YieldOp>(loc, resolved_shape);
+  }, [&](OpBuilder& rewriter, Location loc) {
+    rewriter.create<scf::YieldOp>(loc, shape);
+  });
+  return if_op.getResult(0);
+}
+
+LogicalResult ConvertTFLReshapeOpToTosa::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_reshape_op = cast<TFL::ReshapeOp>(op);
+  
+  // Check that target shape is constant
+  DenseIntElementsAttr tfl_shape_attr;
+  if (!matchPattern(tfl_reshape_op.getShape(), m_Constant(&tfl_shape_attr)))
+    return rewriter.notifyMatchFailure(op, "input shape not constant");
 
+  // Check element type
+  if (!tfl_reshape_op.getInput().getType().getElementType().isIntOrFloat())
+    return rewriter.notifyMatchFailure(op, "unsupported element type");
+
+  // Emit 'tosa.reshape' op
+  auto shape_values = llvm::map_to_vector(tfl_shape_attr.getValues<IntegerAttr>(), [](IntegerAttr attr) {
+    return attr.getInt();
+  });
+  auto tosa_shape_attr = rewriter.getDenseI64ArrayAttr(shape_values);
+  CreateReplaceOpAndInfer<tosa::ReshapeOp>(
+      rewriter, tfl_reshape_op, tfl_reshape_op.getOutput().getType(),
+      tfl_reshape_op.getInput(), tosa_shape_attr);
+  return success();
+}
+
+LogicalResult ConvertTFLReshapeOpToStandard::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto tfl_reshape_op = cast<TFL::ReshapeOp>(op);
+  Value input = tfl_reshape_op.getInput();
   Value shape = tfl_reshape_op.getShape();
-  auto shape_type = cast<ShapedType>(shape.getType());
-  auto output_type = cast<ShapedType>(tfl_reshape_op.getType());
+  Type result_type = tfl_reshape_op.getResult().getType();
 
-  int64_t rank = ShapedType::kDynamic;
-  if (output_type.hasRank()) rank = output_type.getRank();
-
-  // Check the inferred rank from the shape tensor matches the output.
-  if (shape_type.hasRank() && !shape_type.isDynamicDim(0)) {
-    int64_t dim = shape_type.getDimSize(0);
-    if (rank != ShapedType::kDynamic && rank != dim) {
-      return rewriter.notifyMatchFailure(op,
-                                         "static dim mismatch on tfl.reshape");
-    }
-    rank = dim;
+  // If shape is unranked, cast it to a 1D tensor
+  if (!shape.getType().isa<RankedTensorType>()) {
+    auto element_type = shape.getType().cast<TensorType>().getElementType();
+    auto ranked_shape_type = RankedTensorType::get({ShapedType::kDynamic}, element_type);
+    shape = rewriter.create<tensor::CastOp>(op->getLoc(), ranked_shape_type, shape);
   }
 
-  if (rank == ShapedType::kDynamic) {
-    return rewriter.notifyMatchFailure(op, "unknown rank for output shape");
+  // Expand a complex tensor into a tensor of floats if needed. This is a hack to
+  // prevent exposing 'tensor.reshape' operations to the 'TosaLowerComplexTypes'
+  // pass, as it doesn't know how to convert the 'shape' argument. A limitation of
+  // this approach is that the input tensor must be ranked.
+  bool is_complex = tfl_reshape_op.getInput().getType().getElementType().isa<ComplexType>();
+  if (is_complex) {
+    if (!input.getType().isa<RankedTensorType>())
+      return rewriter.notifyMatchFailure(op, "unranked input not support for complex tensors");
+    if (!tfl_reshape_op.getResult().getType().isa<RankedTensorType>())
+      return rewriter.notifyMatchFailure(op, "unranked result not supported for complex tensors");
+    input = expandComplexTensor(rewriter, op->getLoc(), input);
+    shape = expandComplexShape(rewriter, op->getLoc(), shape);
+    result_type = expandComplexTensorType(result_type);
   }
 
-  // Extract the dynamically shaped values for each dimension.
-  SmallVector<Value> shape_vals;
-  shape_vals.reserve(rank);
-  auto shape_ty = shape.getType().cast<ShapedType>();
-  for (int i = 0; i < rank; i++) {
-    auto e_ty = shape_ty.getElementType();
-    Value dim = rewriter.createOrFold<tosa::SliceOp>(
-        op->getLoc(), RankedTensorType::get({1}, e_ty), shape,
-        rewriter.getDenseI64ArrayAttr({i}), rewriter.getDenseI64ArrayAttr({1}));
-    dim = rewriter.createOrFold<tosa::ReshapeOp>(
-        op->getLoc(), RankedTensorType::get({}, e_ty), dim,
-        rewriter.getDenseI64ArrayAttr({}));
-    shape_vals.push_back(dim);
-  }
+  // Eliminate the presence of a value set to -1 in the shape
+  shape = resolveShapeWildcard(rewriter, op->getLoc(), input, shape);
 
-  auto input = tfl_reshape_op.getInput();
-  auto reshape_type = output_type;
-  if (input.getType().getElementType().isa<ComplexType>()) {
-    input = llvm::cast<TypedValue<TensorType>>(
-      tosa::lowerComplexTensor(rewriter, op->getLoc(), input));
+  // Translate op
+  Value result = rewriter.create<tensor::ReshapeOp>(op->getLoc(), result_type,
+                                                    input, shape);
 
-    auto constant_type = RankedTensorType::get({},rewriter.getIntegerType(32));
-    auto constant_attr =
-          DenseElementsAttr::get(constant_type, llvm::ArrayRef({2}));
-    shape_vals.push_back(
-      CreateOpAndInfer<tosa::ConstOp>(
-        rewriter, op->getLoc(),
-        constant_type,
-        constant_attr)); 
-
-    reshape_type = tosa::lowerComplexTensorType(reshape_type);
-  }
-
-  // Build the reshape operation with dynamic shapes.
-  auto reshape =
-      buildReshapeWithDynamicDims(rewriter, op, input,
-                                  reshape_type,
-                                  shape_vals);
-
-  if (!reshape.has_value()) return failure();
-
-  if (output_type.getElementType().isa<ComplexType>()) {
-    *reshape = CreateOpAndInfer<UnrealizedConversionCastOp>(rewriter,
-                                                            op->getLoc(),
-                                                            output_type,
-                                                            *reshape).getResult(0);
-  }
-
-  rewriter.replaceOp(op, {reshape.value()});
+  // Contract complex tensor if needed
+  if (is_complex)
+    result = contractComplexTensor(rewriter, op->getLoc(), result);
+  rewriter.replaceOp(tfl_reshape_op, result);
   return success();
 }
 
@@ -4578,125 +4763,126 @@ void LegalizeTFL::runOnOperation() {
 
 void populateLegalizeTFLPatterns(MLIRContext* ctx,
                                  RewritePatternSet& patterns) {
-#define DEF_PATTERN_INSERT(PAT) \
-  patterns.addWithLabel<Convert##PAT##Op>({#PAT}, ctx);
+#define ADD_PATTERN(pattern) \
+  patterns.addWithLabel<Convert##pattern>({#pattern}, ctx);
 
-  DEF_PATTERN_INSERT(TFLAbs);
-  DEF_PATTERN_INSERT(TFLCeil);
-  DEF_PATTERN_INSERT(TFLFloor);
-  DEF_PATTERN_INSERT(TFLExp);
-  DEF_PATTERN_INSERT(TFLLog);
-  DEF_PATTERN_INSERT(TFLRsqrt);
-  DEF_PATTERN_INSERT(TFLLogicalNot);
-  DEF_PATTERN_INSERT(TFLCast);
+  ADD_PATTERN(TFLAbsOp);
+  ADD_PATTERN(TFLCeilOp);
+  ADD_PATTERN(TFLFloorOp);
+  ADD_PATTERN(TFLExpOp);
+  ADD_PATTERN(TFLLogOp);
+  ADD_PATTERN(TFLRsqrtOp);
+  ADD_PATTERN(TFLLogicalNotOp);
+  ADD_PATTERN(TFLCastOp);
 
-  DEF_PATTERN_INSERT(QuantStat);
+  ADD_PATTERN(QuantStatOp);
 
-  DEF_PATTERN_INSERT(TFLLogicalAnd);
-  DEF_PATTERN_INSERT(TFLLogicalOr);
-  DEF_PATTERN_INSERT(TFLPow);
+  ADD_PATTERN(TFLLogicalAndOp);
+  ADD_PATTERN(TFLLogicalOrOp);
+  ADD_PATTERN(TFLPowOp);
 
-  DEF_PATTERN_INSERT(TFLGelu);
-  DEF_PATTERN_INSERT(TFLRelu);
-  DEF_PATTERN_INSERT(TFLRelu1);
-  DEF_PATTERN_INSERT(TFLRelu0To1);
-  DEF_PATTERN_INSERT(TFLRelu6);
-  DEF_PATTERN_INSERT(TFLEqual);
-  DEF_PATTERN_INSERT(TFLNotEqual);
-  DEF_PATTERN_INSERT(TFLGreater);
-  DEF_PATTERN_INSERT(TFLGreaterEqual);
-  DEF_PATTERN_INSERT(TFLAdd);
-  DEF_PATTERN_INSERT(TFLSub);
-  DEF_PATTERN_INSERT(TFLMul);
-  DEF_PATTERN_INSERT(TFLSquare);
-  DEF_PATTERN_INSERT(TFLSquaredDifference);
-  DEF_PATTERN_INSERT(TFLSign);
-  DEF_PATTERN_INSERT(TFLRound);
-  DEF_PATTERN_INSERT(TFLDiv);
-  DEF_PATTERN_INSERT(TFLMaximum);
-  DEF_PATTERN_INSERT(TFLMinimum);
-  DEF_PATTERN_INSERT(TFLFloorMod);
-  DEF_PATTERN_INSERT(TFLFloorDiv);
-  DEF_PATTERN_INSERT(TFLAddN);
-  DEF_PATTERN_INSERT(TFLAveragePool2D);
-  DEF_PATTERN_INSERT(TFLMaxPool2D);
-  DEF_PATTERN_INSERT(TFLConcatenation);
-  DEF_PATTERN_INSERT(TFLReshape);
-  DEF_PATTERN_INSERT(TFLRank);
-  DEF_PATTERN_INSERT(TFLShape);
-  DEF_PATTERN_INSERT(TFLExpandDims);
-  DEF_PATTERN_INSERT(TFLSqueeze);
-  DEF_PATTERN_INSERT(TFLFill);
-  DEF_PATTERN_INSERT(TFLElu);
-  DEF_PATTERN_INSERT(TFLSoftmax);
-  DEF_PATTERN_INSERT(TFLLogSoftmax);
-  DEF_PATTERN_INSERT(TFLSqrt);
-  DEF_PATTERN_INSERT(TFLL2Normalization);
-  DEF_PATTERN_INSERT(TFLReduceAll);
-  DEF_PATTERN_INSERT(TFLReduceAny);
-  DEF_PATTERN_INSERT(TFLReduceMax);
-  DEF_PATTERN_INSERT(TFLReduceMin);
-  DEF_PATTERN_INSERT(TFLMean);
-  DEF_PATTERN_INSERT(TFLReduceProd);
-  DEF_PATTERN_INSERT(TFLSum);
-  DEF_PATTERN_INSERT(TFLConv2D);
-  DEF_PATTERN_INSERT(TFLConv3D);
-  DEF_PATTERN_INSERT(TFLTransposeConv);
-  DEF_PATTERN_INSERT(TFLDepthwiseConv2D);
-  DEF_PATTERN_INSERT(TFLFullyConnected);
-  DEF_PATTERN_INSERT(TFLBatchMatMul);
-  DEF_PATTERN_INSERT(TFLSplit);
-  DEF_PATTERN_INSERT(TFLSplitV);
-  DEF_PATTERN_INSERT(TFLPack);
-  DEF_PATTERN_INSERT(TFLUnpack);
-  DEF_PATTERN_INSERT(TFLTranspose);
-  DEF_PATTERN_INSERT(TFLTile);
-  DEF_PATTERN_INSERT(TFLSlice);
-  DEF_PATTERN_INSERT(TFLStridedSlice);
-  DEF_PATTERN_INSERT(TFLHardSwish);
-  DEF_PATTERN_INSERT(TFLZerosLike);
-  DEF_PATTERN_INSERT(TFLLess);
-  DEF_PATTERN_INSERT(TFLLessEqual);
-  DEF_PATTERN_INSERT(TFLPad);
-  DEF_PATTERN_INSERT(TFLMirrorPad);
-  DEF_PATTERN_INSERT(TFLPadV2);
-  DEF_PATTERN_INSERT(TFLResizeBilinear);
-  DEF_PATTERN_INSERT(TFLResizeNearestNeighbor);
-  DEF_PATTERN_INSERT(TFLSelect);
-  DEF_PATTERN_INSERT(TFLSelectV2);
-  DEF_PATTERN_INSERT(TFLSpaceToBatchNd);
-  DEF_PATTERN_INSERT(TFLBatchToSpaceNd);
-  DEF_PATTERN_INSERT(TFLSpaceToDepth);
-  DEF_PATTERN_INSERT(TFLDepthToSpace);
-  DEF_PATTERN_INSERT(TFLBucketize);
-  DEF_PATTERN_INSERT(TFLSin);
-  DEF_PATTERN_INSERT(TFLCos);
-  DEF_PATTERN_INSERT(TFLAtan2);
-  DEF_PATTERN_INSERT(TFLLogistic);
-  DEF_PATTERN_INSERT(TFLTanh);
-  DEF_PATTERN_INSERT(TFLPRelu);
-  DEF_PATTERN_INSERT(TFLLeakyRelu);
-  DEF_PATTERN_INSERT(TFLNeg);
-  DEF_PATTERN_INSERT(TFLYield);
-  DEF_PATTERN_INSERT(TFLCustom);
-  DEF_PATTERN_INSERT(TFLReverseV2);
-  DEF_PATTERN_INSERT(TFLQuantize);
-  DEF_PATTERN_INSERT(TFLDequantize);
-  DEF_PATTERN_INSERT(TFLConst);
-  DEF_PATTERN_INSERT(TFLQConst);
-  DEF_PATTERN_INSERT(TFLGather);
-  DEF_PATTERN_INSERT(TFLGatherNd);
-  DEF_PATTERN_INSERT(TFLSparseToDense);
-  DEF_PATTERN_INSERT(Constant);
-  DEF_PATTERN_INSERT(TFLOneHot);
-  DEF_PATTERN_INSERT(TFLArgMax);
-  DEF_PATTERN_INSERT(TFLArgMin);
-  DEF_PATTERN_INSERT(TFLFakeQuant);
-  DEF_PATTERN_INSERT(TFLWhile);
-  DEF_PATTERN_INSERT(TFLReal);
-  DEF_PATTERN_INSERT(TFLImag);
-  DEF_PATTERN_INSERT(TFLRFFT2d);
-  DEF_PATTERN_INSERT(TFLBroadcastTo);
+  ADD_PATTERN(TFLGeluOp);
+  ADD_PATTERN(TFLReluOp);
+  ADD_PATTERN(TFLRelu1Op);
+  ADD_PATTERN(TFLRelu0To1Op);
+  ADD_PATTERN(TFLRelu6Op);
+  ADD_PATTERN(TFLEqualOp);
+  ADD_PATTERN(TFLNotEqualOp);
+  ADD_PATTERN(TFLGreaterOp);
+  ADD_PATTERN(TFLGreaterEqualOp);
+  ADD_PATTERN(TFLAddOp);
+  ADD_PATTERN(TFLSubOp);
+  ADD_PATTERN(TFLMulOp);
+  ADD_PATTERN(TFLSquareOp);
+  ADD_PATTERN(TFLSquaredDifferenceOp);
+  ADD_PATTERN(TFLSignOp);
+  ADD_PATTERN(TFLRoundOp);
+  ADD_PATTERN(TFLDivOp);
+  ADD_PATTERN(TFLMaximumOp);
+  ADD_PATTERN(TFLMinimumOp);
+  ADD_PATTERN(TFLFloorModOp);
+  ADD_PATTERN(TFLFloorDivOp);
+  ADD_PATTERN(TFLAddNOp);
+  ADD_PATTERN(TFLAveragePool2DOp);
+  ADD_PATTERN(TFLMaxPool2DOp);
+  ADD_PATTERN(TFLConcatenationOp);
+  ADD_PATTERN(TFLReshapeOpToTosa);
+  ADD_PATTERN(TFLReshapeOpToStandard);
+  ADD_PATTERN(TFLRankOp);
+  ADD_PATTERN(TFLShapeOp);
+  ADD_PATTERN(TFLExpandDimsOp);
+  ADD_PATTERN(TFLSqueezeOp);
+  ADD_PATTERN(TFLFillOp);
+  ADD_PATTERN(TFLEluOp);
+  ADD_PATTERN(TFLSoftmaxOp);
+  ADD_PATTERN(TFLLogSoftmaxOp);
+  ADD_PATTERN(TFLSqrtOp);
+  ADD_PATTERN(TFLL2NormalizationOp);
+  ADD_PATTERN(TFLReduceAllOp);
+  ADD_PATTERN(TFLReduceAnyOp);
+  ADD_PATTERN(TFLReduceMaxOp);
+  ADD_PATTERN(TFLReduceMinOp);
+  ADD_PATTERN(TFLMeanOp);
+  ADD_PATTERN(TFLReduceProdOp);
+  ADD_PATTERN(TFLSumOp);
+  ADD_PATTERN(TFLConv2DOp);
+  ADD_PATTERN(TFLConv3DOp);
+  ADD_PATTERN(TFLTransposeConvOp);
+  ADD_PATTERN(TFLDepthwiseConv2DOp);
+  ADD_PATTERN(TFLFullyConnectedOp);
+  ADD_PATTERN(TFLBatchMatMulOp);
+  ADD_PATTERN(TFLSplitOp);
+  ADD_PATTERN(TFLSplitVOp);
+  ADD_PATTERN(TFLPackOp);
+  ADD_PATTERN(TFLUnpackOp);
+  ADD_PATTERN(TFLTransposeOp);
+  ADD_PATTERN(TFLTileOp);
+  ADD_PATTERN(TFLSliceOp);
+  ADD_PATTERN(TFLStridedSliceOp);
+  ADD_PATTERN(TFLHardSwishOp);
+  ADD_PATTERN(TFLZerosLikeOp);
+  ADD_PATTERN(TFLLessOp);
+  ADD_PATTERN(TFLLessEqualOp);
+  ADD_PATTERN(TFLPadOp);
+  ADD_PATTERN(TFLMirrorPadOp);
+  ADD_PATTERN(TFLPadV2Op);
+  ADD_PATTERN(TFLResizeBilinearOp);
+  ADD_PATTERN(TFLResizeNearestNeighborOp);
+  ADD_PATTERN(TFLSelectOp);
+  ADD_PATTERN(TFLSelectV2Op);
+  ADD_PATTERN(TFLSpaceToBatchNdOp);
+  ADD_PATTERN(TFLBatchToSpaceNdOp);
+  ADD_PATTERN(TFLSpaceToDepthOp);
+  ADD_PATTERN(TFLDepthToSpaceOp);
+  ADD_PATTERN(TFLBucketizeOp);
+  ADD_PATTERN(TFLSinOp);
+  ADD_PATTERN(TFLCosOp);
+  ADD_PATTERN(TFLAtan2Op);
+  ADD_PATTERN(TFLLogisticOp);
+  ADD_PATTERN(TFLTanhOp);
+  ADD_PATTERN(TFLPReluOp);
+  ADD_PATTERN(TFLLeakyReluOp);
+  ADD_PATTERN(TFLNegOp);
+  ADD_PATTERN(TFLYieldOp);
+  ADD_PATTERN(TFLCustomOp);
+  ADD_PATTERN(TFLReverseV2Op);
+  ADD_PATTERN(TFLQuantizeOp);
+  ADD_PATTERN(TFLDequantizeOp);
+  ADD_PATTERN(TFLConstOp);
+  ADD_PATTERN(TFLQConstOp);
+  ADD_PATTERN(TFLGatherOp);
+  ADD_PATTERN(TFLGatherNdOp);
+  ADD_PATTERN(TFLSparseToDenseOp);
+  ADD_PATTERN(ConstantOp);
+  ADD_PATTERN(TFLOneHotOp);
+  ADD_PATTERN(TFLArgMaxOp);
+  ADD_PATTERN(TFLArgMinOp);
+  ADD_PATTERN(TFLFakeQuantOp);
+  ADD_PATTERN(TFLWhileOp);
+  ADD_PATTERN(TFLRealOp);
+  ADD_PATTERN(TFLImagOp);
+  ADD_PATTERN(TFLRFFT2dOp);
+  ADD_PATTERN(TFLBroadcastToOp);
 }
 
 // Creates an instance of the TensorFlow Lite dialect LegalizeTFL pass.

@@ -27,7 +27,7 @@ def TosaLegalizeTFLPass : Pass<"tosa-legalize-tfl", "mlir::func::FuncOp"> {
   let summary = "Legalize from TensorFlow Lite to TOSA. Options allow selective disabling/enabling of rewrites";
   let constructor = "createLegalizeTFLPass()";
 
-  let dependentDialects = ["TosaDialect"];
+  let dependentDialects = ["TosaDialect", "linalg::LinalgDialect", "scf::SCFDialect"];
   let options = [
     ListOption<"disabled_patterns_", "disable-patterns", "std::string",
                "Labels of patterns that should be filtered out during application">,

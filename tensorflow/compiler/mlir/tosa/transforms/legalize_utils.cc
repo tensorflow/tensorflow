@@ -78,15 +78,15 @@ std::optional<Value> buildReshapeWithDynamicDims(PatternRewriter& rewriter,
   llvm::SmallVector<int64_t> static_dims;
 
   if (output_type.hasRank()) {
-    static_dims.append(output_type.getShape().begin(),
-                       output_type.getShape().end());
+    static_dims = tensorflow::ConvertMlirShapeToTF(output_type.getShape());
   } else {
     static_dims.resize(dims.size(), tensorflow::kTFDynamicSize);
   }
-
+  
   int64_t dyn_count = 0;
   for (int i = 0, s = dims.size(); i < s; ++i) {
     auto dim = dims[i];
+
     SplatElementsAttr dim_attr;
     if (matchPattern(dim, m_Constant(&dim_attr))) {
       if (dim_attr.getType().cast<ShapedType>().getRank() != 0) {
@@ -112,6 +112,7 @@ std::optional<Value> buildReshapeWithDynamicDims(PatternRewriter& rewriter,
     if (static_dims[i] == tensorflow::kTFDynamicSize) dyn_count++;
   }
 
+  // If there is more than 1 dynamic shape, resort to the 'tensor' dialect
   if (dyn_count > 1) {
     (void)rewriter.notifyMatchFailure(
         op, "multiple dynamic shapes when creating tosa::ReshapeOp");

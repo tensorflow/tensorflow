@@ -205,6 +205,8 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineTransforms",
         "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:LinalgDialect",
+        "@llvm-project//mlir:MathDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MLProgramDialect",
         "@llvm-project//mlir:Pass",
