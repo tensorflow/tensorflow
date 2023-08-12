@@ -388,6 +388,8 @@ class ConvOpLowering : public OpRewritePattern<Conv> {
 
     // Copy attributes specific for graph convolutions.
     if (auto fused = dyn_cast<ConvForwardGraphOp>(op.getOperation())) {
+      call->setAttr(b.getStringAttr("n_aux_outputs"),
+                    fused.getNAuxOutputsAttr());
       call->setAttr(b.getStringAttr("serialized_graph"),
                     fused.getSerializedGraphAttr());
     }

@@ -206,7 +206,7 @@ StatusOr<std::vector<GenericConvRunner>> GetAlgorithms(
 StatusOr<std::vector<std::unique_ptr<const se::dnn::ConvRunner>>>
 GetMIOpenAlgorithms(const HloCustomCallInstruction* instr,
                     absl::Span<se::DeviceMemoryBase> operand_buffers,
-                    se::DeviceMemoryBase result_buffer,
+                    absl::Span<se::DeviceMemoryBase> result_buffers,
                     se::StreamExecutor* stream_exec,
                     ScratchAllocator* scratch_allocator, se::Stream* stream,
                     const se::NumericOptions& numeric_options) {
@@ -218,8 +218,9 @@ GetMIOpenAlgorithms(const HloCustomCallInstruction* instr,
   TF_ASSIGN_OR_RETURN(se::dnn::DataType dtype,
                       GetDNNDataTypeFromPrimitiveType(config.output_type));
 
-  TF_ASSIGN_OR_RETURN(GpuConvParams params,
-                      GetGpuConvParams(config, operand_buffers, result_buffer));
+  TF_ASSIGN_OR_RETURN(
+      GpuConvParams params,
+      GetGpuConvParams(config, operand_buffers, result_buffers));
 
   std::vector<std::unique_ptr<const se::dnn::ConvRunner>> runners;
   TF_RETURN_IF_ERROR(stream_exec->GetConvolveRunners(
@@ -436,12 +437,28 @@ GpuConvAlgorithmPicker::AutotuneRuntimeArguments::FromInstruction(
     operand_buffers.push_back(buffer);
   }
 
-  // Construct result buffer.
-  auto result_shape = instr->shape().tuple_shapes(0);
-  TF_ASSIGN_OR_RETURN(auto result_buffer,
-                      input_output_allocator->AllocateBytes(
-                          ShapeUtil::ByteSizeOf(result_shape)));
-  initialize_buffer(result_buffer, result_shape);
+  // Construct the result buffers.
+  Shape result_shape;
+  // Disregard the workspace, which is the final element in the tuple returned
+  // by instr.
+  std::vector<se::DeviceMemoryBase> result_buffers(
+      instr->shape().tuple_shapes_size() - 1);
+  // Set the shape to a tuple when instr returns more than one result.
+  if (instr->shape().tuple_shapes_size() > 2) {
+    result_shape = ShapeUtil::MakeTupleShape(
+        std::vector<Shape>{instr->shape().tuple_shapes().begin(),
+                           instr->shape().tuple_shapes().end() - 1});
+  } else {
+    result_shape = instr->shape().tuple_shapes(0);
+  }
+
+  for (int i = 0; i < instr->shape().tuple_shapes_size() - 1; ++i) {
+    TF_ASSIGN_OR_RETURN(
+        result_buffers[i],
+        input_output_allocator->AllocateBytes(
+            ShapeUtil::ByteSizeOf(instr->shape().tuple_shapes(i))));
+    initialize_buffer(result_buffers[i], instr->shape().tuple_shapes(i));
+  }
 
   // Get canonical HLO.
   std::string canonical_hlo(
@@ -451,8 +468,9 @@ GpuConvAlgorithmPicker::AutotuneRuntimeArguments::FromInstruction(
   TF_ASSIGN_OR_RETURN(GpuConvConfig gpu_conv_config, GetGpuConvConfig(instr));
 
   GpuConvAlgorithmPicker::AutotuneRuntimeArguments runtime_arguments = {
-      result_shape,           hlo_module_config, operand_buffers, result_buffer,
-      input_output_allocator, gpu_conv_config,   {canonical_hlo}};
+      result_shape,   hlo_module_config,      operand_buffers,
+      result_buffers, input_output_allocator, gpu_conv_config,
+      {canonical_hlo}};
 
   return runtime_arguments;
 }
@@ -563,9 +581,10 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
   Status launch_status;
   std::vector<se::DeviceMemoryBase> operand_buffers =
       runtime_arguments.operand_buffers;
-  se::DeviceMemoryBase result_buffer = runtime_arguments.result_buffer;
+  std::vector<se::DeviceMemoryBase> result_buffers =
+      runtime_arguments.result_buffers;
   // Dry-run to warmup the plan.
-  launch_status = RunGpuConv(config, operand_buffers, result_buffer,
+  launch_status = RunGpuConv(config, operand_buffers, result_buffers,
                              scratch_memory, stream, options);
   constexpr float kThreshold = 0.95f;
   constexpr int kMaxIter = 10;
@@ -575,7 +594,7 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
   for (;
        num_iters < kMaxIter && launch_status.ok() && profile_result.is_valid();
        num_iters++) {
-    launch_status = RunGpuConv(config, operand_buffers, result_buffer,
+    launch_status = RunGpuConv(config, operand_buffers, result_buffers,
                                scratch_memory, stream, options);
     float old_min_time = min_time;
     min_time = std::min(min_time, profile_result.elapsed_time_in_ms());
@@ -613,7 +632,8 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
 
   if (!ShouldCheckConv(runtime_arguments.hlo_module_config)) {
     if (!reference_result->has_value()) {
-      (*reference_result) = {alg, DeviceMemoryBase()};
+      (*reference_result) = {
+          alg, std::vector<DeviceMemoryBase>(result_buffers.size())};
     }
     return result;
   }
@@ -663,48 +683,54 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
     XLA_SCOPED_LOGGING_TIMER_LEVEL("BufferComparator::CompareEqual", 2);
     BufferComparator comparator(runtime_arguments.result_shape,
                                 runtime_arguments.hlo_module_config);
-    StatusOr<bool> compare_result =
-        comparator.CompareEqual(stream, /*current=*/result_buffer,
-                                /*expected=*/(*reference_result)->buffer);
-    if (!compare_result.ok()) {
-      LOG(ERROR) << "Unable to compare "
-                 << (*reference_result)->algorithm.ToString() << " against "
-                 << alg.ToString() << " for " << instr_str << ": "
-                 << compare_result.status();
-      if (compare_result.status().code() ==
-          absl::StatusCode::kResourceExhausted) {
-        // Possibly OOM. Propagate the error.
-        return compare_result.status();
+    for (int i = 0; i < result_buffers.size(); ++i) {
+      StatusOr<bool> compare_result = comparator.CompareEqual(
+          stream, (*reference_result)->buffers[i], result_buffers[i]);
+      if (!compare_result.ok()) {
+        LOG(ERROR) << "Unable to compare "
+                   << (*reference_result)->algorithm.ToString() << " against "
+                   << alg.ToString() << " for " << instr_str << ": "
+                   << compare_result.status();
+        if (compare_result.status().code() ==
+            absl::StatusCode::kResourceExhausted) {
+          // Possibly OOM. Propagate the error.
+          return compare_result.status();
+        }
+        const DebugOptions& debug_options =
+            runtime_arguments.hlo_module_config.debug_options();
+        CHECK(!debug_options.xla_gpu_crash_on_verification_failures());
+      } else if (!compare_result.value()) {
+        LOG(ERROR)
+            << "Results mismatch between different convolution algorithms. "
+               "This is likely a bug/unexpected loss of precision in cudnn.\n"
+            << instr_str << " for " << (*reference_result)->algorithm.ToString()
+            << " vs " << alg.ToString();
+        PrintPlatformInfo(stream);
+        if (instruction_info.has_value()) {
+          VLOG(2) << "Full module on failure: \n"
+                  << instruction_info->GetModelStr();
+        }
+        auto* fail = result.mutable_failure();
+        fail->set_kind(AutotuneResult::WRONG_RESULT);
+        fail->set_buffer_address(
+            reinterpret_cast<uint64_t>(result_buffers[i].opaque()));
+        *fail->mutable_reference_algorithm() =
+            (*reference_result)->algorithm.ToProto();
       }
-      const DebugOptions& debug_options =
-          runtime_arguments.hlo_module_config.debug_options();
-      CHECK(!debug_options.xla_gpu_crash_on_verification_failures());
-    } else if (!compare_result.value()) {
-      LOG(ERROR)
-          << "Results mismatch between different convolution algorithms. "
-             "This is likely a bug/unexpected loss of precision in cudnn.\n"
-          << instr_str << " for " << (*reference_result)->algorithm.ToString()
-          << " vs " << alg.ToString();
-      PrintPlatformInfo(stream);
-      if (instruction_info.has_value()) {
-        VLOG(2) << "Full module on failure: \n"
-                << instruction_info->GetModelStr();
-      }
-      auto* fail = result.mutable_failure();
-      fail->set_kind(AutotuneResult::WRONG_RESULT);
-      fail->set_buffer_address(
-          reinterpret_cast<uint64_t>(result_buffer.opaque()));
-      *fail->mutable_reference_algorithm() =
-          (*reference_result)->algorithm.ToProto();
     }
   } else {
     XLA_SCOPED_LOGGING_TIMER_LEVEL("Memcpy Reference Result", 2);
-    TF_ASSIGN_OR_RETURN(auto reference_result_buffer,
-                        runtime_arguments.input_output_allocator->AllocateBytes(
-                            result_buffer.size()));
-    stream->ThenMemcpy(&reference_result_buffer, result_buffer,
-                       result_buffer.size());
-    (*reference_result) = {alg, reference_result_buffer};
+    std::vector<DeviceMemoryBase> reference_result_buffers(
+        result_buffers.size());
+    for (int i = 0; i < result_buffers.size(); ++i) {
+      TF_ASSIGN_OR_RETURN(
+          reference_result_buffers[i],
+          runtime_arguments.input_output_allocator->AllocateBytes(
+              result_buffers[i].size()));
+      stream->ThenMemcpy(&reference_result_buffers[i], result_buffers[i],
+                         result_buffers[i].size());
+    }
+    (*reference_result) = {alg, reference_result_buffers};
   }
 
   return result;
@@ -810,8 +836,11 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
         instr_log.add_operand_addresses(reinterpret_cast<uint64_t>(
             runtime_arguments.operand_buffers[i].opaque()));
       }
-      instr_log.set_result_address(
-          reinterpret_cast<uint64_t>(runtime_arguments.result_buffer.opaque()));
+      for (se::DeviceMemoryBase result_buffer :
+           runtime_arguments.result_buffers) {
+        instr_log.add_result_addresses(
+            reinterpret_cast<uint64_t>(result_buffer.opaque()));
+      }
       log.mutable_instr()->PackFrom(instr_log);
     }
     for (const auto& profile : profile_results) {
@@ -851,7 +880,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmWithAllocatedBuffer(
     const ServiceExecutableRunOptions* run_options,
     const DebugOptions& debug_options,
     const std::vector<se::DeviceMemoryBase> buffers,
-    const se::DeviceMemoryBase result_buffer) {
+    std::vector<se::DeviceMemoryBase> result_buffers) {
 #if GOOGLE_CUDA
   Shape output_shape = conv_config.output_shape;
   HloModuleConfig hlo_module_config;
@@ -863,8 +892,8 @@ GpuConvAlgorithmPicker::PickBestAlgorithmWithAllocatedBuffer(
       AutotunerUtil::CreateRedzoneAllocator(config, debug_options, stream));
 
   GpuConvAlgorithmPicker::AutotuneRuntimeArguments autotune_runtime_arguments =
-      {output_shape,  hlo_module_config,       buffers,
-       result_buffer, &input_output_allocator, conv_config,
+      {output_shape,   hlo_module_config,       buffers,
+       result_buffers, &input_output_allocator, conv_config,
        std::nullopt};
 
   return PickBestAlgorithmNoCacheCuda(
@@ -913,19 +942,31 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
     operand_buffers.push_back(buffer);
   }
 
-  TF_ASSIGN_OR_RETURN(
-      auto result_buffer,
-      input_output_allocator.AllocateBytes(
-          ShapeUtil::ByteSizeOf(instr->shape().tuple_shapes(0))));
-  initialize_buffer(result_buffer);
+  std::vector<se::DeviceMemoryBase> result_buffers(
+      instr->shape().tuple_shapes_size());
+  if (instr->shape().IsTuple()) {
+    for (int i = 0; i < instr->shape().tuple_shapes_size(); ++i) {
+      TF_ASSIGN_OR_RETURN(
+          result_buffers[i],
+          input_output_allocator.AllocateBytes(
+              ShapeUtil::ByteSizeOf(instr->shape().tuple_shapes(i))));
+      initialize_buffer(result_buffers[i]);
+    }
+  } else {
+    TF_ASSIGN_OR_RETURN(
+        result_buffers[0],
+        input_output_allocator.AllocateBytes(
+            ShapeUtil::ByteSizeOf(instr->shape().tuple_shapes(0))));
+    initialize_buffer(result_buffers[0]);
+  }
 
   ScratchAllocator scratch_allocator(device_ordinal, allocator);
 
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<const se::dnn::ConvRunner>> runners,
-      GetMIOpenAlgorithms(instr, absl::MakeSpan(operand_buffers), result_buffer,
-                          stream_exec, &scratch_allocator, stream,
-                          numeric_options));
+      GetMIOpenAlgorithms(instr, absl::MakeSpan(operand_buffers),
+                          absl::MakeSpan(result_buffers), stream_exec,
+                          &scratch_allocator, stream, numeric_options));
 
   std::vector<AutotuneResult> profile_results;
 
@@ -971,7 +1012,7 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
       options.profile_result = &profile_result;
       options.runner_cache = &runner_cache;
       Status launch_status =
-          RunGpuConv(config, absl::MakeSpan(operand_buffers), result_buffer,
+          RunGpuConv(config, absl::MakeSpan(operand_buffers), result_buffers,
                      scratch_memory, stream, options);
 
       if (!launch_status.ok()) {
@@ -1039,9 +1080,15 @@ StatusOr<bool> GpuConvAlgorithmPicker::RunOnInstruction(HloInstruction* instr) {
   // Replace instr with a new CustomCall which has the correct algorithm, and
   // whose output shape has the appropriate amount of scratch memory.
   HloComputation* computation = instr->parent();
-  Shape new_call_shape = ShapeUtil::MakeTupleShape(
-      {instr->shape().tuple_shapes(0),
-       ShapeUtil::MakeShape(U8, {best_algo.scratch_bytes()})});
+  std::vector<Shape> new_call_element_shapes;
+  // Add the shapes of the outputs of the convolution.
+  for (int i = 0; i < instr->shape().tuple_shapes_size() - 1; ++i) {
+    new_call_element_shapes.emplace_back(instr->shape().tuple_shapes(i));
+  }
+  // The final element is the size of the workspace.
+  new_call_element_shapes.emplace_back(
+      ShapeUtil::MakeShape(U8, {best_algo.scratch_bytes()}));
+  Shape new_call_shape = ShapeUtil::MakeTupleShape(new_call_element_shapes);
 
   TF_ASSIGN_OR_RETURN(CudnnConvBackendConfig backend_config,
                       instr->backend_config<CudnnConvBackendConfig>());
@@ -1062,14 +1109,19 @@ StatusOr<bool> GpuConvAlgorithmPicker::RunOnInstruction(HloInstruction* instr) {
 
   TF_RETURN_IF_ERROR(new_call->set_backend_config(backend_config));
 
+  std::vector<HloInstruction*> new_tuple_elements;
+  for (int i = 0; i < new_call->shape().tuple_shapes_size() - 1; ++i) {
+    new_tuple_elements.emplace_back(
+        computation->AddInstruction(HloInstruction::CreateGetTupleElement(
+            new_call->shape().tuple_shapes(i), new_call, i)));
+  }
+  new_tuple_elements.emplace_back(computation->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR1<uint8_t>({}))));
+
   // Repackage new_call so it has the same shape as the original call, namely
   // (conv_result, u8[0]).
-  HloInstruction* new_tuple =
-      computation->AddInstruction(HloInstruction::CreateTuple(
-          {computation->AddInstruction(HloInstruction::CreateGetTupleElement(
-               new_call_shape.tuple_shapes(0), new_call, 0)),
-           computation->AddInstruction(HloInstruction::CreateConstant(
-               LiteralUtil::CreateR1<uint8_t>({})))}));
+  HloInstruction* new_tuple = computation->AddInstruction(
+      HloInstruction::CreateTuple(new_tuple_elements));
 
   TF_RETURN_IF_ERROR(instr->parent()->ReplaceInstruction(instr, new_tuple));
   return true;

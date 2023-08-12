@@ -695,18 +695,30 @@ Status IrEmitterUnnested::EmitConvolutionThunk(mlir::Operation* op) {
   using mlir::lmhlo_gpu::ConvForwardGraphOp;
   using mlir::lmhlo_gpu::ConvForwardOp;
 
-  // Last 2 operands of the convolution operation are the result and scratch.
-  std::vector<BufferAllocation::Slice> operand_slices;
+  std::vector<BufferAllocation::Slice> operand_slices, result_slices;
+  int32_t n_aux_outputs = 0;
+  if (auto conv = dyn_cast<ConvForwardGraphOp>(op)) {
+    n_aux_outputs = conv.getNAuxOutputs();
+  }
   int64_t num_operands = op->getNumOperands();
-  operand_slices.reserve(num_operands - 2);
-  for (mlir::Value operand : op->getOperands().drop_back(2)) {
+  operand_slices.reserve(num_operands - n_aux_outputs - 2);
+
+  // The operands describe inputs, the main result of the convolution, the
+  // scratch workspace and n_aux_outputs return values of ops fused into the
+  // convolution.
+  for (mlir::Value operand : op->getOperands().drop_back(2 + n_aux_outputs)) {
     TF_ASSIGN_OR_RETURN(auto slice, GetAllocationSlice(operand));
     operand_slices.push_back(slice);
   }
 
-  mlir::Value conv_result = op->getOperand(num_operands - 2);
+  result_slices.reserve(1 + n_aux_outputs);
+  for (mlir::Value result : op->getOperands()
+                                .drop_front(num_operands - n_aux_outputs - 2)
+                                .drop_back(1)) {
+    TF_ASSIGN_OR_RETURN(auto slice, GetAllocationSlice(result));
+    result_slices.push_back(slice);
+  }
   mlir::Value scratch_result = op->getOperand(num_operands - 1);
-  TF_ASSIGN_OR_RETURN(auto conv_result_slice, GetAllocationSlice(conv_result));
   TF_ASSIGN_OR_RETURN(auto scratch_slice, GetAllocationSlice(scratch_result));
 
   auto apply_layout = [](const Shape& shape,
@@ -724,8 +736,9 @@ Status IrEmitterUnnested::EmitConvolutionThunk(mlir::Operation* op) {
     descriptor.operand1_shape =
         apply_layout(GetShape(op->getOperand(1)),
                      op.getBackendConfig().getOperand_1Layout());
-    descriptor.result_shape = apply_layout(
-        GetShape(conv_result), op.getBackendConfig().getResultLayout());
+    descriptor.result_shape =
+        apply_layout(GetShape(op->getOperand(num_operands - n_aux_outputs - 2)),
+                     op.getBackendConfig().getResultLayout());
     descriptor.dnums = ConvertConvDimensionNumbers(op.getDimensionNumbers());
     descriptor.scratch_size = scratch_slice.size();
     mlir::DenseIntElementsAttr window_strides = op.getWindowStrides().value();
@@ -814,7 +827,7 @@ Status IrEmitterUnnested::EmitConvolutionThunk(mlir::Operation* op) {
   TF_ASSIGN_OR_RETURN(GpuConvConfig config, GetGpuConvConfig(descriptor, ""));
   AddThunkToThunkSequence(std::make_unique<ConvolutionThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(op), std::move(config),
-      std::move(operand_slices), conv_result_slice, scratch_slice));
+      std::move(operand_slices), std::move(result_slices), scratch_slice));
   return OkStatus();
 }
 
