@@ -468,25 +468,28 @@ struct ConvertCompiledOpToApiCall : public OpConversionPattern<OpTy> {
       OpTy op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override;
 
-  // Update graph dependencies to track node that updated tied operands.
+  // TODO(ezhulenev): This is a very conservative dependency tracking that
+  // adds edges between all operations that touch the same buffers. We need to
+  // track reads and writes separately and allow concurrent reads.
+
   void updateGraphDependencies(TypedValue<GraphNodeType> node,
-                               DispatchArguments args,
+                               ArrayRef<TypedValue<TensorType>> args,
                                SmallVector<int64_t> tied_operands) const {
     Block *block = node.getDefiningOp()->getBlock();
-    for (int64_t idx : tied_operands) {
-      graphs.dependency[block][args.second[idx]] = node;
+    for (auto arg : args) {
+      graphs.dependency[block][arg] = node;
     }
   }
 
-  // Get graph dependencies that updated arguments in the current block.
   SmallVector<TypedValue<GraphNodeType>> getGraphDependencies(
-      Block *block, DispatchArguments args) const {
-    SmallVector<TypedValue<GraphNodeType>> deps;
-    for (auto &tensor : args.second) {
+      Block *block, ArrayRef<TypedValue<TensorType>> args,
+      SmallVector<int64_t> tied_operands) const {
+    SetVector<TypedValue<GraphNodeType>> deps;
+    for (auto &tensor : args) {
       auto it = graphs.dependency[block].find(tensor);
-      if (it != graphs.dependency[block].end()) deps.push_back(it->second);
+      if (it != graphs.dependency[block].end()) deps.insert(it->second);
     }
-    return deps;
+    return deps.takeVector();
   }
 
   ThunkSequence *thunk_sequence;
@@ -529,9 +532,34 @@ LogicalResult ConvertCompiledOpToApiCall<OpTy>::matchAndRewrite(
     auto dst_view = api.getBufferView(b, dst);
     SmallVector<Value> args = {getExecutionContext(op), dst_view, src_view};
 
-    func::FuncOp memcpy = api.getD2DMemcpy(b, module);
-    // TODO(ezhulenev): Should we import buffer view back and update remapping?
-    b.create<func::CallOp>(memcpy.getSymName(), memcpy.getResultTypes(), args);
+    // If we are inside a graph dispatch region, we convert memory copy
+    // operation to a memory copy node.
+    if (graph) {
+      // These are the nodes that previously updated dispatch arguments, we need
+      // to add them to a set of dependencies to build a correct DAG.
+      Value dependencies = api.getGraphNodeList(
+          b, getGraphDependencies(block, {dst, src}, /*tied_operands=*/{0}));
+
+      // Add additional arguments required by node building API.
+      args.insert(args.begin() + 1, {graph, dependencies});
+
+      func::FuncOp create_node = api.getCreateD2DMemcpyNode(b, module);
+      Value result = b.create<func::CallOp>(create_node.getSymName(),
+                                            create_node.getResultTypes(), args)
+                         .getResult(0);
+
+      // Update dependencies to track updated dst tensor.
+      updateGraphDependencies(cast<TypedValue<GraphNodeType>>(result),
+                              {dst, src}, /*tied_operands=*/{0});
+    }
+
+    // For regular regions we simply dispatch the kernel using API call.
+    if (!graph) {
+      func::FuncOp memcpy = api.getD2DMemcpy(b, module);
+      // TODO(ezhulenev): Should we import buffer view back and update
+      // remapping?
+      b.create<func::CallOp>(memcpy.getSymName(), TypeRange(), args);
+    }
   }
 
   // Compiled operation was a plain copy.
@@ -602,10 +630,12 @@ LogicalResult ConvertCompiledOpToApiCall<OpTy>::matchAndRewrite(
     // If we are inside a graph dispatch region, we convert compiled operation
     // to a kernel node with explicit dependencies.
     if (graph) {
+      auto tied_operands = getTiedOperands(op, kernel);
+
       // These are the nodes that previously updated dispatch arguments, we need
       // to add them to a set of dependencies to build a correct DAG.
       Value dependencies = api.getGraphNodeList(
-          b, getGraphDependencies(op->getBlock(), dispatch_args));
+          b, getGraphDependencies(block, tensors, tied_operands));
 
       // Add additional arguments required by node building API.
       args.insert(args.begin() + 1, {graph, dependencies});
@@ -616,8 +646,8 @@ LogicalResult ConvertCompiledOpToApiCall<OpTy>::matchAndRewrite(
                          .getResult(0);
 
       // Update dependencies to track all updated tensors.
-      updateGraphDependencies(cast<TypedValue<GraphNodeType>>(result),
-                              dispatch_args, getTiedOperands(op, kernel));
+      updateGraphDependencies(cast<TypedValue<GraphNodeType>>(result), tensors,
+                              tied_operands);
     }
 
     // For regular regions we simply dispatch the kernel using API call.

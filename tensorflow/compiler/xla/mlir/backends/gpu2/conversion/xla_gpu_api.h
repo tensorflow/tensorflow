@@ -145,6 +145,10 @@ class XlaGpuApi {
   mlir::func::FuncOp getCreateKernelNode(mlir::OpBuilder &b,
                                          mlir::ModuleOp module);
 
+  // Imports `@xla_gpu.graph.memcpy_node.d2d.create` into the module.
+  mlir::func::FuncOp getCreateD2DMemcpyNode(mlir::OpBuilder &b,
+                                            mlir::ModuleOp module);
+
   // Imports `@xla_gpu.graph.create` into the module.
   mlir::func::FuncOp getCreateGraph(mlir::OpBuilder &b, mlir::ModuleOp module);
 

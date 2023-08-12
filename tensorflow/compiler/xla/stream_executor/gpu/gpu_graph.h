@@ -34,6 +34,9 @@ limitations under the License.
 namespace stream_executor {
 namespace gpu {
 
+// Forward declare.
+class GpuContext;
+
 class GpuGraphSupport {
  public:
   // Deleters for gpu graph and graph exec instance that check the returned
@@ -111,6 +114,12 @@ tsl::StatusOr<GpuGraphNodeHandle> AddKernelNode(
     GpuGraphHandle graph, absl::Span<GpuGraphNodeHandle> deps,
     ThreadDim threads, BlockDim blocks, const KernelBase& kernel,
     const KernelArgsArrayBase& args);
+
+// Adds a memory copy node to the graph.
+tsl::StatusOr<GpuGraphNodeHandle> AddMemcpyD2DNode(
+    GpuContext* context, GpuGraphHandle graph,
+    absl::Span<GpuGraphNodeHandle> deps, const DeviceMemoryBase& dst,
+    const DeviceMemoryBase& src);
 
 // Captures all operations added to a `stream` by the `capture` function into
 // the gpu graph instance.

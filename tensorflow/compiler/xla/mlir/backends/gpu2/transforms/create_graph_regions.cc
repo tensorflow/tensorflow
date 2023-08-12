@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -87,11 +88,14 @@ using OutlineOp = OpCapture<kOutline, T, Ts...>;
 // Configure ops supported by XLA:GPU graph runtime
 //===----------------------------------------------------------------------===//
 
-// Move lmhlo.fusion operations into the graph regions.
+// Move compiled operations into the graph regions.
 struct FusionOpCapture : public MoveOp<lmhlo::FusionOp> {};
+struct SortOpCapture : public MoveOp<lmhlo::SortOp> {};
 
-// Outline memref.view operations out of the graph region.
+// Outline auxiliary operations out of the graph region.
 struct MemrefViewOpCapture : public OutlineOp<memref::ViewOp> {};
+struct MemrefCastOpCapture : public OutlineOp<memref::ReinterpretCastOp> {};
+struct ArithConstOpCapture : public OutlineOp<arith::ConstantOp> {};
 
 //===----------------------------------------------------------------------===//
 
@@ -175,7 +179,11 @@ class CreateGraphRegionsPass
 
     // TODO(ezhulenev): Make patterns configurable.
     patterns.emplace_back(new FusionOpCapture());
+    patterns.emplace_back(new SortOpCapture());
+
     patterns.emplace_back(new MemrefViewOpCapture());
+    patterns.emplace_back(new MemrefCastOpCapture());
+    patterns.emplace_back(new ArithConstOpCapture());
 
     for (auto& graph_region : collectGraphRegions(getOperation(), patterns)) {
       if (failed(buildGraphRegionOp(graph_region))) return signalPassFailure();

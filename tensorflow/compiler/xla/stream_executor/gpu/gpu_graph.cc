@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <atomic>
 #include <cstddef>
+#include <cstdint>
 #include <cstdlib>
 #include <string>
 
@@ -72,8 +73,13 @@ tsl::Status OwnedGpuGraphExec::Update(OwnedGpuGraph graph) {
 
   num_launches_ = 0;
 
+  uint64_t start_nanos = tsl::Env::Default()->NowNanos();
   GpuDriver::GraphExecUpdateResultInfo result;
   auto st = GpuDriver::GraphExecUpdate(get(), graph.get(), &result);
+  uint64_t end_nanos = tsl::Env::Default()->NowNanos();
+
+  VLOG(5) << "Updated gpu graph exec #" << id_ << " (took "
+          << (end_nanos - start_nanos) / 1000 << " us)";
 
   if (!st.ok() || result.result != GpuDriver::GraphExecUpdateResult::kSuccess) {
     return tsl::errors::Internal("Failed to update gpu graph: ", st.message());
@@ -125,10 +131,26 @@ tsl::StatusOr<GpuGraphNodeHandle> AddKernelNode(
   return node;
 }
 
+static GpuDevicePtr AsDevicePtr(const DeviceMemoryBase& mem) {
+  return reinterpret_cast<GpuDevicePtr>(mem.opaque());
+}
+
+tsl::StatusOr<GpuGraphNodeHandle> AddMemcpyD2DNode(
+    GpuContext* context, GpuGraphHandle graph,
+    absl::Span<GpuGraphNodeHandle> deps, const DeviceMemoryBase& dst,
+    const DeviceMemoryBase& src) {
+  GpuGraphNodeHandle node;
+  TF_RETURN_IF_ERROR(GpuDriver::GraphAddMemcpyD2DNode(
+      context, &node, graph, deps, AsDevicePtr(dst), AsDevicePtr(src),
+      dst.size()));
+  return node;
+}
+
 tsl::StatusOr<OwnedGpuGraph> CaptureGpuGraph(
     stream_executor::Stream* stream,
     absl::AnyInvocable<tsl::Status()> capture) {
   VLOG(3) << "Capture gpu graph on a stream: " << stream->DebugStreamPointers();
+  uint64_t start_nanos = tsl::Env::Default()->NowNanos();
 
   GpuGraphHandle graph;
 
@@ -149,7 +171,9 @@ tsl::StatusOr<OwnedGpuGraph> CaptureGpuGraph(
     return tsl::errors::Internal("failed to capture gpu graph: ",
                                  captured.message());
 
-  VLOG(5) << "Captured XLA:GPU operations into the graph " << graph;
+  uint64_t end_nanos = tsl::Env::Default()->NowNanos();
+  VLOG(5) << "Captured XLA:GPU operations into the graph " << graph << " (took "
+          << (end_nanos - start_nanos) / 1000 << " us)";
 
   if (const char* path = getenv("XLA_GPU_GRAPH_DEBUG_DIRECTORY"); path) {
     std::string file = tsl::io::JoinPath(std::string(path), "/gpu-graph-");
@@ -171,13 +195,15 @@ tsl::StatusOr<OwnedGpuGraph> CaptureGpuGraph(
 tsl::StatusOr<OwnedGpuGraphExec> InstantiateGpuGraph(OwnedGpuGraph graph) {
   GpuGraphExecHandle exec;
 
+  uint64_t start_nanos = tsl::Env::Default()->NowNanos();
   GpuDriver::GraphInstantiateFlags flags;
   TF_RETURN_IF_ERROR(GpuDriver::GraphInstantiate(&exec, graph.get(), flags));
+  uint64_t end_nanos = tsl::Env::Default()->NowNanos();
 
   size_t id = GpuGraphSupport::NotifyGraphExecCreated();
-  VLOG(5) << "Instantiated gpu graph exec instance #" << id
-          << " (alive instances: " << GpuGraphSupport::alive_gpu_graph_execs()
-          << ")";
+  VLOG(5) << "Instantiated gpu graph exec instance #" << id << " in "
+          << (end_nanos - start_nanos) / 1000 << " us (alive instances: "
+          << GpuGraphSupport::alive_gpu_graph_execs() << ")";
   return OwnedGpuGraphExec(id, exec);
 }
 

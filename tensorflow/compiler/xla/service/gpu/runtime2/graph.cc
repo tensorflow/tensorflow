@@ -105,6 +105,26 @@ StatusOr<se::gpu::GpuGraphNodeHandle> CreateKernelNode(
       *loaded_kernel, *kernel_args);
 }
 
+StatusOr<se::gpu::GpuGraphNodeHandle> CreateMemcpyD2DNode(
+    const vm::ExecutionContext& ctx, vm::Graph& graph,
+    absl::Span<vm::GraphNode*> dependencies,
+    iree_hal_allocator_t* device_allocator, iree_hal_buffer_view_t* dst,
+    iree_hal_buffer_view_t* src) {
+  se::Stream* stream = ctx.run_options->stream();
+  se::StreamExecutor* executor = stream->parent();
+
+  se::gpu::GpuExecutor* gpu_executor = se::gpu::ExtractGpuExecutor(executor);
+
+  absl::InlinedVector<se::gpu::GpuGraphNodeHandle, 4> deps;
+  for (auto* node : dependencies) deps.push_back(node->handle);
+
+  TF_ASSIGN_OR_RETURN(auto dst_mem, GetDeviceMemory(device_allocator, dst));
+  TF_ASSIGN_OR_RETURN(auto src_mem, GetDeviceMemory(device_allocator, src));
+
+  return se::gpu::AddMemcpyD2DNode(gpu_executor->gpu_context(), &*graph.graph,
+                                   absl::MakeSpan(deps), dst_mem, src_mem);
+}
+
 Status ExecuteGraph(const vm::ExecutionContext& ctx, vm::Graph& graph) {
   TF_ASSIGN_OR_RETURN(auto exec,
                       se::gpu::InstantiateGpuGraph(std::move(graph.graph)));
@@ -145,10 +165,27 @@ iree::StatusOr<iree::vm::ref<vm::GraphNode>> GraphAPI::GraphKernelNodeCreate(
       {workgroup_size_x, workgroup_size_y, workgroup_size_z});
   launch_dimensions.SetSharedMemBytes(kernel->shared_memory_bytes);
 
+  IREE_ASSIGN_OR_RETURN(auto deps, GetGraphNodeVector(dependencies.get()));
   IREE_ASSIGN_OR_RETURN(auto buffer_views, GetBufferViewVector(args.get()));
 
-  auto node = CreateKernelNode(*ctx, *graph, {}, *kernel, device_allocator_,
-                               absl::MakeSpan(buffer_views), launch_dimensions);
+  auto node = CreateKernelNode(*ctx, *graph, absl::MakeSpan(deps), *kernel,
+                               device_allocator_, absl::MakeSpan(buffer_views),
+                               launch_dimensions);
+  if (!node.ok()) return FromStatus(node.status());
+
+  auto ref = iree::vm::make_ref<vm::GraphNode>();
+  ref->handle = std::move(*node);
+  return ref;
+}
+
+iree::StatusOr<iree::vm::ref<vm::GraphNode>> GraphAPI::GraphMemcpyD2DNodeCreate(
+    iree::vm::ref<ExecutionContext> ctx, iree::vm::ref<Graph> graph,
+    iree::vm::ref<iree_vm_list_t> dependencies,
+    iree::vm::ref<iree_hal_buffer_view_t> dst,
+    iree::vm::ref<iree_hal_buffer_view_t> src) {
+  IREE_ASSIGN_OR_RETURN(auto deps, GetGraphNodeVector(dependencies.get()));
+  auto node = CreateMemcpyD2DNode(*ctx, *graph, absl::MakeSpan(deps),
+                                  device_allocator_, dst.get(), src.get());
   if (!node.ok()) return FromStatus(node.status());
 
   auto ref = iree::vm::make_ref<vm::GraphNode>();
@@ -159,6 +196,21 @@ iree::StatusOr<iree::vm::ref<vm::GraphNode>> GraphAPI::GraphKernelNodeCreate(
 iree::Status GraphAPI::GraphExecute(iree::vm::ref<ExecutionContext> ctx,
                                     iree::vm::ref<Graph> graph) {
   return FromStatus(ExecuteGraph(*ctx, *graph));
+}
+
+iree::StatusOr<absl::InlinedVector<GraphNode*, 4>> GraphAPI::GetGraphNodeVector(
+    iree_vm_list_t* list) {
+  iree_host_size_t size = iree_vm_list_size(list);
+  absl::InlinedVector<GraphNode*, 4> vector(size);
+
+  for (iree_host_size_t i = 0; i < size; ++i) {
+    iree_vm_ref_t ref{nullptr};
+    IREE_RETURN_IF_ERROR(iree_vm_list_get_ref_assign(list, i, &ref));
+    IREE_RETURN_IF_ERROR(graph_node_check_deref(ref, &vector[i]));
+  }
+  return vector;
+
+  return vector;
 }
 
 }  // namespace vm

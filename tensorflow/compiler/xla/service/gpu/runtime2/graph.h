@@ -59,6 +59,12 @@ StatusOr<se::gpu::GpuGraphNodeHandle> CreateKernelNode(
     iree_hal_allocator_t* device_allocator,
     absl::Span<iree_hal_buffer_view_t*> args, const LaunchDimensions& dims);
 
+StatusOr<se::gpu::GpuGraphNodeHandle> CreateMemcpyD2DNode(
+    const vm::ExecutionContext& ctx, vm::Graph& graph,
+    absl::Span<vm::GraphNode*> dependencies,
+    iree_hal_allocator_t* device_allocator, iree_hal_buffer_view_t* dst,
+    iree_hal_buffer_view_t* src);
+
 Status ExecuteGraph(const vm::ExecutionContext& ctx, vm::Graph& graph);
 
 //===-----------------------------------------------------------------------===/
@@ -85,10 +91,19 @@ class GraphAPI {
       int32_t workload_size_x, int32_t workload_size_y,
       int32_t workload_size_z);
 
+  iree::StatusOr<iree::vm::ref<vm::GraphNode>> GraphMemcpyD2DNodeCreate(
+      iree::vm::ref<ExecutionContext> ctx, iree::vm::ref<Graph> graph,
+      iree::vm::ref<iree_vm_list_t> dependencies,
+      iree::vm::ref<iree_hal_buffer_view_t> dst,
+      iree::vm::ref<iree_hal_buffer_view_t> src);
+
   iree::Status GraphExecute(iree::vm::ref<ExecutionContext> ctx,
                             iree::vm::ref<Graph> graph);
 
  private:
+  iree::StatusOr<absl::InlinedVector<GraphNode*, 4>> GetGraphNodeVector(
+      iree_vm_list_t* list);
+
   iree_hal_allocator_t* device_allocator_;
 };
 

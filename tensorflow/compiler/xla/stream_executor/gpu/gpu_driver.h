@@ -406,6 +406,15 @@ class GpuDriver {
       unsigned int block_dim_z, unsigned int shared_mem_bytes,
       void** kernel_params, void** extra);
 
+  // Creates a memcpy node and adds it to a graph.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g674da6ab54a677f13e0e0e8206ff5073
+  static tsl::Status GraphAddMemcpyD2DNode(GpuContext* context,
+                                           GpuGraphNodeHandle* node,
+                                           GpuGraphHandle graph,
+                                           absl::Span<GpuGraphNodeHandle> deps,
+                                           GpuDevicePtr gpu_dst,
+                                           GpuDevicePtr gpu_src, uint64_t size);
+
   // Loads ptx_contents with the CUDA driver's PTX JIT and stores the resulting
   // handle in "module". Any error logs that are produced are logged internally.
   // (supported on CUDA only)

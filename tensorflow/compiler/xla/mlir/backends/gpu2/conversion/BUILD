@@ -135,6 +135,7 @@ package(
 #         "@llvm-project//mlir:IR",
 #         "@llvm-project//mlir:MemRefDialect",
 #         "@llvm-project//mlir:Support",
+#         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
 #     ],
 # )
 #

@@ -20,6 +20,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 
 namespace xla::gpu {
 
@@ -51,6 +52,15 @@ UsedBuffers getUsedBuffers(ArrayRef<Block *> blocks) {
 
     block->walk([&](memref::TensorStoreOp op) {
       buffers.write.insert(stripReinterpretCast(op.getMemref()));
+    });
+
+    block->walk([&](lmhlo::SortOp op) {
+      for (auto input : op.getInputs())
+        buffers.read.insert(
+            stripReinterpretCast(cast<TypedValue<MemRefType>>(input)));
+      for (auto output : op.getOutput())
+        buffers.write.insert(
+            stripReinterpretCast(cast<TypedValue<MemRefType>>(output)));
     });
   }
 

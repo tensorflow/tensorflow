@@ -106,6 +106,8 @@ static const iree::vm::NativeFunction<XlaGpuModuleState> kXlaGpuFunctions[] = {
     MakeApiFunction("graph.create", &GraphAPI::GraphCreate),
     MakeApiFunction("graph.kernel_node.create",
                     &GraphAPI::GraphKernelNodeCreate),
+    MakeApiFunction("graph.memcpy_node.d2d.create",
+                    &GraphAPI::GraphMemcpyD2DNodeCreate),
     MakeApiFunction("graph.execute", &GraphAPI::GraphExecute),
 
     // XLA:GPU tracing APIs
