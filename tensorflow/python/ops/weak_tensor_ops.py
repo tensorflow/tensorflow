@@ -195,6 +195,9 @@ def weak_tensor_binary_op_wrapper(op, y_arg_name=None, special_handling=None):
     else:
       bound_kwargs[x_arg_name] = _convert_or_cast(x, target_type, "x")
       bound_kwargs[y_arg_name] = _convert_or_cast(y, target_type, "y")
+    if special_handling == "comparison-method":
+      # No need for "weak" return value for comparison method.
+      is_weak = False
     return weak_tensor.convert_to_weak_tensor_or_tensor(
         op(**bound_kwargs), is_weak
     )
@@ -528,6 +531,22 @@ gen_math_ops.truncate_mod = weak_tensor_binary_op_wrapper(
 )
 gen_math_ops.floor_mod = weak_tensor_binary_op_wrapper(gen_math_ops.floor_mod)
 gen_math_ops._pow = weak_tensor_binary_op_wrapper(gen_math_ops._pow)
+gen_math_ops.maximum = weak_tensor_binary_op_wrapper(
+    gen_math_ops.maximum, special_handling="comparison-method"
+)
+gen_math_ops.minimum = weak_tensor_binary_op_wrapper(
+    gen_math_ops.minimum, special_handling="comparison-method"
+)
+gen_math_ops.equal = weak_tensor_binary_op_wrapper(
+    gen_math_ops.equal, special_handling="comparison-method"
+)
+# math_ops.maximum and minimum don't call from gen_math_ops.
+math_ops.maximum = weak_tensor_binary_op_wrapper(
+    math_ops.maximum, special_handling="comparison-method"
+)
+math_ops.minimum = weak_tensor_binary_op_wrapper(
+    math_ops.minimum, special_handling="comparison-method"
+)
 ResourceVariable.assign = weak_tensor_binary_op_wrapper(
     ResourceVariable.assign, special_handling="variable_method"
 )

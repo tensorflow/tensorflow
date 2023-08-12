@@ -4531,6 +4531,7 @@ py_strict_test(
     deps = [
         ":array_ops",
         ":math_ops",
+        ":math_ops_gen",
         ":resource_variable_ops",
         ":tensor_array_ops",
         ":variables",

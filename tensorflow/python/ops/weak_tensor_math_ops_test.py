@@ -15,6 +15,7 @@
 """Tests for tensorflow.ops.math_ops on WeakTensor."""
 
 import itertools
+
 from absl.testing import parameterized
 import numpy as np
 
@@ -31,6 +32,7 @@ from tensorflow.python.framework import tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework.weak_tensor import WeakTensor
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import tensor_array_ops
@@ -551,6 +553,84 @@ class ScalarMulTest(test_util.TensorFlowTestCase):
           self.evaluate(x.values), [[-6, -9], [-15, -21], [0, 3]]
       )
       self.assertAllEqual(self.evaluate(x.indices), [0, 2, 5])
+
+
+class ComparisonOps(parameterized.TestCase, test_util.TensorFlowTestCase):
+
+  def test_math_equal(self):
+    self.assertAllEqual(math_ops.equal(1, constant_op.constant(1)), True)
+    self.assertAllEqual(
+        math_ops.equal(np.int_(1), constant_op.constant(1)), True
+    )
+    self.assertAllEqual(
+        math_ops.equal(
+            constant_op.constant(1, dtypes.float32),
+            constant_op.constant(1, dtypes.int32),
+        ),
+        True,
+    )
+
+  def test_math_maximum(self):
+    # Test math_ops.maximum.
+    self.assertAllEqual(math_ops.maximum(1, constant_op.constant(2)), 2)
+    self.assertAllEqual(
+        math_ops.maximum(np.int_(1), constant_op.constant(1.5, dtypes.float32)),
+        np.array(1.5, np.float32),
+    )
+    self.assertAllEqual(
+        math_ops.maximum(
+            constant_op.constant(5, dtypes.float32),
+            constant_op.constant(1, dtypes.int32),
+        ),
+        5,
+    )
+
+    # Test gen_math_ops.maximum.
+    self.assertAllEqual(gen_math_ops.maximum(1, constant_op.constant(2)), 2)
+    self.assertAllEqual(
+        gen_math_ops.maximum(
+            np.int_(1), constant_op.constant(1.5, dtypes.float32)
+        ),
+        np.array(1.5, np.float32),
+    )
+    self.assertAllEqual(
+        gen_math_ops.maximum(
+            constant_op.constant(5, dtypes.float32),
+            constant_op.constant(1, dtypes.int32),
+        ),
+        5,
+    )
+
+  def test_math_minimum(self):
+    # Test math_ops.minimum.
+    self.assertAllEqual(math_ops.minimum(1, constant_op.constant(2)), 1)
+    self.assertAllEqual(
+        math_ops.minimum(np.int_(1), constant_op.constant(1.1, dtypes.float32)),
+        1,
+    )
+    self.assertAllEqual(
+        math_ops.minimum(
+            constant_op.constant(5, dtypes.float32),
+            constant_op.constant(-1, dtypes.int32),
+        ),
+        -1,
+    )
+
+    # Test gen_math_ops.minimum.
+    self.assertAllEqual(gen_math_ops.minimum(1, constant_op.constant(2)), 1)
+    self.assertAllEqual(
+        gen_math_ops.minimum(
+            np.int_(1), constant_op.constant(1.1, dtypes.float32)
+        ),
+        1,
+    )
+    self.assertAllEqual(
+        gen_math_ops.minimum(
+            constant_op.constant(5, dtypes.float32),
+            constant_op.constant(-1, dtypes.int32),
+        ),
+        -1,
+    )
 
 
 allowed_var_op_input_combinations = [
