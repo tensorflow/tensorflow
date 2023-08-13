@@ -31,7 +31,7 @@ static std::vector<llvm::Type*> GetComputeFunctionParams(
   llvm::Type* i8_ptr_type = llvm::Type::getInt8PtrTy(llvm_module->getContext());
   llvm::Type* i8_ptr_ptr_type = i8_ptr_type->getPointerTo();
   llvm::Type* i64_ptr_type =
-      llvm::Type::getInt64PtrTy(llvm_module->getContext());
+      llvm::PointerType::get(llvm_module->getContext(), 0);
   std::vector<llvm::Type*> compute_function_params(
       {i8_ptr_type, i8_ptr_type, i8_ptr_ptr_type, i8_ptr_ptr_type,
        i8_ptr_type});
@@ -262,12 +262,12 @@ Status EmitCallToParallelForkJoin(
   // Array of partitions. There is an array element for each
   // partition x partition_dim x 2 (for dimension start and limit).
   compute_function_params.push_back(
-      llvm::Type::getInt64PtrTy(module->getContext()));
+      llvm::PointerType::get(module->getContext(), 0));
   // Number of partitioned most-major dimensions in 'shape'.
   compute_function_params.push_back(b->getInt32Ty());
   // Function pointer for compute function to be dispatched in parallel.
   compute_function_params.push_back(
-      llvm::Type::getInt8PtrTy(module->getContext()));
+      llvm::PointerType::get(module->getContext(), 0));
 
   llvm::FunctionType* fork_join_type = llvm::FunctionType::get(
       /*Result=*/llvm::Type::getVoidTy(module->getContext()),
@@ -335,14 +335,11 @@ Status EmitCallToParallelForkJoin(
       absl::StrCat(name, "_parallel_dimension_partitions"));
 
   // Add argument specifying parallel dimension partitions.
-  fork_join_arguments.push_back(
-      b->CreateBitCast(global_partitions_array,
-                       llvm::Type::getInt64PtrTy(module->getContext())));
+  fork_join_arguments.push_back(global_partitions_array);
   // Add argument specifying the number of partitioned most-major dimensions.
   fork_join_arguments.push_back(b->getInt32(num_partitioned_dims));
   // Add argument for parallel compute function pointer.
-  fork_join_arguments.push_back(
-      b->CreateBitCast(parallel_function, b->getInt8PtrTy()));
+  fork_join_arguments.push_back(parallel_function);
   // Emit call to parallel fork/join.
   b->CreateCall(fork_join_func, fork_join_arguments);
 
