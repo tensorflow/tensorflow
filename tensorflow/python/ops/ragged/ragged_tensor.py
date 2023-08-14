@@ -923,7 +923,7 @@ class RaggedTensor(composite_tensor.CompositeTensor,
     value_shape = self._values.shape[1:]
     return tensor_shape.TensorShape([nrows, ncols]).concatenate(value_shape)
 
-  def get_shape(self):
+  def get_shape(self) -> tensor_shape.TensorShape:
     """The statically known shape of this ragged tensor.
 
     Returns:

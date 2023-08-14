@@ -32,6 +32,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_conversion_registry
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
@@ -739,7 +740,7 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
   def distribute_strategy(self):
     return self._distribute_strategy
 
-  def get_shape(self):
+  def get_shape(self) -> tensor_shape.TensorShape:
     return self._primary.get_shape()
 
   def to_proto(self, export_scope=None):
