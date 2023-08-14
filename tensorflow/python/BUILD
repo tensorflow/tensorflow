@@ -431,6 +431,7 @@ py_library(
         "//tensorflow/python/profiler:profiler_client",
         "//tensorflow/python/profiler:profiler_v2",
         "//tensorflow/python/profiler:trace",
+        "//tensorflow/python/saved_model",
         "//tensorflow/python/summary:summary_py",
         "//tensorflow/python/training",
         "//tensorflow/python/training:quantize_training",

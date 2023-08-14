@@ -161,6 +161,9 @@ from tensorflow.python.profiler import profiler_client
 from tensorflow.python.profiler import profiler_v2
 from tensorflow.python.profiler import trace
 
+# Saved Model
+from tensorflow.python.saved_model import saved_model
+
 # Session
 from tensorflow.python.client.client_lib import *
 
