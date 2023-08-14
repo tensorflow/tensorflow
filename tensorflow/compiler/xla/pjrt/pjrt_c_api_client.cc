@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/pjrt_c_api_client.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -22,29 +24,55 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/cleanup/cleanup.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Bytecode/BytecodeWriter.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "stablehlo/dialect/Register.h"  // from @stablehlo
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/layout.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/register.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
+#include "tensorflow/compiler/xla/pjrt/compile_options.pb.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_api.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_common.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_compiler.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_device_description.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
+#include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
+#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/framework/allocator.h"
+#include "tensorflow/tsl/platform/casts.h"
+#include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -78,11 +106,12 @@ PjRtCApiClient::PjRtCApiClient(
       //   Built on Mar 4 2021 15:25:57 (1614900357) cl/360760169
       platform_version_(absl::StrCat(
           "PJRT C API\n", ::pjrt::GetPlatformVersion(c_client, c_api))) {
-  InitDevices();
+  InitDevicesAndMemorySpaces();
   LOG(INFO) << "PjRtCApiClient created.";
 }
 
-void PjRtCApiClient::InitDevices() {
+void PjRtCApiClient::InitDevicesAndMemorySpaces() {
+  // Initialize devices.
   PJRT_Client_Devices_Args devices_args;
   devices_args.struct_size = PJRT_Client_Devices_Args_STRUCT_SIZE;
   devices_args.priv = nullptr;
@@ -90,12 +119,12 @@ void PjRtCApiClient::InitDevices() {
 
   pjrt::LogFatalIfPjrtError(c_api_->PJRT_Client_Devices(&devices_args), c_api_);
 
-  const size_t n = devices_args.num_devices;
-  c_to_cpp_device_map_.reserve(n);
-  owned_devices_.reserve(n);
-  devices_.reserve(n);
+  const size_t num_devices = devices_args.num_devices;
+  c_to_cpp_device_map_.reserve(num_devices);
+  owned_devices_.reserve(num_devices);
+  devices_.reserve(num_devices);
 
-  for (size_t i = 0; i < n; ++i) {
+  for (int i = 0; i < num_devices; ++i) {
     PJRT_Device* device = devices_args.devices[i];
     std::unique_ptr<PjRtCApiDevice>& cpp_device = owned_devices_.emplace_back(
         std::make_unique<PjRtCApiDevice>(device, this));
@@ -103,6 +132,7 @@ void PjRtCApiClient::InitDevices() {
     c_to_cpp_device_map_[device] = cpp_device.get();
   }
 
+  // Initialize addressable devices.
   PJRT_Client_AddressableDevices_Args address_args;
   address_args.struct_size = PJRT_Client_AddressableDevices_Args_STRUCT_SIZE;
   address_args.priv = nullptr;
@@ -111,12 +141,90 @@ void PjRtCApiClient::InitDevices() {
   pjrt::LogFatalIfPjrtError(
       c_api_->PJRT_Client_AddressableDevices(&address_args), c_api_);
 
-  const size_t m = address_args.num_addressable_devices;
-  addressable_devices_.reserve(m);
+  const size_t num_addressable_devices = address_args.num_addressable_devices;
+  addressable_devices_.reserve(num_addressable_devices);
 
-  for (size_t i = 0; i < m; ++i) {
+  for (int i = 0; i < num_addressable_devices; ++i) {
     PJRT_Device* c_device = address_args.addressable_devices[i];
     addressable_devices_.push_back(GetCppDevice(c_device));
+  }
+
+  // Initialize addressable memory spaces.
+  // TODO(yueshengys): Initialize global memory spaces when supported.
+  PJRT_Client_AddressableMemories_Args memory_args;
+  memory_args.struct_size = PJRT_Client_AddressableMemories_Args_STRUCT_SIZE;
+  memory_args.priv = nullptr;
+  memory_args.client = c_client_.get();
+
+  std::unique_ptr<PJRT_Error, pjrt::PJRT_ErrorDeleter> client_error(
+      c_api_->PJRT_Client_AddressableMemories(&memory_args),
+      pjrt::MakeErrorDeleter(c_api_));
+  if (client_error == nullptr) {
+    const size_t num_memories = memory_args.num_addressable_memories;
+    c_to_cpp_memory_map_.reserve(num_memories);
+    owned_memory_spaces_.reserve(num_memories);
+    addressable_memory_spaces_.reserve(num_memories);
+
+    for (int i = 0; i < num_memories; ++i) {
+      PJRT_Memory* memory = memory_args.addressable_memories[i];
+      std::unique_ptr<PjRtCApiMemorySpace>& cpp_memory =
+          owned_memory_spaces_.emplace_back(
+              std::make_unique<PjRtCApiMemorySpace>(memory, this));
+      addressable_memory_spaces_.push_back(cpp_memory.get());
+      c_to_cpp_memory_map_[memory] = cpp_memory.get();
+    }
+  } else if (pjrt::GetErrorCode(client_error.get(), c_api_) !=
+             PJRT_Error_Code_UNIMPLEMENTED) {
+    pjrt::LogFatalIfPjrtError(client_error.get(), c_api_);
+  }
+
+  // Attach memory spaces to devices.
+  // TODO(yueshengys): switch to global devices when supported.
+  for (const auto& device : addressable_devices_) {
+    PjRtCApiDevice* cpp_device = tensorflow::down_cast<PjRtCApiDevice*>(device);
+    PJRT_Device* c_device = cpp_device->c_device();
+    PJRT_Device_AddressableMemories_Args args;
+    args.struct_size = PJRT_Device_AddressableMemories_Args_STRUCT_SIZE;
+    args.priv = nullptr;
+    args.device = c_device;
+
+    std::unique_ptr<PJRT_Error, pjrt::PJRT_ErrorDeleter> device_error(
+        c_api_->PJRT_Device_AddressableMemories(&args),
+        pjrt::MakeErrorDeleter(c_api_));
+    if (device_error != nullptr) {
+      if (pjrt::GetErrorCode(device_error.get(), c_api_) !=
+          PJRT_Error_Code_UNIMPLEMENTED) {
+        pjrt::LogFatalIfPjrtError(device_error.get(), c_api_);
+      }
+      break;
+    }
+
+    const size_t num_memories = args.num_memories;
+    cpp_device->memory_spaces_.reserve(num_memories);
+    for (int i = 0; i < num_memories; ++i) {
+      cpp_device->memory_spaces_.push_back(GetCppMemory(args.memories[i]));
+    }
+  }
+
+  // Attach devices to memory spaces.
+  // TODO(yueshengys): switch to global memories when supported.
+  for (const auto& memory : addressable_memory_spaces_) {
+    PjRtCApiMemorySpace* cpp_memory =
+        tensorflow::down_cast<PjRtCApiMemorySpace*>(memory);
+    PJRT_Memory* c_memory = cpp_memory->c_memory();
+    PJRT_Memory_AddressableByDevices_Args args;
+    args.struct_size = PJRT_Memory_AddressableByDevices_Args_STRUCT_SIZE;
+    args.priv = nullptr;
+    args.memory = c_memory;
+    pjrt::LogFatalIfPjrtError(c_api_->PJRT_Memory_AddressableByDevices(&args),
+                              c_api_);
+
+    const size_t num_attached_devices = args.num_devices;
+    cpp_memory->devices_.reserve(num_attached_devices);
+
+    for (int i = 0; i < num_attached_devices; ++i) {
+      cpp_memory->devices_.push_back(GetCppDevice(args.devices[i]));
+    }
   }
 }
 
@@ -220,7 +328,7 @@ StatusOr<PjRtDevice*> PjRtCApiClient::LookupAddressableDevice(
 }
 
 absl::Span<PjRtMemorySpace* const> PjRtCApiClient::memory_spaces() const {
-  return {};
+  return addressable_memory_spaces_;
 }
 
 // Initializes `PJRT_Client_Compile_Args`, which will be used to call
@@ -537,21 +645,7 @@ PjRtCApiDevice::PjRtCApiDevice(PJRT_Device* device, PjRtCApiClient* client)
     : client_(client),
       device_(device),
       description_(client->pjrt_c_api(),
-                   pjrt::GetDeviceDescription(client->pjrt_c_api(), device)) {
-  PJRT_Device_AddressableMemories_Args args;
-  args.struct_size = PJRT_Device_AddressableMemories_Args_STRUCT_SIZE;
-  args.priv = nullptr;
-  args.device = device_;
-  pjrt::LogFatalIfPjrtError(
-      client->pjrt_c_api()->PJRT_Device_AddressableMemories(&args),
-      client->pjrt_c_api());
-  memory_spaces_.reserve(args.num_memories);
-  memory_space_pointers_.reserve(args.num_memories);
-  for (int i = 0; i < args.num_memories; ++i) {
-    memory_spaces_.emplace_back(PjRtCApiMemorySpace(client_, args.memories[i]));
-    memory_space_pointers_.emplace_back(&memory_spaces_.back());
-  }
-}
+                   pjrt::GetDeviceDescription(client->pjrt_c_api(), device)) {}
 
 PjRtClient* PjRtCApiDevice::client() const { return client_; }
 
@@ -573,6 +667,16 @@ int PjRtCApiDevice::local_hardware_id() const {
   const PJRT_Api* api = client_->pjrt_c_api();
   pjrt::LogFatalIfPjrtError(api->PJRT_Device_LocalHardwareId(&args), api);
   return args.local_hardware_id;
+}
+
+StatusOr<PjRtMemorySpace*> PjRtCApiDevice::default_memory_space() const {
+  PJRT_Device_DefaultMemory_Args args;
+  args.struct_size = PJRT_Device_DefaultMemory_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.device = device_;
+  const PJRT_Api* api = client_->pjrt_c_api();
+  RETURN_STATUS_IF_PJRT_ERROR(api->PJRT_Device_DefaultMemory(&args), api);
+  return client_->GetCppMemory(args.memory);
 }
 
 StatusOr<tsl::AllocatorStats> PjRtCApiDevice::GetAllocatorStats() const {
@@ -757,6 +861,26 @@ PjRtCApiExecutable::GetCostAnalysis() const {
   // Copy returned properties to output map
   return pjrt::ConvertFromPjRtNamedValueList(args.properties,
                                              args.num_properties);
+}
+
+StatusOr<std::vector<std::vector<absl::string_view>>>
+PjRtCApiExecutable::GetOutputMemoryKinds() const {
+  PJRT_Executable_OutputMemoryKinds_Args args;
+  args.struct_size = PJRT_Executable_OutputMemoryKinds_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.executable = c_executable();
+
+  const PJRT_Api* c_api = pjrt_c_api();
+  RETURN_STATUS_IF_PJRT_ERROR(c_api->PJRT_Executable_OutputMemoryKinds(&args),
+                              c_api);
+
+  std::vector<absl::string_view> out;
+  out.reserve(args.num_outputs);
+  for (int i = 0; i < args.num_outputs; ++i) {
+    out.push_back(
+        absl::string_view(args.memory_kinds[i], args.memory_kind_sizes[i]));
+  }
+  return std::vector<std::vector<absl::string_view>>{out};
 }
 
 StatusOr<std::vector<std::shared_ptr<HloModule>>>
@@ -1744,6 +1868,46 @@ PjRtFuture<Status> PjRtCApiBuffer::GetReadyFuture() {
     MakePromiseTrackEvent();
   }
   return PjRtFuture<Status>{*readiness_promise_};
+}
+
+StatusOr<std::unique_ptr<PjRtBuffer::ExternalReference>>
+PjRtCApiBuffer::AcquireExternalReference() {
+  PJRT_Buffer_IncreaseExternalReferenceCount_Args increase_reference_count_args;
+  increase_reference_count_args.buffer = c_buffer();
+  increase_reference_count_args.struct_size =
+      PJRT_Buffer_IncreaseExternalReferenceCount_Args_STRUCT_SIZE;
+  increase_reference_count_args.priv = nullptr;
+  RETURN_STATUS_IF_PJRT_ERROR(
+      pjrt_c_api()->PJRT_Buffer_IncreaseExternalReferenceCount(
+          &increase_reference_count_args),
+      pjrt_c_api());
+
+  PJRT_Buffer_OpaqueDeviceMemoryDataPointer_Args
+      opaque_device_memory_data_pointer_args;
+  opaque_device_memory_data_pointer_args.struct_size =
+      PJRT_Buffer_OpaqueDeviceMemoryDataPointer_Args_STRUCT_SIZE;
+  opaque_device_memory_data_pointer_args.priv = nullptr;
+  opaque_device_memory_data_pointer_args.buffer = c_buffer();
+  RETURN_STATUS_IF_PJRT_ERROR(
+      pjrt_c_api()->PJRT_Buffer_OpaqueDeviceMemoryDataPointer(
+          &opaque_device_memory_data_pointer_args),
+      pjrt_c_api());
+
+  void* device_memory_ptr =
+      opaque_device_memory_data_pointer_args.device_memory_ptr;
+  return std::make_unique<PjRtCApiExternalReference>(client_, this,
+                                                     device_memory_ptr);
+}
+
+PjRtCApiExternalReference::~PjRtCApiExternalReference() {
+  PJRT_Buffer_DecreaseExternalReferenceCount_Args args;
+  args.struct_size =
+      PJRT_Buffer_DecreaseExternalReferenceCount_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.buffer = buffer_->c_buffer();
+  pjrt::LogFatalIfPjrtError(
+      client_->pjrt_c_api()->PJRT_Buffer_DecreaseExternalReferenceCount(&args),
+      client_->pjrt_c_api());
 }
 
 // ------------------------------ Device Topology ------------------------------

@@ -55,16 +55,16 @@ class FuzzConcat : public FuzzSession<Tensor, Tensor, int32> {
 
 // Setup up fuzzing test.
 FUZZ_TEST_F(FuzzConcat, Fuzz)
-    .WithDomains(fuzzing::AnyValidTensor(fuzzing::AnyValidTensorShape(
-                                             /*max_rank=*/5,
-                                             /*dim_lower_bound=*/0,
-                                             /*dim_upper_bound=*/10),
-                                         fuzztest::Just(DT_INT32)),
-                 fuzzing::AnyValidTensor(fuzzing::AnyValidTensorShape(
-                                             /*max_rank=*/5,
-                                             /*dim_lower_bound=*/0,
-                                             /*dim_upper_bound=*/10),
-                                         fuzztest::Just(DT_INT32)),
+    .WithDomains(fuzzing::AnyValidNumericTensor(fuzzing::AnyValidTensorShape(
+                                                    /*max_rank=*/5,
+                                                    /*dim_lower_bound=*/0,
+                                                    /*dim_upper_bound=*/10),
+                                                fuzztest::Just(DT_INT32)),
+                 fuzzing::AnyValidNumericTensor(fuzzing::AnyValidTensorShape(
+                                                    /*max_rank=*/5,
+                                                    /*dim_lower_bound=*/0,
+                                                    /*dim_upper_bound=*/10),
+                                                fuzztest::Just(DT_INT32)),
                  fuzztest::InRange<int32>(0, 6));
 
 }  // end namespace fuzzing

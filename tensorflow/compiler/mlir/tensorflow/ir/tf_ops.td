@@ -325,7 +325,14 @@ def TF_YieldOp : TF_Op<"Yield",
 }
 
 def TF_IfRegionOp : TF_Op<"IfRegion",
-      [SingleBlockImplicitTerminator<"YieldOp">, NoRegionArguments]> {
+      [SingleBlockImplicitTerminator<"YieldOp">, NoRegionArguments,
+       DeclareOpInterfaceMethods<RegionBranchOpInterface, [
+           "areTypesCompatible",
+           "getEntrySuccessorOperands",
+           "getRegionInvocationBounds",
+           "getSuccessorRegions"
+       ]>
+      ]> {
   let summary = "output = cond ? then_branch output : else_branch output";
 
   let description = [{
@@ -444,8 +451,8 @@ def TF_ParseExampleOp : TF_Op<"ParseExample",
     Variadic<TensorOf<[TF_Float32, TF_Int64, TF_Str]>>:$dense_defaults,
 
     TF_ShapeAttrArray:$dense_shapes,
-    DenseI32ArrayAttr:$result_segment_sizes,
-    DenseI32ArrayAttr:$operand_segment_sizes
+    DenseI32ArrayAttr:$resultSegmentSizes,
+    DenseI32ArrayAttr:$operandSegmentSizes
   );
 
   let results = (outs
@@ -480,7 +487,7 @@ def TF_ParseExampleV2Op : TF_Op<"ParseExampleV2",
 
     ConfinedAttr<I64Attr, [IntMinValue<0>]>:$num_sparse,
     TF_ShapeAttrArray:$dense_shapes,
-    DenseI32ArrayAttr:$result_segment_sizes
+    DenseI32ArrayAttr:$resultSegmentSizes
   );
 
   let results = (outs
@@ -694,10 +701,15 @@ def TF_WhileRegionOp : TF_Op<"WhileRegion",
   ```
 
   `cond` is the condition region and `body` is the body region. Both these
-  regions accept the current value of the iteration variables as inputs. The
-  condition region returns a tensor<i1> which, if false, will exit the loop.
-  The body region computes new values of the iteration variables. The iteration
-  variables are initialized to the Op input, and the results of the
+  regions accept the current value of the iteration variables as inputs.
+
+  The condition region yields a tensor<i1> which, if false, will exit the loop.
+  It can also, optionally and additionally, yield the iteration variables, which
+  must be unchanged.
+
+  The body region always has to yield the (possibly updated) iteration variables.
+
+  The iteration variables are initialized to the Op input, and the results of the
   tf.WhileRegion op are the final values of the iteration variables.
 
   This implies that the operand and result types for tf.WhileRegion should be

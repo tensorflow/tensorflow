@@ -29,10 +29,14 @@ class HloCSE : public HloModulePass {
  public:
   // If is_layout_sensitive is true, then the simplifier preserves layout during
   // transformation. Otherwise, layout is ignored.
+  // If ignore_control_dependencies is true, the pass will ignore control deps
+  // when replacing instructions with their equivalents.
   explicit HloCSE(bool is_layout_sensitive,
-                  bool only_fusion_computations = false)
+                  bool only_fusion_computations = false,
+                  bool ignore_control_dependencies = false)
       : is_layout_sensitive_(is_layout_sensitive),
-        only_fusion_computations_(only_fusion_computations) {}
+        only_fusion_computations_(only_fusion_computations),
+        ignore_control_dependencies_(ignore_control_dependencies) {}
   ~HloCSE() override = default;
   absl::string_view name() const override { return "cse"; }
 
@@ -46,6 +50,7 @@ class HloCSE : public HloModulePass {
  private:
   const bool is_layout_sensitive_;
   const bool only_fusion_computations_;
+  const bool ignore_control_dependencies_;
 };
 
 }  // namespace xla

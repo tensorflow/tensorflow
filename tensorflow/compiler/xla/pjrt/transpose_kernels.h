@@ -16,9 +16,20 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PJRT_TRANSPOSE_KERNELS_H_
 #define TENSORFLOW_COMPILER_XLA_PJRT_TRANSPOSE_KERNELS_H_
 
+#include <array>
 #include <cstdint>
 
 #include "third_party/eigen3/Eigen/Core"
+
+#ifdef EIGEN_VECTORIZE_SSE2
+#include <emmintrin.h>
+#endif
+#ifdef EIGEN_VECTORIZE_SSE4_1
+#include <smmintrin.h>
+#endif
+#ifdef EIGEN_VECTORIZE_SSSE3
+#include <tmmintrin.h>
+#endif
 
 namespace xla {
 
@@ -49,8 +60,8 @@ struct TransposeMicroKernel {
 // allow for runtime dispatch of, say, AVX or AVX2 kernels where they are
 // supported. On the other hand, using Eigen makes for easier cross-platform
 // portability.
-#ifdef EIGEN_VECTORIZE_AVX
-
+#if defined(EIGEN_VECTORIZE_SSE2) && defined(EIGEN_VECTORIZE_SSE4_1) && \
+    defined(EIGEN_VECTORIZE_SSSE3)
 template <>
 struct TransposeMicroKernel<uint8_t, /*bs=*/4> {
   static void Apply(const char* __restrict a, int64_t lda, char* __restrict b,
@@ -68,11 +79,13 @@ struct TransposeMicroKernel<uint8_t, /*bs=*/4> {
     *reinterpret_cast<uint32_t*>(b + ldb * 3) = _mm_extract_epi32(x, 3);
   }
 };
+#endif
 
 // TODO(phawkins): add an 8x8 byte transpose kernel.
 
 // TODO(phawkins): Eigen doesn't have a SSE/AVX byte Packet16c type. Add one
 // and call it here rather than using AVX intrinsics.
+#ifdef EIGEN_VECTORIZE_SSE2
 template <>
 struct TransposeMicroKernel<uint8_t, /*bs=*/16> {
   static void Apply(const char* __restrict a, int64_t lda, char* __restrict b,
@@ -182,9 +195,11 @@ struct TransposeMicroKernel<uint8_t, /*bs=*/16> {
     }
   }
 };
+#endif
 
 // TODO(phawkins): add an 4x4 uint16_t transpose kernel.
 
+#ifdef EIGEN_VECTORIZE_AVX
 template <>
 struct TransposeMicroKernel<uint16_t, /*bs=*/8> {
   static void Apply(const char* __restrict a, int64_t lda, char* __restrict b,
@@ -204,7 +219,9 @@ struct TransposeMicroKernel<uint16_t, /*bs=*/8> {
     }
   }
 };
+#endif
 
+#ifdef EIGEN_VECTORIZE_SSE2
 template <>
 struct TransposeMicroKernel<uint32_t, /*bs=*/4> {
   static void Apply(const char* __restrict a, int64_t lda, char* __restrict b,
@@ -224,7 +241,9 @@ struct TransposeMicroKernel<uint32_t, /*bs=*/4> {
     }
   }
 };
+#endif
 
+#ifdef EIGEN_VECTORIZE_AVX
 template <>
 struct TransposeMicroKernel<uint32_t, /*bs=*/8> {
   static void Apply(const char* __restrict a, int64_t lda, char* __restrict b,
@@ -244,7 +263,9 @@ struct TransposeMicroKernel<uint32_t, /*bs=*/8> {
     }
   }
 };
+#endif
 
+#ifdef EIGEN_VECTORIZE_SSE2
 template <>
 struct TransposeMicroKernel<uint64_t, /*bs=*/2> {
   static void Apply(const char* __restrict a, int64_t lda, char* __restrict b,
@@ -264,7 +285,9 @@ struct TransposeMicroKernel<uint64_t, /*bs=*/2> {
     }
   }
 };
+#endif
 
+#ifdef EIGEN_VECTORIZE_AVX
 template <>
 struct TransposeMicroKernel<uint64_t, /*bs=*/4> {
   static void Apply(const char* __restrict a, int64_t lda, char* __restrict b,
@@ -284,7 +307,6 @@ struct TransposeMicroKernel<uint64_t, /*bs=*/4> {
     }
   }
 };
-
 #endif  // EIGEN_VECTORIZE_AVX
 
 }  // namespace xla

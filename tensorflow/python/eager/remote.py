@@ -187,11 +187,17 @@ def connect_to_cluster(cluster_spec_or_resolver,
     #    tpu_cluster_resolver.TPUClusterResolver
     if (isinstance(cluster_spec_or_resolver, cluster_resolver.ClusterResolver)
         and hasattr(cluster_spec_or_resolver, "tpu_hardware_feature")):
-      is_uptc_sess = ".uptc-worker." in cluster_spec_or_resolver.master()
-      service_type = remote_utils.coordination_service_type(
-          protocol, is_uptc_sess)
       service_leader = cluster_spec_or_resolver.get_coordination_service_leader(
       )
+      # Maybe enable coordination service internally.
+      if cluster_spec_or_resolver.environment == "google":
+        is_uptc_sess = ".uptc-worker." in cluster_spec_or_resolver.master()
+        service_type = remote_utils.coordination_service_type(
+            protocol, is_uptc_sess)
+     # Enable coordination service for Cloud TPU.
+      else:
+        service_type = "standalone"
+
     if service_type:
       # If `enable_health_check` is true, coordination service agent would
       # do connecting (and tasks would send heartbeat if connection is set up)

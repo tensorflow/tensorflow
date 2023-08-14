@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/core/common_runtime/next_pluggable_device/c/outside_compilation_params.h"
+#include "tensorflow/core/common_runtime/next_pluggable_device/c/outside_compilation_params.h"  // IWYU pragma: keep
 #include "tensorflow/core/common_runtime/next_pluggable_device/c/tf_rendezvous_c_api.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/tsl/framework/allocator.h"
@@ -27,9 +27,9 @@ namespace tensorflow {
 
 namespace c_api {
 
-class TfCThunkRendezvous final : public ::tensorflow::Rendezvous {
+class TfCThunkRendezvous final : public ::tensorflow::RendezvousInterface {
  public:
-  explicit TfCThunkRendezvous(const TF_RendezvousThunk* thunk)
+  explicit TfCThunkRendezvous(const TF_RendezvousThunk& thunk)
       : thunk_(thunk) {}
 
   ~TfCThunkRendezvous() override = default;
@@ -43,10 +43,14 @@ class TfCThunkRendezvous final : public ::tensorflow::Rendezvous {
   void StartAbort(const Status& status) override;
 
  private:
-  const TF_RendezvousThunk* thunk_;
+  const TF_RendezvousThunk thunk_;
 };
 
 }  // namespace c_api
+
+TF_DeviceContext* ToC(DeviceContext* device_context);
+DeviceContext* FromC(TF_DeviceContext* c_device_context);
+void Destroy(TF_DeviceContext* c_device_context);
 
 TFDevice_AllocatorAttributes ToC(const tsl::AllocatorAttributes& attributes);
 tsl::AllocatorAttributes FromC(
@@ -57,12 +61,6 @@ TF_RendezvousArgsStruct ToC(const tensorflow::RendezvousInterface::Args& args);
 tensorflow::RendezvousInterface::Args FromC(
     const TF_RendezvousArgsStruct& c_args);
 void Destroy(TF_RendezvousArgsStruct* c_args);
-
-TF_DeviceUtilsParsedName ToC(
-    const tensorflow::DeviceNameUtils::ParsedName& name);
-tensorflow::DeviceNameUtils::ParsedName FromC(
-    const TF_DeviceUtilsParsedName& c_name);
-void Destroy(TF_DeviceUtilsParsedName* c_name);
 
 TF_RendezvousParsedKey ToC(
     const tensorflow::RendezvousInterface::ParsedKey& key);
@@ -87,7 +85,10 @@ void Destroy(TF_RendezvousSenderImpl* send_func);
 void Destroy(TF_RendezvousAsyncRecverImpl* recv_func);
 void Destroy(TF_RendezvousStartAbortImpl* start_abort_func);
 
-void DestroyOCParams(SE_OutsideCompilationParams* params);
+struct DestroyOCParams {
+  void operator()(SE_OutsideCompilationParams* params);
+};
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_COMMON_RUNTIME_NEXT_PLUGGABLE_DEVICE_C_TF_RENDEZVOUS_C_API_CONVERSIONS_H_

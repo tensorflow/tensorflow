@@ -279,6 +279,7 @@ class HloParserImpl : public HloParser {
     kEnum,
     kRandomAlgorithm,
     kAliasing,
+    kBufferDonor,
     kComputationLayout,
     kInstructionAliasing,
     kCustomCallSchedule,
@@ -536,10 +537,12 @@ class HloParserImpl : public HloParser {
 
   using AliasingData =
       absl::flat_hash_map<ShapeIndex, HloInputOutputAliasConfig::Alias>;
+  using BufferDonor = absl::flat_hash_set<HloBufferDonorConfig::BufferDonor>;
 
-  // Parses the aliasing information from string `s`, returns `false` if it
-  // fails.
+  // Parses the aliasing and buffer_donor information from string `s`, returns
+  // `false` if it fails.
   bool ParseAliasing(AliasingData* data);
+  bool ParseBufferDonor(BufferDonor* data);
 
   // Parses the entry computation layout.
   bool ParseComputationLayout(ComputationLayout* computation_layout);
@@ -811,6 +814,48 @@ bool HloParserImpl::ParseAliasing(AliasingData* data) {
   return true;
 }
 
+bool HloParserImpl::ParseBufferDonor(BufferDonor* data) {
+  if (!ParseToken(TokKind::kLbrace,
+                  "Expects '{' at the start of buffer donor description")) {
+    return false;
+  }
+
+  std::string errmsg =
+      "Expected format: (<input_param>, <input_param_shape_index>)";
+  while (lexer_.GetKind() != TokKind::kRbrace) {
+    if (!ParseToken(TokKind::kLparen, errmsg)) {
+      return false;
+    }
+
+    int64_t param_num;
+    ParseInt64(&param_num);
+
+    if (!ParseToken(TokKind::kComma, errmsg)) {
+      return false;
+    }
+
+    ShapeIndex param_idx;
+    if (!ParseShapeIndex(&param_idx)) {
+      return false;
+    }
+
+    if (!ParseToken(TokKind::kRparen, errmsg)) {
+      return false;
+    }
+
+    data->emplace(param_num, param_idx);
+
+    if (!EatIfPresent(TokKind::kComma)) {
+      break;
+    }
+  }
+  if (!ParseToken(TokKind::kRbrace,
+                  "Expects '}' at the end of buffer donor description")) {
+    return false;
+  }
+  return true;
+}
+
 bool HloParserImpl::ParseComputationLayout(
     ComputationLayout* computation_layout) {
   if (!ParseToken(TokKind::kLbrace,
@@ -946,6 +991,7 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
   std::string name;
   std::optional<bool> is_scheduled;
   std::optional<AliasingData> aliasing_data;
+  std::optional<BufferDonor> buffer_donor_data;
   std::optional<bool> alias_passthrough_params;
   absl::flat_hash_map<std::string, AttrConfig> attrs;
   std::optional<ComputationLayout> entry_computation_layout;
@@ -954,6 +1000,8 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
   attrs["is_scheduled"] = {/*required=*/false, AttrTy::kBool, &is_scheduled};
   attrs["input_output_alias"] = {/*required=*/false, AttrTy::kAliasing,
                                  &aliasing_data};
+  attrs["buffer_donor"] = {/*required=*/false, AttrTy::kBufferDonor,
+                           &buffer_donor_data};
   attrs["alias_passthrough_params"] = {/*required=*/false, AttrTy::kBool,
                                        &alias_passthrough_params};
   attrs["entry_computation_layout"] = {/*required=*/false,
@@ -1024,6 +1072,17 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
       }
     }
     module->input_output_alias_config() = alias_config;
+  }
+  if (buffer_donor_data) {
+    HloBufferDonorConfig buffer_donor_config;
+    for (auto& p : *buffer_donor_data) {
+      Status st =
+          buffer_donor_config.AddBufferDonor(p.param_number, p.param_index);
+      if (!st.ok()) {
+        return TokenError(st.message());
+      }
+    }
+    module->buffer_donor_config() = buffer_donor_config;
   }
 
   return true;
@@ -4673,6 +4732,15 @@ bool HloParserImpl::ParseAttributeHelper(
         }
         static_cast<optional<AliasingData>*>(attr_out_ptr)
             ->emplace(aliasing_data);
+        return true;
+      }
+      case AttrTy::kBufferDonor: {
+        BufferDonor buffer_donor;
+        if (!ParseBufferDonor(&buffer_donor)) {
+          return false;
+        }
+        static_cast<optional<BufferDonor>*>(attr_out_ptr)
+            ->emplace(buffer_donor);
         return true;
       }
       case AttrTy::kComputationLayout: {

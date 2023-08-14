@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 // Must be included first
 // clang-format off
+#include "tensorflow/compiler/xla/python/ifrt/memory.h"
 #include "tensorflow/tsl/python/lib/core/numpy.h" //NOLINT
 // clang-format on
 
@@ -51,13 +52,15 @@ namespace xla {
 namespace {
 
 using DevicePutFunc = std::function<StatusOr<DevicePutResult>(
-    py::handle, ifrt::Client*, ifrt::Device*, const DevicePutOptions& options)>;
+    py::handle, ifrt::Client*, ifrt::Device*, const DevicePutOptions& options,
+    ifrt::MemoryKind to_memory_kind)>;
 
 template <typename T, typename SquashedT>
 StatusOr<DevicePutResult> HandlePythonScalar(py::handle obj,
                                              ifrt::Client* client,
                                              ifrt::Device* to_device,
-                                             const DevicePutOptions& options) {
+                                             const DevicePutOptions& options,
+                                             ifrt::MemoryKind to_memory_kind) {
   T data;
 
   try {
@@ -93,7 +96,7 @@ StatusOr<DevicePutResult> HandlePythonScalar(py::handle obj,
       auto ifrt_array,
       client->MakeArrayFromHostBuffer(
           ptr, ifrt_dtype, /*shape=*/ifrt::Shape({}), /*byte_strides=*/{},
-          ifrt::SingleDeviceSharding::Create(to_device, ifrt::MemoryKind()),
+          ifrt::SingleDeviceSharding::Create(to_device, to_memory_kind),
           ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall,
           /*on_done_with_host_buffer=*/{}));
   return DevicePutResult(std::move(ifrt_array), /*weak_type=*/true);
@@ -101,7 +104,8 @@ StatusOr<DevicePutResult> HandlePythonScalar(py::handle obj,
 
 StatusOr<DevicePutResult> HandlePythonInt(py::handle obj, ifrt::Client* client,
                                           ifrt::Device* to_device,
-                                          const DevicePutOptions& options) {
+                                          const DevicePutOptions& options,
+                                          ifrt::MemoryKind to_memory_kind) {
   void* ptr;
   PrimitiveType type;
   int64_t data_int64;
@@ -141,7 +145,7 @@ StatusOr<DevicePutResult> HandlePythonInt(py::handle obj, ifrt::Client* client,
       auto ifrt_array,
       client->MakeArrayFromHostBuffer(
           ptr, ifrt_dtype, /*shape=*/xla::ifrt::Shape({}), /*byte_strides=*/{},
-          ifrt::SingleDeviceSharding::Create(to_device, ifrt::MemoryKind()),
+          ifrt::SingleDeviceSharding::Create(to_device, to_memory_kind),
           ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall,
           /*on_done_with_host_buffer=*/nullptr));
   return DevicePutResult(std::move(ifrt_array), /*weak_type=*/true);
@@ -150,7 +154,8 @@ StatusOr<DevicePutResult> HandlePythonInt(py::handle obj, ifrt::Client* client,
 template <typename T, typename SquashedT = T>
 StatusOr<DevicePutResult> HandleNumpyScalar(py::handle h, ifrt::Client* client,
                                             ifrt::Device* to_device,
-                                            const DevicePutOptions& options) {
+                                            const DevicePutOptions& options,
+                                            ifrt::MemoryKind to_memory_kind) {
   T data;
   SquashedT data_squashed;
   void* ptr;
@@ -199,7 +204,7 @@ StatusOr<DevicePutResult> HandleNumpyScalar(py::handle h, ifrt::Client* client,
       auto ifrt_array,
       client->MakeArrayFromHostBuffer(
           ptr, ifrt_dtype, /*shape=*/xla::ifrt::Shape({}), /*byte_strides=*/{},
-          ifrt::SingleDeviceSharding::Create(to_device, ifrt::MemoryKind()),
+          ifrt::SingleDeviceSharding::Create(to_device, to_memory_kind),
           ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall,
           /*on_done_with_host_buffer=*/nullptr));
   return DevicePutResult(std::move(ifrt_array), /*weak_type=*/false);
@@ -207,7 +212,8 @@ StatusOr<DevicePutResult> HandleNumpyScalar(py::handle h, ifrt::Client* client,
 
 StatusOr<DevicePutResult> HandleNumpyArray(py::handle h, ifrt::Client* client,
                                            ifrt::Device* to_device,
-                                           const DevicePutOptions& options) {
+                                           const DevicePutOptions& options,
+                                           ifrt::MemoryKind to_memory_kind) {
   py::array array = py::cast<py::array>(h);
   TF_ASSIGN_OR_RETURN(PrimitiveType type, DtypeToPrimitiveType(array.dtype()));
 
@@ -248,20 +254,19 @@ StatusOr<DevicePutResult> HandleNumpyArray(py::handle h, ifrt::Client* client,
   // decide to block/sleep for device buffer allocation.
   py::gil_scoped_release gil_release;
   TF_ASSIGN_OR_RETURN(auto ifrt_dtype, xla::ifrt::ToDType(squashed_type));
-  // TODO(yashkatariya): Plumb sharding or memory_kind here.
   TF_ASSIGN_OR_RETURN(
       auto ifrt_array,
       client->MakeArrayFromHostBuffer(
           data, ifrt_dtype, ifrt::Shape(dims), byte_strides,
-          xla::ifrt::SingleDeviceSharding::Create(to_device,
-                                                  ifrt::MemoryKind()),
+          xla::ifrt::SingleDeviceSharding::Create(to_device, to_memory_kind),
           host_buffer_semantics, std::move(on_done_with_host_buffer)));
   return DevicePutResult(std::move(ifrt_array), /*weak_type=*/false);
 }
 
 StatusOr<DevicePutResult> HandlePyArray(py::handle obj, ifrt::Client* client,
                                         ifrt::Device* to_device,
-                                        const DevicePutOptions& options) {
+                                        const DevicePutOptions& options,
+                                        ifrt::MemoryKind to_memory_kind) {
   auto py_array = py::reinterpret_borrow<PyArray>(obj);
 
   // We only allow single device case for PyArray in device put.
@@ -279,19 +284,21 @@ StatusOr<DevicePutResult> HandlePyArray(py::handle obj, ifrt::Client* client,
   if (py_array.sharding().get_type() == jax::PmapSharding::type() ||
       ifrt_array->sharding().devices().front()->client() !=
           to_device->client()) {
-    return HandleNumpyArray(obj.attr("_value"), client, to_device, options);
+    return HandleNumpyArray(obj.attr("_value"), client, to_device, options,
+                            to_memory_kind);
   }
 
-  if (ifrt_array->sharding().devices().front() == to_device) {
+  if (ifrt_array->sharding().devices().front() == to_device &&
+      (!to_memory_kind.memory_kind().has_value() ||
+       (ifrt_array->sharding().memory_kind() == to_memory_kind))) {
     return DevicePutResult(
         tsl::FormRef(ifrt_array), py_array.weak_type(),
         /*owning_pybuffer=*/py::reinterpret_borrow<py::object>(obj));
   } else {
-    // TODO(yashkatariya): Plumb sharding or memory_kind here.
     TF_ASSIGN_OR_RETURN(
         tsl::RCReference<ifrt::Array> copied_ifrt_array,
         ifrt_array->Reshard(
-            ifrt::SingleDeviceSharding::Create(to_device, ifrt::MemoryKind()),
+            ifrt::SingleDeviceSharding::Create(to_device, to_memory_kind),
             ifrt::ArrayCopySemantics::kReuseInput));
     return DevicePutResult(std::move(copied_ifrt_array), py_array.weak_type());
   }
@@ -301,7 +308,8 @@ StatusOr<DevicePutResult> HandlePyArray(py::handle obj, ifrt::Client* client,
 
 StatusOr<DevicePutResult> DevicePut(py::handle arg, ifrt::Client* client,
                                     ifrt::Device* to_device,
-                                    const DevicePutOptions& options) {
+                                    const DevicePutOptions& options,
+                                    ifrt::MemoryKind to_memory_kind) {
   tsl::profiler::TraceMe traceme("DevicePut");
   static const absl::flat_hash_map<PyObject*, DevicePutFunc>* const handlers =
       [] {
@@ -363,7 +371,7 @@ StatusOr<DevicePutResult> DevicePut(py::handle arg, ifrt::Client* client,
   if (arg.get_type() == PyArray::type()) {
     auto array = py::reinterpret_borrow<PyArray>(arg);
     if (array.fastpath_enabled()) {
-      return HandlePyArray(arg, client, to_device, options);
+      return HandlePyArray(arg, client, to_device, options, to_memory_kind);
     }
   }
 
@@ -372,7 +380,7 @@ StatusOr<DevicePutResult> DevicePut(py::handle arg, ifrt::Client* client,
     for (auto base_class : arg.get_type().attr("__mro__")) {
       res = handlers->find(base_class.ptr());
       if (res != handlers->end()) {
-        return res->second(arg, client, to_device, options);
+        return res->second(arg, client, to_device, options, to_memory_kind);
       }
     }
     return InvalidArgument(
@@ -382,7 +390,7 @@ StatusOr<DevicePutResult> DevicePut(py::handle arg, ifrt::Client* client,
                   "(see implementation), or Python scalars. Got type ",
                   py::cast<std::string>(py::str(arg.get_type()))));
   }
-  return res->second(arg, client, to_device, options);
+  return res->second(arg, client, to_device, options, to_memory_kind);
 }
 
 bool IsFloat0(py::array arg) {

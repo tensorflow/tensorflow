@@ -18,7 +18,9 @@ limitations under the License.
 
 #include <stdint.h>
 
+#include "tensorflow/c/c_api_macros.h"  // IWYU pragma: export
 #include "tensorflow/c/tf_status.h"
+#include "tensorflow/c/tf_tensor.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -31,47 +33,23 @@ typedef struct TFDevice_AllocatorAttributes {
   int32_t scope_id;
 } TFDevice_AllocatorAttributes;
 
-typedef struct TF_CancellationManager TF_CancellationManager;
-
-typedef struct TF_TensorWrapper TF_TensorWrapper;
+typedef struct TFE_CancellationManager TFE_CancellationManager;
 
 typedef struct TF_RendezvousArgsStruct {
   TF_DeviceContext* device_context;
   TFDevice_AllocatorAttributes alloc_attrs;
-  TF_CancellationManager* cancellation_manager;
+  TFE_CancellationManager* cancellation_manager;
 } TF_RendezvousArgsStruct;
 
-typedef struct TF_DeviceUtilsParsedName {
-  char* job_str;
-  uint32_t job_str_size;
-  bool has_replica;
-  int replica;
-  bool has_task;
-  int task;
-  char* type_str;
-  uint32_t type_str_size;
-  bool has_id;
-  int id;
-} TF_DeviceUtilsParsedName;
-
 typedef struct TF_RendezvousParsedKey {
-  char* src_device_str;
-  uint32_t src_device_str_size;
-  TF_DeviceUtilsParsedName src_parsed_name;
-  uint64_t src_incarnation;
-
-  char* dst_device_str;
-  uint32_t dst_device_str_size;
-  TF_DeviceUtilsParsedName dst_parsed_name;
-
-  char* edge_name;
-  uint32_t edge_name_size;
+  char* full_key;
+  uint32_t full_key_size;
 } TF_RendezvousParsedKey;
 
 typedef struct TF_RendezvousSend_Params {
   const TF_RendezvousParsedKey* key;
   const TF_RendezvousArgsStruct* args;
-  const TF_TensorWrapper* tensor;
+  const TF_Tensor* tensor;
   bool is_dead;
 
   TF_Status* status;  // out
@@ -89,7 +67,7 @@ typedef struct TF_RendezvousDoneCallback_Params {
   const TF_Status* status;
   const TF_RendezvousArgsStruct* sender_args;
   const TF_RendezvousArgsStruct* recver_args;
-  const TF_TensorWrapper* tensor;
+  const TF_Tensor* tensor;
   bool is_dead;
 } TF_RendezvousDoneCallback_Params;
 

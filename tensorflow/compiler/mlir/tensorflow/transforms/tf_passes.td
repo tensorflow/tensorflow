@@ -1951,7 +1951,8 @@ def OutsideCompiledToHostLaunchPass : Pass<"tf-outside-compiled-to-host-launch",
 
   let description = [{
     This pass wraps ops with the same `_xla_outside_compilation`
-    attribute value in a tf_device.launch op with host device assignment.
+    attribute value in a tf_device.launch op with host device assignment. The
+    `_xla_outside_compilation` attribute is deleted from the wrapped ops.
 
     A simple example:
 
@@ -1970,7 +1971,7 @@ def OutsideCompiledToHostLaunchPass : Pass<"tf-outside-compiled-to-host-launch",
       "tf_device.cluster"() ( {
         "tf.A"()
         "tf_device.launch"() {
-          "tf.B"() {_xla_outside_compilation = "cluster1"}
+          "tf.B"() // Note xla_outside_compilation attribute deleted.
           tf_device.return
         } {device = "TPU_REPLICATED_HOST_0"} : () -> ()
         "tf.C"()

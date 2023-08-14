@@ -33,8 +33,16 @@ void registerGpu2Pases() { ::impl::registerPasses(); }
 
 void populateGpu2RuntimePasses(mlir::OpPassManager& pm,
                                ThunkSequence* thunk_sequence,
-                               RuntimeBackend backend) {
+                               RuntimeBackend backend,
+                               const Gpu2PipelineOpts& opts) {
+  // Use xla_gpu graph regions only if we are running with StreamExecutor
+  // backend and graphs are enabled.
+  bool use_graph_api =
+      backend == RuntimeBackend::kStreamExecutor && opts.graph_level;
+
+  if (use_graph_api) pm.addPass(createCreateGraphRegionsPass());
   pm.addPass(createConvertToGpu2RuntimePass(thunk_sequence, backend));
+  if (use_graph_api) pm.addPass(createFinalizeGraphDispatchesPass());
   pm.addPass(createCanonicalizerPass());
 }
 

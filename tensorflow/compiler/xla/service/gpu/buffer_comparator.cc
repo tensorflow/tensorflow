@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/kernel.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -1082,11 +1083,8 @@ static StatusOr<bool> DeviceCompare(se::Stream* stream,
   gpu_device_info.block_dim_limit_z =
       executor->GetDeviceDescription().block_dim_limit().z;
 
-  TF_ASSIGN_OR_RETURN(
-      LaunchDimensions dim,
-      CalculateLaunchDimensions(
-          buffer_shape, gpu_device_info,
-          config.debug_options().xla_gpu_enable_experimental_block_size()));
+  TF_ASSIGN_OR_RETURN(LaunchDimensions dim,
+                      CalculateLaunchDimensions(buffer_shape, gpu_device_info));
 
   LaunchDimensions::Dim3D thread_counts = dim.thread_counts_per_block();
   LaunchDimensions::Dim3D block_counts = dim.block_counts();

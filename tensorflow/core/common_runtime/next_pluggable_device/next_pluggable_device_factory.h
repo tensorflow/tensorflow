@@ -41,6 +41,10 @@ class NextPluggableDeviceFactory : public DeviceFactory {
                        const std::string& name_prefix,
                        std::vector<std::unique_ptr<Device>>* devices) override;
 
+  const std::string& compilation_device_name() const {
+    return compilation_device_name_;
+  }
+
  private:
   const TFNPD_Api* api_;
   const std::string device_type_;

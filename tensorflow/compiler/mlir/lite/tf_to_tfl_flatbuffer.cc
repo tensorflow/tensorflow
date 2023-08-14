@@ -231,7 +231,8 @@ Status ConvertTFExecutorToStablehloFlatbuffer(
     mlir::PassManager& pass_manager, mlir::ModuleOp module, bool export_to_mlir,
     mlir::StatusScopedDiagnosticHandler& statusHandler,
     const toco::TocoFlags& toco_flags, const mlir::TFL::PassConfig& pass_config,
-    std::optional<tensorflow::Session*> session, std::string* result) {
+    std::optional<tensorflow::Session*> session, std::string* result,
+    const std::unordered_set<std::string>& saved_model_tags) {
   // Currently, TF quantization only support dynamic range quant, as such
   // when toco flag post training quantization is specified with converting to
   // stablehlo, we automatically enable dynamic range quantization
@@ -288,8 +289,14 @@ Status ConvertTFExecutorToStablehloFlatbuffer(
     return statusHandler.ConsumeStatus();
   }
 
-  mlir::odml::FlatbufferExportOptions options;
-  if (!mlir::odml::MlirToFlatBufferTranslateFunction(module, options, result)) {
+  // Write MLIR Stablehlo dialect into FlatBuffer
+  OpOrArgLocNameMapper op_or_arg_name_mapper;
+  tflite::FlatbufferExportOptions options;
+  options.toco_flags = toco_flags;
+  options.saved_model_tags = saved_model_tags;
+  options.op_or_arg_name_mapper = &op_or_arg_name_mapper;
+  options.metadata[tflite::kModelUseStablehloTensorKey] = "true";
+  if (!tflite::MlirToFlatBufferTranslateFunction(module, options, result)) {
     return statusHandler.ConsumeStatus();
   }
 
@@ -342,7 +349,7 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
     // return to avoid adding TFL converter path
     return ConvertTFExecutorToStablehloFlatbuffer(
         pass_manager, module, export_to_mlir, statusHandler, toco_flags,
-        pass_config, session, result);
+        pass_config, session, result, saved_model_tags);
   }
 
   tensorflow::AddPreVariableFreezingTFToTFLConversionPasses(pass_config,

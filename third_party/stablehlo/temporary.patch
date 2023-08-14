@@ -26,33 +26,7 @@ diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
      name = "interpreter_ops",
      srcs = [
          "stablehlo/reference/InterpreterOps.cpp",
-@@ -297,6 +315,7 @@
- 
- gentbl_cc_library(
-     name = "interpreter_ops_inc_gen",
-+    strip_include_prefix = ".",
-     tbl_outs = [
-         (
-             ["-gen-op-decls"],
-@@ -309,7 +328,6 @@
-     ],
-     tblgen = "@llvm-project//mlir:mlir-tblgen",
-     td_file = "stablehlo/reference/InterpreterOps.td",
--    strip_include_prefix = ".",
-     deps = [
-         ":interpreter_ops_td_files",
-     ],
-@@ -419,8 +437,8 @@
-         ":reference_element",
-         ":reference_errors",
-         ":reference_index",
-+        ":reference_interpretervalue",
-         ":reference_scope",
--        ":reference_interpretervalue",
-         ":reference_tensor",
-         ":reference_token",
-         ":reference_types",
-@@ -725,6 +743,7 @@
+@@ -739,6 +757,7 @@
      deps = [
          ":base",
          ":chlo_ops",
@@ -60,26 +34,6 @@ diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
          ":stablehlo_ops",
          ":stablehlo_ops_inc_gen",
          ":stablehlo_pass_inc_gen",
-@@ -850,8 +869,8 @@
-     ],
-     deps = [
-         ":register",
-+        "@llvm-project//mlir:AllExtensions",
-         "@llvm-project//mlir:AllPassesAndDialects",
--        "@llvm-project//mlir:AllExtensions",
-         "@llvm-project//mlir:MlirLspServerLib",
-     ],
- )
-@@ -862,8 +881,8 @@
-         "stablehlo/tools/StablehloTranslateMain.cpp",
-     ],
-     deps = [
-+        ":interpreter_ops",
-         ":reference_errors",
--        ":interpreter_ops",
-         ":reference_ops",
-         ":reference_scope",
-         ":reference_tensor",
 diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 --- stablehlo/CMakeLists.txt
 +++ stablehlo/CMakeLists.txt
@@ -227,6 +181,33 @@ diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
  
  #-------------------------------------------------------------------------------
  # Directory setup
+diff --ruN a/stablehlo/stablehlo/conversions/tosa/transforms/Passes.h b/stablehlo/stablehlo/conversions/tosa/transforms/Passes.h
+--- stablehlo/stablehlo/conversions/tosa/transforms/Passes.h
++++ stablehlo/stablehlo/conversions/tosa/transforms/Passes.h
+@@ -19,6 +19,8 @@
+ #include <memory>
+ 
+ #include "mlir/Dialect/Func/IR/FuncOps.h"
++#include "mlir/Dialect/PDL/IR/PDL.h"
++#include "mlir/Dialect/PDLInterp/IR/PDLInterp.h"
+ #include "mlir/Pass/Pass.h"
+ 
+ namespace mlir {
+diff --ruN a/stablehlo/stablehlo/conversions/tosa/transforms/Passes.td b/stablehlo/stablehlo/conversions/tosa/transforms/Passes.td
+--- stablehlo/stablehlo/conversions/tosa/transforms/Passes.td
++++ stablehlo/stablehlo/conversions/tosa/transforms/Passes.td
+@@ -17,7 +17,10 @@
+ 
+ def StablehloLegalizeToTosaPass : Pass<"stablehlo-legalize-to-tosa", "mlir::func::FuncOp"> {
+   let summary = "Legalize StableHLO to TOSA";
+-  let dependentDialects = ["::mlir::tosa::TosaDialect"];
++  let dependentDialects = [
++    "::mlir::tosa::TosaDialect", "::mlir::pdl::PDLDialect",
++    "::mlir::pdl_interp::PDLInterpDialect"
++  ];
+ }
+ 
+ def StablehloPrepareForTosaPass : Pass<"stablehlo-prepare-for-tosa", "mlir::func::FuncOp"> {
 diff --ruN a/stablehlo/stablehlo/dialect/Base.cpp b/stablehlo/stablehlo/dialect/Base.cpp
 --- stablehlo/stablehlo/dialect/Base.cpp
 +++ stablehlo/stablehlo/dialect/Base.cpp
@@ -287,6 +268,19 @@ diff --ruN a/stablehlo/stablehlo/dialect/CMakeLists.txt b/stablehlo/stablehlo/di
  )
  
  add_mlir_dialect_library(StablehloRegister
+diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.cpp b/stablehlo/stablehlo/dialect/ChloOps.cpp
+--- stablehlo/stablehlo/dialect/ChloOps.cpp
++++ stablehlo/stablehlo/dialect/ChloOps.cpp
+@@ -416,8 +416,7 @@
+ //===----------------------------------------------------------------------===//
+ 
+ void RankSpecializationClusterOp::getSuccessorRegions(
+-    std::optional<unsigned> index, ArrayRef<Attribute> /*operands*/,
+-    SmallVectorImpl<RegionSuccessor>& regions) {
++    std::optional<unsigned> index, SmallVectorImpl<RegionSuccessor>& regions) {
+   // RankSpecializationClusterOp has unconditional control flows into the region
+   // and back to the parent, so return the correct RegionSuccessor purely based
+   // on the index being None or 0.
 diff --ruN a/stablehlo/stablehlo/dialect/ExperimentalOps.cpp b/stablehlo/stablehlo/dialect/ExperimentalOps.cpp
 --- stablehlo/stablehlo/dialect/ExperimentalOps.cpp
 +++ stablehlo/stablehlo/dialect/ExperimentalOps.cpp

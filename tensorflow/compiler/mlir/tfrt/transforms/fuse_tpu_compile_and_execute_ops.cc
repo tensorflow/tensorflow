@@ -16,6 +16,7 @@ limitations under the License.
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -60,6 +61,18 @@ void GroupCompileOpAndExecuteOp(mlir::func::FuncOp func,
   for (const auto &operand : exec_op.getArgs()) {
     RecursivelyMoveOp(compile_op, operand.getDefiningOp(), &ops_to_move);
   }
+}
+
+mlir::Value FindFullShapedOperand(mlir::TF::SplitOp split_op) {
+  auto operand = split_op.getOperand(1);
+  auto defining_op = operand.getDefiningOp();
+  if (!defining_op) {
+    return operand;
+  }
+  if (auto parent_split_op = llvm::dyn_cast<mlir::TF::SplitOp>(defining_op))
+    return FindFullShapedOperand(parent_split_op);
+
+  return operand;
 }
 
 bool MaybeFindUsedExecuteOp(
@@ -112,7 +125,6 @@ void FuseCompileAndExecuteOps(
 
   auto &static_shaped_operands =
       exec_to_static_shaped_operands_map[used_exec_op];
-  llvm::SmallVector<mlir::TF::SplitOp> split_ops;
   for (int i = 0; i < used_exec_op.getArgs().size(); ++i) {
     auto iter = static_shaped_operands.find(i);
     if (iter != static_shaped_operands.end()) {
@@ -127,9 +139,8 @@ void FuseCompileAndExecuteOps(
     } else {
       auto split_op = ::llvm::dyn_cast_or_null<mlir::TF::SplitOp>(
           used_exec_op->getOperand(i).getDefiningOp());
-      if (split_op) split_ops.push_back(split_op);
-      exec_op_args[i] =
-          split_op ? split_op->getOperand(1) : used_exec_op->getOperand(i);
+      exec_op_args[i] = split_op ? FindFullShapedOperand(split_op)
+                                 : used_exec_op->getOperand(i);
     }
   }
 
@@ -155,10 +166,6 @@ void FuseCompileAndExecuteOps(
   }
   assert(compile_op.use_empty());
   compile_op.erase();
-
-  for (auto split_op : split_ops) {
-    if (split_op.use_empty()) split_op.erase();
-  }
 }
 
 // This pass rewrites tf._TPUCompileMlirOp and tf.TPUExecuteOp into a single

@@ -441,6 +441,10 @@ def _make_replica_local(method, strategy=None):
 
 class DistributedVariableTest(test.TestCase, parameterized.TestCase):
 
+  def tearDown(self):
+    super().tearDown()
+    context._reset_context()
+
   def _assign_replica_local(self, v, new):
     for var, n in zip(v, new):
       with ops.device(var.device):

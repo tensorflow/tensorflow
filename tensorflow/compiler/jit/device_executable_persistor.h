@@ -45,6 +45,16 @@ class DeviceExecutablePersistor {
     Config() = default;
     explicit Config(absl::string_view persistent_cache_directory,
                     bool disable_strict_signature_checks,
+                    absl::string_view persistence_prefix,
+                    bool persistent_cache_directory_read_only)
+        : persistent_cache_directory(persistent_cache_directory),
+          disable_strict_signature_checks(disable_strict_signature_checks),
+          persistence_prefix(persistence_prefix),
+          persistent_cache_directory_read_only(
+              persistent_cache_directory_read_only) {}
+
+    explicit Config(absl::string_view persistent_cache_directory,
+                    bool disable_strict_signature_checks,
                     absl::string_view persistence_prefix)
         : persistent_cache_directory(persistent_cache_directory),
           disable_strict_signature_checks(disable_strict_signature_checks),
@@ -60,6 +70,9 @@ class DeviceExecutablePersistor {
 
     // The cache persistence prefix to use if serializing/deserialzing entries.
     std::string persistence_prefix;
+
+    // Cache is read-only if set to true.
+    bool persistent_cache_directory_read_only = false;
   };
 
   DeviceExecutablePersistor(const Config& config,
@@ -140,6 +153,9 @@ class DeviceExecutablePersistor {
   // specified file system directory path.
   const std::string persistent_cache_directory_;
 
+  // Cache is read-only if set to true.
+  const bool persistent_cache_directory_read_only_;
+
   TF_DISALLOW_COPY_AND_ASSIGN(DeviceExecutablePersistor);
 };
 
@@ -150,7 +166,9 @@ DeviceExecutablePersistor<ExecutableType, ClientType>::
     : device_type_(device_type),
       disable_strict_signature_checks_(config.disable_strict_signature_checks),
       persistence_prefix_(config.persistence_prefix),
-      persistent_cache_directory_(config.persistent_cache_directory) {}
+      persistent_cache_directory_(config.persistent_cache_directory),
+      persistent_cache_directory_read_only_(
+          config.persistent_cache_directory_read_only) {}
 
 template <typename ExecutableType, typename ClientType>
 std::string DeviceExecutablePersistor<ExecutableType, ClientType>::
@@ -343,9 +361,10 @@ DeviceExecutablePersistor<ExecutableType, ClientType>::TryToPersistExecutable(
     const XlaCompiler::CompilationResult& compilation_result,
     const ExecutableType& executable,
     DeviceCompilerClient<ExecutableType, ClientType>* client) const {
-  if (persistent_cache_directory_.empty()) {
+  if (persistent_cache_directory_.empty() ||
+      persistent_cache_directory_read_only_) {
     VLOG(1) << "Not persisting executable. No `persistent_cache_directory` "
-               "provided.";
+               "provided or cache is read-only.";
     return OkStatus();
   }
 

@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/backends/gpu/transforms/dataflow_analysis.h"
 
 #include <algorithm>
-#include <queue>
+#include <cstddef>
 #include <string>
 #include <vector>
 
@@ -168,53 +168,51 @@ bool HasDependency(llvm::ArrayRef<BufferUse> buffer_uses_a,
   return false;
 }
 
-bool Reachable(const DataflowAnalysis::DataflowGraph& graph, size_t from_index,
-               size_t to_index) {
-  std::queue<size_t> bfs_queue;
-  bfs_queue.push(from_index);
-
-  std::vector<bool> visited(graph.size(), false);
-
-  while (!bfs_queue.empty()) {
-    size_t index = bfs_queue.front();
-    visited[index] = true;
-    bfs_queue.pop();
-
-    if (index == to_index) return true;
-
-    const DataflowAnalysis::Node& node = graph[index];
-    for (size_t child_index : node.children) {
-      if (!visited[child_index]) {
-        bfs_queue.push(child_index);
-      }
-    }
-  }
-
-  return false;
-}
-
 // Remove edges that are redundant for determining the execution order of
 // kernels. We use the following algorithm to compute the transitive reduction:
 //
-// for edge (u,v) do
-//   if there is a path from u to v in that does not use edge (u,v) then
-//     remove edge (u,v)
+// For source node in graph:
+//   For each edge (source -> target)
+//     longest_distance = the length of the longest path from source to target
+//     if (longest_distance > 1):
+//       remove (source -> target)
 //
-// TODO(b/288594057): Use a more efficient algorithm.
 void TransitiveReduction(DataflowAnalysis::DataflowGraph& graph) {
-  for (DataflowAnalysis::Node& node : graph) {
-    auto is_reducible = [&](size_t to_index) -> bool {
-      for (size_t child_index : node.children) {
-        if (child_index != to_index) {
-          if (Reachable(graph, child_index, to_index)) return true;
+  std::vector<std::vector<size_t>> parents(graph.size(), std::vector<size_t>());
+  for (const DataflowAnalysis::Node& node : graph) {
+    for (size_t child_index : node.children) {
+      parents[child_index].push_back(node.index);
+    }
+  }
+
+  std::vector<int> longest_distance(graph.size());
+  for (DataflowAnalysis::Node& source : graph) {
+    if (source.children.empty()) {
+      continue;
+    }
+
+    std::fill(longest_distance.begin(), longest_distance.end(), 0);
+    size_t farthest_child = source.children.back();
+    for (size_t target = source.index + 1; target <= farthest_child; target++) {
+      for (size_t mid : parents[target]) {
+        // If the mid node is before source in the topological order, no path
+        // source -> mid -> target can exits and we can skip it.
+        if (mid >= source.index) {
+          // If source -> mid -> target is longer than the longest path so far
+          // from source -> target, update the longest distance.
+          int candidate_longest_distance = longest_distance[mid] + 1;
+          if (candidate_longest_distance > longest_distance[target]) {
+            longest_distance[target] = candidate_longest_distance;
+          }
         }
       }
-      return false;
-    };
+    }
 
-    node.children.erase(std::remove_if(node.children.begin(),
-                                       node.children.end(), is_reducible),
-                        node.children.end());
+    source.children.erase(
+        std::remove_if(
+            source.children.begin(), source.children.end(),
+            [&](size_t target) { return longest_distance[target] > 1; }),
+        source.children.end());
   }
 }
 

@@ -329,6 +329,28 @@ TEST_F(SliceSinkerTest, DifferentOperator) {
   EXPECT_FALSE(result);
 }
 
+TEST_F(SliceSinkerTest, SameOperatorDifferentAttributes) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[8,9] parameter(0)
+      p1 = f32[8,9] parameter(1)
+      s00 = f32[2,9] slice(f32[8,9] p0), slice={[0:2], [0:9]}
+      s01 = f32[6,9] slice(f32[8,9] p0), slice={[2:8], [0:9]}
+      s10 = f32[2,9] slice(f32[8,9] p1), slice={[0:2], [0:9]}
+      s11 = f32[6,9] slice(f32[8,9] p1), slice={[2:8], [0:9]}
+      cmp1 = pred[2,9] compare(f32[2,9] s00, f32[2,9] s10), direction=GT
+      cmp2 = pred[6,9] compare(f32[6,9] s01, f32[6,9] s11), direction=LT
+      ROOT tuple = (pred[2,9], pred[6,9]) tuple(cmp1, cmp2)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  SliceSinker slice_sinker;
+  TF_ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&slice_sinker, module.get()));
+  EXPECT_FALSE(result);
+}
+
 TEST_F(SliceSinkerTest, SlicesWithMultiUsers) {
   const char* kModuleStr = R"(
     HloModule m

@@ -1,3 +1,5 @@
+load("//tensorflow:py.default.bzl", "py_library")
+
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
 
 # A library of python types used to annotate ops

@@ -26,12 +26,10 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_set.h"
-#include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/platform/status.h"

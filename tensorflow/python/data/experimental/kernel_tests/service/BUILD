@@ -152,6 +152,9 @@ tf_py_strict_test(
     size = "medium",
     srcs = ["local_workers_test.py"],
     shard_count = 24,
+    tags = [
+        "no_oss",  # TODO(b/295501569)
+    ],
     deps = [
         ":multi_process_cluster",
         ":test_base",

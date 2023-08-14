@@ -124,7 +124,7 @@ bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
 // output of a bitcast of a dynamic slice update---since such bitcast may be
 // handled as a no-op.
 std::vector<HloInstruction*> GetOutputDefiningDynamicUpdateSlices(
-    const HloComputation* fusion);
+    const std::vector<HloInstruction*>& roots);
 
 // Returns the DynamicUpdateSliceOp(s) defining the results of a fusion node.
 // A dynamic slice update is said to be "defining" of a result if that result is
@@ -136,54 +136,45 @@ GetOutputDefiningDynamicUpdateSliceOps(mlir::lmhlo::FusionOp fusion);
 
 Shape GetShape(mlir::Value value);
 
-/// Description of how to emit a given transposition.
-//
-// On a group of input parameters that are 0-2-1 transpose of the outputs
-// of a fusion kernel, stores the input parameters that are safe for the
-// shared memory transpose implementation and the dimension permutation.
-//
-// When a tile based shared memory transpose is used to implement an input
-// with 0-2-1 transpose, we preload a tile of the input elements [z, y..y+31,
-// x..x+31] to compute the output tile elements of the same indices.
-// Preloading the input tile this way is only safe when the computation of the
-// output tile elements do not need any input element outside the preloaded
-// tile. We inspect all the transitive users of the input parameter up to the
-// fusion root instruction to see if we can find any instruction that can make
-// preloading the input tile unsafe.
-struct TransposeDimsAndParams {
-  // Permutation of the dimensions relative to output.
-  Vector3 dims;
-
-  // Indices of parameters which are permuted.
-  std::vector<int64_t> params;
-
-  std::string ToString() const {
-    return absl::StrFormat("{dims={%s}, params={%s}}",
-                           absl::StrJoin(dims, ", "),
-                           absl::StrJoin(params, ", "));
-  }
-};
-
+// `is_boundary` returns `true` for edges that are on the boundary of the
+// fusion, i.e., they go from an instruction inside the fusion to one outside,
+// or vice versa.
+const HloInstruction& FindNonTrivialHero(
+    const HloInstruction& instr,
+    const std::function<bool(const HloInstruction& producer,
+                             const HloInstruction& consumer)>& is_boundary);
 const HloInstruction& FindNonTrivialHero(const HloInstruction& instr);
 
+/// Description of how to emit a given transposition.
 struct TransposeDescription {
+  // Transpose instruction.
+  const HloInstruction* instr;
+
+  // Normalized transpose dimensions.
   Vector3 dimensions;
+
+  // Permutations of normalized transpose dimensions.
   Vector3 permutation;
 
   TransposeDescription(Vector3 dimensions, Vector3 permutation)
-      : dimensions(dimensions), permutation(permutation) {}
+      : TransposeDescription(/*instr=*/nullptr, dimensions, permutation) {}
+
+  TransposeDescription(const HloInstruction* instr, Vector3 dimensions,
+                       Vector3 permutation)
+      : instr(instr), dimensions(dimensions), permutation(permutation) {}
 
   std::string ToString() const {
     return absl::StrCat("dimensions=", VectorString(dimensions),
                         ", permutation=", VectorString(permutation));
   }
 
-  bool operator==(const TransposeDescription& other) const {
-    return dimensions == other.dimensions && permutation == other.permutation;
-  }
+  // Transpose instruction input shape.
+  const Shape& input_shape() const { return instr->operand(0)->shape(); }
 
-  bool operator!=(const TransposeDescription& other) const {
-    return !(*this == other);
+  // Returns true, if both descriptions have the same dimensions and
+  // permutation, even if they're produced by different instructions.
+  bool IsEquivalent(const TransposeDescription& other) const {
+    return dimensions == other.dimensions && permutation == other.permutation;
   }
 };
 
@@ -193,8 +184,8 @@ std::optional<TransposeDescription> FindTiledTranspose(
 std::optional<TransposeDescription> FindTiledLogicalTranspose(
     const HloInstruction& instr);
 
-std::optional<TransposeDescription> FindAnyTiledTranspose(
-    const HloInstruction& instr);
+std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
+    const HloInstruction& root, const HloInstruction& hero);
 
 bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count = 1);
 

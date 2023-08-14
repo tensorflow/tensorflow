@@ -27,6 +27,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/hlo/evaluator/hlo_evaluator.h"
 #include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -48,6 +49,10 @@ limitations under the License.
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/protobuf/dnn.pb.h"
+
+#if GOOGLE_CUDA
+#include "third_party/gpus/cuda/include/cuda.h"
+#endif
 
 namespace xla {
 namespace gpu {
@@ -798,14 +803,25 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     return false;
 #endif  // CUDA_VERSION < 12000
 
+    PrimitiveType a_type = a->shape().element_type();
+    PrimitiveType b_type = b->shape().element_type();
+
     // cuBLASLt FP8 GEMM kernels require one of the two operands to be in
     // F8E4M3FN format.
-    if (a->shape().element_type() == F8E5M2 &&
-        b->shape().element_type() == F8E5M2) {
+    if (a_type == F8E5M2 && b_type == F8E5M2) {
       VLOG(1)
           << "Failed to rewrite " << instr->ToShortString()
           << " into FP8 Custom Call. The element type of one of the operands "
              "must be F8E4M3FN.";
+      return false;
+    }
+    if ((a_type != F8E5M2 && a_type != F8E4M3FN) ||
+        (b_type != F8E5M2 && b_type != F8E4M3FN)) {
+      VLOG(1) << "Failed to rewrite " << instr->ToShortString()
+              << " into FP8 Custom Call. The input types must be F8E5M2 or "
+                 "F8E4M3FN, but got "
+              << PrimitiveType_Name(a_type) << " and "
+              << PrimitiveType_Name(b_type);
       return false;
     }
 
@@ -842,18 +858,12 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       }
     }
 
-    PrimitiveType c_type;
     switch (instr->shape().element_type()) {
       case F8E4M3FN:
       case F8E5M2:
       case BF16:
-        c_type = BF16;
-        break;
       case F16:
-        c_type = F16;
-        break;
       case F32:
-        c_type = F32;
         break;
       default:
         VLOG(1) << "Failed to rewrite " << instr->ToShortString()

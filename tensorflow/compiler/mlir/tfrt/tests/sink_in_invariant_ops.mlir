@@ -23,8 +23,8 @@ func.func @main(%arg0: tensor<1x3xf32> {tf_saved_model.index_path = ["input"]}) 
   %0 = "tf.VarHandleOp"() {device = "/device:CPU:0", container = "", shared_name = "variable"} : () -> tensor<!tf_type.resource<tensor<1x3xf32>>>
 
   // CHECK: "tf.BatchFunction"(%arg0, %0)
-  // CHECK: operand_segment_sizes = array<i32: 1, 1>
-  %1 = "tf.BatchFunction"(%arg0, %0) {allowed_batch_sizes = [6], batch_timeout_micros = 100000 : i64, batching_queue = "", container = "", device = "/device:CPU:0", enable_large_batch_splitting = false, f = @batched_function, max_batch_size = 6 : i64, max_enqueued_batches = 10 : i64, num_batch_threads = 1 : i64, operand_segment_sizes = array<i32: 1, 1>, shared_name = "batch/"} : (tensor<1x3xf32>, tensor<!tf_type.resource<tensor<1x3xf32>>>) -> tensor<*xf32>
+  // CHECK: operandSegmentSizes = array<i32: 1, 1>
+  %1 = "tf.BatchFunction"(%arg0, %0) {allowed_batch_sizes = [6], batch_timeout_micros = 100000 : i64, batching_queue = "", container = "", device = "/device:CPU:0", enable_large_batch_splitting = false, f = @batched_function, max_batch_size = 6 : i64, max_enqueued_batches = 10 : i64, num_batch_threads = 1 : i64, operandSegmentSizes = array<i32: 1, 1>, shared_name = "batch/"} : (tensor<1x3xf32>, tensor<!tf_type.resource<tensor<1x3xf32>>>) -> tensor<*xf32>
   func.return %1 : tensor<*xf32>
 }
 
@@ -52,8 +52,8 @@ func.func @main(%arg0: tensor<i32> {tf_saved_model.index_path = ["input"]}) -> (
   // CHECK: [[handle:%.*]] = "tf.Const"()
   %0 = "tf.Const"() {device = "/CPU:0", value = dense<0> : tensor<i32>} : () -> tensor<i32>
   // CHECK: "tf.BatchFunction"(%arg0, [[handle]])
-  // CHECK-SAME: operand_segment_sizes = array<i32: 1, 1>
-  %1 = "tf.BatchFunction"(%arg0, %0) {allowed_batch_sizes = [6], batch_timeout_micros = 100000 : i64, batching_queue = "", container = "", device = "/device:CPU:0", enable_large_batch_splitting = false, f = @batched_function, max_batch_size = 6 : i64, max_enqueued_batches = 10 : i64, num_batch_threads = 1 : i64, operand_segment_sizes = array<i32: 1, 1>, shared_name = "batch/"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
+  // CHECK-SAME: operandSegmentSizes = array<i32: 1, 1>
+  %1 = "tf.BatchFunction"(%arg0, %0) {allowed_batch_sizes = [6], batch_timeout_micros = 100000 : i64, batching_queue = "", container = "", device = "/device:CPU:0", enable_large_batch_splitting = false, f = @batched_function, max_batch_size = 6 : i64, max_enqueued_batches = 10 : i64, num_batch_threads = 1 : i64, operandSegmentSizes = array<i32: 1, 1>, shared_name = "batch/"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
   func.return %1 : tensor<i32>
 }
 
@@ -78,7 +78,7 @@ func.func private @batched_function(%arg0: tensor<1xi32>, %arg1: tensor<*x!tf_ty
 func.func @main(%arg0: tensor<1xi32> {tf_saved_model.index_path = ["input"]}) -> (tensor<1xi32> {tf_saved_model.index_path = ["r"]})
   attributes {tf_saved_model.exported_names = ["main"]} {
   %0 = "tf.HashTableV2"() {device = "/device:CPU:0", container = "", shared_name = "variable", key_dtype = i32, value_dtype = i32} : () -> tensor<*x!tf_type.resource>
-  %1 = "tf.BatchFunction"(%arg0, %0) {allowed_batch_sizes = [6], batch_timeout_micros = 100000 : i64, batching_queue = "", container = "", device = "/device:CPU:0", enable_large_batch_splitting = false, f = @batched_function, max_batch_size = 6 : i64, max_enqueued_batches = 10 : i64, num_batch_threads = 1 : i64, operand_segment_sizes = array<i32: 1, 1>, shared_name = "batch/"} : (tensor<1xi32>, tensor<*x!tf_type.resource>) -> tensor<1xi32>
+  %1 = "tf.BatchFunction"(%arg0, %0) {allowed_batch_sizes = [6], batch_timeout_micros = 100000 : i64, batching_queue = "", container = "", device = "/device:CPU:0", enable_large_batch_splitting = false, f = @batched_function, max_batch_size = 6 : i64, max_enqueued_batches = 10 : i64, num_batch_threads = 1 : i64, operandSegmentSizes = array<i32: 1, 1>, shared_name = "batch/"} : (tensor<1xi32>, tensor<*x!tf_type.resource>) -> tensor<1xi32>
   func.return %1 : tensor<1xi32>
 }
 
@@ -111,7 +111,7 @@ func.func @main(%arg0: tensor<1x3xf32> {tf_saved_model.index_path = ["input"]}) 
   %0 = "tf.VarHandleOp"() {device = "/device:CPU:0", container = "", shared_name = "variable1"} : () -> tensor<!tf_type.resource<tensor<1x3xf32>>>
   %1 = "tf.VarHandleOp"() {device = "/device:CPU:0", container = "", shared_name = "variable2"} : () -> tensor<!tf_type.resource<tensor<1x3xf32>>>
   // CHECK: "tf.BatchFunction"(%0, %1)
-  %2 = "tf.BatchFunction"(%0, %1) {allowed_batch_sizes = [6], batch_timeout_micros = 100000 : i64, batching_queue = "", container = "", device = "/device:CPU:0", enable_large_batch_splitting = false, f = @batched_function, max_batch_size = 6 : i64, max_enqueued_batches = 10 : i64, num_batch_threads = 1 : i64, operand_segment_sizes = array<i32: 1, 1>, shared_name = "batch/"} : (tensor<!tf_type.resource<tensor<1x3xf32>>>, tensor<!tf_type.resource<tensor<1x3xf32>>>) -> tensor<*xf32>
+  %2 = "tf.BatchFunction"(%0, %1) {allowed_batch_sizes = [6], batch_timeout_micros = 100000 : i64, batching_queue = "", container = "", device = "/device:CPU:0", enable_large_batch_splitting = false, f = @batched_function, max_batch_size = 6 : i64, max_enqueued_batches = 10 : i64, num_batch_threads = 1 : i64, operandSegmentSizes = array<i32: 1, 1>, shared_name = "batch/"} : (tensor<!tf_type.resource<tensor<1x3xf32>>>, tensor<!tf_type.resource<tensor<1x3xf32>>>) -> tensor<*xf32>
   func.return %2 : tensor<*xf32>
 }
 
@@ -233,7 +233,7 @@ func.func @main(%arg0: tensor<1x3xf32> {tf_saved_model.index_path = ["input"]}) 
   %0 = "tf.VarHandleOp"() {device = "/device:CPU:0", container = "", shared_name = "variable"} : () -> tensor<!tf_type.resource<tensor<1x3xf32>>>
   %1 = "tf.ReadVariableOp"(%0) {device = "/device:CPU:0"} : (tensor<!tf_type.resource<tensor<1x3xf32>>>) -> tensor<1x3xf32>
   // CHECK: "tf.BatchFunction"(%arg0, %1)
-  %2 = "tf.BatchFunction"(%arg0, %1) {allowed_batch_sizes = [6], batch_timeout_micros = 100000 : i64, batching_queue = "", container = "", device = "/device:CPU:0", enable_large_batch_splitting = false, f = @batched_function, max_batch_size = 6 : i64, max_enqueued_batches = 10 : i64, num_batch_threads = 1 : i64, operand_segment_sizes = array<i32: 1, 1>, shared_name = "batch/"} : (tensor<1x3xf32>, tensor<1x3xf32>) -> tensor<*xf32>
+  %2 = "tf.BatchFunction"(%arg0, %1) {allowed_batch_sizes = [6], batch_timeout_micros = 100000 : i64, batching_queue = "", container = "", device = "/device:CPU:0", enable_large_batch_splitting = false, f = @batched_function, max_batch_size = 6 : i64, max_enqueued_batches = 10 : i64, num_batch_threads = 1 : i64, operandSegmentSizes = array<i32: 1, 1>, shared_name = "batch/"} : (tensor<1x3xf32>, tensor<1x3xf32>) -> tensor<*xf32>
   func.return %2 : tensor<*xf32>
 }
 
@@ -265,8 +265,8 @@ func.func @main(%arg0: tensor<1x3xf32> {tf_saved_model.index_path = ["input"]}) 
   // CHECK: "tf.ReadVariableOp"([[handle]])
   %1 = "tf.ReadVariableOp"(%0) {device = "/device:CPU:0"} : (tensor<!tf_type.resource<tensor<1x3xf32>>>) -> tensor<1x3xf32>
   // CHECK: "tf.BatchFunction"(%arg0, [[handle]])
-  // CHECK-SAME: operand_segment_sizes = array<i32: 1, 1>
-  %2 = "tf.BatchFunction"(%arg0, %0) {allowed_batch_sizes = [6], batch_timeout_micros = 100000 : i64, batching_queue = "", container = "", device = "/device:CPU:0", enable_large_batch_splitting = false, f = @batched_function, max_batch_size = 6 : i64, max_enqueued_batches = 10 : i64, num_batch_threads = 1 : i64, operand_segment_sizes = array<i32: 1, 1>, shared_name = "batch/"} : (tensor<1x3xf32>, tensor<!tf_type.resource<tensor<1x3xf32>>>) -> tensor<*xf32>
+  // CHECK-SAME: operandSegmentSizes = array<i32: 1, 1>
+  %2 = "tf.BatchFunction"(%arg0, %0) {allowed_batch_sizes = [6], batch_timeout_micros = 100000 : i64, batching_queue = "", container = "", device = "/device:CPU:0", enable_large_batch_splitting = false, f = @batched_function, max_batch_size = 6 : i64, max_enqueued_batches = 10 : i64, num_batch_threads = 1 : i64, operandSegmentSizes = array<i32: 1, 1>, shared_name = "batch/"} : (tensor<1x3xf32>, tensor<!tf_type.resource<tensor<1x3xf32>>>) -> tensor<*xf32>
   func.return %2 : tensor<*xf32>
 }
 
@@ -293,7 +293,7 @@ func.func private @batched_function(%arg0: tensor<1x3xf32>, %arg1: tensor<!tf_ty
 func.func private @nested_batched_function(%arg0: tensor<1x3xf32>, %arg1: tensor<!tf_type.resource<tensor<1x3xf32>>>) -> tensor<*xf32>
   attributes {tf._input_shapes = [#tf_type.shape<1x3>, #tf_type.shape<*>], tf.signature.is_stateful} {
   // CHECK-NEXT: tf.BatchFunction
-  %0 = "tf.BatchFunction"(%arg0, %arg1) {allowed_batch_sizes = [6], batch_timeout_micros = 100000 : i64, batching_queue = "", container = "", device = "/device:CPU:0", enable_large_batch_splitting = false, f = @batched_function, max_batch_size = 6 : i64, max_enqueued_batches = 10 : i64, num_batch_threads = 1 : i64, operand_segment_sizes = array<i32: 1, 1>, shared_name = "batch/"} : (tensor<1x3xf32>, tensor<!tf_type.resource<tensor<1x3xf32>>>) -> tensor<*xf32>
+  %0 = "tf.BatchFunction"(%arg0, %arg1) {allowed_batch_sizes = [6], batch_timeout_micros = 100000 : i64, batching_queue = "", container = "", device = "/device:CPU:0", enable_large_batch_splitting = false, f = @batched_function, max_batch_size = 6 : i64, max_enqueued_batches = 10 : i64, num_batch_threads = 1 : i64, operandSegmentSizes = array<i32: 1, 1>, shared_name = "batch/"} : (tensor<1x3xf32>, tensor<!tf_type.resource<tensor<1x3xf32>>>) -> tensor<*xf32>
   func.return %0 : tensor<*xf32>
 }
 
@@ -305,8 +305,8 @@ func.func @main(%arg0: tensor<1x3xf32> {tf_saved_model.index_path = ["input"]}) 
   // CHECK: "tf.ReadVariableOp"([[handle]])
   %1 = "tf.ReadVariableOp"(%0) {device = "/device:CPU:0"} : (tensor<!tf_type.resource<tensor<1x3xf32>>>) -> tensor<1x3xf32>
   // CHECK: "tf.BatchFunction"(%arg0, [[handle]])
-  // CHECK-SAME: operand_segment_sizes = array<i32: 1, 1>
-  %2 = "tf.BatchFunction"(%arg0, %0) {allowed_batch_sizes = [6], batch_timeout_micros = 100000 : i64, batching_queue = "", container = "", device = "/device:CPU:0", enable_large_batch_splitting = false, f = @nested_batched_function, max_batch_size = 6 : i64, max_enqueued_batches = 10 : i64, num_batch_threads = 1 : i64, operand_segment_sizes = array<i32: 1, 1>, shared_name = "batch/"} : (tensor<1x3xf32>, tensor<!tf_type.resource<tensor<1x3xf32>>>) -> tensor<*xf32>
+  // CHECK-SAME: operandSegmentSizes = array<i32: 1, 1>
+  %2 = "tf.BatchFunction"(%arg0, %0) {allowed_batch_sizes = [6], batch_timeout_micros = 100000 : i64, batching_queue = "", container = "", device = "/device:CPU:0", enable_large_batch_splitting = false, f = @nested_batched_function, max_batch_size = 6 : i64, max_enqueued_batches = 10 : i64, num_batch_threads = 1 : i64, operandSegmentSizes = array<i32: 1, 1>, shared_name = "batch/"} : (tensor<1x3xf32>, tensor<!tf_type.resource<tensor<1x3xf32>>>) -> tensor<*xf32>
   func.return %2 : tensor<*xf32>
 }
 

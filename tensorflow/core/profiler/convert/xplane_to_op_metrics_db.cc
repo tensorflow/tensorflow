@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/tsl/profiler/utils/tf_op_utils.h"
 #include "tensorflow/tsl/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/tsl/profiler/utils/timespan.h"
+#include "tensorflow/tsl/profiler/utils/xplane_schema.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -158,128 +159,6 @@ void CollectTfActivities(
   });
 }
 
-struct OpKey {
-  std::optional<uint64_t> program_id;
-  std::optional<uint64_t> symbol_id;
-};
-OpKey GetOpKeyFromHloEventMetadata(
-    const XEventMetadataVisitor& hlo_event_metadata) {
-  OpKey op_key;
-  hlo_event_metadata.ForEachStat([&](const XStatVisitor& stat) {
-    if (stat.Type().has_value()) {
-      switch (static_cast<StatType>(*stat.Type())) {
-        case StatType::kProgramId:
-          op_key.program_id = stat.IntOrUintValue();
-          break;
-        case StatType::kSymbolId:
-          op_key.symbol_id = stat.IntOrUintValue();
-          break;
-        default:
-          break;
-      }
-    }
-  });
-  return op_key;
-}
-
-void SetOpMetadataFromHloEventMetadata(
-    const XEventMetadataVisitor& hlo_event_metadata, OpMetrics* op_metrics) {
-  if (hlo_event_metadata.HasDisplayName()) {
-    op_metrics->set_name(std::string(hlo_event_metadata.DisplayName()));
-    op_metrics->set_long_name(std::string(hlo_event_metadata.Name()));
-  } else {
-    op_metrics->set_name(std::string(hlo_event_metadata.Name()));
-  }
-  hlo_event_metadata.ForEachStat([&](const XStatVisitor& stat) {
-    if (stat.Type().has_value()) {
-      switch (static_cast<StatType>(*stat.Type())) {
-        case StatType::kHloCategory:
-          op_metrics->set_category(std::string(stat.StrOrRefValue()));
-          break;
-        case StatType::kTfOp:
-          op_metrics->set_provenance(std::string(stat.StrOrRefValue()));
-          break;
-        case StatType::kFlops:
-          op_metrics->set_flops(stat.IntOrUintValue());
-          break;
-        case StatType::kBytesAccessed:
-          op_metrics->set_bytes_accessed(stat.IntOrUintValue());
-          break;
-        case StatType::kMemoryAccessBreakdown: {
-          tensorflow::profiler::MemoryAccessBreakdown breakdown;
-          const auto& value = stat.BytesValue();
-          if (breakdown.ParseFromArray(value.data(), value.size())) {
-            *op_metrics->mutable_memory_accessed_breakdown() =
-                breakdown.memory_accessed();
-          }
-          break;
-        }
-        case StatType::kDeduplicatedName:
-          op_metrics->set_deduplicated_name(std::string(stat.StrOrRefValue()));
-          break;
-        default:
-          break;
-      }
-    }
-  });
-  hlo_event_metadata.ForEachChild(
-      [&](const XEventMetadataVisitor& child_hlo_event_metadata) {
-        OpMetrics* child = op_metrics->mutable_children()->add_metrics_db();
-        child->set_occurrences(1);
-        SetOpMetadataFromHloEventMetadata(child_hlo_event_metadata, child);
-      });
-}
-
-void SetOpMetricsFromHloEvent(const XEventVisitor& hlo_event,
-                              OpMetrics* op_metrics) {
-  uint64_t duration_ps = hlo_event.DurationPs();
-  uint64_t min_duration_ps = duration_ps;
-  uint64_t self_duration_ps = duration_ps;
-  uint64_t dma_stall_ps = 0;
-  hlo_event.ForEachStat([&](const XStatVisitor& stat) {
-    if (!stat.Type()) return;
-    switch (static_cast<StatType>(*stat.Type())) {
-      case StatType::kMinDurationPs:
-        min_duration_ps = stat.IntValue();
-        break;
-      case StatType::kSelfDurationPs:
-        self_duration_ps = stat.IntValue();
-        break;
-      case StatType::kDmaStallDurationPs:
-        dma_stall_ps = stat.IntValue();
-        break;
-      default:
-        break;
-    }
-  });
-  if (op_metrics->occurrences() == 0) {
-    SetOpMetadataFromHloEventMetadata(hlo_event.Metadata(), op_metrics);
-    op_metrics->set_occurrences(hlo_event.NumOccurrences());
-    op_metrics->set_time_ps(duration_ps);
-    op_metrics->set_min_time_ps(min_duration_ps);
-    op_metrics->set_self_time_ps(self_duration_ps);
-    op_metrics->set_dma_stall_ps(dma_stall_ps);
-  } else {
-    op_metrics->set_occurrences(op_metrics->occurrences() +
-                                hlo_event.NumOccurrences());
-    op_metrics->set_time_ps(op_metrics->time_ps() + duration_ps);
-    op_metrics->set_min_time_ps(
-        std::min<uint64_t>(op_metrics->min_time_ps(), min_duration_ps));
-    op_metrics->set_self_time_ps(op_metrics->self_time_ps() + self_duration_ps);
-    op_metrics->set_dma_stall_ps(op_metrics->dma_stall_ps() + dma_stall_ps);
-  }
-}
-
-void AdjustFlopsAndBytesAccessed(OpMetrics& op_metrics) {
-  op_metrics.set_flops(op_metrics.flops() * op_metrics.occurrences());
-  op_metrics.set_bytes_accessed(op_metrics.bytes_accessed() *
-                                op_metrics.occurrences());
-  for (auto& memory_access : *op_metrics.mutable_memory_accessed_breakdown()) {
-    memory_access.set_bytes_accessed(memory_access.bytes_accessed() *
-                                     op_metrics.occurrences());
-  }
-}
-
 }  // namespace
 
 absl::flat_hash_map<int64_t, tsl::profiler::TfOp>
@@ -335,39 +214,20 @@ OpMetricsDb ConvertHostThreadsXPlaneToOpMetricsDb(const XPlane& host_trace) {
 
 OpMetricsDb ConvertTpuDeviceTraceXPlaneToOpMetricsDb(
     const XPlane& device_trace) {
-  OpMetricsDb result;
   XPlaneVisitor plane = tsl::profiler::CreateTfXPlaneVisitor(&device_trace);
   using OpMetricBySymbol =
       absl::flat_hash_map</*symbol_id=*/uint64_t, OpMetrics>;
   absl::flat_hash_map</*program_id=*/uint64_t, OpMetricBySymbol> flat_op_metric;
 
-  uint64_t total_op_time_ps = 0;
+  XEventsOpMetricsDbBuilder builder;
 
   plane.ForEachLine([&](const XLineVisitor& line) {
-    line.ForEachEvent([&](const XEventVisitor& event) {
-      OpKey key = GetOpKeyFromHloEventMetadata(event.Metadata());
-      if (!key.program_id.has_value() || !key.symbol_id.has_value()) return;
-      OpMetricBySymbol& op_metric_by_symbol =
-          flat_op_metric[key.program_id.value()];
-      if (key.symbol_id != kRootSymbolId) {
-        OpMetrics& op_metrics = op_metric_by_symbol[key.symbol_id.value()];
-        SetOpMetricsFromHloEvent(event, &op_metrics);
-      }
-    });
+    line.ForEachEvent(
+        [&](const XEventVisitor& event) { builder.AddOpMetric(event); });
   });
 
-  for (auto& [program_id, op_metric_by_symbol] : flat_op_metric) {
-    for (auto& [symbol_id, op_metrics] : op_metric_by_symbol) {
-      AdjustFlopsAndBytesAccessed(op_metrics);
-      total_op_time_ps += op_metrics.self_time_ps();
-      result.add_metrics_db()->Swap(&op_metrics);
-    }
-  }
-  result.set_total_op_time_ps(total_op_time_ps);
-  auto total_time_ps = plane.GetStat(StatType::kTotalProfileDurationPs);
-  SetTotalTimePs(result, total_time_ps->IntOrUintValue());
-  AddIdleOp(result);
-  return result;
+  return builder.Finalize(
+      plane.GetStat(StatType::kTotalProfileDurationPs)->IntOrUintValue());
 }
 
 OpMetricsDb ConvertDeviceTraceXPlaneToOpMetricsDb(const XPlane& device_trace) {

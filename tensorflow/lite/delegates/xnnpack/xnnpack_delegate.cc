@@ -6431,6 +6431,9 @@ TfLiteXNNPackDelegateOptions TfLiteXNNPackDelegateOptionsDefault() {
 }
 
 TfLiteXNNPackDelegateOptions GetOptions(const void* delegate_data) {
+  if (delegate_data == nullptr) {
+    return TfLiteXNNPackDelegateOptionsDefault();
+  }
   return static_cast<const tflite::xnnpack::Delegate*>(delegate_data)
       ->options();
 }

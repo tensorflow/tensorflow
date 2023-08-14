@@ -41,7 +41,7 @@ func.func @main(%input0: tensor<i32>, %input1: tensor<i32>) -> tensor<i32> {
   // CHECK-SAME: num_futures = 3
   %promise_b, %promise_c, %promise_d, %future_b, %future_c, %future_d =
     "tf_mlrt.allocate_futures"()
-    {num_futures = 3 : i32, result_segment_sizes = array<i32: 3, 3>} : () ->
+    {num_futures = 3 : i32, resultSegmentSizes = array<i32: 3, 3>} : () ->
     (!mlrt.promise, !mlrt.promise, !mlrt.promise,
      !mlrt.future, !mlrt.future, !mlrt.future)
 
@@ -144,7 +144,7 @@ func.func @main(%x: tensor<1xi32>) -> (tensor<1xi32>, tensor<1xi32>, tensor<1xi3
     batching_queue = "", container = "", device = "/device:CPU:0",
     enable_large_batch_splitting = false, f = @batched_function,
     max_batch_size = 6 : i64, max_enqueued_batches = 10 : i64,
-    num_batch_threads = 1 : i64, operand_segment_sizes = array<i32: 1, 0>,
+    num_batch_threads = 1 : i64, operandSegmentSizes = array<i32: 1, 0>,
     shared_name = "batch_function"
   } : (tensor<1xi32>) -> tensor<1xi32>
 
@@ -290,7 +290,7 @@ func.func @callee(%arg: tensor<i32>) -> (tensor<i32>) {
 // CHECK-LABEL: @executeop_input
 func.func @executeop_input(%arg0: tensor<i32>) -> (tensor<i32>) {
   // CHECK: [[async_out:%.*]] = tf_mlrt.batch_function
-  %2 = "tf.BatchFunction"(%arg0) {device = "/device:CPU:0", allowed_batch_sizes = [64], batch_timeout_micros = 1 : i64, batching_queue = "", container = "", f = @callee, max_batch_size = 256 : i64, num_batch_threads = 2 : i64, operand_segment_sizes = array<i32: 1, 0>, shared_name = ""} : (tensor<i32>) -> tensor<i32>
+  %2 = "tf.BatchFunction"(%arg0) {device = "/device:CPU:0", allowed_batch_sizes = [64], batch_timeout_micros = 1 : i64, batching_queue = "", container = "", f = @callee, max_batch_size = 256 : i64, num_batch_threads = 2 : i64, operandSegmentSizes = array<i32: 1, 0>, shared_name = ""} : (tensor<i32>) -> tensor<i32>
   // CHECK-NEXT: mlrt.async([[async_out]]) {{.*}} : (!mlrt.future)
   %3 = mlrt.async(%2) {callee = @serving_default_stream_1} : (tensor<i32>) -> !mlrt.async_handle
   // CHECK: mlrt.await_handle
@@ -344,7 +344,7 @@ func.func @main(%input0: tensor<i32>) -> tensor<i32> {
   // CHECK: [[promises:%.*]], [[futures:%.*]] = "tf_mlrt.allocate_futures"
   // CHECK-SAME: num_futures = 1
   %promise_b, %future_b = "tf_mlrt.allocate_futures"()
-    {num_futures = 1 : i32, result_segment_sizes = array<i32: 1, 1>} : () ->
+    {num_futures = 1 : i32, resultSegmentSizes = array<i32: 1, 1>} : () ->
     (!mlrt.promise, !mlrt.future)
 
   // CHECK: [[handle_0:%.*]] = mlrt.async([[input0]], [[promises]])

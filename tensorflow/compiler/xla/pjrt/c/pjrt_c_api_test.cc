@@ -26,21 +26,28 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/client/executable_build_options.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_test_base.h"
+#include "tensorflow/compiler/xla/pjrt/compile_options.pb.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
+#include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -879,6 +886,54 @@ TEST_F(PjrtCApiBufferTest, ToHostBufferNoHostLayout) {
   std::iota(float_data.begin(), float_data.end(), 41.0f);
   EXPECT_TRUE(xla::LiteralTestUtil::Equal(
       xla::LiteralUtil::CreateR1<float>(float_data), *literal));
+}
+
+TEST_F(PjrtCApiBufferTest, IncreaseAndDecreaseReferenceCount) {
+  PJRT_Buffer_IncreaseExternalReferenceCount_Args increase_reference_count_args;
+  increase_reference_count_args.struct_size =
+      PJRT_Buffer_IncreaseExternalReferenceCount_Args_STRUCT_SIZE;
+  increase_reference_count_args.priv = nullptr;
+  increase_reference_count_args.buffer = buffer_.get();
+  PJRT_Error* increase_reference_count_error =
+      api_->PJRT_Buffer_IncreaseExternalReferenceCount(
+          &increase_reference_count_args);
+  EXPECT_EQ(increase_reference_count_error, nullptr);
+
+  PJRT_Buffer_DecreaseExternalReferenceCount_Args decrease_reference_count_args;
+  decrease_reference_count_args.struct_size =
+      PJRT_Buffer_DecreaseExternalReferenceCount_Args_STRUCT_SIZE;
+  decrease_reference_count_args.priv = nullptr;
+  decrease_reference_count_args.buffer = buffer_.get();
+  PJRT_Error* decrease_reference_error =
+      api_->PJRT_Buffer_DecreaseExternalReferenceCount(
+          &decrease_reference_count_args);
+  EXPECT_EQ(decrease_reference_error, nullptr);
+}
+
+TEST_F(PjrtCApiBufferTest, DecreaseReferenceCountReturnsError) {
+  PJRT_Buffer_DecreaseExternalReferenceCount_Args args;
+  args.struct_size =
+      PJRT_Buffer_DecreaseExternalReferenceCount_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.buffer = buffer_.get();
+  auto error =
+      ToUniquePtr(api_->PJRT_Buffer_DecreaseExternalReferenceCount(&args));
+  ASSERT_NE(error, nullptr);
+  absl::Status status = ::pjrt::PjrtErrorToStatus(error.get(), api_);
+  EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
+  EXPECT_EQ(status.message(),
+            "Attempting to decrease reference on a buffer with zero reference "
+            "count.");
+}
+
+TEST_F(PjrtCApiBufferTest, OpaqueDeviceMemoryDataPointer) {
+  PJRT_Buffer_OpaqueDeviceMemoryDataPointer_Args args;
+  args.struct_size = PJRT_Buffer_OpaqueDeviceMemoryDataPointer_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.buffer = buffer_.get();
+  PJRT_Error* error = api_->PJRT_Buffer_OpaqueDeviceMemoryDataPointer(&args);
+  EXPECT_EQ(error, nullptr);
+  EXPECT_NE(args.device_memory_ptr, nullptr);
 }
 
 // --------------------------------- Helpers -----------------------------------

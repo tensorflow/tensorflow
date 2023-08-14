@@ -1,3 +1,4 @@
+# Placeholder: load py_proto_library
 load("//tensorflow:strict.default.bzl", "py_strict_binary")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
@@ -126,6 +127,20 @@ td_library(
         "@llvm-project//mlir:ArithOpsTdFiles",
         "@llvm-project//mlir:FuncTdFiles",
     ],
+)
+
+gentbl_cc_library(
+    name = "convert_tf_xla_op_to_tf_op_inc_gen",
+    compatible_with = get_compatible_with_portable(),
+    tbl_outs = [
+        (
+            ["-gen-rewriters"],
+            "passes/convert_tf_xla_op_to_tf_op.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "passes/convert_tf_xla_op_to_tf_op.td",
+    deps = [":quant_td_files"],
 )
 
 gentbl_cc_library(
@@ -372,6 +387,8 @@ cc_library(
         "passes/cast_bf16_ops_to_f32.inc",
         "passes/convert_custom_aggregation_op_to_quant_stats.cc",
         "passes/convert_fake_quant_to_qdq.cc",
+        "passes/convert_tf_xla_op_to_tf_op.cc",
+        "passes/convert_tf_xla_op_to_tf_op.inc",
         "passes/convert_tpu_model_to_cpu.cc",
         "passes/convert_tpu_model_to_cpu.inc",
         "passes/duplicate_shape_determining_constants.cc",
@@ -554,20 +571,19 @@ cc_library(
 # `libtensorflow_framework.so`.
 tf_proto_library(
     name = "quantization_options_proto",
-    srcs = ["quantization_options.proto"],
+    srcs = [
+        "quantization_options.proto",
+    ],
     cc_api_version = 2,
     make_default_target_header_only = True,
-    visibility = [
-        ":internal_visibility_allowlist_package",
-        # To be visible from `lib_internal_impl`.
-        "//tensorflow/core:__pkg__",
-    ],
+    visibility = ["//visibility:public"],
 )
 
 # copybara:uncomment_begin(google-only)
 # py_proto_library(
 #     name = "quantization_options_py_pb2",
 #     api_version = 2,
+#     visibility = ["//visibility:public"],
 #     deps = [":quantization_options_proto"],
 # )
 # copybara:uncomment_end

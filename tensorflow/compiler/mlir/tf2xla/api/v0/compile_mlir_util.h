@@ -94,14 +94,16 @@ Status ConvertMLIRToXlaComputation(
 //   native kernels for legalization to HLO.
 // custom_legalization_passes: passes to run before the default TF legalization
 //   passes for backend-specific ops.
+// lower_to_xla_hlo: Temporary parameter to be removed in imminent update. If
+//   true, includes legalization and MHLO lowering passes.
 // allow_partial_conversion: when this is true, allow operations that can't be
-// legalized.
+//   legalized.
 void CreateConvertMlirToXlaHloPipeline(
     mlir::OpPassManager& pm, llvm::StringRef device_type,
     bool enable_op_fallback,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
         custom_legalization_passes,
-    bool allow_partial_conversion = false);
+    bool lower_to_xla_hlo = true, bool allow_partial_conversion = false);
 
 // Helper struct representing argument tensor or resource handle shapes.
 struct TensorOrResourceShape {
@@ -133,12 +135,14 @@ Status PopulateResultIOInfo(
     const XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
     XlaCompilationResult* compilation_result);
 
-// Compiles a MLIR module into XLA HLO, generates all accompanying metadata and
-// stores them in CompilationResult.
+// Runs MLIR Bridge on a MLIR module.
+//
+// If lower_to_xla_hlo is true then compiles down into XLA HLO, generates all
+// accompanying metadata and stores them in CompilationResult.
 //
 // If enable_op_fallback is set to false, graph is legalized only if the graph
 // analysis for the graph is successful. Otherwise, an error is returned.
-Status CompileMlirToXlaHlo(
+StatusOr<std::string> CompileMlirToXlaHlo(
     mlir::ModuleOp module_op, llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
     llvm::StringRef device_type, bool use_tuple_args, bool enable_op_fallback,
     bool use_return_tuple, bool use_resource_updates_for_aliases,
@@ -146,18 +150,22 @@ Status CompileMlirToXlaHlo(
     XlaCompilationResult* compilation_result,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
         custom_legalization_passes,
-    llvm::StringRef module_name = llvm::StringRef());
+    llvm::StringRef module_name = llvm::StringRef(),
+    bool lower_to_xla_hlo = true);
 
-// Compiles a serialized MLIR module into XLA HLO, generates all accompanying
-// metadata and stores them in CompilationResult.
-Status CompileSerializedMlirToXlaHlo(
+// Runs MLIR Bridge on a serialized MLIR module.
+//
+// If lower_to_xla_hlo is true then compiles down into XLA HLO, generates all
+// accompanying metadata and stores them in CompilationResult.
+StatusOr<std::string> CompileSerializedMlirToXlaHlo(
     llvm::StringRef mlir_module_string, llvm::ArrayRef<TensorShape> arg_shapes,
     llvm::StringRef device_type, bool use_tuple_args, bool enable_op_fallback,
     const XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
     XlaCompilationResult* compilation_result,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
         custom_legalization_passes = {},
-    llvm::StringRef module_name = llvm::StringRef());
+    llvm::StringRef module_name = llvm::StringRef(),
+    bool lower_to_xla_hlo = true);
 
 // Compiles a TensorFlow Graph (already converted to MLIR, imported with
 // tf_executor dialect still present) into XLA HLO, generates all accompanying

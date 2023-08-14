@@ -377,6 +377,10 @@ pybind_extension(
     name = "_pywrap_tf2",
     srcs = ["enable_tf2.cc"],
     hdrs = ["//tensorflow/core/platform:enable_tf2_hdr"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_tf2.pyi",
+    ],
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",

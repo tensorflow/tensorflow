@@ -16,26 +16,24 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_STRATEGY_H_
 #define TENSORFLOW_COMPILER_XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_STRATEGY_H_
 
-#include <algorithm>
-#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <numeric>
 #include <optional>
-#include <ostream>
-#include <sstream>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
 #include "tensorflow/compiler/xla/service/hlo_value.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+
 namespace xla {
 namespace spmd {
 
@@ -116,11 +114,18 @@ struct ShardingStrategy {
   }
 };
 
+using NodeIdx = int64_t;          // An index into the solver's node list.
+using EdgeIdx = int64_t;          // An index into the solver's edge list.
+using NodeStrategyIdx = int64_t;  // An index into a node's strategy vector.
+using EdgeStrategyIdx = int64_t;  // An index into an edge's strategy vector.
+using LivenessIdx = int64_t;      // An index into the liveness vector.
+using AliasIdx = int64_t;         // An index into the alias vector.
+
 // The strategy choices for each instruction.
 struct StrategyVector {
   bool is_tuple;
   // The index used in the solver. For non-leaf nodes, this is set to -1.
-  int64_t id;
+  NodeIdx node_idx;
   // The index of the HLO instruction that this strategy vector belongs to.
   size_t instruction_id;
   // The connected nodes used for resharding costs;
@@ -140,7 +145,7 @@ struct StrategyVector {
   std::string ToString(size_t indention = 0) const {
     std::string str;
     const std::string indent(indention, ' ');
-    absl::StrAppend(&str, indent, "id: ", id, "\n");
+    absl::StrAppend(&str, indent, "node_idx: ", node_idx, "\n");
     absl::StrAppend(&str, indent, "instruction id: ", instruction_id, "\n");
     absl::StrAppend(&str, indent, "is_tuple: ", is_tuple, "\n");
     if (following != nullptr) {
@@ -151,7 +156,7 @@ struct StrategyVector {
       absl::StrAppend(&str, indent, "source instruction\n");
     }
     for (auto i : in_nodes) {
-      absl::StrAppend(&str, indent, "in nodes: id=", i->id,
+      absl::StrAppend(&str, indent, "in nodes: node_idx=", i->node_idx,
                       " instruction_id=", i->instruction_id, "\n");
     }
     if (is_tuple) {
@@ -165,6 +170,15 @@ struct StrategyVector {
       }
     }
     return str;
+  }
+
+  const StrategyVector* GetSubStrategyVector(const ShapeIndex& index) const {
+    const StrategyVector* result = this;
+    for (auto index_element : index) {
+      CHECK_LE(index_element, result->childs.size());
+      result = result->childs.at(index_element).get();
+    }
+    return result;
   }
 };
 
@@ -180,8 +194,7 @@ using LeafStrategies = std::vector<StrategyVector*>;
 using AssociativeDotPairs =
     std::vector<std::pair<const StrategyVector*, const StrategyVector*>>;
 // The set of all alias pairs
-using AliasSet = StableHashSet<std::pair<int64_t, int64_t>>;
-
+using AliasSet = StableHashSet<std::pair<NodeIdx, NodeIdx>>;
 
 }  // namespace spmd
 }  // namespace xla

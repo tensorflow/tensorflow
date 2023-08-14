@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "tensorflow/tsl/platform/cord.h"
 #include "tensorflow/tsl/platform/ctstring.h"
+#include "tensorflow/tsl/platform/platform.h"
 #include "tensorflow/tsl/platform/stringpiece.h"
 
 namespace tsl {

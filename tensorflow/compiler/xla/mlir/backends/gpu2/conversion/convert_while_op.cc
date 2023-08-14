@@ -43,36 +43,6 @@ using namespace mlir::iree_compiler;  // NOLINT
 // TODO(ezhulenev): Rewrite while loops with statically known trip count to
 // scf.for loops (see `op.getTripCount()` attribute).
 
-//===----------------------------------------------------------------------===//
-// Helper functions for de-bufferizing operatrions with nested regions
-//===----------------------------------------------------------------------===//
-
-struct UsedBuffers {
-  llvm::SetVector<TypedValue<MemRefType>> read;
-  llvm::SetVector<TypedValue<MemRefType>> write;
-};
-
-UsedBuffers getUsedBuffers(ArrayRef<Block *> blocks) {
-  UsedBuffers buffers;
-
-  // TODO(ezhulenev): Add support for all lmhlo and lmhlo_gpu operations.
-  for (Block *block : blocks) {
-    block->walk([&](bufferization::ToTensorOp op) {
-      buffers.read.insert(stripReinterpretCast(op.getMemref()));
-    });
-
-    block->walk([&](memref::TensorStoreOp op) {
-      buffers.write.insert(stripReinterpretCast(op.getMemref()));
-    });
-  }
-
-  // Remove written buffers from read buffers.
-  buffers.read.remove_if(
-      [&](auto memref) { return buffers.write.contains(memref); });
-
-  return buffers;
-}
-
 // Keep track of converted while operations to correctly lower terminators in
 // the loop before and after regions (condition and body regions).
 struct ConvertedWhileOp {

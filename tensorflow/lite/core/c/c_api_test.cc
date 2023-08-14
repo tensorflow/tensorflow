@@ -952,6 +952,38 @@ TEST(CApiSimple, OpaqueContextGetNodeAndRegistration) {
       EXPECT_EQ(2, TfLiteOpaqueNodeNumberOfInputs(node));
       EXPECT_EQ(1, TfLiteOpaqueNodeNumberOfOutputs(node));
     }
+
+    {
+      TfLiteOpaqueNode* node = nullptr;
+      TfLiteRegistrationExternal* registration_external = nullptr;
+      TfLiteOpaqueContextGetNodeAndRegistration(opaque_context, 0, &node,
+                                                &registration_external);
+      EXPECT_EQ(1, TfLiteOpaqueNodeGetInputTensorIndex(node, 0));
+      EXPECT_EQ(1, TfLiteOpaqueNodeGetInputTensorIndex(node, 1));
+      EXPECT_EQ(-1, TfLiteOpaqueNodeGetInputTensorIndex(node, 2));
+      EXPECT_EQ(0, TfLiteOpaqueNodeGetOutputTensorIndex(node, 0));
+      EXPECT_EQ(-1, TfLiteOpaqueNodeGetOutputTensorIndex(node, 123));
+      EXPECT_EQ(-1, TfLiteOpaqueNodeGetOutputTensorIndex(node, -1));
+
+      const TfLiteOpaqueTensor* opaque_tensor =
+          TfLiteOpaqueContextGetOpaqueTensor(opaque_context, 0);
+      EXPECT_NE(opaque_tensor, nullptr);
+      EXPECT_EQ(kTfLiteFloat32, TfLiteOpaqueTensorType(opaque_tensor));
+      size_t bytes_float_32 = 0;
+      EXPECT_EQ(kTfLiteOk,
+                TfLiteOpaqueContextGetSizeOfType(opaque_context, kTfLiteFloat32,
+                                                 &bytes_float_32));
+      EXPECT_EQ(bytes_float_32, sizeof(float));
+    }
+    {
+      TfLiteOpaqueNode* node = nullptr;
+      TfLiteRegistrationExternal* registration_external = nullptr;
+      TfLiteOpaqueContextGetNodeAndRegistration(opaque_context, 1, &node,
+                                                &registration_external);
+      EXPECT_EQ(0, TfLiteOpaqueNodeGetInputTensorIndex(node, 0));
+      EXPECT_EQ(1, TfLiteOpaqueNodeGetInputTensorIndex(node, 1));
+      EXPECT_EQ(2, TfLiteOpaqueNodeGetOutputTensorIndex(node, 0));
+    }
     return kTfLiteOk;
   };
 
@@ -1538,6 +1570,33 @@ TEST(CApiSimple, OpaqueApiAccessors) {
           EXPECT_STREQ(kSubgraphName,
                        TfLiteOpaqueContextGetName(opaque_context));
           EXPECT_EQ(4, TfLiteOpaqueContextGetNumTensors(opaque_context));
+
+          int first_new_tensor_index = -1;
+          EXPECT_EQ(kTfLiteOk, TfLiteOpaqueContextAddTensors(
+                                   opaque_context, 1, &first_new_tensor_index));
+          EXPECT_EQ(5, TfLiteOpaqueContextGetNumTensors(opaque_context));
+          EXPECT_EQ(4, first_new_tensor_index);
+          TfLiteOpaqueTensor* new_tensor = TfLiteOpaqueContextGetOpaqueTensor(
+              opaque_context, first_new_tensor_index);
+          EXPECT_NE(new_tensor, nullptr);
+
+          EXPECT_EQ(kTfLiteOk, TfLiteOpaqueContextAddTensors(
+                                   opaque_context, 2, &first_new_tensor_index));
+          EXPECT_EQ(7, TfLiteOpaqueContextGetNumTensors(opaque_context));
+          EXPECT_EQ(5, first_new_tensor_index);
+          new_tensor = TfLiteOpaqueContextGetOpaqueTensor(
+              opaque_context, first_new_tensor_index);
+          EXPECT_NE(new_tensor, nullptr);
+          new_tensor = TfLiteOpaqueContextGetOpaqueTensor(
+              opaque_context, first_new_tensor_index + 1);
+          EXPECT_NE(new_tensor, nullptr);
+
+          EXPECT_EQ(kTfLiteError,
+                    TfLiteOpaqueContextAddTensors(opaque_context, 0,
+                                                  &first_new_tensor_index));
+          EXPECT_EQ(kTfLiteError,
+                    TfLiteOpaqueContextAddTensors(opaque_context, -1,
+                                                  &first_new_tensor_index));
           EXPECT_EQ(-1,
                     TfLiteOpaqueTensorNumDims(
                         TfLiteOpaqueContextGetOpaqueTensor(opaque_context, 3)));

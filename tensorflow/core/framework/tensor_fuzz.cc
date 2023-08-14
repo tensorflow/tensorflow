@@ -39,10 +39,11 @@ void DebugStringCheck(const Tensor& tensor) {
   string out = tensor.DeviceSafeDebugString();
 }
 FUZZ_TEST(TensorFuzz, DebugStringCheck)
-    .WithDomains(AnyValidTensor(AnyValidTensorShape(/*max_rank=*/3,
-                                                    /*dim_lower_bound=*/0,
-                                                    /*dim_upper_bound=*/10),
-                                AnyValidDataType()));
+    .WithDomains(
+        AnyValidNumericTensor(AnyValidTensorShape(/*max_rank=*/3,
+                                                  /*dim_lower_bound=*/0,
+                                                  /*dim_upper_bound=*/10),
+                              AnyValidDataType()));
 
 }  // namespace
 }  // namespace tensorflow::fuzzing

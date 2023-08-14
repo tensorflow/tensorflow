@@ -36,7 +36,7 @@ void DataDumperLoggerConfig::printBeforeIfEnabled(
   std::string pass_name = pass->getName().str();
   std::string filename = get_filename_(pass_prefix_ + "before_" + pass_name);
 
-  DumpMlir(filename, print_callback);
+  if (ShouldPrint(pass, op)) DumpMlir(filename, print_callback);
 }
 
 void DataDumperLoggerConfig::printAfterIfEnabled(
@@ -44,7 +44,7 @@ void DataDumperLoggerConfig::printAfterIfEnabled(
   std::string pass_name = pass->getName().str();
   std::string filename = get_filename_(pass_prefix_ + "after_" + pass_name);
 
-  DumpMlir(filename, print_callback);
+  if (ShouldPrint(pass, op)) DumpMlir(filename, print_callback);
 }
 
 void DataDumperLoggerConfig::DumpMlir(

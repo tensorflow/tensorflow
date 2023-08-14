@@ -56,7 +56,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
-#include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -228,21 +227,16 @@ StatusOr<HloSharding> IotaTileHelper(
         "`dims`(%lld).",
         subgroup_types.size(), dims.size());
   }
-  auto make_assignment = [&] {
-    if (reshape_dims.empty() && transpose_perm.empty()) {
-      Array<int64_t> assignment(dims);
-      assignment.FillIota(0);
-      return assignment;
-    }
-    Array<int64_t> assignment(reshape_dims);
-    assignment.FillIota(0);
-    assignment.TransposeDimensions(transpose_perm);
-    assignment.Reshape(dims);
-    return assignment;
-  };
+  if (reshape_dims.empty()) {
+    return subgroup_types.empty()
+               ? HloSharding::IotaTile(dims)
+               : HloSharding::Subgroup(TileAssignment(dims), subgroup_types);
+  }
   return subgroup_types.empty()
-             ? HloSharding::Tile(make_assignment())
-             : HloSharding::Subgroup(make_assignment(), subgroup_types);
+             ? HloSharding::IotaTile(dims, reshape_dims, transpose_perm)
+             : HloSharding::Subgroup(
+                   TileAssignment(dims, reshape_dims, transpose_perm),
+                   subgroup_types);
 }
 
 // Registers a 'fn_capsule' as a CPU custom call target.

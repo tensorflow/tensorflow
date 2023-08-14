@@ -105,7 +105,8 @@ cc_library(
     deps = [
         ":loader_lite",
     ] + if_static_and_not_mobile([
-        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:direct_session",
+        "//tensorflow/core:all_kernels",
     ]) + if_not_mobile([
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:lib",
@@ -615,13 +616,15 @@ tf_cc_test(
     deps = [
         ":fingerprinting",
         "//tensorflow/cc:cc_ops",
-        "//tensorflow/cc:scope",
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
     ],
 )
 

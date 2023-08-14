@@ -67,6 +67,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
@@ -75,6 +76,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/low_bit_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/size_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -677,7 +679,7 @@ static StatusOr<Operation*> BuildSparseConstOp(
 StatusOr<Operation*> BuildConstOp(const tflite::TensorT& tensor,
                                   const std::vector<uint8_t>& buffer,
                                   bool is_variable, OpBuilder builder,
-                                  Location loc) {
+                                  Location loc, bool use_stablehlo_constant) {
   TF_ASSIGN_OR_RETURN(auto type, GetTensorType(tensor, builder,
                                                /*is_constant=*/true));
   auto shaped_type = type.dyn_cast<mlir::RankedTensorType>();
@@ -721,6 +723,10 @@ StatusOr<Operation*> BuildConstOp(const tflite::TensorT& tensor,
   if (IsQuantized(tensor)) {
     auto op = builder.create<tfl::QConstOp>(
         loc, mlir::TypeAttr::get(shaped_type), value);
+    return op.getOperation();
+  }
+  if (use_stablehlo_constant) {
+    auto op = builder.create<mlir::stablehlo::ConstantOp>(loc, value);
     return op.getOperation();
   }
   auto op = builder.create<tfl::ConstOp>(loc, value);
@@ -1287,7 +1293,8 @@ StatusOr<FuncOp> ConvertSubgraph(
     bool experimental_prune_unreachable_nodes_unconditionally,
     const tflite::SignatureDefT* signature,
     const tflite::ControlEdges& control_edges,
-    const std::unique_ptr<tflite::FlatBufferModel>& model_ptr) {
+    const std::unique_ptr<tflite::FlatBufferModel>& model_ptr,
+    bool use_stablehlo_constant) {
   // Populate from metadata.
   ControlNodes control_nodes;
   for (const auto [from, to] : control_edges) {
@@ -1457,7 +1464,7 @@ StatusOr<FuncOp> ConvertSubgraph(
                 ? BuildExternalConstOp(const_tensor, const_tensor.buffer,
                                        op_builder, const_loc)
                 : BuildConstOp(const_tensor, buffer, const_tensor.is_variable,
-                               op_builder, const_loc);
+                               op_builder, const_loc, use_stablehlo_constant);
         if (!op_or_err.ok()) {
           return emitError(const_loc, op_or_err.status().ToString()),
                  op_or_err.status();
@@ -1532,7 +1539,7 @@ StatusOr<FuncOp> ConvertSubgraph(
               ? BuildExternalConstOp(const_tensor, const_tensor.buffer,
                                      op_builder, const_loc)
               : BuildConstOp(const_tensor, buffer, const_tensor.is_variable,
-                             op_builder, const_loc);
+                             op_builder, const_loc, use_stablehlo_constant);
       if (!op_or_err.ok()) {
         return emitError(const_loc, op_or_err.status().ToString()),
                op_or_err.status();
@@ -1601,11 +1608,11 @@ OwningOpRef<mlir::ModuleOp> tflite::FlatBufferToMlir(
     const std::vector<std::string>& ordered_output_arrays,
     bool experimental_prune_unreachable_nodes_unconditionally) {
   mlir::DialectRegistry registry;
-  registry
-      .insert<mlir::arith::ArithDialect, mlir::func::FuncDialect,
-              mlir::quant::QuantizationDialect,
-              mlir::quantfork::QuantizationForkDialect,
-              mlir::TFL::TensorFlowLiteDialect, mlir::TF::TensorFlowDialect>();
+  registry.insert<mlir::arith::ArithDialect, mlir::func::FuncDialect,
+                  mlir::quant::QuantizationDialect,
+                  mlir::quantfork::QuantizationForkDialect,
+                  mlir::TFL::TensorFlowLiteDialect, mlir::TF::TensorFlowDialect,
+                  mlir::stablehlo::StablehloDialect>();
   mlir::func::registerAllExtensions(registry);
   context->appendDialectRegistry(registry);
 
@@ -1613,7 +1620,8 @@ OwningOpRef<mlir::ModuleOp> tflite::FlatBufferToMlir(
                        mlir::quant::QuantizationDialect,
                        mlir::quantfork::QuantizationForkDialect,
                        mlir::TFL::TensorFlowLiteDialect,
-                       mlir::TF::TensorFlowDialect>();
+                       mlir::TF::TensorFlowDialect,
+                       mlir::stablehlo::StablehloDialect>();
 
   auto model_ptr =
       FlatBufferModel::VerifyAndBuildFromBuffer(buffer.data(), buffer.length());
@@ -1627,6 +1635,9 @@ OwningOpRef<mlir::ModuleOp> tflite::FlatBufferToMlir(
 
   tflite::ModelControlDependencies model_control_dependencies(
       model->subgraphs.size());
+
+  bool use_stablehlo_constant = false;
+
   for (const auto& metadata : model->metadata) {
     if (metadata->name == tflite::kModelControlDependenciesMetadataKey) {
       const std::vector<uint8_t>& data = model->buffers[metadata->buffer]->data;
@@ -1638,6 +1649,10 @@ OwningOpRef<mlir::ModuleOp> tflite::FlatBufferToMlir(
                nullptr;
       }
       break;
+    }
+    // check if the model is serialized using stablehlo constant tensor
+    if (metadata->name == tflite::kModelUseStablehloTensorKey) {
+      use_stablehlo_constant = true;
     }
   }
 
@@ -1659,6 +1674,13 @@ OwningOpRef<mlir::ModuleOp> tflite::FlatBufferToMlir(
   if (!model->signature_defs.empty()) {
     module->setAttr("tf_saved_model.semantics",
                     mlir::UnitAttr::get(builder.getContext()));
+  }
+
+  if (use_stablehlo_constant) {
+    module->setAttr("tfl.metadata",
+                    builder.getDictionaryAttr(builder.getNamedAttr(
+                        tflite::kModelUseStablehloTensorKey,
+                        builder.getStringAttr("true"))));
   }
 
   absl::flat_hash_map<uint32_t, tflite::SignatureDefT*>
@@ -1688,7 +1710,8 @@ OwningOpRef<mlir::ModuleOp> tflite::FlatBufferToMlir(
         subgraph_to_signature_map.contains(subgraph_index)
             ? subgraph_to_signature_map.at(subgraph_index)
             : nullptr,
-        model_control_dependencies[subgraph_index], model_ptr);
+        model_control_dependencies[subgraph_index], model_ptr,
+        use_stablehlo_constant);
     if (!func_or_error.ok()) {
       return emitError(base_loc, "could not translate function ")
                  << subgraph->name << ": " << func_or_error.status().message(),

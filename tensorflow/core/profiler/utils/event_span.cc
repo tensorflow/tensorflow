@@ -345,6 +345,7 @@ StepDetails StepDetails::ToNonOverlapped() const {
   non_overlapped_step_details.device_memory_transfers_ =
       device_memory_transfers_;
   non_overlapped_step_details.step_name_ = step_name_;
+  non_overlapped_step_details.per_core_op_metrics_db_ = per_core_op_metrics_db_;
   return non_overlapped_step_details;
 }
 
@@ -353,6 +354,9 @@ void StepDetails::Combine(const StepDetails& other) {
   events_.insert(events_.end(), other.events_.begin(), other.events_.end());
   collectives_.insert(other.collectives_.begin(), other.collectives_.end());
   AggregateDeviceMemoryTransfers(other.device_memory_transfers_);
+  for (const auto& [core_id, op_metric_db] : other.per_core_op_metrics_db_) {
+    per_core_op_metrics_db_[core_id] = op_metric_db;
+  }
   if (step_name_.empty()) step_name_ = other.step_name_;
 }
 
