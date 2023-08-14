@@ -29,7 +29,7 @@ In pseudocode, the algorithm is as follows:
 
 // Start step 0
 C_0 = cond(args_0)
-N_0 = non_tup(args_0)
+N_0 = non_tpu(args_0)
 if (C_0) {
    F_0 = forward(args_0, N_0)
    T_0 = core_tpu(args_0, N_0, F_0)
@@ -40,7 +40,7 @@ args_1 = update_args(args_0, N_0, T_0)
 
 // Start step 1
 C_1 = cond(args_1)
-N_1 = non_tup(args_1)
+N_1 = non_tpu(args_1)
 if (C_1) {
    F_1 = forward(args_1, N_1)
    // T_1 = core_tpu() is not evaluated here.
