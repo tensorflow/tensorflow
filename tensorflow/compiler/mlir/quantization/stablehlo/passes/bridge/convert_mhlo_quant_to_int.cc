@@ -484,6 +484,10 @@ LogicalResult matchAndRewriteDotLikeOp(OpType &op, OpAdaptorType &adaptor,
     return rewriter.notifyMatchFailure(op, "Unsupported input element type.");
   }
 
+  auto lhs_float32_tensor_type =
+      op.getLhs().getType().clone(rewriter.getF32Type());
+  auto rhs_float32_tensor_type =
+      op.getRhs().getType().clone(rewriter.getF32Type());
   auto res_float32_tensor_type =
       op.getResult().getType().clone(rewriter.getF32Type());
 
@@ -508,14 +512,14 @@ LogicalResult matchAndRewriteDotLikeOp(OpType &op, OpAdaptorType &adaptor,
 
   // Offset xxx_int32_tensor according to zero points.
   Value lhs_float32_tensor = rewriter.create<mhlo::ConvertOp>(
-      op->getLoc(), res_float32_tensor_type, lhs);
+      op->getLoc(), lhs_float32_tensor_type, lhs);
   lhs_float32_tensor = rewriter.create<chlo::BroadcastSubOp>(
-      op->getLoc(), res_float32_tensor_type, lhs_float32_tensor, lhs_zero_point,
+      op->getLoc(), lhs_float32_tensor_type, lhs_float32_tensor, lhs_zero_point,
       nullptr);
   Value rhs_float32_tensor = rewriter.create<mhlo::ConvertOp>(
-      op->getLoc(), res_float32_tensor_type, rhs);
+      op->getLoc(), rhs_float32_tensor_type, rhs);
   rhs_float32_tensor = rewriter.create<chlo::BroadcastSubOp>(
-      op->getLoc(), res_float32_tensor_type, rhs_float32_tensor, rhs_zero_point,
+      op->getLoc(), rhs_float32_tensor_type, rhs_float32_tensor, rhs_zero_point,
       nullptr);
 
   // Execute the conversion target op.
