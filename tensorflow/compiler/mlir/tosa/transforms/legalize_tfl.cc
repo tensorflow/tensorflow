@@ -2283,12 +2283,27 @@ Value getTensorSize(OpBuilder& rewriter, Location loc, Value tensor) {
 }
 
 // Multiply all elements in a 1D tensor and return a scalar value of the same
-// type as the tensor elements containing the product. The given value is
-// expected to be a ranked or unranked tensor.
+// type as the tensor elements containing the product. The given tensor is
+// expected to be a 1D ranked tensor of an integer type.
 Value multiplyTensorElements(PatternRewriter& rewriter, Location loc, Value tensor) {
-  auto product_tensor = rewriter.create<tosa::ReduceProdOp>(loc, tensor, rewriter.getI64IntegerAttr(0));
-  auto zero = rewriter.create<arith::ConstantOp>(loc, rewriter.getIndexAttr(0));
-  return rewriter.create<tensor::ExtractOp>(loc, product_tensor, ValueRange{zero});
+  auto tensor_type = tensor.getType().cast<TensorType>();
+  auto element_type = tensor_type.getElementType().cast<IntegerType>();
+
+  auto one_tensor_type = RankedTensorType::get({}, element_type);
+  Attribute one_attr = rewriter.getIntegerAttr(element_type, 1);
+  auto one_tensor_attr = DenseIntElementsAttr::get(one_tensor_type, {one_attr});
+  Value one = rewriter.create<arith::ConstantOp>(loc, one_tensor_attr);
+
+  auto reduce_op_body = [&](OpBuilder& rewriter, Location loc, ValueRange operands) {
+    Value temp_product = rewriter.create<arith::MulIOp>(loc, operands);
+    rewriter.create<linalg::YieldOp>(loc, temp_product);
+  };
+
+  auto product_tensor = rewriter.create<linalg::ReduceOp>(
+      loc, tensor, one, std::initializer_list<int64_t>{0}, reduce_op_body)
+      .getResult(0);
+
+  return rewriter.create<tensor::ExtractOp>(loc, product_tensor);
 }
 
 // Broadcast the given scalar value to a 1D tensor of the given size. Argument

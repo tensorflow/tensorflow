@@ -39,7 +39,7 @@ def TosaLegalizeTFLPass : Pass<"tosa-legalize-tfl", "mlir::func::FuncOp"> {
 def TosaLegalizeTFTFLPass : Pass<"tosa-legalize-tf-tfl", "mlir::func::FuncOp"> {
   let summary = "Legalize from TensorFlow / TensorFlow Lite to TOSA";
   let constructor = "createLegalizeTFTFLPass()";
-  let dependentDialects = ["TosaDialect"];
+  let dependentDialects = ["TosaDialect", "linalg::LinalgDialect", "scf::SCFDialect"];
 }
 
 def TosaFusebiasTFPass : Pass<"tosa-fuse-bias-tf", "mlir::func::FuncOp"> {

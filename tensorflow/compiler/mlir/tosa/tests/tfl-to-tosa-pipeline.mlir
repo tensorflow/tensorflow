@@ -1011,33 +1011,12 @@ func.func @test_max_pool2d_dynamic(%arg0: tensor<?x32x32x8xf32>) -> tensor<*xf32
 
 // -----
 
-// CHECK-LABEL: test_reshape
-// CHECK: %[[VAR0:.*]] = "tosa.reshape"(%arg0) <{new_shape = array<i64: 1, 819>}>
-func.func @test_reshape(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
+// CHECK-LABEL: test_reshape_constant
+// CHECK: %[[RESULT:.*]] = "tosa.reshape"(%arg0) <{new_shape = array<i64: 1, 819>}>
+// CHECK: return %[[RESULT]] : tensor<1x819xf32>
+func.func @test_reshape_constant(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
   %cst = arith.constant dense<[1, 819]> : tensor<2xi32>
   %0 = "tfl.reshape"(%arg0, %cst) : (tensor<13x21x3xf32>, tensor<2xi32>) -> tensor<*xf32>
-  func.return %0 : tensor<*xf32>
-}
-
-// -----
-
-// CHECK-LABEL: test_reshape_unknown
-// CHECK: %[[VAR0:.*]] = "tosa.reshape"(%arg0) <{new_shape = array<i64: 9, -1>}>
-// CHECK-SAME: -> tensor<9x91xf32>
-func.func @test_reshape_unknown(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
-  %cst = arith.constant dense<[9, -1]> : tensor<2xi32>
-  %0 = "tfl.reshape"(%arg0, %cst) : (tensor<13x21x3xf32>, tensor<2xi32>) -> tensor<*xf32>
-  func.return %0 : tensor<*xf32>
-}
-
-// -----
-
-// CHECK-LABEL: test_reshape_dynamic
-// CHECK: %[[RESULT:.*]] = "tosa.reshape"(%arg0) <{new_shape = array<i64: 3, -1>}> : (tensor<13x21x?xf32>) -> tensor<3x?xf32>
-// CHECK: return %[[RESULT]] : tensor<3x?xf32>
-func.func @test_reshape_dynamic(%arg0: tensor<13x21x?xf32>) -> tensor<*xf32> {
-  %cst = arith.constant dense<[3, -1]> : tensor<2xi32>
-  %0 = "tfl.reshape"(%arg0, %cst) : (tensor<13x21x?xf32>, tensor<2xi32>) -> tensor<*xf32>
   func.return %0 : tensor<*xf32>
 }
 
@@ -1046,7 +1025,30 @@ func.func @test_reshape_dynamic(%arg0: tensor<13x21x?xf32>) -> tensor<*xf32> {
 // CHECK-LABEL: test_reshape_variable_shape
 // CHECK-SAME: %[[ARG0:.*]]: tensor<?xf32>
 // CHECK-SAME: %[[ARG1:.*]]: tensor<2xi32>
-// CHECK: %[[RESULT:.*]] = tensor.reshape %[[ARG0]](%[[ARG1]]) : (tensor<?xf32>, tensor<2xi32>) -> tensor<?x?xf32>
+// CHECK: %[[CONST_MINUS_1_TENSOR:.*]] = "tosa.const"() <{value = dense<-1> : tensor<2xi32>}> : () -> tensor<2xi32>
+// CHECK: %[[CONST_0_INDEX:.*]] = arith.constant 0 : index
+// CHECK: %[[CONST_1_TENSOR:.*]] = "tosa.const"() <{value = dense<1> : tensor<i32>}> : () -> tensor<i32>
+// CHECK: %[[CONST_0_I32:.*]] = arith.constant 0 : i32
+// CHECK: %[[SHAPE_PRODUCT_TENSOR:.*]] = linalg.reduce ins(%[[ARG1]] : tensor<2xi32>) outs(%[[CONST_1_TENSOR]] : tensor<i32>) dimensions = [0]
+// CHECK:   (%[[VAL_0:.*]]: i32, %[[VAL_1:.*]]: i32) {
+// CHECK:     %[[VAL_2:.*]] = arith.muli %[[VAL_0]], %[[VAL_1]] : i32
+// CHECK:     linalg.yield %[[VAL_2]] : i32
+// CHECK:   }
+// CHECK: %[[SHAPE_PRODUCT:.*]] = tensor.extract %[[SHAPE_PRODUCT_TENSOR]][] : tensor<i32>
+// CHECK: %[[SHAPE_PRODUCT_IS_NEGATIVE:.*]] = arith.cmpi slt, %[[SHAPE_PRODUCT]], %[[CONST_0_I32]] : i32
+// CHECK: %[[SHAPE_RESOLVED:.*]] = scf.if %[[SHAPE_PRODUCT_IS_NEGATIVE]] -> (tensor<2xi32>) {
+// CHECK:   %[[VAL_3:.*]] = tensor.dim %[[ARG0]], %[[CONST_0_INDEX]] : tensor<?xf32>
+// CHECK:   %[[VAL_4:.*]] = arith.index_cast %[[VAL_3]] : index to i32
+// CHECK:   %[[VAL_5:.*]] = math.absi %[[SHAPE_PRODUCT]] : i32
+// CHECK:   %[[VAL_6:.*]] = arith.divsi %[[VAL_4]], %[[VAL_5]] : i32
+// CHECK:   %[[VAL_7:.*]] = tensor.splat %[[VAL_6]] : tensor<2xi32>
+// CHECK:   %[[VAL_8:.*]] = arith.cmpi eq, %[[ARG1]], %[[CONST_MINUS_1_TENSOR]] : tensor<2xi32>
+// CHECK:   %[[VAL_9:.*]] = arith.select %[[VAL_8]], %[[VAL_7]], %[[ARG1]] : tensor<2xi1>, tensor<2xi32>
+// CHECK:   scf.yield %[[VAL_9]] : tensor<2xi32>
+// CHECK: } else {
+// CHECK:   scf.yield %[[ARG1]] : tensor<2xi32>
+// CHECK: }
+// CHECK: %[[RESULT:.*]] = tensor.reshape %[[ARG0]](%[[SHAPE_RESOLVED]]) : (tensor<?xf32>, tensor<2xi32>) -> tensor<?x?xf32>
 // CHECK: return %[[RESULT]] : tensor<?x?xf32>
 func.func @test_reshape_variable_shape(%arg0: tensor<?xf32>, %arg1: tensor<2xi32>) -> tensor<?x?xf32> {
   %0 = "tfl.reshape"(%arg0, %arg1) : (tensor<?xf32>, tensor<2xi32>) -> tensor<?x?xf32>
@@ -1055,11 +1057,87 @@ func.func @test_reshape_variable_shape(%arg0: tensor<?xf32>, %arg1: tensor<2xi32
 
 // -----
 
+// CHECK-LABEL: test_reshape_unranked
+// CHECK: %[[CONST_MINUS_1_TENSOR:.*]] = "tosa.const"() <{value = dense<-1> : tensor<i32>}> : () -> tensor<i32>
+// CHECK: %[[CONST_1:.*]] = arith.constant 1 : index
+// CHECK: %[[CONST_0:.*]] = arith.constant 0 : index
+// CHECK: %[[CONST_1_TENSOR:.*]] = "tosa.const"() <{value = dense<1> : tensor<i32>}> : () -> tensor<i32>
+// CHECK: %[[CONST_0_I32:.*]] = arith.constant 0 : i32
+// CHECK: %[[SHAPE_RANKED:.*]] = tensor.cast %[[ARG1]] : tensor<*xi32> to tensor<?xi32>
+// CHECK: %[[SHAPE_PRODUCT_TENSOR:.*]] = linalg.reduce ins(%[[SHAPE_RANKED]] : tensor<?xi32>) outs(%[[CONST_1_TENSOR]] : tensor<i32>) dimensions = [0]
+// CHECK:   (%[[VAL_0:.*]]: i32, %[[VAL_1:.*]]: i32) {
+// CHECK:     %[[VAL_2:.*]] = arith.muli %[[VAL_0]], %[[VAL_1]] : i32
+// CHECK:     linalg.yield %[[VAL_2]] : i32
+// CHECK:   }
+// CHECK: %[[SHAPE_PRODUCT:.*]] = tensor.extract %[[SHAPE_PRODUCT_TENSOR]][] : tensor<i32>
+// CHECK: %[[SHAPE_PRODUCT_IS_NEGATIVE:.*]] = arith.cmpi slt, %[[SHAPE_PRODUCT]], %[[CONST_0_I32]] : i32
+// CHECK: %[[SHAPE_RESOLVED:.*]] = scf.if %[[SHAPE_PRODUCT_IS_NEGATIVE]] -> (tensor<?xi32>) {
+// CHECK:   %[[VAL_3:.*]] = tensor.rank %[[ARG0]] : tensor<*xf32>
+// CHECK:   %[[INPUT_TENSOR_SIZE:.*]] = scf.for %[[VAL_4:.*]] = %[[CONST_0]] to %[[VAL_3]] step %[[CONST_1]] iter_args(%[[VAL_5:.*]] = %[[CONST_1]]) -> (index) {
+// CHECK:     %[[VAL_6:.*]] = tensor.dim %[[ARG0]], %[[VAL_4]] : tensor<*xf32>
+// CHECK:     %[[VAL_7:.*]] = arith.muli %[[VAL_5]], %[[VAL_6]] : index
+// CHECK:     scf.yield %[[VAL_7]] : index
+// CHECK:   }
+// CHECK:   %[[INPUT_TENSOR_SIZE_I32:.*]] = arith.index_cast %[[INPUT_TENSOR_SIZE]] : index to i32
+// CHECK:   %[[SHAPE_PRODUCT_ABS:.*]] = math.absi %[[SHAPE_PRODUCT]] : i32
+// CHECK:   %[[VAL_8:.*]] = tensor.dim %[[ARG1]], %[[CONST_0]] : tensor<*xi32>
+// CHECK:   %[[SHAPE_WILDCARD_REPLACEMENT:.*]] = arith.divsi %[[INPUT_TENSOR_SIZE_I32]], %[[SHAPE_PRODUCT_ABS]] : i32
+// CHECK:   %[[VAL_9:.*]] = tensor.from_elements %[[SHAPE_WILDCARD_REPLACEMENT]] : tensor<i32>
+// CHECK:   %[[VAL_10:.*]] = tensor.empty(%[[VAL_8]]) : tensor<?xi32>
+// CHECK:   %[[SHAPE_WILDCARD_REPLACEMENT_BROADCAST:.*]] = linalg.broadcast ins(%[[VAL_9]] : tensor<i32>) outs(%[[VAL_10]] : tensor<?xi32>) dimensions = [0]
+// CHECK:   %[[VAL_11:.*]] = tensor.empty(%[[VAL_8]]) : tensor<?xi32>
+// CHECK:   %[[CONST_MINUS_1_BROADCAST:.*]] = linalg.broadcast ins(%[[CONST_MINUS_1_TENSOR]] : tensor<i32>) outs(%[[VAL_11]] : tensor<?xi32>) dimensions = [0]
+// CHECK:   %[[VAL_12:.*]] = arith.cmpi eq, %[[SHAPE_RANKED]], %[[CONST_MINUS_1_BROADCAST]] : tensor<?xi32>
+// CHECK:   %[[VAL_13:.*]] = arith.select %[[VAL_12]], %[[SHAPE_WILDCARD_REPLACEMENT_BROADCAST]], %[[SHAPE_RANKED]] : tensor<?xi1>, tensor<?xi32>
+// CHECK:   scf.yield %[[VAL_13]] : tensor<?xi32>
+// CHECK: } else {
+// CHECK:   scf.yield %[[SHAPE_RANKED]] : tensor<?xi32>
+// CHECK: }
+// CHECK: %[[RESULT:.*]] = tensor.reshape %[[ARG0]](%[[SHAPE_RESOLVED]]) : (tensor<*xf32>, tensor<?xi32>) -> tensor<*xf32>
+// CHECK: return %[[RESULT]] : tensor<*xf32>
+func.func @test_reshape_unranked(%arg0: tensor<*xf32>, %arg1: tensor<*xi32>) -> tensor<*xf32> {
+  %0 = "tfl.reshape"(%arg0, %arg1) : (tensor<*xf32>, tensor<*xi32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
+// -----
+
 // CHECK-LABEL: test_reshape_complex
-// CHECK-SAME: %[[ARG0:.*]]: tensor<?x1x257xcomplex<f32>>
-// CHECK: %[[CONST:.*]] = "tosa.const"() <{value = dense<[-1, 257]> : tensor<2xi32>}> : () -> tensor<2xi32>
-// CHECK: %[[RESULT:.*]] = tensor.reshape %[[ARG0]](%[[CONST]]) : (tensor<?x1x257xcomplex<f32>>, tensor<2xi32>) -> tensor<?x257xcomplex<f32>>
-// CHECK: return %[[RESULT]] : tensor<?x257xcomplex<f32>>
+// CHECK-SAME: %[[ARG0:.*]]: tensor<?x1x257x2xf32>
+// CHECK: %[[CONST_MINUS_1_TENSOR:.*]] = "tosa.const"() <{value = dense<-1> : tensor<3xi32>}> : () -> tensor<3xi32>
+// CHECK: %[[CONST_4:.*]] = arith.constant 4 : index
+// CHECK: %[[CONST_1:.*]] = arith.constant 1 : index
+// CHECK: %[[CONST_0:.*]] = arith.constant 0 : index
+// CHECK: %[[CONST_2_TENSOR:.*]] = "tosa.const"() <{value = dense<2> : tensor<1xi32>}> : () -> tensor<1xi32>
+// CHECK: %[[CONST_1_TENSOR:.*]] = "tosa.const"() <{value = dense<1> : tensor<i32>}> : () -> tensor<i32>
+// CHECK: %[[CONST_0_I32:.*]] = arith.constant 0 : i32
+// CHECK: %[[SHAPE:.*]] = "tosa.const"() <{value = dense<[-1, 257]> : tensor<2xi32>}> : () -> tensor<2xi32>
+// CHECK: %[[EXTENDED_SHAPE:.*]] = "tosa.concat"(%[[SHAPE]], %[[CONST_2_TENSOR]]) <{axis = 0 : i64}> : (tensor<2xi32>, tensor<1xi32>) -> tensor<3xi32>
+// CHECK: %[[SHAPE_PRODUCT_TENSOR:.*]] = linalg.reduce ins(%[[EXTENDED_SHAPE]] : tensor<3xi32>) outs(%[[CONST_1_TENSOR]] : tensor<i32>) dimensions = [0]
+// CHECK:   (%[[VAL_0:.*]]: i32, %[[VAL_1:.*]]: i32) {
+// CHECK:     %[[VAL_2:.*]] = arith.muli %[[VAL_0]], %[[VAL_1]] : i32
+// CHECK:     linalg.yield %[[VAL_2]] : i32
+// CHECK:   }
+// CHECK: %[[SHAPE_PRODUCT_SCALAR:.*]] = tensor.extract %[[SHAPE_PRODUCT_TENSOR]][] : tensor<i32>
+// CHECK: %[[SHAPE_PRODUCT_IS_NEGATIVE:.*]] = arith.cmpi slt, %[[SHAPE_PRODUCT_SCALAR]], %[[CONST_0_I32]] : i32
+// CHECK: %[[SHAPE_EXPANDED:.*]] = scf.if %[[SHAPE_PRODUCT_IS_NEGATIVE]] -> (tensor<3xi32>) {
+// CHECK:   %[[INPUT_SIZE:.*]] = scf.for %[[VAL_3:.*]] = %[[CONST_0]] to %[[CONST_4]] step %[[CONST_1]] iter_args(%[[VAL_4:.*]] = %[[CONST_1]]) -> (index) {
+// CHECK:     %[[VAL_5:.*]] = tensor.dim %[[ARG0]], %[[VAL_3]] : tensor<?x1x257x2xf32>
+// CHECK:     %[[VAL_6:.*]] = arith.muli %[[VAL_4]], %[[VAL_5]] : index
+// CHECK:     scf.yield %[[VAL_6]] : index
+// CHECK:   }
+// CHECK:   %[[INPUT_SIZE_I32:.*]] = arith.index_cast %[[INPUT_SIZE]] : index to i32
+// CHECK:   %[[SHAPE_PRODUCT_ABS:.*]] = math.absi %[[SHAPE_PRODUCT_SCALAR]] : i32
+// CHECK:   %[[SHAPE_WILDCARD_RESOLVED:.*]] = arith.divsi %[[INPUT_SIZE_I32]], %[[SHAPE_PRODUCT_ABS]] : i32
+// CHECK:   %[[SHAPE_WILDCARD_SPLAT:.*]] = tensor.splat %[[SHAPE_WILDCARD_RESOLVED]] : tensor<3xi32>
+// CHECK:   %[[SHAPE_WILDCARD_MASK:.*]] = arith.cmpi eq, %[[EXTENDED_SHAPE]], %[[CONST_MINUS_1_TENSOR]] : tensor<3xi32>
+// CHECK:   %[[VAL_7:.*]] = arith.select %[[SHAPE_WILDCARD_MASK]], %[[SHAPE_WILDCARD_SPLAT]], %[[EXTENDED_SHAPE]] : tensor<3xi1>, tensor<3xi32>
+// CHECK:   scf.yield %[[VAL_7]] : tensor<3xi32>
+// CHECK: } else {
+// CHECK:   scf.yield %[[EXTENDED_SHAPE]] : tensor<3xi32>
+// CHECK: }
+// CHECK: %[[RESULT:.*]] = tensor.reshape %[[ARG0]](%[[SHAPE_EXPANDED]]) : (tensor<?x1x257x2xf32>, tensor<3xi32>) -> tensor<?x257x2xf32>
+// CHECK: return %[[RESULT]] : tensor<?x257x2xf32>
 func.func @test_reshape_complex(%arg0: tensor<?x1x257xcomplex<f32>>) -> tensor<?x257xcomplex<f32>> {
   %cst = "tfl.pseudo_const"() {value = dense<[-1, 257]> : tensor<2xi32>} : () -> tensor<2xi32>
   %1 = "tfl.reshape"(%arg0, %cst) : (tensor<?x1x257xcomplex<f32>>, tensor<2xi32>) -> tensor<?x257xcomplex<f32>>
