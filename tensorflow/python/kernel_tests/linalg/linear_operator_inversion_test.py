@@ -97,6 +97,15 @@ class LinearOperatorInversionTest(
     self.assertTrue(operator_inv.is_non_singular)
     self.assertFalse(operator_inv.is_self_adjoint)
 
+  def test_solve_on_inverse(self):
+    # The matrix values do not effect auto-setting of the flags.
+    matrix = [[1., 0.], [1., 1.]]
+    operator = linalg.LinearOperatorFullMatrix(matrix)
+    operator_inv = operator.inverse()
+    solved_result = operator_inv.solve(operator)
+    self.assertIsInstance(
+        solved_result, linalg.LinearOperatorComposition)
+
   def test_inverse_of_inverse(self):
     # The matrix values do not effect auto-setting of the flags.
     matrix = [[1., 0.], [1., 1.]]

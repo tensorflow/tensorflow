@@ -184,19 +184,6 @@ cuda_py_strict_test(
 )
 
 cuda_py_strict_test(
-    name = "linear_operator_algebra_test",
-    size = "small",
-    srcs = ["linear_operator_algebra_test.py"],
-    deps = [
-        "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/ops/linalg:linear_operator",
-        "//tensorflow/python/ops/linalg:linear_operator_algebra",
-        "//tensorflow/python/ops/linalg:solve_registrations",
-        "//tensorflow/python/platform:client_testlib",
-    ],
-)
-
-cuda_py_strict_test(
     name = "linear_operator_block_diag_test",
     size = "medium",
     srcs = ["linear_operator_block_diag_test.py"],

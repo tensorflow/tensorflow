@@ -27,7 +27,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.linalg import linalg_impl as linalg
 from tensorflow.python.ops.linalg import linear_operator
 from tensorflow.python.ops.linalg import linear_operator_addition
-from tensorflow.python.ops.linalg import linear_operator_algebra
 from tensorflow.python.ops.linalg import linear_operator_full_matrix
 from tensorflow.python.ops.linalg import linear_operator_identity
 from tensorflow.python.ops.linalg import linear_operator_util
@@ -772,7 +771,7 @@ class LinearOperatorBlockLowerTriangular(linear_operator.LinearOperator):
             " {} but got {}.".format(
                 left_operator.domain_dimension, right_operator.range_dimension))
       with self._name_scope(name):  # pylint: disable=not-callable
-        return linear_operator_algebra.solve(left_operator, right_operator)
+        return self._linop_solve(left_operator, right_operator)
 
     with self._name_scope(name):  # pylint: disable=not-callable
       block_dimensions = (self._block_domain_dimensions() if adjoint

@@ -2859,8 +2859,6 @@ py_strict_library(
         "//tensorflow/python/autograph",
         "//tensorflow/python/compiler/tensorrt:trt_convert_py",
         "//tensorflow/python/eager:wrap_function",
-        "//tensorflow/python/ops/linalg:linear_operator_algebra",
-        "//tensorflow/python/ops/linalg:solve_registrations",
         "//tensorflow/python/ops/parallel_for:control_flow_ops",
         "//tensorflow/python/ops/ragged:ragged_batch_gather_ops",
         "//tensorflow/python/ops/ragged:ragged_batch_gather_with_default_op",

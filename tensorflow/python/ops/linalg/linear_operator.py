@@ -37,7 +37,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.linalg import linalg_impl as linalg
-from tensorflow.python.ops.linalg import linear_operator_algebra
 from tensorflow.python.ops.linalg import linear_operator_util
 from tensorflow.python.ops.linalg import property_hint_util
 from tensorflow.python.ops.linalg import slicing
@@ -963,7 +962,7 @@ class LinearOperator(
             " {} but got {}.".format(
                 left_operator.domain_dimension, right_operator.range_dimension))
       with self._name_scope(name):  # pylint: disable=not-callable
-        return linear_operator_algebra.solve(left_operator, right_operator)
+        return self._linop_solve(left_operator, right_operator)
 
     with self._name_scope(name):  # pylint: disable=not-callable
       rhs = tensor_conversion.convert_to_tensor_v2_with_dispatch(
@@ -978,6 +977,48 @@ class LinearOperator(
               rhs.shape[arg_dim])
 
       return self._solve(rhs, adjoint=adjoint, adjoint_arg=adjoint_arg)
+
+  def _linop_solve(
+      self, left_operator: "LinearOperator", right_operator: "LinearOperator"
+    ) -> "LinearOperator":
+    # instance of linear_operator_identity.LinearOperatorIdentity
+    if hasattr(right_operator, "_ones_diag") and not hasattr(
+        right_operator, "multiplier"
+    ):
+      return left_operator.inverse()
+
+    # Generic solve of two `LinearOperator`s.
+    is_square = property_hint_util.is_square(left_operator, right_operator)
+    is_non_singular = None
+    is_self_adjoint = None
+    is_positive_definite = None
+
+    if is_square:
+      is_non_singular = property_hint_util.combined_non_singular_hint(
+          left_operator, right_operator
+      )
+    elif is_square is False:  # pylint:disable=g-bool-id-comparison
+      is_non_singular = False
+      is_self_adjoint = False
+      is_positive_definite = False
+
+    # LinearOperator outputs a LinearOperatorComposition instance that contains
+    # a LinearOperatorInversion instance, both of which
+    # inherit from LinearOperator. The inline import is necessary to avoid
+    # errors due to this cyclic dependency.
+    from tensorflow.python.ops.linalg import linear_operator_composition  # pylint: disable=g-import-not-at-top
+    from tensorflow.python.ops.linalg import linear_operator_inversion  # pylint: disable=g-import-not-at-top
+
+    return linear_operator_composition.LinearOperatorComposition(
+        operators=[
+            linear_operator_inversion.LinearOperatorInversion(left_operator),
+            right_operator,
+        ],
+        is_non_singular=is_non_singular,
+        is_self_adjoint=is_self_adjoint,
+        is_positive_definite=is_positive_definite,
+        is_square=is_square,
+    )
 
   def _solvevec(self, rhs, adjoint=False):
     """Default implementation of _solvevec."""

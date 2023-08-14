@@ -150,7 +150,6 @@ py_strict_library(
         ":linalg_impl",
         ":linear_operator",
         ":linear_operator_addition",
-        ":linear_operator_algebra",
         ":linear_operator_full_matrix",
         ":linear_operator_identity",
         ":linear_operator_util",
@@ -180,7 +179,6 @@ py_strict_library(
     ],
     deps = [
         ":linalg_impl",
-        ":linear_operator_algebra",
         ":linear_operator_util",
         ":property_hint_util",
         ":slicing",
@@ -212,15 +210,6 @@ py_strict_library(
         "//tensorflow/python/util:tf_export",
         "//tensorflow/python/util:variable_utils",
         "//third_party/py/numpy",
-    ],
-)
-
-py_strict_library(
-    name = "linear_operator_algebra",
-    srcs = ["linear_operator_algebra.py"],
-    deps = [
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/util:tf_inspect",
     ],
 )
 
@@ -267,7 +256,6 @@ py_strict_library(
     srcs = ["linear_operator_block_diag.py"],
     deps = [
         ":linear_operator",
-        ":linear_operator_algebra",
         ":linear_operator_util",
         ":property_hint_util",
         "//tensorflow/python/framework:common_shapes",
@@ -340,7 +328,6 @@ py_strict_library(
     deps = [
         ":linalg_impl",
         ":linear_operator",
-        ":linear_operator_algebra",
         ":linear_operator_block_diag",
         ":linear_operator_block_lower_triangular",
         ":linear_operator_circulant",
@@ -354,7 +341,6 @@ py_strict_library(
         ":linear_operator_toeplitz",
         ":linear_operator_tridiag",
         ":linear_operator_zeros",
-        ":solve_registrations",
     ],
 )
 
@@ -387,20 +373,6 @@ py_strict_library(
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:nn",
         "//tensorflow/python/util:tf_export",
-    ],
-)
-
-py_strict_library(
-    name = "solve_registrations",
-    srcs = ["solve_registrations.py"],
-    deps = [
-        ":linear_operator",
-        ":linear_operator_algebra",
-        ":linear_operator_block_diag",
-        ":linear_operator_circulant",
-        ":linear_operator_diag",
-        ":linear_operator_identity",
-        ":property_hint_util",
     ],
 )
 

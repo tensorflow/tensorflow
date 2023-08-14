@@ -345,6 +345,14 @@ class LinearOperatorIdentity(BaseLinearOperatorIdentity):
     del left_operator
     return right_operator
 
+  def _linop_solve(
+      self,
+      left_operator: "LinearOperatorIdentity",
+      right_operator: linear_operator.LinearOperator,
+  ) -> linear_operator.LinearOperator:
+    del left_operator
+    return right_operator
+
   def _assert_non_singular(self):
     return control_flow_ops.no_op("assert_non_singular")
 
@@ -796,6 +804,36 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
           is_square=True)
     else:
       return super()._linop_matmul(left_operator, right_operator)
+
+  def _linop_solve(
+      self,
+      left_operator: "LinearOperatorScaledIdentity",
+      right_operator: linear_operator.LinearOperator,
+  ) -> linear_operator.LinearOperator:
+    is_non_singular = property_hint_util.combined_non_singular_hint(
+        left_operator, right_operator)
+    is_self_adjoint = property_hint_util.combined_commuting_self_adjoint_hint(
+        left_operator, right_operator)
+    is_positive_definite = (
+        property_hint_util.combined_commuting_positive_definite_hint(
+            left_operator, right_operator))
+    if isinstance(right_operator, LinearOperatorScaledIdentity):
+      return LinearOperatorScaledIdentity(
+          num_rows=left_operator.domain_dimension_tensor(),
+          multiplier=right_operator.multiplier / left_operator.multiplier,
+          is_non_singular=is_non_singular,
+          is_self_adjoint=is_self_adjoint,
+          is_positive_definite=is_positive_definite,
+          is_square=True)
+    elif isinstance(right_operator, linear_operator_diag.LinearOperatorDiag):
+      return linear_operator_diag.LinearOperatorDiag(
+          diag=right_operator.diag / left_operator.multiplier,
+          is_non_singular=is_non_singular,
+          is_self_adjoint=is_self_adjoint,
+          is_positive_definite=is_positive_definite,
+          is_square=True)
+    else:
+      return super()._linop_solve(left_operator, right_operator)
 
   def _matmul(self, x, adjoint=False, adjoint_arg=False):
     x = linalg.adjoint(x) if adjoint_arg else x
