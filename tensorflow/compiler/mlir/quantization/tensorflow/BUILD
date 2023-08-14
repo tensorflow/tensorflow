@@ -576,6 +576,7 @@ tf_proto_library(
     ],
     cc_api_version = 2,
     make_default_target_header_only = True,
+    protodeps = ["//tensorflow/core:protos_all"],
     visibility = ["//visibility:public"],
 )
 

@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package tensorflow.quantization;
 
+import "tensorflow/core/framework/tensor.proto";
+
 option cc_enable_arenas = true;
 
 // This file contains the definition of TF GraphDef-level mixed-precision
@@ -135,6 +137,21 @@ message FreezeAllVariables {
   bool enabled = 1;
 }
 
+// The data format of each sample in the representative dataset.
+message RepresentativeDataSample {
+  map<string, TensorProto> tensor_proto_inputs = 2;
+}
+
+// Specifies the type and path to the representative dataset.
+// NEXT ID: 2
+message RepresentativeDatasetFile {
+  // Only TfRecord file is supported at the moment but defining this field
+  // as oneof so it can be easily extended to support other types.
+  oneof dataset_file {
+    string tfrecord_file_path = 1;
+  }
+}
+
 // Defines various options to specify and control the behavior of the quantizer.
 // It consists of
 // 1) Model-wise quantization configuration as a default configuration. If it is
@@ -142,7 +159,7 @@ message FreezeAllVariables {
 // 2) A set of supported operations.
 // 3) Unit wise quantization precision.
 // 4) Target hardware name.
-// NEXT ID: 11
+// NEXT ID: 15
 message QuantizationOptions {
   // The default quantization configuration for the model. If the below
   // unit-wise configuration does not exist, we use this quantization
@@ -171,38 +188,49 @@ message QuantizationOptions {
   // ambiguity in this unit-wise precision, our quantizer will raise an error.
   repeated UnitWiseQuantizationSpec unit_wise_quantization_spec = 3;
 
+  // (TF1 SavedModel only) Collection of tags identifying the MetaGraphDef
+  // within the SavedModel to analyze. If not specified, ["serve"] is used.
+  repeated string tags = 5;
+
+  // Sequence of keys identifying SignatureDef containing inputs and outputs.
+  // If not specified, ["serving_default"] is used.
+  repeated string signature_keys = 6;
+
+  // A map from signature keys to the corresponding representative dataset.
+  map<string, RepresentativeDatasetFile> representative_datasets = 7;
+
   // Minimum number of weight elements to apply quantization. Currently only
   // supported for Post-training Dynamic Range Quantization. By default, it is
   // set to 1024. To disable this, set the value to -1 explicitly.
-  int64 min_num_elements_for_weights = 4;
+  int64 min_num_elements_for_weights = 8;
 
   // When set to `true`, freezes all variables in the model into constants.
   // When set to `false` the model's large constants are converted to variables.
   // Setting this to `false` is an experimental feature and quantization may
   // fail. To quantize models larger than 2 GiB, this should be set to `false`.
   // If not set, it defaults to `true`.
-  FreezeAllVariables freeze_all_variables = 5;
+  FreezeAllVariables freeze_all_variables = 9;
 
   // Enables chnanel-wise quantizaiton. By default, channel-wise quantization is
   // not applied regardless of the op support. Currently, it is supported for
   // Uniform Quantized opset only.
-  bool enable_per_channel_quantization = 6;
+  bool enable_per_channel_quantization = 10;
 
   // Enables two inputs of an operation to be both tensors.
   // Currently supports MatMul and BatchMatMul ops for XLA.
   // TODO(b/263528090): Check the condition when this feature is beneficial.
-  bool enable_two_input_tensors = 7;
+  bool enable_two_input_tensors = 11;
 
   // Supports TPU model quantization. If the target model for the quantization
   // is already converted for TPU, this flag may be helpful. Note that this
   // feature may be unstable as it is under the experimental stage.
-  bool experimental_enable_tpu_model_support = 8;
+  bool experimental_enable_tpu_model_support = 12;
 
   // Produces legacy weight-only graph where the qconst op(containing quantized
   // values) is followed by a dequantization op.
-  bool enable_legacy_weight_only = 9;
+  bool enable_legacy_weight_only = 13;
 
   // If set to true, it forces calibration in graph model instead of eager mode
   // when the context is in eager mode.
-  bool force_graph_mode_calibration = 10;
+  bool force_graph_mode_calibration = 14;
 }
