@@ -530,43 +530,130 @@ void GenerateOutfeedStrategy(const HloInstruction* ins, const Shape& shape,
        std::move(resharding_costs), input_shardings}));
 }
 
+double ComputeCommunicationCost(
+    const HloInstruction* ins,
+    const std::vector<std::optional<HloSharding>>& operand_shardings,
+    const ClusterEnvironment& cluster_env) {
+  switch (ins->opcode()) {
+    case HloOpcode::kGather: {
+      if (operand_shardings[0].has_value() &&
+          !operand_shardings[0]->IsReplicated()) {
+        auto mesh_shape = cluster_env.device_mesh_.dimensions();
+        auto mesh_dim = std::distance(
+            mesh_shape.begin(),
+            std::max_element(mesh_shape.begin(), mesh_shape.end()));
+        // As seen in the test
+        // SpmdPartitioningTest.GatherPartitionedOnTrivialSliceDims (in file
+        // third_party/tensorflow/compiler/xla/service/spmd/spmd_partitioner_test.cc),
+        // when the gather op is replicated, and the first operand sharded, we
+        // need an AllReduce to implement the gather op. We capture that cost
+        // here.
+        // TODO(pratikf) Model gather communication costs in a more principled
+        // and exhaustive manner.
+        return cluster_env.AllReduceCost(GetBytes(ins->shape()), mesh_dim);
+      }
+      return 0;
+    }
+    default:
+      LOG(FATAL) << "Unhandled instruction " << ins->ToString();
+  }
+}
+
 // Add "Replicate()" strategy
-void AddReplicatedStrategy(const HloInstruction* ins, const Shape& shape,
-                           const ClusterEnvironment& cluster_env,
-                           const StrategyMap& strategy_map,
-                           std::unique_ptr<StrategyVector>& strategies,
-                           double replicated_penalty) {
-  HloSharding output_spec = HloSharding::Replicate();
 
-  std::vector<std::vector<double>> resharding_costs;
-  std::vector<std::optional<HloSharding>> input_shardings;
+// By default, when adding a replicated strategy for an op, we specify that all
+// its operands need to be replicated as well (via the input_shardings field on
+// a ShardingStrategy). When operands_to_consider_all_strategies_for is
+// non-empty however, instead of merely allowing the operands to be replicated,
+// we allos greater freedom for the shardings of the operands included in the
+// set. More specifically, for these operands, we consider all generated
+// strategies for those operands (instead of just replication) as potentially
+// allowable shardings.
+void AddReplicatedStrategy(
+    const HloInstruction* ins, const Shape& shape,
+    const ClusterEnvironment& cluster_env, const StrategyMap& strategy_map,
+    std::unique_ptr<StrategyVector>& strategies, double replicated_penalty,
+    absl::flat_hash_set<int64_t> operands_to_consider_all_strategies_for = {}) {
+  HloSharding replicated_strategy = HloSharding::Replicate();
+  HloSharding output_spec = replicated_strategy;
+  double memory_cost = GetBytes(shape) / output_spec.NumTiles();
 
-  if (ins->operand_count() > 0 && ins->operand(0)->shape().IsTuple()) {
-    CHECK_EQ(ins->operand_count(), 1)
-        << "Do not support instructions with more than one tuple "
-           "operand. If this CHECK fails, we will need to fix "
-           "b/233412625.";
-    std::tie(resharding_costs, input_shardings) =
-        ReshardingCostsForTupleOperand(ins->operand(0),
-                                       strategy_map.at(ins->operand(0)).get());
-  } else {
+  CHECK_LE(operands_to_consider_all_strategies_for.size(), 1);
+  if (!operands_to_consider_all_strategies_for.empty()) {
+    int64_t operand_to_consider_all_strategies_for =
+        *operands_to_consider_all_strategies_for.begin();
+    auto operand = ins->operand(operand_to_consider_all_strategies_for);
+    CHECK(!operand->shape().IsTuple());
+    auto operand_strategies_to_consider = strategy_map.at(operand).get();
+    std::vector<std::vector<std::optional<HloSharding>>>
+        possible_input_shardings(
+            operand_strategies_to_consider->leaf_vector.size(),
+            std::vector<std::optional<HloSharding>>(ins->operand_count()));
+    std::vector<std::vector<std::vector<double>>> possible_resharding_costs(
+        operand_strategies_to_consider->leaf_vector.size(),
+        std::vector<std::vector<double>>(ins->operand_count()));
+
     for (int64_t k = 0; k < ins->operand_count(); ++k) {
-      auto operand = ins->operand(k);
-      if (ins->opcode() == HloOpcode::kConditional) {
-        resharding_costs.push_back(std::vector<double>(
-            strategy_map.at(operand)->leaf_vector.size(), 0));
+      CHECK(!ins->operand(k)->shape().IsTuple());
+      if (k == operand_to_consider_all_strategies_for) {
+        CHECK_EQ(possible_input_shardings.size(),
+                 operand_strategies_to_consider->leaf_vector.size());
+        for (size_t j = 0; j < possible_input_shardings.size(); ++j) {
+          possible_input_shardings[j][k] =
+              operand_strategies_to_consider->leaf_vector[j].output_sharding;
+          possible_resharding_costs[j][k] = ReshardingCostVector(
+              strategy_map.at(ins->operand(k)).get(), ins->operand(k)->shape(),
+              operand_strategies_to_consider->leaf_vector[j].output_sharding,
+              cluster_env);
+        }
       } else {
-        resharding_costs.push_back(ReshardingCostVector(
-            strategy_map.at(operand).get(), ins->operand(k)->shape(),
-            output_spec, cluster_env));
-        input_shardings.push_back(output_spec);
+        for (size_t j = 0; j < possible_input_shardings.size(); ++j) {
+          possible_input_shardings[j][k] = replicated_strategy;
+          possible_resharding_costs[j][k] = ReshardingCostVector(
+              strategy_map.at(ins->operand(k)).get(), ins->operand(k)->shape(),
+              replicated_strategy, cluster_env);
+        }
       }
     }
+
+    for (size_t j = 0; j < possible_input_shardings.size(); ++j) {
+      double communication_cost = ComputeCommunicationCost(
+          ins, possible_input_shardings[j], cluster_env);
+      strategies->leaf_vector.push_back(ShardingStrategy(
+          {"R", replicated_strategy, replicated_penalty, communication_cost,
+           memory_cost, std::move(possible_resharding_costs[j]),
+           std::move(possible_input_shardings[j])}));
+    }
+  } else {
+    std::vector<std::vector<double>> resharding_costs;
+    std::vector<std::optional<HloSharding>> input_shardings;
+
+    if (ins->operand_count() > 0 && ins->operand(0)->shape().IsTuple()) {
+      CHECK_EQ(ins->operand_count(), 1)
+          << "Do not support instructions with more than one tuple "
+             "operand. If this CHECK fails, we will need to fix "
+             "b/233412625.";
+      std::tie(resharding_costs, input_shardings) =
+          ReshardingCostsForTupleOperand(
+              ins->operand(0), strategy_map.at(ins->operand(0)).get());
+    } else {
+      for (int64_t k = 0; k < ins->operand_count(); ++k) {
+        auto operand = ins->operand(k);
+        if (ins->opcode() == HloOpcode::kConditional) {
+          resharding_costs.push_back(std::vector<double>(
+              strategy_map.at(operand)->leaf_vector.size(), 0));
+        } else {
+          resharding_costs.push_back(ReshardingCostVector(
+              strategy_map.at(operand).get(), ins->operand(k)->shape(),
+              output_spec, cluster_env));
+          input_shardings.push_back(output_spec);
+        }
+      }
+    }
+    strategies->leaf_vector.push_back(ShardingStrategy(
+        {"R", HloSharding::Replicate(), replicated_penalty, 0, memory_cost,
+         std::move(resharding_costs), input_shardings}));
   }
-  double memory_cost = GetBytes(shape) / output_spec.NumTiles();
-  strategies->leaf_vector.push_back(ShardingStrategy(
-      {"R", HloSharding::Replicate(), replicated_penalty, 0, memory_cost,
-       std::move(resharding_costs), input_shardings}));
 }
 
 // TODO(pratikf) Communication costs for sort HLO ops. This is currently a
@@ -1493,8 +1580,9 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                  input_shardings_optional}));
           }
         }
-        AddReplicatedStrategy(ins, ins->shape(), cluster_env, strategy_map,
-                              strategies, 0);
+        AddReplicatedStrategy(
+            ins, ins->shape(), cluster_env, strategy_map, strategies, 0,
+            /* operands_to_consider_all_strategies_for */ {0});
         break;
       }
       case HloOpcode::kBroadcast: {
