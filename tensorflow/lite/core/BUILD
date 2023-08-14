@@ -376,7 +376,6 @@ cc_test(
     ],
     deps = [
         ":framework",
-        "//tensorflow/core/platform:resource_loader",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:interpreter_test_util",
         "//tensorflow/lite:string",
