@@ -32,6 +32,7 @@ HIP_RUNTIME_LIBRARY = '%{hip_runtime_library}'
 ROCR_RUNTIME_PATH = '%{rocr_runtime_path}'
 ROCR_RUNTIME_LIBRARY = '%{rocr_runtime_library}'
 VERBOSE = '%{crosstool_verbose}'=='1'
+CPU_COMPILER_IS_CLANG = '%{crosstool_clang}'=='1'
 
 def Log(s):
   print('gpus/crosstool: {0}'.format(s))
@@ -203,6 +204,22 @@ def InvokeHipcc(argv, log=False):
   if VERBOSE: print(cmd)
   return system(cmd)
 
+def SanitizeArgsForCpuCompiler(argv):
+    parser = ArgumentParser(fromfile_prefix_chars="@")
+    parser.add_argument("--rocm_log", dest="ignored", action='store_true')
+    # Strip -z arguments directly passed to the compiler driver
+    parser.add_argument("-z", action="append")
+    if CPU_COMPILER_IS_CLANG:
+        parser.add_argument("-pass-exit-codes", dest="ignored", action='store_true')
+        parser.add_argument(
+            "-fno-canonical-system-headers", dest="ignored", action='store_true'
+        )
+    known, args = parser.parse_known_args(argv)
+    if known.z:
+        for z in known.z:
+            args.extend(["-z", z.strip()])
+
+    return args
 
 def main():
   # ignore PWD env var
@@ -230,8 +247,7 @@ def main():
     # use host compiler as linker, but we have to link with HCC/HIP runtime.
     # Such restriction would be revised further as the bazel script get
     # improved to fine tune dependencies to ROCm libraries.
-    gpu_linker_flags = [flag for flag in sys.argv[1:]
-                               if not flag.startswith(('--rocm_log'))]
+    gpu_linker_flags = SanitizeArgsForCpuCompiler(sys.argv[1:])
 
     gpu_linker_flags.append('-L' + ROCR_RUNTIME_PATH)
     gpu_linker_flags.append('-Wl,-rpath=' + ROCR_RUNTIME_PATH)
@@ -253,9 +269,7 @@ def main():
     # We not only want to pass -x to the CPU compiler, but also keep it in its
     # relative location in the argv list (the compiler is actually sensitive to
     # this).
-    cpu_compiler_flags = [flag for flag in sys.argv[1:]
-                               if not flag.startswith(('--rocm_log'))]
-
+    cpu_compiler_flags = SanitizeArgsForCpuCompiler(sys.argv[1:])
     # XXX: SE codes need to be built with gcc, but need this macro defined
     cpu_compiler_flags.append("-D__HIP_PLATFORM_HCC__")
     if VERBOSE: print(' '.join([CPU_COMPILER] + cpu_compiler_flags))

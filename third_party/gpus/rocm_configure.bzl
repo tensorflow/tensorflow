@@ -38,6 +38,9 @@ _TF_ROCM_CONFIG_REPO = "TF_ROCM_CONFIG_REPO"
 
 _DEFAULT_ROCM_TOOLKIT_PATH = "/opt/rocm"
 
+def _is_clang_enabled(repository_ctx):
+    return get_host_environ(repository_ctx, "TF_ROCM_CLANG") == "1"
+
 def verify_build_defines(params):
     """Verify all variables that crosstool/BUILD.rocm.tpl expects are substituted.
 
@@ -68,9 +71,14 @@ def verify_build_defines(params):
 def find_cc(repository_ctx):
     """Find the C++ compiler."""
 
-    # Return a dummy value for GCC detection here to avoid error
-    target_cc_name = "gcc"
-    cc_path_envvar = _GCC_HOST_COMPILER_PATH
+    if _is_clang_enabled(repository_ctx):
+        target_cc_name = "clang"
+        cc_path_envvar = "CLANG_COMPILER_PATH"
+    else:
+        # Return a dummy value for GCC detection here to avoid error
+        target_cc_name = "gcc"
+        cc_path_envvar = _GCC_HOST_COMPILER_PATH
+
     cc_name = target_cc_name
 
     cc_name_from_env = get_host_environ(repository_ctx, cc_path_envvar)
@@ -736,6 +744,7 @@ def _create_local_rocm_repository(repository_ctx):
             "%{hip_runtime_library}": "amdhip64",
             "%{crosstool_verbose}": _crosstool_verbose(repository_ctx),
             "%{gcc_host_compiler_path}": str(cc),
+            "%{crosstool_clang}": "1" if _is_clang_enabled(repository_ctx) else "0",
         },
     )
 
@@ -816,8 +825,10 @@ _ENVIRONS = [
     _GCC_HOST_COMPILER_PATH,
     _GCC_HOST_COMPILER_PREFIX,
     "TF_NEED_ROCM",
+    "TF_ROCM_CLANG",
     _ROCM_TOOLKIT_PATH,
     _TF_ROCM_AMDGPU_TARGETS,
+    "CLANG_COMPILER_PATH",
 ]
 
 remote_rocm_configure = repository_rule(

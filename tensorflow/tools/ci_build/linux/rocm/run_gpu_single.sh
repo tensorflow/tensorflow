@@ -44,7 +44,6 @@ export PYTHON_BIN_PATH=`which python3`
 PYTHON_VERSION=`python3 -c "import sys;print(f'{sys.version_info.major}.{sys.version_info.minor}')"`
 export TF_PYTHON_VERSION=$PYTHON_VERSION
 export TF_NEED_ROCM=1
-export TF_NEED_CLANG=0
 export ROCM_PATH=$ROCM_INSTALL_DIR
 
 yes "" | $PYTHON_BIN_PATH configure.py
