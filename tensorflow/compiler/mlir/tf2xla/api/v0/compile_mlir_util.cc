@@ -449,10 +449,10 @@ void CreateConvertMlirToXlaHloPipeline(
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::stablehlo::CreateConvertTFQuantTypesPass());
 
-  for (auto& target_pass : custom_legalization_passes) {
-    pm.addNestedPass<mlir::func::FuncOp>(std::move(target_pass));
-  }
   if (lower_to_xla_hlo) {
+    for (auto& target_pass : custom_legalization_passes) {
+      pm.addNestedPass<mlir::func::FuncOp>(std::move(target_pass));
+    }
     pm.addPass(mlir::mhlo::CreateLegalizeTFCollectivePass());
   }
 
@@ -767,7 +767,9 @@ StatusOr<std::string> CompileMlirToXlaHlo(
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
         custom_legalization_passes,
     llvm::StringRef module_name, bool lower_to_xla_hlo) {
-  if (enable_op_fallback &&
+  // If we don't want to enable fall back or any form or lowering then we
+  // don't need to check if the module has unsupported ops.
+  if (enable_op_fallback && lower_to_xla_hlo &&
       GetMlirBridge2ndPhaseRolloutPolicy(module_op) ==
           MlirBridgeRolloutPolicy::kDisabledAfterGraphAnalysis) {
     return CompileToHloGraphAnalysisFailedError();

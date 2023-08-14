@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tf2xla/api/v0/compile_mlir_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v0/compile_tf_graph.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/legalize_tf_mlir.h"
+#include "tensorflow/compiler/mlir/tf2xla/internal/legalize_tf_to_hlo.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
@@ -112,6 +113,25 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
                "bridge compilation status: "
             << mlir_bridge_status.status();
   }
+
+  auto combined_bridge_status = internal::LegalizeTfToHlo(
+      std::get<0>(computation), metadata, use_tuple_args, device_type,
+      shape_determination_fns, arg_shapes, arg_core_mapping,
+      per_core_arg_shapes, custom_legalization_passes, client,
+      compilation_result.get());
+
+  if (combined_bridge_status.ok()) {
+    VLOG(1) << "Successfully compiled MLIR computation to XLA HLO using "
+               "Combined MLIR and XlaBuilder Bridge.";
+    return *compilation_result;
+  }
+
+  VLOG(1)
+      << "Failed to compile MLIR computation to XLA HLO using "
+         "Combined MLIR and XlaBuilder Bridge. Falling back to Graph Bridge.";
+  tsl::error_logging::Log(kBridgeComponent, "TFXLA_API_V1_COMBINED_BRIDGE",
+                          combined_bridge_status.status().ToString())
+      .IgnoreError();
 
   Status old_bridge_status = tf2xla::v0::CompileTensorflowGraphToHlo(
       computation, metadata, use_tuple_args, shape_determination_fns,
