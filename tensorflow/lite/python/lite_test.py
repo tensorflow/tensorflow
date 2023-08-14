@@ -42,7 +42,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
@@ -2775,7 +2774,7 @@ class GrapplerTest(TestModels, parameterized.TestCase):
     with ops.Graph().as_default():
       in_tensor = array_ops.placeholder(shape=[3, 3], dtype=dtypes.float32)
       y_const = constant_op.constant([1., 2., 3.])
-      y_broadcast = gen_array_ops.broadcast_to(y_const, [3, 3])
+      y_broadcast = array_ops.broadcast_to(y_const, [3, 3])
       out_tensor = math_ops.matmul(in_tensor, y_broadcast, name='output')
       sess = session.Session()
 
