@@ -70,14 +70,16 @@ func.func @id_quint16(%arg0: tensor<1x!tf_type.quint16>) -> tensor<1x!tf_type.qu
 // CHECK-LABEL: func @uniform_quantize
 func.func @uniform_quantize(%arg0: tensor<1xf32>) -> tensor<1x!tf_type.qint8>
 {
-  // CHECK: %[[qint:.*]] = "tf.UniformQuantize"
-  // CHECK: %[[int:.*]] = "tf.Cast"(%[[qint]]) {Truncate = false} : (tensor<1x!tf_type.qint8>) -> tensor<1xi8>
-  // CHECK: return %[[int]] : tensor<1xi8>
   %scales = "tf.Const"() { value = dense<1.0> : tensor<f32> } : () -> tensor<f32>
   %zps = "tf.Const"() { value = dense<3> : tensor<i32> } : () -> tensor<i32>
+
+  // CHECK: %[[qint:.*]] = "tf.UniformQuantize"
+  // CHECK: %[[int:.*]] = "tf.Cast"(%[[qint]]) {Truncate = false} : (tensor<1x!tf_type.qint8>) -> tensor<1xi8>
   %0 = "tf.UniformQuantize"(%arg0, %scales, %zps) {
     quantization_axis = -1 : i64, quantization_min_val = -128 : i64, quantization_max_val = 127 : i64
   } : (tensor<1xf32>, tensor<f32>, tensor<i32>) -> tensor<1x!tf_type.qint8>
+
+  // CHECK: return %[[int]] : tensor<1xi8>
   func.return %0 : tensor<1x!tf_type.qint8>
 }
 
@@ -86,14 +88,16 @@ func.func @uniform_quantize(%arg0: tensor<1xf32>) -> tensor<1x!tf_type.qint8>
 // CHECK-LABEL: func @uniform_quantize_no_return
 func.func @uniform_quantize_no_return(%arg0: tensor<1xf32>) -> ()
 {
-  // CHECK: %[[qint:.*]] = "tf.UniformQuantize"
-  // CHECK: %[[int:.*]] = "tf.Cast"(%[[qint]]) {Truncate = false} : (tensor<1x!tf_type.qint8>) -> tensor<1xi8>
-  // CHECK: return
   %scales = "tf.Const"() { value = dense<1.0> : tensor<f32> } : () -> tensor<f32>
   %zps = "tf.Const"() { value = dense<3> : tensor<i32> } : () -> tensor<i32>
+
+  // CHECK: %[[qint:.*]] = "tf.UniformQuantize"
+  // CHECK: %[[int:.*]] = "tf.Cast"(%[[qint]]) {Truncate = false} : (tensor<1x!tf_type.qint8>) -> tensor<1xi8>
   %0 = "tf.UniformQuantize"(%arg0, %scales, %zps) {
     quantization_axis = -1 : i64, quantization_min_val = -128 : i64, quantization_max_val = 127 : i64
   } : (tensor<1xf32>, tensor<f32>, tensor<i32>) -> tensor<1x!tf_type.qint8>
+
+  // CHECK: return
   func.return
 }
 
@@ -102,14 +106,16 @@ func.func @uniform_quantize_no_return(%arg0: tensor<1xf32>) -> ()
 // CHECK-LABEL: func @uniform_dequantize
 func.func @uniform_dequantize(%arg0: tensor<1x!tf_type.qint8>) -> tensor<1xf32>
 {
-  // CHECK: %[[x:.*]] = "tf.Cast"(%arg0) {Truncate = false} : (tensor<1xi8>) -> tensor<1x!tf_type.qint8>
-  // CHECK: %[[y:.*]] = "tf.UniformDequantize"(%[[x]]
-  // CHECK: return %[[y]] : tensor<1xf32>
   %scales = "tf.Const"() { value = dense<1.0> : tensor<f32> } : () -> tensor<f32>
   %zps = "tf.Const"() { value = dense<3> : tensor<i32> } : () -> tensor<i32>
+
+  // CHECK: %[[x:.*]] = "tf.Cast"(%arg0) {Truncate = false} : (tensor<1xi8>) -> tensor<1x!tf_type.qint8>
+  // CHECK: %[[y:.*]] = "tf.UniformDequantize"(%[[x]]
   %0 = "tf.UniformDequantize"(%arg0, %scales, %zps) {
     quantization_axis = -1 : i64, quantization_min_val = -128 : i64, quantization_max_val = 127 : i64
   } : (tensor<1x!tf_type.qint8>, tensor<f32>, tensor<i32>) -> tensor<1xf32>
+
+  // CHECK: return %[[y]] : tensor<1xf32>
   func.return %0 : tensor<1xf32>
 }
 
@@ -118,20 +124,22 @@ func.func @uniform_dequantize(%arg0: tensor<1x!tf_type.qint8>) -> tensor<1xf32>
 // CHECK-LABEL: func @uniform_quantize_dequantize
 func.func @uniform_quantize_dequantize(%arg0: tensor<1xf32>) -> tensor<1xf32>
 {
-  // CHECK: %[[qint0:.*]] = "tf.UniformQuantize"
-  // CHECK: %[[int:.*]] = "tf.Cast"(%[[qint0]]) {Truncate = false} : (tensor<1x!tf_type.qint8>) -> tensor<1xi8>
-  // CHECK: %[[qint1:.*]] = "tf.Cast"(%[[int]]) {Truncate = false} : (tensor<1xi8>) -> tensor<1x!tf_type.qint8>
-  // CHECK: %[[res:.*]] = "tf.UniformDequantize"(%[[qint1]]
-  // CHECK: return %[[res]] : tensor<1xf32>
   %scales = "tf.Const"() { value = dense<1.0> : tensor<f32> } : () -> tensor<f32>
   %zps = "tf.Const"() { value = dense<3> : tensor<i32> } : () -> tensor<i32>
 
+  // CHECK: %[[qint0:.*]] = "tf.UniformQuantize"
   %0 = "tf.UniformQuantize"(%arg0, %scales, %zps) {
     quantization_axis = -1 : i64, quantization_min_val = -128 : i64, quantization_max_val = 127 : i64
   } : (tensor<1xf32>, tensor<f32>, tensor<i32>) -> tensor<1x!tf_type.qint8>
+
+  // CHECK: %[[int:.*]] = "tf.Cast"(%[[qint0]]) {Truncate = false} : (tensor<1x!tf_type.qint8>) -> tensor<1xi8>
+  // CHECK: %[[qint1:.*]] = "tf.Cast"(%[[int]]) {Truncate = false} : (tensor<1xi8>) -> tensor<1x!tf_type.qint8>
+  // CHECK: %[[res:.*]] = "tf.UniformDequantize"(%[[qint1]]
   %1 = "tf.UniformDequantize"(%0, %scales, %zps) {
     quantization_axis = -1 : i64, quantization_min_val = -128 : i64, quantization_max_val = 127 : i64
   } : (tensor<1x!tf_type.qint8>, tensor<f32>, tensor<i32>) -> tensor<1xf32>
+
+  // CHECK: return %[[res]] : tensor<1xf32>
   func.return %1 : tensor<1xf32>
 }
 
@@ -140,12 +148,6 @@ func.func @uniform_quantize_dequantize(%arg0: tensor<1xf32>) -> tensor<1xf32>
 // CHECK-LABEL: func @uniform_quantized_add
 func.func @uniform_quantized_add(%arg0: tensor<2x!tf_type.qint32>, %arg1: tensor<2x!tf_type.qint32>) -> tensor<2x!tf_type.qint32>
 {
-    // CHECK: %[[lhs:.*]] = "tf.Cast"(%arg0) {Truncate = false} : (tensor<2xi32>) -> tensor<2x!tf_type.qint32>
-    // CHECK: %[[rhs:.*]] = "tf.Cast"(%arg1) {Truncate = false} : (tensor<2xi32>) -> tensor<2x!tf_type.qint32>
-    // CHECK: %[[res_qint:.*]] = "tf.UniformQuantizedAdd"(%[[lhs]], %[[rhs]]
-    // CHECK: %[[res_int:.*]] = "tf.Cast"(%[[res_qint]]) {Truncate = false} : (tensor<2x!tf_type.qint32>) -> tensor<2xi32>
-    // CHECK: return %[[res_int]] : tensor<2xi32>
-
     %input_scales = "tf.Const"() { value = dense<2.0> : tensor<f32> } : () -> tensor<f32>
     %input_zps = "tf.Const"() { value = dense<4> : tensor<i32> } : () -> tensor<i32>
     %bias_scales = "tf.Const"() { value = dense<2.0> : tensor<f32> } : () -> tensor<f32>
@@ -153,6 +155,11 @@ func.func @uniform_quantized_add(%arg0: tensor<2x!tf_type.qint32>, %arg1: tensor
     %output_scales = "tf.Const"() { value = dense<2.0> : tensor<f32> } : () -> tensor<f32>
     %output_zps = "tf.Const"() { value = dense<4> : tensor<i32> } : () -> tensor<i32>
 
+    // CHECK: %[[lhs:.*]] = "tf.Cast"(%arg0) {Truncate = false} : (tensor<2xi32>) -> tensor<2x!tf_type.qint32>
+    // CHECK: %[[rhs:.*]] = "tf.Cast"(%arg1) {Truncate = false} : (tensor<2xi32>) -> tensor<2x!tf_type.qint32>
+    // CHECK: %[[res_qint:.*]] = "tf.UniformQuantizedAdd"(%[[lhs]], %[[rhs]]
+    // CHECK: %[[res_int:.*]] = "tf.Cast"(%[[res_qint]]) {Truncate = false} : (tensor<2x!tf_type.qint32>) -> tensor<2xi32>
+    // CHECK: return %[[res_int]] : tensor<2xi32>
     %1 = "tf.UniformQuantizedAdd"(
       %arg0, %arg1,
       %input_scales, %input_zps,
@@ -260,8 +267,8 @@ func.func @concat_uniform_dequantize(%arg0: tensor<3x3x!tf_type.qint8>, %arg1: t
 // CHECK-LABEL: func @tf_const_qint32
 func.func @tf_const_qint32() -> tensor<1x!tf_type.qint32> {
   // CHECK: %[[result:.*]] = "tf.Const"() {value = dense<127> : tensor<1xi32>} : () -> tensor<1xi32>
-  // CHECK: return %[[result]] : tensor<1xi32>
   %0 = "tf.Const"() { value = #tf_type<tensor_proto : "0x746674656E736F722464747970653A2044545F51494E5433322074656E736F725F7368617065207B207D2074656E736F725F636F6E74656E743A20225C3137375C3030305C3030305C30303022"> : tensor<1x!tf_type.qint32> } : () -> tensor<1x!tf_type.qint32>
+  // CHECK: return %[[result]] : tensor<1xi32>
   func.return %0 :  tensor<1x!tf_type.qint32>
 }
 
@@ -270,8 +277,8 @@ func.func @tf_const_qint32() -> tensor<1x!tf_type.qint32> {
 // CHECK-LABEL: func @tf_const_qint8
 func.func @tf_const_qint8() -> tensor<2x!tf_type.qint8> {
   // CHECK: %[[result:.*]] = "tf.Const"() {value = dense<[127, 18]> : tensor<2xi8>} : () -> tensor<2xi8>
-  // CHECK: return %[[result]] : tensor<2xi8>
   %0 = "tf.Const"() { value = #tf_type<tensor_proto : "0x746674656e736f722464747970653a2044545f51494e54382074656e736f725f7368617065207b2064696d207b2073697a653a2032207d207d2074656e736f725f636f6e74656e743a20225c3137375c30323222"> : tensor<2x!tf_type.qint8> } : () -> tensor<2x!tf_type.qint8>
+  // CHECK: return %[[result]] : tensor<2xi8>
   func.return %0 :  tensor<2x!tf_type.qint8>
 }
 
@@ -345,14 +352,17 @@ func.func @cast_uniform_dequantize(%arg0: tensor<1x!tf_type.qint32>) -> tensor<1
 {
   %scales = "tf.Const"() { value = dense<1.0> : tensor<f32> } : () -> tensor<f32>
   %zps = "tf.Const"() { value = dense<3> : tensor<i32> } : () -> tensor<i32>
+
   // CHECK: %[[x:.*]] = "tf.Cast"(%arg0) {Truncate = false} : (tensor<1xi32>) -> tensor<1xi8>
+  %0 = "tf.Cast"(%arg0) {Truncate = false} : (tensor<1x!tf_type.qint32>) -> tensor<1x!tf_type.qint8>
+
   // CHECK: %[[y:.*]] = "tf.Cast"(%[[x]]) {Truncate = false} : (tensor<1xi8>) -> tensor<1x!tf_type.qint8>
   // CHECK: %[[z:.*]] = "tf.UniformDequantize"(%[[y]]
-  // CHECK: return %[[z]] : tensor<1xf32>
-  %0 = "tf.Cast"(%arg0) {Truncate = false} : (tensor<1x!tf_type.qint32>) -> tensor<1x!tf_type.qint8>
   %1 = "tf.UniformDequantize"(%0, %scales, %zps) {
     quantization_axis = -1 : i64, quantization_min_val = -128 : i64, quantization_max_val = 127 : i64
   } : (tensor<1x!tf_type.qint8>, tensor<f32>, tensor<i32>) -> tensor<1xf32>
+
+  // CHECK: return %[[z]] : tensor<1xf32>
   func.return %1 : tensor<1xf32>
 }
 
@@ -361,16 +371,19 @@ func.func @cast_uniform_dequantize(%arg0: tensor<1x!tf_type.qint32>) -> tensor<1
 // CHECK-LABEL: func @uniform_quantize_cast
 func.func @uniform_quantize_cast(%arg0: tensor<1xf32>) -> tensor<1x!tf_type.qint32>
 {
-  // CHECK: tf.UniformQuantize
-  // CHECK: %1 = "tf.Cast"(%0) {Truncate = false} : (tensor<1x!tf_type.qint8>) -> tensor<1xi8>
-  // CHECK: %2 = "tf.Cast"(%1) {Truncate = false} : (tensor<1xi8>) -> tensor<1xi32>
-  // CHECK: return %2 : tensor<1xi32>
   %scales = "tf.Const"() { value = dense<1.0> : tensor<f32> } : () -> tensor<f32>
   %zps = "tf.Const"() { value = dense<3> : tensor<i32> } : () -> tensor<i32>
+
+  // CHECK: tf.UniformQuantize
   %0 = "tf.UniformQuantize"(%arg0, %scales, %zps) {
     quantization_axis = -1 : i64, quantization_min_val = -128 : i64, quantization_max_val = 127 : i64
   } : (tensor<1xf32>, tensor<f32>, tensor<i32>) -> tensor<1x!tf_type.qint8>
+
+  // CHECK: %1 = "tf.Cast"(%0) {Truncate = false} : (tensor<1x!tf_type.qint8>) -> tensor<1xi8>
+  // CHECK: %2 = "tf.Cast"(%1) {Truncate = false} : (tensor<1xi8>) -> tensor<1xi32>
   %1 = "tf.Cast"(%0) {Truncate = false} : (tensor<1x!tf_type.qint8>) -> tensor<1x!tf_type.qint32>
+
+  // CHECK: return %2 : tensor<1xi32>
   func.return %1 : tensor<1x!tf_type.qint32>
 }
 
@@ -379,22 +392,26 @@ func.func @uniform_quantize_cast(%arg0: tensor<1xf32>) -> tensor<1x!tf_type.qint
 // CHECK-LABEL: func @uniform_quantize_cast_dequantize
 func.func @uniform_quantize_cast_dequantize(%arg0: tensor<1xf32>) -> tensor<1xf32>
 {
-  // CHECK: %[[qint_1:.*]] = "tf.UniformQuantize"
-  // CHECK: %[[int_1:.*]] = "tf.Cast"(%[[qint_1]]) {Truncate = false} : (tensor<1x!tf_type.qint8>) -> tensor<1xi8>
-  // CHECK: %[[int_2:.*]] = "tf.Cast"(%[[int_1]]) {Truncate = false} : (tensor<1xi8>) -> tensor<1xi32>
-  // CHECK: %[[qint_2:.*]] = "tf.Cast"(%[[int_2]]) {Truncate = false} : (tensor<1xi32>) -> tensor<1x!tf_type.qint32>
-  // CHECK: %[[int_3:.*]] = "tf.UniformDequantize"(%[[qint_2]]
-  // CHECK: return %[[int_3]] : tensor<1xf32>
   %scales = "tf.Const"() { value = dense<1.0> : tensor<f32> } : () -> tensor<f32>
   %zps = "tf.Const"() { value = dense<3> : tensor<i32> } : () -> tensor<i32>
   %scales1 = "tf.Const"() { value = dense<3.0> : tensor<f32> } : () -> tensor<f32>
   %zps1 = "tf.Const"() { value = dense<2> : tensor<i32> } : () -> tensor<i32>
+
+  // CHECK: %[[qint_1:.*]] = "tf.UniformQuantize"
+  // CHECK: %[[int_1:.*]] = "tf.Cast"(%[[qint_1]]) {Truncate = false} : (tensor<1x!tf_type.qint8>) -> tensor<1xi8>
   %0 = "tf.UniformQuantize"(%arg0, %scales, %zps) {
     quantization_axis = -1 : i64, quantization_min_val = -128 : i64, quantization_max_val = 127 : i64
   } : (tensor<1xf32>, tensor<f32>, tensor<i32>) -> tensor<1x!tf_type.qint8>
+
+  // CHECK: %[[int_2:.*]] = "tf.Cast"(%[[int_1]]) {Truncate = false} : (tensor<1xi8>) -> tensor<1xi32>
   %1 = "tf.Cast"(%0) {Truncate = false} : (tensor<1x!tf_type.qint8>) -> tensor<1x!tf_type.qint32>
+
+  // CHECK: %[[qint_2:.*]] = "tf.Cast"(%[[int_2]]) {Truncate = false} : (tensor<1xi32>) -> tensor<1x!tf_type.qint32>
+  // CHECK: %[[int_3:.*]] = "tf.UniformDequantize"(%[[qint_2]]
   %2 = "tf.UniformDequantize"(%1, %scales1, %zps1) {
     quantization_axis = -1 : i64, quantization_min_val = -128 : i64, quantization_max_val = 127 : i64
   } : (tensor<1x!tf_type.qint32>, tensor<f32>, tensor<i32>) -> tensor<1xf32>
+
+  // CHECK: return %[[int_3]] : tensor<1xf32>
   func.return %2 : tensor<1xf32>
 }
