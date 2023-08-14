@@ -285,5 +285,28 @@ ENTRY main {
   ASSERT_IS_NOT_OK(config.Verify(*module));
 }
 
+TEST_F(HloBufferDonorConfigTest, BufferDonorInputOutputAliasOverlap) {
+  const std::string module_str = R"(
+HloModule TEST
+
+ENTRY main {
+  param = (f32[], f32[]) parameter(0)
+  gte1 = f32[] get-tuple-element(%param), index=0
+  gte2 = f32[] get-tuple-element(%param), index=1
+  ROOT root = (f32[], f32[]) tuple(%gte1, %gte2)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
+
+  HloBufferDonorConfig config;
+
+  TF_ASSERT_OK(config.AddBufferDonor(0, {0}));
+  TF_ASSERT_OK(config.Verify(*module));
+
+  TF_ASSERT_OK(module->input_output_alias_config().SetUpAlias({0}, 0, {0}));
+  ASSERT_IS_NOT_OK(config.Verify(*module));
+}
+
 }  // namespace
 }  // namespace xla

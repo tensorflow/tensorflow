@@ -2848,6 +2848,7 @@ StatusOr<bool> HloVerifier::Run(
           }
         }));
 
+    TF_RETURN_IF_ERROR(module->buffer_donor_config().Verify(*module));
     TF_RETURN_IF_ERROR(module->dynamic_parameter_binding().Verify(*module));
     TF_RETURN_IF_ERROR(VerifyLayoutConstrainedAllReduce(*module));
     return false;
