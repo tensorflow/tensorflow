@@ -44,19 +44,14 @@ else
   echo 'If you have not, you will see a lot of undefined variable errors.'
 fi
 
-# Make a "build" directory for outputting all build artifacts (TF's .gitignore
-# ignores the "build" directory), and ensure all further commands are executed
-# inside of the $TFCI_GIT_DIR as well.
+# Make the output directory for outputting all build artifacts, and ensure all
+# further commands are executed inside of the $TFCI_GIT_DIR as well.
 cd "$TFCI_GIT_DIR"
- # Kind of awkward, but handles the fact that Windows treats "build" (the output
- # directory) and BUILD (the root BUILD file) as the same name, due to Windows
- # ignoring uppercase/lowercase differences
-mv BUILD BUILD.bazel 
-mkdir -p build
+mkdir -p "$TFCI_OUTPUT_DIR"
 
 # In addition to dumping all script output to the terminal, place it into
-# build/script.log
-exec > >(tee "build/script.log") 2>&1
+# $TFCI_OUTPUT_DIR/script.log
+exec > >(tee "$TFCI_OUTPUT_DIR/script.log") 2>&1
 
 # Setup tfrun, a helper function for executing steps that can either be run
 # locally or run under Docker. docker.sh, below, redefines it as "docker exec".
@@ -91,7 +86,7 @@ fi
 
 # Generate an overview page describing the build
 if [[ "$TFCI_INDEX_HTML_ENABLE" == 1 ]]; then
-  ./ci/official/utilities/generate_index_html.sh build/index.html
+  ./ci/official/utilities/generate_index_html.sh "$TFCI_OUTPUT_DIR/index.html"
 fi
 
 # Single handler for all cleanup actions, triggered on an EXIT trap.

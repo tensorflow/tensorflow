@@ -100,7 +100,7 @@ test:libtensorflow_test -- //tensorflow/tools/lib_package:libtensorflow_test //t
 build:libtensorflow_build -- //tensorflow/tools/lib_package:libtensorflow.tar.gz //tensorflow/tools/lib_package:libtensorflow_jni.tar.gz //tensorflow/java:libtensorflow.jar //tensorflow/java:libtensorflow-src.jar //tensorflow/tools/lib_package:libtensorflow_proto.zip
 
 # For outputting Build Event Protocol files
-build:build_event_export --build_event_json_file=build/bep.json
+build:build_event_export --build_event_json_file="$TFCI_OUTPUT_DIR/bep.json"
 
 # Allow creation of resultstore URLs for any bazel invocation
 build:resultstore --google_default_credentials

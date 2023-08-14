@@ -19,5 +19,6 @@ IMPORTANT: For bazel invocations that uploaded to resultstore (e.g. RBE), you
 can view more detailed results that are probably easier to read than this log.
 Try the links below:
 EOF
-# Find any "Streaming build results to" line, then print the last word in it
-awk '/Streaming build results to/ {print $NF}' $TFCI_GIT_DIR/build/script.log | uniq
+# Find any "Streaming build results to" line, then print the last word in it,
+# and don't print duplicates
+awk '/Streaming build results to/ {print $NF}' "$TFCI_OUTPUT_DIR/script.log" | uniq
