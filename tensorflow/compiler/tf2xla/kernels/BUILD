@@ -273,6 +273,7 @@ tf_cuda_library(
         "//tensorflow/core:gpu_runtime",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:status",
+        "//tensorflow/tsl/lib/strings:proto_serialization",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
