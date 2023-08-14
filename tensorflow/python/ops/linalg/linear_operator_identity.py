@@ -28,7 +28,9 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.linalg import linalg_impl as linalg
 from tensorflow.python.ops.linalg import linear_operator
+from tensorflow.python.ops.linalg import linear_operator_diag
 from tensorflow.python.ops.linalg import linear_operator_util
+from tensorflow.python.ops.linalg import property_hint_util
 from tensorflow.python.util.tf_export import tf_export
 
 __all__ = [
@@ -334,6 +336,14 @@ class LinearOperatorIdentity(BaseLinearOperatorIdentity):
 
   def _linop_inverse(self) -> "LinearOperatorIdentity":
     return self
+
+  def _linop_matmul(
+      self,
+      left_operator: "LinearOperatorIdentity",
+      right_operator: linear_operator.LinearOperator,
+    ) -> "LinearOperatorIdentity":
+    del left_operator
+    return right_operator
 
   def _assert_non_singular(self):
     return control_flow_ops.no_op("assert_non_singular")
@@ -756,6 +766,36 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
         is_self_adjoint=True,
         is_positive_definite=self.is_positive_definite,
         is_square=True)
+
+  def _linop_matmul(
+      self,
+      left_operator: "LinearOperatorScaledIdentity",
+      right_operator: linear_operator.LinearOperator,
+    ) -> "LinearOperatorScaledIdentity":
+    is_non_singular = property_hint_util.combined_non_singular_hint(
+        left_operator, right_operator)
+    is_self_adjoint = property_hint_util.combined_commuting_self_adjoint_hint(
+        left_operator, right_operator)
+    is_positive_definite = (
+        property_hint_util.combined_commuting_positive_definite_hint(
+            left_operator, right_operator))
+    if isinstance(right_operator, LinearOperatorScaledIdentity):
+      return LinearOperatorScaledIdentity(
+          num_rows=left_operator.domain_dimension_tensor(),
+          multiplier=left_operator.multiplier * right_operator.multiplier,
+          is_non_singular=is_non_singular,
+          is_self_adjoint=is_self_adjoint,
+          is_positive_definite=is_positive_definite,
+          is_square=True)
+    elif isinstance(right_operator, linear_operator_diag.LinearOperatorDiag):
+      return linear_operator_diag.LinearOperatorDiag(
+          diag=right_operator.diag * left_operator.multiplier,
+          is_non_singular=is_non_singular,
+          is_self_adjoint=is_self_adjoint,
+          is_positive_definite=is_positive_definite,
+          is_square=True)
+    else:
+      return super()._linop_matmul(left_operator, right_operator)
 
   def _matmul(self, x, adjoint=False, adjoint_arg=False):
     x = linalg.adjoint(x) if adjoint_arg else x

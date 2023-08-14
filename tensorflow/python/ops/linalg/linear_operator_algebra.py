@@ -21,7 +21,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.util import tf_inspect
 
 
-_MATMUL = {}
 _SOLVE = {}
 
 
@@ -41,39 +40,9 @@ def _registered_function(type_list, registry):
   return registry.get(tuple(r[1] for r in registered_combination), None)
 
 
-def _registered_matmul(type_a, type_b):
-  """Get the Matmul function registered for classes a and b."""
-  return _registered_function([type_a, type_b], _MATMUL)
-
-
 def _registered_solve(type_a, type_b):
   """Get the Solve function registered for classes a and b."""
   return _registered_function([type_a, type_b], _SOLVE)
-
-
-def matmul(lin_op_a, lin_op_b, name=None):
-  """Compute lin_op_a.matmul(lin_op_b).
-
-  Args:
-    lin_op_a: The LinearOperator on the left.
-    lin_op_b: The LinearOperator on the right.
-    name: Name to use for this operation.
-
-  Returns:
-    A LinearOperator that represents the matmul between `lin_op_a` and
-      `lin_op_b`.
-
-  Raises:
-    NotImplementedError: If no matmul method is defined between types of
-      `lin_op_a` and `lin_op_b`.
-  """
-  matmul_fn = _registered_matmul(type(lin_op_a), type(lin_op_b))
-  if matmul_fn is None:
-    raise ValueError("No matmul registered for {}.matmul({})".format(
-        type(lin_op_a), type(lin_op_b)))
-
-  with ops.name_scope(name, "Matmul"):
-    return matmul_fn(lin_op_a, lin_op_b)
 
 
 def solve(lin_op_a, lin_op_b, name=None):
@@ -99,52 +68,6 @@ def solve(lin_op_a, lin_op_b, name=None):
 
   with ops.name_scope(name, "Solve"):
     return solve_fn(lin_op_a, lin_op_b)
-
-
-class RegisterMatmul:
-  """Decorator to register a Matmul implementation function.
-
-  Usage:
-
-  @linear_operator_algebra.RegisterMatmul(
-    lin_op.LinearOperatorIdentity,
-    lin_op.LinearOperatorIdentity)
-  def _matmul_identity(a, b):
-    # Return the identity matrix.
-  """
-
-  def __init__(self, lin_op_cls_a, lin_op_cls_b):
-    """Initialize the LinearOperator registrar.
-
-    Args:
-      lin_op_cls_a: the class of the LinearOperator to multiply.
-      lin_op_cls_b: the class of the second LinearOperator to multiply.
-    """
-    self._key = (lin_op_cls_a, lin_op_cls_b)
-
-  def __call__(self, matmul_fn):
-    """Perform the Matmul registration.
-
-    Args:
-      matmul_fn: The function to use for the Matmul.
-
-    Returns:
-      matmul_fn
-
-    Raises:
-      TypeError: if matmul_fn is not a callable.
-      ValueError: if a Matmul function has already been registered for
-        the given argument classes.
-    """
-    if not callable(matmul_fn):
-      raise TypeError(
-          "matmul_fn must be callable, received: {}".format(matmul_fn))
-    if self._key in _MATMUL:
-      raise ValueError("Matmul({}, {}) has already been registered.".format(
-          self._key[0].__name__,
-          self._key[1].__name__))
-    _MATMUL[self._key] = matmul_fn
-    return matmul_fn
 
 
 class RegisterSolve:

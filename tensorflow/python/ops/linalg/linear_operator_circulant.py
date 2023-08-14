@@ -28,6 +28,7 @@ from tensorflow.python.ops.distributions import util as distribution_util
 from tensorflow.python.ops.linalg import linalg_impl as linalg
 from tensorflow.python.ops.linalg import linear_operator
 from tensorflow.python.ops.linalg import linear_operator_util
+from tensorflow.python.ops.linalg import property_hint_util
 from tensorflow.python.ops.signal import fft_ops
 from tensorflow.python.util.tf_export import tf_export
 
@@ -328,6 +329,27 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
         is_positive_definite=self.is_positive_definite,
         is_square=True,
         input_output_dtype=self.dtype)
+
+  def _linop_matmul(
+      self,
+      left_operator: "_BaseLinearOperatorCirculant",
+      right_operator: linear_operator.LinearOperator,
+  ) -> linear_operator.LinearOperator:
+    if (not isinstance(right_operator, _BaseLinearOperatorCirculant)
+        or not isinstance(left_operator, type(right_operator))):
+      return super()._linop_matmul(left_operator, right_operator)
+
+    return _BaseLinearOperatorCirculant(
+        spectrum=left_operator.spectrum * right_operator.spectrum,
+        block_depth=left_operator.block_depth,
+        is_non_singular=property_hint_util.combined_non_singular_hint(
+            left_operator, right_operator),
+        is_self_adjoint=property_hint_util.combined_commuting_self_adjoint_hint(
+            left_operator, right_operator),
+        is_positive_definite=(
+            property_hint_util.combined_commuting_positive_definite_hint(
+                left_operator, right_operator)),
+        is_square=True)
 
   @property
   def block_shape(self):
@@ -969,6 +991,25 @@ class LinearOperatorCirculant(_BaseLinearOperatorCirculant):
         is_square=True,
         input_output_dtype=self.dtype)
 
+  def _linop_matmul(
+      self,
+      left_operator: "LinearOperatorCirculant",
+      right_operator: linear_operator.LinearOperator,
+  ) -> linear_operator.LinearOperator:
+    if not isinstance(right_operator, LinearOperatorCirculant):
+      return super()._linop_matmul(left_operator, right_operator)
+
+    return LinearOperatorCirculant(
+        spectrum=left_operator.spectrum * right_operator.spectrum,
+        is_non_singular=property_hint_util.combined_non_singular_hint(
+            left_operator, right_operator),
+        is_self_adjoint=property_hint_util.combined_commuting_self_adjoint_hint(
+            left_operator, right_operator),
+        is_positive_definite=(
+            property_hint_util.combined_commuting_positive_definite_hint(
+                left_operator, right_operator)),
+        is_square=True)
+
 
 @tf_export("linalg.LinearOperatorCirculant2D")
 @linear_operator.make_composite_tensor
@@ -1179,6 +1220,25 @@ class LinearOperatorCirculant2D(_BaseLinearOperatorCirculant):
         is_square=True,
         input_output_dtype=self.dtype)
 
+  def _linop_matmul(
+      self,
+      left_operator: "LinearOperatorCirculant2D",
+      right_operator: linear_operator.LinearOperator,
+  ) -> linear_operator.LinearOperator:
+    if not isinstance(right_operator, LinearOperatorCirculant2D):
+      return super()._linop_matmul(left_operator, right_operator)
+
+    return LinearOperatorCirculant2D(
+        spectrum=left_operator.spectrum * right_operator.spectrum,
+        is_non_singular=property_hint_util.combined_non_singular_hint(
+            left_operator, right_operator),
+        is_self_adjoint=property_hint_util.combined_commuting_self_adjoint_hint(
+            left_operator, right_operator),
+        is_positive_definite=(
+            property_hint_util.combined_commuting_positive_definite_hint(
+                left_operator, right_operator)),
+        is_square=True)
+
 
 @tf_export("linalg.LinearOperatorCirculant3D")
 @linear_operator.make_composite_tensor
@@ -1361,6 +1421,25 @@ class LinearOperatorCirculant3D(_BaseLinearOperatorCirculant):
         is_positive_definite=self.is_positive_definite,
         is_square=True,
         input_output_dtype=self.dtype)
+
+  def _linop_matmul(
+      self,
+      left_operator: "LinearOperatorCirculant3D",
+      right_operator: linear_operator.LinearOperator,
+  ) -> linear_operator.LinearOperator:
+    if not isinstance(right_operator, LinearOperatorCirculant3D):
+      return super()._linop_matmul(left_operator, right_operator)
+
+    return LinearOperatorCirculant3D(
+        spectrum=left_operator.spectrum * right_operator.spectrum,
+        is_non_singular=property_hint_util.combined_non_singular_hint(
+            left_operator, right_operator),
+        is_self_adjoint=property_hint_util.combined_commuting_self_adjoint_hint(
+            left_operator, right_operator),
+        is_positive_definite=(
+            property_hint_util.combined_commuting_positive_definite_hint(
+                left_operator, right_operator)),
+        is_square=True)
 
 
 def _to_complex(x):

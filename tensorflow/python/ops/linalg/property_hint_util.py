@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Common utilities for registering LinearOperator methods."""
+"""Common utilities for LinearOperator property hints."""
 
 
 # Note: only use this method in the commuting case.

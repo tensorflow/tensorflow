@@ -78,6 +78,7 @@ py_strict_library(
         ":linalg_impl",
         ":linear_operator",
         ":linear_operator_util",
+        ":property_hint_util",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor",
@@ -99,7 +100,9 @@ py_strict_library(
     deps = [
         ":linalg_impl",
         ":linear_operator",
+        ":linear_operator_diag",
         ":linear_operator_util",
+        ":property_hint_util",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_conversion",
@@ -136,8 +139,8 @@ py_strict_library(
 )
 
 py_strict_library(
-    name = "registrations_util",
-    srcs = ["registrations_util.py"],
+    name = "property_hint_util",
+    srcs = ["property_hint_util.py"],
 )
 
 py_strict_library(
@@ -167,26 +170,11 @@ py_strict_library(
 )
 
 py_strict_library(
-    name = "matmul_registrations",
-    srcs = ["matmul_registrations.py"],
-    deps = [
-        ":linear_operator",
-        ":linear_operator_algebra",
-        ":linear_operator_block_diag",
-        ":linear_operator_circulant",
-        ":linear_operator_composition",
-        ":linear_operator_diag",
-        ":linear_operator_identity",
-        ":linear_operator_zeros",
-        ":registrations_util",
-    ],
-)
-
-py_strict_library(
     name = "linear_operator",
     srcs = [
         "linear_operator.py",
         "linear_operator_adjoint.py",
+        "linear_operator_composition.py",
         "linear_operator_inversion.py",
         "linear_operator_lower_triangular.py",
     ],
@@ -194,7 +182,9 @@ py_strict_library(
         ":linalg_impl",
         ":linear_operator_algebra",
         ":linear_operator_util",
+        ":property_hint_util",
         ":slicing",
+        "//tensorflow/python/framework:common_shapes",
         "//tensorflow/python/framework:composite_tensor",
         "//tensorflow/python/framework:composite_tensor_gradient",
         "//tensorflow/python/framework:dtypes",
@@ -207,7 +197,9 @@ py_strict_library(
         "//tensorflow/python/framework:type_spec_registry",
         "//tensorflow/python/module",
         "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:array_ops_stack",
         "//tensorflow/python/ops:check_ops",
+        "//tensorflow/python/ops:control_flow_ops",
         "//tensorflow/python/ops:linalg_ops",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:resource_variable_ops",
@@ -277,6 +269,7 @@ py_strict_library(
         ":linear_operator",
         ":linear_operator_algebra",
         ":linear_operator_util",
+        ":property_hint_util",
         "//tensorflow/python/framework:common_shapes",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
@@ -351,7 +344,6 @@ py_strict_library(
         ":linear_operator_block_diag",
         ":linear_operator_block_lower_triangular",
         ":linear_operator_circulant",
-        ":linear_operator_composition",
         ":linear_operator_diag",
         ":linear_operator_full_matrix",
         ":linear_operator_householder",
@@ -362,7 +354,6 @@ py_strict_library(
         ":linear_operator_toeplitz",
         ":linear_operator_tridiag",
         ":linear_operator_zeros",
-        ":matmul_registrations",
         ":solve_registrations",
     ],
 )
@@ -407,30 +398,9 @@ py_strict_library(
         ":linear_operator_algebra",
         ":linear_operator_block_diag",
         ":linear_operator_circulant",
-        ":linear_operator_composition",
         ":linear_operator_diag",
         ":linear_operator_identity",
-        ":registrations_util",
-    ],
-)
-
-py_strict_library(
-    name = "linear_operator_composition",
-    srcs = ["linear_operator_composition.py"],
-    deps = [
-        ":linear_operator",
-        ":linear_operator_util",
-        "//tensorflow/python/framework:common_shapes",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/ops:array_ops",
-        "//tensorflow/python/ops:array_ops_stack",
-        "//tensorflow/python/ops:check_ops",
-        "//tensorflow/python/ops:control_flow_ops",
-        "//tensorflow/python/ops:linalg_ops",
-        "//tensorflow/python/ops:math_ops",
-        "//tensorflow/python/util:tf_export",
+        ":property_hint_util",
     ],
 )
 
@@ -473,6 +443,7 @@ py_strict_library(
         ":linalg_impl",
         ":linear_operator",
         ":linear_operator_util",
+        ":property_hint_util",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/ops:array_ops",
@@ -490,7 +461,8 @@ py_strict_library(
         ":linear_operator_diag",
         ":linear_operator_full_matrix",
         ":linear_operator_identity",
-        "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:check_ops",
     ],

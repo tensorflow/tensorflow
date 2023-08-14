@@ -23,7 +23,7 @@ from tensorflow.python.ops.linalg import linear_operator_diag
 from tensorflow.python.ops.linalg import linear_operator_identity
 from tensorflow.python.ops.linalg import linear_operator_inversion
 from tensorflow.python.ops.linalg import linear_operator_lower_triangular
-from tensorflow.python.ops.linalg import registrations_util
+from tensorflow.python.ops.linalg import property_hint_util
 
 
 # By default, use a LinearOperatorComposition to delay the computation.
@@ -31,13 +31,13 @@ from tensorflow.python.ops.linalg import registrations_util
     linear_operator.LinearOperator, linear_operator.LinearOperator)
 def _solve_linear_operator(linop_a, linop_b):
   """Generic solve of two `LinearOperator`s."""
-  is_square = registrations_util.is_square(linop_a, linop_b)
+  is_square = property_hint_util.is_square(linop_a, linop_b)
   is_non_singular = None
   is_self_adjoint = None
   is_positive_definite = None
 
   if is_square:
-    is_non_singular = registrations_util.combined_non_singular_hint(
+    is_non_singular = property_hint_util.combined_non_singular_hint(
         linop_a, linop_b)
   elif is_square is False:  # pylint:disable=g-bool-id-comparison
     is_non_singular = False
@@ -89,12 +89,12 @@ def _solve_linear_operator_scaled_identity(linop_a, linop_b):
   return linear_operator_identity.LinearOperatorScaledIdentity(
       num_rows=linop_a.domain_dimension_tensor(),
       multiplier=linop_b.multiplier / linop_a.multiplier,
-      is_non_singular=registrations_util.combined_non_singular_hint(
+      is_non_singular=property_hint_util.combined_non_singular_hint(
           linop_a, linop_b),
-      is_self_adjoint=registrations_util.combined_commuting_self_adjoint_hint(
+      is_self_adjoint=property_hint_util.combined_commuting_self_adjoint_hint(
           linop_a, linop_b),
       is_positive_definite=(
-          registrations_util.combined_commuting_positive_definite_hint(
+          property_hint_util.combined_commuting_positive_definite_hint(
               linop_a, linop_b)),
       is_square=True)
 
@@ -108,12 +108,12 @@ def _solve_linear_operator_scaled_identity(linop_a, linop_b):
 def _solve_linear_operator_diag(linop_a, linop_b):
   return linear_operator_diag.LinearOperatorDiag(
       diag=linop_b.diag / linop_a.diag,
-      is_non_singular=registrations_util.combined_non_singular_hint(
+      is_non_singular=property_hint_util.combined_non_singular_hint(
           linop_a, linop_b),
-      is_self_adjoint=registrations_util.combined_commuting_self_adjoint_hint(
+      is_self_adjoint=property_hint_util.combined_commuting_self_adjoint_hint(
           linop_a, linop_b),
       is_positive_definite=(
-          registrations_util.combined_commuting_positive_definite_hint(
+          property_hint_util.combined_commuting_positive_definite_hint(
               linop_a, linop_b)),
       is_square=True)
 
@@ -125,12 +125,12 @@ def _solve_linear_operator_diag_scaled_identity_right(
     linop_diag, linop_scaled_identity):
   return linear_operator_diag.LinearOperatorDiag(
       diag=linop_scaled_identity.multiplier / linop_diag.diag,
-      is_non_singular=registrations_util.combined_non_singular_hint(
+      is_non_singular=property_hint_util.combined_non_singular_hint(
           linop_diag, linop_scaled_identity),
-      is_self_adjoint=registrations_util.combined_commuting_self_adjoint_hint(
+      is_self_adjoint=property_hint_util.combined_commuting_self_adjoint_hint(
           linop_diag, linop_scaled_identity),
       is_positive_definite=(
-          registrations_util.combined_commuting_positive_definite_hint(
+          property_hint_util.combined_commuting_positive_definite_hint(
               linop_diag, linop_scaled_identity)),
       is_square=True)
 
@@ -142,12 +142,12 @@ def _solve_linear_operator_diag_scaled_identity_left(
     linop_scaled_identity, linop_diag):
   return linear_operator_diag.LinearOperatorDiag(
       diag=linop_diag.diag / linop_scaled_identity.multiplier,
-      is_non_singular=registrations_util.combined_non_singular_hint(
+      is_non_singular=property_hint_util.combined_non_singular_hint(
           linop_diag, linop_scaled_identity),
-      is_self_adjoint=registrations_util.combined_commuting_self_adjoint_hint(
+      is_self_adjoint=property_hint_util.combined_commuting_self_adjoint_hint(
           linop_diag, linop_scaled_identity),
       is_positive_definite=(
-          registrations_util.combined_commuting_positive_definite_hint(
+          property_hint_util.combined_commuting_positive_definite_hint(
               linop_diag, linop_scaled_identity)),
       is_square=True)
 
@@ -158,11 +158,11 @@ def _solve_linear_operator_diag_scaled_identity_left(
 def _solve_linear_operator_diag_tril(linop_diag, linop_triangular):
   return linear_operator_lower_triangular.LinearOperatorLowerTriangular(
       tril=linop_triangular.to_dense() / linop_diag.diag[..., None],
-      is_non_singular=registrations_util.combined_non_singular_hint(
+      is_non_singular=property_hint_util.combined_non_singular_hint(
           linop_diag, linop_triangular),
       # This is safe to do since the Triangular matrix is only self-adjoint
       # when it is a diagonal matrix, and hence commutes.
-      is_self_adjoint=registrations_util.combined_commuting_self_adjoint_hint(
+      is_self_adjoint=property_hint_util.combined_commuting_self_adjoint_hint(
           linop_diag, linop_triangular),
       is_positive_definite=None,
       is_square=True)
@@ -181,12 +181,12 @@ def _solve_linear_operator_circulant_circulant(linop_a, linop_b):
 
   return linop_a.__class__(
       spectrum=linop_b.spectrum / linop_a.spectrum,
-      is_non_singular=registrations_util.combined_non_singular_hint(
+      is_non_singular=property_hint_util.combined_non_singular_hint(
           linop_a, linop_b),
-      is_self_adjoint=registrations_util.combined_commuting_self_adjoint_hint(
+      is_self_adjoint=property_hint_util.combined_commuting_self_adjoint_hint(
           linop_a, linop_b),
       is_positive_definite=(
-          registrations_util.combined_commuting_positive_definite_hint(
+          property_hint_util.combined_commuting_positive_definite_hint(
               linop_a, linop_b)),
       is_square=True)
 # pylint: enable=protected-access
@@ -203,7 +203,7 @@ def _solve_linear_operator_block_diag_block_diag(linop_a, linop_b):
       operators=[
           o1.solve(o2) for o1, o2 in zip(
               linop_a.operators, linop_b.operators)],
-      is_non_singular=registrations_util.combined_non_singular_hint(
+      is_non_singular=property_hint_util.combined_non_singular_hint(
           linop_a, linop_b),
       # In general, a solve of self-adjoint positive-definite block diagonal
       # matrices is not self-=adjoint.

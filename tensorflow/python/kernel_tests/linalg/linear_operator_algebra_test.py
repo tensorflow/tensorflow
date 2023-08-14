@@ -17,62 +17,13 @@
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops.linalg import linear_operator
 from tensorflow.python.ops.linalg import linear_operator_algebra
-from tensorflow.python.ops.linalg import matmul_registrations  # pylint: disable=unused-import
 from tensorflow.python.ops.linalg import solve_registrations  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
 # pylint: disable=protected-access
-_MATMUL = linear_operator_algebra._MATMUL
-_registered_matmul = linear_operator_algebra._registered_matmul
 _SOLVE = linear_operator_algebra._SOLVE
 _registered_solve = linear_operator_algebra._registered_solve
 # pylint: enable=protected-access
-
-
-class MatmulTest(test.TestCase):
-
-  def testRegistration(self):
-
-    class CustomLinOp(linear_operator.LinearOperator):
-
-      def _matmul(self, a):
-        pass
-
-      def _shape(self):
-        return tensor_shape.TensorShape([1, 1])
-
-      def _shape_tensor(self):
-        pass
-
-    # Register Matmul to a lambda that spits out the name parameter
-    @linear_operator_algebra.RegisterMatmul(CustomLinOp, CustomLinOp)
-    def _matmul(a, b):  # pylint: disable=unused-argument,unused-variable
-      return "OK"
-
-    custom_linop = CustomLinOp(
-        dtype=None, is_self_adjoint=True, is_positive_definite=True)
-    self.assertEqual("OK", custom_linop.matmul(custom_linop))
-
-  def testRegistrationFailures(self):
-
-    class CustomLinOp(linear_operator.LinearOperator):
-      pass
-
-    with self.assertRaisesRegex(TypeError, "must be callable"):
-      linear_operator_algebra.RegisterMatmul(CustomLinOp, CustomLinOp)("blah")
-
-    # First registration is OK
-    linear_operator_algebra.RegisterMatmul(
-        CustomLinOp, CustomLinOp)(lambda a: None)
-
-    # Second registration fails
-    with self.assertRaisesRegex(ValueError, "has already been registered"):
-      linear_operator_algebra.RegisterMatmul(
-          CustomLinOp, CustomLinOp)(lambda a: None)
-
-  def testExactMatmulRegistrationsAllMatch(self):
-    for (k, v) in _MATMUL.items():
-      self.assertEqual(v, _registered_matmul(k[0], k[1]))
 
 
 class SolveTest(test.TestCase):

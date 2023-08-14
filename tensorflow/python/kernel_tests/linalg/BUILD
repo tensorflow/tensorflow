@@ -191,7 +191,6 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/ops/linalg:linear_operator",
         "//tensorflow/python/ops/linalg:linear_operator_algebra",
-        "//tensorflow/python/ops/linalg:matmul_registrations",
         "//tensorflow/python/ops/linalg:solve_registrations",
         "//tensorflow/python/platform:client_testlib",
     ],
