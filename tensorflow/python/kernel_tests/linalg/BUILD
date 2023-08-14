@@ -389,7 +389,7 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/ops/linalg",
-        "//tensorflow/python/ops/linalg:linear_operator_inversion",
+        "//tensorflow/python/ops/linalg:linear_operator",
         "//tensorflow/python/ops/linalg:linear_operator_test_util",
         "//tensorflow/python/platform:client_testlib",
     ],

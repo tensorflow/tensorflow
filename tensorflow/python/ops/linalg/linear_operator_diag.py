@@ -191,6 +191,14 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
   def diag(self):
     return self._diag
 
+  def _linop_inverse(self) -> "LinearOperatorDiag":
+    return LinearOperatorDiag(
+        1. / self.diag,
+        is_non_singular=self.is_non_singular,
+        is_self_adjoint=self.is_self_adjoint,
+        is_positive_definite=self.is_positive_definite,
+        is_square=True)
+
   def _assert_non_singular(self):
     return linear_operator_util.assert_no_entries_with_modulus_zero(
         self._diag,

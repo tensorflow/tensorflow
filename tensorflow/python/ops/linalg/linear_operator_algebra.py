@@ -23,7 +23,6 @@ from tensorflow.python.util import tf_inspect
 
 _MATMUL = {}
 _SOLVE = {}
-_INVERSES = {}
 
 
 def _registered_function(type_list, registry):
@@ -50,11 +49,6 @@ def _registered_matmul(type_a, type_b):
 def _registered_solve(type_a, type_b):
   """Get the Solve function registered for classes a and b."""
   return _registered_function([type_a, type_b], _SOLVE)
-
-
-def _registered_inverse(type_a):
-  """Get the Cholesky function registered for class a."""
-  return _registered_function([type_a], _INVERSES)
 
 
 def matmul(lin_op_a, lin_op_b, name=None):
@@ -105,29 +99,6 @@ def solve(lin_op_a, lin_op_b, name=None):
 
   with ops.name_scope(name, "Solve"):
     return solve_fn(lin_op_a, lin_op_b)
-
-
-def inverse(lin_op_a, name=None):
-  """Get the Inverse associated to lin_op_a.
-
-  Args:
-    lin_op_a: The LinearOperator to decompose.
-    name: Name to use for this operation.
-
-  Returns:
-    A LinearOperator that represents the inverse of `lin_op_a`.
-
-  Raises:
-    NotImplementedError: If no Inverse method is defined for the LinearOperator
-      type of `lin_op_a`.
-  """
-  inverse_fn = _registered_inverse(type(lin_op_a))
-  if inverse_fn is None:
-    raise ValueError("No inverse registered for {}".format(
-        type(lin_op_a)))
-
-  with ops.name_scope(name, "Inverse"):
-    return inverse_fn(lin_op_a)
 
 
 class RegisterMatmul:
@@ -220,45 +191,3 @@ class RegisterSolve:
           self._key[1].__name__))
     _SOLVE[self._key] = solve_fn
     return solve_fn
-
-
-class RegisterInverse:
-  """Decorator to register an Inverse implementation function.
-
-  Usage:
-
-  @linear_operator_algebra.RegisterInverse(lin_op.LinearOperatorIdentity)
-  def _inverse_identity(lin_op_a):
-    # Return the identity matrix.
-  """
-
-  def __init__(self, lin_op_cls_a):
-    """Initialize the LinearOperator registrar.
-
-    Args:
-      lin_op_cls_a: the class of the LinearOperator to decompose.
-    """
-    self._key = (lin_op_cls_a,)
-
-  def __call__(self, inverse_fn):
-    """Perform the Inverse registration.
-
-    Args:
-      inverse_fn: The function to use for the Inverse.
-
-    Returns:
-      inverse_fn
-
-    Raises:
-      TypeError: if inverse_fn is not a callable.
-      ValueError: if a Inverse function has already been registered for
-        the given argument classes.
-    """
-    if not callable(inverse_fn):
-      raise TypeError(
-          "inverse_fn must be callable, received: {}".format(inverse_fn))
-    if self._key in _INVERSES:
-      raise ValueError("Inverse({}) has already been registered to: {}".format(
-          self._key[0].__name__, _INVERSES[self._key]))
-    _INVERSES[self._key] = inverse_fn
-    return inverse_fn

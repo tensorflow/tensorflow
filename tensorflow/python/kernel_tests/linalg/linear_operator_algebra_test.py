@@ -22,8 +22,6 @@ from tensorflow.python.ops.linalg import solve_registrations  # pylint: disable=
 from tensorflow.python.platform import test
 
 # pylint: disable=protected-access
-_INVERSES = linear_operator_algebra._INVERSES
-_registered_inverse = linear_operator_algebra._registered_inverse
 _MATMUL = linear_operator_algebra._MATMUL
 _registered_matmul = linear_operator_algebra._registered_matmul
 _SOLVE = linear_operator_algebra._SOLVE
@@ -124,52 +122,6 @@ class SolveTest(test.TestCase):
   def testExactSolveRegistrationsAllMatch(self):
     for (k, v) in _SOLVE.items():
       self.assertEqual(v, _registered_solve(k[0], k[1]))
-
-
-class InverseTest(test.TestCase):
-
-  def testRegistration(self):
-
-    class CustomLinOp(linear_operator.LinearOperator):
-
-      def _matmul(self, a):
-        pass
-
-      def _shape(self):
-        return tensor_shape.TensorShape([1, 1])
-
-      def _shape_tensor(self):
-        pass
-
-    # Register Inverse to a lambda that spits out the name parameter
-    @linear_operator_algebra.RegisterInverse(CustomLinOp)
-    def _inverse(a):  # pylint: disable=unused-argument,unused-variable
-      return "OK"
-
-    with self.assertRaisesRegex(ValueError, "singular"):
-      CustomLinOp(dtype=None, is_non_singular=False).inverse()
-
-    self.assertEqual("OK", CustomLinOp(
-        dtype=None, is_non_singular=True).inverse())
-
-  def testRegistrationFailures(self):
-
-    class CustomLinOp(linear_operator.LinearOperator):
-      pass
-
-    with self.assertRaisesRegex(TypeError, "must be callable"):
-      linear_operator_algebra.RegisterInverse(CustomLinOp)("blah")
-
-    # First registration is OK
-    linear_operator_algebra.RegisterInverse(CustomLinOp)(lambda a: None)
-
-    # Second registration fails
-    with self.assertRaisesRegex(ValueError, "has already been registered"):
-      linear_operator_algebra.RegisterInverse(CustomLinOp)(lambda a: None)
-
-  def testExactRegistrationsAllMatch(self):
-    for (k, v) in _INVERSES.items():
-      self.assertEqual(v, _registered_inverse(k[0]))
 
 
 if __name__ == "__main__":

@@ -80,6 +80,7 @@ py_strict_library(
         ":linear_operator_util",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/ops:array_ops",
@@ -145,11 +146,16 @@ py_strict_library(
     deps = [
         ":linalg_impl",
         ":linear_operator",
+        ":linear_operator_addition",
         ":linear_operator_algebra",
+        ":linear_operator_full_matrix",
+        ":linear_operator_identity",
         ":linear_operator_util",
         "//tensorflow/python/framework:common_shapes",
-        "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_conversion",
+        "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:array_ops_stack",
         "//tensorflow/python/ops:check_ops",
@@ -181,6 +187,7 @@ py_strict_library(
     srcs = [
         "linear_operator.py",
         "linear_operator_adjoint.py",
+        "linear_operator_inversion.py",
         "linear_operator_lower_triangular.py",
     ],
     deps = [
@@ -213,17 +220,6 @@ py_strict_library(
         "//tensorflow/python/util:tf_export",
         "//tensorflow/python/util:variable_utils",
         "//third_party/py/numpy",
-    ],
-)
-
-py_strict_library(
-    name = "linear_operator_inversion",
-    srcs = ["linear_operator_inversion.py"],
-    deps = [
-        ":linear_operator",
-        ":linear_operator_util",
-        "//tensorflow/python/framework:for_generated_wrappers",
-        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -346,30 +342,9 @@ py_strict_library(
 )
 
 py_strict_library(
-    name = "inverse_registrations",
-    srcs = ["inverse_registrations.py"],
-    deps = [
-        ":linear_operator",
-        ":linear_operator_addition",
-        ":linear_operator_algebra",
-        ":linear_operator_block_diag",
-        ":linear_operator_block_lower_triangular",
-        ":linear_operator_circulant",
-        ":linear_operator_diag",
-        ":linear_operator_full_matrix",
-        ":linear_operator_householder",
-        ":linear_operator_identity",
-        ":linear_operator_inversion",
-        ":linear_operator_kronecker",
-        "//tensorflow/python/ops:math_ops",
-    ],
-)
-
-py_strict_library(
     name = "linalg",
     srcs = ["linalg.py"],
     deps = [
-        ":inverse_registrations",
         ":linalg_impl",
         ":linear_operator",
         ":linear_operator_algebra",
@@ -435,7 +410,6 @@ py_strict_library(
         ":linear_operator_composition",
         ":linear_operator_diag",
         ":linear_operator_identity",
-        ":linear_operator_inversion",
         ":registrations_util",
     ],
 )

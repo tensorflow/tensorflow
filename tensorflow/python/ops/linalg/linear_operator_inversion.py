@@ -178,6 +178,9 @@ class LinearOperatorInversion(linear_operator.LinearOperator):
     """The operator before inversion."""
     return self._operator
 
+  def _linop_inverse(self) -> linear_operator.LinearOperator:
+    return self.operator
+
   def _assert_non_singular(self):
     return self.operator.assert_non_singular()
 

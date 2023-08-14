@@ -18,6 +18,7 @@ import numpy as np
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
@@ -169,13 +170,13 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
   """
 
   def __init__(self,
-               spectrum,
-               block_depth,
+               spectrum: tensor.Tensor,
+               block_depth: int,
                input_output_dtype=dtypes.complex64,
-               is_non_singular=None,
-               is_self_adjoint=None,
-               is_positive_definite=None,
-               is_square=True,
+               is_non_singular: bool = None,
+               is_self_adjoint: bool = None,
+               is_positive_definite: bool = None,
+               is_square: bool = True,
                parameters=None,
                name="LinearOperatorCirculant"):
     r"""Initialize an `_BaseLinearOperatorCirculant`.
@@ -318,12 +319,22 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
         is_positive_definite=self.is_positive_definite,
         is_square=True)
 
+  def _linop_inverse(self) -> "_BaseLinearOperatorCirculant":
+    return _BaseLinearOperatorCirculant(
+        spectrum=1. / self.spectrum,
+        block_depth=self.block_depth,
+        is_non_singular=self.is_non_singular,
+        is_self_adjoint=self.is_self_adjoint,
+        is_positive_definite=self.is_positive_definite,
+        is_square=True,
+        input_output_dtype=self.dtype)
+
   @property
   def block_shape(self):
     return self.spectrum.shape[-self.block_depth:]
 
   @property
-  def spectrum(self):
+  def spectrum(self) -> tensor.Tensor:
     return self._spectrum
 
   def _vectorize_then_blockify(self, matrix):
@@ -872,12 +883,12 @@ class LinearOperatorCirculant(_BaseLinearOperatorCirculant):
   """
 
   def __init__(self,
-               spectrum,
+               spectrum: tensor.Tensor,
                input_output_dtype=dtypes.complex64,
-               is_non_singular=None,
-               is_self_adjoint=None,
-               is_positive_definite=None,
-               is_square=True,
+               is_non_singular: bool = None,
+               is_self_adjoint: bool = None,
+               is_positive_definite: bool = None,
+               is_square: bool = True,
                name="LinearOperatorCirculant"):
     r"""Initialize an `LinearOperatorCirculant`.
 
@@ -948,6 +959,15 @@ class LinearOperatorCirculant(_BaseLinearOperatorCirculant):
         is_self_adjoint=self.is_self_adjoint,
         is_positive_definite=self.is_positive_definite,
         is_square=True)
+
+  def _linop_inverse(self) -> "LinearOperatorCirculant":
+    return LinearOperatorCirculant(
+        spectrum=1. / self.spectrum,
+        is_non_singular=self.is_non_singular,
+        is_self_adjoint=self.is_self_adjoint,
+        is_positive_definite=self.is_positive_definite,
+        is_square=True,
+        input_output_dtype=self.dtype)
 
 
 @tf_export("linalg.LinearOperatorCirculant2D")
@@ -1073,12 +1093,12 @@ class LinearOperatorCirculant2D(_BaseLinearOperatorCirculant):
   """
 
   def __init__(self,
-               spectrum,
+               spectrum: tensor.Tensor,
                input_output_dtype=dtypes.complex64,
-               is_non_singular=None,
-               is_self_adjoint=None,
-               is_positive_definite=None,
-               is_square=True,
+               is_non_singular: bool = None,
+               is_self_adjoint: bool = None,
+               is_positive_definite: bool = None,
+               is_square: bool = True,
                name="LinearOperatorCirculant2D"):
     r"""Initialize an `LinearOperatorCirculant2D`.
 
@@ -1149,6 +1169,15 @@ class LinearOperatorCirculant2D(_BaseLinearOperatorCirculant):
         is_self_adjoint=self.is_self_adjoint,
         is_positive_definite=self.is_positive_definite,
         is_square=True)
+
+  def _linop_inverse(self) -> "LinearOperatorCirculant2D":
+    return LinearOperatorCirculant2D(
+        spectrum=1. / self.spectrum,
+        is_non_singular=self.is_non_singular,
+        is_self_adjoint=self.is_self_adjoint,
+        is_positive_definite=self.is_positive_definite,
+        is_square=True,
+        input_output_dtype=self.dtype)
 
 
 @tf_export("linalg.LinearOperatorCirculant3D")
@@ -1247,12 +1276,12 @@ class LinearOperatorCirculant3D(_BaseLinearOperatorCirculant):
   """
 
   def __init__(self,
-               spectrum,
+               spectrum: tensor.Tensor,
                input_output_dtype=dtypes.complex64,
-               is_non_singular=None,
-               is_self_adjoint=None,
-               is_positive_definite=None,
-               is_square=True,
+               is_non_singular: bool = None,
+               is_self_adjoint: bool = None,
+               is_positive_definite: bool = None,
+               is_square: bool = True,
                name="LinearOperatorCirculant3D"):
     """Initialize an `LinearOperatorCirculant`.
 
@@ -1323,6 +1352,15 @@ class LinearOperatorCirculant3D(_BaseLinearOperatorCirculant):
         is_self_adjoint=self.is_self_adjoint,
         is_positive_definite=self.is_positive_definite,
         is_square=True)
+
+  def _linop_inverse(self) -> "LinearOperatorCirculant3D":
+    return LinearOperatorCirculant3D(
+        spectrum=1. / self.spectrum,
+        is_non_singular=self.is_non_singular,
+        is_self_adjoint=self.is_self_adjoint,
+        is_positive_definite=self.is_positive_definite,
+        is_square=True,
+        input_output_dtype=self.dtype)
 
 
 def _to_complex(x):

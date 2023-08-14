@@ -310,6 +310,16 @@ class LinearOperatorBlockDiag(linear_operator.LinearOperator):
         is_self_adjoint=None,  # Let the operators passed in decide.
         is_square=True)
 
+  def _linop_inverse(self) -> "LinearOperatorBlockDiag":
+    # We take the inverse of each block on the diagonal.
+    return LinearOperatorBlockDiag(
+        operators=[
+            operator.inverse() for operator in self.operators],
+        is_non_singular=self.is_non_singular,
+        is_self_adjoint=self.is_self_adjoint,
+        is_positive_definite=self.is_positive_definite,
+        is_square=True)
+
   # TODO(b/188080761): Add a more efficient implementation of `cond` that
   # constructs the condition number from the blockwise singular values.
 

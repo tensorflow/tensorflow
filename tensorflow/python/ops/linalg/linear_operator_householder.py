@@ -193,6 +193,9 @@ class LinearOperatorHouseholder(linear_operator.LinearOperator):
   def _linop_adjoint(self) -> "LinearOperatorHouseholder":
     return self
 
+  def _linop_inverse(self) -> "LinearOperatorHouseholder":
+    return self
+
   def _matmul(self, x, adjoint=False, adjoint_arg=False):
     # Given a vector `v`, we would like to reflect `x` about the hyperplane
     # orthogonal to `v` going through the origin.  We first project `x` to `v`

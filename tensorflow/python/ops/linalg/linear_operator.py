@@ -1007,7 +1007,7 @@ class LinearOperator(
         is_positive_definite=self.is_positive_definite,
         is_square=self.is_square)
 
-  def inverse(self, name="inverse"):
+  def inverse(self, name: str = "inverse") -> "LinearOperator":
     """Returns the Inverse of this `LinearOperator`.
 
     Given `A` representing this `LinearOperator`, return a `LinearOperator`
@@ -1030,7 +1030,21 @@ class LinearOperator(
                        "a singular matrix.")
 
     with self._name_scope(name):  # pylint: disable=not-callable
-      return linear_operator_algebra.inverse(self)
+      return self._linop_inverse()
+
+  def _linop_inverse(self) -> "LinearOperator":
+    # The in-line import is necessary because linear_operator_inversion.py
+    # depends on linear_operator.py. The in-line import works because the two
+    # files are now in the same build target, but if the import were at the top
+    # of the file there would be a partially-initialized module error caused by
+    # the code cycle.
+    from tensorflow.python.ops.linalg import linear_operator_inversion  # pylint: disable=g-import-not-at-top
+    return linear_operator_inversion.LinearOperatorInversion(
+        self,
+        is_non_singular=self.is_non_singular,
+        is_self_adjoint=self.is_self_adjoint,
+        is_positive_definite=self.is_positive_definite,
+        is_square=self.is_square)
 
   def cholesky(self, name: str = "cholesky") -> "LinearOperator":
     """Returns a Cholesky factor as a `LinearOperator`.
