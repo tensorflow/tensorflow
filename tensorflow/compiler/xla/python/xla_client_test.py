@@ -2239,7 +2239,7 @@ def TestFactory(xla_backend,
         for memory in device.addressable_memories():
           self.assertEqual(memory.process_index, device.process_index)
           self.assertEqual(memory.platform, device.platform)
-          self.assertIn(device, memory.attached_devices())
+          self.assertIn(device, memory.addressable_by_devices())
           self.assertEqual(memory, device.memory(memory.kind))
 
   tests.append(DeviceTest)

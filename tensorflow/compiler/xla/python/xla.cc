@@ -353,8 +353,8 @@ PYBIND11_MODULE(xla_extension, m) {
       .def_property_readonly("kind", &PjRtMemorySpace::memory_space_kind)
       .def("__str__", &PjRtMemorySpace::DebugString)
       .def("__repr__", &PjRtMemorySpace::ToString)
-      // Returns the devices this `Memory` is attached to.
-      .def("attached_devices",
+      // Returns the devices that can address this `Memory`.
+      .def("addressable_by_devices",
            [](const ClientAndPtr<PjRtMemorySpace>& memory_space) {
              std::vector<ClientAndPtr<PjRtDevice>> devices;
              auto span = memory_space->devices();
