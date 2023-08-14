@@ -1975,6 +1975,24 @@ py_strict_library(
     ],
 )
 
+tf_py_strict_test(
+    name = "lookup_ops_async_checkpoint_test",
+    srcs = ["lookup_ops_async_checkpoint_test.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":lookup_ops",
+        ":variables",
+        "//tensorflow/python/checkpoint",
+        "//tensorflow/python/checkpoint:checkpoint_options",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:test_lib",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 py_strict_library(
     name = "math_grad",
     srcs = ["math_grad.py"],
