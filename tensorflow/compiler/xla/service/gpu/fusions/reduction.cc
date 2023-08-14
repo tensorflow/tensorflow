@@ -975,8 +975,7 @@ StatusOr<FusionEmissionResult> ReductionFusion::Emit(
   if (!reduction_codegen_info->IsRaceFree()) {
     absl::Span<HloInstruction* const> fusion_roots = analysis_.fusion_roots();
     for (int i = 0; i < fusion_roots.size(); ++i) {
-      if (IsRealReductionHero(*fusion_roots[i],
-                              FindNonTrivialHero(*fusion_roots[i]))) {
+      if (IsReductionFromOrToContiguousDimensions(*fusion_roots[i])) {
         TF_ASSIGN_OR_RETURN(result.thunks.emplace_back(),
                             BuildFusedInitializerThunk(
                                 ir_emitter_context, fusion_op, analysis_,
