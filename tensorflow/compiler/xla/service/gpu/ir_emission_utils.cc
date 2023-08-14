@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/service/gpu/hlo_traversal.h"
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/buffer_assignment_util.h"
@@ -765,67 +766,33 @@ const HloInstruction& FindNonTrivialHero(
   while (IsIntermediate(idx) && !is_boundary(*idx->operand(0), *idx)) {
     idx = idx->operand(0);
   }
-  if (!IsIntermediate(idx, /*allowed_operand_count=*/3)) {
-    return *idx;
-  }
+
+  const HloInstruction* transpose = nullptr;
   // Try a bit harder to find a transpose hero. The shared memory transpose
   // emitter also works if there are ops with more than 1 operand on the path
   // between root and the transpose op, we still want the restriction though
   // that each op on the path is elementwise and has only 1 user.
-  absl::flat_hash_set<const HloInstruction*> visited;
-  std::queue<const HloInstruction*> q;
-  auto enqueue_operands = [&](const HloInstruction* idx) {
-    if (idx->opcode() == HloOpcode::kParameter) {
-      auto* fusion = idx->parent()->FusionInstruction();
-      // ir_emitter_unnested creates fusion instructions without parameters. We
-      // can't (and don't want to) follow edges outside of the fusion in this
-      // case.
-      if (fusion != nullptr &&
-          fusion->operand_count() > idx->parameter_number()) {
-        auto* operand = fusion->operand(idx->parameter_number());
-        if (!is_boundary(*operand, *idx) && visited.insert(operand).second) {
-          q.push(operand);
-        }
-      }
-      return;
-    }
-
-    if (idx->opcode() == HloOpcode::kFusion) {
-      if (!is_boundary(*idx->fused_expression_root(), *idx) &&
-          visited.insert(idx->fused_expression_root()).second) {
-        q.push(idx->fused_expression_root());
-      }
-      return;
-    }
-
-    if (!IsIntermediate(idx, /*allowed_operand_count=*/3)) return;
-
-    for (HloInstruction* hlo : idx->operands()) {
-      if (!is_boundary(*hlo, *idx) && visited.insert(hlo).second) {
-        q.push(hlo);
-      }
-    }
-  };
-  enqueue_operands(idx);
-  const HloInstruction* non_trivial_hero = nullptr;
-  while (!q.empty()) {
-    const HloInstruction* hlo = q.front();
-    q.pop();
-    if (FindTiledLogicalTranspose(*hlo)) {
+  auto visit = [&transpose](const HloInstruction& node) {
+    if (FindTiledLogicalTranspose(node)) {
       // If we do not find a unique transpose op, use the original non-trivial
       // hero.
-      if (non_trivial_hero != nullptr) {
-        return *idx;
+      if (transpose) {
+        transpose = nullptr;
+        return TraversalResult::kAbortTraversal;
       }
-      non_trivial_hero = hlo;
-    } else {
-      enqueue_operands(hlo);
+      transpose = &node;
+      return TraversalResult::kDoNotVisitOperands;
     }
-  }
-  if (non_trivial_hero == nullptr) {
-    return *idx;
-  }
-  return *non_trivial_hero;
+
+    if (node.opcode() != HloOpcode::kParameter &&
+        node.opcode() != HloOpcode::kFusion &&
+        !IsIntermediate(&node, /*allowed_operand_count=*/3)) {
+      return TraversalResult::kDoNotVisitOperands;
+    }
+    return TraversalResult::kVisitOperands;
+  };
+  HloBfsConsumersFirstTraversal(*idx, is_boundary, visit);
+  return transpose ? *transpose : *idx;
 }
 
 const HloInstruction& FindNonTrivialHero(const HloInstruction& instr) {
