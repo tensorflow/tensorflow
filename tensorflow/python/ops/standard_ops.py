@@ -61,7 +61,6 @@ from tensorflow.python.ops.histogram_ops import *
 from tensorflow.python.ops.init_ops import *
 from tensorflow.python.ops.io_ops import *
 from tensorflow.python.ops.linalg_ops import *
-from tensorflow.python.ops.linalg import adjoint_registrations as _adjoint_registrations
 from tensorflow.python.ops.linalg import cholesky_registrations as _cholesky_registrations
 from tensorflow.python.ops.linalg import inverse_registrations as _inverse_registrations
 from tensorflow.python.ops.linalg import linear_operator_algebra as _linear_operator_algebra

@@ -293,6 +293,15 @@ class LinearOperatorBlockDiag(linear_operator.LinearOperator):
 
     return array_ops.concat((batch_shape, matrix_shape), 0)
 
+  def _linop_adjoint(self) -> "LinearOperatorBlockDiag":
+    # We take the adjoint of each block on the diagonal.
+    return LinearOperatorBlockDiag(
+        operators=[operator.adjoint() for operator in self.operators],
+        is_non_singular=self.is_non_singular,
+        is_self_adjoint=self.is_self_adjoint,
+        is_positive_definite=self.is_positive_definite,
+        is_square=True)
+
   # TODO(b/188080761): Add a more efficient implementation of `cond` that
   # constructs the condition number from the blockwise singular values.
 

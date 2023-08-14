@@ -162,6 +162,9 @@ class LinearOperatorAdjoint(linear_operator.LinearOperator):
     """The operator before taking the adjoint."""
     return self._operator
 
+  def _linop_adjoint(self) -> linear_operator.LinearOperator:
+    return self.operator
+
   def _assert_non_singular(self):
     return self.operator.assert_non_singular()
 

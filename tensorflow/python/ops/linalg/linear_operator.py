@@ -978,7 +978,7 @@ class LinearOperator(
 
       return self._solvevec(rhs, adjoint=adjoint)
 
-  def adjoint(self, name="adjoint"):
+  def adjoint(self, name: str = "adjoint") -> "LinearOperator":
     """Returns the adjoint of the current `LinearOperator`.
 
     Given `A` representing this `LinearOperator`, return `A*`.
@@ -993,10 +993,19 @@ class LinearOperator(
     if self.is_self_adjoint is True:  # pylint: disable=g-bool-id-comparison
       return self
     with self._name_scope(name):  # pylint: disable=not-callable
-      return linear_operator_algebra.adjoint(self)
+      return self._linop_adjoint()
 
   # self.H is equivalent to self.adjoint().
   H = property(adjoint, None)
+
+  def _linop_adjoint(self) -> "LinearOperator":
+    from tensorflow.python.ops.linalg import linear_operator_adjoint  # pylint: disable=g-import-not-at-top
+    return linear_operator_adjoint.LinearOperatorAdjoint(
+        self,
+        is_non_singular=self.is_non_singular,
+        is_self_adjoint=self.is_self_adjoint,
+        is_positive_definite=self.is_positive_definite,
+        is_square=self.is_square)
 
   def inverse(self, name="inverse"):
     """Returns the Inverse of this `LinearOperator`.

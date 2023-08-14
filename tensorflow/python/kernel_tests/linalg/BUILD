@@ -176,7 +176,7 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/ops/linalg",
-        "//tensorflow/python/ops/linalg:linear_operator_adjoint",
+        "//tensorflow/python/ops/linalg:linear_operator",
         "//tensorflow/python/ops/linalg:linear_operator_test_util",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",

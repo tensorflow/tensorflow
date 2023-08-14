@@ -23,8 +23,6 @@ from tensorflow.python.ops.linalg import solve_registrations  # pylint: disable=
 from tensorflow.python.platform import test
 
 # pylint: disable=protected-access
-_ADJOINTS = linear_operator_algebra._ADJOINTS
-_registered_adjoint = linear_operator_algebra._registered_adjoint
 _CHOLESKY_DECOMPS = linear_operator_algebra._CHOLESKY_DECOMPS
 _registered_cholesky = linear_operator_algebra._registered_cholesky
 _INVERSES = linear_operator_algebra._INVERSES
@@ -34,48 +32,6 @@ _registered_matmul = linear_operator_algebra._registered_matmul
 _SOLVE = linear_operator_algebra._SOLVE
 _registered_solve = linear_operator_algebra._registered_solve
 # pylint: enable=protected-access
-
-
-class AdjointTest(test.TestCase):
-
-  def testRegistration(self):
-
-    class CustomLinOp(linear_operator.LinearOperator):
-
-      def _matmul(self, a):
-        pass
-
-      def _shape(self):
-        return tensor_shape.TensorShape([1, 1])
-
-      def _shape_tensor(self):
-        pass
-
-    # Register Adjoint to a lambda that spits out the name parameter
-    @linear_operator_algebra.RegisterAdjoint(CustomLinOp)
-    def _adjoint(a):  # pylint: disable=unused-argument,unused-variable
-      return "OK"
-
-    self.assertEqual("OK", CustomLinOp(dtype=None).adjoint())
-
-  def testRegistrationFailures(self):
-
-    class CustomLinOp(linear_operator.LinearOperator):
-      pass
-
-    with self.assertRaisesRegex(TypeError, "must be callable"):
-      linear_operator_algebra.RegisterAdjoint(CustomLinOp)("blah")
-
-    # First registration is OK
-    linear_operator_algebra.RegisterAdjoint(CustomLinOp)(lambda a: None)
-
-    # Second registration fails
-    with self.assertRaisesRegex(ValueError, "has already been registered"):
-      linear_operator_algebra.RegisterAdjoint(CustomLinOp)(lambda a: None)
-
-  def testExactAdjointRegistrationsAllMatch(self):
-    for (k, v) in _ADJOINTS.items():
-      self.assertEqual(v, _registered_adjoint(k[0]))
 
 
 class CholeskyTest(test.TestCase):

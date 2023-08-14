@@ -319,6 +319,9 @@ class LinearOperatorIdentity(BaseLinearOperatorIdentity):
 
     return array_ops.concat((self._batch_shape_arg, matrix_shape), 0)
 
+  def _linop_adjoint(self) -> "LinearOperatorIdentity":
+    return self
+
   def _assert_non_singular(self):
     return control_flow_ops.no_op("assert_non_singular")
 
@@ -709,6 +712,19 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
     if conjugate:
       multiplier_matrix = math_ops.conj(multiplier_matrix)
     return multiplier_matrix
+
+  def _linop_adjoint(self) -> "LinearOperatorScaledIdentity":
+    multiplier = self.multiplier
+    if multiplier.dtype.is_complex:
+      multiplier = math_ops.conj(multiplier)
+
+    return LinearOperatorScaledIdentity(
+        num_rows=self._num_rows,  # pylint: disable=protected-access
+        multiplier=multiplier,
+        is_non_singular=self.is_non_singular,
+        is_self_adjoint=self.is_self_adjoint,
+        is_positive_definite=self.is_positive_definite,
+        is_square=True)
 
   def _matmul(self, x, adjoint=False, adjoint_arg=False):
     x = linalg.adjoint(x) if adjoint_arg else x

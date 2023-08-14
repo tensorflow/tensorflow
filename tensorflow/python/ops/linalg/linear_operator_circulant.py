@@ -304,6 +304,20 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
         if spectrum_shape is None else spectrum_shape)
     return spectrum_shape[-self.block_depth:]
 
+  def _linop_adjoint(self) -> "_BaseLinearOperatorCirculant":
+    spectrum = self.spectrum
+    if spectrum.dtype.is_complex:
+      spectrum = math_ops.conj(spectrum)
+
+    # Conjugating the spectrum is sufficient to get the adjoint.
+    return _BaseLinearOperatorCirculant(
+        spectrum=spectrum,
+        block_depth=self.block_depth,
+        is_non_singular=self.is_non_singular,
+        is_self_adjoint=self.is_self_adjoint,
+        is_positive_definite=self.is_positive_definite,
+        is_square=True)
+
   @property
   def block_shape(self):
     return self.spectrum.shape[-self.block_depth:]
@@ -922,6 +936,19 @@ class LinearOperatorCirculant(_BaseLinearOperatorCirculant):
         parameters=parameters,
         name=name)
 
+  def _linop_adjoint(self) -> "LinearOperatorCirculant":
+    spectrum = self.spectrum
+    if spectrum.dtype.is_complex:
+      spectrum = math_ops.conj(spectrum)
+
+    # Conjugating the spectrum is sufficient to get the adjoint.
+    return LinearOperatorCirculant(
+        spectrum=spectrum,
+        is_non_singular=self.is_non_singular,
+        is_self_adjoint=self.is_self_adjoint,
+        is_positive_definite=self.is_positive_definite,
+        is_square=True)
+
 
 @tf_export("linalg.LinearOperatorCirculant2D")
 @linear_operator.make_composite_tensor
@@ -1110,6 +1137,19 @@ class LinearOperatorCirculant2D(_BaseLinearOperatorCirculant):
         parameters=parameters,
         name=name)
 
+  def _linop_adjoint(self) -> "LinearOperatorCirculant2D":
+    spectrum = self.spectrum
+    if spectrum.dtype.is_complex:
+      spectrum = math_ops.conj(spectrum)
+
+    # Conjugating the spectrum is sufficient to get the adjoint.
+    return LinearOperatorCirculant2D(
+        spectrum=spectrum,
+        is_non_singular=self.is_non_singular,
+        is_self_adjoint=self.is_self_adjoint,
+        is_positive_definite=self.is_positive_definite,
+        is_square=True)
+
 
 @tf_export("linalg.LinearOperatorCirculant3D")
 @linear_operator.make_composite_tensor
@@ -1270,6 +1310,19 @@ class LinearOperatorCirculant3D(_BaseLinearOperatorCirculant):
         is_square=is_square,
         parameters=parameters,
         name=name)
+
+  def _linop_adjoint(self) -> "LinearOperatorCirculant3D":
+    spectrum = self.spectrum
+    if spectrum.dtype.is_complex:
+      spectrum = math_ops.conj(spectrum)
+
+    # Conjugating the spectrum is sufficient to get the adjoint.
+    return LinearOperatorCirculant3D(
+        spectrum=spectrum,
+        is_non_singular=self.is_non_singular,
+        is_self_adjoint=self.is_self_adjoint,
+        is_positive_definite=self.is_positive_definite,
+        is_square=True)
 
 
 def _to_complex(x):

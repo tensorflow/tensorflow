@@ -217,6 +217,18 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
             "This diagonal operator contained non-zero imaginary values.  "
             " Thus it was not self-adjoint."))
 
+  def _linop_adjoint(self) -> "LinearOperatorDiag":
+    diag = self.diag
+    if diag.dtype.is_complex:
+      diag = math_ops.conj(diag)
+
+    return LinearOperatorDiag(
+        diag=diag,
+        is_non_singular=self.is_non_singular,
+        is_self_adjoint=self.is_self_adjoint,
+        is_positive_definite=self.is_positive_definite,
+        is_square=True)
+
   def _matmul(self, x, adjoint=False, adjoint_arg=False):
     diag_term = math_ops.conj(self._diag) if adjoint else self._diag
     x = linalg.adjoint(x) if adjoint_arg else x
