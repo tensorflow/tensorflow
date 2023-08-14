@@ -435,13 +435,6 @@ Status CompileToPjRtLoadedExecutable(
     bool may_alias_resource_update,
     const XlaCompiler::CompilationResult** compilation_result,
     xla::PjRtClient** client, xla::PjRtLoadedExecutable** executable) {
-  // We store information about the JIT-compiled XLA computation
-  // in the ResourceMgr.
-  ResourceMgr* rm = ctx.resource_manager();
-  if (!rm) {
-    return absl::InternalError("No resource manager.");
-  }
-
   PjRtDeviceCompiler* pjrt_device_compiler;
   DeviceCompilationProfiler* profiler;
   TF_RETURN_IF_ERROR(GetOrCreatePjRtDeviceCompilerAndProfiler(
