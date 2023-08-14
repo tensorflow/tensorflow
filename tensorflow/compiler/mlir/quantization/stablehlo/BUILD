@@ -121,6 +121,7 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     visibility = [
+        ":internal_visibility_allowlist_package",
         "//tensorflow/compiler/mlir:__subpackages__",
     ],
     deps = [
