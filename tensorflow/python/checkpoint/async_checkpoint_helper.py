@@ -75,7 +75,11 @@ def _get_all_trackables(root, exclude_set):
         and appears precisely once in `TrackableView(root).descendants()`.
 
   Returns:
-    all_trackables: All checkpointable trackables.
+    saveable_trackables: All trackables that are saveable in `all_trackables`
+        (see definition of "saveable" in `_trackable_needs_to_be_saved()`). A
+        subset of `all_trackables`.
+    all_trackables: All trackables returned by `TrackableView`'s `descendants()`
+        after excluding `exclude_set`. A superset of `saveable_trackables`.
   """
   all_trackables = trackable_view.TrackableView(root=root).descendants()
 
@@ -117,23 +121,23 @@ def _get_all_trackables(root, exclude_set):
           or "_copy_trackable_to_cpu" in obj.__dict__):
         return True
 
-    # Use MRO so that if a parent class has `_serialize_to_tensors`, but the
-    # object class has not yet been migrated, we'll continue to use the obj
-    # class's `_gather_saveables_for_checkpoint` method.
+    # Use MRO so that if a parent class has one of the three methods, we still
+    # consider `t` as needed to be saved.
     for t in type(obj).mro():
       if t is base.Trackable:
         # Base class always has them implemented, but would raise error.
         continue
       elif ("_serialize_to_tensors" in t.__dict__
-            or "_gather_saveables_for_checkpoint" in t.__dict__):
+            or "_gather_saveables_for_checkpoint" in t.__dict__
+            or "_copy_trackable_to_cpu" in t.__dict__):
         return True
 
     return False
 
-  all_trackables = [x for x in all_trackables if
-                    _trackable_needs_to_be_saved(x)]
+  saveable_trackables = [x for x in all_trackables if
+                         _trackable_needs_to_be_saved(x)]
 
-  return all_trackables
+  return saveable_trackables, all_trackables
 
 
 class AsyncCheckpointHelper:
@@ -189,7 +193,7 @@ class AsyncCheckpointHelper:
     self._tpu_embedding_objects = None
     # A list of highest level `Trackable`s we will copy; does not contain
     # TPUEmbedding objects
-    self._all_trackables = None
+    self._saveable_trackables = None
 
     self._default_device = device_util.current() or "CPU:0"
     self._default_device = device_util.canonicalize(self._default_device)
@@ -224,7 +228,7 @@ class AsyncCheckpointHelper:
     TODO(chienchunh): Get the concrete function before firstly called to avoid
                       hangining the accelerators idle during function tracing.
     """
-    for t in self._all_trackables:
+    for t in self._saveable_trackables:
       try:
         t._copy_trackable_to_cpu(object_map=self._object_map)  # pylint: disable=protected-access
       except NotImplementedError as e:
@@ -250,7 +254,7 @@ class AsyncCheckpointHelper:
     exclude_set = object_identity.ObjectIdentitySet()
     exclude_set.add(self.checkpointer())
     exclude_set.add(self.checkpointer().save_counter)
-    self._all_trackables = _get_all_trackables(
+    self._saveable_trackables, all_trackables = _get_all_trackables(
         root=self.checkpointer(), exclude_set=exclude_set)
 
     # Handle special cases: TPU Embedding, and slot variables.
@@ -259,17 +263,20 @@ class AsyncCheckpointHelper:
     # the object map.
     # 2. Slot variables: they need to be handled differently as they cannot be
     # retrieved from `TrackableView.descendants()`.
-    for t in self._all_trackables:
+
+    # Special case 1: TPU Embedding, populate object_map here
+    for t in self._saveable_trackables:
       if hasattr(t, _TPU_EMBEDDING_ATTR):
-        # Special case 1: TPU Embedding, populate object_map here
         self._handle_tpu_embedding(t)
-      # Note: dir() is used rather than hasattr() here to avoid triggering
-      # custom __getattr__ code, see b/152031870 for context.
-      # Special case 2: slot variables, populate object_map later
+
+    # Note: dir() is used rather than hasattr() here to avoid triggering
+    # custom __getattr__ code, see b/152031870 for context.
+    # Special case 2: slot variables, populate object_map later
+    for t in all_trackables:
       if "get_slot_names" in dir(t):
         slot_names = t.get_slot_names()
         for slot_name in slot_names:
-          for original_variable in self._all_trackables:
+          for original_variable in all_trackables:
             if not isinstance(original_variable, variables.Variable):
               continue
             try:
@@ -278,7 +285,7 @@ class AsyncCheckpointHelper:
             except (AttributeError, KeyError):
               continue
             if isinstance(original_slot_variable, base.Trackable):
-              self._all_trackables.append(original_slot_variable)
+              self._saveable_trackables.append(original_slot_variable)
 
     # Initiate the underlying Checkpoint instance's save_counter.
     save_counter = self.checkpointer().save_counter.numpy()
@@ -294,7 +301,7 @@ class AsyncCheckpointHelper:
 
     # TODO(charlieruan) Figure out a better work around to solve the access
     # out of scope error.
-    for t in self._all_trackables:
+    for t in self._saveable_trackables:
       try:
         t._copy_trackable_to_cpu(object_map=self._object_map)  # pylint: disable=protected-access
       except NotImplementedError as e:
@@ -527,7 +534,7 @@ class AsyncCheckpointHelper:
     save_start_time = time.time()
 
     # If this is the first time that AsyncCheckpoint.save() is called,
-    # we initialize the internal states like `self._all_trackables`. We also
+    # initialize the internal states like `self._saveable_trackables`. We also
     # populate `self._object_map` (i.e. initializing the cpu-copied variables
     # and copy over the value for the first time) by essentially performing a
     # `self._copy_to_cpu()`, hence the if-else logic here.
