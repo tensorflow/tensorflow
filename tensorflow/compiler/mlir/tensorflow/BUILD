@@ -2002,7 +2002,6 @@ build_test(
 # Required as we created the transforms subpackage and need to update
 # these BUILD targets in a follow up.
 aliased_targets = [
-    "set_tpu_infeed_layout",
     "shape_inference_pass",
     "tensorflow_optimize_inc_gen",
     "lower_tf_lib",
