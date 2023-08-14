@@ -21,7 +21,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.util import tf_inspect
 
 
-_CHOLESKY_DECOMPS = {}
 _MATMUL = {}
 _SOLVE = {}
 _INVERSES = {}
@@ -43,11 +42,6 @@ def _registered_function(type_list, registry):
   return registry.get(tuple(r[1] for r in registered_combination), None)
 
 
-def _registered_cholesky(type_a):
-  """Get the Cholesky function registered for class a."""
-  return _registered_function([type_a], _CHOLESKY_DECOMPS)
-
-
 def _registered_matmul(type_a, type_b):
   """Get the Matmul function registered for classes a and b."""
   return _registered_function([type_a, type_b], _MATMUL)
@@ -61,29 +55,6 @@ def _registered_solve(type_a, type_b):
 def _registered_inverse(type_a):
   """Get the Cholesky function registered for class a."""
   return _registered_function([type_a], _INVERSES)
-
-
-def cholesky(lin_op_a, name=None):
-  """Get the Cholesky factor associated to lin_op_a.
-
-  Args:
-    lin_op_a: The LinearOperator to decompose.
-    name: Name to use for this operation.
-
-  Returns:
-    A LinearOperator that represents the lower Cholesky factor of `lin_op_a`.
-
-  Raises:
-    NotImplementedError: If no Cholesky method is defined for the LinearOperator
-      type of `lin_op_a`.
-  """
-  cholesky_fn = _registered_cholesky(type(lin_op_a))
-  if cholesky_fn is None:
-    raise ValueError("No cholesky decomposition registered for {}".format(
-        type(lin_op_a)))
-
-  with ops.name_scope(name, "Cholesky"):
-    return cholesky_fn(lin_op_a)
 
 
 def matmul(lin_op_a, lin_op_b, name=None):
@@ -157,48 +128,6 @@ def inverse(lin_op_a, name=None):
 
   with ops.name_scope(name, "Inverse"):
     return inverse_fn(lin_op_a)
-
-
-class RegisterCholesky:
-  """Decorator to register a Cholesky implementation function.
-
-  Usage:
-
-  @linear_operator_algebra.RegisterCholesky(lin_op.LinearOperatorIdentity)
-  def _cholesky_identity(lin_op_a):
-    # Return the identity matrix.
-  """
-
-  def __init__(self, lin_op_cls_a):
-    """Initialize the LinearOperator registrar.
-
-    Args:
-      lin_op_cls_a: the class of the LinearOperator to decompose.
-    """
-    self._key = (lin_op_cls_a,)
-
-  def __call__(self, cholesky_fn):
-    """Perform the Cholesky registration.
-
-    Args:
-      cholesky_fn: The function to use for the Cholesky.
-
-    Returns:
-      cholesky_fn
-
-    Raises:
-      TypeError: if cholesky_fn is not a callable.
-      ValueError: if a Cholesky function has already been registered for
-        the given argument classes.
-    """
-    if not callable(cholesky_fn):
-      raise TypeError(
-          "cholesky_fn must be callable, received: {}".format(cholesky_fn))
-    if self._key in _CHOLESKY_DECOMPS:
-      raise ValueError("Cholesky({}) has already been registered to: {}".format(
-          self._key[0].__name__, _CHOLESKY_DECOMPS[self._key]))
-    _CHOLESKY_DECOMPS[self._key] = cholesky_fn
-    return cholesky_fn
 
 
 class RegisterMatmul:

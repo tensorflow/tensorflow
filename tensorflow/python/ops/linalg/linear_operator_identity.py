@@ -322,6 +322,16 @@ class LinearOperatorIdentity(BaseLinearOperatorIdentity):
   def _linop_adjoint(self) -> "LinearOperatorIdentity":
     return self
 
+  def _linop_cholesky(self) -> "LinearOperatorIdentity":
+    return LinearOperatorIdentity(
+        num_rows=self._num_rows,  # pylint: disable=protected-access
+        batch_shape=self.batch_shape,
+        dtype=self.dtype,
+        is_non_singular=True,
+        is_self_adjoint=True,
+        is_positive_definite=True,
+        is_square=True)
+
   def _assert_non_singular(self):
     return control_flow_ops.no_op("assert_non_singular")
 
@@ -724,6 +734,15 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
         is_non_singular=self.is_non_singular,
         is_self_adjoint=self.is_self_adjoint,
         is_positive_definite=self.is_positive_definite,
+        is_square=True)
+
+  def _linop_cholesky(self) -> "LinearOperatorScaledIdentity":
+    return LinearOperatorScaledIdentity(
+        num_rows=self._num_rows,  # pylint: disable=protected-access
+        multiplier=math_ops.sqrt(self.multiplier),
+        is_non_singular=True,
+        is_self_adjoint=True,
+        is_positive_definite=True,
         is_square=True)
 
   def _matmul(self, x, adjoint=False, adjoint_arg=False):

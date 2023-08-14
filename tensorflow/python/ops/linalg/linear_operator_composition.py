@@ -22,7 +22,10 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import linalg_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.linalg import linear_operator
+from tensorflow.python.ops.linalg import linear_operator_lower_triangular
 from tensorflow.python.ops.linalg import linear_operator_util
 from tensorflow.python.util.tf_export import tf_export
 
@@ -257,6 +260,66 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
     batch_shape = array_ops.shape(zeros)
 
     return array_ops.concat((batch_shape, matrix_shape), 0)
+
+  def _linop_cholesky(self) -> linear_operator.LinearOperator:
+    """Computes Cholesky(LinearOperatorComposition)."""
+    # L @ L.H will be handled with special code below. Why is L @ L.H the most
+    # important special case?
+    # Note that Diag @ Diag.H  and Diag @ TriL and TriL @ Diag are already
+    # compressed to Diag or TriL by diag matmul
+    # registration. Similarly for Identity and ScaledIdentity.
+    # So these would not appear in a LinearOperatorComposition unless explicitly
+    # constructed as such. So the most important thing to check is L @ L.H.
+    def _is_llt_product(self):
+      """Determines if linop = L @ L.H for L = LinearOperatorLowerTriangular."""
+      if len(self.operators) != 2:
+        return False
+      if not linear_operator_util.is_aat_form(self.operators):
+        return False
+      return isinstance(
+          self.operators[0],
+          linear_operator_lower_triangular.LinearOperatorLowerTriangular)
+
+    if not _is_llt_product(self):
+      return linear_operator_lower_triangular.LinearOperatorLowerTriangular(
+          linalg_ops.cholesky(self.to_dense()),
+          is_non_singular=True,
+          is_self_adjoint=False,
+          is_square=True)
+
+    left_op = self.operators[0]
+
+    # left_op.is_positive_definite ==> op already has positive diag,return it.
+    if left_op.is_positive_definite:
+      return left_op
+
+    # Recall that the base class has already verified
+    # linop.is_positive_definite, else linop.cholesky() would have raised.
+    # So in particular, we know the diagonal has nonzero entries.
+    # In the generic case, we make op have positive diag by dividing each row
+    # by the sign of the diag. This is equivalent to setting A = L @ D where
+    # D is diag(sign(1 / L.diag_part())). Then A is lower triangular with
+    # positive diag and A @ A^H = L @ D @ D^H @ L^H = L @ L^H = linop.
+    # This also works for complex L,
+    # since sign(x + iy) = exp(i * angle(x + iy)).
+    diag_sign = array_ops.expand_dims(
+        math_ops.sign(left_op.diag_part()), axis=-2)
+    return linear_operator_lower_triangular.LinearOperatorLowerTriangular(
+        tril=left_op.tril / diag_sign,
+        is_non_singular=left_op.is_non_singular,
+        # L.is_self_adjoint ==> L is diagonal ==> L @ D is diagonal ==> SA
+        # L.is_self_adjoint is False ==> L not diagonal ==> L @ D not diag ...
+        is_self_adjoint=left_op.is_self_adjoint,
+        # L.is_positive_definite ==> L has positive diag ==> L = L @ D
+        #   ==> (L @ D).is_positive_definite.
+        # L.is_positive_definite is False could result
+        # in L @ D being PD or not.
+        # Consider L = [[1, 0], [-2, 1]] and quadratic form with x = [1, 1].
+        # Note we will already return left_op if left_op.is_positive_definite
+        # above, but to be explicit write this below.
+        is_positive_definite=True if left_op.is_positive_definite else None,
+        is_square=True,
+    )
 
   def _matmul(self, x, adjoint=False, adjoint_arg=False):
     # If self.operators = [A, B], and not adjoint, then

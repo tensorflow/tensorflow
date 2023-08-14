@@ -229,6 +229,14 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
         is_positive_definite=self.is_positive_definite,
         is_square=True)
 
+  def _linop_cholesky(self) -> "LinearOperatorDiag":
+    return LinearOperatorDiag(
+        math_ops.sqrt(self.diag),
+        is_non_singular=True,
+        is_self_adjoint=True,
+        is_positive_definite=True,
+        is_square=True)
+
   def _matmul(self, x, adjoint=False, adjoint_arg=False):
     diag_term = math_ops.conj(self._diag) if adjoint else self._diag
     x = linalg.adjoint(x) if adjoint_arg else x

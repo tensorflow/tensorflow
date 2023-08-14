@@ -1032,7 +1032,7 @@ class LinearOperator(
     with self._name_scope(name):  # pylint: disable=not-callable
       return linear_operator_algebra.inverse(self)
 
-  def cholesky(self, name="cholesky"):
+  def cholesky(self, name: str = "cholesky") -> "LinearOperator":
     """Returns a Cholesky factor as a `LinearOperator`.
 
     Given `A` representing this `LinearOperator`, if `A` is positive definite
@@ -1055,7 +1055,15 @@ class LinearOperator(
       raise ValueError("Cannot take the Cholesky decomposition: "
                        "Not a positive definite self adjoint matrix.")
     with self._name_scope(name):  # pylint: disable=not-callable
-      return linear_operator_algebra.cholesky(self)
+      return self._linop_cholesky()
+
+  def _linop_cholesky(self) -> "LinearOperator":
+    from tensorflow.python.ops.linalg import linear_operator_lower_triangular  # pylint: disable=g-import-not-at-top
+    return linear_operator_lower_triangular.LinearOperatorLowerTriangular(
+        linalg_ops.cholesky(self.to_dense()),
+        is_non_singular=True,
+        is_self_adjoint=False,
+        is_square=True)
 
   def _to_dense(self):
     """Generic and often inefficient implementation.  Override often."""

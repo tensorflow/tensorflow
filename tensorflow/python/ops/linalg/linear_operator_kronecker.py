@@ -280,11 +280,19 @@ class LinearOperatorKronecker(linear_operator.LinearOperator):
 
   def _linop_adjoint(self) -> "LinearOperatorKronecker":
     return LinearOperatorKronecker(
-        operators=[
-            operator.adjoint() for operator in self.operators],
+        operators=[operator.adjoint() for operator in self.operators],
         is_non_singular=self.is_non_singular,
         is_self_adjoint=self.is_self_adjoint,
         is_positive_definite=self.is_positive_definite,
+        is_square=True)
+
+  def _linop_cholesky(self) -> "LinearOperatorKronecker":
+    # Cholesky decomposition of a Kronecker product is the Kronecker product
+    # of cholesky decompositions.
+    return LinearOperatorKronecker(
+        operators=[operator.cholesky() for operator in self.operators],
+        is_non_singular=True,
+        is_self_adjoint=None,  # Let the operators passed in decide.
         is_square=True)
 
   def _solve_matmul_internal(
