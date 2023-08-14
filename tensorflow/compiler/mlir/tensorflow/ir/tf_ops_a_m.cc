@@ -269,16 +269,16 @@ LogicalResult BatchFunctionOp::verifySymbolUses(
 
 void BatchFunctionOp::eraseArguments(const BitVector& erase_indices) {
   const StringRef operand_segment_size_attr = getOperandSegmentSizeAttr();
-  auto operand_segment_sizes = getOperation()->getAttrOfType<DenseI32ArrayAttr>(
+  auto operandSegmentSizes = getOperation()->getAttrOfType<DenseI32ArrayAttr>(
       operand_segment_size_attr);
 
-  // `operand_segment_sizes` attribute indicates the sizes of the two
+  // `operandSegmentSizes` attribute indicates the sizes of the two
   // variadic operands of `BatchFunctionOp`: `in_tensors` and
   // `captured_tensors`. The numbers have to be updated as arguments are
   // erased.
-  const int32_t num_in_original = operand_segment_sizes[0];
+  const int32_t num_in_original = operandSegmentSizes[0];
   int32_t num_in_tensors = num_in_original;
-  int32_t num_captured_tensors = operand_segment_sizes[1];
+  int32_t num_captured_tensors = operandSegmentSizes[1];
 
   for (const unsigned operand_index : erase_indices.set_bits()) {
     operand_index < num_in_original ? num_in_tensors-- : num_captured_tensors--;
@@ -3161,7 +3161,7 @@ void IfRegionOp::getRegionInvocationBounds(
   invocationBounds.assign(2, {0, 1});
 }
 
-OperandRange IfRegionOp::getSuccessorEntryOperands(
+OperandRange IfRegionOp::getEntrySuccessorOperands(
     std::optional<unsigned> index) {
   // IfRegionOp currently only allows one op (the condition), so there are no
   // remaining operands for the successor.
@@ -3172,8 +3172,7 @@ OperandRange IfRegionOp::getSuccessorEntryOperands(
 }
 
 void IfRegionOp::getSuccessorRegions(
-    std::optional<unsigned> index, ArrayRef<Attribute> operands,
-    SmallVectorImpl<RegionSuccessor>& regions) {
+    std::optional<unsigned> index, SmallVectorImpl<RegionSuccessor>& regions) {
   if (index) {
     // The `then` and the `else` region branch back to the parent operation.
     regions.push_back(RegionSuccessor(getResults()));

@@ -328,8 +328,8 @@ def TF_IfRegionOp : TF_Op<"IfRegion",
       [SingleBlockImplicitTerminator<"YieldOp">, NoRegionArguments,
        DeclareOpInterfaceMethods<RegionBranchOpInterface, [
            "areTypesCompatible",
+           "getEntrySuccessorOperands",
            "getRegionInvocationBounds",
-           "getSuccessorEntryOperands",
            "getSuccessorRegions"
        ]>
       ]> {
@@ -451,8 +451,8 @@ def TF_ParseExampleOp : TF_Op<"ParseExample",
     Variadic<TensorOf<[TF_Float32, TF_Int64, TF_Str]>>:$dense_defaults,
 
     TF_ShapeAttrArray:$dense_shapes,
-    DenseI32ArrayAttr:$result_segment_sizes,
-    DenseI32ArrayAttr:$operand_segment_sizes
+    DenseI32ArrayAttr:$resultSegmentSizes,
+    DenseI32ArrayAttr:$operandSegmentSizes
   );
 
   let results = (outs
@@ -487,7 +487,7 @@ def TF_ParseExampleV2Op : TF_Op<"ParseExampleV2",
 
     ConfinedAttr<I64Attr, [IntMinValue<0>]>:$num_sparse,
     TF_ShapeAttrArray:$dense_shapes,
-    DenseI32ArrayAttr:$result_segment_sizes
+    DenseI32ArrayAttr:$resultSegmentSizes
   );
 
   let results = (outs

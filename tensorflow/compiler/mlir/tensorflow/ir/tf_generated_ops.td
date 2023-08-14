@@ -1159,7 +1159,7 @@ to be batched.}]>:$captured_tensors,
 
     // Gets the argument operands to the called function.
     operand_range getArgOperands() {
-      // Merge `in_tensors` and `captured_tensors`. `operand_segment_sizes`
+      // Merge `in_tensors` and `captured_tensors`. `operandSegmentSizes`
       // has two elements, so it will be merging two operand ranges (the two
       // variadic arguments). Attributes like `batch_timeout_micros` will not
       // make it to the return array.

@@ -183,7 +183,7 @@ func.func @target_is_alloc_with_loads_stores(%arg0: memref<8x8xf32>)
     backend_config = "",
     call_target_name = "foo",
     has_side_effect = false,
-    operand_segment_sizes = array<i32: 1, 1>
+    operandSegmentSizes = array<i32: 1, 1>
   } : (memref<8x8xf32>, memref<8x8xf32>) -> ()
 
   return %arg0 : memref<8x8xf32>

@@ -2679,7 +2679,7 @@ module attributes {tf.devices = {"/job:localhost/replica:0/task:0/device:COMPOSI
     %cst = "tf.Const"() {value = dense<512> : tensor<i32>} : () -> tensor<i32>
     %2:4 = "tf_device.launch"() ({
       %4 = "tf.Cast"(%arg0) {Truncate = false} : (tensor<512xi64>) -> tensor<512xi32>
-      %5 = "tf.TPUCopyWithDynamicShape"(%4,  %cst) {operand_segment_sizes = array<i32: 1, 1>} : (tensor<512xi32>, tensor<i32>) -> tensor<512xi32>
+      %5 = "tf.TPUCopyWithDynamicShape"(%4,  %cst) {operandSegmentSizes = array<i32: 1, 1>} : (tensor<512xi32>, tensor<i32>) -> tensor<512xi32>
       tf_device.return %5 : tensor<512xi32>
     }) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : () -> (tensor<512xi32>, tensor<1024xi32>, tensor<1024xi32>, tensor<1024xf32>)
     // CHECK: %[[COMPILE_OUTPUT:[0-9]*]]:4 = "tf_device.launch"
