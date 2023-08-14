@@ -132,7 +132,7 @@ tsl::StatusOr<GpuGraphNodeHandle> AddKernelNode(
 }
 
 static GpuDevicePtr AsDevicePtr(const DeviceMemoryBase& mem) {
-  return reinterpret_cast<GpuDevicePtr>(mem.opaque());
+  return reinterpret_cast<GpuDevicePtr>(const_cast<void*>(mem.opaque()));
 }
 
 tsl::StatusOr<GpuGraphNodeHandle> AddMemcpyD2DNode(
