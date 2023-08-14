@@ -76,16 +76,19 @@ class DTensorDeviceTest(test_util.DTensorBaseTest, parameterized.TestCase):
 
   @parameterized.parameters(True, False)
   def testAsyncOption(self, is_async):
-    # There isn't a great way to test whether something actually executed
-    # synchronously; this test just exercises the option.
-    device = dtensor_device.DTensorDevice([], is_async=is_async)
-    with device._experimental_default_mesh(self.mesh):
-      with ops.device_v2(device.name):
-        a = api.copy_to_mesh(
-            constant_op.constant([1.0]), Layout.replicated(self.mesh, rank=1)
-        )
-        b = array_ops.identity(a)
-    self.assertEqual([1.], b.numpy())
+    try:
+      # There isn't a great way to test whether something actually executed
+      # synchronously; this test just exercises the option.
+      api.reset_dtensor_device(is_async=is_async)
+      with api._dtensor_device()._experimental_default_mesh(self.mesh):
+        with ops.device_v2(api.device_name()):
+          a = api.copy_to_mesh(
+              constant_op.constant([1.0]), Layout.replicated(self.mesh, rank=1)
+          )
+          b = array_ops.identity(a)
+      self.assertEqual([1.0], b.numpy())
+    finally:
+      api._reset()  # pylint: disable=protected-access
 
   def testBasicTypeBasedDispatch(self):
     # Tests for b = Op(a).
