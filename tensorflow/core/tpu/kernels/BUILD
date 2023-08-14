@@ -270,10 +270,6 @@ cc_library(
     deps = [
         ":tpu_compilation_cache_external",
         ":tpu_compilation_cache_interface",
-        ":tpu_op_consts",
-        "//tensorflow/core:framework",
-        "//tensorflow/core/platform:status",
-        "//tensorflow/core/platform:types",
     ],
 )
 
