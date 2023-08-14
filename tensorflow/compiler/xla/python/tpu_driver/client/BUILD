@@ -1,3 +1,4 @@
+load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/tsl:tsl.default.bzl", "filegroup", "tsl_pybind_extension")
 
@@ -72,7 +73,7 @@ tsl_pybind_extension(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "py_tpu_client",
     srcs = [
         "tpu_client.py",
@@ -83,7 +84,6 @@ py_library(
         ":tpu_client_extension",
         "//tensorflow/compiler/xla/python:xla_client",
         "//tensorflow/compiler/xla/python:xla_extension",
-        "//third_party/py/numpy",
     ],
 )
 
