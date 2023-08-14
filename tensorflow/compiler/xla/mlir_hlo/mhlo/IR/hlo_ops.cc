@@ -2030,9 +2030,14 @@ LogicalResult AllReduceOp::inferReturnTypeComponents(
   if (adaptor.getOperands().empty())
     return emitOptionalError(location,
                              "AllReduce must have have at least one operand");
+
+  int64_t channelId = 0;
+  if (auto channelHandleAttr = adaptor.getChannelHandleAttr())
+    channelId = channelHandleAttr.getHandle();
+
   for (auto operand : adaptor.getOperands()) {
     if (failed(hlo::verifyAllReduceOp(
-            location, operand, adaptor.getReplicaGroups(),
+            location, operand, adaptor.getReplicaGroups(), channelId,
             adaptor.getUseGlobalDeviceIds(), adaptor.getComputation())))
       return failure();
   }
