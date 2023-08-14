@@ -317,10 +317,17 @@ tensorflow::Status GraphExecutionRunOnFunction(
 
   ScopedStreamCallback scoped_stream_callback;
 
+  if (run_options.streamed_output_callback && !stream_callback_id.has_value()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Signature '", signature_name, "' does not support streaming."));
+  }
+
   if (stream_callback_id.has_value()) {
     if (!run_options.streamed_output_callback) {
       return absl::InvalidArgumentError(
-          "streamed_output_callback is not provided for a streaming model.");
+          absl::StrCat("Signature '", signature_name,
+                       "' contains streaming ops but is called using Predict "
+                       "without the streamed callback."));
     }
   }
 
