@@ -344,6 +344,7 @@ tf_xla_py_strict_test(
     python_version = "PY3",
     tags = [
         "no_mac",
+        "no_oss",  # TODO(b/295654746)
         "no_pip",
         "no_tfrt",  # TODO(b/185944215)
         "no_windows",
