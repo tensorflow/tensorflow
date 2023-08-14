@@ -18,22 +18,22 @@ limitations under the License.
 #include <memory>
 #include <optional>
 
-#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
-#include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
+#include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/fusions/fusion_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_fusion_analysis.h"
-#include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
 
 namespace xla {
 namespace gpu {
 
 // Returns the emitter for the given fusion. Returns nullopt if the fusion
 // type is not yet supported.
+// `allocations` may be empty and `fusion_op` may be nullptr if buffer
+// assignment didn't run yet.
 std::optional<std::unique_ptr<FusionInterface>> GetFusionEmitter(
-    HloFusionAnalysis& analysis, IrEmitterContext& ir_emitter_context,
-    ElementalIrEmitter& elemental_emitter, mlir::lmhlo::FusionOp fusion_op,
-    const HloFusionInstruction& fusion);
+    HloFusionAnalysis& analysis, absl::Span<const BufferAllocation> allocations,
+    mlir::lmhlo::FusionOp fusion_op);
 
 }  // namespace gpu
 }  // namespace xla

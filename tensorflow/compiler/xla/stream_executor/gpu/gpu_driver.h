@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// CUDA userspace driver library wrapper functionality.
+// CUDA/ROCm userspace driver library wrapper functionality.
 
 #ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_GPU_GPU_DRIVER_H_
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_GPU_GPU_DRIVER_H_
@@ -49,19 +49,21 @@ class GpuContext;
 // The calls log any specific errors internally and return whether the operation
 // was successful to the caller.
 //
-// The order of parameters is generally kept symmetric with the underlying CUDA
-// driver API.
+// The order of parameters is generally kept symmetric with the underlying
+// CUDA/ROCm driver API.
 //
 // Links on functions are to specific documentation under
 // http://docs.nvidia.com/cuda/cuda-driver-api/
+// https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html
 //
 // Thread safety: these functions should not be used from signal handlers.
 class GpuDriver {
  public:
-  // Wraps a call to cuInit with logging to help indicate what has gone wrong in
-  // the case of failure. Safe to call multiple times; will be fast on all calls
-  // after the first.
+  // Wraps a call to cuInit/hipInit with logging to help indicate what has gone
+  // wrong in the case of failure. Safe to call multiple times; will be fast on
+  // all calls after the first.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__INITIALIZE.html#group__CUDA__INITIALIZE_1g0a2f1517e1bd8502c7194c3a8c134bc3
+  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#initialization
   static tsl::Status Init();
 
   // Returns the device associated with the given context.
@@ -69,43 +71,50 @@ class GpuDriver {
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__CTX.html#group__CUDA__CTX_1g4e84b109eba36cdaaade167f34ae881e
   static tsl::StatusOr<GpuDeviceHandle> DeviceFromContext(GpuContext* context);
 
-  // Creates a new CUDA stream associated with the given context via
-  // cuStreamCreate.
+  // Creates a new CUDA/HIP stream associated with the given context via
+  // cuStreamCreate/hipStreamCreateWithFlags.
   // stream is an outparam owned by the caller, must not be null.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__STREAM.html#group__CUDA__STREAM_1ga581f0c5833e21ded8b5a56594e243f4
+  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#stream-management
   static bool CreateStream(GpuContext* context, GpuStreamHandle* stream,
                            int priority = 0);
 
-  // Destroys a CUDA stream associated with the given context.
+  // Destroys a CUDA/HIP stream associated with the given context.
   // stream is owned by the caller, must not be null, and *stream is set to null
   // if the stream is successfully destroyed.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__STREAM.html#group__CUDA__STREAM_1g244c8833de4596bcd31a06cdf21ee758
+  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#stream-management
   static void DestroyStream(GpuContext* context, GpuStreamHandle* stream);
 
-  // CUDA events can explicitly disable event TSC retrieval for some presumed
-  // performance improvement if timing is unnecessary.
+  // CUDA/HIP events can explicitly disable event TSC retrieval for some
+  // presumed performance improvement if timing is unnecessary.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__EVENT.html#group__CUDA__EVENT_1g450687e75f3ff992fe01662a43d9d3db
+  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#cuda-driver-data-types
   enum class EventFlags { kDefault, kDisableTiming };
 
   // Creates a new event associated with the given context.
   // result is an outparam owned by the caller and must not be null.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__EVENT.html#group__CUDA__EVENT_1g450687e75f3ff992fe01662a43d9d3db
+  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#cuda-driver-data-types
   static tsl::Status InitEvent(GpuContext* context, GpuEventHandle* result,
                                EventFlags flags);
 
   // Destroys *event and turns it into a nullptr. event may not be null, but
-  // *event may be, via cuEventDestroy
+  // *event may be, via cuEventDestroy/hipEventDestroy
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__EVENT.html#group__CUDA__EVENT_1g593ec73a8ec5a5fc031311d3e4dca1ef
+  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#event-management
   static tsl::Status DestroyEvent(GpuContext* context, GpuEventHandle* event);
 
   // Allocates a GPU memory space of size bytes associated with the given
-  // context via cuMemAlloc.
+  // context via cuMemAlloc/hipMalloc.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1gb82d2a09844a58dd9e744dc31e8aa467
+  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#memory-management
   static void* DeviceAllocate(GpuContext* context, uint64_t bytes);
 
   // Deallocates a GPU memory space of size bytes associated with the given
-  // context via cuMemFree.
+  // context via cuMemFree/hipFree.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g89b3f154e17cc89b6eea277dbdf5c93a
+  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#memory-management
   static void DeviceDeallocate(GpuContext* context, void* location);
 
   // Allocates a unified memory space of size bytes associated with the given
@@ -121,31 +130,38 @@ class GpuDriver {
   static void UnifiedMemoryDeallocate(GpuContext* context, void* location);
 
   // Allocates page-locked and CUDA-registered memory on the host via
-  // cuMemAllocHost.
+  // cuMemAllocHost/hipHostMalloc.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1gdd8311286d2c2691605362c689bc64e0
+  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#memory-management
   static void* HostAllocate(GpuContext* context, uint64_t bytes);
 
-  // Deallocates a location created by HostAllocate, via cuMemFreeHost.
+  // Deallocates a location created by HostAllocate, via
+  // cuMemFreeHost/hipHostFree.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g62e0fdbe181dab6b1c90fa1a51c7b92c
+  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#memory-management
   static void HostDeallocate(GpuContext* context, void* location);
 
-  // Registers a memory region at location of size bytes via cuMemHostRegister.
+  // Registers a memory region at location of size bytes via
+  // cuMemHostRegister/hipHostRegister.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1gf0a9fe11544326dabd743b7aa6b54223
+  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#memory-management
   static bool HostRegister(GpuContext* context, void* location, uint64_t bytes);
 
   // Unregisters a memory region that was previously registered at location via
-  // cuMemHostUnregister.
+  // cuMemHostUnregister/hipHostUnregister.
   //
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g63f450c8125359be87b7623b1c0b2a14
+  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#memory-management
   //
   // TODO(leary) verify an error will be returned if the location wasn't
   // previously registered.
   static bool HostUnregister(GpuContext* context, void* location);
 
   // Queries the priority range and returns the corresponding integer value via
-  // cuCtxGetStreamPriorityRange
+  // cuCtxGetStreamPriorityRange/hipDeviceGetStreamPriorityRange
   //
   // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__CTX.html#group__CUDA__CTX_1g137920ab61a71be6ce67605b9f294091
+  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#context-management
   static int GetGpuStreamPriority(
       GpuContext* context, stream_executor::StreamPriority stream_priority);
 
@@ -211,7 +227,7 @@ class GpuDriver {
   // which must not be null.
   //
   // N.B. these device handles do not have a corresponding destroy function in
-  // the CUDA driver API.
+  // the CUDA/HIP driver API.
   static tsl::Status GetDevice(int device_ordinal, GpuDeviceHandle* device);
 
   // Given a device handle, returns the name reported by the driver for the
@@ -257,19 +273,22 @@ class GpuDriver {
   // Gets the preferred shared memory bank configuration for the specified
   // CONTEXT (not function!), either default or four- or eight-byte bank size.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__CTX.html#group__CUDA__CTX_1g17153a1b8b8c756f7ab8505686a4ad74
+  // https://rocm.docs.amd.com/projects/HIP/en/latest/.doxygen/docBin/html/group___execution.html
   static tsl::StatusOr<GpuSharedMemConfig> ContextGetSharedMemConfig(
       GpuContext* context);
 
   // Sets the preferred shared memory bank configuration for the specified
   // CONTEXT (not function!), either default or four- or eight-byte bank size.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__CTX.html#group__CUDA__CTX_1g2574235fa643f8f251bf7bc28fac3692
+  // https://rocm.docs.amd.com/projects/HIP/en/latest/.doxygen/docBin/html/group___execution.html
   static tsl::Status ContextSetSharedMemConfig(
       GpuContext* context, GpuSharedMemConfig shared_mem_config);
 
-  // Launches a CUDA kernel via cuLaunchKernel.
+  // Launches a CUDA/ROCm kernel via cuLaunchKernel/hipModuleLaunchKernel.
   // TODO(leary) describe the structure of kernel_params and extra in a readable
   // way.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__EXEC.html#group__CUDA__EXEC_1gb8f3dc3031b40da29d5f9a7139e52e15
+  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#execution-control
   static tsl::Status LaunchKernel(
       GpuContext* context, absl::string_view kernel_name,
       GpuFunctionHandle function, unsigned int grid_dim_x,
@@ -277,6 +296,124 @@ class GpuDriver {
       unsigned int block_dim_x, unsigned int block_dim_y,
       unsigned int block_dim_z, unsigned int shared_mem_bytes,
       GpuStreamHandle stream, void** kernel_params, void** extra);
+
+  // Creates a new GPU graph.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1gd885f719186010727b75c3315f865fdf
+  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#graph-management
+  static tsl::Status CreateGraph(GpuGraphHandle* graph);
+
+  // Destroys GPU graph.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g718cfd9681f078693d4be2426fd689c8
+  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#graph-management
+  static tsl::Status DestroyGraph(GpuGraphHandle graph);
+
+  // Begins graph capture on a stream.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__STREAM.html#group__CUDA__STREAM_1g767167da0bbf07157dc20b6c258a2143
+  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#graph-management
+  enum class StreamCaptureMode { kGlobal, kThreadLocal, kRelaxed };
+  static tsl::Status StreamBeginCapture(GpuStreamHandle stream,
+                                        StreamCaptureMode mode);
+
+  // Ends capture on a stream, returning the captured graph.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__STREAM.html#group__CUDA__STREAM_1g03dab8b2ba76b00718955177a929970c
+  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#graph-management
+  static tsl::Status StreamEndCapture(GpuStreamHandle stream,
+                                      GpuGraphHandle* graph);
+
+  // Graph instantiation flags.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__TYPES.html#group__CUDA__TYPES_1g070bf5517d3a7915667c256eefce4956
+  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#cuda-driver-data-types
+  struct GraphInstantiateFlags {
+    // Automatically free memory allocated in a graph before relaunching.
+    bool auto_free_on_launch = false;
+    // Automatically upload the graph after instantiation.
+    bool upload = false;
+    // Instantiate the graph to be launchable from the device.
+    bool device_launch = false;
+    // Run the graph using the per-node priority attributes rather than the
+    // priority of the stream it is launched into.
+    bool use_node_prirotiy = false;
+  };
+
+  // Creates an executable graph from a graph.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1gb53b435e178cccfa37ac87285d2c3fa1
+  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#graph-management
+  static tsl::Status GraphInstantiate(GpuGraphExecHandle* exec,
+                                      GpuGraphHandle graph,
+                                      const GraphInstantiateFlags& flags);
+
+  // Launches an executable graph in a stream.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g6b2dceb3901e71a390d2bd8b0491e471
+  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#graph-management
+  static tsl::Status GraphLaunch(GpuGraphExecHandle exec,
+                                 GpuStreamHandle stream);
+
+  // Graph update result.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__TYPES.html#group__CUDA__TYPES_1g8edc8969ff6ae00b7cd5d7292f812c3c
+  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#cuda-driver-data-types
+  enum class GraphExecUpdateResult {
+    kSuccess,
+    kError,
+    kTopologyChanged,
+    kNodeTypeChanged,
+    kFunctionChanged,
+    kParametersChanged,
+    kNotSupported,
+    kUnsupportedFunctionChange,
+    kAttributesChanged
+  };
+
+  // Graph update result info.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/structCUgraphExecUpdateResultInfo__v1.html#structCUgraphExecUpdateResultInfo__v1
+  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#graph-management
+  struct GraphExecUpdateResultInfo {
+    // TODO(ezhulenev): Add `errorFromNode` and `errorNode` members.
+    GraphExecUpdateResult result;
+  };
+
+  // Check whether an executable graph can be updated with a graph and perform
+  // the update if possible.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g96efefc56df46927da7297f122adfb9f
+  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#graph-management
+  static tsl::Status GraphExecUpdate(GpuGraphExecHandle exec,
+                                     GpuGraphHandle graph,
+                                     GraphExecUpdateResultInfo* result);
+
+  // Destroys an executable graph.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1ga32ad4944cc5d408158207c978bc43a7
+  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#graph-management
+  static tsl::Status DestroyGraphExec(GpuGraphExecHandle exec);
+
+  // Write a DOT file describing graph structure.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g0fb0c4d319477a0a98da005fcb0dacc4
+  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#graph-management
+  static tsl::Status GraphDebugDotPrint(GpuGraphHandle graph, const char* path);
+
+  // Returns a stream's capture status.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__STREAM.html#group__CUDA__STREAM_1g37823c49206e3704ae23c7ad78560bca
+  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#stream-management
+  static tsl::StatusOr<bool> StreamIsCapturing(GpuStreamHandle stream);
+
+  // Creates a kernel execution node and adds it to a graph.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g50d871e3bd06c1b835e52f2966ef366b
+  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#graph-management
+  static tsl::Status GraphAddKernelNode(
+      GpuGraphNodeHandle* node, GpuGraphHandle graph,
+      absl::Span<GpuGraphNodeHandle> deps, absl::string_view kernel_name,
+      GpuFunctionHandle function, unsigned int grid_dim_x,
+      unsigned int grid_dim_y, unsigned int grid_dim_z,
+      unsigned int block_dim_x, unsigned int block_dim_y,
+      unsigned int block_dim_z, unsigned int shared_mem_bytes,
+      void** kernel_params, void** extra);
+
+  // Creates a memcpy node and adds it to a graph.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g674da6ab54a677f13e0e0e8206ff5073
+  static tsl::Status GraphAddMemcpyD2DNode(GpuContext* context,
+                                           GpuGraphNodeHandle* node,
+                                           GpuGraphHandle graph,
+                                           absl::Span<GpuGraphNodeHandle> deps,
+                                           GpuDevicePtr gpu_dst,
+                                           GpuDevicePtr gpu_src, uint64_t size);
 
   // Loads ptx_contents with the CUDA driver's PTX JIT and stores the resulting
   // handle in "module". Any error logs that are produced are logged internally.

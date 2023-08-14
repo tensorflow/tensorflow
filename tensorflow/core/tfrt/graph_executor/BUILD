@@ -12,7 +12,8 @@ package_group(
     name = "friends",
     packages = [
         # copybara:uncomment "//learning/brain/experimental/tfrt/native_lowering/...",
-        # copybara:uncomment "//learning/brain/tfrt/support/...",
+        # copybara:uncomment "//learning/brain/tfrt/...",
+        # copybara:uncomment "//learning/serving/servables/tfrt/...",
         # copybara:uncomment "//smartass/brain/inference/...",
         "//tensorflow/core/tfrt/...",
         "//tensorflow/core/tfrt/graph_executor/python/...",
@@ -33,6 +34,7 @@ cc_library(
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/core/tfrt/runtime:work_queue_interface",
         "//tensorflow/core/tfrt/utils:bridge_graph_analysis",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
     ],

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_TOOLS_HLO_EXTRACTOR_H_
 #define TENSORFLOW_COMPILER_XLA_TOOLS_HLO_EXTRACTOR_H_
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 
@@ -46,7 +47,16 @@ using ExtractSelector = std::function<bool(const HloInstruction*)>;
 // kReplaceZeroBroadcast: hlo instruction will be replaced with a broadcasted
 // zero constant of the same shape. It can be used in both entry and non-entry
 // computation.
-enum class ReplaceType { kReplaceParam, kReplaceConst, kReplaceZeroBroadcast };
+//
+// kReplaceRandomBroadcast: hlo instruction will be replaced with a broadcasted
+// random constant of the same shape. It can be used in both entry and non-entry
+// computation.
+enum class ReplaceType {
+  kReplaceParam,
+  kReplaceConst,
+  kReplaceZeroBroadcast,
+  kReplaceRandomBroadcast
+};
 using ReplaceTypeSelector = std::function<ReplaceType(const HloInstruction*)>;
 
 // Creates a new HLO module rooted with an entry computation rooted at the given

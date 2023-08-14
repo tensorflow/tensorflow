@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_solver.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -25,9 +26,18 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#ifdef PLATFORM_GOOGLE
+#include "file/base/options.h"
+#endif
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/time/time.h"
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/platform/hash.h"
 #include "tensorflow/tsl/platform/types.h"
 #include "ortools/linear_solver/linear_solver.h"
@@ -199,11 +209,20 @@ AutoShardingSolverResult CallORToolsSolver(
     }
   }
 
+  absl::flat_hash_map<std::pair<NodeIdx, NodeIdx>, EdgeIdx> edge_map;
   for (EdgeIdx i = 0; i < num_edges; ++i) {
     const std::pair<NodeIdx, NodeIdx>& edge = request.e[i];
+    std::pair<NodeIdx, NodeIdx> followed_edge = edge;
+    if (int f = request.s_follow[edge.first]; f >= 0) followed_edge.first = f;
+    if (int f = request.s_follow[edge.second]; f >= 0) followed_edge.second = f;
+    if (const auto& it = edge_map.find(followed_edge); it != edge_map.end()) {
+      e[i] = e[it->second];  // Copy variable of followed edge to following edge
+      continue;
+    }
     solver->MakeBoolVarArray(
         request.s_len[edge.first] * request.s_len[edge.second],
         absl::StrCat("e[", edge.first, ",", edge.second, "]"), &e[i]);
+    edge_map.insert({followed_edge, i});
   }
 
   // Objective
@@ -211,7 +230,7 @@ AutoShardingSolverResult CallORToolsSolver(
   for (NodeIdx i = 0; i < request.num_nodes; ++i) {
     for (NodeStrategyIdx j = 0; j < s[i].size(); ++j) {
       double accumulated_coefficient =
-          solver->MutableObjective()->GetCoefficient(s[i][j]);
+          solver->Objective().GetCoefficient(s[i][j]);
       double coefficient = request.c[i][j] + request.d[i][j];
       AddSalt(absl::StrCat(i, "S", j), request.saltiplier, &coefficient);
       solver->MutableObjective()->SetCoefficient(
@@ -222,7 +241,7 @@ AutoShardingSolverResult CallORToolsSolver(
   for (EdgeIdx i = 0; i < num_edges; ++i) {
     for (EdgeStrategyIdx j = 0; j < e[i].size(); ++j) {
       double accumulated_coefficient =
-          solver->MutableObjective()->GetCoefficient(e[i][j]);
+          solver->Objective().GetCoefficient(e[i][j]);
       double coefficient = request.r[i][j];
       AddSalt(absl::StrCat(i, "E", j), request.saltiplier, &coefficient);
       solver->MutableObjective()->SetCoefficient(
@@ -240,8 +259,7 @@ AutoShardingSolverResult CallORToolsSolver(
     }
     bool all_infinity = true;
     for (NodeStrategyIdx j = 0; j < s[i].size(); ++j) {
-      if (solver->MutableObjective()->GetCoefficient(s[i][j]) >=
-          kInfinityCost) {
+      if (solver->Objective().GetCoefficient(s[i][j]) >= kInfinityCost) {
         MPConstraint* constraint = solver->MakeRowConstraint(
             0.0, 0.0, absl::StrCat("infinitycost: s[", i, "][", j, "] = 0"));
         constraint->SetCoefficient(s[i][j], 1.0);
@@ -260,13 +278,9 @@ AutoShardingSolverResult CallORToolsSolver(
     }
     bool all_infinity = true;
     for (EdgeStrategyIdx j = 0; j < e[i].size(); ++j) {
-      const std::pair<NodeIdx, NodeIdx>& edge = request.e[i];
-      solver->MutableObjective()->SetCoefficient(e[i][j], request.r[i][j]);
-      if (request.r[i][j] >= kInfinityCost) {
+      if (solver->Objective().GetCoefficient(e[i][j]) >= kInfinityCost) {
         MPConstraint* constraint = solver->MakeRowConstraint(
-            0.0, 0.0,
-            absl::StrCat("infinitycost: e[", edge.first, "][", edge.second,
-                         "][", j, "] = 0"));
+            0.0, 0.0, absl::StrCat("infinitycost: e[", i, "][", j, "] = 0"));
         constraint->SetCoefficient(e[i][j], 1.0);
       } else {
         all_infinity = false;
@@ -386,6 +400,17 @@ AutoShardingSolverResult CallORToolsSolver(
     }
   }
 
+  if (!request.s_hint.empty()) {
+    std::vector<std::pair<const MPVariable*, double>> hint;
+    for (NodeIdx i = 0; i < request.num_nodes; ++i) {
+      if (request.s_follow[i] >= 0) continue;
+      for (NodeStrategyIdx j = 0; j < s[i].size(); ++j) {
+        hint.push_back({s[i][j], (request.s_hint[i] == j) ? 1.0 : 0.0});
+      }
+    }
+    solver->SetHint(hint);
+  }
+
 #ifdef PLATFORM_GOOGLE
   // Exports the model for debugging.
   bool dump_model = false;
@@ -420,28 +445,30 @@ AutoShardingSolverResult CallORToolsSolver(
   if (status == operations_research::MPSolver::INFEASIBLE) {
     LOG(ERROR) << "MPSolver could not find any feasible solution.";
 #ifdef PLATFORM_GOOGLE
-    operations_research::MPModelRequest model_request;
-    solver->ExportModelToProto(model_request.mutable_model());
-    if (solver->ProblemType() ==
-        operations_research::MPSolver::SAT_INTEGER_PROGRAMMING) {
-      model_request.set_solver_type(
-          operations_research::MPModelRequest::SAT_INTEGER_PROGRAMMING);
-    } else if (solver->ProblemType() ==
-               operations_research::MPSolver::SCIP_MIXED_INTEGER_PROGRAMMING) {
-      model_request.set_solver_type(
-          operations_research::MPModelRequest::SCIP_MIXED_INTEGER_PROGRAMMING);
-    }
-    model_request.set_solver_time_limit_seconds(100);
-    auto iis = MPSolver::ComputeIrreducibleInfeasibleSubset(model_request);
-    LOG(INFO) << iis.status().DebugString();
-    LOG(INFO) << "Infeasible constraints: ";
-    for (int index : iis.constraint_index()) {
-      LOG(INFO) << " - " << model_request.model().constraint(index).name();
-    }
-    for (int index : iis.general_constraint_index()) {
-      LOG(INFO)
-          << " - "
-          << model_request.model().general_constraint(index).DebugString();
+    if (request.compute_iis) {
+      operations_research::MPModelRequest model_request;
+      solver->ExportModelToProto(model_request.mutable_model());
+      if (solver->ProblemType() ==
+          operations_research::MPSolver::SAT_INTEGER_PROGRAMMING) {
+        model_request.set_solver_type(
+            operations_research::MPModelRequest::SAT_INTEGER_PROGRAMMING);
+      } else if (solver->ProblemType() == operations_research::MPSolver::
+                                              SCIP_MIXED_INTEGER_PROGRAMMING) {
+        model_request.set_solver_type(operations_research::MPModelRequest::
+                                          SCIP_MIXED_INTEGER_PROGRAMMING);
+      }
+      model_request.set_solver_time_limit_seconds(100);
+      auto iis = MPSolver::ComputeIrreducibleInfeasibleSubset(model_request);
+      LOG(INFO) << iis.status().DebugString();
+      LOG(INFO) << "Infeasible constraints: ";
+      for (int index : iis.constraint_index()) {
+        LOG(INFO) << " - " << model_request.model().constraint(index).name();
+      }
+      for (int index : iis.general_constraint_index()) {
+        LOG(INFO)
+            << " - "
+            << model_request.model().general_constraint(index).DebugString();
+      }
     }
 #endif
 

@@ -127,7 +127,6 @@ TEST_F(XlaCompilerOptionsTest, PjRtOptionsXlaDevice) {
   EXPECT_EQ(options.graph_def_version, TF_GRAPH_DEF_VERSION);
   EXPECT_FALSE(options.allow_cpu_custom_calls);
   EXPECT_FALSE(options.alias_passthrough_params);
-  EXPECT_FALSE(options.detailed_logging);
   // Check if options have the supplied shape determination functions set.
   TF_ASSERT_OK_AND_ASSIGN(
       auto shape, options.shape_determination_fns.shape_representation_fn(
@@ -163,7 +162,6 @@ TEST_F(XlaCompilerOptionsTest, PjRtOptionsPjRtBaseDevice) {
   EXPECT_EQ(options.graph_def_version, TF_GRAPH_DEF_VERSION);
   EXPECT_FALSE(options.allow_cpu_custom_calls);
   EXPECT_FALSE(options.alias_passthrough_params);
-  EXPECT_FALSE(options.detailed_logging);
   // Check if options have the supplied shape determination functions set.
   TF_ASSERT_OK_AND_ASSIGN(
       auto shape, options.shape_determination_fns.shape_representation_fn(
@@ -199,7 +197,6 @@ TEST_F(XlaCompilerOptionsTest, PjRtOptionsNonXlaDevice) {
   EXPECT_EQ(options.graph_def_version, TF_GRAPH_DEF_VERSION);
   EXPECT_FALSE(options.allow_cpu_custom_calls);
   EXPECT_FALSE(options.alias_passthrough_params);
-  EXPECT_FALSE(options.detailed_logging);
   // Check whether options have default shape determination functions set.
   TF_ASSERT_OK_AND_ASSIGN(
       auto shape, options.shape_determination_fns.shape_representation_fn(

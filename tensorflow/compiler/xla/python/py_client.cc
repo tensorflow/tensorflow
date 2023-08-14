@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/ifrt/compiler.h"
 #include "tensorflow/compiler/xla/python/ifrt/executable.h"
 #include "tensorflow/compiler/xla/python/ifrt/host_callback.h"
+#include "tensorflow/compiler/xla/python/ifrt/memory.h"
 #include "tensorflow/compiler/xla/python/pjrt_ifrt/xla_compiler.h"
 #include "tensorflow/compiler/xla/python/pprof_profile_builder.h"
 #include "tensorflow/compiler/xla/python/py_array.h"
@@ -267,7 +268,8 @@ StatusOr<py::object> PyClient::BufferFromPyval(
       (!force_copy &&
        (host_buffer_semantics == ifrt::Client::HostBufferSemantics::kZeroCopy));
   TF_ASSIGN_OR_RETURN(DevicePutResult put,
-                      DevicePut(argument, ifrt_client_.get(), device, options));
+                      DevicePut(argument, ifrt_client_.get(), device, options,
+                                ifrt::MemoryKind()));
 
   if (put.ifrt_array) {
     auto traceback = Traceback::Get();

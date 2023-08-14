@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_transfer_manager_interface.h"
 
+#include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
 
 namespace xla {

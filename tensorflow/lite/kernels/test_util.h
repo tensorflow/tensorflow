@@ -875,6 +875,11 @@ class SingleOpModel {
     return {scale, zero_point};
   }
 
+  void AddSubgraphs(int subgraphs_to_add,
+                    int* first_new_subgraph_index = nullptr) {
+    interpreter_->AddSubgraphs(subgraphs_to_add, first_new_subgraph_index);
+  }
+
  private:
   // Populates the tensor starting at offset using given data.
   template <typename T, typename Container>

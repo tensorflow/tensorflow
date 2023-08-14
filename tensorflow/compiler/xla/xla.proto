@@ -368,6 +368,7 @@ message DebugOptions {
   repeated string xla_gpu_llvm_ir_file = 150;
 
   // Convert synchronous collective ops into asynchronous.
+  bool xla_gpu_enable_async_collectives = 238;
   bool xla_gpu_enable_async_all_reduce = 152;
   bool xla_gpu_enable_async_collective_permute = 183;
   bool xla_gpu_enable_async_all_gather = 199;
@@ -538,6 +539,8 @@ message DebugOptions {
   bool xla_gpu_enable_highest_priority_async_stream = 216;
   bool xla_gpu_lhs_enable_gpu_async_tracker = 204;
   string xla_gpu_pgle_profile_file_or_directory_path = 210;
+
+  bool xla_gpu_enable_pipelined_collectives = 239;
   bool xla_gpu_enable_pipelined_all_reduce = 217;
   bool xla_gpu_enable_pipelined_all_gather = 227;
   bool xla_gpu_enable_pipelined_reduce_scatter = 231;
@@ -562,10 +565,6 @@ message DebugOptions {
   bool xla_gpu_triton_gemm_any = 190;
 
   reserved 211;  // Was xla_gpu_enable_dot_strength_reduction
-
-  // Enables experimental heuristic of choosing block size for launching a
-  // kernel on GPU.
-  bool xla_gpu_enable_experimental_block_size = 214;
 
   bool xla_gpu_exhaustive_tiling_search = 219;
 
@@ -601,7 +600,7 @@ message DebugOptions {
 
   bool xla_gpu_copy_insertion_use_region_analysis = 236;
 
-  // Next id: 238
+  // Next id: 240
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -613,7 +612,8 @@ message DebugOptions {
   // xla_gpu_simplify_scatters, xla_gpu_simplify_gathers
   // xla_gpu_enable_cuda_graphs
   // xla_gpu_allow_all_reduce_kernel
-  reserved 5, 117, 133, 139, 176, 178, 180, 193;
+  // xla_gpu_enable_experimental_block_size
+  reserved 5, 117, 133, 139, 176, 178, 180, 193, 214;
 }
 
 message ShardableValueUpdatePairProto {

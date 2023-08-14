@@ -24,6 +24,7 @@ namespace tpu {
 
 // This will check the lock and then load the library.
 tsl::Status FindAndLoadTpuLibrary();  // TENSORFLOW_STATUS_OK
+absl::Status LoadTpuLibraryAndInitializeTpuStructFns();
 
 }  // namespace tpu
 }  // namespace tensorflow

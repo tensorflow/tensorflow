@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tensorflow/tsl/lib/monitoring/counter.h"
@@ -107,7 +108,7 @@ auto* tf_data_service_compression = tsl::monitoring::Counter<1>::New(
     "/tensorflow/data/service/compression",
     "The number of times a tf.data service pipeline performed a "
     "compression-related action {'disabled_at_runtime', "
-    "'not_disabled_at_runtime'}.",
+    "'not_disabled_at_runtime', 'not_eligible'}.",
     "action");
 
 auto* tf_data_service_get_element_duration_usecs_histogram =
@@ -376,6 +377,12 @@ auto* mlir_bridge_first_phase_counter = tsl::monitoring::Counter<4>::New(
     "Tracks processing state in first phase of mlir bridge", "device",
     "version", "fallback", "result");
 
+auto* mlir_second_phase_count = tensorflow::monitoring::Counter<1>::New(
+    "/tensorflow/core/tf2xla/api/v1/phase2_compilation_status" /*metric_name*/,
+    "Counts the number of graphs that were analyzed prior deciding whether "
+    "the MLIR or the old bridge will be used" /* metric description */,
+    "status" /* metric label */);
+
 auto* tf1_features_by_graph_count = tsl::monitoring::Counter<5>::New(
     "/tensorflow/core/tf1_features_by_graph_count",
     "Marks which tf1 feature (if any) a graph contains.", "device", "context",
@@ -453,6 +460,10 @@ void RecordTFDataServiceRuntimeCompressionDecision(bool compression_disabled) {
       ->GetCell(compression_disabled ? "disabled_at_runtime"
                                      : "not_disabled_at_runtime")
       ->IncrementBy(1);
+}
+
+void RecordTFDataServiceCompressionAction(const string& action) {
+  tf_data_service_compression->GetCell(action)->IncrementBy(1);
 }
 
 void RecordTFDataServiceGetElementDuration(const string& data_transfer_protocol,
@@ -796,6 +807,40 @@ void UpdateTfMlirBridgeFirstPhaseCounter(const std::string& device_type,
       fallback_enabled ? "fallback_enabled" : "fallback_disabled";
   mlir_bridge_first_phase_counter
       ->GetCell(device_type, bridge_version, fallback_status, result)
+      ->IncrementBy(1);
+}
+
+// Records the activity of the second phase of the mlir bridge.
+void IncrementTfMlirBridgeSecondPhaseCounter(
+    MlirBridgeSecondPhaseMetric metric) {
+  static auto* mlir_bridge_second_phase_metric_names =
+      new absl::flat_hash_map<MlirBridgeSecondPhaseMetric, absl::string_view>{
+          {MlirBridgeSecondPhaseMetric::kMlirWithFallbackModeSuccess,
+           "kMlirWithFallbackModeSuccess"},
+          {MlirBridgeSecondPhaseMetric::kMlirWithFallbackModeFailure,
+           "kMlirWithFallbackModeFailure"},
+          {MlirBridgeSecondPhaseMetric::kMlirModeSuccess, "kMlirModeSuccess"},
+          {MlirBridgeSecondPhaseMetric::kMlirModeFailure, "kMlirModeFailure"},
+          {MlirBridgeSecondPhaseMetric::kOldBridgeMlirFilteredSuccess,
+           "kOldBridgeMlirFilteredSuccess"},
+          {MlirBridgeSecondPhaseMetric::kOldBridgeMlirFilteredFailure,
+           "kOldBridgeMlirFilteredFailure"},
+          {MlirBridgeSecondPhaseMetric::kOldBridgeWithFallbackModeSuccess,
+           "kOldBridgeWithFallbackModeSuccess"},
+          {MlirBridgeSecondPhaseMetric::kOldBridgeWithFallbackModeFailure,
+           "kOldBridgeWithFallbackModeFailure"},
+          {MlirBridgeSecondPhaseMetric::kMlirCombinedMlirSuccess,
+           "kMlirCombinedMlirSuccess"},
+          {MlirBridgeSecondPhaseMetric::kMlirCombinedMlirFailure,
+           "kMlirCombinedMlirFailure"},
+          {MlirBridgeSecondPhaseMetric::kMlirCombinedOldSuccess,
+           "kMlirCombinedOldSuccess"},
+          {MlirBridgeSecondPhaseMetric::kMlirCombinedOldFailure,
+           "kMlirCombinedOldFailure"},
+      };
+
+  mlir_second_phase_count
+      ->GetCell(std::string(mlir_bridge_second_phase_metric_names->at(metric)))
       ->IncrementBy(1);
 }
 

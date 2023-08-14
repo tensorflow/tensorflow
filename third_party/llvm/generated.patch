@@ -1,1 +1,148 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/lldb/source/Plugins/Process/gdb-remote/GDBRemoteCommunicationServerLLGS.cpp b/lldb/source/Plugins/Process/gdb-remote/GDBRemoteCommunicationServerLLGS.cpp
+--- a/lldb/source/Plugins/Process/gdb-remote/GDBRemoteCommunicationServerLLGS.cpp
++++ b/lldb/source/Plugins/Process/gdb-remote/GDBRemoteCommunicationServerLLGS.cpp
+@@ -631,7 +631,7 @@
+   } else {
+     // Zero-out any unreadable values.
+     if (reg_info.byte_size > 0) {
+-      std::basic_string<uint8_t> zeros(reg_info.byte_size, '\0');
++      std::vector<uint8_t> zeros(reg_info.byte_size, '\0');
+       AppendHexValue(response, zeros.data(), zeros.size(), false);
+     }
+   }
+diff -ruN --strip-trailing-cr a/lldb/test/API/functionalities/data-formatter/data-formatter-stl/libcxx/string/main.cpp b/lldb/test/API/functionalities/data-formatter/data-formatter-stl/libcxx/string/main.cpp
+--- a/lldb/test/API/functionalities/data-formatter/data-formatter-stl/libcxx/string/main.cpp
++++ b/lldb/test/API/functionalities/data-formatter/data-formatter-stl/libcxx/string/main.cpp
+@@ -113,7 +113,6 @@
+     std::u16string u16_empty(u"");
+     std::u32string u32_string(U"🍄🍅🍆🍌");
+     std::u32string u32_empty(U"");
+-    std::basic_string<unsigned char> uchar(5, 'a');
+     std::string *null_str = nullptr;
+ 
+     std::string garbage1, garbage2, garbage3, garbage4, garbage5;
+diff -ruN --strip-trailing-cr a/lldb/test/API/functionalities/data-formatter/data-formatter-stl/libcxx/string/TestDataFormatterLibcxxString.py b/lldb/test/API/functionalities/data-formatter/data-formatter-stl/libcxx/string/TestDataFormatterLibcxxString.py
+--- a/lldb/test/API/functionalities/data-formatter/data-formatter-stl/libcxx/string/TestDataFormatterLibcxxString.py
++++ b/lldb/test/API/functionalities/data-formatter/data-formatter-stl/libcxx/string/TestDataFormatterLibcxxString.py
+@@ -50,16 +50,6 @@
+ 
+         ns = self.namespace
+ 
+-        if self.expectedCompiler(["clang"]) and self.expectedCompilerVersion(
+-            [">", "16.0"]
+-        ):
+-            expected_basic_string = "%s::basic_string<unsigned char>" % ns
+-        else:
+-            expected_basic_string = (
+-                "%s::basic_string<unsigned char, %s::char_traits<unsigned char>, "
+-                "%s::allocator<unsigned char> >" % (ns, ns, ns)
+-            )
+-
+         self.expect(
+             "frame variable",
+             substrs=[
+@@ -81,7 +71,6 @@
+                 '(%s::u32string) u32_string = U"🍄🍅🍆🍌"' % ns,
+                 # FIXME: This should have a 'U' prefix.
+                 '(%s::u32string) u32_empty = ""' % ns,
+-                '(%s) uchar = "aaaaa"' % expected_basic_string,
+                 "(%s::string *) null_str = nullptr" % ns,
+             ],
+         )
+@@ -126,7 +115,6 @@
+                 '(%s::u16string) u16_string = u"ß水氶"' % ns,
+                 '(%s::u32string) u32_string = U"🍄🍅🍆🍌"' % ns,
+                 '(%s::u32string) u32_empty = ""' % ns,
+-                '(%s) uchar = "aaaaa"' % expected_basic_string,
+                 "(%s::string *) null_str = nullptr" % ns,
+             ],
+         )
+diff -ruN --strip-trailing-cr a/lldb/test/API/functionalities/data-formatter/data-formatter-stl/libcxx/string_view/main.cpp b/lldb/test/API/functionalities/data-formatter/data-formatter-stl/libcxx/string_view/main.cpp
+--- a/lldb/test/API/functionalities/data-formatter/data-formatter-stl/libcxx/string_view/main.cpp
++++ b/lldb/test/API/functionalities/data-formatter/data-formatter-stl/libcxx/string_view/main.cpp
+@@ -92,8 +92,6 @@
+   std::u16string_view u16_empty(u"");
+   std::u32string_view u32_string(U"🍄🍅🍆🍌");
+   std::u32string_view u32_empty(U"");
+-  std::basic_string<unsigned char> uchar_source(10, 'a');
+-  std::basic_string_view<unsigned char> uchar(uchar_source.data(), 5);
+   std::string_view *null_str = nullptr;
+ 
+   std::string hello = "Hellooo ";
+diff -ruN --strip-trailing-cr a/lldb/test/API/functionalities/data-formatter/data-formatter-stl/libcxx/string_view/TestDataFormatterLibcxxStringView.py b/lldb/test/API/functionalities/data-formatter/data-formatter-stl/libcxx/string_view/TestDataFormatterLibcxxStringView.py
+--- a/lldb/test/API/functionalities/data-formatter/data-formatter-stl/libcxx/string_view/TestDataFormatterLibcxxStringView.py
++++ b/lldb/test/API/functionalities/data-formatter/data-formatter-stl/libcxx/string_view/TestDataFormatterLibcxxStringView.py
+@@ -60,15 +60,6 @@
+         # Execute the cleanup function during test case tear down.
+         self.addTearDownHook(cleanup)
+ 
+-        if self.expectedCompiler(["clang"]) and self.expectedCompilerVersion(
+-            [">", "16.0"]
+-        ):
+-            expected_basic_string = "std::basic_string<unsigned char>"
+-            expected_basic_string_view = "std::basic_string_view<unsigned char>"
+-        else:
+-            expected_basic_string = "std::basic_string<unsigned char, std::char_traits<unsigned char>, std::allocator<unsigned char> >"
+-            expected_basic_string_view = "std::basic_string_view<unsigned char, std::char_traits<unsigned char> >"
+-
+         self.expect_var_path("wempty", type="std::wstring_view", summary='L""')
+         self.expect_var_path(
+             "s", type="std::wstring_view", summary='L"hello world! מזל טוב!"'
+@@ -97,12 +88,6 @@
+         )
+         self.expect_var_path("u32_empty", type="std::u32string_view", summary='""')
+         self.expect_var_path(
+-            "uchar_source", type=expected_basic_string, summary='"aaaaaaaaaa"'
+-        )
+-        self.expect_var_path(
+-            "uchar", type=expected_basic_string_view, summary='"aaaaa"'
+-        )
+-        self.expect_var_path(
+             "oops", type="std::string_view", summary='"Hellooo World\\n"'
+         )
+ 
+@@ -166,12 +151,6 @@
+             "u32_string", type="std::u32string_view", summary='U"🍄🍅🍆🍌"'
+         )
+         self.expect_var_path("u32_empty", type="std::u32string_view", summary='""')
+-        self.expect_var_path(
+-            "uchar_source", type=expected_basic_string, summary='"aaaaaaaaaa"'
+-        )
+-        self.expect_var_path(
+-            "uchar", type=expected_basic_string_view, summary='"aaaaa"'
+-        )
+ 
+         self.runCmd("cont")
+         self.expect(
+diff -ruN --strip-trailing-cr a/lldb/test/API/functionalities/data-formatter/data-formatter-stl/libstdcpp/string/main.cpp b/lldb/test/API/functionalities/data-formatter/data-formatter-stl/libstdcpp/string/main.cpp
+--- a/lldb/test/API/functionalities/data-formatter/data-formatter-stl/libstdcpp/string/main.cpp
++++ b/lldb/test/API/functionalities/data-formatter/data-formatter-stl/libstdcpp/string/main.cpp
+@@ -9,7 +9,6 @@
+     std::string empty("");
+     std::string q("hello world");
+     std::string Q("quite a long std::strin with lots of info inside it");
+-    std::basic_string<unsigned char> uchar(5, 'a');
+     auto &rq = q, &rQ = Q;
+     std::string *pq = &q, *pQ = &Q;
+     S.assign(L"!!!!!"); // Set break point at this line.
+diff -ruN --strip-trailing-cr a/lldb/test/API/functionalities/data-formatter/data-formatter-stl/libstdcpp/string/TestDataFormatterStdString.py b/lldb/test/API/functionalities/data-formatter/data-formatter-stl/libstdcpp/string/TestDataFormatterStdString.py
+--- a/lldb/test/API/functionalities/data-formatter/data-formatter-stl/libstdcpp/string/TestDataFormatterStdString.py
++++ b/lldb/test/API/functionalities/data-formatter/data-formatter-stl/libstdcpp/string/TestDataFormatterStdString.py
+@@ -61,8 +61,6 @@
+         var_pq = self.frame().FindVariable("pq")
+         var_pQ = self.frame().FindVariable("pQ")
+ 
+-        var_uchar = self.frame().FindVariable("uchar")
+-
+         self.assertEqual(var_wempty.GetSummary(), 'L""', "wempty summary wrong")
+         self.assertEqual(
+             var_s.GetSummary(), 'L"hello world! מזל טוב!"', "s summary wrong"
+@@ -78,7 +76,6 @@
+             '"quite a long std::strin with lots of info inside it"',
+             "Q summary wrong",
+         )
+-        self.assertEqual(var_uchar.GetSummary(), '"aaaaa"', "u summary wrong")
+         self.assertEqual(var_rq.GetSummary(), '"hello world"', "rq summary wrong")
+         self.assertEqual(
+             var_rQ.GetSummary(),

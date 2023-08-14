@@ -84,7 +84,7 @@ def register_extension_info(**kwargs):
 # and tensorflow/tools/pip_package/setup.py
 VERSION = "2.15.0"
 VERSION_MAJOR = VERSION.split(".")[0]
-two_gpu_tags = ["requires-gpu-nvidia:2", "notap", "manual", "no_pip"]
+two_gpu_tags = ["requires-gpu-nvidia:2", "manual", "no_pip"]
 
 # The workspace root, to be used to set workspace 'include' paths in a way that
 # will still work correctly when TensorFlow is included as a dependency of an
@@ -302,6 +302,7 @@ def if_not_fuchsia(a):
 def if_linux_x86_64(a):
     return select({
         clean_dep("//tensorflow:linux_x86_64"): a,
+        clean_dep("//tensorflow:haswell"): a,
         "//conditions:default": [],
     })
 

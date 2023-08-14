@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <complex>
 #include <cstdint>
 #include <functional>
@@ -59,6 +60,8 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/ValueRange.h"  // from @llvm-project
+#include "mlir/Interfaces/ControlFlowInterfaces.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -3144,6 +3147,46 @@ void IfRegionOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                              MLIRContext* context) {
   results.add<FoldConstantIfRegionOp,
               CaseOrIfRegionEliminatePassThrough<TF::IfRegionOp>>(context);
+}
+
+bool IfRegionOp::areTypesCompatible(Type t1, Type t2) {
+  // For now, we don't enforce type checking across control-flow edges.
+  return true;
+}
+
+void IfRegionOp::getRegionInvocationBounds(
+    ArrayRef<Attribute> operands,
+    SmallVectorImpl<InvocationBounds>& invocationBounds) {
+  // We invoke both `then` and `else` between zero and one times.
+  invocationBounds.assign(2, {0, 1});
+}
+
+OperandRange IfRegionOp::getSuccessorEntryOperands(
+    std::optional<unsigned> index) {
+  // IfRegionOp currently only allows one op (the condition), so there are no
+  // remaining operands for the successor.
+  assert((!index || (index == 0 || index == 1)) &&
+         "Invalid IfRegionOp region index.");
+  auto end = this->getOperation()->operand_end();
+  return ::mlir::OperandRange(end, end);
+}
+
+void IfRegionOp::getSuccessorRegions(
+    std::optional<unsigned> index, ArrayRef<Attribute> operands,
+    SmallVectorImpl<RegionSuccessor>& regions) {
+  if (index) {
+    // The `then` and the `else` region branch back to the parent operation.
+    regions.push_back(RegionSuccessor(getResults()));
+    return;
+  } else {
+    // The parent can branch to either `then` or `else`.
+    regions.push_back(RegionSuccessor(&getThenBranch()));
+    Region* elseRegion = &this->getElseBranch();
+    if (!elseRegion->empty())
+      regions.push_back(RegionSuccessor(elseRegion));
+    else
+      regions.push_back(RegionSuccessor());
+  }
 }
 
 //===----------------------------------------------------------------------===//

@@ -692,8 +692,6 @@ cc_library(
         ":worker_client",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensorflow",
-        "//tensorflow/core/data:utils",
         "//tensorflow/core/profiler/rpc:profiler_service_impl",
     ] + tf_grpc_cc_dependencies(),
     alwayslink = 1,

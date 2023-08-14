@@ -220,8 +220,10 @@ Status HloSchedule::Update(
   std::vector<HloComputation*> nonfusion_computations =
       module_->MakeNonfusionComputations(execution_threads);
   for (const HloComputation* computation : nonfusion_computations) {
-    TF_RET_CHECK(sequences_.contains(computation->unique_id()))
-        << "Computation " << computation->name() << " not in HloSchedule.";
+    if (!is_computation_scheduled(computation)) {
+      GetOrCreateSequence(computation);
+      TF_RETURN_IF_ERROR(UpdateComputationSchedule(computation));
+    }
   }
   auto sum_of_sequences_for_threads = [&]() -> int64_t {
     if (execution_threads.empty()) {

@@ -52,21 +52,18 @@ namespace gpu {
 // efficient to launch fewer blocks so each transposes many tiles.
 class TransposeFusion : public KernelFusionEmitterBase {
  public:
-  TransposeFusion(IrEmitterContext& ir_emitter_context,
-                  ElementalIrEmitter& elemental_emitter,
-                  mlir::lmhlo::FusionOp fusion_op,
-                  const HloFusionInstruction& fusion,
-                  HloFusionAnalysis& analysis)
-      : KernelFusionEmitterBase(ir_emitter_context, elemental_emitter,
-                                fusion_op, fusion),
-        analysis_(analysis) {}
+  explicit TransposeFusion(HloFusionAnalysis& analysis) : analysis_(analysis) {}
   StatusOr<LaunchDimensions> launch_dimensions(
-      int kernel_index) const override {
-    return analysis_.GetLaunchDimensions(false);
+      IrEmitterContext& ir_emitter_context, int kernel_index) const override {
+    return analysis_.GetLaunchDimensions();
   }
 
  protected:
-  Status EmitKernel(const LaunchDimensions& launch_dims,
+  Status EmitKernel(IrEmitterContext& ir_emitter_context,
+                    ElementalIrEmitter& elemental_emitter,
+                    mlir::lmhlo::FusionOp fusion_op,
+                    const HloFusionInstruction& fusion,
+                    const LaunchDimensions& launch_dims,
                     std::vector<llvm_ir::IrArray> inputs,
                     std::vector<llvm_ir::IrArray> outputs,
                     llvm::IRBuilder<>* builder,

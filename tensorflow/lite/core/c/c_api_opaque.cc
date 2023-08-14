@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/string_util.h"
+#include "tensorflow/lite/util.h"
 
 namespace {
 
@@ -273,6 +274,24 @@ TfLiteStatus TfLiteOpaqueNodeTemporaries(const TfLiteOpaqueNode* opaque_node,
   return kTfLiteOk;
 }
 
+int TfLiteOpaqueNodeGetInputTensorIndex(const TfLiteOpaqueNode* opaque_node,
+                                        int index_of_input) {
+  auto* node = Convert(opaque_node);
+  if (index_of_input < 0 || index_of_input >= node->inputs->size) {
+    return -1;
+  }
+  return node->inputs->data[index_of_input];
+}
+
+int TfLiteOpaqueNodeGetOutputTensorIndex(const TfLiteOpaqueNode* opaque_node,
+                                         int index_of_output) {
+  auto* node = Convert(opaque_node);
+  if (index_of_output < 0 || index_of_output >= node->outputs->size) {
+    return -1;
+  }
+  return node->outputs->data[index_of_output];
+}
+
 TfLiteStatus TfLiteOpaqueContextGetExecutionPlan(
     TfLiteOpaqueContext* opaque_context, TfLiteIntArray** execution_plan) {
   // The following casts are safe only because this code is part of the
@@ -465,6 +484,12 @@ TfLiteStatus TfLiteOpaqueContextAddTensors(TfLiteOpaqueContext* context,
   auto* tflite_context = Convert(context);
   return tflite_context->AddTensors(tflite_context, tensors_to_add,
                                     first_new_tensor_index);
+}
+
+TfLiteStatus TfLiteOpaqueContextGetSizeOfType(TfLiteOpaqueContext* context,
+                                              const TfLiteType type,
+                                              size_t* bytes) {
+  return tflite::GetSizeOfType(Convert(context), type, bytes);
 }
 
 void TfLiteOpaqueContextReportError(struct TfLiteOpaqueContext* opaque_context,

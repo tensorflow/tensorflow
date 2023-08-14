@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/kernel_mapping_scheme.h"
 #include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
@@ -50,23 +49,7 @@ class HloFusionAnalysis {
 
   static StatusOr<HloFusionAnalysis> Create(
       const HloFusionInstruction* fusion, const GpuDeviceInfo* device_info,
-      se::CudaComputeCapability compute_capability) {
-    TF_ASSIGN_OR_RETURN(auto backend_config,
-                        fusion->backend_config<FusionBackendConfig>());
-
-    auto hlo_roots = GetFusionRoots(fusion->fused_instructions_computation());
-    std::optional<TransposeDescription> tiled_transpose;
-
-    for (auto* root : hlo_roots) {
-      if ((tiled_transpose = FindAnyTiledTranspose(*root))) {
-        break;
-      }
-    }
-
-    return HloFusionAnalysis(fusion, std::move(backend_config),
-                             std::move(hlo_roots), device_info,
-                             compute_capability, tiled_transpose);
-  }
+      se::CudaComputeCapability compute_capability);
 
   const HloComputation* fused_computation() const { return fused_computation_; }
   const std::vector<HloInstruction*>& fusion_roots() const {
@@ -78,8 +61,7 @@ class HloFusionAnalysis {
 
   // Determines the launch dimensions for the fusion. The fusion kind must not
   // be `kTriton`.
-  StatusOr<LaunchDimensions> GetLaunchDimensions(
-      bool use_experimental_block_size);
+  StatusOr<LaunchDimensions> GetLaunchDimensions();
 
   // Calculates the reduction information. Returns `nullptr` if the fusion is
   // not a reduction.
@@ -97,6 +79,7 @@ class HloFusionAnalysis {
   HloFusionAnalysis(const HloFusionInstruction* fusion,
                     FusionBackendConfig fusion_backend_config,
                     std::vector<HloInstruction*> fusion_roots,
+                    std::vector<const HloInstruction*> fusion_heroes,
                     const GpuDeviceInfo* device_info,
                     se::CudaComputeCapability compute_capability,
                     std::optional<TransposeDescription> tiled_transpose)
@@ -104,6 +87,7 @@ class HloFusionAnalysis {
         fusion_backend_config_(std::move(fusion_backend_config)),
         fused_computation_(fusion->fused_instructions_computation()),
         fusion_roots_(std::move(fusion_roots)),
+        fusion_heroes_(std::move(fusion_heroes)),
         device_info_(device_info),
         compute_capability_(compute_capability),
         tiled_transpose_(tiled_transpose) {}
@@ -122,13 +106,14 @@ class HloFusionAnalysis {
   int CalculateVirtualThreadScalingFactorForReduction(
       const ReductionDimensions& reduction_dimensions) const;
   ReductionCodegenInfo ComputeReductionCodegenInfo(
-      HloInstruction* hero_reduction) const;
+      const HloInstruction* hero_reduction) const;
   bool HasConsistentTransposeHeros() const;
 
   const HloFusionInstruction* fusion_;
   FusionBackendConfig fusion_backend_config_;
   const HloComputation* fused_computation_;
   std::vector<HloInstruction*> fusion_roots_;
+  std::vector<const HloInstruction*> fusion_heroes_;
   const GpuDeviceInfo* device_info_;
   se::CudaComputeCapability compute_capability_;
   std::optional<TransposeDescription> tiled_transpose_;

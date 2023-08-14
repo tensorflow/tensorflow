@@ -19,13 +19,19 @@ limitations under the License.
 
 #include "third_party/iree/llvm-external-projects/iree-dialects/include/iree-dialects/Dialect/Input/InputDialect.h"
 #include "third_party/iree/llvm-external-projects/iree-dialects/include/iree-dialects/Dialect/Input/InputOps.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/ValueRange.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/backends/gpu2/ir/xla_gpu_dialect.h"
 
 namespace xla::gpu {
@@ -71,6 +77,10 @@ func::FuncOp XlaGpuApi::addDecl(OpBuilder &b, ModuleOp module,
       b.getType<IREE::Input::BufferViewType>());
 }
 
+/*static*/ Type XlaGpuApi::getGraphNodeListType(OpBuilder &b) {
+  return b.getType<IREE::Input::ListType>(b.getType<GraphNodeType>());
+}
+
 /*static*/ TypedValue<IREE::Input::ListType> XlaGpuApi::getI32List(
     ImplicitLocOpBuilder &b, ArrayRef<int64_t> values) {
   Value size = b.create<ConstantIndexOp>(values.size());
@@ -112,6 +122,21 @@ func::FuncOp XlaGpuApi::addDecl(OpBuilder &b, ModuleOp module,
     Value index = b.create<ConstantIndexOp>(indexed.index());
     Value view = getBufferView(b, indexed.value());
     b.create<IREE::Input::ListSetOp>(list, index, view);
+  }
+
+  return list.cast<TypedValue<IREE::Input::ListType>>();
+}
+
+/*static*/ TypedValue<IREE::Input::ListType> XlaGpuApi::getGraphNodeList(
+    ImplicitLocOpBuilder &b, ArrayRef<TypedValue<GraphNodeType>> nodes) {
+  Type type = XlaGpuApi::getGraphNodeListType(b);
+  Value size = b.create<ConstantIndexOp>(nodes.size());
+  Value list = b.create<IREE::Input::ListCreateOp>(type, size);
+
+  if (!nodes.empty()) b.create<IREE::Input::ListResizeOp>(list, size);
+  for (auto indexed : llvm::enumerate(nodes)) {
+    Value index = b.create<ConstantIndexOp>(indexed.index());
+    b.create<IREE::Input::ListSetOp>(list, index, indexed.value());
   }
 
   return list.cast<TypedValue<IREE::Input::ListType>>();
@@ -231,8 +256,7 @@ func::FuncOp XlaGpuApi::getDispatchGemm(OpBuilder &b, ModuleOp module) {
 // XLA:GPU memcpy APIs
 //===--------------------------------------------------------------------===//
 
-mlir::func::FuncOp XlaGpuApi::getD2DMemcpy(mlir::OpBuilder &b,
-                                           mlir::ModuleOp module) {
+func::FuncOp XlaGpuApi::getD2DMemcpy(OpBuilder &b, ModuleOp module) {
   auto execution_context = b.getType<ExecutionContextType>();
   auto buffer_view = b.getType<IREE::Input::BufferViewType>();
   SmallVector<Type> args = {execution_context, buffer_view, buffer_view};
@@ -240,14 +264,51 @@ mlir::func::FuncOp XlaGpuApi::getD2DMemcpy(mlir::OpBuilder &b,
                  FunctionType::get(b.getContext(), args, /*rets=*/TypeRange()));
 }
 
-mlir::func::FuncOp XlaGpuApi::getLoadI1Memcpy(mlir::OpBuilder &b,
-                                              mlir::ModuleOp module) {
+func::FuncOp XlaGpuApi::getLoadI1Memcpy(OpBuilder &b, ModuleOp module) {
   SmallVector<Type> args = {b.getType<ExecutionContextType>(),
                             b.getType<IREE::Input::BufferViewType>(),
                             b.getI32Type()};
   SmallVector<Type> rets = {b.getIntegerType(1)};
   return addDecl(b, module, "xla_gpu.memcpy.load.i1",
                  FunctionType::get(b.getContext(), args, rets));
+}
+
+//===--------------------------------------------------------------------===//
+// XLA:GPU graph construction APIs
+//===--------------------------------------------------------------------===//
+
+func::FuncOp XlaGpuApi::getCreateKernelNode(OpBuilder &b, ModuleOp module) {
+  SmallVector<Type> args = {b.getType<ExecutionContextType>(),
+                            b.getType<GraphType>(), getGraphNodeListType(b),
+                            b.getType<KernelType>(), getBufferViewListType(b)};
+  args.append(6, b.getI32Type());  // workgroup_size / workload_size
+  SmallVector<Type> rets = {b.getType<GraphNodeType>()};
+  return addDecl(b, module, "xla_gpu.graph.kernel_node.create",
+                 FunctionType::get(b.getContext(), args, rets));
+}
+
+func::FuncOp XlaGpuApi::getCreateD2DMemcpyNode(OpBuilder &b, ModuleOp module) {
+  auto buffer_view = b.getType<IREE::Input::BufferViewType>();
+  SmallVector<Type> args = {b.getType<ExecutionContextType>(),
+                            b.getType<GraphType>(), getGraphNodeListType(b),
+                            /*dst*/ buffer_view, /*src*/ buffer_view};
+  SmallVector<Type> rets = {b.getType<GraphNodeType>()};
+  return addDecl(b, module, "xla_gpu.graph.memcpy_node.d2d.create",
+                 FunctionType::get(b.getContext(), args, rets));
+}
+
+func::FuncOp XlaGpuApi::getCreateGraph(OpBuilder &b, ModuleOp module) {
+  SmallVector<Type> args = {b.getType<ExecutionContextType>()};
+  SmallVector<Type> rets = {b.getType<GraphType>()};
+  return addDecl(b, module, "xla_gpu.graph.create",
+                 FunctionType::get(b.getContext(), args, rets));
+}
+
+func::FuncOp XlaGpuApi::getExecuteGraph(OpBuilder &b, ModuleOp module) {
+  SmallVector<Type> args = {b.getType<ExecutionContextType>(),
+                            b.getType<GraphType>()};
+  return addDecl(b, module, "xla_gpu.graph.execute",
+                 FunctionType::get(b.getContext(), args, /*rets*/ {}));
 }
 
 //===----------------------------------------------------------------------===//

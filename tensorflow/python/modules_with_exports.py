@@ -92,11 +92,14 @@ from tensorflow.python.ops.standard_ops import *  # pylint: disable=redefined-bu
 from tensorflow.python.ops.random_crop_ops import *
 from tensorflow.python.ops import bincount_ops
 from tensorflow.python.ops import bitwise_ops as bitwise
-from tensorflow.python.ops import cond_v2
 from tensorflow.python.ops import composite_tensor_ops
+from tensorflow.python.ops import cond_v2
 from tensorflow.python.ops import gen_audio_ops
 from tensorflow.python.ops import gen_boosted_trees_ops
+from tensorflow.python.ops import gen_clustering_ops
 from tensorflow.python.ops import gen_cudnn_rnn_ops
+from tensorflow.python.ops import gen_filesystem_ops
+from tensorflow.python.ops import gen_map_ops
 from tensorflow.python.ops import gen_rnn_ops
 from tensorflow.python.ops import gen_sendrecv_ops
 from tensorflow.python.ops import gen_tpu_ops

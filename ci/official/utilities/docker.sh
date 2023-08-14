@@ -16,8 +16,14 @@
 if [[ "$TFCI_DOCKER_PULL_ENABLE" == 1 ]]; then
   docker pull "$TFCI_DOCKER_IMAGE"
 fi
-docker run "${TFCI_DOCKER_GPU_ARGS[@]}" --name tf -w "$TFCI_GIT_DIR" -itd --rm \
-    -v "$TFCI_GIT_DIR:$TFCI_GIT_DIR" \
-    "$TFCI_DOCKER_IMAGE" \
-  bash
+
+# Keep the existing "tf" container if it's already present.
+# The container is not cleaned up automatically! Remove it with:
+# docker rm tf
+if ! docker container inspect tf >/dev/null 2>&1 ; then
+  docker run "${TFCI_DOCKER_ARGS[@]}" --name tf -w "$TFCI_GIT_DIR" -itd --rm \
+      -v "$TFCI_GIT_DIR:$TFCI_GIT_DIR" \
+      "$TFCI_DOCKER_IMAGE" \
+    bash
+fi
 tfrun() { docker exec tf "$@"; }

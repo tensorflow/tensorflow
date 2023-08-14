@@ -52,6 +52,7 @@ using mlir::lmhlo_gpu::ConvBackwardFilterOp;
 using mlir::lmhlo_gpu::ConvBackwardInputOp;
 using mlir::lmhlo_gpu::ConvForwardFusedOp;
 using mlir::lmhlo_gpu::ConvForwardFusedSideInputOp;
+using mlir::lmhlo_gpu::ConvForwardGraphOp;
 using mlir::lmhlo_gpu::ConvForwardOp;
 using mlir::lmhlo_gpu::CublasLtMatmulF8Op;
 using mlir::lmhlo_gpu::CublasLtMatmulOp;
@@ -308,6 +309,9 @@ class ConvOpLowering : public OpRewritePattern<Conv> {
   static StringRef CustomCallTarget(ConvBackwardInputOp) {
     return "xla.gpu.conv.backward.input";
   }
+  static StringRef CustomCallTarget(ConvForwardGraphOp) {
+    return "xla.gpu.conv.forward.graph";
+  }
 
  public:
   explicit ConvOpLowering(MLIRContext* ctx, UidGenerator& uid,
@@ -382,6 +386,14 @@ class ConvOpLowering : public OpRewritePattern<Conv> {
       set_attr("side_input_scale", fused.getSideInputScaleAttr());
     }
 
+    // Copy attributes specific for graph convolutions.
+    if (auto fused = dyn_cast<ConvForwardGraphOp>(op.getOperation())) {
+      call->setAttr(b.getStringAttr("n_aux_outputs"),
+                    fused.getNAuxOutputsAttr());
+      call->setAttr(b.getStringAttr("serialized_graph"),
+                    fused.getSerializedGraphAttr());
+    }
+
     // Erase the original conv operation.
     rewriter.eraseOp(op);
 
@@ -416,6 +428,11 @@ class ConvBackwardInputOpLowering : public ConvOpLowering<ConvBackwardInputOp> {
 
 class ConvForwardFusedSideInputOpLowering
     : public ConvOpLowering<ConvForwardFusedSideInputOp> {
+ public:
+  using ConvOpLowering::ConvOpLowering;
+};
+
+class ConvForwardGraphOpLowering : public ConvOpLowering<ConvForwardGraphOp> {
  public:
   using ConvOpLowering::ConvOpLowering;
 };
@@ -538,10 +555,11 @@ void ConvertLmhloGpuToGpuRuntimePass::runOnOperation() {
 
   // Each unique Conv operation in the module will get assigned a uid.
   UidGenerator conv_uid;
-  patterns.insert<ConvForwardOpLowering, ConvForwardFusedOpLowering,
-                  ConvForwardFusedSideInputOpLowering,
-                  ConvBackwardFilterOpLowering, ConvBackwardInputOpLowering>(
-      ctx, conv_uid, custom_calls);
+  patterns
+      .insert<ConvForwardOpLowering, ConvForwardFusedOpLowering,
+              ConvForwardFusedSideInputOpLowering, ConvBackwardFilterOpLowering,
+              ConvBackwardInputOpLowering, ConvForwardGraphOpLowering>(
+          ctx, conv_uid, custom_calls);
 
   // Patterns for every other Gpu operation.
   patterns.insert<CudnnConvReorderFilterOpLowering>(ctx, custom_calls);

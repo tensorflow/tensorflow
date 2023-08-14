@@ -231,6 +231,19 @@ class AggregatingVariable(resource_variable_ops.BaseResourceVariable,
     object_map[self] = object_map[self._v]
     return resource_list
 
+  def _copy_trackable_to_cpu(self, object_map):
+    """For implementing `Trackable`."""
+    # Create a copy of `self._v` to object_map, then create a new copy of self
+    # that wraps the copy of `self._v`.
+    # When updating value, only the lowest-level variable will actually do that,
+    # the copy of `AggregatingVariable` is more like a shell.
+    self._v._copy_trackable_to_cpu(object_map)  # pylint:disable=protected-access
+    if self not in object_map:
+      # If copy of `self` not populated yet, initialize one.
+      object_map[self] = AggregatingVariable(self._distribute_strategy,
+                                             object_map[self._v],
+                                             self._aggregation)
+
   # pylint: disable=multiple-statements
   def __add__(self, o):
     return self._v + o
@@ -521,6 +534,17 @@ class CachingVariable(resource_variable_ops.BaseResourceVariable, core.Tensor):
                                                          options, **kwargs)
     object_map[self] = object_map[self._v]
     return resource_list
+
+  def _copy_trackable_to_cpu(self, object_map):
+    """For implementing `Trackable`."""
+    # Create a copy of `self._v` to object_map, then create a new copy of self
+    # that wraps the copy of `self._v`.
+    # When updating value, only the lowest-level variable will actually do that,
+    # the copy of `CachingVariable` is more like a shell.
+    self._v._copy_trackable_to_cpu(object_map)  # pylint:disable=protected-access
+    if self not in object_map:
+      # If copy of `self` not populated yet, initialize one.
+      object_map[self] = CachingVariable(object_map[self._v])
 
 
 # Register a conversion function which reads the value of the variable,

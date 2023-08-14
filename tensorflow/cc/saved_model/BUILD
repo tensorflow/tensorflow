@@ -105,7 +105,8 @@ cc_library(
     deps = [
         ":loader_lite",
     ] + if_static_and_not_mobile([
-        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:direct_session",
+        "//tensorflow/core:all_kernels",
     ]) + if_not_mobile([
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:lib",

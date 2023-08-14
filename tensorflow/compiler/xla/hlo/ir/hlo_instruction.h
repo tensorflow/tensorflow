@@ -1309,7 +1309,7 @@ class HloInstruction {
     return control_successors_;
   }
 
-  // Returns true if "other" performs the same computation as this instruction.
+  // Returns true if 'other' performs the same computation as this instruction.
   bool Identical(
       const HloInstruction& other,
       absl::FunctionRef<bool(const HloInstruction*, const HloInstruction*)>
@@ -1321,6 +1321,13 @@ class HloInstruction {
                              layout_sensitive, sharding_sensitive,
                              /*ignore_channel_id_values=*/false,
                              /*ignore_commutative_operand_order=*/false);
+  }
+  // Returns true if 'other' is the same kind of op as this instruction. For
+  // regular ops, it just checks whether the opcode is the same, for ops like
+  // e.g. kCompare, it also checks extra attributes.
+  bool SameOp(const HloInstruction& other) const {
+    return opcode() == other.opcode() &&
+           IdenticalSlowPath(other, std::equal_to<const HloComputation*>());
   }
 
   // Same as Identical() but ignores the order of commutative operands (e.g.

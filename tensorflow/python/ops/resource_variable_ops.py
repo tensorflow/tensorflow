@@ -36,6 +36,7 @@ from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import composite_tensor_gradient
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import cpp_shape_inference_pb2
+from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import indexed_slices
@@ -711,6 +712,29 @@ class BaseResourceVariable(variables.Variable, core.Tensor):
     """
     return gen_state_ops.resource_count_up_to(
         self.handle, limit=limit, T=self.dtype)
+
+  def _copy_trackable_to_cpu(self, object_map):
+    """For implementing `Trackable`."""
+    if self not in object_map:
+      # If not populated, initialize the cpu copy first.
+      op_device = pydev.DeviceSpec.from_string(self.device).replace(
+          device_type="CPU", device_index=0).to_string()
+      with ops.device(op_device):
+        # Use `op_device` to prevent cross-device communication for variables
+        # like `ShardedVariable`
+        new_var = UninitializedVariable(
+            trainable=self.trainable,
+            shape=self.shape,
+            dtype=self.dtype,
+            name=self._shared_name)  # pylint: disable=protected-access
+      object_map[self] = new_var
+
+    # Then copy value of self to the copy.
+    destination_var = object_map[self]
+    with ops.device(destination_var.device):
+      # Use `op_device` to prevent cross-device communication for variables
+      # like `ShardedVariable`
+      destination_var.assign(self.read_value())
 
   def _export_to_saved_model_graph(self, object_map=None, tensor_map=None,
                                    options=None, **kwargs):

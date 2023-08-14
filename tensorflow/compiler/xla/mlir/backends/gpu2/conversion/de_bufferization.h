@@ -17,8 +17,8 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_MLIR_BACKENDS_GPU2_CONVERSION_DE_BUFFERIZATION_H_
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 
@@ -88,19 +88,22 @@ struct DeBufferization {
 // currently IREE buffer view can't represent a strided layout. As a short term
 // solution the plan is to pass tensor layout as a side data structure, but
 // longer term we'll need to add tensor/buffer layouts to IREE HAL buffers.
-inline mlir::TypedValue<mlir::MemRefType> stripReinterpretCast(
-    mlir::TypedValue<mlir::MemRefType> value) {
-  if (auto op = mlir::dyn_cast_or_null<mlir::memref::ReinterpretCastOp>(
-          value.getDefiningOp()))
-    return mlir::cast<mlir::TypedValue<mlir::MemRefType>>(op.getSource());
-  return value;
-}
+mlir::TypedValue<mlir::MemRefType> stripReinterpretCast(
+    mlir::TypedValue<mlir::MemRefType> value);
 
-inline mlir::TypedValue<mlir::MemRefType> stripReinterpretCast(
-    mlir::TypedValue<mlir::BaseMemRefType> value) {
-  return stripReinterpretCast(
-      mlir::cast<mlir::TypedValue<mlir::MemRefType>>(value));
-}
+mlir::TypedValue<mlir::MemRefType> stripReinterpretCast(
+    mlir::TypedValue<mlir::BaseMemRefType> value);
+
+//===----------------------------------------------------------------------===//
+// Helper functions for de-bufferizing operations with nested regions
+//===----------------------------------------------------------------------===//
+
+struct UsedBuffers {
+  llvm::SetVector<mlir::TypedValue<mlir::MemRefType>> read;
+  llvm::SetVector<mlir::TypedValue<mlir::MemRefType>> write;
+};
+
+UsedBuffers getUsedBuffers(llvm::ArrayRef<mlir::Block *> blocks);
 
 }  // namespace gpu
 }  // namespace xla

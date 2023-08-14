@@ -175,35 +175,33 @@ Status AotCompileSavedModel(absl::string_view input_model_dir,
     TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(output_dir, {}));
   }
   const std::string aot_directory =
-      io::JoinPath(std::string(output_model_dir), "aot_packages");
+      io::JoinPath(output_dir, kAoTPackagesDirectory);
   TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(aot_directory));
 
   // Serialize MLIR to a file under aot_packages
   const std::string mlir_module_file =
-      io::JoinPath(std::string(aot_directory), "serialized_mlir.mlir");
+      io::JoinPath(aot_directory, kMLIRModuleFilename);
   std::string mlir_module_string = SerializeMlirModule(mlir_module.get());
   TF_RETURN_IF_ERROR(
       WriteStringToFile(env, mlir_module_file, mlir_module_string));
 
   // Serialize BEF buffer to a file under aot_packages
   const std::string serialized_bef_path =
-      io::JoinPath(aot_directory, "serialized_bef.mlir.bef");
+      io::JoinPath(aot_directory, kBefBufferFilenameMLIRBEF);
   TF_RETURN_IF_ERROR(SerializeBEF(bef, serialized_bef_path));
 
   if (pb_found) {
     const std::string output_file_directory =
-        io::JoinPath(std::string(output_model_dir),
-                     absl::StrCat("aot_", kSavedModelFilenamePb));
+        io::JoinPath(std::string(output_model_dir), kSavedModelFilenamePb);
     return env->CopyFile(saved_model_pb_path, output_file_directory);
   } else {
     const std::string output_file_directory =
-        io::JoinPath(std::string(output_model_dir),
-                     absl::StrCat("aot_", kSavedModelFilenamePbTxt));
+        io::JoinPath(std::string(output_model_dir), kSavedModelFilenamePbTxt);
     return env->CopyFile(saved_model_pbtxt_path, output_file_directory);
   }
 }
 
-// TODO: b/294095043 - Create a a function (ex Status
+// TODO(b/294095043): Create a function (ex Status
 // SerializeAotResult(AotResult)) to avoid using temp directories.
 
 }  // namespace tensorflow::tfrt_stub

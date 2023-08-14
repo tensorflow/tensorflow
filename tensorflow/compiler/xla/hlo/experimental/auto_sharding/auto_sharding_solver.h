@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_SOLVER_H_
 #define TENSORFLOW_COMPILER_XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_SOLVER_H_
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <tuple>
@@ -34,6 +35,7 @@ struct AutoShardingSolverRequest {
   int64_t memory_budget = -1;
   std::vector<int> s_len;
   std::vector<NodeIdx> s_follow;
+  std::vector<NodeStrategyIdx> s_hint;
   std::vector<std::pair<NodeIdx, NodeIdx>> e;
   std::vector<std::vector<NodeIdx>> live;
   std::vector<std::vector<double>> c;
@@ -45,6 +47,7 @@ struct AutoShardingSolverRequest {
   std::vector<std::string> instruction_names;
   std::optional<int64_t> solver_timeout_in_seconds;
   bool crash_at_infinity_costs_check = false;
+  bool compute_iis = true;
   double saltiplier = 0.0001;  // Modifies each objective term by at most 0.01%
 };
 

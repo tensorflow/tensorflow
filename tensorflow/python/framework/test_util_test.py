@@ -61,7 +61,7 @@ from tensorflow.python.util.protobuf import compare_test_pb2
 @dataclasses.dataclass
 class MaskedTensor:
   mask: bool
-  value: ops.Tensor
+  value: tensor.Tensor
 
   def __tf_flatten__(self):
     metadata = (self.mask,)

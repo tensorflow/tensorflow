@@ -14,6 +14,7 @@
 # ==============================================================================
 """bincount ops."""
 
+from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -65,10 +66,11 @@ def bincount(arr,
   Here, index 1 in output has a value 6. This is the summation of weights
   corresponding to the value in `values`.
 
-  **Bin-counting on a certain axis**
+  **Bin-counting matrix rows independently**
 
-  This example takes a 2 dimensional input and returns a `Tensor` with
-  bincounting on each sample.
+  This example uses `axis=-1` with a 2 dimensional input and returns a
+  `Tensor` with bincounting where axis 0 is **not** flattened, i.e. an
+  independent bincount for each matrix row.
 
   >>> data = np.array([[1, 2, 3, 0], [0, 0, 1, 2]], dtype=np.int32)
   >>> tf.math.bincount(data, axis=-1)
@@ -106,7 +108,7 @@ def bincount(arr,
       These tensors must have a rank of 2 if `axis=-1`.
     weights: If non-None, must be the same shape as arr. For each value in
       `arr`, the bin will be incremented by the corresponding weight instead of
-      1.
+      1. If non-None, `binary_output` must be False.
     minlength: If given, ensures the output has length at least `minlength`,
       padding with zeros at the end if necessary.
     maxlength: If given, skips values in `arr` that are equal or greater than
@@ -121,8 +123,8 @@ def bincount(arr,
       reduce_add). Defaults to False.
 
   Returns:
-    A vector with the same dtype as `weights` or the given `dtype`. The bin
-    values.
+    A vector with the same dtype as `weights` or the given `dtype` containing
+    the bincount values.
 
   Raises:
     `InvalidArgumentError` if negative values are provided as an input.
@@ -131,9 +133,14 @@ def bincount(arr,
   name = "bincount" if name is None else name
   with ops.name_scope(name):
     # TODO(b/255381064) Remove the following block which uses older kernels for
-    # backwards compatibility for certain cases once all tests pass with the
-    # newer (dense_bincount, ragged_bincount and sparse_bincount) kernels.
-    if not binary_output and axis is None:
+    # certain cases once the forward compatibility window expries (and remove
+    # the imports in this file and dependencies in the BUILD file for compat
+    # and constant_op which are only required for this block.)
+    if (
+        not compat.forward_compatible(2023, 9, 10)
+        and not binary_output
+        and axis is None
+    ):
       arr = ops.convert_to_tensor(arr, name="arr", dtype=dtypes.int32)
       array_is_nonempty = math_ops.reduce_prod(array_ops.shape(arr)) > 0
       output_size = math_ops.cast(array_is_nonempty, dtypes.int32) * (

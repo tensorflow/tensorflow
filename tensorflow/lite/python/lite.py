@@ -73,7 +73,6 @@ from tensorflow.lite.python.util import trace_model_call as _trace_model_call
 from tensorflow.lite.tools import flatbuffer_utils
 from tensorflow.lite.tools.optimize.debugging.python.debugger import QuantizationDebugger  # pylint: disable=unused-import
 from tensorflow.lite.tools.optimize.debugging.python.debugger import QuantizationDebugOptions  # pylint: disable=unused-import
-from tensorflow.python import saved_model as _saved_model
 from tensorflow.python.client import session as _session
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function as _def_function
@@ -88,6 +87,7 @@ from tensorflow.python.framework.importer import import_graph_def as _import_gra
 from tensorflow.python.platform import gfile
 from tensorflow.python.saved_model import loader_impl as _loader_impl
 from tensorflow.python.saved_model import save_options as _save_options
+from tensorflow.python.saved_model import saved_model as _saved_model
 from tensorflow.python.saved_model import signature_constants as _signature_constants
 from tensorflow.python.saved_model import tag_constants as _tag_constants
 from tensorflow.python.saved_model.load import load as _load

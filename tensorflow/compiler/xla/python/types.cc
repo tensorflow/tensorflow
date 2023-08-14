@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/python/exceptions.h"
+#include "tensorflow/compiler/xla/python/ifrt/dtype.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -180,6 +181,67 @@ xla::StatusOr<py::dtype> PrimitiveTypeToDtype(PrimitiveType type) {
     default:
       return Unimplemented("Unimplemented primitive type %s",
                            PrimitiveType_Name(type));
+  }
+}
+
+StatusOr<pybind11::dtype> IfrtDtypeToDtype(ifrt::DType dtype) {
+  const CustomDtypes& custom_dtypes = GetCustomDtypes();
+  switch (dtype.kind()) {
+    case ifrt::DType::kPred:
+      return py::dtype::of<bool>();
+    case ifrt::DType::kS4:
+      return custom_dtypes.int4;
+    case ifrt::DType::kS8:
+      return py::dtype::of<int8_t>();
+    case ifrt::DType::kS16:
+      return py::dtype::of<int16_t>();
+    case ifrt::DType::kS32:
+      return py::dtype::of<int32_t>();
+    case ifrt::DType::kS64:
+      return py::dtype::of<int64_t>();
+    case ifrt::DType::kU4:
+      return custom_dtypes.uint4;
+    case ifrt::DType::kU8:
+      return py::dtype::of<uint8_t>();
+    case ifrt::DType::kU16:
+      return py::dtype::of<uint16_t>();
+    case ifrt::DType::kU32:
+      return py::dtype::of<uint32_t>();
+    case ifrt::DType::kU64:
+      return py::dtype::of<uint64_t>();
+    case ifrt::DType::kF16:
+      return py::dtype("e");  // PEP 3118 code for "float16"
+    case ifrt::DType::kF32:
+      return py::dtype::of<float>();
+    case ifrt::DType::kF64:
+      return py::dtype::of<double>();
+    case ifrt::DType::kBF16:
+      return custom_dtypes.bfloat16;
+    case ifrt::DType::kC64:
+      return py::dtype::of<std::complex<float>>();
+    case ifrt::DType::kC128:
+      return py::dtype::of<std::complex<double>>();
+    case ifrt::DType::kF8E4M3FN:
+      return custom_dtypes.float8_e4m3fn;
+    case ifrt::DType::kF8E4M3B11FNUZ:
+      return custom_dtypes.float8_e4m3b11fnuz;
+    case ifrt::DType::kF8E4M3FNUZ:
+      return custom_dtypes.float8_e4m3fnuz;
+    case ifrt::DType::kF8E5M2:
+      return custom_dtypes.float8_e5m2;
+    case ifrt::DType::kF8E5M2FNUZ:
+      return custom_dtypes.float8_e5m2fnuz;
+    case ifrt::DType::kString:
+      // PEP 3118 code for "pointer to Python Object". We use Python objects
+      // instead of 'U' (Unicode string) or 'V' (raw data) because the latter
+      // two are fixed length, and thus, require encoding the maximum length as
+      // part of dtype. Using 'O' allows us to represent variable-length bytes
+      // and is also consistent with TensorFlow's tensor -> ndarray conversion
+      // logic (see `TF_DataType_to_PyArray_TYPE`).
+      return py::dtype("O");
+    default:
+      return Unimplemented("Unimplemented primitive type %s",
+                           dtype.DebugString());
   }
 }
 

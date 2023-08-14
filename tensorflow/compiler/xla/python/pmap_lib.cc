@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/exceptions.h"
 #include "tensorflow/compiler/xla/python/ifrt/array.h"
 #include "tensorflow/compiler/xla/python/ifrt/dtype.h"
+#include "tensorflow/compiler/xla/python/ifrt/memory.h"
 #include "tensorflow/compiler/xla/python/ifrt/sharding.h"
 #include "tensorflow/compiler/xla/python/jax_jit.h"
 #include "tensorflow/compiler/xla/python/py_array.h"
@@ -194,7 +195,7 @@ xla::StatusOr<ShardArgResult> ShardArg(
       TF_ASSIGN_OR_RETURN(
           xla::DevicePutResult on_device,
           DevicePut(arg[indices[i]], to_device.get_client()->ifrt_client(),
-                    to_device.get(), options));
+                    to_device.get(), options, xla::ifrt::MemoryKind()));
 
       per_device_arrays.push_back(std::move(on_device.ifrt_array));
       devices.push_back(per_device_arrays.back()->sharding().devices().front());

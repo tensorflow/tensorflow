@@ -100,7 +100,7 @@ class GpuConvAlgorithmPicker : public HloModulePass {
       const ServiceExecutableRunOptions* run_options,
       const DebugOptions& debug_options,
       std::vector<se::DeviceMemoryBase> buffers,
-      se::DeviceMemoryBase result_buffer);
+      std::vector<se::DeviceMemoryBase> result_buffers);
 
  private:
   StatusOr<bool> RunOnComputation(HloComputation* computation);
@@ -116,7 +116,7 @@ class GpuConvAlgorithmPicker : public HloModulePass {
   // autotuned algorithms.
   struct ReferenceResult {
     stream_executor::dnn::AlgorithmDesc algorithm;
-    stream_executor::DeviceMemoryBase buffer;
+    std::vector<stream_executor::DeviceMemoryBase> buffers;
   };
 
   // Execution environment for autotuning. Runtime autotuning requires runtime
@@ -126,7 +126,7 @@ class GpuConvAlgorithmPicker : public HloModulePass {
     const Shape result_shape;
     const HloModuleConfig hlo_module_config;
     std::vector<se::DeviceMemoryBase> operand_buffers;
-    se::DeviceMemoryBase result_buffer;
+    std::vector<se::DeviceMemoryBase> result_buffers;
     se::RedzoneAllocator* input_output_allocator;
     const GpuConvConfig gpu_conv_config;
     std::optional<std::string> canonical_hlo;

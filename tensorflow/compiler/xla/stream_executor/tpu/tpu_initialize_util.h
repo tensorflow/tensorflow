@@ -17,10 +17,10 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_TPU_INITIALIZE_UTIL_H_
 
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace tpu {

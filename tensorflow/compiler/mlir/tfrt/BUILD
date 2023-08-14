@@ -187,6 +187,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),  # copybara: comment
     deps = [
         ":tfrt_compile_options",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Pass",
     ],
 )
@@ -237,6 +238,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tfrt/ir:tfrt_fallback_async_opdefs",
         "//tensorflow/compiler/mlir/tfrt/ir:tfrt_fallback_opdefs",
         "//tensorflow/compiler/mlir/tfrt/ir:tfrt_gpu_opdefs",
+        "//tensorflow/compiler/tf2xla:tf2xla_defs",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:status",
         "@llvm-project//llvm:Support",
@@ -365,6 +367,8 @@ cc_library(
         "//tensorflow/core/tfrt/fallback:fallback_state",
         "//tensorflow/core/tfrt/runtime",
         "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
         "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",

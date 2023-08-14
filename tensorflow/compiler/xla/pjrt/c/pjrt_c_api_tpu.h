@@ -18,6 +18,18 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 
+namespace pjrt {
+enum PjRtCApiTpuInitType {
+  // Build with static linking and deploy internally.
+  kInternalStaticLinking,
+  // Build with static linking and deploy on cloud.
+  kExternalStaticLinking,
+  // Build with dynamic linking and deploy on cloud.
+  kDynamicLinking
+};
+extern enum PjRtCApiTpuInitType kPjRtCApiTpuInitType;
+}  // namespace pjrt
+
 #ifdef __cplusplus
 extern "C" {
 #endif

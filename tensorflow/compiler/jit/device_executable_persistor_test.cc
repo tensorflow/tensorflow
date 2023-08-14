@@ -253,6 +253,28 @@ TEST_F(DeviceExecutionPersistorTest, PersistCacheDirNotSet) {
   EXPECT_FALSE(entry.ok());
 }
 
+TEST_F(DeviceExecutionPersistorTest, PersistCacheDirReadOnly) {
+  XlaDeviceExecutablePersistor::Config config(
+      /*persistent_cache_directory=*/"cache_dir_",
+      /*disable_strict_signature_checks=*/false,
+      /*persistence_prefix=*/"xla",
+      /*persistent_cache_directory_read_only=*/true);
+  XlaDeviceExecutablePersistor persistor(config,
+                                         DefaultXlaOptions().device_type);
+
+  MockXlaCompilerClient mock_client;
+  TF_ASSERT_OK_AND_ASSIGN(auto executable, BuildSampleExecutable());
+  TF_EXPECT_OK(persistor.TryToPersistExecutable(
+      /*signature_hash=*/123, "signature_string", DefaultXlaOptions(),
+      compilation_result_add_, *executable, &mock_client));
+
+  auto key =
+      CreateCacheKey(/*signature_hash=*/123, compilation_result_add_,
+                     persistor.device_type(), persistor.persistence_prefix());
+  auto entry = ReadCacheEntryFromFile(key, "");
+  EXPECT_FALSE(entry.ok());
+}
+
 TEST_F(DeviceExecutionPersistorTest, PersistSerializeAlreadyBuiltExecutable) {
   XlaDeviceExecutablePersistor::Config config(
       /*persistent_cache_directory=*/cache_dir_,

@@ -124,7 +124,7 @@ bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
 // output of a bitcast of a dynamic slice update---since such bitcast may be
 // handled as a no-op.
 std::vector<HloInstruction*> GetOutputDefiningDynamicUpdateSlices(
-    const HloComputation* fusion);
+    const std::vector<HloInstruction*>& roots);
 
 // Returns the DynamicUpdateSliceOp(s) defining the results of a fusion node.
 // A dynamic slice update is said to be "defining" of a result if that result is
@@ -136,6 +136,13 @@ GetOutputDefiningDynamicUpdateSliceOps(mlir::lmhlo::FusionOp fusion);
 
 Shape GetShape(mlir::Value value);
 
+// `is_boundary` returns `true` for edges that are on the boundary of the
+// fusion, i.e., they go from an instruction inside the fusion to one outside,
+// or vice versa.
+const HloInstruction& FindNonTrivialHero(
+    const HloInstruction& instr,
+    const std::function<bool(const HloInstruction& producer,
+                             const HloInstruction& consumer)>& is_boundary);
 const HloInstruction& FindNonTrivialHero(const HloInstruction& instr);
 
 /// Description of how to emit a given transposition.
@@ -177,8 +184,8 @@ std::optional<TransposeDescription> FindTiledTranspose(
 std::optional<TransposeDescription> FindTiledLogicalTranspose(
     const HloInstruction& instr);
 
-std::optional<TransposeDescription> FindAnyTiledTranspose(
-    const HloInstruction& instr);
+std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
+    const HloInstruction& root, const HloInstruction& hero);
 
 bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count = 1);
 

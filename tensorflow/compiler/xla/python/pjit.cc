@@ -344,7 +344,7 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
         TF_ASSIGN_OR_RETURN(
             xla::DevicePutResult on_device,
             DevicePut(arg, executable.ifrt_loaded_executable()->client(),
-                      data_device, options));
+                      data_device, options, xla::ifrt::MemoryKind()));
 
         num_args_arrays.push_back(std::move(on_device.ifrt_array));
         if (on_device.owning_pybuffer) {

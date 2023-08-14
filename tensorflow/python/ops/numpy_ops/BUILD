@@ -71,6 +71,7 @@ py_strict_library(
         "//tensorflow/python/ops:manip_ops",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:sort_ops",
+        "//tensorflow/python/types:core",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
@@ -85,6 +86,7 @@ py_strict_library(
         ":np_math_ops",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:weak_tensor_ops",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:tf_export",
     ],
 )

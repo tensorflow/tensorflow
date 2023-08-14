@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/while_loop_analysis.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/union_find.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -1361,6 +1362,37 @@ StatusOr<bool> WhileLoopSimplifier::Run(
   }
 
   for (HloInstruction* while_op : while_ops) {
+    // Each of the optimizations below modifies the while loop itself if it's
+    // successful, meaning that `while_op` is no longer valid after one of these
+    // transformations returns true.
+    // These optimizations should be fine even with send/recv nodes within the
+    // loop.
+
+    TF_ASSIGN_OR_RETURN(bool result,
+                        TryRemoveRepeatedWhileTupleIndices(while_op));
+    changed |= result;
+    if (result) {
+      continue;
+    }
+
+    TF_ASSIGN_OR_RETURN(result, TryFlattenNestedTuples(while_op));
+    changed |= result;
+    if (result) {
+      continue;
+    }
+
+    TF_ASSIGN_OR_RETURN(result, TryRemoveDeadWhileParams(while_op));
+    changed |= result;
+    if (result) {
+      continue;
+    }
+
+    TF_ASSIGN_OR_RETURN(result, TryRemoveConstantParams(while_op));
+    changed |= result;
+    if (result) {
+      continue;
+    }
+
     // We can't remove while loops that contain send/recv nodes, because we rely
     // on the particular loop structure around the node matching on the send and
     // recv sides.  Other while simplifications require us to remove the loop
@@ -1377,7 +1409,7 @@ StatusOr<bool> WhileLoopSimplifier::Run(
       continue;
     }
 
-    TF_ASSIGN_OR_RETURN(bool result, TryPropagateConstant(while_op));
+    TF_ASSIGN_OR_RETURN(result, TryPropagateConstant(while_op));
     changed |= result;
 
     TF_ASSIGN_OR_RETURN(result, TryRemoveWhileLoop(while_op));
@@ -1395,35 +1427,6 @@ StatusOr<bool> WhileLoopSimplifier::Run(
     if (ContainsInstrWithOpcode(while_op->while_body(), {HloOpcode::kDomain}) ||
         ContainsInstrWithOpcode(while_op->while_condition(),
                                 {HloOpcode::kDomain})) {
-      continue;
-    }
-
-    // Each of the optimizations below modifies the while loop itself if it's
-    // successful, meaning that `while_op` is no longer valid after one of these
-    // transformations returns true.
-
-    TF_ASSIGN_OR_RETURN(result, TryRemoveRepeatedWhileTupleIndices(while_op));
-    changed |= result;
-    if (result) {
-      continue;
-    }
-
-    TF_ASSIGN_OR_RETURN(result, TryFlattenNestedTuples(while_op));
-    changed |= result;
-    if (result) {
-      continue;
-    }
-
-    TF_ASSIGN_OR_RETURN(result, TryRemoveDeadWhileParams(while_op));
-
-    changed |= result;
-    if (result) {
-      continue;
-    }
-
-    TF_ASSIGN_OR_RETURN(result, TryRemoveConstantParams(while_op));
-    changed |= result;
-    if (result) {
       continue;
     }
 

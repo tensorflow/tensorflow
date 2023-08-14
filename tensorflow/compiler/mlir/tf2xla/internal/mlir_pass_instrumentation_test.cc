@@ -98,9 +98,10 @@ TEST_F(TestPassInstrumentation, CreatedCalledAndSetsPassName) {
   auto compilation_result = tensorflow::XlaCompilationResult();
 
   TF_EXPECT_OK(tensorflow::CompileSerializedMlirToXlaHlo(
-      legalization, arg_shapes, /*device_type=*/"XLA_TPU_JIT",
-      /*use_tuple_args=*/true, /*enable_op_fallback=*/false,
-      /*shape_determination_fns=*/{}, &compilation_result));
+                   legalization, arg_shapes, /*device_type=*/"XLA_TPU_JIT",
+                   /*use_tuple_args=*/true, /*enable_op_fallback=*/false,
+                   /*shape_determination_fns=*/{}, &compilation_result)
+                   .status());
 
   EXPECT_FALSE(GetPassThatChangedIdentity().empty());
 }

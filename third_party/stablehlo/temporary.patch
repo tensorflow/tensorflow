@@ -26,16 +26,7 @@ diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
      name = "interpreter_ops",
      srcs = [
          "stablehlo/reference/InterpreterOps.cpp",
-@@ -292,6 +310,8 @@
-         ":reference_interpretervalue",
-         ":reference_ops",
-         ":reference_process",
-+        "@llvm-project//llvm:Support",
-+        "@llvm-project//mlir:FuncDialect",
-         "@llvm-project//mlir:IR",
-         "@llvm-project//mlir:Support",
-     ],
-@@ -737,6 +757,7 @@
+@@ -739,6 +757,7 @@
      deps = [
          ":base",
          ":chlo_ops",
@@ -43,14 +34,6 @@ diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
          ":stablehlo_ops",
          ":stablehlo_ops_inc_gen",
          ":stablehlo_pass_inc_gen",
-@@ -903,6 +924,7 @@
-         "stablehlo/tools/StablehloOptMain.cpp",
-     ],
-     deps = [
-+        ":interpreter_ops",
-         ":register",
-         ":stablehlo_passes",
-         ":tosa_passes",
 diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 --- stablehlo/CMakeLists.txt
 +++ stablehlo/CMakeLists.txt
@@ -198,6 +181,33 @@ diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
  
  #-------------------------------------------------------------------------------
  # Directory setup
+diff --ruN a/stablehlo/stablehlo/conversions/tosa/transforms/Passes.h b/stablehlo/stablehlo/conversions/tosa/transforms/Passes.h
+--- stablehlo/stablehlo/conversions/tosa/transforms/Passes.h
++++ stablehlo/stablehlo/conversions/tosa/transforms/Passes.h
+@@ -19,6 +19,8 @@
+ #include <memory>
+ 
+ #include "mlir/Dialect/Func/IR/FuncOps.h"
++#include "mlir/Dialect/PDL/IR/PDL.h"
++#include "mlir/Dialect/PDLInterp/IR/PDLInterp.h"
+ #include "mlir/Pass/Pass.h"
+ 
+ namespace mlir {
+diff --ruN a/stablehlo/stablehlo/conversions/tosa/transforms/Passes.td b/stablehlo/stablehlo/conversions/tosa/transforms/Passes.td
+--- stablehlo/stablehlo/conversions/tosa/transforms/Passes.td
++++ stablehlo/stablehlo/conversions/tosa/transforms/Passes.td
+@@ -17,7 +17,10 @@
+ 
+ def StablehloLegalizeToTosaPass : Pass<"stablehlo-legalize-to-tosa", "mlir::func::FuncOp"> {
+   let summary = "Legalize StableHLO to TOSA";
+-  let dependentDialects = ["::mlir::tosa::TosaDialect"];
++  let dependentDialects = [
++    "::mlir::tosa::TosaDialect", "::mlir::pdl::PDLDialect",
++    "::mlir::pdl_interp::PDLInterpDialect"
++  ];
+ }
+ 
+ def StablehloPrepareForTosaPass : Pass<"stablehlo-prepare-for-tosa", "mlir::func::FuncOp"> {
 diff --ruN a/stablehlo/stablehlo/dialect/Base.cpp b/stablehlo/stablehlo/dialect/Base.cpp
 --- stablehlo/stablehlo/dialect/Base.cpp
 +++ stablehlo/stablehlo/dialect/Base.cpp

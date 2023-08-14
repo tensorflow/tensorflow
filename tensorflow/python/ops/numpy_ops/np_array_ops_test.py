@@ -547,6 +547,11 @@ class ArrayCreationTest(test.TestCase):
                                     [10, 3])
     self.assertAllEqual(expected, a)
 
+  def testVander(self):
+    tf_res = np_array_ops.vander([-1.0, 1.0], N=0, increasing=False)
+    np_res = np.vander(np.array([-1.0, 1.0]), N=0)
+    self.assertAllEqual(tf_res, np_res)
+
 
 class ArrayMethodsTest(test.TestCase):
 

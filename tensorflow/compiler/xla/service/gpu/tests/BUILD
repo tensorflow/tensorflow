@@ -123,7 +123,14 @@ xla_cc_test(
 xla_cc_test(
     name = "gemm_rewrite_test",
     srcs = if_cuda_is_configured(["gemm_rewrite_test.cc"]),
+<<<<<<< HEAD
     tags = tf_cuda_tests_tags(),
+=======
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
+    tags = tf_cuda_tests_tags() + [
+        "no_rocm",
+    ],
+>>>>>>> upstream/master
     deps = [
         ":gpu_codegen_test",
         "//tensorflow/compiler/xla:statusor",
@@ -139,7 +146,10 @@ xla_cc_test(
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:test_main",
         "@com_google_absl//absl/strings",
-    ],
+        "@com_google_googletest//:gtest",
+    ] + if_cuda_is_configured([
+        "@local_config_cuda//cuda:cuda_headers",
+    ]),
 )
 
 xla_cc_test(
@@ -724,6 +734,7 @@ xla_cc_binary(
         "//tensorflow/compiler/xla/stream_executor:dnn",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_impl",
         "//tensorflow/compiler/xla/stream_executor/host:host_platform",
+        "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/compiler/xla/tools:hlo_module_loader",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:platform_port",

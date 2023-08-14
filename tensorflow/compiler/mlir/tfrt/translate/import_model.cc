@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
@@ -41,7 +42,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "tensorflow/core/common_runtime/function_body.h"
 #include "tensorflow/core/common_runtime/function_def_utils.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/statusor.h"
 #include "tfrt/bef_converter/mlir_to_bef.h"  // from @tf_runtime
 
 namespace tensorflow {
@@ -317,6 +321,28 @@ std::unique_ptr<tensorflow::TfrtPipelineOptions> GetTfrtPipelineOptions(
       options.merge_inter_dependent_streams;
 
   return pipeline_options;
+}
+
+tensorflow::Status RunTFXLABridgeAndAddXlaFunctions(
+    const TfrtCompileOptions& options, tfrt_stub::FallbackState* fallback_state,
+    mlir::ModuleOp mlir_module) {
+  if (options.device_target == TfrtDeviceInfraTarget::kGpu) {
+    // Update fallback_state
+
+    Status status = mlir::TF::RunTFXLABridge(mlir_module);
+
+    if (fallback_state != nullptr) {
+      TF_ASSIGN_OR_RETURN(const std::vector<FunctionDef> xla_func_defs,
+                          ExportXlaFunctions(mlir_module));
+      for (const auto& func_def : xla_func_defs) {
+        TF_RETURN_IF_ERROR(fallback_state->AddFunctionDef(func_def));
+      }
+    }
+    return status;
+
+  } else {
+    return absl::UnimplementedError("Non-GPU device_target is not supported.");
+  }
 }
 
 }  // namespace tensorflow

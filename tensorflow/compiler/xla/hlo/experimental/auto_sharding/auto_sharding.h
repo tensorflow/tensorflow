@@ -175,6 +175,11 @@ struct AutoShardingOption {
   // can increase the search space, so this feature is exposed as an option.
   bool allow_replicated_strategy_for_dot_and_conv = true;
 
+  // Allows the conversion of aliases to followers if their pairwise strategy
+  // compatibilities are embodied by the identity matrix (which makes for a
+  // smaller Mixed ILP).
+  bool allow_alias_to_follower_conversion = true;
+
   std::vector<int64_t> strategy_vector;
   // If greater than zero, tensors with size smaller than or equal to this limit
   // will always be replicated if they don't have a different user-specified

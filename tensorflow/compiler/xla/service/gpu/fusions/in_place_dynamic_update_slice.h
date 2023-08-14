@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/service/gpu/fusions/fusion_emitter.h"
+#include "tensorflow/compiler/xla/service/gpu/hlo_fusion_analysis.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 
 namespace xla {
@@ -50,18 +51,18 @@ namespace gpu {
 // dynamic-update-slice ops.
 class InPlaceDynamicUpdateSliceEmitter : public KernelFusionEmitterBase {
  public:
-  InPlaceDynamicUpdateSliceEmitter(IrEmitterContext& ir_emitter_context,
-                                   ElementalIrEmitter& elemental_emitter,
-                                   mlir::lmhlo::FusionOp fusion_op,
-                                   const HloFusionInstruction& fusion)
-      : KernelFusionEmitterBase(ir_emitter_context, elemental_emitter,
-                                fusion_op, fusion),
-        dus_ops_(GetOutputDefiningDynamicUpdateSlices(
-            fusion.fused_instructions_computation())) {}
-  StatusOr<LaunchDimensions> launch_dimensions(int kernel_index) const override;
+  explicit InPlaceDynamicUpdateSliceEmitter(const HloFusionAnalysis& analysis)
+      : dus_ops_(
+            GetOutputDefiningDynamicUpdateSlices(analysis.fusion_roots())) {}
+  StatusOr<LaunchDimensions> launch_dimensions(
+      IrEmitterContext& ir_emitter_context, int kernel_index) const override;
 
  protected:
-  Status EmitKernel(const LaunchDimensions& launch_dims,
+  Status EmitKernel(IrEmitterContext& ir_emitter_context,
+                    ElementalIrEmitter& elemental_emitter,
+                    mlir::lmhlo::FusionOp fusion_op,
+                    const HloFusionInstruction& fusion,
+                    const LaunchDimensions& launch_dims,
                     std::vector<llvm_ir::IrArray> inputs,
                     std::vector<llvm_ir::IrArray> outputs,
                     llvm::IRBuilder<>* builder,
