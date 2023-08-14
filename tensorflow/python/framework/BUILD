@@ -2899,6 +2899,7 @@ tf_py_strict_test(
         "nomsan",  # TODO(b/149948895): Re-enable.
         "not_run:arm",
         "notsan",  # TODO(b/149948895): Re-enable.
+        "nozapfhahn",
     ],
     deps = [
         ":constant_op",

@@ -160,6 +160,7 @@ tf_py_strict_test(
         "no_oss",  # TODO(b/263966250) re-enable after fixing sysconfig.get_path breakage
         "no_windows",
         "nomac",
+        "nozapfhahn",
     ],
     deps = [
         ":client_testlib",

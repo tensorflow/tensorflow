@@ -67,7 +67,10 @@ cuda_py_strict_test(
     # TODO(kkb): CppMemoryChecker is flaky without these two flags, investigate.
     #
     # TODO(b/128347673): Re-enable.
-    tags = ["no_windows"],
+    tags = [
+        "no_windows",
+        "nozapfhahn",
+    ],
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/compat",
