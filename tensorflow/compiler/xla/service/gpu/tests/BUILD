@@ -123,14 +123,10 @@ xla_cc_test(
 xla_cc_test(
     name = "gemm_rewrite_test",
     srcs = if_cuda_is_configured(["gemm_rewrite_test.cc"]),
-<<<<<<< HEAD
-    tags = tf_cuda_tests_tags(),
-=======
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     tags = tf_cuda_tests_tags() + [
         "no_rocm",
     ],
->>>>>>> upstream/master
     deps = [
         ":gpu_codegen_test",
         "//tensorflow/compiler/xla:statusor",

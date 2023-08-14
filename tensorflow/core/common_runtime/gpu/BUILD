@@ -392,12 +392,8 @@ tf_cuda_cc_test(
     # allocations.
     tags = tf_cuda_tests_tags() + [
         "guitar",
-<<<<<<< HEAD
-        "multi_gpu",
         "no_rocm" # fail on CI
-=======
         # "multi_gpu", # TODO(b/287692888): re-enable once the 2gpu test passes.
->>>>>>> upstream/master
     ],
     deps = [
         ":gpu_id",

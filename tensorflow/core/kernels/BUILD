@@ -210,11 +210,7 @@ tf_cuda_cc_test(
         "guitar",
         "multi_gpu",
         "no_oss",
-<<<<<<< HEAD
-        "cuda_only",
-=======
         "notap",  # TODO(b/287692888): re-enable once the tests passes.
->>>>>>> upstream/master
     ],
     deps = [
         "//tensorflow/core:all_kernels",

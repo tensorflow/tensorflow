@@ -3159,15 +3159,9 @@ xla_cc_test(
 
 xla_cc_test(
     name = "hlo_op_profiler_test",
-<<<<<<< HEAD
-    srcs = if_cuda_is_configured(["hlo_op_profiler_test.cc"]),
-    tags = tf_cuda_tests_tags() + ["no_rocm",],
-    deps = if_cuda_is_configured([
-=======
     srcs = ["hlo_op_profiler_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    tags = tf_cuda_tests_tags() + ["no_rocm",],
     deps = [
->>>>>>> upstream/master
         ":hlo_op_profiler_lib",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:gpu_plugin",

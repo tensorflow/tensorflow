@@ -42,11 +42,7 @@ class AMDGPUCompiler : public GpuCompiler {
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
       const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
       const AutotuneResults* autotune_results,
-<<<<<<< HEAD
-	  tsl::thread::ThreadPool* thread_pool = nullptr) override;
-=======
       tsl::thread::ThreadPool* thread_pool) override;
->>>>>>> upstream/master
 
   bool RequiresCollectiveScheduleLinearizer(
       const HloModule* module, se::StreamExecutor* stream_exec) override;
