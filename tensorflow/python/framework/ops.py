@@ -21,7 +21,8 @@ import re
 import sys
 import threading
 import types
-from typing import Any, AnyStr, Callable, List, NoReturn, Pattern, Tuple, Union, Optional
+from typing import Any, AnyStr, Callable, List, NoReturn, Optional, Pattern, Sequence, Tuple, Union
+
 from absl import app
 import numpy as np
 
@@ -1442,7 +1443,7 @@ class Operation(pywrap_tf_session.PyOperation):
     raise TypeError("can't convert Operation '{}' to Tensor".format(self.name))
 
   @property
-  def inputs(self):
+  def inputs(self) -> Sequence[tensor_lib.Tensor]:
     """The sequence of `Tensor` objects representing the data inputs of this op."""
     if self._inputs_val is None:
       # pylint: disable=protected-access
