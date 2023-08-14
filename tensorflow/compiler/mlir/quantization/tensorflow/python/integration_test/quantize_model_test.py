@@ -63,6 +63,11 @@ from tensorflow.python.types import core
 _Method = quant_opts_pb2.QuantizationMethod.Method
 _ExperimentalMethod = quant_opts_pb2.QuantizationMethod.ExperimentalMethod
 
+_QuantizationComponent = (
+    quant_opts_pb2.QuantizationComponentSpec.QuantizationComponent
+)
+_TensorType = quant_opts_pb2.QuantizationComponentSpec.TensorType
+
 _TensorShape = Sequence[Union[int, None]]
 
 _PER_CHANNEL_QUANTIZED_OPS = (
@@ -273,6 +278,35 @@ class QuantizationOptionsTest(quantize_model_test_base.QuantizedModelTest):
       quantize_model.quantize(
           self._input_saved_model_path, quantization_options=options
       )
+
+  def test_predefined_method_component_spec(self):
+    options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.STATIC_RANGE
+        )
+    )
+    quantize_model._populate_quantization_component_spec(options)
+
+    # Quantize activation, weight and bias for static range quantization.
+    self.assertLen(options.quantization_method.quantization_component_specs, 3)
+
+  def test_invalid_spec_raise_value_error(self):
+    options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            quantization_component_specs=[
+                quant_opts_pb2.QuantizationComponentSpec(
+                    quantization_component=(
+                        _QuantizationComponent.COMPONENT_ACTIVATION
+                    ),
+                    tensor_type=_TensorType.TENSORTYPE_INT_4,
+                )
+            ]
+        )
+    )
+
+    with self.assertRaises(ValueError):
+      # Activation 4bit is not a valid configuration.
+      quantize_model._populate_quantization_component_spec(options)
 
   def test_invalid_method_raises_value_error(self):
     model = self.SimpleModel()

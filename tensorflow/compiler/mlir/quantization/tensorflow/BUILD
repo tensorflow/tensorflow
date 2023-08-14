@@ -571,7 +571,9 @@ cc_library(
 # `libtensorflow_framework.so`.
 tf_proto_library(
     name = "quantization_options_proto",
-    srcs = ["quantization_options.proto"],
+    srcs = [
+        "quantization_options.proto",
+    ],
     cc_api_version = 2,
     make_default_target_header_only = True,
     visibility = ["//visibility:public"],
