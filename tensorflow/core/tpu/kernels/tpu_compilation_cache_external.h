@@ -15,12 +15,16 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_CACHE_EXTERNAL_H_
 #define TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_CACHE_EXTERNAL_H_
 
+#include <cstdint>
 #include <functional>
+#include <string>
 
 #include "absl/base/thread_annotations.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tpu/kernels/compiled_subgraph.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_interface.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_key.h"
+#include "tensorflow/core/tpu/kernels/tpu_program_group_interface.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -30,7 +34,9 @@ class TpuCompilationCacheExternal : public TpuCompilationCacheInterface {
   explicit TpuCompilationCacheExternal(int64_t max_cache_size)
       : TpuCompilationCacheInterface(max_cache_size) {}
 
-  string DebugString() const override { return "TpuCompilationCacheExternal"; }
+  std::string DebugString() const override {
+    return "TpuCompilationCacheExternal";
+  }
 
  private:
   // Creates a new entry by running initialize_programs and places it in the
@@ -40,7 +46,7 @@ class TpuCompilationCacheExternal : public TpuCompilationCacheInterface {
   //
   // **InitializeEntry releases mu_ during the call to initialize_programs.**
   CompiledSubgraph* InitializeEntry(
-      const string& key,
+      const std::string& key,
       const std::function<Status(TpuProgramGroupInterface*)>&
           initialize_program,
       const TpuCompilationCacheKey& subgraph_key)
