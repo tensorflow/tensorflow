@@ -29,7 +29,7 @@ TF_CONST_INIT extern const uint32 kDefaultGpuLocalCoreId;
 // Converts from overlapped Step-Events to StepDatabaseResult.
 StepDatabaseResult ConvertStepEventsToStepDb(
     bool has_device, bool maybe_drop_incomplete_steps,
-    const StepEvents& overlapped_step_events);
+    StepEvents& overlapped_step_events);
 
 }  // namespace profiler
 }  // namespace tensorflow

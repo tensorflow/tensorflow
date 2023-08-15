@@ -186,6 +186,8 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
 
   // TODO(b/161942993) parallelize XPlane processing per thread.
   for (const XPlane* device_trace : device_planes) {
+    XPlane aggregated_xplane;
+    bool use_aggregated_xplane = false;
     if (options.generate_op_metrics_db) {
       if (!op_stats.has_perf_env()) {
         *op_stats.mutable_perf_env() = GetPerfEnvFromXPlane(*device_trace);
@@ -195,16 +197,16 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
             ConvertDeviceTraceXPlaneToOpMetricsDb(*device_trace);
         op_metrics_db_combiner.Combine(device_op_metrics_db);
       } else {
-        XPlane aggregated_xplane;
         AggregateXPlane(*device_trace, aggregated_xplane);
+        use_aggregated_xplane = true;
         OpMetricsDb device_op_metrics_db =
             ConvertTpuDeviceTraceXPlaneToOpMetricsDb(aggregated_xplane);
         op_metrics_db_combiner.Combine(device_op_metrics_db);
       }
     }
     if (options.generate_step_db) {
-      StepEvents device_step_events =
-          ConvertDeviceTraceXPlaneToStepEvents(*device_trace);
+      StepEvents device_step_events = ConvertDeviceTraceXPlaneToStepEvents(
+          use_aggregated_xplane ? aggregated_xplane : *device_trace);
       CombineStepEvents(device_step_events, &step_events);
     }
     if (options.generate_kernel_stats_db) {
