@@ -3580,13 +3580,6 @@ ENTRY main {
 TEST_F(CopyInsertionTest, RegionAnalysisNoCopyOfAddOutputInsideWhileBody) {
   const char* const kModuleString = R"(
 HloModule while_aliasing
-
-add {
-  param_0 = f32[1,128] parameter(0)
-  param_1 = f32[1,128] parameter(1)
-  ROOT add = f32[1,128] add(param_0, param_1)
-}
-
 condition {
   input_tuple = (f32[1,128], f32[1,128], pred[]) parameter(0)
   ROOT cond = pred[] get-tuple-element(input_tuple), index=2
@@ -3609,8 +3602,7 @@ ENTRY main {
   param_1 = f32[1,128] parameter(1)
   param_2 = pred[] parameter(2)
   tuple = (f32[1,128], f32[1,128], pred[]) tuple(param_0, param_1, param_2)
-  while = (f32[1,128], f32[1,128], pred[]) while(tuple), condition=condition, body=body
-  ROOT %root = f32[1,128] get-tuple-element((f32[1,128], f32[1,128], pred[]) %while), index=1
+  ROOT while = (f32[1,128], f32[1,128], pred[]) while(tuple), condition=condition, body=body
 }
 )";
 
