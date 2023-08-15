@@ -201,6 +201,18 @@ PYBIND11_MODULE(xla_extension, m) {
                              [](const ClientAndPtr<PjRtDevice>& device) {
                                return device.client();
                              })
+      .def_property_readonly(
+          "local_hardware_id",
+          [](const ClientAndPtr<PjRtDevice>& device) -> std::optional<int> {
+            int local_hardware_id = device->local_hardware_id();
+            if (local_hardware_id == -1) {
+              return std::nullopt;
+            }
+            return local_hardware_id;
+          },
+          "Opaque hardware ID, e.g., the CUDA device number. In general, not "
+          "guaranteed to be dense, and not guaranteed to be defined on all "
+          "platforms.")
       .def("__str__", &PjRtDevice::DebugString)
       .def("__repr__", &PjRtDevice::ToString)
       .def("transfer_to_infeed",
