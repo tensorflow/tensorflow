@@ -218,6 +218,7 @@ filegroup(
         "@com_google_absl//:LICENSE",
         "@com_google_protobuf//:LICENSE",
         "@curl//:COPYING",
+        "@ducc//:LICENSE",
         "@flatbuffers//:LICENSE",
         "@gemmlowp//:LICENSE",
         "@libjpeg_turbo//:LICENSE.md",
