@@ -353,11 +353,11 @@ cc_library(
     hdrs = ["tpu_compilation_cache_local_lookup.h"],
     deps = [
         ":tpu_compilation_cache_common_proto_cc",
-        ":tpu_compilation_cache_entry",
-        ":tpu_compilation_cache_external",
         ":tpu_compilation_cache_interface",
         ":tpu_compilation_cache_lookup",
         "//tensorflow/core/platform:status",
+        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/tsl/platform:logging",
     ],
 )
 
