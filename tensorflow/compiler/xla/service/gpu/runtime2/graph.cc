@@ -105,6 +105,7 @@ StatusOr<se::gpu::GpuGraphNodeHandle> CreateKernelNode(
       *loaded_kernel, *kernel_args);
 }
 
+#if GOOGLE_CUDA
 StatusOr<se::gpu::GpuGraphNodeHandle> CreateMemcpyD2DNode(
     const vm::ExecutionContext& ctx, vm::Graph& graph,
     absl::Span<vm::GraphNode*> dependencies,
@@ -124,6 +125,7 @@ StatusOr<se::gpu::GpuGraphNodeHandle> CreateMemcpyD2DNode(
   return se::gpu::AddMemcpyD2DNode(gpu_executor->gpu_context(), &*graph.graph,
                                    absl::MakeSpan(deps), dst_mem, src_mem);
 }
+#endif
 
 Status ExecuteGraph(const vm::ExecutionContext& ctx, vm::Graph& graph) {
   TF_ASSIGN_OR_RETURN(auto exec,
@@ -178,6 +180,7 @@ iree::StatusOr<iree::vm::ref<vm::GraphNode>> GraphAPI::GraphKernelNodeCreate(
   return ref;
 }
 
+#if GOOGLE_CUDA
 iree::StatusOr<iree::vm::ref<vm::GraphNode>> GraphAPI::GraphMemcpyD2DNodeCreate(
     iree::vm::ref<ExecutionContext> ctx, iree::vm::ref<Graph> graph,
     iree::vm::ref<iree_vm_list_t> dependencies,
@@ -192,6 +195,7 @@ iree::StatusOr<iree::vm::ref<vm::GraphNode>> GraphAPI::GraphMemcpyD2DNodeCreate(
   ref->handle = std::move(*node);
   return ref;
 }
+#endif
 
 iree::Status GraphAPI::GraphExecute(iree::vm::ref<ExecutionContext> ctx,
                                     iree::vm::ref<Graph> graph) {

@@ -534,6 +534,7 @@ LogicalResult ConvertCompiledOpToApiCall<OpTy>::matchAndRewrite(
 
     // If we are inside a graph dispatch region, we convert memory copy
     // operation to a memory copy node.
+#if GOOGLE_CUDA
     if (graph) {
       // These are the nodes that previously updated dispatch arguments, we need
       // to add them to a set of dependencies to build a correct DAG.
@@ -560,6 +561,12 @@ LogicalResult ConvertCompiledOpToApiCall<OpTy>::matchAndRewrite(
       // remapping?
       b.create<func::CallOp>(memcpy.getSymName(), TypeRange(), args);
     }
+#else
+    func::FuncOp memcpy = api.getD2DMemcpy(b, module);
+    // TODO(ezhulenev): Should we import buffer view back and update
+    // remapping?
+    b.create<func::CallOp>(memcpy.getSymName(), TypeRange(), args);
+#endif
   }
 
   // Compiled operation was a plain copy.

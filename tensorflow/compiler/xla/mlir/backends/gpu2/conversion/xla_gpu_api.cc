@@ -287,6 +287,7 @@ func::FuncOp XlaGpuApi::getCreateKernelNode(OpBuilder &b, ModuleOp module) {
                  FunctionType::get(b.getContext(), args, rets));
 }
 
+#if GOOGLE_CUDA
 func::FuncOp XlaGpuApi::getCreateD2DMemcpyNode(OpBuilder &b, ModuleOp module) {
   auto buffer_view = b.getType<IREE::Input::BufferViewType>();
   SmallVector<Type> args = {b.getType<ExecutionContextType>(),
@@ -296,6 +297,7 @@ func::FuncOp XlaGpuApi::getCreateD2DMemcpyNode(OpBuilder &b, ModuleOp module) {
   return addDecl(b, module, "xla_gpu.graph.memcpy_node.d2d.create",
                  FunctionType::get(b.getContext(), args, rets));
 }
+#endif
 
 func::FuncOp XlaGpuApi::getCreateGraph(OpBuilder &b, ModuleOp module) {
   SmallVector<Type> args = {b.getType<ExecutionContextType>()};

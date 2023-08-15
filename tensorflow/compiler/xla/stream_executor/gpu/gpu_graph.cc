@@ -130,7 +130,7 @@ tsl::StatusOr<GpuGraphNodeHandle> AddKernelNode(
 
   return node;
 }
-
+#if GOOGLE_CUDA
 static GpuDevicePtr AsDevicePtr(const DeviceMemoryBase& mem) {
   return reinterpret_cast<GpuDevicePtr>(const_cast<void*>(mem.opaque()));
 }
@@ -145,6 +145,7 @@ tsl::StatusOr<GpuGraphNodeHandle> AddMemcpyD2DNode(
       dst.size()));
   return node;
 }
+#endif
 
 tsl::StatusOr<OwnedGpuGraph> CaptureGpuGraph(
     stream_executor::Stream* stream,

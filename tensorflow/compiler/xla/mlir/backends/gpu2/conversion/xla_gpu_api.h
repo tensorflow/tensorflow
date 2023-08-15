@@ -146,8 +146,10 @@ class XlaGpuApi {
                                          mlir::ModuleOp module);
 
   // Imports `@xla_gpu.graph.memcpy_node.d2d.create` into the module.
+#if GOOGLE_CUDA
   mlir::func::FuncOp getCreateD2DMemcpyNode(mlir::OpBuilder &b,
                                             mlir::ModuleOp module);
+#endif
 
   // Imports `@xla_gpu.graph.create` into the module.
   mlir::func::FuncOp getCreateGraph(mlir::OpBuilder &b, mlir::ModuleOp module);

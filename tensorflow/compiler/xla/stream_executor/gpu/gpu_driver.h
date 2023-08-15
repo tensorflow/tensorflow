@@ -408,12 +408,14 @@ class GpuDriver {
 
   // Creates a memcpy node and adds it to a graph.
   // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g674da6ab54a677f13e0e0e8206ff5073
+#if GOOGLE_CUDA
   static tsl::Status GraphAddMemcpyD2DNode(GpuContext* context,
                                            GpuGraphNodeHandle* node,
                                            GpuGraphHandle graph,
                                            absl::Span<GpuGraphNodeHandle> deps,
                                            GpuDevicePtr gpu_dst,
                                            GpuDevicePtr gpu_src, uint64_t size);
+#endif
 
   // Loads ptx_contents with the CUDA driver's PTX JIT and stores the resulting
   // handle in "module". Any error logs that are produced are logged internally.

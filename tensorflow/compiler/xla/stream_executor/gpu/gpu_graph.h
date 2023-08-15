@@ -116,10 +116,12 @@ tsl::StatusOr<GpuGraphNodeHandle> AddKernelNode(
     const KernelArgsArrayBase& args);
 
 // Adds a memory copy node to the graph.
+#if GOOGLE_CUDA
 tsl::StatusOr<GpuGraphNodeHandle> AddMemcpyD2DNode(
     GpuContext* context, GpuGraphHandle graph,
     absl::Span<GpuGraphNodeHandle> deps, const DeviceMemoryBase& dst,
     const DeviceMemoryBase& src);
+#endif
 
 // Captures all operations added to a `stream` by the `capture` function into
 // the gpu graph instance.
