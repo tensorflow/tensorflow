@@ -157,6 +157,8 @@ extern const char* const kPartitionIdSymbolName =
 extern const char* const kReplicaIdSymbolName = "__xla_cpu_runtime_ReplicaId";
 extern const char* const kOneDnnMatMulSymbolName =
     "__xla_cpu_runtime_OneDnnMatMul";
+extern const char* const kOneDnnSoftmaxSymbolName =
+    "__xla_cpu_runtime_OneDnnSoftmax";
 
 namespace {
 

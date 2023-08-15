@@ -214,6 +214,7 @@ cc_library(
         ":ir_emission_utils",
         ":ir_emitter",
         ":onednn_rewriter",
+        ":onednn_ops_rewriter",
         ":parallel_task_assignment",
         ":simple_orc_jit",
         ":target_machine_features",
@@ -485,6 +486,7 @@ cc_library(
         ":compiler_functor",
         ":cpu_runtime",
         ":onednn_matmul",
+        ":onednn_softmax",
         ":orc_jit_memory_mapper",
         ":runtime_conv2d",
         ":runtime_conv2d_acl",
@@ -1634,12 +1636,51 @@ cc_library(
 )
 
 cc_library(
+    name = "onednn_softmax",
+    srcs = ["onednn_softmax.cc"],
+    hdrs = [
+        "onednn_softmax.h",
+        "//tensorflow/tsl/util:onednn_util_hdrs",
+    ],
+    copts = runtime_copts() + tsl_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":onednn_memory_util",
+        ":backend_config_proto_cc",
+        ":runtime_lightweight_check",
+        "//tensorflow/compiler/xla:executable_run_options",
+        "//tensorflow/tsl/platform:blocking_counter",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:platform_port",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:dynamic_annotations",
+    ] + mkl_deps(),
+)
+
+cc_library(
     name = "onednn_rewriter",
     srcs = ["onednn_rewriter.cc"],
     hdrs = ["onednn_rewriter.h"],
     copts = tsl_copts(),
     deps = [
         ":backend_config_proto_cc",
+        ":onednn_memory_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:hlo_creation_utils",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/service:pattern_matcher",
+    ] + mkl_deps(),
+)
+
+cc_library(
+    name = "onednn_ops_rewriter",
+    srcs = ["onednn_ops_rewriter.cc"],
+    hdrs = ["onednn_ops_rewriter.h"],
+    copts = tsl_copts(),
+    deps = [
         ":onednn_memory_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
