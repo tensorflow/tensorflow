@@ -137,16 +137,16 @@ func.func @test_conv2d_grouped_convolution(%input: tensor<1x4x1x128xf32>, %weigh
 // CHECK-DAG: %[[BIAS_SLICE_1:.*]] = "tosa.slice"(%arg2) <{size = array<i64: 128>, start = array<i64: 0>}>
 // CHECK-DAG: %[[CONV_1:.*]] = "tosa.conv2d"(%[[INPUT_SLICE_1]], %[[FILTER_SLICE_1]], %[[BIAS_SLICE_1]]) <{dilation = array<i64: 1, 1>, pad = array<i64: 1, 1, 0, 0>, stride = array<i64: 2, 1>}>
 // CHECK-DAG: %[[INPUT_SLICE_2:.*]] = "tosa.slice"(%arg0) <{size = array<i64: 1, 3, 1, 16>, start = array<i64: 0, 0, 0, 16>}>
-// CHECK-DAG: %[[FILTER_SLICE_2:.*]] = "tosa.slice"(%arg1) <{size = array<i64: 128, 3, 1, 16>, start = array<i64: 16, 0, 0, 0>}>
-// CHECK-DAG: %[[BIAS_SLICE_2:.*]] = "tosa.slice"(%arg2) <{size = array<i64: 128>, start = array<i64: 16>}>
+// CHECK-DAG: %[[FILTER_SLICE_2:.*]] = "tosa.slice"(%arg1) <{size = array<i64: 128, 3, 1, 16>, start = array<i64: 128, 0, 0, 0>}>
+// CHECK-DAG: %[[BIAS_SLICE_2:.*]] = "tosa.slice"(%arg2) <{size = array<i64: 128>, start = array<i64: 128>}>
 // CHECK-DAG: %[[CONV_2:.*]] = "tosa.conv2d"(%[[INPUT_SLICE_2]], %[[FILTER_SLICE_2]], %[[BIAS_SLICE_2]]) <{dilation = array<i64: 1, 1>, pad = array<i64: 1, 1, 0, 0>, stride = array<i64: 2, 1>}>
 // CHECK-DAG: %[[INPUT_SLICE_3:.*]] = "tosa.slice"(%arg0) <{size = array<i64: 1, 3, 1, 16>, start = array<i64: 0, 0, 0, 32>}>
-// CHECK-DAG: %[[FILTER_SLICE_3:.*]] = "tosa.slice"(%arg1) <{size = array<i64: 128, 3, 1, 16>, start = array<i64: 32, 0, 0, 0>}>
-// CHECK-DAG: %[[BIAS_SLICE_3:.*]] = "tosa.slice"(%arg2) <{size = array<i64: 128>, start = array<i64: 32>}>
+// CHECK-DAG: %[[FILTER_SLICE_3:.*]] = "tosa.slice"(%arg1) <{size = array<i64: 128, 3, 1, 16>, start = array<i64: 256, 0, 0, 0>}>
+// CHECK-DAG: %[[BIAS_SLICE_3:.*]] = "tosa.slice"(%arg2) <{size = array<i64: 128>, start = array<i64: 256>}>
 // CHECK-DAG: %[[CONV_3:.*]] = "tosa.conv2d"(%[[INPUT_SLICE_3]], %[[FILTER_SLICE_3]], %[[BIAS_SLICE_3]]) <{dilation = array<i64: 1, 1>, pad = array<i64: 1, 1, 0, 0>, stride = array<i64: 2, 1>}>
 // CHECK-DAG: %[[INPUT_SLICE_4:.*]] = "tosa.slice"(%arg0) <{size = array<i64: 1, 3, 1, 16>, start = array<i64: 0, 0, 0, 48>}>
-// CHECK-DAG: %[[FILTER_SLICE_4:.*]] = "tosa.slice"(%arg1) <{size = array<i64: 128, 3, 1, 16>, start = array<i64: 48, 0, 0, 0>}>
-// CHECK-DAG: %[[BIAS_SLICE_4:.*]] = "tosa.slice"(%arg2) <{size = array<i64: 128>, start = array<i64: 48>}>
+// CHECK-DAG: %[[FILTER_SLICE_4:.*]] = "tosa.slice"(%arg1) <{size = array<i64: 128, 3, 1, 16>, start = array<i64: 384, 0, 0, 0>}>
+// CHECK-DAG: %[[BIAS_SLICE_4:.*]] = "tosa.slice"(%arg2) <{size = array<i64: 128>, start = array<i64: 384>}>
 // CHECK-DAG: %[[CONV_4:.*]] = "tosa.conv2d"(%[[INPUT_SLICE_4]], %[[FILTER_SLICE_4]], %[[BIAS_SLICE_4]]) <{dilation = array<i64: 1, 1>, pad = array<i64: 1, 1, 0, 0>, stride = array<i64: 2, 1>}>
 // CHECK-DAG: %[[CONCAT:.*]] = "tosa.concat"(%[[CONV_1]], %[[CONV_2]], %[[CONV_3]], %[[CONV_4]]) <{axis = 3 : i64}>
 // CHECK: return %[[CONCAT]]

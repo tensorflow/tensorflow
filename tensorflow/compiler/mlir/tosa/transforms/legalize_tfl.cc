@@ -1298,10 +1298,11 @@ LogicalResult ConvertTFLMaxPool2DOp::matchAndRewrite(
 // Returns a new type based on an input type and slicing information.
 // If the input is quantized per axis, slices the scale and zp arrays.
 // In any other case, returns the original type.
-RankedTensorType getTypeForSlice(RankedTensorType type, int64_t slice_size,
-                                 int64_t offset) {
+RankedTensorType getTypeForSlice(RankedTensorType type, int64_t slice_dim,
+                                 int64_t slice_size, int64_t offset) {
   if (auto per_channel_qtype =
           dyn_cast<quant::UniformQuantizedPerAxisType>(type.getElementType())) {
+    if (per_channel_qtype.getQuantizedDimension() != slice_dim) return type;
     SmallVector<double> output_scale_arr(
         per_channel_qtype.getScales().begin() + offset,
         per_channel_qtype.getScales().begin() + offset + slice_size);
@@ -1325,11 +1326,19 @@ Value lowerGroupedConvolution(TFL::Conv2DOp op, PatternRewriter& rewriter) {
   auto bias_type = dyn_cast<RankedTensorType>(op.getBias().getType());
   auto output_type = dyn_cast<RankedTensorType>(op.getResult().getType());
 
-  // The inputs are NHWC, so the slicing/concatenation is done over dim 3.
-  int64_t in_channels_dim = 3;
-  int64_t input_channels = input_type.getDimSize(in_channels_dim);
-  int64_t filter_channels = filter_type.getDimSize(in_channels_dim);
-  int64_t num_groups = input_channels / filter_channels;
+  // The slicing on the input/output is done on dim 3, while on the filter/bias
+  // it's done on dim 0.
+  int64_t input_slice_dim = 3;
+  int64_t filter_slice_dim = 0;
+  int64_t bias_slice_dim = 0;
+  int64_t output_slice_dim = 3;
+  int64_t input_channels = input_type.getDimSize(input_slice_dim);
+  int64_t ic_slice_size = filter_type.getDimSize(input_slice_dim);
+  int64_t num_groups = input_channels / ic_slice_size;
+
+  // When slicing the filter/bias, the slice size is determined by the number of
+  // slices on the input.
+  int64_t oc_slice_size = filter_type.getDimSize(filter_slice_dim) / num_groups;
 
   SmallVector<Value> convolutions;
   convolutions.reserve(num_groups);
@@ -1338,7 +1347,7 @@ Value lowerGroupedConvolution(TFL::Conv2DOp op, PatternRewriter& rewriter) {
   // Input size vector
   SmallVector<int64_t, 4> input_size_vals(input_type.getShape().begin(),
                                           input_type.getShape().end());
-  input_size_vals.back() = filter_channels;
+  input_size_vals.back() = ic_slice_size;
   DenseI64ArrayAttr input_size = rewriter.getDenseI64ArrayAttr(input_size_vals);
   auto input_slice_ty =
       RankedTensorType::get(input_size_vals, input_type.getElementType());
@@ -1346,37 +1355,38 @@ Value lowerGroupedConvolution(TFL::Conv2DOp op, PatternRewriter& rewriter) {
   // Filter size vector
   SmallVector<int64_t, 4> filter_size_vals(filter_type.getShape().begin(),
                                            filter_type.getShape().end());
-  filter_size_vals.front() = filter_type.getDimSize(0) / num_groups;
+  filter_size_vals.front() =
+      filter_type.getDimSize(filter_slice_dim) / num_groups;
   DenseI64ArrayAttr filter_size =
       rewriter.getDenseI64ArrayAttr(filter_size_vals);
   auto filter_slice_ty =
       RankedTensorType::get(filter_size_vals, filter_type.getElementType());
 
   // Bias size vector
-  int64_t bias_size_val = bias_type.getDimSize(0) / num_groups;
+  int64_t bias_size_val = bias_type.getDimSize(bias_slice_dim) / num_groups;
   DenseI64ArrayAttr bias_size = rewriter.getDenseI64ArrayAttr(bias_size_val);
   auto bias_slice_ty =
       RankedTensorType::get(bias_size_val, bias_type.getElementType());
 
   auto per_conv_out_ty = RankedTensorType::get(
       {output_type.getDimSize(0), output_type.getDimSize(1),
-       output_type.getDimSize(2), output_type.getDimSize(3) / num_groups},
+       output_type.getDimSize(2), oc_slice_size},
       output_type.getElementType());
 
   // Create a separate convolution for each group
   for (int i = 0; i < num_groups; ++i) {
-    auto verified_input_slice_ty =
-        getTypeForSlice(input_slice_ty, filter_channels, i * filter_channels);
-    auto verified_filter_slice_ty =
-        getTypeForSlice(filter_slice_ty, filter_channels, i * filter_channels);
-    auto verified_bias_slice_ty =
-        getTypeForSlice(bias_slice_ty, filter_channels, i * filter_channels);
-    auto verified_per_conv_out_ty =
-        getTypeForSlice(per_conv_out_ty, filter_channels, i * filter_channels);
+    auto verified_input_slice_ty = getTypeForSlice(
+        input_slice_ty, input_slice_dim, ic_slice_size, i * ic_slice_size);
+    auto verified_filter_slice_ty = getTypeForSlice(
+        filter_slice_ty, filter_slice_dim, oc_slice_size, i * oc_slice_size);
+    auto verified_bias_slice_ty = getTypeForSlice(
+        bias_slice_ty, bias_slice_dim, oc_slice_size, i * oc_slice_size);
+    auto verified_per_conv_out_ty = getTypeForSlice(
+        per_conv_out_ty, output_slice_dim, oc_slice_size, i * oc_slice_size);
 
     // Slice the input
     SmallVector<int64_t, 4> input_start_vals(rank, 0);
-    input_start_vals.back() = i * filter_channels;
+    input_start_vals.back() = i * ic_slice_size;
     DenseI64ArrayAttr input_start =
         rewriter.getDenseI64ArrayAttr(input_start_vals);
 
@@ -1386,7 +1396,7 @@ Value lowerGroupedConvolution(TFL::Conv2DOp op, PatternRewriter& rewriter) {
 
     // Slice the filter
     SmallVector<int64_t, 4> filter_start_vals(rank, 0);
-    filter_start_vals.front() = i * filter_channels;
+    filter_start_vals.front() = i * oc_slice_size;
     DenseI64ArrayAttr filter_start =
         rewriter.getDenseI64ArrayAttr(filter_start_vals);
 
@@ -1396,7 +1406,7 @@ Value lowerGroupedConvolution(TFL::Conv2DOp op, PatternRewriter& rewriter) {
 
     // Slice the bias
     DenseI64ArrayAttr bias_start =
-        rewriter.getDenseI64ArrayAttr(i * filter_channels);
+        rewriter.getDenseI64ArrayAttr(i * oc_slice_size);
     auto slice_bias = rewriter.createOrFold<tosa::SliceOp>(
         op->getLoc(), verified_bias_slice_ty, op.getBias(), bias_start,
         bias_size);
@@ -1412,7 +1422,7 @@ Value lowerGroupedConvolution(TFL::Conv2DOp op, PatternRewriter& rewriter) {
   }
 
   return rewriter.createOrFold<tosa::ConcatOp>(op->getLoc(), output_type,
-                                               convolutions, in_channels_dim);
+                                               convolutions, output_slice_dim);
 }
 
 LogicalResult ConvertTFLConv2DOp::matchAndRewrite(
