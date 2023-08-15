@@ -219,15 +219,16 @@ void CreateTPUBridgePipelineImpl(
   // op.
   pm.addNestedPass<func::FuncOp>(createCanonicalizerPass());
 
-  // TODO(b/173622615): This should incrementally be moved down as
-  // more passes support this representation and then can be removed once
-  // all passes support it.
-  pm.addPass(TFDevice::CreateHostLaunchToOutsideCompiledPass());
   pm.addNestedPass<func::FuncOp>(createCSEPass());
   if (tensorflow::GetMlirCommonFlags()
           ->tf_mlir_enable_merge_control_flow_pass) {
     pm.addPass(TFDevice::CreateMergeControlFlowPass());
   }
+
+  // TODO(b/173622615): This should incrementally be moved down as
+  // more passes support this representation and then can be removed once
+  // all passes support it.
+  pm.addPass(TFDevice::CreateHostLaunchToOutsideCompiledPass());
 
   pm.addPass(TFDevice::CreateMarkOpsForOutsideCompilationPass());
   pm.addPass(TFDevice::CreateExtractHeadTailOutsideCompilationPass());
