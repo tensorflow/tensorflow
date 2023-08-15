@@ -1056,12 +1056,7 @@ cc_library(
         "full_type_inference_util.h",
         "full_type_util.h",
     ],
-    visibility = [
-        # Necessary for calling REGISTER_OP with SetTypeConstructor
-        # http://yaqs/4779722181477138432
-        "//intelligence/brella/analytics/sql/tensorflow:__pkg__",
-        "//tensorflow:__subpackages__",
-    ],
+    visibility = ["//tensorflow:__subpackages__"],
     deps = [
         ":attr_value_proto_cc",
         ":full_type_proto_cc",
@@ -1409,7 +1404,9 @@ cc_library(
     name = "loose_headers",
     tags = ["avoid_dep"],
     textual_hdrs = ["op_gen_lib.h"],
-    visibility = ["//tensorflow/c:__pkg__"],
+    visibility = [
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
+    ],
 )
 
 # All framework protos are self-contained, i.e. they only import other
