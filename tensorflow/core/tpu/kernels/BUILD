@@ -318,12 +318,7 @@ cc_library(
     hdrs = [
         "tpu_compilation_cache_entry.h",
     ],
-    deps = [
-        ":tpu_executable_info_proto_cc",
-        ":tpu_program_group_interface",
-        "//tensorflow/compiler/xla/service:hlo_proto_cc",
-        "//tensorflow/core/lib/core:refcount",
-    ],
+    deps = [":tpu_program_group_interface"],
 )
 
 cc_library(
@@ -334,9 +329,8 @@ cc_library(
     deps = [
         ":tpu_compilation_cache_common_proto_cc",
         ":tpu_compilation_cache_interface",
-        "//tensorflow/core/lib/core:refcount",
+        "//tensorflow/core/framework:resource_base",
         "//tensorflow/core/platform:status",
-        "//tensorflow/core/profiler/lib:traceme",
     ],
 )
 
@@ -699,8 +693,12 @@ cc_library(
     hdrs = ["tpu_compilation_cache_entry_unloader.h"],
     deps = [
         ":tpu_compilation_cache_interface",
-        "//tensorflow/core:framework",
+        "//tensorflow/core/framework:resource_base",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/tsl/platform:macros",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/synchronization",
     ],
 )
