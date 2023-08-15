@@ -5,7 +5,6 @@ wheel ~= 0.38.1
 h5py >= 2.9.0
 lit ~= 16.0.5.0
 opt_einsum == 3.3.0
-absl == 1.0.0
 astunparse == 1.6.3
 dill == 0.3.6
 astor == 0.7.1
