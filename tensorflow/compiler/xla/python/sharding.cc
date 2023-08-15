@@ -16,16 +16,20 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/sharding.h"
 
 #include <cstdlib>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 
-#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "pybind11/cast.h"  // from @pybind11
+#include "pybind11/detail/common.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/python/ifrt/device.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
+#include "tensorflow/compiler/xla/python/py_device_list.h"
 #include "tensorflow/compiler/xla/python/util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
@@ -44,36 +48,36 @@ bool GetJaxEnableMemoryKind() {
   return fetch_memory_kind_on_executable;
 }
 
-pybind11::object CanonicalizeMemoryKind(pybind11::object memory_kind,
-                                        pybind11::object device) {
-  if (memory_kind != py::none()) {
-    return memory_kind;
+py::object CheckAndCanonicalizeMemoryKind(py::object memory_kind,
+                                          PyDeviceList* device_list) {
+  if (!memory_kind.is_none()) {
+    // If memory kind is not None, check if it's supported by the devices
+    // mentioned in the Sharding.
+    auto supported_memory_kinds = device_list->MemoryKinds();
+    if (!supported_memory_kinds.ok()) {
+      supported_memory_kinds = py::tuple();
+    }
+    for (py::handle supported_memory_kind : *supported_memory_kinds) {
+      if (supported_memory_kind.equal(memory_kind)) {
+        return memory_kind;
+      }
+    }
+    auto device_kind = py::cast<std::string>(
+        device_list->AddressableDeviceList()->GetItem(0).attr("device_kind"));
+    throw py::value_error(absl::StrCat(
+        "Could not find memory addressable by device ", device_kind,
+        ". Device ", device_kind, " can address the following memory kinds: ",
+        py::cast<std::string>(
+            py::str(", ").attr("join")(*supported_memory_kinds)),
+        ". Got memory kind: ", py::cast<std::string>(memory_kind)));
   }
-
-  pybind11::detail::make_caster<xla::ClientAndPtr<xla::PjRtDevice>> conv;
-  if (!conv.load(device, /*convert=*/true)) {
+  // If memory kind is None, canonicalize to default memory.
+  xla::StatusOr<py::object> default_memory_kind =
+      device_list->DefaultMemoryKind();
+  if (!default_memory_kind.ok()) {
     return py::none();
   }
-  xla::ClientAndPtr<xla::PjRtDevice> pjrt_device =
-      pybind11::detail::cast_op<xla::ClientAndPtr<xla::PjRtDevice>>(
-          std::move(conv));
-
-  if (!GetJaxEnableMemoryKind() ||
-      absl::StrContains(pjrt_device.client()->platform_version(),
-                        "PJRT C API")) {
-    return py::none();
-  }
-  // TODO(hyeontaek): Replace this with
-  // DeviceList.addressable_device_assignment[0]->default_memory_space();
-  xla::StatusOr<xla::PjRtMemorySpace*> default_memory =
-      pjrt_device.client()
-          ->ifrt_client()
-          ->addressable_devices()[0]
-          ->default_memory_space();
-  if (!default_memory.ok()) {
-    return py::none();
-  }
-  return py::str(default_memory.value()->memory_space_kind());
+  return *std::move(default_memory_kind);
 }
 
 int Sharding::SafeNumDevices(pybind11::handle sharding) {
@@ -217,9 +221,58 @@ NamedSharding::NamedSharding(py::object mesh, py::object spec,
       memory_kind_(std::move(memory_kind)),
       parsed_pspec_(std::move(parsed_pspec)) {
   py::cast(this).attr("_preprocess")();
+  internal_device_list_ = py::cast<std::shared_ptr<jax::PyDeviceList>>(
+      mesh_.attr("_internal_device_list"));
   py::tuple flat_devices =
       py::cast<py::tuple>(mesh_.attr("_flat_devices_tuple"));
-  memory_kind_ = CanonicalizeMemoryKind(memory_kind_, flat_devices[0]);
+  memory_kind_ =
+      CheckAndCanonicalizeMemoryKind(memory_kind_, internal_device_list_.get());
+}
+
+SingleDeviceSharding::SingleDeviceSharding(py::object device,
+                                           py::object memory_kind)
+    : XLACompatibleSharding(/*num_devices=*/1),
+      device_(device),
+      memory_kind_(std::move(memory_kind)),
+      internal_device_list_(std::make_shared<PyDeviceList>(
+          pybind11::make_tuple(std::move(device)))) {
+  memory_kind_ =
+      CheckAndCanonicalizeMemoryKind(memory_kind_, internal_device_list_.get());
+}
+
+SingleDeviceSharding::SingleDeviceSharding(
+    std::shared_ptr<xla::PyClient> client, xla::ifrt::DeviceList device_list,
+    pybind11::object memory_kind)
+    : XLACompatibleSharding(/*num_devices=*/1),
+      device_(py::cast(WrapWithClient(client, device_list.front()))),
+      memory_kind_(std::move(memory_kind)),
+      internal_device_list_(std::make_shared<PyDeviceList>(
+          std::move(client), std::move(device_list))) {
+  memory_kind_ =
+      CheckAndCanonicalizeMemoryKind(memory_kind_, internal_device_list_.get());
+}
+
+PmapSharding::PmapSharding(py::array devices, ShardingSpec sharding_spec)
+    : XLACompatibleSharding(/*num_devices=*/devices.size()),
+      devices_(std::move(devices)),
+      sharding_spec_(std::move(sharding_spec)),
+      internal_device_list_(std::make_shared<PyDeviceList>(
+          py::cast<pybind11::tuple>(devices_.attr("flat")))) {}
+
+GSPMDSharding::GSPMDSharding(py::tuple devices, xla::HloSharding op_sharding,
+                             py::object memory_kind)
+    : XLACompatibleSharding(/*num_devices=*/devices.size()),
+      devices_(std::move(devices)),
+      hlo_sharding_(std::move(op_sharding)),
+      memory_kind_(std::move(memory_kind)),
+      internal_device_list_(std::make_shared<PyDeviceList>(devices_)) {
+  // This checks in python if the memory kind is correct for the given
+  // devices. Currently in python this check is optimized but we want to
+  // move that check to C++ after which we can remove this call.
+  CHECK(!devices_.empty())
+      << "Devices given to GSPMDSharding must not be empty";
+  memory_kind_ =
+      CheckAndCanonicalizeMemoryKind(memory_kind_, internal_device_list_.get());
 }
 
 void RegisterSharding(py::module& m) {

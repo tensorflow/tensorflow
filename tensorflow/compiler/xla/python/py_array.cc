@@ -338,9 +338,7 @@ PyArray PyArray::MakeFromSingleDeviceArray(
           ? py::object(py::str(*memory_kind.memory_kind()))
           : py::none();
   auto sharding = py::cast(std::make_unique<jax::SingleDeviceSharding>(
-      py::cast(
-          WrapWithClient(py_client, ifrt_array->sharding().devices().front())),
-      std::move(py_memory_kind)));
+      py_client, ifrt_array->sharding().devices(), std::move(py_memory_kind)));
   return PyArray(std::move(aval), weak_type, dtype, std::move(key.dims),
                  std::move(sharding), std::move(py_client),
                  std::move(traceback), std::move(ifrt_array), committed);

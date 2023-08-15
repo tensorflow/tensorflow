@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/hash/hash.h"
+#include "absl/strings/match.h"
 #include "absl/types/span.h"
 #include "pybind11/attr.h"  // from @pybind11
 #include "pybind11/cast.h"  // from @pybind11
@@ -33,8 +34,10 @@ limitations under the License.
 #include "pybind11/stl.h"  // from @pybind11  // NOLINT
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/ifrt/device.h"
+#include "tensorflow/compiler/xla/python/ifrt/memory.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
+#include "tensorflow/compiler/xla/python/sharding.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 
@@ -65,8 +68,8 @@ PyDeviceList::PyDeviceList(py::tuple py_device_assignment)
     if (py_client_ == nullptr) {
       py_client_ = py_device.client();
     } else if (py_device.client() != py_client_) {
-      throw py::value_error(
-          "DeviceList expects all devices to use the same JAX backend");
+      // If the list contains multiple clients, fall back to device duck typing.
+      return;
     }
     devices.push_back(py_device.get());
   }
@@ -89,7 +92,7 @@ xla::StatusOr<xla::ifrt::DeviceList> PyDeviceList::ifrt_device_list() const {
     case 1:
       return xla::InvalidArgument("DeviceList contains non-IFRT devices");
     default:
-      return xla::InvalidArgument("Invalid DeviceList");
+      return xla::InvalidArgument("Unrecognized DeviceList type");
   }
 }
 
@@ -103,7 +106,7 @@ int64_t PyDeviceList::Hash() {
         hash_ = py::hash(std::get<1>(device_list_));
         break;
       default:
-        throw py::value_error("Invalid DeviceList");
+        throw py::value_error("Unrecognized DeviceList type");
     }
   }
   return *hash_;
@@ -138,7 +141,7 @@ int PyDeviceList::Len() const {
     case 1:
       return py::len(std::get<1>(device_list_));
     default:
-      throw py::value_error("Invalid DeviceList");
+      throw py::value_error("Unrecognized DeviceList type");
   }
 }
 
@@ -156,7 +159,7 @@ py::object PyDeviceList::GetItem(int index) {
     case 1:
       return std::get<1>(device_list_).attr("__getitem__")(index);
     default:
-      throw py::value_error("Invalid DeviceList");
+      throw py::value_error("Unrecognized DeviceList type");
   }
 }
 
@@ -180,7 +183,7 @@ py::object PyDeviceList::GetSlice(py::slice slice) {
     case 1:
       return std::get<1>(device_list_).attr("__getitem__")(slice);
     default:
-      throw py::value_error("Invalid DeviceList");
+      throw py::value_error("Unrecognized DeviceList type");
   }
 }
 
@@ -198,7 +201,7 @@ py::tuple PyDeviceList::AsTuple() {
     case 1:
       return std::get<1>(device_list_);
     default:
-      throw py::value_error("Invalid DeviceList");
+      throw py::value_error("Unrecognized DeviceList type");
   }
 }
 
@@ -224,7 +227,7 @@ py::iterator PyDeviceList::Iter() {
       return py::make_iterator(std::get<1>(device_list_).begin(),
                                std::get<1>(device_list_).end());
     default:
-      throw py::value_error("Invalid DeviceList");
+      throw py::value_error("Unrecognized DeviceList type");
   }
 }
 
@@ -263,7 +266,7 @@ bool PyDeviceList::IsFullyAddressable() {
         break;
       }
       default:
-        throw py::value_error("Invalid DeviceList");
+        throw py::value_error("Unrecognized DeviceList type");
     }
   }
   return *is_fully_addressable_;
@@ -303,10 +306,111 @@ std::shared_ptr<PyDeviceList> PyDeviceList::AddressableDeviceList() {
         break;
       }
       default:
-        throw py::value_error("Invalid DeviceList");
+        throw py::value_error("Unrecognized DeviceList type");
     }
   }
   return *addressable_device_list_;
+}
+
+void PyDeviceList::PopulateMemoryKindInfo() {
+  if (device_list_.index() == 1) {
+    // Handle Python duck-type devices in a separate function for readability.
+    PopulateMemoryKindInfoForDuckTypedDevices();
+    return;
+  }
+  if (device_list_.index() != 0) {
+    throw py::value_error("Unrecognized DeviceList type");
+  }
+  MemoryKindInfo info;
+  if (!GetJaxEnableMemoryKind() ||
+      (py_client_ != nullptr &&
+       absl::StrContains(py_client_->platform_version(), "PJRT C API"))) {
+    info.default_memory_kind = py::none();
+    memory_kind_info_ = std::move(info);
+    return;
+  }
+  xla::ifrt::Device* addressable_device = nullptr;
+  const int process_index = py_client_ ? py_client_->process_index() : 0;
+  for (xla::ifrt::Device* device : std::get<0>(device_list_).devices()) {
+    if (device->process_index() == process_index) {
+      addressable_device = device;
+      break;
+    }
+  }
+  if (addressable_device == nullptr) {
+    info.default_memory_kind = py::none();
+    memory_kind_info_ = std::move(info);
+    return;
+  }
+
+  auto default_memory = addressable_device->default_memory_space();
+  if (!default_memory.ok()) {
+    // Cache the error.
+    memory_kind_info_ = default_memory.status();
+    return;
+  }
+  info.default_memory_kind =
+      py::cast(std::string((*default_memory)->memory_space_kind()));
+  std::vector<std::string> memory_kinds;
+  memory_kinds.reserve(addressable_device->memory_spaces().size());
+  for (xla::ifrt::Memory* memory : addressable_device->memory_spaces()) {
+    memory_kinds.push_back(std::string(memory->memory_space_kind()));
+  }
+  info.memory_kinds = py::cast(memory_kinds);
+  memory_kind_info_ = std::move(info);
+}
+
+void PyDeviceList::PopulateMemoryKindInfoForDuckTypedDevices() {
+  MemoryKindInfo info;
+  if (!GetJaxEnableMemoryKind()) {
+    info.default_memory_kind = py::none();
+    // info.memory_kinds is default-initialized to an empty tuple.
+    memory_kind_info_ = std::move(info);
+    return;
+  }
+  try {
+    py::handle addressable_device;
+    for (py::handle device : std::get<1>(device_list_)) {
+      if (py::cast<int>(device.attr("process_index")) ==
+          py::cast<int>(device.attr("client").attr("process_index")())) {
+        addressable_device = device;
+        break;
+      }
+    }
+    if (!addressable_device) {
+      info.default_memory_kind = py::none();
+      // info.memory_kinds is default-initialized to an empty tuple.
+      memory_kind_info_ = std::move(info);
+      return;
+    }
+    auto default_memory = addressable_device.attr("default_memory")();
+    info.default_memory_kind = default_memory.attr("kind");
+    info.memory_kinds = addressable_device.attr("addressable_memories")();
+    memory_kind_info_ = std::move(info);
+  } catch (py::error_already_set& e) {
+    // Cache the error.
+    memory_kind_info_ = xla::InvalidArgument("%s", e.what());
+  }
+}
+
+xla::StatusOr<py::tuple> PyDeviceList::MemoryKinds() {
+  if (!memory_kind_info_.has_value()) {
+    PopulateMemoryKindInfo();
+  }
+  if (!memory_kind_info_->ok()) {
+    return memory_kind_info_->status();
+  }
+  return (*memory_kind_info_)->memory_kinds;
+}
+
+xla::StatusOr<py::object> PyDeviceList::DefaultMemoryKind() {
+  if (!memory_kind_info_.has_value()) {
+    PopulateMemoryKindInfo();
+  }
+  if (!memory_kind_info_->ok()) {
+    return memory_kind_info_->status();
+  }
+  return (*memory_kind_info_)->default_memory_kind;
 }
 
 void RegisterDeviceList(py::module& m) {
@@ -325,7 +429,25 @@ void RegisterDeviceList(py::module& m) {
       .def_property_readonly("is_fully_addressable",
                              &PyDeviceList::IsFullyAddressable)
       .def_property_readonly("addressable_device_list",
-                             &PyDeviceList::AddressableDeviceList);
+                             &PyDeviceList::AddressableDeviceList)
+      // `xla::ValueOrThrowWrapper` does not work with
+      // `def_property_readonly()`. Manually convert an error into an exception.
+      .def_property_readonly(
+          "default_memory_kind",
+          [](PyDeviceList* l) {
+            auto kind = l->DefaultMemoryKind();
+            if (!kind.ok()) {
+              throw py::value_error(kind.status().ToString());
+            }
+            return *kind;
+          })
+      .def_property_readonly("memory_kinds", [](PyDeviceList* l) {
+        auto kinds = l->MemoryKinds();
+        if (!kinds.ok()) {
+          throw py::value_error(kinds.status().ToString());
+        }
+        return *kinds;
+      });
 }
 
 }  // namespace jax

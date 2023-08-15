@@ -65,9 +65,17 @@ class PyDeviceList : public std::enable_shared_from_this<PyDeviceList> {
 
   bool IsFullyAddressable();
   std::shared_ptr<PyDeviceList> AddressableDeviceList();
+  xla::StatusOr<pybind11::object> DefaultMemoryKind();
+  xla::StatusOr<pybind11::tuple> MemoryKinds();
 
  private:
   pybind11::tuple AsTuple();
+
+  // Finds the memory kind info from an addressable device.
+  void PopulateMemoryKindInfo();
+  // Same as `PopulateMemoryKindInfo()`, but uses `py_device_assignment_`
+  // instead of `ifrt_device_list_` to support duck-typed device objects.
+  void PopulateMemoryKindInfoForDuckTypedDevices();
 
   // Valid only if `device_list_` contains `xla::ifrt::DeviceList` and
   // non-empty.
@@ -85,6 +93,13 @@ class PyDeviceList : public std::enable_shared_from_this<PyDeviceList> {
   std::optional<bool> is_fully_addressable_;  // Populated on demand.
   std::optional<std::shared_ptr<PyDeviceList>>
       addressable_device_list_;  // Populated on demand.
+
+  struct MemoryKindInfo {
+    pybind11::object default_memory_kind;
+    pybind11::tuple memory_kinds;
+  };
+  std::optional<xla::StatusOr<MemoryKindInfo>>
+      memory_kind_info_;  // Populated on demand.
 };
 
 // pybind11-index-annotation BEGIN
