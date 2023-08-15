@@ -23,12 +23,7 @@ limitations under the License.
 
 #ifdef EIGEN_VECTORIZE_SSE2
 #include <emmintrin.h>
-#endif
-#ifdef EIGEN_VECTORIZE_SSE4_1
-#include <smmintrin.h>
-#endif
-#ifdef EIGEN_VECTORIZE_SSSE3
-#include <tmmintrin.h>
+#include <xmmintrin.h>
 #endif
 
 namespace xla {
@@ -60,23 +55,36 @@ struct TransposeMicroKernel {
 // allow for runtime dispatch of, say, AVX or AVX2 kernels where they are
 // supported. On the other hand, using Eigen makes for easier cross-platform
 // portability.
-#if defined(EIGEN_VECTORIZE_SSE2) && defined(EIGEN_VECTORIZE_SSE4_1) && \
-    defined(EIGEN_VECTORIZE_SSSE3)
+#if defined(EIGEN_VECTORIZE_SSE2)
 template <>
 struct TransposeMicroKernel<uint8_t, /*bs=*/4> {
   static void Apply(const char* __restrict a, int64_t lda, char* __restrict b,
                     int64_t ldb) {
-    __m128i x = _mm_set_epi32(*reinterpret_cast<const uint32_t*>(a + lda * 0),
-                              *reinterpret_cast<const uint32_t*>(a + lda * 1),
-                              *reinterpret_cast<const uint32_t*>(a + lda * 2),
-                              *reinterpret_cast<const uint32_t*>(a + lda * 3));
-    __m128i mask =
-        _mm_setr_epi8(12, 8, 4, 0, 13, 9, 5, 1, 14, 10, 6, 2, 15, 11, 7, 3);
-    x = _mm_shuffle_epi8(x, mask);
-    *reinterpret_cast<uint32_t*>(b + ldb * 0) = _mm_extract_epi32(x, 0);
-    *reinterpret_cast<uint32_t*>(b + ldb * 1) = _mm_extract_epi32(x, 1);
-    *reinterpret_cast<uint32_t*>(b + ldb * 2) = _mm_extract_epi32(x, 2);
-    *reinterpret_cast<uint32_t*>(b + ldb * 3) = _mm_extract_epi32(x, 3);
+    std::array<__m128i, 4> loads;
+    // [  0,  1,  2,  3 ]
+    // [  4,  5,  6,  7 ]
+    // [  8,  9, 10, 11 ]
+    // [ 12, 13, 14, 15 ]
+    for (int i = 0; i < 4; ++i) {
+      loads[i] = _mm_loadu_si32(a + lda * i);
+    }
+    // [  0,  4,  1,  5,  2,  6,  3,  7 ]
+    __m128i x_0_1 = _mm_unpacklo_epi8(loads[0], loads[1]);
+    // [  8, 12,  9, 13, 10, 14, 11, 15 ]
+    __m128i x_2_3 = _mm_unpacklo_epi8(loads[2], loads[3]);
+    // [  0,  4,  8, 12,  1,  5,  9, 13,  2,  6, 10, 14,  3,  7, 11, 15 ]
+    __m128i x = _mm_unpacklo_epi16(x_0_1, x_2_3);
+    // [  2,  6, 10, 14,  3,  7, 11, 15,  2,  6, 10, 14,  3,  7, 11, 15 ]
+    __m128i x_hi = _mm_unpackhi_epi64(x, x);
+    // [  0,  4,  8, 12 ]
+    _mm_storeu_si32(b + ldb * 0, x);
+    // [  1,  5,  9, 13 ]
+    _mm_storeu_si32(b + ldb * 1, _mm_shuffle_epi32(x, _MM_SHUFFLE(1, 1, 1, 1)));
+    // [  2,  6, 10, 14 ]
+    _mm_storeu_si32(b + ldb * 2, x_hi);
+    // [  3,  7, 11, 15 ]
+    _mm_storeu_si32(b + ldb * 3,
+                    _mm_shuffle_epi32(x_hi, _MM_SHUFFLE(1, 1, 1, 1)));
   }
 };
 #endif
