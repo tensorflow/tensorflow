@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/proto_helper.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/c/outside_compilation_params.h"
+#include "tensorflow/core/common_runtime/next_pluggable_device/c/tf_device_context_c_api_conversions.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/c/tf_rendezvous_c_api.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/c/tf_rendezvous_c_api_defn.h"
 #include "tensorflow/core/framework/cancellation.h"
@@ -37,8 +38,6 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/tsl/platform/status.h"
 
-using TF_StatusCallback = std::function<void(const TF_Status*)>;
-
 #define CONCAT_HELPER(a, b) a##b
 #define CONCAT(a, b) CONCAT_HELPER(a, b)
 #define CHECK_OK_AND_ASSIGN(lhs, expr)        \
@@ -47,23 +46,6 @@ using TF_StatusCallback = std::function<void(const TF_Status*)>;
   lhs = std::move(CONCAT(status_or_, __LINE__)).value();
 
 namespace tensorflow {
-
-TF_DeviceContext* ToC(DeviceContext* device_context) {
-  return new TF_DeviceContext{device_context};
-}
-
-DeviceContext* FromC(TF_DeviceContext* c_device_context) {
-  if (c_device_context == nullptr) {
-    return nullptr;
-  }
-  return c_device_context->device_context;
-}
-
-void Destroy(TF_DeviceContext* c_device_context) {
-  if (c_device_context != nullptr) {
-    delete c_device_context;
-  }
-}
 
 TFDevice_AllocatorAttributes ToC(const tsl::AllocatorAttributes& attributes) {
   TFDevice_AllocatorAttributes c_attributes;
@@ -112,6 +94,7 @@ RendezvousInterface::Args FromC(const TF_RendezvousArgsStruct& c_args) {
 
 void Destroy(TF_RendezvousArgsStruct* c_args) {
   Destroy(c_args->device_context);
+  delete c_args->device_context;
 }
 
 TF_RendezvousParsedKey ToC(const RendezvousInterface::ParsedKey& key) {
@@ -234,12 +217,9 @@ void Destroy(TF_RendezvousDoneCallbackImpl* c_on_done) {
 
 TF_RendezvousThunk* ToC(RendezvousInterface* rendezvous) {
   TF_RendezvousThunk* thunk = new TF_RendezvousThunk();
-  thunk->context = rendezvous;
-
   thunk->send = BindSendFunction(rendezvous);
   thunk->async_recv = BindAsyncRecvFunction(rendezvous);
   thunk->start_abort = BindStartAborter(rendezvous);
-
   return thunk;
 }
 
@@ -418,19 +398,16 @@ TF_RendezvousAsyncRecverImpl BindAsyncRecvFunction(
   return recv_func;
 }
 
-void StartAbortFunctionThunk(void* context, const TF_Status* status) {
-  auto* callback = static_cast<TF_StatusCallback*>(context);
-  (*callback)(status);
+void StartAbortFunctionThunk(void* context, const TF_Status* tf_status) {
+  auto* rendezvous = static_cast<RendezvousInterface*>(context);
+  absl::Status status = tsl::StatusFromTF_Status(tf_status);
+  rendezvous->StartAbort(status);
 }
 
 // Use in `TF_RendezvousThunk ToC(tensorflow::RendezvousInterface* rendezvous)`
 TF_RendezvousStartAbortImpl BindStartAborter(RendezvousInterface* rendezvous) {
   TF_RendezvousStartAbortImpl start_abort;
-  auto aborter =
-      new TF_StatusCallback([rendezvous](const TF_Status* status) -> void {
-        rendezvous->StartAbort(tsl::StatusFromTF_Status(status));
-      });
-  start_abort.context = static_cast<void*>(aborter);
+  start_abort.context = static_cast<void*>(rendezvous);
   start_abort.start_abort_func = StartAbortFunctionThunk;
   return start_abort;
 }
@@ -463,10 +440,6 @@ void Destroy(TF_RendezvousAsyncRecverImpl* recv_func) {
 void Destroy(TF_RendezvousStartAbortImpl* start_abort_func) {
   if (start_abort_func == nullptr) {
     return;
-  }
-  if (start_abort_func->context != nullptr) {
-    auto runner = static_cast<TF_StatusCallback*>(start_abort_func->context);
-    delete runner;
   }
 }
 

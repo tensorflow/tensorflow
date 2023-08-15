@@ -48,10 +48,6 @@ class TfCThunkRendezvous final : public ::tensorflow::RendezvousInterface {
 
 }  // namespace c_api
 
-TF_DeviceContext* ToC(DeviceContext* device_context);
-DeviceContext* FromC(TF_DeviceContext* c_device_context);
-void Destroy(TF_DeviceContext* c_device_context);
-
 TFDevice_AllocatorAttributes ToC(const tsl::AllocatorAttributes& attributes);
 tsl::AllocatorAttributes FromC(
     const TFDevice_AllocatorAttributes& c_attributes);
