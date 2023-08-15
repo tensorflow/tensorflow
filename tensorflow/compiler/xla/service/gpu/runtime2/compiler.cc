@@ -32,13 +32,17 @@ limitations under the License.
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/service/dump.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/status.h"
-#include "tensorflow/tsl/platform/platform.h"
+#include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/xla.pb.h"
 
 #if defined(PLATFORM_GOOGLE)
 #include "tensorflow/compiler/xla/service/gpu/runtime2/google/compiler.h"
@@ -217,8 +221,10 @@ static IREE::Input::ExecutableObjectsAttr getExecutableObjects(
       b.getArrayAttr(b.getArrayAttr(executable)));
 }
 
-Status BindXlaDeviceKernels(mlir::ModuleOp module, std::string_view asm_text,
-                            const std::vector<uint8_t>& binary) {
+StatusOr<std::string> BindXlaDeviceKernels(const DebugOptions& debug_options,
+                                           mlir::ModuleOp module,
+                                           std::string_view asm_text,
+                                           const std::vector<uint8_t>& binary) {
   auto* ctx = module.getContext();
   SymbolTable sym_table(module);
 
@@ -234,7 +240,18 @@ Status BindXlaDeviceKernels(mlir::ModuleOp module, std::string_view asm_text,
                                       getExecutableObject(ctx, binary));
   src.setObjectsAttr(objects);
 
-  return OkStatus();
+  std::string module_str = llvm_ir::DumpToString(module);
+
+  // Dump module with bound executable for debugging.
+  std::optional<StringRef> module_name = module.getName();
+  auto module_id = module->getAttrOfType<IntegerAttr>("hlo.unique_id");
+
+  if (module_name && module_id) {
+    DumpToFileInDirOrStdout(debug_options, module_id.getInt(), *module_name,
+                            "gpu_rt_host_with_executable", "mlir", module_str);
+  }
+
+  return module_str;
 }
 
 }  // namespace xla::gpu

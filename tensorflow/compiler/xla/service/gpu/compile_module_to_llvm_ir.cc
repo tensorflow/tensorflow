@@ -437,8 +437,8 @@ Status CompileModuleToLlvmIrImpl(
       registry, mlir::MLIRContext::Threading::DISABLED);
 
   mlir_context->getDiagEngine().registerHandler(DiagnosticHandler);
-  mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
-      mlir::ModuleOp::create(mlir::Builder(mlir_context.get()).getUnknownLoc());
+  mlir::OwningOpRef<mlir::ModuleOp> mlir_module = mlir::ModuleOp::create(
+      mlir::Builder(mlir_context.get()).getUnknownLoc(), hlo_module->name());
 
   TF_RETURN_IF_ERROR(
       HloToLhloModule(*results->buffer_assignment, *hlo_module, *mlir_module));

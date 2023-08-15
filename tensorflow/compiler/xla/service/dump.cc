@@ -565,8 +565,8 @@ std::string TimestampFor(const HloModule& module) {
   return std::to_string(timestamp_emplace.first->second);
 }
 
-static std::string FilenameFor(int unique_id, string_view module_name,
-                               string_view prefix, string_view suffix) {
+std::string FilenameFor(int unique_id, string_view module_name,
+                        string_view prefix, string_view suffix) {
   std::string filename;
   if (!prefix.empty()) {
     absl::StrAppend(&filename, prefix, ".");
