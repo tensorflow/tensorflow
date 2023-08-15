@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/platform/cpu_info.h"
 
 namespace xla {
 namespace gpu {

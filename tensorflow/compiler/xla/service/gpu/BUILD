@@ -688,6 +688,7 @@ xla_test(
         "//tensorflow/compiler/xla/tests:verified_hlo_module",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:platform_port",
         "@com_google_absl//absl/strings",
     ],
 )
