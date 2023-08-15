@@ -474,6 +474,7 @@ cc_library(
         ":tpu_compilation_cache_key",
         ":tpu_compilation_metrics",  # buildcleaner: keep
         ":tpu_program_group",
+        ":tpu_program_group_interface",
         ":tpu_util",
         "//tensorflow/compiler/xla/service",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_ops_c_api_hdrs",

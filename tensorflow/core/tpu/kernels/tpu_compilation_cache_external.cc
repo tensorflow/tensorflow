@@ -66,7 +66,7 @@ std::unique_ptr<CompiledSubgraph> CreateAndInitializeCompiledSubgraph(
 }  // namespace
 
 CompiledSubgraph* TpuCompilationCacheExternal::InitializeEntry(
-    const string& key,
+    const std::string& key,
     const std::function<Status(TpuProgramGroupInterface*)>& initialize_program,
     const TpuCompilationCacheKey& subgraph_key) {
   CompiledSubgraph* main_entry = new CompiledSubgraph();
@@ -154,5 +154,6 @@ CompiledSubgraph* TpuCompilationCacheExternal::InitializeEntry(
   marked_for_eviction_size_ += main_entry->total_size;
   return main_entry;
 }
+
 }  // namespace tpu
 }  // namespace tensorflow
