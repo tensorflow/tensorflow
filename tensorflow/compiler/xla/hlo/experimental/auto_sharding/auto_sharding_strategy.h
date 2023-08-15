@@ -24,16 +24,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/container/btree_set.h"
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
-#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
-#include "tensorflow/compiler/xla/hlo/utils/hlo_live_range.h"
 #include "tensorflow/compiler/xla/service/hlo_value.h"
-#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -116,15 +112,6 @@ struct ShardingStrategy {
                         ", resharding_costs=", resharding_cost_str,
                         ", input_shardings=", input_sharding_str);
   }
-
-  bool operator==(const ShardingStrategy& other) const {
-    return name == other.name && output_sharding == other.output_sharding &&
-           compute_cost == other.compute_cost &&
-           communication_cost == other.communication_cost &&
-           memory_cost == other.memory_cost &&
-           resharding_costs == other.resharding_costs &&
-           input_shardings == other.input_shardings;
-  }
 };
 
 using NodeIdx = int64_t;          // An index into the solver's node list.
@@ -195,23 +182,6 @@ struct StrategyVector {
   }
 };
 
-// Properties of an instruction used to combine similar ops into crosscut sets.
-struct CrosscutKey {
-  HloOpcode opcode;
-  Shape shape;
-  std::vector<ShardingStrategy> leaf_vector;
-
-  bool operator==(const CrosscutKey& other) const {
-    return opcode == other.opcode && shape == other.shape &&
-           leaf_vector == other.leaf_vector;
-  }
-
-  template <typename H>
-  friend H AbslHashValue(H h, const CrosscutKey& crosscut_key) {
-    return H::combine(std::move(h), crosscut_key.opcode, crosscut_key.shape);
-  }
-};
-
 // Type aliases.
 using LivenessSet = std::vector<std::vector<const HloValue*>>;
 // Map an instruction to its strategy vector.
@@ -225,12 +195,6 @@ using AssociativeDotPairs =
     std::vector<std::pair<const StrategyVector*, const StrategyVector*>>;
 // The set of all alias pairs
 using AliasSet = StableHashSet<std::pair<NodeIdx, NodeIdx>>;
-// A logical time and a node that is scheduled to start at that time.
-using CrosscutPair = std::pair<HloLiveRange::LogicalTime, NodeIdx>;
-// The set of all nodes in a crosscut set, ordered by start time.
-using CrosscutSet = absl::btree_set<CrosscutPair>;
-// A mapping of crosscut keys to crosscut sets.
-using CrosscutMap = StableHashMap<CrosscutKey, CrosscutSet>;
 
 }  // namespace spmd
 }  // namespace xla
