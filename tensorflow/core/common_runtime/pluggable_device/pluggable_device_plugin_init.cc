@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/pjrt_device_context.h"
 #include "tensorflow/compiler/jit/xla_device.h"
+#include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_api.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_api.h"
@@ -71,6 +72,7 @@ static Status InitDeviceModule(void* dso_handle) {
   return OkStatus();
 }
 
+typedef const PJRT_Api* (*PjrtApiInitFn)();
 static Status InitNextPluggableDeviceModule(void* dso_handle) {
   void* dso_symbol;
   tensorflow::Env* env = tensorflow::Env::Default();
@@ -101,8 +103,13 @@ static Status InitNextPluggableDeviceModule(void* dso_handle) {
   } else if (!status.ok()) {
     return status;
   }
-  auto init_pjrt_fn = reinterpret_cast<pjrt::PjrtApiInitFn>(dso_symbol);
-  TF_RETURN_IF_ERROR(pjrt::InitPjrtPlugin(init_pjrt_fn, device_type));
+  auto init_pjrt_fn = reinterpret_cast<PjrtApiInitFn>(dso_symbol);
+  TF_RETURN_IF_ERROR(pjrt::SetPjrtApi(device_type, init_pjrt_fn()));
+  TF_ASSIGN_OR_RETURN(bool is_pjrt_plugin_initialized,
+                      pjrt::IsPjrtPluginInitialized(device_type));
+  if (!is_pjrt_plugin_initialized) {
+    TF_RETURN_IF_ERROR(pjrt::InitializePjrtPlugin(device_type));
+  }
 
   DeviceFactory::Register(device_type,
                           std::make_unique<NextPluggableDeviceFactory>(

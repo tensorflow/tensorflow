@@ -141,6 +141,8 @@ cc_library(
         "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_helpers",
         "//tensorflow/tsl/platform:errors",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -150,6 +152,8 @@ xla_cc_test(
     srcs = ["pjrt_api_test.cc"],
     deps = [
         ":pjrt_api",
+        "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_hdrs",
+        "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_wrapper_impl",
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:status_matchers",
         "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",

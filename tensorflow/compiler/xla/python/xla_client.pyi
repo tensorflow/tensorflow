@@ -126,6 +126,15 @@ def pjrt_plugin_loaded(plugin_name: str) -> bool:
 def load_pjrt_plugin_dynamically(plugin_name: str, library_path: str) -> None:
   ...
 
+
+def pjrt_plugin_initialized(plugin_name: str) -> bool:
+  ...
+
+
+def initialize_pjrt_plugin(plugin_name: str) -> None:
+  ...
+
+
 class OpMetadata:
 
   def __init__(self,

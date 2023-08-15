@@ -470,6 +470,12 @@ PYBIND11_MODULE(xla_extension, m) {
         [](std::string platform_name, std::string library_path) {
           xla::ThrowIfError(pjrt::LoadPjrtPlugin(platform_name, library_path));
         });
+  m.def("pjrt_plugin_initialized", [](std::string platform_name) -> bool {
+    return xla::ValueOrThrow(pjrt::IsPjrtPluginInitialized(platform_name));
+  });
+  m.def("initialize_pjrt_plugin", [](std::string platform_name) {
+    return xla::ThrowIfError(pjrt::InitializePjrtPlugin(platform_name));
+  });
 
 #ifdef XLA_PYTHON_ENABLE_GPU
   py::class_<GpuAllocatorConfig> alloc_config(m, "GpuAllocatorConfig");
