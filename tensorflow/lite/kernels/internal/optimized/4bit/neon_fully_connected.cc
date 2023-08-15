@@ -17,6 +17,7 @@ limitations under the License.
 #include <arm_neon.h>
 #include <stdint.h>
 #include <algorithm>
+#include <cstring>
 #include <vector>
 
 #include "include/cpuinfo.h"
