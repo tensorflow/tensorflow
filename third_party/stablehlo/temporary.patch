@@ -26,24 +26,6 @@ diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
      name = "interpreter_ops",
      srcs = [
          "stablehlo/reference/InterpreterOps.cpp",
-@@ -451,7 +469,7 @@
-     deps = [
-         ":reference_process_grid",
-         ":reference_tensor",
--    ]
-+    ],
- )
- 
- cc_library(
-@@ -467,7 +485,7 @@
-         ":reference_tensor",
-         "@llvm-project//mlir:IR",
-         "@llvm-project//mlir:Support",
--    ]
-+    ],
- )
- 
- cc_library(
 @@ -763,6 +781,7 @@
      deps = [
          ":base",
@@ -259,19 +241,6 @@ diff --ruN a/stablehlo/stablehlo/dialect/CMakeLists.txt b/stablehlo/stablehlo/di
  )
  
  add_mlir_dialect_library(StablehloRegister
-diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.cpp b/stablehlo/stablehlo/dialect/ChloOps.cpp
---- stablehlo/stablehlo/dialect/ChloOps.cpp
-+++ stablehlo/stablehlo/dialect/ChloOps.cpp
-@@ -416,8 +416,7 @@
- //===----------------------------------------------------------------------===//
- 
- void RankSpecializationClusterOp::getSuccessorRegions(
--    std::optional<unsigned> index, ArrayRef<Attribute> /*operands*/,
--    SmallVectorImpl<RegionSuccessor>& regions) {
-+    std::optional<unsigned> index, SmallVectorImpl<RegionSuccessor>& regions) {
-   // RankSpecializationClusterOp has unconditional control flows into the region
-   // and back to the parent, so return the correct RegionSuccessor purely based
-   // on the index being None or 0.
 diff --ruN a/stablehlo/stablehlo/dialect/ExperimentalOps.cpp b/stablehlo/stablehlo/dialect/ExperimentalOps.cpp
 --- stablehlo/stablehlo/dialect/ExperimentalOps.cpp
 +++ stablehlo/stablehlo/dialect/ExperimentalOps.cpp
@@ -1044,19 +1013,6 @@ diff --ruN a/stablehlo/stablehlo/dialect/VhloTypes.h b/stablehlo/stablehlo/diale
  };
  
  // This class is used to manage conversions between VHLO and Builtin
-diff --ruN a/stablehlo/stablehlo/reference/ProcessGrid.cpp b/stablehlo/stablehlo/reference/ProcessGrid.cpp
---- stablehlo/stablehlo/reference/ProcessGrid.cpp
-+++ stablehlo/stablehlo/reference/ProcessGrid.cpp
-@@ -20,9 +20,6 @@
- #include <optional>
- #include <utility>
- 
--#include "llvm/ADT/STLExtras.h"
--#include "llvm/ADT/SmallVector.h"
--#include "llvm/Support/ErrorHandling.h"
- #include "stablehlo/reference/Tensor.h"
- 
- namespace mlir {
 diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo.mlir b/stablehlo/stablehlo/tests/ops_stablehlo.mlir
 --- stablehlo/stablehlo/tests/ops_stablehlo.mlir
 +++ stablehlo/stablehlo/tests/ops_stablehlo.mlir
