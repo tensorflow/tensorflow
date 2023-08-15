@@ -70,7 +70,6 @@ py_strict_library(
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
         "@pypi_packaging//:pkg",
-        "@six_archive//:six",
     ],
 )
 

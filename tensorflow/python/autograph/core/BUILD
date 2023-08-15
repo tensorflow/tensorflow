@@ -37,7 +37,7 @@ py_strict_library(
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/python/autograph/pyct:errors",
-        "@gast_archive//:gast",
+        "@pypi_gast//:pkg",
     ],
 )
 

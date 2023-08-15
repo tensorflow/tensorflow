@@ -1704,7 +1704,7 @@ py_strict_library(
     deps = [
         ":composite_tensor",
         "//tensorflow/python/util:nest",
-        "@typing_extensions_archive//:typing_extensions",
+        "@pypi_typing_extensions//:pkg",
     ],
 )
 
@@ -1732,7 +1732,7 @@ py_strict_library(
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
-        "@typing_extensions_archive//:typing_extensions",
+        "@pypi_typing_extensions//:pkg",
     ],
 )
 
@@ -2628,7 +2628,7 @@ tf_py_strict_test(
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_decorator",
         "@absl_py//absl/testing:parameterized",
-        "@typing_extensions_archive//:typing_extensions",
+        "@pypi_typing_extensions//:pkg",
     ],
 )
 

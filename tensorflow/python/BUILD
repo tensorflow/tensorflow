@@ -570,7 +570,6 @@ py_strict_library(
         ":keras_lib",
         "//third_party/py/numpy",
         "@pypi_scipy//:pkg",
-        "@six_archive//:six",
     ],
 )
 

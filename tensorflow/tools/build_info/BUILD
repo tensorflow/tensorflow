@@ -16,6 +16,5 @@ py_binary(
     deps = [
         "@local_config_cuda//cuda:cuda_config_py",
         "@local_config_tensorrt//:tensorrt_config_py",
-        "@six_archive//:six",
     ],
 )

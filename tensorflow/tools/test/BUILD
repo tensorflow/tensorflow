@@ -32,7 +32,6 @@ py_library(
         "//tensorflow/python/client",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/platform:gfile",
-        "@six_archive//:six",
     ],
 )
 
@@ -57,7 +56,6 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/platform:gfile",
         "@absl_py//absl/logging",
-        "@six_archive//:six",
     ],
 )
 
@@ -69,7 +67,6 @@ py_binary(
     visibility = ["//visibility:public"],
     deps = [
         ":run_and_gather_logs_main_lib",
-        "@six_archive//:six",
     ],
 )
 
@@ -84,7 +81,6 @@ py_library(
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:gfile",
         "//tensorflow/python/platform:tf_logging",
-        "@six_archive//:six",
     ],
 )
 

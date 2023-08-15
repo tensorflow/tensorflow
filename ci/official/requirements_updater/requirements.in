@@ -4,6 +4,16 @@ numpy ~= 1.23.5
 wheel ~= 0.38.1
 h5py >= 2.9.0
 lit ~= 16.0.5.post0
+opt_einsum == 3.3.0
+astunparse == 1.6.3
+dill == 0.3.6
+astor == 0.7.1
+typing_extensions == 4.2.0
+gast == 0.4.0
+astor == 0.7.1
+termcolor == 2.3.0
+wrapt == 1.14.1
+tblib == 1.7.0
 
 # Install tensorboard and estimator and keras
 # Note that here we want the latest version that matches TF major.minor version

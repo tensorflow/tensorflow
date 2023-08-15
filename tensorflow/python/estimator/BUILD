@@ -66,7 +66,6 @@ py_library(
         ":expect_tensorflow_estimator_installed",
         ":export_output",
         "//tensorflow:tensorflow_py_no_contrib",
-        "@six_archive//:six",
     ],
 )
 
@@ -80,7 +79,6 @@ py_library(
         ":exporter",
         ":run_config",
         "//tensorflow:tensorflow_py_no_contrib",
-        "@six_archive//:six",
     ],
 )
 
@@ -91,7 +89,6 @@ py_library(
     deps = [
         ":expect_tensorflow_estimator_installed",
         "//tensorflow:tensorflow_py_no_contrib",
-        "@six_archive//:six",
     ],
 )
 
@@ -106,7 +103,6 @@ py_library(
         ":model_fn",
         ":optimizers",
         "//tensorflow:tensorflow_py_no_contrib",
-        "@six_archive//:six",
     ],
 )
 
@@ -121,7 +117,6 @@ py_library(
         ":model_fn",
         ":optimizers",
         "//tensorflow:tensorflow_py_no_contrib",
-        "@six_archive//:six",
     ],
 )
 
@@ -141,7 +136,6 @@ py_library(
         "//tensorflow:tensorflow_py_no_contrib",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
-        "@six_archive//:six",
     ],
 )
 
@@ -158,7 +152,6 @@ py_library(
         ":model_fn",
         ":optimizers",
         "//tensorflow:tensorflow_py_no_contrib",
-        "@six_archive//:six",
     ],
 )
 
@@ -188,7 +181,6 @@ py_library(
         ":util",
         "//tensorflow:tensorflow_py_no_contrib",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 
@@ -201,7 +193,6 @@ py_library(
     deps = [
         ":expect_tensorflow_estimator_installed",
         "//tensorflow:tensorflow_py_no_contrib",
-        "@six_archive//:six",
     ],
 )
 
@@ -212,7 +203,6 @@ py_library(
     deps = [
         ":expect_tensorflow_estimator_installed",
         "//tensorflow:tensorflow_py_no_contrib",
-        "@six_archive//:six",
     ],
 )
 
@@ -240,7 +230,6 @@ py_library(
         ":expect_tensorflow_estimator_installed",
         ":util",
         "//tensorflow:tensorflow_py_no_contrib",
-        "@six_archive//:six",
     ],
 )
 
@@ -255,7 +244,6 @@ py_library(
         ":model_fn",
         ":prediction_keys",
         "//tensorflow:tensorflow_py_no_contrib",
-        "@six_archive//:six",
     ],
 )
 
@@ -281,7 +269,6 @@ py_library(
         ":head",
         ":optimizers",
         "//tensorflow:tensorflow_py_no_contrib",
-        "@six_archive//:six",
     ],
 )
 
@@ -300,7 +287,6 @@ py_library(
         ":pandas_io",
         ":run_config",
         "//tensorflow:tensorflow_py_no_contrib",
-        "@six_archive//:six",
     ],
 )
 
@@ -331,7 +317,6 @@ py_library(
     deps = [
         ":expect_tensorflow_estimator_installed",
         "//tensorflow:tensorflow_py_no_contrib",
-        "@six_archive//:six",
     ],
 )
 
@@ -364,7 +349,6 @@ py_library(
     deps = [
         ":expect_tensorflow_estimator_installed",
         "//tensorflow:tensorflow_py_no_contrib",
-        "@six_archive//:six",
     ],
 )
 

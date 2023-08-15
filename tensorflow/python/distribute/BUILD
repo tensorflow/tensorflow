@@ -58,7 +58,6 @@ py_strict_library(
         "//tensorflow/python/util:tf_export",
         "//tensorflow/tools/docs:doc_controls",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 
@@ -178,7 +177,6 @@ py_strict_library(
         "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
         "//tensorflow/tools/docs:doc_controls",
-        "@six_archive//:six",
     ],
 )
 
@@ -263,7 +261,6 @@ py_strict_test(
         "//tensorflow/python/training:coordinator",
         "//tensorflow/python/training:monitored_session",
         "//tensorflow/python/training:session_manager",
-        "@six_archive//:six",
     ],
 )
 
@@ -523,7 +520,7 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:variable_scope",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
-        "@dill_archive//:dill",  # build_cleaner: keep
+        "@pypi_dill//:pkg",  # build_cleaner: keep
     ],
 )
 
@@ -598,7 +595,6 @@ py_strict_library(
         "//tensorflow/python/types:distribute",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:nest",
-        "@six_archive//:six",
     ],
 )
 
@@ -840,7 +836,6 @@ py_strict_library(
         ":multi_worker_util",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/training:server_lib",
-        "@six_archive//:six",
     ],
 )
 
@@ -1126,7 +1121,6 @@ py_strict_library(
         "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
         "@absl_py//absl:app",
-        "@six_archive//:six",
     ],
 )
 
@@ -1237,7 +1231,6 @@ py_strict_library(
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
-        "@six_archive//:six",
     ],
 )
 
@@ -1442,7 +1435,7 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/util:nest",
         "@absl_py//absl/testing:parameterized",
-        "@dill_archive//:dill",  # build_cleaner: keep
+        "@pypi_dill//:pkg",  # build_cleaner: keep
     ],
 )
 
@@ -1766,7 +1759,7 @@ distribute_py_strict_test(
         "//tensorflow/python/ops:variable_v1",
         "//tensorflow/python/saved_model/model_utils:mode_keys",
         "@absl_py//absl/testing:parameterized",
-        "@wrapt",
+        "@pypi_wrapt//:pkg",
     ],
 )
 
@@ -2297,9 +2290,8 @@ py_strict_library(
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/util:tf_export",
         "@absl_py//absl/logging",
-        "@dill_archive//:dill",  # build_cleaner: keep
-        "@six_archive//:six",
-        "@tblib_archive//:tblib",  # build_cleaner: keep
+        "@pypi_dill//:pkg",  # build_cleaner: keep
+        "@pypi_tblib//:pkg",  # build_cleaner: keep
     ],
 )
 

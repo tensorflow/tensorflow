@@ -382,7 +382,7 @@ py_strict_library(
         "//tensorflow/python/framework:op_def_registry",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:tf_inspect",
-        "@gast_archive//:gast",
+        "@pypi_gast//:pkg",
     ],
 )
 
@@ -416,7 +416,7 @@ py_strict_library(
         "//tensorflow/python/autograph/pyct:transpiler",
         "//tensorflow/python/framework:op_def_registry",
         "//tensorflow/python/util:tf_inspect",
-        "@gast_archive//:gast",
+        "@pypi_gast//:pkg",
     ],
 )
 

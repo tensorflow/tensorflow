@@ -31,7 +31,6 @@ py_strict_binary(
     deps = [
         "@absl_py//absl:app",
         "@absl_py//absl/flags",
-        "@six_archive//:six",
     ],
 )
 
@@ -42,6 +41,5 @@ py_strict_library(
     deps = [
         "@absl_py//absl:app",
         "@absl_py//absl/flags",
-        "@six_archive//:six",
     ],
 )

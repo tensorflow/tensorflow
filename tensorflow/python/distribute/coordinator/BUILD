@@ -30,7 +30,6 @@ py_strict_library(
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
-        "@six_archive//:six",
     ],
 )
 

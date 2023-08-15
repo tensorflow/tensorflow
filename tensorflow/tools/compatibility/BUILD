@@ -22,7 +22,6 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         "@pasta",
-        "@six_archive//:six",  # buildcleaner: keep
     ],
 )
 
@@ -45,7 +44,6 @@ py_strict_binary(
     srcs_version = "PY3",
     deps = [
         ":tf_upgrade_lib",
-        "@six_archive//:six",
     ],
 )
 
@@ -165,7 +163,6 @@ py_strict_test(
     deps = [
         ":ast_edits",
         ":tf_upgrade_v2_lib",
-        "@six_archive//:six",
         # copybara:uncomment "//third_party/py/tensorflow:tensorflow_compat_v1_estimator",
         # copybara:uncomment "//third_party/py/tensorflow:tensorflow_compat_v2_estimator",
         "//tensorflow:tensorflow_py",

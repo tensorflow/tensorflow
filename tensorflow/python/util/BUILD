@@ -363,7 +363,6 @@ py_strict_library(
         "//tensorflow:__pkg__",
     ],
     deps = [
-        "@six_archive//:six",
     ],
 )
 
@@ -376,7 +375,6 @@ py_strict_library(
     deps = [
         ":_tf_stack",
         "//tensorflow/core:protos_all_py",
-        "@six_archive//:six",
     ],
 )
 
@@ -686,8 +684,7 @@ py_strict_library(
         # library. It isn't possible to add these test dependencies via tensorflow.bzl's
         # py_test because not all tensorflow tests use tensorflow.bzl's py_test.
         "//tensorflow/python:global_test_configuration",
-        "@six_archive//:six",
-        "@wrapt",
+        "@pypi_wrapt//:pkg",
         "//tensorflow/python:pywrap_tensorflow",
         ":_pywrap_utils",
     ],
@@ -704,7 +701,6 @@ py_strict_library(
         # py_test because not all tensorflow tests use tensorflow.bzl's py_test.
         "//tensorflow/python:global_test_configuration",
         ":tf_decorator",
-        "@six_archive//:six",
     ],
 )
 
@@ -801,7 +797,6 @@ py_strict_library(
         "//tensorflow/python:global_test_configuration",
         ":tf_export",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 
@@ -848,7 +843,7 @@ py_strict_library(
         # py_test because not all tensorflow tests use tensorflow.bzl's py_test.
         "//tensorflow/python:global_test_configuration",
         "//third_party/py/numpy",
-        "@wrapt",
+        "@pypi_wrapt//:pkg",
     ],
 )
 
@@ -909,7 +904,6 @@ py_strict_library(
         # py_test because not all tensorflow tests use tensorflow.bzl's py_test.
         "//tensorflow/python:global_test_configuration",
         ":tf_decorator",
-        "@six_archive//:six",
     ],
 )
 
@@ -984,7 +978,7 @@ py_strict_library(
         # py_test because not all tensorflow tests use tensorflow.bzl's py_test.
         "//tensorflow/python:global_test_configuration",
         ":tf_export",
-        "@wrapt",
+        "@pypi_wrapt//:pkg",
         ":_pywrap_utils",
         ":_pywrap_nest",
     ],
