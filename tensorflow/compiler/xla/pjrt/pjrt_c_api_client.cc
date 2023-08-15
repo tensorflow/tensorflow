@@ -880,7 +880,7 @@ PjRtCApiExecutable::GetOutputMemoryKinds() const {
     out.push_back(
         absl::string_view(args.memory_kinds[i], args.memory_kind_sizes[i]));
   }
-  return std::vector<std::vector<absl::string_view>>{out};
+  return std::vector<std::vector<absl::string_view>>{std::move(out)};
 }
 
 StatusOr<std::vector<std::shared_ptr<HloModule>>>
