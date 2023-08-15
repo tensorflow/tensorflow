@@ -228,6 +228,18 @@ def HostLaunchToOutsideCompiledPass : Pass<"tf-device-host-launch-to-outside-com
   let constructor = "TFDevice::CreateHostLaunchToOutsideCompiledPass()";
 }
 
+def VerifyNoOutsideCompilationMarkersPass : Pass<"verify-no-outside-compilation-markers", "mlir::func::FuncOp"> {
+  let summary = "Verifies that after Outside Compilation passes complete, there are no more _xla_outside_compilation attributes and no tf_device.launch ops.";
+
+  let description = [{
+    This pass takes iterates over ops and ensures that _xla_outside_compilation
+    and tf_device.launch ops no longer exist and have been removed. This happens
+    after Outside Compilation passes have completed.
+  }];
+
+  let constructor = "TFDevice::CreateVerifyNoOutsideCompilationMarkersPass()";
+}
+
 def DecomposeResourceOpsPass : Pass<"tf-device-decompose-resource-ops", "mlir::func::FuncOp"> {
   let summary = "Decompose composite resource variable operations into primitive Read/AssignVariableOp and raw computation.";
 
