@@ -49,6 +49,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_live_range.h"
 #include "tensorflow/compiler/xla/hlo/utils/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
@@ -1823,6 +1824,49 @@ AliasSet BuildAliasSet(const HloModule* module,
     }
   }
   return alias_set;
+}
+
+CrosscutMap BuildCrosscutMap(const HloLiveRange& hlo_live_range,
+                             const LeafStrategies& leaf_strategies) {
+  // First, map instructions to their time bound.
+  const auto& buffer_live_ranges = hlo_live_range.buffer_live_ranges();
+  absl::flat_hash_map<const HloInstruction*, HloLiveRange::TimeBound>
+      time_bound_map;
+  for (const auto& [hlo_value, live_range] : buffer_live_ranges) {
+    const HloInstruction* instruction = hlo_value->instruction();
+    if (instruction->shape().IsTuple()) continue;  // TODO(moffitt): revisit
+    time_bound_map[instruction] = live_range;
+  }
+  // Second, iterate through instructions and form sets based on opcode/shape.
+  const HloInstructionSequence& sequence =
+      hlo_live_range.flattened_instruction_sequence();
+  const std::vector<HloInstruction*>& instructions = sequence.instructions();
+  CrosscutMap initial_map;
+  for (NodeIdx i = 0; i < leaf_strategies.size(); ++i) {
+    const StrategyVector* strategies = leaf_strategies[i];
+    const HloInstruction* instruction =
+        instructions.at(strategies->instruction_id);
+    const auto& time_bound = time_bound_map.find(instruction);
+    if (time_bound == time_bound_map.end()) continue;  // TODO(moffitt): revisit
+    const CrosscutKey crosscut_key = {
+        instruction->opcode(), instruction->shape(), strategies->leaf_vector};
+    initial_map[crosscut_key].insert({time_bound->second.start, i});
+  }
+  // Third, keep only those ops that are spaced at the most common periodicity.
+  CrosscutMap crosscut_map;
+  for (const auto& [crosscut_key, crosscut_set] : initial_map) {
+    HloLiveRange::LogicalTime mode = -1;
+    absl::flat_hash_map<HloLiveRange::LogicalTime, CrosscutSet> space_map;
+    auto prev = crosscut_set.begin(), next = crosscut_set.begin();
+    for (++next; next != crosscut_set.end(); ++prev, ++next) {
+      const HloLiveRange::LogicalTime space = next->first - prev->first;
+      space_map[space].insert({*prev, *next});
+      if (space_map[mode].size() < space_map[space].size()) mode = space;
+    }
+    const CrosscutSet& spaced_set = space_map[mode];
+    if (spaced_set.size() > 2) crosscut_map[crosscut_key] = spaced_set;
+  }
+  return crosscut_map;
 }
 
 void CheckAliasSetCompatibility(const AliasSet& alias_set,
