@@ -1011,6 +1011,39 @@ diff --ruN a/stablehlo/stablehlo/dialect/ExperimentalOps.h b/stablehlo/stablehlo
 +}  // namespace mlir
 +
 +#endif  // STABLEHLO_DIALECT_EXPERIMENTAL_OPS_H
+diff --ruN a/stablehlo/stablehlo/dialect/VhloOps.cpp b/stablehlo/stablehlo/dialect/VhloOps.cpp
+--- stablehlo/stablehlo/dialect/VhloOps.cpp
++++ stablehlo/stablehlo/dialect/VhloOps.cpp
+@@ -58,7 +58,7 @@
+     VhloToBuiltinPrintConverter() : VhloTypeConverter() {
+       addVhloToBuiltinConversions();
+     }
+-    Attribute convertEncoding(Attribute attr) override { return attr; }
++    Attribute convertEncoding(Attribute attr) const override { return attr; }
+   };
+   VhloToBuiltinPrintConverter conv;
+   return conv.convertType(type);
+@@ -69,7 +69,7 @@
+     BuiltinToVhloParseConverter() : VhloTypeConverter() {
+       addBuiltinToVhloConversions();
+     }
+-    Attribute convertEncoding(Attribute attr) override { return attr; }
++    Attribute convertEncoding(Attribute attr) const override { return attr; }
+   };
+   BuiltinToVhloParseConverter conv;
+   return conv.convertType(type);
+diff --ruN a/stablehlo/stablehlo/dialect/VhloTypes.h b/stablehlo/stablehlo/dialect/VhloTypes.h
+--- stablehlo/stablehlo/dialect/VhloTypes.h
++++ stablehlo/stablehlo/dialect/VhloTypes.h
+@@ -33,7 +33,7 @@
+ 
+   virtual ~VhloTypeConverterBase() = default;
+ 
+-  virtual Attribute convertEncoding(Attribute attr) = 0;
++  virtual Attribute convertEncoding(Attribute attr) const = 0;
+ };
+ 
+ // This class is used to manage conversions between VHLO and Builtin
 diff --ruN a/stablehlo/stablehlo/reference/ProcessGrid.cpp b/stablehlo/stablehlo/reference/ProcessGrid.cpp
 --- stablehlo/stablehlo/reference/ProcessGrid.cpp
 +++ stablehlo/stablehlo/reference/ProcessGrid.cpp
@@ -1617,6 +1650,27 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp b/
      patterns.add<CanonicalizeRealDynamicSliceOpToDynamicSliceOpPattern>(
          &getContext());
      patterns.add<CanonicalizeRealDynamicSliceOpToSliceOpPattern>(&getContext());
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloLegalizeToVhlo.cpp b/stablehlo/stablehlo/transforms/StablehloLegalizeToVhlo.cpp
+--- stablehlo/stablehlo/transforms/StablehloLegalizeToVhlo.cpp
++++ stablehlo/stablehlo/transforms/StablehloLegalizeToVhlo.cpp
+@@ -55,7 +55,7 @@
+     addBuiltinToVhloConversions();
+   }
+ 
+-  Attribute convertEncoding(Attribute attr) final {
++  Attribute convertEncoding(Attribute attr) const final {
+     LLVM_DEBUG(llvm::dbgs() << "Converting encoding.\n" << attr << '\n');
+     // Must be VHLO encoding, or convertible to VHLO encoding.
+     if (attr.getDialect().getNamespace() ==
+@@ -86,7 +86,7 @@
+   return vhlo::Name##Version##Attr::get(attr.getContext(), vhloValue.value())
+ 
+ Attribute convertGeneric(Attribute stablehloAttr,
+-                         TypeConverter* typeConverter) {
++                         const TypeConverter* typeConverter) {
+   // Handle StableHLO attributes.
+   // The logic that handles attributes from other dialects (e.g. builtin
+   // attributes) lives below.
 diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp b/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
 --- stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
 +++ stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
@@ -1737,4 +1791,121 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp b/stablehl
      patterns.add<RefineInferTypeOpInterfacePattern>(&getContext());
      patterns.add<RefineRealDynamicSliceOpPattern>(&getContext());
      patterns.add<RefineReduceScatterOpPattern>(&getContext());
+diff --ruN a/stablehlo/stablehlo/transforms/VhloLegalizeToStablehlo.cpp b/stablehlo/stablehlo/transforms/VhloLegalizeToStablehlo.cpp
+--- stablehlo/stablehlo/transforms/VhloLegalizeToStablehlo.cpp
++++ stablehlo/stablehlo/transforms/VhloLegalizeToStablehlo.cpp
+@@ -53,7 +53,7 @@
+     addVhloToBuiltinConversions();
+   }
+ 
+-  Attribute convertEncoding(Attribute attr) final {
++  Attribute convertEncoding(Attribute attr) const final {
+     if (auto vhloAttr = attr.dyn_cast_or_null<vhlo::TypeExtensionsV1Attr>()) {
+       return stablehlo::TypeExtensionsAttr::get(vhloAttr.getContext(),
+                                                 vhloAttr.getBounds());
+@@ -75,7 +75,8 @@
+   if (!stablehloValue.has_value()) return {};                       \
+   return stablehlo::Name##Attr::get(attr.getContext(), stablehloValue.value())
+ 
+-Attribute convertGeneric(Attribute vhloAttr, TypeConverter* typeConverter) {
++Attribute convertGeneric(Attribute vhloAttr,
++                         const TypeConverter* typeConverter) {
+   LLVM_DEBUG(llvm::dbgs() << "Converting attr " << vhloAttr);
+   if (auto vhloAttrs = vhloAttr.dyn_cast<vhlo::ArrayV1Attr>()) {
+     SmallVector<Attribute> stablehloAttrs;
+@@ -197,7 +198,8 @@
+   return success();
+ }
+ 
+-LogicalResult convertInts(Attribute vhloAttr, TypeConverter* typeConverter,
++LogicalResult convertInts(Attribute vhloAttr,
++                          const TypeConverter* typeConverter,
+                           SmallVector<int64_t>& result) {
+   auto vhloTensorAttr = vhloAttr.dyn_cast<vhlo::TensorV1Attr>();
+   if (!vhloTensorAttr) return failure();
+@@ -208,7 +210,8 @@
+   return success();
+ }
+ 
+-Attribute convertSymbol(Attribute vhloAttr, TypeConverter* typeConverter) {
++Attribute convertSymbol(Attribute vhloAttr,
++                        const TypeConverter* typeConverter) {
+   auto vhloStringAttr = vhloAttr.dyn_cast<vhlo::StringV1Attr>();
+   if (!vhloStringAttr) return {};
+   auto stablehloStringAttr = convertGeneric(vhloStringAttr, typeConverter)
+@@ -218,7 +221,8 @@
+ }
+ 
+ template <typename OpType>
+-Attribute convertChannelHandle(OpType vhloOp, TypeConverter* typeConverter) {
++Attribute convertChannelHandle(OpType vhloOp,
++                               const TypeConverter* typeConverter) {
+   int64_t channelId, channelType;
+   if (failed(convertInt(vhloOp.getChannelId(), channelId)) ||
+       failed(convertInt(vhloOp.getChannelType(), channelType)))
+@@ -227,7 +231,8 @@
+                                            channelType);
+ }
+ 
+-Attribute convertChannelId(Attribute vhloAttr, TypeConverter* typeConverter) {
++Attribute convertChannelId(Attribute vhloAttr,
++                           const TypeConverter* typeConverter) {
+   int64_t channelId;
+   if (failed(convertInt(vhloAttr, channelId))) return {};
+   return stablehlo::ChannelHandleAttr::get(vhloAttr.getContext(), channelId,
+@@ -236,7 +241,7 @@
+ 
+ template <typename OpType>
+ Attribute convertConvDimensionNumbers(OpType vhloOp,
+-                                      TypeConverter* typeConverter) {
++                                      const TypeConverter* typeConverter) {
+   int64_t stablehloInputBatchDimension, stablehloInputFeatureDimension;
+   SmallVector<int64_t> stablehloInputSpatialDimensions;
+   int64_t stablehloKernelInputFeatureDimension,
+@@ -272,8 +277,8 @@
+       stablehloOutputSpatialDimensions);
+ }
+ 
+-Attribute convertCustomCallCalledComputations(Attribute vhloAttr,
+-                                              TypeConverter* typeConverter) {
++Attribute convertCustomCallCalledComputations(
++    Attribute vhloAttr, const TypeConverter* typeConverter) {
+   if (auto vhloArrayAttr = vhloAttr.dyn_cast<vhlo::ArrayV1Attr>()) {
+     SmallVector<Attribute> stablehloAttrs;
+     for (auto vhloAttr : vhloArrayAttr.getValue()) {
+@@ -287,7 +292,7 @@
+ }
+ 
+ Attribute convertDotDimensionNumbers(vhlo::DotGeneralOpV1 vhloOp,
+-                                     TypeConverter* typeConverter) {
++                                     const TypeConverter* typeConverter) {
+   SmallVector<int64_t> stablehloLhsBatchingDimensions,
+       stablehloRhsBatchingDimensions, stablehloLhsContractingDimensions,
+       stablehloRhsContractingDimensions;
+@@ -306,13 +311,14 @@
+       stablehloRhsContractingDimensions);
+ }
+ 
+-Attribute convertFuncCallee(Attribute vhloAttr, TypeConverter* typeConverter) {
++Attribute convertFuncCallee(Attribute vhloAttr,
++                            const TypeConverter* typeConverter) {
+   return convertSymbol(vhloAttr, typeConverter);
+ }
+ 
+ template <typename OpType>
+ Attribute convertGatherDimensionNumbers(OpType vhloOp,
+-                                        TypeConverter* typeConverter) {
++                                        const TypeConverter* typeConverter) {
+   SmallVector<int64_t> stablehloOffsetDims, stablehloCollapsedSliceDims,
+       stablehloStartIndexMap;
+   int64_t stablehloIndexVectorDim;
+@@ -330,7 +336,7 @@
+ }
+ 
+ Attribute convertScatterDimensionNumbers(vhlo::ScatterOpV1 vhloOp,
+-                                         TypeConverter* typeConverter) {
++                                         const TypeConverter* typeConverter) {
+   SmallVector<int64_t> stablehloUpdateWindowDims, stablehloInsertedWindowDims,
+       stablehloScatterDimsToOperandDims;
+   int64_t stablehloIndexVectorDim;
 
