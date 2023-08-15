@@ -1939,6 +1939,7 @@ xla_cc_test(
         "//tensorflow/compiler/xla/service:pattern_matcher_gmock",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # build_cleaner: keep
+        "@com_google_absl//absl/log",
     ],
 )
 
