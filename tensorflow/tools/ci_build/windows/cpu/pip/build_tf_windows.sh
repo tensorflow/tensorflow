@@ -101,14 +101,15 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-if [[ "$RELEASE_BUILD" == 1 ]]; then
-  # Overriding eigen strong inline speeds up the compiling of conv_grad_ops_3d.cc and conv_ops_3d.cc
-  # by 20 minutes. See https://github.com/tensorflow/tensorflow/issues/10521
-  # Because this hurts the performance of TF, we don't override it in release build.
-  export TF_OVERRIDE_EIGEN_STRONG_INLINE=0
-else
-  export TF_OVERRIDE_EIGEN_STRONG_INLINE=1
-fi
+# Overriding eigen strong inline speeds up the compiling of conv_grad_ops_3d.cc and conv_ops_3d.cc
+# by 20 minutes. See https://github.com/tensorflow/tensorflow/issues/10521
+# Because this hurts the performance of TF, we don't override it in the release build. 
+# TF_OVERRIDE_EIGEN_STRONG_INLINE=1 reduces the size of simple_console_windows.zip
+# Set Flag to 1 for both Nightly and Release as a workaround for zipper failing > 4BG
+# TODO(Intel): Remove this when the issues is fixed
+
+export TF_OVERRIDE_EIGEN_STRONG_INLINE=1
+
 
 if [[ "$TF_NIGHTLY" == 1 ]]; then
   if [[ ${PROJECT_NAME} == *"2.0_preview"* ]]; then
