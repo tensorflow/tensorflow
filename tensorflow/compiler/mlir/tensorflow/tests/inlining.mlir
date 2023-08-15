@@ -78,19 +78,6 @@ func.func @inline_shape_cast(%arg: tensor<2xi32>) -> tensor<2xi32> {
   func.return %result : tensor<2xi32>
 }
 
-func.func private @identity(%arg : tensor<i32>) -> (tensor<i32>) {
-  return %arg : tensor<i32>
-}
-
-// CHECK-LABEL: func @inline_identity_remote_call(
-// CHECK-SAME:                                    %[[ARG:.*]]: tensor<i32>
-func.func @inline_identity_remote_call(%arg: tensor<i32>) -> tensor<i32> {
-  // CHECK: return %[[ARG]]
-  %target = "tf.Const"() {value = dense<""> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
-  %output = "tf.RemoteCall"(%target, %arg) {f = @identity} : (tensor<!tf_type.string>, tensor<i32>) -> tensor<i32>
-  func.return %output : tensor<i32>
-}
-
 // Test that functions can be inlined into tf_device regions.
 
 // CHECK-LABEL: func @inline_simple_tf_device_region(
