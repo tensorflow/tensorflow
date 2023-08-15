@@ -392,7 +392,7 @@ tf_cuda_cc_test(
     # allocations.
     tags = tf_cuda_tests_tags() + [
         "guitar",
-        "no_rocm" # fail on CI
+        "no_rocm", # fail on CI
         # "multi_gpu", # TODO(b/287692888): re-enable once the 2gpu test passes.
     ],
     deps = [

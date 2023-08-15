@@ -946,7 +946,7 @@ class FunctionTest(xla_test.XLATestCase):
       if not test_util.IsMklEnabled():
         self.assertRegex(
             f.experimental_get_compiler_ir(a, b)('optimized_hlo'),
-            '(dot)|(convolution)',
+            '(dot)|(convolution)|(custom-call)',
         )
       else:
         self.assertRegex(
