@@ -6251,6 +6251,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/tsl/platform:blocking_counter",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:function_ref",
     ],
 )
