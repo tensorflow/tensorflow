@@ -2002,7 +2002,6 @@ build_test(
 # Required as we created the transforms subpackage and need to update
 # these BUILD targets in a follow up.
 aliased_targets = [
-    "lower_tf_lib",
     "tensorflow_passes",
     "tf_saved_model_passes",
     "graph_optimization_pass_registration",
