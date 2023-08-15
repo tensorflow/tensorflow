@@ -85,15 +85,27 @@ cc_library(
 )
 
 cc_library(
-    name = "pjrt_c_api_cpu",
-    srcs = ["pjrt_c_api_cpu.cc"],
-    hdrs = ["pjrt_c_api_cpu.h"],
+    name = "pjrt_c_api_cpu_internal",
+    srcs = ["pjrt_c_api_cpu_internal.cc"],
+    hdrs = ["pjrt_c_api_cpu_internal.h"],
     visibility = ["//visibility:public"],
     deps = [
         ":pjrt_c_api_hdrs",
         ":pjrt_c_api_helpers",
         ":pjrt_c_api_wrapper_impl",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/compiler/xla/pjrt:tfrt_cpu_pjrt_client",
+    ],
+)
+
+cc_library(
+    name = "pjrt_c_api_cpu",
+    srcs = ["pjrt_c_api_cpu.cc"],
+    hdrs = ["pjrt_c_api_cpu.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pjrt_c_api_cpu_internal",
+        ":pjrt_c_api_hdrs",
     ],
 )
 
