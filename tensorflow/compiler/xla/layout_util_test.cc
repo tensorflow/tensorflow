@@ -15,12 +15,18 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/layout_util.h"
 
-#include <optional>
-#include <sstream>
+#include <cstdint>
 #include <vector>
 
+#include "absl/types/span.h"
+#include "tensorflow/compiler/xla/layout.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tensorflow/tsl/platform/status_matchers.h"
 
 namespace xla {
@@ -585,5 +591,6 @@ TEST_F(LayoutUtilTest, HasCustomElementSizeInBits) {
       ->set_element_size_in_bits(32);
   EXPECT_TRUE(LayoutUtil::HasCustomElementSizeInBits(shape));
 }
+
 }  // namespace
 }  // namespace xla

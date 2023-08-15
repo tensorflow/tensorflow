@@ -413,6 +413,7 @@ cc_library(
         ":util",
         ":xla_data_proto_cc",
         "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:float8",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:platform_port",
@@ -499,9 +500,14 @@ xla_cc_test(
     srcs = ["layout_util_test.cc"],
     deps = [
         ":shape_util",
+        ":test",
         ":test_helpers",
+        ":xla_data_proto_cc",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:status_matchers",
         "//tensorflow/tsl/platform:test_main",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -510,7 +516,6 @@ xla_cc_test(
     srcs = ["layout_test.cc"],
     deps = [
         ":shape_util",
-        ":status",
         ":test",
         ":xla_data_proto_cc",
         "//tensorflow/tsl/platform:test_main",
@@ -929,11 +934,9 @@ cc_library(
     deps = [
         ":printer",
         ":shape_util",
-        ":types",
+        ":status",
         ":util",
-        ":xla_data_proto_cc",
         "//tensorflow/tsl/platform:logging",
-        "//tensorflow/tsl/platform:status",
     ],
 )
 
