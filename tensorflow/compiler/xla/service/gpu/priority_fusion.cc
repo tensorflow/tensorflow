@@ -390,8 +390,8 @@ HloInstruction* GpuPriorityFusion::FuseInstruction(
   } else {
     result = InstructionFusion::FuseInstruction(fusion_instruction, producer);
   }
-  TF_CHECK_OK(cost_analysis_->RevisitInstruction(result));
-  GpuPerformanceModel::RecordEstimatedRunTime(result, &*cost_analysis_);
+  GpuPerformanceModel::RecordEstimatedRunTime(fusion_instruction,
+                                              &*cost_analysis_);
   return result;
 }
 
