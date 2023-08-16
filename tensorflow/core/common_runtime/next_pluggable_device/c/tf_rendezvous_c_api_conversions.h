@@ -29,7 +29,7 @@ namespace c_api {
 
 class TfCThunkRendezvous final : public ::tensorflow::RendezvousInterface {
  public:
-  explicit TfCThunkRendezvous(const TF_RendezvousThunk& thunk)
+  explicit TfCThunkRendezvous(const TF_RendezvousThunk* thunk)
       : thunk_(thunk) {}
 
   ~TfCThunkRendezvous() override = default;
@@ -43,7 +43,7 @@ class TfCThunkRendezvous final : public ::tensorflow::RendezvousInterface {
   void StartAbort(const Status& status) override;
 
  private:
-  const TF_RendezvousThunk thunk_;
+  const TF_RendezvousThunk* thunk_;
 };
 
 }  // namespace c_api
