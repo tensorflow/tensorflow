@@ -27,6 +27,7 @@ cc_library(
     ],
     deps = [
         ":auto_sharding_cost_graph",
+        ":auto_sharding_option",
         ":auto_sharding_solver",
         ":auto_sharding_solver_option",
         ":auto_sharding_strategy",
@@ -110,6 +111,19 @@ cc_library(
     deps = [
         ":auto_sharding_strategy",
         ":matrix",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "auto_sharding_option",
+    hdrs = ["auto_sharding_option.h"],
+    deps = [
+        ":auto_sharding_util",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
 )
