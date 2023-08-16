@@ -6,6 +6,13 @@ package(
     licenses = ["notice"],
 )
 
+config_setting(
+    name = "static_gen",
+    define_values = {
+        "TF_API_INIT_LOADING": "static",
+    },
+)
+
 bzl_library(
     name = "apis_bzl",
     srcs = ["apis.bzl"],
@@ -19,6 +26,8 @@ bzl_library(
     deps = [
         ":apis_bzl",
         ":patterns_bzl",
+        "//tensorflow/python/tools/api/generator:api_init_files",
+        "@bazel_skylib//lib:paths",
     ],
 )
 
