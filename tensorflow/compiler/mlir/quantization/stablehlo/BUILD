@@ -115,6 +115,7 @@ cc_library(
         "passes/bridge/convert_mhlo_quant_to_int.cc",
         "passes/bridge/convert_tf_quant_ops_to_mhlo.cc",
         "passes/bridge/convert_tf_quant_types.cc",
+        "passes/bridge/passes.cc",
     ],
     hdrs = [
         "passes/bridge/passes.h",
