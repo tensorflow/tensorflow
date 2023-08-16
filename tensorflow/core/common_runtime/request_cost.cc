@@ -15,10 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/request_cost.h"
 
+#include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 
 namespace tensorflow {

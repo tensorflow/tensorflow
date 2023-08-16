@@ -15,11 +15,21 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/batching_util/batch_resource_base.h"
 
+#include <cstdint>
+#include <memory>
+#include <vector>
+
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/memory/memory.h"
+#include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/common_runtime/cost_measurement.h"
 #include "tensorflow/core/common_runtime/cost_measurement_registry.h"
-#include "tensorflow/core/common_runtime/no_op_cost_measurement.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/common_runtime/request_cost.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.pb.h"
 
 namespace tensorflow {
 namespace serving {
@@ -48,7 +58,7 @@ REGISTER_COST_MEASUREMENT("test_gcu", TestGcuCostMeasurement);
 
 std::unique_ptr<BatchResourceBase::BatchTask> MakeBatchTask(
     const int64_t task_size, RequestCost* request_cost) {
-  auto task = absl::make_unique<BatchResourceBase::BatchTask>();
+  auto task = std::make_unique<BatchResourceBase::BatchTask>();
   task->inputs.push_back(Tensor(DT_DOUBLE, TensorShape({task_size, 1})));
   task->request_cost = request_cost;
   return task;

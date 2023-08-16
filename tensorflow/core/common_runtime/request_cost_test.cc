@@ -15,8 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/request_cost.h"
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/time/time.h"
-#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace {
