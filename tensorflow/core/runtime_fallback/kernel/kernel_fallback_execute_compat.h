@@ -19,14 +19,11 @@ limitations under the License.
 #include <optional>
 #include <string>
 
-#include "absl/base/attributes.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/threadpool_interface.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
-#include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_execute_compat.h"
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
-#include "tensorflow/tsl/platform/macros.h"
 #include "tfrt/core_runtime/op_attrs.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 #include "tfrt/host_context/chain.h"  // from @tf_runtime
@@ -52,14 +49,6 @@ tfrt::AsyncValueRef<tfrt::Chain> KernelFallbackExecuteCompatCoreRuntimeDispatch(
     llvm::MutableArrayRef<tfrt::RCReference<tfrt::AsyncValue>> results,
     const KernelFallbackCompatRequestState& fallback_request_state,
     const tfrt_stub::OpKernelRunner& op_kernel_runner);
-
-// Synchronously execute the kernel and returns error status if execution fails.
-tensorflow::Status KernelFallbackExecuteOpSyncHelper(
-    tfrt::string_view op_name, tfrt::string_view device_name,
-    llvm::ArrayRef<tfrt::AsyncValue*> args,
-    llvm::MutableArrayRef<tfrt::RCReference<tfrt::AsyncValue>> results,
-    const KernelFallbackCompatRequestState& fallback_request_state,
-    const tfrt_stub::OpKernelRunner& kernel_runner);
 
 }  // namespace tfd
 }  // namespace tensorflow
