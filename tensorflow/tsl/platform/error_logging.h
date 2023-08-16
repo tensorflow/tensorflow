@@ -16,12 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_ERROR_LOGGING_H_
 #define TENSORFLOW_TSL_PLATFORM_ERROR_LOGGING_H_
 
-#include "tensorflow/tsl/platform/platform.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 
-#if defined(PLATFORM_GOOGLE)
-#include "tensorflow/tsl/platform/google/error_logging.h"  // IWYU pragma: export
-#else
-#include "tensorflow/tsl/platform/default/error_logging.h"  // IWYU pragma: export
-#endif
+namespace tsl::error_logging {
+
+absl::Status Log(absl::string_view component, absl::string_view subcomponent,
+                 absl::string_view error_msg);
+
+}
 
 #endif  // TENSORFLOW_TSL_PLATFORM_ERROR_LOGGING_H_
