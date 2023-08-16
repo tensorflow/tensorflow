@@ -29,6 +29,9 @@ using ::tsl::testing::StatusIs;
 
 TEST(PjRtApiTest, SetAndGetGlobalPjRtApi) {
   PJRT_Api api;
+  api.struct_size = PJRT_Api_STRUCT_SIZE;
+  api.pjrt_api_version.major_version = PJRT_API_MAJOR;
+  api.pjrt_api_version.minor_version = PJRT_API_MINOR;
 
   TF_ASSERT_OK(pjrt::SetPjrtApi("CPU", &api));
   TF_ASSERT_OK_AND_ASSIGN(const PJRT_Api* output, pjrt::PjrtApi("CPU"));
@@ -51,6 +54,8 @@ TEST(PjRtApiTest, SetAndGetGlobalPjRtApi) {
 TEST(PjRtApiTest, InitPjRtPlugin) {
   PJRT_Api api;
   api.struct_size = PJRT_Api_STRUCT_SIZE;
+  api.pjrt_api_version.major_version = PJRT_API_MAJOR;
+  api.pjrt_api_version.minor_version = PJRT_API_MINOR;
   api.PJRT_Plugin_Initialize = pjrt::PJRT_Plugin_Initialize_NoOp;
   std::string plugin_name = "plugin";
   TF_ASSERT_OK(pjrt::SetPjrtApi(plugin_name, &api));
