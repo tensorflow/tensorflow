@@ -55,13 +55,10 @@ fi
 # --show-toplevel", but that wouldn't work for non-git repos (like if someone
 # downloaded TF as a zip archive).
 export TFCI_GIT_DIR=$(cd $(dirname "$0"); realpath ../../)
-
-# Expand to the full path of TFCI_OUTPUT_DIR
-export TFCI_OUTPUT_DIR=$(realpath "$TFCI_OUTPUT_DIR")
-
-# Make the output directory for outputting all build artifacts, and ensure all
-# further commands are executed inside of the $TFCI_GIT_DIR as well.
 cd "$TFCI_GIT_DIR"
+
+# Create and expand to the full path of TFCI_OUTPUT_DIR
+export TFCI_OUTPUT_DIR=$(realpath "$TFCI_OUTPUT_DIR")
 mkdir -p "$TFCI_OUTPUT_DIR"
 
 # In addition to dumping all script output to the terminal, place it into
