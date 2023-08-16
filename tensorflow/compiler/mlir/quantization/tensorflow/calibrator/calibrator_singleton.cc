@@ -14,10 +14,17 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibrator_singleton.h"
 
-#include <algorithm>
 #include <optional>
 #include <string>
-#include <utility>
+#include <vector>
+
+#include "absl/base/attributes.h"
+#include "absl/base/const_init.h"
+#include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics.pb.h"
+#include "tensorflow/core/framework/tensor.h"
 
 namespace tensorflow {
 namespace calibrator {
@@ -33,8 +40,7 @@ void CalibratorSingleton::ClearCollectedInformation() {
   absl::MutexLock lock(&lock_);
 
   CalibratorSingleton& instance = GetInstance();
-  instance.id_to_min_.clear();
-  instance.id_to_max_.clear();
+  instance.id_to_collector_.clear();
 }
 
 void CalibratorSingleton::ClearData(absl::string_view id) {
@@ -43,51 +49,47 @@ void CalibratorSingleton::ClearData(absl::string_view id) {
   CalibratorSingleton& instance = GetInstance();
 
   const std::string id_str{id};
-  instance.id_to_min_.erase(id_str);
-  instance.id_to_max_.erase(id_str);
+  instance.id_to_collector_[id_str].ClearData();
 }
 
-void CalibratorSingleton::ReportMinMax(absl::string_view id,
-                                       const float min_val,
-                                       const float max_val) {
+void CalibratorSingleton::Report(absl::string_view id,
+                                 absl::Span<float> data_span) {
   absl::MutexLock lock(&lock_);
 
   CalibratorSingleton& instance = GetInstance();
 
   const std::string id_str{id};
-
-  // Update the min value.
-  if (auto min_itr = instance.id_to_min_.find(id_str);
-      min_itr != instance.id_to_min_.end()) {
-    min_itr->second = std::min(min_val, min_itr->second);
-  } else {
-    instance.id_to_min_[id_str] = min_val;
-  }
-
-  // Update the max values.
-  if (auto max_itr = instance.id_to_max_.find(id_str);
-      max_itr != instance.id_to_max_.end()) {
-    max_itr->second = std::max(max_val, max_itr->second);
-  } else {
-    instance.id_to_max_[id_str] = max_val;
-  }
+  instance.id_to_collector_[id_str].Collect(data_span);
 }
 
-std::optional<std::pair<float, float>> CalibratorSingleton::GetMinMax(
+void CalibratorSingleton::Report(absl::string_view id,
+                                 const std::vector<float>& data_vec) {
+  absl::MutexLock lock(&lock_);
+
+  CalibratorSingleton& instance = GetInstance();
+
+  const std::string id_str{id};
+  instance.id_to_collector_[id_str].Collect(data_vec);
+}
+
+void CalibratorSingleton::Report(absl::string_view id,
+                                 const Tensor& data_tensor) {
+  absl::MutexLock lock(&lock_);
+
+  CalibratorSingleton& instance = GetInstance();
+
+  const std::string id_str{id};
+  instance.id_to_collector_[id_str].Collect(data_tensor);
+}
+
+std::optional<CalibrationStatistics> CalibratorSingleton::GetStatistics(
     absl::string_view id) {
   absl::MutexLock lock(&lock_);
 
   CalibratorSingleton& instance = GetInstance();
 
   const std::string id_str{id};
-  const auto min_itr = instance.id_to_min_.find(id_str);
-  const auto max_itr = instance.id_to_max_.find(id_str);
-  if (min_itr == instance.id_to_min_.end() ||
-      max_itr == instance.id_to_max_.end()) {
-    return std::nullopt;
-  }
-
-  return std::pair<float, float>{min_itr->second, max_itr->second};
+  return instance.id_to_collector_[id_str].GetStatistics();
 }
 
 }  // namespace calibrator

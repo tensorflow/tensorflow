@@ -15,15 +15,18 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_CALIBRATOR_CALIBRATOR_SINGLETON_H_
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_CALIBRATOR_CALIBRATOR_SINGLETON_H_
 
-#include <map>
 #include <optional>
 #include <string>
-#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
+#include "absl/types/span.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics.pb.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics_collector.h"
+#include "tensorflow/core/framework/tensor.h"
 
 namespace tensorflow {
 namespace calibrator {
@@ -36,18 +39,24 @@ class CalibratorSingleton {
   // Clears the collected data of the given node id.
   static void ClearData(absl::string_view id);
 
-  // Collects min and max values from the TensorFlow operator executions.
-  static void ReportMinMax(absl::string_view id, float min_val, float max_val);
+  // Reports data to singleton using float vector.
+  static void Report(absl::string_view id, const std::vector<float>& data_vec);
 
-  // Returns the min and max values of the given id.
-  static std::optional<std::pair<float, float>> GetMinMax(absl::string_view id);
+  // Reports data to singleton using absl::Span
+  static void Report(absl::string_view id, absl::Span<float> data_span);
+
+  static void Report(absl::string_view id, const Tensor& data_tensor);
+
+  // Returns the calibration statistics of the given id.
+  static std::optional<CalibrationStatistics> GetStatistics(
+      absl::string_view id);
 
  private:
   static CalibratorSingleton& GetInstance();
   static absl::Mutex lock_;
 
-  absl::flat_hash_map<std::string, float> id_to_min_;
-  absl::flat_hash_map<std::string, float> id_to_max_;
+  absl::flat_hash_map<std::string, CalibrationStatisticsCollector>
+      id_to_collector_;
 
   CalibratorSingleton() = default;
   ~CalibratorSingleton() = default;

@@ -137,6 +137,24 @@ message FreezeAllVariables {
   bool enabled = 1;
 }
 
+// TODO - b/294335910 : Reorganize the definition for calibration options.
+// Defines various calibration options. NEXT ID: 2
+message CalibrationOptions {
+  // Configurations for calibration methods.
+  // NEXT ID: 3
+  enum CalibrationMethod {
+    CALIBRATION_METHOD_UNSPECIFIED = 0;
+    // Use the min, max values of all sample datasets.
+    MIN_MAX = 1;
+    // Use the average of min, max values in each sample dataset.
+    AVERAGE_MIN_MAX = 2;
+  }
+
+  // Determines how to calibrate.
+  // The default calibration method is MIN_MAX.
+  CalibrationMethod calibration_method = 1;
+}
+
 // The data format of each sample in the representative dataset.
 message RepresentativeDataSample {
   map<string, TensorProto> tensor_proto_inputs = 2;
@@ -159,7 +177,7 @@ message RepresentativeDatasetFile {
 // 2) A set of supported operations.
 // 3) Unit wise quantization precision.
 // 4) Target hardware name.
-// NEXT ID: 15
+// NEXT ID: 16
 message QuantizationOptions {
   // The default quantization configuration for the model. If the below
   // unit-wise configuration does not exist, we use this quantization
@@ -233,4 +251,9 @@ message QuantizationOptions {
   // If set to true, it forces calibration in graph model instead of eager mode
   // when the context is in eager mode.
   bool force_graph_mode_calibration = 14;
+
+  // Defines calibration options for quantization. This option is only used for
+  // activation of static range quantization (SRQ). Quantization calibration
+  // method is set to MIN_MAX by default.
+  CalibrationOptions calibration_options = 15;
 }

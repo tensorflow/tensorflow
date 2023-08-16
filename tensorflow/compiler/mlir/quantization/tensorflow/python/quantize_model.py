@@ -24,6 +24,7 @@ import numpy as np
 
 from tensorflow.compiler.mlir.quantization.tensorflow import exported_model_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow import quantization_options_pb2 as quant_opts_pb2
+from tensorflow.compiler.mlir.quantization.tensorflow.calibrator import calibration_statistics_pb2 as calib_stats_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow.python import pywrap_quantize_model
 from tensorflow.compiler.mlir.quantization.tensorflow.python import representative_dataset as repr_dataset
 from tensorflow.compiler.mlir.quantization.tensorflow.python import save_model
@@ -46,6 +47,9 @@ from tensorflow.python.types import core
 # Type aliases for quant_opts_pb2 messages.
 _Method = quant_opts_pb2.QuantizationMethod.Method
 _ExperimentalMethod = quant_opts_pb2.QuantizationMethod.ExperimentalMethod
+_CalibrationMethod = (
+    quant_opts_pb2.CalibrationOptions.CalibrationMethod
+)
 
 _QuantizationComponent = (
     quant_opts_pb2.QuantizationComponentSpec.QuantizationComponent
@@ -610,7 +614,52 @@ def _run_static_range_qat(
   _copy_assets(src_saved_model_path, dst_saved_model_path)
 
 
-def _add_calibration_statistics(graph_def: graph_pb2.GraphDef) -> None:
+def _get_min_max_from_calibrator(
+    node_id: bytes,
+    calib_opts: quant_opts_pb2.CalibrationOptions,
+) -> tuple[float, float]:
+  """Calculate min and max from statistics using calibration options.
+
+  Args:
+    node_id: bytes of node id.
+    calib_opts: Calibration options used for calculating min and max.
+
+  Returns:
+    (min_value, max_value): Min and max calculated using calib_opts.
+
+  Raises:
+    ValueError: Unsupported calibration method is given.
+  """
+  statistics: calib_stats_pb2.CalibrationStatistics = (
+      pywrap_quantize_model.get_statistics_from_calibrator(node_id)
+  )
+  calib_method = calib_opts.calibration_method
+  if calib_method == _CalibrationMethod.MIN_MAX:
+    min_max_statistics = statistics.min_max_statistics
+    min_value = min_max_statistics.global_min
+    max_value = min_max_statistics.global_max
+  elif calib_method == _CalibrationMethod.AVERAGE_MIN_MAX:
+    average_min_max_statistics = statistics.average_min_max_statistics
+    # num_samples is guaranteed to be larger than 0 because
+    # get_statistics_from_calibrator throws an exception if num_samples == 0.
+    min_value = (
+        average_min_max_statistics.min_sum
+        / average_min_max_statistics.num_samples
+    )
+    max_value = (
+        average_min_max_statistics.max_sum
+        / average_min_max_statistics.num_samples
+    )
+  else:
+    raise ValueError('Unsupported calibration method.')
+
+  return min_value, max_value
+
+
+def _add_calibration_statistics(
+    graph_def: graph_pb2.GraphDef,
+    calib_opts: quant_opts_pb2.CalibrationOptions,
+) -> None:
   """Adds calibration statistics to the graph def.
 
   This function must be run after running the graph with a representative
@@ -619,6 +668,7 @@ def _add_calibration_statistics(graph_def: graph_pb2.GraphDef) -> None:
 
   Args:
     graph_def: GraphDef to add calibration statistics to.
+    calib_opts: Calibration options to calculate min and max.
   """
   for function_def in graph_def.library.function:
     for node_def in function_def.node_def:
@@ -627,11 +677,11 @@ def _add_calibration_statistics(graph_def: graph_pb2.GraphDef) -> None:
 
       node_id = node_def.attr['id'].s
       try:
-        min_val = pywrap_quantize_model.get_min_from_calibrator(node_id)
-        max_val = pywrap_quantize_model.get_max_from_calibrator(node_id)
+        min_value, max_value = _get_min_max_from_calibrator(node_id, calib_opts)
         pywrap_quantize_model.clear_data_from_calibrator(node_id)
-        node_def.attr['min'].f = float(min_val)
-        node_def.attr['max'].f = float(max_val)
+
+        node_def.attr['min'].f = min_value
+        node_def.attr['max'].f = max_value
       except ValueError:
         logging.warn(
             (
@@ -738,7 +788,8 @@ def _run_static_range_ptq(
       representative_dataset,
       quant_opts.force_graph_mode_calibration,
   )
-  _add_calibration_statistics(graph_def)
+
+  _add_calibration_statistics(graph_def, quant_opts.calibration_options)
 
   calibrated_model_path = tempfile.mkdtemp()
   save_model.save_model_v1(
@@ -1141,6 +1192,14 @@ def _populate_quantization_options_default_values(
     )
     quantization_options.quantization_method.experimental_method = (
         _ExperimentalMethod.STATIC_RANGE
+    )
+
+  if (
+      quantization_options.calibration_options.calibration_method
+      == _CalibrationMethod.CALIBRATION_METHOD_UNSPECIFIED
+  ):
+    quantization_options.calibration_options.calibration_method = (
+        _CalibrationMethod.MIN_MAX
     )
 
   # Check and populate quantization component spec
