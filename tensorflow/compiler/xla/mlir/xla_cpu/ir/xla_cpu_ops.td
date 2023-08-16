@@ -66,7 +66,7 @@ def AllReduceOp : XlaCpu_Op<"all_reduce",
         const bufferization::AnalysisState &state);
     bool bufferizesToMemoryWrite(OpOperand &opOperand,
         const bufferization::AnalysisState &state);
-    bufferization::AliasingOpResultList getAliasingOpResults(
+    bufferization::AliasingValueList getAliasingValues(
         OpOperand &opOperand, const bufferization::AnalysisState &state);
     LogicalResult bufferize(RewriterBase &rewriter,
         const bufferization::BufferizationOptions &options);
@@ -114,7 +114,7 @@ def CollectivePermuteOp : XlaCpu_Op<"collective_permute", [BufferizableOpInterfa
         const bufferization::AnalysisState &state) {
       return opOperand.getOperandNumber() == 1;
     }
-    bufferization::AliasingOpResultList getAliasingOpResults(
+    bufferization::AliasingValueList getAliasingValues(
         OpOperand &opOperand, const bufferization::AnalysisState &state) {
       if (opOperand.getOperandNumber() == 0) return {};
       return {{getOperation()->getOpResult(0),
@@ -157,7 +157,7 @@ def AllToAllOp : XlaCpu_Op<"all_to_all",
         const bufferization::AnalysisState &state) {
       return opOperand.getOperandNumber() >= getNumOperands() / 2;
     }
-    bufferization::AliasingOpResultList getAliasingOpResults(
+    bufferization::AliasingValueList getAliasingValues(
         OpOperand &opOperand, const bufferization::AnalysisState &state) {
       if (bufferizesToMemoryRead(opOperand, state)) return {};
       return {{getOperation()->getOpResult(opOperand.getOperandNumber() - getNumOperands() / 2),
@@ -193,7 +193,7 @@ def FftOp : XlaCpu_Op<"fft", [BufferizableOpInterface]> {
         const bufferization::AnalysisState &state) {
       return opOperand.getOperandNumber() == 1;
     }
-    bufferization::AliasingOpResultList getAliasingOpResults(
+    bufferization::AliasingValueList getAliasingValues(
         OpOperand &opOperand, const bufferization::AnalysisState &state) {
       if (opOperand.getOperandNumber() == 0) return {};
       return {{getOperation()->getOpResult(0),
@@ -228,7 +228,7 @@ def InfeedOp : XlaCpu_Op<"infeed", [BufferizableOpInterface]> {
         const bufferization::AnalysisState &state) {
       return true;
     }
-    bufferization::AliasingOpResultList getAliasingOpResults(
+    bufferization::AliasingValueList getAliasingValues(
         OpOperand &opOperand, const bufferization::AnalysisState &state) {
       return {{getOperation()->getOpResult(0),
                bufferization::BufferRelation::Equivalent}};
@@ -260,7 +260,7 @@ def OutfeedOp : XlaCpu_Op<"outfeed", [BufferizableOpInterface]> {
         const bufferization::AnalysisState &state) {
       return false;
     }
-    bufferization::AliasingOpResultList getAliasingOpResults(
+    bufferization::AliasingValueList getAliasingValues(
         OpOperand &opOperand, const bufferization::AnalysisState &state) {
       return {};
     }
@@ -310,7 +310,7 @@ def RngBitGeneratorOp : XlaCpu_Op<"rng_bit_generator", [BufferizableOpInterface]
         const bufferization::AnalysisState &state) {
       return opOperand.getOperandNumber() != 0;
     }
-    bufferization::AliasingOpResultList getAliasingOpResults(
+    bufferization::AliasingValueList getAliasingValues(
         OpOperand &opOperand, const bufferization::AnalysisState &state) {
       if (opOperand.getOperandNumber() == 0) return {};
       return {{getOperation()->getOpResult(opOperand.getOperandNumber()-1),
@@ -342,7 +342,7 @@ def AddDependencyOp : XlaCpu_Op<"add_dependency", [BufferizableOpInterface]> {
         const bufferization::AnalysisState &state) {
       return false;
     }
-    bufferization::AliasingOpResultList getAliasingOpResults(
+    bufferization::AliasingValueList getAliasingValues(
         OpOperand &opOperand, const bufferization::AnalysisState &state) {
       if (opOperand.getOperandNumber() == 0 || opOperand.getOperandNumber() == 1)
         return {};
@@ -400,7 +400,7 @@ def ConvolutionOp : XlaCpu_Op<"convolution", [BufferizableOpInterface]> {
         const bufferization::AnalysisState &state) {
       return opOperand.getOperandNumber() == 2;
     }
-    bufferization::AliasingOpResultList getAliasingOpResults(
+    bufferization::AliasingValueList getAliasingValues(
         OpOperand &opOperand, const bufferization::AnalysisState &state) {
       if (opOperand.getOperandNumber() < 2) return {};
       return {{getOperation()->getOpResult(0),
