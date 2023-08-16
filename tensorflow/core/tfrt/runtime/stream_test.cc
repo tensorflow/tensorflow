@@ -14,12 +14,21 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/runtime/stream.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/memory/memory.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_testutil.h"
 #include "tensorflow/tsl/platform/env.h"
@@ -35,13 +44,13 @@ using ::testing::ElementsAreArray;
 using ::testing::Pair;
 using ::testing::UnorderedElementsAre;
 
-class TestStreamInterface : public StreamInterface {
+class TestStreamInterface : public StreamControllerInterface {
  public:
-  TestStreamInterface() : StreamInterface("test_address") {}
+  TestStreamInterface() : StreamControllerInterface("test_address") {}
 };
 
 const bool kUnused = []() {
-  GetGlobalStreamInterfaceFactory().Register(
+  GetGlobalStreamInterfaceFactory().RegisterController(
       []() { return std::make_unique<TestStreamInterface>(); });
   return true;
 }();
