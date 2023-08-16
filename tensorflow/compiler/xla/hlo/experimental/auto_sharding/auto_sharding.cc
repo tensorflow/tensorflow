@@ -957,8 +957,7 @@ int64_t MaxNumTiles(const StrategyMap& strategy_map,
 // one to follow.
 std::pair<int64_t, bool> ChooseOperandToFollow(
     const StrategyMap& strategy_map, const InstructionDepthMap& depth_map,
-    const AliasMap& alias_map,
-    int64_t max_depth, const HloInstruction* ins) {
+    const AliasMap& alias_map, int64_t max_depth, const HloInstruction* ins) {
   // If an alias constraint is set, always follow its alias source.
   auto it = alias_map.find(ins);
   if (it != alias_map.end()) {
@@ -978,15 +977,15 @@ std::pair<int64_t, bool> ChooseOperandToFollow(
 
   for (int64_t i = 0; i < ins->operand_count(); ++i) {
     const HloInstruction* operand = ins->operand(i);
-      double priority = MaxNumTiles(strategy_map, operand) +
-                        depth_map.at(operand) * depth_normalizer;
-      if (priority > max_priority + range_delta) {
-        follow_idx = i;
-        tie = false;
-        max_priority = priority;
-      } else if (priority >= max_priority - range_delta) {
-        tie = true;
-      }
+    double priority = MaxNumTiles(strategy_map, operand) +
+                      depth_map.at(operand) * depth_normalizer;
+    if (priority > max_priority + range_delta) {
+      follow_idx = i;
+      tie = false;
+      max_priority = priority;
+    } else if (priority >= max_priority - range_delta) {
+      tie = true;
+    }
   }
   CHECK(follow_idx.has_value());
 
@@ -3005,8 +3004,7 @@ void CheckUserShardingPreservation(
                    << preserve_shardings.at(inst->name())[0].ToString()
                    << "\nbut it's empty.";
       } else if (!inst->sharding().IsTuple() &&
-                 preserve_shardings.at(inst->name())[0].ToString() !=
-                     inst->sharding().ToString()) {
+                 preserve_shardings.at(inst->name())[0] != inst->sharding()) {
         LOG(FATAL) << "User sharding is not preserved! Instruction with name "
                    << inst->name() << " should be: "
                    << preserve_shardings.at(inst->name())[0].ToString()
@@ -3538,8 +3536,6 @@ void AnnotateShardingWithSimpleHeuristic(
       }
 
       inst->set_sharding(output_spec);
-      // std::cerr << "ins: " << inst->ToString() << ", spec: " <<
-      // output_spec.ToString() << std::endl;
     } else if (inst->opcode() == HloOpcode::kDot) {
       const HloInstruction* lhs = inst->operand(0);
       const HloInstruction* rhs = inst->operand(1);
