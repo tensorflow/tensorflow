@@ -25,7 +25,7 @@ namespace {
 using ::testing::Pair;
 using ::testing::UnorderedElementsAre;
 
-TEST(RequestCostTest, Basic) {
+TEST(RequestCostTest, RecordCost) {
   RequestCost request_cost;
 
   request_cost.RecordCost(
@@ -47,6 +47,19 @@ TEST(RequestCostTest, Basic) {
                                    Pair("tpu_v2", absl::Milliseconds(22)),
                                    Pair("cpu_v1", absl::Milliseconds(33)),
                                    Pair("cpu_v2", absl::Milliseconds(44))));
+}
+
+TEST(RequestCostTest, RecordBatchMetrics) {
+  RequestCost request_cost;
+
+  request_cost.RecordBatchMetrics(RequestCost::BatchMetrics{
+      /*processed_size=*/8, /*input_size=*/8, /*padding_size=*/0});
+  request_cost.RecordBatchMetrics(RequestCost::BatchMetrics{
+      /*processed_size=*/4, /*input_size=*/2, /*padding_size=*/1});
+
+  EXPECT_THAT(request_cost.GetBatchMetrics(),
+              testing::ElementsAre(testing::FieldsAre(8, 8, 0),
+                                   testing::FieldsAre(4, 2, 1)));
 }
 
 }  // namespace
