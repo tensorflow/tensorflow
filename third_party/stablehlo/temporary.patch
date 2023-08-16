@@ -181,6 +181,217 @@ diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
  
  #-------------------------------------------------------------------------------
  # Directory setup
+diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/binary.mlir b/stablehlo/stablehlo/conversions/tosa/tests/binary.mlir
+--- stablehlo/stablehlo/conversions/tosa/tests/binary.mlir
++++ stablehlo/stablehlo/conversions/tosa/tests/binary.mlir
+@@ -30,15 +30,15 @@
+ 
+ // CHECK-LABEL: @compare_ne
+ func.func @compare_ne(%arg0 : tensor<10xi32>, %arg1 : tensor<10xi32>) -> tensor<10xi1> {
+-  // CHECK-DAG: %[[VAR0:.*]] = "tosa.equal"(%arg0, %arg1)
+-  // CHECK-DAG: %[[VAR1:.*]] = "tosa.logical_not"(%[[VAR0]])
++  // CHECK-DAG: %[[VAR0:.*]] = tosa.equal %arg0, %arg1
++  // CHECK-DAG: %[[VAR1:.*]] = tosa.logical_not %[[VAR0]]
+   %0 = "stablehlo.compare"(%arg0, %arg1) {comparison_direction = #stablehlo<comparison_direction NE>} : (tensor<10xi32>, tensor<10xi32>) -> tensor<10xi1>
+   return %0 : tensor<10xi1>
+ }
+ 
+ // CHECK-LABEL: @concatenate
+ func.func @concatenate(%arg0 : tensor<3x3xf32>, %arg1 : tensor<3x3xf32>) -> tensor<6x3xf32> {
+-  // CHECK: "tosa.concat"(%arg0, %arg1) <{axis = 0 : i64}> : (tensor<3x3xf32>, tensor<3x3xf32>) -> tensor<6x3xf32>
++  // CHECK: tosa.concat %arg0, %arg1 {axis = 0 : i32} : (tensor<3x3xf32>, tensor<3x3xf32>) -> tensor<6x3xf32>
+   %0 = "stablehlo.concatenate"(%arg0, %arg1) {dimension = 0 : i64} : (tensor<3x3xf32>, tensor<3x3xf32>) -> tensor<6x3xf32>
+   return %0 : tensor<6x3xf32>
+ }
+@@ -60,40 +60,40 @@
+ 
+ // CHECK-LABEL: @dot_vector_vector
+ func.func @dot_vector_vector(%arg0 : tensor<3xf32>, %arg1 : tensor<3xf32>) -> tensor<f32> {
+-  // CHECK-DAG: %[[VAR0:.*]] = "tosa.reshape"(%arg0) <{new_shape = array<i64: 1, 1, 3>}>
+-  // CHECK-DAG: %[[VAR1:.*]] = "tosa.reshape"(%arg1) <{new_shape = array<i64: 1, 3, 1>}>
+-  // CHECK-DAG: %[[VAR2:.*]] = "tosa.matmul"(%[[VAR0]], %[[VAR1]])
+-  // CHECK-DAG: %[[VAR3:.*]] = "tosa.reshape"(%[[VAR2]])
++  // CHECK-DAG: %[[VAR0:.*]] = tosa.reshape %arg0 {new_shape = array<i64: 1, 1, 3>}
++  // CHECK-DAG: %[[VAR1:.*]] = tosa.reshape %arg1 {new_shape = array<i64: 1, 3, 1>}
++  // CHECK-DAG: %[[VAR2:.*]] = tosa.matmul %[[VAR0]], %[[VAR1]]
++  // CHECK-DAG: %[[VAR3:.*]] = tosa.reshape %[[VAR2]]
+   %0 = "stablehlo.dot"(%arg0, %arg1) : (tensor<3xf32>, tensor<3xf32>) -> tensor<f32>
+   return %0 : tensor<f32>
+ }
+ 
+ // CHECK-LABEL: @dot_vector_matrix
+ func.func @dot_vector_matrix(%arg0 : tensor<2xf32>, %arg1 : tensor<2x3xf32>) -> tensor<3xf32> {
+-  // CHECK-DAG: %[[VAR0:.*]] = "tosa.reshape"(%arg0) <{new_shape = array<i64: 1, 1, 2>}>
+-  // CHECK-DAG: %[[VAR1:.*]] = "tosa.reshape"(%arg1) <{new_shape = array<i64: 1, 2, 3>}>
+-  // CHECK-DAG: %[[VAR2:.*]] = "tosa.matmul"(%[[VAR0]], %[[VAR1]])
+-  // CHECK-DAG: %[[VAR3:.*]] = "tosa.reshape"(%[[VAR2]])
++  // CHECK-DAG: %[[VAR0:.*]] = tosa.reshape %arg0 {new_shape = array<i64: 1, 1, 2>}
++  // CHECK-DAG: %[[VAR1:.*]] = tosa.reshape %arg1 {new_shape = array<i64: 1, 2, 3>}
++  // CHECK-DAG: %[[VAR2:.*]] = tosa.matmul %[[VAR0]], %[[VAR1]]
++  // CHECK-DAG: %[[VAR3:.*]] = tosa.reshape %[[VAR2]]
+   %0 = "stablehlo.dot"(%arg0, %arg1) : (tensor<2xf32>, tensor<2x3xf32>) -> tensor<3xf32>
+   return %0 : tensor<3xf32>
+ }
+ 
+ // CHECK-LABEL: @dot_matrix_vector
+ func.func @dot_matrix_vector(%arg0 : tensor<2x3xf32>, %arg1 : tensor<3xf32>) -> tensor<2xf32> {
+-  // CHECK-DAG: %[[VAR0:.*]] = "tosa.reshape"(%arg0) <{new_shape = array<i64: 1, 2, 3>}>
+-  // CHECK-DAG: %[[VAR1:.*]] = "tosa.reshape"(%arg1) <{new_shape = array<i64: 1, 3, 1>}>
+-  // CHECK-DAG: %[[VAR2:.*]] = "tosa.matmul"(%[[VAR0]], %[[VAR1]])
+-  // CHECK-DAG: %[[VAR3:.*]] = "tosa.reshape"(%[[VAR2]])
++  // CHECK-DAG: %[[VAR0:.*]] = tosa.reshape %arg0 {new_shape = array<i64: 1, 2, 3>}
++  // CHECK-DAG: %[[VAR1:.*]] = tosa.reshape %arg1 {new_shape = array<i64: 1, 3, 1>}
++  // CHECK-DAG: %[[VAR2:.*]] = tosa.matmul %[[VAR0]], %[[VAR1]]
++  // CHECK-DAG: %[[VAR3:.*]] = tosa.reshape %[[VAR2]]
+   %0 = "stablehlo.dot"(%arg0, %arg1) : (tensor<2x3xf32>, tensor<3xf32>) -> tensor<2xf32>
+   return %0 : tensor<2xf32>
+ }
+ 
+ // CHECK-LABEL: @dot_matrix_matrix
+ func.func @dot_matrix_matrix(%arg0 : tensor<2x3xf32>, %arg1 : tensor<3x4xf32>) -> tensor<2x4xf32> {
+-  // CHECK-DAG: %[[VAR0:.*]] = "tosa.reshape"(%arg0) <{new_shape = array<i64: 1, 2, 3>}>
+-  // CHECK-DAG: %[[VAR1:.*]] = "tosa.reshape"(%arg1) <{new_shape = array<i64: 1, 3, 4>}>
+-  // CHECK-DAG: %[[VAR2:.*]] = "tosa.matmul"(%[[VAR0]], %[[VAR1]])
+-  // CHECK-DAG: %[[VAR3:.*]] = "tosa.reshape"(%[[VAR2]])
++  // CHECK-DAG: %[[VAR0:.*]] = tosa.reshape %arg0 {new_shape = array<i64: 1, 2, 3>}
++  // CHECK-DAG: %[[VAR1:.*]] = tosa.reshape %arg1 {new_shape = array<i64: 1, 3, 4>}
++  // CHECK-DAG: %[[VAR2:.*]] = tosa.matmul %[[VAR0]], %[[VAR1]]
++  // CHECK-DAG: %[[VAR3:.*]] = tosa.reshape %[[VAR2]]
+   %0 = "stablehlo.dot"(%arg0, %arg1) : (tensor<2x3xf32>, tensor<3x4xf32>) -> tensor<2x4xf32>
+   return %0 : tensor<2x4xf32>
+ }
+diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/nullary.mlir b/stablehlo/stablehlo/conversions/tosa/tests/nullary.mlir
+--- stablehlo/stablehlo/conversions/tosa/tests/nullary.mlir
++++ stablehlo/stablehlo/conversions/tosa/tests/nullary.mlir
+@@ -18,7 +18,7 @@
+ // CHECK-LABEL: @iota_dimension_0
+ func.func @iota_dimension_0() -> tensor<4x8xf32> {
+   // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() <{value = dense<[0.000000e+00, 1.000000e+00, 2.000000e+00, 3.000000e+00]> : tensor<4xf32>}>
+-  // CHECK-DAG: %[[VAR1:.*]] = "tosa.tile"(%[[VAR0]]) <{multiples = array<i64: 1, 8>}>
++  // CHECK-DAG: %[[VAR1:.*]] = tosa.tile %[[VAR0]] {multiples = array<i64: 1, 8>}
+   %0 = "stablehlo.iota"() {iota_dimension = 0 : i64} : () -> (tensor<4x8xf32>)
+   return %0 : tensor<4x8xf32>
+ }
+@@ -26,7 +26,7 @@
+ // CHECK-LABEL: @iota_dimension_1
+ func.func @iota_dimension_1() -> tensor<4x8xi32> {
+   // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() <{value = dense<[0, 1, 2, 3, 4, 5, 6, 7]> : tensor<8xi32>}>
+-  // CHECK-DAG: %[[VAR1:.*]] = "tosa.tile"(%[[VAR0]]) <{multiples = array<i64: 4, 1>}>
++  // CHECK-DAG: %[[VAR1:.*]] = tosa.tile %[[VAR0]] {multiples = array<i64: 4, 1>}
+   %0 = "stablehlo.iota"() {iota_dimension = 1 : i64} : () -> (tensor<4x8xi32>)
+   return %0 : tensor<4x8xi32>
+ }
+diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/ternary.mlir b/stablehlo/stablehlo/conversions/tosa/tests/ternary.mlir
+--- stablehlo/stablehlo/conversions/tosa/tests/ternary.mlir
++++ stablehlo/stablehlo/conversions/tosa/tests/ternary.mlir
+@@ -2,7 +2,7 @@
+ 
+ // CHECK-LABEL: @concatenate
+ func.func @concatenate(%arg0 : tensor<5x2xf32>, %arg1 : tensor<5x5xf32>, %arg2 : tensor<5x7xf32>) -> tensor<5x14xf32> {
+-  // CHECK: "tosa.concat"(%arg0, %arg1, %arg2) <{axis = 1 : i64}> : (tensor<5x2xf32>, tensor<5x5xf32>, tensor<5x7xf32>) -> tensor<5x14xf32>
++  // CHECK: tosa.concat %arg0, %arg1, %arg2 {axis = 1 : i32} : (tensor<5x2xf32>, tensor<5x5xf32>, tensor<5x7xf32>) -> tensor<5x14xf32>
+   %0 = "stablehlo.concatenate"(%arg0, %arg1, %arg2) {dimension = 1 : i64} : (tensor<5x2xf32>, tensor<5x5xf32>, tensor<5x7xf32>) -> tensor<5x14xf32>
+   return %0 : tensor<5x14xf32>
+ }
+diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/unary.mlir b/stablehlo/stablehlo/conversions/tosa/tests/unary.mlir
+--- stablehlo/stablehlo/conversions/tosa/tests/unary.mlir
++++ stablehlo/stablehlo/conversions/tosa/tests/unary.mlir
+@@ -31,8 +31,8 @@
+ // CHECK-LABEL: @exponential_minus_one
+ func.func @exponential_minus_one(%arg : tensor<10xf32>) -> tensor<10xf32> {
+   // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() <{value = dense<1.000000e+00>
+-  // CHECK-DAG: %[[VAR1:.*]] = "tosa.exp"(%arg0)
+-  // CHECK-DAG: %[[VAR2:.*]] = "tosa.sub"(%[[VAR1]], %[[VAR0]])
++  // CHECK-DAG: %[[VAR1:.*]] = tosa.exp %arg0
++  // CHECK-DAG: %[[VAR2:.*]] = tosa.sub %[[VAR1]], %[[VAR0]]
+   %0 = "stablehlo.exponential_minus_one"(%arg) : (tensor<10xf32>) -> tensor<10xf32>
+   return %0 : tensor<10xf32>
+ }
+@@ -47,9 +47,9 @@
+ // CHECK-LABEL: @is_finite
+ func.func @is_finite(%arg : tensor<10xf32>) -> tensor<10xi1> {
+   // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() <{value = dense<0x7F800000>
+-  // CHECK-DAG: %[[VAR1:.*]] = "tosa.abs"(%arg0)
+-  // CHECK-DAG: %[[VAR2:.*]] = "tosa.equal"(%[[VAR1]], %[[VAR0]])
+-  // CHECK-DAG: %[[VAR3:.*]] = "tosa.logical_not"(%[[VAR2]])
++  // CHECK-DAG: %[[VAR1:.*]] = tosa.abs %arg0
++  // CHECK-DAG: %[[VAR2:.*]] = tosa.equal %[[VAR1]], %[[VAR0]]
++  // CHECK-DAG: %[[VAR3:.*]] = tosa.logical_not %[[VAR2]]
+   %0 = "stablehlo.is_finite"(%arg) : (tensor<10xf32>) -> tensor<10xi1>
+   return %0 : tensor<10xi1>
+ }
+@@ -64,8 +64,8 @@
+ // CHECK-LABEL: @log_plus_one
+ func.func @log_plus_one(%arg : tensor<10xf16>) -> tensor<10xf16> {
+   // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() <{value = dense<1.000000e+00>
+-  // CHECK-DAG: %[[VAR1:.*]] = "tosa.add"(%arg0, %[[VAR0]])
+-  // CHECK-DAG: %[[VAR2:.*]] = "tosa.log"(%[[VAR1]])
++  // CHECK-DAG: %[[VAR1:.*]] = tosa.add %arg0, %[[VAR0]]
++  // CHECK-DAG: %[[VAR2:.*]] = tosa.log %[[VAR1]]
+   %0 = "stablehlo.log_plus_one"(%arg) : (tensor<10xf16>) -> tensor<10xf16>
+   return %0 : tensor<10xf16>
+ }
+@@ -79,7 +79,7 @@
+ 
+ // CHECK-LABEL: @slice
+ func.func @slice(%arg : tensor<4x3xf32>) -> tensor<2x2xf32> {
+-  // CHECK: "tosa.slice"(%arg0) <{size = array<i64: 2, 2>, start = array<i64: 2, 1>}>
++  // CHECK: tosa.slice %arg0 {size = array<i64: 2, 2>, start = array<i64: 2, 1>}
+   %0 = "stablehlo.slice"(%arg) {
+     start_indices = dense<[2, 1]> : tensor<2xi64>,
+     limit_indices = dense<[4, 3]> : tensor<2xi64>,
+@@ -122,7 +122,7 @@
+ // CHECK-LABEL: @transpose
+ func.func @transpose(%arg0: tensor<1x2x3xf32>) -> tensor<3x2x1xf32> {
+   // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() <{value = dense<[2, 1, 0]> : tensor<3xi64>}> : () -> tensor<3xi64>
+-  // CHECK-DAG: %[[VAR1:.*]] = "tosa.transpose"(%arg0, %[[VAR0]])
++  // CHECK-DAG: %[[VAR1:.*]] = tosa.transpose %arg0, %[[VAR0]]
+   %0 = "stablehlo.transpose"(%arg0) {permutation = dense<[2, 1, 0]> : tensor<3xi64>} : (tensor<1x2x3xf32>) -> tensor<3x2x1xf32>
+   return %0 : tensor<3x2x1xf32>
+ }
+@@ -131,15 +131,14 @@
+ func.func @while(%arg0: tensor<i32>) -> tensor<i32> {
+   // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() <{value = dense<3> : tensor<i32>}
+   // CHECK-DAG: %[[VAR1:.*]] = "tosa.const"() <{value = dense<1> : tensor<i32>}
+-  // CHECK:     %[[VAR2:.*]] = "tosa.while_loop"(%arg0) ({
+-  // CHECK:     ^bb0(%[[ARG0:.+]]: tensor<i32>):
+-  // CHECK:       %[[VAR3:.*]] = "tosa.equal"(%[[ARG0]], %[[VAR0]])
+-  // CHECK:       "tosa.yield"(%[[VAR3]])
+-  // CHECK:     }, {
+-  // CHECK:     ^bb0(%[[ARG0:.+]]: tensor<i32>):
+-  // CHECK:       %[[VAR4:.*]] = "tosa.add"(%[[ARG0]], %[[VAR1]])
+-  // CHECK:       "tosa.yield"(%[[VAR4]])
+-  // CHECK:     }) : (tensor<i32>) -> tensor<i32>
++  // CHECK:     %[[VAR2:.*]] = tosa.while_loop (%[[ARG1:.+]] = %arg0) : (tensor<i32>) -> tensor<i32> {
++  // CHECK:       %[[VAR3:.*]] = tosa.equal %[[ARG1]], %[[VAR0]]
++  // CHECK:       tosa.yield %[[VAR3]]
++  // CHECK:     } do {
++  // CHECK:     ^bb0(%[[ARG1:.+]]: tensor<i32>):
++  // CHECK:       %[[VAR4:.*]] = tosa.add %[[ARG1]], %[[VAR1]]
++  // CHECK:       tosa.yield %[[VAR4]]
++  // CHECK:     }
+   // CHECK:     return %[[VAR2]] : tensor<i32>
+   // CHECK:   }
+   %0 = "stablehlo.while"(%arg0) ( {
+diff --ruN a/stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.cpp b/stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.cpp
+--- stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.cpp
++++ stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.cpp
+@@ -335,13 +335,13 @@
+       reduceOpResult =
+           rewriter
+               .create<tosa::ReduceSumOp>(op->getLoc(), innerTy, operand,
+-                                         rewriter.getI64IntegerAttr(dimension))
++                                         rewriter.getI32IntegerAttr(dimension))
+               .getResult();
+     } else if (isa<stablehlo::MaxOp>(innerOp)) {
+       reduceOpResult =
+           rewriter
+               .create<tosa::ReduceMaxOp>(op->getLoc(), innerTy, operand,
+-                                         rewriter.getI64IntegerAttr(dimension))
++                                         rewriter.getI32IntegerAttr(dimension))
+               .getResult();
+     } else {
+       return rewriter.notifyMatchFailure(
 diff --ruN a/stablehlo/stablehlo/dialect/Base.cpp b/stablehlo/stablehlo/dialect/Base.cpp
 --- stablehlo/stablehlo/dialect/Base.cpp
 +++ stablehlo/stablehlo/dialect/Base.cpp

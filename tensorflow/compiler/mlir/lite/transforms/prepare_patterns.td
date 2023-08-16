@@ -140,7 +140,7 @@ def ReorderTransposeDequantQuantUsedByConv :
                                 (UpdateShapeWithAxis<0> $qtype, $old_value))),
   [(UsedBy<"Conv2D"> $old_value),
    (CanUpdateShapeWithAxis<0> $qtype, $old_value)],
-  (addBenefit 10)>;
+  [], (addBenefit 10)>;
 
 // The axis is set to 3, because this reshape is from the legalization of
 // tf.depthwiseconvnative and the new channel axis is the last dimension.
@@ -152,7 +152,7 @@ def ReorderReshapeDequantQuantUsedByDepthwiseConv :
               (UpdateShapeWithAxis<3> $qtype, $old_value))),
   [(UsedBy<"DepthwiseConv2D"> $old_value),
    (CanUpdateShapeWithAxis<3> $qtype, $old_value)],
-  (addBenefit 10)>;
+  [], (addBenefit 10)>;
 
 // The Rank op produces result which is independent with the quantization
 // parameters of the input, so we can remove the quantization ops.

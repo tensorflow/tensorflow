@@ -24,5 +24,4 @@ include "stablehlo/dialect/StablehloOps.td"
 def ConvertStableHloConstToArithConst : Pat<
   (StableHLO_ConstantOp:$res ElementsAttr:$value),
   (Arith_ConstantOp $value),
-  [(AnyStaticShapeTensor $res)], (addBenefit 10)>;
-  
+  [(AnyStaticShapeTensor $res)], [], (addBenefit 10)>;

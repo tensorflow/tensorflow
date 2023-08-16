@@ -2169,7 +2169,7 @@ LogicalResult ConvertTFLConcatenationOp::matchAndRewrite(
   {
     auto tmpAttr = tfl_concat_op.getAxisAttr();
     if (!tmpAttr) {
-      tmpAttr = rewriter.getI64IntegerAttr(0);
+      tmpAttr = rewriter.getI32IntegerAttr(0);
     }
     axis_attr = tmpAttr;
   }
@@ -2634,7 +2634,7 @@ LogicalResult ConvertTFLL2NormalizationOp::matchAndRewrite(
                                              input, shift);
     auto sum = CreateOpAndInfer<tosa::ReduceSumOp>(
         rewriter, loc, result_ty, mul,
-        rewriter.getI64IntegerAttr(input_ty.getRank() - 1));
+        rewriter.getI32IntegerAttr(input_ty.getRank() - 1));
 
     SmallVector<float> min(1, sqrt(std::numeric_limits<float>::min()));
     Value min_val = getConstTensor<float>(rewriter, op, min, {}).value();
@@ -2766,7 +2766,7 @@ LogicalResult ConvertTFLPackOp::matchAndRewrite(
   IntegerAttr axis_attr;
   {
     auto tmpAttr = tfl_pack_op.getAxisAttr();
-    if (!tmpAttr) tmpAttr = rewriter.getI64IntegerAttr(0);
+    if (!tmpAttr) tmpAttr = rewriter.getI32IntegerAttr(0);
     axis_attr = tmpAttr;
   }
   int32_t axis_i32 = axis_attr.getInt();
@@ -2788,7 +2788,7 @@ LogicalResult ConvertTFLUnpackOp::matchAndRewrite(
   IntegerAttr axis_attr;
   {
     auto tmpAttr = tfl_unpack_op.getAxisAttr();
-    if (!tmpAttr) tmpAttr = rewriter.getI64IntegerAttr(0);
+    if (!tmpAttr) tmpAttr = rewriter.getI32IntegerAttr(0);
     axis_attr = tmpAttr;
   }
   int32_t axis_i32 = axis_attr.getInt();
@@ -3129,7 +3129,7 @@ LogicalResult ConvertTFLBucketizeOp::matchAndRewrite(
 
   auto sum = CreateOpAndInfer<tosa::ReduceSumOp>(
       rewriter, loc, output_type, casted,
-      rewriter.getI64IntegerAttr(input_type.getRank()));
+      rewriter.getI32IntegerAttr(input_type.getRank()));
 
   CreateReplaceOpAndInfer<tosa::ReshapeOp>(
       rewriter, op, output_type, sum,
@@ -3876,7 +3876,7 @@ LogicalResult ConvertTFLReverseV2Op::matchAndRewrite(
     val = identity_op.getResult();
   } else {
     for (auto axis_val : axis_vals) {
-      auto axis_attr = rewriter.getI64IntegerAttr(axis_val);
+      auto axis_attr = rewriter.getI32IntegerAttr(axis_val);
       auto reverse_op = CreateOpAndInfer<tosa::ReverseOp>(
           rewriter, op->getLoc(), input_type, val, axis_attr);
 
@@ -4175,7 +4175,7 @@ LogicalResult ConvertTFLSparseToDenseOp::matchAndRewrite(
 
   Value reduce_op = CreateOpAndInfer<tosa::ReduceSumOp>(
       rewriter, loc, UnrankedTensorType::get(indices_ety), multiply_op,
-      rewriter.getI64IntegerAttr(1));
+      rewriter.getI32IntegerAttr(1));
 
   auto values_reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
       rewriter, loc, UnrankedTensorType::get(result_ety), values,
@@ -4237,9 +4237,9 @@ LogicalResult ConvertTFLArgMaxOp::matchAndRewrite(
     dim += input_type.getRank();
   }
 
-  CreateReplaceOpAndInfer<tosa::ArgMaxOp>(
-      rewriter, op, arg_max_op.getType(), arg_max_op.getInput(),
-      rewriter.getIntegerAttr(rewriter.getI64Type(), dim));
+  CreateReplaceOpAndInfer<tosa::ArgMaxOp>(rewriter, op, arg_max_op.getType(),
+                                          arg_max_op.getInput(),
+                                          rewriter.getI32IntegerAttr(dim));
 
   return success();
 }
@@ -4280,9 +4280,9 @@ LogicalResult ConvertTFLArgMinOp::matchAndRewrite(
         rewriter, loc, input_ty.clone(input_ety), reverse_val, input);
   }
 
-  CreateReplaceOpAndInfer<tosa::ArgMaxOp>(
-      rewriter, op, arg_max_op.getType(), input,
-      rewriter.getIntegerAttr(rewriter.getI64Type(), dim));
+  CreateReplaceOpAndInfer<tosa::ArgMaxOp>(rewriter, op, arg_max_op.getType(),
+                                          input,
+                                          rewriter.getI32IntegerAttr(dim));
 
   return success();
 }
@@ -4514,7 +4514,7 @@ LogicalResult ConvertTFLRFFT2dOp::matchAndRewrite(
 
   llvm::SmallVector<Value, 2> values = {reshape_1, reshape_2};
   auto concat = CreateOpAndInfer<tosa::ConcatOp>(rewriter, loc, fp32_ty, values,
-                                                 rewriter.getI64IntegerAttr(3));
+                                                 rewriter.getI32IntegerAttr(3));
 
   CreateReplaceOpAndInfer<mlir::UnrealizedConversionCastOp>(
       rewriter, op, output_type, concat.getResult());
