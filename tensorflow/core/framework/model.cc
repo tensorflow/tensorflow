@@ -2888,13 +2888,13 @@ bool Model::UpsizeBuffers(std::shared_ptr<Node> snapshot, int64_t ram_budget) {
     parameter->value = std::min(parameter->max, new_value);
     VLOG(2) << "Upsize buffer " << node->long_name() << "::" << parameter->name
             << " from " << old_value << " to " << parameter->value;
-    if (parameter->value != parameter->state->value) {
-      {
-        mutex_lock l(*parameter->state->mu);
+    {
+      mutex_lock l(*parameter->state->mu);
+      if (parameter->value != parameter->state->value) {
         parameter->state->value = parameter->value;
         parameter->state->cond_var->notify_all();
+        upsized = true;
       }
-      upsized = true;
     }
   }
   return upsized;
