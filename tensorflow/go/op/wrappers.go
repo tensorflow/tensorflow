@@ -16747,6 +16747,45 @@ func FFT3D(scope *Scope, input tf.Output) (output tf.Output) {
 	return op.Output(0)
 }
 
+// ND fast Fourier transform.
+//
+// Computes the n-dimensional discrete Fourier transform over
+// designated dimensions of `input`. The designated dimensions of
+// `input` are assumed to be the result of `FFTND`.
+//
+// If fft_length[i]<shape(input)[i], the input is cropped. If
+// fft_length[i]>shape(input)[i], the input is padded with zeros. If fft_length
+// is not given, the default shape(input) is used.
+//
+// Axes mean the dimensions to perform the transform on. Default is to perform on
+// all axes.
+//
+// Arguments:
+//
+//	input: A complex tensor.
+//	fft_length: An int32 tensor. The FFT length for each dimension.
+//	axes: An int32 tensor with a same shape as fft_length. Axes to perform the transform.
+//
+// Returns A complex tensor of the same shape as `input`. The designated
+// dimensions of `input` are replaced with their Fourier transforms.
+//
+// @compatibility(numpy)
+// Equivalent to np.fft.fftn.
+// @end_compatibility
+func FFTND(scope *Scope, input tf.Output, fft_length tf.Output, axes tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "FFTND",
+		Input: []tf.Input{
+			input, fft_length, axes,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // FIFOQueueV2Attr is an optional argument to FIFOQueueV2.
 type FIFOQueueV2Attr func(optionalAttr)
 
@@ -19962,6 +20001,46 @@ func IFFT3D(scope *Scope, input tf.Output) (output tf.Output) {
 	return op.Output(0)
 }
 
+// ND inverse fast Fourier transform.
+//
+// Computes the n-dimensional inverse discrete Fourier transform over designated
+// dimensions of `input`. The designated dimensions of `input` are assumed to be
+// the result of `IFFTND`.
+//
+// If fft_length[i]<shape(input)[i], the input is cropped. If
+// fft_length[i]>shape(input)[i], the input is padded with zeros. If fft_length
+// is not given, the default shape(input) is used.
+//
+// Axes mean the dimensions to perform the transform on. Default is to perform on
+// all axes.
+//
+// Arguments:
+//
+//	input: A complex tensor.
+//	fft_length: An int32 tensor. The FFT length for each dimension.
+//	axes: An int32 tensor with a same shape as fft_length. Axes to perform the transform.
+//
+// Returns A complex tensor of the same shape as `input`. The designated dimensions of
+// `input` are replaced with their inverse Fourier
+// transforms.
+//
+// @compatibility(numpy)
+// Equivalent to np.fft.fftn.
+// @end_compatibility
+func IFFTND(scope *Scope, input tf.Output, fft_length tf.Output, axes tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "IFFTND",
+		Input: []tf.Input{
+			input, fft_length, axes,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // IRFFTAttr is an optional argument to IRFFT.
 type IRFFTAttr func(optionalAttr)
 
@@ -20134,6 +20213,62 @@ func IRFFT3D(scope *Scope, input tf.Output, fft_length tf.Output, optional ...IR
 		Type: "IRFFT3D",
 		Input: []tf.Input{
 			input, fft_length,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// IRFFTNDAttr is an optional argument to IRFFTND.
+type IRFFTNDAttr func(optionalAttr)
+
+// IRFFTNDTreal sets the optional Treal attribute to value.
+// If not specified, defaults to DT_FLOAT
+func IRFFTNDTreal(value tf.DataType) IRFFTNDAttr {
+	return func(m optionalAttr) {
+		m["Treal"] = value
+	}
+}
+
+// ND inverse real fast Fourier transform.
+//
+// Computes the n-dimensional inverse real discrete Fourier transform over
+// designated dimensions of `input`. The designated dimensions of `input` are
+// assumed to be the result of `IRFFTND`. The inner-most dimension contains the
+// `fft_length / 2 + 1` unique components of the DFT of a real-valued signal.
+//
+// If fft_length[i]<shape(input)[i], the input is cropped. If
+// fft_length[i]>shape(input)[i], the input is padded with zeros. If fft_length
+// is not given, the default shape(input) is used.
+//
+// Axes mean the dimensions to perform the transform on. Default is to perform on
+// all axes.
+//
+// Arguments:
+//
+//	input: A complex tensor.
+//	fft_length: An int32 tensor. The FFT length for each dimension.
+//	axes: An int32 tensor with a same shape as fft_length. Axes to perform the transform.
+//
+// Returns A complex tensor of the same shape as `input`. The designated dimensions of
+// `input` are replaced with their inverse real Fourier transforms.
+//
+// @compatibility(numpy)
+// Equivalent to np.fft.irfftn.
+// @end_compatibility
+func IRFFTND(scope *Scope, input tf.Output, fft_length tf.Output, axes tf.Output, optional ...IRFFTNDAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "IRFFTND",
+		Input: []tf.Input{
+			input, fft_length, axes,
 		},
 		Attrs: attrs,
 	}
@@ -34742,6 +34877,62 @@ func RFFT3D(scope *Scope, input tf.Output, fft_length tf.Output, optional ...RFF
 		Type: "RFFT3D",
 		Input: []tf.Input{
 			input, fft_length,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// RFFTNDAttr is an optional argument to RFFTND.
+type RFFTNDAttr func(optionalAttr)
+
+// RFFTNDTcomplex sets the optional Tcomplex attribute to value.
+// If not specified, defaults to DT_COMPLEX64
+func RFFTNDTcomplex(value tf.DataType) RFFTNDAttr {
+	return func(m optionalAttr) {
+		m["Tcomplex"] = value
+	}
+}
+
+// ND fast real Fourier transform.
+//
+// Computes the n-dimensional real discrete Fourier transform over designated
+// dimensions of `input`. The designated dimensions of `input` are assumed to be
+// the result of `RFFTND`. The length of the last axis transformed will be
+// fft_length[-1]//2+1.
+//
+// If fft_length[i]<shape(input)[i], the input is cropped. If
+// fft_length[i]>shape(input)[i], the input is padded with zeros. If fft_length
+// is not given, the default shape(input) is used.
+//
+// Axes mean the dimensions to perform the transform on. Default is to perform on
+// all axes.
+//
+// Arguments:
+//
+//	input: A complex tensor.
+//	fft_length: An int32 tensor. The FFT length for each dimension.
+//	axes: An int32 tensor with a same shape as fft_length. Axes to perform the transform.
+//
+// Returns A complex tensor of the same shape as `input`. The designated
+// dimensions of `input` are replaced with their real Fourier transforms.
+//
+// @compatibility(numpy)
+// Equivalent to np.fft.rfftn.
+// @end_compatibility
+func RFFTND(scope *Scope, input tf.Output, fft_length tf.Output, axes tf.Output, optional ...RFFTNDAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "RFFTND",
+		Input: []tf.Input{
+			input, fft_length, axes,
 		},
 		Attrs: attrs,
 	}
