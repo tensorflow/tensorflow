@@ -19,7 +19,6 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
-#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
@@ -32,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_program_group.h"
 #include "tensorflow/core/tpu/kernels/tpu_program_group_interface.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {

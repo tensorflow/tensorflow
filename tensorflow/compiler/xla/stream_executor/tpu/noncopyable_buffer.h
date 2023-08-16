@@ -27,9 +27,8 @@ limitations under the License.
 #include <utility>
 
 #include "absl/functional/function_ref.h"
-#include "absl/log/check.h"
 #include "absl/types/span.h"
-#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tensorflow/tsl/platform/mem.h"
 
 namespace tensorflow {

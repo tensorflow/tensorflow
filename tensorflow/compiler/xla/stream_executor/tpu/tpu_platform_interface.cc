@@ -15,12 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
 
-#include "absl/log/check.h"
-#include "absl/log/log.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/stream_executor/multi_platform_manager.h"
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
 #include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tensorflow/tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {

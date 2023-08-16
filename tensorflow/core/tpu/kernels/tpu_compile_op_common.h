@@ -22,7 +22,6 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
-#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "tensorflow/compiler/jit/shape_inference.h"
@@ -40,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_mesh_state_interface.h"
 #include "tensorflow/core/tpu/kernels/tpu_program_group_interface.h"
 #include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace tensorflow {
 namespace tpu {

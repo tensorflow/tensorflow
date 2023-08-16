@@ -22,7 +22,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/cleanup/cleanup.h"
-#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
@@ -55,6 +54,7 @@ limitations under the License.
 #include "tensorflow/core/tpu/tpu_defs.h"  // IWYU pragma: keep
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tensorflow/tsl/platform/tstring.h"
 #include "tensorflow/tsl/protobuf/error_codes.pb.h"
 

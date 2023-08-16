@@ -16,7 +16,6 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
-#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
@@ -27,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace tensorflow {
 namespace {

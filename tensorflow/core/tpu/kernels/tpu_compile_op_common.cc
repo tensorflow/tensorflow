@@ -24,8 +24,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/cleanup/cleanup.h"
-#include "absl/log/check.h"
-#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
@@ -74,6 +72,7 @@ limitations under the License.
 #include "tensorflow/core/tpu/tpu_configuration.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace {
 

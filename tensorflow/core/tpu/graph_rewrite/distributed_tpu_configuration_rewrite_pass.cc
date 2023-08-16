@@ -21,7 +21,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
@@ -37,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/tpu/tpu_init_mode.h"
 #include "tensorflow/core/util/dump_graph.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
