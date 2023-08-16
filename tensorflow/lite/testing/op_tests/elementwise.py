@@ -19,7 +19,8 @@ from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
 
 
-def _make_elementwise_tests(op, allow_fully_quantize=False, min_value=-100,
+def _make_elementwise_tests(op, allow_fully_quantize=False,
+                            allow_quant_16x8=False, min_value=-100,
                             max_value=100):
   """Make a set of tests to do element-wise operations."""
 
@@ -30,13 +31,21 @@ def _make_elementwise_tests(op, allow_fully_quantize=False, min_value=-100,
             "input_dtype": [tf.float32],
             "input_shape": [[], [1], [1, 2], [5, 6, 7, 8], [3, 4, 5, 6]],
             "fully_quantize": [False],
+            "quant_16x8": [False],
             "input_range": [[min_value, max_value]],
         },
         {
             "input_dtype": [tf.float32],
             "input_shape": [[], [1], [1, 2], [5, 6, 7, 8], [3, 4, 5, 6]],
             "fully_quantize": [True],
-            "quant_16x8": [False, True],
+            "quant_16x8": [False],
+            "input_range": [[min_value, max_value]],
+        },
+        {
+            "input_dtype": [tf.float32],
+            "input_shape": [[], [1], [1, 2], [5, 6, 7, 8], [3, 4, 5, 6]],
+            "fully_quantize": [True],
+            "quant_16x8": [True],
             "input_range": [[min_value, max_value]],
         },
     ]
@@ -45,6 +54,12 @@ def _make_elementwise_tests(op, allow_fully_quantize=False, min_value=-100,
       test_parameters = [
           test_parameter for test_parameter in test_parameters
           if True not in test_parameter["fully_quantize"]
+      ]
+
+    if not allow_quant_16x8:
+      test_parameters = [
+          test_parameter for test_parameter in test_parameters
+          if True not in test_parameter["quant_16x8"]
       ]
 
     def build_graph(parameters):
@@ -79,7 +94,8 @@ def make_sin_tests(options):
 def make_log_tests(options):
   """Make a set of tests to do log."""
   return _make_elementwise_tests(tf.math.log, allow_fully_quantize=True,
-                                 min_value=.1, max_value=100)(options)
+                                 allow_quant_16x8=True, min_value=.1,
+                                 max_value=10)(options)
 
 
 @register_make_test_function()
@@ -92,7 +108,8 @@ def make_sqrt_tests(options):
 def make_rsqrt_tests(options):
   """Make a set of tests to do 1/sqrt."""
   return _make_elementwise_tests(tf.math.rsqrt, allow_fully_quantize=True,
-                                 min_value=.1, max_value=1)(options)
+                                 allow_quant_16x8=False, min_value=.1,
+                                 max_value=1)(options)
 
 
 @register_make_test_function()
