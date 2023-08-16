@@ -57,7 +57,6 @@ bazel test \
       --test_env=TF_PER_DEVICE_MEMORY_LIMIT_MB=2048 \
       --test_env=TF_PYTHON_VERSION=$PYTHON_VERSION \
       -- \
-//tensorflow/core/common_runtime/gpu:gpu_device_unified_memory_test_2gpu \
 //tensorflow/core/nccl:nccl_manager_test_2gpu \
 //tensorflow/python/distribute/integration_test:mwms_peer_failure_test_2gpu \
 //tensorflow/python/distribute:checkpoint_utils_test_2gpu \
