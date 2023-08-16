@@ -39,6 +39,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
@@ -330,22 +331,33 @@ LogicalResult ConvertCompiledOpToHal<OpTy>::matchAndRewrite(
 
     auto rank = dst.getType().getRank();
 
-    // Cast src tensor to dynamic tensors to prevent folding at Flow level.
+    // Reshape src tensor to a dynamic tensor to prevent folding at Flow level.
     // TODO(ezhulenev): Find a solution that does not rely on compiler tricks.
     auto dyn_tensor =
         RankedTensorType::get(SmallVector<int64_t>(rank, ShapedType::kDynamic),
                               dst.getType().getElementType());
 
-    Value dyn_src =
-        b.create<IREE::Input::OptimizationBarrierOp>(
-             b.create<mlir::tensor::CastOp>(dyn_tensor, src).getResult())
-            .getResult(0);
+    // Construct constants and optimization barrier at the top of the parent
+    // block to avoid breaking command buffers with optimization barrier.
+    auto [dims, dims_barrier] = [&]() -> std::pair<ValueRange, ValueRange> {
+      OpBuilder::InsertionGuard guard(b);
+      b.setInsertionPointToStart(block);
 
-    // Materialize dynamic dimensions for passing them to tensor update op.
-    SmallVector<Value> dims = llvm::to_vector(
-        llvm::map_range(dst.getType().getShape(), [&](int64_t dim) -> Value {
-          return b.create<arith::ConstantIndexOp>(dim);
-        }));
+      // Materialize dynamic dimensions for passing them to tensor update op.
+      SmallVector<Value> dims = llvm::to_vector(
+          llvm::map_range(dst.getType().getShape(), [&](int64_t dim) -> Value {
+            return b.create<arith::ConstantIndexOp>(dim);
+          }));
+
+      // Add a barrier to prevent folding of reshape operation.
+      auto dims_barrier = b.create<IREE::Input::OptimizationBarrierOp>(dims);
+
+      return {ValueRange(dims), ValueRange(dims_barrier.getResults())};
+    }();
+
+    Value dyn_src = b.create<IREE::Input::TensorReshapeOp>(
+        dyn_tensor, src, /*source_dims=*/ValueRange(),
+        /*result_dims=*/dims_barrier);
 
     // Update dst tensor with src.
     SmallVector<Value> start_indices(rank, b.create<arith::ConstantIndexOp>(0));
