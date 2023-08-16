@@ -225,7 +225,7 @@ bool IsSupportedF8Pattern(HloInstruction *instr, HloInstruction *&x,
     return ShapeUtil::SameElementType(instr->shape(),
                                       instr->operand(0)->shape());
   };
-  auto allgather_allowed = [](const HloInstruction *instr) -> bool {
+  auto use_spmd_partitioning = [](const HloInstruction *instr) -> bool {
     return instr->GetModule()->config().use_spmd_partitioning();
   };
   for (int i = 3; i < subgraph->size(); ++i) {
@@ -239,7 +239,8 @@ bool IsSupportedF8Pattern(HloInstruction *instr, HloInstruction *&x,
             m::AnyOf<HloInstruction>(
                 m::Bitcast().WithPredicate(preserves_element_type),
                 m::Broadcast(), m::Copy(), m::Pad(), m::Reshape(), m::Slice(),
-                m::AllGather().WithPredicate(allgather_allowed)))) {
+                m::AllGather().WithPredicate(use_spmd_partitioning),
+                m::AllToAll().WithPredicate(use_spmd_partitioning)))) {
       VLOG(1) << "Possible intended FP8 GEMM operating on "
               << instr->ToShortString()
               << " not rewritten into FP8 Custom Call.";
