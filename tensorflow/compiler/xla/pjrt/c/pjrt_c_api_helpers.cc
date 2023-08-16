@@ -528,19 +528,6 @@ xla::Status ValidateCreateOptions(
   return tsl::OkStatus();
 }
 
-PJRT_SerializedExecutableDeleter MakeSerializedExecutableDeleter(
-    const PJRT_Api* api) {
-  return [api](PJRT_SerializedExecutable* serialized_executable) -> void {
-    PJRT_SerializedExecutable_Destroy_Args destroy_args;
-    destroy_args.struct_size =
-        PJRT_SerializedExecutable_Destroy_Args_STRUCT_SIZE;
-    destroy_args.priv = nullptr;
-    destroy_args.serialized_executable = serialized_executable;
-    pjrt::LogFatalIfPjrtError(
-        api->PJRT_SerializedExecutable_Destroy(&destroy_args), api);
-  };
-}
-
 static std::string StructSizeErrorMsg(absl::string_view struct_name,
                                       size_t expected_size,
                                       size_t actual_size) {

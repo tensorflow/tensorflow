@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
@@ -967,23 +968,10 @@ StatusOr<std::string> PjRtCApiExecutable::SerializeExecutable() const {
 
   RETURN_STATUS_IF_PJRT_ERROR(c_api->PJRT_Executable_Serialize(&ser_args),
                               c_api);
-  PJRT_SerializedExecutable* c_serialized_exec = ser_args.serialized_executable;
-  std::unique_ptr<PJRT_SerializedExecutable,
-                  ::pjrt::PJRT_SerializedExecutableDeleter>
-      serialized_executable(c_serialized_exec,
-                            ::pjrt::MakeSerializedExecutableDeleter(c_api));
-
-  PJRT_SerializedExecutable_Data_Args data_args;
-  data_args.struct_size = PJRT_SerializedExecutable_Data_Args_STRUCT_SIZE;
-  data_args.priv = nullptr;
-  data_args.serialized_executable = c_serialized_exec;
-  data_args.data = nullptr;
-  data_args.data_size = 0;
-
-  RETURN_STATUS_IF_PJRT_ERROR(c_api->PJRT_SerializedExecutable_Data(&data_args),
-                              c_api);
-
-  return std::string(data_args.data, data_args.data_size);
+  absl::Cleanup cleanup = [&ser_args] {
+    ser_args.serialized_executable_deleter(ser_args.serialized_executable);
+  };
+  return std::string(ser_args.serialized_bytes, ser_args.serialized_bytes_size);
 }
 
 // ------------------------ Loaded Executables ---------------------------------

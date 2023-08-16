@@ -1265,6 +1265,12 @@ PJRT_Error* PJRT_Executable_Serialize(PJRT_Executable_Serialize_Args* args) {
   }
   serialized_exec->serialized = std::move(serialization);
   args->serialized_executable = serialized_exec;
+  args->serialized_bytes = serialized_exec->serialized.data();
+  args->serialized_bytes_size = serialized_exec->serialized.size();
+  args->serialized_executable_deleter =
+      +[](PJRT_SerializedExecutable* serialized_executable) {
+        delete serialized_executable;
+      };
   return nullptr;
 }
 
@@ -1291,29 +1297,6 @@ PJRT_Error* PJRT_LoadedExecutable_GetExecutable(
       "PJRT_LoadedExecutable_GetExecutable_Args",
       PJRT_LoadedExecutable_GetExecutable_Args_STRUCT_SIZE, args->struct_size));
   args->executable = new PJRT_Executable{args->loaded_executable->executable};
-  return nullptr;
-}
-
-// -------------------------- Serialized Executables ---------------------------
-
-PJRT_Error* PJRT_SerializedExecutable_Destroy(
-    PJRT_SerializedExecutable_Destroy_Args* args) {
-  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
-      "PJRT_SerializedExecutable_Destroy_Args",
-      PJRT_SerializedExecutable_Destroy_Args_STRUCT_SIZE, args->struct_size));
-  if (args->serialized_executable != nullptr) {
-    delete args->serialized_executable;
-  }
-  return nullptr;
-}
-
-PJRT_Error* PJRT_SerializedExecutable_Data(
-    PJRT_SerializedExecutable_Data_Args* args) {
-  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
-      "PJRT_SerializedExecutable_Data_Args",
-      PJRT_SerializedExecutable_Data_Args_STRUCT_SIZE, args->struct_size));
-  args->data = args->serialized_executable->serialized.c_str();
-  args->data_size = args->serialized_executable->serialized.size();
   return nullptr;
 }
 
