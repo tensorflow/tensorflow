@@ -843,9 +843,11 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:statusor",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/tsl/profiler/utils:file_system_utils",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -868,6 +870,7 @@ cc_library(
     hdrs = ["xplane_to_tool_names.h"],
     deps = [
         ":repository",
+        ":xplane_to_dcn_collective_stats",
         ":xplane_to_hlo",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/profiler/utils:xplane_schema",
@@ -1014,5 +1017,25 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:dcn_slack_analysis_proto_cc",
         "//tensorflow/tsl/profiler/utils:math_utils",
         "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+cc_library(
+    name = "xplane_to_dcn_collective_stats",
+    srcs = ["xplane_to_dcn_collective_stats.cc"],
+    hdrs = ["xplane_to_dcn_collective_stats.h"],
+    copts = tf_profiler_copts(),
+    deps = [
+        ":dcn_slack_analysis_combiner",
+        ":repository",
+        ":xspace_to_dcn_slack_analysis",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/platform:statusor",
+        "//tensorflow/core/profiler/protobuf:dcn_slack_analysis_proto_cc",
+        "//tensorflow/core/profiler/utils:xplane_schema",
+        "//tensorflow/core/profiler/utils:xplane_utils",
+        "//tensorflow/tsl/platform:statusor",
+        "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
+        "@com_google_absl//absl/strings",
     ],
 )
