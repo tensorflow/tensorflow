@@ -1543,6 +1543,10 @@ StatusOr<LaunchDimensions> TritonWrapper(
   }
 
   CreateTritonPipeline(pm, cc, config.num_warps(), config.num_stages());
+  if (log_stream.has_value()) {
+    pm.printAsTextualPipeline(log_stream.value());
+    log_stream->write("\n\n", 2);
+  }
   // Triton generates pointers to the global address space, while XLA needs a
   // kernel signature with pointers to the generic address space.
   pm.addPass(std::make_unique<GeneralizeKernelSignaturePass>());
