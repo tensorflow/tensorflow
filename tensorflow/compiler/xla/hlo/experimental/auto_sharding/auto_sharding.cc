@@ -3013,8 +3013,8 @@ void CheckUserShardingPreservation(
         const std::vector<HloSharding>* preserve_shardings_tuple =
             &preserve_shardings.at(inst->name());
         for (size_t i = 0; i < inst->shape().tuple_shapes_size(); i++) {
-          if (preserve_shardings_tuple->at(i).ToString() !=
-              inst->sharding().tuple_elements().at(i).ToString()) {
+          if (preserve_shardings_tuple->at(i) !=
+              inst->sharding().tuple_elements().at(i)) {
             LOG(FATAL) << "Tuple sharding is not preserved! Instruction "
                           "with name "
                        << inst->name() << " " << i << "th tuple element "
