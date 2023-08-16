@@ -282,7 +282,6 @@ class FFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
-@test_util.disable_xla("b/155276727")
 class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
 
   def _tf_fft(self, x, rank, fft_length=None, feed_dict=None):
@@ -615,7 +614,10 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
     # Test case for GitHub issue 55263
     a = np.empty([6, 0])
     b = np.array([1, -1])
-    with self.assertRaisesRegex(errors.InvalidArgumentError, "must >= 0"):
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        "(.*must be greater or equal to.*)|(must >= 0)",
+    ):
       with self.session():
         v = fft_ops.rfft2d(input_tensor=a, fft_length=b)
         self.evaluate(v)

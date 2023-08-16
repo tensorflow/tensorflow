@@ -44,7 +44,7 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes. In JAX, reference this via jax._src.lib.xla_extension_version.
-_version = 176
+_version = 184
 
 # Version number for MLIR:Python components.
 mlir_api_version = 54
@@ -102,6 +102,9 @@ def make_gpu_client(distributed_client=None, node_id=0, num_nodes=1,
 
 
 def make_tfrt_tpu_c_api_client(options: Optional[_NameValueMapping] = None):
+  assert pjrt_plugin_loaded('tpu')
+  if not pjrt_plugin_initialized('tpu'):
+    initialize_pjrt_plugin('tpu')
   if options is None:
     options = {}
   return _xla.get_c_api_client('tpu', options)
@@ -115,11 +118,6 @@ def make_tfrt_tpu_c_api_device_topology(
     topology_name: str = '', **kwargs
 ) -> DeviceTopology:
   """Creates a PJRT C API TopologyDescription."""
-
-  if not _use_pjrt_c_api():
-    raise NotImplementedError(
-        'make_tfrt_tpu_c_api_device_topology only works with the pjrt c-api.'
-    )
   return _xla.get_default_c_api_topology('tpu', topology_name, dict(**kwargs))
 
 
@@ -129,6 +127,21 @@ def pjrt_plugin_loaded(plugin_name: str) -> bool:
 
 def load_pjrt_plugin_dynamically(plugin_name: str, library_path: str) -> None:
   _xla.load_pjrt_plugin(plugin_name, library_path)
+
+
+def pjrt_plugin_initialized(plugin_name: str) -> bool:
+  return _xla.pjrt_plugin_initialized(plugin_name)
+
+
+def initialize_pjrt_plugin(plugin_name: str) -> None:
+  """Initializes a PJRT plugin.
+
+  The plugin needs to be loaded first (through load_pjrt_plugin_dynamically or
+  static linking) before this method is called.
+  Args:
+    plugin_name: the name of the PJRT plugin.
+  """
+  _xla.initialize_pjrt_plugin(plugin_name)
 
 
 def make_c_api_client(
@@ -154,33 +167,12 @@ def make_c_api_client(
   return _xla.get_c_api_client(plugin_name, options, distributed_client)
 
 
-def _use_pjrt_c_api() -> bool:
-  use_pjrt_c_api = os.getenv('JAX_USE_PJRT_C_API_ON_TPU', 'false')
-  if use_pjrt_c_api not in ('1', '0', 'true', 'false'):
-    raise ValueError(
-        'JAX_USE_PJRT_C_API_ON_TPU env var must be "0", "1", "true" or '
-        f'"false", got "{use_pjrt_c_api}"')
-  return use_pjrt_c_api in ('1', 'true')
-
-
-def make_tpu_client(use_pjrt_c_api: bool = False):
+def make_tpu_client():
   """Returns a TPU client. Defaults to allowing 32 in-flight computations."""
-  if use_pjrt_c_api or _use_pjrt_c_api():
-    if not pjrt_plugin_loaded('tpu'):
-      library_path = os.getenv('TPU_LIBRARY_PATH', 'libtpu.so')
-      load_pjrt_plugin_dynamically('tpu', library_path)
-    return make_tfrt_tpu_c_api_client()
-
-  max_inflight_computations = os.getenv(
-      'JAX_TPU_MAX_INFLIGHT_COMPUTATIONS', '32')
-  try:
-    max_inflight_computations = int(max_inflight_computations)
-  except ValueError as e:
-    raise ValueError(
-        f'JAX_TPU_MAX_INFLIGHT_COMPUTATIONS env var must be an int, '
-        f'got {max_inflight_computations}') from e
-  return _xla.get_tpu_client(
-      max_inflight_computations=max_inflight_computations)
+  if not pjrt_plugin_loaded('tpu'):
+    library_path = os.getenv('TPU_LIBRARY_PATH', 'libtpu.so')
+    load_pjrt_plugin_dynamically('tpu', library_path)
+  return make_tfrt_tpu_c_api_client()
 
 
 class OpMetadata:
@@ -475,6 +467,7 @@ Client = _xla.Client
 Memory = _xla.Memory
 ArrayImpl = _xla.ArrayImpl
 LoadedExecutable = _xla.LoadedExecutable
+DeviceList = _xla.DeviceList
 OpSharding = _xla.OpSharding
 HloSharding = _xla.HloSharding
 Sharding = _xla.Sharding
@@ -787,3 +780,4 @@ weakref_lru_cache = _xla.weakref_lru_cache
 array_result_handler = _xla.array_result_handler
 copy_array_to_devices_with_sharding = _xla.copy_array_to_devices_with_sharding
 batched_device_put = _xla.batched_device_put
+check_and_canonicalize_memory_kind = _xla.check_and_canonicalize_memory_kind

@@ -1,3 +1,4 @@
+# Placeholder: load py_proto_library
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",
@@ -540,6 +541,22 @@ cc_library(
 )
 
 cc_library(
+    name = "tensor_matcher",
+    testonly = True,
+    srcs = ["tensor_matcher.cc"],
+    hdrs = ["tensor_matcher.h"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:portable_gif_internal",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
     name = "shape_inference_testutil",
     testonly = 1,
     srcs = ["shape_inference_testutil.cc"],
@@ -1039,12 +1056,7 @@ cc_library(
         "full_type_inference_util.h",
         "full_type_util.h",
     ],
-    visibility = [
-        # Necessary for calling REGISTER_OP with SetTypeConstructor
-        # http://yaqs/4779722181477138432
-        "//intelligence/brella/analytics/sql/tensorflow:__pkg__",
-        "//tensorflow:__subpackages__",
-    ],
+    visibility = ["//tensorflow:__subpackages__"],
     deps = [
         ":attr_value_proto_cc",
         ":full_type_proto_cc",
@@ -1304,6 +1316,7 @@ tf_cc_tests(
         "resource_op_kernel_test.cc",
         "shape_inference_test.cc",
         "shape_inference_testutil_test.cc",
+        "tensor_matcher_test.cc",
         "tensor_shape_test.cc",
         "tensor_slice_test.cc",
         "tensor_test.cc",
@@ -1324,6 +1337,7 @@ tf_cc_tests(
     ],
     deps = [
         ":op_kernel_test_base",
+        ":tensor_matcher",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/cc:function_ops",
@@ -1390,7 +1404,9 @@ cc_library(
     name = "loose_headers",
     tags = ["avoid_dep"],
     textual_hdrs = ["op_gen_lib.h"],
-    visibility = ["//tensorflow/c:__pkg__"],
+    visibility = [
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
+    ],
 )
 
 # All framework protos are self-contained, i.e. they only import other
@@ -1905,5 +1921,16 @@ tf_cc_fuzz_test(
         "//tensorflow/security/fuzzing/cc/core/framework:tensor_domains",
         "//tensorflow/security/fuzzing/cc/core/framework:tensor_shape_domains",
         "//tensorflow/tsl/lib/core:status_test_util",
+    ],
+)
+
+tf_cc_test(
+    name = "metrics_test",
+    srcs = ["metrics_test.cc"],
+    tags = ["no_oss"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core/lib/monitoring:cell_reader",
+        "@com_google_googletest//:gtest_main",
     ],
 )

@@ -137,16 +137,16 @@ func.func @test_conv2d_grouped_convolution(%input: tensor<1x4x1x128xf32>, %weigh
 // CHECK-DAG: %[[BIAS_SLICE_1:.*]] = "tosa.slice"(%arg2) <{size = array<i64: 128>, start = array<i64: 0>}>
 // CHECK-DAG: %[[CONV_1:.*]] = "tosa.conv2d"(%[[INPUT_SLICE_1]], %[[FILTER_SLICE_1]], %[[BIAS_SLICE_1]]) <{dilation = array<i64: 1, 1>, pad = array<i64: 1, 1, 0, 0>, stride = array<i64: 2, 1>}>
 // CHECK-DAG: %[[INPUT_SLICE_2:.*]] = "tosa.slice"(%arg0) <{size = array<i64: 1, 3, 1, 16>, start = array<i64: 0, 0, 0, 16>}>
-// CHECK-DAG: %[[FILTER_SLICE_2:.*]] = "tosa.slice"(%arg1) <{size = array<i64: 128, 3, 1, 16>, start = array<i64: 16, 0, 0, 0>}>
-// CHECK-DAG: %[[BIAS_SLICE_2:.*]] = "tosa.slice"(%arg2) <{size = array<i64: 128>, start = array<i64: 16>}>
+// CHECK-DAG: %[[FILTER_SLICE_2:.*]] = "tosa.slice"(%arg1) <{size = array<i64: 128, 3, 1, 16>, start = array<i64: 128, 0, 0, 0>}>
+// CHECK-DAG: %[[BIAS_SLICE_2:.*]] = "tosa.slice"(%arg2) <{size = array<i64: 128>, start = array<i64: 128>}>
 // CHECK-DAG: %[[CONV_2:.*]] = "tosa.conv2d"(%[[INPUT_SLICE_2]], %[[FILTER_SLICE_2]], %[[BIAS_SLICE_2]]) <{dilation = array<i64: 1, 1>, pad = array<i64: 1, 1, 0, 0>, stride = array<i64: 2, 1>}>
 // CHECK-DAG: %[[INPUT_SLICE_3:.*]] = "tosa.slice"(%arg0) <{size = array<i64: 1, 3, 1, 16>, start = array<i64: 0, 0, 0, 32>}>
-// CHECK-DAG: %[[FILTER_SLICE_3:.*]] = "tosa.slice"(%arg1) <{size = array<i64: 128, 3, 1, 16>, start = array<i64: 32, 0, 0, 0>}>
-// CHECK-DAG: %[[BIAS_SLICE_3:.*]] = "tosa.slice"(%arg2) <{size = array<i64: 128>, start = array<i64: 32>}>
+// CHECK-DAG: %[[FILTER_SLICE_3:.*]] = "tosa.slice"(%arg1) <{size = array<i64: 128, 3, 1, 16>, start = array<i64: 256, 0, 0, 0>}>
+// CHECK-DAG: %[[BIAS_SLICE_3:.*]] = "tosa.slice"(%arg2) <{size = array<i64: 128>, start = array<i64: 256>}>
 // CHECK-DAG: %[[CONV_3:.*]] = "tosa.conv2d"(%[[INPUT_SLICE_3]], %[[FILTER_SLICE_3]], %[[BIAS_SLICE_3]]) <{dilation = array<i64: 1, 1>, pad = array<i64: 1, 1, 0, 0>, stride = array<i64: 2, 1>}>
 // CHECK-DAG: %[[INPUT_SLICE_4:.*]] = "tosa.slice"(%arg0) <{size = array<i64: 1, 3, 1, 16>, start = array<i64: 0, 0, 0, 48>}>
-// CHECK-DAG: %[[FILTER_SLICE_4:.*]] = "tosa.slice"(%arg1) <{size = array<i64: 128, 3, 1, 16>, start = array<i64: 48, 0, 0, 0>}>
-// CHECK-DAG: %[[BIAS_SLICE_4:.*]] = "tosa.slice"(%arg2) <{size = array<i64: 128>, start = array<i64: 48>}>
+// CHECK-DAG: %[[FILTER_SLICE_4:.*]] = "tosa.slice"(%arg1) <{size = array<i64: 128, 3, 1, 16>, start = array<i64: 384, 0, 0, 0>}>
+// CHECK-DAG: %[[BIAS_SLICE_4:.*]] = "tosa.slice"(%arg2) <{size = array<i64: 128>, start = array<i64: 384>}>
 // CHECK-DAG: %[[CONV_4:.*]] = "tosa.conv2d"(%[[INPUT_SLICE_4]], %[[FILTER_SLICE_4]], %[[BIAS_SLICE_4]]) <{dilation = array<i64: 1, 1>, pad = array<i64: 1, 1, 0, 0>, stride = array<i64: 2, 1>}>
 // CHECK-DAG: %[[CONCAT:.*]] = "tosa.concat"(%[[CONV_1]], %[[CONV_2]], %[[CONV_3]], %[[CONV_4]]) <{axis = 3 : i64}>
 // CHECK: return %[[CONCAT]]
@@ -2469,6 +2469,29 @@ func.func @test_gather_channel_dyn(%arg0: tensor<13x21x?xf32>, %arg1: tensor<7x7
 // CHECK: return %[[VAR7]]
 func.func @test_gather_indices_dyn(%arg0: tensor<13x21x3xf32>, %arg1: tensor<?x7xi32>) -> tensor<*xf32> {
   %2 = "tfl.gather"(%arg0, %arg1) {axis = 0 : i32} : (tensor<13x21x3xf32>, tensor<?x7xi32>) -> tensor<*xf32>
+  func.return %2 : tensor<*xf32>
+}
+
+// -----
+// CHECK-LABEL: test_gather_all_dynamic
+// CHECK-DAG: %[[C0:.*]] = arith.constant 0
+// CHECK-DAG: %[[C1:.*]] = arith.constant 1
+// CHECK-DAG: %[[C2:.*]] = arith.constant 2
+// CHECK-DAG: %[[DIM0:.*]] = tensor.dim %arg0, %[[C0]]
+// CHECK-DAG: %[[DIM1:.*]] = tensor.dim %arg0, %[[C1]]
+// CHECK-DAG: %[[DIM2:.*]] = tensor.dim %arg0, %[[C2]]
+// CHECK-DAG: %[[DIM3:.*]] = tensor.dim %arg1, %[[C0]]
+// CHECK-DAG: %[[DIM4:.*]] = tensor.dim %arg1, %[[C1]]
+// CHECK-DAG: %[[PROD:.*]] = arith.muli %[[DIM1]], %[[DIM2]]
+// CHECK-DAG: %[[SHAPE_VALUES:.*]] = tensor.from_elements %[[C1]], %[[DIM0]], %[[PROD]]
+// CHECK-DAG: %[[RESHAPED_VALUES:.*]] = tensor.reshape %arg0(%[[SHAPE_VALUES]])
+// CHECK-DAG: %[[RESHAPED_INDICES:.*]] = "tosa.reshape"(%arg1) <{new_shape = array<i64: 1, -1>}>
+// CHECK-DAG: %[[GATHER:.*]] = "tosa.gather"(%[[RESHAPED_VALUES]], %[[RESHAPED_INDICES]])
+// CHECK-DAG: %[[SHAPE_RESULT:.*]] = tensor.from_elements %[[DIM3]], %[[DIM4]], %[[DIM1]], %[[DIM2]]
+// CHECK-DAG: %[[RESULT:.*]] = tensor.reshape %[[GATHER]](%[[SHAPE_RESULT]])
+// CHECK return %[[RESULT]]
+func.func @test_gather_all_dynamic(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?xi32>) -> tensor<*xf32> {
+  %2 = "tfl.gather"(%arg0, %arg1) {axis = 0 : i32} : (tensor<?x?x?xf32>, tensor<?x?xi32>) -> tensor<*xf32>
   func.return %2 : tensor<*xf32>
 }
 

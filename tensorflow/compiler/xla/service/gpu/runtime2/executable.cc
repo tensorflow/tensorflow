@@ -16,12 +16,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/runtime2/executable.h"
 
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <memory>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
 
+#include "absl/cleanup/cleanup.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "third_party/iree/runtime/src/iree/base/api.h"
@@ -29,18 +32,21 @@ limitations under the License.
 #include "third_party/iree/runtime/src/iree/hal/drivers/cuda/api.h"
 #include "third_party/iree/runtime/src/iree/modules/hal/module.h"
 #include "third_party/iree/runtime/src/iree/modules/hal/types.h"
+#include "third_party/iree/runtime/src/iree/tooling/numpy_io.h"
 #include "third_party/iree/runtime/src/iree/vm/api.h"
 #include "third_party/iree/runtime/src/iree/vm/bytecode/module.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
+#include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime2/compiler.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime2/module.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime2/vm.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
+#include "tensorflow/tsl/platform/mem.h"
+#include "tensorflow/tsl/platform/path.h"
 
 namespace xla::gpu {
 
@@ -100,8 +106,11 @@ static iree_status_t CreateCudaDevice(iree_allocator_t allocator,
 Gpu2RuntimeExecutable::Create(std::unique_ptr<Gpu2RuntimeProgram> program,
                               std::string_view asm_text,
                               const std::vector<uint8_t>& binary) {
-  CHECK_OK(BindXlaDeviceKernels(*program->module, asm_text, binary));
-  auto source = llvm_ir::DumpToString(*program->module);
+  // Bind pre-compiled executable (CUBIN for NVIDIA backend) to runtime input,
+  // and return serialized module prepared for passing to the runtime compiler.
+  TF_ASSIGN_OR_RETURN(std::string source,
+                      BindXlaDeviceKernels(program->debug_options,
+                                           *program->module, asm_text, binary));
 
   // Compile IR in IREE input dialect(s) into IREE VM flatbuffer.
   auto compiler = CreateRuntimeCompiler();
@@ -166,13 +175,20 @@ Gpu2RuntimeExecutable::Create(std::unique_ptr<Gpu2RuntimeProgram> program,
       context.get(), iree_make_cstring_view(qualified_name.c_str()),
       &function));
 
+  // Get HLO module name and unique id from the Module operation.
+  auto module = *program->module;
+  auto unique_id = module->getAttrOfType<mlir::IntegerAttr>("hlo.unique_id");
+
   return std::unique_ptr<Gpu2RuntimeExecutable>(new Gpu2RuntimeExecutable(
-      std::move(device), std::move(bytecode), std::move(program->buffer_sizes),
+      module.getName().value_or("unknown").str(),
+      unique_id ? unique_id.getInt() : 0, std::move(device),
+      std::move(bytecode), std::move(program->buffer_sizes),
       std::move(program->debug_options), asm_text, binary, context, instance,
       std::move(modules), function));
 }
 
 Gpu2RuntimeExecutable::Gpu2RuntimeExecutable(
+    std::string module_name, int32_t module_id,
     std::unique_ptr<HalDevice> device, std::unique_ptr<Bytecode> bytecode,
     std::vector<int64_t> buffer_sizes, DebugOptions debug_options,
     std::string_view asm_text, absl::Span<const uint8_t> binary,
@@ -180,7 +196,9 @@ Gpu2RuntimeExecutable::Gpu2RuntimeExecutable(
     iree::vm::ref<iree_vm_instance_t> instance,
     std::unique_ptr<std::vector<iree_vm_module_t*>> modules,
     iree_vm_function_t function)
-    : device_(std::move(device)),
+    : module_name_(std::move(module_name)),
+      module_id_(module_id),
+      device_(std::move(device)),
       bytecode_(std::move(bytecode)),
       buffer_sizes_(std::move(buffer_sizes)),
       debug_options_(std::move(debug_options)),
@@ -199,6 +217,80 @@ Gpu2RuntimeExecutable::~Gpu2RuntimeExecutable() {
   for (auto module : *modules_) iree_vm_module_release(module);
 }
 
+static FILE* GetDumpNumpyInputsFile(const DebugOptions& debug_options,
+                                    std::string_view module_name,
+                                    int32_t module_id) {
+  std::string dump_to = debug_options.xla_dump_to();
+  if (dump_to.empty()) return nullptr;
+
+  if (std::getenv("XLA_GPU2_IREE_DUMP_NUMPY_INPUTS")) {
+    auto file = tsl::io::JoinPath(
+        dump_to, FilenameFor(module_id, module_name, "gpu_rt_inputs", "npy"));
+    if (FILE* f = fopen(file.c_str(), "w+b")) return f;
+    LOG(WARNING) << "Failed to open file for numpy inputs: " << file;
+  }
+  return nullptr;
+}
+
+// Dumps all buffer allocations as numpy arrays into a single `npy` file, which
+// allows replaying XLA:GPU invocations with IREE tools.
+//
+// TODO(ezhulenev): Today this has a very limited usability as IREE tools do not
+// support XLA:GPU custom modules, and can only replay XLA:GPU programs that
+// have only kernel dispatches. Add an option to replay "runtime IR" with
+// builtin XLA tools, somewhat like
+// `xla/tools/multihost_hlo_runner:hlo_runner_main` but for runtime IR.
+//
+// Note: this is a temporary debugging tool while we are prototyping IREEs
+// integration into XLA and do not want to touch other parts of XLA.
+static void DumpBufferAllocationsAsNumpy(
+    const ServiceExecutableRunOptions* run_options,
+    iree_allocator_t host_allocator,
+    const BufferAllocations& buffer_allocations,
+    absl::Span<const int64_t> buffer_sizes, FILE* file) {
+  unsigned num_buffer_allocations = buffer_allocations.size();
+
+  se::Stream* stream = run_options->stream();
+
+  iree::vm::ref<iree_hal_allocator_t> allocator;
+  IREE_CHECK_OK(iree_hal_allocator_create_heap(
+      iree_make_cstring_view("numpy_dump"), host_allocator, host_allocator,
+      &allocator));
+
+  for (unsigned i = 0; i < num_buffer_allocations; ++i) {
+    iree_hal_dim_t size = buffer_sizes[i];
+
+    void* ptr = tsl::port::AlignedMalloc(size, IREE_HAL_HEAP_BUFFER_ALIGNMENT);
+    auto free_ptr = absl::Cleanup([&]() { tsl::port::AlignedFree(ptr); });
+
+    // Copy buffer from device to a host buffer.
+    stream->ThenMemcpy(ptr, buffer_allocations.GetDeviceAddress(i), size);
+
+    // Wrap host buffer into IREE buffer.
+    iree::vm::ref<iree_hal_buffer_t> buffer;
+    IREE_CHECK_OK(iree_hal_heap_buffer_wrap(
+        allocator.get(), IREE_HAL_MEMORY_ACCESS_READ,
+        IREE_HAL_MEMORY_ACCESS_ALL, IREE_HAL_BUFFER_USAGE_DEFAULT, size,
+        iree_make_byte_span(ptr, size),
+        {[](void*, iree_hal_buffer_t*) {}, nullptr}, &buffer));
+
+    // Create 1D buffer view from a buffer.
+    iree::vm::ref<iree_hal_buffer_view_t> view;
+    IREE_CHECK_OK(iree_hal_buffer_view_create(
+        buffer.get(), /*shape_rank=*/1, /*shape=*/&size,
+        IREE_HAL_ELEMENT_TYPE_INT_8, IREE_HAL_ENCODING_TYPE_DENSE_ROW_MAJOR,
+        host_allocator, &view));
+
+    // Append host buffer to numpy files.
+    iree_numpy_npy_save_options_t opts = IREE_NUMPY_NPY_SAVE_OPTION_DEFAULT;
+    auto saved =
+        iree_numpy_npy_save_ndarray(file, opts, view.get(), host_allocator);
+    if (!iree_status_is_ok(saved))
+      LOG(WARNING) << "Failed to save input buffer as numpy array: "
+                   << iree::Status(std::move(saved)).ToString();
+  }
+}
+
 Status Gpu2RuntimeExecutable::Execute(
     const ServiceExecutableRunOptions* run_options,
     const BufferAllocations& buffer_allocations,
@@ -207,6 +299,15 @@ Status Gpu2RuntimeExecutable::Execute(
   CHECK(num_buffer_allocations == buffer_sizes_.size());  // CHECK OK
 
   iree_allocator_t allocator = iree_allocator_system();
+
+  // Maybe dump all inputs in numpy format for replaying XLA:GPU invocation.
+  FILE* dump_inputs_file =
+      GetDumpNumpyInputsFile(debug_options_, module_name_, module_id_);
+  if (IREE_UNLIKELY(dump_inputs_file)) {
+    DumpBufferAllocationsAsNumpy(run_options, allocator, buffer_allocations,
+                                 buffer_sizes_, dump_inputs_file);
+    fclose(dump_inputs_file);  // ignore errors
+  }
 
   // Prepare a list for passing arguments to the function.
   iree::vm::ref<iree_vm_list_t> inputs;
@@ -252,10 +353,9 @@ Status Gpu2RuntimeExecutable::Execute(
     // In XLA all buffer arguments are vectors of i8 data type.
     iree_hal_buffer_view_t* view = nullptr;
     IREE_CHECK_OK(iree_hal_buffer_view_create(
-        buffers.back().get(),
-        /*shape_rank=*/1,
-        /*shape=*/&external_buffer.size, IREE_HAL_ELEMENT_TYPE_INT_8,
-        IREE_HAL_ENCODING_TYPE_DENSE_ROW_MAJOR, allocator, &view));
+        buffers.back().get(), /*shape_rank=*/1, /*shape=*/&external_buffer.size,
+        IREE_HAL_ELEMENT_TYPE_INT_8, IREE_HAL_ENCODING_TYPE_DENSE_ROW_MAJOR,
+        allocator, &view));
 
     // Move buffer view to the inputs list.
     iree_vm_ref_t view_ref = iree_hal_buffer_view_move_ref(view);

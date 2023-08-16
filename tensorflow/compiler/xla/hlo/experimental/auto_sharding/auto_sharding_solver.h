@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_SOLVER_H_
 #define TENSORFLOW_COMPILER_XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_SOLVER_H_
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <tuple>
@@ -23,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
@@ -32,25 +34,28 @@ struct AutoShardingSolverRequest {
   int64_t num_nodes = 0;
   int64_t memory_budget = -1;
   std::vector<int> s_len;
-  std::vector<int> s_follow;
-  std::vector<std::pair<int, int>> e;
-  std::vector<std::vector<int>> live;
+  std::vector<NodeIdx> s_follow;
+  std::vector<NodeStrategyIdx> s_hint;
+  std::vector<std::pair<NodeIdx, NodeIdx>> e;
+  std::vector<std::vector<NodeIdx>> live;
   std::vector<std::vector<double>> c;
   std::vector<std::vector<double>> d;
   std::vector<std::vector<double>> m;
   std::vector<std::vector<double>> r;
-  std::vector<std::pair<int, int>> a;
+  std::vector<std::pair<NodeIdx, NodeIdx>> a;
   std::vector<std::vector<double>> v;
   std::vector<std::string> instruction_names;
   std::optional<int64_t> solver_timeout_in_seconds;
   bool crash_at_infinity_costs_check = false;
+  bool compute_iis = true;
   double saltiplier = 0.0001;  // Modifies each objective term by at most 0.01%
 };
 
 struct AutoShardingSolverResult {
  public:
   AutoShardingSolverResult(
-      StatusOr<std::tuple<std::vector<int64_t>, std::vector<int64_t>, double>>
+      StatusOr<std::tuple<std::vector<NodeStrategyIdx>,
+                          std::vector<EdgeStrategyIdx>, double>>
           status,
       bool skip_auto_sharding)
       : status(status), skip_auto_sharding(skip_auto_sharding) {}

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/xla/service/gpu/fusions/fusion_emitter.h"
 
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <tuple>
@@ -21,16 +22,17 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_cat.h"
-#include "llvm/Support/Casting.h"
-#include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/IR/Argument.h"
+#include "llvm/IR/Function.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_to_ir_bindings.h"
+#include "tensorflow/compiler/xla/service/gpu/kernel_arguments.h"
+#include "tensorflow/compiler/xla/service/gpu/kernel_reuse_cache.h"
 #include "tensorflow/compiler/xla/service/gpu/kernel_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
-#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/location_exporter.h"
 
 namespace xla {
 namespace gpu {
@@ -174,25 +176,28 @@ BuildKernelPrototype(IrEmitterContext& ir_emitter_context,
 }
 
 StatusOr<FusionEmissionResult> KernelFusionEmitterBase::Emit(
+    IrEmitterContext& ir_emitter_context, ElementalIrEmitter& elemental_emitter,
+    mlir::lmhlo::FusionOp fusion_op, const HloFusionInstruction& fusion,
     KernelReuseCache& kernel_cache, llvm::IRBuilder<>* builder) const {
-  std::string suggested_kernel_name = GetIrNameFromLoc(fusion_op_->getLoc());
+  std::string suggested_kernel_name = GetIrNameFromLoc(fusion_op->getLoc());
 
   TF_ASSIGN_OR_RETURN(
       auto kernel_arguments,
-      KernelArguments::Create(ir_emitter_context_.allocations(), fusion_op_));
-  TF_ASSIGN_OR_RETURN(auto launch_dims, launch_dimensions());
-  auto* fused_computation = fusion_.fused_instructions_computation();
+      KernelArguments::Create(ir_emitter_context.allocations(), fusion_op));
+  auto* fused_computation = fusion.fused_instructions_computation();
 
   FusionEmissionResult result;
-  for (int i = 0; i < num_kernels(); ++i) {
+  for (int i = 0, n = num_kernels(); i < n; ++i) {
+    TF_ASSIGN_OR_RETURN(auto launch_dims,
+                        launch_dimensions(ir_emitter_context, i));
     std::vector<llvm_ir::IrArray> inputs, outputs;
     auto [entry, cached] = kernel_cache.Get(
         fused_computation, kernel_arguments.args(), absl::StrCat(i),
         [&]() -> KernelReuseCache::Entry {
           llvm::Function* kernel;
           std::tie(kernel, inputs, outputs) = BuildKernelPrototype(
-              ir_emitter_context_, suggested_kernel_name,
-              kernel_arguments.args(), fusion_op().getInputBuffers().size(),
+              ir_emitter_context, suggested_kernel_name,
+              kernel_arguments.args(), fusion_op.getInputBuffers().size(),
               launch_dims, builder);
           return {kernel->getName().str(), launch_dims};
         });
@@ -203,10 +208,11 @@ StatusOr<FusionEmissionResult> KernelFusionEmitterBase::Emit(
     }
 
     result.thunks.emplace_back(std::make_unique<KernelThunk>(
-        fusion_op(), entry.kernel_name, kernel_arguments.args(), launch_dims));
+        fusion_op, entry.kernel_name, kernel_arguments.args(), launch_dims));
     if (!cached) {
-      TF_RETURN_IF_ERROR(EmitKernel(launch_dims, std::move(inputs),
-                                    std::move(outputs), builder, i));
+      TF_RETURN_IF_ERROR(EmitKernel(
+          ir_emitter_context, elemental_emitter, fusion_op, fusion, launch_dims,
+          std::move(inputs), std::move(outputs), builder, i));
     }
   }
 

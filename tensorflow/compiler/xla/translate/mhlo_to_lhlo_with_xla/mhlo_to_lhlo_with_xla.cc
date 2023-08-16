@@ -1277,10 +1277,17 @@ tsl::StatusOr<Operation*> LhloDialectEmitter::EmitDnnConvolution(
       return set_common_conv_attributes(cnn_fused_side_input);
     }
     case xla::gpu::CudnnConvKind::kForwardGraph: {
+      const int32_t n_binary_operands = custom_call->operand_count() - 2;
+      const int32_t n_aux_outputs =
+          custom_call->shape().tuple_shapes_size() - 2;
       TF_ASSIGN_OR_RETURN(
           auto cnn_graph,
           CreateOpWithoutAttrs<lmhlo_gpu::ConvForwardGraphOp>(custom_call));
       cnn_graph.setSerializedGraph(backend_config.serialized_graph());
+      cnn_graph.setNAuxOutputs(n_aux_outputs);
+      int32_t operand_sizes[] = {1, 1, n_binary_operands, 1, n_aux_outputs, 1};
+      cnn_graph->setAttr(cnn_graph.getOperandSegmentSizeAttr(),
+                         builder_.getDenseI32ArrayAttr(operand_sizes));
       return set_common_conv_attributes(cnn_graph);
     }
   }

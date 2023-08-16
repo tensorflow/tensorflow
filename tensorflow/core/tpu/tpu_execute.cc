@@ -52,7 +52,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_defn.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/host_command_handler.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/proto_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
@@ -80,6 +79,12 @@ namespace {
 
 using ::tensorflow::tpu::TpuNodeContext;
 
+// Handler to invoke when a host command is received.
+// `program_stack_byte_offset` is the byte address of the current program stack.
+// This value is always 0 prior to TPU v4, but may vary per run on TPU v4+.
+using HostCommandHandler =
+    std::function<void(uint32_t command, int64_t program_stack_byte_offset)>;
+
 // These are placeholders for absl flags.
 static bool tpu_cancellation_terminates_process = false;
 static bool tpu_cancellation_closes_chips = true;
@@ -89,8 +94,6 @@ static bool tpu_cancellation_closes_chips = true;
 class HostTransferManager {
  public:
   explicit HostTransferManager(TpuNodeContext*, xla::Backend*) {}
-
-  using HostCommandHandler = TpuOpExecutable::HostCommandHandler;
 
   // Returns a function to be called when the TPU triggers a host command
   // interrupt while executing the current program.
@@ -102,10 +105,9 @@ class HostTransferManager {
   TF_DISALLOW_COPY_AND_ASSIGN(HostTransferManager);
 };
 
-xla::StatusOr<HostTransferManager::HostCommandHandler>
-HostTransferManager::Initialize(const TPUHostTransferInfoProto& program,
-                                const std::string& rendezvous_key_base,
-                                OpKernelContext* ctx) {
+xla::StatusOr<HostCommandHandler> HostTransferManager::Initialize(
+    const TPUHostTransferInfoProto& program,
+    const std::string& rendezvous_key_base, OpKernelContext* ctx) {
   return HostCommandHandler([](uint32_t, int64_t) {
     LOG(WARNING) << "HostTransferManager is unimplemented.";
   });
@@ -375,10 +377,12 @@ std::pair<CancellationToken, bool> RegisterCancellation(
   return std::pair<CancellationToken, bool>(token, already_cancelled);
 }
 
-void UnregisterCancellation(
-    OpKernelContext* ctx, CancellationManager* cancellation_manager,
-    se::Stream* stream, int device_ordinal, CancellationToken token,
-    std::shared_ptr<HostTransferManager> host_transfer_manager) {
+typedef std::unique_ptr<SE_OutsideCompilationParams, DestroyOCParams>
+    OcParamsPtr;
+void UnregisterCancellation(OpKernelContext* ctx,
+                            CancellationManager* cancellation_manager,
+                            se::Stream* stream, int device_ordinal,
+                            CancellationToken token, OcParamsPtr oc_param) {
   // If execution reaches this point, the host callback enqueued below will get
   // called regardless of stream status. Call inc_num_deferred_ops_function here
   // and dec_num_deferred_ops_function in the host callback.
@@ -391,10 +395,7 @@ void UnregisterCancellation(
   // have the substream wait on the compute stream.
   se::Stream* deregister_stream = stream->GetOrCreateSubStream();
   deregister_stream->ThenWaitFor(stream);
-  deregister_stream->ThenDoHostCallback([=]() {
-    // Ensure the host_transfer_manager is copied into the callback scope.
-    (void)host_transfer_manager;
-
+  deregister_stream->ThenDoHostCallback([=, oc_param = std::move(oc_param)]() {
     // We must deregister the callback in the success case, to avoid closing all
     // devices. In the failure case we must NOT call DeregisterCallback as that
     // waits for all previous cancellation callbacks to complete and any call
@@ -427,14 +428,10 @@ void UnregisterCancellation(
   stream->ReturnSubStream(deregister_stream);
 }
 
-std::unique_ptr<SE_OutsideCompilationParams,
-                std::function<void(SE_OutsideCompilationParams*)>>
-CreateOcParams(const std::string& rendezvous_key_base,
-               OpKernelContext* op_kernel_context,
-               const TPUHostTransferInfoProto& host_transfers) {
-  std::unique_ptr<SE_OutsideCompilationParams,
-                  std::function<void(SE_OutsideCompilationParams*)>>
-      oc_params(new SE_OutsideCompilationParams(), &DestroyOCParams);
+OcParamsPtr CreateOcParams(const std::string& rendezvous_key_base,
+                           OpKernelContext* op_kernel_context,
+                           const TPUHostTransferInfoProto& host_transfers) {
+  OcParamsPtr oc_params(new SE_OutsideCompilationParams());
   const std::string& device_name = op_kernel_context->device()->name();
   oc_params->device_name = new char[device_name.size() + 1];
   std::strncpy(oc_params->device_name, device_name.c_str(),
@@ -471,7 +468,7 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
   // Create a HostTransferManager to handle Send/Recv operations from the TPU.
   std::shared_ptr<HostTransferManager> host_transfer_manager =
       std::make_shared<HostTransferManager>(node_context, backend);
-  TF_ASSIGN_OR_RETURN(tpu::HostCommandHandler host_command_handler,
+  TF_ASSIGN_OR_RETURN(HostCommandHandler host_command_handler,
                       host_transfer_manager->Initialize(
                           host_transfers, rendezvous_key_base, ctx));
 
@@ -561,9 +558,8 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
     arguments.push_back(std::move(input));
   }
 
-  std::unique_ptr<SE_OutsideCompilationParams,
-                  std::function<void(SE_OutsideCompilationParams*)>>
-      oc_params = CreateOcParams(rendezvous_key_base, ctx, host_transfers);
+  OcParamsPtr oc_params =
+      CreateOcParams(rendezvous_key_base, ctx, host_transfers);
 
   auto tpu_executable = std::make_unique<TpuOpExecutable>(
       tpu_program, std::move(module), oc_params.get());
@@ -601,7 +597,8 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
     }
   }
   UnregisterCancellation(ctx, cancellation_manager, stream, device_ordinal,
-                         token, host_transfer_manager);
+                         token, std::move(oc_params));
+
   VLOG(1) << "Cloud TPU: TPUExecute done";
   return output;
 }

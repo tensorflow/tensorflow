@@ -31,7 +31,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array.h"
-#include "tensorflow/compiler/xla/hlo/ir/tile_assignment.h"
+#include "tensorflow/compiler/xla/hlo/ir/tile_assignment.h"  // IWYU pragma: export
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -451,6 +451,24 @@ class HloSharding {
         tuple_(true),
         manual_(false),
         replicate_on_last_tile_dim_(false) {}
+
+  // Test-only constructor for sharding format code coverage. Copies the
+  // original sharding with provided tile assignment.
+  explicit HloSharding(const HloSharding& other, TileAssignment tile_assignment)
+      : tile_assignment_(std::move(tile_assignment)),
+        tuple_elements_(other.tuple_elements_),
+        metadata_(other.metadata_),
+        subgroup_types_(other.subgroup_types_),
+        replicated_(other.replicated_),
+        maximal_(other.maximal_),
+        tuple_(other.tuple_),
+        manual_(other.manual_),
+        replicate_on_last_tile_dim_(other.replicate_on_last_tile_dim_) {
+    CHECK(tile_assignment_ == other.tile_assignment_)
+        << tile_assignment_.ToString() << " v.s. "
+        << other.tile_assignment_.ToString();
+  }
+  friend class HloShardingTestHelper;
 
   // Checks that the number of elements in tuple_elements_ is consistent with
   // the tuple shape passes as argument.

@@ -3312,6 +3312,34 @@ XLA_TEST_F(ArrayElementwiseOpTest, ImplicitBroadcastInFusedExpressions) {
                              error_spec_);
 }
 
+// Regression test for b/294880521.
+XLA_TEST_F(ArrayElementwiseOpTest, LessEqual2D) {
+  XlaBuilder builder(TestName());
+  auto x_literal = LiteralUtil::CreateR1<int>({0, 1});
+  auto y_literal = LiteralUtil::CreateR1<int>({0, 0});
+  auto x_data = client_->TransferToServer(x_literal).value();
+  auto y_data = client_->TransferToServer(y_literal).value();
+  auto x = Parameter(&builder, 0, x_literal.shape(), "x");
+  auto y = Parameter(&builder, 1, y_literal.shape(), "y");
+  auto slice_x_0 = Slice(x, {0}, {1}, {1});
+  auto x_0 = Reshape(slice_x_0, {});
+  auto slice_y_0 = Slice(y, {0}, {1}, {1});
+  auto y_0 = Reshape(slice_y_0, {});
+  auto compare_0 = Compare(x_0, y_0, Comparison::Direction::kLt);
+  auto compare_eq = Compare(x_0, y_0, Comparison::Direction::kEq);
+  auto slice_x_1 = Slice(x, {1}, {2}, {1});
+  auto x_1 = Reshape(slice_x_1, {});
+  auto slice_y_1 = Slice(y, {1}, {2}, {1});
+  auto y_1 = Reshape(slice_y_1, {});
+  auto compare_1 = Compare(x_1, y_1, Comparison::Direction::kLe);
+  auto logical_and = And(compare_eq, compare_1);
+  auto result = Or(compare_0, logical_and);
+  Reshape(result, {1});
+  tsl::core::Bitmap expected(1);
+  expected.clear(0);
+  ComputeAndCompareR1(&builder, expected, {x_data.get(), y_data.get()});
+}
+
 INSTANTIATE_TEST_CASE_P(ArrayElementwiseOpTestParamCount,
                         ArrayElementwiseOpTestParamCount,
                         ::testing::Values(127, 128, 129, 17 * 4096));

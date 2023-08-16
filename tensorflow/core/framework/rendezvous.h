@@ -117,9 +117,9 @@ class RendezvousInterface {
   // REQUIRES: !status.ok()
   virtual void StartAbort(const Status& status) = 0;
 
- protected:
   virtual ~RendezvousInterface();
 
+ protected:
   virtual bool is_cross_process() { return false; }
   friend class ProcessFunctionLibraryRuntime;
 };

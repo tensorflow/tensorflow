@@ -154,6 +154,43 @@ def DeviceAttributeToLaunchPass : Pass<"tf-device-attribute-to-launch", "mlir::f
   let constructor = "TFDevice::CreateDeviceAttributeToLaunchPass()";
 }
 
+def OutsideCompiledToHostLaunchPass : Pass<"tf-outside-compiled-to-host-launch", "ModuleOp"> {
+  let summary = "Wraps each op with the _xla_outside_compiled attribute in a separate tf_device.launch on replicated host device.";
+
+  let description = [{
+    This pass wraps ops with the same `_xla_outside_compilation`
+    attribute value in a tf_device.launch op with host device assignment. The
+    `_xla_outside_compilation` attribute is deleted from the wrapped ops.
+
+    A simple example:
+
+    ```mlir
+      "tf_device.cluster"() ( {
+        "tf.A"()
+        "tf.B"() {_xla_outside_compilation = "cluster1"}
+        "tf.C"()
+        tf_device.return
+      }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []}
+    ```
+
+    Would become the following ops (unimportant attribute, type are omitted):
+
+    ```mlir
+      "tf_device.cluster"() ( {
+        "tf.A"()
+        "tf_device.launch"() {
+          "tf.B"() // Note xla_outside_compilation attribute deleted.
+          tf_device.return
+        } {device = "TPU_REPLICATED_HOST_0"} : () -> ()
+        "tf.C"()
+        tf_device.return
+      }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []}
+    ```
+  }];
+
+  let constructor = "TFDevice::CreateOutsideCompiledToHostLaunchPass()";
+}
+
 def HostLaunchToOutsideCompiledPass : Pass<"tf-device-host-launch-to-outside-compiled", "ModuleOp"> {
   let summary = "Converts each op wrapped in launch op with host device assignnment to op with _xla_outside_compiled attribute.";
 
@@ -189,6 +226,18 @@ def HostLaunchToOutsideCompiledPass : Pass<"tf-device-host-launch-to-outside-com
   }];
 
   let constructor = "TFDevice::CreateHostLaunchToOutsideCompiledPass()";
+}
+
+def VerifyNoOutsideCompilationMarkersPass : Pass<"verify-no-outside-compilation-markers", "mlir::func::FuncOp"> {
+  let summary = "Verifies that after Outside Compilation passes complete, there are no more _xla_outside_compilation attributes and no tf_device.launch ops.";
+
+  let description = [{
+    This pass takes iterates over ops and ensures that _xla_outside_compilation
+    and tf_device.launch ops no longer exist and have been removed. This happens
+    after Outside Compilation passes have completed.
+  }];
+
+  let constructor = "TFDevice::CreateVerifyNoOutsideCompilationMarkersPass()";
 }
 
 def DecomposeResourceOpsPass : Pass<"tf-device-decompose-resource-ops", "mlir::func::FuncOp"> {

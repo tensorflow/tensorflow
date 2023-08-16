@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/reduction_utils.h"
 
@@ -105,8 +106,8 @@ StatusOr<bool> CopyFusion::DoCopyFusion(HloComputation* computation) {
     if (copies.empty()) {
       continue;
     }
-    auto dynamic_update_slices =
-        GetOutputDefiningDynamicUpdateSlices(fused_computation);
+    auto dynamic_update_slices = GetOutputDefiningDynamicUpdateSlices(
+        GetFusionRoots(*fused_computation));
     // Skip dynamic update slice fusions which might be emitted in-place.
     if (!dynamic_update_slices.empty() &&
         (root->opcode() != HloOpcode::kTuple ||

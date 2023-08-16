@@ -48,11 +48,6 @@ build --copt=-Wno-gnu-offsetof-extensions
 build --linkopt="-fuse-ld=lld"
 build --linkopt="-lm"
 
-# Store performance profiling log in the mounted artifact directory.
-# The profile can be viewed by visiting chrome://tracing in a Chrome browser.
-# See https://docs.bazel.build/versions/main/skylark/performance.html#performance-profiling
-build --profile=build/profile.json.gz
-
 # CUDA: Set up compilation CUDA version and paths
 build --@local_config_cuda//:enable_cuda
 build --@local_config_cuda//:cuda_compiler=clang
@@ -99,14 +94,15 @@ test:nonpip --config=nonpip_filters -- //tensorflow/... -//tensorflow/python/int
 test:libtensorflow_test -- //tensorflow/tools/lib_package:libtensorflow_test //tensorflow/tools/lib_package:libtensorflow_java_test
 build:libtensorflow_build -- //tensorflow/tools/lib_package:libtensorflow.tar.gz //tensorflow/tools/lib_package:libtensorflow_jni.tar.gz //tensorflow/java:libtensorflow.jar //tensorflow/java:libtensorflow-src.jar //tensorflow/tools/lib_package:libtensorflow_proto.zip
 
-# For outputting Build Event Protocol files
-build:build_event_export --build_event_json_file=build/bep.json
+# Allow creation of resultstore URLs for any bazel invocation
+build:resultstore --google_default_credentials
+build:resultstore --bes_backend=buildeventservice.googleapis.com
+build:resultstore --bes_results_url="https://source.cloud.google.com/results/invocations"
+build:resultstore --bes_timeout=600s
+build:resultstore --bes_instance_name="tensorflow-testing"
 
 # For Remote Build Execution.
-build:rbe --google_default_credentials
-build:rbe --bes_backend=buildeventservice.googleapis.com
-build:rbe --bes_results_url="https://source.cloud.google.com/results/invocations"
-build:rbe --bes_timeout=600s
+build:rbe --config=resultstore
 build:rbe --define=EXECUTOR=remote
 build:rbe --jobs=800
 build:rbe --remote_executor=grpcs://remotebuildexecution.googleapis.com

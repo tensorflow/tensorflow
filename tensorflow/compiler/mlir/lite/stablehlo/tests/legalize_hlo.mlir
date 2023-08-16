@@ -1687,6 +1687,179 @@ func.func @convert_dot_general_int8(%arg0: tensor<256xi8>, %arg1: tensor<256x8xi
   func.return %0 : tensor<8xi32>
 }
 
+// CHECK-LABEL:   func @convert_dot_general_dynamic_rhs_out_dim(
+// CHECK-SAME:                              %arg0: tensor<4x4x256xf32>,
+// CHECK-SAME:                              %arg1: tensor<4x?x256xf32>) -> tensor<4x4x?xf32> {
+// CHECK-DAG:       %cst = "tf.Const"() {value = dense<[0, 2, 1]> : tensor<3xi64>} : () -> tensor<3xi64>
+// CHECK:           %0 = "tf.Transpose"(%arg1, %cst) : (tensor<4x?x256xf32>, tensor<3xi64>) -> tensor<4x256x?xf32>
+// CHECK:           %1 = "tf.Shape"(%arg1) : (tensor<4x?x256xf32>) -> tensor<3xi32>
+// CHECK-DAG:       %cst_0 = "tf.Const"() {value = dense<[-1, 0, -1]> : tensor<3xi32>} : () -> tensor<3xi32>
+// CHECK-DAG:       %cst_1 = "tf.Const"() {value = dense<[-1, -1, 0]> : tensor<3xi32>} : () -> tensor<3xi32>
+// CHECK-DAG:       %cst_2 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+// CHECK:           %2 = "tf.UnsortedSegmentProd"(%1, %cst_0, %cst_2) : (tensor<3xi32>, tensor<3xi32>, tensor<i32>) -> tensor<1xi32>
+// CHECK:           %3 = "tf.UnsortedSegmentProd"(%1, %cst_1, %cst_2) : (tensor<3xi32>, tensor<3xi32>, tensor<i32>) -> tensor<1xi32>
+// CHECK-DAG:       %cst_3 = "tf.Const"() {value = dense<4> : tensor<1xi32>} : () -> tensor<1xi32>
+// CHECK-DAG:       %cst_4 = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+// CHECK:           %4 = "tf.Concat"(%cst_4, %cst_3, %3, %2) : (tensor<i32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<3xi32>
+// CHECK:           %5 = "tf.Reshape"(%0, %4) : (tensor<4x256x?xf32>, tensor<3xi32>) -> tensor<4x256x?xf32>
+// CHECK:           %6 = "tf.BatchMatMulV3"(%arg0, %5) {adj_x = false, adj_y = false} : (tensor<4x4x256xf32>, tensor<4x256x?xf32>) -> tensor<4x4x?xf32>
+// CHECK:           %7 = "tf.Shape"(%arg0) : (tensor<4x4x256xf32>) -> tensor<3xi32>
+// CHECK:           %8 = "tf.Shape"(%arg1) : (tensor<4x?x256xf32>) -> tensor<3xi32>
+// CHECK-DAG:       %cst_5 = "tf.Const"() {value = dense<[0, 1]> : tensor<2xi64>} : () -> tensor<2xi64>
+// CHECK:           %9 = "tf.Gather"(%7, %cst_5) {validate_indices = true} : (tensor<3xi32>, tensor<2xi64>) -> tensor<2xi32>
+// CHECK-DAG:       %cst_6 = "tf.Const"() {value = dense<1> : tensor<1xi64>} : () -> tensor<1xi64>
+// CHECK:           %10 = "tf.Gather"(%8, %cst_6) {validate_indices = true} : (tensor<3xi32>, tensor<1xi64>) -> tensor<1xi32>
+// CHECK-DAG:       %cst_7 = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+// CHECK:           %11 = "tf.Concat"(%cst_7, %9, %10) : (tensor<i32>, tensor<2xi32>, tensor<1xi32>) -> tensor<3xi32>
+// CHECK:           %12 = "tf.Reshape"(%6, %11) : (tensor<4x4x?xf32>, tensor<3xi32>) -> tensor<4x4x?xf32>
+// CHECK:           return %12 : tensor<4x4x?xf32>
+// CHECK:           }
+func.func @convert_dot_general_dynamic_rhs_out_dim(%arg0: tensor<4x4x256xf32>, %arg1: tensor<4x?x256xf32>) -> tensor<4x4x?xf32> {
+%0 = "mhlo.dot_general"(%arg0, %arg1) {
+  dot_dimension_numbers = #mhlo.dot<
+    lhs_batching_dimensions = [0],
+    rhs_batching_dimensions = [0],
+    lhs_contracting_dimensions = [2],
+    rhs_contracting_dimensions = [2]
+  >} : (tensor<4x4x256xf32>, tensor<4x?x256xf32>) -> tensor<4x4x?xf32>
+func.return %0 : tensor<4x4x?xf32>
+}
+
+// CHECK-LABEL:   func @convert_dot_general_dynamic_batch_dim(
+// CHECK-SAME:                              %arg0: tensor<2x?x2x3xf32>,
+// CHECK-SAME:                              %arg1: tensor<2x?x4x3xf32>) -> tensor<2x?x2x4xf32> {
+// CHECK-DAG:       %cst = "tf.Const"() {value = dense<[0, 1, 3, 2]> : tensor<4xi64>} : () -> tensor<4xi64>
+// CHECK:           %0 = "tf.Transpose"(%arg1, %cst) : (tensor<2x?x4x3xf32>, tensor<4xi64>) -> tensor<2x?x3x4xf32>
+// CHECK:           %1 = "tf.Shape"(%arg0) : (tensor<2x?x2x3xf32>) -> tensor<4xi32>
+// CHECK-DAG:       %cst_0 = "tf.Const"() {value = dense<[-1, -1, 0, -1]> : tensor<4xi32>} : () -> tensor<4xi32>
+// CHECK-DAG:       %cst_1 = "tf.Const"() {value = dense<[-1, -1, -1, 0]> : tensor<4xi32>} : () -> tensor<4xi32>
+// CHECK-DAG:       %cst_2 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+// CHECK:           %2 = "tf.UnsortedSegmentProd"(%1, %cst_0, %cst_2) : (tensor<4xi32>, tensor<4xi32>, tensor<i32>) -> tensor<1xi32>
+// CHECK:           %3 = "tf.UnsortedSegmentProd"(%1, %cst_1, %cst_2) : (tensor<4xi32>, tensor<4xi32>, tensor<i32>) -> tensor<1xi32>
+// CHECK-DAG:       %cst_3 = "tf.Const"() {value = dense<[0, 1]> : tensor<2xi64>} : () -> tensor<2xi64>
+// CHECK:           %4 = "tf.Gather"(%1, %cst_3) {validate_indices = true} : (tensor<4xi32>, tensor<2xi64>) -> tensor<2xi32>
+// CHECK-DAG:       %cst_4 = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+// CHECK:           %5 = "tf.Concat"(%cst_4, %4, %2, %3) : (tensor<i32>, tensor<2xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<4xi32>
+// CHECK:           %6 = "tf.Reshape"(%arg0, %5) : (tensor<2x?x2x3xf32>, tensor<4xi32>) -> tensor<2x?x2x3xf32>
+// CHECK:           %7 = "tf.Shape"(%arg1) : (tensor<2x?x4x3xf32>) -> tensor<4xi32>
+// CHECK-DAG:       %cst_5 = "tf.Const"() {value = dense<[-1, -1, 0, -1]> : tensor<4xi32>} : () -> tensor<4xi32>
+// CHECK-DAG:       %cst_6 = "tf.Const"() {value = dense<[-1, -1, -1, 0]> : tensor<4xi32>} : () -> tensor<4xi32>
+// CHECK-DAG:       %cst_7 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+// CHECK:           %8 = "tf.UnsortedSegmentProd"(%7, %cst_5, %cst_7) : (tensor<4xi32>, tensor<4xi32>, tensor<i32>) -> tensor<1xi32>
+// CHECK:           %9 = "tf.UnsortedSegmentProd"(%7, %cst_6, %cst_7) : (tensor<4xi32>, tensor<4xi32>, tensor<i32>) -> tensor<1xi32>
+// CHECK-DAG:       %cst_8 = "tf.Const"() {value = dense<[0, 1]> : tensor<2xi64>} : () -> tensor<2xi64>
+// CHECK:           %10 = "tf.Gather"(%7, %cst_8) {validate_indices = true} : (tensor<4xi32>, tensor<2xi64>) -> tensor<2xi32>
+// CHECK-DAG:       %cst_9 = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+// CHECK:           %11 = "tf.Concat"(%cst_9, %10, %9, %8) : (tensor<i32>, tensor<2xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<4xi32>
+// CHECK:           %12 = "tf.Reshape"(%0, %11) : (tensor<2x?x3x4xf32>, tensor<4xi32>) -> tensor<2x?x3x4xf32>
+// CHECK:           %13 = "tf.BatchMatMulV3"(%6, %12) {adj_x = false, adj_y = false} : (tensor<2x?x2x3xf32>, tensor<2x?x3x4xf32>) -> tensor<2x?x2x4xf32>
+// CHECK:           %14 = "tf.Shape"(%arg0) : (tensor<2x?x2x3xf32>) -> tensor<4xi32>
+// CHECK:           %15 = "tf.Shape"(%arg1) : (tensor<2x?x4x3xf32>) -> tensor<4xi32>
+// CHECK-DAG:       %cst_10 = "tf.Const"() {value = dense<[0, 1, 2]> : tensor<3xi64>} : () -> tensor<3xi64>
+// CHECK:           %16 = "tf.Gather"(%14, %cst_10) {validate_indices = true} : (tensor<4xi32>, tensor<3xi64>) -> tensor<3xi32>
+// CHECK:           %cst_11 = "tf.Const"() {value = dense<2> : tensor<1xi64>} : () -> tensor<1xi64>
+// CHECK:           %17 = "tf.Gather"(%15, %cst_11) {validate_indices = true} : (tensor<4xi32>, tensor<1xi64>) -> tensor<1xi32>
+// CHECK-DAG:       %cst_12 = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+// CHECK:           %18 = "tf.Concat"(%cst_12, %16, %17) : (tensor<i32>, tensor<3xi32>, tensor<1xi32>) -> tensor<4xi32>
+// CHECK:           %19 = "tf.Reshape"(%13, %18) : (tensor<2x?x2x4xf32>, tensor<4xi32>) -> tensor<2x?x2x4xf32>
+// CHECK:           return %19 : tensor<2x?x2x4xf32>
+// CHECK:           }
+func.func @convert_dot_general_dynamic_batch_dim(%arg0: tensor<2x?x2x3xf32>, %arg1: tensor<2x?x4x3xf32>) -> tensor<2x?x2x4xf32> {
+%0 = "mhlo.dot_general"(%arg0, %arg1) {
+  dot_dimension_numbers = #mhlo.dot<
+    lhs_batching_dimensions = [0, 1],
+    rhs_batching_dimensions = [0, 1],
+    lhs_contracting_dimensions = [3],
+    rhs_contracting_dimensions = [3]
+  >} : (tensor<2x?x2x3xf32>, tensor<2x?x4x3xf32>) -> tensor<2x?x2x4xf32>
+func.return %0 : tensor<2x?x2x4xf32>
+}
+
+// CHECK-LABEL:   func @convert_dot_general_dynamic_lhs_rhs_out_dims(
+// CHECK-SAME:                              %arg0: tensor<2x2x?x3xf32>,
+// CHECK-SAME:                              %arg1: tensor<2x4x?x3xf32>) -> tensor<2x2x?x4x?xf32> {
+// CHECK-DAG:       %cst = "tf.Const"() {value = dense<[0, 3, 1, 2]> : tensor<4xi64>} : () -> tensor<4xi64>
+// CHECK:           %0 = "tf.Transpose"(%arg1, %cst) : (tensor<2x4x?x3xf32>, tensor<4xi64>) -> tensor<2x3x4x?xf32>
+// CHECK:           %1 = "tf.Shape"(%arg0) : (tensor<2x2x?x3xf32>) -> tensor<4xi32>
+// CHECK-DAG:       %cst_0 = "tf.Const"() {value = dense<[-1, 0, 0, -1]> : tensor<4xi32>} : () -> tensor<4xi32>
+// CHECK-DAG:       %cst_1 = "tf.Const"() {value = dense<[-1, -1, -1, 0]> : tensor<4xi32>} : () -> tensor<4xi32>
+// CHECK-DAG:       %cst_2 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+// CHECK:           %2 = "tf.UnsortedSegmentProd"(%1, %cst_0, %cst_2) : (tensor<4xi32>, tensor<4xi32>, tensor<i32>) -> tensor<1xi32>
+// CHECK:           %3 = "tf.UnsortedSegmentProd"(%1, %cst_1, %cst_2) : (tensor<4xi32>, tensor<4xi32>, tensor<i32>) -> tensor<1xi32>
+// CHECK-DAG:       %cst_3 = "tf.Const"() {value = dense<2> : tensor<1xi32>} : () -> tensor<1xi32>
+// CHECK-DAG:       %cst_4 = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+// CHECK:           %4 = "tf.Concat"(%cst_4, %cst_3, %2, %3) : (tensor<i32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<3xi32>
+// CHECK:           %5 = "tf.Reshape"(%arg0, %4) : (tensor<2x2x?x3xf32>, tensor<3xi32>) -> tensor<2x?x3xf32>
+// CHECK:           %6 = "tf.Shape"(%arg1) : (tensor<2x4x?x3xf32>) -> tensor<4xi32>
+// CHECK-DAG:       %cst_5 = "tf.Const"() {value = dense<[-1, 0, 0, -1]> : tensor<4xi32>} : () -> tensor<4xi32>
+// CHECK-DAG:       %cst_6 = "tf.Const"() {value = dense<[-1, -1, -1, 0]> : tensor<4xi32>} : () -> tensor<4xi32>
+// CHECK-DAG:       %cst_7 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+// CHECK:           %7 = "tf.UnsortedSegmentProd"(%6, %cst_5, %cst_7) : (tensor<4xi32>, tensor<4xi32>, tensor<i32>) -> tensor<1xi32>
+// CHECK:           %8 = "tf.UnsortedSegmentProd"(%6, %cst_6, %cst_7) : (tensor<4xi32>, tensor<4xi32>, tensor<i32>) -> tensor<1xi32>
+// CHECK-DAG:       %cst_8 = "tf.Const"() {value = dense<2> : tensor<1xi32>} : () -> tensor<1xi32>
+// CHECK-DAG:       %cst_9 = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+// CHECK:           %9 = "tf.Concat"(%cst_9, %cst_8, %8, %7) : (tensor<i32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<3xi32>
+// CHECK:           %10 = "tf.Reshape"(%0, %9) : (tensor<2x3x4x?xf32>, tensor<3xi32>) -> tensor<2x3x?xf32>
+// CHECK:           %11 = "tf.BatchMatMulV3"(%5, %10) {adj_x = false, adj_y = false} : (tensor<2x?x3xf32>, tensor<2x3x?xf32>) -> tensor<2x?x?xf32>
+// CHECK:           %12 = "tf.Shape"(%arg0) : (tensor<2x2x?x3xf32>) -> tensor<4xi32>
+// CHECK:           %13 = "tf.Shape"(%arg1) : (tensor<2x4x?x3xf32>) -> tensor<4xi32>
+// CHECK-DAG:       %cst_10 = "tf.Const"() {value = dense<[0, 1, 2]> : tensor<3xi64>} : () -> tensor<3xi64>
+// CHECK:           %14 = "tf.Gather"(%12, %cst_10) {validate_indices = true} : (tensor<4xi32>, tensor<3xi64>) -> tensor<3xi32>
+// CHECK-DAG:       %cst_11 = "tf.Const"() {value = dense<[1, 2]> : tensor<2xi64>} : () -> tensor<2xi64>
+// CHECK:           %15 = "tf.Gather"(%13, %cst_11) {validate_indices = true} : (tensor<4xi32>, tensor<2xi64>) -> tensor<2xi32>
+// CHECK-DAG:       %cst_12 = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+// CHECK:           %16 = "tf.Concat"(%cst_12, %14, %15) : (tensor<i32>, tensor<3xi32>, tensor<2xi32>) -> tensor<5xi32>
+// CHECK:           %17 = "tf.Reshape"(%11, %16) : (tensor<2x?x?xf32>, tensor<5xi32>) -> tensor<2x2x?x4x?xf32>
+// CHECK:           return %17 : tensor<2x2x?x4x?xf32>
+// CHECK:           }
+func.func @convert_dot_general_dynamic_lhs_rhs_out_dims(%arg0: tensor<2x2x?x3xf32>, %arg1: tensor<2x4x?x3xf32>) -> tensor<2x2x?x4x?xf32> {
+%0 = "mhlo.dot_general"(%arg0, %arg1) {
+  dot_dimension_numbers = #mhlo.dot<
+    lhs_batching_dimensions = [0],
+    rhs_batching_dimensions = [0],
+    lhs_contracting_dimensions = [3],
+    rhs_contracting_dimensions = [3]
+  >} : (tensor<2x2x?x3xf32>, tensor<2x4x?x3xf32>) -> tensor<2x2x?x4x?xf32>
+func.return %0 : tensor<2x2x?x4x?xf32>
+}
+
+// CHECK-LABEL:   func @convert_dot_general_dynamic_contracting_dim(
+// CHECK-SAME:                              %arg0: tensor<4x4x?xf32>,
+// CHECK-SAME:                              %arg1: tensor<4x?x256xf32>) -> tensor<4x4x256xf32> {
+// CHECK:           %0 = "tf.Shape"(%arg0) : (tensor<4x4x?xf32>) -> tensor<3xi32>
+// CHECK-DAG:       %cst = "tf.Const"() {value = dense<[-1, 0, -1]> : tensor<3xi32>} : () -> tensor<3xi32>
+// CHECK-DAG:       %cst_0 = "tf.Const"() {value = dense<[-1, -1, 0]> : tensor<3xi32>} : () -> tensor<3xi32>
+// CHECK-DAG:       %cst_1 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+// CHECK:           %1 = "tf.UnsortedSegmentProd"(%0, %cst, %cst_1) : (tensor<3xi32>, tensor<3xi32>, tensor<i32>) -> tensor<1xi32>
+// CHECK:           %2 = "tf.UnsortedSegmentProd"(%0, %cst_0, %cst_1) : (tensor<3xi32>, tensor<3xi32>, tensor<i32>) -> tensor<1xi32>
+// CHECK-DAG:       %cst_2 = "tf.Const"() {value = dense<4> : tensor<1xi32>} : () -> tensor<1xi32>
+// CHECK-DAG:       %cst_3 = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+// CHECK:           %3 = "tf.Concat"(%cst_3, %cst_2, %1, %2) : (tensor<i32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<3xi32>
+// CHECK:           %4 = "tf.Reshape"(%arg0, %3) : (tensor<4x4x?xf32>, tensor<3xi32>) -> tensor<4x4x?xf32>
+// CHECK:           %5 = "tf.Shape"(%arg1) : (tensor<4x?x256xf32>) -> tensor<3xi32>
+// CHECK-DAG:       %cst_4 = "tf.Const"() {value = dense<[-1, -1, 0]> : tensor<3xi32>} : () -> tensor<3xi32>
+// CHECK-DAG:       %cst_5 = "tf.Const"() {value = dense<[-1, 0, -1]> : tensor<3xi32>} : () -> tensor<3xi32>
+// CHECK-DAG:       %cst_6 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+// CHECK:           %6 = "tf.UnsortedSegmentProd"(%5, %cst_4, %cst_6) : (tensor<3xi32>, tensor<3xi32>, tensor<i32>) -> tensor<1xi32>
+// CHECK:           %7 = "tf.UnsortedSegmentProd"(%5, %cst_5, %cst_6) : (tensor<3xi32>, tensor<3xi32>, tensor<i32>) -> tensor<1xi32>
+// CHECK-DAG:       %cst_7 = "tf.Const"() {value = dense<4> : tensor<1xi32>} : () -> tensor<1xi32>
+// CHECK-DAG:       %cst_8 = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+// CHECK:           %8 = "tf.Concat"(%cst_8, %cst_7, %7, %6) : (tensor<i32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<3xi32>
+// CHECK:           %9 = "tf.Reshape"(%arg1, %8) : (tensor<4x?x256xf32>, tensor<3xi32>) -> tensor<4x?x256xf32>
+// CHECK:           %10 = "tf.BatchMatMulV3"(%4, %9) {adj_x = false, adj_y = false} : (tensor<4x4x?xf32>, tensor<4x?x256xf32>) -> tensor<4x4x256xf32>
+// CHECK:           return %10 : tensor<4x4x256xf32>
+// CHECK:           }
+func.func @convert_dot_general_dynamic_contracting_dim(%arg0: tensor<4x4x?xf32>, %arg1: tensor<4x?x256xf32>) -> tensor<4x4x256xf32> {
+%0 = "mhlo.dot_general"(%arg0, %arg1) {
+  dot_dimension_numbers = #mhlo.dot<
+    lhs_batching_dimensions = [0],
+    rhs_batching_dimensions = [0],
+    lhs_contracting_dimensions = [2],
+    rhs_contracting_dimensions = [1]
+  >} : (tensor<4x4x?xf32>, tensor<4x?x256xf32>) -> tensor<4x4x256xf32>
+func.return %0 : tensor<4x4x256xf32>
+}
+
 // CHECK-LABEL:   func.func @convert_conv1d(
 // CHECK-SAME:                              %[[VAL_0:.*]]: tensor<16x32x256xbf16>,
 // CHECK-SAME:                              %[[VAL_1:.*]]: tensor<1x256x256xbf16>) -> tensor<16x32x256xbf16> {

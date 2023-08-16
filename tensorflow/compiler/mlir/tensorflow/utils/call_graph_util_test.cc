@@ -223,5 +223,50 @@ func.func @func(%arg0: tensor<i32>) -> tensor<i32> {
   EXPECT_EQ(func.getSymName(), "inner_stateful_pcall_func");
 }
 
+TEST(CallGraphUtilTest, SingleBlockEntryFunction) {
+  const char *const code = R"mlir(
+func.func @entry_func(%arg0: tensor<i32>) -> tensor<i32> attributes {tf.entry_function = {}} {
+  func.return %arg0 : tensor<i32>
+}
+)mlir";
+
+  mlir::MLIRContext context;
+  context.loadDialect<mlir::func::FuncDialect, mlir::TF::TensorFlowDialect>();
+  mlir::OwningOpRef<mlir::ModuleOp> module =
+      mlir::parseSourceString<mlir::ModuleOp>(code, &context);
+  llvm::errs() << "module:\n";
+  ASSERT_TRUE(module);
+  mlir::SymbolTable symtab(*module);
+  llvm::SmallVector<mlir::func::FuncOp> entry_funcs =
+      GetEntryFunctions(*module);
+  EXPECT_EQ(entry_funcs.size(), 1);
+  EXPECT_EQ(entry_funcs[0].getSymName(), "entry_func");
+  EXPECT_TRUE(HasSingleBlock(entry_funcs[0]));
+}
+
+TEST(CallGraphUtilTest, MultipleBlocksEntryFunction) {
+  const char *const code = R"mlir(
+func.func @entry_func(%arg0: tensor<i32>) -> tensor<i32> attributes {tf.entry_function = {}} {
+  cf.br ^bb1
+^bb1:
+  func.return %arg0 : tensor<i32>
+}
+)mlir";
+
+  mlir::MLIRContext context;
+  context.loadDialect<mlir::cf::ControlFlowDialect, mlir::func::FuncDialect,
+                      mlir::TF::TensorFlowDialect>();
+  mlir::OwningOpRef<mlir::ModuleOp> module =
+      mlir::parseSourceString<mlir::ModuleOp>(code, &context);
+  llvm::errs() << "module:\n";
+  ASSERT_TRUE(module);
+  mlir::SymbolTable symtab(*module);
+  llvm::SmallVector<mlir::func::FuncOp> entry_funcs =
+      GetEntryFunctions(*module);
+  EXPECT_EQ(entry_funcs.size(), 1);
+  EXPECT_EQ(entry_funcs[0].getSymName(), "entry_func");
+  EXPECT_FALSE(HasSingleBlock(entry_funcs[0]));
+}
+
 }  // namespace
 }  // namespace tensorflow

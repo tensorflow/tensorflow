@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Defines TF Quantization API from SavedModel to SavedModel."""
+
 import collections.abc
 import tempfile
 from typing import Callable, Collection, Dict, Mapping, Optional, Sequence
@@ -35,17 +36,22 @@ from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.lib.io import file_io
-from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.saved_model import load as saved_model_load
 from tensorflow.python.saved_model import loader_impl as saved_model_loader
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
-from tensorflow.python.saved_model.load import load as saved_model_load
 from tensorflow.python.trackable import autotrackable
 from tensorflow.python.types import core
 
 # Type aliases for quant_opts_pb2 messages.
 _Method = quant_opts_pb2.QuantizationMethod.Method
 _ExperimentalMethod = quant_opts_pb2.QuantizationMethod.ExperimentalMethod
+
+_QuantizationComponent = (
+    quant_opts_pb2.QuantizationComponentSpec.QuantizationComponent
+)
+
+_TensorType = quant_opts_pb2.QuantizationComponentSpec.TensorType
 
 # Mapping of signature def key -> SignatureDef.
 _SignatureDefMap = Mapping[str, meta_graph_pb2.SignatureDef]
@@ -447,7 +453,7 @@ def _run_graph_for_calibration_eager_mode(
   Raises:
     ValueError: When running the function with the representative dataset fails.
   """
-  root: autotrackable.AutoTrackable = saved_model_load(model_dir, tags)
+  root: autotrackable.AutoTrackable = saved_model_load.load(model_dir, tags)
   for signature_key, repr_ds in representative_dataset_map.items():
     try:
       _run_function_for_calibration_eager_mode(
@@ -557,8 +563,6 @@ def _copy_assets(src_path: str, dst_path: str) -> None:
 def _run_static_range_qat(
     src_saved_model_path: str,
     dst_saved_model_path: str,
-    signature_def_keys: Sequence[str],
-    tags: Collection[str],
     quant_opts: quant_opts_pb2.QuantizationOptions,
     signature_def_map: _SignatureDefMap,
 ) -> None:
@@ -569,9 +573,6 @@ def _run_static_range_qat(
   Args:
     src_saved_model_path: Path to the source SavedModel directory.
     dst_saved_model_path: Path to the destination SavedModel directory.
-    signature_def_keys: Keys of the signatures of the functions that are the
-      target for quantization.
-    tags: Tags identifying the MetaGraphDef.
     quant_opts: Quantization options.
     signature_def_map: Signature def key -> SignatureDef mapping.
   """
@@ -579,13 +580,13 @@ def _run_static_range_qat(
 
   loader = saved_model_loader.SavedModelLoader(src_saved_model_path)
   function_aliases = loader.get_meta_graph_def_from_tags(
-      tags
+      quant_opts.tags
   ).meta_info_def.function_aliases
 
   exported_model_serialized = pywrap_quantize_model.quantize_qat_model(
       src_saved_model_path,
-      list(signature_def_keys),
-      set(tags),
+      list(quant_opts.signature_keys),
+      set(quant_opts.tags),
       quant_opts.SerializeToString(),
       dict(function_aliases),
   )
@@ -598,7 +599,7 @@ def _run_static_range_qat(
       exported_model.graph_def,
       dst_saved_model_path,
       signature_def_map,
-      tags,
+      quant_opts.tags,
       init_op_name=exported_model.init_node_name,
       saver_def=_get_saver_def_or_none(exported_model),
       checkpoint_dir=exported_model.checkpoint_dir,
@@ -661,8 +662,6 @@ def _get_saver_def_or_none(
 def _run_static_range_ptq(
     src_saved_model_path: str,
     dst_saved_model_path: str,
-    signature_def_keys: Sequence[str],
-    tags: Collection[str],
     quant_opts: quant_opts_pb2.QuantizationOptions,
     representative_dataset: repr_dataset.RepresentativeDatasetOrMapping,
     signature_def_map: _SignatureDefMap,
@@ -677,9 +676,6 @@ def _run_static_range_ptq(
   Args:
     src_saved_model_path: Path to the source SavedModel directory.
     dst_saved_model_path: Path to the destination SavedModel directory.
-    signature_def_keys: Keys of the signature defs of the functions that are the
-      target for quantization.
-    tags: Tags to identify the MetaGraphDef to be used for quantization.
     quant_opts: Quantization options.
     representative_dataset: Representative dataset used for the calibration
       step. Representative datasets should exist for each signature def key in
@@ -693,14 +689,14 @@ def _run_static_range_ptq(
 
   loader = saved_model_loader.SavedModelLoader(src_saved_model_path)
   function_aliases = loader.get_meta_graph_def_from_tags(
-      tags
+      quant_opts.tags
   ).meta_info_def.function_aliases
 
   exported_model_serialized = (
       pywrap_quantize_model.quantize_ptq_model_pre_calibration(
           src_saved_model_path,
-          list(signature_def_keys),
-          set(tags),
+          list(quant_opts.signature_keys),
+          set(quant_opts.tags),
           quant_opts.SerializeToString(),
           dict(function_aliases),
       )
@@ -721,7 +717,7 @@ def _run_static_range_ptq(
       graph_def,
       pre_calib_output_model_path,
       signature_def_map,
-      tags,
+      quant_opts.tags,
       exported_model.init_node_name,
       _get_saver_def_or_none(exported_model),
       exported_model.checkpoint_dir,
@@ -737,8 +733,8 @@ def _run_static_range_ptq(
   # in a global CalibratorSingleton instance.
   _run_graph_for_calibration(
       pre_calib_output_model_path,
-      signature_def_keys,
-      tags,
+      quant_opts.signature_keys,
+      quant_opts.tags,
       representative_dataset,
       quant_opts.force_graph_mode_calibration,
   )
@@ -749,7 +745,7 @@ def _run_static_range_ptq(
       graph_def,
       calibrated_model_path,
       signature_def_map,
-      tags,
+      quant_opts.tags,
       exported_model.init_node_name,
       _get_saver_def_or_none(exported_model),
       exported_model.checkpoint_dir,
@@ -762,8 +758,8 @@ def _run_static_range_ptq(
   exported_model_serialized = (
       pywrap_quantize_model.quantize_ptq_model_post_calibration(
           calibrated_model_path,
-          list(signature_def_keys),
-          set(tags),
+          list(quant_opts.signature_keys),
+          set(quant_opts.tags),
           quant_opts.SerializeToString(),
           dict(exported_model.function_aliases),
       )
@@ -777,7 +773,7 @@ def _run_static_range_ptq(
       exported_model.graph_def,
       dst_saved_model_path,
       signature_def_map,
-      tags,
+      quant_opts.tags,
       init_op_name=exported_model.init_node_name,
       saver_def=_get_saver_def_or_none(exported_model),
       checkpoint_dir=exported_model.checkpoint_dir,
@@ -790,8 +786,6 @@ def _run_static_range_ptq(
 
 def _static_range_quantize(
     saved_model_path: str,
-    signature_keys: Sequence[str],
-    tags: Collection[str],
     output_directory: str,
     quantization_options: quant_opts_pb2.QuantizationOptions,
     representative_dataset: Optional[
@@ -808,10 +802,6 @@ def _static_range_quantize(
   Args:
     saved_model_path: Path to the saved model. When representative_dataset is
       not provided, this should be a model trained with QAT.
-    signature_keys: Sequence of keys identifying SignatureDef containing inputs
-      and outputs.
-    tags: Collection of tags identifying the MetaGraphDef within the SavedModel
-      to analyze.
     output_directory: The path to save the output SavedModel. The directory will
       be overwritten if not empty.
     quantization_options: QuantizationOptions proto describing quantization
@@ -832,13 +822,13 @@ def _static_range_quantize(
   logging.info(
       'Running static range quantization on model: %s', saved_model_path
   )
-  logging.info('Using SignatureDef keys: %s', signature_keys)
-  logging.info('Using tags: %s', tags)
   logging.info('QuantizationOptions: \n%s', quantization_options)
 
   is_qat_saved_model = _is_qat_saved_model(saved_model_path)
   signature_def_map = save_model.get_signatures_from_saved_model(
-      saved_model_path, signature_keys, tags
+      saved_model_path,
+      quantization_options.signature_keys,
+      set(quantization_options.tags),
   )
 
   # Checks if the model is from QAT
@@ -858,8 +848,6 @@ def _static_range_quantize(
     _run_static_range_qat(
         saved_model_path,
         output_directory,
-        signature_keys,
-        tags,
         quantization_options,
         signature_def_map,
     )
@@ -867,20 +855,16 @@ def _static_range_quantize(
     _run_static_range_ptq(
         saved_model_path,
         output_directory,
-        signature_keys,
-        tags,
         quantization_options,
         representative_dataset,
         signature_def_map,
     )
 
-  return saved_model_load(output_directory)
+  return saved_model_load.load(output_directory)
 
 
 def _dynamic_range_quantize(
     saved_model_path: str,
-    signature_keys: Sequence[str],
-    tags: Collection[str],
     output_directory: str,
     quantization_options: quant_opts_pb2.QuantizationOptions,
 ) -> autotrackable.AutoTrackable:
@@ -890,10 +874,6 @@ def _dynamic_range_quantize(
 
   Args:
     saved_model_path: Path to the saved model.
-    signature_keys: Sequence of keys identifying SignatureDef containing inputs
-      and outputs.
-    tags: Collection of tags identifying the MetaGraphDef within the SavedModel
-      to analyze.
     output_directory: The path to save the output SavedModel. The directory will
       be overwritten if not empty.
     quantization_options: QuantizationOptions proto describing quantization
@@ -921,8 +901,6 @@ def _dynamic_range_quantize(
   logging.info(
       'Running post-training %s on model: %s', mode_str, saved_model_path
   )
-  logging.info('Using SignatureDef keys: %s', signature_keys)
-  logging.info('Using tags: %s', tags)
   logging.info('QuantizationOptions: \n%s', quantization_options)
 
   # Check default quantization option values for post-training dynamic range
@@ -945,14 +923,14 @@ def _dynamic_range_quantize(
   loader = saved_model_loader.SavedModelLoader(saved_model_path)
 
   function_aliases = loader.get_meta_graph_def_from_tags(
-      tags
+      quantization_options.tags
   ).meta_info_def.function_aliases
 
   # Apply post-training dynamic range quantization to the model.
   exported_model_serialized = pywrap_quantize_model.quantize_ptq_dynamic_range(
       saved_model_path,
-      list(signature_keys),
-      set(tags),
+      list(quantization_options.signature_keys),
+      set(quantization_options.tags),
       quantization_options.SerializeToString(),
       dict(function_aliases),
   )
@@ -961,14 +939,16 @@ def _dynamic_range_quantize(
       exported_model_serialized
   )
   signature_def_map = save_model.get_signatures_from_saved_model(
-      saved_model_path, signature_keys, tags
+      saved_model_path,
+      quantization_options.signature_keys,
+      quantization_options.tags,
   )
 
   save_model.save_model_v1(
       exported_model.graph_def,
       output_directory,
       signature_def_map,
-      tags,
+      quantization_options.tags,
       init_op_name=exported_model.init_node_name,
       saver_def=_get_saver_def_or_none(exported_model),
       checkpoint_dir=exported_model.checkpoint_dir,
@@ -977,7 +957,7 @@ def _dynamic_range_quantize(
   )
   _copy_assets(saved_model_path, output_directory)
 
-  return saved_model_load(output_directory)
+  return saved_model_load.load(output_directory)
 
 
 def _verify_output_dir(output_dir: Optional[str], overwrite: bool) -> None:
@@ -1009,6 +989,96 @@ def _verify_output_dir(output_dir: Optional[str], overwrite: bool) -> None:
     )
 
 
+def _populate_quantization_component_spec(
+    quantization_options: quant_opts_pb2.QuantizationOptions,
+) -> None:
+  """Populates default values for QuantizationComponentSpec.
+
+  Args:
+    quantization_options: An instance of QuantizationOptions with a field
+      specifying QuantizationComponentSpec.
+  """
+  quant_method: quant_opts_pb2.QuantizationMethod = (
+      quantization_options.quantization_method
+  )
+
+  if quantization_options.unit_wise_quantization_spec:
+    raise ValueError('Selective quantization is not supported yet.')
+
+  # Make sure creating one spec per component.
+  updated_component_spec = dict()
+
+  # Populate default configuration.
+  if (
+      quant_method.experimental_method == _ExperimentalMethod.STATIC_RANGE
+      or quant_method.experimental_method == _ExperimentalMethod.DYNAMIC_RANGE
+  ):
+    updated_component_spec[_QuantizationComponent.COMPONENT_ACTIVATION] = (
+        quant_opts_pb2.QuantizationComponentSpec(
+            quantization_component=_QuantizationComponent.COMPONENT_ACTIVATION,
+            tensor_type=_TensorType.TENSORTYPE_INT_8,
+        )
+    )
+    updated_component_spec[_QuantizationComponent.COMPONENT_WEIGHT] = (
+        quant_opts_pb2.QuantizationComponentSpec(
+            quantization_component=_QuantizationComponent.COMPONENT_WEIGHT,
+            tensor_type=_TensorType.TENSORTYPE_INT_8,
+        )
+    )
+    updated_component_spec[_QuantizationComponent.COMPONENT_BIAS] = (
+        quant_opts_pb2.QuantizationComponentSpec(
+            quantization_component=_QuantizationComponent.COMPONENT_BIAS,
+            tensor_type=_TensorType.TENSORTYPE_INT_32,
+        )
+    )
+  else:
+    updated_component_spec[_QuantizationComponent.COMPONENT_WEIGHT] = (
+        quant_opts_pb2.QuantizationComponentSpec(
+            quantization_component=_QuantizationComponent.COMPONENT_WEIGHT,
+            tensor_type=_TensorType.TENSORTYPE_INT_8,
+        )
+    )
+
+  # Override if quantization_component_spec is specified.
+  if quant_method.quantization_component_specs:
+    # Check if the component spec is supported configuration in TF-Quant.
+    for component_spec in quant_method.quantization_component_specs:
+      if (
+          component_spec.quantization_component
+          == _QuantizationComponent.COMPONENT_WEIGHT
+      ) or (
+          component_spec.quantization_component
+          == _QuantizationComponent.COMPONENT_ACTIVATION
+      ):
+        if component_spec.tensor_type != _TensorType.TENSORTYPE_INT_8:
+          raise ValueError(
+              'Only int8 precision is supported for input operands.'
+          )
+      else:
+        if component_spec.tensor_type != _TensorType.TENSORTYPE_INT_32:
+          raise ValueError('Only int32 precision is supported for bias.')
+      # Update with the custom spec.
+      updated_component_spec[component_spec.quantization_component] = (
+          component_spec
+      )
+
+  # Update the componet spec
+  del quant_method.quantization_component_specs[:]
+  quant_method.quantization_component_specs.extend(
+      updated_component_spec.values()
+  )
+
+  if (
+      quant_method.experimental_method == _ExperimentalMethod.STATIC_RANGE
+      or quant_method.experimental_method == _ExperimentalMethod.DYNAMIC_RANGE
+  ) and (len(quant_method.quantization_component_specs) != 3):
+    raise ValueError('Only 3 components are needed for', quant_method)
+  elif (
+      quant_method.experimental_method == _ExperimentalMethod.WEIGHT_ONLY
+  ) and len(quant_method.quantization_component_specs) != 1:
+    raise ValueError('At least one component spec needs to be specified.')
+
+
 def _populate_quantization_options_default_values(
     quantization_options: quant_opts_pb2.QuantizationOptions,
 ) -> None:
@@ -1027,6 +1097,14 @@ def _populate_quantization_options_default_values(
   """
   if quantization_options.op_set == quant_opts_pb2.OpSet.OP_SET_UNSPECIFIED:
     quantization_options.op_set = quant_opts_pb2.OpSet.XLA
+
+  if not quantization_options.tags:
+    quantization_options.tags.append(tag_constants.SERVING)
+
+  if not quantization_options.signature_keys:
+    quantization_options.signature_keys.append(
+        signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
+    )
 
   if not quantization_options.HasField('freeze_all_variables'):
     quantization_options.freeze_all_variables.enabled = True
@@ -1065,11 +1143,12 @@ def _populate_quantization_options_default_values(
         _ExperimentalMethod.STATIC_RANGE
     )
 
+  # Check and populate quantization component spec
+  _populate_quantization_component_spec(quantization_options)
+
 
 def quantize(
     saved_model_path: str,
-    signature_keys: Optional[Sequence[str]] = None,
-    tags: Optional[Collection[str]] = None,
     output_directory: Optional[str] = None,
     quantization_options: Optional[quant_opts_pb2.QuantizationOptions] = None,
     representative_dataset: Optional[
@@ -1083,19 +1162,17 @@ def quantize(
   Args:
     saved_model_path: Path to the saved model. When representative_dataset is
       not provided, this should be a model trained with QAT.
-    signature_keys: Sequence of keys identifying SignatureDef containing inputs
-      and outputs. If None, ["serving_default"] is used.
-    tags: (TF1 SavedModel only) Collection of tags identifying the MetaGraphDef
-      within the SavedModel to analyze. If None, {"serve"} is used.
     output_directory: The path to save the output SavedModel. Set
       `overwrite_output_directory` to `True` to overwrite any existing contents
       in the directory if not empty.
     quantization_options: A set of options for quantization. If None, it uses
       post-training static range quantization with TF opset by default.
     representative_dataset: an iterator that returns a dictionary of {input_key:
-      input_value} or a tuple with signature key and a dictionary of {input_key:
-      input_value} that feeds calibration data for quantizing model. This should
-      be provided when the model is a PTQ model.
+      input_value} or a map from signature key to a dictionary of {input_key:
+      input_value} that feeds calibration data for quantizing model. The
+      representative should be provided when the model is a PTQ model. It can be
+      provided either via this parameter or via the `representative_datasets`
+      field in `QuantizationOptions`.
     overwrite_output_directory: If set to true, overwrites the output directory
       iff it isn't empty. The default value is false.
 
@@ -1105,8 +1182,9 @@ def quantize(
 
   Raises:
     ValueError: When 1) representative_dataset is not provided for non QAT model
-      for enabling static range quantization, or 2) invalid value is provided as
-      a quantization method.
+      for enabling static range quantization, 2) invalid value is provided as
+      a quantization method, or 3) provide representative dataset via both
+      argument and QuantizationOptions.
     NotImplementedError: When the specified quantization method is not yet
       implemented.
   """
@@ -1121,11 +1199,19 @@ def quantize(
 
   _populate_quantization_options_default_values(quantization_options)
 
-  if tags is None:
-    tags = {tag_constants.SERVING}
+  if (
+      representative_dataset is not None
+      and quantization_options.representative_datasets
+  ):
+    raise ValueError(
+        'Do not specify both the `representative_dataset` argument and'
+        ' the `representative_datasets` field in `QuantizationOptions`.'
+    )
 
-  if signature_keys is None:
-    signature_keys = [signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY]
+  if quantization_options.representative_datasets:
+    representative_dataset = repr_dataset.RepresentativeDatasetLoader(
+        quantization_options.representative_datasets
+    ).load()
 
   method: quant_opts_pb2.QuantizationMethod = (
       quantization_options.quantization_method
@@ -1136,8 +1222,6 @@ def quantize(
     if method.experimental_method == _ExperimentalMethod.STATIC_RANGE:
       return _static_range_quantize(
           saved_model_path,
-          signature_keys,
-          tags,
           output_directory,
           quantization_options,
           representative_dataset,
@@ -1148,8 +1232,6 @@ def quantize(
     ):
       return _dynamic_range_quantize(
           saved_model_path,
-          signature_keys,
-          tags,
           output_directory,
           quantization_options,
       )

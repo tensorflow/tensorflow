@@ -30,20 +30,11 @@ import traceback
 # If you are adding a new file with @tf_export decorators,
 # import it in modules_with_exports.py instead.
 
-# go/tf-wildcard-import
-# pylint: disable=wildcard-import,g-bad-import-order,g-import-not-at-top
-
-from tensorflow.python import pywrap_tensorflow as _pywrap_tensorflow
-
-# pylint: enable=wildcard-import
+# pylint: disable=g-bad-import-order,g-import-not-at-top
 
 # from tensorflow.python import keras
 # from tensorflow.python.layers import layers
-from tensorflow.python.saved_model import saved_model
 from tensorflow.python.tpu import api
-
-# Sub-package for performing i/o directly instead of via ops in a graph.
-from tensorflow.python.lib.io import python_io
 
 # Special dunders that we choose to export:
 _exported_dunders = set([

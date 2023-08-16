@@ -22,13 +22,15 @@ namespace xla {
 namespace gpu {
 
 StatusOr<FusionEmissionResult> MemcpyFusion::Emit(
+    IrEmitterContext& ir_emitter_context, ElementalIrEmitter& elemental_emitter,
+    mlir::lmhlo::FusionOp fusion_op, const HloFusionInstruction& fusion,
     KernelReuseCache& kernel_cache, llvm::IRBuilder<>*) const {
-  auto src_buffer = *GetAllocationSlice(src_, context_.allocations());
-  auto dst_buffer = *GetAllocationSlice(dst_, context_.allocations());
+  auto src_buffer = *GetAllocationSlice(src_, ir_emitter_context.allocations());
+  auto dst_buffer = *GetAllocationSlice(dst_, ir_emitter_context.allocations());
   FusionEmissionResult result;
   if (src_buffer != dst_buffer) {
     result.thunks.emplace_back(std::make_unique<DeviceToDeviceCopyThunk>(
-        Thunk::ThunkInfo::WithProfileAnnotation(fusion_op_),
+        Thunk::ThunkInfo::WithProfileAnnotation(fusion_op),
         /*source_buffer=*/src_buffer,
         /*destination_buffer=*/dst_buffer,
         /*mem_size=*/ShapeUtil::ByteSizeOf(GetShape(src_)),

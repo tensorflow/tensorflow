@@ -20,6 +20,7 @@ limitations under the License.
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
@@ -98,8 +99,11 @@ ENTRY entry {
 
   HloInstruction* tr = module->entry_computation()->root_instruction();
 
-  EXPECT_EQ(*FindTiledLogicalTranspose(*tr),
-            TransposeDescription(Vector3{1, 64, 1536}, Vector3{0, 2, 1}));
+  auto result = GetDescriptionForTiledTransposeEmitter(*tr, *tr);
+  EXPECT_TRUE(result.has_value());
+  EXPECT_EQ(result->instr, tr);
+  EXPECT_EQ(result->dimensions, Vector3({1, 64, 1536}));
+  EXPECT_EQ(result->permutation, Vector3({0, 2, 1}));
 }
 
 TEST_F(IrEmissionUtilsTest, FindAnyTiledTranspose) {
@@ -114,10 +118,12 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo));
 
-  HloInstruction* tr = module->entry_computation()->root_instruction();
-  EXPECT_EQ(FindAnyTiledTranspose(*tr),
-            std::make_optional(
-                TransposeDescription(Vector3{64, 48, 32}, Vector3{2, 1, 0})));
+  HloInstruction* r = module->entry_computation()->root_instruction();
+  auto result = GetDescriptionForTiledTransposeEmitter(*r, *r);
+  EXPECT_TRUE(result.has_value());
+  EXPECT_EQ(result->instr, r);
+  EXPECT_EQ(result->dimensions, Vector3({64, 48, 32}));
+  EXPECT_EQ(result->permutation, Vector3({2, 1, 0}));
 }
 
 TEST_F(IrEmissionUtilsTest, FindAnyTiledTransposeWithIntermediateUnaryOp) {
@@ -134,10 +140,11 @@ ENTRY entry {
                           ParseAndReturnVerifiedModule(hlo));
 
   HloInstruction* r = module->entry_computation()->root_instruction();
-  EXPECT_EQ(FindAnyTiledTranspose(*r),
-            std::make_optional(
-                TransposeDescription(Vector3{64, 48, 32}, Vector3{2, 1, 0})));
-  EXPECT_EQ(&FindNonTrivialHero(*r), r->operand(0));
+  auto result = GetDescriptionForTiledTransposeEmitter(*r, *r->operand(0));
+  EXPECT_TRUE(result.has_value());
+  EXPECT_EQ(result->instr, r->operand(0));
+  EXPECT_EQ(result->dimensions, Vector3({64, 48, 32}));
+  EXPECT_EQ(result->permutation, Vector3({2, 1, 0}));
 }
 
 TEST_F(IrEmissionUtilsTest, FindAnyTiledTransposeWithIntermediateUnaryOpS8) {
@@ -156,7 +163,8 @@ ENTRY entry {
   HloInstruction* r = module->entry_computation()->root_instruction();
   // TODO(b/284431534): Update this test when the shared memory transpose
   // emitter is fast for S8 output.
-  EXPECT_FALSE(FindAnyTiledTranspose(*r).has_value());
+  EXPECT_FALSE(
+      GetDescriptionForTiledTransposeEmitter(*r, *r->operand(0)).has_value());
   EXPECT_EQ(&FindNonTrivialHero(*r), r->operand(0));
 }
 
@@ -175,10 +183,12 @@ ENTRY entry {
                           ParseAndReturnVerifiedModule(hlo));
 
   HloInstruction* r = module->entry_computation()->root_instruction();
-  EXPECT_EQ(FindAnyTiledTranspose(*r),
-            std::make_optional(
-                TransposeDescription(Vector3{64, 48, 32}, Vector3{2, 1, 0})));
-  EXPECT_EQ(&FindNonTrivialHero(*r), r->operand(0));
+
+  auto result = GetDescriptionForTiledTransposeEmitter(*r, *r->operand(0));
+  EXPECT_TRUE(result.has_value());
+  EXPECT_EQ(result->instr, r->operand(0));
+  EXPECT_EQ(result->dimensions, Vector3({64, 48, 32}));
+  EXPECT_EQ(result->permutation, Vector3({2, 1, 0}));
 }
 
 TEST_F(IrEmissionUtilsTest, FindAnyTiledTransposeWithTwoIntermediateBinaryOps) {
@@ -198,10 +208,12 @@ ENTRY entry {
                           ParseAndReturnVerifiedModule(hlo));
 
   HloInstruction* r = module->entry_computation()->root_instruction();
-  EXPECT_EQ(FindAnyTiledTranspose(*r),
-            std::make_optional(
-                TransposeDescription(Vector3{64, 48, 32}, Vector3{2, 1, 0})));
-  EXPECT_EQ(&FindNonTrivialHero(*r), r->operand(0)->operand(0));
+  auto result =
+      GetDescriptionForTiledTransposeEmitter(*r, FindNonTrivialHero(*r));
+  EXPECT_TRUE(result.has_value());
+  EXPECT_EQ(result->instr, r->operand(0)->operand(0));
+  EXPECT_EQ(result->dimensions, Vector3({64, 48, 32}));
+  EXPECT_EQ(result->permutation, Vector3({2, 1, 0}));
 }
 
 TEST_F(IrEmissionUtilsTest,
@@ -221,8 +233,145 @@ ENTRY entry {
                           ParseAndReturnVerifiedModule(hlo));
 
   HloInstruction* r = module->entry_computation()->root_instruction();
-  EXPECT_FALSE(FindAnyTiledTranspose(*r).has_value());
+  EXPECT_FALSE(
+      GetDescriptionForTiledTransposeEmitter(*r, FindNonTrivialHero(*r))
+          .has_value());
   EXPECT_EQ(&FindNonTrivialHero(*r), r);
+}
+
+TEST_F(IrEmissionUtilsTest, FindNonTrivialHeroOutsideFusion) {
+  const char* hlo = R"(
+HloModule module
+
+f {
+  p0 = f32[100,200,300]{2,1,0} parameter(0)
+  ROOT add = f32[100,200,300]{2,1,0} add(p0, p0)
+}
+
+ENTRY entry {
+  p0 = f32[300,200,100]{2,1,0} parameter(0)
+  t = f32[100,200,300]{2,1,0} transpose(p0), dimensions={2,1,0}
+  fusion = f32[100,200,300]{2,1,0} fusion(t), kind=kLoop, calls=f
+  ROOT add = f32[100,200,300]{2,1,0} add(t, fusion)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+
+  HloInstruction* r = module->GetComputationWithName("f")->root_instruction();
+  HloInstruction* transpose =
+      module->entry_computation()->parameter_instruction(0)->users().front();
+  EXPECT_EQ(
+      &FindNonTrivialHero(
+          *r,
+          [](const HloInstruction& producer, const HloInstruction& consumer) {
+            return consumer.opcode() == HloOpcode::kTranspose;
+          }),
+      transpose);
+}
+
+TEST_F(IrEmissionUtilsTest, FindNonTrivialHeroThroughFusion) {
+  const char* hlo = R"(
+HloModule module
+
+f {
+  p0 = f32[100,200,300]{2,1,0} parameter(0)
+  ROOT add = f32[100,200,300]{2,1,0} add(p0, p0)
+}
+
+ENTRY entry {
+  p0 = f32[300,200,100]{2,1,0} parameter(0)
+  p1 = f32[100,200,300]{2,1,0} parameter(1)
+  t = f32[100,200,300]{2,1,0} transpose(p0), dimensions={2,1,0}
+  fusion = f32[100,200,300]{2,1,0} fusion(t), kind=kLoop, calls=f
+  ROOT add = f32[100,200,300]{2,1,0} add(p1, fusion)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+
+  HloInstruction* r = module->entry_computation()->root_instruction();
+  HloInstruction* transpose =
+      module->entry_computation()->parameter_instruction(0)->users().front();
+  EXPECT_EQ(
+      &FindNonTrivialHero(
+          *r,
+          [](const HloInstruction& producer, const HloInstruction& consumer) {
+            return consumer.opcode() == HloOpcode::kTranspose;
+          }),
+      transpose);
+}
+
+TEST_F(IrEmissionUtilsTest, FindNonTrivialHeroInsideFusion) {
+  const char* hlo = R"(
+HloModule module
+
+f {
+  p0 = f32[300,200,100]{2,1,0} parameter(0)
+  t = f32[100,200,300]{2,1,0} transpose(p0), dimensions={2,1,0}
+  ROOT add = f32[100,200,300]{2,1,0} add(t, t)
+}
+
+ENTRY entry {
+  p0 = f32[300,200,100]{2,1,0} parameter(0)
+  p1 = f32[100,200,300]{2,1,0} parameter(1)
+  fusion = f32[100,200,300]{2,1,0} fusion(p0), kind=kLoop, calls=f
+  ROOT add = f32[100,200,300]{2,1,0} add(p1, fusion)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+
+  HloInstruction* r = module->entry_computation()->root_instruction();
+  HloInstruction* transpose = module->GetComputationWithName("f")
+                                  ->parameter_instruction(0)
+                                  ->users()
+                                  .front();
+  EXPECT_EQ(
+      &FindNonTrivialHero(
+          *r,
+          [](const HloInstruction& producer, const HloInstruction& consumer) {
+            return consumer.opcode() == HloOpcode::kParameter;
+          }),
+      transpose);
+}
+
+TEST_F(IrEmissionUtilsTest, FindNonTrivialHeroSomeOperandsInFusion) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY entry {
+  p0 = f32[300,200,100]{2,1,0} parameter(0)
+  p1 = f32[100,200,300]{2,1,0} parameter(1)
+
+  transpose = f32[100,200,300]{2,1,0} transpose(p0), dimensions={2,1,0}
+  subtract = f32[100,200,300]{2,1,0} subtract(transpose, p1)
+  ROOT add = f32[100,200,300]{2,1,0} add(subtract, p1)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+
+  HloInstruction* r = module->entry_computation()->root_instruction();
+  HloInstruction* transpose =
+      module->entry_computation()->parameter_instruction(0)->users().front();
+  // The transpose is the hero if everything is on one fusion.
+  EXPECT_EQ(&FindNonTrivialHero(
+                *r, [](const HloInstruction& producer,
+                       const HloInstruction& consumer) { return false; }),
+            transpose);
+  // The transpose isn't the hero if we cut the fusion at the subtraction.
+  EXPECT_EQ(
+      &FindNonTrivialHero(
+          *r,
+          [](const HloInstruction& producer, const HloInstruction& consumer) {
+            return producer.opcode() == HloOpcode::kSubtract;
+          }),
+      r);
 }
 
 TEST_F(IrEmissionUtilsTest, FindTiledTransposeOneSwapDimIsSmall) {
@@ -238,9 +387,12 @@ ENTRY entry {
                           ParseAndReturnVerifiedModule(hlo));
 
   HloInstruction* copy = module->entry_computation()->root_instruction();
-  EXPECT_EQ(FindTiledTranspose(*copy),
-            std::make_optional(
-                TransposeDescription{Vector3{8, 12, 1100}, Vector3{2, 1, 0}}));
+  auto result =
+      GetDescriptionForTiledTransposeEmitter(*copy, FindNonTrivialHero(*copy));
+  EXPECT_TRUE(result.has_value());
+  EXPECT_EQ(result->instr, copy);
+  EXPECT_EQ(result->dimensions, Vector3({8, 12, 1100}));
+  EXPECT_EQ(result->permutation, Vector3({2, 1, 0}));
 }
 
 TEST_F(IrEmissionUtilsTest, FindTiledLogicalTransposeOneSwapDimIsSmall) {
@@ -256,9 +408,12 @@ ENTRY entry {
                           ParseAndReturnVerifiedModule(hlo));
 
   HloInstruction* tr = module->entry_computation()->root_instruction();
-  EXPECT_EQ(FindTiledLogicalTranspose(*tr),
-            std::make_optional(
-                TransposeDescription{Vector3{8, 12, 1100}, Vector3{2, 1, 0}}));
+  auto result =
+      GetDescriptionForTiledTransposeEmitter(*tr, FindNonTrivialHero(*tr));
+  EXPECT_TRUE(result.has_value());
+  EXPECT_EQ(result->instr, tr);
+  EXPECT_EQ(result->dimensions, Vector3({8, 12, 1100}));
+  EXPECT_EQ(result->permutation, Vector3({2, 1, 0}));
 }
 
 TEST_F(IrEmissionUtilsTest, FindTiledTransposeOtherSwapDimIsSmall) {
@@ -274,10 +429,12 @@ ENTRY entry {
                           ParseAndReturnVerifiedModule(hlo));
 
   HloInstruction* copy = module->entry_computation()->root_instruction();
-
-  EXPECT_EQ(FindTiledTranspose(*copy),
-            std::make_optional(
-                TransposeDescription{Vector3{1100, 12, 8}, Vector3{2, 1, 0}}));
+  auto result =
+      GetDescriptionForTiledTransposeEmitter(*copy, FindNonTrivialHero(*copy));
+  EXPECT_TRUE(result.has_value());
+  EXPECT_EQ(result->instr, copy);
+  EXPECT_EQ(result->dimensions, Vector3({1100, 12, 8}));
+  EXPECT_EQ(result->permutation, Vector3({2, 1, 0}));
 }
 
 TEST_F(IrEmissionUtilsTest, FindTiledLogicalTransposeOtherSwapDimIsSmall) {
@@ -293,10 +450,12 @@ ENTRY entry {
                           ParseAndReturnVerifiedModule(hlo));
 
   HloInstruction* tr = module->entry_computation()->root_instruction();
-
-  EXPECT_EQ(FindTiledLogicalTranspose(*tr),
-            std::make_optional(
-                TransposeDescription{Vector3{1100, 12, 8}, Vector3{2, 1, 0}}));
+  auto result =
+      GetDescriptionForTiledTransposeEmitter(*tr, FindNonTrivialHero(*tr));
+  EXPECT_TRUE(result.has_value());
+  EXPECT_EQ(result->instr, tr);
+  EXPECT_EQ(result->dimensions, Vector3({1100, 12, 8}));
+  EXPECT_EQ(result->permutation, Vector3({2, 1, 0}));
 }
 
 }  // namespace gpu

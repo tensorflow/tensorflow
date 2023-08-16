@@ -13,13 +13,15 @@
 # limitations under the License.
 # ==============================================================================
 
+from __future__ import annotations
+
 import enum
 import inspect
 import types
 import typing
 from typing import (
-    Any, Callable, ClassVar, Dict, List, Optional, Sequence, Tuple, Type,
-    TypeVar, Union, overload)
+    Any, Callable, ClassVar, Dict, Iterator, List, Optional, Sequence, Tuple,
+    Type, TypeVar, Union, overload)
 
 import numpy as np
 
@@ -350,6 +352,7 @@ class Device:
   platform: str
   device_kind: str
   client: Client
+  local_hardware_id: int | None
   def __repr__(self) -> str: ...
   def __str__(self) -> str: ...
   def transfer_to_infeed(self, literal: _LiteralSlice): ...
@@ -367,7 +370,7 @@ class Memory:
   kind: str
   def __repr__(self) -> str: ...
   def __str__(self) -> str: ...
-  def attached_devices(self) -> List[Device]: ...
+  def addressable_by_devices(self) -> List[Device]: ...
 
 class GpuAllocatorConfig:
   class Kind(enum.IntEnum):
@@ -454,7 +457,6 @@ def get_gpu_client(
     node_id: int = ...,
     allowed_devices: Optional[Any] = ...,
     platform_name: Optional[str] = ...) -> Client:...
-def get_tpu_client(max_inflight_computations: int = ...) -> Client: ...
 def get_c_api_client(platform_name: str, options: Dict[str, Union[str, int, List[int], float]]) -> Client: ...
 def get_default_c_api_topology(
     platform_name: str,
@@ -468,6 +470,8 @@ def get_topology_for_devices(devices: List[Device]) -> DeviceTopology:
 
 def load_pjrt_plugin(platform_name: str, library_path: str) -> _Status: ...
 def pjrt_plugin_loaded(plugin_name: str) -> bool: ...
+def pjrt_plugin_initialized(plugin_name: str) -> bool: ...
+def initialize_pjrt_plugin(platform_name: str) -> _Status: ...
 
 ArrayImpl = Any
 
@@ -510,6 +514,8 @@ def batched_device_put(
 ) -> ArrayImpl:
   ...
 
+def check_and_canonicalize_memory_kind(
+    memory_kind: Optional[str], device_list: DeviceList) -> Optional[str]: ...
 
 def array_result_handler(
                aval: Any,
@@ -626,7 +632,6 @@ class DistributedRuntimeClient:
 def get_distributed_runtime_service(
     address: str,
     num_nodes: int,
-    use_coordination_service: bool = ...,
     heartbeat_interval: Optional[int] = ...,
     max_missing_heartbeats: Optional[int] = ...,
     enumerate_devices_timeout: Optional[int] = ...,
@@ -634,7 +639,6 @@ def get_distributed_runtime_service(
 def get_distributed_runtime_client(
     address: str,
     node_id: int,
-    use_coordination_service: bool = ...,
     rpc_timeout: Optional[int] = ...,
     init_timeout: Optional[int] = ...,
     shutdown_timeout: Optional[int] = ...,
@@ -670,6 +674,28 @@ class PmapFunction:
 def weakref_lru_cache(cache_context_fn: Callable, call: Callable, maxsize=...):
   ...
 
+
+class DeviceList:
+  def __init__(self, device_assignment: Tuple[Device, ...]): ...
+  def __hash__(self) -> int: ...
+  def __eq__(self, other: Any) -> bool: ...
+  def __ne__(self, other: Any) -> bool: ...
+  def __len__(self) -> int: ...
+  def __getitem__(self, index: Any) -> Any: ...
+  def __iter__(self) -> Iterator[Device]: ...
+  def __str__(self) -> str: ...
+  def __getstate__(self) -> Any: ...
+  def __setstate__(self, state: Any): ...
+  @property
+  def is_fully_addressable(self) -> bool: ...
+  @property
+  def addressable_device_list(self) -> DeviceList: ...
+  @property
+  def default_memory_kind(self) -> Optional[str]: ...
+  @property
+  def memory_kinds(self) -> Tuple[str, ...]: ...
+
+
 class Sharding: ...
 
 class XLACompatibleSharding(Sharding): ...
@@ -679,7 +705,7 @@ class NamedSharding(XLACompatibleSharding):
                _parsed_pspec: Any = None): ...
   mesh: Any
   spec: Any
-  memory_kind: Optional[str]
+  _memory_kind: Optional[str]
   _parsed_pspec: Any
 
 class SingleDeviceSharding(XLACompatibleSharding):

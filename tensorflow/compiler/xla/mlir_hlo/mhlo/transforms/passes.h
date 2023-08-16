@@ -157,6 +157,8 @@ std::unique_ptr<OperationPass<func::FuncOp>> createOptimizeMhloPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createLowerComplexPass();
 std::unique_ptr<::mlir::Pass> createLegalizeGeneralDotPass();
 std::unique_ptr<OperationPass<func::FuncOp>>
+createLegalizeDotGeneralToDotPass();
+std::unique_ptr<OperationPass<func::FuncOp>>
 createLegalizeEinsumToDotGeneralPass();
 std::unique_ptr<OperationPass<func::FuncOp>>
 createLegalizeGatherToTorchIndexSelectPass();

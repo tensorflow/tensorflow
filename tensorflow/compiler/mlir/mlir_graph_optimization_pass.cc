@@ -236,6 +236,10 @@ Status MlirFunctionOptimizationPass::Run(
       return module_ref_status.status();
     }
     // Do not fail, just keep the original TF graph unchanged in fallback mode.
+    LOG(WARNING) << "Failed to convert graph to MLIR: "
+                 << module_ref_status.status()
+                 << " , continuing without MlirOptimizationPass because "
+                    "fallback enabled.";
     return OkStatus();
   }
 
@@ -398,9 +402,14 @@ Status MlirV1CompatGraphOptimizationPass::Run(
   auto module_ref_status = ConvertGraphToMlir(
       **options.graph, debug_info, *options.flib_def, import_config, &context);
   if (!module_ref_status.ok()) {
-    return (pass_state == MlirOptimizationPassState::Enabled)
-               ? module_ref_status.status()
-               : OkStatus();
+    if (pass_state == MlirOptimizationPassState::Enabled) {
+      return module_ref_status.status();
+    }
+    LOG(WARNING) << "Failed to convert graph to MLIR: "
+                 << module_ref_status.status()
+                 << " , continuing without MlirOptimizationPass because "
+                    "fallback enabled.";
+    return OkStatus();
   }
 
   mlir::OwningOpRef<mlir::ModuleOp> module_ref =

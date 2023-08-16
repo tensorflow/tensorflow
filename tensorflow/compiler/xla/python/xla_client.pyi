@@ -29,6 +29,7 @@ from .xla_extension import CompileOptions as CompileOptions
 from .xla_extension import Device as Device
 from .xla_extension import Memory as Memory
 from .xla_extension import DeviceAssignment as DeviceAssignment
+from .xla_extension import DeviceList as DeviceList
 from .xla_extension import DeviceTopology as DeviceTopology
 from .xla_extension import DistributedRuntimeClient as DistributedRuntimeClient
 from .xla_extension import LoadedExecutable as LoadedExecutable
@@ -124,6 +125,15 @@ def pjrt_plugin_loaded(plugin_name: str) -> bool:
 
 def load_pjrt_plugin_dynamically(plugin_name: str, library_path: str) -> None:
   ...
+
+
+def pjrt_plugin_initialized(plugin_name: str) -> bool:
+  ...
+
+
+def initialize_pjrt_plugin(plugin_name: str) -> None:
+  ...
+
 
 class OpMetadata:
 
@@ -227,6 +237,9 @@ def weakref_lru_cache(cache_context_fn: Callable, call: Callable, maxsize=...):
 def copy_array_to_devices_with_sharding(self: ArrayImpl, devices: List[Device], sharding: Any) -> ArrayImpl: ...
 
 def batched_device_put(aval: Any, sharding: Any, shards: Sequence[Any], devices: List[Device]) -> ArrayImpl: ...
+
+def check_and_canonicalize_memory_kind(
+    memory_kind: Optional[str], device_list: DeviceList) -> Optional[str]: ...
 
 def array_result_handler(
                aval: Any,

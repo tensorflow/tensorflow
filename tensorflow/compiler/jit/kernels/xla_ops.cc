@@ -435,17 +435,11 @@ Status CompileToPjRtLoadedExecutable(
     bool may_alias_resource_update,
     const XlaCompiler::CompilationResult** compilation_result,
     xla::PjRtClient** client, xla::PjRtLoadedExecutable** executable) {
-  // We store information about the JIT-compiled XLA computation
-  // in the ResourceMgr.
-  ResourceMgr* rm = ctx.resource_manager();
-  if (!rm) {
-    return absl::InternalError("No resource manager.");
-  }
-
   PjRtDeviceCompiler* pjrt_device_compiler;
   DeviceCompilationProfiler* profiler;
   TF_RETURN_IF_ERROR(GetOrCreatePjRtDeviceCompilerAndProfiler(
-      platform_info, ctx.function_library(), &pjrt_device_compiler, &profiler));
+      ctx, platform_info, ctx.function_library(), &pjrt_device_compiler,
+      &profiler));
   // Hold the reference to the PJRT device compiler and profiler during
   // evaluation. (We could probably free them sooner because the ResourceMgr
   // will retain references, but this is more obviously correct.)
@@ -1047,11 +1041,22 @@ REGISTER_KERNEL_BUILDER(Name("_XlaCompile")
                             .HostMemory("resources"),
                         XlaCompileOp);
 
+REGISTER_KERNEL_BUILDER(Name("_XlaCompile")
+                            .Device(DEVICE_DEFAULT)
+                            .HostMemory("constants")
+                            .HostMemory("key")
+                            .HostMemory("compilation_successful")
+                            .HostMemory("resources"),
+                        XlaCompileOp);
+
 REGISTER_KERNEL_BUILDER(Name("_XlaRun").Device(DEVICE_CPU), XlaRunOp);
 REGISTER_KERNEL_BUILDER(Name("_XlaRun").Device(DEVICE_GPU).HostMemory("key"),
                         XlaRunOp);
+REGISTER_KERNEL_BUILDER(
+    Name("_XlaRun").Device(DEVICE_DEFAULT).HostMemory("key"), XlaRunOp);
 
 REGISTER_KERNEL_BUILDER(Name("_XlaMerge").Device(DEVICE_CPU), XlaMergeOp);
 REGISTER_KERNEL_BUILDER(Name("_XlaMerge").Device(DEVICE_GPU), XlaMergeOp);
+REGISTER_KERNEL_BUILDER(Name("_XlaMerge").Device(DEVICE_DEFAULT), XlaMergeOp);
 
 }  // namespace tensorflow

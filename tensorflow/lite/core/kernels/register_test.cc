@@ -49,6 +49,7 @@ TEST(BuiltinOpResolverTest, CopySupportsAdd) {
   ASSERT_NE(add->invoke, nullptr);
 }
 
+#if defined(TFLITE_WITHOUT_XNNPACK)
 TEST(BuiltinOpResolverTest, HasXNNPACKDelegate_QS8) {
   BuiltinOpResolver builtin_op_resolver;
   ASSERT_EQ(builtin_op_resolver.GetDelegateCreators().size(), 1);
@@ -98,5 +99,6 @@ TEST(BuiltinOpResolverTest, Disable_QU8) {
   ASSERT_EQ(options.flags & TFLITE_XNNPACK_DELEGATE_FLAG_QS8,
             TFLITE_XNNPACK_DELEGATE_FLAG_QS8);
 }
+#endif  // TFLITE_WITHOUT_XNNPACK
 }  // namespace
 }  // namespace tflite::ops::builtin

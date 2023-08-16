@@ -15,19 +15,138 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/tools/hlo_slicer.h"
 
+#include <deque>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
+#include "tensorflow/compiler/xla/service/hlo_verifier.h"
+#include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/tools/hlo_extractor.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 namespace {
+
+// A helper function of `ReduceTupleParameter` that tries to reduce the number
+// of elements of a specific parameter instruction of tuple type
+// (`tuple_parameter`). It only updates the shape of parameter instruction and
+// the index of all its uses (it only handle the case where all the uses are
+// GetTupleElement).
+void ReduceTupleParameterHelper(HloModule* hlo_module,
+                                HloInstruction* tuple_parameter) {
+  // Only handle the case where all the uses are GetTupleElement.
+  for (HloInstruction* user_inst : tuple_parameter->users()) {
+    if (user_inst->opcode() != HloOpcode::kGetTupleElement) {
+      return;
+    }
+  }
+
+  VLOG(1) << "Parameter instruction to be reduced: "
+          << tuple_parameter->ToString()
+          << " shape size: " << tuple_parameter->shape().tuple_shapes_size()
+          << " users size: " << tuple_parameter->users().size();
+
+  // Collect the shapes of the elements that have users.
+  std::vector<Shape> used_shapes;
+  for (HloInstruction* user_inst : tuple_parameter->users()) {
+    used_shapes.push_back(user_inst->shape());
+  }
+
+  // Change the shape of `tuple_parameter` to only include the shape of elements
+  // that have users.
+  Shape new_tuple_shape =
+      ShapeUtil::MakeTupleShape(absl::MakeSpan(used_shapes));
+  tuple_parameter->mutable_shape()->mutable_tuple_shapes()->clear();
+  for (const auto& shape : used_shapes) {
+    tuple_parameter->mutable_shape()->mutable_tuple_shapes()->push_back(shape);
+  }
+
+  // Update the tuple index of all of the users of `tuple_parameter`, so that
+  // they index into the right shape.
+  for (int i = 0; i < tuple_parameter->users().size(); ++i) {
+    tuple_parameter->users()[i]->set_tuple_index(i);
+  }
+
+  // Update HloModule shape.
+  hlo_module->config().SetComputationLayoutIfExists(
+      hlo_module->entry_computation()->ComputeProgramShape());
+}
+
+// Remove the unused elements in all parameter instructions of tuple type, and
+// update all the uses of the parameter instructions accordingly. Now it only
+// considers the case where all the uses of the (tuple) parameter instruction
+// are GetTupleElement instruction.
+void ReduceTupleParameter(HloModule* hlo_module) {
+  // Collect all the parameters instructions of tuple type.
+  std::vector<HloInstruction*> tuple_parameters;
+  for (HloInstruction* parameter :
+       hlo_module->entry_computation()->parameter_instructions()) {
+    if (parameter->shape().IsTuple()) {
+      tuple_parameters.push_back(parameter);
+    }
+  }
+
+  // For each parameter, invokes `ReduceTupleParameterHelper` to reduce its size
+  // of dimensions. No instruction is added or removed from `hlo_module` during
+  // this process, only shapes of parameter instructions and tuple indices of
+  // their uses are updated.
+  for (HloInstruction* tuple_parameter : tuple_parameters) {
+    ReduceTupleParameterHelper(hlo_module, tuple_parameter);
+  }
+}
+
+// Find and return the first custom-call instruction with "Sharding" as the
+// custom-call target.
+HloInstruction* FindShardingInstruction(HloModule* hlo_module) {
+  for (HloComputation* computation : hlo_module->computations()) {
+    for (HloInstruction* instruction : computation->instructions()) {
+      if (instruction->opcode() == HloOpcode::kCustomCall &&
+          instruction->custom_call_target() == "Sharding") {
+        CHECK_EQ(instruction->operand_count(), 1);
+        return instruction;
+      }
+    }
+  }
+  return nullptr;
+}
+
+// Remove all custom-calls to Sharding in the `hlo_module`. The sharding
+// custom-call will be removed, and its uses would be replaced with the operand
+// of the sharding custom-call.
+void RemoveSharding(HloModule* hlo_module) {
+  while (HloInstruction* custom_call_instruction =
+             FindShardingInstruction(hlo_module)) {
+    // Replace its uses with its operand.
+    for (HloInstruction* user_instruction : custom_call_instruction->users()) {
+      CHECK_OK(custom_call_instruction->ReplaceUseWith(
+          user_instruction, custom_call_instruction->mutable_operand(0)));
+    }
+
+    // Detach the custom-call from computation.
+    custom_call_instruction->DetachFromOperandsAndUsers();
+    CHECK_OK(custom_call_instruction->parent()->RemoveInstruction(
+        custom_call_instruction));
+    VLOG(1) << "Removed sharding custom-call: "
+            << custom_call_instruction->ToString();
+
+    // Verify if the module is still valid.
+    HloVerifier verifier(/*layout_sensitive=*/false,
+                         /*allow_mixed_precision=*/true);
+    TF_CHECK_OK(verifier.Run(hlo_module).status());
+  }
+}
 
 // Intra-Computation forward/backward slicing: Conduct slicing inside the given
 // computation, starting from the instructions passed in `sliced_instructions`.
@@ -302,6 +421,125 @@ SliceOutput SliceModule(
                              /*forward_slice=*/false,
                              /*nearest_common_ancestor_as_root=*/false);
   }
+}
+
+std::vector<std::unique_ptr<HloModule>> SliceModuleAndExtract(
+    const HloModule* hlo_module,
+    absl::Span<const HloInstruction*> slice_starting_instructions,
+    const SlicingConfiguration& slicing_configuration) {
+  std::vector<std::unique_ptr<HloModule>> sliced_modules;
+
+  // Group `slice_starting_instructions` based on `slicing_group` configuration.
+  int slicing_group = slicing_configuration.slicing_group;
+  CHECK(slicing_group >= 1 || slicing_group == -1);
+  std::vector<absl::Span<const HloInstruction*>> grouped_instructions;
+  if (slicing_group == -1) {
+    grouped_instructions = {slice_starting_instructions};
+  } else {
+    for (int i = 0; i < slice_starting_instructions.size();
+         i += slicing_group) {
+      // subspan can correctly handel the last group, which may be smaller than
+      // `slicing_group`.
+      grouped_instructions.push_back(
+          slice_starting_instructions.subspan(i, slicing_group));
+    }
+  }
+
+  for (const auto& grouped_slice_starting_instructions : grouped_instructions) {
+    // Forward slicing.
+    SliceOutput forward_slice_output;
+    if (slicing_configuration.forward_slicing ==
+        SlicingConfiguration::ForwardSlicingConfig::kRoot) {
+      // Slice to the root instruction of the entry computation of `hlo_module`.
+      forward_slice_output = SliceModule(
+          hlo_module, grouped_slice_starting_instructions,
+          /*frontier_selector=*/nullptr,
+          /*ignore_control_dependency=*/false, /*forward_slice=*/true,
+          /*nearest_common_ancestor_as_root=*/false);
+    } else if (slicing_configuration.forward_slicing ==
+               SlicingConfiguration::ForwardSlicingConfig::kNca) {
+      // slice to the nearest common ancestors of
+      // `grouped_slice_starting_instructions`
+      forward_slice_output = SliceModule(
+          hlo_module, grouped_slice_starting_instructions,
+          /*frontier_selector=*/nullptr,
+          /*ignore_control_dependency=*/false, /*forward_slice=*/true,
+          /*nearest_common_ancestor_as_root=*/true);
+    }
+    VLOG(1) << "[Num of forward sliced insts]: "
+            << forward_slice_output.NumSlicedInstructions();
+
+    // Backward slicing.
+    SliceOutput backward_slice_output;
+    if (slicing_configuration.backward_slicing) {
+      backward_slice_output = SliceModule(
+          hlo_module, grouped_slice_starting_instructions,
+          /*frontier_selector=*/nullptr,
+          /*ignore_control_dependency=*/false, /*forward_slice=*/false);
+    } else {
+      // Return the empty SliceOutput if backward slicing is not enabled.
+      backward_slice_output = SliceOutput();
+    }
+
+    // Combine forward slicing output and backward slicing output.
+    auto sliced_result = SliceOutput(SliceOutput::UnionSlicedInstructions(
+        forward_slice_output, backward_slice_output));
+
+    // Decide Root to start extraction based on `forward_slicing_config`.
+    const HloInstruction* extraction_root =
+        slicing_configuration.forward_slicing ==
+                SlicingConfiguration::ForwardSlicingConfig::kNca
+            ? forward_slice_output.nearest_common_ancestor_root()
+            : hlo_module->entry_computation()->root_instruction();
+    VLOG(1) << "[Root instruction of the sliced module]: "
+            << extraction_root->ToString();
+
+    // Exclude the instructions that are not in the slicing results.
+    auto extract_selector = [&sliced_result](const HloInstruction* hlo_inst) {
+      for (const auto& [computation, instructions] :
+           sliced_result.sliced_instructions()) {
+        if (instructions.contains(hlo_inst)) {
+          return true;
+        }
+      }
+      return false;
+    };
+
+    // Replace the excluded instructions in the entry computation with zeros.
+    auto replace_type_selector =
+        [](const HloInstruction* hlo_inst) -> ReplaceType {
+      return ReplaceType::kReplaceZeroBroadcast;
+    };
+
+    // Extract from the original module.
+    auto extracted_module =
+        ExtractModule(/*instruction=*/extraction_root, /*height=*/-1,
+                      /*extract_selector=*/extract_selector,
+                      /*replace_type_selector=*/replace_type_selector,
+                      /*cross_computation=*/true);
+
+    // Remove the custom-call to sharding if `remove_sharding` is specified.
+    if (slicing_configuration.remove_sharding) {
+      RemoveSharding(extracted_module.get());
+    }
+
+    // Reduce the parameter instructions of tuple shape if
+    // `reduce_tuple_parameter` is specified.
+    if (slicing_configuration.reduce_tuple_parameter) {
+      ReduceTupleParameter(extracted_module.get());
+    }
+
+    // Verify if the extracted module (after processing) is valid or not.
+    HloVerifier verifier(/*layout_sensitive=*/false,
+                         /*allow_mixed_precision=*/true);
+    TF_CHECK_OK(verifier.Run(extracted_module.get()).status());
+
+    sliced_modules.emplace_back(std::move(extracted_module));
+  }
+
+  // Return all the sliced modules.
+  CHECK_EQ(sliced_modules.size(), grouped_instructions.size());
+  return sliced_modules;
 }
 
 }  // namespace xla

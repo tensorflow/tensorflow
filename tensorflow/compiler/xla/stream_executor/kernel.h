@@ -496,6 +496,19 @@ class KernelArgsArray : public KernelArgsArrayBase {
   size_t number_of_generic_arguments_ = 0;
 };
 
+template <int n>
+std::unique_ptr<KernelArgsArrayBase> MakeKernelArgs(
+    absl::Span<const DeviceMemoryBase> args, uint32_t shared_mem_bytes) {
+  auto kernel_args = std::make_unique<KernelArgsArray<n>>();
+  for (const DeviceMemoryBase &buf : args) {
+    kernel_args->add_device_memory_argument(buf);
+  }
+  if (shared_mem_bytes > 0) {
+    kernel_args->add_shared_bytes(shared_mem_bytes);
+  }
+  return kernel_args;
+}
+
 // Typed variant of KernelBase, like a typed device function pointer. See the
 // file comment for details and example usage.
 //

@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 
 namespace mlir {
-namespace TFTPU {
+namespace TFDevice {
 
 namespace {
 
@@ -30,7 +30,7 @@ constexpr char kDeviceAttr[] = "device";
 constexpr char kXlaOutsideCompilationAttr[] = "_xla_outside_compilation";
 
 #define GEN_PASS_DEF_OUTSIDECOMPILEDTOHOSTLAUNCHPASS
-#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_device_passes.h.inc"
 
 struct OutsideCompiledToHostLaunchPass
     : public impl::OutsideCompiledToHostLaunchPassBase<
@@ -74,7 +74,7 @@ void OutsideCompiledToHostLaunchPass::runOnOperation() {
     }
     return WalkResult::advance();
   };
-  if (failed(WalkReachableFromTpuCluster(getOperation(), traverse_op)))
+  if (failed(TFTPU::WalkReachableFromTpuCluster(getOperation(), traverse_op)))
     return signalPassFailure();
 }
 
@@ -85,5 +85,5 @@ CreateOutsideCompiledToHostLaunchPass() {
   return std::make_unique<OutsideCompiledToHostLaunchPass>();
 }
 
-}  // namespace TFTPU
+}  // namespace TFDevice
 }  // namespace mlir

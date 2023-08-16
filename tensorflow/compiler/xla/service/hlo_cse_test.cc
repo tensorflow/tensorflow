@@ -17,13 +17,11 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "absl/strings/substitute.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
-#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/layout_util.h"
@@ -34,8 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
-#include "tensorflow/compiler/xla/tests/test_utils.h"
-#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -848,6 +844,36 @@ TEST_F(HloCseTest, CustomCallSideEffects) {
 
   SCOPED_TRACE(absl::StrCat("Module after CSE:\n", m->ToString()));
   EXPECT_EQ(changed, false);
+}
+
+TEST_F(HloCseTest, IgnoreControlDependencies) {
+  const char* const hlo_string = R"(
+    HloModule m
+
+    %add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT x = f32[] add(p0, p1)
+    }
+
+    ENTRY entry {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+
+      ar0 = f32[] all-reduce(p0), replica_groups={}, to_apply=%add
+      ar1 = f32[] all-reduce(p1), replica_groups={}, to_apply=%add, control-predecessors={ar0}
+      ar2 = f32[] all-reduce(p0), replica_groups={}, to_apply=%add, control-predecessors={ar1}
+      ROOT root = tuple(ar0, ar1, ar2)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  HloCSE cse(/*is_layout_sensitive=*/false, /*only_fusion_computations=*/false,
+             /*ignore_control_dependencies=*/true);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&cse, m.get()));
+
+  SCOPED_TRACE(absl::StrCat("Module after CSE:\n", m->ToString()));
+  EXPECT_EQ(changed, true);
 }
 
 class HloCseCommutativeOpTest

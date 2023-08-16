@@ -39,8 +39,10 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
@@ -88,13 +90,20 @@ using ClusterMap = llvm::SmallDenseMap<llvm::StringRef, OpSetVector, 8>;
 #define GEN_PASS_DEF_TPUCLUSTERFORMATIONPASS
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
 
-struct TPUClusterFormationPass
+class TPUClusterFormationPass
     : public impl::TPUClusterFormationPassBase<TPUClusterFormationPass> {
+ public:
+  explicit TPUClusterFormationPass(bool strict_clusters)
+      : strict_clusters_(strict_clusters) {}
+
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<tf_device::TensorFlowDeviceDialect>();
   }
 
   void runOnOperation() override;
+
+ private:
+  bool strict_clusters_;
 };
 
 // Creates a mapping from the TPUReplicateMetadata ops `_replication_info`
@@ -335,9 +344,10 @@ bool hasOpClusterDataDependency(Operation* op, bool incoming,
 
 // Collects ops that need to be moved behind the cluster due to data or control
 // dependencies.
-llvm::SmallSetVector<Operation*, 8> CollectClusterSuccessorOps(
+FailureOr<llvm::SmallSetVector<Operation*, 8>> CollectClusterSuccessorOps(
     Block* block, const OpSetVector& cluster_ops,
-    const TF::SideEffectAnalysis::Info& side_effect_analysis) {
+    const TF::SideEffectAnalysis::Info& side_effect_analysis,
+    bool strict_clusters) {
   OpSetVector cluster_predecessor_ops;
   OpSetVector cluster_successor_ops;
 
@@ -382,8 +392,13 @@ llvm::SmallSetVector<Operation*, 8> CollectClusterSuccessorOps(
         // might have runtime impact for existing models.
         // We should make this message an error once there is such a contract
         // and once existing cases have been fixed.
-        op.emitWarning()
-            << "op has cyclic dependency with a compilation cluster";
+        if (strict_clusters) {
+          return op.emitError()
+                 << "op has cyclic dependency with a compilation cluster";
+        } else {
+          op.emitWarning()
+              << "op has cyclic dependency with a compilation cluster";
+        }
       } else {
         cluster_successor_ops.insert(&op);
       }
@@ -874,7 +889,8 @@ void SetNoReplicationClusterAttrs(tf_device::ClusterOp cluster,
 //      attribute `num_replicas` is greater than 1.
 //   9. Copy over TPUReplicateMetadata attributes to `tf_device.cluster`.
 LogicalResult FormClustersInBlock(
-    Block* block, const TF::SideEffectAnalysis::Info& side_effect_analysis) {
+    Block* block, const TF::SideEffectAnalysis::Info& side_effect_analysis,
+    bool strict_clusters) {
   MetadataMap metadata_map;
   LogicalResult result = CollectMetadata(block, &metadata_map);
   if (failed(result)) return result;
@@ -886,7 +902,8 @@ LogicalResult FormClustersInBlock(
       for (Region& region : op.getRegions()) {
         if (!llvm::hasSingleElement(region))
           return op.emitOpError("Expected single block region");
-        if (failed(FormClustersInBlock(&region.front(), side_effect_analysis)))
+        if (failed(FormClustersInBlock(&region.front(), side_effect_analysis,
+                                       strict_clusters)))
           return failure();
       }
     }
@@ -915,8 +932,10 @@ LogicalResult FormClustersInBlock(
       continue;
     }
 
-    OpSetVector cluster_successor_ops =
-        CollectClusterSuccessorOps(block, cluster_ops, side_effect_analysis);
+    auto status = CollectClusterSuccessorOps(
+        block, cluster_ops, side_effect_analysis, strict_clusters);
+    if (failed(status)) return status;
+    OpSetVector cluster_successor_ops = *status;
 
     llvm::SmallVector<Value, 8> results =
         CollectClusterResults(block, cluster_ops);
@@ -958,12 +977,13 @@ LogicalResult FormClustersInBlock(
 }
 
 LogicalResult FormClustersInFunction(
-    func::FuncOp func,
-    const TF::SideEffectAnalysis::Info& side_effect_analysis) {
+    func::FuncOp func, const TF::SideEffectAnalysis::Info& side_effect_analysis,
+    bool strict_clusters) {
   if (!llvm::hasSingleElement(func))
     return func.emitOpError("Expecting a single block function");
 
-  if (failed(FormClustersInBlock(&func.front(), side_effect_analysis)))
+  if (failed(FormClustersInBlock(&func.front(), side_effect_analysis,
+                                 strict_clusters)))
     return failure();
 
   // Remove TPUReplicatedInput and TPUReplicatedOutput nodes.
@@ -1017,13 +1037,15 @@ void TPUClusterFormationPass::runOnOperation() {
   for (auto func : getOperation().getOps<func::FuncOp>())
     if (!func.isExternal() &&
         failed(FormClustersInFunction(
-            func, side_effect_analysis.GetAnalysisForFunc(func))))
+            func, side_effect_analysis.GetAnalysisForFunc(func),
+            strict_clusters_)))
       return signalPassFailure();
 }
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<ModuleOp>> CreateTPUClusterFormationPass() {
-  return std::make_unique<TPUClusterFormationPass>();
+std::unique_ptr<OperationPass<ModuleOp>> CreateTPUClusterFormationPass(
+    bool strict_clusters) {
+  return std::make_unique<TPUClusterFormationPass>(strict_clusters);
 }
 
 }  // namespace TFTPU

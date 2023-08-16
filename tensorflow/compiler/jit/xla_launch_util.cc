@@ -611,9 +611,6 @@ Status PreparePjRtExecutableArguments(
     } else {
       tensor = inputs[arg_num - num_missing_prefix_ctx_inputs];
     }
-    if (!tensor->RefCountIsOne()) {
-      non_donatable_input_indices->insert(arg_num);
-    }
 
     // The input tensor can have the following cases.
     // 1. Tensor with PjRtTensorBuffer, containing a PjRtBuffer. This case
@@ -670,6 +667,10 @@ Status PreparePjRtExecutableArguments(
         continue;
       }
       args->push_back(av_tensor->GetBuffer().get());
+    }
+
+    if (!tensor->RefCountIsOne()) {
+      non_donatable_input_indices->insert(args->size() - 1);
     }
   }
   return OkStatus();

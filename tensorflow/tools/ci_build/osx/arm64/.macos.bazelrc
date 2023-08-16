@@ -25,11 +25,7 @@ test --verbose_failures=true --local_test_jobs=HOST_CPUS --test_output=errors
 
 # Increase the test timeout as tests often take longer on mac.
 test --test_timeout=300,450,1200,3600
-
-# Only run small and medium tests. Some tests initially fail but eventually
-# succeed so set flaky_test_attempts=3. If it fails on all three tries, then
-# the test is reported as failed.
-test --flaky_test_attempts=3 --test_size_filters=small,medium
+test --test_size_filters=small,medium
 
 # Only build what is required to run the tests
 test --build_tests_only --keep_going

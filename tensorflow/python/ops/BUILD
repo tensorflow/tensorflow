@@ -1059,7 +1059,7 @@ cuda_py_strict_test(
     python_version = "PY3",
     tags = [
         "guitar",
-        "multi_gpu",
+        # "multi_gpu", # TODO(b/287692888): re-enable once the 2gpu test passes.
         "no_windows",
     ],
     deps = [
@@ -1436,6 +1436,7 @@ py_strict_library(
         ":array_ops",
         ":math_ops",
         ":math_ops_gen",
+        "//tensorflow/python/compat",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
@@ -1456,6 +1457,8 @@ cuda_py_strict_test(
         ":bincount_ops",
         ":count_ops_gen",
         ":sparse_ops",
+        "//tensorflow/python/compat",
+        "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:sparse_tensor",
@@ -1725,10 +1728,7 @@ py_strict_library(
     name = "filesystem_ops",
     srcs = ["filesystem_ops.py"],
     srcs_version = "PY3",
-    deps = [
-        ":filesystem_ops_gen",
-        "//tensorflow/python/util:tf_export",
-    ],
+    deps = [":filesystem_ops_gen"],
 )
 
 py_strict_library(
@@ -1975,6 +1975,24 @@ py_strict_library(
     ],
 )
 
+tf_py_strict_test(
+    name = "lookup_ops_async_checkpoint_test",
+    srcs = ["lookup_ops_async_checkpoint_test.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":lookup_ops",
+        ":variables",
+        "//tensorflow/python/checkpoint",
+        "//tensorflow/python/checkpoint:checkpoint_options",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:test_lib",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 py_strict_library(
     name = "math_grad",
     srcs = ["math_grad.py"],
@@ -2084,6 +2102,7 @@ py_strict_library(
         "//tensorflow/python/framework:composite_tensor_gradient",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:cpp_shape_inference_proto_py",
+        "//tensorflow/python/framework:device",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:indexed_slices",
@@ -2858,12 +2877,6 @@ py_strict_library(
         "//tensorflow/python/autograph",
         "//tensorflow/python/compiler/tensorrt:trt_convert_py",
         "//tensorflow/python/eager:wrap_function",
-        "//tensorflow/python/ops/linalg:adjoint_registrations",
-        "//tensorflow/python/ops/linalg:cholesky_registrations",
-        "//tensorflow/python/ops/linalg:inverse_registrations",
-        "//tensorflow/python/ops/linalg:linear_operator_algebra",
-        "//tensorflow/python/ops/linalg:matmul_registrations",
-        "//tensorflow/python/ops/linalg:solve_registrations",
         "//tensorflow/python/ops/parallel_for:control_flow_ops",
         "//tensorflow/python/ops/ragged:ragged_batch_gather_ops",
         "//tensorflow/python/ops/ragged:ragged_batch_gather_with_default_op",
@@ -3108,6 +3121,7 @@ py_strict_library(
         ":variables",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:indexed_slices",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_conversion_registry",
@@ -4506,6 +4520,7 @@ py_strict_test(
         ":math_ops_gen",
         ":weak_tensor_ops",
         ":weak_tensor_test_util",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:extension_type",
@@ -4531,6 +4546,7 @@ py_strict_test(
     deps = [
         ":array_ops",
         ":math_ops",
+        ":math_ops_gen",
         ":resource_variable_ops",
         ":tensor_array_ops",
         ":variables",

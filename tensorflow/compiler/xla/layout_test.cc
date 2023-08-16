@@ -15,12 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/layout.h"
 
+#include <cstdint>
 #include <memory>
 #include <sstream>
 #include <vector>
 
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 

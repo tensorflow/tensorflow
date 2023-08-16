@@ -29,6 +29,7 @@ cc_library(
         "//tensorflow/tsl/profiler/utils:tf_op_utils",
         "//tensorflow/tsl/profiler/utils:tf_xplane_visitor",
         "//tensorflow/tsl/profiler/utils:timespan",
+        "//tensorflow/tsl/profiler/utils:xplane_schema",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
@@ -287,13 +288,16 @@ cc_library(
     hdrs = ["step_events_to_steps_db.h"],
     copts = tf_profiler_copts(),
     deps = [
+        ":op_metrics_db_combiner",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/profiler/protobuf:steps_db_proto_cc",
         "//tensorflow/core/profiler/utils:event_span",
+        "//tensorflow/core/profiler/utils:op_metrics_db_utils",
         "//tensorflow/tsl/profiler/utils:timespan",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
     ],
 )
 
@@ -388,12 +392,15 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:steps_db_proto_cc",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler/utils:event_span",
+        "//tensorflow/core/profiler/utils:op_metrics_db_utils",
         "//tensorflow/core/profiler/utils:trace_utils",
         "//tensorflow/core/profiler/utils:xplane_schema",
         "//tensorflow/core/profiler/utils:xplane_visitor",
         "//tensorflow/tsl/profiler/utils:tf_op_utils",
         "//tensorflow/tsl/profiler/utils:tf_xplane_visitor",
         "//tensorflow/tsl/profiler/utils:timespan",
+        "//tensorflow/tsl/profiler/utils:tpu_xplane_utils",
+        "//tensorflow/tsl/profiler/utils:xplane_schema",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
@@ -970,5 +977,42 @@ tf_cc_test(
         "//tensorflow/tsl/profiler/utils:tf_xplane_visitor",
         "//tensorflow/tsl/profiler/utils:xplane_schema",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "xspace_to_dcn_slack_analysis",
+    srcs = ["xspace_to_dcn_slack_analysis.cc"],
+    hdrs = ["xspace_to_dcn_slack_analysis.h"],
+    deps = [
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:side_effect_util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/core/profiler/protobuf:dcn_slack_analysis_proto_cc",
+        "//tensorflow/core/profiler/utils:hlo_module_utils",
+        "//tensorflow/core/profiler/utils:hlo_proto_map",
+        "//tensorflow/core/profiler/utils:hlo_proto_to_module",
+        "//tensorflow/tsl/platform:statusor",
+        "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/tsl/profiler/utils:math_utils",
+        "//tensorflow/tsl/profiler/utils:tf_xplane_visitor",
+        "//tensorflow/tsl/profiler/utils:xplane_schema",
+        "//tensorflow/tsl/profiler/utils:xplane_utils",
+        "//tensorflow/tsl/profiler/utils:xplane_visitor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "dcn_slack_analysis_combiner",
+    srcs = ["dcn_slack_analysis_combiner.cc"],
+    hdrs = ["dcn_slack_analysis_combiner.h"],
+    deps = [
+        "//tensorflow/core/profiler/protobuf:dcn_slack_analysis_proto_cc",
+        "//tensorflow/tsl/profiler/utils:math_utils",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )

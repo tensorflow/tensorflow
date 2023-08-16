@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
@@ -1944,6 +1945,7 @@ class DynamicShapeRemovingVisitor : public DfsHloVisitorWithDefault {
   Status HandleGetTupleElement(HloInstruction* hlo) override;
 
   Status HandleParameter(HloInstruction* hlo) override;
+  Status HandleInfeed(HloInstruction* hlo) override;
 
   Status HandleAsyncStart(HloInstruction* hlo) override;
   Status HandleAsyncDone(HloInstruction* hlo) override;
@@ -2133,6 +2135,10 @@ Status DynamicShapeRemovingVisitor::HandleTuple(HloInstruction* hlo) {
   for (int64_t i = 0; i < hlo->operand_count(); ++i) {
     *hlo->mutable_shape()->mutable_tuple_shapes(i) = hlo->operand(i)->shape();
   }
+  return OkStatus();
+}
+
+Status DynamicShapeRemovingVisitor::HandleInfeed(HloInstruction* hlo) {
   return OkStatus();
 }
 

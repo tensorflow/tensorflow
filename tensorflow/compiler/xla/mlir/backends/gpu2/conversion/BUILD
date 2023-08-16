@@ -37,6 +37,29 @@ package(
 # )
 #
 # cc_library(
+#     name = "convert_graph_region_op",
+#     srcs = if_gpu2(["convert_graph_region_op.cc"]),
+#     hdrs = if_gpu2(["convert_graph_region_op.h"]),
+#     # TODO(ezhulenev): Override cc_library()'s internal default value of ["//buildenv/target:gce"]
+#     # because IREE targets are not compatible with the `non_prod` constraint.
+#     compatible_with = [],
+#     deps = [
+#         ":de_bufferization",
+#         ":xla_gpu_api",
+#         "@llvm-project//llvm:Support",
+#         "@llvm-project//mlir:ArithDialect",
+#         "@llvm-project//mlir:BufferizationDialect",
+#         "@llvm-project//mlir:FuncDialect",
+#         "@llvm-project//mlir:IR",
+#         "@llvm-project//mlir:MemRefDialect",
+#         "@llvm-project//mlir:Support",
+#         "@llvm-project//mlir:TensorDialect",
+#         "@llvm-project//mlir:Transforms",
+#         "//tensorflow/compiler/xla/mlir/backends/gpu2/ir:xla_gpu",
+#     ],
+# )
+#
+# cc_library(
 #     name = "convert_library_ops",
 #     srcs = if_gpu2(["convert_library_ops.cc"]),
 #     hdrs = if_gpu2(["convert_library_ops.h"]),
@@ -104,11 +127,15 @@ package(
 #
 # cc_library(
 #     name = "de_bufferization",
+#     srcs = ["de_bufferization.cc"],
 #     hdrs = ["de_bufferization.h"],
 #     deps = [
 #         "@llvm-project//llvm:Support",
+#         "@llvm-project//mlir:BufferizationDialect",
 #         "@llvm-project//mlir:IR",
 #         "@llvm-project//mlir:MemRefDialect",
+#         "@llvm-project//mlir:Support",
+#         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
 #     ],
 # )
 #
@@ -122,6 +149,7 @@ package(
 #         "@llvm-project//mlir:FuncDialect",
 #         "@llvm-project//mlir:IR",
 #         "@llvm-project//mlir:MemRefDialect",
+#         "@llvm-project//mlir:Support",
 #         "//tensorflow/compiler/xla/mlir/backends/gpu2/ir:xla_gpu",
 #     ] + if_gpu2(["//third_party/iree/llvm-external-projects/iree-dialects:IREEInputDialect"]),
 # )

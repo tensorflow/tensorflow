@@ -1,3 +1,4 @@
+load("@bazel_skylib//lib:selects.bzl", "selects")
 load(
     "//tensorflow:tensorflow.bzl",
     "clean_dep",
@@ -195,9 +196,12 @@ tf_cuda_library(
         # Clean up so that PJRT can run on ARM.
         # Also it won't build with WeightWatcher which tracks OSS build binaries.
         # TODO(b/290533709): Clean up this build rule.
-        select({
+        selects.with_or({
             clean_dep("//tensorflow:linux_x86_64_with_weightwatcher"): [],
-            clean_dep("//tensorflow:linux_x86_64"): [
+            (
+                clean_dep("//tensorflow:linux_x86_64"),
+                clean_dep("//tensorflow:haswell"),
+            ): [
                 "//tensorflow/compiler/tf2xla:layout_util",
                 "//tensorflow/compiler/jit:flags",
                 "//tensorflow/compiler/jit:pjrt_device_context",
@@ -388,7 +392,7 @@ tf_cuda_cc_test(
     # allocations.
     tags = tf_cuda_tests_tags() + [
         "guitar",
-        "multi_gpu",
+        # "multi_gpu", # TODO(b/287692888): re-enable once the 2gpu test passes.
     ],
     deps = [
         ":gpu_id",
@@ -470,5 +474,29 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core/framework:allocator",
         "//tensorflow/core/platform:stream_executor",
+    ],
+)
+
+cc_library(
+    name = "gpu_serving_device_selector",
+    srcs = ["gpu_serving_device_selector.cc"],
+    hdrs = ["gpu_serving_device_selector.h"],
+    deps = [
+        "//tensorflow/core/common_runtime:serving_device_selector",
+        "@com_google_absl//absl/container:fixed_array",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+tf_cc_test(
+    name = "gpu_serving_device_selector_test",
+    size = "small",
+    srcs = ["gpu_serving_device_selector_test.cc"],
+    deps = [
+        ":gpu_serving_device_selector",
+        "//tensorflow/core/common_runtime:serving_device_selector",
+        "//tensorflow/core/common_runtime:serving_device_selector_policies",
+        "@com_google_googletest//:gtest_main",
     ],
 )

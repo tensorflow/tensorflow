@@ -44,11 +44,14 @@ else
   echo 'If you have not, you will see a lot of undefined variable errors.'
 fi
 
-# Make a "build" directory for outputting all build artifacts (TF's .gitignore
-# ignores the "build" directory), and ensure all further commands are executed
-# inside of the $TFCI_GIT_DIR as well.
+# Make the output directory for outputting all build artifacts, and ensure all
+# further commands are executed inside of the $TFCI_GIT_DIR as well.
 cd "$TFCI_GIT_DIR"
-mkdir -p build
+mkdir -p "$TFCI_OUTPUT_DIR"
+
+# In addition to dumping all script output to the terminal, place it into
+# $TFCI_OUTPUT_DIR/script.log
+exec > >(tee "$TFCI_OUTPUT_DIR/script.log") 2>&1
 
 # Setup tfrun, a helper function for executing steps that can either be run
 # locally or run under Docker. docker.sh, below, redefines it as "docker exec".
@@ -83,20 +86,15 @@ fi
 
 # Generate an overview page describing the build
 if [[ "$TFCI_INDEX_HTML_ENABLE" == 1 ]]; then
-  ./ci/official/utilities/generate_index_html.sh build/index.html
+  ./ci/official/utilities/generate_index_html.sh "$TFCI_OUTPUT_DIR/index.html"
 fi
 
-# If enabled, gather test logs into a format that the CI system Kokoro can
-# parse into a list of individual targets.
-if [[ "$TFCI_CAPTURE_LOGS_ENABLE" == 1 ]]; then
-  capture_test_logs() {
-    mkdir -p $TFCI_GIT_DIR/build/logs
-    pushd $TFCI_GIT_DIR
-    find -L bazel-testlogs -name "test.log" -exec cp --parents {} "$TFCI_GIT_DIR/build/logs" \;
-    find -L bazel-testlogs -name "test.xml" -exec cp --parents {} "$TFCI_GIT_DIR/build/logs" \;
-    find -L "$TFCI_GIT_DIR/build/logs" -name "test.log" -exec chmod -x {} \;
-    find -L "$TFCI_GIT_DIR/build/logs" -name "test.log" -exec rename 's/test\.log/sponge_log.log/' {} \;
-    find -L "$TFCI_GIT_DIR/build/logs" -name "test.xml" -exec rename 's/test\.xml/sponge_log.xml/' {} \;
-  }
-  trap capture_test_logs EXIT
-fi
+# Single handler for all cleanup actions, triggered on an EXIT trap.
+# TODO(angerson) Making this use different scripts may be overkill.
+cleanup() {
+  if [[ "$TFCI_DOCKER_ENABLE" == 1 ]]; then
+    ./ci/official/utilities/cleanup_docker.sh
+  fi
+  ./ci/official/utilities/cleanup_summary.sh
+}
+trap cleanup EXIT

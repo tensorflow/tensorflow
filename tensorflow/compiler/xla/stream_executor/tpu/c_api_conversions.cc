@@ -16,20 +16,41 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <utility>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/layout.h"
+#include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/service/computation_layout.h"
+#include "tensorflow/compiler/xla/service/computation_placer.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
+#include "tensorflow/compiler/xla/service/maybe_owning_device_memory.h"
+#include "tensorflow/compiler/xla/service/shaped_buffer.h"
+#include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/shape_layout.h"
+#include "tensorflow/compiler/xla/shape_tree.h"
+#include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_defn.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/host_command_handler.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_defn.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/xla/stream_executor/tpu/proto_helper.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_c_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
+#include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla.pb.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace ApiConverter {
 
@@ -579,48 +600,6 @@ void Destroy(FloatList* float_list) {
   if (float_list->size > TPU_C_API_MAX_INLINED) {
     delete[] float_list->heap;
   }
-}
-
-// TPU HostCommandHandler
-SE_TpuHostCommandHandler* ToC(tensorflow::tpu::HostCommandHandler handler) {
-  if (handler == nullptr) {
-    return nullptr;
-  }
-  auto c_handler = new SE_TpuHostCommandHandler();
-  void* context = new tensorflow::tpu::HostCommandHandler(handler);
-  c_handler->context = context;
-  c_handler->handler_func = [](void* context, uint32_t command,
-                               int64_t program_stack_byte_offset) -> void {
-    auto* hch = reinterpret_cast<tensorflow::tpu::HostCommandHandler*>(context);
-    (*hch)(command, program_stack_byte_offset);
-  };
-  return c_handler;
-}
-
-std::unique_ptr<tensorflow::tpu::HostCommandHandler> FromC(
-    SE_TpuHostCommandHandler* c_handler) {
-  if (c_handler == nullptr) {
-    return nullptr;
-  }
-  SE_TpuHostCommandHandler_Function handler_func = c_handler->handler_func;
-  void* context = c_handler->context;
-  auto cpp_handler = [handler_func, context](
-                         uint32_t command, int64_t program_stack_byte_offset) {
-    handler_func(context, command, program_stack_byte_offset);
-  };
-  return std::make_unique<tensorflow::tpu::HostCommandHandler>(cpp_handler);
-}
-
-void Destroy(SE_TpuHostCommandHandler* c_handler) {
-  if (c_handler == nullptr) {
-    return;
-  }
-  if (c_handler->context != nullptr) {
-    auto cpp_handler = reinterpret_cast<tensorflow::tpu::HostCommandHandler*>(
-        c_handler->context);
-    delete cpp_handler;
-  }
-  delete c_handler;
 }
 
 }  // namespace ApiConverter

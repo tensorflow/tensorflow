@@ -135,6 +135,10 @@ bool IsTriviallyFusible(HloInstruction* instr, const GpuVersion& gpu_version,
     return IsTritonSupportedInstruction(instr, gpu_version);
   }
 
+  if (instr->IsElementwiseBinary() && instr->operand(0) == instr->operand(1)) {
+    return IsTritonSupportedInstruction(instr, gpu_version);
+  }
+
   return false;
 }
 

@@ -73,7 +73,6 @@ FunctionOpInterface ExportOp::exported(mlir::SymbolTable &sym_table) {
 //===----------------------------------------------------------------------===//
 
 void TraceOp::getSuccessorRegions(std::optional<unsigned> index,
-                                  ArrayRef<Attribute> operands,
                                   SmallVectorImpl<RegionSuccessor> &regions) {
   // If the predecessor is the TraceOp, branch into the body.
   if (!index) {

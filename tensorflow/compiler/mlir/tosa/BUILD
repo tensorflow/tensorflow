@@ -90,6 +90,8 @@ cc_library(
         "//tensorflow/core/kernels:conv_grad_shape_utils",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:ArithUtils",
+        "@llvm-project//mlir:DialectUtils",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
@@ -139,6 +141,7 @@ cc_library(
     deps = [
         ":legalize_common",
         ":passes_header",
+        ":tosa_legalize_tf_inc_gen",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/tensorflow",
@@ -198,6 +201,7 @@ cc_library(
     deps = [
         ":legalize_common",
         ":passes_header",
+        ":tosa_legalize_tfl_inc_gen",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_quantize",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",

@@ -1,3 +1,4 @@
+# Placeholder: load py_proto_library
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
@@ -120,13 +121,16 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     visibility = [
+        ":internal_visibility_allowlist_package",
         "//tensorflow/compiler/mlir:__subpackages__",
     ],
     deps = [
         ":bridge_passes_inc_gen",
         ":math_utils",
+        ":tf_type_utils",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:mangling_util",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/mlir/tf2xla/transforms:legalize_utils",
         "//tensorflow/compiler/mlir/tf2xla/transforms:xla_legalize_targets",
@@ -273,6 +277,55 @@ tf_cc_test(
     deps = [
         ":math_utils",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "tf_type_utils",
+    srcs = ["utils/tf_type_utils.cc"],
+    hdrs = ["utils/tf_type_utils.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow:mangling_util",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/framework:numeric_types",
+        "//tensorflow/core/platform:status",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+    ],
+)
+
+tf_cc_test(
+    name = "tf_type_utils_test",
+    srcs = [
+        "utils/tf_type_utils_test.cc",
+    ],
+    deps = [
+        ":bridge_passes",
+        ":tf_type_utils",
+        "//tensorflow/compiler/mlir:register_common_dialects",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:mangling_util",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
+        "//tensorflow/compiler/xla/mlir_hlo",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/ir/types:Dialect",
+        "//tensorflow/core/platform:path",
+        "//tensorflow/tsl/framework:numeric_types",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:SparseTensorDialect",
+        "@llvm-project//mlir:Support",
     ],
 )
 

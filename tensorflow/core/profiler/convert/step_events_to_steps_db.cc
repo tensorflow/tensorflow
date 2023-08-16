@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/convert/step_events_to_steps_db.h"
 
+#include <cstdint>
 #include <ostream>
 #include <sstream>
 #include <utility>
@@ -22,11 +23,14 @@ limitations under the License.
 #include "google/protobuf/any.pb.h"
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/convert/op_metrics_db_combiner.h"
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 #include "tensorflow/core/profiler/utils/event_span.h"
+#include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
 #include "tensorflow/tsl/profiler/utils/timespan.h"
 
 namespace tensorflow {
@@ -37,9 +41,44 @@ const uint32 kDefaultGpuLocalCoreId = 1;
 
 namespace {
 
+void StepEventsToPerCoreStepInfo(uint32_t step_num, StepDetails& step_details,
+                                 PerCoreStepInfo& per_core_step_info) {
+  per_core_step_info.set_step_num(step_num);
+  OpMetricsDbCombiner combiner(per_core_step_info.mutable_hlo_metrics_db());
+  auto step_time = step_details.StepTime();
+  if (step_time.duration_ps() == 0) {
+    // In case no step markers are observed for the particular step, Skip the
+    // step.
+    VLOG(1) << "Skipping step " << step_details.StepName()
+            << "with no step markers";
+    return;
+  }
+  for (auto& [core_id, metrics_db] : step_details.PerCoreOpMetricsDb()) {
+    SetTotalTimePs(metrics_db, step_time.duration_ps());
+    AddIdleOp(metrics_db);
+    combiner.Combine(metrics_db);
+    GenericStepBreakdown step_breakdown;
+    auto& category_ps = *(step_breakdown.mutable_category_ps());
+    for (auto& metric : metrics_db.metrics_db()) {
+      category_ps[metric.category()] += metric.self_time_ps();
+    }
+
+    if (per_core_step_info.mutable_hlo_metrics_db()->metrics_db().empty())
+      continue;
+    StepInfoResult step_info;
+    step_info.set_step_num(step_num);
+    step_info.set_step_name(step_details.StepName());
+    step_info.set_begin_ps(step_time.begin_ps());
+    step_info.set_duration_ps(step_time.duration_ps());
+    step_info.mutable_step_breakdown()->PackFrom(step_breakdown);
+    (*per_core_step_info.mutable_step_info_per_core())[core_id] =
+        std::move(step_info);
+  }
+}
+
 // Converts from StepDetails to StepInfoResult.
 StepInfoResult ConvertStepDetailsToStepInfo(bool has_device, int64_t step_num,
-                                            const StepDetails& step_details) {
+                                            StepDetails& step_details) {
   GenericStepBreakdown generic;
   tsl::profiler::Timespan step_time = step_details.StepTime();
   auto& type_ps = *(generic.mutable_type_ps());
@@ -56,8 +95,8 @@ StepInfoResult ConvertStepDetailsToStepInfo(bool has_device, int64_t step_num,
     type_ps[UNKNOWN_TIME] += step_time.duration_ps() - total_event_duration;
   }
   // Determines if this particular step is a well-formed one.
-  bool well_formed_step = has_device ? (type_ps.contains(DEVICE_COMPUTE_16) ||
-                                        type_ps.contains(DEVICE_COMPUTE_32))
+  bool well_formed_step = has_device ? type_ps.contains(DEVICE_COMPUTE_16) ||
+                                           type_ps.contains(DEVICE_COMPUTE_32)
                                      : type_ps.contains(HOST_COMPUTE);
   StepInfoResult step_info;
   step_info.mutable_step_breakdown()->PackFrom(generic);
@@ -112,7 +151,7 @@ string DebugStepInfo(const StepInfoResult& step_info) {
 
 StepDatabaseResult ConvertStepEventsToStepDb(
     bool has_device, bool maybe_drop_incomplete_steps,
-    const StepEvents& nonoverlapped_step_events) {
+    StepEvents& nonoverlapped_step_events) {
   StepDatabaseResult step_db;
   // Gets sorted step numbers.
   std::vector<int64_t> step_numbers;
@@ -122,34 +161,41 @@ StepDatabaseResult ConvertStepEventsToStepDb(
   }
   absl::c_sort(step_numbers);
   for (const auto& step : step_numbers) {
-    const auto* step_details = gtl::FindOrNull(nonoverlapped_step_events, step);
+    auto* step_details = gtl::FindOrNull(nonoverlapped_step_events, step);
     if (step_details == nullptr) continue;
-    StepInfoResult step_info =
-        ConvertStepDetailsToStepInfo(has_device, step, *step_details);
-    if (step_info.duration_ps() == 0)
-      continue;  // Do not include non-well-formed steps.
     PerCoreStepInfo per_core_step_info;
     per_core_step_info.set_step_num(step);
-    // When we generated StepEvents, we already put events from all device
-    // cores and cpu threads on this host into a single event stream, therefore
-    // we can't separate them anymore. Simply assigns all events to Core-0.
-    (*per_core_step_info.mutable_step_info_per_core())[kDefaultGpuLocalCoreId] =
-        std::move(step_info);
-    VLOG(2) << std::endl
-            << "step_id: " << step << ", step_info:" << std::endl
-            << DebugStepInfo((
-                   *per_core_step_info
-                        .mutable_step_info_per_core())[kDefaultGpuLocalCoreId]);
-    // Populates the collective ops information.
-    auto& collectives = *per_core_step_info.mutable_all_reduce_db_per_core();
-    for (const auto& it : step_details->Collectives()) {
-      collectives[it.first] = it.second;
-    }
-    // Populates the device transfer stats for this step.
-    auto& device_memory_transfers =
-        *per_core_step_info.mutable_device_memory_transfers();
-    for (const auto& dma : step_details->DeviceMemoryTransfers()) {
-      *device_memory_transfers.Add() = dma;
+    if (!step_details->PerCoreOpMetricsDb().empty()) {
+      StepEventsToPerCoreStepInfo(step, *step_details, per_core_step_info);
+    } else {
+      StepInfoResult step_info =
+          ConvertStepDetailsToStepInfo(has_device, step, *step_details);
+      if (step_info.duration_ps() == 0)
+        continue;  // Do not include non-well-formed steps.
+      // When we generated StepEvents, we already put events from all device
+      // cores and cpu threads on this host into a single event stream,
+      // therefore we can't separate them anymore. Simply assigns all events to
+      // Core-0.
+      (*per_core_step_info
+            .mutable_step_info_per_core())[kDefaultGpuLocalCoreId] =
+          std::move(step_info);
+      VLOG(2)
+          << std::endl
+          << "step_id: " << step << ", step_info:" << std::endl
+          << DebugStepInfo(
+                 (*per_core_step_info
+                       .mutable_step_info_per_core())[kDefaultGpuLocalCoreId]);
+      // Populates the collective ops information.
+      auto& collectives = *per_core_step_info.mutable_all_reduce_db_per_core();
+      for (const auto& it : step_details->Collectives()) {
+        collectives[it.first] = it.second;
+      }
+      // Populates the device transfer stats for this step.
+      auto& device_memory_transfers =
+          *per_core_step_info.mutable_device_memory_transfers();
+      for (const auto& dma : step_details->DeviceMemoryTransfers()) {
+        *device_memory_transfers.Add() = dma;
+      }
     }
     // The remaining fields in PerCoreStepInfo are not filled.
     *step_db.add_step_sequence() = per_core_step_info;

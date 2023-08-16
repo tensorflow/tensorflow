@@ -330,7 +330,7 @@ py_strict_library(
 
 cuda_py_test(
     name = "multiplex_2_test",
-    size = "small",
+    size = "medium",
     srcs = ["multiplex_2_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",

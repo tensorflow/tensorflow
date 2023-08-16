@@ -1207,15 +1207,28 @@ static std::optional<bool> GetStaticallyKnownBranch(Attribute cond_attr) {
 template <typename IfLikeRegionOp>
 void GetIfLikeRegionOpSuccessorRegions(
     IfLikeRegionOp op, std::optional<unsigned> index,
-    ArrayRef<Attribute> operands, SmallVectorImpl<RegionSuccessor>& regions) {
-  assert(index.has_value() ||
-         !operands.empty() && "if-like op expected at least 1 operand");
+    SmallVectorImpl<RegionSuccessor>& regions) {
   // Both regions branch back to the parent op.
   if (index.has_value()) {
     // Ignore the control token.
     regions.emplace_back(
         ResultRange(op->result_begin(), std::prev(op->result_end())));
-  } else if (auto cond = GetStaticallyKnownBranch(operands[0])) {
+  } else {
+    // Unknown successor.
+    regions.emplace_back(&op.getThenRegion(),
+                         GetLoopRegionDataArgs(op.getThenRegion()));
+    regions.emplace_back(&op.getElseRegion(),
+                         GetLoopRegionDataArgs(op.getElseRegion()));
+  }
+}
+
+// Get the successor of the regions of an if-like op.
+template <typename IfLikeRegionOp>
+void GetIfLikeRegionOpEntrySuccessorRegions(
+    IfLikeRegionOp op, ArrayRef<Attribute> operands,
+    SmallVectorImpl<RegionSuccessor>& regions) {
+  assert(!operands.empty() && "if-like op expected at least 1 operand");
+  if (auto cond = GetStaticallyKnownBranch(operands[0])) {
     // Add only 1 possible successor if the condition is known.
     Region& region = *cond ? op.getThenRegion() : op.getElseRegion();
     regions.emplace_back(&region, GetLoopRegionDataArgs(region));
@@ -1274,15 +1287,26 @@ static std::optional<unsigned> GetStaticallyKnownCaseBranch(
 template <typename CaseLikeRegionOp>
 void GetCaseLikeRegionOpSuccessorRegions(
     CaseLikeRegionOp op, std::optional<unsigned> index,
-    ArrayRef<Attribute> operands, SmallVectorImpl<RegionSuccessor>& regions) {
-  assert(index.has_value() ||
-         !operands.empty() && "case-like op expected at least 1 operand");
+    SmallVectorImpl<RegionSuccessor>& regions) {
   // All branch regions branch back to the parent op.
   if (index.has_value()) {
     // Ignore the control token.
     regions.emplace_back(
         ResultRange(op->result_begin(), std::prev(op->result_end())));
-  } else if (auto branch_index = GetStaticallyKnownCaseBranch(operands[0])) {
+  } else {
+    // Unknown successor. Add all of them.
+    for (Region& branch : op.getBranches())
+      regions.emplace_back(&branch, GetLoopRegionDataArgs(branch));
+  }
+}
+
+// Get the entry successor of the regions of a case-like op.
+template <typename CaseLikeRegionOp>
+void GetCaseLikeRegionOpEntrySuccessorRegions(
+    CaseLikeRegionOp op, ArrayRef<Attribute> operands,
+    SmallVectorImpl<RegionSuccessor>& regions) {
+  assert(!operands.empty() && "case-like op expected at least 1 operand");
+  if (auto branch_index = GetStaticallyKnownCaseBranch(operands[0])) {
     // Add only 1 possible successor if the condition is known.
     Region& region = op.getBranches()[*branch_index];
     regions.emplace_back(&region, GetLoopRegionDataArgs(region));
@@ -1350,7 +1374,7 @@ static LogicalResult VerifyWhileLikeRegionOp(WhileLikeRegionOp op) {
 template <typename WhileLikeRegionOp>
 static void GetWhileLikeRegionOpSuccessorRegions(
     WhileLikeRegionOp op, std::optional<unsigned> index,
-    ArrayRef<Attribute> operands, SmallVectorImpl<RegionSuccessor>& regions) {
+    SmallVectorImpl<RegionSuccessor>& regions) {
   // The parent op and the body region always branch to the condion region.
   if (!index || *index == 1) {
     regions.emplace_back(&op.getCondRegion(),
@@ -1399,14 +1423,13 @@ LogicalResult ForRegionOp::verify() {
   return VerifyPreservedAttrs(*this, {getRegionAttrsAttr()});
 }
 
-OperandRange ForRegionOp::getSuccessorEntryOperands(
+OperandRange ForRegionOp::getEntrySuccessorOperands(
     std::optional<unsigned> index) {
   return getInit();
 }
 
 void ForRegionOp::getSuccessorRegions(
-    std::optional<unsigned> index, ArrayRef<Attribute> operands,
-    SmallVectorImpl<RegionSuccessor>& regions) {
+    std::optional<unsigned> index, SmallVectorImpl<RegionSuccessor>& regions) {
   // Both the parent op and the body region branch to the body. Ignore the loop
   // index block argument, as it is not modified by the loop body itself.
   regions.emplace_back(&getBodyRegion(),

@@ -265,7 +265,12 @@ pytype_strict_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_py",
         "//tensorflow/python/client:session",
+        "//tensorflow/python/data/ops:readers",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:tensor_util",
+        "//tensorflow/python/lib/io:lib",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/types:core",
     ],

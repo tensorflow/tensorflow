@@ -95,15 +95,15 @@ func.func @replicate_with_multiple_operands() {
 // CHECK-NEXT:   tf_device.return
 }
 
-// CHECK-LABEL: func @replicate_derived_operand_segment_sizes
-func.func @replicate_derived_operand_segment_sizes() {
-  tf_device.replicate {n = 2 : i32, operand_segment_sizes = array<i32: 0, 0>} {
+// CHECK-LABEL: func @replicate_derived_operandSegmentSizes
+func.func @replicate_derived_operandSegmentSizes() {
+  tf_device.replicate {n = 2 : i32, operandSegmentSizes = array<i32: 0, 0>} {
   }
   func.return
 
 // CHECK:      tf_device.replicate
 // CHECK-SAME: n = 2
-// CHECK-NOT:  operand_segment_sizes
+// CHECK-NOT:  operandSegmentSizes
 // CHECK-NEXT:   tf_device.return
 }
 

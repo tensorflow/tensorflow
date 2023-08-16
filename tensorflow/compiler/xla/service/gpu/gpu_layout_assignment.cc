@@ -500,5 +500,16 @@ Status GpuLayoutAssignment::SetDotLayout(const HloInstruction* instruction,
       LayoutUtil::GetWithDefaultLayout(instruction->shape()), instruction);
 }
 
+bool GpuLayoutAssignment::PropagateReductionLayoutToOperand(
+    const HloInstruction* user) {
+  // Propagating the layout is only beneficial if the total size of reduction
+  // dims is large enough.
+  int64_t reduction_size = 1;
+  for (int64_t reduction_dim : user->dimensions()) {
+    reduction_size *= user->operand(0)->shape().dimensions(reduction_dim);
+  }
+  return reduction_size >= 32;
+}
+
 }  // namespace gpu
 }  // namespace xla

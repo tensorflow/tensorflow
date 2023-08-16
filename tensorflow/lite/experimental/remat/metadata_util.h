@@ -53,6 +53,8 @@ constexpr char kModelControlDependenciesMetadataKey[] =
 /// serialization.  For deserialization, past versions should remain parseable.
 constexpr uint32_t kModelControlDependenciesMetadataVersion = 1;
 
+inline constexpr char kModelUseStablehloTensorKey[] = "keep_stablehlo_constant";
+
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_REMAT_METADATA_UTIL_H_

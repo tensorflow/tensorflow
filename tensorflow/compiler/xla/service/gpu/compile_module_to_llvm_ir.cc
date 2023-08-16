@@ -143,7 +143,11 @@ static Status LowerToXlaGpu2Runtime(mlir::ModuleOp module,
   RuntimeBackend backend = debug_options.xla_gpu_enable_gpu2_hal()
                                ? RuntimeBackend::kHAL
                                : RuntimeBackend::kStreamExecutor;
-  populateGpu2RuntimePasses(pm, thunk_sequence, backend);
+
+  Gpu2PipelineOpts opts;
+  opts.graph_level = debug_options.xla_gpu_graph_level();
+
+  populateGpu2RuntimePasses(pm, thunk_sequence, backend, opts);
 
   if (pm.run(module).failed()) {
     return InternalError(
@@ -433,8 +437,8 @@ Status CompileModuleToLlvmIrImpl(
       registry, mlir::MLIRContext::Threading::DISABLED);
 
   mlir_context->getDiagEngine().registerHandler(DiagnosticHandler);
-  mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
-      mlir::ModuleOp::create(mlir::Builder(mlir_context.get()).getUnknownLoc());
+  mlir::OwningOpRef<mlir::ModuleOp> mlir_module = mlir::ModuleOp::create(
+      mlir::Builder(mlir_context.get()).getUnknownLoc(), hlo_module->name());
 
   TF_RETURN_IF_ERROR(
       HloToLhloModule(*results->buffer_assignment, *hlo_module, *mlir_module));

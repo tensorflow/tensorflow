@@ -344,7 +344,7 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
         TF_ASSIGN_OR_RETURN(
             xla::DevicePutResult on_device,
             DevicePut(arg, executable.ifrt_loaded_executable()->client(),
-                      data_device, options));
+                      data_device, options, xla::ifrt::MemoryKind()));
 
         num_args_arrays.push_back(std::move(on_device.ifrt_array));
         if (on_device.owning_pybuffer) {
@@ -388,10 +388,9 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
                                          addressable_devices[0].get()) {
       xla::ifrt::DeviceList::Devices ifrt_devices;
       ifrt_devices.push_back(addressable_devices[0].get());
-      // TODO(hyeontaek,yashkatariya): Use the original array's memory_kind.
       auto sharding = xla::ifrt::OpaqueSharding::Create(
           xla::ifrt::DeviceList(std::move(ifrt_devices)),
-          xla::ifrt::MemoryKind());
+          ifrt_array->sharding().memory_kind());
       TF_ASSIGN_OR_RETURN(
           auto copied_ifrt_array,
           ifrt_array->Reshard(std::move(sharding),

@@ -409,8 +409,6 @@ build:rbe --google_default_credentials
 build:rbe --bes_backend=buildeventservice.googleapis.com
 build:rbe --bes_results_url="https://source.cloud.google.com/results/invocations"
 build:rbe --bes_timeout=600s
-# TODO(b/290857564): Remove from mainline after 2.14 branch cut 
-build:rbe --flaky_test_attempts=3
 build:rbe --define=EXECUTOR=remote
 build:rbe --jobs=800
 build:rbe --remote_executor=grpcs://remotebuildexecution.googleapis.com
@@ -540,8 +538,6 @@ try-import %workspace%/.bazelrc.user
 # Here are bazelrc configs for release builds
 build:release_base --config=v2
 test:release_base --test_size_filters=small,medium
-# TODO(b/290857564): Remove from mainline after 2.14 branch cut 
-test:release_base --flaky_test_attempts=3
 
 build:release_cpu_linux --config=release_base
 build:release_cpu_linux --config=avx_linux

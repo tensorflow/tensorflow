@@ -111,6 +111,9 @@ class PresetAssignments {
   // Get debugging information.
   std::string buffer_info_str() const { return buffer_info_str_; }
   std::string allocation_info_str() const { return allocation_info_str_; }
+  std::string instruction_schedule_str() const {
+    return instruction_schedule_str_;
+  }
 
  private:
   std::vector<std::pair<HloPosition, HeapSimulator::Chunk>> chunks_;
@@ -119,6 +122,7 @@ class PresetAssignments {
   std::vector<std::pair<int64_t, AssignmentInformation>> assignment_info_;
   std::string buffer_info_str_;
   std::string allocation_info_str_;
+  std::string instruction_schedule_str_;
 };
 
 // A wrapper class around HloCostAnalysis with additional knowledge about the
@@ -1652,14 +1656,10 @@ class AsynchronousCopyResource {
   // Internal helper method to implement adding/removing/checking resources.
   // ConsumeResource() may modify delay_. If delay_change_map is not null,
   // for any change to delay_[i], {i, delay_[i]} will be added to
-  // delay_change_map, allowing callers to undo any modifications. The
-  // current_copy points to an iterator in async_copies_ and this indicates the
-  // copy that we are processing, which is only used when recursing, to
-  // propagate the delay to the next copy.
+  // delay_change_map, allowing callers to undo any modifications.
   bool ConsumeResource(
       int64_t start_time, int64_t end_time, float resource,
       absl::flat_hash_map<int64_t, float>* delay_change_map = nullptr,
-      const std::list<AsynchronousCopy>::iterator* current_copy = nullptr,
       float resource_to_free = 0.0);
 
   // Same as the public RemoveCopy except it works on the async_copies_
@@ -2441,6 +2441,10 @@ class AlternateMemoryBestFitHeap
   // Since the allocations are recorded to the AllocationSequence, we don't
   // maintain result_ in GlobalDecreasingSizeBestFitHeap. Override AddToChunkMap
   // to avoid unnecessarily adding the chunk to the chunk map.
+  //
+  // Sliced prefetching requires that we override this method because we
+  // associate more than one chunk with a buffer (i.e., 1 chunk per slice),
+  // which would cause the original implementation of this method to CHECK fail.
   void AddToChunkMap(const HloValue* buffer, Chunk chunk) override {}
 
   // Returns true if the addition of num_additional_copies asynchronous copies
@@ -2606,6 +2610,7 @@ class AlternateMemoryBestFitHeap
   // Debug strings.
   std::string buffer_info_str_;
   std::string allocation_info_str_;
+  std::string instruction_schedule_str_;
 };
 }  // namespace memory_space_assignment
 }  // namespace xla

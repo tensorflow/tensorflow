@@ -166,7 +166,7 @@ ParseResult FusionOp::parse(OpAsmParser &parser, OperationState &result) {
   if (parser.parseOptionalColonTypeList(result.types)) return failure();
 
   result.addAttribute(
-      "operand_segment_sizes",
+      "operandSegmentSizes",
       parser.getBuilder().getDenseI32ArrayAttr(
           {static_cast<int32_t>(numInputs), static_cast<int32_t>(numInits)}));
 

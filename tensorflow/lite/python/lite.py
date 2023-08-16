@@ -73,7 +73,6 @@ from tensorflow.lite.python.util import trace_model_call as _trace_model_call
 from tensorflow.lite.tools import flatbuffer_utils
 from tensorflow.lite.tools.optimize.debugging.python.debugger import QuantizationDebugger  # pylint: disable=unused-import
 from tensorflow.lite.tools.optimize.debugging.python.debugger import QuantizationDebugOptions  # pylint: disable=unused-import
-from tensorflow.python import saved_model as _saved_model
 from tensorflow.python.client import session as _session
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function as _def_function
@@ -87,6 +86,7 @@ from tensorflow.python.framework.errors_impl import NotFoundError as _NotFoundEr
 from tensorflow.python.framework.importer import import_graph_def as _import_graph_def
 from tensorflow.python.platform import gfile
 from tensorflow.python.saved_model import loader_impl as _loader_impl
+from tensorflow.python.saved_model import save as _save
 from tensorflow.python.saved_model import save_options as _save_options
 from tensorflow.python.saved_model import signature_constants as _signature_constants
 from tensorflow.python.saved_model import tag_constants as _tag_constants
@@ -1485,7 +1485,7 @@ class TFLiteKerasModelConverterV2(TFLiteConverterBaseV2):
       output_tensors: List of output tensors.
     """
     try:
-      _saved_model.save(
+      _save.save(
           self._keras_model,
           output_dir,
           options=_save_options.SaveOptions(save_debug_info=True),
@@ -1707,7 +1707,7 @@ class TFLiteFrozenGraphConverterV2(TFLiteConverterBaseV2):
           signatures[func.graph.name] = func
           signature_keys.append(func.graph.name)
 
-      _saved_model.save(
+      _save.save(
           self._trackable_obj,
           output_dir,
           signatures=signatures,

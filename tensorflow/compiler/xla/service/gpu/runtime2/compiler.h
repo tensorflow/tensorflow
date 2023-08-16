@@ -18,13 +18,16 @@ limitations under the License.
 
 #include <stddef.h>
 
+#include <cstdint>
 #include <memory>
+#include <string>
 #include <string_view>
 #include <vector>
 
 #include "third_party/iree/compiler/bindings/c/iree/compiler/embedding_api.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/xla.pb.h"
 
 namespace xla::gpu {
 
@@ -37,8 +40,10 @@ class RuntimeCompiler;
 std::unique_ptr<RuntimeCompiler> CreateRuntimeCompiler();
 
 // Updates XLA:GPU input module with device kernels compiled by XLA.
-Status BindXlaDeviceKernels(mlir::ModuleOp, std::string_view asm_text,
-                            const std::vector<uint8_t>& binary);
+StatusOr<std::string> BindXlaDeviceKernels(const DebugOptions& debug_options,
+                                           mlir::ModuleOp,
+                                           std::string_view asm_text,
+                                           const std::vector<uint8_t>& binary);
 
 // Wrapper around IREE compiler + bundled XLA:GPU compiler plugins to
 // orchestrate compilation from XLA:GPU input dialects for IREE VM

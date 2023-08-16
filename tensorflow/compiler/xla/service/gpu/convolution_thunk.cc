@@ -34,10 +34,11 @@ namespace gpu {
 ConvolutionThunk::ConvolutionThunk(
     ThunkInfo thunk_info, GpuConvConfig config,
     std::vector<BufferAllocation::Slice> operand_slices,
-    BufferAllocation::Slice result_slice, BufferAllocation::Slice scratch_slice)
+    std::vector<BufferAllocation::Slice> result_slices,
+    BufferAllocation::Slice scratch_slice)
     : Thunk(Kind::kConvolution, thunk_info),
       operand_buffers_(std::move(operand_slices)),
-      result_buffer_(result_slice),
+      result_buffers_(std::move(result_slices)),
       scratch_buffer_(scratch_slice),
       config_(std::move(config)) {}
 
@@ -56,14 +57,16 @@ GenericConvRunner& ConvolutionThunk::GetOrCreateRunner(
 Status ConvolutionThunk::ExecuteOnStream(const ExecuteParams& params) {
   const auto& buffer_allocations = *params.buffer_allocations;
 
-  std::vector<se::DeviceMemoryBase> operand_se_buffers;
+  std::vector<se::DeviceMemoryBase> operand_se_buffers, result_se_buffers;
   operand_se_buffers.reserve(operand_buffers_.size());
-  for (const auto& buffer : operand_buffers_) {
+  for (BufferAllocation::Slice buffer : operand_buffers_) {
     operand_se_buffers.push_back(buffer_allocations.GetDeviceAddress(buffer));
   }
 
-  se::DeviceMemoryBase result_buffer =
-      buffer_allocations.GetDeviceAddress(result_buffer_);
+  result_se_buffers.reserve(result_buffers_.size());
+  for (BufferAllocation::Slice buffer : result_buffers_) {
+    result_se_buffers.push_back(buffer_allocations.GetDeviceAddress(buffer));
+  }
 
   se::DeviceMemoryBase scratch =
       buffer_allocations.GetDeviceAddress(scratch_buffer_);
@@ -72,7 +75,8 @@ Status ConvolutionThunk::ExecuteOnStream(const ExecuteParams& params) {
   opts.runner_cache = &GetOrCreateRunner(params.stream);
 
   TF_RETURN_IF_ERROR(RunGpuConv(config_, absl::MakeSpan(operand_se_buffers),
-                                result_buffer, scratch, params.stream, opts));
+                                absl::MakeSpan(result_se_buffers), scratch,
+                                params.stream, opts));
 
   // Note: Convolution has a tuple buffer as an output, but we don't need to
   // populate it as no one should be reading from the tuple directly.

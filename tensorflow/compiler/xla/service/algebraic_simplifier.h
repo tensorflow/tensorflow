@@ -532,6 +532,8 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   StatusOr<HloInstruction*> OptimizeDotOfReorderContractingDims(
       HloInstruction* dot);
 
+  StatusOr<HloInstruction*> AssociativeReorderDotOperator(HloInstruction* dot);
+
   HloComputation* GetOrCreateScalarAddComputation(PrimitiveType type) {
     HloComputation*& scalar_add_computation = scalar_add_computations_[type];
     if (scalar_add_computation) {

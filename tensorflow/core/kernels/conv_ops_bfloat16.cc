@@ -108,10 +108,10 @@ void LaunchConvOp<GPUDevice, Eigen::bfloat16>::operator()(
     const std::vector<int64>& strides, const Padding padding,
     const std::vector<int64_t>& explicit_paddings, TensorFormat data_format,
     Tensor* output) {
-  // Get spatial dims for dilations and strides
+  // Get spatial dims for dilations and strides.
   int spatial_dims = input.dims() - 2;
-  std::vector<int64> strides_spatial(spatial_dims);
-  std::vector<int64> dilations_spatial(spatial_dims);
+  gtl::InlinedVector<int64_t, 3> strides_spatial(spatial_dims);
+  gtl::InlinedVector<int64_t, 3> dilations_spatial(spatial_dims);
   for (int i = 0; i < spatial_dims; ++i) {
     strides_spatial[i] =
         GetTensorDim(strides, data_format, static_cast<char>(i + '0'));
@@ -168,6 +168,11 @@ void LaunchConv2DOp<GPUDevice, Eigen::bfloat16>::operator()(
     int col_dilation, int row_stride, int col_stride, const Padding& padding,
     const std::vector<int64_t>& explicit_paddings, Tensor* output,
     TensorFormat data_format) {
+  // Cast strides and dilations.
+  gtl::InlinedVector<int64_t, 3> casted_strides = {row_stride, col_stride};
+  gtl::InlinedVector<int64_t, 3> casted_dilations = {row_dilation,
+                                                     col_dilation};
+
   // Performant bfloat16 operations are supported for Ampere+ GPUs. For
   // pre-Ampere GPUs, we cast inputs to float and outputs back to bfloat16.
   auto* stream = ctx->op_device_context()->stream();
@@ -194,10 +199,9 @@ void LaunchConv2DOp<GPUDevice, Eigen::bfloat16>::operator()(
     OP_REQUIRES_OK(ctx,
                    ctx->allocate_temp(DT_FLOAT, output->shape(), &casted_out));
 
-    LaunchConv2DOpImpl<float>(ctx, use_cudnn, cudnn_use_autotune, casted_input,
-                              casted_filter, row_dilation, col_dilation,
-                              row_stride, col_stride, padding,
-                              explicit_paddings, &casted_out, data_format);
+    LaunchConvOpImpl<float>(
+        ctx, cudnn_use_autotune, casted_input, casted_filter, casted_dilations,
+        casted_strides, padding, explicit_paddings, data_format, &casted_out);
 
     functor::CastFunctor<GPUDevice, Eigen::bfloat16, float> cast_back;
     const Tensor& casted_out_const = casted_out;
@@ -206,10 +210,9 @@ void LaunchConv2DOp<GPUDevice, Eigen::bfloat16>::operator()(
     return;
   }
 
-  LaunchConv2DOpImpl<Eigen::bfloat16>(
-      ctx, use_cudnn, cudnn_use_autotune, input_param, filter, row_dilation,
-      col_dilation, row_stride, col_stride, padding, explicit_paddings, output,
-      data_format);
+  LaunchConvOpImpl<Eigen::bfloat16>(
+      ctx, cudnn_use_autotune, input_param, filter, casted_dilations,
+      casted_strides, padding, explicit_paddings, data_format, output);
 }
 
 // Registration of the GPU implementations.

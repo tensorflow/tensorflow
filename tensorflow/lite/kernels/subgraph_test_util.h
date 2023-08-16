@@ -95,6 +95,18 @@ class SubgraphBuilder {
   // 2 inputs. 1 output.
   void BuildAddSubgraph(Subgraph* subgraph);
 
+  // Build a subgraph with a single Maximum op.
+  // 2 inputs. 1 output.
+  void BuildMaximumSubgraph(Subgraph* subgraph);
+
+  // Build a subgraph with a single Minimum op.
+  // 2 inputs. 1 output.
+  void BuildMinimumSubgraph(Subgraph* subgraph);
+
+  // Build a subgraph with no ops inside.
+  // 2 inputs. 1 output. Routes the second input to the output.
+  void BuildOutputIsSecondInputSubgraph(Subgraph* subgraph);
+
   // Build a subgraph with a single Mul op.
   // 2 inputs. 1 output.
   void BuildMulSubgraph(Subgraph* subgraph);

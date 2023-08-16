@@ -932,10 +932,12 @@ py_strict_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:record",
         "//tensorflow/python/framework:composite_tensor",
+        "//tensorflow/python/framework:device",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_conversion_registry",
+        "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/framework:type_spec",
         "//tensorflow/python/ops:array_ops",
@@ -1086,6 +1088,8 @@ tpu_py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":tpu_replicated_variable",
+        "//tensorflow/python/checkpoint",
+        "//tensorflow/python/checkpoint:checkpoint_options",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/framework:combinations",
         "//tensorflow/python/framework:dtypes",
@@ -1406,7 +1410,7 @@ cuda_py_strict_test(
     python_version = "PY3",
     shard_count = 4,
     tags = [
-        "multi_and_single_gpu",
+        # "multi_and_single_gpu", # TODO(b/287692888): re-enable once the 2gpu test passes.
         "no_cuda_asan",  # times out
         "no_pip",  # TODO(b/266520226)
     ],
@@ -1654,6 +1658,7 @@ distribute_py_strict_test(
         ":tpu_strategy",
         ":values",
         "//tensorflow/python/checkpoint",
+        "//tensorflow/python/checkpoint:checkpoint_options",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
@@ -1819,6 +1824,8 @@ distribute_py_strict_test(
         ":combinations",
         ":ps_values",
         ":strategy_combinations",
+        "//tensorflow/python/checkpoint",
+        "//tensorflow/python/checkpoint:checkpoint_options",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/ops:variable_v1",

@@ -229,11 +229,6 @@ class GpuPriorityFusionQueue : public FusionQueue {
   // users.
   Priority CalculateProducerPriority(HloInstruction* producer) {
     std::vector<HloInstruction*> fusible_users = GetFusibleUsers(producer);
-    bool use_experimental_block_size =
-        producer->GetModule()
-            ->config()
-            .debug_options()
-            .xla_gpu_enable_experimental_block_size();
 
     // Don't bother computing cost for non-fusible ops.
     if (fusible_users.empty()) {
@@ -242,7 +237,6 @@ class GpuPriorityFusionQueue : public FusionQueue {
 
     GpuPerformanceModel::RunTimes run_times =
         GpuPerformanceModel::EstimateRunTimes(producer, cost_analysis_,
-                                              use_experimental_block_size,
                                               std::nullopt, fusible_users);
     return absl::ToInt64Nanoseconds(run_times.time_unfused -
                                     run_times.time_fused);
@@ -396,8 +390,8 @@ HloInstruction* GpuPriorityFusion::FuseInstruction(
   } else {
     result = InstructionFusion::FuseInstruction(fusion_instruction, producer);
   }
-  GpuPerformanceModel::RecordEstimatedRunTime(fusion_instruction,
-                                              &*cost_analysis_);
+  TF_CHECK_OK(cost_analysis_->RevisitInstruction(result));
+  GpuPerformanceModel::RecordEstimatedRunTime(result, &*cost_analysis_);
   return result;
 }
 

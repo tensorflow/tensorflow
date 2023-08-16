@@ -217,13 +217,8 @@ std::vector<HloInstruction*> GetProducerConsumerMultiOutputFusionCandidates(
       },
       [&](const HloInstruction& producer,
           const HloInstruction& consumer) -> FusionDecision {
-        bool use_experimental_block_size =
-            producer.GetModule()
-                ->config()
-                .debug_options()
-                .xla_gpu_enable_experimental_block_size();
         GpuPerformanceModel::RunTimes t = GpuPerformanceModel::EstimateRunTimes(
-            &producer, cost_analysis, use_experimental_block_size, cc,
+            &producer, cost_analysis, cc,
             // `EstimateRunTimes`'s interface violates const correctness, so we
             // need the const cast here.
             {const_cast<HloInstruction*>(&consumer)},

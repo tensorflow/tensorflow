@@ -182,6 +182,9 @@ void AddConvertHloToTfPass(std::string entry_function_name,
   // Canonicalization after TF legalization.
   pass_manager->addNestedPass<mlir::func::FuncOp>(
       mlir::createCanonicalizerPass());
+
+  // Legalize all remaining mhlo ops to stableHLO
+  pass_manager->addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
 }
 
 // This is the early part of the conversion in isolation. This enables a caller

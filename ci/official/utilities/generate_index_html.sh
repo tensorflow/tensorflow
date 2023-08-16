@@ -18,7 +18,7 @@
 # presubmits.
 # Usage: generate_index_html.sh /path/to/output/index.html
 
-tee "$1" <<EOF
+cat > "$1" <<EOF
 <html>
 <head>
 <title>$(basename "$KOKORO_JOB_NAME")</title>

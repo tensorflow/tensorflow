@@ -15,8 +15,10 @@
 
 # pylint: disable=invalid-name
 """Test utils for tensorflow."""
+
 import collections
 from collections import OrderedDict
+from collections.abc import Iterator
 import contextlib
 import functools
 import gc
@@ -35,7 +37,6 @@ import numpy as np
 
 from google.protobuf import descriptor_pool
 from google.protobuf import text_format
-
 from tensorflow.core.config import flags
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
@@ -43,7 +44,7 @@ from tensorflow.python import pywrap_sanitizers
 from tensorflow.python import tf2
 from tensorflow.python.client import device_lib
 from tensorflow.python.client import pywrap_tf_session
-from tensorflow.python.client import session
+from tensorflow.python.client import session as s
 from tensorflow.python.compat.compat import forward_compatibility_horizon
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -74,6 +75,8 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variables
+
+
 from tensorflow.python.ops.ragged import ragged_ops  # pylint: disable=unused-import
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_tensor_value
@@ -2052,7 +2055,7 @@ class FakeEagerSession:
     return self._test_case.evaluate(fetches)
 
 
-class ErrorLoggingSession(session.Session):
+class ErrorLoggingSession(s.Session):
   """Wrapper around a Session that logs errors in run()."""
 
   def run(self, *args, **kwargs):
@@ -2502,7 +2505,7 @@ class TensorFlowTestCase(googletest.TestCase):
     return self._tempdir
 
   @contextlib.contextmanager
-  def captureWritesToStream(self, stream):
+  def captureWritesToStream(self, stream) -> Iterator[CapturedWrites]:
     """A context manager that captures the writes to a given stream.
 
     This context manager captures all writes to a given stream inside of a
@@ -2704,8 +2707,11 @@ class TensorFlowTestCase(googletest.TestCase):
       return nest.pack_sequence_as(tensors, flattened_results)
 
   # pylint: disable=g-doc-return-or-yield
+  # pylint: disable=redefined-outer-name
   @contextlib.contextmanager
-  def session(self, graph=None, config=None, use_gpu=True, force_gpu=False):
+  def session(
+      self, graph=None, config=None, use_gpu=True, force_gpu=False
+  ) -> Iterator[s.Session]:
     """A context manager for a TensorFlow Session for use in executing tests.
 
     Note that this will set this session and the graph as global defaults.
@@ -2753,7 +2759,7 @@ class TensorFlowTestCase(googletest.TestCase):
                      graph=None,
                      config=None,
                      use_gpu=True,
-                     force_gpu=False):
+                     force_gpu=False) -> Iterator[s.Session]:
     """Returns a TensorFlow Session for use in executing tests.
 
     This method behaves differently than self.session(): for performance reasons
@@ -3967,7 +3973,7 @@ class AbstractGradientTape:
     self._use_tape = use_tape
     self._persistent = persistent
 
-  def __enter__(self):
+  def __enter__(self) -> backprop.GradientTape:
     if self._use_tape:
       self._tape_impl = backprop.GradientTape(persistent=self._persistent)
     else:

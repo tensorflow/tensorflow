@@ -15,7 +15,7 @@
 """Helper classes for tensor shape inference."""
 import functools
 import operator
-from typing import Optional, Sequence, Type
+from typing import Optional, Sequence, Type, Union
 
 from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.core.function import trace_type
@@ -101,8 +101,11 @@ def disable_v2_tensorshape():
 
 
 @tf_export(
-    "compat.dimension_value", v1=["dimension_value", "compat.dimension_value"])
-def dimension_value(dimension):
+    "compat.dimension_value", v1=["dimension_value", "compat.dimension_value"]
+)
+def dimension_value(
+    dimension: Union["Dimension", int, None]
+) -> Union[int, None]:
   """Compatibility utility required to allow for both V1 and V2 behavior in TF.
 
   Until the release of TF 2.0, we need the legacy behavior of `TensorShape` to
@@ -136,7 +139,7 @@ def dimension_value(dimension):
 @tf_export(
     "compat.dimension_at_index",
     v1=["dimension_at_index", "compat.dimension_at_index"])
-def dimension_at_index(shape, index):
+def dimension_at_index(shape, index) -> "Dimension":
   """Compatibility utility required to allow for both V1 and V2 behavior in TF.
 
   Until the release of TF 2.0, we need the legacy behavior of `TensorShape` to
@@ -1360,7 +1363,7 @@ class TensorShape(trace.TraceType, trace_type.Serializable):
     if not self.is_compatible_with(other):
       raise ValueError("Shapes %s and %s are incompatible" % (self, other))
 
-  def most_specific_compatible_shape(self, other):
+  def most_specific_compatible_shape(self, other) -> "TensorShape":
     """Returns the most specific TensorShape compatible with `self` and `other`.
 
     * TensorShape([None, 1]) is the most specific TensorShape compatible with
@@ -1518,7 +1521,7 @@ class _TensorShapeCodec:
 nested_structure_coder.register_codec(_TensorShapeCodec())
 
 
-def as_shape(shape):
+def as_shape(shape) -> "TensorShape":
   """Converts the given object to a TensorShape."""
   if isinstance(shape, TensorShape):
     return shape
@@ -1526,7 +1529,7 @@ def as_shape(shape):
     return TensorShape(shape)
 
 
-def unknown_shape(rank=None, **kwargs):
+def unknown_shape(rank=None, **kwargs) -> "TensorShape":
   """Returns an unknown TensorShape, optionally with a known rank.
 
   Args:

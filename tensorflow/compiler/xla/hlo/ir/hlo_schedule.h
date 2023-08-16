@@ -175,9 +175,7 @@ class HloSchedule {
   // schedule for the module. This is used to update a schedule after the HLO
   // module has been transformed in some way. In general, the only
   // transformations to the module for which a schedule can be updated is the
-  // addition or removal of instructions and removal of computations. Updating
-  // the schedule after new dependencies between existing instructions in the
-  // module is not supported and may result in an error status returned.
+  // addition or removal of instructions and computations.
   //
   // Instructions in the module which also exist in the given schedule will
   // remain in the same order in the updated schedule. Instructions which exist

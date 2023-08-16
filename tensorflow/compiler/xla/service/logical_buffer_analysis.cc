@@ -184,12 +184,12 @@ Status LogicalBufferAnalysis::HandleCustomCall(HloInstruction* custom_call) {
   for (const auto& pair : ccall->output_to_operand_aliasing()) {
     aliased_outputs.insert(pair.first);
   }
-  ShapeUtil::ForEachSubshape(ccall->shape(),
-                             [&](const Shape& shape, const ShapeIndex& index) {
-                               if (!aliased_outputs.contains(index)) {
-                                 NewLogicalBuffer(custom_call, index);
-                               }
-                             });
+  ShapeUtil::ForEachSubshape(ccall->shape(), [&](const Shape& shape,
+                                                 const ShapeIndex& index) {
+    if (!aliased_outputs.contains(index) || !alias_buffer_across_dataflow_) {
+      NewLogicalBuffer(custom_call, index);
+    }
+  });
   return OkStatus();
 }
 

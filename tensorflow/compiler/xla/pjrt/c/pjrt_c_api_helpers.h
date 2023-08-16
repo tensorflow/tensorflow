@@ -89,12 +89,6 @@ PJRT_EventDeleter MakeEventDeleter(const PJRT_Api* api);
 using PJRT_SerializedExecutableDeleter =
     std::function<void(PJRT_SerializedExecutable*)>;
 
-// Pass in an API pointer; receive a custom deleter for smart pointers.
-// The lifetime of the Api pointed to must be longer than the serialized
-// executable.
-PJRT_SerializedExecutableDeleter MakeSerializedExecutableDeleter(
-    const PJRT_Api* api);
-
 using PJRT_TopologyDescriptionDeleter =
     std::function<void(PJRT_TopologyDescription*)>;
 

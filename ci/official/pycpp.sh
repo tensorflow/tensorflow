@@ -15,6 +15,8 @@
 # ==============================================================================
 source "${BASH_SOURCE%/*}/utilities/setup.sh"
 
-tfrun bazel "${TFCI_BAZEL_BAZELRC_ARGS[@]}" test "${TFCI_BAZEL_COMMON_ARGS[@]}" --config=pycpp
+tfrun bazel "${TFCI_BAZEL_BAZELRC_ARGS[@]}" test "${TFCI_BAZEL_COMMON_ARGS[@]}" --profile "$TFCI_OUTPUT_DIR/profile.json.gz" --config=pycpp
 
-tfrun bazel analyze-profile build/profile.json.gz
+# Note: the profile can be viewed by visiting chrome://tracing in a Chrome browser.
+# See https://docs.bazel.build/versions/main/skylark/performance.html#performance-profiling
+tfrun bazel analyze-profile "$TFCI_OUTPUT_DIR/profile.json.gz"

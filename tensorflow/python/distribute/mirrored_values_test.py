@@ -81,6 +81,10 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
   config = config_pb2.ConfigProto()
   config.allow_soft_placement = True
 
+  def tearDown(self):
+    super().tearDown()
+    context._reset_context()
+
   @test_util.run_in_graph_and_eager_modes(config=config)
   def testProperties(self):
     if context.num_gpus() < 1 and context.executing_eagerly():

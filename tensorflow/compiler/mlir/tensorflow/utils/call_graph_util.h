@@ -107,6 +107,9 @@ LogicalResult GetOpsOfTypeUntilMiss(
   return success();
 }
 
+// Check if a function has one region and one block only.
+bool HasSingleBlock(func::FuncOp func);
+
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_CALL_GRAPH_UTIL_H_
