@@ -44,9 +44,8 @@ cuda_py_strict_test(
     size = "medium",
     srcs = ["fft_ops_test.py"],
     python_version = "PY3",
-    shard_count = 8,
+    shard_count = 1,
     tags = [
-        "no_cuda11",  # TODO(b/197522782): reenable test after fixing.
         "optonly",
     ],
     deps = [
