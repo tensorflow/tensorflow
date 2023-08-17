@@ -112,14 +112,10 @@ bool IsSyncCollective(const HloInstruction* instr) {
   return backend_config.is_sync();
 }
 
-}  // namespace
-
 // Convert the MLIR `module` from HLO dialect to LHLO dialect using XLA for the
 // given platform.
-tsl::Status OptimizeAndConvertHloToLmhlo(std::unique_ptr<HloModule> hlo_module,
-                                         ModuleOp module,
-                                         StringRef platform_name,
-                                         bool optimize_xla_hlo) {
+tsl::Status ConvertHloToLmhlo(std::unique_ptr<HloModule> hlo_module,
+                              ModuleOp module, StringRef platform_name) {
   auto platform = xla::se::MultiPlatformManager::PlatformWithName(
       StringRefToView(platform_name));
   if (!platform.ok()) {
@@ -145,21 +141,8 @@ tsl::Status OptimizeAndConvertHloToLmhlo(std::unique_ptr<HloModule> hlo_module,
                                   "failed to create XLA Backend ");
   auto backend = std::move(backend_or_err.value());
 
-  tsl::StatusOr<std::unique_ptr<HloModule>> optimized_hlo_module;
-
-  if (optimize_xla_hlo) {
-    // Run all HLO passes to produce an optimized module.
-    optimized_hlo_module = backend->compiler()->RunHloPasses(
-        std::move(hlo_module), backend->default_stream_executor(),
-        backend->memory_allocator());
-    TF_RETURN_WITH_CONTEXT_IF_ERROR(optimized_hlo_module.status(),
-                                    "running XLA pass pipeline");
-  } else {
-    optimized_hlo_module = std::move(hlo_module);
-  }
-
   tsl::StatusOr<std::unique_ptr<BufferAssignment>> assignment =
-      backend->compiler()->AssignBuffers(optimized_hlo_module->get(),
+      backend->compiler()->AssignBuffers(hlo_module.get(),
                                          backend->default_stream_executor());
   TF_RETURN_WITH_CONTEXT_IF_ERROR(assignment.status(),
                                   "running XLA buffer assigment");
@@ -170,76 +153,11 @@ tsl::Status OptimizeAndConvertHloToLmhlo(std::unique_ptr<HloModule> hlo_module,
   OpBuilder builder(module);
 
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
-      HloToLhloModule(**assignment, **optimized_hlo_module, module),
+      HloToLhloModule(**assignment, *hlo_module, module),
       "converting HLO to LHLO");
 
   return ::tsl::OkStatus();
 }
-
-namespace {
-// This pass takes an MLIR HLO module, converts it to XLA to perform the HLO
-// optimization pipeline for the required platform, and then converts it back to
-// MLIR LHLO.
-class XlaHloToLhloPass
-    : public PassWrapper<XlaHloToLhloPass, OperationPass<ModuleOp>> {
-  void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<arith::ArithDialect, bufferization::BufferizationDialect,
-                    func::FuncDialect, memref::MemRefDialect, mhlo::MhloDialect,
-                    lmhlo::LmhloDialect, lmhlo_gpu::LmhloGpuDialect,
-                    sparse_tensor::SparseTensorDialect>();
-  }
-
- public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(XlaHloToLhloPass)
-
-  XlaHloToLhloPass() = default;
-  XlaHloToLhloPass(const XlaHloToLhloPass&) {}
-  StringRef getArgument() const final { return "xla-hlo-to-lhlo-with-xla"; }
-  StringRef getDescription() const final {
-    return "Emit LHLO from HLO using the existing XLA implementation";
-  }
-
- private:
-  void runOnOperation() final {
-    ModuleOp module = getOperation();
-
-    auto status = [&module, this]() -> tsl::Status {
-      SymbolTable symbol_table(module);
-      if (!symbol_table.lookup("main")) {
-        return tsl::errors::InvalidArgument(
-            "conversion to HLO module failed: missing main()");
-      }
-      HloProto hlo_proto;
-      TF_RETURN_WITH_CONTEXT_IF_ERROR(
-          ConvertMlirHloToHlo(module, &hlo_proto,
-                              /*use_tuple_args=*/false,
-                              /*return_tuple=*/false),
-          "conversion to XLA HLO proto failed");
-
-      auto statusOrHloModule = HloModuleFromProto(hlo_proto);
-      TF_RETURN_WITH_CONTEXT_IF_ERROR(statusOrHloModule.status(),
-                                      "parsing HLO proto to HLO module failed");
-      std::unique_ptr<HloModule> hlo_module =
-          std::move(statusOrHloModule.value());
-
-      return OptimizeAndConvertHloToLmhlo(std::move(hlo_module), module,
-                                          platform_, optimize_xla_hlo_);
-    }();
-    if (!status.ok()) {
-      module.emitError() << status.ToString();
-      return signalPassFailure();
-    }
-  }
-
-  Option<std::string> platform_{
-      *this, "platform",
-      llvm::cl::desc("The platform to use for the XLA optimization pipeline."),
-      llvm::cl::init("Host")};
-  Option<bool> optimize_xla_hlo_{
-      *this, "optimize-xla-hlo",
-      llvm::cl::desc("Whether to apply HLO optimizations."),
-      llvm::cl::init(true)};
-};
 
 }  // namespace
 
@@ -2433,10 +2351,6 @@ tsl::Status LhloDialectEmitter::Initialize() {
   return ::tsl::OkStatus();
 }
 
-std::unique_ptr<OperationPass<ModuleOp>> createXlaHloToLhloWithXlaPass() {
-  return std::make_unique<XlaHloToLhloPass>();
-}
-
 tsl::Status HloToLhloModule(const BufferAssignment& assignment,
                             const HloModule& hlo_module, ModuleOp module) {
   module.getContext()
@@ -2474,7 +2388,7 @@ tsl::Status HloToLhloModule(const BufferAssignment& assignment,
 }
 
 OwningOpRef<mlir::ModuleOp> HloTextToLhloTranslateFunction(
-    llvm::StringRef input, MLIRContext* context, bool optimize_xla_hlo) {
+    llvm::StringRef input, MLIRContext* context) {
   tsl::StatusOr<std::unique_ptr<HloModule>> maybe_module =
       xla::ParseAndReturnUnverifiedModule(
           absl::string_view(input.data(), input.size()));
@@ -2483,14 +2397,10 @@ OwningOpRef<mlir::ModuleOp> HloTextToLhloTranslateFunction(
   OwningOpRef<mlir::ModuleOp> module =
       ModuleOp::create(UnknownLoc::get(context));
 
-  TF_CHECK_OK(OptimizeAndConvertHloToLmhlo(
-      std::move(maybe_module).value(), module.get(), "Host", optimize_xla_hlo));
+  TF_CHECK_OK(
+      ConvertHloToLmhlo(std::move(maybe_module).value(), module.get(), "Host"));
 
   return module;
-}
-
-void RegisterMhloToLhloWithXlaPass() {
-  static PassRegistration<XlaHloToLhloPass> registration;
 }
 
 }  // namespace mlir

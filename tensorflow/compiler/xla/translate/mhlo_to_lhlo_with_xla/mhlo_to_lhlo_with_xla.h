@@ -318,14 +318,8 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
 tsl::Status HloToLhloModule(const xla::BufferAssignment& assignment,
                             const xla::HloModule& hlo_module, ModuleOp module);
 
-tsl::Status OptimizeAndConvertHloToLmhlo(
-    std::unique_ptr<xla::HloModule> hlo_module, ModuleOp module,
-    StringRef platform_name, bool optimize_xla_hlo);
 OwningOpRef<mlir::ModuleOp> HloTextToLhloTranslateFunction(
-    llvm::StringRef input, MLIRContext* context, bool optimize_xla_hlo);
-
-// This register the MLIR pass with the command line.
-void RegisterMhloToLhloWithXlaPass();
+    llvm::StringRef input, MLIRContext* context);
 
 }  // namespace mlir
 
