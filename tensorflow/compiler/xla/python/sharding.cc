@@ -299,22 +299,27 @@ void RegisterSharding(py::module& m) {
       .def_property_readonly("spec", &NamedSharding::spec)
       .def_property_readonly("_memory_kind", &NamedSharding::memory_kind)
       .def_property("_parsed_pspec", &NamedSharding::parsed_pspec,
-                    &NamedSharding::set_parsed_pspec);
+                    &NamedSharding::set_parsed_pspec)
+      .def_property_readonly("_internal_device_list",
+                             &NamedSharding::internal_device_list);
 
   py::class_<SingleDeviceSharding, XLACompatibleSharding>(
       m, "SingleDeviceSharding", py::dynamic_attr())
       .def(py::init<py::object, py::object>(), py::arg("device"), py::kw_only(),
            py::arg("memory_kind") = py::none())
       .def_property_readonly("_device", &SingleDeviceSharding::device)
-      .def_property_readonly("_memory_kind",
-                             &SingleDeviceSharding::memory_kind);
+      .def_property_readonly("_memory_kind", &SingleDeviceSharding::memory_kind)
+      .def_property_readonly("_internal_device_list",
+                             &SingleDeviceSharding::internal_device_list);
 
   py::class_<PmapSharding, XLACompatibleSharding>(m, "PmapSharding",
                                                   py::dynamic_attr())
       .def(py::init<py::object, ShardingSpec>(), py::arg("devices"),
            py::arg("sharding_spec"))
       .def_property_readonly("devices", &PmapSharding::devices)
-      .def_property_readonly("sharding_spec", &PmapSharding::sharding_spec);
+      .def_property_readonly("sharding_spec", &PmapSharding::sharding_spec)
+      .def_property_readonly("_internal_device_list",
+                             &PmapSharding::internal_device_list);
 
   py::class_<GSPMDSharding, XLACompatibleSharding>(m, "GSPMDSharding",
                                                    py::dynamic_attr())
@@ -332,7 +337,9 @@ void RegisterSharding(py::module& m) {
            py::arg("memory_kind") = py::none())
       .def_property_readonly("_devices", &GSPMDSharding::devices)
       .def_property_readonly("_hlo_sharding", &GSPMDSharding::hlo_sharding)
-      .def_property_readonly("_memory_kind", &GSPMDSharding::memory_kind);
+      .def_property_readonly("_memory_kind", &GSPMDSharding::memory_kind)
+      .def_property_readonly("_internal_device_list",
+                             &GSPMDSharding::internal_device_list);
 }
 
 }  // namespace jax

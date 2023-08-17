@@ -707,16 +707,19 @@ class NamedSharding(XLACompatibleSharding):
   spec: Any
   _memory_kind: Optional[str]
   _parsed_pspec: Any
+  _internal_device_list: DeviceList
 
 class SingleDeviceSharding(XLACompatibleSharding):
   def __init__(self, device: Device, *, memory_kind: Optional[str] = None): ...
   _device: Device
   _memory_kind: Optional[str]
+  _internal_device_list: DeviceList
 
 class PmapSharding(XLACompatibleSharding):
   def __init__(self, devices: Sequence[Any], sharding_spec: pmap_lib.ShardingSpec): ...
   devices: List[Any]
   sharding_spec: pmap_lib.ShardingSpec
+  _internal_device_list: DeviceList
 
 class GSPMDSharding(XLACompatibleSharding):
   def __init__(self, devices: Sequence[Device],
@@ -725,6 +728,7 @@ class GSPMDSharding(XLACompatibleSharding):
   _devices: Tuple[Device, ...]
   _hlo_sharding: HloSharding
   _memory_kind: Optional[str]
+  _internal_device_list: DeviceList
 
 class PjitFunction:
   def __call__(self, *args, **kwargs) -> Any: ...
