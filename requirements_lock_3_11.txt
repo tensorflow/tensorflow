@@ -419,9 +419,15 @@ setuptools==67.6.1 \
 six==1.16.0 \
     --hash=sha256:1e61c37477a1626458e36f7b1d82aa5c9b094fa4802892072e49de9c60c4c926 \
     --hash=sha256:8abb2f1d86890a2dfb989f9a77cfcfd3e47c2a354b01111771326f8aa26e0254
-    # via google-auth
-tb-nightly==2.14.0a20230725 \
-    --hash=sha256:a0717250191893ec909066564acbc8c92329041a984cf9e407d301fc3ebf3f3e
+    # via
+    #   astunparse
+    #   google-auth
+tb-nightly==2.14.0a20230808 \
+    --hash=sha256:a9321e17b3fa4629dbf3e3c46d0f40d4169c133e5341c816c11638bc70c77e5c
+    # via -r ./requirements.in
+tblib==1.7.0 \
+    --hash=sha256:059bd77306ea7b419d4f76016aef6d7027cc8a0785579b5aad198803435f882c \
+    --hash=sha256:289fa7359e580950e7d9743eab36b0691f0310fce64dee7d9c31065b8f723e23
     # via -r ./requirements.in
 tensorboard-data-server==0.7.1 \
     --hash=sha256:255c02b7f5b03dd5c0a88c928e563441ff39e1d4b4a234cdbe09f016e53d9594 \
