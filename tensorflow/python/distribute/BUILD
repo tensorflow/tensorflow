@@ -58,6 +58,7 @@ py_strict_library(
         "//tensorflow/python/util:tf_export",
         "//tensorflow/tools/docs:doc_controls",
         "//third_party/py/numpy",
+        "@pypi_six//:pkg"
     ],
 )
 
@@ -177,6 +178,7 @@ py_strict_library(
         "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
         "//tensorflow/tools/docs:doc_controls",
+        "@pypi_six//:pkg"
     ],
 )
 
@@ -261,6 +263,7 @@ py_strict_test(
         "//tensorflow/python/training:coordinator",
         "//tensorflow/python/training:monitored_session",
         "//tensorflow/python/training:session_manager",
+        "@pypi_six//:pkg"
     ],
 )
 
@@ -595,6 +598,7 @@ py_strict_library(
         "//tensorflow/python/types:distribute",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:nest",
+        "@pypi_six//:pkg"
     ],
 )
 
@@ -836,6 +840,7 @@ py_strict_library(
         ":multi_worker_util",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/training:server_lib",
+        "@pypi_six//:pkg"
     ],
 )
 
@@ -1121,6 +1126,7 @@ py_strict_library(
         "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
         "@absl_py//absl:app",
+        "@pypi_six//:pkg"
     ],
 )
 
@@ -1231,6 +1237,7 @@ py_strict_library(
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
+        "@pypi_six//:pkg"
     ],
 )
 
@@ -2291,6 +2298,7 @@ py_strict_library(
         "//tensorflow/python/util:tf_export",
         "@absl_py//absl/logging",
         "@pypi_dill//:pkg",  # build_cleaner: keep
+        "@pypi_six//:pkg"
         "@pypi_tblib//:pkg",  # build_cleaner: keep
     ],
 )

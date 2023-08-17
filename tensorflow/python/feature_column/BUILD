@@ -55,6 +55,7 @@ py_strict_library(
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
         "//tensorflow/tools/docs:doc_controls",
+        "@pypi_six//:pkg",
     ],
 )
 

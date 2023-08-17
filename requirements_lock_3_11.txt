@@ -196,8 +196,8 @@ keras-nightly==2.14.0.dev2023080207 \
     --hash=sha256:0b31c7006b50fa1ca4682af03335d29a9edc8dc599452ff74184bfdb66bdb553 \
     --hash=sha256:6662fe3d915081d573cc479d7b7e32ce3a4eb6b2a1f53d47b4164073f1f58325
     # via -r ./requirements.in
-lit==16.0.6 \
-    --hash=sha256:84623c9c23b6b14763d637f4e63e6b721b3446ada40bf7001d8fee70b8e77a9a
+lit==16.0.5.post0 \
+    --hash=sha256:71745d9e58dad3717735d27e2a9cca0e9ca6861d067da73c307e02fd38c98479
     # via -r ./requirements.in
 markdown==3.4.4 \
     --hash=sha256:225c6123522495d4119a90b3a3ba31a1e87a70369e03f14799ea9c0d7183a3d6 \

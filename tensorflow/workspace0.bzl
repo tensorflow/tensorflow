@@ -45,6 +45,11 @@ def _tf_bind():
         actual = str(Label("//third_party/python_runtime:headers")),
     )
 
+    # Needed by Protobuf
+    native.bind(
+        name = "six",
+        actual = "@pypi_six//:pkg",
+    )
 
 def workspace():
     http_archive(

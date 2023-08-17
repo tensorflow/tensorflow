@@ -51,6 +51,7 @@ py_strict_library(
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
+        "@pypi_six//:pkg",
     ],
 )
 
