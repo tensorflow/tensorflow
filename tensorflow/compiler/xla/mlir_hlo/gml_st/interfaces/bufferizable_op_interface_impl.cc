@@ -183,7 +183,7 @@ struct FusionOpBufferizationInterface
 
   FailureOr<BaseMemRefType> getBufferType(
       Operation *op, Value value, const BufferizationOptions &options,
-      const DenseMap<Value, BaseMemRefType> &fixedTypes) const {
+      SmallVector<Value> &invocationStack) const {
     auto fusionOp = cast<FusionOp>(op);
 
     if (auto bbArg = value.dyn_cast<BlockArgument>()) {
@@ -191,7 +191,7 @@ struct FusionOpBufferizationInterface
       // corresponding output operand.
       return bufferization::getBufferType(
           fusionOp->getOpOperand(bbArg.getArgNumber()).get(), options,
-          fixedTypes);
+          invocationStack);
     }
 
     // The bufferized result type is the same as the bufferized type of the
@@ -199,7 +199,7 @@ struct FusionOpBufferizationInterface
     return bufferization::getBufferType(
         fusionOp.getDpsInitOperand(value.cast<OpResult>().getResultNumber())
             ->get(),
-        options, fixedTypes);
+        options, invocationStack);
   }
 };
 
