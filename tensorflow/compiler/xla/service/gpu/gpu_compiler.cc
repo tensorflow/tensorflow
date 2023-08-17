@@ -1002,8 +1002,12 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     if (debug_options.xla_gpu_enable_triton_softmax_fusion() &&
         std::holds_alternative<se::CudaComputeCapability>(
             gpu_target_config.gpu_version)) {
-      pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
-      pipeline.AddPass<SoftmaxRewriterTriton>(gpu_target_config.gpu_version);
+      auto cuda_compute_capability =
+          std::get<se::CudaComputeCapability>(gpu_target_config.gpu_version);
+      if (cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::VOLTA)) {
+        pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
+        pipeline.AddPass<SoftmaxRewriterTriton>(gpu_target_config.gpu_version);
+      }
     }
 
     pipeline.AddPass<ReductionDimensionGrouper>();
