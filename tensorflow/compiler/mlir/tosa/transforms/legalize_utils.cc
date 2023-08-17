@@ -20,6 +20,7 @@ limitations under the License.
 #include <functional>
 #include <optional>
 
+#include "fixedpoint/fixedpoint.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -424,35 +425,42 @@ Value getTosaConst16bitTable(PatternRewriter& rewriter, Operation* op,
   return const_op.getResult();
 }
 
-// Create a 32-bit TOSA TABLE constant tensor with int16[513] array.
-// Output is restricted to [-1.0, 1.0] as s0.31 format.
-void getTosaConst32bitTable(PatternRewriter& rewriter, Operation* op,
-                            double input_scale, int32_t input_zp,
-                            std::function<double(double)> func,
-                            Value& first_const, Value& second_const,
-                            Value& third_const, Value& fourth_const) {
+// Create a 32-bit TOSA TABLE for Softmax Exp
+void getTosaConst32bitSoftmaxExpTable(PatternRewriter& rewriter, Operation* op,
+                                      double beta, double input_scale,
+                                      Value& first_const, Value& second_const,
+                                      Value& third_const, Value& fourth_const) {
+  const int kScaledDiffIntegerBits = 5;
+  using FixedPointScaledDiff =
+      gemmlowp::FixedPoint<int32_t, kScaledDiffIntegerBits>;
+
+  int32_t input_beta_multiplier;
+  int input_beta_left_shift;
+  tflite::PreprocessSoftmaxScaling(beta, input_scale, kScaledDiffIntegerBits,
+                                   &input_beta_multiplier,
+                                   &input_beta_left_shift);
+
+  int diff_min = -tflite::CalculateInputRadius(kScaledDiffIntegerBits,
+                                               input_beta_left_shift);
+
   SmallVector<int16_t, 513> first_table, second_table, third_table,
       fourth_table;
-
-  double output_inv_scale = static_cast<double>(1L << 31);
-
-  for (int32_t i = -256; i <= 256; i++) {
-    double dequantized = input_scale * (i - input_zp);
-    double transformed = func(dequantized);
-    double truncated = std::min(std::max(transformed, -1.0), 1.0);
-    int64_t rescaled =
-        static_cast<int64_t>(std::round(truncated * output_inv_scale));
-
-    // 2^31 is not representable in int32_t, so store as 2^31 - 1 instead
-    if (rescaled == static_cast<int64_t>(1L << 31)) {
-      rescaled = static_cast<int64_t>(1L << 31) - 1;
+  for (int32_t input_diff = -256; input_diff <= 256; input_diff++) {
+    int32_t output = 0;
+    if (input_diff >= diff_min) {
+      const int32_t input_diff_rescaled =
+          tflite::MultiplyByQuantizedMultiplierGreaterThanOne(
+              input_diff, input_beta_multiplier, input_beta_left_shift);
+      const FixedPointScaledDiff input_diff_fixed_point =
+          FixedPointScaledDiff::FromRaw(input_diff_rescaled);
+      output = gemmlowp::exp_on_negative_values(input_diff_fixed_point).raw();
     }
 
     // Only copy the 8-bit groups
-    int32_t first = (rescaled >> 24) & 0xFF;
-    int32_t second = (rescaled >> 16) & 0xFF;
-    int32_t third = (rescaled >> 8) & 0xFF;
-    int32_t fourth = (rescaled) & 0xFF;
+    int32_t first = (output >> 24) & 0xFF;
+    int32_t second = (output >> 16) & 0xFF;
+    int32_t third = (output >> 8) & 0xFF;
+    int32_t fourth = (output) & 0xFF;
 
     first_table.push_back(first);
     second_table.push_back(second);
