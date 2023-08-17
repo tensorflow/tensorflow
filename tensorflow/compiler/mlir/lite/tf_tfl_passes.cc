@@ -143,7 +143,6 @@ void AddConvertHloToTfPass(std::string entry_function_name,
       mlir::odml::CreateUniformQuantizedStablehloToTflPass());
 
   pass_manager->addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
-  mlir::odml::AddMhloOptimizationPasses(*pass_manager);
   // Legalize jax random to tflite custom op.
   // The CreateLegalizeJaxRandom Pass has to stay at because we need to replace
   // the random function body before being inlined.
@@ -168,6 +167,7 @@ void AddConvertHloToTfPass(std::string entry_function_name,
   pass_manager->addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createFlattenTuplePass());
 
+  mlir::odml::AddMhloOptimizationPasses(*pass_manager);
   // TF dialect passes
   pass_manager->addPass(mlir::odml::CreateLegalizeHloToTfPass());
 
