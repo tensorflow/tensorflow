@@ -754,19 +754,25 @@ StatusOr<LaunchDimensions> MatMulImpl(
   if (have_split_k) {
     // Split-K dimension has to be the first batch one and have an index
     // just before the contracting one.
+    const int lhs_split_k_dim_idx = dims.lhs_contracting_dimensions(0) - 1;
+    const int rhs_split_k_dim_idx = dims.rhs_contracting_dimensions(0) - 1;
     // Size of this dimension has to match the split_k value.
-    CHECK_EQ(dims.lhs_batch_dimensions(0),
-             dims.lhs_contracting_dimensions(0) - 1);
-    CHECK_EQ(dims.rhs_batch_dimensions(0),
-             dims.rhs_contracting_dimensions(0) - 1);
-    CHECK_EQ(split_k, dot_instr->operand(0)->shape().dimensions(
-                          dims.lhs_contracting_dimensions(0) - 1));
-    CHECK_EQ(split_k, dot_instr->operand(1)->shape().dimensions(
-                          dims.rhs_contracting_dimensions(0) - 1));
+    CHECK_EQ(dims.lhs_batch_dimensions(0), lhs_split_k_dim_idx);
+    CHECK_EQ(dims.rhs_batch_dimensions(0), rhs_split_k_dim_idx);
+    CHECK_EQ(split_k,
+             dot_instr->operand(0)->shape().dimensions(lhs_split_k_dim_idx));
+    CHECK_EQ(split_k,
+             dot_instr->operand(1)->shape().dimensions(rhs_split_k_dim_idx));
   }
 
   CHECK_LE(dims.lhs_batch_dimensions_size(), 1 + have_split_k);
   const bool have_batch = dims.lhs_batch_dimensions_size() - have_split_k;
+  int lhs_batch_dim_idx = -1;
+  int rhs_batch_dim_idx = -1;
+  if (have_batch) {
+    lhs_batch_dim_idx = *dims.lhs_batch_dimensions().rbegin();
+    rhs_batch_dim_idx = *dims.rhs_batch_dimensions().rbegin();
+  }
   CHECK_EQ(dot_instr->operand(0)->shape().rank(),
            2 + have_split_k + have_batch);
   const int lhs_noncontracting_dim_idx =
@@ -806,10 +812,9 @@ StatusOr<LaunchDimensions> MatMulImpl(
 
   // LHS non-contracting can be split into two.
   bool lhs_nc_split = false;
-  // Either batch size or upper part of the length of a split nc dimension.
+  // Either batch GEMM size or upper part of the length of a split
+  // non-contracting LHS dimension.
   int batch_size = 1;
-  IndexT stride_lhs_batch = 0;
-  IndexT stride_rhs_batch = 0;
   if (!analysis.ScopeParameters(DotFusionAnalysis::Scope::LHS).empty()) {
     const HloInstruction* lhs_param0 =
         *analysis.ScopeParameters(DotFusionAnalysis::Scope::LHS).begin();
@@ -823,57 +828,20 @@ StatusOr<LaunchDimensions> MatMulImpl(
     if (lhs_nc_split) {
       batch_size = lhs_nc_iter_spec->at(1).count;
       CHECK_GE(batch_size, 1);
-      stride_lhs_batch = lhs_nc_iter_spec->at(1).stride;
-      CHECK_GE(stride_lhs_batch, 1);
     } else if (have_batch) {
-      const int64_t lhs_batch_dim_idx =
-          *(dims.lhs_batch_dimensions().cend() - 1);
       batch_size = analysis
                        .IterSpec(DotFusionAnalysis::Scope::LHS, lhs_param0,
                                  lhs_batch_dim_idx)
                        ->at(0)
                        .count;
       CHECK_GE(batch_size, 1);
-      stride_lhs_batch = analysis
-                             .IterSpec(DotFusionAnalysis::Scope::LHS,
-                                       lhs_param0, lhs_batch_dim_idx)
-                             ->at(0)
-                             .stride;
-      CHECK_GE(stride_lhs_batch, 1);
     }
 
     CHECK_EQ(lhs_nc_iter_spec->size(), 1 + lhs_nc_split);
-    CHECK_EQ(analysis
-                 .IterSpec(DotFusionAnalysis::Scope::LHS, lhs_param0,
-                           dims.lhs_contracting_dimensions(0))
-                 ->size(),
-             1);
     // Just the fastest-varying part of it if the dimension is split.
     m = lhs_nc_iter_spec->at(0).count;
   }
-
   CHECK_GE(m, 1);
-
-  if (!analysis.ScopeParameters(DotFusionAnalysis::Scope::RHS).empty()) {
-    const HloInstruction* rhs_param0 =
-        *analysis.ScopeParameters(DotFusionAnalysis::Scope::RHS).begin();
-    // Splitting of RHS non-contracting is not supported yet.
-    CHECK_EQ(analysis
-                 .IterSpec(DotFusionAnalysis::Scope::RHS, rhs_param0,
-                           rhs_noncontracting_dim_idx)
-                 ->size(),
-             1);
-    if (have_batch) {
-      const int64_t rhs_batch_dim_idx =
-          *(dims.rhs_batch_dimensions().cend() - 1);
-      stride_rhs_batch = analysis
-                             .IterSpec(DotFusionAnalysis::Scope::RHS,
-                                       rhs_param0, rhs_batch_dim_idx)
-                             ->at(0)
-                             .stride;
-      CHECK_GE(stride_rhs_batch, 1);
-    }
-  }
 
   constexpr int group_m = 8;
 
@@ -950,27 +918,10 @@ StatusOr<LaunchDimensions> MatMulImpl(
   ma::ConstantOp accumulator_init =
       CreateConst(b, acc_ty, 0, {block_m, block_n});
 
-  // Numbers of dimensions of tensor pointers that need masking on loads or
-  // stores.
-  std::vector<int32_t> boundary_checks_lhs;
-  std::vector<int32_t> boundary_checks_rhs;
-  std::vector<int32_t> boundary_checks_out;
-  if (m % block_m != 0) {
-    boundary_checks_lhs.push_back(0);
-    boundary_checks_out.push_back(0);
-  }
-  if (k % (block_k * split_k) != 0) {
-    boundary_checks_lhs.push_back(1);
-    boundary_checks_rhs.push_back(0);
-  }
-  if (n % block_n != 0) {
-    boundary_checks_rhs.push_back(1);
-    boundary_checks_out.push_back(1);
-  }
-
-  // Parameters are passed to the loop in non-trivial order, this map helps
-  // finding them.
+  // Parameters are passed to the loop in non-trivial order, these maps help
+  // finding them and their attributes.
   absl::flat_hash_map<int, const HloInstruction*> iter_args_to_parameters;
+  absl::flat_hash_map<int, std::vector<int32_t>> iter_args_to_boundary_checks;
 
   auto body_builder = [&](mlir::OpBuilder&, mlir::Location, Value ki,
                           ValueRange iter_args) {
@@ -989,8 +940,7 @@ StatusOr<LaunchDimensions> MatMulImpl(
       CHECK(values
                 .insert({iter_args_to_parameters[i],
                          EmitParameterLoad(b, iter_args[i],
-                                           is_lhs ? boundary_checks_lhs
-                                                  : boundary_checks_rhs)})
+                                           iter_args_to_boundary_checks[i])})
                 .second);
       iter_args_next.push_back(b.create<mt::AdvanceOp>(
           iter_args[i].getType(), iter_args[i],
@@ -1072,69 +1022,94 @@ StatusOr<LaunchDimensions> MatMulImpl(
       analysis.ScopeParameters(DotFusionAnalysis::Scope::LHS).size() +
       analysis.ScopeParameters(DotFusionAnalysis::Scope::RHS).size() + 1);
 
-  Value lhs_offset_batch = b.create<ma::MulIOp>(
-      convert_scalar(pid_batch), CreateConst(b, int_ty, stride_lhs_batch));
-  for (const HloInstruction* parameter :
-       analysis.ScopeParameters(DotFusionAnalysis::Scope::LHS)) {
-    Value base = fn.getArgument(parameter->parameter_number());
-    const int64_t stride_lhs_m =
-        analysis
-            .IterSpec(DotFusionAnalysis::Scope::LHS, parameter,
-                      lhs_noncontracting_dim_idx)
-            ->at(0)
-            .stride;
-    const int64_t stride_lhs_k =
-        analysis
-            .IterSpec(DotFusionAnalysis::Scope::LHS, parameter,
-                      dims.lhs_contracting_dimensions(0))
-            ->at(0)
-            .stride;
-    Value ptrs = b.create<mt::MakeTensorPtrOp>(
-        /*base=*/AddPtr(b, base, lhs_offset_batch),
-        /*shape=*/
-        ValueRange{CreateConst(b, i64_ty, m), CreateConst(b, i64_ty, k)},
-        /*strides=*/
-        ValueRange{CreateConst(b, i64_ty, stride_lhs_m),
-                   CreateConst(b, i64_ty, stride_lhs_k)},
-        /*offsets=*/ValueRange{pid_m_offset, pid_k_offset},
-        /*tensorShape=*/std::vector<int32_t>{block_m, block_k},
-        /*order=*/std::vector<int32_t>{1, 0});
-    CHECK(iter_args_to_parameters.insert({iter_args.size(), parameter}).second)
-        << parameter->ToString();
-    iter_args.push_back(ptrs);
-  }
+  struct DimProperties {
+    int64_t index;
+    Value offset;
+    int block_size;
+  };
 
-  Value rhs_offset_batch = b.create<ma::MulIOp>(
-      convert_scalar(pid_batch), CreateConst(b, int_ty, stride_rhs_batch));
-  for (const HloInstruction* parameter :
-       analysis.ScopeParameters(DotFusionAnalysis::Scope::RHS)) {
-    Value base = fn.getArgument(parameter->parameter_number());
-    const IndexT stride_rhs_k =
-        analysis
-            .IterSpec(DotFusionAnalysis::Scope::RHS, parameter,
-                      dims.rhs_contracting_dimensions(0))
-            ->at(0)
-            .stride;
-    const IndexT stride_rhs_n =
-        analysis
-            .IterSpec(DotFusionAnalysis::Scope::RHS, parameter,
-                      rhs_noncontracting_dim_idx)
-            ->at(0)
-            .stride;
-    Value ptrs = b.create<mt::MakeTensorPtrOp>(
-        /*base=*/AddPtr(b, base, rhs_offset_batch),
-        /*shape=*/
-        ValueRange{CreateConst(b, i64_ty, k), CreateConst(b, i64_ty, n)},
-        /*strides=*/
-        ValueRange{CreateConst(b, i64_ty, stride_rhs_k),
-                   CreateConst(b, i64_ty, stride_rhs_n)},
-        /*offsets=*/ValueRange{pid_k_offset, pid_n_offset},
-        /*tensorShape=*/std::vector<int32_t>{block_k, block_n},
-        /*order=*/std::vector<int32_t>{1, 0});
-    CHECK(iter_args_to_parameters.insert({iter_args.size(), parameter}).second)
-        << parameter->ToString();
-    iter_args.push_back(ptrs);
-  }
+  auto emit_scope_parameter_tensor_pointers =
+      [&](const DotFusionAnalysis::Scope scope,
+          const DimProperties& noncontracting, const DimProperties& contracting,
+          const int batch_dim_idx, const bool contracting_first) {
+        for (const HloInstruction* parameter :
+             analysis.ScopeParameters(scope)) {
+          CHECK(iter_args_to_parameters.insert({iter_args.size(), parameter})
+                    .second)
+              << parameter->ToString();
+
+          std::vector<Value> bounds;
+          std::vector<Value> strides;
+          std::vector<Value> offsets;
+          std::vector<int32_t> block_dims;
+          std::vector<int32_t> dim_order;
+          std::vector<int32_t>& boundary_checks =
+              iter_args_to_boundary_checks[iter_args.size()];
+
+          auto add_dim = [&](const DimProperties& properties) {
+            const int64_t count =
+                analysis.IterSpec(scope, parameter, properties.index)
+                    ->at(0)
+                    .count;
+            if (count % properties.block_size != 0) {
+              boundary_checks.push_back(bounds.size());
+            }
+            bounds.push_back(CreateConst(b, i64_ty, count));
+            strides.push_back(CreateConst(
+                b, i64_ty,
+                analysis.IterSpec(scope, parameter, properties.index)
+                    ->at(0)
+                    .stride));
+            offsets.push_back(properties.offset);
+            block_dims.push_back(properties.block_size);
+            dim_order.emplace(dim_order.begin(), dim_order.size());
+          };
+          if (contracting_first) {
+            add_dim(contracting);
+            add_dim(noncontracting);
+          } else {
+            add_dim(noncontracting);
+            add_dim(contracting);
+          }
+
+          // LHS non-contracting can be split into two.
+          bool nc_is_split = false;
+          const TensorIterationSpec::DimIterationSpec* nc_iter_spec =
+              analysis.IterSpec(scope, parameter, noncontracting.index);
+          nc_is_split = nc_iter_spec->size() > 1;
+          CHECK_EQ(nc_iter_spec->size(), 1 + nc_is_split);
+          // For now split non-contracting and batch are not supported
+          // simultaneously because they are implemented via same mechanism.
+          IndexT stride_batch = 0;
+          CHECK_LE(have_batch + nc_is_split, 1);
+          if (nc_is_split) {
+            stride_batch = nc_iter_spec->at(1).stride;
+            CHECK_GE(stride_batch, 1);
+          } else if (have_batch) {
+            stride_batch = analysis.IterSpec(scope, parameter, batch_dim_idx)
+                               ->at(0)
+                               .stride;
+            CHECK_GE(stride_batch, 1);
+          }
+          Value offset_batch = b.create<ma::MulIOp>(
+              convert_scalar(pid_batch), CreateConst(b, int_ty, stride_batch));
+
+          iter_args.push_back(b.create<mt::MakeTensorPtrOp>(
+              AddPtr(b, fn.getArgument(parameter->parameter_number()),
+                     offset_batch),
+              bounds, strides, offsets, block_dims, dim_order));
+        }
+      };
+  emit_scope_parameter_tensor_pointers(
+      DotFusionAnalysis::Scope::LHS,
+      {lhs_noncontracting_dim_idx, pid_m_offset, block_m},
+      {dims.lhs_contracting_dimensions(0), pid_k_offset, block_k},
+      lhs_batch_dim_idx, /*contracting_first=*/false);
+  emit_scope_parameter_tensor_pointers(
+      DotFusionAnalysis::Scope::RHS,
+      {rhs_noncontracting_dim_idx, pid_n_offset, block_n},
+      {dims.rhs_contracting_dimensions(0), pid_k_offset, block_k},
+      rhs_batch_dim_idx, /*contracting_first=*/true);
 
   iter_args.push_back(accumulator_init);
   Value acc_final =
@@ -1153,12 +1128,13 @@ StatusOr<LaunchDimensions> MatMulImpl(
   // Generate tensor pointer for a parameter load or output store within the
   // dot's output scope.
   auto output_scope_tensor_pointer = [&](const HloInstruction* hlo, Value base,
-                                         bool add_split_k_offset) {
-    const IndexT stride_m =
-        analysis
-            .IterSpec(DotFusionAnalysis::Scope::OUTPUT, hlo, lhs_nc_out_idx)
-            ->at(0)
-            .stride;
+                                         bool add_split_k_offset,
+                                         std::vector<int32_t>&
+                                             boundary_checks) {
+    const TensorIterationSpec::DimIterationSpec* lhs_spec = analysis.IterSpec(
+        DotFusionAnalysis::Scope::OUTPUT, hlo, lhs_nc_out_idx);
+    const int64_t stride_m = lhs_spec->at(0).stride;
+    int count_m = lhs_spec->at(0).count;
     {
       IndexT stride_batch = 0;
       if (have_batch) {
@@ -1170,23 +1146,22 @@ StatusOr<LaunchDimensions> MatMulImpl(
         CHECK_GE(stride_batch, 1);
       }
       {
-        const TensorIterationSpec::DimIterationSpec* spec = analysis.IterSpec(
-            DotFusionAnalysis::Scope::OUTPUT, hlo, lhs_nc_out_idx);
-        if (spec->size() > 1) {
-          CHECK_EQ(spec->size(), 2);
+        if (lhs_spec->size() > 1) {
+          CHECK_EQ(lhs_spec->size(), 2);
           // Support one specific kind of output transpose that splits the
           // dimension originating from the split LHS non-contracting one.
           CHECK(!have_batch);
           CHECK(lhs_nc_split);
-          CHECK_EQ(spec->at(1).count, batch_size);
-          stride_batch = spec->at(1).stride;
+          CHECK_EQ(lhs_spec->at(1).count, batch_size);
+          stride_batch = lhs_spec->at(1).stride;
         } else if (lhs_nc_split) {
           // Dimension of the output produced by the non-contracting LHS one
           // is physically contiguous though the producing LHS one is split.
           // Because the major part of the split is implemented using the batch
           // logic stride_out_batch is populated here as the stride of the minor
           // part times its size.
-          stride_batch = stride_m * m;
+          count_m /= batch_size;
+          stride_batch = stride_m * count_m;
         }
       }
       Value offset_batch = b.create<ma::MulIOp>(
@@ -1207,15 +1182,31 @@ StatusOr<LaunchDimensions> MatMulImpl(
           convert_scalar(pid_k), CreateConst(b, int_ty, stride_split_k));
       base = AddPtr(b, base, offset_split_k);
     }
-    const IndexT stride_n =
+    const int64_t stride_n =
         analysis
             .IterSpec(DotFusionAnalysis::Scope::OUTPUT, hlo, rhs_nc_out_idx)
             ->at(0)
             .stride;
+    const int64_t count_n =
+        analysis
+            .IterSpec(DotFusionAnalysis::Scope::OUTPUT, hlo, rhs_nc_out_idx)
+            ->at(0)
+            .count;
+
+    // Indices of dimensions of tensor pointers that need masking on loads or
+    // stores.
+    if (count_m % block_m != 0) {
+      boundary_checks.push_back(0);
+    }
+    if (count_n % block_n != 0) {
+      boundary_checks.push_back(1);
+    }
+
     return b.create<mt::MakeTensorPtrOp>(
         /*base=*/base,
         /*shape=*/
-        ValueRange{CreateConst(b, i64_ty, m), CreateConst(b, i64_ty, n)},
+        ValueRange{CreateConst(b, i64_ty, count_m),
+                   CreateConst(b, i64_ty, count_n)},
         /*strides=*/
         ValueRange{CreateConst(b, i64_ty, stride_m),
                    CreateConst(b, i64_ty, stride_n)},
@@ -1256,12 +1247,13 @@ StatusOr<LaunchDimensions> MatMulImpl(
   if (!to_emit.empty()) {
     for (const HloInstruction* parameter :
          analysis.ScopeParameters(DotFusionAnalysis::Scope::OUTPUT)) {
+      std::vector<int32_t> boundary_checks;
       Value tensor_pointer = output_scope_tensor_pointer(
           parameter, fn.getArgument(parameter->parameter_number()),
-          /*add_split_k_offset=*/false);
+          /*add_split_k_offset=*/false, boundary_checks);
       CHECK(values_out
-                .insert({parameter, EmitParameterLoad(b, tensor_pointer,
-                                                      boundary_checks_out)})
+                .insert({parameter,
+                         EmitParameterLoad(b, tensor_pointer, boundary_checks)})
                 .second);
     }
     TF_RETURN_IF_ERROR(EmitScope(b, libdevice_path, to_emit, values_out,
@@ -1274,12 +1266,12 @@ StatusOr<LaunchDimensions> MatMulImpl(
        i < fn.getNumArguments() - dot_instr->parent()->num_parameters(); ++i) {
     const HloInstruction* producer =
         root->shape().IsTuple() ? root->operand(i) : root;
+    std::vector<int32_t> boundary_checks;
     Value tensor_pointer = output_scope_tensor_pointer(
         producer, fn.getArgument(i + dot_instr->parent()->num_parameters()),
-        /*add_split_k_offset=*/true);
-    b.create<mt::StoreOp>(tensor_pointer, values_out[producer],
-                          boundary_checks_out, mt::CacheModifier::NONE,
-                          mt::EvictionPolicy::NORMAL);
+        /*add_split_k_offset=*/true, boundary_checks);
+    b.create<mt::StoreOp>(tensor_pointer, values_out[producer], boundary_checks,
+                          mt::CacheModifier::NONE, mt::EvictionPolicy::NORMAL);
   }
   return LaunchDimensions{{large_batch ? batch_size : grid_m * grid_n,
                            large_batch ? grid_m * grid_n : batch_size, split_k},
@@ -1359,12 +1351,14 @@ StatusOr<LaunchDimensions> SoftMax(mlir::OpBuilder builder,
   for (int minor_axis = 1; minor_axis < reduce_input_shape.rank(); ++minor_axis)
     num_rows *= reduce_input_shape.dimensions_minor(minor_axis);
 
-  Value row_index = b.create<mt::GetProgramIdOp>(mt::ProgramIDDim::X);
+  Value row_index = b.create<ma::ExtSIOp>(
+      b.getI64Type(), b.create<mt::GetProgramIdOp>(mt::ProgramIDDim::X));
   Value row_stride = CreateConst(b, b.getI32Type(), row_len);
 
   absl::flat_hash_map<const HloInstruction*, Value> values_out;
   auto make_tensor_pointer = [&](Value base) {
-    Value offset = b.create<ma::MulIOp>(row_index, row_stride);
+    Value offset = b.create<ma::MulIOp>(
+        row_index, b.create<ma::ExtSIOp>(b.getI64Type(), row_stride));
     return b.create<mt::MakeTensorPtrOp>(
         /*base=*/AddPtr(b, base, offset),
         /*shape=*/ValueRange{CreateConst(b, b.getI64Type(), row_len)},
@@ -1553,6 +1547,10 @@ StatusOr<LaunchDimensions> TritonWrapper(
   }
 
   CreateTritonPipeline(pm, cc, config.num_warps(), config.num_stages());
+  if (log_stream.has_value()) {
+    pm.printAsTextualPipeline(log_stream.value());
+    log_stream->write("\n\n", 2);
+  }
   // Triton generates pointers to the global address space, while XLA needs a
   // kernel signature with pointers to the generic address space.
   pm.addPass(std::make_unique<GeneralizeKernelSignaturePass>());

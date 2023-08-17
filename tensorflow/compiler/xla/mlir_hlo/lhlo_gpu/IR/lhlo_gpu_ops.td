@@ -49,7 +49,7 @@ class GpuConvolutionAttributes<dag extraAttribs> {
 }
 
 // Provide a custom assembly format for all LHLO_GPU convolution operations.
-class LHLOGPU_ConvBaseOp<string mnemonic, list<Trait> traits = []> : LHLOGPU_Op<mnemonic> {
+class LHLOGPU_ConvBaseOp<string mnemonic, list<Trait> traits = []> : LHLOGPU_Op<mnemonic, traits> {
  let assemblyFormat = [{
     `(`operands`)`
        `dim_numbers` `=` custom<ConvolutionDimensions>($dimension_numbers) `,`
@@ -148,8 +148,10 @@ def LHLOGPU_ConvForwardGraphOp :
        Arg<LHLO_Buffer, "", [MemRead]>:$filter,
        Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$binary_operands,
        Arg<LHLO_Buffer, "", [MemWrite]>:$output,
+       Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$aux_outputs,
        Arg<LHLO_Buffer, "", [MemWrite]>:$scratch),
      GpuConvolutionAttributes<(ins
+          I32Attr:$n_aux_outputs,
           StrAttr:$serialized_graph)>.attributes);
 }
 

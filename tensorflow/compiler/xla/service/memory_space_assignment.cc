@@ -1914,6 +1914,7 @@ void AlternateMemoryBestFitHeap::DumpDebugStringsIfEnabled() const {
   }
   options_.dump_fn("bufferinfo", buffer_info_str_);
   options_.dump_fn("allocinfo", allocation_info_str_);
+  options_.dump_fn("scheduleinfo", instruction_schedule_str_);
 }
 
 /*static*/ StatusOr<std::unique_ptr<MemoryBoundLoopOptimizer>>
@@ -3442,13 +3443,16 @@ HeapSimulator::Result<HloValue> AlternateMemoryBestFitHeap::Finish() {
 
   AddInputAndOutputRequiredAssignments();
 
-  if (VLOG_IS_ON(3)) {
+  if (VLOG_IS_ON(3) || options_.dump_fn != nullptr) {
     VLOG(3) << "Flattened instruction sequence:";
     const auto& instruction_sequence =
         hlo_live_range_.flattened_instruction_sequence().instructions();
+    absl::StrAppend(&instruction_schedule_str_, "time,instruction_name\n");
     for (int i = 0; i < instruction_sequence.size(); ++i) {
       VLOG(3) << " " << i << ": " << instruction_sequence[i]->parent()->name()
               << " " << instruction_sequence[i]->name();
+      absl::StrAppend(&instruction_schedule_str_, i, ",",
+                      instruction_sequence[i]->name(), "\n");
     }
   }
 
@@ -4342,94 +4346,102 @@ bool AsynchronousCopyOrdering::ViolatesOrdering(int64_t start_time,
 bool AsynchronousCopyResource::ConsumeResource(
     int64_t start_time, int64_t end_time, float resource,
     absl::flat_hash_map<int64_t, float>* delay_change_map,
-    const std::list<AsynchronousCopy>::iterator* current_copy,
     float resource_to_free) {
-  // resource is modified below. We save its initial value for logging below.
-  const float amount_requested = resource;
+  std::list<AsynchronousCopy>::iterator current_copy = async_copies_.end();
+  // In order to propagate the resource to the next scheduled copy, we iterate
+  // over the copies in start time order until we either find enough free
+  // resource (and return true), or find out that we don't have enough free
+  // resource (and return false).
+  while (true) {
+    // resource is modified below. We save its initial value for logging below.
+    const float amount_requested = resource;
 
-  VLOG(3) << "Consume resource: start time = " << start_time
-          << ", end time = " << end_time << ", resource = " << resource
-          << ", delay = " << delay_[start_time + 1]
-          << ", free = " << resource_to_free;
+    VLOG(3) << "Consume resource: start time = " << start_time
+            << ", end time = " << end_time << ", resource = " << resource
+            << ", delay = " << delay_[start_time + 1]
+            << ", free = " << resource_to_free;
 
-  // Nothing to do if we're not adding or removing any resources.
-  if (resource == 0.0 && resource_to_free == 0.0) {
-    return true;
-  }
-
-  // For the async copy we're adding, check the delay_ array to see how much
-  // this copy would have to be delayed because of an earlier copy that wasn't
-  // finished when this copy starts.
-  if (current_copy == nullptr) {
-    resource += delay_[start_time + 1];
-  }
-
-  // Find the copy that is right after this one. If there are leftover resources
-  // by the time the next copy starts, the next copy will be pushed further
-  // later in time.
-  auto next_copy = async_copies_.end();
-  if (current_copy != nullptr) {
-    next_copy = std::next(*current_copy);
-  } else {
-    auto async_copy_time_it = async_copy_time_map_.upper_bound(start_time);
-    if (async_copy_time_it != async_copy_time_map_.end()) {
-      next_copy = async_copy_time_it->second;
+    // Nothing to do if we're not adding or removing any resources.
+    if (resource == 0.0 && resource_to_free == 0.0) {
+      return true;
     }
-  }
 
-  // Check if this copy will push the next copy later in time (or if removing
-  // the resource, check if the removal of this copy move the next copy earlier
-  // in time).
-  std::optional<float> delay_for_next_copy = std::nullopt;
-  float resource_freed = 0.0;
-  for (int64_t time = start_time + 1; time < end_time && resource != 0;
-       ++time) {
-    // Iterate over the logical times that this copy spans. Note that the start
-    // and end time ranges are exclusive.
-    float used_resource = std::min(resource, initial_resources_[time]);
-    if (next_copy != async_copies_.end() && next_copy->start_time == time - 1) {
-      // This is the time where the next copy begins. If the resource is
-      // non-zero at this point, the copy didn't finish by the time the next
-      // copy started, so the next copy would need to be pushed later in time.
-      delay_for_next_copy = resource;
-      resource_to_free -= resource_freed;
+    // For the async copy we're adding, check the delay_ array to see how much
+    // this copy would have to be delayed because of an earlier copy that wasn't
+    // finished when this copy starts.
+    if (current_copy == async_copies_.end()) {
+      resource += delay_[start_time + 1];
     }
-    if (!delay_for_next_copy.has_value()) {
-      // Update the delay_ vector and resource_freed variable with the amount
-      // that was freed when removing the copy.
-      float old_resource =
-          std::max(0.0f, initial_resources_[time] - delay_[time]);
-      if (delay_change_map && !delay_change_map->contains(time)) {
-        (*delay_change_map)[time] = delay_[time];
+
+    // Find the copy that is right after this one. If there are leftover
+    // resources by the time the next copy starts, the next copy will be pushed
+    // further later in time.
+    std::list<AsynchronousCopy>::iterator next_copy = async_copies_.end();
+    if (current_copy != async_copies_.end()) {
+      next_copy = std::next(current_copy);
+    } else {
+      auto async_copy_time_it = async_copy_time_map_.upper_bound(start_time);
+      if (async_copy_time_it != async_copy_time_map_.end()) {
+        next_copy = async_copy_time_it->second;
       }
-      delay_[time] = std::max(0.0f, resource - resource_to_free);
-      float new_resource =
-          std::max(0.0f, initial_resources_[time] - delay_[time]);
-      resource_freed += std::max(0.0f, new_resource - old_resource);
     }
-    // Update the resource with the used amount in this logical time.
-    resource -= used_resource;
-  }
 
-  // If resource isn't satisfied by the end, we didn't have enough resources.
-  if (resource > 0) {
-    VLOG(5) << "Available resources: "
-            << VectorToString(GetCurrentResources(), /*include_indices=*/true,
-                              start_time + 1, end_time);
-    VLOG(3) << "Doesn't have enough resource; requested resource = "
-            << amount_requested << "; leftover resources = " << resource;
-    return false;
-  }
+    // Check if this copy will push the next copy later in time (or if removing
+    // the resource, check if the removal of this copy move the next copy
+    // earlier in time).
+    std::optional<float> delay_for_next_copy = std::nullopt;
+    float resource_freed = 0.0;
+    for (int64_t time = start_time + 1; time < end_time && resource != 0;
+         ++time) {
+      // Iterate over the logical times that this copy spans. Note that the
+      // start and end time ranges are exclusive.
+      float used_resource = std::min(resource, initial_resources_[time]);
+      if (next_copy != async_copies_.end() &&
+          next_copy->start_time == time - 1) {
+        // This is the time where the next copy begins. If the resource is
+        // non-zero at this point, the copy didn't finish by the time the next
+        // copy started, so the next copy would need to be pushed later in time.
+        delay_for_next_copy = resource;
+        resource_to_free -= resource_freed;
+      }
+      if (!delay_for_next_copy.has_value()) {
+        // Update the delay_ vector and resource_freed variable with the amount
+        // that was freed when removing the copy.
+        float old_resource =
+            std::max(0.0f, initial_resources_[time] - delay_[time]);
+        if (delay_change_map && !delay_change_map->contains(time)) {
+          (*delay_change_map)[time] = delay_[time];
+        }
+        delay_[time] = std::max(0.0f, resource - resource_to_free);
+        float new_resource =
+            std::max(0.0f, initial_resources_[time] - delay_[time]);
+        resource_freed += std::max(0.0f, new_resource - old_resource);
+      }
+      // Update the resource with the used amount in this logical time.
+      resource -= used_resource;
+    }
 
-  // If this copy overlapped with another one, we recursively call
-  // ConsumeResource with the amount of resource that needs to be added or
-  // removed.
-  if (delay_for_next_copy.has_value()) {
-    return ConsumeResource(next_copy->start_time, next_copy->end_time,
-                           *delay_for_next_copy + next_copy->resource,
-                           delay_change_map, &next_copy, resource_to_free);
+    // If resource isn't satisfied by the end, we didn't have enough resources.
+    if (resource > 0) {
+      VLOG(5) << "Available resources: "
+              << VectorToString(GetCurrentResources(), /*include_indices=*/true,
+                                start_time + 1, end_time);
+      VLOG(3) << "Doesn't have enough resource; requested resource = "
+              << amount_requested << "; leftover resources = " << resource;
+      return false;
+    }
+
+    if (!delay_for_next_copy.has_value()) {
+      return true;
+    }
+    // If this copy overlapped with another one, we run for another iteration
+    // with the next copy  with the amount of resource that needs to be added or
+    // removed.
+    start_time = next_copy->start_time;
+    end_time = next_copy->end_time;
+    resource = *delay_for_next_copy + next_copy->resource;
+    current_copy = next_copy;
   }
-  return true;
 }
 
 void AsynchronousCopyResource::AddCopy(const AsynchronousCopy& copy) {
@@ -4498,7 +4510,6 @@ void AsynchronousCopyResource::RemoveCopy(
         std::next(copy_it)->start_time > copy_it->start_time);
   CHECK(ConsumeResource(copy_it->start_time, copy_it->end_time, /*resource=*/0,
                         /*delay_change_map=*/nullptr,
-                        /*current_copy=*/nullptr,
                         /*resource_to_free=*/copy_it->resource));
   // If the copy to be removed is the value pointed by async_copy_time_map_, we
   // make the next copy with the same start time to be pointed by
@@ -6530,6 +6541,10 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::CheckPrefetchFit(
               /*size=*/chunk.size,
               /*start=*/start_time,
               /*end=*/slice_start_times.back() - 1,
+              // We only use the final_buffer_interval for colocations because
+              // slices start at different offsets, and the colocation
+              // infrastructure expects all colocated buffers to start at the
+              // same offset.
               /*colocations=*/{},
               /*need_allocation=*/true,
           },

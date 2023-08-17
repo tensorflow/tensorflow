@@ -41,8 +41,13 @@ Additional functions are provided which accept array-like objects. Here
 array-like objects include `ndarrays` as defined by this module, as well as
 `tf.Tensor`, in addition to types accepted by NumPy.
 
-A subset of NumPy dtypes are supported. Type promotion follows NumPy
+A subset of NumPy dtypes are supported. Type promotion* follows NumPy
 semantics.
+
+**Note**: A new type promotion that offers a lot of advantages over the old
+type promotion is now available. Learn more about enabling the new
+type promotion
+[here](https://www.tensorflow.org/guide/tf_numpy_type_promotion).
 
 ```python
 print(tnp.ones([1, 2], dtype=tnp.int16) + tnp.ones([2, 1], dtype=tnp.uint8))

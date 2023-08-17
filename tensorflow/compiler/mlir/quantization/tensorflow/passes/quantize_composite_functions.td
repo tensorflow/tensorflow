@@ -25,4 +25,4 @@ include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 def ConvertArithConstToTfConst : Pat<
   (Arith_ConstantOp:$res DenseElementsAttr:$value),
   (TF_ConstOp $value),
-  [(AnyStaticShapeTensor $res)], (addBenefit 20)>;
+  [(AnyStaticShapeTensor $res)], [], (addBenefit 20)>;

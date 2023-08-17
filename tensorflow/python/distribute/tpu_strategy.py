@@ -67,11 +67,8 @@ from tensorflow.python.tpu import training_loop
 from tensorflow.python.tpu.ops import tpu_ops
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
-from tensorflow.python.util import tf_export as tf_export_lib
+from tensorflow.python.util import tf_export
 from tensorflow.python.util import tf_inspect
-
-
-tf_export = tf_export_lib.tf_export
 
 _XLA_OP_BY_OP_INPUTS_LIMIT = 200
 
@@ -242,7 +239,7 @@ def _maybe_partial_apply_variables(fn, args, kwargs):
   return fn, args, kwargs
 
 
-@tf_export("distribute.TPUStrategy", v1=[])
+@tf_export.tf_export("distribute.TPUStrategy", v1=[])
 class TPUStrategyV2(distribute_lib.Strategy):
   """Synchronous training on TPUs and TPU Pods.
 
@@ -667,7 +664,7 @@ class TPUStrategyV2(distribute_lib.Strategy):
     return xla_sharding.replicate(tensor, use_sharding_op=True)
 
 
-@tf_export("distribute.experimental.TPUStrategy", v1=[])
+@tf_export.tf_export("distribute.experimental.TPUStrategy", v1=[])
 @deprecation.deprecated_endpoints("distribute.experimental.TPUStrategy")
 class TPUStrategy(distribute_lib.Strategy):
   """Synchronous training on TPUs and TPU Pods.
@@ -754,7 +751,7 @@ class TPUStrategy(distribute_lib.Strategy):
     return self.extended._tpu_cluster_resolver  # pylint: disable=protected-access
 
 
-@tf_export(v1=["distribute.experimental.TPUStrategy"])
+@tf_export.tf_export(v1=["distribute.experimental.TPUStrategy"])
 class TPUStrategyV1(distribute_lib.StrategyV1):
   """TPU distribution strategy implementation."""
 

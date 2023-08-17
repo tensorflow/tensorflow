@@ -195,6 +195,9 @@ def weak_tensor_binary_op_wrapper(op, y_arg_name=None, special_handling=None):
     else:
       bound_kwargs[x_arg_name] = _convert_or_cast(x, target_type, "x")
       bound_kwargs[y_arg_name] = _convert_or_cast(y, target_type, "y")
+    if special_handling == "comparison-method":
+      # No need for "weak" return value for comparison method.
+      is_weak = False
     return weak_tensor.convert_to_weak_tensor_or_tensor(
         op(**bound_kwargs), is_weak
     )
@@ -509,6 +512,7 @@ math_ops.multiply_no_nan = weak_tensor_binary_op_wrapper(
     math_ops.multiply_no_nan
 )
 math_ops.matmul = weak_tensor_binary_op_wrapper(math_ops.matmul)
+np_math_ops.matmul = weak_tensor_binary_op_wrapper(np_math_ops.matmul)
 # In scalar_mul(scalar, x), dtype should be solely inferred from the dtype of x.
 math_ops.scalar_mul = weak_tensor_unary_op_wrapper(math_ops.scalar_mul, "x")
 math_ops.divide = weak_tensor_binary_op_wrapper(math_ops.divide)
@@ -527,6 +531,22 @@ gen_math_ops.truncate_mod = weak_tensor_binary_op_wrapper(
 )
 gen_math_ops.floor_mod = weak_tensor_binary_op_wrapper(gen_math_ops.floor_mod)
 gen_math_ops._pow = weak_tensor_binary_op_wrapper(gen_math_ops._pow)
+gen_math_ops.maximum = weak_tensor_binary_op_wrapper(
+    gen_math_ops.maximum, special_handling="comparison-method"
+)
+gen_math_ops.minimum = weak_tensor_binary_op_wrapper(
+    gen_math_ops.minimum, special_handling="comparison-method"
+)
+gen_math_ops.equal = weak_tensor_binary_op_wrapper(
+    gen_math_ops.equal, special_handling="comparison-method"
+)
+# math_ops.maximum and minimum don't call from gen_math_ops.
+math_ops.maximum = weak_tensor_binary_op_wrapper(
+    math_ops.maximum, special_handling="comparison-method"
+)
+math_ops.minimum = weak_tensor_binary_op_wrapper(
+    math_ops.minimum, special_handling="comparison-method"
+)
 ResourceVariable.assign = weak_tensor_binary_op_wrapper(
     ResourceVariable.assign, special_handling="variable_method"
 )
@@ -536,6 +556,8 @@ ResourceVariable.assign_add = weak_tensor_binary_op_wrapper(
 ResourceVariable.assign_sub = weak_tensor_binary_op_wrapper(
     ResourceVariable.assign_sub, special_handling="variable_method"
 )
+ops.convert_to_tensor_or_composite = weak_tensor_unary_op_wrapper(
+    ops.convert_to_tensor_or_composite)
 
 # Patching tf.constant does the following.
 # (1) If dtype arg is not specified and the input is a Python nested type,
@@ -574,4 +596,8 @@ for operator in tensor.Tensor.OVERLOADABLE_OPERATORS:
 
 # Add NumPy methods in WeakTensor.
 np_math_ops._enable_numpy_methods(weak_tensor.WeakTensor)
+setattr(weak_tensor.WeakTensor, "__round__", np_array_ops.around)
+setattr(weak_tensor.WeakTensor, "_numpy_style_getitem", np_array_ops._getitem)
+# Add support for batched matmul.
+setattr(weak_tensor.WeakTensor, "_matmul", np_math_ops.matmul)
 # pylint: enable=protected-access

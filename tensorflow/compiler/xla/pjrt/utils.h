@@ -16,18 +16,21 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PJRT_UTILS_H_
 #define TENSORFLOW_COMPILER_XLA_PJRT_UTILS_H_
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
 #include <vector>
 
-#include "absl/container/flat_hash_set.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 

@@ -226,3 +226,59 @@ module attributes {tf_saved_model.semantics} {
     return %cst_0 : tensor<8xf32>
   }
 }
+
+
+// -----
+
+// Tests the case when there are functions called from the main function such as while_body/while_cond.
+
+module attributes {tf_saved_model.semantics} {
+
+  func.func @serving_default(%arg0: tensor<1x5x5x1024xf32> {tf_saved_model.index_path = ["input_tensor"]}) -> (tensor<1x5x5x1024xf32> {tf_saved_model.index_path = ["output"]})
+  attributes {tf.entry_function = {control_outputs = "", inputs = "serving_default_input_tensor:0", outputs = "PartitionedCall:0"}, tf_saved_model.exported_names = ["serving_default"]} {
+    %0 = "tf.PartitionedCall"(%arg0) {f = @__inference_main} : (tensor<1x5x5x1024xf32>) -> tensor<1x5x5x1024xf32>
+    return %0 : tensor<1x5x5x1024xf32>
+  }
+
+  func.func private @__inference_main(%arg0: tensor<1x5x5x1024xf32> {tf._user_specified_name = "input_tensor"}) -> tensor<1x5x5x1024xf32>
+  attributes {tf._construction_context = "kEagerRuntime", tf._input_shapes = [#tf_type.shape<1x5x5x1024>], tf._noinline = true, tf._original_func_name = "__inference_main_540"} {
+    %cst_0 = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+    %cst_1 = "tf.Const"() {value = dense<4> : tensor<i32>} : () -> tensor<i32>
+    %cst_2 = "tf.Const"() {value = dense<1.0> : tensor<1x5x5x1024xf32>} : () -> tensor<1x5x5x1024xf32>
+    // Check that these constants are unfrozen.
+    // CHECK: func private @__inference_main
+    // CHECK: %[[VAR_HANDLE_0:.*]] = "tf.VarHandleOp"() {container = "", shared_name = "const_0"} : () -> tensor<!tf_type.resource<tensor<1x5x5x1024xf32>>>
+    // CHECK: %[[READ_VAR_0:.*]] = "tf.ReadVariableOp"(%0) : (tensor<!tf_type.resource<tensor<1x5x5x1024xf32>>>) -> tensor<1x5x5x1024xf32>
+    %0:3 = "tf.While"(%cst_0, %cst_1, %arg0) {T = [i32, i32, f32], _lower_using_switch_merge = true, _num_original_outputs = 4 : i64, _read_only_resource_inputs = [], body = @while_body, cond = @while_cond, device = "", is_stateless = true, output_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<1x5x5x1024>], parallel_iterations = 10 : i64, shape_invariant} : (tensor<i32>, tensor<i32>, tensor<1x5x5x1024xf32>) -> (tensor<i32>, tensor<i32>, tensor<1x5x5x1024xf32>)
+    %1 = "tf.AddV2"(%0#2, %cst_2) {device = ""} : (tensor<1x5x5x1024xf32>, tensor<1x5x5x1024xf32>) -> tensor<1x5x5x1024xf32>
+    return %1 : tensor<1x5x5x1024xf32>
+  }
+
+  func.func private @while_body(%arg0: tensor<i32> {tf._user_specified_name = "while/loop_counter"}, %arg1: tensor<i32> {tf._user_specified_name = "while/maximum_iterations"}, %arg2: tensor<1x5x5x1024xf32>) -> (tensor<i32>, tensor<i32>, tensor<1x5x5x1024xf32>)
+  attributes {tf._construction_context = "kEagerRuntime", tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<1x5x5x1024>], tf._original_func_name = "while_body_70"} {
+    %cst = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+    %cst_0 = "tf.Const"() {value = dense<1.0> : tensor<1x5x5x1024xf32>} : () -> tensor<1x5x5x1024xf32>
+    // Check that these constants are remained in constants.
+    // CHECK: func private @while_body
+    // CHECK-DAG:  %[[CST_0:.*]]= "tf.Const"() {value = dense<1.000000e+00> : tensor<1x5x5x1024xf32>} : () -> tensor<1x5x5x1024xf32>
+    %0 = "tf.AddV2"(%arg0, %cst) {device = ""} : (tensor<i32>, tensor<i32>) -> tensor<i32>
+    %1 = "tf.Identity"(%0) {device = ""} : (tensor<i32>) -> tensor<i32>
+    %2 = "tf.Identity"(%arg1) {device = ""} : (tensor<i32>) -> tensor<i32>
+    %4 = "tf.AddV2"(%arg2, %cst_0) {device = ""} : (tensor<1x5x5x1024xf32>, tensor<1x5x5x1024xf32>) -> tensor<1x5x5x1024xf32>
+    %5 = "tf.Identity"(%4) {device = ""} : (tensor<1x5x5x1024xf32>) -> tensor<1x5x5x1024xf32>
+    return %1, %2, %5 : tensor<i32>, tensor<i32>, tensor<1x5x5x1024xf32>
+  }
+
+  func.func private @while_cond(%arg0: tensor<i32> {tf._user_specified_name = "while/loop_counter"}, %arg1: tensor<i32> {tf._user_specified_name = "while/maximum_iterations"}, %arg2: tensor<1x5x5x1024xf32>) -> tensor<i1> 
+  attributes {tf._construction_context = "kEagerRuntime", tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<1x5x5x1024>], tf._original_func_name = "while_cond_60"} {
+    %cst = "tf.Const"() {value = dense<[0, 1, 2, 3]> : tensor<4xi32>} : () -> tensor<4xi32>
+    %cst_0 = "tf.Const"() {value = dense<5.0> : tensor<f32>} : () -> tensor<f32>
+    // Check that these constants are remained in constants.
+    // CHECK: func private @while_cond
+    // CHECK-DAG:  %[[CST:.*]]= "tf.Const"() {value = dense<[0, 1, 2, 3]> : tensor<4xi32>} : () -> tensor<4xi32>
+    %0 = "tf.Sum"(%arg2, %cst) {device = "", keep_dims = false} : (tensor<1x5x5x1024xf32>, tensor<4xi32>) -> tensor<f32>
+    %1 = "tf.Less"(%0, %cst_0) {device = ""} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    %2 = "tf.Identity"(%1) {device = ""} : (tensor<i1>) -> tensor<i1>
+    return %2 : tensor<i1>
+  }
+}

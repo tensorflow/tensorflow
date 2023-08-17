@@ -16,53 +16,18 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_graph.h"
 
 #include <atomic>
+#include <cstddef>
+#include <cstdint>
+#include <cstdlib>
 #include <string>
 
-#include "absl/strings/str_format.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_driver.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_kernel.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_types.h"
 #include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/path.h"
-
-#if TENSORFLOW_USE_ROCM
-using namespace stream_executor::wrap;  // NOLINT[build/namespaces]
-#define GPU_PREFIX hip
-#else
-#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
-#define GPU_PREFIX cuda
-#endif
-
-#define GPU_CAT_NX(A, B) A##B
-#define GPU_CAT(A, B) GPU_CAT_NX(A, B)
-#define GPU(A) GPU_CAT(GPU_PREFIX, A)
-
-#define GpuGetErrorString GPU(GetErrorString)
-#define GpuGraphDebugDotFlagsVerbose GPU(GraphDebugDotFlagsVerbose)
-#define GpuGraphDebugDotPrint GPU(GraphDebugDotPrint)
-#define GpuGraphDestroy GPU(GraphDestroy)
-#define GpuErrorMemoryAllocation GPU(ErrorMemoryAllocation)
-#define GpuGraphExecDestroy GPU(GraphExecDestroy)
-#define GpuGraphExecUpdate GPU(GraphExecUpdate)
-#define GpuGraphExecUpdateResult GPU(GraphExecUpdateResult)
-#define GpuGraphExecUpdateSuccess GPU(GraphExecUpdateSuccess)
-#define GpuGraphInstantiate GPU(GraphInstantiate)
-#define GpuGraphLaunch GPU(GraphLaunch)
-#define GpuGraphNode GPU(GraphNode_t)
-#define GpuStreamBeginCapture GPU(StreamBeginCapture)
-#define GpuStreamCaptureModeThreadLocal GPU(StreamCaptureModeThreadLocal)
-#define GpuStreamCaptureStatus GPU(StreamCaptureStatus)
-#define GpuStreamCaptureStatusActive GPU(StreamCaptureStatusActive)
-#define GpuStreamEndCapture GPU(StreamEndCapture)
-#define GpuStreamIsCapturing GPU(StreamIsCapturing)
-#define GpuSuccess GPU(Success)
-
-#define RETURN_IF_GPU_GRAPH_ERROR(expr, ...)                 \
-  do {                                                       \
-    auto _res = (expr);                                      \
-    if (TF_PREDICT_FALSE(_res != GpuSuccess)) {              \
-      return tsl::errors::Internal(__VA_ARGS__, ": ",        \
-                                   GpuGetErrorString(_res)); \
-    }                                                        \
-  } while (0)
 
 namespace stream_executor {
 namespace gpu {
@@ -92,16 +57,13 @@ std::atomic<size_t> GpuGraphSupport::alive_gpu_graph_execs_;
 }
 
 void GpuGraphSupport::DestroyGraph::operator()(GpuGraphHandle graph) {
-  auto err = GpuGraphDestroy(graph);
-  CHECK(err == GpuSuccess) << "Failed to destroy gpu graph: "
-                           << GpuGetErrorString(err);
+  auto st = GpuDriver::DestroyGraph(graph);
+  CHECK(st.ok()) << "Failed to destroy gpu graph: " << st.message();
 }
 
-void GpuGraphSupport::DestroyGraphExec::operator()(
-    GpuGraphExecHandle instance) {
-  auto err = GpuGraphExecDestroy(instance);
-  CHECK(err == GpuSuccess) << "Failed to destroy gpu graph instance: "
-                           << GpuGetErrorString(err);
+void GpuGraphSupport::DestroyGraphExec::operator()(GpuGraphExecHandle exec) {
+  auto st = GpuDriver::DestroyGraphExec(exec);
+  CHECK(st.ok()) << "Failed to destroy executable gpu graph: " << st.message();
 }
 
 tsl::Status OwnedGpuGraphExec::Update(OwnedGpuGraph graph) {
@@ -111,23 +73,17 @@ tsl::Status OwnedGpuGraphExec::Update(OwnedGpuGraph graph) {
 
   num_launches_ = 0;
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 12000
-  cudaGraphExecUpdateResultInfo updated;
+  uint64_t start_nanos = tsl::Env::Default()->NowNanos();
+  GpuDriver::GraphExecUpdateResultInfo result;
+  auto st = GpuDriver::GraphExecUpdate(get(), graph.get(), &result);
+  uint64_t end_nanos = tsl::Env::Default()->NowNanos();
 
-  auto err = cudaGraphExecUpdate(get(), graph.get(), &updated);
-  if (err != cudaSuccess || updated.result != cudaGraphExecUpdateSuccess)
-    return tsl::errors::Internal("Failed to update gpu graph: ",
-                                 GpuGetErrorString(err));
+  VLOG(5) << "Updated gpu graph exec #" << id_ << " (took "
+          << (end_nanos - start_nanos) / 1000 << " us)";
 
-#else
-  GpuGraphExecUpdateResult updated;
-  GpuGraphNode error_node;
-
-  auto err = GpuGraphExecUpdate(get(), graph.get(), &error_node, &updated);
-  if (err != GpuSuccess || updated != GpuGraphExecUpdateSuccess)
-    return tsl::errors::Internal("Failed to update gpu graph: ",
-                                 GpuGetErrorString(err));
-#endif
+  if (!st.ok() || result.result != GpuDriver::GraphExecUpdateResult::kSuccess) {
+    return tsl::errors::Internal("Failed to update gpu graph: ", st.message());
+  }
 
   return tsl::OkStatus();
 }
@@ -137,10 +93,7 @@ tsl::Status OwnedGpuGraphExec::Launch(stream_executor::Stream* stream) {
           << " on a stream: " << stream->DebugStreamPointers() << " #"
           << ++num_launches_;
 
-  RETURN_IF_GPU_GRAPH_ERROR(GpuGraphLaunch(get(), AsGpuStreamValue(stream)),
-                            "failed to run gpu graph");
-
-  return tsl::OkStatus();
+  return GpuDriver::GraphLaunch(get(), AsGpuStreamValue(stream));
 }
 
 OwnedGpuGraphExec::~OwnedGpuGraphExec() {
@@ -154,10 +107,50 @@ OwnedGpuGraphExec::~OwnedGpuGraphExec() {
 // GPU Graph Helpers.
 //===----------------------------------------------------------------------===//
 
+tsl::StatusOr<OwnedGpuGraph> CreateGpuGraph() {
+  GpuGraphHandle graph;
+  TF_RETURN_IF_ERROR(GpuDriver::CreateGraph(&graph));
+  return OwnedGpuGraph(graph);
+}
+
+tsl::StatusOr<GpuGraphNodeHandle> AddKernelNode(
+    GpuGraphHandle graph, absl::Span<GpuGraphNodeHandle> deps,
+    ThreadDim threads, BlockDim blocks, const KernelBase& kernel,
+    const KernelArgsArrayBase& args) {
+  const GpuKernel* gpu_kernel = AsGpuKernel(&kernel);
+  GpuFunctionHandle gpu_func = gpu_kernel->AsGpuFunctionHandle();
+
+  void** kernel_params = const_cast<void**>(args.argument_addresses().data());
+
+  GpuGraphNodeHandle node;
+  TF_RETURN_IF_ERROR(GpuDriver::GraphAddKernelNode(
+      &node, graph, deps, kernel.name(), gpu_func, blocks.x, blocks.y, blocks.z,
+      threads.x, threads.y, threads.z, args.number_of_shared_bytes(),
+      kernel_params, /*extra=*/nullptr));
+
+  return node;
+}
+
+static GpuDevicePtr AsDevicePtr(const DeviceMemoryBase& mem) {
+  return reinterpret_cast<GpuDevicePtr>(mem.opaque());
+}
+
+tsl::StatusOr<GpuGraphNodeHandle> AddMemcpyD2DNode(
+    GpuContext* context, GpuGraphHandle graph,
+    absl::Span<GpuGraphNodeHandle> deps, const DeviceMemoryBase& dst,
+    const DeviceMemoryBase& src) {
+  GpuGraphNodeHandle node;
+  TF_RETURN_IF_ERROR(GpuDriver::GraphAddMemcpyD2DNode(
+      context, &node, graph, deps, AsDevicePtr(dst), AsDevicePtr(src),
+      dst.size()));
+  return node;
+}
+
 tsl::StatusOr<OwnedGpuGraph> CaptureGpuGraph(
     stream_executor::Stream* stream,
     absl::AnyInvocable<tsl::Status()> capture) {
   VLOG(3) << "Capture gpu graph on a stream: " << stream->DebugStreamPointers();
+  uint64_t start_nanos = tsl::Env::Default()->NowNanos();
 
   GpuGraphHandle graph;
 
@@ -165,55 +158,36 @@ tsl::StatusOr<OwnedGpuGraph> CaptureGpuGraph(
   auto gpu_stream = AsGpuStreamValue(stream);
 
   // Capture graph constructed by the exported graph capture function.
-  RETURN_IF_GPU_GRAPH_ERROR(
-      GpuStreamBeginCapture(gpu_stream, GpuStreamCaptureModeThreadLocal),
-      "stream begin capture failed");
+  TF_RETURN_IF_ERROR(GpuDriver::StreamBeginCapture(
+      gpu_stream, GpuDriver::StreamCaptureMode::kThreadLocal));
 
   // Call into graph capture function.
   auto captured = capture();
 
   // Always stop capturing the stream before checking `captured` result.
-  RETURN_IF_GPU_GRAPH_ERROR(GpuStreamEndCapture(gpu_stream, &graph),
-                            "stream end capture failed");
+  TF_RETURN_IF_ERROR(GpuDriver::StreamEndCapture(gpu_stream, &graph));
 
   if (!captured.ok())
     return tsl::errors::Internal("failed to capture gpu graph: ",
                                  captured.message());
 
-  VLOG(5) << "Captured gpu graph " << graph;
+  uint64_t end_nanos = tsl::Env::Default()->NowNanos();
+  VLOG(5) << "Captured XLA:GPU operations into the graph " << graph << " (took "
+          << (end_nanos - start_nanos) / 1000 << " us)";
 
-#if TENSORFLOW_USE_ROCM || CUDA_VERSION >= 12000
-  // If verbose logging is enabled print captured gpu graph debug information.
-  if (VLOG_IS_ON(100)) {
-    if (const char* path = getenv("XLA_GPU_GRAPH_DEBUG_DIRECTORY"); path) {
-      std::string file = tsl::io::JoinPath(std::string(path), "/gpu_graph-");
+  if (const char* path = getenv("XLA_GPU_GRAPH_DEBUG_DIRECTORY"); path) {
+    std::string file = tsl::io::JoinPath(std::string(path), "/gpu-graph-");
 
-      if (tsl::Env::Default()->CreateUniqueFileName(&file, ".dot")) {
-        VLOG(100) << "Print gpu graph " << graph
-                  << " debug dot file to: " << file;
-
-        int flags = GpuGraphDebugDotFlagsVerbose;
-        if (auto err = GpuGraphDebugDotPrint(graph, file.c_str(), flags);
-            err != GpuSuccess) {
-          LOG(WARNING) << "failed to print gpu graph debug file: "
-                       << GpuGetErrorString(err);
-
-        } else if (VLOG_IS_ON(200)) {
-          std::string data;
-          if (tsl::ReadFileToString(tsl::Env::Default(), file, &data).ok()) {
-            VLOG(200) << "gpu graph " << graph << " debug file:\n" << data;
-          } else {
-            LOG(WARNING) << "failed to read gpu graph debug file";
-          }
-        }
-
-      } else {
-        LOG(WARNING) << "cannot create unique filename, won't enable gpu "
-                        "graph debugging";
-      }
+    if (tsl::Env::Default()->CreateUniqueFileName(&file, ".dot")) {
+      VLOG(100) << "Print gpu graph " << graph
+                << " debug dot file to: " << file;
+      auto printed = GpuDriver::GraphDebugDotPrint(graph, file.c_str());
+      printed.IgnoreError();  // warning will be printed by GpuDriver
+    } else {
+      LOG(WARNING) << "Cannot create unique filename, won't enable gpu "
+                      "graph debugging";
     }
   }
-#endif  // TENSORFLOW_USE_ROCM || CUDA_VERSION >= 12000
 
   return OwnedGpuGraph(graph);
 }
@@ -221,38 +195,20 @@ tsl::StatusOr<OwnedGpuGraph> CaptureGpuGraph(
 tsl::StatusOr<OwnedGpuGraphExec> InstantiateGpuGraph(OwnedGpuGraph graph) {
   GpuGraphExecHandle exec;
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 12000
-  if (auto err = cudaGraphInstantiate(&exec, &*graph);
-#else
-  if (auto err = GpuGraphInstantiate(&exec, &*graph, nullptr, nullptr, 0);
-#endif
-      err != GpuSuccess) {
-    if (err == GpuErrorMemoryAllocation) {
-      // OOM is a recoverable error, we evict all instantiated cuda graphs to
-      // free up some space (see graph launch.cc). Clear error status.
-      return absl::ResourceExhaustedError(absl::StrFormat(
-          "graph instantiation failed: %s", GpuGetErrorString(err)));
-    } else {
-      return absl::InternalError(absl::StrFormat(
-          "graph instantiation failed: %s", GpuGetErrorString(err)));
-    }
-  }
+  uint64_t start_nanos = tsl::Env::Default()->NowNanos();
+  GpuDriver::GraphInstantiateFlags flags;
+  TF_RETURN_IF_ERROR(GpuDriver::GraphInstantiate(&exec, graph.get(), flags));
+  uint64_t end_nanos = tsl::Env::Default()->NowNanos();
 
   size_t id = GpuGraphSupport::NotifyGraphExecCreated();
-  VLOG(5) << "Instantiated gpu graph exec instance #" << id
-          << " (alive instances: " << GpuGraphSupport::alive_gpu_graph_execs()
-          << ")";
+  VLOG(5) << "Instantiated gpu graph exec instance #" << id << " in "
+          << (end_nanos - start_nanos) / 1000 << " us (alive instances: "
+          << GpuGraphSupport::alive_gpu_graph_execs() << ")";
   return OwnedGpuGraphExec(id, exec);
 }
 
 tsl::StatusOr<bool> IsStreamCapturing(stream_executor::Stream* stream) {
-  GpuStreamCaptureStatus capture_status;
-  RETURN_IF_GPU_GRAPH_ERROR(
-      GpuStreamIsCapturing(stream_executor::gpu::AsGpuStreamValue(stream),
-                           &capture_status),
-      "Failed to get stream's capture status");
-
-  return capture_status == GpuStreamCaptureStatusActive;
+  return GpuDriver::StreamIsCapturing(AsGpuStreamValue(stream));
 }
 
 }  // namespace gpu

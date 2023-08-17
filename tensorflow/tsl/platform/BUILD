@@ -415,6 +415,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":cord",
+        ":platform",
         ":stringpiece",
     ],
 )
@@ -596,6 +597,7 @@ filegroup(
 filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
+        "error_logging.h",
         "fingerprint.h",
         "notification.h",
         "png.h",
@@ -992,9 +994,8 @@ cc_library(
     hdrs = ["cord.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        ":platform",
         "@com_google_absl//absl/strings:cord",
-    ] + tf_platform_deps("cord"),
+    ],
 )
 
 cc_library(
@@ -1107,7 +1108,10 @@ cc_library(
     visibility = [
         "//visibility:public",
     ],
-    deps = tf_error_logging_deps(),
+    deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ] + tf_error_logging_deps(),
 )
 
 cc_library(
@@ -1322,6 +1326,7 @@ tsl_cc_test(
     srcs = ["tstring_test.cc"],
     deps = [
         ":cord",
+        ":platform",
         ":stringpiece",
         ":test",
         ":test_main",

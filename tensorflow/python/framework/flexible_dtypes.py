@@ -448,6 +448,16 @@ def _get_dtype_and_weakness(x):
   if isinstance(x, tensor_shape.TensorShape):
     # Since TensorShape is always integer value, return int32.
     return _i32
+  # Only support NumPy dtype objects with corresponding TF types.
+  if isinstance(x, np.dtype):
+    try:
+      np_dtype = dtypes.as_dtype(x)
+      return (np_dtype, False)
+    except TypeError as exc:
+      raise NotImplementedError(
+          f'Auto dtype conversion semantics does not support {x}. Try using a'
+          ' NumPy built-in dtype objects or cast them explicitly.'
+      ) from exc
   raise NotImplementedError(
       f'Auto dtype conversion semantics does not support {type(x)} type.'
   )

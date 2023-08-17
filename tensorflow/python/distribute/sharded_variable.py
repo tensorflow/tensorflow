@@ -786,6 +786,22 @@ class ShardedVariableMixin(trackable.Trackable):
 
     return {trackable.VARIABLE_VALUE_KEY: _saveable_factory}
 
+  def _copy_trackable_to_cpu(self, object_map):
+    """For implementing `Trackable`."""
+    if self in object_map:
+      # If populated already, simply loop through sub-variables to copy values.
+      for v in self._variables:
+        v._copy_trackable_to_cpu(object_map)  # pylint: disable=protected-access
+    else:
+      # If not populated, populate first, then copy.
+      copied_vars = []
+      for v in self._variables:
+        # This step will both instantiate `v`'s CPU copy and copy its value.
+        v._copy_trackable_to_cpu(object_map)  # pylint: disable=protected-access
+        copied_vars.append(object_map[v])
+      new_var = ShardedVariable(copied_vars, name=self.name)
+      object_map[self] = new_var
+
   def _export_to_saved_model_graph(
       self, object_map, tensor_map, options, **kwargs
   ):

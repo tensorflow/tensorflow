@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <complex>
 #include <cstdint>
 #include <functional>
@@ -59,6 +60,8 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/ValueRange.h"  // from @llvm-project
+#include "mlir/Interfaces/ControlFlowInterfaces.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -266,16 +269,16 @@ LogicalResult BatchFunctionOp::verifySymbolUses(
 
 void BatchFunctionOp::eraseArguments(const BitVector& erase_indices) {
   const StringRef operand_segment_size_attr = getOperandSegmentSizeAttr();
-  auto operand_segment_sizes = getOperation()->getAttrOfType<DenseI32ArrayAttr>(
+  auto operandSegmentSizes = getOperation()->getAttrOfType<DenseI32ArrayAttr>(
       operand_segment_size_attr);
 
-  // `operand_segment_sizes` attribute indicates the sizes of the two
+  // `operandSegmentSizes` attribute indicates the sizes of the two
   // variadic operands of `BatchFunctionOp`: `in_tensors` and
   // `captured_tensors`. The numbers have to be updated as arguments are
   // erased.
-  const int32_t num_in_original = operand_segment_sizes[0];
+  const int32_t num_in_original = operandSegmentSizes[0];
   int32_t num_in_tensors = num_in_original;
-  int32_t num_captured_tensors = operand_segment_sizes[1];
+  int32_t num_captured_tensors = operandSegmentSizes[1];
 
   for (const unsigned operand_index : erase_indices.set_bits()) {
     operand_index < num_in_original ? num_in_tensors-- : num_captured_tensors--;
@@ -3144,6 +3147,45 @@ void IfRegionOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                              MLIRContext* context) {
   results.add<FoldConstantIfRegionOp,
               CaseOrIfRegionEliminatePassThrough<TF::IfRegionOp>>(context);
+}
+
+bool IfRegionOp::areTypesCompatible(Type t1, Type t2) {
+  // For now, we don't enforce type checking across control-flow edges.
+  return true;
+}
+
+void IfRegionOp::getRegionInvocationBounds(
+    ArrayRef<Attribute> operands,
+    SmallVectorImpl<InvocationBounds>& invocationBounds) {
+  // We invoke both `then` and `else` between zero and one times.
+  invocationBounds.assign(2, {0, 1});
+}
+
+OperandRange IfRegionOp::getEntrySuccessorOperands(
+    std::optional<unsigned> index) {
+  // IfRegionOp currently only allows one op (the condition), so there are no
+  // remaining operands for the successor.
+  assert((!index || (index == 0 || index == 1)) &&
+         "Invalid IfRegionOp region index.");
+  auto end = this->getOperation()->operand_end();
+  return ::mlir::OperandRange(end, end);
+}
+
+void IfRegionOp::getSuccessorRegions(
+    std::optional<unsigned> index, SmallVectorImpl<RegionSuccessor>& regions) {
+  if (index) {
+    // The `then` and the `else` region branch back to the parent operation.
+    regions.push_back(RegionSuccessor(getResults()));
+    return;
+  } else {
+    // The parent can branch to either `then` or `else`.
+    regions.push_back(RegionSuccessor(&getThenBranch()));
+    Region* elseRegion = &this->getElseBranch();
+    if (!elseRegion->empty())
+      regions.push_back(RegionSuccessor(elseRegion));
+    else
+      regions.push_back(RegionSuccessor());
+  }
 }
 
 //===----------------------------------------------------------------------===//

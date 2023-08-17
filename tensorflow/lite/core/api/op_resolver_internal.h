@@ -29,6 +29,8 @@ namespace tflite {
 
 class OpResolverInternal {
  public:
+  OpResolverInternal() = delete;
+
   static bool MayContainUserDefinedOps(const OpResolver& op_resolver) {
     return op_resolver.MayContainUserDefinedOps();
   }

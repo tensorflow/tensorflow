@@ -16,25 +16,21 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_STRATEGY_H_
 #define TENSORFLOW_COMPILER_XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_STRATEGY_H_
 
-#include <algorithm>
-#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <numeric>
 #include <optional>
-#include <ostream>
-#include <sstream>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <vector>
 
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
 #include "tensorflow/compiler/xla/service/hlo_value.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 
@@ -115,6 +111,15 @@ struct ShardingStrategy {
                         ", memory_cost=", memory_cost,
                         ", resharding_costs=", resharding_cost_str,
                         ", input_shardings=", input_sharding_str);
+  }
+
+  bool operator==(const ShardingStrategy& other) const {
+    return name == other.name && output_sharding == other.output_sharding &&
+           compute_cost == other.compute_cost &&
+           communication_cost == other.communication_cost &&
+           memory_cost == other.memory_cost &&
+           resharding_costs == other.resharding_costs &&
+           input_shardings == other.input_shardings;
   }
 };
 

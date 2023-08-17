@@ -1305,18 +1305,7 @@ cc_library(
     srcs = [
         ":lib_internal_private_headers",
         "//tensorflow/core/platform:legacy_lib_internal_srcs",
-    ] + glob(
-        [
-            "lib/**/*.cc",
-        ],
-        exclude = [
-            "**/*test*",
-            "framework/variant.cc",
-            "lib/gif/**/*",
-            "lib/jpeg/**/*",
-            "lib/png/**/*",
-        ],
-    ),
+    ],
     hdrs = [":lib_internal_public_headers"],
     copts = tf_copts(),
     deps = tf_additional_lib_deps() + [
@@ -1467,6 +1456,7 @@ cc_library(
     [
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc_impl",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc_impl",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:calibration_statistics_proto_cc_impl",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc_impl",
         "//tensorflow/core/protobuf:autotuning_proto_cc_impl",
         "//tensorflow/core/protobuf:conv_autotuning_proto_cc_impl",

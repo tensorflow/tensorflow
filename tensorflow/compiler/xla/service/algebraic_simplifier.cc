@@ -2920,6 +2920,263 @@ AlgebraicSimplifierVisitor::OptimizeDotOfReorderContractingDims(
   return new_dot;
 }
 
+// If appropriate, reorder operation on dot operand to the mirror operation on
+// the other dot operand
+StatusOr<HloInstruction*>
+AlgebraicSimplifierVisitor::AssociativeReorderDotOperator(HloInstruction* dot) {
+  DotDimensionNumbers dnums = dot->dot_dimension_numbers();
+  HloInstruction* lhs = dot->mutable_operand(0);
+  HloInstruction* rhs = dot->mutable_operand(1);
+
+  HloInstruction *reorder_from, *reorder_to;
+  bool lhs_to_rhs = false;
+  bool rhs_to_lhs = false;
+
+  // Check whether we should try to reorder either operand
+  if (lhs->opcode() == HloOpcode::kBroadcast ||
+      lhs->opcode() == HloOpcode::kPad ||
+      lhs->opcode() == HloOpcode::kReverse) {
+    reorder_from = lhs;
+    reorder_to = rhs;
+    lhs_to_rhs = true;
+  } else if (rhs->opcode() == HloOpcode::kBroadcast ||
+             rhs->opcode() == HloOpcode::kPad ||
+             rhs->opcode() == HloOpcode::kReverse) {
+    reorder_from = rhs;
+    reorder_to = lhs;
+    rhs_to_lhs = true;
+  }
+
+  if (lhs_to_rhs || rhs_to_lhs) {
+    HloInstruction* reordered = reorder_to;
+    HloInstruction* unreordered = reorder_from->mutable_operand(0);
+    DotDimensionNumbers new_dnums = dnums;
+    HloOpcode opcode = reorder_from->opcode();
+    double threshold_multiplier = 1.0;
+    bool make_hlo = false;
+
+    // Construct maps between corresponding dot contracting dimensions
+    std::vector<int64_t> contracting_dim_map_forward(
+        reorder_from->shape().rank(), -1);
+    std::vector<int64_t> contracting_dim_map_backward(
+        reorder_to->shape().rank(), -1);
+    for (int64_t i = 0; i < dnums.lhs_contracting_dimensions_size(); i++) {
+      auto from_index = lhs_to_rhs ? dnums.lhs_contracting_dimensions()[i]
+                                   : dnums.rhs_contracting_dimensions()[i];
+      auto to_index = lhs_to_rhs ? dnums.rhs_contracting_dimensions()[i]
+                                 : dnums.lhs_contracting_dimensions()[i];
+      contracting_dim_map_forward[from_index] = to_index;
+      contracting_dim_map_backward[to_index] = from_index;
+    }
+
+    // Perform computations specific to each opcode
+    if (opcode == HloOpcode::kReverse) {
+      // Reverses of dot contracting dimensions can be reordered to
+      // reverses of the corresponding contracting dimensions in the other dot
+      // operand
+      DimensionVector reordered_dims, unreordered_dims;
+      for (auto dim : reorder_from->dimensions()) {
+        if (contracting_dim_map_forward[dim] != -1) {
+          reordered_dims.push_back(contracting_dim_map_forward[dim]);
+          make_hlo = true;
+        } else {
+          unreordered_dims.push_back(dim);
+        }
+      }
+
+      // Create Hlo for reordered reverse and unreordered reverse
+      if (!make_hlo) {
+        return nullptr;
+      }
+      if (!reordered_dims.empty()) {
+        TF_ASSIGN_OR_RETURN(reordered,
+                            MakeReverseHlo(reorder_to, reordered_dims));
+      }
+      if (!unreordered_dims.empty()) {
+        // Want to use a greater threshold if reordering means increasing the
+        // number of Hlos
+        threshold_multiplier = 2.0;
+        TF_ASSIGN_OR_RETURN(
+            unreordered,
+            MakeReverseHlo(reorder_from->mutable_operand(0), unreordered_dims));
+      }
+    } else if (opcode == HloOpcode::kPad) {
+      // Padding of dot contracting dimensions can be reordered to slices of
+      // the corresponding contracting dimensions in the other dot operand
+      DimensionVector start_indices, limit_indices, strides;
+      PaddingConfig new_padding_config = reorder_from->padding_config();
+
+      // Compute start_indices, limit_indices, and strides for slicing from
+      // the padding dimensions
+      for (int64_t to_dim = 0; to_dim < reorder_to->shape().rank(); to_dim++) {
+        int64_t start_index = 0;
+        int64_t limit_index = reorder_to->shape().dimensions(to_dim);
+        int64_t stride = 1;
+        if (contracting_dim_map_backward[to_dim] != -1) {
+          // If it's a contracting dimension, we want to slice it according to
+          // the corresponding padding in the other operand
+          const int64_t from_dim = contracting_dim_map_backward[to_dim];
+          auto padding_dimension =
+              reorder_from->padding_config().dimensions(from_dim);
+
+          // Edge padding can be negative which acts as a slice. If this is
+          // the case, we don't want to reorder
+          if (padding_dimension.edge_padding_low() > 0 ||
+              padding_dimension.edge_padding_high() > 0 ||
+              padding_dimension.interior_padding() > 0) {
+            make_hlo = true;
+            start_index += padding_dimension.edge_padding_low();
+            limit_index -= padding_dimension.edge_padding_high();
+            stride += padding_dimension.interior_padding();
+
+            // We then remove this dimension from the padding
+            new_padding_config.mutable_dimensions(from_dim)
+                ->set_edge_padding_low(0);
+            new_padding_config.mutable_dimensions(from_dim)
+                ->set_edge_padding_high(0);
+            new_padding_config.mutable_dimensions(from_dim)
+                ->set_interior_padding(0);
+          }
+        }
+        start_indices.push_back(start_index);
+        limit_indices.push_back(limit_index);
+        strides.push_back(stride);
+      }
+
+      // Create Hlo for slice
+      if (!make_hlo) {
+        return nullptr;
+      }
+      TF_ASSIGN_OR_RETURN(reordered, MakeSliceHlo(reorder_to, start_indices,
+                                                  limit_indices, strides));
+
+      // Check if we still need a padding instruction, and create Hlo if so
+      for (auto& dim : new_padding_config.dimensions()) {
+        if (dim.edge_padding_low() != 0 || dim.edge_padding_high() != 0) {
+          // Want to use a greater threshold if reordering means increasing
+          // the number of Hlos
+          threshold_multiplier = 2.0;
+          TF_ASSIGN_OR_RETURN(
+              unreordered,
+              MakePadHlo(reorder_from->mutable_operand(0),
+                         reorder_from->mutable_operand(1), new_padding_config));
+          break;
+        }
+      }
+    } else if (opcode == HloOpcode::kBroadcast) {
+      // Broadcasts of dot contracting dimensions can be reordered to reduces
+      // of the corresponding contracting dimensions in the other dot operand
+      DimensionVector reduce_dims, broadcast_dim_sizes;
+      const int64_t pre_broadcast_rank =
+          reorder_from->mutable_operand(0)->shape().rank();
+      int64_t post_broadcast_rank = reorder_from->shape().rank();
+      Shape new_broadcast_shape = reorder_from->shape();
+      DimensionVector contracting_reordered;
+
+      // Construct map from broadcasted shape to its original shape. Broadcast
+      // dimensions are mapped to -1 since they were not present
+      std::vector<int64_t> map_broadcast_dims(post_broadcast_rank, -1);
+      for (int64_t i = 0; i < pre_broadcast_rank; i++) {
+        map_broadcast_dims[reorder_from->dimensions(i)] = i;
+      }
+
+      // Use maps to create new dot dnums and vector of reduce dims
+      new_dnums.clear_lhs_contracting_dimensions();
+      new_dnums.clear_rhs_contracting_dimensions();
+      int64_t deleted_dims = 0;
+      for (int64_t i = 0; i < dnums.lhs_contracting_dimensions_size(); i++) {
+        auto from_index = lhs_to_rhs ? dnums.lhs_contracting_dimensions()[i]
+                                     : dnums.rhs_contracting_dimensions()[i];
+        auto to_index = lhs_to_rhs ? dnums.rhs_contracting_dimensions()[i]
+                                   : dnums.lhs_contracting_dimensions()[i];
+        if (map_broadcast_dims[from_index] == -1) {
+          // This is a contracting broadcast dimension
+          reduce_dims.push_back(to_index);
+          new_broadcast_shape.DeleteDimension(from_index - deleted_dims);
+          deleted_dims++;
+          make_hlo = true;
+        } else {
+          // This is a contracting nonbroadcast dimension
+          if (lhs_to_rhs) {
+            new_dnums.add_lhs_contracting_dimensions(
+                map_broadcast_dims[from_index]);
+            new_dnums.add_rhs_contracting_dimensions(to_index);
+          } else {
+            new_dnums.add_lhs_contracting_dimensions(to_index);
+            new_dnums.add_rhs_contracting_dimensions(
+                map_broadcast_dims[from_index]);
+          }
+        }
+      }
+
+      if (!make_hlo) {
+        return nullptr;
+      }
+      // Create constant 0 to use as the init_value for reduce
+      HloInstruction* zero = dot->AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::Zero(reorder_from->shape().element_type())));
+
+      // Create Hlo for unreordered broadcast and reordered reduce
+      if (reorder_from->mutable_operand(0)->shape() != new_broadcast_shape) {
+        // Want to use a greater threshold if reordering means increasing
+        // the number of Hlos
+        threshold_multiplier = 2.0;
+        unreordered =
+            MakeBroadcastHlo(reorder_from->mutable_operand(0),
+                             reorder_from->dimensions(), new_broadcast_shape);
+      }
+      TF_ASSIGN_OR_RETURN(
+          reordered,
+          MakeReduceHlo(reorder_to, zero, reduce_dims, HloOpcode::kAdd));
+    }
+
+    if (!make_hlo) {
+      return nullptr;
+    }
+
+    // Create Hlo for new dot operands, depending on the direction in which
+    // we are reordering
+    HloInstruction *new_lhs, *new_rhs;
+    if (lhs_to_rhs) {
+      new_lhs = unreordered;
+      new_rhs = reordered;
+    } else {
+      new_lhs = reordered;
+      new_rhs = unreordered;
+    }
+
+    // Create Hlo for new dot
+    HloInstruction* new_dot;
+    TF_ASSIGN_OR_RETURN(new_dot, MakeDotHlo(new_lhs, new_rhs, new_dnums,
+                                            dot->precision_config(),
+                                            dot->shape().element_type()));
+
+    // Do cost analysis to determine whether we should reorder. Reverse uses
+    // the ratio of the two shapes a heuristic, while the others use the
+    // number of dot flops
+    double reordering_ratio;
+    if (opcode == HloOpcode::kReverse) {
+      const int64_t old_elements = ShapeUtil::ElementsIn(reorder_from->shape());
+      const int64_t new_elements = ShapeUtil::ElementsIn(reorder_to->shape());
+      reordering_ratio = old_elements / static_cast<double>(new_elements);
+    } else {
+      const int64_t old_flops =
+          HloCostAnalysis::GetDotFlops(lhs->shape(), dot->shape(), dnums);
+      const int64_t new_flops = HloCostAnalysis::GetDotFlops(
+          new_lhs->shape(), new_dot->shape(), new_dnums);
+      reordering_ratio = old_flops / static_cast<double>(new_flops);
+    }
+    bool reorder =
+        reordering_ratio >
+        threshold_multiplier * options_.associative_reordering_threshold();
+
+    if (reorder) {
+      return new_dot;
+    }
+  }
+  return nullptr;
+}
+
 Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
   CHECK(computation_ == dot->parent());
   const auto& dnums = dot->dot_dimension_numbers();
@@ -3024,7 +3281,7 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
           // This is a contraction dimension between a and c
           ac_dnums.add_lhs_contracting_dimensions(map_ab_a[ab_index]);
           ac_dnums.add_rhs_contracting_dimensions(c_index);
-        } else {
+        } else if (map_ab_a[ab_index] == -1) {
           // This is a contraction dimension between b and c
           bc_dnums.add_lhs_contracting_dimensions(map_ab_b[ab_index]);
           bc_dnums.add_rhs_contracting_dimensions(c_index);
@@ -3144,6 +3401,15 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
       }
     }
     // TODO(b/289120301) Implement other direction after first looks good
+  }
+
+  if (options_.use_associative_reordering()) {
+    TF_ASSIGN_OR_RETURN(HloInstruction * dot_operator_reordered,
+                        AssociativeReorderDotOperator(dot));
+    if (dot_operator_reordered) {
+      VLOG(10) << "Reordering dot operand to its mirror";
+      return ReplaceInstruction(dot, dot_operator_reordered);
+    }
   }
 
   // If the lhs or rhs have only batch and contracting dimensions, a dot can be

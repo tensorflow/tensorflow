@@ -1660,5 +1660,37 @@ TEST_F(LayoutAssignmentTest, PreserveInstructionLayout) {
   const HloInstruction* reshape_3 = FindInstruction(m.get(), "reshape.3");
   ExpectLayoutIs(reshape_3->shape(), {3, 2, 1, 0});
 }
+
+// Different instructions should not share buffers when assigning layout.
+TEST_F(LayoutAssignmentTest, BreakBufferAliasAcrossInstructions) {
+  const char* module_str = R"(
+ HloModule break_alias_test, entry_computation_layout={(f32[256,8]{0,1})->f32[256,8]{1,0}}
+
+called_computation {
+  init = f32[256,8]{1,0:T(8)} parameter(0)
+  one = f32[] constant(1)
+  ones = f32[256,8] broadcast(one), dimensions={}
+  ROOT add = f32[256,8] add(init, ones)
+}
+
+ENTRY main {
+  init = f32[256,8] parameter(0)
+  ROOT start = f32[256,8]{1,0} custom-call(init), custom_call_target="baz", to_apply=called_computation, custom_call_has_side_effect=true, output_to_operand_aliasing={{}: (0, {})}, metadata={preserve_layout=true}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(module_str));
+  LayoutAssignment layout_assignment(m->mutable_entry_computation_layout(),
+                                     nullptr);
+  EXPECT_IS_OK(layout_assignment.Run(m.get()).status());
+  const HloInstruction* param =
+      m->entry_computation()->parameter_instruction(0);
+  ExpectLayoutIs(param->shape(), {0, 1});
+  const HloInstruction* root = m->entry_computation()->root_instruction();
+  ExpectLayoutIs(root->shape(), {1, 0});
+  // Expecting a copy before custom call to reconcile the different layouts.
+  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kCopy);
+}
 }  // namespace
 }  // namespace xla

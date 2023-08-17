@@ -84,7 +84,7 @@ def register_extension_info(**kwargs):
 # and tensorflow/tools/pip_package/setup.py
 VERSION = "2.15.0"
 VERSION_MAJOR = VERSION.split(".")[0]
-two_gpu_tags = ["requires-gpu-nvidia:2", "notap", "manual", "no_pip"]
+two_gpu_tags = ["requires-gpu-nvidia:2", "manual", "no_pip"]
 
 # The workspace root, to be used to set workspace 'include' paths in a way that
 # will still work correctly when TensorFlow is included as a dependency of an
@@ -302,6 +302,7 @@ def if_not_fuchsia(a):
 def if_linux_x86_64(a):
     return select({
         clean_dep("//tensorflow:linux_x86_64"): a,
+        clean_dep("//tensorflow:haswell"): a,
         "//conditions:default": [],
     })
 
@@ -2998,6 +2999,7 @@ def pybind_extension_opensource(
         defines = [],
         deprecation = None,
         enable_stub_generation = False,  # Unused.
+        additional_stubgen_deps = [],  # Unused.
         features = [],
         link_in_framework = False,
         licenses = None,
@@ -3010,7 +3012,7 @@ def pybind_extension_opensource(
         visibility = None,
         win_def_file = None):
     """Builds a generic Python extension module."""
-    _ignore = [enable_stub_generation, module_name]  # buildifier: disable=unused-variable
+    _ignore = [enable_stub_generation, additional_stubgen_deps, module_name]  # buildifier: disable=unused-variable
     p = name.rfind("/")
     if p == -1:
         sname = name
@@ -3297,6 +3299,8 @@ def tf_python_pybind_extension_opensource(
         compatible_with = None,
         copts = [],
         defines = [],
+        enable_stub_generation = False,
+        additional_stubgen_deps = [],
         features = [],
         testonly = False,
         visibility = None,
@@ -3321,6 +3325,8 @@ def tf_python_pybind_extension_opensource(
         compatible_with = compatible_with,
         copts = copts,
         defines = defines,
+        enable_stub_generation = enable_stub_generation,
+        additional_stubgen_deps = additional_stubgen_deps,
         features = features,
         testonly = testonly,
         visibility = visibility,

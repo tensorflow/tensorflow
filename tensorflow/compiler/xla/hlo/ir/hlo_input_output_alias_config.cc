@@ -306,7 +306,7 @@ std::string HloBufferDonorConfig::ToShortString() const {
   std::vector<std::string> pieces;
   pieces.reserve(buffer_donor_.size());
   for (const auto& donor : buffer_donor_) {
-    pieces.push_back(absl::StrFormat("%lld at %s", donor.param_number,
+    pieces.push_back(absl::StrFormat("(%lld, %s)", donor.param_number,
                                      donor.param_index.ToString()));
   }
   return absl::StrJoin(pieces, ", ");
@@ -320,6 +320,7 @@ bool HloBufferDonorConfig::ParameterIsBufferDonor(
 
 Status HloBufferDonorConfig::Verify(const HloModule& module) const {
   const HloComputation* entry = module.entry_computation();
+  const auto& alias_config = module.input_output_alias_config();
   for (const auto& donor : buffer_donor_) {
     TF_RET_CHECK(donor.param_number >= 0);
     TF_RET_CHECK(donor.param_number < entry->num_parameters());
@@ -331,6 +332,13 @@ Status HloBufferDonorConfig::Verify(const HloModule& module) const {
     const Shape& param_subshape =
         ShapeUtil::GetSubshape(param_shape, donor.param_index);
     TF_RET_CHECK(LayoutUtil::IsDenseArray(param_subshape));
+
+    if (alias_config.ParameterHasAlias(donor.param_number, donor.param_index)) {
+      return InternalError(
+          "Input %lld at index %s is registered as a buffer donor. However, it "
+          "is also in the input output alias config.",
+          donor.param_number, donor.param_index.ToString());
+    }
   }
 
   // Since buffer_donor_ is a set, we do not need to check if one input has

@@ -2353,6 +2353,185 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec(1e-6, 1e-6)));
 }
 
+TEST_F(
+    TritonSoftmaxTest,
+    CanFuseAndEmitBinaryElementwiseProducerIntoDiamondWhenBothOperandsAreTheSame) {  // NOLINT(whitespace/line_length)
+  const std::string hlo_text = R"(
+HloModule fusible_diamond
+max_computation {
+  arg_0 = f16[] parameter(0)
+  arg_1 = f16[] parameter(1)
+  ROOT maximum = f16[] maximum(arg_0, arg_1)
+}
+ENTRY main {
+  param_0 = f16[127,125]{1,0} parameter(0)
+  multiply =  f16[127,125]{1,0} multiply(param_0, param_0)
+  constant_neg_inf = f16[] constant(-inf)
+  reduce = f16[127]{0} reduce(multiply, constant_neg_inf), dimensions={1}, to_apply=max_computation
+  broadcast = f16[127,125]{1,0} broadcast(reduce), dimensions={0}
+  ROOT subtract = f16[127,125]{1,0} subtract(multiply, broadcast)
+}
+)";
+
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK:    ENTRY
+; CHECK:      %[[P0:.*]] = f16[127,125]{1,0} parameter(0)
+; CHECK:      ROOT
+; CHECK-SAME: fusion(%[[P0]])
+; CHECK-SAME:   kind=kCustom
+; CHECK-SAME:   __triton_softmax
+)");
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec(1e-6, 1e-6)));
+}
+
+TEST_F(
+    TritonSoftmaxTest,
+    CanFuseAndEmitIntermediateBinaryElementwiseWithinDiamondWhenBothOperandsAreTheSame) {  // NOLINT(whitespace/line_length)
+  const std::string hlo_text = R"(
+HloModule fusible_diamond
+max_computation {
+  arg_0 = f16[] parameter(0)
+  arg_1 = f16[] parameter(1)
+  ROOT maximum = f16[] maximum(arg_0, arg_1)
+}
+ENTRY main {
+  param_0 = f16[127,125]{1,0} parameter(0)
+  constant_neg_inf = f16[] constant(-inf)
+  reduce = f16[127]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
+  multiply =  f16[127]{0} multiply(reduce, reduce)
+  broadcast = f16[127,125]{1,0} broadcast(multiply), dimensions={0}
+  ROOT subtract = f16[127,125]{1,0} subtract(param_0, broadcast)
+}
+)";
+
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK:    ENTRY
+; CHECK:      %[[P0:.*]] = f16[127,125]{1,0} parameter(0)
+; CHECK:      ROOT
+; CHECK-SAME: fusion(%[[P0]])
+; CHECK-SAME:   kind=kCustom
+; CHECK-SAME:   __triton_softmax
+)");
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec(1e-6, 1e-6)));
+}
+
+TEST_F(
+    TritonSoftmaxTest,
+    CanFuseAndEmitBinaryElementwiseWhenBothOperandsAreTheSameBetweenDiamonds) {  // NOLINT(whitespace/line_length)
+  const std::string hlo_text = R"(
+HloModule fusible_diamonds
+max_computation {
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(arg_0, arg_1)
+}
+add_computation {
+  arg_0.1 = f32[] parameter(0)
+  arg_1.1 = f32[] parameter(1)
+  ROOT add = f32[] add(arg_0.1, arg_1.1)
+}
+ENTRY main {
+  param_0 = f32[127,125]{1,0} parameter(0)
+  constant_neg_inf = f32[] constant(-inf)
+  reduce = f32[127]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
+  broadcast = f32[127,125]{1,0} broadcast(reduce), dimensions={0}
+  subtract = f32[127,125]{1,0} subtract(param_0, broadcast)
+  multiply = f32[127,125]{1,0} multiply(subtract, subtract)
+  constant_zero = f32[] constant(0)
+  second_reduce = f32[127]{0} reduce(multiply, constant_zero), dimensions={1}, to_apply=add_computation
+  second_broadcast = f32[127,125]{1,0} broadcast(second_reduce), dimensions={0}
+  ROOT divide = f32[127,125]{1,0} divide(multiply, second_broadcast)
+}
+)";
+
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK:    ENTRY
+; CHECK:      %[[P0:.*]] = f32[127,125]{1,0} parameter(0)
+; CHECK:      ROOT
+; CHECK-SAME: fusion(%[[P0]])
+; CHECK-SAME:   kind=kCustom
+; CHECK-SAME:   __triton_softmax
+)");
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec(1e-6, 1e-6)));
+}
+
+TEST_F(
+    TritonSoftmaxTest,
+    CanFuseAndEmitBinaryElementwiseConsumerWhereBothOperandsAreTheSameIntoDiamond) {  // NOLINT(whitespace/line_length)
+  const std::string hlo_text = R"(
+HloModule fusible_diamond
+max_computation {
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(arg_0, arg_1)
+}
+add_computation {
+  arg_0.1 = f32[] parameter(0)
+  arg_1.1 = f32[] parameter(1)
+  ROOT add = f32[] add(arg_0.1, arg_1.1)
+}
+ENTRY main {
+  param_0 = f32[127,125]{1,0} parameter(0)
+  constant_neg_inf = f32[] constant(-inf)
+  reduce = f32[127]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
+  broadcast = f32[127,125]{1,0} broadcast(reduce), dimensions={0}
+  subtract = f32[127,125]{1,0} subtract(param_0, broadcast)
+  ROOT multiply = f32[127,125]{1,0} multiply(subtract, subtract)
+}
+)";
+
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK:    ENTRY
+; CHECK:      %[[P0:.*]] = f32[127,125]{1,0} parameter(0)
+; CHECK:      ROOT
+; CHECK-SAME: fusion(%[[P0]])
+; CHECK-SAME:   kind=kCustom
+; CHECK-SAME:   __triton_softmax
+)");
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec(1e-6, 1e-6)));
+}
+
+TEST_F(
+    TritonSoftmaxTest,
+    CanFuseAndEmitTwoBinaryElementwiseWhereBothOperandsAreTheSameBetweenDiamonds) {  // NOLINT(whitespace/line_length)
+  const std::string hlo_text = R"(
+HloModule fusible_diamonds
+max_computation {
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(arg_0, arg_1)
+}
+add_computation {
+  arg_0.1 = f32[] parameter(0)
+  arg_1.1 = f32[] parameter(1)
+  ROOT add = f32[] add(arg_0.1, arg_1.1)
+}
+ENTRY main {
+  param_0 = f32[127,125]{1,0} parameter(0)
+  constant_neg_inf = f32[] constant(-inf)
+  reduce = f32[127]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
+  broadcast = f32[127,125]{1,0} broadcast(reduce), dimensions={0}
+  subtract = f32[127,125]{1,0} subtract(param_0, broadcast)
+  add = f32[127,125]{1,0} add(subtract, subtract)
+  multiply = f32[127,125]{1,0} multiply(add, add)
+  constant_zero = f32[] constant(0)
+  second_reduce = f32[127]{0} reduce(multiply, constant_zero), dimensions={1}, to_apply=add_computation
+  second_broadcast = f32[127,125]{1,0} broadcast(second_reduce), dimensions={0}
+  ROOT divide = f32[127,125]{1,0} divide(multiply, second_broadcast)
+}
+)";
+
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK:    ENTRY
+; CHECK:      %[[P0:.*]] = f32[127,125]{1,0} parameter(0)
+; CHECK:      ROOT
+; CHECK-SAME: fusion(%[[P0]])
+; CHECK-SAME:   kind=kCustom
+; CHECK-SAME:   __triton_softmax
+)");
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec(1e-6, 1e-6)));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

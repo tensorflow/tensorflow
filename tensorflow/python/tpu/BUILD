@@ -460,9 +460,7 @@ pytype_strict_library(
         "datasets.py",
     ],
     srcs_version = "PY3",
-    visibility = visibility + [
-        "//tensorflow_models/official/recommendation:__pkg__",
-    ],
+    visibility = visibility,
     deps = [
         "//tensorflow/python/data/experimental/ops:interleave_ops",
         "//tensorflow/python/data/ops:dataset_ops",
@@ -611,9 +609,6 @@ pytype_strict_library(
     srcs = ["tpu_strategy_util.py"],
     visibility = [
         "//learning/brain:__subpackages__",
-        "//learning/deepmind:__subpackages__",
-        "//learning/serving:__subpackages__",
-        "//research/graph:__subpackages__",
         "//tensorflow:__subpackages__",
         "//third_party/py/tensorflow_numerics/extensions:__pkg__",
     ],

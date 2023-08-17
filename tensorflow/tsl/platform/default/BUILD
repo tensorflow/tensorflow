@@ -39,17 +39,6 @@ cc_library(
 )
 
 cc_library(
-    name = "cord",
-    hdrs = ["cord.h"],
-    tags = [
-        "manual",
-        "no_oss",
-        "nobuilder",
-    ],
-    deps = ["@com_google_absl//absl/strings:cord"],
-)
-
-cc_library(
     name = "criticality",
     hdrs = ["//tensorflow/tsl/platform:criticality.h"],
     textual_hdrs = ["criticality.h"],
@@ -216,10 +205,7 @@ cc_library(
         "no_oss",
         "nobuilder",
     ],
-    textual_hdrs = ["error_logging.h"],
     deps = [
-        "//tensorflow/tsl/platform",
-        "@com_google_absl//absl/base",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
@@ -281,7 +267,6 @@ cc_library(
 filegroup(
     name = "xla_cpu_runtime_srcs",
     srcs = [
-        "cord.h",
         "dynamic_annotations.h",
         "integral_types.h",
     ] + if_not_windows(["env_time.cc"]),
@@ -627,7 +612,7 @@ filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
         "casts.h",
-        "cord.h",
+        "error_logging.cc",
         "mutex.h",
         "mutex_data.h",
         "notification.h",
@@ -644,7 +629,6 @@ exports_files(
     srcs = glob(
         ["*"],
         exclude = [
-            "error_logging.h",
             "integral_types.h",
             "logging.h",
             "test.cc",
@@ -655,7 +639,6 @@ exports_files(
 
 exports_files(
     srcs = [
-        "error_logging.h",
         "integral_types.h",
         "logging.h",
         "test.cc",

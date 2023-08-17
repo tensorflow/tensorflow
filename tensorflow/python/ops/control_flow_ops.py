@@ -573,12 +573,12 @@ class ControlFlowContext(metaclass=abc.ABCMeta):
     last_context = self._context_stack.pop()
     graph._set_control_flow_context(last_context)
 
-  def EnterGradientColocation(self, op, gradient_uid):
+  def EnterGradientColocation(self, op: ops.Operation, gradient_uid):
     """Start building a gradient colocated with an op."""
     if self._outer_context:
       self._outer_context.EnterGradientColocation(op, gradient_uid)
 
-  def ExitGradientColocation(self, op, gradient_uid):
+  def ExitGradientColocation(self, op: ops.Operation, gradient_uid):
     """Start building a gradient colocated with an op."""
     if self._outer_context:
       self._outer_context.ExitGradientColocation(op, gradient_uid)
@@ -597,7 +597,7 @@ class ControlFlowContext(metaclass=abc.ABCMeta):
       return self._outer_context.GetWhileContext()
     return None
 
-  def _RemoveExternalControlEdges(self, op):
+  def _RemoveExternalControlEdges(self, op: ops.Operation):
     """Remove any external control dependency on this op."""
     while_ctxt = self.GetWhileContext()
     # A control input of `op` is internal if it is in the same while
@@ -620,7 +620,7 @@ class ControlFlowContext(metaclass=abc.ABCMeta):
 
   # pylint: enable=protected-access
 
-  def AddInnerOp(self, op):
+  def AddInnerOp(self, op: ops.Operation):
     """Notifies a scope about an operator added to an inner scope."""
     if self._outer_context:
       self._outer_context.AddInnerOp(op)
@@ -808,7 +808,7 @@ class CondContext(ControlFlowContext):
   def AddOp(self, op: ops.Operation):
     self._AddOpInternal(op)
 
-  def _AddOpInternal(self, op):
+  def _AddOpInternal(self, op: ops.Operation):
     """Add `op` to the current context."""
     if not op.inputs:
       # If we're in a while loop, remove any control inputs from outside the
@@ -1254,7 +1254,8 @@ class WhileContext(ControlFlowContext):
             return
     self._AddOpInternal(op)
 
-  def _AddOpInternal(self, op):
+  #  pylint: disable=g-doc-args
+  def _AddOpInternal(self, op: ops.Operation):
     """Add `op` to the current context.
 
     We move any external control dependencies of the op to the loop pivot, to
@@ -1307,7 +1308,7 @@ class WhileContext(ControlFlowContext):
     if self._outer_context:
       self._outer_context.AddInnerOp(op)
 
-  def _MaybeAddControlDependency(self, op):
+  def _MaybeAddControlDependency(self, op: ops.Operation):
     """Add a control input to the op if it only depends on loop invariants."""
 
     def _IsOpFree(op):
@@ -1443,7 +1444,7 @@ class WhileContext(ControlFlowContext):
     self.Exit()
     return next_count
 
-  def AddBackpropAccumulator(self, op, grad):
+  def AddBackpropAccumulator(self, op: ops.Operation, grad):
     """Add an accumulation loop for every loop invariant.
 
     This is added to the backprop loop. It is used to accumulate partial
@@ -1525,7 +1526,7 @@ class WhileContext(ControlFlowContext):
     self.ExitResult([result_acc])
     return result_acc
 
-  def AddBackpropIndexedSlicesAccumulator(self, op, grad):
+  def AddBackpropIndexedSlicesAccumulator(self, op: ops.Operation, grad):
     """This is used for accumulating gradients that are IndexedSlices.
 
     This is essentially the equivalent of AddBackpropAccumulator but optimized

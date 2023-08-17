@@ -1496,7 +1496,8 @@ def vander(x, N=None, increasing=False):  # pylint: disable=missing-docstring,in
   x = asarray(x)
 
   x_shape = array_ops.shape(x)
-  N = N or x_shape[0]
+  if N is None:
+    N = x_shape[0]
 
   N_temp = np_utils.get_static_value(N)  # pylint: disable=invalid-name
   if N_temp is not None:

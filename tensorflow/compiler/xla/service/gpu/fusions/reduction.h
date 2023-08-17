@@ -89,28 +89,15 @@ namespace gpu {
 // different groups can be run in parallel.
 class ReductionFusion : public FusionInterface {
  public:
-  ReductionFusion(IrEmitterContext& ir_emitter_context,
-                  ElementalIrEmitter& elemental_emitter,
-                  mlir::lmhlo::FusionOp fusion_op,
-                  const HloFusionInstruction& fusion,
-                  HloFusionAnalysis& analysis)
-      : ir_emitter_context_(ir_emitter_context),
-        elemental_emitter_(elemental_emitter),
-        fusion_op_(fusion_op),
-        fusion_(fusion),
-        analysis_(analysis) {}
+  explicit ReductionFusion(HloFusionAnalysis& analysis) : analysis_(analysis) {}
 
   StatusOr<FusionEmissionResult> Emit(
-      KernelReuseCache& kernel_cache,
+      IrEmitterContext& ir_emitter_context,
+      ElementalIrEmitter& elemental_emitter, mlir::lmhlo::FusionOp fusion_op,
+      const HloFusionInstruction& fusion, KernelReuseCache& kernel_cache,
       llvm::IRBuilder<>* builder) const override;
 
  private:
-  mlir::lmhlo::FusionOp fusion_op() const { return fusion_op_; }
-
-  IrEmitterContext& ir_emitter_context_;
-  ElementalIrEmitter& elemental_emitter_;
-  mlir::lmhlo::FusionOp fusion_op_;
-  const HloFusionInstruction& fusion_;
   HloFusionAnalysis& analysis_;
 };
 

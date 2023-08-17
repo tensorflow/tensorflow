@@ -172,7 +172,7 @@ Attribute decodePrecisionConfig(Attribute stablehloAttr) {
 //  }) {...} : (tensor<8xf32>, tensor<f32>) -> (tensor<8xf32>, tensor<f32>)
 LogicalResult convertFuncToStablehloRegion(Operation* op, func::FuncOp funcOp,
                                            ConversionPatternRewriter& rewriter,
-                                           TypeConverter* typeConverter) {
+                                           const TypeConverter* typeConverter) {
   auto& region = op->getRegion(0);
   rewriter.inlineRegionBefore(funcOp.getBody(), region, region.end());
   if (failed(rewriter.convertRegionTypes(&region, *typeConverter,
@@ -199,7 +199,7 @@ LogicalResult convertFuncToStablehloRegion(Operation* op, func::FuncOp funcOp,
 //     precision_config = [#mhlo<precision PACKED_NIBBLE>] } ...
 LogicalResult rewriteCustomCallAsMhloOp(stablehlo::CustomCallOp stablehloOp,
                                         ConversionPatternRewriter& rewriter,
-                                        TypeConverter* typeConverter,
+                                        const TypeConverter* typeConverter,
                                         SmallVector<Type>& hloTypes,
                                         ValueRange hloOperands) {
   // Only call_target_name, backend_config, called_computations, mhlo.version,

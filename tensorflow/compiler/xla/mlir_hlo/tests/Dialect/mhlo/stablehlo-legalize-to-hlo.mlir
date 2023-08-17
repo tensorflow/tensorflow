@@ -363,7 +363,7 @@ func.func @op_all_reduce(%arg0: tensor<f32>) -> tensor<f32> {
   //          CHECK-NEXT:     %[[VAL1:.*]] = "mhlo.add"(%[[ARG1]], %[[ARG2]]) : (tensor<f32>, tensor<f32>) -> tensor<f32>
   //          CHECK-NEXT:     "mhlo.return"(%[[VAL1]]) : (tensor<f32>) -> ()
   //          CHECK-NEXT: }) {
-  //          CHECK-SAME:   channel_handle = #mhlo.channel_handle<handle = 0, type = 0>,
+  //          CHECK-SAME:   channel_handle = #mhlo.channel_handle<handle = 1, type = 0>,
   // CHECK-SAME{LITERAL}:   replica_groups = dense<[[0], [1]]> : tensor<2x1xi64>,
   //          CHECK-SAME:   use_global_device_ids
   //          CHECK-SAME: } : (tensor<f32>) -> tensor<f32>
@@ -373,7 +373,7 @@ func.func @op_all_reduce(%arg0: tensor<f32>) -> tensor<f32> {
       "stablehlo.return"(%1) : (tensor<f32>) -> ()
   }) {
     replica_groups = dense<[[0], [1]]> : tensor<2x1xi64>,
-    channel_handle = #stablehlo.channel_handle<handle = 0, type = 0>,
+    channel_handle = #stablehlo.channel_handle<handle = 1, type = 0>,
     use_global_device_ids
   } : (tensor<f32>) -> tensor<f32>
   func.return %0 : tensor<f32>

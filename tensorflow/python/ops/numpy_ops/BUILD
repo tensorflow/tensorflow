@@ -86,6 +86,7 @@ py_strict_library(
         ":np_math_ops",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:weak_tensor_ops",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:tf_export",
     ],
 )

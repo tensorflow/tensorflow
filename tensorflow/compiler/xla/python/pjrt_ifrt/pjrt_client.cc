@@ -77,7 +77,7 @@ StatusOr<tsl::RCReference<Array>> PjRtClient::MakeArrayFromHostBuffer(
   if (sharding->memory_kind().memory_kind().has_value()) {
     // Find `PjRtMemorySpace` that is associated with the sharding's device and
     // matches the sharding's memory_kind.
-    PjRtMemorySpace* memory_space;
+    PjRtMemorySpace* memory_space = nullptr;
     for (PjRtMemorySpace* ms : sharding->devices().front()->memory_spaces()) {
       if (ms->memory_space_kind() == *sharding->memory_kind().memory_kind()) {
         memory_space = ms;

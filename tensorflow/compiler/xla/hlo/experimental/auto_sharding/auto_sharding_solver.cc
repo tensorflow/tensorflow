@@ -400,6 +400,17 @@ AutoShardingSolverResult CallORToolsSolver(
     }
   }
 
+  if (!request.s_hint.empty()) {
+    std::vector<std::pair<const MPVariable*, double>> hint;
+    for (NodeIdx i = 0; i < request.num_nodes; ++i) {
+      if (request.s_follow[i] >= 0) continue;
+      for (NodeStrategyIdx j = 0; j < s[i].size(); ++j) {
+        hint.push_back({s[i][j], (request.s_hint[i] == j) ? 1.0 : 0.0});
+      }
+    }
+    solver->SetHint(hint);
+  }
+
 #ifdef PLATFORM_GOOGLE
   // Exports the model for debugging.
   bool dump_model = false;
@@ -434,28 +445,30 @@ AutoShardingSolverResult CallORToolsSolver(
   if (status == operations_research::MPSolver::INFEASIBLE) {
     LOG(ERROR) << "MPSolver could not find any feasible solution.";
 #ifdef PLATFORM_GOOGLE
-    operations_research::MPModelRequest model_request;
-    solver->ExportModelToProto(model_request.mutable_model());
-    if (solver->ProblemType() ==
-        operations_research::MPSolver::SAT_INTEGER_PROGRAMMING) {
-      model_request.set_solver_type(
-          operations_research::MPModelRequest::SAT_INTEGER_PROGRAMMING);
-    } else if (solver->ProblemType() ==
-               operations_research::MPSolver::SCIP_MIXED_INTEGER_PROGRAMMING) {
-      model_request.set_solver_type(
-          operations_research::MPModelRequest::SCIP_MIXED_INTEGER_PROGRAMMING);
-    }
-    model_request.set_solver_time_limit_seconds(100);
-    auto iis = MPSolver::ComputeIrreducibleInfeasibleSubset(model_request);
-    LOG(INFO) << iis.status().DebugString();
-    LOG(INFO) << "Infeasible constraints: ";
-    for (int index : iis.constraint_index()) {
-      LOG(INFO) << " - " << model_request.model().constraint(index).name();
-    }
-    for (int index : iis.general_constraint_index()) {
-      LOG(INFO)
-          << " - "
-          << model_request.model().general_constraint(index).DebugString();
+    if (request.compute_iis) {
+      operations_research::MPModelRequest model_request;
+      solver->ExportModelToProto(model_request.mutable_model());
+      if (solver->ProblemType() ==
+          operations_research::MPSolver::SAT_INTEGER_PROGRAMMING) {
+        model_request.set_solver_type(
+            operations_research::MPModelRequest::SAT_INTEGER_PROGRAMMING);
+      } else if (solver->ProblemType() == operations_research::MPSolver::
+                                              SCIP_MIXED_INTEGER_PROGRAMMING) {
+        model_request.set_solver_type(operations_research::MPModelRequest::
+                                          SCIP_MIXED_INTEGER_PROGRAMMING);
+      }
+      model_request.set_solver_time_limit_seconds(100);
+      auto iis = MPSolver::ComputeIrreducibleInfeasibleSubset(model_request);
+      LOG(INFO) << iis.status().DebugString();
+      LOG(INFO) << "Infeasible constraints: ";
+      for (int index : iis.constraint_index()) {
+        LOG(INFO) << " - " << model_request.model().constraint(index).name();
+      }
+      for (int index : iis.general_constraint_index()) {
+        LOG(INFO)
+            << " - "
+            << model_request.model().general_constraint(index).DebugString();
+      }
     }
 #endif
 

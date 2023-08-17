@@ -216,7 +216,7 @@ PyArray::Storage* Construct(PyArrayObject* self, Args&&... args) {
 
 struct ShapedArrayCacheKey {
   std::vector<int64_t> dims;
-  PrimitiveType dtype;
+  ifrt::DType dtype{ifrt::DType::kInvalid};
   bool weak_type;
 
   template <typename H>
@@ -254,7 +254,7 @@ py::object MakeShapedArrayCached(const ShapedArrayCacheKey& key) {
       });
 
   if (!value->has_value()) {
-    auto dtype = PrimitiveTypeToDtype(key.dtype).value();
+    auto dtype = IfrtDtypeToDtype(key.dtype).value();
     py::object aval = (*shaped_array)(
         SpanToTuple(absl::Span<const int64_t>(key.dims)), dtype, key.weak_type);
     *value = aval;
@@ -328,19 +328,17 @@ PyArray PyArray::MakeFromSingleDeviceArray(
   auto shape_span = ifrt_array->shape().dims();
   ShapedArrayCacheKey key;
   key.dims = std::vector<int64_t>(shape_span.begin(), shape_span.end());
-  key.dtype = ifrt::ToPrimitiveType(ifrt_array->dtype()).value();
+  key.dtype = ifrt_array->dtype();
   key.weak_type = weak_type;
   auto aval = MakeShapedArrayCached(key);
-  auto dtype = PrimitiveTypeToDtype(key.dtype).value();
+  auto dtype = IfrtDtypeToDtype(key.dtype).value();
   const ifrt::MemoryKind memory_kind = ifrt_array->sharding().memory_kind();
   auto py_memory_kind =
       (jax::GetJaxEnableMemoryKind() && memory_kind.memory_kind().has_value())
           ? py::object(py::str(*memory_kind.memory_kind()))
           : py::none();
   auto sharding = py::cast(std::make_unique<jax::SingleDeviceSharding>(
-      py::cast(
-          WrapWithClient(py_client, ifrt_array->sharding().devices().front())),
-      std::move(py_memory_kind)));
+      py_client, ifrt_array->sharding().devices(), std::move(py_memory_kind)));
   return PyArray(std::move(aval), weak_type, dtype, std::move(key.dims),
                  std::move(sharding), std::move(py_client),
                  std::move(traceback), std::move(ifrt_array), committed);
@@ -353,10 +351,10 @@ PyArray PyArray::MakeFromIfrtArrayAndSharding(
   auto shape_span = ifrt_array->shape().dims();
   ShapedArrayCacheKey key;
   key.dims = std::vector<int64_t>(shape_span.begin(), shape_span.end());
-  key.dtype = ifrt::ToPrimitiveType(ifrt_array->dtype()).value();
+  key.dtype = ifrt_array->dtype();
   key.weak_type = weak_type;
   auto aval = MakeShapedArrayCached(key);
-  auto dtype = PrimitiveTypeToDtype(key.dtype).value();
+  auto dtype = IfrtDtypeToDtype(key.dtype).value();
   return PyArray(std::move(aval), weak_type, dtype, std::move(key.dims),
                  std::move(sharding), std::move(py_client),
                  std::move(traceback), std::move(ifrt_array), committed);
@@ -690,7 +688,11 @@ PyArray::Storage::~PyArray_Storage() {
 StatusOr<PyArray> PyArray::CopyToDeviceWithSharding(
     ifrt::DeviceList devices, pybind11::object dst_sharding) {
   auto* ifrt_array_ptr = ifrt_array();
-  if (ifrt_array_ptr->sharding().devices().devices() == devices.devices()) {
+  ifrt::MemoryKind dst_memory_kind =
+      CreateIfRtMemoryKindFromSharding(dst_sharding);
+  if (ifrt_array_ptr->sharding().devices().devices() == devices.devices() &&
+      (!dst_memory_kind.memory_kind().has_value() ||
+       ifrt_array_ptr->sharding().memory_kind() == dst_memory_kind)) {
     return *this;
   }
   tsl::RCReference<ifrt::Array> out_array;
@@ -703,31 +705,29 @@ StatusOr<PyArray> PyArray::CopyToDeviceWithSharding(
     };
     TF_RETURN_IF_ERROR(
         jax::ApplyTransferGuardToDeviceToDevice(transfer_guard_formatter));
-    ifrt::MemoryKind memory_kind =
-        CreateIfRtMemoryKindFromSharding(dst_sharding);
     GlobalPyRefManager()->CollectGarbage();
     py::gil_scoped_release gil_release;
     std::shared_ptr<const ifrt::Sharding> ifrt_sharding;
     if (llvm::isa<ifrt::SingleDeviceSharding>(ifrt_array_ptr->sharding())) {
       ifrt_sharding =
-          ifrt::SingleDeviceSharding::Create(devices[0], memory_kind);
+          ifrt::SingleDeviceSharding::Create(devices[0], dst_memory_kind);
     } else if (const auto* in_sharding = llvm::dyn_cast<ifrt::OpaqueSharding>(
                    &ifrt_array_ptr->sharding());
                in_sharding != nullptr) {
       ifrt_sharding =
-          ifrt::OpaqueSharding::Create(std::move(devices), memory_kind);
+          ifrt::OpaqueSharding::Create(std::move(devices), dst_memory_kind);
     } else if (const auto* in_sharding = llvm::dyn_cast<ifrt::ConcreteSharding>(
                    &ifrt_array_ptr->sharding());
                in_sharding != nullptr) {
       ifrt_sharding = ifrt::ConcreteSharding::Create(
-          std::move(devices), memory_kind, in_sharding->shape(),
+          std::move(devices), dst_memory_kind, in_sharding->shape(),
           in_sharding->shard_shapes());
     } else if (const auto* in_sharding =
                    llvm::dyn_cast<ifrt::ConcreteEvenSharding>(
                        &ifrt_array_ptr->sharding());
                in_sharding != nullptr) {
       ifrt_sharding = ifrt::ConcreteEvenSharding::Create(
-          std::move(devices), memory_kind, in_sharding->shape(),
+          std::move(devices), dst_memory_kind, in_sharding->shape(),
           in_sharding->shard_shape());
     } else {
       return InvalidArgument(
@@ -786,6 +786,9 @@ StatusOr<PyArray> PyArray::BatchedDevicePut(
   devices.reserve(n_devices);
   std::vector<xla::ifrt::Shape> shapes;
   shapes.reserve(n_devices);
+
+  ifrt::MemoryKind dst_memory_kind = CreateIfRtMemoryKindFromSharding(sharding);
+
   size_t i = 0;
   for (auto& x : xs) {
     if (PyArray::IsPyArray(x)) {
@@ -795,9 +798,10 @@ StatusOr<PyArray> PyArray::BatchedDevicePut(
       TF_RETURN_IF_ERROR(
           jax::ApplyTransferGuardToHostToDevice(transfer_guard_formatter));
     }
-    TF_ASSIGN_OR_RETURN(DevicePutResult on_device,
-                        DevicePut(x, dst_devices[i].get_client()->ifrt_client(),
-                                  dst_devices[i].get(), options));
+    TF_ASSIGN_OR_RETURN(
+        DevicePutResult on_device,
+        DevicePut(x, dst_devices[i].get_client()->ifrt_client(),
+                  dst_devices[i].get(), options, dst_memory_kind));
     ifrt_arrays.push_back(std::move(on_device.ifrt_array));
     devices.push_back(ifrt_arrays.back()->sharding().devices().front());
     shapes.push_back(ifrt_arrays.back()->shape());
@@ -810,13 +814,12 @@ StatusOr<PyArray> PyArray::BatchedDevicePut(
   auto weak_type = pybind11::cast<bool>(aval.attr("weak_type"));
   auto dtype = aval.attr("dtype");
   auto shape = pybind11::cast<std::vector<int64_t>>(aval.attr("shape"));
-  ifrt::MemoryKind memory_kind = CreateIfRtMemoryKindFromSharding(sharding);
   TF_ASSIGN_OR_RETURN(
       auto ifrt_array,
       ifrt_arrays.front()->client()->AssembleArrayFromSingleDeviceArrays(
           ifrt::Shape(shape),
           xla::ifrt::ConcreteSharding::Create(
-              xla::ifrt::DeviceList(std::move(devices)), memory_kind,
+              xla::ifrt::DeviceList(std::move(devices)), dst_memory_kind,
               /*shape=*/ifrt::Shape(shape),
               /*shard_shapes=*/std::move(shapes)),
           absl::MakeSpan(ifrt_arrays),

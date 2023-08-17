@@ -20,12 +20,13 @@
 set -euxo pipefail
 
 DIR=$1
-for wheel in $DIR/*.whl; do
+find $DIR -iname "*.whl" | while read wheel; do
   echo "Checking and renaming $wheel..."
+  wheel=$(realpath "$wheel")
   time python3 -m auditwheel repair --plat manylinux2014_x86_64 "$wheel" --wheel-dir build 2>&1 | tee check.txt
 
   # We don't need the original wheel if it was renamed
-  new_wheel=$(grep --extended-regexp --only-matching '\S+.whl' check.txt | tail -n 1)
+  new_wheel=$(awk '/Fixed-up wheel written to/ {print $NF}' check.txt)
   if [[ "$new_wheel" != "$wheel" ]]; then
     rm "$wheel"
     wheel="$new_wheel"

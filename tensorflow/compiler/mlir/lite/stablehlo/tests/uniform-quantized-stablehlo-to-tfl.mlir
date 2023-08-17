@@ -403,3 +403,70 @@ func.func @dot_general_full_integer_asym_weight(%arg0: tensor<1x2x3x4x!quant.uni
 // CHECK-SAME: %[[ARG:.*]]: tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+00:-100>>
 // CHECK: %[[QCONST_0:.*]] =  "tfl.pseudo_qconst"() {qtype = tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+00:5>>, value = dense<1> : tensor<1x2x4x5xi8>} : () -> tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+00:5>>
 // CHECK: %[[BMM:.*]] = "tfl.batch_matmul"(%[[ARG]], %[[QCONST_0]]) {adj_x = false, adj_y = false} : (tensor<1x2x3x4x!quant.uniform<i8:f32, 1.000000e+00:-100>>, tensor<1x2x4x5x!quant.uniform<i8:f32, 1.000000e+00:5>>) -> tensor<1x2x3x5x!quant.uniform<i8:f32, 4.000000e+00>>
+
+// -----
+
+// Test that when the weight tensor for `stablehlo.dot_general` is per-axis
+// quantized, it is converted to `tfl.fully_connected` op.
+
+// CHECK-LABEL: dot_general_per_axis_quantized_filter
+func.func @dot_general_per_axis_quantized_filter(%arg0: tensor<1x3x!quant.uniform<i8:f32, 5.000000e+05:-100>>) -> tensor<1x2x!quant.uniform<i8:f32, 4.000000e+04:127>> {
+  %0 = stablehlo.constant() {value = dense<1> : tensor<3x2xi8>} : () -> tensor<3x2x!quant.uniform<i8:f32:1,{2.000000e+02, 3.000000e+03}>>
+  %1 = stablehlo.dot_general %arg0, %0, contracting_dims = [1] x [0] : (tensor<1x3x!quant.uniform<i8:f32, 5.000000e+05:-100>>, tensor<3x2x!quant.uniform<i8:f32:1,{2.000000e+02, 3.000000e+03}>>) -> tensor<1x2x!quant.uniform<i8:f32, 4.000000e+04:127>>
+  return %1 : tensor<1x2x!quant.uniform<i8:f32, 4.000000e+04:127>>
+}
+// CHECK-SAME: %[[ARG_0:.*]]: tensor<1x3x!quant.uniform<i8:f32, 5.000000e+05:-100>>
+// Weight tensor is transposed, as tfl.fully_connected accepts a [o, i] matrix.
+// CHECK-DAG: %[[QCONST_0:.*]] = "tfl.pseudo_qconst"() {qtype = tensor<2x3x!quant.uniform<i8:f32:0, {2.000000e+02,3.000000e+03}>>, value = dense<1> : tensor<2x3xi8>} : () -> tensor<2x3x!quant.uniform<i8:f32:0, {2.000000e+02,3.000000e+03}>>
+// CHECK-DAG: %[[QCONST_1:.*]] = "tfl.pseudo_qconst"() {qtype = tensor<2x!quant.uniform<i32<-128:127>:f32:0, {1.000000e+08,1.500000e+09}>>, value = dense<0> : tensor<2xi32>} : () -> tensor<2x!quant.uniform<i32<-128:127>:f32:0, {1.000000e+08,1.500000e+09}>>
+// Bias tensor's scale is input scale * filter scale.
+// CHECK: %[[FC:.*]] = "tfl.fully_connected"(%[[ARG_0]], %[[QCONST_0]], %[[QCONST_1]]) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<1x3x!quant.uniform<i8:f32, 5.000000e+05:-100>>, tensor<2x3x!quant.uniform<i8:f32:0, {2.000000e+02,3.000000e+03}>>, tensor<2x!quant.uniform<i32<-128:127>:f32:0, {1.000000e+08,1.500000e+09}>>) -> tensor<1x2x!quant.uniform<i8:f32, 4.000000e+04:127>>
+// CHECK-NEXT: return %[[FC]] : tensor<1x2x!quant.uniform<i8:f32, 4.000000e+04:127>>
+
+// -----
+
+// Test that when the weight tensor for `stablehlo.dot_general` is per-axis
+// quantized but has a batch dimension, it is not converted.
+
+// CHECK-LABEL: dot_general_per_axis_quantized_filter_with_batch_dim
+func.func @dot_general_per_axis_quantized_filter_with_batch_dim(%arg0: tensor<1x1x3x!quant.uniform<i8:f32, 5.000000e+05:-100>>) -> tensor<1x1x2x!quant.uniform<i8:f32, 4.000000e+04:127>> {
+  %0 = stablehlo.constant() {value = dense<1> : tensor<1x3x2xi8>} : () -> tensor<1x3x2x!quant.uniform<i8:f32:1,{2.000000e+02, 3.000000e+03}>>
+  %1 = stablehlo.dot_general %arg0, %0, batching_dims = [0] x [0], contracting_dims = [2] x [1] : (tensor<1x1x3x!quant.uniform<i8:f32, 5.000000e+05:-100>>, tensor<1x3x2x!quant.uniform<i8:f32:1,{2.000000e+02, 3.000000e+03}>>) -> tensor<1x1x2x!quant.uniform<i8:f32, 4.000000e+04:127>>
+  return %1 : tensor<1x1x2x!quant.uniform<i8:f32, 4.000000e+04:127>>
+}
+// Nothing changes.
+// CHECK: stablehlo.dot_general
+// CHECK-NOT: tfl.fully_connected
+// CHECK-NOT: tfl.batch_matmul
+
+// -----
+
+// Test that when the weight tensor for `stablehlo.dot_general` is per-axis
+// quantized but has a batch dim > 1, it is not converted.
+
+// CHECK-LABEL: dot_general_per_axis_quantized_filter_multibatch
+func.func @dot_general_per_axis_quantized_filter_multibatch(%arg0: tensor<3x1x3x!quant.uniform<i8:f32, 5.000000e+05:-100>>) -> tensor<3x1x2x!quant.uniform<i8:f32, 4.000000e+04:127>> {
+  %0 = stablehlo.constant() {value = dense<1> : tensor<3x3x2xi8>} : () -> tensor<3x3x2x!quant.uniform<i8:f32:1,{2.000000e+02, 3.000000e+03}>>
+  %1 = stablehlo.dot_general %arg0, %0, batching_dims = [0] x [0], contracting_dims = [2] x [1] : (tensor<3x1x3x!quant.uniform<i8:f32, 5.000000e+05:-100>>, tensor<3x3x2x!quant.uniform<i8:f32:1,{2.000000e+02, 3.000000e+03}>>) -> tensor<3x1x2x!quant.uniform<i8:f32, 4.000000e+04:127>>
+  return %1 : tensor<3x1x2x!quant.uniform<i8:f32, 4.000000e+04:127>>
+}
+// Nothing changes.
+// CHECK: stablehlo.dot_general
+// CHECK-NOT: tfl.fully_connected
+// CHECK-NOT: tfl.batch_matmul
+
+// -----
+
+// Test that when the weight tensor for `stablehlo.dot_general` is per-axis
+// quantized but has more than one contracting dimension, it is not converted.
+
+// CHECK-LABEL: dot_general_per_axis_quantized_filter_with_multiple_contracting_dims
+func.func @dot_general_per_axis_quantized_filter_with_multiple_contracting_dims(%arg0: tensor<1x2x3x!quant.uniform<i8:f32, 5.000000e+05:-100>>) -> tensor<1x1x!quant.uniform<i8:f32, 4.000000e+04:127>> {
+  %0 = stablehlo.constant() {value = dense<1> : tensor<1x3x2xi8>} : () -> tensor<1x3x2x!quant.uniform<i8:f32:1,{2.000000e+02, 3.000000e+03}>>
+  %1 = stablehlo.dot_general %arg0, %0, contracting_dims = [1, 2] x [2, 1] : (tensor<1x2x3x!quant.uniform<i8:f32, 5.000000e+05:-100>>, tensor<1x3x2x!quant.uniform<i8:f32:1,{2.000000e+02, 3.000000e+03}>>) -> tensor<1x1x!quant.uniform<i8:f32, 4.000000e+04:127>>
+  return %1 : tensor<1x1x!quant.uniform<i8:f32, 4.000000e+04:127>>
+}
+// Nothing changes.
+// CHECK: stablehlo.dot_general
+// CHECK-NOT: tfl.fully_connected
+// CHECK-NOT: tfl.batch_matmul

@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executable_interface.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
+#include "tensorflow/tsl/platform/macros.h"
 
 namespace tensorflow {
 

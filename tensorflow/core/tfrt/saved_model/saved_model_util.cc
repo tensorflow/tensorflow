@@ -39,14 +39,18 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tfrt/saved_model/saved_model.h"
+#include "tensorflow/compiler/mlir/tfrt/translate/import_model.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_import_input.h"
+#include "tensorflow/core/tfrt/saved_model/utils/serialize_bef_utils.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/path.h"
 #include "tensorflow/tsl/platform/statusor.h"
+#include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace tfrt_stub {
@@ -211,6 +215,36 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
       ->Set(absl::ToInt64Seconds(import_input.GetGrapplerDuration()));
 
   return module;
+}
+
+std::string GetAotPackagePath(absl::string_view saved_model_dir) {
+  return tsl::io::JoinPath(std::string(saved_model_dir), kAoTPackagesDirectory);
+}
+
+std::string GetBEFFilePath(std::string aot_package_directory) {
+  return tsl::io::JoinPath(aot_package_directory,
+                           std::string(kBefBufferFilenameMLIRBEF));
+}
+
+// TODO(b/295241000): Implement MLIR deserialization to skip it AoT and remove
+// redundant steps
+absl::StatusOr<tfrt::BefBuffer> LoadAotPackages(
+    const TfrtCompileOptions& options, mlir::ModuleOp mlir_module,
+    const std::string& saved_model_dir,
+    tfrt_stub::FallbackState* fallback_state) {
+  const std::string aot_package_directory = GetAotPackagePath(saved_model_dir);
+  const std::string bef_file_path =
+      tfrt_stub::GetBEFFilePath(aot_package_directory);
+  TF_ASSIGN_OR_RETURN(tfrt::BefBuffer bef, DeserializeBEFBuffer(bef_file_path));
+
+  if (bef.empty()) {
+    return absl::InternalError("BefBuffer is empty.");
+  }
+  // TODO (b/295241000): Currently AoT for TFRT only supports GPU so we only
+  // check for GPU. Remove after MLIR deserialization.
+  TF_RETURN_IF_ERROR(
+      RunTFXLABridgeAndAddXlaFunctions(options, fallback_state, mlir_module));
+  return bef;
 }
 
 }  // namespace tfrt_stub

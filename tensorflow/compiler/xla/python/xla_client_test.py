@@ -80,7 +80,6 @@ FLAGS = flags.FLAGS
 def TestFactory(xla_backend,
                 cloud_tpu=False,
                 tfrt_tpu=False,
-                external_tpu=False,
                 pjrt_c_api=False,
                 pathways=False):
   tests = []
@@ -2216,11 +2215,17 @@ def TestFactory(xla_backend,
       for device in self.backend.local_devices():
         self.assertEqual(device.platform, self.backend.platform)
 
+    def testLocalHardwareId(self):
+      for device in self.backend.devices():
+        local_hardware_id = device.local_hardware_id
+        if local_hardware_id is not None:
+          self.assertGreaterEqual(local_hardware_id, 0)
+
     @unittest.skipIf(pathways, "not implemented")
     def testMemoryStats(self):
       for device in self.backend.local_devices():
         stats = device.memory_stats()
-        if self.backend.platform != "tpu" or not tfrt_tpu or external_tpu:
+        if self.backend.platform != "tpu" or not tfrt_tpu:
           self.assertIsNone(stats)
         else:
           self.assertIsNotNone(stats)
@@ -2234,13 +2239,13 @@ def TestFactory(xla_backend,
           self.assertEqual(type(stats["largest_alloc_size"]), int)
           self.assertGreaterEqual(stats["largest_alloc_size"], 0)
 
-    @unittest.skipIf(pathways or pjrt_c_api, "not implemented")
+    @unittest.skipIf(pathways, "not implemented")
     def testMemory(self):
       for device in self.backend.local_devices():
         for memory in device.addressable_memories():
           self.assertEqual(memory.process_index, device.process_index)
           self.assertEqual(memory.platform, device.platform)
-          self.assertIn(device, memory.attached_devices())
+          self.assertIn(device, memory.addressable_by_devices())
           self.assertEqual(memory, device.memory(memory.kind))
 
   tests.append(DeviceTest)
@@ -2697,7 +2702,7 @@ def TestFactory(xla_backend,
     # physical memory layout is not consecutive, and we test if the program can
     # return the correct logical view of the data.
     @unittest.skipIf(
-        cloud_tpu or pathways or tfrt_tpu or external_tpu or pjrt_c_api,
+        cloud_tpu or pathways or tfrt_tpu or pjrt_c_api,
         "not implemented")
     @parameterized.named_parameters({
         "testcase_name": "_{}".format(dtype.__name__),

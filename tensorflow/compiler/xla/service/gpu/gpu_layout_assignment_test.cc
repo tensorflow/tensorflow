@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
 
+#include <memory>
+
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
@@ -470,6 +472,34 @@ TEST_F(LayoutAssignmentTest, ConvCuDNNFP16) {
   // CHECK-NEXT: [[P2:%[^ ]+]] = f16[32,3,3,16]{3,2,1,0} transpose([[P1]]), dimensions={3,0,1,2}
   // CHECK-NEXT: %cudnn-conv.1 = (f16[1,64,64,32]{3,2,1,0}, u8[0]{0}) custom-call([[P0]], [[P2]]), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, custom_call_target="__cudnn$convForward"
   )");
+}
+
+TEST_F(LayoutAssignmentTest, ReduceOperandLayout) {
+  const char* module_str = R"(
+scalar_add_computation {
+  scalar_lhs = c64[] parameter(0)
+  scalar_rhs = c64[] parameter(1)
+  ROOT add.1 = c64[] add(scalar_lhs, scalar_rhs)
+}
+
+ENTRY main {
+  param_0 = c64[512,64,1024,32,128]{4,3,2,1,0} parameter(0)
+  negate = c64[512,64,1024,32,128]{4,3,2,1,0} negate(param_0)
+  constant_7 = c64[] constant((0, 0))
+  ROOT reduce.2 = c64[512,1024,128]{2,1,0} reduce(negate, constant_7), dimensions={1,3}, to_apply=scalar_add_computation
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(module_str));
+  ComputationLayout computation_layout(
+      m->entry_computation()->ComputeProgramShape());
+  GpuLayoutAssignment layout_assignment(&computation_layout,
+                                        backend().default_stream_executor());
+
+  EXPECT_THAT(layout_assignment.Run(m.get()), IsOkAndHolds(true));
+  auto reduce = m->entry_computation()->root_instruction();
+  EXPECT_EQ(reduce->operand(0)->shape().layout().minor_to_major(),
+            LayoutUtil::MakeLayout({3, 1, 4, 2, 0}).minor_to_major());
 }
 
 }  // namespace

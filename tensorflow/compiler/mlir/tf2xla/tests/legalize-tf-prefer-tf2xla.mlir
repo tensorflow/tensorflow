@@ -133,7 +133,7 @@ func.func @fused_conv2d(%input: tensor<1x300x300x40xi8>,
   %input_scale = "tf.Const"() {value = dense<1.0> : tensor<f32>} : () -> tensor<f32>
   %side_input_scale = "tf.Const"() {value = dense<2.0> : tensor<f32>} : () -> tensor<f32>
   %conv2d = "tf._FusedConv2D"(%input, %filter, %bias, %act, %input_scale, %side_input_scale) {
-    data_format = "NHWC", dilations = [1, 1, 1, 1], epsilon = 9.99999974E-5 : f32, explicit_paddings = [], filter_format = "HWIO", fused_ops = ["BiasAdd", "Relu"], leakyrelu_alpha = 2.000000e-01 : f32, num_args = 2 : i64, operand_segment_sizes = array<i32: 1, 1, 2, 2>, padding = "SAME", strides = [1, 1, 1, 1], use_cudnn_on_gpu = true
+    data_format = "NHWC", dilations = [1, 1, 1, 1], epsilon = 9.99999974E-5 : f32, explicit_paddings = [], filter_format = "HWIO", fused_ops = ["BiasAdd", "Relu"], leakyrelu_alpha = 2.000000e-01 : f32, num_args = 2 : i64, operandSegmentSizes = array<i32: 1, 1, 2, 2>, padding = "SAME", strides = [1, 1, 1, 1], use_cudnn_on_gpu = true
     } : (tensor<1x300x300x40xi8>, tensor<3x3x40x40xi8>, tensor<40xf32>, tensor<0xi8>, tensor<f32>, tensor<f32>) -> tensor<1x300x300x40xi8>
   func.return %conv2d : tensor<1x300x300x40xi8>
 }

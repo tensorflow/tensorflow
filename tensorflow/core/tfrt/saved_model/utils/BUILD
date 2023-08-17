@@ -12,6 +12,7 @@ package_group(
         # Authorized users go here.
         "//tensorflow/core/tfrt/saved_model/...",
         "//learning/brain/tfrt/cpp_tests/gpu_inference/...",
+        "//tensorflow/compiler/mlir/tfrt/...",
     ],
 )
 

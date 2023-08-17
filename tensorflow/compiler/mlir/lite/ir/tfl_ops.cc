@@ -3645,7 +3645,7 @@ static void BuildTransposeOp(OpBuilder* builder, OperationState& result,
 /// correspond to a constant value for each operand, or null if that operand is
 /// not a constant.
 void IfOp::getSuccessorRegions(std::optional<unsigned> index,
-                               ArrayRef<Attribute> operands,
+
                                SmallVectorImpl<RegionSuccessor>& regions) {
   // The `then` and the `else` region branch back to the parent operation.
   if (index.has_value()) {
@@ -3657,10 +3657,24 @@ void IfOp::getSuccessorRegions(std::optional<unsigned> index,
   Region* else_reg = &getElseRegion();
   if (else_reg->empty()) else_reg = nullptr;
 
-  // Otherwise, the successor is dependent on the condition.
+  // If the condition isn't constant, both regions may be executed.
+  regions.push_back(RegionSuccessor(&getThenRegion()));
+  // If the else region does not exist, it is not a viable successor.
+  if (else_reg) regions.push_back(RegionSuccessor(else_reg));
+}
+
+void IfOp::getEntrySuccessorRegions(ArrayRef<Attribute> operands,
+                                    SmallVectorImpl<RegionSuccessor>& regions) {
+  // Don't consider the else region if it is empty.
+  Region* else_reg = &getElseRegion();
+  if (else_reg->empty()) else_reg = nullptr;
+
   bool condition;
   if (auto cond_attr = operands.front().dyn_cast_or_null<IntegerAttr>()) {
     condition = cond_attr.getValue().isOne();
+
+    // Add the successor regions using the condition.
+    regions.push_back(RegionSuccessor(condition ? &getThenRegion() : else_reg));
   } else {
     // If the condition isn't constant, both regions may be executed.
     regions.push_back(RegionSuccessor(&getThenRegion()));
@@ -3668,9 +3682,6 @@ void IfOp::getSuccessorRegions(std::optional<unsigned> index,
     if (else_reg) regions.push_back(RegionSuccessor(else_reg));
     return;
   }
-
-  // Add the successor regions using the condition.
-  regions.push_back(RegionSuccessor(condition ? &getThenRegion() : else_reg));
 }
 
 //===----------------------------------------------------------------------===//
@@ -3699,8 +3710,7 @@ void PolyCallOp::getCanonicalizationPatterns(RewritePatternSet& results,
 }
 
 void PolyCallOp::getSuccessorRegions(
-    std::optional<unsigned> index, ArrayRef<Attribute> operands,
-    SmallVectorImpl<RegionSuccessor>& regions) {
+    std::optional<unsigned> index, SmallVectorImpl<RegionSuccessor>& regions) {
   // Defaults to first region for TFLite execution.
 }
 

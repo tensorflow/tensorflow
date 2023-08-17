@@ -197,8 +197,9 @@ void TpuTransferManager_WriteSingleTupleIndexTable(
 void TpuTransferManager_GetInfeedLayout(XLA_Shape* shape,
                                         XLA_Shape* infeed_shape);
 void TpuTransferManager_LinearizeToBuffers(
-    XLA_TransferManager* manager, XLA_Literal* c_literal, char*** buffers_array,
-    int64_t** buffers_size, int64_t* buffers_array_size, TF_Status* status);
+    XLA_TransferManager* manager, XLA_Literal* c_literal,
+    XLA_Shape* c_device_shape, char*** buffers_array, int64_t** buffers_size,
+    int64_t* buffers_array_size, TF_Status* status);
 void TpuTransferManager_FreeBuffers(char** buffers_array, int64_t* buffers_size,
                                     int64_t buffers_array_size);
 void TpuTransferManager_TransferLiteralToInfeed(XLA_TransferManager* manager,

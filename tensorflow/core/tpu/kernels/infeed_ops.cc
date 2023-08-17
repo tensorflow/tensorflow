@@ -15,38 +15,47 @@ limitations under the License.
 
 #include "tensorflow/core/tpu/kernels/infeed_ops.h"
 
-#include <algorithm>
+#include <cstdint>
 #include <deque>
 #include <iterator>
 #include <memory>
 #include <utility>
 #include <vector>
 
-#include "tensorflow/compiler/jit/xla_device.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
-#include "tensorflow/compiler/xla/stream_executor/multi_platform_manager.h"
+#include "tensorflow/compiler/xla/layout.h"
+#include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_transfer_manager.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/noncopyable_buffer.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_transfer_manager_interface.h"
-#include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/allocator.h"
-#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
-#include "tensorflow/core/framework/function_handle_cache.h"
-#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variant.h"
-#include "tensorflow/core/framework/variant_encode_decode.h"
+#include "tensorflow/core/framework/variant_encode_decode.h"  // IWYU pragma: keep
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/tpu/kernels/transfer_ops.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
@@ -76,12 +85,12 @@ xla::Shape GetTPUInfeedLayout(const xla::Shape& shape) {
 // to obtain a XLA literal for the host tensor laid out as the given layout. The
 // returned tensor is normalized to the dim0major layout -- F32[10,20,30]{2,0,1}
 // is returned as F32[20,10,30]{2,1,0}.
-xla::StatusOr<Tensor> TransposeTensor(OpKernelContext* ctx,
+tsl::StatusOr<Tensor> TransposeTensor(OpKernelContext* ctx,
                                       const Tensor& input_tensor,
                                       const xla::Shape& xla_shape) {
   profiler::TraceMe trace_me("TransposeTensor", /*level=*/2);
   const int64_t rank = xla_shape.rank();
-  std::vector<int32> permutation(rank);
+  std::vector<int32_t> permutation(rank);
   std::vector<int64_t> transposed_shapes(rank);
   for (int64_t i = 0; i < rank; ++i) {
     permutation[i] = xla_shape.layout().minor_to_major(rank - 1 - i);
@@ -115,7 +124,7 @@ xla::StatusOr<Tensor> TransposeTensor(OpKernelContext* ctx,
   return transposed_tensor;
 }
 
-xla::StatusOr<bool> GetLayoutOverride(OpKernelConstruction* ctx,
+tsl::StatusOr<bool> GetLayoutOverride(OpKernelConstruction* ctx,
                                       const char* attrn_name,
                                       std::vector<int64_t>* minor_to_major) {
   if (!ctx->HasAttr(attrn_name)) {
@@ -202,7 +211,7 @@ Status AutoTransposeAndLinearize(OpKernelContext* ctx,
                                  LinearizerBufferList* linearized_buffers,
                                  std::vector<Tensor>* saved_input_tensors) {
   const Tensor* tensor = &input_tensor;
-  // If the given layout is not in dim0major layout, tranposes the tensor.
+  // If the given layout is not in dim0major layout, transposes the tensor.
   bool has_transposed = false;
   Tensor transposed_tensor;
   if (!xla::LayoutUtil::IsMonotonicWithDim0Major(shape.layout())) {
@@ -216,9 +225,11 @@ Status AutoTransposeAndLinearize(OpKernelContext* ctx,
   xla::BorrowingLiteral literal;
   TF_RETURN_IF_ERROR(HostTensorToBorrowingLiteral(*tensor, &literal));
 
-  TF_RETURN_IF_ERROR(
-      xla::TpuTransferManagerInterface::GetRegisteredTpuTransferManager()
-          ->LinearizeToBuffers(literal, linearized_buffers));
+  auto* transfer_manager =
+      xla::TpuTransferManagerInterface::GetRegisteredTpuTransferManager();
+  TF_RETURN_IF_ERROR(transfer_manager->LinearizeToBuffers(
+      literal, transfer_manager->HostShapeToDeviceShape(literal.shape()),
+      linearized_buffers));
 
   // The input tensor is ref-counted. Save a handle on the input tensor if
   // its underlying storage is shared with linearized buffers to prevent
@@ -256,15 +267,14 @@ class PrelinearizeOp : public OpKernel {
     // Validate input.
     OP_REQUIRES(
         ctx, input_tensor.dtype() == dtype_,
-        errors::InvalidArgument("Prelinearize dtype mismatch; expected ",
-                                DataType_Name(dtype_), ", got ",
-                                DataType_Name(input_tensor.dtype())));
+        absl::InvalidArgumentError(absl::StrCat(
+            "Prelinearize dtype mismatch; expected ", DataType_Name(dtype_),
+            ", got ", DataType_Name(input_tensor.dtype()))));
     OP_REQUIRES(
         ctx, input_tensor.shape() == shape_,
-        errors::InvalidArgument("Prelinearize shape mismatch; expected ",
-                                shape_.DebugString(), ", got ",
-                                input_tensor.shape().DebugString()));
-
+        absl::InvalidArgumentError(absl::StrCat(
+            "Prelinearize shape mismatch; expected ", shape_.DebugString(),
+            ", got ", input_tensor.shape().DebugString())));
     // Auto-transpose and prelinearize.
     LinearizerBufferList linearized_buffers;
     std::vector<Tensor> saved_input_tensors;
@@ -302,9 +312,9 @@ class PrelinearizeTupleOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("dtypes", &dtypes_));
     OP_REQUIRES(
         ctx, shapes_.size() == dtypes_.size(),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "shapes and dtypes must be the same length. shapes length = ",
-            shapes_.size(), ", dtypes length = ", dtypes_.size()));
+            shapes_.size(), ", dtypes length = ", dtypes_.size())));
 
     std::vector<xla::Shape> xla_shapes;
     for (int i = 0; i < shapes_.size(); i++) {
@@ -323,7 +333,7 @@ class PrelinearizeTupleOp : public OpKernel {
     OpInputList values;
     OP_REQUIRES_OK(ctx, ctx->input_list("inputs", &values));
     OP_REQUIRES(ctx, values.size() == shapes_.size(),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Wrong number of inputs to PrelinearizeTuple."));
 
     LinearizerBufferList all_linearized_buffers;
@@ -332,15 +342,15 @@ class PrelinearizeTupleOp : public OpKernel {
       // Validate input.
       const Tensor& input_tensor = values[i];
       OP_REQUIRES(ctx, input_tensor.dtype() == dtypes_[i],
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "PrelinearizeTuple dtype mismatch at tuple element ", i,
                       "; expected ", DataType_Name(dtypes_[i]), ", got ",
-                      DataType_Name(input_tensor.dtype())));
+                      DataType_Name(input_tensor.dtype()))));
       OP_REQUIRES(ctx, input_tensor.shape() == shapes_[i],
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "PrelinearizeTuple shape mismatch at tuple element ", i,
                       "; expected ", shapes_[i].DebugString(), ", got ",
-                      input_tensor.shape().DebugString()));
+                      input_tensor.shape().DebugString())));
 
       // Auto-transpose and prelinearize.
       LinearizerBufferList linearized_buffers;
@@ -440,12 +450,12 @@ Status TpuInfeedEnqueueOp::DoWork(OpKernelContext* ctx, int device_ordinal) {
 
   // Validate runtime shape and fail if it doesn't match the contract.
   if (input_tensor.dtype() != dtype_) {
-    return errors::InvalidArgument("Infeed dtype mismatch.");
+    return absl::InvalidArgumentError("Infeed dtype mismatch.");
   }
   if (input_tensor.shape() != shape_) {
-    return errors::InvalidArgument("Infeed shape mismatch; expected ",
-                                   shape_.DebugString(), ", got ",
-                                   input_tensor.shape().DebugString());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Infeed shape mismatch; expected ", shape_.DebugString(),
+                     ", got ", input_tensor.shape().DebugString()));
   }
 
   const Tensor* tensor = &input_tensor;
@@ -477,7 +487,7 @@ TpuInfeedEnqueueTupleOp::TpuInfeedEnqueueTupleOp(
   OP_REQUIRES_OK(ctx, ctx->GetAttr("dtypes", &dtypes_));
   OP_REQUIRES(
       ctx, shapes_.size() == dtypes_.size(),
-      errors::InvalidArgument("shapes and dtypes must be the same length."));
+      absl::InvalidArgumentError("shapes and dtypes must be the same length."));
 
   std::vector<xla::Shape> xla_shapes;
   for (int i = 0; i < shapes_.size(); i++) {
@@ -499,7 +509,7 @@ Status TpuInfeedEnqueueTupleOp::DoWork(OpKernelContext* ctx,
   OpInputList values;
   TF_RETURN_IF_ERROR(ctx->input_list("inputs", &values));
   if (values.size() != shapes_.size()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Wrong number of inputs to InfeedEnqueueTuple.");
   }
 
@@ -513,9 +523,9 @@ Status TpuInfeedEnqueueTupleOp::DoWork(OpKernelContext* ctx,
     // Validate runtime shapes and fail if it doesn't match the contract.
     const Tensor* tensor = &values[i];
     if (tensor->shape() != shapes_[i]) {
-      return errors::InvalidArgument("Infeed shape mismatch for tuple element ",
-                                     i, "; expected ", shapes_[i].DebugString(),
-                                     ", got ", tensor->shape().DebugString());
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Infeed shape mismatch for tuple element ", i, "; expected ",
+          shapes_[i].DebugString(), ", got ", tensor->shape().DebugString()));
     }
     if (!xla::LayoutUtil::IsMonotonicWithDim0Major(
             tuple_shape_.tuple_shapes(i).layout())) {

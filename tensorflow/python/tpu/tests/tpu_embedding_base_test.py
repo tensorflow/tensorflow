@@ -15,6 +15,7 @@
 """Base Class for TPU Embedding tests."""
 
 import os
+from typing import Tuple
 
 from absl import flags
 from absl.testing import parameterized
@@ -36,6 +37,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.tpu import tpu_embedding_v2
 from tensorflow.python.tpu import tpu_embedding_v2_utils
 from tensorflow.python.util import nest
+
 
 FLAGS = flags.FLAGS
 flags.DEFINE_string('tpu', '', 'Name of TPU to connect to.')
@@ -167,7 +169,9 @@ class TPUEmbeddingBaseTest(parameterized.TestCase, test.TestCase):
     return tpu_embedding_v2.TPUEmbedding(
         feature_config=self.feature_config, optimizer=optimizer)
 
-  def _create_strategy_and_mid_level(self, optimizer_name):
+  def _create_strategy_and_mid_level(self, optimizer_name) -> Tuple[
+      tpu_strategy.TPUStrategy, tpu_embedding_v2.TPUEmbedding,
+      tpu_embedding_v2_utils._Optimizer]:
     strategy = self._get_strategy()
 
     with strategy.scope():

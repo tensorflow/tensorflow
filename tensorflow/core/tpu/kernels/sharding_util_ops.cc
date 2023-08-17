@@ -13,32 +13,34 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#define EIGEN_USE_THREADS
-
+#include <cstdint>
 #include <functional>
 #include <utility>
 #include <vector>
 
+#define EIGEN_USE_THREADS
+
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "third_party/eigen3/Eigen/Core"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/framework/kernel_def.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/resource_var.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/framework/tensor_types.h"
-#include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "tensorflow/tsl/platform/macros.h"
 
 namespace tensorflow {
 namespace {
@@ -47,9 +49,9 @@ constexpr absl::string_view kNumSplitsAttrName = "num_splits";
 constexpr absl::string_view kNumConcatsAttrName = "num_concats";
 
 Status GetAndValidateAttributesHelper(bool split, OpKernelConstruction* ctx,
-                                      std::vector<int32>& num_partitions,
+                                      std::vector<int32_t>& num_partitions,
                                       int& num_slices,
-                                      std::vector<int32>& paddings,
+                                      std::vector<int32_t>& paddings,
                                       bool& has_paddings) {
   absl::string_view num_partitions_attr_name =
       split ? kNumSplitsAttrName : kNumConcatsAttrName;
@@ -59,9 +61,9 @@ Status GetAndValidateAttributesHelper(bool split, OpKernelConstruction* ctx,
   for (int i = 0, e = num_partitions.size(); i < e; ++i) {
     const auto& split = num_partitions[i];
     if (split <= 0) {
-      return errors::InvalidArgument("'", num_partitions_attr_name,
-                                     "' at index ", i,
-                                     " must be positive, but got ", split, ".");
+      return absl::InvalidArgumentError(
+          absl::StrCat("'", num_partitions_attr_name, "' at index ", i,
+                       " must be positive, but got ", split, "."));
     }
     if (split > 1) {
       ++num_dims_to_split;
@@ -72,25 +74,25 @@ Status GetAndValidateAttributesHelper(bool split, OpKernelConstruction* ctx,
   int n;
   TF_RETURN_IF_ERROR(ctx->GetAttr("N", &n));
   if (n != num_slices) {
-    return errors::InvalidArgument(
-        "'N' must match number of slices ", num_slices, " from '",
-        num_partitions_attr_name, "', but got ", n, ".");
+    return absl::InvalidArgumentError(
+        absl::StrCat("'N' must match number of slices ", num_slices, " from '",
+                     num_partitions_attr_name, "', but got ", n, "."));
   }
 
   TF_RETURN_IF_ERROR(ctx->GetAttr("paddings", &paddings));
   const int expected_rank = num_partitions.size();
   if (!paddings.empty()) {
     if (paddings.size() != expected_rank) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "'paddings' length must match '", num_partitions_attr_name,
-          "' length ", expected_rank, ", but got ", paddings.size(), ".");
+          "' length ", expected_rank, ", but got ", paddings.size(), "."));
     }
 
     for (int dim = 0; dim < expected_rank; ++dim) {
       if (paddings[dim] < 0) {
-        return errors::InvalidArgument(
-            "'padding' must be all non-negative, but got ", paddings[dim],
-            " at index ", dim, ".");
+        return absl::InvalidArgumentError(
+            absl::StrCat("'padding' must be all non-negative, but got ",
+                         paddings[dim], " at index ", dim, "."));
       }
       if (paddings[dim] > 0) {
         has_paddings = true;
@@ -100,12 +102,12 @@ Status GetAndValidateAttributesHelper(bool split, OpKernelConstruction* ctx,
     paddings.assign(expected_rank, 0);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void GetAndValidateAttributes(bool split, OpKernelConstruction* ctx,
-                              std::vector<int32>& num_partitions,
-                              int& num_slices, std::vector<int32>& paddings,
+                              std::vector<int32_t>& num_partitions,
+                              int& num_slices, std::vector<int32_t>& paddings,
                               bool& has_paddings) {
   OP_REQUIRES_OK(
       ctx, GetAndValidateAttributesHelper(split, ctx, num_partitions,
@@ -120,55 +122,55 @@ Status CreateResourceInvalidDTypeError(const ResourceHandle& handle,
                                        DataType actual_dtype,
                                        DataType expected_dtype) {
   absl::string_view resource_component = Handle ? kHandle : kTensor;
-  return errors::InvalidArgument(
-      "'T' must match 'resource' variable ", resource_component, " ('",
-      handle.name(), "') container ('", handle.container(), "') dtype ",
-      DataTypeString(actual_dtype), ", but got ",
-      DataTypeString(expected_dtype), ".");
+  return absl::InvalidArgumentError(
+      absl::StrCat("'T' must match 'resource' variable ", resource_component,
+                   " ('", handle.name(), "') container ('", handle.container(),
+                   "') dtype ", DataTypeString(actual_dtype), ", but got ",
+                   DataTypeString(expected_dtype), "."));
 }
 
 // Converts flatten index to start indices (subscript scaled with slice shape)
 // for determining where to start a slice in the input tensor.
 template <int Rank>
 Eigen::DSizes<Eigen::DenseIndex, Rank> GetSliceIndices(
-    absl::Span<const int32> num_partitions,
+    absl::Span<const int32_t> num_partitions,
     const Eigen::DSizes<Eigen::DenseIndex, Rank>& slice_shape, int index);
 template <>
 Eigen::DSizes<Eigen::DenseIndex, 1> TF_ATTRIBUTE_NOINLINE GetSliceIndices(
-    absl::Span<const int32> num_partitions,
+    absl::Span<const int32_t> num_partitions,
     const Eigen::DSizes<Eigen::DenseIndex, 1>& slice_shape, int index);
 template <>
 Eigen::DSizes<Eigen::DenseIndex, 2> TF_ATTRIBUTE_NOINLINE GetSliceIndices(
-    absl::Span<const int32> num_partitions,
+    absl::Span<const int32_t> num_partitions,
     const Eigen::DSizes<Eigen::DenseIndex, 2>& slice_shape, int index);
 template <>
 Eigen::DSizes<Eigen::DenseIndex, 3> TF_ATTRIBUTE_NOINLINE GetSliceIndices(
-    absl::Span<const int32> num_partitions,
+    absl::Span<const int32_t> num_partitions,
     const Eigen::DSizes<Eigen::DenseIndex, 3>& slice_shape, int index);
 template <>
 Eigen::DSizes<Eigen::DenseIndex, 4> TF_ATTRIBUTE_NOINLINE GetSliceIndices(
-    absl::Span<const int32> num_partitions,
+    absl::Span<const int32_t> num_partitions,
     const Eigen::DSizes<Eigen::DenseIndex, 4>& slice_shape, int index);
 template <>
 Eigen::DSizes<Eigen::DenseIndex, 5> TF_ATTRIBUTE_NOINLINE GetSliceIndices(
-    absl::Span<const int32> num_partitions,
+    absl::Span<const int32_t> num_partitions,
     const Eigen::DSizes<Eigen::DenseIndex, 5>& slice_shape, int index);
 template <>
 Eigen::DSizes<Eigen::DenseIndex, 6> TF_ATTRIBUTE_NOINLINE GetSliceIndices(
-    absl::Span<const int32> num_partitions,
+    absl::Span<const int32_t> num_partitions,
     const Eigen::DSizes<Eigen::DenseIndex, 6>& slice_shape, int index);
 template <>
 Eigen::DSizes<Eigen::DenseIndex, 7> TF_ATTRIBUTE_NOINLINE GetSliceIndices(
-    absl::Span<const int32> num_partitions,
+    absl::Span<const int32_t> num_partitions,
     const Eigen::DSizes<Eigen::DenseIndex, 7>& slice_shape, int index);
 template <>
 Eigen::DSizes<Eigen::DenseIndex, 8> TF_ATTRIBUTE_NOINLINE GetSliceIndices(
-    absl::Span<const int32> num_partitions,
+    absl::Span<const int32_t> num_partitions,
     const Eigen::DSizes<Eigen::DenseIndex, 8>& slice_shape, int index);
 
 template <int Rank>
 Eigen::DSizes<Eigen::DenseIndex, Rank> GetSliceIndices(
-    absl::Span<const int32> num_partitions,
+    absl::Span<const int32_t> num_partitions,
     const Eigen::DSizes<Eigen::DenseIndex, Rank>& slice_shape,
     const int index) {
   return Eigen::DSizes<Eigen::DenseIndex, Rank>();
@@ -176,7 +178,7 @@ Eigen::DSizes<Eigen::DenseIndex, Rank> GetSliceIndices(
 
 template <>
 Eigen::DSizes<Eigen::DenseIndex, 1> GetSliceIndices(
-    absl::Span<const int32> num_partitions,
+    absl::Span<const int32_t> num_partitions,
     const Eigen::DSizes<Eigen::DenseIndex, 1>& slice_shape, const int index) {
   Eigen::DSizes<Eigen::DenseIndex, 1> subscript;
   subscript[0] = index * slice_shape[0];
@@ -185,7 +187,7 @@ Eigen::DSizes<Eigen::DenseIndex, 1> GetSliceIndices(
 
 template <>
 Eigen::DSizes<Eigen::DenseIndex, 2> GetSliceIndices(
-    absl::Span<const int32> num_partitions,
+    absl::Span<const int32_t> num_partitions,
     const Eigen::DSizes<Eigen::DenseIndex, 2>& slice_shape, const int index) {
   Eigen::DSizes<Eigen::DenseIndex, 2> subscript;
   subscript[1] = (index % num_partitions[1]) * slice_shape[1];
@@ -195,7 +197,7 @@ Eigen::DSizes<Eigen::DenseIndex, 2> GetSliceIndices(
 
 template <>
 Eigen::DSizes<Eigen::DenseIndex, 3> GetSliceIndices(
-    absl::Span<const int32> num_partitions,
+    absl::Span<const int32_t> num_partitions,
     const Eigen::DSizes<Eigen::DenseIndex, 3>& slice_shape, const int index) {
   Eigen::DSizes<Eigen::DenseIndex, 3> subscript;
   subscript[2] = (index % num_partitions[2]) * slice_shape[2];
@@ -208,7 +210,7 @@ Eigen::DSizes<Eigen::DenseIndex, 3> GetSliceIndices(
 
 template <>
 Eigen::DSizes<Eigen::DenseIndex, 4> GetSliceIndices(
-    absl::Span<const int32> num_partitions,
+    absl::Span<const int32_t> num_partitions,
     const Eigen::DSizes<Eigen::DenseIndex, 4>& slice_shape, const int index) {
   Eigen::DSizes<Eigen::DenseIndex, 4> subscript;
   subscript[3] = (index % num_partitions[3]) * slice_shape[3];
@@ -225,7 +227,7 @@ Eigen::DSizes<Eigen::DenseIndex, 4> GetSliceIndices(
 
 template <>
 Eigen::DSizes<Eigen::DenseIndex, 5> GetSliceIndices(
-    absl::Span<const int32> num_partitions,
+    absl::Span<const int32_t> num_partitions,
     const Eigen::DSizes<Eigen::DenseIndex, 5>& slice_shape, const int index) {
   Eigen::DSizes<Eigen::DenseIndex, 5> subscript;
   subscript[4] = (index % num_partitions[4]) * slice_shape[4];
@@ -246,7 +248,7 @@ Eigen::DSizes<Eigen::DenseIndex, 5> GetSliceIndices(
 
 template <>
 Eigen::DSizes<Eigen::DenseIndex, 6> GetSliceIndices(
-    absl::Span<const int32> num_partitions,
+    absl::Span<const int32_t> num_partitions,
     const Eigen::DSizes<Eigen::DenseIndex, 6>& slice_shape, const int index) {
   Eigen::DSizes<Eigen::DenseIndex, 6> subscript;
   subscript[5] = (index % num_partitions[5]) * slice_shape[5];
@@ -272,7 +274,7 @@ Eigen::DSizes<Eigen::DenseIndex, 6> GetSliceIndices(
 
 template <>
 Eigen::DSizes<Eigen::DenseIndex, 7> GetSliceIndices(
-    absl::Span<const int32> num_partitions,
+    absl::Span<const int32_t> num_partitions,
     const Eigen::DSizes<Eigen::DenseIndex, 7>& slice_shape, const int index) {
   Eigen::DSizes<Eigen::DenseIndex, 7> subscript;
   subscript[6] = (index % num_partitions[6]) * slice_shape[6];
@@ -303,7 +305,7 @@ Eigen::DSizes<Eigen::DenseIndex, 7> GetSliceIndices(
 
 template <>
 Eigen::DSizes<Eigen::DenseIndex, 8> GetSliceIndices(
-    absl::Span<const int32> num_partitions,
+    absl::Span<const int32_t> num_partitions,
     const Eigen::DSizes<Eigen::DenseIndex, 8>& slice_shape, const int index) {
   Eigen::DSizes<Eigen::DenseIndex, 8> subscript;
   subscript[7] = (index % num_partitions[7]) * slice_shape[7];
@@ -350,14 +352,15 @@ Eigen::DSizes<Eigen::DenseIndex, Rank> ShapeAsEigenDSizes(
   return shape.AsEigenDSizes<Rank>();
 }
 
-bool TF_ATTRIBUTE_NOINLINE ValidateShapesForSlice(
-    OpKernelContext* ctx, bool resource, const Tensor* input,
-    const std::vector<int32>& num_splits, const std::vector<int32>& paddings);
+bool TF_ATTRIBUTE_NOINLINE
+ValidateShapesForSlice(OpKernelContext* ctx, bool resource, const Tensor* input,
+                       const std::vector<int32_t>& num_splits,
+                       const std::vector<int32_t>& paddings);
 
 bool ValidateShapesForSlice(OpKernelContext* ctx, bool resource,
                             const Tensor* input,
-                            const std::vector<int32>& num_splits,
-                            const std::vector<int32>& paddings) {
+                            const std::vector<int32_t>& num_splits,
+                            const std::vector<int32_t>& paddings) {
   const auto& ishape = input->shape();
 
   Status s;
@@ -366,22 +369,22 @@ bool ValidateShapesForSlice(OpKernelContext* ctx, bool resource,
   const int rank = ishape.dims();
   const auto& input_shape = ishape.dim_sizes();
   if (rank <= 0 || rank > 8) {
-    s = errors::InvalidArgument(
-        input_name, " must have rank in range (0, 8], but got ", rank, ".");
+    s = absl::InvalidArgumentError(absl::StrCat(
+        input_name, " must have rank in range (0, 8], but got ", rank, "."));
   } else if (rank != num_splits.size()) {
-    s = errors::InvalidArgument(
+    s = absl::InvalidArgumentError(absl::StrCat(
         input_name, " rank must be the same as 'num_splits' length ",
-        num_splits.size(), ", but got rank ", rank, ".");
+        num_splits.size(), ", but got rank ", rank, "."));
   } else {
     for (int dim = 0; dim < rank; ++dim) {
       const auto input_shape_dim = input_shape[dim];
       const auto paddings_dim = paddings[dim];
       const auto num_splits_dim = num_splits[dim];
       if ((input_shape_dim + paddings_dim) % num_splits_dim != 0) {
-        s = errors::InvalidArgument(
+        s = absl::InvalidArgumentError(absl::StrCat(
             input_name, " shape dimension ", dim, " (", input_shape_dim,
             ") with padding ", paddings_dim,
-            " must be evenly divisible by 'num_splits' ", num_splits_dim, ".");
+            " must be evenly divisible by 'num_splits' ", num_splits_dim, "."));
         break;
       }
     }
@@ -415,7 +418,7 @@ class XlaSplitNDShared : public OpKernel {
     Eigen::DSizes<Eigen::DenseIndex, Rank> non_padded_slice_shape_dsizes_;
 
     TF_ATTRIBUTE_NOINLINE SliceAndMaybePadState(
-        absl::Span<const int32> num_splits,
+        absl::Span<const int32_t> num_splits,
         const absl::Span<const int64_t> input_shape,
         const TensorShape& output_slice_shape, int slice_index) {
       output_slice_shape_dsizes_ = ShapeAsEigenDSizes<Rank>(output_slice_shape);
@@ -457,9 +460,9 @@ class XlaSplitNDShared : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr(attr_name, dtype_ptr));
   }
 
-  std::vector<int32> num_splits_;
+  std::vector<int32_t> num_splits_;
   int num_slices_;
-  std::vector<int32> paddings_;
+  std::vector<int32_t> paddings_;
   bool has_paddings_;
 };
 
@@ -588,7 +591,7 @@ class XlaSplitNDOp : public XlaSplitNDBaseOp<Device, T> {
 
     auto assign_or_copy_value_fn = [&ctx](const Tensor& input) -> Status {
       ctx->set_output(/*index=*/0, input);
-      return OkStatus();
+      return absl::OkStatus();
     };
 
     this->ComputeInternal(/*resource=*/false, ctx, assign_or_copy_value_fn,
@@ -612,9 +615,9 @@ class ReadVariableXlaSplitNDOp : public XlaSplitNDBaseOp<Device, T> {
     const Status status = LookupResource(ctx, handle, &variable);
     OP_REQUIRES(
         ctx, status.ok(),
-        errors::InvalidArgument("'resource' variable handle ('", handle.name(),
-                                "') container ('", handle.container(),
-                                "') cannot be found."));
+        absl::InvalidArgumentError(absl::StrCat(
+            "'resource' variable handle ('", handle.name(), "') container ('",
+            handle.container(), "') cannot be found.")));
 
     tf_shared_lock ml(*variable->mu());
     const Tensor* input = variable->tensor();
@@ -632,7 +635,7 @@ class ReadVariableXlaSplitNDOp : public XlaSplitNDBaseOp<Device, T> {
       } else {
         ctx->set_output(/*index=*/0, input);
       }
-      return OkStatus();
+      return absl::OkStatus();
     };
 
     this->ComputeInternal(/*resource=*/true, ctx, assign_or_copy_value_fn,
@@ -680,31 +683,32 @@ class XlaConcatNDShared : public OpKernel {
 
     const TensorShape& slice_shape = inputs[0].shape();
     if (slice_shape.dims() != num_concats_.size()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "'inputs' rank must be the same as 'num_concats' length ",
-          num_concats_.size(), ", but got rank ", slice_shape.dims(), ".");
+          num_concats_.size(), ", but got rank ", slice_shape.dims(), "."));
     }
     for (int i = 1; i < num_slices_; ++i) {
       const TensorShape& slice_shape_i = inputs[i].shape();
       if (slice_shape != slice_shape_i) {
-        return errors::InvalidArgument(
-            "'inputs' must all have the same expected shape ", slice_shape,
-            ", but got ", slice_shape_i, " at index ", i, ".");
+        return absl::InvalidArgumentError(
+            absl::StrCat("'inputs' must all have the same expected shape ",
+                         slice_shape.DebugString(), ", but got ",
+                         slice_shape_i.DebugString(), " at index ", i, "."));
       }
     }
 
     for (int i = 0, e = num_concats_.size(); i < e; ++i) {
       const int max_dim_size = slice_shape.dim_size(i) * num_concats_[i];
       if (paddings_[i] > max_dim_size) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "'paddings' must not exceed expected output shape dimension ",
-            max_dim_size, " at index ", i, ", but got ", paddings_[i], ".");
+            max_dim_size, " at index ", i, ", but got ", paddings_[i], "."));
       }
       TF_RETURN_IF_ERROR(
           output_shape.AddDimWithStatus(max_dim_size - paddings_[i]));
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
   void ApplyAssignOrCopyShared(
       OpKernelContext* ctx,
@@ -726,7 +730,7 @@ class XlaConcatNDShared : public OpKernel {
     Eigen::DSizes<Eigen::DenseIndex, Rank> non_padded_slice_shape_dsizes_;
 
     TF_ATTRIBUTE_NOINLINE MaybeUnpadAndAssignState(
-        absl::Span<const int32> num_concats, const Tensor& input0,
+        absl::Span<const int32_t> num_concats, const Tensor& input0,
         Tensor* output, int slice_index) {
       slice_shape_dsizes_ = input0.shape().AsEigenDSizes<Rank>();
       slice_indices_ =
@@ -756,9 +760,9 @@ class XlaConcatNDShared : public OpKernel {
     }
   };
 
-  std::vector<int32> num_concats_;
+  std::vector<int32_t> num_concats_;
   int num_slices_;
-  std::vector<int32> paddings_;
+  std::vector<int32_t> paddings_;
   bool has_paddings_;
 };
 
@@ -776,9 +780,9 @@ class XlaConcatNDBaseOp : public XlaConcatNDShared {
     const int rank = inputs[0].shape().dims();
 
     OP_REQUIRES(ctx, rank > 0 && rank <= 8,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "'inputs' tensors must have rank in range (0, 8], but got ",
-                    rank, "."));
+                    rank, ".")));
 
     if (num_slices_ == 1 && !has_paddings_) {
       // Simple case
@@ -849,7 +853,7 @@ class XlaConcatNDOp : public XlaConcatNDBaseOp<Device, T> {
 
     auto assign_or_copy_value_fn = [&ctx](const Tensor& input) -> Status {
       ctx->set_output(/*index=*/0, input);
-      return OkStatus();
+      return absl::OkStatus();
     };
 
     auto get_output_fn = [&ctx, &output_shape]() -> StatusOr<Tensor*> {
@@ -888,16 +892,17 @@ class AssignVariableXlaConcatNDOp : public XlaConcatNDBaseOp<Device, T> {
                   CreateResourceInvalidDTypeError<true>(
                       handle, dtype_and_shape.dtype, dtype_));
       OP_REQUIRES(ctx, dtype_and_shape.shape.IsCompatibleWith(output_shape),
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "'resource' variable handle ('", handle.name(),
                       "') container ('", handle.container(),
                       "') shape must be compatible with expected shape ",
-                      output_shape, ", but got ", dtype_and_shape.shape, "."));
+                      output_shape.DebugString(), ", but got ",
+                      dtype_and_shape.shape.DebugString(), ".")));
     }
     OP_REQUIRES_OK(ctx, LookupOrCreateResource<Var>(ctx, handle, &variable,
                                                     [this](Var** ptr) {
                                                       *ptr = new Var(dtype_);
-                                                      return OkStatus();
+                                                      return absl::OkStatus();
                                                     }));
     mutex_lock ml(*variable->mu());
 
@@ -915,7 +920,7 @@ class AssignVariableXlaConcatNDOp : public XlaConcatNDBaseOp<Device, T> {
       } else {
         *variable->tensor() = input;
       }
-      return OkStatus();
+      return absl::OkStatus();
     };
 
     auto get_output_fn = [this, &ctx, &output_shape,

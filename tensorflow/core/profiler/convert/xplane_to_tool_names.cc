@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/profiler/convert/repository.h"
+#include "tensorflow/core/profiler/convert/xplane_to_dcn_collective_stats.h"
 #include "tensorflow/core/profiler/convert/xplane_to_hlo.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
@@ -55,6 +56,12 @@ StatusOr<std::string> GetAvailableToolNames(
     if (has_hlo) {
       tools.push_back("memory_viewer");
       tools.push_back("graph_viewer");
+    }
+
+    TF_ASSIGN_OR_RETURN(bool has_dcn_collective_stats,
+                        HasDcnCollectiveStatsInMultiXSpace(session_snapshot));
+    if (has_dcn_collective_stats) {
+      tools.push_back("dcn_collective_stats");
     }
   }
 

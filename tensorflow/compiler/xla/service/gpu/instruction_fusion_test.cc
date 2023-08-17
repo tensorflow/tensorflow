@@ -426,19 +426,6 @@ static int Count(const HloModule& module, HloOpcode op) {
   return count;
 }
 
-// Returns an HLO instruction from the given computation with the op code.
-static StatusOr<const HloInstruction*> FindHloInstruction(
-    const HloComputation& computation, HloOpcode op) {
-  for (const auto* instruction : computation.instructions()) {
-    if (instruction->opcode() == op) {
-      return instruction;
-    }
-  }
-  return NotFound(
-      "Computation '%s' does not contain an instruction with op code '%s'.",
-      computation.name(), HloOpcodeString(op));
-}
-
 TEST_F(InstructionFusionTest, MultiOutputFusion) {
   // sub --> add --> tuple
   //  \---------------/
@@ -831,5 +818,74 @@ TEST_F(InstructionFusionTest, InputReductionFusion) {
   EXPECT_EQ(fused_convert_fusion->fusion_kind(),
             HloInstruction::FusionKind::kInput);
 }
+
+TEST_F(InstructionFusionTest, DotStrengthReductionFusion) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule test_module
+
+scalar_add_computation {
+  scalar_rhs = f32[] parameter(1)
+  scalar_lhs = f32[] parameter(0)
+  ROOT add.1 = f32[] add(scalar_lhs, scalar_rhs)
+}
+
+ENTRY main {
+  param_1.3 = f16[16,64,96,6,2,16]{5,4,3,2,1,0} parameter(1)
+  param_0.6 = f16[16,64,96,1,2,16]{5,4,3,2,1,0} parameter(0)
+  bitcast.26 = f16[16,64,96,2,16]{4,3,2,1,0} bitcast(param_0.6)
+  broadcast.4 = f16[16,64,96,6,2,16]{5,4,3,2,1,0} broadcast(bitcast.26), dimensions={0,1,2,4,5}
+  multiply.4 = f16[16,64,96,6,2,16]{5,4,3,2,1,0} multiply(broadcast.4, param_1.3)
+  convert.8 = f32[16,64,96,6,2,16]{5,4,3,2,1,0} convert(multiply.4)
+  constant_2 = f32[] constant(0)
+  reduce.3 = f32[16,64,96,6,2]{3,4,2,1,0} reduce(convert.8, constant_2), dimensions={5}, to_apply=scalar_add_computation
+  bitcast.25 = f32[16,64,96,2,6]{4,3,2,1,0} bitcast(reduce.3)
+  convert.7 = f16[16,64,96,2,6]{4,3,2,1,0} convert(bitcast.25)
+  ROOT bitcast.24 = f16[16,64,96,2,1,6]{5,4,3,2,1,0} bitcast(convert.7)
+})")
+                    .value();
+
+  EXPECT_TRUE(duplicating_instruction_fusion_.Run(module.get()).value());
+
+  HloInstruction* fused_convert_fusion =
+      module->entry_computation()->root_instruction();
+
+  ASSERT_THAT(fused_convert_fusion, op::Fusion());
+  SCOPED_TRACE(module->ToString());
+  EXPECT_EQ(fused_convert_fusion->fusion_kind(),
+            HloInstruction::FusionKind::kInput);
+  EXPECT_EQ(Count(*module, HloOpcode::kFusion), 1);
+}
+
+TEST_F(InstructionFusionTest, ReductionFusionOtherUnaryElementwiseOpsAreFused) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule test_module
+
+scalar_add_computation {
+  scalar_rhs = f32[] parameter(1)
+  scalar_lhs = f32[] parameter(0)
+  ROOT add.1 = f32[] add(scalar_lhs, scalar_rhs)
+}
+
+ENTRY main {
+  param_0 = f16[64,96,6,16]{3,2,1,0} parameter(0)
+  constant_2 = f32[] constant(0)
+  reduce.3 = f32[64,6,16]{2,1,0} reduce(param_0, constant_2), dimensions={1}, to_apply=scalar_add_computation
+  negate = f32[64,6,16]{2,1,0} negate(reduce.3)
+  ROOT sine = f16[64,6,16]{2,1,0} sine(negate)
+})")
+                    .value();
+
+  EXPECT_TRUE(duplicating_instruction_fusion_.Run(module.get()).value());
+
+  HloInstruction* fused_convert_fusion =
+      module->entry_computation()->root_instruction();
+
+  ASSERT_THAT(fused_convert_fusion, op::Fusion());
+  SCOPED_TRACE(module->ToString());
+  EXPECT_EQ(fused_convert_fusion->fusion_kind(),
+            HloInstruction::FusionKind::kInput);
+  EXPECT_EQ(Count(*module, HloOpcode::kFusion), 1);
+}
+
 }  // namespace gpu
 }  // namespace xla

@@ -15,17 +15,11 @@ limitations under the License.
 
 #include <fuzzer/FuzzedDataProvider.h>
 
-#include <iostream>
-#include <memory>
 #include <string>
-#include <vector>
 
 #include "fuzztest/fuzztest.h"
-#include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/text_literal_reader.h"
-#include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/env.h"
 
 namespace xla {
@@ -33,15 +27,16 @@ namespace {
 
 void FuzzFileRead(std::string data) {
   std::string fname = "/tmp/ReadsR3File.txt";
-  if (!tsl::WriteStringToFile(tsl::Env::Default(), fname, data.c_str()).ok()) {
+  if (!tsl::WriteStringToFile(tsl::Env::Default(), fname, data).ok()) {
     return;
   }
-
-  if (TextLiteralReader::ReadPath(fname).ok()) {
-    return;
-  }
+  TextLiteralReader::ReadPath(fname).IgnoreError();
 }
 FUZZ_TEST(TextReaderFuzzer, FuzzFileRead);
 
+void FuzzHLOParseUnverified(std::string data) {
+  xla::ParseAndReturnUnverifiedModule(data).IgnoreError();
+}
+FUZZ_TEST(TextReaderFuzzer, FuzzHLOParseUnverified);
 }  // namespace
 }  // namespace xla

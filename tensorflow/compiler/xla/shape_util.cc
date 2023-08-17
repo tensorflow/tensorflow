@@ -447,6 +447,9 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 /* static */ Shape ShapeUtil::MakeStaticShape(const Shape& original) {
   Shape result = original;
   result.clear_dynamic_dimensions();
+  if (result.has_layout()) {
+    result.mutable_layout()->set_dynamic_shape_metadata_prefix_bytes(0);
+  }
   return result;
 }
 
@@ -2031,6 +2034,7 @@ Shape ShapeUtil::DeviceShapeToHostShape(Shape s) {
       subshape->mutable_layout()->set_memory_space(Layout::kDefaultMemorySpace);
       subshape->mutable_layout()->clear_physical_shape();
       subshape->mutable_layout()->set_element_size_in_bits(0);
+      subshape->mutable_layout()->set_dynamic_shape_metadata_prefix_bytes(0);
     }
   });
   return s;

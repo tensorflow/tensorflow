@@ -133,17 +133,14 @@ std::shared_ptr<PyTreeRegistry> DefaultPyTreeRegistry() {
     keys.push_back(py::reinterpret_borrow<py::object>(key));
   }
 
-  int ret = 0;
-  std::stable_sort(keys.begin(), keys.end(),
-                   [&ret](const py::object& a, const py::object& b) {
-                     int cmp =
-                         PyObject_RichCompareBool(a.ptr(), b.ptr(), Py_LT);
-                     if (cmp == -1) ret = -1;
-                     return cmp;
-                   });
-  if (ret == -1) {
-    throw py::error_already_set();
-  }
+  std::stable_sort(
+      keys.begin(), keys.end(), [](const py::object& a, const py::object& b) {
+        int cmp = PyObject_RichCompareBool(a.ptr(), b.ptr(), Py_LT);
+        if (cmp == -1) {
+          throw py::error_already_set();
+        }
+        return cmp;
+      });
   return keys;
 }
 

@@ -15,19 +15,20 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/layout.h"
 
+#include <cstdint>
 #include <memory>
 #include <ostream>
 #include <string>
-#include <string_view>
 #include <utility>
-#include <vector>
 
-#include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace xla {
 
@@ -72,7 +73,7 @@ Layout::Layout(absl::Span<const int64_t> minor_to_major,
                absl::Span<const bool> dim_unique,
                absl::Span<const bool> dim_ordered, absl::Span<const Tile> tiles,
                PrimitiveType index_primitive_type,
-               PrimitiveType pointer_primitive_type,
+               PrimitiveType element_primitive_type,
                int64_t element_size_in_bits, int64_t memory_space,
                std::unique_ptr<Shape> physical_shape,
                int64_t dynamic_shape_metadata_prefix_bytes)
@@ -82,7 +83,7 @@ Layout::Layout(absl::Span<const int64_t> minor_to_major,
       minor_to_major_(minor_to_major.begin(), minor_to_major.end()),
       tiles_(tiles.begin(), tiles.end()),
       index_primitive_type_(index_primitive_type),
-      pointer_primitive_type_(pointer_primitive_type),
+      pointer_primitive_type_(element_primitive_type),
       element_size_in_bits_(element_size_in_bits),
       memory_space_(memory_space),
       physical_shape_(std::move(physical_shape)),

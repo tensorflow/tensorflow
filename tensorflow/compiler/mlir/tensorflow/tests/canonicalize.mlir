@@ -1350,7 +1350,7 @@ func.func @testWhileRegionSimplePassThrough(%arg0 : tensor<*xf32>, %arg1 : tenso
       ^bb0(%carg0: tensor<*xf32>, %carg1: tensor<i32>):
       %zero = arith.constant dense<0> : tensor<i32>
       %ne = "tf.NotEqual"(%carg1, %zero) : (tensor<i32>, tensor<i32>) -> tensor<i1>
-      "tf.Yield"(%ne) : (tensor<i1>) -> ()
+      "tf.Yield"(%ne, %carg0, %carg1) : (tensor<i1>, tensor<*xf32>, tensor<i32>) -> ()
     },
     {
       // loop body
@@ -1429,7 +1429,7 @@ func.func @testWhileRegionMultiplePassThroughNonContiguous(%arg0 : tensor<*xf32>
       ^bb0(%carg0 : tensor<*xf32>, %carg1 : tensor<*xf32>, %carg2 : tensor<*xf32>, %carg3 : tensor<i32>):
       %zero = arith.constant dense<0> : tensor<i32>
       %ne = "tf.NotEqual"(%carg3, %zero) : (tensor<i32>, tensor<i32>) -> tensor<i1>
-      "tf.Yield"(%ne) : (tensor<i1>) -> ()
+      "tf.Yield"(%ne, %carg0, %carg1, %carg2, %carg3) : (tensor<i1>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<i32>) -> ()
     },
     {
       // loop body
@@ -1561,6 +1561,28 @@ func.func @testWhileRegionPassThroughExplicitCast(%arg0 : tensor<i32>, %arg1 : t
   ) { is_stateless = false } : (tensor<i32>, tensor<*xi32>) -> (tensor<i32>, tensor<i32>)
   // CHECK: return [[CAST1]]
   func.return %0#1 : tensor<i32>
+}
+
+// Pass through with forwarded operands in the condition block yield.
+// CHECK-LABEL: testWhileRegionPassThroughWithForwarded
+func.func @testWhileRegionPassThroughWithForwarded(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) -> tensor<*xf32> {
+  // CHECK: "tf.WhileRegion"(%arg1)
+  %0:2 = "tf.WhileRegion"(%arg0, %arg1) (
+    {
+      ^bb0(%carg0: tensor<*xf32>, %carg1: tensor<i32>):
+      %zero = arith.constant dense<0> : tensor<i32>
+      %ne = "tf.NotEqual"(%carg1, %zero) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+      "tf.Yield"(%ne, %carg0, %carg1) : (tensor<i1>, tensor<*xf32>, tensor<i32>) -> ()
+    },
+    {
+      ^bb0(%barg0: tensor<*xf32>, %barg1: tensor<i32>):
+      %one = arith.constant dense<1> : tensor<i32>
+      %sub = "tf.Sub"(%barg1, %one) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+      "tf.Yield"(%barg0, %sub) : (tensor<*xf32>, tensor<i32>) -> ()
+    }
+  ) { is_stateless = false } : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
+  // CHECK: return %arg0 : tensor<*xf32>
+  func.return %0#0 : tensor<*xf32>
 }
 
 // Check that output_shapes attribute is removed for tf.If
@@ -2084,7 +2106,7 @@ func.func @testXlaConvToV2(%lhs: tensor<8x4x16x16x16xf32>, %rhs: tensor<4x3x3x16
 
 // CHECK-LABEL: testXlaReduceToXlaVariadicReduceV2
 func.func @testXlaReduceToXlaVariadicReduceV2(%arg0: tensor<*xbf16>, %arg1: tensor<*xbf16>) -> tensor<*xbf16> {
-  // CHECK: "tf.XlaVariadicReduceV2"(%arg0, %arg1) {dimensions_to_reduce = [], operand_segment_sizes = array<i32: 1, 1>, reducer = @sum1} : (tensor<*xbf16>, tensor<*xbf16>) -> tensor<*xbf16>
+  // CHECK: "tf.XlaVariadicReduceV2"(%arg0, %arg1) {dimensions_to_reduce = [], operandSegmentSizes = array<i32: 1, 1>, reducer = @sum1} : (tensor<*xbf16>, tensor<*xbf16>) -> tensor<*xbf16>
   %0 = "tf.XlaReduce"(%arg0, %arg1) {dimensions_to_reduce = [], reducer = @sum1} : (tensor<*xbf16>, tensor<*xbf16>) -> tensor<*xbf16>
   func.return %0 : tensor<*xbf16>
 }
@@ -2096,7 +2118,7 @@ func.func private @sum1(%arg0: tensor<*xbf16>, %arg1: tensor<*xbf16>) -> tensor<
 
 // CHECK-LABEL: testXlaVariadicReduceToV2
 func.func @testXlaVariadicReduceToV2(%arg0: tensor<3x4xf32>, %arg1: tensor<f32>) -> tensor<?x?xf32> {
-  // CHECK:  "tf.XlaVariadicReduceV2"(%arg0, %arg1) {dimensions_to_reduce = [], operand_segment_sizes = array<i32: 1, 1>, reducer = @sum2} : (tensor<3x4xf32>, tensor<f32>) -> tensor<?x?xf32>
+  // CHECK:  "tf.XlaVariadicReduceV2"(%arg0, %arg1) {dimensions_to_reduce = [], operandSegmentSizes = array<i32: 1, 1>, reducer = @sum2} : (tensor<3x4xf32>, tensor<f32>) -> tensor<?x?xf32>
   %0 = "tf.XlaVariadicReduce"(%arg0, %arg1) {dimensions_to_reduce = [], reducer = @sum2} : (tensor<3x4xf32>, tensor<f32>) -> tensor<?x?xf32>
   func.return %0 : tensor<?x?xf32>
 }

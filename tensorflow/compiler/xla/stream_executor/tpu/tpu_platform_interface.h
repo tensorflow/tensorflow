@@ -16,10 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_TPU_PLATFORM_INTERFACE_H_
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_TPU_PLATFORM_INTERFACE_H_
 
+#include <cstdint>
+
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_topology.h"
-#include "tensorflow/tsl/platform/types.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace tensorflow {
 namespace tpu {

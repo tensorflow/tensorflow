@@ -1946,42 +1946,6 @@ def LowerQuantizedPass : Pass<"tf-lower-quantized", "mlir::func::FuncOp"> {
   let constructor = "TF::CreateLowerQuantizedPass()";
 }
 
-def OutsideCompiledToHostLaunchPass : Pass<"tf-outside-compiled-to-host-launch", "ModuleOp"> {
-  let summary = "Wraps each op with the _xla_outside_compiled attribute in a separate tf_device.launch on replicated host device.";
-
-  let description = [{
-    This pass wraps ops with the same `_xla_outside_compilation`
-    attribute value in a tf_device.launch op with host device assignment.
-
-    A simple example:
-
-    ```mlir
-      "tf_device.cluster"() ( {
-        "tf.A"()
-        "tf.B"() {_xla_outside_compilation = "cluster1"}
-        "tf.C"()
-        tf_device.return
-      }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []}
-    ```
-
-    Would become the following ops (unimportant attribute, type are omitted):
-
-    ```mlir
-      "tf_device.cluster"() ( {
-        "tf.A"()
-        "tf_device.launch"() {
-          "tf.B"() {_xla_outside_compilation = "cluster1"}
-          tf_device.return
-        } {device = "TPU_REPLICATED_HOST_0"} : () -> ()
-        "tf.C"()
-        tf_device.return
-      }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []}
-    ```
-  }];
-
-  let constructor = "TFTPU::CreateOutsideCompiledToHostLaunchPass()";
-}
-
 def TPUHostComputationExpansionPass : Pass<"tf-tpu-host-computation-expansion", "mlir::func::FuncOp"> {
   let summary = "Expands host computation before and after TPU computation.";
 

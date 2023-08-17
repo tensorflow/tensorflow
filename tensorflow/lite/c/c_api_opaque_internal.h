@@ -29,6 +29,8 @@ namespace internal {
 
 class CommonOpaqueConversionUtil {
  public:
+  CommonOpaqueConversionUtil() = delete;
+
   // Obtain (or create) a 'TfLiteRegistrationExternal' object that corresponds
   // to the provided 'registration' argument, and return the address of the
   // external registration.  We loosely define that a

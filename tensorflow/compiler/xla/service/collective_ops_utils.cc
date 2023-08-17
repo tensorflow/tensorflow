@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 
+#include <cstdint>
 #include <optional>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -28,23 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
-
-namespace {
-StatusOr<ReplicaGroup> DeviceIdGroupToFlattenedIdGroup(
-    const DeviceAssignment& device_assignment,
-    const std::vector<GlobalDeviceId>& device_id_group) {
-  ReplicaGroup flattened_id_group;
-  for (const GlobalDeviceId& device_id : device_id_group) {
-    TF_ASSIGN_OR_RETURN(const DeviceAssignment::LogicalID logical_id,
-                        device_assignment.LogicalIdForDevice(device_id));
-    flattened_id_group.add_replica_ids(
-        logical_id.replica_id * device_assignment.computation_count() +
-        logical_id.computation_id);
-  }
-  return flattened_id_group;
-}
-
-}  // namespace
 
 // Match the instruction to a reduction kind. We can represent and/or of pred as
 // min/max. This works because pred is stored as an 8-bit int of value 0 or 1.
@@ -276,14 +261,27 @@ StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
     const DeviceAssignment& device_assignment,
     absl::Span<const ReplicaGroup> replica_groups,
     CollectiveOpGroupMode group_mode) {
+  // Compute the device_id to flattened_id mapping once to avoid brute force
+  // searching through device assignment repeatedly.
+  absl::flat_hash_map<GlobalDeviceId, int64_t> device_id_to_flattened_id;
+  for (int r = 0; r < device_assignment.replica_count(); ++r) {
+    for (int c = 0; c < device_assignment.computation_count(); ++c) {
+      GlobalDeviceId device_id = GlobalDeviceId(device_assignment(r, c));
+      int64_t flattened_id = r * device_assignment.computation_count() + c;
+      device_id_to_flattened_id[device_id] = flattened_id;
+    }
+  }
+
   std::vector<ReplicaGroup> flattened_id_groups;
   TF_ASSIGN_OR_RETURN(std::vector<std::vector<GlobalDeviceId>> device_groups,
                       GetParticipatingDevicesGroups(
                           device_assignment, replica_groups, group_mode));
   for (const auto& device_group : device_groups) {
-    TF_ASSIGN_OR_RETURN(
-        ReplicaGroup flattened_id_group,
-        DeviceIdGroupToFlattenedIdGroup(device_assignment, device_group));
+    ReplicaGroup flattened_id_group;
+    flattened_id_group.mutable_replica_ids()->Reserve(device_group.size());
+    for (const GlobalDeviceId& device_id : device_group) {
+      flattened_id_group.add_replica_ids(device_id_to_flattened_id[device_id]);
+    }
     flattened_id_groups.push_back(flattened_id_group);
   }
   return flattened_id_groups;

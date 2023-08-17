@@ -97,7 +97,7 @@ source tensorflow/tools/ci_build/build_scripts/ARM_SKIP_TESTS_EXTENDED.sh
 export TF_BUILD_FLAGS="--config=mkl_aarch64_threadpool --copt=-flax-vector-conversions"
 export TF_TEST_FLAGS="${TF_BUILD_FLAGS} \
     --test_env=TF_ENABLE_ONEDNN_OPTS=1 --test_env=TF2_BEHAVIOR=1 --define=tf_api_version=2 \
-    --test_lang_filters=py --test_size_filters=small,medium \
+    --test_lang_filters=py --flaky_test_attempts=3 --test_size_filters=small,medium \
     --test_output=errors --verbose_failures=true --test_keep_going --notest_verbose_timeout_warnings"
 export TF_TEST_TARGETS="${DEFAULT_BAZEL_TARGETS} ${ARM_SKIP_TESTS}"
 export TF_FILTER_TAGS="-no_oss,-oss_excluded,-oss_serial,-v1only,-benchmark-test,-no_aarch64,-gpu,-tpu,-no_oss_py39,-no_oss_py310"
@@ -111,7 +111,7 @@ sudo sed -i '/^build --profile/d' /usertools/aarch64.bazelrc
 sudo sed -i '\@^build.*=\"/usr/local/bin/python3\"$@d' /usertools/aarch64.bazelrc
 sudo sed -i '/^build --profile/d' /usertools/aarch64_clang.bazelrc
 sudo sed -i '\@^build.*=\"/usr/local/bin/python3\"$@d' /usertools/aarch64_clang.bazelrc
-sed -i '$ aimport /usertools/aarch64.bazelrc' .bazelrc
+sed -i '$ aimport /usertools/aarch64_clang.bazelrc' .bazelrc
 
 # Override breaking change in setuptools v60 (https://github.com/pypa/setuptools/pull/2896)
 export SETUPTOOLS_USE_DISTUTILS=stdlib

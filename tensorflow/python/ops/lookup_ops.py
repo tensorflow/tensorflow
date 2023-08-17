@@ -2055,6 +2055,23 @@ class MutableHashTable(LookupInterface):
             restored_tensors["-keys"],
             restored_tensors["-values"])
 
+  def _copy_trackable_to_cpu(self, object_map):
+    """Implements checkpointing protocols for `Trackable`."""
+    if self not in object_map:
+      # If self is not already populated in object map, instantiate the copy
+      object_map[self] = MutableHashTable(
+          self._key_dtype,
+          self._value_dtype,
+          self._default_value,
+          self._name,
+          self._checkpoint,
+          self._is_anonymous
+      )
+
+    # Copy values from `self` to copy of `self`
+    serialized = self._serialize_to_tensors()
+    object_map[self]._restore_from_tensors(serialized)  # pylint: disable=protected-access
+
     # This class is needed for `MutableHashTable(checkpoint=True)`.
   class _Saveable(BaseSaverBuilder.SaveableObject):
     """SaveableObject implementation for DenseHashTable."""
@@ -2389,6 +2406,26 @@ class DenseHashTable(LookupInterface):
             self.resource_handle,
             restored_tensors["-keys"],
             restored_tensors["-values"])
+
+  def _copy_trackable_to_cpu(self, object_map):
+    """Implements checkpointing protocols for `Trackable`."""
+    if self not in object_map:
+      # If self is not already populated in object map, instantiate the copy
+      object_map[self] = DenseHashTable(
+          self._key_dtype,
+          self._value_dtype,
+          self._default_value,
+          self._empty_key,
+          self._deleted_key,
+          self._initial_num_buckets,
+          self._name,
+          self._checkpoint,
+          self._is_anonymous
+      )
+
+    # Copy values from `self` to copy of `self`
+    serialized = self._serialize_to_tensors()
+    object_map[self]._restore_from_tensors(serialized)  # pylint: disable=protected-access
 
   # This class is needed for `DenseHashTable(checkpoint=True)`.
   class _Saveable(BaseSaverBuilder.SaveableObject):

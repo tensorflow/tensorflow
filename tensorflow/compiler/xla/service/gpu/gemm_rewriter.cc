@@ -27,6 +27,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/hlo/evaluator/hlo_evaluator.h"
 #include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -224,7 +225,7 @@ bool IsSupportedF8Pattern(HloInstruction *instr, HloInstruction *&x,
     return ShapeUtil::SameElementType(instr->shape(),
                                       instr->operand(0)->shape());
   };
-  auto allgather_allowed = [](const HloInstruction *instr) -> bool {
+  auto use_spmd_partitioning = [](const HloInstruction *instr) -> bool {
     return instr->GetModule()->config().use_spmd_partitioning();
   };
   for (int i = 3; i < subgraph->size(); ++i) {
@@ -238,7 +239,8 @@ bool IsSupportedF8Pattern(HloInstruction *instr, HloInstruction *&x,
             m::AnyOf<HloInstruction>(
                 m::Bitcast().WithPredicate(preserves_element_type),
                 m::Broadcast(), m::Copy(), m::Pad(), m::Reshape(), m::Slice(),
-                m::AllGather().WithPredicate(allgather_allowed)))) {
+                m::AllGather().WithPredicate(use_spmd_partitioning),
+                m::AllToAll().WithPredicate(use_spmd_partitioning)))) {
       VLOG(1) << "Possible intended FP8 GEMM operating on "
               << instr->ToShortString()
               << " not rewritten into FP8 Custom Call.";
@@ -802,14 +804,25 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     return false;
 #endif  // CUDA_VERSION < 12000
 
+    PrimitiveType a_type = a->shape().element_type();
+    PrimitiveType b_type = b->shape().element_type();
+
     // cuBLASLt FP8 GEMM kernels require one of the two operands to be in
     // F8E4M3FN format.
-    if (a->shape().element_type() == F8E5M2 &&
-        b->shape().element_type() == F8E5M2) {
+    if (a_type == F8E5M2 && b_type == F8E5M2) {
       VLOG(1)
           << "Failed to rewrite " << instr->ToShortString()
           << " into FP8 Custom Call. The element type of one of the operands "
              "must be F8E4M3FN.";
+      return false;
+    }
+    if ((a_type != F8E5M2 && a_type != F8E4M3FN) ||
+        (b_type != F8E5M2 && b_type != F8E4M3FN)) {
+      VLOG(1) << "Failed to rewrite " << instr->ToShortString()
+              << " into FP8 Custom Call. The input types must be F8E5M2 or "
+                 "F8E4M3FN, but got "
+              << PrimitiveType_Name(a_type) << " and "
+              << PrimitiveType_Name(b_type);
       return false;
     }
 

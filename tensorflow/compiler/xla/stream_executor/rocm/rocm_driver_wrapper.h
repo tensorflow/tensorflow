@@ -98,6 +98,8 @@ namespace wrap {
   __macro(hipGraphExecUpdate)                       \
   __macro(hipGraphInstantiate)                      \
   __macro(hipGraphLaunch)                           \
+  __macro(hipGraphCreate)                           \
+  __macro(hipGraphAddKernelNode)                    \
   __macro(hipHostFree)                              \
   __macro(hipHostMalloc)                            \
   __macro(hipHostRegister)                          \

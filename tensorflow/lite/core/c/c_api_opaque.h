@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_CORE_C_C_API_OPAQUE_H_
 #define TENSORFLOW_LITE_CORE_C_C_API_OPAQUE_H_
 
+#include <stddef.h>
+
 #include "tensorflow/lite/core/c/c_api.h"
 #include "tensorflow/lite/core/c/c_api_types.h"  // IWYU pragma: export
 #include "tensorflow/lite/core/c/common.h"
@@ -269,6 +271,22 @@ TfLiteStatus TfLiteOpaqueNodeTemporaries(const TfLiteOpaqueNode* opaque_node,
                                          const int** temporaries,
                                          int* num_temporaries);
 
+// Given an 'index_of_input', which must be in the range of [0, N), where N is
+// the number of input tensors of the provided 'opaque_node', returns the
+// (global) index of the tensor that holds the input.  Returns -1 if
+// 'index_of_input' is not within the [0, N) range.
+TFL_CAPI_EXPORT
+int TfLiteOpaqueNodeGetInputTensorIndex(const TfLiteOpaqueNode* opaque_node,
+                                        int index_of_input);
+
+// Given an 'index_of_output', which must be in the range of [0, N), where N is
+// the number of output tensors of the provided 'opaque_node', returns the
+// (global) index of the tensor that holds the output.  Returns -1 if
+// 'index_of_output' is not within the [0, N) range.
+TFL_CAPI_EXPORT
+int TfLiteOpaqueNodeGetOutputTensorIndex(const TfLiteOpaqueNode* opaque_node,
+                                         int index_of_output);
+
 // --------------------------------------------------------------------------
 // Accessors for TfLiteOpaqueContext.
 
@@ -510,6 +528,12 @@ TFL_CAPI_EXPORT
 TfLiteStatus TfLiteOpaqueContextAddTensors(TfLiteOpaqueContext* context,
                                            int tensors_to_add,
                                            int* first_new_tensor_index);
+
+// Populates the size in bytes of a provide 'type' into 'bytes'.  Returns
+// 'kTfLiteOk' for valid types, and 'kTfLiteError' otherwise.
+TFL_CAPI_EXPORT
+TfLiteStatus TfLiteOpaqueContextGetSizeOfType(TfLiteOpaqueContext* context,
+                                              TfLiteType type, size_t* bytes);
 
 /// Reports an error message formed by using the provided 'format' string in
 /// combination with the data provided via the unnamed arguments following

@@ -91,21 +91,6 @@ static mlir::LogicalResult DiagnosticHandler(mlir::Diagnostic& diag) {
   return mlir::failure();
 }
 
-static bool HasFp8(const HloModule& hlo_module) {
-  for (const HloComputation* computation : hlo_module.computations()) {
-    for (const HloInstruction* instruction : computation->instructions()) {
-      if (ShapeUtil::HasPrimitiveType(instruction->shape(), F8E5M2) ||
-          ShapeUtil::HasPrimitiveType(instruction->shape(), F8E5M2FNUZ) ||
-          ShapeUtil::HasPrimitiveType(instruction->shape(), F8E4M3FN) ||
-          ShapeUtil::HasPrimitiveType(instruction->shape(), F8E4M3B11FNUZ) ||
-          ShapeUtil::HasPrimitiveType(instruction->shape(), F8E4M3FNUZ)) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
 // Lowers MLIR module to the XLA Gpu runtime custom calls.
 static Status LowerToXlaGpuRuntime(mlir::ModuleOp module,
                                    llvm::StringRef entry_function_name,
@@ -143,7 +128,11 @@ static Status LowerToXlaGpu2Runtime(mlir::ModuleOp module,
   RuntimeBackend backend = debug_options.xla_gpu_enable_gpu2_hal()
                                ? RuntimeBackend::kHAL
                                : RuntimeBackend::kStreamExecutor;
-  populateGpu2RuntimePasses(pm, thunk_sequence, backend);
+
+  Gpu2PipelineOpts opts;
+  opts.graph_level = debug_options.xla_gpu_graph_level();
+
+  populateGpu2RuntimePasses(pm, thunk_sequence, backend, opts);
 
   if (pm.run(module).failed()) {
     return InternalError(
@@ -433,8 +422,8 @@ Status CompileModuleToLlvmIrImpl(
       registry, mlir::MLIRContext::Threading::DISABLED);
 
   mlir_context->getDiagEngine().registerHandler(DiagnosticHandler);
-  mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
-      mlir::ModuleOp::create(mlir::Builder(mlir_context.get()).getUnknownLoc());
+  mlir::OwningOpRef<mlir::ModuleOp> mlir_module = mlir::ModuleOp::create(
+      mlir::Builder(mlir_context.get()).getUnknownLoc(), hlo_module->name());
 
   TF_RETURN_IF_ERROR(
       HloToLhloModule(*results->buffer_assignment, *hlo_module, *mlir_module));
@@ -493,10 +482,7 @@ Status CompileModuleToLlvmIrImpl(
       results->allocations, std::back_inserter(buffer_sizes),
       [](const BufferAllocation& allocation) { return allocation.size(); });
 
-  // TODO(ezhulenev): Remove the FP8 check once https://reviews.llvm.org/D140088
-  // is submitted. Currently we can't emit LLVM IR with fp8 types.
-  if (IsXlaRuntimeExecutableEnabled(hlo_module->config()) &&
-      !HasFp8(*hlo_module)) {
+  if (IsXlaRuntimeExecutableEnabled(hlo_module->config())) {
     TF_ASSIGN_OR_RETURN(
         results->executable,
         LowerToJitRt(*mlir_module, entry_function.getName(), buffer_sizes,

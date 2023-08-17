@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/substitute.h"
 #include "absl/time/time.h"
@@ -349,10 +350,10 @@ DataServiceClient::CreateAlternativeWorkerClientWithGrpcFallback(
               << task_info.worker_address() << "'.";
     return worker;
   }
-  LOG(ERROR) << "Failed to start client for data transfer protocol '"
-             << transfer_server.protocol() << "' for worker '"
-             << task_info.worker_address() << "'; falling back to grpc. "
-             << "Original error: " << worker.status();
+  LOG(WARNING) << "Failed to start client for data transfer protocol '"
+               << transfer_server.protocol() << "' for worker '"
+               << task_info.worker_address() << "'; falling back to grpc. "
+               << "Original error: " << worker.status();
   metrics::RecordTFDataServiceDataTransferProtocolFallback(
       transfer_server.protocol(),
       static_cast<error::Code>(worker.status().raw_code()),

@@ -187,7 +187,8 @@ HloModule MOF
   %broadcast = f32[512,14,14,672]{3,2,1,0} broadcast(%param_0), dimensions={3}
   %param_1 = f32[512,14,14,672]{3,2,1,0} parameter(1)
   %add = f32[512,14,14,672]{3,2,1,0} add(%broadcast, %param_1)
-  ROOT tupe = (f32[512,14,14,672]{3,2,1,0}, f32[512,14,14,672]{3,2,1,0}) tuple(%add, %add)
+  %neg = f32[512,14,14,672]{3,2,1,0} negate(%add)
+  ROOT tuple = (f32[512,14,14,672]{3,2,1,0}, f32[512,14,14,672]{3,2,1,0}) tuple(%add, %neg)
 }
 
 ENTRY main {

@@ -130,7 +130,8 @@ class Gpu2RuntimeExecutable {
                  const BufferAllocation* temp_alloc);
 
  private:
-  Gpu2RuntimeExecutable(std::unique_ptr<HalDevice> device,
+  Gpu2RuntimeExecutable(std::string module_name, int32_t module_id,
+                        std::unique_ptr<HalDevice> device,
                         std::unique_ptr<Bytecode> bytecode,
                         std::vector<int64_t> buffer_sizes,
                         DebugOptions debug_options, std::string_view asm_text,
@@ -139,6 +140,10 @@ class Gpu2RuntimeExecutable {
                         iree::vm::ref<iree_vm_instance_t> instance,
                         std::unique_ptr<std::vector<iree_vm_module_t*>> modules,
                         iree_vm_function_t function);
+
+  // Module name and unique id of the corresponding HLO module.
+  std::string module_name_;
+  int32_t module_id_;
 
   // TODO(ezhulenev): Devices should be created lazily for each StreamExecutor
   // and share underlying resources. For now we create a CUDA driver and CUDA

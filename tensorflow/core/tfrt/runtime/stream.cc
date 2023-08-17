@@ -14,13 +14,15 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/runtime/stream.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/base/attributes.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -202,8 +204,10 @@ StreamInterfaceFactory& GetGlobalStreamInterfaceFactory() {
 }
 
 StreamCallbackRegistry& GetGlobalStreamCallbackRegistry() {
-  static auto* stream_callback_registry = new StreamCallbackRegistry(
-      GetGlobalStreamInterfaceFactory().CreateStreamInterface().value());
+  static auto* stream_callback_registry =
+      new StreamCallbackRegistry(GetGlobalStreamInterfaceFactory()
+                                     .CreateControllerStreamInterface()
+                                     .value());
   return *stream_callback_registry;
 }
 
