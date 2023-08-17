@@ -943,16 +943,8 @@ class FunctionTest(xla_test.XLATestCase):
       def f(a, b):
         return math_ops.matmul(a, b)
 
-      if not test_util.IsMklEnabled():
-        self.assertRegex(
-            f.experimental_get_compiler_ir(a, b)('optimized_hlo'),
-            '(dot)|(convolution)',
-        )
-      else:
-        self.assertRegex(
-            f.experimental_get_compiler_ir(a, b)('optimized_hlo'),
-            '(dot)|(convolution)|(custom-call)',
-        )
+      self.assertRegex(f.experimental_get_compiler_ir(a, b)('optimized_hlo'),
+                       '(dot)|(convolution)')
 
   def testConstantOnWrongDevice(self):
     with ops.device('device:{}:0'.format(self.device)):

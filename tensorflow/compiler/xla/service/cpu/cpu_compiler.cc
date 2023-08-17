@@ -235,10 +235,6 @@ limitations under the License.
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
 
-#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
-#include "tensorflow/compiler/xla/service/cpu/onednn_rewriter.h"
-#endif
-
 namespace {
 
 // We need to explicitly load all the dialects we will involved in emitting the
@@ -626,7 +622,7 @@ void AddHloVerifier(HloPassPipeline* pipeline, bool allow_sparse_shapes,
 }  // namespace
 
 Status CpuCompiler::RunHloPassesThroughLayoutAssn(
-    HloModule* module, bool is_aot_compile,
+    HloModule* module, bool /*is_aot_compile*/,
     LLVMTargetMachineFeatures* target_machine_features, bool is_mlir_compile) {
   const int64_t num_partitions = module->config().num_partitions();
   if (num_partitions > 1) {
@@ -693,15 +689,6 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<CallInliner>(/*single_call_site=*/true);
   pipeline.AddPass<BatchDotSimplification>();
   pipeline.AddPass<DotDecomposer>();
-
-  // Rewrite to custom calls with target as oneDNN library calls.
-#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
-  // AOT compiled code runs in single thread.
-  if (!is_aot_compile) {
-    pipeline.AddPass<OneDnnRewriter>();
-  }
-#endif  // INTEL_MKL && ENABLE_ONEDNN_V3
-
   // Promote BF16 all-reduce to F32.
   const std::pair<PrimitiveType, PrimitiveType> ar_promoted_types[] = {
       {BF16, F32}};
