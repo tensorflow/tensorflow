@@ -13,27 +13,27 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if !defined(PLATFORM_GOOGLE)
+#include "absl/status/status.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_initializer_framework_helper.h"
-#include "tensorflow/core/platform/status.h"
-#endif
-
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace tensorflow {
 namespace tpu {
+
 namespace {
-Status InitializeTpuLibrary() {
-  Status status = FindAndLoadTpuLibrary();
+absl::Status InitializeTpuLibrary() {
+  absl::Status status = FindAndLoadTpuLibrary();
   if (!status.ok()) {
-    LOG(INFO) << "FindAndLoadTpuLibrary failed with " << status.ToString()
+    LOG(INFO) << "FindAndLoadTpuLibrary failed with " << status
               << ". This is expected if TPU is not used.";
   }
   return status;
 }
 
 #if !defined(PLATFORM_GOOGLE)
-static Status tpu_library_finder = InitializeTpuLibrary();
+static absl::Status tpu_library_finder = InitializeTpuLibrary();
 #endif
 }  // namespace
+
 }  // namespace tpu
 }  // namespace tensorflow
