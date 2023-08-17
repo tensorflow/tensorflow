@@ -301,5 +301,6 @@ class DefaultTypesTest(test.TestCase):
 
     self.assertIs(value, casted_value)
 
+
 if __name__ == '__main__':
   test.main()

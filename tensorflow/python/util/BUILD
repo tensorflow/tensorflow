@@ -683,6 +683,7 @@ py_strict_library(
     deps = [
         ":__init__",
         ":compat",
+        ":custom_nest_protocol",
         "//tensorflow/python/platform:tf_logging",
         # global_test_configuration is added here because all major tests depend on this
         # library. It isn't possible to add these test dependencies via tensorflow.bzl's
@@ -1167,4 +1168,9 @@ py_strict_library(
         ":tf_decorator",
         ":tf_export",
     ],
+)
+
+py_strict_library(
+    name = "custom_nest_protocol",
+    srcs = ["custom_nest_protocol.py"],
 )
