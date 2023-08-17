@@ -363,6 +363,7 @@ py_strict_library(
         "//tensorflow:__pkg__",
     ],
     deps = [
+        "@pypi_six//:pkg",
     ],
 )
 
@@ -375,6 +376,7 @@ py_strict_library(
     deps = [
         ":_tf_stack",
         "//tensorflow/core:protos_all_py",
+        "@pypi_six//:pkg",
     ],
 )
 
@@ -685,6 +687,7 @@ py_strict_library(
         # py_test because not all tensorflow tests use tensorflow.bzl's py_test.
         "//tensorflow/python:global_test_configuration",
         "@pypi_wrapt//:pkg",
+        "@pypi_six//:pkg",
         "//tensorflow/python:pywrap_tensorflow",
         ":_pywrap_utils",
     ],
@@ -701,6 +704,7 @@ py_strict_library(
         # py_test because not all tensorflow tests use tensorflow.bzl's py_test.
         "//tensorflow/python:global_test_configuration",
         ":tf_decorator",
+        "@pypi_six//:pkg",
     ],
 )
 
@@ -797,6 +801,7 @@ py_strict_library(
         "//tensorflow/python:global_test_configuration",
         ":tf_export",
         "//third_party/py/numpy",
+        "@pypi_six//:pkg",
     ],
 )
 
