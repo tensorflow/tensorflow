@@ -17,6 +17,8 @@
 """Sparse Tensor Representation.
 
 See also `tf.sparse.SparseTensor`.
+
+API docstring: tensorflow.sparse
 """
 
 import numbers
