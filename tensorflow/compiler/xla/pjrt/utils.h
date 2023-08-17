@@ -22,6 +22,7 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
@@ -74,6 +75,16 @@ bool HasMajorToMinorLayout(PrimitiveType type, absl::Span<int64_t const> dims,
 StatusOr<Shape> MakeShapeWithTrivialByteStrides(
     PrimitiveType element_type, absl::Span<const int64_t> dimensions,
     absl::Span<const int64_t> byte_strides);
+
+// If a buffer `is_donated`, then it can only be used once. This function
+// records the use into donation_clashes and tests for incompatible uses.
+// Multiple uses are valid iff they are all not donations.  The provided map
+// stores the opaque buffer identity, a bool to denote if the previous use is a
+// donation, and the index of the previous use for better error messages.
+Status TestBufferDonationClashes(
+    void* opaque_key,
+    absl::flat_hash_map<const void*, std::pair<bool, int>>& donation_clashes,
+    bool is_donated, int arg_idx, int replica, int partition);
 
 }  // namespace xla
 

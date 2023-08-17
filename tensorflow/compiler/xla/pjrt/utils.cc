@@ -355,4 +355,37 @@ StatusOr<Shape> MakeShapeWithTrivialByteStrides(
                                              minor_to_major);
 }
 
+Status TestBufferDonationClashes(
+    void* opaque_key,
+    absl::flat_hash_map<const void*, std::pair<bool, int>>& donation_clashes,
+    bool is_donated, int arg_idx, int replica, int partition) {
+  auto [donation_clash_it, first_use] =
+      donation_clashes.emplace(opaque_key, std::make_pair(is_donated, arg_idx));
+  if (!first_use && (is_donated || donation_clash_it->second.first)) {
+    auto [prev_is_donated, prev_arg_idx] = donation_clash_it->second;
+    if (is_donated && prev_is_donated) {
+      return InvalidArgument(
+          "Attempt to donate the same buffer twice in Execute() ("
+          "flattened argument %d, replica %d, partition %d, first use: %d). "
+          "Toy "
+          "example for this bug: `f(donate(a), donate(a))`.",
+          arg_idx, replica, partition, prev_arg_idx);
+    } else if (is_donated) {
+      return InvalidArgument(
+          "Attempt to donate a buffer which is also used by the same call "
+          "to Execute() (flattened argument %d, replica %d, partition %d, "
+          "first use: %d). Toy example for this bug: `f(a, donate(a))`.",
+          arg_idx, replica, partition, prev_arg_idx);
+    } else {
+      return InvalidArgument(
+          "Attempt to use a buffer that was previously donated in the same "
+          "call to Execute() (flattened argument %d, replica %d, partition "
+          "%d, first use: %d). Toy example for this bug: `f(donate(a), "
+          "a)`.",
+          arg_idx, replica, partition, prev_arg_idx);
+    }
+  }
+  return absl::OkStatus();
+}
+
 }  // namespace xla
