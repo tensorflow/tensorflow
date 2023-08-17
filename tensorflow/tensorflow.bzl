@@ -3302,6 +3302,7 @@ def tf_python_pybind_extension_opensource(
         enable_stub_generation = False,
         additional_stubgen_deps = [],
         features = [],
+        pytype_srcs = [],
         testonly = False,
         visibility = None,
         win_def_file = None):
@@ -3328,6 +3329,7 @@ def tf_python_pybind_extension_opensource(
         enable_stub_generation = enable_stub_generation,
         additional_stubgen_deps = additional_stubgen_deps,
         features = features,
+        pytype_srcs = pytype_srcs,
         testonly = testonly,
         visibility = visibility,
         win_def_file = win_def_file,
