@@ -149,6 +149,10 @@ bool ReplicaGroupsOrthogonal(absl::Span<const ReplicaGroup> first,
 // A custom call target that can be used to create a nop that can legally
 // replace a collective op.
 inline constexpr absl::string_view kNopCustomCallTarget = "AllocateBuffer";
+// A custom call target that can be used to create a nop that can legally
+// replace a collective op and it returns a token.
+inline constexpr absl::string_view kNopReturnTokenCustomCallTarget =
+    "NopReturnToken";
 
 // Returns true if instruction is a collective op or a collective fusion.
 bool IsCollective(const HloInstruction* instruction);
