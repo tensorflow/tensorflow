@@ -3946,6 +3946,7 @@ tsl_gpu_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/service:collective_ops_utils",
         "//tensorflow/compiler/xla/service:custom_call_status",
         "//tensorflow/compiler/xla/service:custom_call_target_registry",
         "//tensorflow/compiler/xla/service:platform_util",
@@ -3957,6 +3958,22 @@ tsl_gpu_library(
         "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
+)
+
+xla_cc_test(
+    name = "runtime_intrinsics_test",
+    srcs = ["runtime_intrinsics_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":runtime_intrinsics",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:gpu_plugin",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
+    ],
 )
 
 cc_library(

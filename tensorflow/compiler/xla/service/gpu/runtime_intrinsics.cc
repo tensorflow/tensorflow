@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/custom_call_status.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
@@ -85,10 +86,23 @@ void AssertionCustomCall(void* stream_handle, void** buffers,
   }
 }
 
+void NopReturnTokenCustomCall(void* stream_handle, void** buffers,
+                              const char* opaque, int opaque_len,
+                              XlaCustomCallStatus* status) {
+  VLOG(1) << "NopReturnTokenCustomCall called.";
+}
+
 }  // namespace
 
 XLA_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM(
     std::string(kXlaGpuAssertCustomCallTag), AssertionCustomCall,
+    GetGpuPlatformName());
+
+// This allows measuring exported HLOs where kOutfeed and kSendDone has been
+// replaced with NopReturnToken. In that case the runtime of the original
+// kOutfeed and kSendDone operations is not measured.
+XLA_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM(
+    std::string(kNopReturnTokenCustomCallTarget), NopReturnTokenCustomCall,
     GetGpuPlatformName());
 
 }  // namespace xla
