@@ -63,7 +63,6 @@ cc_library(
         ":quantization_options_proto_cc",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:eval_util",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
     ],

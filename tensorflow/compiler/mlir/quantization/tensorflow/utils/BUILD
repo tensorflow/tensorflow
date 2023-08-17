@@ -113,6 +113,7 @@ tf_cc_test(
     srcs = ["tf_to_xla_attribute_utils_test.cc"],
     deps = [
         ":tf_to_xla_attribute_utils",
+        "//tensorflow/c/eager:c_api",
         "//tensorflow/compiler/mlir/quantization/tensorflow:pass_utils",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "@com_google_googletest//:gtest_main",

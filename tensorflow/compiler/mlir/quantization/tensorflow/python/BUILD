@@ -98,14 +98,13 @@ cc_library(
 tf_python_pybind_extension(
     name = "pywrap_quantize_model",
     srcs = ["pywrap_quantize_model.cc"],
+    hdrs = ["quantize_model.h"],
     # All deps must be header-only.
     deps = [
-        ":quantize_model_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:calibration_statistics_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:calibrator_singleton",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -182,6 +181,7 @@ pytype_strict_library(
         "//tensorflow/python/saved_model:tag_constants",
         "//tensorflow/python/trackable:autotrackable",
         "//tensorflow/python/types:core",
+        "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
         "@absl_py//absl/logging",
     ],
@@ -300,6 +300,7 @@ pytype_strict_library(
         "//tensorflow/python/lib/io:lib",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/types:core",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 

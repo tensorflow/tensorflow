@@ -314,6 +314,7 @@ pytype_strict_library(
         "//tensorflow:__pkg__",
         "//tensorflow:__subpackages__",
         "//tensorflow_estimator:__subpackages__",
+        "//third_party/py/tensorflow_core:__subpackages__",
     ],
     deps = [
         ":tf_decorator",
@@ -361,6 +362,7 @@ py_strict_library(
         "//learning/deepmind/research/language/translation/lm:__subpackages__",
         "//learning/brain/analytics:__subpackages__",
         "//tensorflow:__pkg__",
+        "//third_party/py/tensorflow_core:__subpackages__",
     ],
     deps = [
         "@six_archive//:six",
