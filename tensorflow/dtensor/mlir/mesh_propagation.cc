@@ -572,11 +572,9 @@ mlir::LogicalResult DTensorMeshPropagation::PropagateMeshFromInputs(
     const llvm::DenseMap<mlir::OpOperand*, std::vector<mlir::Value>>& producers,
     mlir::tf_device::ClusterOp cluster, mlir::OpBuilder* builder,
     bool* mesh_changed) {
-  // If operation inside a mesh cluster is not a callable operation and
-  // mesh is already specified on a cluster, do nothing.
-  auto inner_func = MaybeFindFunction(&cluster.GetBody().front());
+  // If mesh is already specified on a cluster, do nothing.
   auto cluster_mesh = cluster->getAttrOfType<mlir::StringAttr>(kMeshAttr);
-  if (!inner_func && cluster_mesh) return mlir::success();
+  if (cluster_mesh) return mlir::success();
 
   // If mesh of `cluster` is not specified, infer mesh using inputs of mesh
   // cluster.
@@ -587,39 +585,7 @@ mlir::LogicalResult DTensorMeshPropagation::PropagateMeshFromInputs(
     return mlir::failure();
   }
 
-  // If operation include 'cluster` is a function call, annotate input and
-  // output mesh of `cluster` using function argument and return value
-  // attributes, then recursively propagate mesh of the function definition.
-  if (inner_func) {
-    // All inputs to cluster must be from the same mesh. If input mesh to
-    // callable operation is inferred, then annotated the input mesh to
-    // function argument attribute so that this information can be used to
-    // infer mesh of ops inside `inner_func`.
-    if (extracted_mesh.has_value()) {
-      AnnotateFunctionArgumentsWithMeshInformation(extracted_mesh.value(),
-                                                   inputs_with_inferred_mesh,
-                                                   inner_func.value(), builder);
-    }
-
-    // Recursively propagate mesh to clusters in function definition of
-    // `inner_func`.
-    if (mlir::failed(PropagateMesh(producers, inner_func.value(), builder,
-                                   mesh_changed)))
-      return mlir::failure();
-
-    // Once all clusters inside `inner_func` callable has been set, now we can
-    // infer mesh of `cluster`. That is, mesh of call site operation is equal
-    // to mesh of return values of the function.
-    std::optional<mlir::StringAttr> function_mesh;
-    if (mlir::failed(InferFunctionDefaultMesh(producers, inner_func.value(),
-                                              builder, &function_mesh)))
-      return mlir::failure();
-
-    if (function_mesh && !cluster_mesh) {
-      *mesh_changed = true;
-      cluster->setAttr(kMeshAttr, function_mesh.value());
-    }
-  } else if (!cluster_mesh && extracted_mesh.has_value()) {
+  if (!cluster_mesh && extracted_mesh.has_value()) {
     *mesh_changed = true;
     cluster->setAttr(kMeshAttr,
                      builder->getStringAttr(extracted_mesh->ToString()));
@@ -632,11 +598,9 @@ mlir::LogicalResult DTensorMeshPropagation::PropagateMeshFromConsumers(
     const llvm::DenseMap<mlir::OpOperand*, std::vector<mlir::Value>>& producers,
     mlir::tf_device::ClusterOp cluster, mlir::OpBuilder* builder,
     bool* mesh_changed) {
-  mlir::Operation* op_inside_cluster = &cluster.GetBody().front();
-  auto inner_func = MaybeFindFunction(op_inside_cluster);
   auto cluster_mesh = cluster->getAttrOfType<mlir::StringAttr>(kMeshAttr);
   // If mesh is already set, then do nothing.
-  if (!inner_func && cluster_mesh) return mlir::success();
+  if (cluster_mesh) return mlir::success();
 
   // Infer mesh of `cluster` from its output usages.
   std::optional<Mesh> extracted_mesh_from_consumers;
@@ -645,28 +609,7 @@ mlir::LogicalResult DTensorMeshPropagation::PropagateMeshFromConsumers(
                                     &consumers_with_mesh_information)))
     return mlir::failure();
 
-  // If operation inside mesh cluster is a function callsite operation,
-  // then propagate mesh of the function recursively.
-  if (inner_func) {
-    if (mlir::failed(AnnotateFunctionReturnValuesWithMeshInformation(
-            consumers_with_mesh_information, op_inside_cluster,
-            inner_func.value(), builder)))
-      return mlir::failure();
-
-    if (mlir::failed(PropagateMesh(producers, inner_func.value(), builder,
-                                   mesh_changed)))
-      return mlir::failure();
-
-    std::optional<mlir::StringAttr> function_mesh;
-    if (mlir::failed(InferFunctionDefaultMesh(producers, inner_func.value(),
-                                              builder, &function_mesh)))
-      return mlir::failure();
-
-    if (function_mesh && !cluster_mesh) {
-      *mesh_changed = true;
-      cluster->setAttr(kMeshAttr, function_mesh.value());
-    }
-  } else if (extracted_mesh_from_consumers && !cluster_mesh) {
+  if (extracted_mesh_from_consumers && !cluster_mesh) {
     *mesh_changed = true;
     cluster->setAttr(kMeshAttr, builder->getStringAttr(
                                     extracted_mesh_from_consumers->ToString()));
