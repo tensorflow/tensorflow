@@ -111,6 +111,9 @@ This release contains contributions from many people at Google, as well as:
     `Model.predict`, and `Model.evaluate` for a significant performance boost.
     * New `StepsPerExecutionTuner` class allows for `steps_per_execution` tuning
     for custom training loops enabling performance boosts in custom workflows.
+    * Model now has two more settable parameters, `steps_per_execution` to set
+    this value to a manual heuristic, and `autotune_steps_per_execution` to
+    enable and disable tuning.
 
 *   Enable JIT-compiled i64-indexed kernels on GPU for large tensors with more
     than 2**32 elements.
