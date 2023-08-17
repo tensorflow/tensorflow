@@ -26,8 +26,8 @@ Before sending your pull requests, make sure you do the following:
 - As a contributor, you submit a New PR on GitHub.
 - We inspect every incoming PR and add certain labels to the PR such as `size:`,
   `comp:` etc.  At this stage we check if the PR is valid and meets certain
-  quality requirements. For example, we check if the CLA is signed, PR has
-  sufficient description, if applicable unit tests are added, if it is a
+  quality requirements. For example, we check if the CLA is signed, if the PR has
+  sufficient description, if applicable unit tests are added, and if it is a
   reasonable contribution (meaning it is not a single liner cosmetic PR).
 
 **2. Valid?**
@@ -35,14 +35,14 @@ Before sending your pull requests, make sure you do the following:
 - If the PR passes all the quality checks then we go ahead and assign a
   reviewer.
 - If the PR didn't meet the validation criteria, we request for additional
-  changes to be made to PR to pass quality checks and send it back or on a rare
+  changes to be made to the PR to pass quality checks and send it back, or on a rare
   occassion we may reject it.
 
 **3. Review**
 
-- For Valid PR, reviewer (person familiar with the code/functionality) checks if
+- For valid PR, reviewer (person familiar with the code/functionality) checks if
   the PR looks good or needs additional changes.
-- If all looks good, reviewer would approve the PR.
+- If all looks good, reviewer approves the PR.
 - If a change is needed, the contributor is requested to make suggested change.
 - You make the change and submit for the review again.
 - This cycle repeats itself till the PR gets approved.
@@ -64,12 +64,11 @@ Before sending your pull requests, make sure you do the following:
 
 - Once the PR is in Google codebase, we make sure it integrates well with its
   dependencies and the rest of the system.
-- Rarely, but If the tests fail at this stage, we cannot merge the code.
+- Rarely, but if the tests fail at this stage, we cannot merge the code.
 - If needed, we may come to you to make some changes. At times, it may not be
-  you, it may be us who may have hit a snag. Please be patient while we work to
+  you. It may be us who have hit a snag. Please be patient while we work to
   fix this.
-- Once the internal tests pass, we go ahead and merge the code internally as
-  well as externally on GitHub.
+- Once the internal tests pass, we go ahead and merge the code internally/externally on GitHub.
 
 In a graphical form, the entire lifetime of a PR looks like
 
@@ -127,7 +126,7 @@ TensorFlow coding style.
 *   Include unit tests when you contribute new features, as they help to a)
     prove that your code works correctly, and b) guard against future breaking
     changes to lower the maintenance cost.
-*   Bug fixes also generally require unit tests, because the presence of bugs
+*   Bug fixes also generally require unit tests because the presence of bugs
     usually indicates insufficient test coverage.
 *   Keep API compatibility in mind when you change code in core TensorFlow,
     e.g., code in
@@ -148,9 +147,9 @@ TensorFlow coding style.
     airtime before a decision is made regarding whether they are to be migrated
     to the core.
 *   As every PR requires several CPU/GPU hours of CI testing, we discourage
-    submitting PRs to fix one typo, one warning,etc. We recommend fixing the
+    submitting PRs to fix one typo, one warning, etc. We recommend fixing the
     same issue at the file level at least (e.g.: fix all typos in a file, fix
-    all compiler warning in a file, etc.)
+    all compiler warnings in a file, etc.)
 *   Tests should follow the
     [testing best practices](https://www.tensorflow.org/community/contribute/tests)
     guide.
@@ -191,7 +190,7 @@ diff <my_cc_file> /tmp/my_cc_file.cc
 #### Python coding style
 
 Changes to TensorFlow Python code should conform to
-[Google Python Style Guide](https://github.com/google/styleguide/blob/gh-pages/pyguide.md)
+[Google Python Style Guide](https://github.com/google/styleguide/blob/gh-pages/pyguide.md).
 
 Use `pylint` to check your Python changes. To install `pylint` and check a file
 with `pylint` against TensorFlow's custom style definition:
@@ -229,11 +228,7 @@ There are two ways to run TensorFlow unit tests.
 
 1.  Using tools and libraries installed directly on your system.
 
-    Refer to the
-    [CPU-only developer Dockerfile](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/dockerfiles/dockerfiles/devel-cpu.Dockerfile)
-    and
-    [GPU developer Dockerfile](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/dockerfiles/dockerfiles/devel-gpu.Dockerfile)
-    for the required packages. Alternatively, use the said
+   Use the
     [Docker images](https://hub.docker.com/r/tensorflow/tensorflow/tags/), e.g.,
     `tensorflow/tensorflow:devel` and `tensorflow/tensorflow:devel-gpu` for
     development to avoid installing the packages directly on your system (in
@@ -249,7 +244,7 @@ There are two ways to run TensorFlow unit tests.
     ```
 
     If the tests are to be run on GPU, add CUDA paths to LD_LIBRARY_PATH and add
-    the `cuda` option flag
+    the `cuda` option flag:
 
     ```bash
     export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH"
