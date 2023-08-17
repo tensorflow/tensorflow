@@ -485,12 +485,8 @@ struct DTensorMeshPropagation
       }
     }
 
-    bool mesh_changed = true;
-    while (mesh_changed) {
-      mesh_changed = false;
-      if (mlir::failed(
-              PropagateMesh(producers, main_func, &builder, &mesh_changed)))
-        return signalPassFailure();
+    if (mlir::failed(PropagateMesh(producers, main_func, &builder))) {
+      return signalPassFailure();
     }
 
     mlir::StringAttr default_mesh;
@@ -505,7 +501,7 @@ struct DTensorMeshPropagation
 
     if (default_mesh) {
       if (mlir::failed(PropagateDefaultMeshToUnAssignedClusters(
-              producers, main_func, default_mesh, &builder, &mesh_changed)))
+              producers, main_func, default_mesh, &builder)))
         return signalPassFailure();
     }
   }
@@ -515,21 +511,19 @@ struct DTensorMeshPropagation
   mlir::LogicalResult PropagateMesh(
       const llvm::DenseMap<mlir::OpOperand*, std::vector<mlir::Value>>&
           producers,
-      mlir::func::FuncOp, mlir::OpBuilder* builder, bool* mesh_changed);
+      mlir::func::FuncOp, mlir::OpBuilder* builder);
 
   // Infers mesh of `cluster` from its input operations.
   mlir::LogicalResult PropagateMeshFromInputs(
       const llvm::DenseMap<mlir::OpOperand*, std::vector<mlir::Value>>&
           producers,
-      mlir::tf_device::ClusterOp cluster, mlir::OpBuilder* builder,
-      bool* mesh_changed);
+      mlir::tf_device::ClusterOp cluster, mlir::OpBuilder* builder);
 
   // Infers mesh of `cluster` from its consuming operations.
   mlir::LogicalResult PropagateMeshFromConsumers(
       const llvm::DenseMap<mlir::OpOperand*, std::vector<mlir::Value>>&
           producers,
-      mlir::tf_device::ClusterOp cluster, mlir::OpBuilder* builder,
-      bool* mesh_changed);
+      mlir::tf_device::ClusterOp cluster, mlir::OpBuilder* builder);
 
   // Assigns function default mesh to clusters with no mesh specified. Note that
   // function has default mesh if all its dtensor inputs/outputs are assigned to
@@ -537,15 +531,14 @@ struct DTensorMeshPropagation
   mlir::LogicalResult PropagateDefaultMeshToUnAssignedClusters(
       const llvm::DenseMap<mlir::OpOperand*, std::vector<mlir::Value>>&
           producers,
-      mlir::func::FuncOp, mlir::StringAttr mesh, mlir::OpBuilder* builder,
-      bool* mesh_changed);
+      mlir::func::FuncOp, mlir::StringAttr mesh, mlir::OpBuilder* builder);
 };
 
 mlir::LogicalResult
 DTensorMeshPropagation::PropagateDefaultMeshToUnAssignedClusters(
     const llvm::DenseMap<mlir::OpOperand*, std::vector<mlir::Value>>& producers,
     mlir::func::FuncOp function, mlir::StringAttr mesh,
-    mlir::OpBuilder* builder, bool* mesh_changed) {
+    mlir::OpBuilder* builder) {
   llvm::SmallVector<mlir::tf_device::ClusterOp, 4> clusters_without_mesh;
   auto walk_result = function.walk([&](mlir::tf_device::ClusterOp cluster) {
     if (llvm::isa<mlir::TF::CopyToMeshGradOp>(&cluster.GetBody().front()))
@@ -568,7 +561,6 @@ DTensorMeshPropagation::PropagateDefaultMeshToUnAssignedClusters(
 
   // Set function default mesh to cluster with unspecified mesh.
   for (auto cluster_without_mesh : clusters_without_mesh) {
-    *mesh_changed = true;
     cluster_without_mesh->setAttr(kMeshAttr, mesh);
   }
 
@@ -577,8 +569,7 @@ DTensorMeshPropagation::PropagateDefaultMeshToUnAssignedClusters(
 
 mlir::LogicalResult DTensorMeshPropagation::PropagateMeshFromInputs(
     const llvm::DenseMap<mlir::OpOperand*, std::vector<mlir::Value>>& producers,
-    mlir::tf_device::ClusterOp cluster, mlir::OpBuilder* builder,
-    bool* mesh_changed) {
+    mlir::tf_device::ClusterOp cluster, mlir::OpBuilder* builder) {
   // If mesh is already specified on a cluster, do nothing.
   auto cluster_mesh = cluster->getAttrOfType<mlir::StringAttr>(kMeshAttr);
   if (cluster_mesh) return mlir::success();
@@ -593,7 +584,6 @@ mlir::LogicalResult DTensorMeshPropagation::PropagateMeshFromInputs(
   }
 
   if (!cluster_mesh && extracted_mesh.has_value()) {
-    *mesh_changed = true;
     cluster->setAttr(kMeshAttr,
                      builder->getStringAttr(extracted_mesh->ToString()));
   }
@@ -603,8 +593,7 @@ mlir::LogicalResult DTensorMeshPropagation::PropagateMeshFromInputs(
 // Set mesh of `cluster`, inferring mesh from consumer operations of `cluster`.
 mlir::LogicalResult DTensorMeshPropagation::PropagateMeshFromConsumers(
     const llvm::DenseMap<mlir::OpOperand*, std::vector<mlir::Value>>& producers,
-    mlir::tf_device::ClusterOp cluster, mlir::OpBuilder* builder,
-    bool* mesh_changed) {
+    mlir::tf_device::ClusterOp cluster, mlir::OpBuilder* builder) {
   auto cluster_mesh = cluster->getAttrOfType<mlir::StringAttr>(kMeshAttr);
   // If mesh is already set, then do nothing.
   if (cluster_mesh) return mlir::success();
@@ -617,7 +606,6 @@ mlir::LogicalResult DTensorMeshPropagation::PropagateMeshFromConsumers(
     return mlir::failure();
 
   if (extracted_mesh_from_consumers && !cluster_mesh) {
-    *mesh_changed = true;
     cluster->setAttr(kMeshAttr, builder->getStringAttr(
                                     extracted_mesh_from_consumers->ToString()));
   }
@@ -626,8 +614,7 @@ mlir::LogicalResult DTensorMeshPropagation::PropagateMeshFromConsumers(
 
 mlir::LogicalResult PropagateLikeMesh(
     const llvm::DenseMap<mlir::OpOperand*, std::vector<mlir::Value>>& producers,
-    mlir::tf_device::ClusterOp cluster, mlir::OpBuilder* builder,
-    bool* mesh_changed) {
+    mlir::tf_device::ClusterOp cluster, mlir::OpBuilder* builder) {
   mlir::Operation* backward_op = &cluster.GetBody().front();
 
   if (!mlir::isa<mlir::TF::CopyToMeshGradOp>(backward_op) &&
@@ -654,7 +641,6 @@ mlir::LogicalResult PropagateLikeMesh(
 
   cluster->setAttr(kMeshAttr, builder->getStringAttr(mesh->ToString()));
 
-  *mesh_changed = true;
   return mlir::success();
 }
 
@@ -665,29 +651,26 @@ mlir::LogicalResult PropagateLikeMesh(
 // tf_device.cluster ops are enclosing a single operation.
 mlir::LogicalResult DTensorMeshPropagation::PropagateMesh(
     const llvm::DenseMap<mlir::OpOperand*, std::vector<mlir::Value>>& producers,
-    mlir::func::FuncOp function, mlir::OpBuilder* builder, bool* mesh_changed) {
+    mlir::func::FuncOp function, mlir::OpBuilder* builder) {
   // Iterate clusters in topological order propagating mesh from operations'
   // inputs.
   llvm::SmallVector<mlir::tf_device::ClusterOp, 8> cluster_ops;
   for (auto cluster : function.getOps<mlir::tf_device::ClusterOp>()) {
     cluster_ops.emplace_back(cluster);
 
-    if (mlir::failed(
-            PropagateMeshFromInputs(producers, cluster, builder, mesh_changed)))
+    if (mlir::failed(PropagateMeshFromInputs(producers, cluster, builder)))
       return mlir::failure();
   }
 
   // Iterate clusters in reverse topological order and propagate mesh from
   // consumers.
   for (auto cluster : llvm::reverse(cluster_ops)) {
-    if (mlir::failed(PropagateMeshFromConsumers(producers, cluster, builder,
-                                                mesh_changed)))
+    if (mlir::failed(PropagateMeshFromConsumers(producers, cluster, builder)))
       return mlir::failure();
   }
 
   for (auto cluster : llvm::reverse(cluster_ops)) {
-    if (mlir::failed(
-            PropagateLikeMesh(producers, cluster, builder, mesh_changed))) {
+    if (mlir::failed(PropagateLikeMesh(producers, cluster, builder))) {
       return mlir::failure();
     }
   }
