@@ -87,6 +87,7 @@ py_strict_binary(
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/training:saver",
         "@absl_py//absl:app",
+        "@pypi_six//:pkg",
     ],
 )
 

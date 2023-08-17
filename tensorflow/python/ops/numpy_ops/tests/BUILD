@@ -97,6 +97,7 @@ py_strict_library(
         "//tensorflow/python/tpu/ops",
         "//tensorflow/python/util:nest",
         "//third_party/py/numpy",
+        "@pypi_six//:pkg",
     ],
 )
 
@@ -217,6 +218,7 @@ py_strict_test(
         "//third_party/py/numpy",
         "@absl_py//absl/testing:absltest",
         "@absl_py//absl/testing:parameterized",
+        "@pypi_six//:pkg",
     ],
 )
 

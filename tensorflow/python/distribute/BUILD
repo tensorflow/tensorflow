@@ -2298,7 +2298,7 @@ py_strict_library(
         "//tensorflow/python/util:tf_export",
         "@absl_py//absl/logging",
         "@pypi_dill//:pkg",  # build_cleaner: keep
-        "@pypi_six//:pkg"
+        "@pypi_six//:pkg",
         "@pypi_tblib//:pkg",  # build_cleaner: keep
     ],
 )

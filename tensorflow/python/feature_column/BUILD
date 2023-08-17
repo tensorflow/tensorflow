@@ -104,6 +104,7 @@ py_strict_library(
         "//tensorflow/python/util:tf_export",
         "//tensorflow/tools/docs:doc_controls",
         "//third_party/py/numpy",
+        "@pypi_six//:pkg",
     ],
 )
 
@@ -120,6 +121,7 @@ py_strict_library(
         "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
         "//tensorflow/tools/docs:doc_controls",
+        "@pypi_six//:pkg",
     ],
 )
 
@@ -260,6 +262,7 @@ py_strict_library(
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/util:nest",
+        "@pypi_six//:pkg",
     ],
 )
 

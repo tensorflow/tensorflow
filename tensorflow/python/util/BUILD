@@ -909,6 +909,7 @@ py_strict_library(
         # py_test because not all tensorflow tests use tensorflow.bzl's py_test.
         "//tensorflow/python:global_test_configuration",
         ":tf_decorator",
+        "@pypi_six//:pkg",
     ],
 )
 

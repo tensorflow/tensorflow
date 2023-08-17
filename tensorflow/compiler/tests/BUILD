@@ -70,6 +70,7 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         "//third_party/py/numpy",
+        "@pypi_six//:pkg",
     ],
 )
 
@@ -1730,6 +1731,7 @@ tf_xla_py_strict_test(
         "//tensorflow/python/ops:nn_ops_gen",
         "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
+        "@pypi_six//:pkg",
     ],
 )
 
@@ -2222,6 +2224,7 @@ py_strict_library(
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:random_ops",
         "//tensorflow/python/ops:variable_v1",
+        "@pypi_six//:pkg",
     ],
 )
 

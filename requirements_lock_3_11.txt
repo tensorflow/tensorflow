@@ -420,6 +420,7 @@ six==1.16.0 \
     --hash=sha256:1e61c37477a1626458e36f7b1d82aa5c9b094fa4802892072e49de9c60c4c926 \
     --hash=sha256:8abb2f1d86890a2dfb989f9a77cfcfd3e47c2a354b01111771326f8aa26e0254
     # via
+    #   -r ./requirements.in
     #   astunparse
     #   google-auth
 tb-nightly==2.14.0a20230808 \
