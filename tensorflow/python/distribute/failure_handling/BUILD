@@ -48,7 +48,7 @@ py_strict_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/platform:tf_logging",
         "@pypi_requests//:pkg",
-        "@pypi_six//:pkg"
+        "@pypi_six//:pkg",
     ],
 )
 

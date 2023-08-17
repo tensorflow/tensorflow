@@ -16,6 +16,6 @@ py_binary(
     deps = [
         "@local_config_cuda//cuda:cuda_config_py",
         "@local_config_tensorrt//:tensorrt_config_py",
-        "@pypi_six//:pkg"
+        "@pypi_six//:pkg",
     ],
 )
