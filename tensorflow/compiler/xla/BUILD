@@ -117,7 +117,9 @@ xla_cc_test(
     deps = [
         ":bit_cast",
         ":test",
+        "//tensorflow/tsl/platform:bfloat16",
         "//tensorflow/tsl/platform:test_main",
+        "//third_party/eigen3",
     ],
 )
 
@@ -138,8 +140,10 @@ cc_library(
         ":util",
         ":xla_data_proto_cc",
         "//tensorflow/tsl/platform:float8",
+        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/meta:type_traits",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -150,8 +154,8 @@ xla_cc_test(
     deps = [
         ":comparison_util",
         ":test",
+        ":types",
         ":xla_data_proto_cc",
-        "//tensorflow/tsl/platform:bfloat16",
         "//tensorflow/tsl/platform:test_main",
     ],
 )
