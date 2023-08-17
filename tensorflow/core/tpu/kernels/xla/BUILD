@@ -26,6 +26,7 @@ cc_library(
         "//tensorflow/compiler/tf2xla:xla_context",
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/tf2xla/kernels:if_op",
+        "//tensorflow/compiler/tf2xla/kernels:index_ops",
         "//tensorflow/compiler/tf2xla/kernels:while_op",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/compiler/xla:shape_util",
