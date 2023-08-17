@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -346,7 +347,8 @@ mlir::LogicalResult InferMeshFromConsumers(
 mlir::LogicalResult InferFunctionDefaultMesh(
     const llvm::DenseMap<mlir::OpOperand*, std::vector<mlir::Value>>& producers,
     mlir::func::FuncOp function, mlir::OpBuilder* builder,
-    std::optional<mlir::StringAttr>* inferred_default_mesh) {
+    mlir::StringAttr* inferred_default_mesh) {
+  mlir::StringAttr inferred_mesh;
   auto terminator = function.getCallableRegion()->front().getTerminator();
   for (auto& result_value : terminator->getOpOperands()) {
     auto result_defining_op = result_value.get().getDefiningOp();
@@ -358,12 +360,10 @@ mlir::LogicalResult InferFunctionDefaultMesh(
         result_cluster->getAttrOfType<mlir::StringAttr>(kMeshAttr);
     if (!result_mesh) continue;
 
-    if (inferred_default_mesh->has_value() &&
-        inferred_default_mesh->value() != result_mesh) {
-      inferred_default_mesh->reset();
+    if (inferred_mesh && inferred_mesh != result_mesh) {
       return mlir::success();
     }
-    inferred_default_mesh->emplace(result_mesh);
+    inferred_mesh = result_mesh;
   }
 
   std::optional<Mesh> inferred_mesh_from_args;
@@ -382,14 +382,14 @@ mlir::LogicalResult InferFunctionDefaultMesh(
     if (!inferred_mesh_from_args) continue;
 
     std::string mesh_str = inferred_mesh_from_args->ToString();
-    if (inferred_default_mesh->has_value() &&
-        inferred_default_mesh->value().getValue().str() != mesh_str) {
-      inferred_default_mesh->reset();
+    if (inferred_mesh && inferred_mesh.getValue().str() != mesh_str) {
       return mlir::success();
     }
-
-    inferred_default_mesh->emplace(builder->getStringAttr(std::move(mesh_str)));
+    inferred_mesh = builder->getStringAttr(std::move(mesh_str));
   }
+  // At this time, we are sure that all the inputs and outputs of a function
+  // belong to the same mesh. Use this as the inferred default mesh.
+  *inferred_default_mesh = inferred_mesh;
   return mlir::success();
 }
 
@@ -493,8 +493,15 @@ struct DTensorMeshPropagation
         return signalPassFailure();
     }
 
-    auto default_mesh =
-        module->getAttrOfType<mlir::StringAttr>(kCustomDefaultMeshAttr);
+    mlir::StringAttr default_mesh;
+    if (mlir::failed(InferFunctionDefaultMesh(producers, main_func, &builder,
+                                              &default_mesh))) {
+      return signalPassFailure();
+    }
+    if (!default_mesh) {
+      default_mesh =
+          module->getAttrOfType<mlir::StringAttr>(kCustomDefaultMeshAttr);
+    }
 
     if (default_mesh) {
       if (mlir::failed(PropagateDefaultMeshToUnAssignedClusters(
@@ -678,16 +685,6 @@ mlir::LogicalResult DTensorMeshPropagation::PropagateMesh(
       return mlir::failure();
   }
 
-  std::optional<mlir::StringAttr> mesh;
-  if (mlir::failed(
-          InferFunctionDefaultMesh(producers, function, builder, &mesh)))
-    return mlir::failure();
-
-  if (mesh.has_value()) {
-    if (mlir::failed(PropagateDefaultMeshToUnAssignedClusters(
-            producers, function, mesh.value(), builder, mesh_changed)))
-      return mlir::failure();
-  }
   for (auto cluster : llvm::reverse(cluster_ops)) {
     if (mlir::failed(
             PropagateLikeMesh(producers, cluster, builder, mesh_changed))) {
