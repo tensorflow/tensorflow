@@ -69,6 +69,11 @@ class CollectivePipeliner : public HloModulePass {
     // memory pressure manually).
     int64_t max_pipelining_per_loop = 0;
     bool last_run = true;
+    // The pipeliner should try to pipeline instructions that have a tree of
+    // uses of allowed instructions. This could increase memory pressure as
+    // multiple instructions might have to be saved to be pushed to the next
+    // iteration.
+    bool pipeline_use_tree = false;
     bool process_different_sized_ops = false;
     PipeliningDirection pipelining_direction = PipeliningDirection::kForward;
     HloPredicate should_process;
