@@ -105,7 +105,91 @@ struct TransposeMicroKernel<uint8_t, /*bs=*/4> {
 };
 #endif
 
-// TODO(phawkins): add an 8x8 byte transpose kernel.
+#ifdef EIGEN_VECTORIZE_SSE2
+template <>
+struct TransposeMicroKernel<uint8_t, /*bs=*/8> {
+  static void Apply(const char* __restrict a, int64_t lda, char* __restrict b,
+                    int64_t ldb) {
+    // To help understand each step, let's show the contents of our SIMD
+    // vectors.
+    // The numbers shown are in octal and represent the source position from the
+    // input in (row, column) format.
+    //
+    // [00, 01, 02, 03, 04, 05, 06, 07],
+    // [10, 11, 12, 13, 14, 15, 16, 17],
+    // [20, 21, 22, 23, 24, 25, 26, 27],
+    // [30, 31, 32, 33, 34, 35, 36, 37],
+    // [40, 41, 42, 43, 44, 45, 46, 47],
+    // [50, 51, 52, 53, 54, 55, 56, 57],
+    // [60, 61, 62, 63, 64, 65, 66, 67],
+    // [70, 71, 72, 73, 74, 75, 76, 77],
+    __m128i loads[8];
+    for (int i = 0; i < 8; ++i) {
+      loads[i] = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(a + lda * i));
+    }
+
+    // Pack adjacent loads together into one SIMD vector by interleaving the
+    // lanes.
+    //
+    // [00, 10, 01, 11, 02, 12, 03, 13, 04, 14, 05, 15, 06, 16, 07, 17],
+    // [20, 30, 21, 31, 22, 32, 23, 33, 24, 34, 25, 35, 26, 36, 27, 37],
+    // [40, 50, 41, 51, 42, 52, 43, 53, 44, 54, 45, 55, 46, 56, 47, 57],
+    // [60, 70, 61, 71, 62, 72, 63, 73, 64, 74, 65, 75, 66, 76, 67, 77],
+    // In effect, we are splitting each SIMD vector into two blocks of 8
+    // elements, then interleaving the elements.
+    __m128i unpack_8[4];
+    for (int i = 0; i < 4; ++i) {
+      // There is no need for _mm_unpackhi_epi8 as the high half of the two
+      // vectors contains zeros.
+      unpack_8[i] = _mm_unpacklo_epi8(loads[i * 2], loads[i * 2 + 1]);
+    }
+
+    // Zip two elements at a time between adjacent rows.
+    //
+    // [00, 10, 20, 30, 01, 11, 21, 31, 02, 12, 22, 32, 03, 13, 23, 33],
+    // [04, 14, 24, 34, 05, 15, 25, 35, 06, 16, 26, 36, 07, 17, 27, 37],
+    // [40, 50, 60, 70, 41, 51, 61, 71, 42, 52, 62, 72, 43, 53, 63, 73],
+    // [44, 54, 64, 74, 45, 55, 65, 75, 46, 56, 66, 76, 47, 57, 67, 77],
+    __m128i unpack_16[4];
+    for (int i = 0; i < 4; i += 2) {
+      unpack_16[i + 0] = _mm_unpacklo_epi16(unpack_8[i], unpack_8[i + 1]);
+      unpack_16[i + 1] = _mm_unpackhi_epi16(unpack_8[i], unpack_8[i + 1]);
+    }
+
+    // Finish the transpose by moving around blocks of 32-bits.
+    //
+    // [00, 10, 20, 30, 40, 50, 60, 70, 01, 11, 21, 31, 41, 51, 61, 71],
+    // [02, 12, 22, 32, 42, 52, 62, 72, 03, 13, 23, 33, 43, 53, 63, 73],
+    // [04, 14, 24, 34, 44, 54, 64, 74, 05, 15, 25, 35, 45, 55, 65, 75],
+    // [06, 16, 26, 36, 46, 56, 66, 76, 07, 17, 27, 37, 47, 57, 67, 77],
+    __m128i unpack_32[4];
+    for (int i = 0; i < 4; i += 2) {
+      unpack_32[i + 0] =
+          _mm_unpacklo_epi32(unpack_16[i / 2], unpack_16[i / 2 + 2]);
+      unpack_32[i + 1] =
+          _mm_unpackhi_epi32(unpack_16[i / 2], unpack_16[i / 2 + 2]);
+    }
+
+    // We have two rows stored in our 128-bit SIMD vector but our block size
+    // is 64-bit, unpack and do two stores.
+    //
+    // [00, 10, 20, 30, 40, 50, 60, 70],
+    // [01, 11, 21, 31, 41, 51, 61, 71],
+    // [02, 12, 22, 32, 42, 52, 62, 72],
+    // [03, 13, 23, 33, 43, 53, 63, 73],
+    // [04, 14, 24, 34, 44, 54, 64, 74],
+    // [05, 15, 25, 35, 45, 55, 65, 75],
+    // [06, 16, 26, 36, 46, 56, 66, 76],
+    // [07, 17, 27, 37, 47, 57, 67, 77],
+    for (int i = 0; i < 8; i += 2) {
+      _mm_storel_epi64(reinterpret_cast<__m128i*>(b + ldb * (i + 0)),
+                       unpack_32[i / 2]);
+      _mm_storel_epi64(reinterpret_cast<__m128i*>(b + ldb * (i + 1)),
+                       _mm_unpackhi_epi64(unpack_32[i / 2], unpack_32[i / 2]));
+    }
+  }
+};
+#endif
 
 // TODO(phawkins): Eigen doesn't have a SSE/AVX byte Packet16c type. Add one
 // and call it here rather than using AVX intrinsics.
