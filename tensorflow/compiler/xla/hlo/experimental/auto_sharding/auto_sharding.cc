@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <iterator>
 #include <limits>
 #include <memory>
 #include <numeric>
@@ -46,6 +47,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array.h"
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_cost_graph.h"
+#include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_option.h"
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_solver.h"
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_solver_option.h"
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
@@ -2308,7 +2310,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
 // NOLINTEND
 
 AutoShardingSolverResult CallSolver(
-    const HloInstructionSequence& sequence, const LivenessSet& liveness_set,
+    const HloLiveRange& hlo_live_range, const LivenessSet& liveness_set,
     const StrategyMap& strategy_map, const LeafStrategies& leaf_strategies,
     const CostGraph& cost_graph, const AliasSet& alias_set,
     const std::vector<NodeStrategyIdx>& s_hint,
@@ -2337,6 +2339,8 @@ AutoShardingSolverResult CallSolver(
     request.r.push_back(std::move(rij));
   }
 
+  const HloInstructionSequence& sequence =
+      hlo_live_range.flattened_instruction_sequence();
   const std::vector<HloInstruction*>& instructions = sequence.instructions();
 
   // Serialize node costs
@@ -4142,12 +4146,9 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
     std::vector<spmd::EdgeStrategyIdx> e_val;
     double objective = -1.0;
     if (!solver_option.load_solution_vector) {
-      auto solver_result = CallSolver(
-          sequence, liveness_set, strategy_map, leaf_strategies, cost_graph,
-          alias_set, /*s_hint*/ {}, option_.memory_budget_per_device,
-          /*crash_at_infinity_costs_check*/ !option_.try_multiple_mesh_shapes,
-          /*compute_iis*/ true, option_.solver_timeout_in_seconds,
-          option_.allow_alias_to_follower_conversion);
+      auto solver_result =
+          Solve(*hlo_live_range, liveness_set, strategy_map, leaf_strategies,
+                cost_graph, alias_set, option_);
       if (solver_result.skip_auto_sharding) {
         return AutoShardingResult::kModuleUnchangedNoShardingPerfomed;
       } else if (!solver_result.status.ok()) {
