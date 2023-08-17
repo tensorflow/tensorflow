@@ -76,6 +76,12 @@ tensorflow::Status CustomOptionsToAttributes(
     // NOLINTNEXTLINE
     Location loc, llvm::SmallVectorImpl<mlir::NamedAttribute> *attributes);
 
+// TODO(zichuanwei@): Populate Builtin_options_2 manual for now, should automate
+// these in the future
+void BuiltinOptions2ToAttributes(
+    tflite::BuiltinOptions2Union op_union, mlir::Builder builder,
+    llvm::SmallVectorImpl<mlir::NamedAttribute> &attributes);
+
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_FLATBUFFER_OPERATOR_H_

@@ -904,6 +904,9 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_STABLEHLO_DIVIDE:
     case BuiltinOperator_STABLEHLO_MULTIPLY:
     case BuiltinOperator_STABLEHLO_MAXIMUM:
+    case BuiltinOperator_STABLEHLO_RESHAPE:
+    case BuiltinOperator_STABLEHLO_CLAMP:
+    case BuiltinOperator_STABLEHLO_CONCATENATE:
       return kTfLiteOk;
     case BuiltinOperator_PLACEHOLDER_FOR_GREATER_OP_CODES:
       return kTfLiteError;

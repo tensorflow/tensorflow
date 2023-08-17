@@ -65,6 +65,10 @@ struct Tensor;
 struct TensorBuilder;
 struct TensorT;
 
+struct StablehloConcatenateOptions;
+struct StablehloConcatenateOptionsBuilder;
+struct StablehloConcatenateOptionsT;
+
 struct Conv2DOptions;
 struct Conv2DOptionsBuilder;
 struct Conv2DOptionsT;
@@ -1093,11 +1097,14 @@ enum BuiltinOperator : int32_t {
   BuiltinOperator_STABLEHLO_DIVIDE = 164,
   BuiltinOperator_STABLEHLO_MULTIPLY = 165,
   BuiltinOperator_STABLEHLO_MAXIMUM = 166,
+  BuiltinOperator_STABLEHLO_RESHAPE = 167,
+  BuiltinOperator_STABLEHLO_CLAMP = 168,
+  BuiltinOperator_STABLEHLO_CONCATENATE = 169,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_STABLEHLO_MAXIMUM
+  BuiltinOperator_MAX = BuiltinOperator_STABLEHLO_CONCATENATE
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[167] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[170] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -1265,13 +1272,16 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[167] {
     BuiltinOperator_STABLEHLO_ADD,
     BuiltinOperator_STABLEHLO_DIVIDE,
     BuiltinOperator_STABLEHLO_MULTIPLY,
-    BuiltinOperator_STABLEHLO_MAXIMUM
+    BuiltinOperator_STABLEHLO_MAXIMUM,
+    BuiltinOperator_STABLEHLO_RESHAPE,
+    BuiltinOperator_STABLEHLO_CLAMP,
+    BuiltinOperator_STABLEHLO_CONCATENATE
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOperator() {
-  static const char * const names[168] = {
+  static const char * const names[171] = {
     "ADD",
     "AVERAGE_POOL_2D",
     "CONCATENATION",
@@ -1439,13 +1449,16 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "STABLEHLO_DIVIDE",
     "STABLEHLO_MULTIPLY",
     "STABLEHLO_MAXIMUM",
+    "STABLEHLO_RESHAPE",
+    "STABLEHLO_CLAMP",
+    "STABLEHLO_CONCATENATE",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOperator(BuiltinOperator e) {
-  if (::flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_STABLEHLO_MAXIMUM)) return "";
+  if (::flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_STABLEHLO_CONCATENATE)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOperator()[index];
 }
@@ -3914,6 +3927,95 @@ struct BuiltinOptionsUnion {
 bool VerifyBuiltinOptions(::flatbuffers::Verifier &verifier, const void *obj, BuiltinOptions type);
 bool VerifyBuiltinOptionsVector(::flatbuffers::Verifier &verifier, const ::flatbuffers::Vector<::flatbuffers::Offset<void>> *values, const ::flatbuffers::Vector<uint8_t> *types);
 
+enum BuiltinOptions2 : uint8_t {
+  BuiltinOptions2_NONE = 0,
+  BuiltinOptions2_StablehloConcatenateOptions = 1,
+  BuiltinOptions2_MIN = BuiltinOptions2_NONE,
+  BuiltinOptions2_MAX = BuiltinOptions2_StablehloConcatenateOptions
+};
+
+inline const BuiltinOptions2 (&EnumValuesBuiltinOptions2())[2] {
+  static const BuiltinOptions2 values[] = {
+    BuiltinOptions2_NONE,
+    BuiltinOptions2_StablehloConcatenateOptions
+  };
+  return values;
+}
+
+inline const char * const *EnumNamesBuiltinOptions2() {
+  static const char * const names[3] = {
+    "NONE",
+    "StablehloConcatenateOptions",
+    nullptr
+  };
+  return names;
+}
+
+inline const char *EnumNameBuiltinOptions2(BuiltinOptions2 e) {
+  if (::flatbuffers::IsOutRange(e, BuiltinOptions2_NONE, BuiltinOptions2_StablehloConcatenateOptions)) return "";
+  const size_t index = static_cast<size_t>(e);
+  return EnumNamesBuiltinOptions2()[index];
+}
+
+template<typename T> struct BuiltinOptions2Traits {
+  static const BuiltinOptions2 enum_value = BuiltinOptions2_NONE;
+};
+
+template<> struct BuiltinOptions2Traits<tflite::StablehloConcatenateOptions> {
+  static const BuiltinOptions2 enum_value = BuiltinOptions2_StablehloConcatenateOptions;
+};
+
+template<typename T> struct BuiltinOptions2UnionTraits {
+  static const BuiltinOptions2 enum_value = BuiltinOptions2_NONE;
+};
+
+template<> struct BuiltinOptions2UnionTraits<tflite::StablehloConcatenateOptionsT> {
+  static const BuiltinOptions2 enum_value = BuiltinOptions2_StablehloConcatenateOptions;
+};
+
+struct BuiltinOptions2Union {
+  BuiltinOptions2 type;
+  void *value;
+
+  BuiltinOptions2Union() : type(BuiltinOptions2_NONE), value(nullptr) {}
+  BuiltinOptions2Union(BuiltinOptions2Union&& u) FLATBUFFERS_NOEXCEPT :
+    type(BuiltinOptions2_NONE), value(nullptr)
+    { std::swap(type, u.type); std::swap(value, u.value); }
+  BuiltinOptions2Union(const BuiltinOptions2Union &);
+  BuiltinOptions2Union &operator=(const BuiltinOptions2Union &u)
+    { BuiltinOptions2Union t(u); std::swap(type, t.type); std::swap(value, t.value); return *this; }
+  BuiltinOptions2Union &operator=(BuiltinOptions2Union &&u) FLATBUFFERS_NOEXCEPT
+    { std::swap(type, u.type); std::swap(value, u.value); return *this; }
+  ~BuiltinOptions2Union() { Reset(); }
+
+  void Reset();
+
+  template <typename T>
+  void Set(T&& val) {
+    typedef typename std::remove_reference<T>::type RT;
+    Reset();
+    type = BuiltinOptions2UnionTraits<RT>::enum_value;
+    if (type != BuiltinOptions2_NONE) {
+      value = new RT(std::forward<T>(val));
+    }
+  }
+
+  static void *UnPack(const void *obj, BuiltinOptions2 type, const ::flatbuffers::resolver_function_t *resolver);
+  ::flatbuffers::Offset<void> Pack(::flatbuffers::FlatBufferBuilder &_fbb, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr) const;
+
+  tflite::StablehloConcatenateOptionsT *AsStablehloConcatenateOptions() {
+    return type == BuiltinOptions2_StablehloConcatenateOptions ?
+      reinterpret_cast<tflite::StablehloConcatenateOptionsT *>(value) : nullptr;
+  }
+  const tflite::StablehloConcatenateOptionsT *AsStablehloConcatenateOptions() const {
+    return type == BuiltinOptions2_StablehloConcatenateOptions ?
+      reinterpret_cast<const tflite::StablehloConcatenateOptionsT *>(value) : nullptr;
+  }
+};
+
+bool VerifyBuiltinOptions2(::flatbuffers::Verifier &verifier, const void *obj, BuiltinOptions2 type);
+bool VerifyBuiltinOptions2Vector(::flatbuffers::Verifier &verifier, const ::flatbuffers::Vector<::flatbuffers::Offset<void>> *values, const ::flatbuffers::Vector<uint8_t> *types);
+
 enum Padding : int8_t {
   Padding_SAME = 0,
   Padding_VALID = 1,
@@ -5101,6 +5203,58 @@ inline ::flatbuffers::Offset<Tensor> CreateTensorDirect(
 }
 
 ::flatbuffers::Offset<Tensor> CreateTensor(::flatbuffers::FlatBufferBuilder &_fbb, const TensorT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
+struct StablehloConcatenateOptionsT : public ::flatbuffers::NativeTable {
+  typedef StablehloConcatenateOptions TableType;
+  int64_t dimension = 0;
+};
+
+struct StablehloConcatenateOptions FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
+  typedef StablehloConcatenateOptionsT NativeTableType;
+  typedef StablehloConcatenateOptionsBuilder Builder;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_DIMENSION = 4
+  };
+  int64_t dimension() const {
+    return GetField<int64_t>(VT_DIMENSION, 0);
+  }
+  bool Verify(::flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<int64_t>(verifier, VT_DIMENSION, 8) &&
+           verifier.EndTable();
+  }
+  StablehloConcatenateOptionsT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(StablehloConcatenateOptionsT *_o, const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static ::flatbuffers::Offset<StablehloConcatenateOptions> Pack(::flatbuffers::FlatBufferBuilder &_fbb, const StablehloConcatenateOptionsT* _o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct StablehloConcatenateOptionsBuilder {
+  typedef StablehloConcatenateOptions Table;
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  void add_dimension(int64_t dimension) {
+    fbb_.AddElement<int64_t>(StablehloConcatenateOptions::VT_DIMENSION, dimension, 0);
+  }
+  explicit StablehloConcatenateOptionsBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  ::flatbuffers::Offset<StablehloConcatenateOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = ::flatbuffers::Offset<StablehloConcatenateOptions>(end);
+    return o;
+  }
+};
+
+inline ::flatbuffers::Offset<StablehloConcatenateOptions> CreateStablehloConcatenateOptions(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    int64_t dimension = 0) {
+  StablehloConcatenateOptionsBuilder builder_(_fbb);
+  builder_.add_dimension(dimension);
+  return builder_.Finish();
+}
+
+::flatbuffers::Offset<StablehloConcatenateOptions> CreateStablehloConcatenateOptions(::flatbuffers::FlatBufferBuilder &_fbb, const StablehloConcatenateOptionsT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
 struct Conv2DOptionsT : public ::flatbuffers::NativeTable {
   typedef Conv2DOptions TableType;
@@ -11904,6 +12058,7 @@ struct OperatorT : public ::flatbuffers::NativeTable {
   std::vector<int32_t> intermediates{};
   uint64_t large_custom_options_offset = 0;
   uint64_t large_custom_options_size = 0;
+  tflite::BuiltinOptions2Union builtin_options_2{};
 };
 
 struct Operator FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
@@ -11920,7 +12075,9 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
     VT_MUTATING_VARIABLE_INPUTS = 18,
     VT_INTERMEDIATES = 20,
     VT_LARGE_CUSTOM_OPTIONS_OFFSET = 22,
-    VT_LARGE_CUSTOM_OPTIONS_SIZE = 24
+    VT_LARGE_CUSTOM_OPTIONS_SIZE = 24,
+    VT_BUILTIN_OPTIONS_2_TYPE = 26,
+    VT_BUILTIN_OPTIONS_2 = 28
   };
   uint32_t opcode_index() const {
     return GetField<uint32_t>(VT_OPCODE_INDEX, 0);
@@ -12334,6 +12491,16 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   uint64_t large_custom_options_size() const {
     return GetField<uint64_t>(VT_LARGE_CUSTOM_OPTIONS_SIZE, 0);
   }
+  tflite::BuiltinOptions2 builtin_options_2_type() const {
+    return static_cast<tflite::BuiltinOptions2>(GetField<uint8_t>(VT_BUILTIN_OPTIONS_2_TYPE, 0));
+  }
+  const void *builtin_options_2() const {
+    return GetPointer<const void *>(VT_BUILTIN_OPTIONS_2);
+  }
+  template<typename T> const T *builtin_options_2_as() const;
+  const tflite::StablehloConcatenateOptions *builtin_options_2_as_StablehloConcatenateOptions() const {
+    return builtin_options_2_type() == tflite::BuiltinOptions2_StablehloConcatenateOptions ? static_cast<const tflite::StablehloConcatenateOptions *>(builtin_options_2()) : nullptr;
+  }
   bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<uint32_t>(verifier, VT_OPCODE_INDEX, 4) &&
@@ -12353,6 +12520,9 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
            verifier.VerifyVector(intermediates()) &&
            VerifyField<uint64_t>(verifier, VT_LARGE_CUSTOM_OPTIONS_OFFSET, 8) &&
            VerifyField<uint64_t>(verifier, VT_LARGE_CUSTOM_OPTIONS_SIZE, 8) &&
+           VerifyField<uint8_t>(verifier, VT_BUILTIN_OPTIONS_2_TYPE, 1) &&
+           VerifyOffset(verifier, VT_BUILTIN_OPTIONS_2) &&
+           VerifyBuiltinOptions2(verifier, builtin_options_2(), builtin_options_2_type()) &&
            verifier.EndTable();
   }
   OperatorT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -12864,6 +13034,10 @@ template<> inline const tflite::RightShiftOptions *Operator::builtin_options_as<
   return builtin_options_as_RightShiftOptions();
 }
 
+template<> inline const tflite::StablehloConcatenateOptions *Operator::builtin_options_2_as<tflite::StablehloConcatenateOptions>() const {
+  return builtin_options_2_as_StablehloConcatenateOptions();
+}
+
 struct OperatorBuilder {
   typedef Operator Table;
   ::flatbuffers::FlatBufferBuilder &fbb_;
@@ -12901,6 +13075,12 @@ struct OperatorBuilder {
   void add_large_custom_options_size(uint64_t large_custom_options_size) {
     fbb_.AddElement<uint64_t>(Operator::VT_LARGE_CUSTOM_OPTIONS_SIZE, large_custom_options_size, 0);
   }
+  void add_builtin_options_2_type(tflite::BuiltinOptions2 builtin_options_2_type) {
+    fbb_.AddElement<uint8_t>(Operator::VT_BUILTIN_OPTIONS_2_TYPE, static_cast<uint8_t>(builtin_options_2_type), 0);
+  }
+  void add_builtin_options_2(::flatbuffers::Offset<void> builtin_options_2) {
+    fbb_.AddOffset(Operator::VT_BUILTIN_OPTIONS_2, builtin_options_2);
+  }
   explicit OperatorBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -12924,10 +13104,13 @@ inline ::flatbuffers::Offset<Operator> CreateOperator(
     ::flatbuffers::Offset<::flatbuffers::Vector<uint8_t>> mutating_variable_inputs = 0,
     ::flatbuffers::Offset<::flatbuffers::Vector<int32_t>> intermediates = 0,
     uint64_t large_custom_options_offset = 0,
-    uint64_t large_custom_options_size = 0) {
+    uint64_t large_custom_options_size = 0,
+    tflite::BuiltinOptions2 builtin_options_2_type = tflite::BuiltinOptions2_NONE,
+    ::flatbuffers::Offset<void> builtin_options_2 = 0) {
   OperatorBuilder builder_(_fbb);
   builder_.add_large_custom_options_size(large_custom_options_size);
   builder_.add_large_custom_options_offset(large_custom_options_offset);
+  builder_.add_builtin_options_2(builtin_options_2);
   builder_.add_intermediates(intermediates);
   builder_.add_mutating_variable_inputs(mutating_variable_inputs);
   builder_.add_custom_options(custom_options);
@@ -12935,6 +13118,7 @@ inline ::flatbuffers::Offset<Operator> CreateOperator(
   builder_.add_outputs(outputs);
   builder_.add_inputs(inputs);
   builder_.add_opcode_index(opcode_index);
+  builder_.add_builtin_options_2_type(builtin_options_2_type);
   builder_.add_custom_options_format(custom_options_format);
   builder_.add_builtin_options_type(builtin_options_type);
   return builder_.Finish();
@@ -12952,7 +13136,9 @@ inline ::flatbuffers::Offset<Operator> CreateOperatorDirect(
     const std::vector<uint8_t> *mutating_variable_inputs = nullptr,
     const std::vector<int32_t> *intermediates = nullptr,
     uint64_t large_custom_options_offset = 0,
-    uint64_t large_custom_options_size = 0) {
+    uint64_t large_custom_options_size = 0,
+    tflite::BuiltinOptions2 builtin_options_2_type = tflite::BuiltinOptions2_NONE,
+    ::flatbuffers::Offset<void> builtin_options_2 = 0) {
   auto inputs__ = inputs ? _fbb.CreateVector<int32_t>(*inputs) : 0;
   auto outputs__ = outputs ? _fbb.CreateVector<int32_t>(*outputs) : 0;
   auto custom_options__ = custom_options ? _fbb.CreateVector<uint8_t>(*custom_options) : 0;
@@ -12970,7 +13156,9 @@ inline ::flatbuffers::Offset<Operator> CreateOperatorDirect(
       mutating_variable_inputs__,
       intermediates__,
       large_custom_options_offset,
-      large_custom_options_size);
+      large_custom_options_size,
+      builtin_options_2_type,
+      builtin_options_2);
 }
 
 ::flatbuffers::Offset<Operator> CreateOperator(::flatbuffers::FlatBufferBuilder &_fbb, const OperatorT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -13976,6 +14164,32 @@ inline ::flatbuffers::Offset<Tensor> CreateTensor(::flatbuffers::FlatBufferBuild
       _shape_signature,
       _has_rank,
       _variant_tensors);
+}
+
+inline StablehloConcatenateOptionsT *StablehloConcatenateOptions::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = std::unique_ptr<StablehloConcatenateOptionsT>(new StablehloConcatenateOptionsT());
+  UnPackTo(_o.get(), _resolver);
+  return _o.release();
+}
+
+inline void StablehloConcatenateOptions::UnPackTo(StablehloConcatenateOptionsT *_o, const ::flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = dimension(); _o->dimension = _e; }
+}
+
+inline ::flatbuffers::Offset<StablehloConcatenateOptions> StablehloConcatenateOptions::Pack(::flatbuffers::FlatBufferBuilder &_fbb, const StablehloConcatenateOptionsT* _o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateStablehloConcatenateOptions(_fbb, _o, _rehasher);
+}
+
+inline ::flatbuffers::Offset<StablehloConcatenateOptions> CreateStablehloConcatenateOptions(::flatbuffers::FlatBufferBuilder &_fbb, const StablehloConcatenateOptionsT *_o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { ::flatbuffers::FlatBufferBuilder *__fbb; const StablehloConcatenateOptionsT* __o; const ::flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _dimension = _o->dimension;
+  return tflite::CreateStablehloConcatenateOptions(
+      _fbb,
+      _dimension);
 }
 
 inline Conv2DOptionsT *Conv2DOptions::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {
@@ -17366,6 +17580,8 @@ inline void Operator::UnPackTo(OperatorT *_o, const ::flatbuffers::resolver_func
   { auto _e = intermediates(); if (_e) { _o->intermediates.resize(_e->size()); for (::flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->intermediates[_i] = _e->Get(_i); } } else { _o->intermediates.resize(0); } }
   { auto _e = large_custom_options_offset(); _o->large_custom_options_offset = _e; }
   { auto _e = large_custom_options_size(); _o->large_custom_options_size = _e; }
+  { auto _e = builtin_options_2_type(); _o->builtin_options_2.type = _e; }
+  { auto _e = builtin_options_2(); if (_e) _o->builtin_options_2.value = tflite::BuiltinOptions2Union::UnPack(_e, builtin_options_2_type(), _resolver); }
 }
 
 inline ::flatbuffers::Offset<Operator> Operator::Pack(::flatbuffers::FlatBufferBuilder &_fbb, const OperatorT* _o, const ::flatbuffers::rehasher_function_t *_rehasher) {
@@ -17387,6 +17603,8 @@ inline ::flatbuffers::Offset<Operator> CreateOperator(::flatbuffers::FlatBufferB
   auto _intermediates = _o->intermediates.size() ? _fbb.CreateVector(_o->intermediates) : 0;
   auto _large_custom_options_offset = _o->large_custom_options_offset;
   auto _large_custom_options_size = _o->large_custom_options_size;
+  auto _builtin_options_2_type = _o->builtin_options_2.type;
+  auto _builtin_options_2 = _o->builtin_options_2.Pack(_fbb);
   return tflite::CreateOperator(
       _fbb,
       _opcode_index,
@@ -17399,7 +17617,9 @@ inline ::flatbuffers::Offset<Operator> CreateOperator(::flatbuffers::FlatBufferB
       _mutating_variable_inputs,
       _intermediates,
       _large_custom_options_offset,
-      _large_custom_options_size);
+      _large_custom_options_size,
+      _builtin_options_2_type,
+      _builtin_options_2);
 }
 
 inline SubGraphT::SubGraphT(const SubGraphT &o)
@@ -20555,6 +20775,77 @@ inline void BuiltinOptionsUnion::Reset() {
   }
   value = nullptr;
   type = BuiltinOptions_NONE;
+}
+
+inline bool VerifyBuiltinOptions2(::flatbuffers::Verifier &verifier, const void *obj, BuiltinOptions2 type) {
+  switch (type) {
+    case BuiltinOptions2_NONE: {
+      return true;
+    }
+    case BuiltinOptions2_StablehloConcatenateOptions: {
+      auto ptr = reinterpret_cast<const tflite::StablehloConcatenateOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    default: return true;
+  }
+}
+
+inline bool VerifyBuiltinOptions2Vector(::flatbuffers::Verifier &verifier, const ::flatbuffers::Vector<::flatbuffers::Offset<void>> *values, const ::flatbuffers::Vector<uint8_t> *types) {
+  if (!values || !types) return !values && !types;
+  if (values->size() != types->size()) return false;
+  for (::flatbuffers::uoffset_t i = 0; i < values->size(); ++i) {
+    if (!VerifyBuiltinOptions2(
+        verifier,  values->Get(i), types->GetEnum<BuiltinOptions2>(i))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+inline void *BuiltinOptions2Union::UnPack(const void *obj, BuiltinOptions2 type, const ::flatbuffers::resolver_function_t *resolver) {
+  (void)resolver;
+  switch (type) {
+    case BuiltinOptions2_StablehloConcatenateOptions: {
+      auto ptr = reinterpret_cast<const tflite::StablehloConcatenateOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
+    default: return nullptr;
+  }
+}
+
+inline ::flatbuffers::Offset<void> BuiltinOptions2Union::Pack(::flatbuffers::FlatBufferBuilder &_fbb, const ::flatbuffers::rehasher_function_t *_rehasher) const {
+  (void)_rehasher;
+  switch (type) {
+    case BuiltinOptions2_StablehloConcatenateOptions: {
+      auto ptr = reinterpret_cast<const tflite::StablehloConcatenateOptionsT *>(value);
+      return CreateStablehloConcatenateOptions(_fbb, ptr, _rehasher).Union();
+    }
+    default: return 0;
+  }
+}
+
+inline BuiltinOptions2Union::BuiltinOptions2Union(const BuiltinOptions2Union &u) : type(u.type), value(nullptr) {
+  switch (type) {
+    case BuiltinOptions2_StablehloConcatenateOptions: {
+      value = new tflite::StablehloConcatenateOptionsT(*reinterpret_cast<tflite::StablehloConcatenateOptionsT *>(u.value));
+      break;
+    }
+    default:
+      break;
+  }
+}
+
+inline void BuiltinOptions2Union::Reset() {
+  switch (type) {
+    case BuiltinOptions2_StablehloConcatenateOptions: {
+      auto ptr = reinterpret_cast<tflite::StablehloConcatenateOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    default: break;
+  }
+  value = nullptr;
+  type = BuiltinOptions2_NONE;
 }
 
 inline const tflite::Model *GetModel(const void *buf) {
