@@ -48,7 +48,7 @@ tf_py_strict_test(
         ":compare_test_proto_py",
         ":protobuf",
         "//tensorflow/python/platform:test",
-        "@pypi_six//:pkg"
+        "@pypi_six//:pkg",
     ],
 )
 
