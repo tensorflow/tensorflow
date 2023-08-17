@@ -509,6 +509,8 @@ FunctionalHloRunner::LoadAndRun(
   CHECK(!hlo_files.empty());
   // We only support SPMD as of now, i.e., all devices are supposed
   // to execute the same HLO module.
+  // TODO(tdanyluk): Consider revising this API which takes multiple HLOs, but
+  // uses only one.
   HloModuleAndArguments hlo_module_and_arguments;
   TF_ASSIGN_OR_RETURN(hlo_module_and_arguments,
                       LoadHloModuleAndArguments(hlo_files[0], input_format));
