@@ -62,6 +62,9 @@ from tensorflow.python.types import core
 # Type aliases for quantization method protobuf enums.
 _Method = quant_opts_pb2.QuantizationMethod.Method
 _ExperimentalMethod = quant_opts_pb2.QuantizationMethod.ExperimentalMethod
+_CalibrationMethod = (
+    quant_opts_pb2.CalibrationOptions.CalibrationMethod
+)
 
 _QuantizationComponent = (
     quant_opts_pb2.QuantizationComponentSpec.QuantizationComponent
@@ -1601,7 +1604,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       },
   )
   @test_util.run_in_graph_and_eager_modes
-  def test_conv_ptq_model(
+  def test_conv_ptq_model_by_min_max(
       self,
       activation_fn: Optional[ops.Operation],
       has_bias: bool,
@@ -1610,6 +1613,9 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       input_shape_dynamic: bool,
       enable_per_channel_quantization: bool,
   ):
+    calibration_options = quant_opts_pb2.CalibrationOptions(
+        calibration_method=_CalibrationMethod.MIN_MAX
+    )
     input_shape = [None, None, None, 3] if input_shape_dynamic else [1, 3, 4, 3]
     filter_shape = [2, 3, 3, 2]
 
@@ -1638,6 +1644,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         signature_keys=['serving_default'],
         op_set=target_opset,
         enable_per_channel_quantization=enable_per_channel_quantization,
+        calibration_options=calibration_options,
     )
 
     converted_model = quantize_model.quantize(
@@ -1712,6 +1719,434 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     else:
       self.assertTrue(self._contains_quantized_function_call(output_graphdef))
     self.assertFalse(self._contains_op(output_graphdef, 'FusedBatchNormV3'))
+
+  @parameterized.named_parameters(
+      {
+          'testcase_name': 'none',
+          'activation_fn': None,
+          'has_bias': False,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.TF,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'relu',
+          'activation_fn': nn_ops.relu,
+          'has_bias': False,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.TF,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'relu6',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': False,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.TF,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'bn',
+          'activation_fn': None,
+          'has_bias': False,
+          'has_batch_norm': True,
+          'target_opset': quant_opts_pb2.TF,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'with_bias',
+          'activation_fn': None,
+          'has_bias': True,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.TF,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'with_bias_and_relu6',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.TF,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'with_bias_and_bn_and_relu6',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': True,
+          'target_opset': quant_opts_pb2.TF,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'with_bias_and_relu6_to_xla',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.XLA,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'with_bias_and_bn_and_relu6_to_xla',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': True,
+          'target_opset': quant_opts_pb2.XLA,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'with_bias_and_relu6_to_xla_dynamic',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.XLA,
+          'input_shape_dynamic': True,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'with_bias_and_bn_and_relu6_to_xla_dynamic',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': True,
+          'target_opset': quant_opts_pb2.XLA,
+          'input_shape_dynamic': True,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'with_bias_and_relu6_to_uq',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.UNIFORM_QUANTIZED,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'with_bias_and_bn_and_relu6_to_uq',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': True,
+          'target_opset': quant_opts_pb2.UNIFORM_QUANTIZED,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': False,
+      },
+      {
+          'testcase_name': 'with_bias_and_relu6_to_uq_per_channel',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.UNIFORM_QUANTIZED,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': True,
+      },
+      {
+          'testcase_name': 'with_bias_and_bn_and_relu6_to_uq_per_channel',
+          'activation_fn': nn_ops.relu6,
+          'has_bias': True,
+          'has_batch_norm': True,
+          'target_opset': quant_opts_pb2.UNIFORM_QUANTIZED,
+          'input_shape_dynamic': False,
+          'enable_per_channel_quantization': True,
+      },
+  )
+  @test_util.run_in_graph_and_eager_modes
+  # TODO(b/295279729): - Modify calibration method test cases briefly
+  def test_conv_ptq_model_by_average_min_max(
+      self,
+      activation_fn: Optional[ops.Operation],
+      has_bias: bool,
+      has_batch_norm: bool,
+      target_opset: quant_opts_pb2.OpSet,
+      input_shape_dynamic: bool,
+      enable_per_channel_quantization: bool,
+  ):
+    calibration_options = quant_opts_pb2.CalibrationOptions(
+        calibration_method=_CalibrationMethod.AVERAGE_MIN_MAX
+    )
+
+    input_shape = [None, None, None, 3] if input_shape_dynamic else [1, 3, 4, 3]
+    filter_shape = [2, 3, 3, 2]
+
+    model = self._create_conv2d_model(
+        input_shape, filter_shape, has_bias, has_batch_norm, activation_fn
+    )
+    saved_model_save.save(model, self._input_saved_model_path)
+
+    def data_gen() -> repr_dataset.RepresentativeDataset:
+      for _ in range(8):
+        yield {
+            'input_tensor': ops.convert_to_tensor(
+                np.random.uniform(low=0, high=150, size=(1, 3, 4, 3)).astype(
+                    'f4'
+                )
+            ),
+        }
+
+    tags = {tag_constants.SERVING}
+
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.STATIC_RANGE
+        ),
+        tags=tags,
+        signature_keys=['serving_default'],
+        op_set=target_opset,
+        enable_per_channel_quantization=enable_per_channel_quantization,
+        calibration_options=calibration_options,
+    )
+
+    converted_model = quantize_model.quantize(
+        self._input_saved_model_path,
+        self._output_saved_model_path,
+        quantization_options,
+        representative_dataset=data_gen(),
+    )
+    self.assertIsNotNone(converted_model)
+    self.assertCountEqual(
+        converted_model.signatures._signatures.keys(), {'serving_default'}
+    )
+
+    output_loader = saved_model_loader.SavedModelLoader(
+        self._output_saved_model_path
+    )
+    output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
+    if target_opset == quant_opts_pb2.XLA:
+      self.assertTrue(self._contains_op(output_graphdef, 'XlaConvV2'))
+    elif target_opset == quant_opts_pb2.UNIFORM_QUANTIZED:
+      self.assertTrue(
+          self._contains_op(output_graphdef, 'UniformQuantizedConvolution')
+      )
+      if enable_per_channel_quantization:
+        quantized_axis = 3
+        quantized_dim_size_attr = attr_value_pb2.AttrValue(
+            list=attr_value_pb2.AttrValue.ListValue(
+                shape=[
+                    tensor_shape_pb2.TensorShapeProto(
+                        dim=[
+                            tensor_shape_pb2.TensorShapeProto.Dim(
+                                size=filter_shape[quantized_axis]
+                            )
+                        ]
+                    )
+                ]
+            )
+        )
+      else:
+        quantized_axis = -1
+        # Empty dimension. Per-tensor quantization has singular channel.
+        quantized_dim_size_attr = attr_value_pb2.AttrValue(
+            list=attr_value_pb2.AttrValue.ListValue(
+                shape=[tensor_shape_pb2.TensorShapeProto()]
+            )
+        )
+      quantized_axis_attr = attr_value_pb2.AttrValue(i=quantized_axis)
+      self.assertEqual(
+          self._count_ops(
+              output_graphdef,
+              _PER_CHANNEL_QUANTIZED_OPS,
+              'rhs_quantization_axis',
+              quantized_axis_attr,
+          ),
+          self._count_ops(output_graphdef, _PER_CHANNEL_QUANTIZED_OPS),
+      )
+      self.assertEqual(
+          self._count_ops(
+              output_graphdef,
+              _PER_CHANNEL_OP_NAMES,
+              '_output_shapes',
+              quantized_dim_size_attr,
+              get_op_name=True,
+          ),
+          self._count_ops(
+              output_graphdef,
+              _PER_CHANNEL_OP_NAMES,
+              get_op_name=True,
+          ),
+      )
+      self.assertFalse(self._contains_op(output_graphdef, 'Conv2D'))
+    else:
+      self.assertTrue(self._contains_quantized_function_call(output_graphdef))
+    self.assertFalse(self._contains_op(output_graphdef, 'FusedBatchNormV3'))
+
+  @parameterized.named_parameters(
+      {
+          'testcase_name': 'none',
+          'activation_fn': None,
+          'has_bias': False,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.TF,
+      },
+      {
+          'testcase_name': 'relu',
+          'activation_fn': nn_ops.relu,
+          'has_bias': False,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.TF,
+      },
+      {
+          'testcase_name': 'bn',
+          'activation_fn': None,
+          'has_bias': False,
+          'has_batch_norm': True,
+          'target_opset': quant_opts_pb2.TF,
+      },
+      {
+          'testcase_name': 'with_bias',
+          'activation_fn': None,
+          'has_bias': True,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.TF,
+      },
+      {
+          'testcase_name': 'with_bias_and_relu',
+          'activation_fn': nn_ops.relu,
+          'has_bias': True,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.TF,
+      },
+      {
+          'testcase_name': 'with_bias_and_bn_and_relu',
+          'activation_fn': nn_ops.relu,
+          'has_bias': True,
+          'has_batch_norm': True,
+          'target_opset': quant_opts_pb2.TF,
+      },
+      {
+          'testcase_name': 'with_bias_and_relu_to_xla',
+          'activation_fn': nn_ops.relu,
+          'has_bias': True,
+          'has_batch_norm': False,
+          'target_opset': quant_opts_pb2.XLA,
+      },
+      {
+          'testcase_name': 'with_bias_and_bn_and_relu_to_xla',
+          'activation_fn': nn_ops.relu,
+          'has_bias': True,
+          'has_batch_norm': True,
+          'target_opset': quant_opts_pb2.XLA,
+      },
+  )
+  @test_util.run_in_graph_and_eager_modes
+  def test_conv_ptq_with_outlier_representative_data(
+      self,
+      activation_fn: Optional[ops.Operation],
+      has_bias: bool,
+      has_batch_norm: bool,
+      target_opset: quant_opts_pb2.OpSet,
+  ):
+    input_shape = [1, 3, 4, 3]
+    filter_shape = [2, 3, 3, 2]
+
+    model = self._create_conv2d_model(
+        input_shape, filter_shape, has_bias, has_batch_norm, activation_fn
+    )
+    saved_model_save.save(model, self._input_saved_model_path)
+
+    def data_gen() -> repr_dataset.RepresentativeDataset:
+      outlier = np.random.uniform(low=0, high=10, size=(1, 3, 4, 3)).astype(
+          'f4'
+      )
+      outlier[0][0][0][0:2] = [-1000, 1000]
+      yield {'input_tensor': ops.convert_to_tensor(outlier)}
+      for _ in range(10):
+        yield {
+            'input_tensor': ops.convert_to_tensor(
+                np.random.uniform(low=0, high=10, size=(1, 3, 4, 3)).astype(
+                    'f4'
+                )
+            ),
+        }
+
+    tags = {tag_constants.SERVING}
+
+    quantization_options_min_max = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.STATIC_RANGE
+        ),
+        tags=tags,
+        signature_keys=['serving_default'],
+        op_set=target_opset,
+        enable_per_channel_quantization=False,
+        calibration_options=quant_opts_pb2.CalibrationOptions(
+            calibration_method=_CalibrationMethod.MIN_MAX,
+        ),
+    )
+
+    converted_model_min_max = quantize_model.quantize(
+        self._input_saved_model_path,
+        self._output_saved_model_path,
+        quantization_options_min_max,
+        representative_dataset=data_gen(),
+        overwrite_output_directory=True,
+    )
+
+    self.assertIsNotNone(converted_model_min_max)
+    self.assertCountEqual(
+        converted_model_min_max.signatures._signatures.keys(),
+        {'serving_default'},
+    )
+
+    quantization_options_average_min_max = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.STATIC_RANGE
+        ),
+        tags=tags,
+        signature_keys=['serving_default'],
+        op_set=target_opset,
+        enable_per_channel_quantization=False,
+        calibration_options=quant_opts_pb2.CalibrationOptions(
+            calibration_method=_CalibrationMethod.AVERAGE_MIN_MAX,
+        ),
+    )
+
+    converted_model_average_min_max = quantize_model.quantize(
+        self._input_saved_model_path,
+        self._output_saved_model_path,
+        quantization_options_average_min_max,
+        representative_dataset=data_gen(),
+        overwrite_output_directory=True,
+    )
+
+    self.assertIsNotNone(converted_model_average_min_max)
+    self.assertCountEqual(
+        converted_model_average_min_max.signatures._signatures.keys(),
+        {'serving_default'},
+    )
+
+    sample_input = ops.convert_to_tensor(
+        np.random.uniform(low=0, high=10, size=(1, 3, 4, 3)).astype('f4')
+    )
+
+    original_output = model.conv(sample_input)['output']
+    min_max_output = converted_model_min_max.signatures['serving_default'](
+        input_tensor=sample_input
+    )['output']
+    average_min_max_output = converted_model_average_min_max.signatures[
+        'serving_default'
+    ](input_tensor=sample_input)['output']
+
+    def get_mean_square_error(x, y):
+      ret = tensorflow.reduce_mean(tensorflow.square(tensorflow.subtract(x, y)))
+      try:
+        ret = ret.numpy()
+      except AttributeError:
+        ret = ret.eval()
+      return ret
+
+    min_max_mse = get_mean_square_error(original_output, min_max_output)
+    average_min_max_mse = get_mean_square_error(
+        original_output, average_min_max_output
+    )
+
+    self.assertLess(average_min_max_mse, min_max_mse)
 
   @parameterized.named_parameters(
       ('to_tf_with_int32_input_type', dtypes.int32, quant_opts_pb2.TF),

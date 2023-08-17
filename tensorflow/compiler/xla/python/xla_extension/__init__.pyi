@@ -13,6 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 
+from __future__ import annotations
+
 import enum
 import inspect
 import types
@@ -350,6 +352,7 @@ class Device:
   platform: str
   device_kind: str
   client: Client
+  local_hardware_id: int | None
   def __repr__(self) -> str: ...
   def __str__(self) -> str: ...
   def transfer_to_infeed(self, literal: _LiteralSlice): ...
@@ -467,6 +470,8 @@ def get_topology_for_devices(devices: List[Device]) -> DeviceTopology:
 
 def load_pjrt_plugin(platform_name: str, library_path: str) -> _Status: ...
 def pjrt_plugin_loaded(plugin_name: str) -> bool: ...
+def pjrt_plugin_initialized(plugin_name: str) -> bool: ...
+def initialize_pjrt_plugin(platform_name: str) -> _Status: ...
 
 ArrayImpl = Any
 
@@ -702,16 +707,19 @@ class NamedSharding(XLACompatibleSharding):
   spec: Any
   _memory_kind: Optional[str]
   _parsed_pspec: Any
+  _internal_device_list: DeviceList
 
 class SingleDeviceSharding(XLACompatibleSharding):
   def __init__(self, device: Device, *, memory_kind: Optional[str] = None): ...
   _device: Device
   _memory_kind: Optional[str]
+  _internal_device_list: DeviceList
 
 class PmapSharding(XLACompatibleSharding):
   def __init__(self, devices: Sequence[Any], sharding_spec: pmap_lib.ShardingSpec): ...
   devices: List[Any]
   sharding_spec: pmap_lib.ShardingSpec
+  _internal_device_list: DeviceList
 
 class GSPMDSharding(XLACompatibleSharding):
   def __init__(self, devices: Sequence[Device],
@@ -720,6 +728,7 @@ class GSPMDSharding(XLACompatibleSharding):
   _devices: Tuple[Device, ...]
   _hlo_sharding: HloSharding
   _memory_kind: Optional[str]
+  _internal_device_list: DeviceList
 
 class PjitFunction:
   def __call__(self, *args, **kwargs) -> Any: ...

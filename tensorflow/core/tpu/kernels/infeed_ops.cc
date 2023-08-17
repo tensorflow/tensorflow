@@ -22,7 +22,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
@@ -55,6 +54,7 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/transfer_ops.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {

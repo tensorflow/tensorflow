@@ -1222,7 +1222,7 @@ int FindReturnIndex(Value val) {
 }
 
 // Skip the assertions because they currently create problematic dependencies.
-constexpr bool kDoAssertions = false;
+constexpr bool kDoAssertions = true;
 
 void AddAssertion(OpBuilder& builder, Location& loc, Value cond,
                   const std::string& message) {

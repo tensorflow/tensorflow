@@ -87,7 +87,7 @@ absl::Status RunSyncOrAsync(
 StatusOr<NcclComm::Lock> GetNcclComm(
     const NcclExecuteParams& params, int64_t group_mode, int64_t op_id,
     absl::Span<const int64_t> replica_group_offsets,
-    absl::Span<const int64_t> replica_group_values, bool is_async) {
+    absl::Span<const int64_t> replica_group_values, int64_t stream_id) {
   // TODO(b/233930690): Pass the attribute below as a nested array.
   // Pass an array of arrays using two vectors; one specifying all the values
   // and another specifying the (ending) offsets of each array in the other
@@ -102,7 +102,6 @@ StatusOr<NcclComm::Lock> GetNcclComm(
     replica_groups.push_back(replica_group);
   }
 
-  const int64_t stream_id = is_async ? 1 : 0;
   return LockNcclComm(params, replica_groups,
                       static_cast<CollectiveOpGroupMode>(group_mode), op_id,
                       stream_id);
@@ -188,13 +187,13 @@ absl::Status P2PImplCommon(const ServiceExecutableRunOptions* run_options,
                            absl::Span<const int64_t> target_peers,
                            NcclP2PRunner runner,
                            DeviceBuffersGetter device_buffers_getter,
-                           bool is_async = true) {
+                           uint64_t stream_id) {
   NcclExecuteParams params(*run_options, stream->parent());
 
   const std::string device_string =
       NcclCollectiveThunk::GetDeviceString(params);
   auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
-                          replica_group_values, is_async);
+                          replica_group_values, stream_id);
   if (!comm.ok()) return comm.status();
 
   auto device_buffers = device_buffers_getter(args);
@@ -242,14 +241,15 @@ absl::Status CollectivePermuteImpl(
     absl::Span<const int64_t> target_peers) {
 #if XLA_ENABLE_XCCL
   VLOG(3) << "Running CollectivePermute " << (is_async ? "(Async)" : "(Sync)");
-  return RunSyncOrAsync(
-      run_options, collectives, async_collectives, uid, is_async,
-      [&](se::Stream* stream) {
-        return P2PImplCommon(
-            run_options, debug_options, stream, args, group_mode, op_id,
-            replica_group_offsets, replica_group_values, source_peers,
-            target_peers, RunCollectivePermute, GetDeviceBufferPairs, is_async);
-      });
+  return RunSyncOrAsync(run_options, collectives, async_collectives, uid,
+                        is_async, [&](se::Stream* stream) {
+                          return P2PImplCommon(
+                              run_options, debug_options, stream, args,
+                              group_mode, op_id, replica_group_offsets,
+                              replica_group_values, source_peers, target_peers,
+                              RunCollectivePermute, GetDeviceBufferPairs,
+                              GetStreamId(is_async));
+                        });
 #else   // XLA_ENABLE_XCCL
   return absl::InternalError("NCCL disabled");
 #endif  // XLA_ENABLE_XCCL
@@ -296,7 +296,8 @@ static absl::Status P2PSendImpl(const ServiceExecutableRunOptions* run_options,
         return P2PImplCommon(run_options, debug_options, stream, args,
                              group_mode, op_id, replica_group_offsets,
                              replica_group_values, source_peers, target_peers,
-                             RunSend, GetSingleArgAsDeviceBufferPair, is_async);
+                             RunSend, GetSingleArgAsDeviceBufferPair,
+                             GetStreamId(is_async, kAsyncStreamP2P));
       },
       kAsyncStreamP2P);
 #else   // XLA_ENABLE_XCCL
@@ -345,7 +346,8 @@ static absl::Status P2PRecvImpl(const ServiceExecutableRunOptions* run_options,
         return P2PImplCommon(run_options, debug_options, stream, args,
                              group_mode, op_id, replica_group_offsets,
                              replica_group_values, source_peers, target_peers,
-                             RunRecv, GetSingleArgAsDeviceBufferPair, is_async);
+                             RunRecv, GetSingleArgAsDeviceBufferPair,
+                             GetStreamId(is_async, kAsyncStreamP2P));
       },
       kAsyncStreamP2P);
 #else   // XLA_ENABLE_XCCL
@@ -385,7 +387,7 @@ absl::Status AllGatherImplCommon(
 
   TF_ASSIGN_OR_RETURN(
       auto comm, GetNcclComm(params, group_mode, op_id, replica_group_offsets,
-                             replica_group_values, is_async));
+                             replica_group_values, GetStreamId(is_async)));
 
   TF_ASSIGN_OR_RETURN(auto device_buffers, GetDeviceBufferPairs(args));
 
@@ -447,7 +449,7 @@ absl::Status AllReduceImplCommon(
 
   TF_ASSIGN_OR_RETURN(
       auto comm, GetNcclComm(params, group_mode, op_id, replica_group_offsets,
-                             replica_group_values, is_async));
+                             replica_group_values, GetStreamId(is_async)));
 
   TF_ASSIGN_OR_RETURN(auto device_buffers, GetDeviceBufferPairs(args));
 
@@ -518,7 +520,7 @@ absl::Status AllToAllImplCommon(const ServiceExecutableRunOptions* run_options,
 
   TF_ASSIGN_OR_RETURN(
       auto comm, GetNcclComm(params, group_mode, op_id, replica_group_offsets,
-                             replica_group_values, is_async));
+                             replica_group_values, GetStreamId(is_async)));
 
   TF_ASSIGN_OR_RETURN(auto device_buffers, GetDeviceBufferPairs(args));
 
@@ -584,7 +586,7 @@ absl::Status ReduceScatterImplCommon(
 
   TF_ASSIGN_OR_RETURN(
       auto comm, GetNcclComm(params, group_mode, op_id, replica_group_offsets,
-                             replica_group_values, is_async));
+                             replica_group_values, GetStreamId(is_async)));
 
   TF_ASSIGN_OR_RETURN(auto device_buffers, GetDeviceBufferPairs(args));
 

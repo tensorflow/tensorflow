@@ -688,6 +688,7 @@ xla_test(
         "//tensorflow/compiler/xla/tests:verified_hlo_module",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:platform_port",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -3040,6 +3041,7 @@ cc_library(
         ":backend_configs_cc",
         ":gpu_device_info",
         ":gpu_fusible",
+        ":hlo_traversal",
         ":ir_emission_utils",
         ":launch_dimensions",
         ":reduction_utils",
@@ -3051,6 +3053,7 @@ cc_library(
         "//tensorflow/compiler/xla/hlo/utils:hlo_query",
         "//tensorflow/compiler/xla/service/llvm_ir:loop_emitter",
         "//tensorflow/compiler/xla/stream_executor:device_description",
+        "//tensorflow/tsl/platform:macros",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/types:span",
@@ -3942,13 +3945,35 @@ tsl_gpu_library(
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/service:collective_ops_utils",
         "//tensorflow/compiler/xla/service:custom_call_status",
         "//tensorflow/compiler/xla/service:custom_call_target_registry",
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xla/stream_executor",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
+)
+
+xla_cc_test(
+    name = "runtime_intrinsics_test",
+    srcs = ["runtime_intrinsics_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":runtime_intrinsics",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:gpu_plugin",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
+    ],
 )
 
 cc_library(

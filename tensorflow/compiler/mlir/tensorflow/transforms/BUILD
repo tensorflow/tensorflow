@@ -542,6 +542,7 @@ cc_library(
         "tpu_validate_inputs.cc",
         "tpu_variable_runtime_reformatting.cc",
         "update_control_dependencies.cc",
+        "verify_no_outside_compilation_markers_pass.cc",
         "verify_suitable_for_graph_export_pass.cc",
         "xla_call_module_deserialization.cc",
         "xla_call_module_serialization.cc",

@@ -485,7 +485,7 @@ ModelConfigSplitter my_splitter(my_proto);
 // std::pair<std::vector<MessageBytes>*, ::proto_splitter::ChunkedMessage*>
 auto[chunks, chunked_message] = my_splitter.Split();
 
-// chunks, chunked_message are transformed
+// chunks, chunked_message are processed
 
 ModelConfig my_new_proto;
 Merger::Merge(chunks, chunked_message, &my_new_proto);

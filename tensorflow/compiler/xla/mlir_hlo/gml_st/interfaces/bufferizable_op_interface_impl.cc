@@ -30,7 +30,7 @@ namespace gml_st {
 namespace {
 
 using mlir::bufferization::AliasingOpOperandList;
-using mlir::bufferization::AliasingOpResultList;
+using mlir::bufferization::AliasingValueList;
 using mlir::bufferization::AnalysisState;
 using mlir::bufferization::BufferizableOpInterface;
 using mlir::bufferization::BufferizationOptions;
@@ -50,17 +50,18 @@ struct FusionOpBufferizationInterface
   }
 
   AliasingOpOperandList getAliasingOpOperands(
-      Operation *op, OpResult opResult, const AnalysisState & /*state*/) const {
+      Operation *op, Value value, const AnalysisState & /*state*/) const {
     auto fusionOp = cast<FusionOp>(op);
+    auto opResult = value.dyn_cast<OpResult>();
+    if (!opResult) return {};
 
     // The i-th OpResult aliases with the i-th "out" tensor.
     return {{fusionOp.getDpsInitOperand(opResult.getResultNumber()),
              BufferRelation::Equivalent}};
   }
 
-  AliasingOpResultList getAliasingOpResults(
-      Operation *op, OpOperand &opOperand,
-      const AnalysisState & /*state*/) const {
+  AliasingValueList getAliasingValues(Operation *op, OpOperand &opOperand,
+                                      const AnalysisState & /*state*/) const {
     auto fusionOp = cast<FusionOp>(op);
 
     // The i-th "out" tensor aliases with the i-th OpResult.
@@ -182,7 +183,7 @@ struct FusionOpBufferizationInterface
 
   FailureOr<BaseMemRefType> getBufferType(
       Operation *op, Value value, const BufferizationOptions &options,
-      const DenseMap<Value, BaseMemRefType> &fixedTypes) const {
+      SmallVector<Value> &invocationStack) const {
     auto fusionOp = cast<FusionOp>(op);
 
     if (auto bbArg = value.dyn_cast<BlockArgument>()) {
@@ -190,7 +191,7 @@ struct FusionOpBufferizationInterface
       // corresponding output operand.
       return bufferization::getBufferType(
           fusionOp->getOpOperand(bbArg.getArgNumber()).get(), options,
-          fixedTypes);
+          invocationStack);
     }
 
     // The bufferized result type is the same as the bufferized type of the
@@ -198,7 +199,7 @@ struct FusionOpBufferizationInterface
     return bufferization::getBufferType(
         fusionOp.getDpsInitOperand(value.cast<OpResult>().getResultNumber())
             ->get(),
-        options, fixedTypes);
+        options, invocationStack);
   }
 };
 

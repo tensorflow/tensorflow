@@ -528,7 +528,20 @@ class Delegate {
 #endif
   }
 
-  bool handle_variable_ops() const { return options_.handle_variable_ops; }
+  bool support_variable_ops() const {
+    if (options_.flags & TFLITE_XNNPACK_DELEGATE_FLAG_VARIABLE_OPERATORS) {
+      return true;
+    } else if (options_.handle_variable_ops) {
+      TFLITE_LOG_PROD_ONCE(
+          tflite::TFLITE_LOG_ERROR,
+          "TfLiteXNNPackDelegateOptions::handle_variable_ops "
+          "is deprecated and will be removed in the future. "
+          "Use TfLiteXNNPackDelegateOptions::flags with "
+          "TFLITE_XNNPACK_DELEGATE_FLAG_VARIABLE_OPERATORS mask");
+      return true;
+    }
+    return false;
+  }
 
   pthreadpool_t threadpool() const {
 #if defined(__EMSCRIPTEN__) && !defined(__EMSCRIPTEN_PTHREADS__)
@@ -812,7 +825,7 @@ class Subgraph {
       if (context->tensors[t].type == kTfLiteResource) {
         // We should never see a resource tensor if we are not handling variable
         // ops.
-        if (!delegate.handle_variable_ops()) {
+        if (!delegate.support_variable_ops()) {
           TF_LITE_KERNEL_LOG(
               context,
               "unexpected resource tensor when XNNPACK delegate is "
@@ -2659,7 +2672,7 @@ class Subgraph {
       TfLiteContext* logging_context, int node_index, const TfLiteNode* node,
       const TfLiteTensor* tensors,
       const std::vector<uint32_t>& xnnpack_tensors) {
-    if (!delegate.handle_variable_ops()) {
+    if (!delegate.support_variable_ops()) {
       return kTfLiteError;
     }
     if (subgraph == nullptr) {
@@ -4634,7 +4647,7 @@ class Subgraph {
       TfLiteContext* logging_context, int node_index, const TfLiteNode* node,
       const TfLiteTensor* tensors,
       const std::vector<uint32_t>& xnnpack_tensors) {
-    if (!delegate.handle_variable_ops()) {
+    if (!delegate.support_variable_ops()) {
       return kTfLiteError;
     }
     const int resource_tensor_id = node->inputs->data[0];
@@ -5875,7 +5888,7 @@ class Subgraph {
                                          TfLiteContext* logging_context,
                                          int node_index,
                                          const TfLiteNode* node) {
-    if (!delegate.handle_variable_ops()) {
+    if (!delegate.support_variable_ops()) {
       return kTfLiteError;
     }
     if (subgraph == nullptr) {
@@ -6426,7 +6439,6 @@ TfLiteXNNPackDelegateOptions TfLiteXNNPackDelegateOptionsDefault() {
   options.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_DYNAMIC_FULLY_CONNECTED;
 #endif  // XNNPACK_DELEGATE_TEST_MODE
 
-  options.handle_variable_ops = false;
   return options;
 }
 

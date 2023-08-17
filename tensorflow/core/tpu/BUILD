@@ -41,6 +41,7 @@ cc_library(
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:cord",
     ],
 )
 
@@ -51,6 +52,10 @@ tf_cc_test(
         ":tpu_embedding_errors",
         "//tensorflow/core:test",
         "//tensorflow/core/platform:errors",
+        "//tensorflow/tsl/platform:statusor",
+        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
     ],
@@ -63,14 +68,14 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_proto_parsing",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/protobuf/tpu:optimization_parameters_proto_cc",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -81,7 +86,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core/framework:tensor_shape_proto_cc",
-        "//tensorflow/core/lib/core:status",
+        "//tensorflow/core/platform:status",
         "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
     ],
 )
@@ -95,8 +100,10 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:xla_builder",
-        "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:statusor",
+        "//tensorflow/tsl/platform:logging",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -106,13 +113,14 @@ cc_library(
     hdrs = ["tpu_embedding_configuration_proto_rewrite.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core/lib/math:math_util",
-        "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:status",
         "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -121,15 +129,13 @@ tf_cc_test(
     srcs = ["tpu_embedding_configuration_proto_rewrite_test.cc"],
     deps = [
         ":tpu_embedding_configuration_proto_rewrite",
-        "//tensorflow/core:framework_lite",
         "//tensorflow/core:test",
-        "//tensorflow/core/lib/core:errors",
-        "//tensorflow/core/lib/core:status",
-        "//tensorflow/core/platform:casts",
+        "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:status_matchers",
-        "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
         "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
+        "//tensorflow/tsl/platform:protobuf",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
     ],
@@ -190,7 +196,8 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_initializer_framework_helper",
-        "//tensorflow/core/platform:status",
+        "//tensorflow/tsl/platform:logging",
+        "@com_google_absl//absl/status",
     ],
     # Always link this in, because even if we don't use it directly we want its
     # static initializers to dynamically load API symbols exported from libtpu.so
@@ -270,9 +277,9 @@ cc_library(
         "//tensorflow/core/common_runtime/next_pluggable_device/c:tf_rendezvous_c_api_conversions",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/tpu/kernels:tpu_executable_info_proto_cc",
+        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/cleanup",
-        "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
     ],
@@ -297,8 +304,10 @@ cc_library(
         ":tpu_compile_interface",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:framework",
-        "//tensorflow/core/lib/core:status",
+        "//tensorflow/core/framework:function_proto_cc",
         "//tensorflow/core/lib/strings:proto_serialization",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/tsl/platform:logging",
     ],
 )
 
@@ -339,24 +348,10 @@ cc_library(
         "//tensorflow/core/protobuf/tpu:topology_proto_cc",
         "//tensorflow/core/tpu/graph_rewrite:distributed_tpu_configuration_rewrite_pass",
         "//tensorflow/core/tpu/graph_rewrite:distributed_tpu_rewrite_helpers",
+        "//tensorflow/tsl/platform:logging",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
     ] + if_libtpu(["//tensorflow/compiler/jit"]),
-)
-
-# For a more maintainable build this target should not exist and the headers
-# should  be split into the existing cc_library targets, but this change was
-# automatically  done so that we can remove long standing issues and complexity
-# in the build system. It's up to the OWNERS of this package to get rid of it or
-# not. The use of the textual_hdrs attribute is discouraged, use hdrs instead.
-# Here it is used to avoid header parsing errors in packages where the feature
-# parse_headers was enabled since loose headers were not being parsed. See
-# go/loose-lsc-one-target-approach for more details.
-cc_library(
-    name = "loose_headers",
-    tags = ["avoid_dep"],
-    textual_hdrs = ["tpu_global_init.h"],
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
 )

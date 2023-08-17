@@ -267,11 +267,6 @@ PJRT_Error* PJRT_Executable_DeserializeAndLoad(
 PJRT_Error* PJRT_LoadedExecutable_GetExecutable(
     PJRT_LoadedExecutable_GetExecutable_Args* args);
 
-PJRT_Error* PJRT_SerializedExecutable_Destroy(
-    PJRT_SerializedExecutable_Destroy_Args* args);
-PJRT_Error* PJRT_SerializedExecutable_Data(
-    PJRT_SerializedExecutable_Data_Args* args);
-
 PJRT_Error* PJRT_Buffer_Destroy(PJRT_Buffer_Destroy_Args* args);
 PJRT_Error* PJRT_Buffer_ElementType(PJRT_Buffer_ElementType_Args* args);
 PJRT_Error* PJRT_Buffer_Dimensions(PJRT_Buffer_Dimensions_Args* args);
@@ -474,11 +469,6 @@ constexpr PJRT_Api CreatePjrtApi(
       /*PJRT_LoadedExecutable_Execute=*/pjrt::PJRT_LoadedExecutable_Execute,
       /*PJRT_Executable_DeserializeAndLoad=*/
       pjrt::PJRT_Executable_DeserializeAndLoad,
-
-      /*PJRT_SerializedExecutable_Destroy=*/
-      pjrt::PJRT_SerializedExecutable_Destroy,
-      /*PJRT_SerializedExecutable_Data=*/
-      pjrt::PJRT_SerializedExecutable_Data,
 
       /*PJRT_Buffer_Destroy=*/pjrt::PJRT_Buffer_Destroy,
       /*PJRT_Buffer_ElementType=*/pjrt::PJRT_Buffer_ElementType,

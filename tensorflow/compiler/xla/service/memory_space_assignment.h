@@ -1656,14 +1656,10 @@ class AsynchronousCopyResource {
   // Internal helper method to implement adding/removing/checking resources.
   // ConsumeResource() may modify delay_. If delay_change_map is not null,
   // for any change to delay_[i], {i, delay_[i]} will be added to
-  // delay_change_map, allowing callers to undo any modifications. The
-  // current_copy points to an iterator in async_copies_ and this indicates the
-  // copy that we are processing, which is only used when recursing, to
-  // propagate the delay to the next copy.
+  // delay_change_map, allowing callers to undo any modifications.
   bool ConsumeResource(
       int64_t start_time, int64_t end_time, float resource,
       absl::flat_hash_map<int64_t, float>* delay_change_map = nullptr,
-      const std::list<AsynchronousCopy>::iterator* current_copy = nullptr,
       float resource_to_free = 0.0);
 
   // Same as the public RemoveCopy except it works on the async_copies_

@@ -27,6 +27,7 @@ cc_library(
     ],
     deps = [
         ":auto_sharding_cost_graph",
+        ":auto_sharding_option",
         ":auto_sharding_solver",
         ":auto_sharding_solver_option",
         ":auto_sharding_strategy",
@@ -98,9 +99,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
-        "//tensorflow/compiler/xla/hlo/utils:hlo_live_range",
         "//tensorflow/compiler/xla/service:hlo_value",
-        "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
     ],
@@ -112,6 +111,19 @@ cc_library(
     deps = [
         ":auto_sharding_strategy",
         ":matrix",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "auto_sharding_option",
+    hdrs = ["auto_sharding_option.h"],
+    deps = [
+        ":auto_sharding_util",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -159,7 +171,6 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
-        "//tensorflow/compiler/xla/hlo/utils:hlo_live_range",
         "//tensorflow/compiler/xla/hlo/utils:hlo_sharding_util",
         "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/algorithm:container",
@@ -228,33 +239,6 @@ xla_cc_test(
         ":auto_sharding_solver",
         ":auto_sharding_strategy",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-xla_cc_test(
-    name = "auto_sharding_util_test",
-    srcs = ["auto_sharding_util_test.cc"],
-    deps = [
-        ":auto_sharding_strategy",
-        ":auto_sharding_util",
-        "//tensorflow/compiler/xla:array",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/compiler/xla/hlo/ir:hlo",
-        "//tensorflow/compiler/xla/hlo/utils:hlo_live_range",
-        "//tensorflow/compiler/xla/hlo/utils:hlo_matchers",
-        "//tensorflow/compiler/xla/service:hlo_alias_analysis",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/tsl/platform:status",
-        "//tensorflow/tsl/platform:statusor",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
     ],
 )

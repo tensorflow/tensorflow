@@ -27,7 +27,6 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/cleanup/cleanup.h"
-#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
@@ -71,6 +70,7 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_executable_info.pb.h"
 #include "tensorflow/tsl/framework/cancellation.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {

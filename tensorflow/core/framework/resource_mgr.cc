@@ -142,11 +142,11 @@ void ResourceMgr::Clear() {
   {
     mutex_lock l(mu_);
     tmp_containers = std::move(containers_);
+    containers_.clear();  // reinitialize after move.
   }
   for (const auto& p : tmp_containers) {
     delete p.second;
   }
-  tmp_containers.clear();
 }
 
 string ResourceMgr::DebugString() const {

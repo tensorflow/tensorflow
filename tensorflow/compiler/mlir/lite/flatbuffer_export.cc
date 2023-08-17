@@ -1476,6 +1476,29 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
       return BuildStablehloOperatorwithoutOptions(
           inst, operands, results, tflite::BuiltinOperator_STABLEHLO_MAXIMUM);
     }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::ReshapeOp>(inst)) {
+      return BuildStablehloOperatorwithoutOptions(
+          inst, operands, results, tflite::BuiltinOperator_STABLEHLO_RESHAPE);
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::ClampOp>(inst)) {
+      return BuildStablehloOperatorwithoutOptions(
+          inst, operands, results, tflite::BuiltinOperator_STABLEHLO_CLAMP);
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::ConcatenateOp>(inst)) {
+      std::string op_name = inst->getName().getStringRef().str();
+      uint32_t opcode_index = GetOpcodeIndex(
+          op_name, tflite::BuiltinOperator_STABLEHLO_CONCATENATE);
+
+      auto concat_option = tflite::CreateStablehloConcatenateOptions(
+          builder_, shlo_op.getDimension());
+
+      return tflite::CreateOperator(
+          builder_, opcode_index, builder_.CreateVector(operands),
+          builder_.CreateVector(results), tflite::BuiltinOptions_NONE, 0, 0,
+          tflite::CustomOptionsFormat_FLEXBUFFERS, 0, 0, 0, 0,
+          tflite::BuiltinOptions2_StablehloConcatenateOptions,
+          concat_option.Union());
+    }
   }
 
   if (dialect == tf_dialect_) {

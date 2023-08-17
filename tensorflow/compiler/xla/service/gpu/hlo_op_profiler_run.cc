@@ -64,6 +64,8 @@ int RunProfiler(int argc, char** argv) {
       tsl::Flag("output_file", &output_file,
                 "Output measurements protobuf to the destination file."),
   };
+  // Allow setting flags as command line argument (in addition to XLA_FLAGS
+  // environment variable).
   AppendDebugOptionsFlags(&flag_list);
   bool parse_ok = tsl::Flags::Parse(&argc, argv, flag_list);
   tsl::port::InitMain(kUsage.data(), &argc, &argv);

@@ -1699,7 +1699,7 @@ def _run_vn_only(func=None, v2=True, reason=None):
     reason: string giving a reason for limiting the test to a particular mode.
 
   Returns:
-    Returns a decorator that will conditionally skip the decorated test method.
+    A decorator that will skip the test method in the specified version.
   """
   if not reason:
     reason = f"Test is only compatible with {'v2 ' if v2 else 'v1'}"
@@ -1730,7 +1730,7 @@ def _run_vn_only(func=None, v2=True, reason=None):
 
         return f(self, *args, **kwargs)
 
-      return decorated
+      return tf_decorator.make_decorator(f, decorated)
 
   if func is not None:
     return decorator(func)

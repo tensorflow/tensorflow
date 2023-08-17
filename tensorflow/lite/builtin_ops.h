@@ -194,6 +194,9 @@ typedef enum {
   kTfLiteBuiltinStablehloDivide = 164,
   kTfLiteBuiltinStablehloMultiply = 165,
   kTfLiteBuiltinStablehloMaximum = 166,
+  kTfLiteBuiltinStablehloReshape = 167,
+  kTfLiteBuiltinStablehloClamp = 168,
+  kTfLiteBuiltinStablehloConcatenate = 169,
 } TfLiteBuiltinOperator;
 
 #ifdef __cplusplus

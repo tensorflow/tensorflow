@@ -23,7 +23,6 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "absl/log/check.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/stream_executor/multi_platform_manager.h"
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
@@ -37,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_id.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_topology.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
 

@@ -75,6 +75,7 @@ exports_files(
         "demangle.h",
         "env.h",
         "env_time.h",
+        "error_logging.h",
         "file_system.h",
         "file_system_helper.h",
         "float8.h",
@@ -343,6 +344,15 @@ cc_library(
         "//tensorflow/tsl/platform:errors",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "error_logging",
+    hdrs = ["error_logging.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/tsl/platform:error_logging",
     ],
 )
 
@@ -999,6 +1009,7 @@ cc_binary(
         ":denormal",
         ":dynamic_annotations",
         ":env_time",
+        ":error_logging",
         ":file_statistics",
         ":fingerprint",
         ":gif",
@@ -1664,6 +1675,7 @@ filegroup(
         "base64.h",
         "cpu_feature_guard.cc",
         "cpu_feature_guard.h",
+        "error_logging.h",
         "fingerprint.h",
         "notification.h",
         "platform_strings.cc",

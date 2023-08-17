@@ -12,18 +12,19 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#ifndef TENSORFLOW_CORE_TFRT_KERNELS_STREAM_OPS_UTIL_CONSTANTS_H_
+#define TENSORFLOW_CORE_TFRT_KERNELS_STREAM_OPS_UTIL_CONSTANTS_H_
 
-#ifndef TENSORFLOW_TSL_PLATFORM_DEFAULT_ERROR_LOGGING_H_
-#define TENSORFLOW_TSL_PLATFORM_DEFAULT_ERROR_LOGGING_H_
+#include <cstddef>
 
-#include "absl/status/status.h"
-#include "absl/strings/string_view.h"
+namespace tensorflow {
+namespace tfrt_stub {
 
-namespace tsl::error_logging {
+// Step id and batch id are packed together to a 32 bit integer in the stream
+// callback. Step id takes the MSB 16 bit.
+inline constexpr size_t kStepIdBitSize = 16;
 
-absl::Status Log(absl::string_view component, absl::string_view subcomponent,
-                 absl::string_view error_msg);
+}  // namespace tfrt_stub
+}  // namespace tensorflow
 
-}
-
-#endif  // TENSORFLOW_TSL_PLATFORM_DEFAULT_ERROR_LOGGING_H_
+#endif  // TENSORFLOW_CORE_TFRT_KERNELS_STREAM_OPS_UTIL_CONSTANTS_H_

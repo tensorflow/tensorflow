@@ -18,7 +18,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
@@ -56,6 +55,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tensorflow/tsl/platform/macros.h"
 
 namespace tensorflow {

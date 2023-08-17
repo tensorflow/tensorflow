@@ -2784,6 +2784,9 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
         instruction->opcode() != HloOpcode::kGetTupleElement &&
         instruction->opcode() != HloOpcode::kTuple &&
         instruction->opcode() != HloOpcode::kWhile &&
+        instruction->opcode() != HloOpcode::kCustomCall &&
+        instruction->opcode() != HloOpcode::kReshape &&
+        instruction->opcode() != HloOpcode::kDynamicSlice &&
         absl::c_any_of(instruction->operands(), [](HloInstruction* operand) {
           return ShapeUtil::HasPrimitiveType(operand->shape(), S4) ||
                  ShapeUtil::HasPrimitiveType(operand->shape(), U4);

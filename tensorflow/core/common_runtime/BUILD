@@ -2118,8 +2118,10 @@ cc_library(
     hdrs = ["request_cost.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
     ],
 )
@@ -3193,9 +3195,8 @@ tf_cc_test(
     srcs = ["request_cost_test.cc"],
     deps = [
         ":request_cost",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
         "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

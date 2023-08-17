@@ -24,6 +24,7 @@ import numpy as np
 
 from tensorflow.compiler.mlir.quantization.tensorflow import exported_model_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow import quantization_options_pb2 as quant_opts_pb2
+from tensorflow.compiler.mlir.quantization.tensorflow.calibrator import calibration_statistics_pb2 as calib_stats_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow.python import pywrap_quantize_model
 from tensorflow.compiler.mlir.quantization.tensorflow.python import representative_dataset as repr_dataset
 from tensorflow.compiler.mlir.quantization.tensorflow.python import save_model
@@ -42,16 +43,33 @@ from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.trackable import autotrackable
 from tensorflow.python.types import core
+from tensorflow.python.util import tf_export
 
 # Type aliases for quant_opts_pb2 messages.
-_Method = quant_opts_pb2.QuantizationMethod.Method
-_ExperimentalMethod = quant_opts_pb2.QuantizationMethod.ExperimentalMethod
+_QuantizationOptions = tf_export.tf_export(
+    'quantization.experimental.QuantizationOptions'
+)(quant_opts_pb2.QuantizationOptions)
 
-_QuantizationComponent = (
-    quant_opts_pb2.QuantizationComponentSpec.QuantizationComponent
+_QuantizationMethod = tf_export.tf_export(
+    'quantization.experimental.QuantizationMethod'
+)(quant_opts_pb2.QuantizationMethod)
+
+_QuantizationComponentSpec = tf_export.tf_export(
+    'quantization.experimental.QuantizationComponentSpec'
+)(quant_opts_pb2.QuantizationComponentSpec)
+
+_UnitWiseQuantizationSpec = tf_export.tf_export(
+    'quantization.experimental.UnitWiseQuantizationSpec'
+)(quant_opts_pb2.UnitWiseQuantizationSpec)
+
+_Method = _QuantizationMethod.Method
+_ExperimentalMethod = _QuantizationMethod.ExperimentalMethod
+_CalibrationMethod = (
+    quant_opts_pb2.CalibrationOptions.CalibrationMethod
 )
 
-_TensorType = quant_opts_pb2.QuantizationComponentSpec.TensorType
+_QuantizationComponent = _QuantizationComponentSpec.QuantizationComponent
+_TensorType = _QuantizationComponentSpec.TensorType
 
 # Mapping of signature def key -> SignatureDef.
 _SignatureDefMap = Mapping[str, meta_graph_pb2.SignatureDef]
@@ -563,7 +581,7 @@ def _copy_assets(src_path: str, dst_path: str) -> None:
 def _run_static_range_qat(
     src_saved_model_path: str,
     dst_saved_model_path: str,
-    quant_opts: quant_opts_pb2.QuantizationOptions,
+    quant_opts: _QuantizationOptions,
     signature_def_map: _SignatureDefMap,
 ) -> None:
   """Runs static-range quantization for a Quantization-Aware Trained model.
@@ -610,7 +628,52 @@ def _run_static_range_qat(
   _copy_assets(src_saved_model_path, dst_saved_model_path)
 
 
-def _add_calibration_statistics(graph_def: graph_pb2.GraphDef) -> None:
+def _get_min_max_from_calibrator(
+    node_id: bytes,
+    calib_opts: quant_opts_pb2.CalibrationOptions,
+) -> tuple[float, float]:
+  """Calculate min and max from statistics using calibration options.
+
+  Args:
+    node_id: bytes of node id.
+    calib_opts: Calibration options used for calculating min and max.
+
+  Returns:
+    (min_value, max_value): Min and max calculated using calib_opts.
+
+  Raises:
+    ValueError: Unsupported calibration method is given.
+  """
+  statistics: calib_stats_pb2.CalibrationStatistics = (
+      pywrap_quantize_model.get_statistics_from_calibrator(node_id)
+  )
+  calib_method = calib_opts.calibration_method
+  if calib_method == _CalibrationMethod.MIN_MAX:
+    min_max_statistics = statistics.min_max_statistics
+    min_value = min_max_statistics.global_min
+    max_value = min_max_statistics.global_max
+  elif calib_method == _CalibrationMethod.AVERAGE_MIN_MAX:
+    average_min_max_statistics = statistics.average_min_max_statistics
+    # num_samples is guaranteed to be larger than 0 because
+    # get_statistics_from_calibrator throws an exception if num_samples == 0.
+    min_value = (
+        average_min_max_statistics.min_sum
+        / average_min_max_statistics.num_samples
+    )
+    max_value = (
+        average_min_max_statistics.max_sum
+        / average_min_max_statistics.num_samples
+    )
+  else:
+    raise ValueError('Unsupported calibration method.')
+
+  return min_value, max_value
+
+
+def _add_calibration_statistics(
+    graph_def: graph_pb2.GraphDef,
+    calib_opts: quant_opts_pb2.CalibrationOptions,
+) -> None:
   """Adds calibration statistics to the graph def.
 
   This function must be run after running the graph with a representative
@@ -619,6 +682,7 @@ def _add_calibration_statistics(graph_def: graph_pb2.GraphDef) -> None:
 
   Args:
     graph_def: GraphDef to add calibration statistics to.
+    calib_opts: Calibration options to calculate min and max.
   """
   for function_def in graph_def.library.function:
     for node_def in function_def.node_def:
@@ -627,11 +691,11 @@ def _add_calibration_statistics(graph_def: graph_pb2.GraphDef) -> None:
 
       node_id = node_def.attr['id'].s
       try:
-        min_val = pywrap_quantize_model.get_min_from_calibrator(node_id)
-        max_val = pywrap_quantize_model.get_max_from_calibrator(node_id)
+        min_value, max_value = _get_min_max_from_calibrator(node_id, calib_opts)
         pywrap_quantize_model.clear_data_from_calibrator(node_id)
-        node_def.attr['min'].f = float(min_val)
-        node_def.attr['max'].f = float(max_val)
+
+        node_def.attr['min'].f = min_value
+        node_def.attr['max'].f = max_value
       except ValueError:
         logging.warn(
             (
@@ -662,7 +726,7 @@ def _get_saver_def_or_none(
 def _run_static_range_ptq(
     src_saved_model_path: str,
     dst_saved_model_path: str,
-    quant_opts: quant_opts_pb2.QuantizationOptions,
+    quant_opts: _QuantizationOptions,
     representative_dataset: repr_dataset.RepresentativeDatasetOrMapping,
     signature_def_map: _SignatureDefMap,
 ) -> None:
@@ -738,7 +802,8 @@ def _run_static_range_ptq(
       representative_dataset,
       quant_opts.force_graph_mode_calibration,
   )
-  _add_calibration_statistics(graph_def)
+
+  _add_calibration_statistics(graph_def, quant_opts.calibration_options)
 
   calibrated_model_path = tempfile.mkdtemp()
   save_model.save_model_v1(
@@ -787,7 +852,7 @@ def _run_static_range_ptq(
 def _static_range_quantize(
     saved_model_path: str,
     output_directory: str,
-    quantization_options: quant_opts_pb2.QuantizationOptions,
+    quantization_options: _QuantizationOptions,
     representative_dataset: Optional[
         repr_dataset.RepresentativeDatasetOrMapping
     ] = None,
@@ -866,7 +931,7 @@ def _static_range_quantize(
 def _dynamic_range_quantize(
     saved_model_path: str,
     output_directory: str,
-    quantization_options: quant_opts_pb2.QuantizationOptions,
+    quantization_options: _QuantizationOptions,
 ) -> autotrackable.AutoTrackable:
   """Quantizes the given SavedModel via post-training dynamic range quantization.
 
@@ -990,7 +1055,7 @@ def _verify_output_dir(output_dir: Optional[str], overwrite: bool) -> None:
 
 
 def _populate_quantization_component_spec(
-    quantization_options: quant_opts_pb2.QuantizationOptions,
+    quantization_options: _QuantizationOptions,
 ) -> None:
   """Populates default values for QuantizationComponentSpec.
 
@@ -998,9 +1063,7 @@ def _populate_quantization_component_spec(
     quantization_options: An instance of QuantizationOptions with a field
       specifying QuantizationComponentSpec.
   """
-  quant_method: quant_opts_pb2.QuantizationMethod = (
-      quantization_options.quantization_method
-  )
+  quant_method: _QuantizationMethod = quantization_options.quantization_method
 
   if quantization_options.unit_wise_quantization_spec:
     raise ValueError('Selective quantization is not supported yet.')
@@ -1014,26 +1077,26 @@ def _populate_quantization_component_spec(
       or quant_method.experimental_method == _ExperimentalMethod.DYNAMIC_RANGE
   ):
     updated_component_spec[_QuantizationComponent.COMPONENT_ACTIVATION] = (
-        quant_opts_pb2.QuantizationComponentSpec(
+        _QuantizationComponentSpec(
             quantization_component=_QuantizationComponent.COMPONENT_ACTIVATION,
             tensor_type=_TensorType.TENSORTYPE_INT_8,
         )
     )
     updated_component_spec[_QuantizationComponent.COMPONENT_WEIGHT] = (
-        quant_opts_pb2.QuantizationComponentSpec(
+        _QuantizationComponentSpec(
             quantization_component=_QuantizationComponent.COMPONENT_WEIGHT,
             tensor_type=_TensorType.TENSORTYPE_INT_8,
         )
     )
     updated_component_spec[_QuantizationComponent.COMPONENT_BIAS] = (
-        quant_opts_pb2.QuantizationComponentSpec(
+        _QuantizationComponentSpec(
             quantization_component=_QuantizationComponent.COMPONENT_BIAS,
             tensor_type=_TensorType.TENSORTYPE_INT_32,
         )
     )
   else:
     updated_component_spec[_QuantizationComponent.COMPONENT_WEIGHT] = (
-        quant_opts_pb2.QuantizationComponentSpec(
+        _QuantizationComponentSpec(
             quantization_component=_QuantizationComponent.COMPONENT_WEIGHT,
             tensor_type=_TensorType.TENSORTYPE_INT_8,
         )
@@ -1080,7 +1143,7 @@ def _populate_quantization_component_spec(
 
 
 def _populate_quantization_options_default_values(
-    quantization_options: quant_opts_pb2.QuantizationOptions,
+    quantization_options: _QuantizationOptions,
 ) -> None:
   """Populates default values for QuantizationOptions.
 
@@ -1143,21 +1206,78 @@ def _populate_quantization_options_default_values(
         _ExperimentalMethod.STATIC_RANGE
     )
 
+  if (
+      quantization_options.calibration_options.calibration_method
+      == _CalibrationMethod.CALIBRATION_METHOD_UNSPECIFIED
+  ):
+    quantization_options.calibration_options.calibration_method = (
+        _CalibrationMethod.MIN_MAX
+    )
+
   # Check and populate quantization component spec
   _populate_quantization_component_spec(quantization_options)
 
 
+@tf_export.tf_export('quantization.experimental.quantize_saved_model')
 def quantize(
     saved_model_path: str,
     output_directory: Optional[str] = None,
-    quantization_options: Optional[quant_opts_pb2.QuantizationOptions] = None,
+    quantization_options: Optional[_QuantizationOptions] = None,
     representative_dataset: Optional[
         repr_dataset.RepresentativeDatasetOrMapping
     ] = None,
     *,
     overwrite_output_directory: bool = False,
 ) -> autotrackable.AutoTrackable:
-  """Quantizes the given SavedModel.
+  """Quantizes the SavedModel with the given quantization options.
+
+  Example usage:
+  ```python
+  # Quantizing a model trained with QAT.
+  quantization_options = tf.quantization.experimental.QuantizationOptions(
+      signature_keys=['your_signature_key'],
+  )
+  tf.quantization.experimental.quantize_saved_model(
+      '/tmp/input_model',
+      '/tmp/output_model',
+      quantization_options=quantization_options,
+  )
+
+  # When quantizing a model trained without QAT (Post-Training Quantization),
+  # a representative dataset is required.
+  representative_dataset = [{"input": tf.random.uniform(shape=(3, 3))}
+                        for _ in range(256)]
+  tf.quantization.experimental.quantize_saved_model(
+      '/tmp/input_model',
+      '/tmp/output_model',
+      quantization_options=quantization_options,
+      representative_dataset={'your_signature_key': representative_dataset},
+    )
+
+  # In addition to preset quantization methods, fine-grained control of
+  # quantization for each component is also supported.
+  _QuantizationComponentSpec = (
+      tf.quantization.experimental.QuantizationComponentSpec
+  )
+  quantization_options = tf.quantization.experimental.QuantizationOptions(
+      signature_keys=['your_signature_key'],
+      quantization_method=tf.quantization.experimental.QuantizationMethod(
+          quantization_component_specs=[
+              _QuantizationComponentSpec(
+                  quantization_component=(
+                      _QuantizationComponentSpec.COMPONENT_ACTIVATION
+                  ),
+                  tensor_type=_QuantizationComponentSpec.TENSORTYPE_INT_8,
+              )
+          ]
+      )
+  )
+  tf.quantization.experimental.quantize_saved_model(
+      '/tmp/input_model',
+      '/tmp/output_model',
+      quantization_options=quantization_options,
+  )
+  ```
 
   Args:
     saved_model_path: Path to the saved model. When representative_dataset is
@@ -1166,7 +1286,7 @@ def quantize(
       `overwrite_output_directory` to `True` to overwrite any existing contents
       in the directory if not empty.
     quantization_options: A set of options for quantization. If None, it uses
-      post-training static range quantization with TF opset by default.
+      post-training static range quantization with XLA opset by default.
     representative_dataset: an iterator that returns a dictionary of {input_key:
       input_value} or a map from signature key to a dictionary of {input_key:
       input_value} that feeds calibration data for quantizing model. The
@@ -1195,7 +1315,7 @@ def quantize(
     output_directory = tempfile.mkdtemp()
 
   if quantization_options is None:
-    quantization_options = quant_opts_pb2.QuantizationOptions()
+    quantization_options = _QuantizationOptions()
 
   _populate_quantization_options_default_values(quantization_options)
 
@@ -1213,9 +1333,7 @@ def quantize(
         quantization_options.representative_datasets
     ).load()
 
-  method: quant_opts_pb2.QuantizationMethod = (
-      quantization_options.quantization_method
-  )
+  method: _QuantizationMethod = quantization_options.quantization_method
   if method.HasField('method'):
     raise ValueError(f'Invalid value for QuantizationMethod: {method.method}.')
   elif method.HasField('experimental_method'):

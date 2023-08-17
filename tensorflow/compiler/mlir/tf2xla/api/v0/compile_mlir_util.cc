@@ -339,17 +339,13 @@ void AddLegalizationPasses(mlir::OpPassManager& pm, bool legalize_chlo,
                            llvm::StringRef device_type, bool enable_op_fallback,
                            bool lower_to_xla_hlo) {
   if (lower_to_xla_hlo) {
+    // Lower TF quant ops and types to MHLO int.
+    mlir::stablehlo::AddQuantizationLoweringPasses(pm);
+
     pm.addPass(mlir::mhlo::createLegalizeTFPass(
         legalize_chlo,
         /*tf2xla_fallback_device_type=*/device_type, enable_op_fallback));
   }
-
-  // Until the native support quantization will be delivered on XLA, uniform
-  // quantization will be unpacked with integer operators.
-  // TODO(b/288214422): Add a verification pass for converting MHLO quant to
-  // MHLO int after this one.
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::stablehlo::createConvertMHLOQuantToIntPass(legalize_chlo));
 
   // This has to run after legalization.
   pm.addNestedPass<mlir::func::FuncOp>(
@@ -445,7 +441,6 @@ void CreateConvertMlirToXlaHloPipeline(
     pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
   }
 
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::TF::CreateLowerQuantizedPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::stablehlo::CreateConvertTFQuantTypesPass());
 

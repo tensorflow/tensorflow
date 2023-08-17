@@ -115,6 +115,7 @@ cc_library(
         "passes/bridge/convert_mhlo_quant_to_int.cc",
         "passes/bridge/convert_tf_quant_ops_to_mhlo.cc",
         "passes/bridge/convert_tf_quant_types.cc",
+        "passes/bridge/passes.cc",
     ],
     hdrs = [
         "passes/bridge/passes.h",
@@ -369,5 +370,30 @@ tf_cc_binary(
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:ShapeDialect",
         "@stablehlo//:stablehlo_ops",
+    ],
+)
+
+cc_library(
+    name = "uniform_quantized_types",
+    srcs = ["uniform_quantized_types.cc"],
+    hdrs = ["uniform_quantized_types.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+tf_cc_test(
+    name = "uniform_quantized_types_test",
+    srcs = ["uniform_quantized_types_test.cc"],
+    deps = [
+        ":uniform_quantized_types",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:QuantOps",
     ],
 )

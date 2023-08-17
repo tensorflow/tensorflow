@@ -95,6 +95,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":outside_compilation_params",
+        ":tf_device_context_c_api_conversions",
         ":tf_rendezvous_c_api",
         ":tf_rendezvous_c_api_defn",
         "//tensorflow/c:tf_status_headers",
@@ -126,5 +127,26 @@ tf_cc_test(
         "//tensorflow/c:tf_tensor",
         "//tensorflow/tsl/framework:allocator",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "tf_device_context_c_api",
+    hdrs = ["tf_device_context_c_api.h"],
+)
+
+cc_library(
+    name = "tf_device_context_c_api_conversions",
+    srcs = ["tf_device_context_c_api_conversions.cc"],
+    hdrs = ["tf_device_context_c_api_conversions.h"],
+    deps = [
+        ":tf_device_context_c_api",
+        "//tensorflow/c:tf_status_headers",
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c:tf_tensor_internal",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/tsl/platform:status",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )

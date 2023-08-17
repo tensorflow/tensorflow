@@ -301,7 +301,6 @@ cuda_py_strict_test(
         "//tensorflow/python/saved_model:save_context",
         "//tensorflow/python/saved_model:save_options",
         "//tensorflow/python/training:training_ops",
-        "//tensorflow/python/types:trace",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_decorator",

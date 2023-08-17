@@ -19,8 +19,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/log/check.h"
-#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -36,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/tpu/tpu_embedding_optimization_parameters_utils.h"
 #include "tensorflow/core/tpu/tpu_embedding_output_layout_utils.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace tensorflow {
 

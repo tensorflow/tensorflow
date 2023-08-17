@@ -1975,6 +1975,22 @@ format which contains three 1D tensors.
   );
 }
 
+def TF_GlobalIterIdOp : TF_Op<"GlobalIterId", [Pure, TF_NoConstantFold]> {
+  let summary = [{
+Op that gets the global step id.
+  }];
+
+  let description = [{
+This op gets the step id for each loop iteration.
+  }];
+
+  let arguments = (ins);
+
+  let results = (outs
+    TF_Int64Tensor:$iter_id
+  );
+}
+
 def TF_ResourceGatherNdOp : TF_Op<"ResourceGatherNd", []> {
   let summary = "GatherNd on a resource.";
 

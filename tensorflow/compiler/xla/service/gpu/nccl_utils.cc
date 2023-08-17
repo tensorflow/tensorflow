@@ -72,6 +72,8 @@ StatusOr<ncclDataType_t> ToNcclDataType(PrimitiveType element_type,
                                         Thunk::Kind reduction_op) {
   switch (element_type) {
     case S8:
+    case F8E5M2:
+    case F8E4M3FN:
       return ncclInt8;
     case PRED:
     case U8:

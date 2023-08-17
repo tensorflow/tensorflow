@@ -95,7 +95,6 @@ tf_cc_test(
         "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/tsl/platform:statusor",
         "@com_google_googletest//:gtest",
     ],
 )

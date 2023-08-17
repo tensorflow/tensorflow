@@ -1456,6 +1456,7 @@ cc_library(
     [
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc_impl",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc_impl",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:calibration_statistics_proto_cc_impl",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc_impl",
         "//tensorflow/core/protobuf:autotuning_proto_cc_impl",
         "//tensorflow/core/protobuf:conv_autotuning_proto_cc_impl",

@@ -23,8 +23,6 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/log/check.h"
-#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
@@ -46,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/tpu/ops/tpu_embedding_ops.h"
 #include "tensorflow/core/tpu/tpu_embedding_optimization_parameters_utils.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace tensorflow {
 

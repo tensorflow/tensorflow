@@ -22,7 +22,6 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/log/log.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/stream_executor/executor_cache.h"
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
@@ -33,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_topology.h"
 #include "tensorflow/compiler/xla/stream_executor/trace_listener.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
 

@@ -495,6 +495,11 @@ CreateHostLaunchToOutsideCompiledPass();
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateOutsideCompiledToHostLaunchPass();
 
+// Creates a pass to ensure that the `_xla_outside_compilation` and
+// tf_device.launch op no longer exist after Outside Compilation is complete.
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateVerifyNoOutsideCompilationMarkersPass();
+
 // Create a pass that encapsulates StatefulPartitionedCallOp within a cluster.
 std::unique_ptr<OperationPass<ModuleOp>> CreateXlaClusterFormationPass();
 
@@ -763,6 +768,7 @@ namespace TFDevice {
 #define GEN_PASS_DECL_OUTSIDECOMPILEDTOHOSTLAUNCHPASS
 #define GEN_PASS_DECL_RESOURCEOPLIFTINGFORMAINFUNCTIONPASS
 #define GEN_PASS_DECL_RESOURCEOPLIFTINGPASS
+#define GEN_PASS_DECL_VERIFYNOOUTSIDECOMPILATIONMARKERSPASS
 #define GEN_PASS_DECL_XLACLUSTERFORMATIONPASS
 #define GEN_PASS_DECL_XLAINLINEDEVICEOPSPASS
 #define GEN_PASS_DECL_XLAREWRITEPASS

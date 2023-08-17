@@ -37,6 +37,12 @@ set -euxo pipefail -o history -o allexport
 # (which is equivalent to "set -a"), every variable in the file is exported
 # for other files to use.
 if [[ -n "${TFCI:-}" ]]; then
+  # Sourcing this twice, the first time with "-u" unset, means that variable
+  # order does not matter. i.e. "TFCI_BAR=$TFCI_FOO; TFCI_FOO=true" will work.
+  # TFCI_FOO is only valid the second time through.
+  set +u
+  source "$TFCI"
+  set -u
   source "$TFCI"
 else
   echo '==TFCI==: The $TFCI variable is not set. This is fine as long as you'
@@ -44,9 +50,15 @@ else
   echo 'If you have not, you will see a lot of undefined variable errors.'
 fi
 
-# Make the output directory for outputting all build artifacts, and ensure all
-# further commands are executed inside of the $TFCI_GIT_DIR as well.
+# Set TFCI_GIT_DIR, the root directory for all commands, to two directories
+# above the location of this file (setup.sh). We could also use "git rev-parse
+# --show-toplevel", but that wouldn't work for non-git repos (like if someone
+# downloaded TF as a zip archive).
+export TFCI_GIT_DIR=$(cd $(dirname "$0"); realpath ../../)
 cd "$TFCI_GIT_DIR"
+
+# Create and expand to the full path of TFCI_OUTPUT_DIR
+export TFCI_OUTPUT_DIR=$(realpath "$TFCI_OUTPUT_DIR")
 mkdir -p "$TFCI_OUTPUT_DIR"
 
 # In addition to dumping all script output to the terminal, place it into

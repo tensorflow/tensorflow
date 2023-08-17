@@ -62,9 +62,6 @@ class CpuEigenDotOperationTest
 };
 
 TEST_P(CpuEigenDotOperationTest, SimpleDotOp) {
-#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
-  GTEST_SKIP() << "OneDNN rewrites dot instruction to custom-call.";
-#endif  // INTEL_MKL && ENABLE_ONEDNN_V3
   HloComputation::Builder builder(TestName());
   DotTestSpec spec = GetParam();
 
@@ -80,9 +77,6 @@ TEST_P(CpuEigenDotOperationTest, SimpleDotOp) {
 }
 
 TEST_P(CpuEigenDotOperationTest, DotTransposeOp) {
-#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
-  GTEST_SKIP() << "OneDNN rewrites dot instruction to custom-call.";
-#endif  // INTEL_MKL && ENABLE_ONEDNN_V3
   HloComputation::Builder builder(TestName());
   DotTestSpec spec = GetParam();
 

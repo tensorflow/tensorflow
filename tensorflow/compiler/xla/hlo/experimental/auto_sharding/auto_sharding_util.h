@@ -38,7 +38,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
-#include "tensorflow/compiler/xla/hlo/utils/hlo_live_range.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -206,6 +205,12 @@ inline void ReplaceOperand(HloInstruction* inst,
 // Return whether this instruction is a custom call marker introduced by us.
 inline bool IsCustomCallMarker(const HloInstruction* inst) {
   return inst->IsCustomCall({kPipelineMarker, kIdentityMarker});
+}
+
+// Return whether this instruction is a TopK custom call.
+inline bool IsTopKCustomCall(const HloInstruction* inst) {
+  return inst->opcode() == HloOpcode::kCustomCall &&
+         inst->custom_call_target() == "TopK";
 }
 
 // Pass through the custom call marker and get the source instruction
@@ -547,12 +552,6 @@ AliasMap BuildAliasMap(const HloModule* module);
 
 AliasSet BuildAliasSet(const HloModule* module,
                        const StrategyMap& strategy_map);
-
-// Create groups of similar ops (i.e. that repeat periodically and share the
-// same opcode + shape + leaf strategies).  These can be used to reduce the size
-// of the Mixed ILP.
-CrosscutMap BuildCrosscutMap(const HloLiveRange& hlo_live_range,
-                             const LeafStrategies& leaf_strategies);
 
 // Transpose an array of any number of dimensions given any axes order.
 // Similar to numpy.transpose(array, axes=()) function.

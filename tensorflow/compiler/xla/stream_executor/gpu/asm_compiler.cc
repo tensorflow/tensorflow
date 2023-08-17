@@ -282,12 +282,15 @@ tsl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(int cc_major, int cc_minor,
     tsl::Env::Default()->DeleteFile(cubin_path).IgnoreError();
   };
   tsl::SubProcess ptxas_info_dumper;
+  // If the target is sm_90, hard code it to sm_90a so that all instructions
+  // can be used. We don't need the portability that sm_90 gives.
+  std::string extension = (cc_major == 9 && cc_minor == 0) ? "a" : "";
   std::vector<std::string> ptxas_args = {
       ptxas_path,
       ptx_path,
       "-o",
       cubin_path,
-      absl::StrCat("-arch=sm_", cc_major, cc_minor),
+      absl::StrCat("-arch=sm_", cc_major, cc_minor, extension),
       "--warn-on-spills"};
   if (VLOG_IS_ON(2)) {
     ptxas_args.push_back("-v");

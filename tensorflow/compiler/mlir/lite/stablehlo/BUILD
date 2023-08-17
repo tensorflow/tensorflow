@@ -199,8 +199,8 @@ cc_library(
         ":tf_stablehlo",
         ":unfuse_batch_norm_pass",
         "//tensorflow/compiler/mlir/quantization/stablehlo:bridge_passes",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
-        "//tensorflow/compiler/mlir/tensorflow:tf_saved_model_passes",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tf_saved_model_passes",
         "//tensorflow/compiler/mlir/tf2xla/transforms:tf_xla_passes",
         "//tensorflow/compiler/xla/mlir_hlo:mhlo_passes",
         "@llvm-project//mlir:Pass",
@@ -277,6 +277,7 @@ cc_library(
     copts = ["-Ithird_party"],
     deps = [
         ":passes_inc_gen",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:uniform_quantized_types",
         "@com_google_absl//absl/algorithm:container",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",

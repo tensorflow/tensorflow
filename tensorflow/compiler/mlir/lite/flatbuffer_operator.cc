@@ -336,5 +336,17 @@ Status mlir::CustomOptionsToAttributes(
   return ::tensorflow::OkStatus();
 }
 
+// TODO(zichuanwei@): Populate Builtin_options_2 manual for now, should automate
+// these in the future
+void mlir::BuiltinOptions2ToAttributes(
+    tflite::BuiltinOptions2Union op_union, mlir::Builder builder,
+    llvm::SmallVectorImpl<mlir::NamedAttribute>& attributes) {
+  if (const auto* op = op_union.AsStablehloConcatenateOptions()) {
+    attributes.emplace_back(builder.getNamedAttr(
+        "dimension", BuildI64Attr(op->dimension, builder)));
+    return;
+  }
+}
+
 // Pull in FlatBuffer writers for TFLite generated using TableGen
 #include "tensorflow/compiler/mlir/lite/operator_converters.inc"

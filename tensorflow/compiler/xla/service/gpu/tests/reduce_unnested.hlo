@@ -1,5 +1,6 @@
 // RUN: hlo_to_llvm_ir %s | FileCheck %s
 
+// CHECK: target datalayout
 // CHECK:         call float @llvm.nvvm.shfl.sync.down.f32
 
 HloModule Test
@@ -23,6 +24,7 @@ ENTRY main {
 
 // -----
 
+// CHECK: target datalayout
 // CHECK:         @llvm.nvvm.shfl.sync.down
 
 HloModule LargeReduction
@@ -43,18 +45,19 @@ ENTRY reduce.1 {
 
 // Check that for "max" we are still using atomics (CAS loop).
 
+// CHECK: target datalayout
 // CHECK: cmpxchg
 
-HloModule MaxReduce
+HloModule MinReduce
 
-Max {
+Min {
   x.1 = f32[] parameter(0)
   y.1 = f32[] parameter(1)
-  ROOT add.1 = f32[] maximum(x.1, y.1)
+  ROOT min.1 = f32[] minimum(x.1, y.1)
 }
 
 ENTRY reduce.1 {
   parameter = f32[300000] parameter(0)
   init_value = f32[] constant(0)
-  ROOT reduce = reduce(parameter, init_value), dimensions={0}, to_apply=Max
+  ROOT reduce = reduce(parameter, init_value), dimensions={0}, to_apply=Min
 }
