@@ -15,31 +15,41 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/runtime_intrinsics.h"
 
+#include <cstdint>
 #include <string>
-#include <utility>
 
-#include "absl/cleanup/cleanup.h"
+#include "absl/log/check.h"
+#include "absl/strings/ascii.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/service/custom_call_status.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
-#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/multi_platform_manager.h"
+#include "tensorflow/compiler/xla/stream_executor/platform.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 
-extern const char* const kXlaGpuAssertCustomCallTag = "__xla_gpu_assert";
+namespace {
 
-static Status AssertOnGpu(void* stream_handle, void* buffer,
-                          absl::string_view error_msg) {
+std::string GetGpuPlatformName() {
+  return absl::AsciiStrToUpper(
+      PlatformUtil::CanonicalPlatformName("gpu").value());
+}
+
+Status AssertOnGpu(void* stream_handle, void* buffer,
+                   absl::string_view error_msg) {
   TF_ASSIGN_OR_RETURN(
       se::Platform * platform,
-      se::MultiPlatformManager::PlatformWithName(absl::AsciiStrToUpper(
-          PlatformUtil::CanonicalPlatformName("gpu").value())));
+      se::MultiPlatformManager::PlatformWithName(GetGpuPlatformName()));
   se::StreamExecutorConfig config;
   config.gpu_stream = stream_handle;
   TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
@@ -63,9 +73,9 @@ static Status AssertOnGpu(void* stream_handle, void* buffer,
   return OkStatus();
 }
 
-static void AssertionCustomCall(void* stream_handle, void** buffers,
-                                const char* opaque, int opaque_len,
-                                XlaCustomCallStatus* status) {
+void AssertionCustomCall(void* stream_handle, void** buffers,
+                         const char* opaque, int opaque_len,
+                         XlaCustomCallStatus* status) {
   Status s =
       AssertOnGpu(stream_handle, buffers[0],
                   absl::string_view{opaque, static_cast<uint64_t>(opaque_len)});
@@ -75,8 +85,10 @@ static void AssertionCustomCall(void* stream_handle, void** buffers,
   }
 }
 
+}  // namespace
+
 XLA_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM(
-    kXlaGpuAssertCustomCallTag, AssertionCustomCall,
-    absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value()));
+    std::string(kXlaGpuAssertCustomCallTag), AssertionCustomCall,
+    GetGpuPlatformName());
 
 }  // namespace xla
