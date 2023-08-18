@@ -18,6 +18,12 @@ include "mlir/Pass/PassBase.td"
 def TensorLegalizeTFLPass : Pass<"tensor-legalize-tfl", "mlir::func::FuncOp"> {
   let summary = "Legalize from TensorFlow Lite to Tensor.";
   let constructor = "createLegalizeTFLPass()";
-  let dependentDialects = ["TensorDialect"];
+  let dependentDialects = [
+    "arith::ArithDialect",
+    "linalg::LinalgDialect",
+    "math::MathDialect",
+    "scf::SCFDialect",
+    "tensor::TensorDialect"
+  ];
 }
 

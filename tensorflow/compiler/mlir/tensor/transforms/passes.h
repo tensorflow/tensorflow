@@ -27,6 +27,22 @@ limitations under the License.
 
 namespace mlir {
 
+namespace arith {
+class ArithDialect;
+}
+
+namespace linalg {
+class LinalgDialect;
+}
+
+namespace math {
+class MathDialect;
+}
+
+namespace scf {
+class SCFDialect;
+}
+
 namespace TFL {
 class TFLDialect;
 }
