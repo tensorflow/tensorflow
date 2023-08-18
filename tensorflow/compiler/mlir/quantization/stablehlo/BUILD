@@ -392,8 +392,8 @@ tf_cc_test(
     deps = [
         ":uniform_quantized_types",
         "@com_google_googletest//:gtest_main",
-        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:Support",
     ],
 )
