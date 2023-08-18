@@ -62,8 +62,8 @@ absl::Status AtomicallyWrite(
 
 absl::Status AtomicallyWriteStringToFile(absl::string_view filename,
                                          absl::string_view str, tsl::Env* env) {
-  auto nonatomically_write = [&](const std::string& uncomitted_filename) {
-    TF_RETURN_IF_ERROR(WriteStringToFile(env, uncomitted_filename, str));
+  auto nonatomically_write = [&](const std::string& uncommitted_filename) {
+    TF_RETURN_IF_ERROR(WriteStringToFile(env, uncommitted_filename, str));
     return absl::OkStatus();
   };
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
@@ -75,8 +75,8 @@ absl::Status AtomicallyWriteStringToFile(absl::string_view filename,
 absl::Status AtomicallyWriteBinaryProto(absl::string_view filename,
                                         const tsl::protobuf::Message& proto,
                                         tsl::Env* env) {
-  auto nonatomically_write = [&](const std::string& uncomitted_filename) {
-    TF_RETURN_IF_ERROR(WriteBinaryProto(env, uncomitted_filename, proto));
+  auto nonatomically_write = [&](const std::string& uncommitted_filename) {
+    TF_RETURN_IF_ERROR(WriteBinaryProto(env, uncommitted_filename, proto));
     return absl::OkStatus();
   };
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
@@ -88,8 +88,8 @@ absl::Status AtomicallyWriteBinaryProto(absl::string_view filename,
 absl::Status AtomicallyWriteTextProto(absl::string_view filename,
                                       const tsl::protobuf::Message& proto,
                                       tsl::Env* env) {
-  auto nonatomically_write = [&](const std::string& uncomitted_filename) {
-    TF_RETURN_IF_ERROR(WriteTextProto(env, uncomitted_filename, proto));
+  auto nonatomically_write = [&](const std::string& uncommitted_filename) {
+    TF_RETURN_IF_ERROR(WriteTextProto(env, uncommitted_filename, proto));
     return absl::OkStatus();
   };
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
@@ -102,8 +102,8 @@ absl::Status AtomicallyWriteTFRecords(absl::string_view filename,
                                       const std::vector<Tensor>& tensors,
                                       absl::string_view compression,
                                       tsl::Env* env) {
-  auto nonatomically_write = [&](const std::string& uncomitted_filename) {
-    snapshot_util::TFRecordWriter writer(uncomitted_filename,
+  auto nonatomically_write = [&](const std::string& uncommitted_filename) {
+    snapshot_util::TFRecordWriter writer(uncommitted_filename,
                                          std::string(compression));
     TF_RETURN_IF_ERROR(writer.Initialize(env));
     TF_RETURN_IF_ERROR(writer.WriteTensors(tensors));
