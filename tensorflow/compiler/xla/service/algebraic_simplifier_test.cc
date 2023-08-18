@@ -5882,6 +5882,66 @@ TEST_F(AlgebraicSimplifierTest, DotBroadcastRightReorder) {
                                 m::Parameter(1))));
 }
 
+TEST_F(AlgebraicSimplifierTest, ReduceDotReorder) {
+  const char* hlo_string = R"(
+    HloModule module
+
+    add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT r = f32[] add(p0, p1)
+    }
+
+    ENTRY test {
+        a = f32[2,3,128,5] parameter(0)
+        b = f32[3,5,256] parameter(1)
+        inner_dot = f32[2,128,256] dot(a,b),
+                    lhs_contracting_dims={1,3},
+                    rhs_contracting_dims={0,1}
+        c = f32[] constant(0)
+        ROOT reduce = f32[2,256] reduce(inner_dot, c),
+                      dimensions={1}, to_apply=add
+      }
+    )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options;
+  options.set_use_associative_reordering(true);
+  options.set_associative_reordering_threshold(0);
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_TRUE(simplifier.Run(module.get()).value());
+  ASSERT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Dot(m::Reduce(m::Parameter(0), m::ConstantScalar(0)),
+                        m::Reduce(m::Parameter(1), m::ConstantScalar(0)))));
+}
+
+TEST_F(AlgebraicSimplifierTest, SliceDotReorder) {
+  const char* hlo_string = R"(
+    HloModule module
+
+    ENTRY test {
+        a = f32[2048,2] parameter(0)
+        b = f32[2,2048] parameter(1)
+        dot = f32[2048,2048] dot(a,b),
+              lhs_contracting_dims={1},
+              rhs_contracting_dims={0}
+        ROOT slice = f32[128,2048] slice(dot), slice={[0:128],[0:2048]}
+      }
+    )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options;
+  options.set_use_associative_reordering(true);
+  options.set_associative_reordering_threshold(0);
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_TRUE(simplifier.Run(module.get()).value());
+  ASSERT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Dot(m::Slice(m::Parameter(0)), m::Parameter(1))));
+}
+
 TEST_F(AlgebraicSimplifierTest, TransposeOfBatchDot) {
   const char* hlo_string = R"(
     HloModule module

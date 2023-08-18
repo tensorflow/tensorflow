@@ -17,6 +17,8 @@
 """Sparse Tensor Representation.
 
 See also `tf.sparse.SparseTensor`.
+
+API docstring: tensorflow.sparse
 """
 
 import numbers
@@ -45,7 +47,6 @@ from tensorflow.python.ops import special_math_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_sparse_ops import *
 # pylint: enable=wildcard-import
-from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
@@ -3351,7 +3352,7 @@ def sparse_bincount(values,
           values, name="values")
     if weights is not None:
       if not isinstance(weights, sparse_tensor.SparseTensor):
-        weights = ragged_tensor.convert_to_tensor_or_ragged_tensor(
+        weights = tensor_conversion.convert_to_tensor_v2_with_dispatch(
             weights, name="weights")
 
     if weights is not None and binary_output:

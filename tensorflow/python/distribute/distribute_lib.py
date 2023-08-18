@@ -27,11 +27,13 @@ the same way with eager and graph execution.
 *Guides*
 
 * [TensorFlow v2.x](https://www.tensorflow.org/guide/distributed_training)
-* [TensorFlow v1.x](https://github.com/tensorflow/docs/blob/master/site/en/r1/guide/distribute_strategy.ipynb)
+* [TensorFlow
+v1.x](https://github.com/tensorflow/docs/blob/master/site/en/r1/guide/distribute_strategy.ipynb)
 
 *Tutorials*
 
-* [Distributed Training Tutorials](https://www.tensorflow.org/tutorials/distribute/)
+* [Distributed Training
+Tutorials](https://www.tensorflow.org/tutorials/distribute/)
 
   The tutorials cover how to use `tf.distribute.Strategy` to do distributed
   training with native Keras APIs, custom training loops,
@@ -185,6 +187,8 @@ the same way with eager and graph execution.
 Note that we provide a default version of `tf.distribute.Strategy` that is
 used when no other strategy is in scope, that provides the same API with
 reasonable default behavior.
+
+API docstring: tensorflow.distribute
 """
 # pylint: enable=line-too-long
 

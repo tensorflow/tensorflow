@@ -207,10 +207,29 @@ Register_STABLEHLO_DIVIDE();  // WARNING: not implemented, using this op will
                               // crash the runtime
 TfLiteRegistration*
 Register_STABLEHLO_MULTIPLY();  // WARNING: not implemented, using this op will
-// crash the runtime
+                                // crash the runtime
 TfLiteRegistration*
 Register_STABLEHLO_MAXIMUM();  // WARNING: not implemented, using this op will
                                // crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_RESHAPE();  // WARNING: not implemented, using this op will
+                               // crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_CLAMP();  // WARNING: not implemented, using this op will
+                             // crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_CONCATENATE();  // WARNING: not implemented, using this op
+                                   // will crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_BROADCAST_IN_DIM();  // WARNING: not implemented, using this
+                                        // op will crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_CONVOLUTION();  // WARNING: not implemented, using this
+                                   // op will crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_SLICE();  // WARNING: not implemented, using this
+                             // op will crash the runtime
+
 }  // namespace builtin
 }  // namespace ops
 }  // namespace tflite

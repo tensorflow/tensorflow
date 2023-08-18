@@ -529,7 +529,10 @@ def _dtype_to_spec(d):
 def _most_general_type_spec(elem):
   """Returns the most general TypeSpec for elem."""
   if isinstance(elem, composite_tensor.CompositeTensor):
-    spec = elem._shape_invariant_to_type_spec(tensor_shape.TensorShape(None))  # pylint: disable=protected-access
+    try:
+      spec = elem._shape_invariant_to_type_spec(tensor_shape.TensorShape(None))  # pylint: disable=protected-access
+    except NotImplementedError:
+      spec = type_spec.type_spec_from_value(elem)
   else:
     spec = type_spec.type_spec_from_value(elem)
     if isinstance(spec, tensor_spec.TensorSpec):

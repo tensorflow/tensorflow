@@ -15,8 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/shape_tree.h"
 
+#include <iterator>
 #include <memory>
+#include <utility>
+#include <vector>
 
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"

@@ -305,7 +305,49 @@ struct TransposeMicroKernel<uint8_t, /*bs=*/16> {
 };
 #endif
 
-// TODO(phawkins): add an 4x4 uint16_t transpose kernel.
+#ifdef EIGEN_VECTORIZE_SSE2
+template <>
+struct TransposeMicroKernel<uint16_t, /*bs=*/4> {
+  static void Apply(const char* __restrict a, int64_t lda, char* __restrict b,
+                    int64_t ldb) {
+    // Note, SSE vectors can hold 8 uint16_t elements but our block size is 4.
+    // We need to issue 4 loads to properly handle strides.
+    //
+    // [ 0,  1,  2,  3],
+    // [ 4,  5,  6,  7],
+    // [ 8,  9, 10, 11],
+    // [12, 13, 14, 15],
+    __m128i loads[4];
+    for (int i = 0; i < 4; ++i) {
+      loads[i] = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(a + lda * i));
+    }
+
+    // [ 0,  4,  1,  5,  2,  6,  3,  7 ]
+    auto unpack_16_0 = _mm_unpacklo_epi16(loads[0], loads[1]);
+    // [ 8, 12,  9, 13, 10, 14, 11, 15 ]
+    auto unpack_16_1 = _mm_unpacklo_epi16(loads[2], loads[3]);
+
+    // Note: there is no need for _mm_unpackhi_epi16 as we only populate the
+    // bottom 4 lanes.
+
+    // [ 0,  4,  8, 12,  1,  5,  9, 13 ]
+    auto unpack_32_0 = _mm_unpacklo_epi32(unpack_16_0, unpack_16_1);
+    // [ 2,  6, 10, 14,  3,  7, 11, 15 ]
+    auto unpack_32_1 = _mm_unpackhi_epi32(unpack_16_0, unpack_16_1);
+
+    // [ 0,  4,  8, 12 ]
+    _mm_storel_epi64(reinterpret_cast<__m128i*>(b + ldb * 0), unpack_32_0);
+    // [ 1,  5,  9, 13 ]
+    _mm_storel_epi64(reinterpret_cast<__m128i*>(b + ldb * 1),
+                     _mm_unpackhi_epi64(unpack_32_0, unpack_32_0));
+    // [ 2,  6, 10, 14 ]
+    _mm_storel_epi64(reinterpret_cast<__m128i*>(b + ldb * 2), unpack_32_1);
+    // [ 3,  7, 11, 15 ]
+    _mm_storel_epi64(reinterpret_cast<__m128i*>(b + ldb * 3),
+                     _mm_unpackhi_epi64(unpack_32_1, unpack_32_1));
+  }
+};
+#endif
 
 #ifdef EIGEN_VECTORIZE_AVX
 template <>

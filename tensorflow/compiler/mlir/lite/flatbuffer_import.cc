@@ -967,6 +967,7 @@ StatusOr<Operation*> ConvertOp(
     }
   } else {
     mlir::BuiltinOptionsToAttributes(op.builtin_options, builder, attrs);
+    mlir::BuiltinOptions2ToAttributes(op.builtin_options_2, builder, attrs);
   }
   op_state.addAttributes(attrs);
 

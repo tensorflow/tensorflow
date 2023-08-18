@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/autotune_results.pb.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/executable.h"
+#include "tensorflow/compiler/xla/service/gpu/autotuner_util.h"
 #include "tensorflow/compiler/xla/service/gpu/executable.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
@@ -200,11 +201,7 @@ class GpuCompiler : public LLVMCompiler {
   // Add autotuning passes for convolution, gemm and triton.
   virtual Status AddAutotuningPasses(HloPassPipeline* pipeline,
                                      HloModule* hlo_module,
-                                     se::StreamExecutor* stream_exec,
-                                     const DebugOptions& debug_options,
-                                     const CompileOptions& options,
-                                     const GpuTargetConfig& gpu_target_config,
-                                     const AutotuneResults* autotune_results,
+                                     AutotuneConfig& autotune_config,
                                      tsl::thread::ThreadPool* thread_pool) {
     return OkStatus();
   }

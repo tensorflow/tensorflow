@@ -58,7 +58,6 @@ int main(int argc, char **argv) {
   mlir::tosa::registerTFtoTOSALegalizationPipeline();
   mlir::tosa::registerTFLtoTOSALegalizationPipeline();
   mlir::tosa::registerTFTFLtoTOSALegalizationPipeline();
-  mlir::RegisterMhloToLhloWithXlaPass();
   mlir::tf_test::registerTensorFlowTestPasses();
   mlir::xla_framework::registerXlaFrameworkPasses();
   tensorflow::RegisterConvertMlirToXlaHloPipelineWithDefaults();

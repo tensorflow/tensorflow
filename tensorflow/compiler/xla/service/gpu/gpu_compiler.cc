@@ -200,6 +200,24 @@ namespace {
 bool ConvIsLowerable(HloInstruction* conv) {
   return GpuConvRewriter::ConvIsLowerable(conv);
 }
+
+StatusOr<AutotuneConfig> GetAutotuneConfig(
+    se::StreamExecutor* stream_exec, const DebugOptions& debug_options,
+    const GpuCompiler::CompileOptions& options,
+    const GpuTargetConfig& gpu_target_config,
+    const AutotuneResults* autotune_results) {
+  if (stream_exec) {
+    return AutotuneConfig{DeviceConfig{stream_exec, options.device_allocator},
+                          debug_options};
+  }
+  AutotuneConfig deviceless_config =
+      AutotuneConfig{DevicelessConfig{gpu_target_config.device_description_str},
+                     debug_options};
+  // Deviceless config means we can't run autotuning, and need to rely on saved
+  // results.
+  TF_RETURN_IF_ERROR(AutotunerUtil::LoadAutotuneResults(*autotune_results));
+  return deviceless_config;
+}
 }  // end anonymous namespace
 
 StatusOr<std::unique_ptr<Executable>>
@@ -634,6 +652,7 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
           /*level_to_operate_on=*/0,
           /*max_pipelining_per_loop=*/INT64_MAX,
           /*last_run=*/true,
+          /*pipeline_use_tree=*/false,
           /*process_different_sized_ops=*/true,
           /*pipelining_direction=*/
           CollectivePipeliner::PipeliningDirection::kForward,
@@ -647,6 +666,7 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
           /*level_to_operate_on=*/0,
           /*max_pipelining_per_loop=*/INT64_MAX,
           /*last_run=*/true,
+          /*pipeline_use_tree=*/false,
           /*process_different_sized_ops=*/true,
           /*pipelining_direction=*/
           CollectivePipeliner::PipeliningDirection::kBackward,
@@ -660,6 +680,7 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
           /*level_to_operate_on=*/0,
           /*max_pipelining_per_loop=*/INT64_MAX,
           /*last_run=*/true,
+          /*pipeline_use_tree=*/false,
           /*process_different_sized_ops=*/true,
           /*pipelining_direction=*/
           CollectivePipeliner::PipeliningDirection::kForward,
@@ -1002,8 +1023,12 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     if (debug_options.xla_gpu_enable_triton_softmax_fusion() &&
         std::holds_alternative<se::CudaComputeCapability>(
             gpu_target_config.gpu_version)) {
-      pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
-      pipeline.AddPass<SoftmaxRewriterTriton>(gpu_target_config.gpu_version);
+      auto cuda_compute_capability =
+          std::get<se::CudaComputeCapability>(gpu_target_config.gpu_version);
+      if (cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::VOLTA)) {
+        pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
+        pipeline.AddPass<SoftmaxRewriterTriton>(gpu_target_config.gpu_version);
+      }
     }
 
     pipeline.AddPass<ReductionDimensionGrouper>();
@@ -1055,9 +1080,11 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   // f32).
   add_float_normalization(pipeline);
 
-  TF_RETURN_IF_ERROR(AddAutotuningPasses(
-      &pipeline, hlo_module, stream_exec, debug_options, options,
-      gpu_target_config, autotune_results, thread_pool));
+  TF_ASSIGN_OR_RETURN(AutotuneConfig autotune_config,
+                      GetAutotuneConfig(stream_exec, debug_options, options,
+                                        gpu_target_config, autotune_results));
+  TF_RETURN_IF_ERROR(
+      AddAutotuningPasses(&pipeline, hlo_module, autotune_config, thread_pool));
 
   // The Triton autotuner can insert new bf16 reductions that need to be
   // normalized again.

@@ -7,6 +7,8 @@ load("//tensorflow:py.default.bzl", "py_binary")
 
 TENSORFLOW_API_GEN_PACKAGES = [
     "tensorflow.python",
+    "tensorflow.compiler.mlir.quantization.tensorflow.python.quantize_model",
+    "tensorflow.compiler.mlir.quantization.tensorflow.python.representative_dataset",
     "tensorflow.dtensor.python.accelerator_util",
     "tensorflow.dtensor.python.api",
     "tensorflow.dtensor.python.config",

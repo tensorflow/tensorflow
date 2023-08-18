@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/py_device_list.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -23,7 +24,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/hash/hash.h"
-#include "absl/strings/match.h"
 #include "absl/types/span.h"
 #include "pybind11/attr.h"  // from @pybind11
 #include "pybind11/cast.h"  // from @pybind11
@@ -322,9 +322,7 @@ void PyDeviceList::PopulateMemoryKindInfo() {
     throw py::value_error("Unrecognized DeviceList type");
   }
   MemoryKindInfo info;
-  if (!GetJaxEnableMemoryKind() ||
-      (py_client_ != nullptr &&
-       absl::StrContains(py_client_->platform_version(), "PJRT C API"))) {
+  if (!GetJaxEnableMemoryKind()) {
     info.default_memory_kind = py::none();
     memory_kind_info_ = std::move(info);
     return;

@@ -4837,7 +4837,7 @@ DistributedTPURewritePass::BuildCompilationStatusReturnNodes(
   uint64_t library_fingerprint;
 
   TF_RETURN_IF_ERROR(
-      FingerprintFunctionLibrary(reachable_functions, &library_fingerprint));
+      FingerprintFunctionLibrary(reachable_functions, library_fingerprint));
   VLOG(1) << "Fingerprint functions: "
           << absl::StrJoin(reachable_functions.ListFunctionNames(), ", ");
   VLOG(1) << "library_fingerprint: " << library_fingerprint;

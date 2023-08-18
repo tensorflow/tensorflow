@@ -1,3 +1,4 @@
+load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 package(
@@ -35,4 +36,10 @@ bzl_library(
     name = "patterns_bzl",
     srcs = ["patterns.bzl"],
     visibility = ["//visibility:private"],
+)
+
+pytype_strict_library(
+    name = "docstrings",
+    srcs = ["docstrings.py"],
+    visibility = ["//visibility:public"],
 )

@@ -53,7 +53,6 @@ cc_library(
     deps = if_static([":calibrator_singleton_impl"]) + [
         ":calibration_statistics_collector",
         ":calibration_statistics_proto_cc",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/core:framework",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",

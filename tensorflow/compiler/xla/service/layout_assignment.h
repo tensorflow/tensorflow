@@ -317,6 +317,11 @@ class LayoutAssignment : public HloModulePass {
   // rank as the output to have the same layout as the output.
   static bool InstructionCanChangeLayout(const HloInstruction* instruction);
 
+  const LayoutConstraints& computation_constraints(
+      const HloComputation* computation) const {
+    return *FindOrDie(computation_layouts_, computation);
+  }
+
   LayoutConstraints& mutable_computation_constraints(
       const HloComputation* computation) {
     return *FindOrDie(computation_layouts_, computation);
@@ -663,6 +668,8 @@ class LayoutAssignment : public HloModulePass {
   std::unique_ptr<CallGraph> call_graph_;
 
   std::string ToString(const LayoutConstraints& constraints) const;
+
+  int64_t current_priority() const { return current_priority_; }
 
  private:
   // Map containing the layouts of all computations assigned so

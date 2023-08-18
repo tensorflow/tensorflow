@@ -117,7 +117,9 @@ xla_cc_test(
     deps = [
         ":bit_cast",
         ":test",
+        "//tensorflow/tsl/platform:bfloat16",
         "//tensorflow/tsl/platform:test_main",
+        "//third_party/eigen3",
     ],
 )
 
@@ -138,8 +140,10 @@ cc_library(
         ":util",
         ":xla_data_proto_cc",
         "//tensorflow/tsl/platform:float8",
+        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/meta:type_traits",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -150,8 +154,8 @@ xla_cc_test(
     deps = [
         ":comparison_util",
         ":test",
+        ":types",
         ":xla_data_proto_cc",
-        "//tensorflow/tsl/platform:bfloat16",
         "//tensorflow/tsl/platform:test_main",
     ],
 )
@@ -416,13 +420,17 @@ cc_library(
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:float8",
         "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:macros",
         "//tensorflow/tsl/platform:platform_port",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
     ],
@@ -447,16 +455,11 @@ xla_cc_test(
     srcs = ["shape_test.cc"],
     deps = [
         ":shape_util",
-        ":status_macros",
         ":test",
-        ":test_helpers",
-        ":types",
-        ":util",
         ":xla_data_proto_cc",
         "//tensorflow/tsl/platform:test_benchmark",
         "//tensorflow/tsl/platform:test_main",
         "@com_google_absl//absl/hash:hash_testing",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -464,9 +467,9 @@ xla_cc_test(
     name = "shape_util_test",
     srcs = ["shape_util_test.cc"],
     deps = [
-        ":permutation_util",
         ":shape_util",
-        ":status_macros",
+        ":status",
+        ":statusor",
         ":test",
         ":test_helpers",
         ":types",
@@ -477,6 +480,7 @@ xla_cc_test(
         "//tensorflow/tsl/platform:test_benchmark",
         "//tensorflow/tsl/platform:test_main",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -902,11 +906,12 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":shape_util",
-        ":status_macros",
+        ":status",
+        ":statusor",
         "//tensorflow/tsl/lib/gtl:iterator_range",
+        "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:logging",
-        "//tensorflow/tsl/platform:status",
-        "@com_google_absl//absl/algorithm:container",
+        "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/types:span",

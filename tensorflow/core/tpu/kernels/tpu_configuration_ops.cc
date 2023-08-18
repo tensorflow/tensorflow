@@ -228,12 +228,6 @@ void WaitForDistributedTpuOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES_OK(ctx, GetTpuMeshStateInterface(rmgr, &mesh_state));
   core::ScopedUnref mesh_state_unref(mesh_state);
 
-  // TODO(b/166858751): this code to check if `TpuPodState` exists is ported
-  // from a legacy library that may have staled. A candidate for cleanup.
-  TpuPodState* pod_state;
-  OP_REQUIRES_OK(ctx, GetTPUPodState(rmgr, &pod_state));
-  core::ScopedUnref pod_state_unref(pod_state);
-
   size_t tpu_topology_output_size;
   char* tpu_topology_output = nullptr;
   auto cleanup = absl::MakeCleanup([&tpu_topology_output]() {

@@ -3618,9 +3618,13 @@ cc_library(
         "-frtti",
         # DUCC custom threading.
         "-DDUCC0_CUSTOM_LOWLEVEL_THREADING=1",
-        # Required relative includes in the DUCC library.
+        # Required for relative includes in the DUCC library.
         "-Ithird_party/ducc/src",
         "-Ithird_party/ducc/google",
+        # Required for relative includes in OSS builds.
+        "-Iexternal",
+        "-Iexternal/ducc/src",
+        "-Iexternal/ducc/google",
     ],
     features = ["-use_header_modules"],
     deps = [
@@ -7049,6 +7053,9 @@ cc_library(
         "//third_party/fft2d:fft2d_headers",
         "//third_party/icu/data:conversion_data",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
         "@com_google_protobuf//:protobuf",
         "@fft2d",
         "@gemmlowp",

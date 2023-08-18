@@ -452,6 +452,7 @@ LogicalResult FuseSliceConcat(mhlo::ConcatenateOp concat,
   return success();
 }
 
+// TODO(b/296267494): Move this provided constfolding runs prior to it
 // Converts:
 //  %y1 = pad(%x, pad_val, (p1_1,p1_2,p1_3, ...))
 //  %y2 = pad(%y1, pad_val, (p2_1,p2_2,p2_3, ...))

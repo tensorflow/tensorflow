@@ -16,18 +16,20 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_COMPARISON_UTIL_H_
 #define TENSORFLOW_COMPILER_XLA_COMPARISON_UTIL_H_
 
-#include <cmath>
+#include <cstdint>
+#include <functional>
 #include <limits>
 #include <optional>
 #include <ostream>
 #include <string>
-#include <type_traits>
 
+#include "absl/meta/type_traits.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace xla {
 

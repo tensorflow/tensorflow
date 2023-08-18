@@ -1838,7 +1838,7 @@ distribute_py_strict_test(
     name = "moving_averages_test",
     srcs = ["moving_averages_test.py"],
     main = "moving_averages_test.py",
-    shard_count = 5,
+    shard_count = 12,
     tags = [
         "multi_gpu",
         "no_windows",  # TODO(b/184424727): Re-enable this.

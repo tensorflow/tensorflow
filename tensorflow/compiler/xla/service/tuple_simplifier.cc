@@ -101,9 +101,11 @@ StatusOr<bool> TupleSimplifier::Run(
         }
 
         if (replacement) {
-          TF_ASSIGN_OR_RETURN(bool replaced, computation->ReplaceInstruction(
-                                                 instruction, replacement,
-                                                 /*preserve_sharding=*/true));
+          TF_ASSIGN_OR_RETURN(bool replaced,
+                              computation->ReplaceInstruction(
+                                  instruction, replacement,
+                                  /*preserve_sharding=*/true,
+                                  /*relay_control_dependency=*/true));
           changed |= replaced;
         }
       }
