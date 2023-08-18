@@ -529,8 +529,10 @@ xla_cc_test(
     srcs = ["collective_pipeliner_test.cc"],
     deps = [
         ":collective_pipeliner",
+        ":hlo_parser",
         ":hlo_pass_pipeline",
         "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/hlo/utils:hlo_matchers",
         "//tensorflow/compiler/xla/tests:hlo_test_base",

@@ -79,6 +79,17 @@ py_strict_library(
 )
 
 py_strict_library(
+    name = "ragged_autograph",
+    srcs = ["ragged_autograph.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":ragged_tensor",
+        "//tensorflow/python/autograph/operators:control_flow",
+        "//tensorflow/python/ops:cond",
+    ],
+)
+
+py_strict_library(
     name = "ragged_check_ops",
     srcs = ["ragged_check_ops.py"],
     srcs_version = "PY3",
@@ -331,6 +342,7 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         ":ragged_array_ops",
+        ":ragged_autograph",
         ":ragged_batch_gather_ops",
         ":ragged_batch_gather_with_default_op",
         ":ragged_bincount_ops",

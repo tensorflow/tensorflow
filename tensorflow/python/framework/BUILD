@@ -2017,6 +2017,7 @@ py_strict_library(
         "//tensorflow/python/ops:gradients_impl",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:script_ops",
+        "//tensorflow/python/ops:sparse_ops_gen",
         "//tensorflow/python/ops:summary_ops_v2",
         "//tensorflow/python/ops:sync_ops_gen",
         "//tensorflow/python/ops:variables",

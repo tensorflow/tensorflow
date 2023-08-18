@@ -503,6 +503,7 @@ void AddCuMemAllocEventUponApiExit(CuptiTraceCollector *collector,
                                    tsl::uint64 end_time) {
   const auto *params =
       static_cast<const cuMemAlloc_v2_params *>(cbdata->functionParams);
+  const void *dptr = reinterpret_cast<void *>(*params->dptr);
   CuptiTracerEvent event{};
   event.type = CuptiTracerEventType::MemoryAlloc;
   event.source = CuptiTracerEventSource::DriverCallback;
@@ -513,10 +514,10 @@ void AddCuMemAllocEventUponApiExit(CuptiTraceCollector *collector,
   event.device_id = device_id;
   event.context_id = cbdata->contextUid;
   event.correlation_id = cbdata->correlationId;
+  event.memalloc_info.address = reinterpret_cast<uintptr_t>(dptr);
   event.memalloc_info.num_bytes = params->bytesize;
   VLOG(3) << "Cuda MemAlloc API exit."
-          << " dptr=" << reinterpret_cast<void *>(*params->dptr)
-          << " sz=" << params->bytesize;
+          << " dptr=" << dptr << " sz=" << params->bytesize;
   collector->AddEvent(std::move(event));
 }
 
@@ -528,6 +529,7 @@ void AddCuMemAllocPitchEventUponApiExit(CuptiTraceCollector *collector,
                                         tsl::uint64 end_time) {
   const auto *params =
       static_cast<const cuMemAllocPitch_v2_params *>(cbdata->functionParams);
+  const void *dptr = reinterpret_cast<void *>(*params->dptr);
   CuptiTracerEvent event{};
   event.type = CuptiTracerEventType::MemoryAlloc;
   event.source = CuptiTracerEventSource::DriverCallback;
@@ -539,10 +541,87 @@ void AddCuMemAllocPitchEventUponApiExit(CuptiTraceCollector *collector,
   event.context_id = cbdata->contextUid;
   event.correlation_id = cbdata->correlationId;
   const size_t size_in_bytes = *params->pPitch * params->Height;
+  event.memalloc_info.address = reinterpret_cast<uintptr_t>(dptr);
   event.memalloc_info.num_bytes = size_in_bytes;
   VLOG(3) << "Cuda MemAllocPitch API exit."
-          << " dptr=" << reinterpret_cast<void *>(*params->dptr)
-          << " sz=" << size_in_bytes;
+          << " dptr=" << dptr << " sz=" << size_in_bytes;
+  collector->AddEvent(std::move(event));
+}
+
+void AddCuMemAllocManagedEventUponApiExit(CuptiTraceCollector *collector,
+                                          tsl::uint32 device_id,
+                                          CUpti_CallbackId cbid,
+                                          const CUpti_CallbackData *cbdata,
+                                          tsl::uint64 start_time,
+                                          tsl::uint64 end_time) {
+  const auto *params =
+      static_cast<const cuMemAllocManaged_params *>(cbdata->functionParams);
+  const void *dptr = reinterpret_cast<void *>(*params->dptr);
+  CuptiTracerEvent event{};
+  event.type = CuptiTracerEventType::MemoryAlloc;
+  event.source = CuptiTracerEventSource::DriverCallback;
+  event.name = cbdata->functionName;
+  event.start_time_ns = start_time;
+  event.end_time_ns = end_time;
+  event.thread_id = Env::Default()->GetCurrentThreadId();
+  event.device_id = device_id;
+  event.context_id = cbdata->contextUid;
+  event.correlation_id = cbdata->correlationId;
+  event.memalloc_info.address = reinterpret_cast<uintptr_t>(dptr);
+  event.memalloc_info.num_bytes = params->bytesize;
+  VLOG(3) << "Cuda MemAllocManaged API exit."
+          << " dptr=" << dptr << " sz=" << params->bytesize;
+  collector->AddEvent(std::move(event));
+}
+
+void AddCuMemAllocHostEventUponApiExit(CuptiTraceCollector *collector,
+                                       tsl::uint32 device_id,
+                                       CUpti_CallbackId cbid,
+                                       const CUpti_CallbackData *cbdata,
+                                       tsl::uint64 start_time,
+                                       tsl::uint64 end_time) {
+  const auto *params =
+      static_cast<const cuMemAllocHost_v2_params *>(cbdata->functionParams);
+  CuptiTracerEvent event{};
+  event.type = CuptiTracerEventType::MemoryAlloc;
+  event.source = CuptiTracerEventSource::DriverCallback;
+  event.name = cbdata->functionName;
+  event.start_time_ns = start_time;
+  event.end_time_ns = end_time;
+  event.thread_id = Env::Default()->GetCurrentThreadId();
+  event.device_id = device_id;
+  event.context_id = cbdata->contextUid;
+  event.correlation_id = cbdata->correlationId;
+  event.memalloc_info.address = reinterpret_cast<uintptr_t>(*params->pp);
+  event.memalloc_info.num_bytes = params->bytesize;
+  VLOG(3) << "Cuda MemAllocHost API exit."
+          << " pp=" << *params->pp << " sz=" << params->bytesize;
+  collector->AddEvent(std::move(event));
+}
+
+void AddCuMemHostAllocEventUponApiExit(CuptiTraceCollector *collector,
+                                       tsl::uint32 device_id,
+                                       CUpti_CallbackId cbid,
+                                       const CUpti_CallbackData *cbdata,
+                                       tsl::uint64 start_time,
+                                       tsl::uint64 end_time) {
+  const auto *params =
+      static_cast<const cuMemHostAlloc_params *>(cbdata->functionParams);
+  CuptiTracerEvent event{};
+  event.type = CuptiTracerEventType::MemoryAlloc;
+  event.source = CuptiTracerEventSource::DriverCallback;
+  event.name = cbdata->functionName;
+  event.start_time_ns = start_time;
+  event.end_time_ns = end_time;
+  event.thread_id = Env::Default()->GetCurrentThreadId();
+  event.device_id = device_id;
+  event.context_id = cbdata->contextUid;
+  event.correlation_id = cbdata->correlationId;
+  event.memalloc_info.address = reinterpret_cast<uintptr_t>(*params->pp);
+  event.memalloc_info.num_bytes = params->bytesize;
+  VLOG(3) << "Cuda MemHostAlloc API exit."
+          << " pp=" << *params->pp << " sz=" << params->bytesize
+          << " Flags=" << params->Flags;
   collector->AddEvent(std::move(event));
 }
 
@@ -553,6 +632,7 @@ void AddCuMemFreeEventUponApiExit(CuptiTraceCollector *collector,
                                   tsl::uint64 end_time) {
   const auto *params =
       static_cast<const cuMemFree_v2_params *>(cbdata->functionParams);
+  const void *dptr = reinterpret_cast<void *>(params->dptr);
   CuptiTracerEvent event{};
   event.type = CuptiTracerEventType::MemoryFree;
   event.source = CuptiTracerEventSource::DriverCallback;
@@ -563,8 +643,84 @@ void AddCuMemFreeEventUponApiExit(CuptiTraceCollector *collector,
   event.device_id = device_id;
   event.context_id = cbdata->contextUid;
   event.correlation_id = cbdata->correlationId;
+  event.memfree_info.address = reinterpret_cast<uintptr_t>(dptr);
   VLOG(3) << "Cuda MemFree API exit."
-          << " dptr=" << reinterpret_cast<void *>(params->dptr);
+          << " dptr=" << dptr;
+  collector->AddEvent(std::move(event));
+}
+
+void AddCuMemFreeHostEventUponApiExit(CuptiTraceCollector *collector,
+                                      tsl::uint32 device_id,
+                                      CUpti_CallbackId cbid,
+                                      const CUpti_CallbackData *cbdata,
+                                      tsl::uint64 start_time,
+                                      tsl::uint64 end_time) {
+  const auto *params =
+      static_cast<const cuMemFreeHost_params *>(cbdata->functionParams);
+  CuptiTracerEvent event{};
+  event.type = CuptiTracerEventType::MemoryFree;
+  event.source = CuptiTracerEventSource::DriverCallback;
+  event.name = cbdata->functionName;
+  event.start_time_ns = start_time;
+  event.end_time_ns = end_time;
+  event.thread_id = Env::Default()->GetCurrentThreadId();
+  event.device_id = device_id;
+  event.context_id = cbdata->contextUid;
+  event.correlation_id = cbdata->correlationId;
+  event.memfree_info.address = reinterpret_cast<uintptr_t>(params->p);
+  VLOG(3) << "Cuda MemFreeHost API exit."
+          << " p=" << params->p;
+  collector->AddEvent(std::move(event));
+}
+
+void AddCuMemHostRegisterEventUponApiExit(CuptiTraceCollector *collector,
+                                          tsl::uint32 device_id,
+                                          CUpti_CallbackId cbid,
+                                          const CUpti_CallbackData *cbdata,
+                                          tsl::uint64 start_time,
+                                          tsl::uint64 end_time) {
+  const auto *params =
+      static_cast<const cuMemHostRegister_v2_params *>(cbdata->functionParams);
+  CuptiTracerEvent event{};
+  event.type = CuptiTracerEventType::HostRegister;
+  event.source = CuptiTracerEventSource::DriverCallback;
+  event.name = cbdata->functionName;
+  event.start_time_ns = start_time;
+  event.end_time_ns = end_time;
+  event.thread_id = Env::Default()->GetCurrentThreadId();
+  event.device_id = device_id;
+  event.context_id = cbdata->contextUid;
+  event.correlation_id = cbdata->correlationId;
+  event.host_register_info.address = reinterpret_cast<uintptr_t>(params->p);
+  event.host_register_info.num_bytes = params->bytesize;
+  event.host_register_info.flags = params->Flags;
+  VLOG(3) << "Cuda HostRegister API exit."
+          << " p=" << params->p << " bytesize=" << params->bytesize
+          << " flags=" << params->Flags;
+  collector->AddEvent(std::move(event));
+}
+
+void AddCuMemHostUnregisterEventUponApiExit(CuptiTraceCollector *collector,
+                                            tsl::uint32 device_id,
+                                            CUpti_CallbackId cbid,
+                                            const CUpti_CallbackData *cbdata,
+                                            tsl::uint64 start_time,
+                                            tsl::uint64 end_time) {
+  const auto *params =
+      static_cast<const cuMemHostUnregister_params *>(cbdata->functionParams);
+  CuptiTracerEvent event{};
+  event.type = CuptiTracerEventType::HostUnregister;
+  event.source = CuptiTracerEventSource::DriverCallback;
+  event.name = cbdata->functionName;
+  event.start_time_ns = start_time;
+  event.end_time_ns = end_time;
+  event.thread_id = Env::Default()->GetCurrentThreadId();
+  event.device_id = device_id;
+  event.context_id = cbdata->contextUid;
+  event.correlation_id = cbdata->correlationId;
+  event.host_unregister_info.address = reinterpret_cast<uintptr_t>(params->p);
+  VLOG(3) << "Cuda HostUnregister API exit."
+          << " p=" << params->p;
   collector->AddEvent(std::move(event));
 }
 
@@ -1607,9 +1763,33 @@ class CuptiDriverApiHookWithCudaEvent : public CuptiDriverApiHook {
       AddCuMemAllocPitchEventUponApiExit(collector, device_id, cbid, cbdata,
                                          start_tsc, end_tsc);
       break;
+    case CUPTI_DRIVER_TRACE_CBID_cuMemAllocManaged:
+      AddCuMemAllocManagedEventUponApiExit(collector, device_id, cbid, cbdata,
+                                           start_tsc, end_tsc);
+      break;
+    case CUPTI_DRIVER_TRACE_CBID_cuMemAllocHost_v2:
+      AddCuMemAllocHostEventUponApiExit(collector, device_id, cbid, cbdata,
+                                        start_tsc, end_tsc);
+      break;
+    case CUPTI_DRIVER_TRACE_CBID_cuMemHostAlloc:
+      AddCuMemHostAllocEventUponApiExit(collector, device_id, cbid, cbdata,
+                                        start_tsc, end_tsc);
+      break;
     case CUPTI_DRIVER_TRACE_CBID_cuMemFree_v2:
       AddCuMemFreeEventUponApiExit(collector, device_id, cbid, cbdata,
                                    start_tsc, end_tsc);
+      break;
+    case CUPTI_DRIVER_TRACE_CBID_cuMemFreeHost:
+      AddCuMemFreeHostEventUponApiExit(collector, device_id, cbid, cbdata,
+                                       start_tsc, end_tsc);
+      break;
+    case CUPTI_DRIVER_TRACE_CBID_cuMemHostRegister_v2:
+      AddCuMemHostRegisterEventUponApiExit(collector, device_id, cbid, cbdata,
+                                           start_tsc, end_tsc);
+      break;
+    case CUPTI_DRIVER_TRACE_CBID_cuMemHostUnregister:
+      AddCuMemHostUnregisterEventUponApiExit(collector, device_id, cbid, cbdata,
+                                             start_tsc, end_tsc);
       break;
     case CUPTI_DRIVER_TRACE_CBID_cuMemsetD8_v2:
     case CUPTI_DRIVER_TRACE_CBID_cuMemsetD16_v2:
@@ -1664,6 +1844,10 @@ const char *GetTraceEventTypeName(const CuptiTracerEventType &type) {
       return "Generic";
     case CuptiTracerEventType::MemoryResidency:
       return "MemoryResidency";
+    case CuptiTracerEventType::HostRegister:
+      return "HostRegister";
+    case CuptiTracerEventType::HostUnregister:
+      return "HostUnregister";
     case CuptiTracerEventType::Unsupported:
       return "";
   }

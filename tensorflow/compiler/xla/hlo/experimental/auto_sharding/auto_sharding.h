@@ -28,12 +28,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/array.h"
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_cost_graph.h"
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_option.h"
+#include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_solver.h"
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_solver_option.h"
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/cluster_environment.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_live_range.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -203,6 +205,16 @@ bool HasReduceScatterOpportunity(
 HloSharding GetReduceScatterOutput(const HloInstruction* ins,
                                    const ShardingStrategy& strategy,
                                    const ClusterEnvironment& cluster_env);
+
+// The high-level "recipe" for solving an Auto Sharding problem.
+AutoShardingSolverResult Solve(const HloLiveRange& hlo_live_range,
+                               const LivenessSet& liveness_set,
+                               const StrategyMap& strategy_map,
+                               const LeafStrategies& leaf_strategies,
+                               const CostGraph& cost_graph,
+                               const AliasSet& alias_set,
+                               const AutoShardingOption& option);
+
 }  // namespace spmd
 }  // namespace xla
 

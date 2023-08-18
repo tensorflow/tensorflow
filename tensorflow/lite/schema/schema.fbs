@@ -430,6 +430,9 @@ enum BuiltinOperator : int32 {
   STABLEHLO_RESHAPE = 167, // WARNING: No runtime support yet
   STABLEHLO_CLAMP = 168, // WARNING: No runtime support
   STABLEHLO_CONCATENATE = 169, // WARNING: No runtime support
+  STABLEHLO_BROADCAST_IN_DIM = 170, // WARNING: No runtime support
+  STABLEHLO_CONVOLUTION = 171, // WARNING: No runtime support
+  STABLEHLO_SLICE = 172, // WARNING: No runtime support
 }
 // LINT.ThenChange(nnapi_linter/linter.proto)
 
@@ -568,10 +571,49 @@ union BuiltinOptions {
 
 union BuiltinOptions2{
   StablehloConcatenateOptions,
+  StablehloBroadcastInDimOptions,
+  StablehloSliceOptions,
+  StablehloConvolutionOptions,
+}
+
+enum StablehloPrecisionConfig : uint {
+  DEFAULT,
+  HIGH,
+  HIGHEST,
 }
 
 table StablehloConcatenateOptions {
   dimension : long;
+}
+
+table StablehloBroadcastInDimOptions{
+  broadcast_dimensions : [long];
+}
+
+table StablehloSliceOptions{
+  start_indices : [long];
+  limit_indices : [long];
+  strides : [long];
+}
+
+table StablehloConvolutionOptions{
+  window_strides : [long];
+  padding : [long];
+  lhs_dilation : [long];
+  rhs_dilation : [long];
+  window_reversal : [bool];
+  input_batch_dimension : long;
+  input_feature_dimension : long;
+  input_spatial_dimensions : [long];
+  kernel_input_feature_dimension : long;
+  kernel_output_feature_dimension : long;
+  kernel_spatial_dimensions : [long];
+  output_batch_dimension : long;
+  output_feature_dimension : long;
+  output_spatial_dimensions	: [long];
+  feature_group_count : long;
+  batch_group_count : long;
+  precision_config : [StablehloPrecisionConfig];
 }
 
 // LINT.IfChange
