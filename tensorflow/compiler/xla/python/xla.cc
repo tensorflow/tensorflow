@@ -1039,7 +1039,10 @@ PYBIND11_MODULE(xla_extension, m) {
       .def_property_readonly("platform_version",
                              [](PjRtTopologyDescription& topology) {
                                return topology.platform_version();
-                             });
+                             })
+      .def("serialize", [](PjRtTopologyDescription& topology) {
+        return ValueOrThrow(topology.Serialize());
+      });
 
   py::class_<PjRtExecutable, std::shared_ptr<PjRtExecutable>>(m, "Executable")
       .def("hlo_modules",

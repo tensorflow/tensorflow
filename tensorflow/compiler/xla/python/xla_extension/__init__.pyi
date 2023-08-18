@@ -587,6 +587,7 @@ class DeviceTopology:
   platform: str
   platform_version: str
   def _make_compile_only_devices(self) -> List[Device]: ...
+  def serialize(self) -> bytes: ...
 
 
 def buffer_to_dlpack_managed_tensor(

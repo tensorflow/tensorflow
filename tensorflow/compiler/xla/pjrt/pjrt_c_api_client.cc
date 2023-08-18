@@ -1946,6 +1946,18 @@ PjRtCApiTopologyDescription::DeviceDescriptions() const {
   return out;
 }
 
+StatusOr<std::string> PjRtCApiTopologyDescription::Serialize() const {
+  PJRT_TopologyDescription_Serialize_Args args;
+  args.struct_size = PJRT_TopologyDescription_Serialize_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.topology = c_topology_.get();
+  RETURN_STATUS_IF_PJRT_ERROR(c_api_->PJRT_TopologyDescription_Serialize(&args),
+                              c_api_);
+  auto out = std::string(args.serialized_bytes, args.serialized_bytes_size);
+  args.serialized_topology_deleter(args.serialized_topology);
+  return out;
+}
+
 // Initializes `PJRT_Compile_Args`, which will be used to call
 // API PJRT_Compile().
 static StatusOr<std::unique_ptr<PjRtExecutable>> InitializeArgsAndCompileAot(
