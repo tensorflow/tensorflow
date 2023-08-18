@@ -88,10 +88,13 @@ class HloModuleGroupUtil {
   // * visit_state: map from each instruction to its visit state.
   // * visit_function: function called when each instruction group.
   // * root: the root instruction of the traversal.
+  // * send_recv_as_one_group: if true, treat (Recv, Send, RecvDone, SendDone)
+  // as one group.
   using VisitStates = absl::flat_hash_map<HloInstruction*, VisitState>;
   Status VisitTopologicalOrder(VisitStates* visit_state,
                                VisitFunction visit_function,
-                               HloInstruction* root);
+                               HloInstruction* root,
+                               bool send_recv_as_one_group = false);
 
   // Verifies that the computations are well-formed (e.g., no cycles).
   Status VerifyComputations(absl::Span<HloComputation* const> computations);
