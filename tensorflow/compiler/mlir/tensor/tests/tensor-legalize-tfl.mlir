@@ -2,6 +2,32 @@
 
 // -----
 
+// CHECK-LABEL: test_reshape_constant
+// CHECK-SAME: %[[INPUT:.*]]: tensor<13x21x3xf32>
+// CHECK: %[[SHAPE:.*]] = arith.constant dense<[1, 819]> : tensor<2xi32>
+// CHECK: %[[RESULT:.*]] = tensor.reshape %[[INPUT]](%[[SHAPE]]) : (tensor<13x21x3xf32>, tensor<2xi32>) -> tensor<*xf32>
+// CHECK: return %[[RESULT]] : tensor<*xf32>
+func.func @test_reshape_constant(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
+  %cst = arith.constant dense<[1, 819]> : tensor<2xi32>
+  %0 = "tfl.reshape"(%arg0, %cst) : (tensor<13x21x3xf32>, tensor<2xi32>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_reshape_constant_with_wildcard
+// CHECK-SAME: %[[INPUT:.*]]: tensor<13x21x3xf32>
+// CHECK: %[[SHAPE:.*]] = arith.constant dense<[1, 819]> : tensor<2xi32>
+// CHECK: %[[RESULT:.*]] = tensor.reshape %[[INPUT]](%[[SHAPE]]) : (tensor<13x21x3xf32>, tensor<2xi32>) -> tensor<*xf32>
+// CHECK: return %[[RESULT]] : tensor<*xf32>
+func.func @test_reshape_constant_with_wildcard(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
+  %cst = arith.constant dense<[1, -1]> : tensor<2xi32>
+  %0 = "tfl.reshape"(%arg0, %cst) : (tensor<13x21x3xf32>, tensor<2xi32>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
+}
+
+// -----
+
 // CHECK-LABEL: test_reshape_variable
 // CHECK-SAME: %[[INPUT:.*]]: tensor<?xf32>
 // CHECK-SAME: %[[SHAPE:.*]]: tensor<2xi32>
