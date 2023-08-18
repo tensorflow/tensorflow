@@ -1,5 +1,6 @@
 # Description: Utilities for TPU Operations
 
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
@@ -354,4 +355,10 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
     ] + if_libtpu(["//tensorflow/compiler/jit"]),
+)
+
+bzl_library(
+    name = "build_defs_bzl",
+    srcs = ["build_defs.bzl"],
+    deps = ["//tensorflow:tensorflow_bzl"],
 )
