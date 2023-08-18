@@ -83,6 +83,12 @@ def LegalizeControlFlowPass : Pass<"mhlo-legalize-control-flow", "func::FuncOp">
   let dependentDialects = ["scf::SCFDialect", "tensor::TensorDialect"];
 }
 
+def LegalizeCreateTokenToAfterAllPass : Pass<"mhlo-legalize-create-token-to-after-all", "func::FuncOp"> {
+  let summary = "Legalize create_token ops to after_all ops.";
+  let constructor = "createLegalizeCreateTokenToAfterAllPass()";
+  let dependentDialects = ["mhlo::MhloDialect"];
+}
+
 def LegalizeDotGeneralToDotPass : Pass<"mhlo-legalize-dot-general-to-dot", "func::FuncOp"> {
   let summary = "Legalizes dot_general ops to dot ops.";
   let constructor = "createLegalizeDotGeneralToDotPass()";
