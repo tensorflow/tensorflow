@@ -139,6 +139,7 @@ This release contains contributions from many people at Google, as well as:
 
 * `tf.lite`
     * Strided_Slice now supports `UINT32`.
+    * Add int8 and int16x8 support for LOG operator
 
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
 * <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
