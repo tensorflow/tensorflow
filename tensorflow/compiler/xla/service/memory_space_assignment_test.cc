@@ -653,6 +653,203 @@ TEST_P(MemorySpaceAssignmentTest, NegateChain) {
   EXPECT_THAT(sequence.instructions()[10], op::CopyDone());
 }
 
+TEST_P(MemorySpaceAssignmentTest, AlwaysSpillJitPrefetchTest) {
+  // The negate chain is long enough for asynchronous copy to be inserted
+  // between p1 and add.
+  // For buffers produced in alternate memory spill to default and prefetch
+  // just in time for uses other than immediate use (if any) and make all
+  // prefetches single use for first use and create new prefetches for all
+  // subsequent uses.
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[2,3]{1,0} parameter(0)
+  p1 = f32[2,3]{1,0} parameter(1)
+  negate0 = f32[2,3]{1,0} negate(p0)
+  negate1 = f32[2,3]{1,0} negate(negate0)
+  negate2 = f32[2,3]{1,0} negate(negate1)
+  negate3 = f32[2,3]{1,0} negate(negate2)
+  negate4 = f32[2,3]{1,0} negate(negate3)
+  negate5 = f32[2,3]{1,0} negate(negate4)
+  negate6 = f32[2,3]{1,0} negate(negate5)
+  ROOT add = f32[2,3]{1,0} add(negate6, p1)
+}
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options options = DefaultMemorySpaceOptions();
+  options.always_spill_to_default_memory = true;
+  AssignMemorySpace(module.get(), options);
+  const HloInstructionSequence& sequence =
+      module->schedule().sequence(module->entry_computation());
+  for (int i = 0; i < sequence.instructions().size(); ++i) {
+    VLOG(2) << i << " " << sequence.instructions()[i]->ToString();
+  }
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                          HloAliasAnalysis::Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloLiveRange> live_range,
+                          HloLiveRange::Run(module->schedule(), *alias_analysis,
+                                            module->entry_computation()));
+  const HloInstruction* add = FindInstruction(module.get(), "add");
+  const HloInstruction* cd = add->operand(1);
+  // Check copy made just in time for use and copy is a prefetch.
+  EXPECT_THAT(cd, op::CopyDone());
+  EXPECT_EQ(live_range->instruction_schedule().at(add),
+            live_range->instruction_schedule().at(cd) + 1);
+  const HloInstruction* cs = cd->operand(0);
+  EXPECT_THAT(cs, op::CopyStart());
+  EXPECT_EQ(live_range->instruction_schedule().at(add),
+            live_range->instruction_schedule().at(cs) + 2);
+  EXPECT_THAT(add, op::Add(op::Negate(), op::AsyncCopy(kAlternateMemorySpace,
+                                                       kDefaultMemorySpace,
+                                                       op::Parameter(1))));
+}
+
+TEST_P(MemorySpaceAssignmentTest, AlwaysSpillPrefetchForSecondUseTest) {
+  // The negate chain is long enough for asynchronous copy to be inserted
+  // between p1 and add.
+  // For buffers produced in alternate memory spill to default and prefetch
+  // just in time for uses other than immediate use (if any) and make all
+  // prefetches single use for first use and create new prefetches for all
+  // subsequent uses.
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[2,3]{1,0} parameter(0)
+  p1 = f32[2,3]{1,0} parameter(1)
+  negate0 = f32[2,3]{1,0} negate(p0)
+  negate1 = f32[2,3]{1,0} negate(negate0)
+  negate2 = f32[2,3]{1,0} negate(negate1)
+  negate3 = f32[2,3]{1,0} negate(negate2)
+  negate4 = f32[2,3]{1,0} negate(negate3)
+  negate5 = f32[2,3]{1,0} negate(negate4)
+  add0 = f32[2,3]{1,0} add(negate5, negate0)
+  ROOT add1 = f32[2,3]{1,0} add(add0, p1)
+}
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options options = DefaultMemorySpaceOptions();
+  options.always_spill_to_default_memory = true;
+  AssignMemorySpace(module.get(), options);
+  const HloInstructionSequence& sequence =
+      module->schedule().sequence(module->entry_computation());
+  for (int i = 0; i < sequence.instructions().size(); ++i) {
+    VLOG(2) << i << " " << sequence.instructions()[i]->ToString();
+  }
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                          HloAliasAnalysis::Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloLiveRange> live_range,
+                          HloLiveRange::Run(module->schedule(), *alias_analysis,
+                                            module->entry_computation()));
+  // Check copies are made just in time for use and copies are prefetches.
+  const HloInstruction* add1 = FindInstruction(module.get(), "add1");
+  const HloInstruction* cd1 = add1->operand(1);
+  EXPECT_THAT(cd1, op::CopyDone());
+  EXPECT_EQ(live_range->instruction_schedule().at(add1),
+            live_range->instruction_schedule().at(cd1) + 1);
+  const HloInstruction* cs1 = cd1->operand(0);
+  EXPECT_THAT(cs1, op::CopyStart());
+  EXPECT_EQ(live_range->instruction_schedule().at(add1),
+            live_range->instruction_schedule().at(cs1) + 2);
+  EXPECT_EQ(cd1->shape().layout().memory_space(), kAlternateMemorySpace);
+  const HloInstruction* add0 = FindInstruction(module.get(), "add0");
+
+  const HloInstruction* cd0 = add0->operand(1);
+  EXPECT_THAT(cd0, op::CopyDone());
+  EXPECT_EQ(live_range->instruction_schedule().at(add0),
+            live_range->instruction_schedule().at(cd0) + 1);
+  const HloInstruction* cs0 = cd0->operand(0);
+  EXPECT_THAT(cs0, op::CopyStart());
+  EXPECT_EQ(live_range->instruction_schedule().at(add0),
+            live_range->instruction_schedule().at(cs0) + 2);
+  EXPECT_EQ(cd0->shape().layout().memory_space(), kAlternateMemorySpace);
+  // Check prefetch was made from an eviction.
+  const HloInstruction* eviction_done = cs0->operand(0);
+  EXPECT_EQ(eviction_done->shape().layout().memory_space(),
+            kDefaultMemorySpace);
+  const HloInstruction* evection_start = eviction_done->operand(0);
+  const HloInstruction* negate0 = evection_start->operand(0);
+  // Check eviction was immediate.
+  EXPECT_EQ(live_range->instruction_schedule().at(evection_start),
+            live_range->instruction_schedule().at(negate0) + 1);
+  EXPECT_EQ(live_range->instruction_schedule().at(eviction_done),
+            live_range->instruction_schedule().at(negate0) + 2);
+  EXPECT_EQ(negate0->name(), "negate0");
+}
+
+TEST_P(MemorySpaceAssignmentTest, AlwaysSpillEvictionTest) {
+  // tanh0 buffer is not kept in alt for too long and evicted.
+  // The eviction is immediate and following prefetch from the eviction just in
+  // time for use.
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[4,3]{1,0} parameter(0)
+  tanh0 = f32[4,3]{1,0} tanh(p0)
+  add0 = f32[4,3]{1,0} add(p0, p0)
+  add1 = f32[4,3]{1,0} add(add0, p0)
+  add2 = f32[4,3]{1,0} add(add1, p0)
+  add3 = f32[4,3]{1,0} add(add2, p0)
+  add4 = f32[4,3]{1,0} add(add3, p0)
+  add5 = f32[4,3]{1,0} add(add4, tanh0)
+  negate0 = f32[4,3]{1,0} negate(add5)
+  tanh1 = f32[4,3]{1,0} tanh(negate0)
+  negate1 = f32[4,3]{1,0} negate(negate0)
+  tanh2 = f32[4,3]{1,0} tanh(tanh1)
+  negate2 = f32[4,3]{1,0} negate(negate1)
+  ROOT tuple = tuple(tanh0, tanh2, negate2)
+}
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options options = DefaultMemorySpaceOptions();
+  options.always_spill_to_default_memory = true;
+  AssignMemorySpace(module.get(), options);
+  const HloInstructionSequence& sequence =
+      module->schedule().sequence(module->entry_computation());
+  for (int i = 0; i < sequence.instructions().size(); ++i) {
+    VLOG(2) << i << " " << sequence.instructions()[i]->ToString();
+  }
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                          HloAliasAnalysis::Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloLiveRange> live_range,
+                          HloLiveRange::Run(module->schedule(), *alias_analysis,
+                                            module->entry_computation()));
+  // 1. Check tanh0 buffer is short lived.
+  // 2. Check tanh0 eviction is immediate.
+  // 3. Check tuple is served from eviction.
+  // 4. Check add5 is served from a prefetch.
+  // 5. Check prefetch comes from the immediate eviction.
+  const HloInstruction* tuple = FindInstruction(module.get(), "tuple");
+  const HloInstruction* tanh0_eviction_done = tuple->operand(0);
+  const HloInstruction* tanh0_eviction_start = tanh0_eviction_done->operand(0);
+  const HloInstruction* tanh0 = tanh0_eviction_start->operand(0);
+  EXPECT_EQ(tanh0->name(), "tanh0");
+  EXPECT_EQ(tanh0_eviction_done->shape().layout().memory_space(),
+            kDefaultMemorySpace);
+  EXPECT_EQ(live_range->instruction_schedule().at(tanh0_eviction_start),
+            live_range->instruction_schedule().at(tanh0) + 1);
+  EXPECT_EQ(live_range->instruction_schedule().at(tanh0_eviction_done),
+            live_range->instruction_schedule().at(tanh0) + 2);
+  const HloInstruction* add5 = FindInstruction(module.get(), "add5");
+  const HloInstruction* tanh0_prefetch_done = add5->operand(1);
+  const HloInstruction* tanh0_prefetch_start = tanh0_prefetch_done->operand(0);
+  EXPECT_EQ(tanh0_prefetch_done->shape().layout().memory_space(),
+            kAlternateMemorySpace);
+  EXPECT_EQ(live_range->instruction_schedule().at(add5),
+            live_range->instruction_schedule().at(tanh0_prefetch_done) + 1);
+  EXPECT_EQ(live_range->instruction_schedule().at(add5),
+            live_range->instruction_schedule().at(tanh0_prefetch_start) + 2);
+  EXPECT_EQ(tanh0_eviction_done, tanh0_prefetch_start->operand(0));
+}
+
 TEST_P(MemorySpaceAssignmentTest, FilterUpdatePreferredPrefetchTest) {
   // The negate chain is long enough for asynchronous copy to be inserted
   // between p1 and add.

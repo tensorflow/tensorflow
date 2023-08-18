@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_live_range.h"
 #include "tensorflow/compiler/xla/service/heap_simulator.h"
 #include "tensorflow/compiler/xla/service/hlo_value.h"
 #include "tensorflow/compiler/xla/service/memory_space_assignment_tuning_utils.h"
@@ -51,6 +52,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/tsl/platform/casts.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/statusor.h"
@@ -315,15 +317,6 @@ Status InsertInstructionAndEnsureOperandsInserted(
     HloInstruction* new_instruction, HloInstructionSequence* new_sequence,
     absl::flat_hash_set<HloInstruction*>* inserted_instructions) {
   for (HloInstruction* operand : new_instruction->operands()) {
-    // CopyStart/CopyDone dependencies should always be already inserted; it is
-    // a red flag when they haven't already been inserted.
-    if (operand->opcode() == HloOpcode::kCopyStart ||
-        operand->opcode() == HloOpcode::kCopyDone) {
-      TF_RET_CHECK(inserted_instructions->contains(operand))
-          << "Inserted instruction " << new_instruction->ToString()
-          << " has un-inserted dependency: " << operand->ToString();
-      continue;
-    }
     TF_RETURN_IF_ERROR(EnsureInstructionAndOperandsInserted(
         operand, new_sequence, inserted_instructions));
   }
@@ -425,6 +418,247 @@ StatusOr<std::optional<int64_t>> GetOverriddenPreferredPrefetchTime(
   return static_cast<StatusOr<std::optional<int64_t>>>(std::nullopt);
 }
 
+std::tuple<int64_t, bool, int64_t> GetAllocationSortTuple(
+    const std::unique_ptr<MemorySpaceAssignment::Allocation>& allocation) {
+  int64_t scheduled_on_or_before = allocation->start_time();
+  int64_t scheduled_on_or_after = allocation->start_time();
+  if (allocation->is_copy_allocation()) {
+    auto copy_allocation =
+        tensorflow::down_cast<MemorySpaceAssignment::CopyAllocation*>(
+            allocation.get());
+    scheduled_on_or_before = copy_allocation->copy_done_schedule_before();
+    scheduled_on_or_after = copy_allocation->copy_start_schedule_after();
+  }
+  return std::forward_as_tuple(scheduled_on_or_before,
+                               !allocation->is_copy_allocation(),
+                               scheduled_on_or_after);
+}
+
+void SortAllocationSequence(
+    MemorySpaceAssignment::AllocationSequence& allocations) {
+  absl::c_sort(
+      allocations,
+      [](const std::unique_ptr<MemorySpaceAssignment::Allocation>& lhs,
+         const std::unique_ptr<MemorySpaceAssignment::Allocation>& rhs) {
+        return GetAllocationSortTuple(lhs) < GetAllocationSortTuple(rhs);
+      });
+}
+
+std::string AllocationSequenceToString(
+    MemorySpaceAssignment::AllocationSequence& allocations,
+    bool sort_allocations = false) {
+  if (sort_allocations) {
+    SortAllocationSequence(allocations);
+  }
+  std::string allocations_str = "\n";
+  for (const std::unique_ptr<MemorySpaceAssignment::Allocation>& allocation :
+       allocations) {
+    absl::StrAppend(&allocations_str, allocation->ToString(), "\n");
+  }
+  return allocations_str;
+}
+
+std::string InstructionScheduleToString(const HloLiveRange& hlo_live_range) {
+  const absl::flat_hash_map<const HloInstruction*, HloLiveRange::LogicalTime>&
+      instruction_schedule = hlo_live_range.instruction_schedule();
+  std::vector<std::pair<int64_t, const HloInstruction*>> instructions;
+  instructions.reserve(instruction_schedule.size());
+  for (const auto& instruction : instruction_schedule) {
+    instructions.push_back({instruction.second, instruction.first});
+  }
+  std::string instruction_schedule_str = "\n";
+  absl::c_sort(instructions);
+  for (auto& instruction : instructions) {
+    absl::StrAppend(&instruction_schedule_str,
+                    "LogicalTime: ", instruction.first, " ",
+                    instruction.second->ToString(), "\n");
+  }
+  return instruction_schedule_str;
+}
+
+void EnsureParentAllocationIsAvailableForCopy(
+    MemorySpaceAssignment::CopyAllocation* copy_allocation) {
+  MemorySpaceAssignment::Allocation& parent_allocation =
+      copy_allocation->mutable_prev_allocation();
+  parent_allocation.Extend(copy_allocation->copy_done_schedule_before());
+  if (parent_allocation.is_copy_allocation()) {
+    auto parent_copy_allocation =
+        tensorflow::down_cast<MemorySpaceAssignment::CopyAllocation*>(
+            &parent_allocation);
+    parent_copy_allocation->set_copy_done_schedule_before(
+        std::min(parent_copy_allocation->copy_done_schedule_before(),
+                 copy_allocation->start_time()));
+    parent_copy_allocation->set_copy_start_schedule_after(
+        std::min(parent_copy_allocation->copy_start_schedule_after(),
+                 parent_copy_allocation->copy_done_schedule_before() - 1));
+  }
+}
+
+void MakeCopyAllocationJitForSingleUse(
+    MemorySpaceAssignment::CopyAllocation* copy_allocation, int64_t use_time) {
+  copy_allocation->set_start_time(use_time - 1);
+  copy_allocation->set_copy_start_schedule_after(use_time - 1);
+  copy_allocation->set_end_time(use_time);
+  copy_allocation->set_copy_done_schedule_before(use_time);
+  EnsureParentAllocationIsAvailableForCopy(copy_allocation);
+}
+
+int64_t GetUseTime(const HloUse& use, const HloLiveRange& hlo_live_range) {
+  return hlo_live_range.instruction_schedule().at(use.instruction);
+}
+
+std::vector<MemorySpaceAssignment::Allocation*>
+GetAllocationSequenceInRawPointers(
+    MemorySpaceAssignment::AllocationSequence& allocations) {
+  std::vector<MemorySpaceAssignment::Allocation*> allocations_in_raw_pointers;
+  for (const std::unique_ptr<MemorySpaceAssignment::Allocation>& allocation :
+       allocations) {
+    allocations_in_raw_pointers.push_back(allocation.get());
+  }
+  return allocations_in_raw_pointers;
+}
+
+void ProcessPrefetchesToAlternateMemory(
+    MemorySpaceAssignment::AllocationSequence& allocations,
+    const HloLiveRange& hlo_live_range) {
+  std::vector<MemorySpaceAssignment::Allocation*> allocations_in_raw_pointers =
+      GetAllocationSequenceInRawPointers(allocations);
+  for (auto allocation : allocations_in_raw_pointers) {
+    if (allocation->is_copy_allocation() && allocation->is_in_alternate_mem() &&
+        !allocation->uses().empty()) {
+      MemorySpaceAssignment::CopyAllocation* prefetch =
+          tensorflow::down_cast<MemorySpaceAssignment::CopyAllocation*>(
+              allocation);
+      std::vector<HloUse> uses = prefetch->uses();  // Create a copy of uses.
+      prefetch->clear_uses();                       // Clear old uses.
+      // For every prefetch, update prefetch to serve earliest use just in time.
+      prefetch->AddUse(uses[0]);
+      MakeCopyAllocationJitForSingleUse(prefetch,
+                                        GetUseTime(uses[0], hlo_live_range));
+      // For every use after the first use, create a new prefetch from the same
+      // parent allocation.
+      for (size_t use_index = 1; use_index < uses.size(); ++use_index) {
+        const HloUse& use = uses[use_index];
+        int64_t use_time = GetUseTime(use, hlo_live_range);
+        auto jit_single_use_prefetch =
+            std::make_unique<MemorySpaceAssignment::CopyAllocation>(
+                prefetch->mutable_prev_allocation(),
+                MemorySpaceAssignment::MemorySpace::kAlternate,
+                prefetch->chunk(), use_time - 1, use_time, use_time);
+        jit_single_use_prefetch->set_copy_start_schedule_after(use_time - 1);
+        jit_single_use_prefetch->AddUse(use);
+        EnsureParentAllocationIsAvailableForCopy(jit_single_use_prefetch.get());
+        allocations.push_back(std::move(jit_single_use_prefetch));
+      }
+    }
+  }
+}
+
+void MakeEvictionImmediate(MemorySpaceAssignment::CopyAllocation* eviction) {
+  const MemorySpaceAssignment::Allocation& parent_allocation =
+      eviction->prev_allocation();
+  eviction->set_start_time(parent_allocation.start_time());
+  eviction->set_copy_start_schedule_after(parent_allocation.start_time());
+  eviction->set_copy_done_schedule_before(parent_allocation.start_time() + 1);
+  eviction->Extend(parent_allocation.start_time() + 1);
+}
+
+absl::flat_hash_map<MemorySpaceAssignment::Allocation*,
+                    MemorySpaceAssignment::CopyAllocation*>
+GetEvictionsMap(std::vector<MemorySpaceAssignment::Allocation*>& allocations) {
+  absl::flat_hash_map<MemorySpaceAssignment::Allocation*,
+                      MemorySpaceAssignment::CopyAllocation*>
+      evictions_map;
+  for (auto& allocation : allocations) {
+    if (allocation->is_copy_allocation() && allocation->is_in_default_mem()) {
+      auto eviction =
+          tensorflow::down_cast<MemorySpaceAssignment::CopyAllocation*>(
+              allocation);
+      MemorySpaceAssignment::Allocation& parent_allocation =
+          eviction->mutable_prev_allocation();
+      if (!parent_allocation.is_copy_allocation()) {
+        evictions_map[&parent_allocation] = eviction;
+      }
+    }
+  }
+  return evictions_map;
+}
+
+void ProcessBuffersProducedInAlternateMemory(
+    MemorySpaceAssignment::AllocationSequence& allocations,
+    const HloLiveRange& hlo_live_range) {
+  std::vector<MemorySpaceAssignment::Allocation*> allocations_in_raw_pointers =
+      GetAllocationSequenceInRawPointers(allocations);
+  // For all parent allocations produced in alternate memory, create a map from
+  // parent allocation -> eviction.
+  absl::flat_hash_map<MemorySpaceAssignment::Allocation*,
+                      MemorySpaceAssignment::CopyAllocation*>
+      evictions_map = GetEvictionsMap(allocations_in_raw_pointers);
+  // Make all such evictions immediate.
+  for (auto& [_, eviction] : evictions_map) {
+    MakeEvictionImmediate(eviction);
+  }
+  VLOG(2) << "AllocationSequence after making spills immediate spills\n";
+  XLA_LOG_LINES(2, AllocationSequenceToString(allocations, true));
+  // Process all buffers produced in the alternate memory:
+  // 1. Make the buffer short lived.
+  // 2. Service immediate use if any.
+  // 3. If buffer is also used later get or create an immediate eviction.
+  // 4. For every later use prefetch just in time from the eviction.
+  for (auto allocation : allocations_in_raw_pointers) {
+    if (!allocation->is_copy_allocation() &&
+        allocation->is_in_alternate_mem()) {
+      std::vector<HloUse> uses = allocation->uses();  // Create a copy of uses.
+      allocation->clear_uses();                       // Clear old uses.
+      // Make buffer short lived.
+      allocation->set_end_time(allocation->start_time() + 1);
+      for (const HloUse& use : uses) {
+        int64_t use_time = GetUseTime(use, hlo_live_range);
+        if (allocation->start_time() + 1 == use_time) {
+          allocation->AddUse(use);
+          continue;
+        }
+        if (!evictions_map.contains(allocation)) {
+          auto eviction_unique_ptr =
+              std::make_unique<MemorySpaceAssignment::CopyAllocation>(
+                  *allocation, MemorySpaceAssignment::MemorySpace::kDefault,
+                  std::nullopt, allocation->start_time(),
+                  allocation->start_time() + 1, allocation->start_time() + 1);
+          eviction_unique_ptr->set_copy_start_schedule_after(
+              allocation->start_time());
+          evictions_map[allocation] = eviction_unique_ptr.get();
+          allocations.push_back(std::move(eviction_unique_ptr));
+        }
+        MemorySpaceAssignment::CopyAllocation* eviction =
+            evictions_map[allocation];
+        auto jit_single_use_prefetch =
+            std::make_unique<MemorySpaceAssignment::CopyAllocation>(
+                *eviction, MemorySpaceAssignment::MemorySpace::kAlternate,
+                allocation->chunk(), use_time - 1, use_time, use_time);
+        jit_single_use_prefetch->set_copy_start_schedule_after(use_time - 1);
+        jit_single_use_prefetch->AddUse(use);
+        EnsureParentAllocationIsAvailableForCopy(jit_single_use_prefetch.get());
+        allocations.push_back(std::move(jit_single_use_prefetch));
+      }
+    }
+  }
+}
+
+void TransformAllocationSequenceToSpill(
+    MemorySpaceAssignment::AllocationSequence& allocations,
+    const HloLiveRange& hlo_live_range) {
+  VLOG(2) << "InstructionSchedule before transform\n";
+  XLA_LOG_LINES(2, InstructionScheduleToString(hlo_live_range));
+  VLOG(2) << "AllocationSequence before transform\n";
+  XLA_LOG_LINES(2, AllocationSequenceToString(allocations, true));
+  ProcessPrefetchesToAlternateMemory(allocations, hlo_live_range);
+  VLOG(2) << "AllocationSequence after processing prefetches\n";
+  XLA_LOG_LINES(2, AllocationSequenceToString(allocations, true));
+  ProcessBuffersProducedInAlternateMemory(allocations, hlo_live_range);
+  VLOG(2) << "AllocationSequence after processing buffers produced in kAlt\n";
+  XLA_LOG_LINES(2, AllocationSequenceToString(allocations, true));
+  SortAllocationSequence(allocations);
+}
 }  // namespace
 
 /*static*/ StatusOr<std::unique_ptr<MemorySpaceAssignmentCostAnalysis>>
@@ -5385,7 +5619,7 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::AllocateSegment(
             return allocation->memory_space() == required_memory_space_at_start;
           });
       if (prev_allocation_it != allocation_sequence->rend()) {
-        (*prev_allocation_it)->Extend(request.start_time);
+        (*prev_allocation_it)->set_end_time(request.start_time);
         needs_required_allocation = false;
       }
     }
@@ -5471,7 +5705,7 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::AllocateSegment(
   if (required_memory_space_at_end == MemorySpace::kDefault) {
     VLOG(3)
         << "Not trying to prefetch because use requires buffer in default mem.";
-    (*prev_allocation_in_default_mem_it)->Extend(request.end_time);
+    (*prev_allocation_in_default_mem_it)->set_end_time(request.end_time);
     (*prev_allocation_in_default_mem_it)->AddUse(request.use->hlo_use);
     return Result::kSuccess;
   }
@@ -5541,13 +5775,13 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::AllocateSegment(
 
   // If a copy wasn't inserted, then add this use to the latest allocation in
   // default memory.
-  (*prev_allocation_in_default_mem_it)->Extend(request.end_time);
+  (*prev_allocation_in_default_mem_it)->set_end_time(request.end_time);
   (*prev_allocation_in_default_mem_it)->AddUse(request.use->hlo_use);
   return allocation_result;
 }
 
 void AlternateMemoryBestFitHeap::AddAsyncCopy(
-    const MemorySpaceAssignment::Allocation& prev_allocation,
+    MemorySpaceAssignment::Allocation& prev_allocation,
     MemorySpace memory_space, std::optional<Chunk> chunk, int64_t start_time,
     int64_t end_time, int64_t copy_done_schedule_before_time,
     MemorySpaceAssignment::AllocationSequence* allocations,
@@ -5789,7 +6023,7 @@ AlternateMemoryBestFitHeap::AllocateInAlternateMemoryNoCopy(
     if (prev_allocation != nullptr &&
         (prev_allocation->is_copy_like_allocation() ||
          prev_allocation->defining_position() == defining_position)) {
-      prev_allocation->Extend(request.end_time);
+      prev_allocation->set_end_time(request.end_time);
     } else {
       request.allocation_value->mutable_allocation_sequence()->push_back(
           std::make_unique<MemorySpaceAssignment::Allocation>(
@@ -5883,7 +6117,7 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::Evict(
   // See if this interval would violate the asynchronous copy limit.
   if (!eviction_interval_too_short && !eviction_violates_outstanding_copies &&
       !eviction_violates_resource) {
-    prev_allocation->Extend(eviction_end_time);
+    prev_allocation->set_end_time(eviction_end_time);
     AddAsyncCopy(*prev_allocation, MemorySpace::kDefault,
                  /*chunk=*/std::nullopt, eviction_start_time,
                  prev_allocation->end_time(), eviction_end_time,
@@ -5955,7 +6189,7 @@ std::string DescribeSlicedBufferMove(
 
 AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::Prefetch(
     const AllocationRequest& request,
-    const MemorySpaceAssignment::Allocation& prev_allocation_in_default_mem) {
+    MemorySpaceAssignment::Allocation& prev_allocation_in_default_mem) {
   // Try partially placing the buffer in the alternate space. The time that is
   // overlapped will be used to asynchronously copy the buffer from the
   // default memory to the alternate memory.
@@ -6872,7 +7106,7 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
     VLOG(1) << "Estimated elapsed time (sec): " << estimated_time;
   }
 
-  TF_RETURN_IF_ERROR(Process());
+  TF_RETURN_IF_ERROR(Process(hlo_live_range));
   ScheduleAsynchronousCopies();
   TF_RETURN_IF_ERROR(SimplifyGraph());
   TF_RETURN_IF_ERROR(FixSchedule());
@@ -7578,13 +7812,16 @@ void MemorySpaceAssignment::MirroredAllocation::MarkNeeded(
   original_allocation_.MarkNeeded(needed_allocations);
 }
 
-Status MemorySpaceAssignment::Process() {
+Status MemorySpaceAssignment::Process(const HloLiveRange& hlo_live_range) {
   VLOG(1) << "Processing assigned buffers...";
   // Since some parent allocations may not be needed (e.g. when they don't have
   // any uses and if there is no other (non-parent) allocation that depends on
   // it, before we process the allocations, mark all allocations that are
   // needed.
   absl::flat_hash_set<const Allocation*> needed_allocations;
+  if (options_.always_spill_to_default_memory) {
+    TransformAllocationSequenceToSpill(allocations_, hlo_live_range);
+  }
   for (auto& allocation : allocations_) {
     allocation->MarkIfNeeded(needed_allocations);
   }
@@ -8043,7 +8280,6 @@ void MemorySpaceAssignment::ScheduleAsynchronousCopies() {
           async_copy_step->set_start_phase_schedule_after_time(
               ++copy_start_schedule_after);
         }
-
         start_phase = async_copy_step->start_phase();
         schedule_after_[start_phase->schedule_after_time].push_back(
             start_phase->instruction);
