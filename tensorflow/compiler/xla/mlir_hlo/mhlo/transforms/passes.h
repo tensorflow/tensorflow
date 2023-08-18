@@ -161,6 +161,8 @@ createLegalizeCreateTokenToAfterAllPass();
 std::unique_ptr<OperationPass<func::FuncOp>>
 createLegalizeDotGeneralToDotPass();
 std::unique_ptr<OperationPass<func::FuncOp>>
+createLegalizeDotToDotGeneralPass();
+std::unique_ptr<OperationPass<func::FuncOp>>
 createLegalizeEinsumToDotGeneralPass();
 std::unique_ptr<OperationPass<func::FuncOp>>
 createLegalizeGatherToTorchIndexSelectPass();

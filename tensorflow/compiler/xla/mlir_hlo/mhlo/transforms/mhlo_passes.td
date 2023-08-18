@@ -95,6 +95,11 @@ def LegalizeDotGeneralToDotPass : Pass<"mhlo-legalize-dot-general-to-dot", "func
   let dependentDialects = ["mhlo::MhloDialect"];
 }
 
+def LegalizeDotToDotGeneralPass : Pass<"mhlo-legalize-dot-to-dot-general", "func::FuncOp"> {
+  let summary = "Legalizes dot ops to dot_general ops.";
+  let constructor = "createLegalizeDotToDotGeneralPass()";
+}
+
 def LegalizeEinsumToDotGeneralPass : Pass<"mhlo-legalize-einsum-to-dot-general", "func::FuncOp"> {
   let summary = "Legalizes einsum ops to dot_general ops.";
   let constructor = "createLegalizeEinsumToDotGeneralPass()";

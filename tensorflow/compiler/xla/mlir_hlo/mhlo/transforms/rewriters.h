@@ -45,6 +45,10 @@ void populateOptimizeMhloPatterns(MLIRContext *context,
 void populateCreateTokenToAfterAllPatterns(mlir::MLIRContext *context,
                                            RewritePatternSet *patterns);
 
+// Rewrite patterns for dot to equivalent dot_general legalization.
+void populateDotToDotGeneralPatterns(mlir::MLIRContext *context,
+                                     RewritePatternSet *patterns);
+
 // Rewrite patterns for einsum to equivalent dot_general legalization.
 void populateEinsumToDotGeneralPatterns(mlir::MLIRContext *context,
                                         RewritePatternSet *patterns);

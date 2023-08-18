@@ -728,6 +728,7 @@ cc_library(
         "mhlo/transforms/legalize_control_flow/legalize_control_flow.cc",
         "mhlo/transforms/legalize_create_token_to_after_all/legalize_create_token_to_after_all.cc",
         "mhlo/transforms/legalize_dot_general_to_dot/legalize_dot_general_to_dot.cc",
+        "mhlo/transforms/legalize_dot_to_dot_general/legalize_dot_to_dot_general.cc",
         "mhlo/transforms/legalize_einsum_to_dot_general/legalize_einsum_to_dot_general.cc",
         "mhlo/transforms/legalize_gather_to_torch_index_select/legalize_gather_to_torch_index_select.cc",
         "mhlo/transforms/legalize_mhlo_to_thlo/legalize_mhlo_to_thlo.cc",
