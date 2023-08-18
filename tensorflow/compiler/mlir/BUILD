@@ -51,6 +51,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite:tf_tfl_passes",  # buildcleaner:keep
         "//tensorflow/compiler/mlir/quantization/stablehlo:bridge_passes",
+        "//tensorflow/compiler/mlir/tensor:tfl_passes",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_pass_registration",
         "//tensorflow/compiler/mlir/tensorflow:mlprogram_util",
@@ -96,6 +97,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite:lift_tflite_flex_ops",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_passes",
         "//tensorflow/compiler/mlir/lite/quantization/tensorflow:tf_quantization_passes",
+        "//tensorflow/compiler/mlir/tensor:tfl_passes",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tf_dialect_passes",
