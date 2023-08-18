@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/core/framework/numeric_types.h"
@@ -86,6 +87,24 @@ FailureOr<mlir::DenseElementsAttr> GetDenseAttrFromTensorProtoAttr(
   } else {
     return failure();
   }
+}
+
+bool IsTFUniformQuantizedOp(Operation *op) {
+  return llvm::isa<
+      // clang-format off
+      // go/keep-sorted start
+      TF::UniformDequantizeOp,
+      TF::UniformQuantizeOp,
+      TF::UniformQuantizedAddOp,
+      TF::UniformQuantizedClipByValueOp,
+      TF::UniformQuantizedConvolutionHybridOp,
+      TF::UniformQuantizedConvolutionOp,
+      TF::UniformQuantizedDotHybridOp,
+      TF::UniformQuantizedDotOp,
+      TF::UniformRequantizeOp
+      // go/keep-sorted end
+      // clang-format on
+      >(op);
 }
 
 }  // namespace stablehlo
