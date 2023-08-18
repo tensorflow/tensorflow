@@ -209,6 +209,7 @@ AutoShardingSolverResult CallORToolsSolver(
     }
   }
 
+  std::vector<EdgeIdx> e_follow(num_edges, -1);
   absl::flat_hash_map<std::pair<NodeIdx, NodeIdx>, EdgeIdx> edge_map;
   for (EdgeIdx i = 0; i < num_edges; ++i) {
     const std::pair<NodeIdx, NodeIdx>& edge = request.e[i];
@@ -217,6 +218,7 @@ AutoShardingSolverResult CallORToolsSolver(
     if (int f = request.s_follow[edge.second]; f >= 0) followed_edge.second = f;
     if (const auto& it = edge_map.find(followed_edge); it != edge_map.end()) {
       e[i] = e[it->second];  // Copy variable of followed edge to following edge
+      e_follow[i] = it->second;
       continue;
     }
     solver->MakeBoolVarArray(
@@ -254,9 +256,7 @@ AutoShardingSolverResult CallORToolsSolver(
   // objective value so large that other solution choices do not matter anymore.
   // Remove these constraints once b/238210866 is done.
   for (NodeIdx i = 0; i < request.num_nodes; ++i) {
-    if (s[i].empty()) {
-      continue;
-    }
+    if (s[i].empty() || request.s_follow[i] >= 0) continue;
     bool all_infinity = true;
     for (NodeStrategyIdx j = 0; j < s[i].size(); ++j) {
       if (solver->Objective().GetCoefficient(s[i][j]) >= kInfinityCost) {
@@ -273,9 +273,7 @@ AutoShardingSolverResult CallORToolsSolver(
   }
 
   for (EdgeIdx i = 0; i < num_edges; ++i) {
-    if (e[i].empty()) {
-      continue;
-    }
+    if (e[i].empty() || e_follow[i] >= 0) continue;
     bool all_infinity = true;
     for (EdgeStrategyIdx j = 0; j < e[i].size(); ++j) {
       if (solver->Objective().GetCoefficient(e[i][j]) >= kInfinityCost) {
@@ -302,6 +300,7 @@ AutoShardingSolverResult CallORToolsSolver(
   // a. specified via "BoolVarArray"
   // b.
   for (NodeIdx i = 0; i < request.num_nodes; ++i) {
+    if (request.s_follow[i] >= 0) continue;
     MPConstraint* constraint = solver->MakeRowConstraint(
         1.0, 1.0,
         absl::StrCat("sum(s[", i, "][j] for j = [0 .. ", s[i].size(),
@@ -350,6 +349,7 @@ AutoShardingSolverResult CallORToolsSolver(
   // d. specified via "BoolVarArray"
   // e.
   for (EdgeIdx i = 0; i < num_edges; ++i) {
+    if (e_follow[i] >= 0) continue;
     const std::pair<NodeIdx, NodeIdx>& edge = request.e[i];
     MPConstraint* constraint = solver->MakeRowConstraint(
         1.0, 1.0,
@@ -360,6 +360,7 @@ AutoShardingSolverResult CallORToolsSolver(
   }
   // f.
   for (EdgeIdx i = 0; i < num_edges; ++i) {
+    if (e_follow[i] >= 0) continue;
     const std::pair<NodeIdx, NodeIdx>& edge = request.e[i];
     for (NodeStrategyIdx p = 0; p < s[edge.first].size(); ++p) {
       MPConstraint* constraint = solver->MakeRowConstraint(
@@ -372,6 +373,7 @@ AutoShardingSolverResult CallORToolsSolver(
   }
   // g.
   for (EdgeIdx i = 0; i < num_edges; ++i) {
+    if (e_follow[i] >= 0) continue;
     const std::pair<NodeIdx, NodeIdx>& edge = request.e[i];
     for (NodeStrategyIdx q = 0; q < s[edge.second].size(); ++q) {
       MPConstraint* constraint = solver->MakeRowConstraint(
