@@ -591,7 +591,8 @@ class DeviceTopology:
 
 def buffer_to_dlpack_managed_tensor(
     buffer: ArrayImpl,
-    take_ownership: bool = ...) -> Any: ...
+    take_ownership: bool = ...,
+    stream: int | None = None) -> Any: ...
 def dlpack_managed_tensor_to_buffer(
     tensor: Any, cpu_backend: Optional[Client] = ...,
     gpu_backend: Optional[Client] = ...) -> ArrayImpl: ...

@@ -789,7 +789,8 @@ PYBIND11_MODULE(xla_extension, m) {
 
   m.def("buffer_to_dlpack_managed_tensor",
         xla::ValueOrThrowWrapper(BufferToDLPackManagedTensor),
-        py::arg("buffer"), py::arg("take_ownership") = true);
+        py::arg("buffer"), py::arg("take_ownership") = true,
+        py::arg("stream") = py::none());
   m.def(
       "dlpack_managed_tensor_to_buffer",
       [](const pybind11::capsule& tensor, std::shared_ptr<PyClient> cpu_client,

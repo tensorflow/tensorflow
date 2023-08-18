@@ -267,8 +267,9 @@ StatusOr<PjRtDevice*> DeviceForDLDevice(const PjRtClient* cpu_client,
 
 }  // namespace
 
-StatusOr<py::capsule> BufferToDLPackManagedTensor(py::handle py_buffer,
-                                                  bool take_ownership) {
+StatusOr<py::capsule> BufferToDLPackManagedTensor(
+    py::handle py_buffer, bool take_ownership,
+    std::optional<std::intptr_t> stream) {
   ifrt::Array* ifrt_array = py::cast<xla::PyArray>(py_buffer).ifrt_array();
   auto pack = std::make_unique<DLPackTensor>();
   if (ifrt_array == nullptr) {
@@ -303,16 +304,18 @@ StatusOr<py::capsule> BufferToDLPackManagedTensor(py::handle py_buffer,
           "Cannot convert deleted/invalid buffer to DLPack tensor.");
     }
   } else {
-    // Block on outstanding operations, so that it is safe to read or mutate the
-    // returned buffer.
-    {
-      GlobalPyRefManager()->CollectGarbage();
-      py::gil_scoped_release gil_release;
+    // AcquireExternalReference may block; there are no API guarantees.
+    GlobalPyRefManager()->CollectGarbage();
+    py::gil_scoped_release gil_release;
+    TF_ASSIGN_OR_RETURN(pack->external_reference,
+                        pjrt_buffer->AcquireExternalReference());
+    if (stream) {
+      TF_RETURN_IF_ERROR(
+          pack->external_reference->WaitUntilBufferReadyOnStream(*stream));
+    } else {
       TF_RETURN_IF_ERROR(AwaitBuffersReady(ifrt_array));
     }
     pack->buffer_reference = py::reinterpret_borrow<py::object>(py_buffer);
-    TF_ASSIGN_OR_RETURN(pack->external_reference,
-                        pjrt_buffer->AcquireExternalReference());
   }
   dt.data = pack->external_reference->OpaqueDeviceMemoryDataPointer();
   pack->tensor.manager_ctx = pack.get();

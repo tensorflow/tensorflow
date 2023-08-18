@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace stream_executor {
 
@@ -57,6 +58,10 @@ class Event {
 
   // Returns the current Status for the event.
   Status PollForStatus();
+
+  // Blocks `stream` on this event. `stream` is a raw platform-specific
+  // stream (e.g. GpuStreamHandle).
+  tsl::Status WaitForEventOnExternalStream(std::intptr_t stream);
 
   // Returns a pointer to the underlying platform-specific implementation.
   internal::EventInterface* implementation() { return implementation_.get(); }
