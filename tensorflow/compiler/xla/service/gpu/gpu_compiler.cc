@@ -200,6 +200,24 @@ namespace {
 bool ConvIsLowerable(HloInstruction* conv) {
   return GpuConvRewriter::ConvIsLowerable(conv);
 }
+
+StatusOr<AutotuneConfig> GetAutotuneConfig(
+    se::StreamExecutor* stream_exec, const DebugOptions& debug_options,
+    const GpuCompiler::CompileOptions& options,
+    const GpuTargetConfig& gpu_target_config,
+    const AutotuneResults* autotune_results) {
+  if (stream_exec) {
+    return AutotuneConfig{DeviceConfig{stream_exec, options.device_allocator},
+                          debug_options};
+  }
+  AutotuneConfig deviceless_config =
+      AutotuneConfig{DevicelessConfig{gpu_target_config.device_description_str},
+                     debug_options};
+  // Deviceless config means we can't run autotuning, and need to rely on saved
+  // results.
+  TF_RETURN_IF_ERROR(AutotunerUtil::LoadAutotuneResults(*autotune_results));
+  return deviceless_config;
+}
 }  // end anonymous namespace
 
 StatusOr<std::unique_ptr<Executable>>
@@ -1062,9 +1080,11 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   // f32).
   add_float_normalization(pipeline);
 
-  TF_RETURN_IF_ERROR(AddAutotuningPasses(
-      &pipeline, hlo_module, stream_exec, debug_options, options,
-      gpu_target_config, autotune_results, thread_pool));
+  TF_ASSIGN_OR_RETURN(AutotuneConfig autotune_config,
+                      GetAutotuneConfig(stream_exec, debug_options, options,
+                                        gpu_target_config, autotune_results));
+  TF_RETURN_IF_ERROR(
+      AddAutotuningPasses(&pipeline, hlo_module, autotune_config, thread_pool));
 
   // The Triton autotuner can insert new bf16 reductions that need to be
   // normalized again.
