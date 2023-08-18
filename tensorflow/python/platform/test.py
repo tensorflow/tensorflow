@@ -196,7 +196,14 @@ def is_built_with_xla():
 
 @tf_export('test.is_cpu_target_available')
 def is_cpu_target_available(target):
-  """Returns whether TensorFlow was built for the given CPU target.
+  """Indicates whether tensorflow was built with support for a given CPU target.
+
+  Args:
+    target: the name of the CPU target whose support to check for.
+
+  Returns:
+    A boolean indicating whether TensorFlow was built with support for the
+    given CPU target.
 
   This method should only be used in tests written with `tf.test.TestCase`. A
   typical usage is to skip tests that should only run with a given target.
