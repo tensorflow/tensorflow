@@ -1748,6 +1748,7 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
+        ":shape_util",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
