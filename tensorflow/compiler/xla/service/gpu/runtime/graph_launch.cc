@@ -170,6 +170,10 @@ static void EvictAllGraphs(
             vec.end());
 
   auto timed_out = [&](GraphInstances::Impl::State& state) -> bool {
+    if (!eviction_timeout_seconds.has_value()) {
+      return false;
+    }
+
     auto diff = tsl::Env::Default()->NowMicros() - state.last_use_micros;
     return (diff / (1000 * 1000)) > *eviction_timeout_seconds;
   };
