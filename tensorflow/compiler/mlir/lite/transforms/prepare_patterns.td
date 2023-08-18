@@ -83,24 +83,6 @@ def RemoveIdentityN : Pat<(TF_IdentityNOp $arg), (replaceWithValue $arg)>;
 //===----------------------------------------------------------------------===//
 // Op quantization pass-through patterns.
 //===----------------------------------------------------------------------===//
-// TODO(fengliuai): Implement similar rule in the QuantizePass if the constant
-// folding hook of tfl.transpose and tfl.reshape are implemented.
-def ReorderTransposeFakeQuant :
-      Pat<(TF_TransposeOp
-              (TF_FakeQuantWithMinMaxVarsOp
-                  $input, $min, $max, $num_bits, $narrow_range),
-              $perm),
-          (TF_FakeQuantWithMinMaxVarsOp (TF_TransposeOp $input, $perm),
-              $min, $max, $num_bits, $narrow_range)>;
-
-def ReorderReshapeFakeQuant :
-      Pat<(TF_ReshapeOp
-              (TF_FakeQuantWithMinMaxVarsOp
-                  $input, $min, $max, $num_bits, $narrow_range),
-              $shape),
-          (TF_FakeQuantWithMinMaxVarsOp (TF_ReshapeOp $input, $shape),
-              $min, $max, $num_bits, $narrow_range)>;
-
 // Casts result type of $1 to a quantized type by using the quantization
 // parameters from the type in $0.
 class UpdateShapeWithAxis<int i> : NativeCodeCall<
