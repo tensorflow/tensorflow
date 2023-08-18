@@ -130,8 +130,8 @@ TEST(DepthwiseConv2D, 5x5) {
       .InputHeight(input_rng())
       .InputWidth(input_rng())
       .InputChannels(channel_rng())
-      .KernelHeight(3)
-      .KernelWidth(3)
+      .KernelHeight(5)
+      .KernelWidth(5)
       .SamePadding()
       .Test(xnnpack_delegate.get());
 }
@@ -152,8 +152,8 @@ TEST(DepthwiseConv2D, 5x5Stride2) {
       .InputHeight(input_rng())
       .InputWidth(input_rng())
       .InputChannels(channel_rng())
-      .KernelHeight(3)
-      .KernelWidth(3)
+      .KernelHeight(5)
+      .KernelWidth(5)
       .StrideHeight(2)
       .StrideWidth(2)
       .SamePadding()
