@@ -253,7 +253,7 @@ def AddConcurrentRegionsPass:
 //===----------------------------------------------------------------------===//
 
 def StreamAssignmentPass:
-    Pass<"xla-gpu-stream-assignment", "mlir::func::FuncOp"> {
+    Pass<"xla-gpu-stream-assignment", "mlir::ModuleOp"> {
   let summary = "Identify and mark concurrent regions in CUDA graph capture "
                 "functions";
 

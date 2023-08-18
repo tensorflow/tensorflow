@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/python/ifrt/memory.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
@@ -83,9 +84,10 @@ std::vector<IndexDomain> IndexDomainsSlowPath(
 }  // namespace
 
 std::unique_ptr<HloSharding> HloSharding::Create(
-    DeviceList devices, xla::HloSharding xla_hlo_sharding) {
-  return std::unique_ptr<HloSharding>(
-      new HloSharding(std::move(devices), std::move(xla_hlo_sharding)));
+    DeviceList devices, MemoryKind memory_kind,
+    xla::HloSharding xla_hlo_sharding) {
+  return std::unique_ptr<HloSharding>(new HloSharding(
+      std::move(devices), memory_kind, std::move(xla_hlo_sharding)));
 }
 
 StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
@@ -94,8 +96,8 @@ HloSharding::Disassemble(const Shape& shape) const {
   std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>> result;
   result.reserve(index_domains.size());
   for (int i = 0; i < index_domains.size(); ++i) {
-    result.push_back(
-        {index_domains[i].shape(), SingleDeviceSharding::Create(devices_[i])});
+    result.push_back({index_domains[i].shape(),
+                      SingleDeviceSharding::Create(devices_[i], memory_kind_)});
   }
   return result;
 }
@@ -218,7 +220,9 @@ StatusOr<std::vector<IndexDomain>> HloSharding::IndexDomains(
 }
 
 std::string HloSharding::DebugString() const {
-  return xla_hlo_sharding_.ToString();
+  return absl::StrFormat("HloSharding(memory_kind: %s, hlo_sharding: %s)",
+                         memory_kind_.DebugString(),
+                         xla_hlo_sharding_.ToString());
 }
 
 std::vector<IndexDomain> TEST_HloShardingIndexDomainsSlowPath(

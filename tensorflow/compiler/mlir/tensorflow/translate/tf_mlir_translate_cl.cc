@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate_cl.h"
 
+#include "llvm/Support/CommandLine.h"
+
 // These command-line options are following LLVM conventions because we also
 // need to register the TF Graph(Def) to MLIR conversion with mlir-translate,
 // which expects command-line options of such style.
@@ -136,10 +138,22 @@ opt<bool> enable_soft_placement(
     llvm::cl::desc("Enable soft device placement on import."),
     llvm::cl::init(false));
 
+// NOLINTNEXTLINE
+opt<bool> set_original_tf_func_name(
+    "tf-set-original-tf-func-name-on-import",
+    llvm::cl::desc("Set original TF function name on importi."),
+    llvm::cl::init(false));
+
 // Export options.
 // NOLINTNEXTLINE
 opt<bool> export_entry_func_to_flib(
     "tf-export-entry-func-to-flib",
     llvm::cl::desc(
         "Export entry function to function library instead of graph"),
+    llvm::cl::init(false));
+// NOLINTNEXTLINE
+opt<bool> export_original_tf_func_name(
+    "tf-export-original-func-name",
+    llvm::cl::desc("Export functions using the name set in the attribute "
+                   "'tf._original_func_name' if it exists."),
     llvm::cl::init(false));

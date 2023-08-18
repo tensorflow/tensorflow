@@ -2044,6 +2044,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
       "CheckNumerics",
       "Cholesky",
       "ControlTrigger",
+      "Conv",
       "Conv2D",
       "Conv2DBackpropFilter",
       "Conv2DBackpropInput",

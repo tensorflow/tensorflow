@@ -1,3 +1,4 @@
+load("//tensorflow:py.default.bzl", "py_library")
 load("//tensorflow:tensorflow.bzl", "py_binary", "tf_py_test")
 
 package(

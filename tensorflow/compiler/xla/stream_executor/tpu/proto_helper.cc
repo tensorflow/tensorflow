@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/tpu/proto_helper.h"
 
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
+
 extern "C" {
 
 void StreamExecutor_Tpu_FreeSerializedProto(const TpuSerializedProto* proto) {

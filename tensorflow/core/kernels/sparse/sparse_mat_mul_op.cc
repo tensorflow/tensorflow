@@ -493,7 +493,7 @@ class CSRSparseMatMulGPUOp : public OpKernel {
                      matC.InitializeCsr<int, T>(
                          a_input_dense_shape(a_input_dense_shape.size() - 2),
                          b_input_dense_shape(b_input_dense_shape.size() - 1), 0,
-                         nullptr, nullptr, nullptr));
+                         c_row_ptr.data(), nullptr, nullptr));
 
       // Check required size for buffer1 and possibly re-allocate
       size_t bufferSize1;

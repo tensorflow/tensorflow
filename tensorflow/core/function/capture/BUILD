@@ -1,3 +1,4 @@
+load("//tensorflow:py.default.bzl", "py_library")
 load("//tensorflow:strict.default.bzl", "py_strict_test")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 

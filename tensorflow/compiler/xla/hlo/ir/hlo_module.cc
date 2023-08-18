@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
 #include "tensorflow/compiler/xla/map_util.h"
@@ -81,6 +82,7 @@ void HloModule::ReplaceEntryComputation(HloComputation* entry_computation) {
       entry_computation_->ComputeProgramShape());
   input_output_alias_config_ = HloInputOutputAliasConfig(
       entry_computation_->root_instruction()->shape());
+  buffer_donor_config_ = HloBufferDonorConfig();
 }
 
 HloModule::StackFrame HloModule::get_stack_frame(int id) const {
@@ -123,6 +125,7 @@ HloComputation* HloModule::AddComputationInternal(
     }
     input_output_alias_config_ = HloInputOutputAliasConfig(
         entry_computation_->root_instruction()->shape());
+    buffer_donor_config_ = HloBufferDonorConfig();
   }
 
   if (uniquify_identifiers) {
@@ -218,7 +221,8 @@ void HloModule::MarkFusionDuplications(
   }
 }
 
-void HloModule::MoveComputationsFrom(HloModule* module) {
+void HloModule::MoveComputationsFrom(HloModule* module,
+                                     bool make_names_unique) {
   for (size_t i = 0; i < module->computation_count(); ++i) {
     for (auto* instruction : module->computations_[i]->instructions()) {
       instruction->ClearUniqueIdInternal();
@@ -233,6 +237,12 @@ void HloModule::MoveComputationsFrom(HloModule* module) {
         /*is_entry=*/computation_raw_ptr->IsEntryComputation(),
         /*uniquify_identifiers=*/false,
         /*preserve_entry_layouts=*/false);
+    if (make_names_unique) {
+      computation_raw_ptr->UniquifyName(&computation_name_uniquer_);
+      for (auto* instruction : computation_raw_ptr->instructions()) {
+        instruction->UniquifyName(&instruction_name_uniquer_);
+      }
+    }
     // Pick unique IDs for each instruction.
     for (auto* instruction : computation_raw_ptr->instructions()) {
       instruction->SetUniqueId(NewUniqueInstructionId());
@@ -243,6 +253,8 @@ void HloModule::MoveComputationsFrom(HloModule* module) {
     computation_raw_ptr->SetUniqueId(
         computation_raw_ptr->root_instruction()->unique_id());
   }
+  // Since the computations no longer belong to the old module, clear the list.
+  module->computations_.clear();
 }
 
 void HloModule::ReplaceComputations(
@@ -333,6 +345,12 @@ void HloModule::Print(Printer* printer, const HloPrintOptions& options) const {
     printer->Append(std::move(serialized_aliasing));
     printer->Append(" }");
   }
+  std::string serialized_buffer_donor = buffer_donor_config().ToShortString();
+  if (!serialized_buffer_donor.empty()) {
+    printer->Append(", buffer_donor={ ");
+    printer->Append(std::move(serialized_buffer_donor));
+    printer->Append(" }");
+  }
   if (config_.alias_passthrough_params()) {
     printer->Append(", alias_passthrough_params=true");
   }
@@ -404,6 +422,7 @@ HloModuleProto HloModule::ToProto() const {
     *proto.mutable_schedule() = schedule().ToProto().value();
   }
   *proto.mutable_input_output_alias() = input_output_alias_config().ToProto();
+  *proto.mutable_buffer_donor() = buffer_donor_config().ToProto();
   *proto.mutable_dynamic_parameter_binding() =
       dynamic_parameter_binding().ToProto();
   for (const auto& [parameter, indices, alt_memory_offset] :
@@ -564,6 +583,9 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
       module->input_output_alias_config_,
       HloInputOutputAliasConfig::CreateFromProto(
           entry->ComputeProgramShape().result(), proto.input_output_alias()));
+  TF_ASSIGN_OR_RETURN(
+      module->buffer_donor_config_,
+      HloBufferDonorConfig::CreateFromProto(proto.buffer_donor()));
 
   // Because we didn't uniquify the names or the ids, double-check that the
   // instruction and computation names and ids are unique from the proto.
@@ -1009,6 +1031,7 @@ std::unique_ptr<HloModule> HloModule::Clone(const HloModuleConfig& config,
   auto cloned_computation = entry_computation_->Clone(suffix, &context);
   module->AddEntryComputation(std::move(cloned_computation));
   module->input_output_alias_config() = input_output_alias_config();
+  module->buffer_donor_config() = buffer_donor_config();
   module->set_is_dynamic(is_dynamic());
   if (has_schedule() && schedule().Verify().ok()) {
     HloSchedule clone_schedule(module.get());

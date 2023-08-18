@@ -664,12 +664,13 @@ void ExecutorState<PropagatorStateType>::ProcessAsync(
   };
   nodestats::SetOpStart(stats);
   {
+    // Always trace async ops.
     profiler::AnnotatedTraceMe activity(
         [async_kernel, state] {
           return async_kernel->TraceString(
               state->ctx, /*verbose=*/profiler::TfOpDetailsEnabled());
         },
-        profiler::GetTFTraceMeLevel(kernel_stats_->IsExpensive(item)));
+        profiler::GetTFTraceMeLevel(/*is_expensive=*/false));
     immutable_state_.params().device->ComputeAsync(async_kernel, &state->ctx,
                                                    std::move(done));
   }

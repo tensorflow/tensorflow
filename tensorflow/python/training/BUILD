@@ -1,3 +1,4 @@
+# Placeholder: load py_proto_library
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test")
 load("//tensorflow/core/platform:distribute.bzl", "distribute_py_strict_test")
@@ -482,6 +483,7 @@ py_strict_library(
     srcs = ["session_manager.py"],
     srcs_version = "PY3",
     deps = [
+        ":saver",
         "//tensorflow/python/checkpoint:checkpoint_lib",
         "//tensorflow/python/client:session",
         "//tensorflow/python/distribute:distribute_lib",

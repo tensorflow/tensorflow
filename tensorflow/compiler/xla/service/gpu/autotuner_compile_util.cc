@@ -86,8 +86,8 @@ AutotunerCompileUtil::AutotunerCompileUtil(const AutotuneConfig& config,
   opts_.set_xla_gpu_force_compilation_parallelism(1);
   // Avoid using GPU graphs as we don't want to measure graph construction time.
   opts_.set_xla_gpu_graph_level(0);
-  // Disable experimental OpenXLA runtime.
-  opts_.set_xla_gpu_enable_openxla_runtime(false);
+  // Disable experimental XLA:GPU runtime.
+  opts_.set_xla_gpu_enable_gpu2_runtime(false);
 }
 
 StatusOr<std::optional<AutotunerCompileUtil::ProfilingOutput>>

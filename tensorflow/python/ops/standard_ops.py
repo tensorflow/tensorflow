@@ -61,12 +61,6 @@ from tensorflow.python.ops.histogram_ops import *
 from tensorflow.python.ops.init_ops import *
 from tensorflow.python.ops.io_ops import *
 from tensorflow.python.ops.linalg_ops import *
-from tensorflow.python.ops.linalg import adjoint_registrations as _adjoint_registrations
-from tensorflow.python.ops.linalg import cholesky_registrations as _cholesky_registrations
-from tensorflow.python.ops.linalg import inverse_registrations as _inverse_registrations
-from tensorflow.python.ops.linalg import linear_operator_algebra as _linear_operator_algebra
-from tensorflow.python.ops.linalg import matmul_registrations as _matmul_registrations
-from tensorflow.python.ops.linalg import solve_registrations as _solve_registrations
 from tensorflow.python.ops.logging_ops import Print
 from tensorflow.python.ops.logging_ops import get_summary_op
 from tensorflow.python.ops.logging_ops import timestamp
@@ -78,8 +72,17 @@ from tensorflow.python.ops.numerics import *
 from tensorflow.python.ops.parsing_ops import *
 from tensorflow.python.ops.partitioned_variables import *
 from tensorflow.python.ops.proto_ops import *
+from tensorflow.python.ops.ragged import ragged_batch_gather_ops
+from tensorflow.python.ops.ragged import ragged_batch_gather_with_default_op
+from tensorflow.python.ops.ragged import ragged_bincount_ops
+from tensorflow.python.ops.ragged import ragged_check_ops
+from tensorflow.python.ops.ragged import ragged_conversion_ops
 from tensorflow.python.ops.ragged import ragged_dispatch as _ragged_dispatch
+from tensorflow.python.ops.ragged import ragged_embedding_ops
+from tensorflow.python.ops.ragged import ragged_image_ops
 from tensorflow.python.ops.ragged import ragged_operators as _ragged_operators
+from tensorflow.python.ops.ragged import ragged_squeeze_op
+from tensorflow.python.ops.ragged import ragged_string_ops
 from tensorflow.python.ops.random_ops import *
 from tensorflow.python.ops.script_ops import py_func
 from tensorflow.python.ops.session_ops import *

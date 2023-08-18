@@ -43,6 +43,7 @@ cc_library(
         "host_callback.cc",
         "index.cc",
         "index_domain.cc",
+        "memory.cc",
         "shape.cc",
         "sharding.cc",
         "tuple.cc",
@@ -59,6 +60,7 @@ cc_library(
         "host_callback.h",
         "index.h",
         "index_domain.h",
+        "memory.h",
         "shape.h",
         "sharding.h",
         "tuple.h",
@@ -76,6 +78,7 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/container:node_hash_set",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
@@ -126,6 +129,16 @@ xla_cc_test(
     name = "index_test",
     size = "small",
     srcs = ["index_test.cc"],
+    deps = [
+        ":ifrt",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_cc_test(
+    name = "memory_test",
+    size = "small",
+    srcs = ["memory_test.cc"],
     deps = [
         ":ifrt",
         "@com_google_googletest//:gtest_main",

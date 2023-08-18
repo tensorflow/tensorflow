@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/ifrt/sharding_serdes.h"
 
 #include <memory>
-#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -35,8 +34,8 @@ using ::testing::ElementsAreArray;
 class ShardingSerDesTest : public test_util::ShardingTest {};
 
 TEST_P(ShardingSerDesTest, SingleDeviceShardingRoundTrip) {
-  auto sharding =
-      SingleDeviceSharding::Create(GetDevices({0}).devices().front());
+  auto sharding = SingleDeviceSharding::Create(
+      GetDevices({0}).devices().front(), MemoryKind("abc"));
 
   TF_ASSERT_OK_AND_ASSIGN(auto serialized, Serialize(*sharding));
 
@@ -53,7 +52,7 @@ TEST_P(ShardingSerDesTest, SingleDeviceShardingRoundTrip) {
 }
 
 TEST_P(ShardingSerDesTest, OpaqueShardingRoundTrip) {
-  auto sharding = OpaqueSharding::Create(GetDevices({0, 1}));
+  auto sharding = OpaqueSharding::Create(GetDevices({0, 1}), MemoryKind("abc"));
 
   TF_ASSERT_OK_AND_ASSIGN(auto serialized, Serialize(*sharding));
 
@@ -70,7 +69,7 @@ TEST_P(ShardingSerDesTest, OpaqueShardingRoundTrip) {
 
 TEST_P(ShardingSerDesTest, ConcreteShardingRoundTrip) {
   auto sharding = ConcreteSharding::Create(
-      GetDevices({0, 1}),
+      GetDevices({0, 1}), MemoryKind("abc"),
       /*shape=*/Shape({10, 20}),
       /*shard_shapes=*/{Shape({3, 20}), Shape({7, 20})});
 
@@ -92,9 +91,10 @@ TEST_P(ShardingSerDesTest, ConcreteShardingRoundTrip) {
 }
 
 TEST_P(ShardingSerDesTest, ConcreteEvenShardingRoundTrip) {
-  auto sharding = ConcreteEvenSharding::Create(GetDevices({0, 1}),
-                                               /*shape=*/Shape({10, 20}),
-                                               /*shard_shape=*/Shape({5, 20}));
+  auto sharding =
+      ConcreteEvenSharding::Create(GetDevices({0, 1}), MemoryKind("abc"),
+                                   /*shape=*/Shape({10, 20}),
+                                   /*shard_shape=*/Shape({5, 20}));
 
   TF_ASSERT_OK_AND_ASSIGN(auto serialized, Serialize(*sharding));
 

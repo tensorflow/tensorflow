@@ -222,7 +222,11 @@ XLA_TEST_F(DynamicSliceTest, UInt64R1) { TestR1<uint64_t, float>(); }
 XLA_TEST_F(DynamicSliceTest, UInt32R1OOB) {
   RunR1<uint32_t, int32_t>({0, 1, 2, 3, 4}, {2147483648u}, {2}, {3, 4});
 }
-
+XLA_TEST_F(DynamicSliceTest, UInt8R1) {
+  std::vector<int32_t> data(129);
+  absl::c_iota(data, 0);
+  RunR1<uint8_t, int32_t>(data, {128}, {1}, {128});
+}
 XLA_TEST_F(DynamicSliceTest, Int32R2BF16) { TestR2<int32_t, bfloat16>(); }
 XLA_TEST_F(DynamicSliceTest, Int32R2) { TestR2<int32_t, int32_t>(); }
 XLA_TEST_F(DynamicSliceTest, Int32R2OOB) { TestR2OOB<int32_t, int32_t>(); }
@@ -577,6 +581,13 @@ XLA_TEST_F(DynamicUpdateSliceTest, UInt64R1) { TestR1<uint64_t, float>(); }
 XLA_TEST_F(DynamicUpdateSliceTest, UInt32R1OOB) {
   RunR1<uint32_t, int32_t>({0, 1, 2, 3, 4}, {5, 6}, {2147483648u},
                            {0, 1, 2, 5, 6});
+}
+XLA_TEST_F(DynamicUpdateSliceTest, UInt8R1) {
+  std::vector<int32_t> data(129);
+  absl::c_iota(data, 0);
+  std::vector<int32_t> expected = data;
+  expected[128] = -1;
+  RunR1<uint8_t, int32_t>(data, {-1}, {128}, expected);
 }
 
 XLA_TEST_F(DynamicUpdateSliceTest, Int32R2BF16) { TestR2<int32_t, bfloat16>(); }

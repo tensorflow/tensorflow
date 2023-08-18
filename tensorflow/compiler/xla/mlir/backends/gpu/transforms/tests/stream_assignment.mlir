@@ -17,8 +17,9 @@ module attributes {gpu.container_module} {
     gpu.func @fn2(%arg0: memref<3x3xi64>, %arg1: memref<3x3xi64>) kernel { gpu.return }
   }
 
-  // CHECK: func @xla.gpu.cuda.graph.capture
-  func.func @xla.gpu.cuda.graph.capture(%arg0: memref<72xi8>, %arg1: memref<72xi8>) {
+  // CHECK: func @xla.gpu.graph.capture
+  func.func @xla.gpu.graph.capture(%arg0: memref<72xi8>, %arg1: memref<72xi8>) {
+    // CHECK: call @xla.gpu.concurrent_region.begin()
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index
     %view = memref.view %arg0[%c0][] : memref<72xi8> to memref<3x3xi64>
@@ -37,6 +38,8 @@ module attributes {gpu.container_module} {
     // CHECK-SAME: {stream = 0 : i64}
     gpu.launch_func  @gpu_module::@fn2 blocks in (%c1, %c1, %c1)
       threads in (%c1, %c1, %c1) args(%view : memref<3x3xi64>, %view_0 : memref<3x3xi64>)
+    // CHECK: call @xla.gpu.concurrent_region.end()
+    // CHECK: return
     return
   }
 }
@@ -60,8 +63,9 @@ module attributes {gpu.container_module} {
   }
 
 
-  // CHECK: func @xla.gpu.cuda.graph.capture
-  func.func @xla.gpu.cuda.graph.capture(%arg0: memref<72xi8>, %arg1: memref<72xi8>) {
+  // CHECK: func @xla.gpu.graph.capture
+  func.func @xla.gpu.graph.capture(%arg0: memref<72xi8>, %arg1: memref<72xi8>) {
+    // CHECK: call @xla.gpu.concurrent_region.begin()
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index
     %view = memref.view %arg0[%c0][] : memref<72xi8> to memref<3x3xi64>
@@ -80,6 +84,8 @@ module attributes {gpu.container_module} {
     // CHECK-SAME: {stream = 0 : i64}
     gpu.launch_func  @gpu_module::@fn1 blocks in (%c1, %c1, %c1)
       threads in (%c1, %c1, %c1) args(%view_0 : memref<3x3xi64>)
+    // CHECK: call @xla.gpu.concurrent_region.end()
+    // CHECK: return
     return
   }
 }
@@ -102,8 +108,9 @@ module attributes {gpu.container_module} {
   }
 
 
-  // CHECK: func @xla.gpu.cuda.graph.capture
-  func.func @xla.gpu.cuda.graph.capture(%arg0: memref<72xi8>, %arg1: memref<72xi8>, %arg2: memref<72xi8>) {
+  // CHECK: func @xla.gpu.graph.capture
+  func.func @xla.gpu.graph.capture(%arg0: memref<72xi8>, %arg1: memref<72xi8>, %arg2: memref<72xi8>) {
+    // CHECK: call @xla.gpu.concurrent_region.begin()
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index
     %view_0 = memref.view %arg0[%c0][] : memref<72xi8> to memref<3x3xi64>
@@ -127,6 +134,8 @@ module attributes {gpu.container_module} {
     // CHECK-SAME: {stream = 0 : i64}
     gpu.launch_func  @gpu_module::@fn2 blocks in (%c1, %c1, %c1)
       threads in (%c1, %c1, %c1) args(%view_0 : memref<3x3xi64>, %view_1 : memref<3x3xi64>, %view_2 : memref<3x3xi64>)
+    // CHECK: call @xla.gpu.concurrent_region.end()
+    // CHECK: return
     return
   }
 }
@@ -149,8 +158,9 @@ module attributes {gpu.container_module} {
   }
 
 
-  // CHECK: func @xla.gpu.cuda.graph.capture
-  func.func @xla.gpu.cuda.graph.capture(%arg0: memref<72xi8>, %arg1: memref<72xi8>) {
+  // CHECK: func @xla.gpu.graph.capture
+  func.func @xla.gpu.graph.capture(%arg0: memref<72xi8>, %arg1: memref<72xi8>) {
+    // CHECK: call @xla.gpu.concurrent_region.begin()
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index
     %view_0 = memref.view %arg0[%c0][] : memref<72xi8> to memref<3x3xi64>
@@ -173,6 +183,8 @@ module attributes {gpu.container_module} {
     // CHECK-SAME: {stream = 0 : i64}
     gpu.launch_func  @gpu_module::@fn2 blocks in (%c1, %c1, %c1)
       threads in (%c1, %c1, %c1) args(%view_0 : memref<3x3xi64>, %view_1 : memref<3x3xi64>)
+    // CHECK: call @xla.gpu.concurrent_region.end()
+    // CHECK: return
     return
   }
 }

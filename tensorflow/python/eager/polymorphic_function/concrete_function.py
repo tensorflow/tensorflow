@@ -81,7 +81,9 @@ def _inference_name(n):
   return "%s%s_%s" % (_INFERENCE_PREFIX, n, ops.uid())
 
 
-def _create_forward_backward_with_graph(attrs, forward_graph, backwards_graph):
+def _create_forward_backward_with_graph(
+    attrs, forward_graph, backwards_graph: func_graph_module.FuncGraph
+):
   """Creates forward and backward functions from the function graphs."""
   forward_function_name = _forward_name(forward_graph.name)
   common_attributes = dict(attrs)
@@ -104,19 +106,22 @@ def _create_forward_backward_with_graph(attrs, forward_graph, backwards_graph):
   backward_function = ConcreteFunction.from_func_graph(
       backwards_graph, function_type, attrs=backward_function_attr
   )
-  forward_function_attr = attributes_lib.parse_func_attrs({
-      attributes_lib.BACKWARD_FUNCTION:
-      backward_function.name})
+  forward_function_attr = attributes_lib.parse_func_attrs(
+      {attributes_lib.BACKWARD_FUNCTION: backward_function.name}
+  )
   forward_function_attr.update(common_attributes)
   forward_function = atomic_function.from_func_graph(
-      forward_function_name, forward_graph, forward_function_attr)
+      forward_function_name, forward_graph, forward_function_attr
+  )
   return forward_function, backward_function
 
 
 class _DelayedRewriteGradientFunctions(object):
   """Caches forward/backward functions with a delayed forward rewrite."""
 
-  def __init__(self, atomic_fn, func_graph_deleter):
+  def __init__(
+      self, atomic_fn: atomic_function.AtomicFunction, func_graph_deleter
+  ):
     """Construct an inference function and initialize caches."""
     # A map from the number of forward function outputs with accepted gradients
     # to forward and backward functions, used to cache non-tape backward
@@ -203,7 +208,7 @@ class _DelayedRewriteGradientFunctions(object):
           self._attrs, self._func_graph, backwards_graph)
       return forward_function, backward_function
 
-  def _rewrite_forward_and_call_backward(self, op, *doutputs):
+  def _rewrite_forward_and_call_backward(self, op: ops.Operation, *doutputs):
     """Add outputs to the forward call and feed them to the grad function."""
     forward_function, backwards_function = self.forward_backward(len(doutputs))
     if not backwards_function.outputs:
@@ -359,9 +364,15 @@ class _TapeGradientFunctions(object):
   determines whether higher-order tape gradients are possible.
   """
 
-  def __init__(self, func_graph, attrs, func_graph_deleter,
-               forwardprop_input_indices, delayed_rewrite_functions,
-               need_gradients_for_jvps):
+  def __init__(
+      self,
+      func_graph: func_graph_module.FuncGraph,
+      attrs,
+      func_graph_deleter,
+      forwardprop_input_indices,
+      delayed_rewrite_functions,
+      need_gradients_for_jvps,
+  ):
     self._func_graph = func_graph
     self._forward_graph = None
     self._attrs = attrs
@@ -679,41 +690,60 @@ class _TapeGradientFunctions(object):
       A forward atomic_function.AtomicFunction.
     """
     if self._forward is None:
-      (self._forward, self._forward_graph, self._backward,
-       self._forwardprop_output_indices, self._num_forwardprop_outputs) = (
-           self._forward_and_backward_functions(inference_args, input_tangents))
+      (
+          self._forward,
+          self._forward_graph,
+          self._backward,
+          self._forwardprop_output_indices,
+          self._num_forwardprop_outputs,
+      ) = self._forward_and_backward_functions(inference_args, input_tangents)
     return self._forward
 
-  def _wrap_backward_function(self, forward_graph, backward, outputs):
+  def _wrap_backward_function(
+      self, forward_graph: func_graph_module.FuncGraph, backward, outputs
+  ):
     """Create a backward function given `outputs` from the forward function."""
     capture_mapping = dict(
-        zip((ops.tensor_id(t) for t in forward_graph.outputs), outputs))
+        zip((ops.tensor_id(t) for t in forward_graph.outputs), outputs)
+    )
     captured_inputs = backward.captured_inputs
     remapped_captures = [
         capture_mapping.get(ops.tensor_id(capture), capture)
         for capture in captured_inputs
     ]
-    if any(t.graph is forward_graph for t in remapped_captures
-           if not isinstance(t, ops.EagerTensor)):
-      incorrect_mapping = [t for t in remapped_captures
-                           if (not isinstance(t, ops.EagerTensor) and
-                               t.graph is not forward_graph)]
-      raise errors.InternalError("Failed to map all backward graph captures to "
-                                 "the forward graph. Incorrectly mapped: "
-                                 f"{incorrect_mapping}.")
+    if any(
+        t.graph is forward_graph
+        for t in remapped_captures
+        if not isinstance(t, ops.EagerTensor)
+    ):
+      incorrect_mapping = [
+          t
+          for t in remapped_captures
+          if (
+              not isinstance(t, ops.EagerTensor)
+              and t.graph is not forward_graph
+          )
+      ]
+      raise errors.InternalError(
+          "Failed to map all backward graph captures to "
+          "the forward graph. Incorrectly mapped: "
+          f"{incorrect_mapping}."
+      )
     # We may need to use zeros_like to get a zero for variant Tensors with
     # unconnected gradients. We do that in advance so we don't have to hold on
     # to the outputs themselves, which may not be needed otherwise.
     variant_zeros_like = {}
-    backward_function_inputs = (len(backward.inputs) - len(captured_inputs))
+    backward_function_inputs = len(backward.inputs) - len(captured_inputs)
     recorded_outputs = []
     trainable_recorded_outputs = 0
     skip_positions = []
     if self._num_forwardprop_outputs and not self._need_gradients_for_jvps:
       relevant_outputs = (
-          outputs[:self._num_inference_outputs]
-          + outputs[self._num_inference_outputs
-                    + self._num_forwardprop_outputs:])
+          outputs[: self._num_inference_outputs]
+          + outputs[
+              self._num_inference_outputs + self._num_forwardprop_outputs :
+          ]
+      )
     else:
       relevant_outputs = outputs
     for output_index, output in enumerate(relevant_outputs):
@@ -777,32 +807,51 @@ class _TapeGradientFunctions(object):
         operation.
     """
     backward_function, to_record = self._wrap_backward_function(
-        self._forward_graph, self._backward, flat_outputs)
+        self._forward_graph, self._backward, flat_outputs
+    )
     if self._forwardprop_output_indices:
       record.record_operation_backprop_only(
           self._forward.cached_definition.signature.name,
-          to_record, inference_args,
-          backward_function)
+          to_record,
+          inference_args,
+          backward_function,
+      )
       record.record_operation_forwardprop_only(
           self._forward.cached_definition.signature.name,
-          flat_outputs, inference_args + input_tangents,
+          flat_outputs,
+          inference_args + input_tangents,
           backward_function,
-          self._forwardprop_output_indices)
+          self._forwardprop_output_indices,
+      )
     else:
-      record.record_operation(self._forward.cached_definition.signature.name,
-                              to_record, inference_args + input_tangents,
-                              backward_function)
+      record.record_operation(
+          self._forward.cached_definition.signature.name,
+          to_record,
+          inference_args + input_tangents,
+          backward_function,
+      )
 
 
 class _FirstOrderTapeGradientFunctions(_TapeGradientFunctions):
   """Caches tape-friendly functions for first-order gradients."""
 
-  def __init__(self, func_graph, attrs, func_graph_deleter,
-               forwardprop_input_indices, delayed_rewrite_functions,
-               need_gradients_for_jvps):
-    super().__init__(func_graph, attrs, func_graph_deleter,
-                     forwardprop_input_indices, delayed_rewrite_functions,
-                     need_gradients_for_jvps)
+  def __init__(
+      self,
+      func_graph: func_graph_module.FuncGraph,
+      attrs,
+      func_graph_deleter,
+      forwardprop_input_indices,
+      delayed_rewrite_functions,
+      need_gradients_for_jvps,
+  ):
+    super().__init__(
+        func_graph,
+        attrs,
+        func_graph_deleter,
+        forwardprop_input_indices,
+        delayed_rewrite_functions,
+        need_gradients_for_jvps,
+    )
     self._func_graph_deleter = func_graph_deleter
     self._forwardprop_input_indices = forwardprop_input_indices
 
@@ -950,24 +999,30 @@ class _ForwardBackwardCall(object):
   def forward(self):
     """Builds or retrieves a forward function for this call."""
     forward_function = self._functions.forward(
-        self._inference_args, self._input_tangents)
+        self._inference_args, self._input_tangents
+    )
     return forward_function, self._inference_args + self._input_tangents
 
   def record(self, flat_outputs):
     """Given outputs from the execution of `forward`, records the operation."""
-    if (self._tape_watching
+    if (
+        self._tape_watching
         and not isinstance(flat_outputs, ops.Operation)
-        and flat_outputs is not None):
+        and flat_outputs is not None
+    ):
       # We only record function calls which have outputs, and then only when a
       # tape is watching.
       self._functions.record(
-          flat_outputs, self._inference_args, self._input_tangents)
+          flat_outputs, self._inference_args, self._input_tangents
+      )
 
 
 class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
   """A `tf.types.experimental.ConcreteFunction` created from `tf.function`."""
 
-  def __init__(self, atomic_fn, shared_func_graph=True):
+  def __init__(
+      self, atomic_fn: atomic_function.AtomicFunction, shared_func_graph=True
+  ):
     """Initialize a `ConcreteFunction`.
 
     Args:

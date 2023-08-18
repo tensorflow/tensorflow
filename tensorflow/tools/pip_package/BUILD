@@ -220,6 +220,7 @@ filegroup(
         "@com_google_protobuf//:LICENSE",
         "@curl//:COPYING",
         "@dill_archive//:LICENSE",
+        "@ducc//:LICENSE",
         "@flatbuffers//:LICENSE",
         "@gast_archive//:PKG-INFO",
         "@gemmlowp//:LICENSE",

@@ -57,6 +57,10 @@ message CudnnConvBackendConfig {
     // compatible with NVidia's IMMA instruction (sm75+).
     bool reordered_int8_nchw_vect = 7;
   }
+
+  // Serialization of the graph described by the convolution and adjacent
+  // pointwise ops.
+  optional string serialized_graph = 9;
 }
 
 // Backend config for the GEMM operation running through cuBLAS.

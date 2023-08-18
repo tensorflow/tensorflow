@@ -21,18 +21,18 @@ namespace gpu {
 bool GpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
   switch (hlo.opcode()) {
     // Collective ops.
-    case HloOpcode::kAllGather:
     case HloOpcode::kAllReduce:
     case HloOpcode::kAllReduceStart:
     case HloOpcode::kAllReduceDone:
-    case HloOpcode::kAllToAll:
-    case HloOpcode::kCollectivePermute:
     case HloOpcode::kReduceScatter:
     // Handled by Triton GEMM.
     case HloOpcode::kDot:
       return LowPrecisionType() == BF16;
     // Data movement only ops.
+    case HloOpcode::kAllGather:
+    case HloOpcode::kAllToAll:
     case HloOpcode::kBroadcast:
+    case HloOpcode::kCollectivePermute:
     case HloOpcode::kConcatenate:
     case HloOpcode::kCopy:
     case HloOpcode::kDynamicSlice:

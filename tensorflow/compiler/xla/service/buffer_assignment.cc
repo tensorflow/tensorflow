@@ -1061,12 +1061,15 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
     std::optional<BufferAssigner::MustNotLiveOut> must_not_live_out,
     HloDataflowAnalysis::CanShareBuffer can_share_buffer,
     std::unique_ptr<PresetAssignments> preset_assignments,
-    const PrivateStacks& private_stacks) {
+    const PrivateStacks& private_stacks,
+    GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
+        heap_buffer_interval_compare) {
   BufferAssigner assigner(allocate_buffers_for_constants, std::move(colorer),
                           must_not_live_out, std::move(preset_assignments));
   return assigner.CreateAssignment(
       module, std::move(hlo_ordering), std::move(buffer_size),
-      std::move(color_alignment), std::move(can_share_buffer), private_stacks);
+      std::move(color_alignment), std::move(can_share_buffer), private_stacks,
+      heap_buffer_interval_compare);
 }
 
 bool BufferAssigner::LiveRangeInterferes(const HloValue* buffer1,
@@ -1586,7 +1589,9 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
     const flat_hash_map<const HloComputation*, flat_hash_set<const HloValue*>>&
         buffers_to_assign_sequentially,
     bool run_whole_module_heap_simulation, BufferAssignment* assignment,
-    const PrivateStacks& private_stacks) {
+    const PrivateStacks& private_stacks,
+    GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
+        heap_buffer_interval_compare) {
   // Run the sequence of instructions through the heap simulator.  The
   // heuristic that seems to give the best results is lazy-best-fit, with all
   // runs of alloc / free calls sorted in decreasing size order.
@@ -1594,7 +1599,14 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
 
   // Returns a heap algorithm that chooses the best result from several
   // algorithms.
-  auto get_heap_algorithm = [&](int64_t alignment) {
+  auto get_heap_algorithm =
+      [&](int64_t alignment) -> std::unique_ptr<HeapAlgorithm<HloValue>> {
+    if (heap_buffer_interval_compare) {
+      return std::make_unique<ConstrainedGlobalDecreasingSizeBestFitHeap>(
+          assignment->multiheap_size_constraint_per_heap(), alignment,
+          GlobalDecreasingSizeBestFitHeap<HloValue>::kCustom,
+          heap_buffer_interval_compare);
+    }
     auto algorithms = std::make_unique<
         std::vector<std::unique_ptr<HeapAlgorithm<HloValue>>>>();
     algorithms->push_back(
@@ -1871,7 +1883,9 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
     BufferValue::SizeFunction buffer_size,
     LogicalBuffer::AlignmentFunction color_alignment,
     HloDataflowAnalysis::CanShareBuffer can_share_buffer,
-    const PrivateStacks& private_stacks) {
+    const PrivateStacks& private_stacks,
+    GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
+        heap_buffer_interval_compare) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
                       HloAliasAnalysis::Run(module, can_share_buffer));
 
@@ -1937,7 +1951,7 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
           << multiheap_size_constraint_per_heap;
   TF_RETURN_IF_ERROR(AssignBuffersWithSequentialOrdering(
       buffers_to_assign_sequentially, run_whole_module_heap_simulation,
-      assignment.get(), private_stacks));
+      assignment.get(), private_stacks, heap_buffer_interval_compare));
 
   std::vector<const HloComputation*> thread_local_computations_no_fusion;
   // Now assign buffers for thread-local computations. All LogicalBuffers get

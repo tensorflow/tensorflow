@@ -17,9 +17,11 @@ limitations under the License.
 
 #include <memory>
 #include <set>
+#include <string>
 #include <string_view>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -164,6 +166,40 @@ TEST_F(HloComputationTest, PostOrderDisconnectedInstructions) {
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_THAT(computation->MakeInstructionPostOrder(),
               UnorderedElementsAre(constant1, constant2, constant3, constant4));
+}
+
+TEST_F(HloComputationTest, PostOrderWithReshapeFirst) {
+  const std::string& hlo_string = R"(
+  HloModule test
+
+  ENTRY %entry {
+    parameter.0 = f32[3] parameter(0)
+    broadcast.0 = f32[1, 3] broadcast(f32[3] parameter.0), dimensions={1}
+    reshape.0 = f32[3, 1] reshape(f32[3] parameter.0)
+    ROOT tuple.0 = (f32[1, 3], f32[3, 1]) tuple(f32[1, 3] broadcast.0, f32[3, 1] reshape.0)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloComputation* entry_computation =
+      FindComputation(hlo_module.get(), "entry");
+
+  HloInstruction* parameter_0 =
+      FindInstruction(hlo_module.get(), "parameter.0");
+  HloInstruction* broadcast_0 =
+      FindInstruction(hlo_module.get(), "broadcast.0");
+  HloInstruction* reshape_0 = FindInstruction(hlo_module.get(), "reshape.0");
+  HloInstruction* tuple_0 = FindInstruction(hlo_module.get(), "tuple.0");
+
+  // Normal `MakeInstructionPostOrder()` have `broadcast_0` before `reshape_0`.
+  EXPECT_THAT(entry_computation->MakeInstructionPostOrder(),
+              ElementsAre(parameter_0, broadcast_0, reshape_0, tuple_0));
+
+  // `MakeInstructionPostOrderWithReshapeFirst()` have `reshape_0` before
+  // `broadcast_0`.
+  EXPECT_THAT(entry_computation->MakeInstructionPostOrderWithReshapeFirst(),
+              ElementsAre(parameter_0, reshape_0, broadcast_0, tuple_0));
 }
 
 TEST_F(HloComputationTest, PostOrderWithMultipleRoots) {

@@ -42,7 +42,7 @@ TEST_P(HloShardingTest, IndexDomainsWithReplication) {
   // Fully replicated.
   auto xla_hlo_sharding = xla::HloSharding::Replicate();
   std::shared_ptr<const HloSharding> sharding =
-      HloSharding::Create(device_list, xla_hlo_sharding);
+      HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
 
   Shape shape({10, 20});
   TF_ASSERT_OK_AND_ASSIGN(auto index_domains, sharding->IndexDomains(shape));
@@ -59,7 +59,7 @@ TEST_P(HloShardingTest, DisassembleWithReplication) {
   // Fully replicated.
   auto xla_hlo_sharding = xla::HloSharding::Replicate();
   std::shared_ptr<const HloSharding> sharding =
-      HloSharding::Create(device_list, xla_hlo_sharding);
+      HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
 
   Shape shape({10, 20});
   TF_ASSERT_OK_AND_ASSIGN(auto disassembled, sharding->Disassemble(shape));
@@ -80,7 +80,7 @@ TEST_P(HloShardingTest, IndexDomainsWithTile) {
   auto xla_hlo_sharding = xla::HloSharding::Tile(
       xla::TileAssignment((absl::Span<const int64_t>){2, 1}));
   std::shared_ptr<const HloSharding> sharding =
-      HloSharding::Create(device_list, xla_hlo_sharding);
+      HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
 
   Shape shape({10, 20});
   TF_ASSERT_OK_AND_ASSIGN(auto index_domains, sharding->IndexDomains(shape));
@@ -99,7 +99,7 @@ TEST_P(HloShardingTest, DisassembleWithTile) {
   auto xla_hlo_sharding = xla::HloSharding::Tile(
       xla::TileAssignment((absl::Span<const int64_t>){2, 1}));
   std::shared_ptr<const HloSharding> sharding =
-      HloSharding::Create(device_list, xla_hlo_sharding);
+      HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
 
   Shape shape({10, 20});
   TF_ASSERT_OK_AND_ASSIGN(auto disassembled, sharding->Disassemble(shape));
@@ -120,7 +120,7 @@ TEST_P(HloShardingTest, IndexDomainsWithUnevenTile) {
   auto xla_hlo_sharding = xla::HloSharding::Tile(
       xla::TileAssignment((absl::Span<const int64_t>){2, 1}));
   std::shared_ptr<const HloSharding> sharding =
-      HloSharding::Create(device_list, xla_hlo_sharding);
+      HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
 
   Shape shape({11, 20});
   TF_ASSERT_OK_AND_ASSIGN(auto index_domains, sharding->IndexDomains(shape));
@@ -139,7 +139,7 @@ TEST_P(HloShardingTest, DisassembleWithUnevenTile) {
   auto xla_hlo_sharding = xla::HloSharding::Tile(
       xla::TileAssignment((absl::Span<const int64_t>){2, 1}));
   std::shared_ptr<const HloSharding> sharding =
-      HloSharding::Create(device_list, xla_hlo_sharding);
+      HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
 
   Shape shape({11, 20});
   TF_ASSERT_OK_AND_ASSIGN(auto disassembled, sharding->Disassemble(shape));
@@ -165,7 +165,7 @@ TEST_P(HloShardingTest, IndexDomainsWithPartialTile) {
   auto xla_hlo_sharding =
       xla::HloSharding::PartialTile(xla::TileAssignment({2, 1, 3}));
   std::shared_ptr<const HloSharding> sharding =
-      HloSharding::Create(device_list, xla_hlo_sharding);
+      HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
 
   Shape shape({10, 20});
   TF_ASSERT_OK_AND_ASSIGN(auto index_domains, sharding->IndexDomains(shape));
@@ -189,7 +189,7 @@ TEST_P(HloShardingTest, DisassembleWithPartialTile) {
   auto xla_hlo_sharding =
       xla::HloSharding::PartialTile(xla::TileAssignment({2, 1, 3}));
   std::shared_ptr<const HloSharding> sharding =
-      HloSharding::Create(device_list, xla_hlo_sharding);
+      HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
 
   Shape shape({10, 20});
   TF_ASSERT_OK_AND_ASSIGN(auto disassembled, sharding->Disassemble(shape));
@@ -211,7 +211,7 @@ TEST_P(HloShardingTest, IndexDomainsWithSubgroupReplicated) {
   auto xla_hlo_sharding = xla::HloSharding::Subgroup(
       xla::TileAssignment({2, 1, 3}), {xla::OpSharding::REPLICATED});
   std::shared_ptr<const HloSharding> sharding =
-      HloSharding::Create(device_list, xla_hlo_sharding);
+      HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
 
   Shape shape({10, 20});
   TF_ASSERT_OK_AND_ASSIGN(auto index_domains, sharding->IndexDomains(shape));
@@ -235,7 +235,7 @@ TEST_P(HloShardingTest, DisassembleWithSubgroupReplicated) {
   auto xla_hlo_sharding = xla::HloSharding::Subgroup(
       xla::TileAssignment({2, 1, 3}), {xla::OpSharding::REPLICATED});
   std::shared_ptr<const HloSharding> sharding =
-      HloSharding::Create(device_list, xla_hlo_sharding);
+      HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
 
   Shape shape({10, 20});
   TF_ASSERT_OK_AND_ASSIGN(auto disassembled, sharding->Disassemble(shape));
@@ -257,7 +257,7 @@ TEST_P(HloShardingTest, IndexDomainsWithSubgroupMaximalSlowPath) {
   auto xla_hlo_sharding = xla::HloSharding::Subgroup(
       xla::TileAssignment({2, 1, 3}), {xla::OpSharding::MAXIMAL});
   std::shared_ptr<const HloSharding> sharding =
-      HloSharding::Create(device_list, xla_hlo_sharding);
+      HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
 
   Shape shape({10, 20});
   TF_ASSERT_OK_AND_ASSIGN(auto index_domains, sharding->IndexDomains(shape));
@@ -281,7 +281,7 @@ TEST_P(HloShardingTest, DisassembleWithSubgroupMaximalSlowPath) {
   auto xla_hlo_sharding = xla::HloSharding::Subgroup(
       xla::TileAssignment({2, 1, 3}), {xla::OpSharding::MAXIMAL});
   std::shared_ptr<const HloSharding> sharding =
-      HloSharding::Create(device_list, xla_hlo_sharding);
+      HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
 
   Shape shape({10, 20});
   TF_ASSERT_OK_AND_ASSIGN(auto disassembled, sharding->Disassemble(shape));
@@ -302,7 +302,7 @@ TEST_P(HloShardingTest, DisassembleFailsWithInvalidDeviceCount) {
   auto xla_hlo_sharding = xla::HloSharding::Tile(
       xla::TileAssignment((absl::Span<const int64_t>){2, 1}));
   std::shared_ptr<const HloSharding> sharding =
-      HloSharding::Create(device_list, xla_hlo_sharding);
+      HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
 
   Shape shape({10, 20});
   EXPECT_THAT(sharding->Disassemble(shape),
@@ -317,7 +317,7 @@ TEST_P(HloShardingTest, DisassembleFailsWithMismatchingShapeDimsSize) {
   auto xla_hlo_sharding = xla::HloSharding::Tile(
       xla::TileAssignment((absl::Span<const int64_t>){2, 1}));
   std::shared_ptr<const HloSharding> sharding =
-      HloSharding::Create(device_list, xla_hlo_sharding);
+      HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
 
   Shape shape({10});
   EXPECT_THAT(

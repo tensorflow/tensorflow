@@ -46,7 +46,9 @@ class GpuHloScheduleTest : public HloTestBase {
     Backend& test_backend = backend();
     const GpuDeviceInfo gpu_device_info =
         GetGpuDeviceInfo(test_backend.default_stream_executor());
-    TF_CHECK_OK(ScheduleGpuModule(module, /*pointer_size=*/8, gpu_device_info));
+    TF_CHECK_OK(ScheduleGpuModule(
+        module, /*pointer_size=*/8,
+        /*memory_size=*/gpu_device_info.device_memory_size * 8 / 10));
     return SequentialHloOrdering{module->schedule()};
   }
 

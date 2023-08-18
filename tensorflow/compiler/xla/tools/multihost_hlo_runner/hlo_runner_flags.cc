@@ -67,6 +67,9 @@ void MultiHostHloRunnerFlags::AppendFlags(std::vector<tsl::Flag>* flags) {
                       &flag_values_.while_execution_count,
                       "If set to a positive number, flatten all while loops to "
                       "a certain number of iterations.");
+  flags->emplace_back(
+      "remove_infeed_outfeed", &flag_values_.remove_infeed_outfeed,
+      "If set, we will remove all infeed and outfeed operations.");
   flags->emplace_back("num_repeats", &flag_values_.num_repeats,
                       "Repeatedly execute the HLO for this many times.");
   flags->emplace_back("execution_options_path",
@@ -112,7 +115,7 @@ bool MultiHostHloRunnerFlags::CreateOptionsFromFlags(
       flag_values_.while_execution_count > 0
           ? std::make_optional(flag_values_.while_execution_count)
           : std::nullopt;
-  preproc_options->remove_infeed_outfeed = true;
+  preproc_options->remove_infeed_outfeed = flag_values_.remove_infeed_outfeed;
 
   *raw_compile_options = FunctionalHloRunner::RawCompileOptions();
   raw_compile_options->hlo_passes_mode =

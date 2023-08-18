@@ -169,23 +169,26 @@ def tpu_system_init_helper(task_id,
   num_devices_per_task = int(num_devices / num_tasks)
 
   # Create a one-time use mesh and layout just for merging core IDs.
-  mesh = layout_lib.Mesh([_MESH_DIM_X],
-                         *_create_device_array((num_devices,), _TPU_DEVICE_TYPE,
-                                               config.client_id()))
-  layout = layout_lib.Layout([_MESH_DIM_X, layout_lib.UNSHARDED], mesh)
+  mesh = layout_lib.Mesh(
+      [_MESH_DIM_X],
+      *_create_device_array(
+          (num_devices,), _TPU_DEVICE_TYPE, config.client_id()
+      ),
+  )
   device = dtensor_device.DTensorDevice(meshes=[mesh])
+  layout = layout_lib.Layout(
+      [_MESH_DIM_X, layout_lib.UNSHARDED], mesh=mesh.host_mesh()
+  )
   logging.info("TPU core locations: %s",
                device.tpu_core_ids_to_locations(my_core_ids))
 
   # At this point, we don't know which cores are attached to other hosts.
   # The core ID mappings in the runtime haven't been set yet.
   #
-  # The core ID merging AllReduce below is carefully written so it works
+  # The core ID merging AllReduce below uses a host DTensor so it works
   # without needing correct core mappings to be set in the runtime. We will
   # use this AllReduce's result to set the core ID mappings, and all future
   # user-initiated AllReduces will use the mappings.
-  #
-  # The runtime is hard-coded to ignore core ID mappings on this AllReduce.
   all_core_ids = np.zeros([num_devices], dtype=np.int32)
   for i in range(len(my_core_ids)):
     all_core_ids[task_id * num_devices_per_task + i] = my_core_ids[i]

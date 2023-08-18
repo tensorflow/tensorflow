@@ -1,3 +1,4 @@
+# Placeholder: load py_proto_library
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_test")
 load(
@@ -19,10 +20,12 @@ pytype_strict_library(
     srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
+        ":custom_nest_trace_type",
         ":default_types",
         ":serialization",
         ":util",
         "//tensorflow/python/types:trace",
+        "//tensorflow/python/util:custom_nest_protocol",
     ],
 )
 
@@ -45,6 +48,7 @@ py_strict_test(
     # TODO(b/213375459): For continous benchmark monitoring
     visibility = ["//learning/brain/contrib/eager/python/examples:__pkg__"],
     deps = [
+        ":custom_nest_trace_type",
         ":default_types",
         ":trace_type",
         "//tensorflow/python/compat:v2_compat",
@@ -54,6 +58,7 @@ py_strict_test(
         "//tensorflow/python/framework:combinations",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
@@ -78,6 +83,7 @@ pytype_strict_library(
         ":util",
         "//tensorflow/core/function/trace_type:default_types_proto_py",
         "//tensorflow/python/types:trace",
+        "//tensorflow/python/util:custom_nest_protocol",
     ],
 )
 
@@ -88,6 +94,33 @@ py_strict_test(
     deps = [
         ":default_types",
         ":serialization",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/types:trace",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+pytype_strict_library(
+    name = "custom_nest_trace_type",
+    srcs = [
+        "custom_nest_trace_type.py",
+    ],
+    srcs_version = "PY3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":util",
+        "//tensorflow/python/types:trace",
+        "//tensorflow/python/util:custom_nest_protocol",
+    ],
+)
+
+py_strict_test(
+    name = "custom_nest_trace_type_test",
+    srcs = ["custom_nest_trace_type_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":custom_nest_trace_type",
+        ":default_types",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/types:trace",
         "@absl_py//absl/testing:parameterized",

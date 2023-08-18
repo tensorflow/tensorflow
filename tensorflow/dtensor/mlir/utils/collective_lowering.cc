@@ -551,151 +551,8 @@ mlir::LogicalResult LowerAllReduceOpImpl(
   return mlir::success();
 }
 
-// Extension for all reduce with complex numbers
-template <class AllReduceOpType>
-mlir::LogicalResult ConvertComplexAllReduce(
-    AllReduceOpType all_reduce_op, AllReduceOpType* real_all_reduce_op,
-    AllReduceOpType* imag_all_reduce_op) {
-  mlir::OpBuilder builder(all_reduce_op);
-  StatusOr<Layout> output_layout =
-      ExtractRequiredSingleLayoutFromOp(all_reduce_op);
-  if (!output_layout.ok()) {
-    return all_reduce_op.emitOpError(output_layout.status().message());
-  }
-
-  const mlir::Value tensor_input = all_reduce_op.getInput();
-  const mlir::Value tensor_result = all_reduce_op.getResult();
-  const mlir::TensorType complex_input_tensor_type =
-      tensor_input.getType().dyn_cast<mlir::TensorType>();
-  if (!complex_input_tensor_type) {
-    return mlir::success();
-  }
-  const mlir::TensorType complex_result_tensor_type =
-      tensor_result.getType().dyn_cast<mlir::TensorType>();
-  if (!complex_result_tensor_type) {
-    return mlir::success();
-  }
-  auto input_element_type = mlir::dyn_cast<mlir::ComplexType>(
-      complex_input_tensor_type.getElementType());
-  if (!input_element_type) {
-    return mlir::success();
-  }
-  auto real_input_tensor_type =
-      mlir::RankedTensorType::get(complex_input_tensor_type.getShape(),
-                                  input_element_type.getElementType());
-  auto real_result_tensor_type =
-      mlir::RankedTensorType::get(complex_result_tensor_type.getShape(),
-                                  input_element_type.getElementType());
-  const mlir::Value tensor_temp_real = builder.create<mlir::TF::RealOp>(
-      all_reduce_op.getLoc(), real_input_tensor_type, tensor_input);
-  const mlir::Value tensor_temp_imag = builder.create<mlir::TF::ImagOp>(
-      all_reduce_op.getLoc(), real_input_tensor_type, tensor_input);
-  *real_all_reduce_op =
-      mlir::dyn_cast<AllReduceOpType>(builder.clone(*all_reduce_op));
-  real_all_reduce_op->setOperand(0, tensor_temp_real);
-  (*real_all_reduce_op)->getResult(0).setType(real_result_tensor_type);
-  *imag_all_reduce_op =
-      mlir::dyn_cast<AllReduceOpType>(builder.clone(*all_reduce_op));
-  imag_all_reduce_op->setOperand(0, tensor_temp_imag);
-  (*imag_all_reduce_op)->getResult(0).setType(real_result_tensor_type);
-  const mlir::Type output_type = all_reduce_op.getResult().getType();
-  auto complex_all_reduce_op = builder.create<mlir::TF::ComplexOp>(
-      all_reduce_op->getLoc(), output_type, real_all_reduce_op->getResult(),
-      imag_all_reduce_op->getResult());
-  StatusOr<Layout> desired_layout =
-      ExtractRequiredSingleLayoutFromOp(all_reduce_op);
-  SetSingleLayoutOnOp(complex_all_reduce_op, *desired_layout);
-  all_reduce_op.getOutput().replaceAllUsesWith(
-      complex_all_reduce_op.getResult());
-  all_reduce_op.erase();
-  return mlir::success();
-}
-
-// For AllToAll and AllScatter
-template <class AllToAllOpType>
-mlir::LogicalResult ConvertComplexAllToAll(AllToAllOpType all_to_all_op,
-                                           AllToAllOpType* real_all_to_all,
-                                           AllToAllOpType* imag_all_to_all) {
-  mlir::OpBuilder builder(all_to_all_op);
-  StatusOr<Layout> output_layout =
-      ExtractRequiredSingleLayoutFromOp(all_to_all_op);
-  if (!output_layout.ok()) {
-    return all_to_all_op.emitOpError(output_layout.status().message());
-  }
-
-  const mlir::Value tensor_input = all_to_all_op.getInput();
-  const mlir::Value tensor_result = all_to_all_op.getResult();
-  const mlir::TensorType complex_input_tensor_type =
-      tensor_input.getType().dyn_cast<mlir::TensorType>();
-  if (!complex_input_tensor_type) {
-    return mlir::success();
-  }
-  const mlir::TensorType& complex_result_tensor_type =
-      tensor_result.getType().dyn_cast<mlir::TensorType>();
-  if (!complex_result_tensor_type) {
-    return mlir::success();
-  }
-
-  auto input_element_type = mlir::dyn_cast<mlir::ComplexType>(
-      complex_input_tensor_type.getElementType());
-  if (!input_element_type) {
-    return mlir::success();
-  }
-  auto real_input_tensor_type =
-      mlir::RankedTensorType::get(complex_input_tensor_type.getShape(),
-                                  input_element_type.getElementType());
-  auto real_result_tensor_type =
-      mlir::RankedTensorType::get(complex_result_tensor_type.getShape(),
-                                  input_element_type.getElementType());
-  const mlir::Value tensor_temp_real = builder.create<mlir::TF::RealOp>(
-      all_to_all_op.getLoc(), real_input_tensor_type, tensor_input);
-  const mlir::Value tensor_temp_imag = builder.create<mlir::TF::ImagOp>(
-      all_to_all_op.getLoc(), real_input_tensor_type, tensor_input);
-  *real_all_to_all =
-      mlir::dyn_cast<AllToAllOpType>(builder.clone(*all_to_all_op));
-  (*real_all_to_all)->setOperand(0, tensor_temp_real);
-  (*real_all_to_all)->getResult(0).setType(real_result_tensor_type);
-  *imag_all_to_all =
-      mlir::dyn_cast<AllToAllOpType>(builder.clone(*all_to_all_op));
-  (*imag_all_to_all)->setOperand(0, tensor_temp_imag);
-  (*imag_all_to_all)->getResult(0).setType(real_result_tensor_type);
-  const mlir::Type output_type = all_to_all_op.getResult().getType();
-  auto all_to_all_complex_op = builder.create<mlir::TF::ComplexOp>(
-      all_to_all_op.getLoc(), output_type, real_all_to_all->getResult(),
-      imag_all_to_all->getResult());
-  const Layout desired_layout = all_to_all_op.getOutputLayout();
-  SetSingleLayoutOnOp(all_to_all_complex_op, desired_layout);
-  all_to_all_op.getOutput().replaceAllUsesWith(
-      all_to_all_complex_op.getResult());
-  all_to_all_op.erase();
-  return mlir::success();
-}
-
 mlir::LogicalResult LowerAllReduceOp(mlir::MLIRContext& context,
                                      mlir::TF::DTensorAllReduceOp all_reduce) {
-  mlir::TF::DTensorAllReduceOp real_all_reduce;
-  mlir::TF::DTensorAllReduceOp imag_all_reduce;
-  if (mlir::failed(ConvertComplexAllReduce<mlir::TF::DTensorAllReduceOp>(
-          all_reduce, &real_all_reduce, &imag_all_reduce)))
-    return mlir::failure();
-  if (real_all_reduce && imag_all_reduce) {
-    mlir::OpBuilder builder_real(real_all_reduce);
-    mlir::OpBuilder builder_imag(imag_all_reduce);
-    mlir::Value result_real;
-    mlir::Value result_imag;
-    if (mlir::failed(LowerAllReduceOpImpl(context, builder_real,
-                                          real_all_reduce, &result_real)))
-      return mlir::failure();
-    if (mlir::failed(LowerAllReduceOpImpl(context, builder_imag,
-                                          imag_all_reduce, &result_imag)))
-      return mlir::failure();
-
-    real_all_reduce.replaceAllUsesWith(result_real);
-    imag_all_reduce.replaceAllUsesWith(result_imag);
-    real_all_reduce.erase();
-    imag_all_reduce.erase();
-    return mlir::success();
-  }
   mlir::OpBuilder builder(all_reduce);
   mlir::Value result;
   if (mlir::failed(LowerAllReduceOpImpl(context, builder, all_reduce, &result)))
@@ -1201,7 +1058,7 @@ mlir::LogicalResult LowerAllGatherOp(mlir::TF::DTensorAllGatherOp all_gather) {
   return mlir::LogicalResult::success();
 }
 
-mlir::LogicalResult LowerAllScatterHelper(
+mlir::LogicalResult LowerAllScatterOp(
     mlir::TF::DTensorAllScatterOp all_scatter) {
   const Layout original_layout = all_scatter.getInputLayout();
   const Layout desired_layout = all_scatter.getOutputLayout();
@@ -1302,24 +1159,7 @@ mlir::LogicalResult LowerAllScatterHelper(
   return mlir::LogicalResult::success();
 }
 
-mlir::LogicalResult LowerAllScatterOp(
-    mlir::TF::DTensorAllScatterOp all_scatter) {
-  mlir::TF::DTensorAllScatterOp real_all_scatter;
-  mlir::TF::DTensorAllScatterOp imag_all_scatter;
-  if (mlir::failed(ConvertComplexAllToAll<mlir::TF::DTensorAllScatterOp>(
-          all_scatter, &real_all_scatter, &imag_all_scatter)))
-    return mlir::failure();
-
-  if (real_all_scatter && imag_all_scatter) {
-    auto status = LowerAllScatterHelper(real_all_scatter);
-    status = LowerAllScatterHelper(imag_all_scatter);
-    return status;
-  }
-  return LowerAllScatterHelper(all_scatter);
-}
-
-mlir::LogicalResult LowerAllToAllHelper(
-    mlir::TF::DTensorAllToAllOp all_to_all) {
+mlir::LogicalResult LowerAllToAllOp(mlir::TF::DTensorAllToAllOp all_to_all) {
   mlir::OpBuilder builder(all_to_all);
   mlir::Location loc = all_to_all.getLoc();
   const Layout src_layout = all_to_all.getInputLayout();
@@ -1388,20 +1228,6 @@ mlir::LogicalResult LowerAllToAllHelper(
   }
   all_to_all.erase();
   return mlir::LogicalResult::success();
-}
-
-mlir::LogicalResult LowerAllToAllOp(mlir::TF::DTensorAllToAllOp all_to_all) {
-  mlir::TF::DTensorAllToAllOp real_all_to_all;
-  mlir::TF::DTensorAllToAllOp imag_all_to_all;
-  if (mlir::failed(ConvertComplexAllToAll<mlir::TF::DTensorAllToAllOp>(
-          all_to_all, &real_all_to_all, &imag_all_to_all)))
-    return mlir::failure();
-  if (real_all_to_all && imag_all_to_all) {
-    auto status = LowerAllToAllHelper(real_all_to_all);
-    status = LowerAllToAllHelper(imag_all_to_all);
-    return status;
-  }
-  return LowerAllToAllHelper(all_to_all);
 }
 
 }  // namespace internal

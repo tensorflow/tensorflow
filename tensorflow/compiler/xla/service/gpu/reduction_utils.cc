@@ -155,15 +155,16 @@ bool ReductionIsRaceFree(const HloModuleConfig& hlo_module_config,
                          const ReductionDimensions& reduction_dimensions) {
   const int kWarpSize = 32;
   Vector3 reduction_tiling = GetReductionTiling(reduction_dimensions);
-  return (reduction_dimensions.is_row_reduction &&
-          reduction_dimensions.dimensions[2] <=
-              MinThreadsXRowReduction(hlo_module_config) *
-                  reduction_tiling[2] &&
-          reduction_dimensions.dimensions[0] <=
-              BatchedReductionRaceFreeBound()) ||
-         (!reduction_dimensions.is_row_reduction &&
-          reduction_dimensions.dimensions[1] <=
-              kWarpSize * reduction_tiling[1]);
+  if (reduction_dimensions.is_row_reduction) {
+    return reduction_dimensions.dimensions[2] <=
+               MinThreadsXRowReduction(hlo_module_config) *
+                   reduction_tiling[2] &&
+           reduction_dimensions.dimensions[0] <=
+               BatchedReductionRaceFreeBound();
+  }
+
+  // Column reduction.
+  return reduction_dimensions.dimensions[1] <= kWarpSize * reduction_tiling[1];
 }
 
 ReductionDimensions GetReductionKindAndContiguousComponents(

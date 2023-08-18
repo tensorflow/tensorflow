@@ -116,6 +116,10 @@ class TpuDevice : public PjRtDevice {
     return Unimplemented("Outfeed not yet implemented via this API");
   }
 
+  absl::Span<PjRtMemorySpace* const> memory_spaces() const override {
+    return {};
+  }
+
   StatusOr<PjRtMemorySpace*> default_memory_space() const override {
     return Unimplemented(
         "default_memory_space not yet implemented via this API");

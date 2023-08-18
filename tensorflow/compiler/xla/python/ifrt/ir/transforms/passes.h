@@ -34,6 +34,8 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateSpmdExpandableInterfaceVerificationPass(
     SpmdExpandableInterfaceVerificationPassOptions options = {});
 
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> CreateSpmdExpansionPass();
+
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateIfrtDuplicatedCalleeEliminationPass();
 

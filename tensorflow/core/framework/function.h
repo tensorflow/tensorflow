@@ -40,14 +40,13 @@ limitations under the License.
 #include "tensorflow/core/framework/optimized_function_graph.pb.h"
 #include "tensorflow/core/framework/registration/registration.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
-#include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/graph/graph_debug_info_builder.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/refcount.h"
+#include "tensorflow/core/platform/random.h"
+#include "tensorflow/core/platform/stack_frame.h"
 #include "tensorflow/core/platform/threadpool_interface.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/tsl/protobuf/error_codes.pb.h"
@@ -355,79 +354,9 @@ class FunctionCallFrame : public CallFrameInterface {
   TF_DISALLOW_COPY_AND_ASSIGN(FunctionCallFrame);
 };
 
-// Language agnostic stack traces.
-class AbstractStackTrace {
- public:
-  struct TracePrintingOptions {
-    // Show inline the contents of each stack line.
-    bool show_line_contents = false;
-
-    // Drop the common largest prefix of all filenames in stack frames.
-    bool filter_common_prefix = false;
-
-    // Do not show internal frames.
-    bool drop_internal_frames = false;
-  };
-
-  virtual ~AbstractStackTrace() {}
-
-  // The returned span is alive as long as the AbstractStackTrace is alive.
-  virtual absl::Span<StackFrame const> ToFrames() const = 0;
-
-  // Returns the last stack frame from user code, attempting to ignore the
-  // framework code. Returns an empty frame if no such stack frame was found.
-  virtual StackFrame LastUserFrame() const = 0;
-
-  // Returns stack trace from user code (instead of op creation ones returned in
-  // ToFrames).
-  virtual std::vector<StackFrame> GetUserFrames(int limit) const = 0;
-
-  virtual std::string ToString(const TracePrintingOptions& opts) const = 0;
-};
-
-// A frozen sequence of StackFrames; an adapter for a span of StackFrames that
-// conforms to the AbstractStackTrace contract.
-class FrozenStackTrace : public AbstractStackTrace {
- public:
-  // Constructs a FrozenStackTrace from a span of StackFrames by making a copy
-  // of each stack frame.
-  explicit FrozenStackTrace(absl::Span<StackFrame const> frames,
-                            absl::Span<StackFrame const> user_frames = {});
-
-  explicit FrozenStackTrace(std::vector<StackFrame>&& frames)
-      : frames_(std::move(frames)), user_frames_({}) {}
-
-  // Constructs a FrozenStackTrace from serialized proto data.
-  FrozenStackTrace(const GraphDebugInfo::StackTrace& stack_trace,
-                   const GraphDebugInfo& debug_info);
-
-  ~FrozenStackTrace() override = default;
-
-  absl::Span<StackFrame const> ToFrames() const override;
-
-  StackFrame LastUserFrame() const override;
-
-  std::vector<StackFrame> GetUserFrames(int limit) const override;
-
-  std::string ToString(const TracePrintingOptions& opts) const override;
-
- private:
-  std::vector<StackFrame> frames_;
-  std::vector<StackFrame> user_frames_;
-};
-
-using StackTracesMap =
-    std::unordered_map<std::string,
-                       std::shared_ptr<tensorflow::AbstractStackTrace>>;
-
 // Map of function names to StackTracesMaps.
 using FunctionDefLibraryStackTraces =
     absl::flat_hash_map<std::string, StackTracesMap>;
-
-// Generates a GraphDebugInfo proto from a StackTracesMap object. Returns user
-// frames by default. If `user_frames` is false, returns all frames.
-tensorflow::GraphDebugInfo StackTracesMapToGraphDebugInfo(
-    const tensorflow::StackTracesMap& map, bool user_frames = true);
 
 // Holds Function information that can be shared in multiple places.
 // FunctionRecord must be explicitly finalized before being saved in

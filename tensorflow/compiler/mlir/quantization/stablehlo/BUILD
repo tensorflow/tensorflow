@@ -1,3 +1,4 @@
+# Placeholder: load py_proto_library
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
@@ -113,20 +114,24 @@ cc_library(
     srcs = [
         "passes/bridge/convert_mhlo_quant_to_int.cc",
         "passes/bridge/convert_tf_quant_ops_to_mhlo.cc",
+        "passes/bridge/convert_tf_quant_types.cc",
+        "passes/bridge/passes.cc",
     ],
     hdrs = [
         "passes/bridge/passes.h",
     ],
     compatible_with = get_compatible_with_portable(),
     visibility = [
-        "//tensorflow/compiler/mlir/lite:__subpackages__",
-        "//tensorflow/compiler/mlir/tf2xla:__subpackages__",
+        ":internal_visibility_allowlist_package",
+        "//tensorflow/compiler/mlir:__subpackages__",
     ],
     deps = [
         ":bridge_passes_inc_gen",
         ":math_utils",
+        ":tf_type_utils",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:mangling_util",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/mlir/tf2xla/transforms:legalize_utils",
         "//tensorflow/compiler/mlir/tf2xla/transforms:xla_legalize_targets",
@@ -135,6 +140,7 @@ cc_library(
         "//tensorflow/compiler/xla/mlir_hlo:chlo_legalize_to_hlo",
         "//tensorflow/compiler/xla/translate/hlo_to_mhlo:attribute_importer",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/framework:numeric_types",
         "//tensorflow/core/util/quantization:uniform_quant_ops_attr_proto_cc",
@@ -179,6 +185,27 @@ tf_cc_test(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",
         "@stablehlo//:chlo_ops",
+    ],
+)
+
+tf_cc_test(
+    name = "convert_tf_quant_types_test",
+    srcs = ["passes/bridge/convert_tf_quant_types_test.cc"],
+    deps = [
+        ":bridge_passes",
+        "//tensorflow/compiler/mlir:register_common_dialects",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:serialize_mlir_module_utils",
+        "//tensorflow/core:test",
+        "//tensorflow/core/lib/monitoring:cell_reader",
+        "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -254,6 +281,55 @@ tf_cc_test(
     ],
 )
 
+cc_library(
+    name = "tf_type_utils",
+    srcs = ["utils/tf_type_utils.cc"],
+    hdrs = ["utils/tf_type_utils.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow:mangling_util",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/framework:numeric_types",
+        "//tensorflow/core/platform:status",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+    ],
+)
+
+tf_cc_test(
+    name = "tf_type_utils_test",
+    srcs = [
+        "utils/tf_type_utils_test.cc",
+    ],
+    deps = [
+        ":bridge_passes",
+        ":tf_type_utils",
+        "//tensorflow/compiler/mlir:register_common_dialects",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:mangling_util",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
+        "//tensorflow/compiler/xla/mlir_hlo",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/ir/types:Dialect",
+        "//tensorflow/core/platform:path",
+        "//tensorflow/tsl/framework:numeric_types",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:SparseTensorDialect",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
 tf_proto_library(
     name = "quantization_options_proto",
     srcs = ["quantization_options.proto"],
@@ -294,5 +370,30 @@ tf_cc_binary(
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:ShapeDialect",
         "@stablehlo//:stablehlo_ops",
+    ],
+)
+
+cc_library(
+    name = "uniform_quantized_types",
+    srcs = ["uniform_quantized_types.cc"],
+    hdrs = ["uniform_quantized_types.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+tf_cc_test(
+    name = "uniform_quantized_types_test",
+    srcs = ["uniform_quantized_types_test.cc"],
+    deps = [
+        ":uniform_quantized_types",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:Support",
     ],
 )

@@ -472,11 +472,18 @@ class XlaBuilder {
     ShapeIndex output_index;
     // Specifies the parameter containing the buffer to be aliased.
     int64_t param_number;
-    // Specifies the index of the aliased buffer in the parameter
+    // Specifies the index of the aliased buffer in the parameter.
     ShapeIndex param_index;
     // Specifies if the alias is a must alias or may alias.
     HloInputOutputAliasConfig::AliasKind kind;
   };
+
+  // Adds a new buffer donor. The donated buffer may be paired with any valid
+  // output. On the contrary, the buffer aliasing bonds the input output pair.
+  // The input can only donate the buffer to the paired output.
+  void AddBufferDonor(int64_t param_number, const ShapeIndex& param_index) {
+    buffer_donors_.insert({param_number, param_index});
+  }
 
   // Looks up the HloInstruction and sets the frontend attribute "attribute" to
   // "value".
@@ -1090,9 +1097,11 @@ class XlaBuilder {
 
   // Populates the module with the input/output alias information stored within
   // the input_output_aliases vector.
-  static Status PopulateInputOutputAlias(
+  static Status PopulateInputOutputAliasAndBufferDonor(
       HloModuleProto* module, const ProgramShape& program_shape,
-      const std::vector<InputOutputAlias>& input_output_aliases);
+      const std::vector<InputOutputAlias>& input_output_aliases,
+      const absl::flat_hash_set<HloBufferDonorConfig::BufferDonor>&
+          buffer_donors);
 
   std::string name_;  // Name to use for the built computation.
 
@@ -1120,6 +1129,9 @@ class XlaBuilder {
 
   // Holds the input/output alias information populated by the SetUpAlias() API.
   std::vector<InputOutputAlias> input_output_aliases_;
+
+  // Holds the buffer donor information populated by the AddBufferDonor() API.
+  absl::flat_hash_set<HloBufferDonorConfig::BufferDonor> buffer_donors_;
 
   // A map from XlaOp::Handle to the index in the instructions_ vector where the
   // instruction is held.

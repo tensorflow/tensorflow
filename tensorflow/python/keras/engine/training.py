@@ -78,7 +78,6 @@ from tensorflow.python.training import py_checkpoint_reader
 from tensorflow.python.types import data as data_types
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
-from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
 
 
@@ -129,7 +128,6 @@ def is_functional_model_init_params(args, kwargs):
           'inputs' in kwargs and 'outputs' in kwargs)
 
 
-@keras_export('keras.Model', 'keras.models.Model')
 class Model(base_layer.Layer, version_utils.ModelVersionSelector):
   """`Model` groups layers into an object with training and inference features.
 

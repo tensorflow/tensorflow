@@ -16,6 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 
 #include <algorithm>
+#include <climits>
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <iostream>
 #include <iterator>
@@ -28,37 +31,57 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/optimization.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/memory/memory.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_clone_context.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_domain_metadata.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_op_metadata.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding_metadata.h"
+#include "tensorflow/compiler/xla/iterator_util.h"
+#include "tensorflow/compiler/xla/layout.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/map_util.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/printer.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_lexer.h"
 #include "tensorflow/compiler/xla/service/mapped_ptr_container_sorter.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/lib/gtl/iterator_range.h"
 #include "tensorflow/tsl/lib/gtl/map_util.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/human_readable_json.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -1626,9 +1649,8 @@ HloInstruction::CreateStochasticConvert(const Shape& shape,
     const Shape& shape, HloInstruction* operand, HloInstruction* init_value,
     absl::Span<const int64_t> dimensions_to_reduce,
     HloComputation* reduce_computation) {
-  auto instruction = absl::WrapUnique(new HloReduceInstruction(
+  return absl::WrapUnique(new HloReduceInstruction(
       shape, {operand, init_value}, dimensions_to_reduce, reduce_computation));
-  return std::move(instruction);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateReduce(
@@ -3957,7 +3979,8 @@ using InternalCompareFunction =
 template <typename Visitor>
 static Status PostOrderDFS(HloInstruction* root, Visitor* visitor,
                            std::optional<InternalCompareFunction> operand_order,
-                           bool ignore_control_predecessors) {
+                           bool ignore_control_predecessors,
+                           bool cross_computation) {
   visitor->ReserveVisitStates(root->parent()->instruction_count());
 
   // dfs_stack holds pairs of <HloInstruction*->unique_id(), HloInstruction*>.
@@ -4019,6 +4042,24 @@ static Status PostOrderDFS(HloInstruction* root, Visitor* visitor,
       }
     }
 
+    // If `cross_computation` is enabled, and the current visiting instruction
+    // is a caller of other computations, we try to push the root instruction of
+    // those called computations onto the stack .
+    if (cross_computation) {
+      for (const HloComputation* called_computation :
+           current_node->called_computations()) {
+        HloInstruction* root_instruction =
+            called_computation->root_instruction();
+        if (!ABSL_PREDICT_TRUE(
+                PushDFSChild(visitor, &dfs_stack, root_instruction))) {
+          PrintCycle(root_instruction, &dfs_stack);
+          return FailedPrecondition(
+              "A cycle is detected while visiting instruction %s",
+              current_node->ToString());
+        }
+      }
+    }
+
     if (operand_order != std::nullopt) {
       std::sort(dfs_stack.begin() + old_dfs_stack_size, dfs_stack.end(),
                 *operand_order);
@@ -4035,10 +4076,12 @@ static Status PostOrderDFS(HloInstruction* root, Visitor* visitor,
 template <typename HloInstructionPtr>
 Status HloInstruction::Accept(DfsHloVisitorBase<HloInstructionPtr>* visitor,
                               bool call_finish_visit,
-                              bool ignore_control_predecessors) {
+                              bool ignore_control_predecessors,
+                              bool cross_computation) {
   VLOG(3) << "HloInstruction::Accept(%" << name() << ")";
-  TF_RETURN_IF_ERROR(
-      PostOrderDFS(this, visitor, std::nullopt, ignore_control_predecessors));
+  TF_RETURN_IF_ERROR(PostOrderDFS(this, visitor, std::nullopt,
+                                  ignore_control_predecessors,
+                                  cross_computation));
   if (call_finish_visit) {
     TF_RETURN_IF_ERROR(visitor->FinishVisit(this));
   }
@@ -4046,8 +4089,8 @@ Status HloInstruction::Accept(DfsHloVisitorBase<HloInstructionPtr>* visitor,
 }
 
 // Explicit instantiations.
-template Status HloInstruction::Accept(DfsHloVisitor*, bool, bool);
-template Status HloInstruction::Accept(ConstDfsHloVisitor*, bool, bool);
+template Status HloInstruction::Accept(DfsHloVisitor*, bool, bool, bool);
+template Status HloInstruction::Accept(ConstDfsHloVisitor*, bool, bool, bool);
 
 Status HloInstruction::AcceptWithOperandOrder(DfsHloVisitor* visitor,
                                               CompareFunction operand_order,
@@ -4060,7 +4103,8 @@ Status HloInstruction::AcceptWithOperandOrder(DfsHloVisitor* visitor,
     return operand_order(a.second, b.second);
   };
   TF_RETURN_IF_ERROR(PostOrderDFS(this, visitor, func,
-                                  /*ignore_control_predecessors=*/false));
+                                  /*ignore_control_predecessors=*/false,
+                                  /*cross_computation=*/false));
   if (call_finish_visit) {
     VLOG(3) << "HloInstruction::AcceptWithOperandOrder BEFORE FINISH VISIT";
     TF_RETURN_IF_ERROR(visitor->FinishVisit(this));

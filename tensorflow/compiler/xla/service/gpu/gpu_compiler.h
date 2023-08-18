@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/autotune_results.pb.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/executable.h"
+#include "tensorflow/compiler/xla/service/gpu/autotuner_util.h"
 #include "tensorflow/compiler/xla/service/gpu/executable.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
@@ -179,41 +180,39 @@ class GpuCompiler : public LLVMCompiler {
   // During compilation with device, stream_exec != null and autotune_results
   // == null. During deviceless AOT compilation, stream_exec == null and
   // autotune_results != null.
+  // thread_pool is used to speed up compilation during autotuning.
   virtual Status OptimizeHloPostLayoutAssignment(
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
       const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
-      const AutotuneResults* autotune_results);
-
-  // Linearize collective schedule under SPMD partitioning if online autotuning
-  // of convolutions is enabled.
-  virtual bool EnableCollectiveScheduleLinearizerForSpmd(
-      HloModule* hlo_module, se::StreamExecutor* stream_exec) {
-    return false;
-  }
+      const AutotuneResults* autotune_results,
+      tsl::thread::ThreadPool* thread_pool = nullptr);
 
   // CollectivesScheduleLinearizer enforces a total ordering between collectives
-  // to work around (1) divergence in initial HLOs across executables that are
-  // communicating with each other using HLO collectives, and (2) divergence in
-  // executables introduced due to auto tuning, specifically the use of extra
-  // scratch space for convolutions.
-  // We always apply this pass when not using SPMD (where initial HLO divergence
-  // may be possible). This function decided whether to apply this pass when
-  // using SPMD partitioning. When using SPMD, if convolutions are present in
+  // to work around divergence in executables introduced due to auto tuning,
+  // specifically the use of extra scratch space for convolutions. This
+  // function decided whether to apply this pass. If convolutions are present in
   // the code and we are using "online" autotuning (i.e., not AOT) we need to
   // use the pass, else we do not need to enable the pass.
-  virtual bool RequiresCollectiveScheduleLinearizer(const HloModule* module) {
+  virtual bool RequiresCollectiveScheduleLinearizer(
+      const HloModule* module, se::StreamExecutor* stream_exec) {
     return false;
   }
 
   // Add autotuning passes for convolution, gemm and triton.
   virtual Status AddAutotuningPasses(HloPassPipeline* pipeline,
                                      HloModule* hlo_module,
-                                     se::StreamExecutor* stream_exec,
-                                     const DebugOptions& debug_options,
-                                     const CompileOptions& options,
-                                     const GpuTargetConfig& gpu_target_config,
-                                     const AutotuneResults* autotune_results,
+                                     AutotuneConfig& autotune_config,
                                      tsl::thread::ThreadPool* thread_pool) {
+    return OkStatus();
+  }
+
+  // Add autotuning passes for HLO emitters.
+  virtual Status AddHloEmitterAutotuningPasses(
+      HloPassPipeline* pipeline, se::StreamExecutor* stream_exec,
+      const DebugOptions& debug_options, const CompileOptions& options,
+      const GpuTargetConfig& gpu_target_config,
+      const AutotuneResults* autotune_results,
+      tsl::thread::ThreadPool* thread_pool) {
     return OkStatus();
   }
 

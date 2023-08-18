@@ -353,6 +353,10 @@ class HloComputation {
       HloInstruction&) const;
   std::vector<HloInstruction*> MakeInstructionPostOrder(
       const ChannelDependencies& channel_dependencies) const;
+  // Same as MakeInstructionPostOrder but with special tie-breaking behavior.
+  // Specifically, when ties (in ordering) between instructions occur, Reshapes
+  // will be sorted before other operations.
+  std::vector<HloInstruction*> MakeInstructionPostOrderWithReshapeFirst() const;
 
   // Calls `func` with each instruction in the computation in post-order.
   void ForEachInstructionPostOrder(

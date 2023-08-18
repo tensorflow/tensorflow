@@ -365,6 +365,7 @@ cc_library(
         "//tensorflow/core/util:incremental_barrier",
         "//tensorflow/tsl/platform:criticality",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
     ],
@@ -375,6 +376,7 @@ cc_library(
     srcs = ["warmup.cc"],
     hdrs = ["warmup.h"],
     deps = [
+        "//tensorflow/core:framework",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -391,12 +393,16 @@ tf_cc_test(
     srcs = ["batch_resource_base_test.cc"],
     deps = [
         ":batch_resource_base",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
+        "//tensorflow/core:framework",
         "//tensorflow/core/common_runtime:cost_measurement",
         "//tensorflow/core/common_runtime:cost_measurement_registry",
         "//tensorflow/core/common_runtime:no_op_cost_measurement",
+        "//tensorflow/core/common_runtime:request_cost",
+        "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

@@ -466,6 +466,8 @@ void NoteSpecialAllocations(const HloProtoBufferWrapper& wrapper,
   int64_t entry_parameters_bytes = 0;
   int64_t non_reusable_bytes = 0;
   int64_t maybe_live_out_bytes = 0;
+  int64_t total_buffer_allocation_bytes = 0;
+  int64_t indefinite_buffer_allocation_bytes = 0;
   for (const auto* buffer_allocation_struct :
        wrapper.GetBufferAllocations(memory_color)) {
     const auto& buffer_allocation = buffer_allocation_struct->proto();
@@ -483,13 +485,21 @@ void NoteSpecialAllocations(const HloProtoBufferWrapper& wrapper,
       }
       maybe_live_out_bytes += buffer_allocation.size();
     }
-    Convert(buffer_allocation, wrapper, result->add_indefinite_lifetimes());
+    if (buffer_allocation_struct->IsIndefinite()) {
+      indefinite_buffer_allocation_bytes += buffer_allocation.size();
+      Convert(buffer_allocation, wrapper, result->add_indefinite_lifetimes());
+    }
+    total_buffer_allocation_bytes += buffer_allocation.size();
   }
 
   result->set_entry_computation_parameters_mib(
       BytesToMiB(entry_parameters_bytes));
   result->set_non_reusable_mib(BytesToMiB(non_reusable_bytes));
   result->set_maybe_live_out_mib(BytesToMiB(maybe_live_out_bytes));
+  result->set_total_buffer_allocation_mib(
+      BytesToMiB(total_buffer_allocation_bytes));
+  result->set_indefinite_buffer_allocation_mib(
+      BytesToMiB(indefinite_buffer_allocation_bytes));
 }
 
 // Memory usage statistics collected from heap simulator trace.

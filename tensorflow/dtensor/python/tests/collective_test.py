@@ -573,21 +573,9 @@ class CollectiveTestWithCustomMesh(test_util.DTensorBaseTest):
     expected_result += expected_result + math_ops.reduce_sum(expected_result)
     expected_result = math_ops.reduce_sum(expected_result)
 
-    # TODO(b/288347987): AllReduce combiner would currently generate the wrong
-    # output from merging the two ops, where b would not read the updated v from
-    # addition with a and generate the wrong output.
-    #
-    # Mismatched elements: 1 / 1 (100%)
-    # Max absolute difference: 1056.
-    # Max relative difference: 33.
-    #  x: array(1088.)    # expected output
-    #  y: array(32.)      # dtensor output
-    #
-    # This test is set to pass by asserting equal on dtensor_result itself. Once
-    # the bug is fixed, please update the check to expected_result.
-    self.assertDTensorEqual(dtensor_result,  # FIXME: update to expected_result
-                            Layout.replicated(mesh=mesh, rank=0),
-                            dtensor_result)
+    self.assertDTensorEqual(
+        expected_result, Layout.replicated(mesh=mesh, rank=0), dtensor_result
+    )
 
 if __name__ == '__main__':
   test.main()

@@ -165,15 +165,16 @@ class HloTestBase : public ManifestCheckingTest {
 
   ~HloTestBase() override {}
 
-  // Runs pass `hlo_pass` on input HLO module `hlo`, and FileChecks the result
-  // against `expected`.
+  // Runs pass `hlo_pass` on input HLO module `hlo` with optional config, and
+  // FileChecks the result against `expected`.
   //
   // If the rewrite has changed the module, also runs `additional_checks` on the
   // result.
   void RunAndFilecheckHloRewrite(
       absl::string_view hlo, HloPassInterface&& hlo_pass,
       std::optional<absl::string_view> expected,
-      std::function<void(HloModule*)> after_pass_checks = nullptr);
+      std::function<void(HloModule*)> after_pass_checks = nullptr,
+      const HloModuleConfig* config = nullptr);
 
   // Runs pass `hlo_pass` on a group of input HLO modules `hlo_module_strs`,
   // and FileChecks the result against `expected`.

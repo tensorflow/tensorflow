@@ -17,9 +17,16 @@ limitations under the License.
 
 #include <array>
 #include <functional>
+#include <limits>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
+
+#if GOOGLE_CUDA
+#include "third_party/gpus/cuda/include/cuda.h"
+#include "third_party/gpus/cudnn/cudnn.h"
+#endif
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
@@ -77,6 +84,31 @@ bool IsNonDepthwiseConvCustomCall(const HloInstruction* instr) {
 bool ShouldUseCudnnRuntimeFusion(const DebugOptions& debug_opts,
                                  se::CudaComputeCapability cc) {
   return debug_opts.xla_gpu_use_runtime_fusion() && cc.IsAtLeast(7, 5);
+}
+
+bool IsSuitableForCudnnRuntimeFusion(HloInstruction* conv) {
+  // cudnn runtime fusion is pathologically slow on convs with side-inputs.
+  // TODO(kaixih@nvidia): remove this check when cuDNN fixes it.
+  if (conv->operands().size() > 3) {
+    return false;
+  }
+
+  // cuDNN runtime funsion kernels require 32-bit aligned data access, which
+  // means that the number of in/out channels must be divisible by 2 for fp16.
+  // (We don't currently do runtime fusion for int8.)
+  if (conv->operand(0)->shape().element_type() != F16) {
+    return false;
+  }
+  const Shape& shape = conv->operand(1)->shape();
+  int64_t num_input_features = shape.dimensions(
+      conv->convolution_dimension_numbers().kernel_input_feature_dimension());
+  int64_t num_output_features = shape.dimensions(
+      conv->convolution_dimension_numbers().kernel_output_feature_dimension());
+  if (num_input_features % 2 != 0 || num_output_features % 2 != 0) {
+    return false;
+  }
+
+  return true;
 }
 
 // Can instr be converted to type `dst_ty` without losing any precision?  For
@@ -293,6 +325,409 @@ StatusOr<bool> FuseConvAlpha(HloComputation* comp) {
 
     changed = true;
   }
+  return changed;
+}
+
+// The format of the serialized graph describing a sequence of ops fused
+// into the cuDNN convolution Custom Call is
+// "UID:[output_type]conv();UID[output_type]:op_name(operand
+// UID);UID:[output_type]op_name(operand UID);..." with the convolution assumed
+// to be the first op in the graph. Operand UIDs identifying ops outside the
+// serialized graph are elided. Currently, multiplication and division by a
+// broadcast scalar, addition of a matrix bias, the application of a ReLU
+// activation and the calculation of the maximum of the absolute value are
+// supported.
+class GraphString {
+ public:
+  GraphString() = default;
+
+  bool AppendOp(std::string op_name, HloInstruction* op,
+                std::vector<HloInstruction*> operands = {}) {
+    std::optional<int64_t> operand_uid;
+    int num_operands_in_graph = 0;
+    for (HloInstruction* operand : operands) {
+      if (OpInGraph(operand->unique_id())) {
+        num_operands_in_graph++;
+        // Ops with more than one operand in the graph are not supported.
+        if (num_operands_in_graph > 1) {
+          return false;
+        }
+        operand_uid = operand->unique_id();
+      }
+    }
+    graph_.emplace_back(OpDescriptor(
+        {op->unique_id(), op->shape().element_type(), op_name, operand_uid}));
+    return true;
+  }
+
+  void ChangeDataType(PrimitiveType type) {
+    DCHECK(!graph_.empty());
+    graph_.back().output_type = type;
+  }
+
+  std::string Graph() const {
+    std::string graph;
+    for (OpDescriptor op : graph_) {
+      graph.append(std::to_string(op.uid));
+      graph.append(":[" +
+                   primitive_util::LowercasePrimitiveTypeName(op.output_type) +
+                   "]");
+      graph.append(op.name);
+      graph.append("(");
+      if (op.operand.has_value()) {
+        graph.append(std::to_string(*op.operand));
+      }
+      graph.append(");");
+    }
+    return graph;
+  }
+
+  bool OpInGraph(int64_t uid, std::string op_name = "") const {
+    auto op_filter = [&](OpDescriptor op) -> bool {
+      if (op_name.empty()) {
+        return op.uid == uid;
+      } else {
+        return op.uid == uid && op.name == op_name;
+      }
+    };
+    return std::find_if(graph_.begin(), graph_.end(), op_filter) !=
+           graph_.end();
+  }
+
+ private:
+  struct OpDescriptor {
+    int64_t uid;
+    PrimitiveType output_type;
+    std::string name;
+    std::optional<int64_t> operand;
+  };
+
+  std::vector<OpDescriptor> graph_;
+};
+
+bool IsF8Type(const HloInstruction* instr) {
+  return primitive_util::IsF8Type(instr->shape().element_type());
+}
+
+bool IsScalar(const HloInstruction* instr) {
+  return ShapeUtil::IsScalar(instr->shape());
+}
+
+std::optional<PrimitiveType> IsSaturatingCastToF8(HloInstruction* instr) {
+  HloInstruction *op, *clamp_lower, *clamp_upper;
+  if (Match(instr,
+            m::Convert(
+                &op,
+                m::Clamp(m::Broadcast(m::ConstantScalar(&clamp_lower)), m::Op(),
+                         m::Broadcast(m::ConstantScalar(&clamp_upper))))) &&
+      ((op->shape().element_type() == F8E4M3FN &&
+        clamp_lower->literal().IsAllFloat(static_cast<float>(
+            std::numeric_limits<tsl::float8_e4m3fn>::lowest())) &&
+        clamp_upper->literal().IsAllFloat(static_cast<float>(
+            std::numeric_limits<tsl::float8_e4m3fn>::max()))) ||
+       (op->shape().element_type() == F8E5M2 &&
+        clamp_lower->literal().IsAllFloat(static_cast<float>(
+            std::numeric_limits<tsl::float8_e5m2>::lowest())) &&
+        clamp_upper->literal().IsAllFloat(static_cast<float>(
+            std::numeric_limits<tsl::float8_e5m2>::max()))))) {
+    return op->shape().element_type();
+  }
+  return std::nullopt;
+}
+
+// Returns whether the HLO Computation applied by `op` calculates the largest
+// element.
+bool AppliesMaxReduce(HloInstruction* op) {
+  HloComputation* reduce_comp = op->to_apply();
+  HloInstruction* reduce_comp_root = reduce_comp->root_instruction();
+  return ShapeUtil::IsScalar(op->shape()) &&
+         ShapeUtil::IsScalar(op->operand(1)->shape()) &&
+         op->operand(1)->IsConstant() &&
+         op->operand(1)->literal().GetAsDouble({}) <= 0. &&
+         reduce_comp_root->opcode() == HloOpcode::kMaximum &&
+         reduce_comp_root->operand(0)->opcode() == HloOpcode::kParameter &&
+         reduce_comp_root->operand(1)->opcode() == HloOpcode::kParameter;
+}
+
+// Recursively captures and serializes the graph of pointwise operations
+// operating on the convolution.
+void CaptureConvGraphRecursive(HloInstruction* instr,
+                               std::vector<HloInstruction*>& operands,
+                               std::vector<HloInstruction*>& aux_outputs,
+                               GraphString& graph_string,
+                               absl::flat_hash_set<int>& visited_instrs,
+                               HloInstruction*& final_instr) {
+  // Avoid visiting the same instruction more than once.
+  if (!visited_instrs.emplace(instr->unique_id()).second) {
+    return;
+  }
+  final_instr = instr;
+
+  // Copy the current state in case fusion will be unsuccessful or unfavorable.
+  GraphString init_graph_string = graph_string;
+  std::vector<HloInstruction*> init_operands = operands,
+                               init_aux_outputs = aux_outputs;
+  // The loop adds each user of `instr` that supports fusion into the
+  // cuDNN convolution Custom Call to GraphString. Most ops following the
+  // convolution describe a linear sequence that generates a single return
+  // tensor. The identification of one of these linear ops is followed by a
+  // recursive call of CaptureConvGraphRecursive to match and potentially fuse
+  // its users. The calculation of the scalar maximum of the absolute value
+  // (Amax) of a preceding op is considered a nonlinear user as it adds a
+  // return value to the convolution. The users of a nonlinear op are
+  // not considered for fusion into the Custom Call. The numbers of linear and
+  // nonlinear users of `instr` are stored in `num_linear_users` and
+  // `num_nonlinear_users`.
+  int num_linear_users = 0, num_nonlinear_users = 0;
+  for (HloInstruction* user : instr->users()) {
+    HloInstruction *op, *operand0, *operand1;
+    // Add
+    if (Match(user, m::AddAnyOrder(&op, m::Op(&operand0), m::Op(&operand1)))) {
+      if (graph_string.AppendOp("add", op, {operand0, operand1})) {
+        operands.push_back(operand0 == instr ? operand1 : operand0);
+        num_linear_users++;
+        CaptureConvGraphRecursive(user, operands, aux_outputs, graph_string,
+                                  visited_instrs, final_instr);
+      }
+      continue;
+    }
+    // Scale
+    if (Match(user, m::MultiplyAnyOrder(&op, m::Op(&operand0),
+                                        m::Broadcast(m::Op(&operand1)))) &&
+        ShapeUtil::IsScalar(operand1->shape())) {
+      if (graph_string.AppendOp("scale", op, {operand0, operand1})) {
+        operands.push_back(operand1);
+        num_linear_users++;
+        CaptureConvGraphRecursive(user, operands, aux_outputs, graph_string,
+                                  visited_instrs, final_instr);
+      }
+      continue;
+    }
+    // Inverse Scale
+    if (Match(user, m::Divide(&op, m::Op(&operand0),
+                              m::Broadcast(m::Op(&operand1)))) &&
+        ShapeUtil::IsScalar(operand1->shape())) {
+      if (graph_string.AppendOp("invscale", op, {operand0, operand1})) {
+        operands.push_back(operand1);
+        num_linear_users++;
+        CaptureConvGraphRecursive(user, operands, aux_outputs, graph_string,
+                                  visited_instrs, final_instr);
+      }
+      continue;
+    }
+    // ReLU
+    if (Match(user, m::MaximumAnyOrder(&op, m::Op(&operand0),
+                                       m::Broadcast(m::ConstantScalar(0))))) {
+      if (graph_string.AppendOp("relu", op, {operand0})) {
+        num_linear_users++;
+        CaptureConvGraphRecursive(user, operands, aux_outputs, graph_string,
+                                  visited_instrs, final_instr);
+      }
+      continue;
+    }
+    //  Maximum of the absolute value (Amax) following ReLU (elided Abs) -- not
+    //  a linear user
+    if (Match(user, m::Reduce(&op, m::Op(&operand0), m::Op())) &&
+        graph_string.OpInGraph(operand0->unique_id(), "relu") &&
+        AppliesMaxReduce(op)) {
+      if (graph_string.AppendOp("amax", op, {operand0})) {
+        aux_outputs.emplace_back(op);
+        num_nonlinear_users++;
+      }
+      continue;
+    }
+
+    // The following patterns match the user of `user`.
+    if (!user->users().empty()) {
+      HloInstruction* users_user = user->users()[0];
+      // Convert with Clamp to FP8 types
+      std::optional<PrimitiveType> f8_type = IsSaturatingCastToF8(users_user);
+      if (f8_type.has_value()) {
+        graph_string.ChangeDataType(f8_type.value());
+        num_linear_users++;
+        CaptureConvGraphRecursive(users_user, operands, aux_outputs,
+                                  graph_string, visited_instrs, final_instr);
+        continue;
+      }
+      // Maximum of the absolute value (Amax) -- not a linear user
+      if (Match(users_user,
+                m::Reduce(&op, m::Abs(m::Op(&operand0)), m::Op())) &&
+          AppliesMaxReduce(op)) {
+        if (graph_string.AppendOp("amax", op, {operand0})) {
+          aux_outputs.emplace_back(op);
+          num_nonlinear_users++;
+        }
+        continue;
+      }
+    }
+  }
+  // Do not fuse into the cuDNN convolution Custom Call when there are more than
+  // one linear or nonlinear users, or when the number of users eligible for
+  // fusion is less than the total number of users.
+  if (num_linear_users > 1 || num_nonlinear_users > 1 ||
+      num_linear_users + num_nonlinear_users < instr->user_count()) {
+    graph_string = init_graph_string;
+    operands = init_operands;
+    aux_outputs = init_aux_outputs;
+    final_instr = instr;
+  }
+}
+
+// Captures in a GraphString the subgraph of pointwise operations operating on
+// the convolution that will be fused into the cuDNN convolution Custom Call.
+StatusOr<std::tuple<std::vector<HloInstruction*>, std::vector<HloInstruction*>,
+                    GraphString, HloInstruction*>>
+CaptureConvGraph(HloInstruction* instr, HloInstruction* convolution,
+                 HloInstruction* wide_input, HloInstruction* wide_filter,
+                 HloInstruction* input_scale, HloInstruction* filter_scale,
+                 bool x_mult_scale, bool w_mult_scale) {
+  GraphString graph_string;
+  graph_string.AppendOp("conv", instr);
+
+  // Shift the scaling of the input and filter to the output of the convolution.
+  HloInstruction *input_scaled_conv, *filter_scaled_conv;
+  if (input_scale) {
+    TF_RETURN_IF_ERROR(convolution->ReplaceOperandWith(0, wide_input));
+    HloInstruction* bcast_input_scale = instr->AddInstruction(
+        HloInstruction::CreateBroadcast(instr->shape(), input_scale, {}));
+    input_scaled_conv = instr->AddInstruction(HloInstruction::CreateBinary(
+        instr->shape(),
+        x_mult_scale ? HloOpcode::kMultiply : HloOpcode::kDivide, instr,
+        bcast_input_scale));
+    TF_RETURN_IF_ERROR(instr->ReplaceAllUsesWith(input_scaled_conv));
+  }
+  if (filter_scale) {
+    TF_RETURN_IF_ERROR(convolution->ReplaceOperandWith(1, wide_filter));
+    HloInstruction* bcast_filter_scale = instr->AddInstruction(
+        HloInstruction::CreateBroadcast(instr->shape(), filter_scale, {}));
+    filter_scaled_conv = instr->AddInstruction(HloInstruction::CreateBinary(
+        instr->shape(),
+        w_mult_scale ? HloOpcode::kMultiply : HloOpcode::kDivide,
+        input_scale ? input_scaled_conv : instr, bcast_filter_scale));
+    TF_RETURN_IF_ERROR((input_scale ? input_scaled_conv : instr)
+                           ->ReplaceAllUsesWith(filter_scaled_conv));
+  }
+
+  std::vector<HloInstruction*> operands, aux_outputs;
+  absl::flat_hash_set<int> visited_instrs;
+  HloInstruction* final_instr;
+  CaptureConvGraphRecursive(instr, operands, aux_outputs, graph_string,
+                            visited_instrs, final_instr);
+  return std::make_tuple(operands, aux_outputs, graph_string, final_instr);
+}
+
+// Matches convolutions operating on FP8 inputs and filters and rewrites into a
+// ForwardGraph Custom Call. For scaled FP8 convolutions on Hopper systems, the
+// following steps are elided and rewritten into a ForwardGraph Custom Call:
+//
+// 1. Cast the filter and input from FP8 to a wider type such as FP16 or FP32.
+// 2. Optionally unscale the filter and input by multiplying or dividing by
+// scalars.
+// 3. Evaluate the convolution based on the scaled filter and input.
+// 4. Apply a series of elementwise transformations, where a transformation can
+// be adding a matrix bias, applying a ReLU activation, or
+// multiplying or dividing by a broadcast scalar.
+// 5. Optionally calculate the maximum of the absolute of the result.
+// 6. Optionally cast the output back to FP8.
+StatusOr<bool> F8GraphConv(HloComputation* comp, se::CudaComputeCapability cc) {
+  bool changed = false;
+
+#if CUDA_VERSION >= 12000 && CUDNN_VERSION >= 8900
+  if (!cc.IsAtLeast(se::CudaComputeCapability::HOPPER)) {
+    return false;
+  }
+  for (auto instr : comp->MakeInstructionPostOrder()) {
+    HloInstruction *convolution, *gte, *input, *filter,
+        *input_scale = nullptr, *filter_scale = nullptr,
+        *input_scale_op = nullptr, *filter_scale_op = nullptr,
+        *wide_input = nullptr, *wide_filter = nullptr;
+
+    auto conv_operand_maybe_scaled = [](HloInstruction** operand,
+                                        HloInstruction** wide_operand,
+                                        HloInstruction** scale_op,
+                                        HloInstruction** scale) {
+      return m::AnyOf<HloInstruction>(
+          m::Op(operand).WithPredicate(IsF8Type),
+          m::Convert(wide_operand, m::Op(operand).WithPredicate(IsF8Type)),
+          m::Divide(
+              scale_op,
+              m::Convert(wide_operand, m::Op(operand).WithPredicate(IsF8Type)),
+              m::Broadcast(m::Op(scale).WithPredicate(IsScalar))),
+          m::MultiplyAnyOrder(
+              scale_op,
+              m::Convert(wide_operand, m::Op(operand).WithPredicate(IsF8Type)),
+              m::Broadcast(m::Op(scale).WithPredicate(IsScalar))));
+    };
+
+    // TODO(philipphack): Consider allowing ops between dequantization and
+    // convolution.
+    auto pattern = m::GetTupleElement(
+        &gte,
+        m::CustomCall(
+            &convolution,
+            conv_operand_maybe_scaled(&input, &wide_input, &input_scale_op,
+                                      &input_scale),
+            conv_operand_maybe_scaled(&filter, &wide_filter, &filter_scale_op,
+                                      &filter_scale))
+            .WithPredicate(IsConvCustomCall),
+        0);
+    if (Match(instr, pattern)) {
+      if (!ConsumeFuel("cudnn-fused-convolution-rewriter", [&] {
+            return absl::StrCat("F8GraphConv: ", convolution->ToString());
+          })) {
+        continue;
+      }
+
+      std::vector<HloInstruction*> operands, aux_outputs;
+      GraphString graph_string;
+      HloInstruction* final_instr;
+
+      TF_ASSIGN_OR_RETURN(
+          std::tie(operands, aux_outputs, graph_string, final_instr),
+          CaptureConvGraph(
+              instr, convolution, wide_input, wide_filter, input_scale,
+              filter_scale,
+              input_scale_op ? input_scale_op->opcode() == HloOpcode::kMultiply
+                             : false,
+              filter_scale_op
+                  ? filter_scale_op->opcode() == HloOpcode::kMultiply
+                  : false));
+      TF_ASSIGN_OR_RETURN(
+          auto config, convolution->backend_config<CudnnConvBackendConfig>());
+      config.set_serialized_graph(graph_string.Graph());
+      operands.insert(operands.begin(), input);
+      operands.insert(operands.begin() + 1, filter);
+
+      std::vector<Shape> output_shapes;
+      output_shapes.emplace_back(ShapeUtil::ChangeElementType(
+          ShapeUtil::GetTupleElementShape(convolution->shape(), 0),
+          final_instr->shape().element_type()));
+      for (HloInstruction* aux_output : aux_outputs) {
+        output_shapes.emplace_back(aux_output->shape());
+      }
+      output_shapes.emplace_back(
+          ShapeUtil::GetTupleElementShape(convolution->shape(), 1));
+
+      HloInstruction* new_convolution =
+          comp->AddInstruction(convolution->CloneWithNewOperands(
+              ShapeUtil::MakeTupleShape(output_shapes), operands));
+
+      new_convolution->set_custom_call_target(kCudnnConvForwardGraphCallTarget);
+      TF_RETURN_IF_ERROR(new_convolution->set_backend_config(config));
+      TF_ASSIGN_OR_RETURN(HloInstruction * new_gte,
+                          MakeGetTupleElementHlo(new_convolution, 0));
+      TF_RETURN_IF_ERROR(comp->ReplaceInstruction(final_instr, new_gte));
+
+      for (int i = 0; i < aux_outputs.size(); ++i) {
+        TF_ASSIGN_OR_RETURN(HloInstruction * new_gte,
+                            MakeGetTupleElementHlo(new_convolution, i + 1));
+        TF_RETURN_IF_ERROR(comp->ReplaceInstruction(aux_outputs[i], new_gte));
+      }
+
+      changed = true;
+    }
+  }
+#endif  // CUDA_VERSION >= 12000 && CUDNN_VERSION >= 8900
   return changed;
 }
 
@@ -549,26 +984,7 @@ StatusOr<bool> FuseElu(HloComputation* comp, se::CudaComputeCapability cc) {
       continue;
     }
 
-    // In some cases, the XLA optimizes the inputs of the convolution by
-    // moving and broadcasting the bias to the side input, e.g., when the input
-    // spatial dimensions are all ones and filter spatial dimentsions are all
-    // non-ones. However, there is a known issue that the side input is not well
-    // supported in the cuDNN runtime fusion. Therefore, we skip these cases.
-    // TODO(kaixih@nvidia): remove this check when cuDNN fixes it.
-    if (conv->operands().size() > 3) {
-      continue;
-    }
-
-    // cuDNN runtime funsion kernels require 32-bit aligned data access. Since
-    // we only allow fp16 datatype, we need to check if the in and out channels
-    // of filter are even numbers.
-    const Shape& shape = conv->operand(1)->shape();
-    int64_t num_input_features = shape.dimensions(
-        conv->convolution_dimension_numbers().kernel_input_feature_dimension());
-    int64_t num_output_features =
-        shape.dimensions(conv->convolution_dimension_numbers()
-                             .kernel_output_feature_dimension());
-    if (num_input_features % 2 != 0 || num_output_features % 2 != 0) {
+    if (!IsSuitableForCudnnRuntimeFusion(conv)) {
       continue;
     }
 
@@ -655,9 +1071,7 @@ StatusOr<bool> FuseRelu6(HloComputation* comp, se::CudaComputeCapability cc) {
       continue;
     }
 
-    // cudnn runtime fusions seem to be very slow when a side input is present.
-    // TODO(kaixih@nvidia): remove this check when cuDNN fixes it.
-    if (conv->operands().size() > 3) {
+    if (!IsSuitableForCudnnRuntimeFusion(conv)) {
       continue;
     }
 
@@ -714,9 +1128,7 @@ StatusOr<bool> FuseLeakyRelu(HloComputation* comp,
       continue;
     }
 
-    // cudnn runtime fusions seem to be very slow when a side input is present.
-    // TODO(kaixih@nvidia): remove this check when cuDNN fixes it.
-    if (conv->operands().size() > 3) {
+    if (!IsSuitableForCudnnRuntimeFusion(conv)) {
       continue;
     }
 
@@ -1018,8 +1430,14 @@ StatusOr<bool> CudnnFusedConvRewriter::Run(
 
   for (HloComputation* comp :
        module->MakeNonfusionComputations(execution_threads)) {
-    // Fuse "inside out" starting with the operations closest to the conv.
     bool changed = false;
+    // Rewrite FP8 convolutions and supported adjacent pointwise ops into a
+    // ForwardGraph Custom Call.
+    TF_ASSIGN_OR_RETURN(changed, F8GraphConv(comp, compute_capability_));
+    if (changed) {
+      return changed;
+    }
+    // Fuse "inside out" starting with the operations closest to the conv.
     TF_ASSIGN_OR_RETURN(changed, FuseRemoveConvertInConv(comp));
     any_changed |= changed;
 

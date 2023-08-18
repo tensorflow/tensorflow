@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
@@ -1044,7 +1045,8 @@ void PrintOccupierList(
   for (int64_t i = 0; i < occupiers.size(); i++) {
     VLOG(1) << "\tOccupier at index: " << i
             << " with projected finish time: " << occupiers[i].second
-            << " original latency: " << occupiers[i].first->Latency();
+            << " original latency: " << occupiers[i].first->OriginalLatency()
+            << " latency: " << occupiers[i].first->Latency();
   }
 }
 
@@ -1106,10 +1108,8 @@ bool DefaultSchedulerCore::DeleteOccupierFromResource(
 bool DefaultSchedulerCore::AddOccupierToResource(
     HloGraphNode::TimeCost current_time, HloEdge& new_edge,
     std::vector<std::pair<HloEdge*, HloGraphNode::TimeCost>>& occupiers) {
-  if (new_edge.Latency() <= 0 || current_time < 0) {
-    return false;
-  }
-  auto new_edge_remaining = new_edge.Latency();
+  CHECK(new_edge.OriginalLatency() > 0 && current_time >= 0);
+  auto new_edge_remaining = new_edge.OriginalLatency();
   std::vector<std::pair<HloEdge*, HloGraphNode::TimeCost>>::iterator it =
       occupiers.begin();
   int64_t num_occupiers = occupiers.size();
@@ -1144,8 +1144,8 @@ bool DefaultSchedulerCore::AddOccupierToResource(
   // Since it points to the newly inserted element, increment it
   it++;
   accumulated_delay += new_edge_remaining;
-  CHECK(new_edge.Latency() - 0.0001 < accumulated_delay &&
-        accumulated_delay < new_edge.Latency() + 0.0001);
+  CHECK(new_edge.OriginalLatency() - 0.0001 < accumulated_delay &&
+        accumulated_delay < new_edge.OriginalLatency() + 0.0001);
   for (; it != occupiers.end(); it++) {
     it->second += accumulated_delay;
   }

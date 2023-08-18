@@ -159,7 +159,6 @@ class EnqueueTPUEmbeddingArbitraryTensorBatchOp : public OpKernel {
 
     StatusHelper status;
     params.status = status.c_status;
-    params.status = status.c_status;
     params.fixed_state = fixed_state_;
     params.local_device_ordinal = device_ordinal_;
     params.mode = mode;

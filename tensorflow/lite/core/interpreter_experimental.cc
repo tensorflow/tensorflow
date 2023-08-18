@@ -152,7 +152,8 @@ TfLiteStatus Interpreter::ApplyOptions(InterpreterOptions* options) {
   return ApplyOptionsImpl(options);
 }
 
-SignatureRunner* Interpreter::GetSignatureRunner(const char* signature_key) {
+impl::SignatureRunner* Interpreter::GetSignatureRunner(
+    const char* signature_key) {
   auto iter = signature_runner_map_.find(signature_key);
   if (iter != signature_runner_map_.end()) {
     return &(iter->second);

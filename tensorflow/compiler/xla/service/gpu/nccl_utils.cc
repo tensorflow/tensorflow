@@ -72,6 +72,8 @@ StatusOr<ncclDataType_t> ToNcclDataType(PrimitiveType element_type,
                                         Thunk::Kind reduction_op) {
   switch (element_type) {
     case S8:
+    case F8E5M2:
+    case F8E4M3FN:
       return ncclInt8;
     case PRED:
     case U8:
@@ -152,6 +154,20 @@ std::shared_ptr<StatusOr<NcclClique::Lock>> AcquireNcclClique(
     size_t num_local_participants) {
   static auto& cliques = *new ThreadSafeMap<NcclCliqueKey, NcclClique>;
 
+  // RendezvousSingle should only be used to guard nccl communicator
+  // initialization. Return the clique state when we are done with such
+  // initialization.
+  {
+    // Destruct clique if it hasn't been notified.
+    NcclClique::Lock clique = cliques[clique_key].Acquire();
+    if (clique->ready.HasBeenNotified() && clique->run_id == run_id.ToInt()) {
+      return std::make_shared<StatusOr<NcclClique::Lock>>(std::move(clique));
+    }
+  }
+
+  VLOG(2) << "AcquireNcclClique Rendezvous key (clique_key:"
+          << clique_key.ToString() << ", run" << run_id.ToString() << ", op"
+          << op_id.value() << ")";
   auto rendezvous_key = std::make_tuple(run_id, op_id, std::move(clique_key));
 
   int64_t terminate_timeout = xla::GetDebugOptionsFromFlags()

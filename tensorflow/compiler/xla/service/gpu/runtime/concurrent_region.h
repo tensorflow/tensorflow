@@ -41,10 +41,18 @@ class ConcurrentRegionStatus {
   absl::Status StartConcurrentRegion(se::Stream* capture_stream, int64_t size);
   void EndConcurrentRegion();
 
+  // Temporarily disable concurrent execution when we run GPU graphs op-by-op.
+  // If disabled_ is set to true, StartConcurrentRegion will become an no-op and
+  // IsInConcurrentRegion always returns false.
+  void DisableConcurrentRegion() { disabled_ = true; }
+  void EnableConcurrentRegion() { disabled_ = false; }
+
   // Get a stream on which the concurrent-executable kernel runs. It returns a
   // different stream each time to avoid building dependencies in the CUDA
   // graph.
   se::Stream* GetNextStream();
+
+  absl::StatusOr<se::Stream*> GetStream(int index);
 
   bool IsInConcurrentRegion();
 
@@ -53,6 +61,7 @@ class ConcurrentRegionStatus {
   std::vector<StreamPool::Ptr> borrowed_streams_;
   const ServiceExecutableRunOptions* run_options_;
 
+  bool disabled_ = false;
   int32_t stream_index_;
 
   // It is set to nullptr if not in a concurrent region.

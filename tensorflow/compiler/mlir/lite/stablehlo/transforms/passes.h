@@ -49,6 +49,13 @@ CreateComposeUniformQuantizedTypePass();
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreateUniformQuantizedStablehloToTflPass();
 
+// Create a pass that legalizes MHLO to TF dialect.
+std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeHloToTfPass();
+
+// Adds the HLO to TF rewrite patterns to the specified pattern list.
+void PopulateLegalizeHloToTfPatterns(RewritePatternSet* patterns,
+                                     MLIRContext* context);
+
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h.inc"
 

@@ -15,16 +15,30 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <cstdlib>
 #include <map>
 #include <memory>
 #include <string>
+#include <utility>
 
+#include "absl/synchronization/mutex.h"
+#include "tensorflow/compiler/xla/stream_executor/multi_platform_manager.h"
+#include "tensorflow/compiler/xla/stream_executor/platform.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_id.h"
-#include "tensorflow/tsl/c/tsl_status.h"
-#include "tensorflow/tsl/c/tsl_status_helper.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_topology.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -164,35 +178,29 @@ void TpuPlatform::EraseEvent(stream_executor::internal::EventInterface* key) {
 }
 
 tsl::Status TpuPlatform::TpusPerHost(int* tpus) {
-  TSL_Status* status = TSL_NewStatus();
-
   if (stream_executor::tpu::OpsApiFn()->TpuConfigurationApi_TpusPerHostFn ==
       nullptr) {
     *tpus = 0;
     return tsl::OkStatus();
   }
 
-  stream_executor::tpu::OpsApiFn()->TpuConfigurationApi_TpusPerHostFn(tpus,
-                                                                      status);
-  auto ret_status = tsl::StatusFromTSL_Status(status);
-  TSL_DeleteStatus(status);
-  return ret_status;
+  StatusHelper status;
+  stream_executor::tpu::OpsApiFn()->TpuConfigurationApi_TpusPerHostFn(
+      tpus, status.c_status);
+  return status.status();
 }
 
 tsl::Status TpuPlatform::TpuMemoryLimit(int64_t* memory_limit) {
-  TSL_Status* status = TSL_NewStatus();
-
   if (stream_executor::tpu::OpsApiFn()->TpuConfigurationApi_TpuMemoryLimitFn ==
       nullptr) {
     *memory_limit = 0;
     return tsl::OkStatus();
   }
 
+  StatusHelper status;
   stream_executor::tpu::OpsApiFn()->TpuConfigurationApi_TpuMemoryLimitFn(
-      reinterpret_cast<int64_t*>(memory_limit), status);
-  auto ret_status = tsl::StatusFromTSL_Status(status);
-  TSL_DeleteStatus(status);
-  return ret_status;
+      reinterpret_cast<int64_t*>(memory_limit), status.c_status);
+  return status.status();
 }
 
 bool RegisterTpuPlatform() {

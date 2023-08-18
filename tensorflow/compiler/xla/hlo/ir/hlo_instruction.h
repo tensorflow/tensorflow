@@ -21,20 +21,28 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_HLO_IR_HLO_INSTRUCTION_H_
 #define TENSORFLOW_COMPILER_XLA_HLO_IR_HLO_INSTRUCTION_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <iosfwd>
 #include <list>
+#include <map>
 #include <memory>
 #include <optional>
 #include <ostream>
 #include <set>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -45,13 +53,20 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
 #include "tensorflow/compiler/xla/iterator_util.h"
+#include "tensorflow/compiler/xla/layout.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/mapped_ptr_container_sorter.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
+#include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/lib/gtl/iterator_range.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -1309,7 +1324,7 @@ class HloInstruction {
     return control_successors_;
   }
 
-  // Returns true if "other" performs the same computation as this instruction.
+  // Returns true if 'other' performs the same computation as this instruction.
   bool Identical(
       const HloInstruction& other,
       absl::FunctionRef<bool(const HloInstruction*, const HloInstruction*)>
@@ -1321,6 +1336,13 @@ class HloInstruction {
                              layout_sensitive, sharding_sensitive,
                              /*ignore_channel_id_values=*/false,
                              /*ignore_commutative_operand_order=*/false);
+  }
+  // Returns true if 'other' is the same kind of op as this instruction. For
+  // regular ops, it just checks whether the opcode is the same, for ops like
+  // e.g. kCompare, it also checks extra attributes.
+  bool SameOp(const HloInstruction& other) const {
+    return opcode() == other.opcode() &&
+           IdenticalSlowPath(other, std::equal_to<const HloComputation*>());
   }
 
   // Same as Identical() but ignores the order of commutative operands (e.g.
@@ -1442,15 +1464,20 @@ class HloInstruction {
   // complete. If ignore_control_predecessors is true, instructions only
   // reachable via control dependencies will not be visited, and the postorder
   // will not take control dependencies into account. It is as if the control
-  // dependencies didn't exist in the graph at all.
+  // dependencies didn't exist in the graph at all. If cross_computation is
+  // true, DFS will go across the computation boundary (i.e., from an
+  // instruction to the root instruction of a computation it calls).
   template <typename HloInstructionPtr>
   Status Accept(DfsHloVisitorBase<HloInstructionPtr>* visitor,
                 bool call_finish_visit = true,
-                bool ignore_control_predecessors = false);
+                bool ignore_control_predecessors = false,
+                bool cross_computation = false);
   Status Accept(ConstDfsHloVisitor* visitor, bool call_finish_visit = true,
-                bool ignore_control_predecessors = false) const {
+                bool ignore_control_predecessors = false,
+                bool cross_computation = false) const {
     return const_cast<HloInstruction*>(this)->Accept(
-        visitor, call_finish_visit, ignore_control_predecessors);
+        visitor, call_finish_visit, ignore_control_predecessors,
+        cross_computation);
   }
 
   // Same as Accept() above, but the order of operand and control predecessor
@@ -1845,7 +1872,13 @@ class HloInstruction {
     statistics_viz_.set_stat_index_to_visualize(index);
   }
 
+  // Whether this specific instruction has statistics
   bool has_statistics() const { return !statistics_viz_.statistics().empty(); }
+
+  // Whether any instruction within the same HLO module as this has statistics
+  bool module_has_statistics() const {
+    return statistics_viz_.stat_index_to_visualize() == -1;
+  }
 
   const Statistic& statistic_to_visualize() const {
     return statistics_viz_.statistics().at(
@@ -2481,8 +2514,9 @@ class HloInstruction {
 };
 
 // Explicit instantiations in hlo_instruction.cc.
-extern template Status HloInstruction::Accept(DfsHloVisitor*, bool, bool);
-extern template Status HloInstruction::Accept(ConstDfsHloVisitor*, bool, bool);
+extern template Status HloInstruction::Accept(DfsHloVisitor*, bool, bool, bool);
+extern template Status HloInstruction::Accept(ConstDfsHloVisitor*, bool, bool,
+                                              bool);
 extern template Status HloInstruction::Visit(DfsHloVisitor* visitor);
 extern template Status HloInstruction::Visit(ConstDfsHloVisitor* visitor);
 

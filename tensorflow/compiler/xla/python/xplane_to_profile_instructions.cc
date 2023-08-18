@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/types.h"
+#include "tensorflow/tsl/profiler/convert/xla_op_utils.h"
 #include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/tsl/profiler/utils/file_system_utils.h"
 #include "tensorflow/tsl/profiler/utils/tf_xplane_visitor.h"
@@ -81,25 +82,36 @@ void GetXPlaneLatencyInfo(
       std::optional<std::string> hlo_name = std::nullopt;
       std::optional<std::string> hlo_module_name = std::nullopt;
       std::optional<std::string> fingerprint = std::nullopt;
+      std::optional<int64_t> program_id = std::nullopt;
 
       auto for_each_stat = [&](const XStatVisitor& stat) {
         if (stat.ValueCase() == tsl::profiler::XStat::VALUE_NOT_SET) return;
-        if (IsInternalStat(stat.Type())) return;
         // Store latency information for HLOs.
         if (stat.Name() == GetStatTypeStr(StatType::kHloOp)) {
           hlo_name = stat.ToString();
         }
+        if (stat.Name() == GetStatTypeStr(StatType::kProgramId)) {
+          program_id = stat.IntValue();
+        }
         if (stat.Name() == GetStatTypeStr(StatType::kHloModule)) {
           hlo_module_name = stat.ToString();
-          if (hlo_module_info.contains(hlo_module_name.value())) {
-            fingerprint = hlo_module_info.at(hlo_module_name.value());
-          }
         }
       };
       xevent.Metadata().ForEachStat(for_each_stat);
       xevent.ForEachStat(for_each_stat);
       if (!hlo_name.has_value() || !hlo_module_name.has_value()) {
         return;
+      }
+
+      if (hlo_module_name.has_value()) {
+        std::string fingerprint_key = hlo_module_name.value();
+        if (program_id.has_value()) {
+          fingerprint_key = tsl::profiler::HloModuleNameWithProgramId(
+              hlo_module_name.value(), program_id.value());
+        }
+        if (hlo_module_info.contains(fingerprint_key)) {
+          fingerprint = hlo_module_info.at(fingerprint_key);
+        }
       }
       double latency = static_cast<double>(xevent.DurationNs()) / 1e3;
       std::string key = hlo_name.value();
@@ -155,7 +167,9 @@ void GetXPlaneHloModuleInfo(
         std::optional<std::string> fingerprint =
             GetHloModuleFingerprint(hlo_module_proto);
         if (fingerprint.has_value()) {
-          (*hlo_module_info)[hlo_module_proto.name()] = fingerprint.value();
+          std::string key_with_id = tsl::profiler::HloModuleNameWithProgramId(
+              hlo_module_proto.name(), hlo_module_proto.id());
+          (*hlo_module_info)[key_with_id] = fingerprint.value();
         }
       }
     });

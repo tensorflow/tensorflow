@@ -24,10 +24,6 @@ namespace tensorflow {
 namespace test {
 namespace graph {
 
-// Adds a _MklMatmul node in g doing in0.contract(in1).
-Node* oneDNNMatmul(Graph* g, Node* in0, Node* in1, bool transpose_a,
-                   bool transpose_b);
-
 Node* oneDNNSoftmax(Graph* g, Node* input);
 
 }  // namespace graph

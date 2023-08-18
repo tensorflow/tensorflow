@@ -20,9 +20,8 @@ limitations under the License.
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/c_plugin_coordination_service_agent.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/direct_plugin_coordination_service_agent.h"
+#include "tensorflow/core/common_runtime/next_pluggable_device/flags.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_coordination_service_agent.h"
-
-ABSL_DECLARE_FLAG(bool, next_pluggable_device_use_c_api);
 
 namespace tensorflow {
 

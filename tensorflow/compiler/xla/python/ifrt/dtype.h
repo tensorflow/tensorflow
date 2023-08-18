@@ -80,8 +80,10 @@ class DType {
 
     // Next = 26
 
-    // String is not support in XLA. DType.Kind needs to match xla.PrimitiveType
-    // enum, so choose a large enum to avoid collision.
+    // Variable-length string represented as raw bytes, as in `bytes` in Python,
+    // i.e., no encoding enforcement. String is not support in XLA. DType.Kind
+    // needs to match xla.PrimitiveType enum, so choose a large enum to avoid
+    // collision.
     kString = 99,
   };
 
@@ -95,6 +97,11 @@ class DType {
 
   bool operator==(const DType& other) const { return kind_ == other.kind_; }
   bool operator!=(const DType& other) const { return kind_ != other.kind_; }
+
+  template <typename H>
+  friend H AbslHashValue(H h, const DType& value) {
+    return H::combine(std::move(h), value.kind());
+  }
 
   // Returns the byte size of a single element of this DType. Returns
   // std::nullopt if not aligned to a byte boundary or there is no fixed size

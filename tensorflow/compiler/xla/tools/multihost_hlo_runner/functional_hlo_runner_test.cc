@@ -46,6 +46,7 @@ TEST_F(FunctionalHloRunnerTest, SingleDeviceHlo) {
                           xla::FunctionalHloRunner::CreateGpuClient());
 
   // Options corresponding to --num_replicas=1 --num_partitions=1
+  xla::DebugOptions debug_options;
   FunctionalHloRunner::PreprocessingOptions preproc_options;
   FunctionalHloRunner::RawCompileOptions raw_compile_options;
   raw_compile_options.num_replicas = 1;
@@ -53,8 +54,8 @@ TEST_F(FunctionalHloRunnerTest, SingleDeviceHlo) {
   FunctionalHloRunner::RunningOptions running_options;
 
   TF_EXPECT_OK(FunctionalHloRunner::LoadAndRunAndDump(
-      *client, preproc_options, raw_compile_options, running_options,
-      {GetHloPath("single_device.hlo")}, InputFormat::kText));
+      *client, debug_options, preproc_options, raw_compile_options,
+      running_options, {GetHloPath("single_device.hlo")}, InputFormat::kText));
 }
 
 TEST_F(FunctionalHloRunnerTest, Sharded2Devices) {
@@ -71,6 +72,7 @@ TEST_F(FunctionalHloRunnerTest, Sharded2Devices) {
 
   // Options corresponding to:
   // --use_spmd_partitioning=true --num_replicas=1 --num_partitions=2
+  xla::DebugOptions debug_options;
   FunctionalHloRunner::PreprocessingOptions preproc_options;
   FunctionalHloRunner::RawCompileOptions raw_compile_options;
   raw_compile_options.spmd_mode =
@@ -80,8 +82,9 @@ TEST_F(FunctionalHloRunnerTest, Sharded2Devices) {
   FunctionalHloRunner::RunningOptions running_options;
 
   TF_EXPECT_OK(FunctionalHloRunner::LoadAndRunAndDump(
-      *client, preproc_options, raw_compile_options, running_options,
-      {GetHloPath("sharded_2_devices.hlo")}, InputFormat::kText));
+      *client, debug_options, preproc_options, raw_compile_options,
+      running_options, {GetHloPath("sharded_2_devices.hlo")},
+      InputFormat::kText));
 }
 
 TEST_F(FunctionalHloRunnerTest, UseZerosAsInputs) {
@@ -99,6 +102,7 @@ TEST_F(FunctionalHloRunnerTest, UseZerosAsInputs) {
   // Options corresponding to:
   // --use_spmd_partitioning=true --num_replicas=1 --num_partitions=2
   // --hlo_argument_mode=use_zeros_as_input
+  xla::DebugOptions debug_options;
   FunctionalHloRunner::PreprocessingOptions preproc_options;
   FunctionalHloRunner::RawCompileOptions raw_compile_options;
   raw_compile_options.spmd_mode =
@@ -110,8 +114,9 @@ TEST_F(FunctionalHloRunnerTest, UseZerosAsInputs) {
       FunctionalHloRunner::ModuleArgumentMode::kUseZerosAsInput;
 
   TF_EXPECT_OK(FunctionalHloRunner::LoadAndRunAndDump(
-      *client, preproc_options, raw_compile_options, running_options,
-      {GetHloPath("sharded_2_devices.hlo")}, InputFormat::kText));
+      *client, debug_options, preproc_options, raw_compile_options,
+      running_options, {GetHloPath("sharded_2_devices.hlo")},
+      InputFormat::kText));
 }
 
 TEST_F(FunctionalHloRunnerTest, UseUninitializedInputs) {
@@ -129,6 +134,7 @@ TEST_F(FunctionalHloRunnerTest, UseUninitializedInputs) {
   // Options corresponding to:
   // --use_spmd_partitioning=true --num_replicas=1 --num_partitions=2
   // --hlo_argument_mode=uninitialized
+  xla::DebugOptions debug_options;
   FunctionalHloRunner::PreprocessingOptions preproc_options;
   FunctionalHloRunner::RawCompileOptions raw_compile_options;
   raw_compile_options.spmd_mode =
@@ -140,8 +146,9 @@ TEST_F(FunctionalHloRunnerTest, UseUninitializedInputs) {
       FunctionalHloRunner::ModuleArgumentMode::kUninitialized;
 
   TF_EXPECT_OK(FunctionalHloRunner::LoadAndRunAndDump(
-      *client, preproc_options, raw_compile_options, running_options,
-      {GetHloPath("sharded_2_devices.hlo")}, InputFormat::kText));
+      *client, debug_options, preproc_options, raw_compile_options,
+      running_options, {GetHloPath("sharded_2_devices.hlo")},
+      InputFormat::kText));
 }
 
 TEST_F(FunctionalHloRunnerTest, UseUninitializedInputsWithTupledArguments) {
@@ -151,6 +158,7 @@ TEST_F(FunctionalHloRunnerTest, UseUninitializedInputsWithTupledArguments) {
   // Options corresponding to:
   // --num_replicas=1 --num_partitions=1
   // --hlo_argument_mode=uninitialized
+  xla::DebugOptions debug_options;
   FunctionalHloRunner::PreprocessingOptions preproc_options;
   FunctionalHloRunner::RawCompileOptions raw_compile_options;
   raw_compile_options.spmd_mode =
@@ -162,8 +170,9 @@ TEST_F(FunctionalHloRunnerTest, UseUninitializedInputsWithTupledArguments) {
       FunctionalHloRunner::ModuleArgumentMode::kUninitialized;
 
   TF_EXPECT_OK(FunctionalHloRunner::LoadAndRunAndDump(
-      *client, preproc_options, raw_compile_options, running_options,
-      {GetHloPath("single_device_tupled.hlo")}, InputFormat::kText));
+      *client, debug_options, preproc_options, raw_compile_options,
+      running_options, {GetHloPath("single_device_tupled.hlo")},
+      InputFormat::kText));
 }
 
 TEST_F(FunctionalHloRunnerTest, CanCompileWithoutHavingEnoughGpus) {
@@ -177,6 +186,7 @@ TEST_F(FunctionalHloRunnerTest, CanCompileWithoutHavingEnoughGpus) {
   tsl::FileSystem* fs = nullptr;
   TF_ASSERT_OK(env->GetFileSystemForFile(dump_dir, &fs));
 
+  xla::DebugOptions debug_options;
   FunctionalHloRunner::PreprocessingOptions preproc_options;
   FunctionalHloRunner::RawCompileOptions raw_compile_options;
   raw_compile_options.spmd_mode =
@@ -188,7 +198,7 @@ TEST_F(FunctionalHloRunnerTest, CanCompileWithoutHavingEnoughGpus) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
                           xla::FunctionalHloRunner::CreateGpuClient());
   TF_EXPECT_OK(FunctionalHloRunner::LoadAndCompile(
-      *client, preproc_options, raw_compile_options,
+      *client, debug_options, preproc_options, raw_compile_options,
       GetHloPath("sharded_16_devices.hlo"), InputFormat::kText));
 
   // Check that the sharding was done correctly.

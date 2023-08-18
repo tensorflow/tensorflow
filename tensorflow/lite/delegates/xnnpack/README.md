@@ -126,6 +126,8 @@ if (interpreter->ModifyGraphWithDelegate(xnnpack_delegate) != kTfLiteOk) {
   // Report error and fall back to another delegate, or the default backend
 }
 
+// IMPORTANT: AllocateTensors can be called only AFTER ModifyGraphWithDelegate
+
 ...
 
 // Run inference using XNNPACK
@@ -212,7 +214,7 @@ using delegate options:
 ```c++
 TfLiteXNNPackDelegateOptions xnnpack_options =
     TfLiteXNNPackDelegateOptionsDefault();
-xnnpack_options.handle_variable_ops = true;
+xnnpack_options.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_VARIABLE_OPERATORS;
 ```
 
 When XNNPACK handles resource variables,

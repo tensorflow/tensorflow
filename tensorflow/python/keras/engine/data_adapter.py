@@ -49,7 +49,6 @@ from tensorflow.python.ops import script_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.types import data as data_types
 from tensorflow.python.util import nest
-from tensorflow.python.util.tf_export import keras_export
 
 
 class DataAdapter(object, metaclass=abc.ABCMeta):
@@ -1528,7 +1527,6 @@ def train_validation_split(arrays, validation_split):
   return train_arrays, val_arrays
 
 
-@keras_export("keras.utils.unpack_x_y_sample_weight", v1=[])
 def unpack_x_y_sample_weight(data):
   """Unpacks user-provided data tuple.
 
@@ -1590,7 +1588,6 @@ def unpack_x_y_sample_weight(data):
     raise ValueError(error_msg)
 
 
-@keras_export("keras.utils.pack_x_y_sample_weight", v1=[])
 def pack_x_y_sample_weight(x, y=None, sample_weight=None):
   """Packs user-provided data into a tuple.
 

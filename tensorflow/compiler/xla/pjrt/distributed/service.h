@@ -37,8 +37,7 @@ namespace xla {
 
 typedef int NodeId;
 
-class DistributedRuntimeServiceImpl final
-    : public grpc::DistributedRuntimeService::Service {
+class CoordinationServiceImpl {
  public:
   struct Options {
     // Number of nodes in the job. Mandatory. Must be non-negative.
@@ -62,103 +61,8 @@ class DistributedRuntimeServiceImpl final
     // up and returning a failure?
     absl::Duration shutdown_timeout = absl::Minutes(5);
   };
-  explicit DistributedRuntimeServiceImpl(const Options& options);
-  ~DistributedRuntimeServiceImpl() override;
 
-  DistributedRuntimeServiceImpl(const DistributedRuntimeServiceImpl&) = delete;
-  DistributedRuntimeServiceImpl(DistributedRuntimeServiceImpl&&) = delete;
-  DistributedRuntimeServiceImpl& operator=(
-      const DistributedRuntimeServiceImpl&) = delete;
-  DistributedRuntimeServiceImpl&& operator=(DistributedRuntimeServiceImpl&&) =
-      delete;
-
-  ::grpc::Status Connect(::grpc::ServerContext* context,
-                         const ConnectRequest* request,
-                         ConnectResponse* response) override;
-
-  ::grpc::Status Shutdown(::grpc::ServerContext* context,
-                          const ShutdownRequest* request,
-                          ShutdownResponse* response) override;
-
-  ::grpc::Status Heartbeat(::grpc::ServerContext* context,
-                           const HeartbeatRequest* request,
-                           HeartbeatResponse* response) override;
-
-  ::grpc::Status EnumerateDevices(::grpc::ServerContext* context,
-                                  const EnumerateDevicesRequest* request,
-                                  EnumerateDevicesResponse* response) override;
-
-  ::grpc::Status KeyValueGet(::grpc::ServerContext* context,
-                             const KeyValueGetRequest* request,
-                             KeyValueGetResponse* response) override;
-
-  ::grpc::Status KeyValueSet(::grpc::ServerContext* context,
-                             const KeyValueSetRequest* request,
-                             KeyValueSetResponse* response) override;
-
-  ::grpc::Status WaitAtBarrier(::grpc::ServerContext* context,
-                               const WaitAtBarrierRequest* request,
-                               WaitAtBarrierResponse* response) override;
-
- private:
-  // Entry point for the heartbeat checking thread.
-  void HeartbeatLoop();
-
-  // Validates a session id number matches the current session id.
-  xla::Status ValidateSessionId(uint64_t session_id);
-
-  // Validates a node id number.
-  xla::Status ValidateNodeId(int node_id);
-
-  const Options options_;
-  const uint64_t session_id_;
-
-  absl::Mutex mu_;
-  enum class State { kInitializing, kRunning, kClosed };
-  State state_ ABSL_GUARDED_BY(mu_) = State::kInitializing;
-  Status service_status_ ABSL_GUARDED_BY(mu_);
-
-  // State for Connect() and heartbeats.
-  struct Node {
-    // Have we heard from a task with this ID?
-    bool present = false;
-
-    // A unique ID belonging to the client. Used to identify the client that
-    // most recently called Connect() with a particular task id.
-    uint64_t client_id = 0;
-
-    // When did we last receive a heartbeat from this task?
-    absl::Time last_heartbeat = absl::InfinitePast();
-  };
-  int num_nodes_present_ ABSL_GUARDED_BY(mu_) = 0;
-  std::vector<Node> nodes_ ABSL_GUARDED_BY(mu_);
-
-  // State for EnumerateDevices.
-  int num_topologies_present_ ABSL_GUARDED_BY(mu_) = 0;
-  std::vector<LocalTopologyProto> local_topologies_ ABSL_GUARDED_BY(mu_);
-  std::optional<GlobalTopologyProto> topology_ ABSL_GUARDED_BY(mu_);
-
-  // State for Shutdown(). Counter of how many nodes are blocked at the
-  // Shutdown() barrier.
-  int num_nodes_shutting_down_ ABSL_GUARDED_BY(mu_) = 0;
-
-  // This dictionary tracks the number of nodes per barrier.
-  absl::flat_hash_map<std::string, int> barrier_id_to_num_nodes_
-      ABSL_GUARDED_BY(mu_);
-
-  // Key-value store, used by distributed GPU code to share NCCL state.
-  KeyValueStore key_value_store_;
-
-  // Notification that tells the heartbeat thread to stop.
-  absl::Notification stop_heartbeat_thread_;
-
-  // Thread that checks for missing hearbeats from the clients periodically.
-  std::unique_ptr<tsl::Thread> heartbeat_thread_;
-};
-
-class CoordinationServiceImpl {
- public:
-  CoordinationServiceImpl(const DistributedRuntimeServiceImpl::Options& options,
+  CoordinationServiceImpl(const Options& options,
                           ::grpc::ServerBuilder* builder);
   ~CoordinationServiceImpl();
 
@@ -183,12 +87,11 @@ class DistributedRuntimeService {
   static xla::StatusOr<std::unique_ptr<DistributedRuntimeService>> Get(
       const std::string& address,
       std::shared_ptr<::grpc::ServerCredentials> credentials,
-      const DistributedRuntimeServiceImpl::Options& options,
-      bool use_coordination_service);
+      const CoordinationServiceImpl::Options& options);
 
   explicit DistributedRuntimeService(
-      const DistributedRuntimeServiceImpl::Options& options,
-      ::grpc::ServerBuilder* builder, bool use_coordination_service);
+      const CoordinationServiceImpl::Options& options,
+      ::grpc::ServerBuilder* builder);
   ~DistributedRuntimeService();
 
   DistributedRuntimeService(const DistributedRuntimeService&) = delete;
@@ -202,7 +105,6 @@ class DistributedRuntimeService {
   ::grpc::Server* server() const { return server_.get(); }
 
  private:
-  std::unique_ptr<DistributedRuntimeServiceImpl> impl_;
   std::unique_ptr<CoordinationServiceImpl> coord_impl_;
   std::unique_ptr<::grpc::Server> server_;
 };

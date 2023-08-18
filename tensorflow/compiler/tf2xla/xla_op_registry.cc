@@ -26,12 +26,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/local_device.h"
+#include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_factory.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/kernel_def.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/core/tfrt/common/pjrt_util.h"
 
 namespace tensorflow {
 
@@ -173,6 +175,28 @@ XlaOpRegistry::~XlaOpRegistry() = default;
     return nullptr;
   }();
   (void)registration_init;
+
+  // Register GPU JIT devices for NextPluggableDevice if its jit_device_type is
+  // `XLA_GPU_JIT`.
+  if (DeviceFactory::IsPluggableDevice(device_name) &&
+      GetPjRtClient(DeviceType(device_name)).ok()) {
+    mutex_lock lock(registry.mutex_);
+
+    NextPluggableDeviceFactory* device_factory =
+        static_cast<NextPluggableDeviceFactory*>(
+            DeviceFactory::GetFactory(device_name));
+    if (device_factory != nullptr &&
+        DeviceType(device_factory->compilation_device_name()) ==
+            DeviceType(DEVICE_GPU_XLA_JIT) &&
+        registry.compilation_devices_.find(device_name) ==
+            registry.compilation_devices_.end()) {
+      DeviceRegistration& registration =
+          registry.compilation_devices_[device_name];
+      registration.compilation_device_name = DEVICE_GPU_XLA_JIT;
+      registration.autoclustering_policy =
+          XlaOpRegistry::AutoclusteringPolicy::kIfEnabledGlobally;
+    }
+  }
 
   mutex_lock lock(registry.mutex_);
   auto it = registry.compilation_devices_.find(device_name);

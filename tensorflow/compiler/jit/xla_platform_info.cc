@@ -22,6 +22,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/jit/device_executable_persistor.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/pjrt_device_compiler_client.h"
@@ -30,6 +34,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tfrt/common/create_pjrt_client_util.h"
 #include "tensorflow/core/tfrt/common/global_state.h"
@@ -58,10 +66,14 @@ XlaDeviceCompiler* CreateXlaDeviceCompiler(
 
 PjRtDeviceCompiler* CreatePjRtDeviceCompiler(DeviceType compilation_device_type,
                                              xla::PjRtClient* pjrt_client) {
+  std::string persistent_cache_directory =
+      GetPersistentCacheDirectory(compilation_device_type);
+
   PjRtDeviceExecutablePersistor::Config persistor_config(
-      GetMarkForCompilationPassFlags()->tf_xla_persistent_cache_directory,
+      persistent_cache_directory,
       GetMarkForCompilationPassFlags()->tf_xla_disable_strict_signature_checks,
-      GetMarkForCompilationPassFlags()->tf_xla_persistent_cache_prefix);
+      GetMarkForCompilationPassFlags()->tf_xla_persistent_cache_prefix,
+      GetMarkForCompilationPassFlags()->tf_xla_persistent_cache_read_only);
 
   return new PjRtDeviceCompiler(
       std::make_unique<PjRtDeviceExecutablePersistor>(
@@ -137,6 +149,23 @@ Status GetCompilationDeviceTypeAndPjRtClient(
 }
 }  // namespace
 
+std::string GetPersistentCacheDirectory(
+    const DeviceType& compilation_device_type) {
+  // If a persistent cache device type is specified, ensure it matches
+  // compilation device type.
+  if (!GetMarkForCompilationPassFlags()
+           ->tf_xla_persistent_cache_device_types.empty() &&
+      !absl::c_any_of(absl::StrSplit(GetMarkForCompilationPassFlags()
+                                         ->tf_xla_persistent_cache_device_types,
+                                     ','),
+                      [&](absl::string_view device) {
+                        return compilation_device_type == DeviceType(device);
+                      })) {
+    return "";
+  }
+  return GetMarkForCompilationPassFlags()->tf_xla_persistent_cache_directory;
+}
+
 xla::StatusOr<std::optional<std::set<int>>> ParseVisibleDeviceList(
     absl::string_view visible_device_list) {
   std::set<int> gpu_ids;
@@ -161,10 +190,14 @@ xla::StatusOr<std::optional<std::set<int>>> ParseVisibleDeviceList(
 Status BuildXlaDeviceCompiler(DeviceBase* device, FunctionLibraryRuntime* flr,
                               const XlaPlatformInfo& platform_info,
                               XlaDeviceCompiler** xla_device_compiler) {
+  std::string persistent_cache_directory =
+      GetPersistentCacheDirectory(platform_info.device_type());
+
   XlaDeviceExecutablePersistor::Config persistor_config(
-      GetMarkForCompilationPassFlags()->tf_xla_persistent_cache_directory,
+      persistent_cache_directory,
       GetMarkForCompilationPassFlags()->tf_xla_disable_strict_signature_checks,
-      GetMarkForCompilationPassFlags()->tf_xla_persistent_cache_prefix);
+      GetMarkForCompilationPassFlags()->tf_xla_persistent_cache_prefix,
+      GetMarkForCompilationPassFlags()->tf_xla_persistent_cache_read_only);
 
   if (platform_info.xla_device_metadata()) {
     *xla_device_compiler = CreateXlaDeviceCompiler(
@@ -238,14 +271,27 @@ Status BuildXlaDeviceCompiler(DeviceBase* device, FunctionLibraryRuntime* flr,
 }
 
 Status GetOrCreatePjRtDeviceCompilerAndProfiler(
-    const XlaPlatformInfo& platform_info, FunctionLibraryRuntime* flr,
-    PjRtDeviceCompiler** pjrt_device_compiler,
+    const OpKernelContext& ctx, const XlaPlatformInfo& platform_info,
+    FunctionLibraryRuntime* flr, PjRtDeviceCompiler** pjrt_device_compiler,
     DeviceCompilationProfiler** profiler) {
-  // We store information about the JIT-compiled XLA computation
-  // in the ResourceMgr.
-  ResourceMgr* rm = tfrt_global::GetTFGlobalResourceMgr();
-
   const auto& device_type = platform_info.device_type();
+
+  // We store information about the JIT-compiled XLA computation in the
+  // ResourceMgr. The DeviceCompiler (which contains the DeviceCompilationCache)
+  // is stored in the tfrt_global ResourceMgr for TPU and the Device ResourceMgr
+  // for CPU/GPU. This is to make sure the DeviceCompiler's lifecycle is
+  // maintained appropriately.
+  ResourceMgr* rm = nullptr;
+  if (device_type == DEVICE_TPU) {
+    rm = tfrt_global::GetTFGlobalResourceMgr();
+  } else {
+    rm = ctx.resource_manager();
+  }
+
+  if (!rm) {
+    return absl::InternalError("No resource manager found.");
+  }
+
   const std::string& compiler_name =
       GetPjRtDeviceCompilerResourceName(device_type);
 

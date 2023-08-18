@@ -57,6 +57,7 @@ class AsyncSubgraph;  // Class for friend declarations.
 namespace impl {
 class Interpreter;         // Class for friend declarations.
 class InterpreterBuilder;  // Class for friend declarations.
+class SignatureRunner;     // Class for friend declarations.
 }  // namespace impl
 
 namespace delegates {
@@ -70,7 +71,7 @@ class Subgraph {
  public:
 #ifndef DOXYGEN_SKIP
   friend class ::tflite::impl::Interpreter;
-  friend class SignatureRunner;
+  friend class ::tflite::impl::SignatureRunner;
   friend class SingleOpModel;
   friend class internal::CommonOpaqueConversionUtil;
 #endif  // DOXYGEN_SKIP

@@ -698,10 +698,14 @@ std::string HloDotDumper::DumpSubcomputation(
     const char* fillcolor;
     const char* strokecolor;
 
-    if (!highlight && parent_instr->has_statistics()) {
-      // Use color from the statistic
-      fillcolor =
-          NodeFillColorForStatistic(parent_instr->statistic_to_visualize());
+    if (!highlight && (parent_instr->module_has_statistics() ||
+                       parent_instr->has_statistics())) {
+      // Use color from the statistic if available, otherwise default to
+      // coloring all other nodes gray when any other nodes has statistics
+      fillcolor = parent_instr->has_statistics()
+                      ? NodeFillColorForStatistic(
+                            parent_instr->statistic_to_visualize())
+                      : "#f5f5f5";
       strokecolor = "#c2c2c2";
     } else if (debug_options_.xla_hlo_graph_sharding_color() && !highlight) {
       // Use the sharding color, if the node isn't highlighted.
@@ -890,6 +894,11 @@ std::string HloDotDumper::DumpInstruction(const HloInstruction* instr) {
     node_colors.fill_color = NodeFillColorForStatistic(statistic_to_visualize);
     node_colors.stroke_color = "#c2c2c2";
     node_colors.font_color = NodeFontColorForStatistic(statistic_to_visualize);
+  } else if (instr->module_has_statistics()) {
+    // all other nodes without statistics must be gray
+    node_colors.fill_color = "#f5f5f5";
+    node_colors.stroke_color = "#c2c2c2";
+    node_colors.font_color = "black";
   }
 
   // Build the node style

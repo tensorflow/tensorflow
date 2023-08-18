@@ -23,5 +23,6 @@ import "tensorflow/compiler/xla/xla_data.proto";
 // Wire format for `HloSharding`.
 message HloShardingProto {
   DeviceListProto devices = 1;
+  optional string memory_kind = 3;
   xla.OpSharding xla_op_sharding = 2;
 }

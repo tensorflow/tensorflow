@@ -24,16 +24,19 @@ message SingleDeviceShardingProto {
   // Serialization and deserialization are expected to ensure that device ids
   // are stable across proto construction and consumption.
   int32 device_id = 1;
+  optional string memory_kind = 2;
 }
 
 // Wire format for `OpaqueSharding`.
 message OpaqueShardingProto {
   DeviceListProto devices = 1;
+  optional string memory_kind = 2;
 }
 
 // Wire format for `ConcreteSharding`.
 message ConcreteShardingProto {
   DeviceListProto devices = 1;
+  optional string memory_kind = 4;
   ShapeProto shape = 2;
   repeated ShapeProto shard_shapes = 3;
 }
@@ -41,6 +44,7 @@ message ConcreteShardingProto {
 // Wire format for `ConcreteEvenSharding`.
 message ConcreteEvenShardingProto {
   DeviceListProto devices = 1;
+  optional string memory_kind = 4;
   ShapeProto shape = 2;
   ShapeProto shard_shape = 3;
 }

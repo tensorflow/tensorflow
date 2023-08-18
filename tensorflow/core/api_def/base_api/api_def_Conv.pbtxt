@@ -23,7 +23,7 @@ END
   out_arg {
     name: "output"
     description: <<END
-A 4-D tensor. The dimension order is determined by the value of
+A (N+1+batch_dims)-D tensor. The dimension order is determined by the value of
 `channels_last_format`, see below for details.
 END
   }
@@ -83,7 +83,7 @@ results along the channel axis. Input channels and filters must both be
 divisible by groups.
 END
   }
-  summary: "Computes a N-D convolution given (N+2)-D `input` and `filter` tensors."
+  summary: "Computes a N-D convolution given (N+1+batch_dims)-D `input` and (N+2)-D `filter` tensors."
   description: <<END
 General function for computing a N-D convolution. It is required that
 `1 <= N <= 3`.

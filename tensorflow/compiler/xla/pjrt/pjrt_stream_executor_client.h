@@ -157,6 +157,8 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
 
   Status TransferFromOutfeed(MutableBorrowingLiteral literal) override;
 
+  absl::Span<PjRtMemorySpace* const> memory_spaces() const override;
+
   StatusOr<PjRtMemorySpace*> default_memory_space() const override;
 
   std::unique_ptr<ScopedAsyncTrackingEvent> CreateAsyncTrackingEvent(
@@ -205,6 +207,8 @@ class PjRtStreamExecutorClient : public PjRtClient {
 
   StatusOr<PjRtDevice*> LookupAddressableDevice(
       int local_hardware_id) const override;
+
+  absl::Span<PjRtMemorySpace* const> memory_spaces() const override;
 
   PjRtPlatformId platform_id() const override { return platform_id_; }
   absl::string_view platform_name() const override { return platform_name_; }

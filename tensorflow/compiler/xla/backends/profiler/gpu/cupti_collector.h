@@ -69,6 +69,18 @@ using MemFreeDetails = MemAllocDetails;
 // corresponds to a cudaFree.
 using MemoryResidencyDetails = MemAllocDetails;
 
+// cudaHostRegister
+struct HostRegisterDetails {
+  size_t num_bytes;
+  tsl::uint64 address;
+  unsigned int flags;
+};
+
+// cudaHostUnregister
+struct HostUnregisterDetails {
+  tsl::uint64 address;
+};
+
 struct MemsetDetails {
   // Size of memory to be written over in bytes.
   size_t num_bytes;
@@ -138,6 +150,8 @@ enum class CuptiTracerEventType {
   MemoryFree = 10,
   Memset = 11,
   MemoryResidency = 12,
+  HostRegister = 13,
+  HostUnregister = 14,
   Generic = 100,
 };
 
@@ -185,6 +199,10 @@ struct CuptiTracerEvent {
     KernelDetails kernel_info;
     // Used for MemFree activities. `type` must be MemoryFree.
     MemFreeDetails memfree_info;
+    // Used for cuMemHostRegister.  `type` must be HostRegister.
+    HostRegisterDetails host_register_info;
+    // Used for cuMemHostUnregister.  `type` must be HostUnregister.
+    HostUnregisterDetails host_unregister_info;
     // Used for Memset API and activities. `type` must be Memset.
     MemsetDetails memset_info;
     // Used for Memory residency activities. `type` must be MemoryResidency.

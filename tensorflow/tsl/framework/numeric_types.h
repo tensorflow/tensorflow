@@ -57,7 +57,8 @@ struct NumTraits<tsl::tstring> : GenericNumTraits<tsl::tstring> {
     MulCost = HugeCost
   };
 
-  static inline int digits10() { return 0; }
+  static constexpr inline int digits10() { return 0; }
+  static constexpr inline int max_digits10() { return 0; }
 
  private:
   static inline tsl::tstring epsilon();

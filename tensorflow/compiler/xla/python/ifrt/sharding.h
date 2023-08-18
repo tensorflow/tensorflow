@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/ifrt/device.h"
 #include "tensorflow/compiler/xla/python/ifrt/index_domain.h"
 #include "tensorflow/compiler/xla/python/ifrt/ir/sharding_param.h"
+#include "tensorflow/compiler/xla/python/ifrt/memory.h"
 #include "tensorflow/compiler/xla/python/ifrt/serdes.h"
 #include "tensorflow/compiler/xla/python/ifrt/shape.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -47,6 +48,9 @@ class Sharding : public llvm::RTTIExtends<Sharding, Serializable> {
   // All devices in this sharding. Devices may appear more than once.
   const DeviceList& devices() const { return devices_; }
 
+  // Returns the memory kind for all shards in this sharding.
+  MemoryKind memory_kind() const { return memory_kind_; }
+
   // Breaks a shape up into per-device shapes and shardings. See
   // Array::DisassembleIntoSingleDeviceArrays(). It may return an error if
   // disassembly is unsupported.
@@ -67,9 +71,11 @@ class Sharding : public llvm::RTTIExtends<Sharding, Serializable> {
   static char ID;  // NOLINT
 
  protected:
-  explicit Sharding(DeviceList devices) : devices_(devices) {}
+  Sharding(DeviceList devices, MemoryKind memory_kind)
+      : devices_(devices), memory_kind_(memory_kind) {}
 
   DeviceList devices_;
+  MemoryKind memory_kind_;
 };
 
 std::ostream& operator<<(std::ostream& os, const Sharding& sharding);
@@ -83,7 +89,8 @@ class SingleDeviceSharding final
     : public llvm::RTTIExtends<SingleDeviceSharding, Sharding> {
  public:
   // Creates a single-device sharding.
-  static std::unique_ptr<SingleDeviceSharding> Create(Device* device);
+  static std::unique_ptr<SingleDeviceSharding> Create(Device* device,
+                                                      MemoryKind memory_kind);
 
   // Sharding implementation.
 
@@ -100,9 +107,9 @@ class SingleDeviceSharding final
   static char ID;  // NOLINT
 
  private:
-  explicit SingleDeviceSharding(Device* device)
-      : llvm::RTTIExtends<SingleDeviceSharding, Sharding>(
-            DeviceList({device})) {}
+  explicit SingleDeviceSharding(Device* device, MemoryKind memory_kind)
+      : llvm::RTTIExtends<SingleDeviceSharding, Sharding>(DeviceList({device}),
+                                                          memory_kind) {}
 };
 
 // Opaque sharding that does not define a fixed semantics for conversion between
@@ -110,7 +117,8 @@ class SingleDeviceSharding final
 class OpaqueSharding : public llvm::RTTIExtends<OpaqueSharding, Sharding> {
  public:
   // Creates an opaque sharding. `Disassemble()` will fail.
-  static std::unique_ptr<OpaqueSharding> Create(DeviceList devices);
+  static std::unique_ptr<OpaqueSharding> Create(DeviceList devices,
+                                                MemoryKind memory_kind);
 
   // Sharding implementation.
 
@@ -127,7 +135,7 @@ class OpaqueSharding : public llvm::RTTIExtends<OpaqueSharding, Sharding> {
   static char ID;  // NOLINT
 
  private:
-  explicit OpaqueSharding(DeviceList devices);
+  explicit OpaqueSharding(DeviceList devices, MemoryKind memory_kind);
 };
 
 // Opaque sharding that does not define a fixed semantics for conversion between
@@ -139,7 +147,8 @@ class ConcreteSharding : public llvm::RTTIExtends<ConcreteSharding, Sharding> {
   // Creates a concrete sharding that may contain non-identical shard shapes.
   // REQUIRES: devices.size() == shard_shapes.size()
   static std::unique_ptr<ConcreteSharding> Create(
-      DeviceList devices, Shape shape, std::vector<Shape> shard_shapes);
+      DeviceList devices, MemoryKind memory_kind, Shape shape,
+      std::vector<Shape> shard_shapes);
 
   Shape shape() const {
     DCHECK(this);
@@ -165,7 +174,7 @@ class ConcreteSharding : public llvm::RTTIExtends<ConcreteSharding, Sharding> {
   static char ID;  // NOLINT
 
  private:
-  ConcreteSharding(DeviceList devices, Shape shape,
+  ConcreteSharding(DeviceList devices, MemoryKind memory_kind, Shape shape,
                    std::vector<Shape> shard_shapes);
 
   Shape shape_;
@@ -180,6 +189,7 @@ class ConcreteEvenSharding
  public:
   // Creates a concrete even sharding.
   static std::unique_ptr<ConcreteEvenSharding> Create(DeviceList devices,
+                                                      MemoryKind memory_kind,
                                                       Shape shape,
                                                       Shape shard_shape);
 
@@ -207,7 +217,8 @@ class ConcreteEvenSharding
   static char ID;  // NOLINT
 
  private:
-  ConcreteEvenSharding(DeviceList devices, Shape shape, Shape shard_shape);
+  ConcreteEvenSharding(DeviceList devices, MemoryKind memory_kind, Shape shape,
+                       Shape shard_shape);
 
   Shape shape_;
   Shape shard_shape_;
@@ -218,7 +229,7 @@ class ShardingParamSharding
     : public llvm::RTTIExtends<ShardingParamSharding, Sharding> {
  public:
   static StatusOr<std::unique_ptr<ShardingParamSharding>> Create(
-      ShardingParam sharding_param, DeviceList devices);
+      ShardingParam sharding_param, DeviceList devices, MemoryKind memory_kind);
 
   StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
   Disassemble(const Shape& shape) const override;
@@ -231,8 +242,10 @@ class ShardingParamSharding
   static char ID;  // NOLINT
 
  private:
-  ShardingParamSharding(ShardingParam sharding_param, DeviceList devices)
-      : llvm::RTTIExtends<ShardingParamSharding, Sharding>(devices),
+  ShardingParamSharding(ShardingParam sharding_param, DeviceList devices,
+                        MemoryKind memory_kind)
+      : llvm::RTTIExtends<ShardingParamSharding, Sharding>(devices,
+                                                           memory_kind),
         sharding_param_(sharding_param) {}
 
   ShardingParam sharding_param_;

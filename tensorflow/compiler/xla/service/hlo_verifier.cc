@@ -1751,6 +1751,9 @@ Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
     case HloOpcode::kAllReduce:
     case HloOpcode::kAllReduceStart:
     case HloOpcode::kAllReduceDone:
+    case HloOpcode::kAllGather:
+    case HloOpcode::kAllGatherStart:
+    case HloOpcode::kAllGatherDone:
     case HloOpcode::kAsyncDone:
     case HloOpcode::kAsyncUpdate:
     case HloOpcode::kAsyncStart:
@@ -2781,6 +2784,9 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
         instruction->opcode() != HloOpcode::kGetTupleElement &&
         instruction->opcode() != HloOpcode::kTuple &&
         instruction->opcode() != HloOpcode::kWhile &&
+        instruction->opcode() != HloOpcode::kCustomCall &&
+        instruction->opcode() != HloOpcode::kReshape &&
+        instruction->opcode() != HloOpcode::kDynamicSlice &&
         absl::c_any_of(instruction->operands(), [](HloInstruction* operand) {
           return ShapeUtil::HasPrimitiveType(operand->shape(), S4) ||
                  ShapeUtil::HasPrimitiveType(operand->shape(), U4);
@@ -2845,6 +2851,7 @@ StatusOr<bool> HloVerifier::Run(
           }
         }));
 
+    TF_RETURN_IF_ERROR(module->buffer_donor_config().Verify(*module));
     TF_RETURN_IF_ERROR(module->dynamic_parameter_binding().Verify(*module));
     TF_RETURN_IF_ERROR(VerifyLayoutConstrainedAllReduce(*module));
     return false;

@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
@@ -1160,7 +1161,9 @@ static Value EncodeMemRef(ImplicitLocOpBuilder &b, MemRefType memref_ty,
   // dynamic values into the struct after all statically know values leads to a
   // better canonicalization and cleaner final LLVM IR.
   if (desc.has_value()) {
-    Value offset = b.create<ConstantOp>(i64(memref_offset));
+    Value offset = (memref_offset == ShapedType::kDynamic)
+                       ? desc->offset(b, loc)
+                       : b.create<ConstantOp>(i64(memref_offset)).getResult();
     auto ptr = LLVM::LLVMPointerType::get(b.getContext());
     Value data = b.create<LLVM::GEPOp>(ptr, memref_ty.getElementType(),
                                        desc->alignedPtr(b, loc), offset);

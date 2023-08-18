@@ -110,6 +110,7 @@ py_strict_library(
 #     tags = [
 #         "gpu",
 #         "no_pip",
+#         "notap",  # b/294137902
 #         "requires-gpu-nvidia",
 #     ],
 #     deps = [

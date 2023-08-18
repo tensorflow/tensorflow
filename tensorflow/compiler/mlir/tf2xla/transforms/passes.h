@@ -59,10 +59,6 @@ std::unique_ptr<OperationPass<ModuleOp>> createLegalizeTFPass(
 std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTFNoFallbackPass(
     bool allow_partial_conversion = false);
 
-/// Replaces types that do not exist in MHLO with equivalent types that do
-/// exist.
-std::unique_ptr<OperationPass<void>> CreateLegalizeTfTypesPass();
-
 /// Converter to be used along with the fallback Tf2Xla patterns below.
 class Tf2XlaTypeConverter : public TypeConverter {
  public:

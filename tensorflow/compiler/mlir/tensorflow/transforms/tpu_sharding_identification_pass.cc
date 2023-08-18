@@ -127,11 +127,13 @@ std::optional<xla::OpSharding> GetShardingFromVariant(
     const OpShardingVariant& sharding_or_op) {
   xla::OpSharding sharding;
   const auto sharding_string = GetShardingStringFromVariant(sharding_or_op);
-  if (sharding_string && sharding.ParseFromString(sharding_string->str())) {
-    return sharding;
-  } else {
+  if (!sharding_string) return std::nullopt;
+  if (tensorflow::DecodeShardingAttribute(sharding_string->str(), sharding,
+                                          false)
+          .failed()) {
     return std::nullopt;
   }
+  return sharding;
 }
 
 // Converts an op-sharding vector into a string attr using the builder.

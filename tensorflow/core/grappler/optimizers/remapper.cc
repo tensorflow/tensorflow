@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdlib>
 #include <map>
 #include <set>
+#include <string>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -2909,6 +2910,12 @@ void CopyMatMulAttributes(const NodeDef& matmul, NodeDef* fused_matmul,
     auto& activation_attr = activation->attr();
     (*attr)["leakyrelu_alpha"] = activation_attr.at("alpha");
   }
+  if (IsMKLEnabled()) {
+    auto input_shapes = src_attr.find("_input_shapes");
+    if (input_shapes != src_attr.end()) {
+      (*attr)["_input_shapes"] = input_shapes->second;
+    }
+  }
 }
 
 void CopyBatchMatMulAttributes(const NodeDef& batchmatmul,
@@ -2921,6 +2928,12 @@ void CopyBatchMatMulAttributes(const NodeDef& batchmatmul,
   (*attr)["T"] = src_attr.at("T");
   (*attr)["adj_x"] = src_attr.at("adj_x");
   (*attr)["adj_y"] = src_attr.at("adj_y");
+  if (IsMKLEnabled()) {
+    auto input_shapes = src_attr.find("_input_shapes");
+    if (input_shapes != src_attr.end()) {
+      (*attr)["_input_shapes"] = input_shapes->second;
+    }
+  }
 }
 
 void SetFusedOpAttributes(NodeDef* fused,
@@ -2960,6 +2973,7 @@ Status AddFusedContractionNode(RemapperContext* ctx,
     CopyDepthwiseConv2dNativeAttributes(contraction, &fused_op);
   } else if (IsMatMul(contraction)) {
     fused_op.set_op(kFusedMatMul);
+    AddInputShapesAttr(*ctx, matched.contraction);
     CopyMatMulAttributes(contraction, &fused_op);
   } else if (IsConv3D(contraction)) {
     fused_op.set_op(kFusedConv3D);
@@ -2997,7 +3011,7 @@ Status AddFusedContractionNode(RemapperContext* ctx,
   // attr and the value of alpha in case of LeakyRelu activation
 
   // creating a copy of the contraction
-  fused_op.CopyFrom(contraction);
+  fused_op = contraction;
 
   auto* attr = fused_op.mutable_attr();
   auto contraction_fused_ops_list =
@@ -3065,6 +3079,7 @@ Status AddFusedContractionNode(
     CopyDepthwiseConv2dNativeAttributes(contraction, &fused_op);
   } else if (IsMatMul(contraction)) {
     fused_op.set_op(kFusedMatMul);
+    AddInputShapesAttr(*ctx, matched.contraction);
     CopyMatMulAttributes(contraction, &fused_op, &activation);
   } else if (IsConv3D(contraction)) {
     fused_op.set_op(kFusedConv3D);
@@ -3256,6 +3271,7 @@ Status AddFusedContractionNode(RemapperContext* ctx,
     AddInputShapesAttr(*ctx, matched.contraction);
     CopyConv2DAttributes(contraction, &contraction_node);
   } else if (IsMatMul(contraction)) {
+    AddInputShapesAttr(*ctx, matched.contraction);
     contraction_node.set_op(kFusedMatMul);
     CopyMatMulAttributes(contraction, &contraction_node);
   } else if (IsConv3D(contraction)) {
@@ -4490,7 +4506,8 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
         IsDepthwiseConv2dNative(ctx.graph_view.graph()->node(i)) ||
         IsBiasAdd(ctx.graph_view.graph()->node(i)) ||
         IsTranspose(ctx.graph_view.graph()->node(i)) ||
-        IsSigmoid(ctx.graph_view.graph()->node(i))) {
+        IsSigmoid(ctx.graph_view.graph()->node(i)) ||
+        IsMatMul(ctx.graph_view.graph()->node(i))) {
       AddInputShapesAttr(ctx, i);
     }
 
@@ -4600,7 +4617,8 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
         // We need to infer what is the shape of sigmoid
         AddInputShapesAttr(ctx, sigmoid_idx);
         const NodeDef* sigmoid = ctx.graph_view.GetNode(sigmoid_idx)->node();
-
+        const int intra_op_parallelism_threads =
+            item.optimization_options().intra_op_parallelism_threads;
         double total_mflops =
             CalculateNodeMFlops(AttrSlice(*sigmoid), "Sigmoid");
         double thr =
@@ -4611,7 +4629,7 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
           // so we are not going to rewrite node
           replace = false;
         }
-#endif
+#endif  // DNNL_AARCH64_USE_ACL
         if (replace) {
           TF_RETURN_IF_ERROR(
               ReplaceSigmoidMulWithSwish(&ctx, sigmoidmul_matched_nodes_map,

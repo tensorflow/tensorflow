@@ -64,6 +64,7 @@ void CreateXSpace(XSpace* space, int first_device_latency,
   event2.AddStatValue(*host_plane.GetOrCreateStatMetadata("tf_op"),
                       *host_plane.GetOrCreateStatMetadata("Conv2D"));
 
+  int64_t program_id = 1;
   XPlaneBuilder device_plane(space->add_planes());
   device_plane.SetName(GpuPlaneName(0));
   device_plane.SetId(0);
@@ -75,10 +76,13 @@ void CreateXSpace(XSpace* space, int first_device_latency,
   event3.SetDurationNs(first_device_latency);
   event3.AddStatValue(
       *device_plane.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kHloOp)),
-      *device_plane.GetOrCreateStatMetadata("slice"));
+      *device_plane.GetOrCreateStatMetadata("custom-call"));
   event3.AddStatValue(*device_plane.GetOrCreateStatMetadata(
                           GetStatTypeStr(StatType::kHloModule)),
                       *device_plane.GetOrCreateStatMetadata("test_module"));
+  event3.AddStatValue(*device_plane.GetOrCreateStatMetadata(
+                          GetStatTypeStr(StatType::kProgramId)),
+                      program_id);
 
   XPlaneBuilder device_plane_2(space->add_planes());
   device_plane_2.SetName(GpuPlaneName(1));
@@ -91,10 +95,13 @@ void CreateXSpace(XSpace* space, int first_device_latency,
   event5.SetDurationNs(second_device_latency);
   event5.AddStatValue(
       *device_plane.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kHloOp)),
-      *device_plane.GetOrCreateStatMetadata("slice"));
+      *device_plane.GetOrCreateStatMetadata("custom-call"));
   event5.AddStatValue(*device_plane.GetOrCreateStatMetadata(
                           GetStatTypeStr(StatType::kHloModule)),
                       *device_plane.GetOrCreateStatMetadata("test_module"));
+  event5.AddStatValue(*device_plane.GetOrCreateStatMetadata(
+                          GetStatTypeStr(StatType::kProgramId)),
+                      program_id);
 }
 
 void CreateXSpaceWithFingerprint(XSpace* space, int first_device_latency,
@@ -150,9 +157,10 @@ void CreateXSpaceWithFingerprint(XSpace* space, int first_device_latency,
     (*attributes.mutable_map())["fingerprint_before_lhs"] = "08a5";
     root->add_frontend_attributes(attributes);
     xla::HloModuleProto hlo_module_proto = module->ToProto();
+    hlo_module_proto.set_id(1);
     xla::HloProto hlo_proto;
     *hlo_proto.mutable_hlo_module() = hlo_module_proto;
-    int64_t program_id = 0;
+    int64_t program_id = 1;
     tsl::profiler::XEventMetadata* event_metadata =
         metadata_plane.GetOrCreateEventMetadata(program_id);
     event_metadata->set_name(tsl::profiler::HloModuleNameWithProgramId(
@@ -189,7 +197,7 @@ TEST(XplaneToProfiledInstructionsProtoTest,
       ConvertXplaneToProfiledInstructionsProto(path, &profile_proto).ok());
   EXPECT_EQ(profile_proto.costs_size(), 1);
   EXPECT_EQ(profile_proto.costs(0).cost_us(), 10);
-  EXPECT_EQ(profile_proto.costs(0).name(), "slice");
+  EXPECT_EQ(profile_proto.costs(0).name(), "custom-call");
 }
 
 TEST(XplaneToProfiledInstructionsProtoTest,
@@ -214,7 +222,7 @@ TEST(XplaneToProfiledInstructionsProtoTest,
       ConvertXplaneToProfiledInstructionsProto(path, &profile_proto).ok());
   EXPECT_EQ(profile_proto.costs_size(), 1);
   EXPECT_EQ(profile_proto.costs(0).cost_us(), 10);
-  EXPECT_EQ(profile_proto.costs(0).name(), "08a5::slice");
+  EXPECT_EQ(profile_proto.costs(0).name(), "08a5::custom-call");
 }
 
 }  // namespace

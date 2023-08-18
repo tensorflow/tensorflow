@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/python/ifrt/device.h"
+#include "tensorflow/compiler/xla/python/ifrt/memory.h"
 #include "tensorflow/compiler/xla/python/ifrt/serdes.h"
 #include "tensorflow/compiler/xla/python/ifrt/shape.h"
 #include "tensorflow/compiler/xla/python/ifrt/sharding.h"
@@ -47,6 +48,9 @@ class SingleDeviceShardingSerDes
         llvm::cast<SingleDeviceSharding>(serializable);
     SingleDeviceShardingProto proto;
     proto.set_device_id(sharding.devices().front()->id());
+    if (sharding.memory_kind().memory_kind().has_value()) {
+      proto.set_memory_kind(std::string(*sharding.memory_kind().memory_kind()));
+    }
     return proto.SerializeAsString();
   }
 
@@ -63,7 +67,11 @@ class SingleDeviceShardingSerDes
     TF_ASSIGN_OR_RETURN(
         Device * device,
         deserialize_sharding_options->lookup_device(proto.device_id()));
-    return SingleDeviceSharding::Create(device);
+    MemoryKind memory_kind;
+    if (proto.has_memory_kind()) {
+      memory_kind = MemoryKind(proto.memory_kind());
+    }
+    return SingleDeviceSharding::Create(device, memory_kind);
   }
 
   static char ID;  // NOLINT
@@ -81,6 +89,9 @@ class OpaqueShardingSerDes
     const OpaqueSharding& sharding = llvm::cast<OpaqueSharding>(serializable);
     OpaqueShardingProto proto;
     *proto.mutable_devices() = sharding.devices().ToProto();
+    if (sharding.memory_kind().memory_kind().has_value()) {
+      proto.set_memory_kind(std::string(*sharding.memory_kind().memory_kind()));
+    }
     return proto.SerializeAsString();
   }
 
@@ -99,7 +110,11 @@ class OpaqueShardingSerDes
         auto devices,
         DeviceList::FromProto(deserialize_sharding_options->lookup_device,
                               proto.devices()));
-    return OpaqueSharding::Create(std::move(devices));
+    MemoryKind memory_kind;
+    if (proto.has_memory_kind()) {
+      memory_kind = MemoryKind(proto.memory_kind());
+    }
+    return OpaqueSharding::Create(std::move(devices), memory_kind);
   }
 
   static char ID;  // NOLINT
@@ -118,6 +133,9 @@ class ConcreteShardingSerDes
         llvm::cast<ConcreteSharding>(serializable);
     ConcreteShardingProto proto;
     *proto.mutable_devices() = sharding.devices().ToProto();
+    if (sharding.memory_kind().memory_kind().has_value()) {
+      proto.set_memory_kind(std::string(*sharding.memory_kind().memory_kind()));
+    }
     *proto.mutable_shape() = sharding.shape().ToProto();
     for (const Shape& shape : sharding.shard_shapes()) {
       *proto.add_shard_shapes() = shape.ToProto();
@@ -140,6 +158,10 @@ class ConcreteShardingSerDes
         auto devices,
         DeviceList::FromProto(deserialize_sharding_options->lookup_device,
                               proto.devices()));
+    MemoryKind memory_kind;
+    if (proto.has_memory_kind()) {
+      memory_kind = MemoryKind(proto.memory_kind());
+    }
     TF_ASSIGN_OR_RETURN(auto shape, Shape::FromProto(proto.shape()));
     std::vector<Shape> shard_shapes;
     shard_shapes.reserve(proto.shard_shapes_size());
@@ -148,8 +170,8 @@ class ConcreteShardingSerDes
                           Shape::FromProto(shard_shape_proto));
       shard_shapes.push_back(std::move(shard_shape));
     }
-    return ConcreteSharding::Create(std::move(devices), std::move(shape),
-                                    std::move(shard_shapes));
+    return ConcreteSharding::Create(std::move(devices), memory_kind,
+                                    std::move(shape), std::move(shard_shapes));
   }
 
   static char ID;  // NOLINT
@@ -168,6 +190,9 @@ class ConcreteEvenShardingSerDes
         llvm::cast<ConcreteEvenSharding>(serializable);
     ConcreteEvenShardingProto proto;
     *proto.mutable_devices() = sharding.devices().ToProto();
+    if (sharding.memory_kind().memory_kind().has_value()) {
+      proto.set_memory_kind(std::string(*sharding.memory_kind().memory_kind()));
+    }
     *proto.mutable_shape() = sharding.shape().ToProto();
     *proto.mutable_shard_shape() = sharding.shard_shape().ToProto();
     return proto.SerializeAsString();
@@ -188,10 +213,15 @@ class ConcreteEvenShardingSerDes
         auto devices,
         DeviceList::FromProto(deserialize_sharding_options->lookup_device,
                               proto.devices()));
+    MemoryKind memory_kind;
+    if (proto.has_memory_kind()) {
+      memory_kind = MemoryKind(proto.memory_kind());
+    }
     TF_ASSIGN_OR_RETURN(auto shape, Shape::FromProto(proto.shape()));
     TF_ASSIGN_OR_RETURN(auto shard_shape,
                         Shape::FromProto(proto.shard_shape()));
-    return ConcreteEvenSharding::Create(std::move(devices), std::move(shape),
+    return ConcreteEvenSharding::Create(std::move(devices), memory_kind,
+                                        std::move(shape),
                                         std::move(shard_shape));
   }
 

@@ -54,7 +54,7 @@ Status DeserializeRpcResponseToCacheEntry<GetTpuProgramResponseExternal>(
     });
     // When we lookup from remote cache, we fetch a TPU program for a specific
     // core, hence we allocate TPU program group for a single program.
-    auto tpu_program_group = absl::make_unique<TpuProgramGroup>();
+    auto tpu_program_group = std::make_unique<TpuProgramGroup>();
 
     // TODO(b/166575150): can be optimized by sending the buffer over the gRPC
     // without an extra deserializing.
@@ -113,7 +113,6 @@ xla::StatusOr<std::vector<::grpc::Slice>> SerializeCacheEntryToBufferSlices(
     return errors::Internal("Failed to serialize TPU program.");
   }
   header.set_is_empty(false);
-
 
   bool may_modify_variables =
       tpu_program_group->may_modify_variables(cache_entry.core_index());

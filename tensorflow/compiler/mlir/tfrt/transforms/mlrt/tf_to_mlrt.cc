@@ -33,7 +33,9 @@ limitations under the License.
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
 #include "tensorflow/compiler/mlir/tfrt/constants.h"
@@ -113,6 +115,23 @@ class FuncOpSignatureConversion final
   mlir::TypeConverter &type_converter_;
   const llvm::DenseMap<llvm::StringRef, llvm::SmallVector<mlir::Type>>
       &function_call_site_input_types_;
+};
+
+// Convert tf_mlrt::AsyncWhile's signature to tf_mlrt::TFTensorType
+class TFAsyncWhileOpConversion
+    : public mlir::OpConversionPattern<tf_mlrt::TFAsyncWhileOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      tf_mlrt::TFAsyncWhileOp op, OpAdaptor adaptor,
+      mlir::ConversionPatternRewriter &rewriter) const override {
+    auto new_op = rewriter.create<tf_mlrt::AsyncWhileOp>(
+        op.getLoc(), op.getResultTypes(), adaptor.getOperands(),
+        op->getAttrs());
+    rewriter.replaceOp(op, new_op.getResults());
+    return mlir::success();
+  }
 };
 
 class TFAwaitOpConversion final
@@ -1053,6 +1072,8 @@ class TfToMlrtConversionPass
     target.addLegalDialect<mlrt::compiler::MlrtDialect,
                            tensorflow::tf_mlrt::TensorflowMlrtDialect>();
     target.addIllegalDialect<mlir::TF::TensorFlowDialect>();
+
+    target.addIllegalOp<tf_mlrt::TFAsyncWhileOp>();
     target.addIllegalOp<tf_mlrt::TFAwaitOp>();
     target.addIllegalOp<tf_mlrt::TFPromiseOp>();
     target.addIllegalOp<tf_mlrt::TFMapFnOp>();
@@ -1078,7 +1099,9 @@ class TfToMlrtConversionPass
     target.addDynamicallyLegalOp<mlir::func::CallOp>(
         [this](mlir::func::CallOp op) {
           for (auto operand : op.getOperands()) {
-            if (!type_converter_.isLegal(operand.getType())) return false;
+            if (!type_converter_.isLegal(operand.getType())) {
+              return false;
+            }
           }
           return true;
         });
@@ -1090,7 +1113,8 @@ class TfToMlrtConversionPass
                  SetResourceOpConversion, TFAwaitOpConversion,
                  TFPromiseOpConversion>(&context);
     patterns.add<BatchFunctionOpConversion, CaseOpConversion, CondOpConversion,
-                 TFMapFnOpConversion>(type_converter_, &context);
+                 TFAsyncWhileOpConversion, TFMapFnOpConversion>(type_converter_,
+                                                                &context);
     patterns.add<ExecuteOpConversion>(&context, &symbol_table, &type_converter_,
                                       &execute_op_registry_, &op_kernel_cache_,
                                       &fallback_state_);

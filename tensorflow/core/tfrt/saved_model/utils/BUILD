@@ -10,6 +10,9 @@ package_group(
     name = "friends",
     packages = [
         # Authorized users go here.
+        "//tensorflow/core/tfrt/saved_model/...",
+        "//learning/brain/tfrt/cpp_tests/gpu_inference/...",
+        "//tensorflow/compiler/mlir/tfrt/...",
     ],
 )
 

@@ -189,6 +189,17 @@ typedef enum {
   kTfLiteBuiltinBitcast = 159,
   kTfLiteBuiltinBitwiseXor = 160,
   kTfLiteBuiltinRightShift = 161,
+  kTfLiteBuiltinStablehloLogistic = 162,
+  kTfLiteBuiltinStablehloAdd = 163,
+  kTfLiteBuiltinStablehloDivide = 164,
+  kTfLiteBuiltinStablehloMultiply = 165,
+  kTfLiteBuiltinStablehloMaximum = 166,
+  kTfLiteBuiltinStablehloReshape = 167,
+  kTfLiteBuiltinStablehloClamp = 168,
+  kTfLiteBuiltinStablehloConcatenate = 169,
+  kTfLiteBuiltinStablehloBroadcastInDim = 170,
+  kTfLiteBuiltinStablehloConvolution = 171,
+  kTfLiteBuiltinStablehloSlice = 172,
 } TfLiteBuiltinOperator;
 
 #ifdef __cplusplus

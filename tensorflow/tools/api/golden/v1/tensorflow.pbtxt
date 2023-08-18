@@ -1325,6 +1325,10 @@ tf_module {
     argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "fftnd"
+    argspec: "args=[\'input\', \'fft_length\', \'axes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "fill"
     argspec: "args=[\'dims\', \'value\', \'name\', \'layout\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
@@ -1489,6 +1493,10 @@ tf_module {
     argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "ifftnd"
+    argspec: "args=[\'input\', \'fft_length\', \'axes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "igamma"
     argspec: "args=[\'a\', \'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -1527,6 +1535,10 @@ tf_module {
   member_method {
     name: "invert_permutation"
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "irfftnd"
+    argspec: "args=[\'input\', \'fft_length\', \'axes\', \'Treal\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\'], "
   }
   member_method {
     name: "is_finite"
@@ -1999,6 +2011,10 @@ tf_module {
   member_method {
     name: "reverse_v2"
     argspec: "args=[\'tensor\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "rfftnd"
+    argspec: "args=[\'input\', \'fft_length\', \'axes\', \'Tcomplex\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'complex64\'>\", \'None\'], "
   }
   member_method {
     name: "rint"

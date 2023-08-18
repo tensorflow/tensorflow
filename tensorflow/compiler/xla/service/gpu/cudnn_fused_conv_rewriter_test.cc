@@ -15,10 +15,17 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/cudnn_fused_conv_rewriter.h"
 
+#include <array>
 #include <string>
 #include <string_view>
 
 #include "absl/strings/str_replace.h"
+
+#if GOOGLE_CUDA
+#include "third_party/gpus/cuda/include/cuda.h"
+#include "third_party/gpus/cudnn/cudnn.h"
+#endif
+
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/convert_mover.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
@@ -106,7 +113,13 @@ class CudnnFusedConvRewriterTest : public GpuCodegenTest {
           << optimized_hlo_string;
       EXPECT_THAT(optimized_hlo_string,
                   HasSubstr(kCudnnConvBiasActivationForwardCallTarget));
-      EXPECT_TRUE(RunAndCompare(hlo_with_new_type, ErrorSpec{0.01}))
+
+      TF_ASSERT_OK_AND_ASSIGN(auto module,
+                              ParseAndReturnVerifiedModule(hlo_with_new_type));
+      DebugOptions debug_opts = module->config().debug_options();
+      debug_opts.set_xla_gpu_use_runtime_fusion(true);
+      module->config().set_debug_options(debug_opts);
+      EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{0.01}))
           << optimized_hlo_string;
     }
   }
@@ -137,6 +150,81 @@ class CudnnFusedConvRewriterTest : public GpuCodegenTest {
       EXPECT_THAT(optimized_hlo_string, HasSubstr(kCudnnConvForwardCallTarget));
       EXPECT_THAT(optimized_hlo_string,
                   Not(HasSubstr(kCudnnConvBiasActivationForwardCallTarget)));
+    }
+  }
+
+  void TestF8(std::string pre_hlo_string, std::string custom_call_string,
+              std::string serialized_graph_string) {
+    if (GetCudaComputeCapability().IsAtLeast(
+            se::CudaComputeCapability::HOPPER)) {
+      // On Hopper and newer architectures, test numerical correctness and
+      // verify the HLO of the Custom Call with operand and return layouts and
+      // the serialized graph based on the full compiler pipeline.
+      std::string optimized_hlo_string = GetOptimizedHlo(pre_hlo_string);
+      EXPECT_THAT(optimized_hlo_string, Not(HasSubstr("Convert")));
+      EXPECT_THAT(optimized_hlo_string, HasSubstr("__cudnn$conv"));
+      EXPECT_TRUE(RunAndCompare(pre_hlo_string, ErrorSpec{0.15, 0.15}))
+          << pre_hlo_string;
+
+      StatusOr<bool> filecheck_result =
+          RunFileCheck(optimized_hlo_string, custom_call_string);
+      ASSERT_TRUE(filecheck_result.ok()) << filecheck_result.status();
+      EXPECT_TRUE(*filecheck_result);
+
+      filecheck_result =
+          RunFileCheck(optimized_hlo_string, serialized_graph_string);
+      ASSERT_TRUE(filecheck_result.ok()) << filecheck_result.status();
+      EXPECT_TRUE(*filecheck_result);
+    } else {
+      // On older architectures, disregard layout information and only verify
+      // the basic configuration of the convolution Custom Call using the number
+      // of operands and the window_size and serialized graph attributes based
+      // on the GpuConvRewriter and CudnnFusedConvRewriter passes.
+      std::string::size_type p0 = custom_call_string.find(':');
+      std::string::size_type p1 = custom_call_string.find("custom-call");
+      custom_call_string.erase(p0 + 1, p1 - p0 - 2);
+      p0 = custom_call_string.find(", dim_labels");
+      custom_call_string.erase(p0);
+
+      TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                              ParseAndReturnVerifiedModule(pre_hlo_string));
+      TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                              RunHloPass(GpuConvRewriter(), module.get()));
+      EXPECT_TRUE(changed);
+      RunAndFilecheckHloRewrite(
+          module->ToString(HloPrintOptions{}.set_print_operand_shape(false)),
+          CudnnFusedConvRewriter(
+              se::CudaComputeCapability{se::CudaComputeCapability::HOPPER, 0}),
+          custom_call_string);
+      RunAndFilecheckHloRewrite(
+          module->ToString(HloPrintOptions{}.set_print_operand_shape(false)),
+          CudnnFusedConvRewriter(
+              se::CudaComputeCapability{se::CudaComputeCapability::HOPPER, 0}),
+          serialized_graph_string);
+    }
+  }
+
+  void TestF8Parameterized(std::string template_pre_hlo_string,
+                           std::string template_custom_call_string,
+                           std::string template_serialized_graph_string) {
+    std::array<absl::string_view, 2> types = {"f8e4m3fn", "f8e5m2"};
+    std::array<absl::string_view, 2> clamp_lower = {"-448.", "-57344."};
+    std::array<absl::string_view, 2> clamp_upper = {"448.", "57344."};
+    absl::flat_hash_map<absl::string_view, absl::string_view> replacements;
+    for (int i = 0; i < 2; ++i) {
+      replacements["<<InputType>>"] = types[i];
+      for (int j = 0; j < 2; ++j) {
+        replacements["<<FilterType>>"] = types[j];
+        for (int k = 0; k < 2; ++k) {
+          replacements["<<OutputType>>"] = types[k];
+          replacements["<<ClampLower>>"] = clamp_lower[k];
+          replacements["<<ClampUpper>>"] = clamp_upper[k];
+          TestF8(absl::StrReplaceAll(template_pre_hlo_string, replacements),
+                 absl::StrReplaceAll(template_custom_call_string, replacements),
+                 absl::StrReplaceAll(template_serialized_graph_string,
+                                     replacements));
+        }
+      }
     }
   }
 };
@@ -283,6 +371,31 @@ TEST_F(CudnnFusedConvRewriterTest, TestRelu6) {
       broadcasted_bias = TYPE[1,3,3,64] broadcast(bias), dimensions={3}
       sum = TYPE[1,3,3,64] add(conv, broadcasted_bias)
       ROOT relu6 = TYPE[1,3,3,64] clamp(zeros, sum, sixes)
+    })");
+}
+
+// At time of writing, cudnn runtime fusion cannot handle f16 convs with an odd
+// number of input/output channels.  Check that we don't try to run this conv
+// with runtime fusion (or, if we do, that it works!).
+TEST_F(CudnnFusedConvRewriterTest, TestRelu6OddChannels) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE)) {
+    GTEST_SKIP() << "Conv-Bias-Relu6 fusion is supported and recommended with "
+                    "the Nvidia Ampere+ GPUs.";
+  }
+
+  TestMatchWithAllTypes(R"(
+    HloModule Test
+    ENTRY Test {
+      zeros = TYPE[1,384,1024,32] broadcast(TYPE[] constant(0)), dimensions={}
+      sixes = TYPE[1,384,1024,32] broadcast(TYPE[] constant(6)), dimensions={}
+      input = TYPE[1,769,2049,3] parameter(0)
+      filter = TYPE[32,3,3,3] parameter(1)
+      bias = TYPE[32] parameter(2)
+      conv = TYPE[1,384,1024,32] convolution(input, filter), window={size=3x3 stride=2x2}, dim_labels=b01f_o01i->b01f
+      broadcasted_bias = TYPE[1,384,1024,32] broadcast(bias), dimensions={3}
+      sum = add(conv, broadcasted_bias)
+      ROOT relu6 = clamp(zeros, sum, sixes)
     })");
 }
 
@@ -599,6 +712,409 @@ TEST_F(CudnnFusedConvRewriterTest, TestPreservesFeatureGroupCount) {
     }
   )";
   EXPECT_TRUE(RunAndCompare(kHloString, ErrorSpec{0.01}));
+}
+
+TEST_F(CudnnFusedConvRewriterTest, TestConvF8) {
+#if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8900)
+  GTEST_SKIP() << "FP8 convolutions require CUDA 12 and cuDNN 8.9.";
+#endif
+  TestF8(
+      // pre_hlo
+      R"(
+    HloModule Test
+
+    ENTRY Test {
+       input = f8e4m3fn[1,128,6,6] parameter(0)
+       filter = f8e4m3fn[3,3,128,16] parameter(1)
+       ROOT conv_a = f8e4m3fn[1,16,6,6] convolution(input, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, feature_group_count=1
+
+    })",
+      // custom_call
+      R"(
+// CHECK: [[cudnn_conv_4_0:%[^ ]+]] = (f8e4m3fn[1,6,6,16]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[OPERAND0:%[^ ]+]], [[OPERAND1:%[^ ]+]]), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, custom_call_target="__cudnn$convForwardGraph"
+  )",
+      // serialized_graph
+      R"(
+// CHECK: "serialized_graph":"[[CONV_UID:[0-9]+]]:[f8e4m3fn]conv();"
+      )");
+}
+
+TEST_F(CudnnFusedConvRewriterTest, TestConvScaledOutputF8) {
+#if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8900)
+  GTEST_SKIP() << "FP8 convolutions require CUDA 12 and cuDNN 8.9.";
+#endif
+  TestF8(
+      // pre_hlo
+      R"(
+    HloModule Test
+
+    ENTRY Test {
+       input = f8e4m3fn[1,128,6,6] parameter(0)
+       filter = f8e4m3fn[3,3,128,16] parameter(1)
+       input_f32 = f32[1,128,6,6] convert(input)
+       filter_f32 = f32[3,3,128,16] convert(filter)
+       z_scale = f32[] parameter(2)
+       z_scale_bcast = f32[1,16,6,6] broadcast(z_scale), dimensions={}
+       conv_a = f32[1,16,6,6] convolution(input_f32, filter_f32), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, feature_group_count=1
+       conv_a_scaled = f32[1,16,6,6] multiply(conv_a, z_scale_bcast)
+       c1 = f32[] constant(-448.)
+       c1_bcast = f32[1,16,6,6] broadcast(c1), dimensions={}
+       c2 = f32[] constant(448.)
+       c2_bcast = f32[1,16,6,6] broadcast(c2), dimensions={}
+       conv_a_clamped = f32[1,16,6,6] clamp(c1_bcast, conv_a_scaled, c2_bcast)
+       ROOT conv_f8 = f8e4m3fn[1,16,6,6] convert(conv_a_clamped)
+
+    })",
+      // custom_call
+      R"(
+// CHECK: [[cudnn_conv_4_0:%[^ ]+]] = (f8e4m3fn[1,6,6,16]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[OPERAND0:%[^ ]+]], [[OPERAND1:%[^ ]+]], [[OPERAND2:%[^ ]+]]), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, custom_call_target="__cudnn$convForwardGraph"
+  )",
+      // serialized_graph
+      R"(
+// CHECK: "serialized_graph":"[[CONV_UID:[0-9]+]]:[f32]conv();[[SCALE_UID:[0-9]+]]:[f8e4m3fn]scale([[CONV_UID]]);"
+      )");
+}
+
+TEST_F(CudnnFusedConvRewriterTest, TestConvInvscaledOutputF8) {
+#if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8900)
+  GTEST_SKIP() << "FP8 convolutions require CUDA 12 and cuDNN 8.9.";
+#endif
+  TestF8(
+      // pre_hlo
+      R"(
+    HloModule Test
+
+    ENTRY Test {
+       input = f8e4m3fn[1,128,6,6] parameter(0)
+       filter = f8e4m3fn[3,3,128,16] parameter(1)
+       input_f32 = f32[1,128,6,6] convert(input)
+       filter_f32 = f32[3,3,128,16] convert(filter)
+       z_scale = f32[] parameter(2)
+       z_scale_bcast = f32[1,16,6,6] broadcast(z_scale), dimensions={}
+       conv_a = f32[1,16,6,6] convolution(input_f32, filter_f32), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, feature_group_count=1
+       conv_a_scaled = f32[1,16,6,6] divide(conv_a, z_scale_bcast)
+       c1 = f32[] constant(-448.)
+       c1_bcast = f32[1,16,6,6] broadcast(c1), dimensions={}
+       c2 = f32[] constant(448.)
+       c2_bcast = f32[1,16,6,6] broadcast(c2), dimensions={}
+       conv_a_clamped = f32[1,16,6,6] clamp(c1_bcast, conv_a_scaled, c2_bcast)
+       ROOT conv_f8 = f8e4m3fn[1,16,6,6] convert(conv_a_clamped)
+
+    })",
+      // custom_call
+      R"(
+// CHECK: [[cudnn_conv_4_0:%[^ ]+]] = (f8e4m3fn[1,6,6,16]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[OPERAND0:%[^ ]+]], [[OPERAND1:%[^ ]+]], [[OPERAND2:%[^ ]+]]), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, custom_call_target="__cudnn$convForwardGraph"
+  )",
+      // serialized_graph
+      R"(
+// CHECK: "serialized_graph":"[[CONV_UID:[0-9]+]]:[f32]conv();[[SCALE0_UID:[0-9]+]]:[f8e4m3fn]invscale([[CONV_UID]]);"
+      )");
+}
+
+TEST_F(CudnnFusedConvRewriterTest, TestConvScaledF8Parameterized) {
+#if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8900)
+  GTEST_SKIP() << "FP8 convolutions require CUDA 12 and cuDNN 8.9.";
+#endif
+  TestF8Parameterized(
+      // pre_hlo
+      R"(
+    HloModule Test
+
+    ENTRY Test {
+       input = <<InputType>>[1,128,6,6] parameter(0)
+       filter = <<FilterType>>[3,3,128,16] parameter(1)
+       input_scale = f32[] parameter(2)
+       input_scale_bcast = f32[1,128,6,6] broadcast(input_scale), dimensions={}
+       filter_scale = f32[] parameter(3)
+       filter_scale_bcast = f32[3,3,128,16] broadcast(filter_scale), dimensions={}
+       input_f32 = f32[1,128,6,6] convert(input)
+       input_unscaled = f32[1,128,6,6] multiply(input_f32, input_scale_bcast)
+       filter_f32 = f32[3,3,128,16] convert(filter)
+       filter_unscaled = f32[3,3,128,16] multiply(filter_f32, filter_scale_bcast)
+       z_scale = f32[] parameter(4)
+       z_scale_bcast = f32[1,16,6,6] broadcast(z_scale), dimensions={}
+       conv_a = f32[1,16,6,6] convolution(input_unscaled, filter_unscaled), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, feature_group_count=1
+       conv_a_scaled = f32[1,16,6,6] multiply(conv_a, z_scale_bcast)
+       c1 = f32[] constant(<<ClampLower>>)
+       c1_bcast = f32[1,16,6,6] broadcast(c1), dimensions={}
+       c2 = f32[] constant(<<ClampUpper>>)
+       c2_bcast = f32[1,16,6,6] broadcast(c2), dimensions={}
+       conv_a_clamped = f32[1,16,6,6] clamp(c1_bcast, conv_a_scaled, c2_bcast)
+       ROOT conv_f8 = <<OutputType>>[1,16,6,6] convert(conv_a_clamped)
+
+    })",
+      // custom_call
+      R"(
+// CHECK: [[cudnn_conv_4_0:%[^ ]+]] = (<<OutputType>>[1,6,6,16]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[OPERAND0:%[^ ]+]], [[OPERAND1:%[^ ]+]], [[OPERAND2:%[^ ]+]], [[OPERAND3:%[^ ]+]], [[OPERAND4:%[^ ]+]]), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, custom_call_target="__cudnn$convForwardGraph"
+      )",
+      // serialized_graph
+      R"(
+// CHECK: "serialized_graph":"[[CONV_UID:[0-9]+]]:[f32]conv();[[SCALE0_UID:[0-9]+]]:[f32]scale([[CONV_UID]]);[[SCALE1_UID:[0-9]+]]:[f32]scale([[SCALE0_UID]]);[[SCALE2_UID:[0-9]+]]:[<<OutputType>>]scale([[SCALE1_UID]]);"
+      )");
+}
+
+TEST_F(CudnnFusedConvRewriterTest, TestConvScaledBiasF8) {
+#if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8900)
+  GTEST_SKIP() << "FP8 convolutions require CUDA 12 and cuDNN 8.9.";
+#endif
+  TestF8(
+      // pre_hlo
+      R"(
+    HloModule Test
+
+    ENTRY Test {
+       input = f8e4m3fn[1,128,6,6] parameter(0)
+       filter = f8e4m3fn[3,3,128,16] parameter(1)
+       input_scale = f32[] parameter(2)
+       input_scale_bcast = f32[1,128,6,6] broadcast(input_scale), dimensions={}
+       filter_scale = f32[] parameter(3)
+       filter_scale_bcast = f32[3,3,128,16] broadcast(filter_scale), dimensions={}
+       input_f32 = f32[1,128,6,6] convert(input)
+       input_unscaled = f32[1,128,6,6] multiply(input_f32, input_scale_bcast)
+       filter_f32 = f32[3,3,128,16] convert(filter)
+       filter_unscaled = f32[3,3,128,16] multiply(filter_f32, filter_scale_bcast)
+       bias = f32[1,16,6,6] parameter(4)
+       z_scale = f32[] parameter(5)
+       z_scale_bcast = f32[1,16,6,6] broadcast(z_scale), dimensions={}
+       conv_a = f32[1,16,6,6] convolution(input_unscaled, filter_unscaled), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, feature_group_count=1
+       conv_a_bias = f32[1,16,6,6] add(conv_a, bias)
+       conv_a_scaled = f32[1,16,6,6] multiply(conv_a_bias, z_scale_bcast)
+       c1 = f32[] constant(-448.)
+       c1_bcast = f32[1,16,6,6] broadcast(c1), dimensions={}
+       c2 = f32[] constant(448.)
+       c2_bcast = f32[1,16,6,6] broadcast(c2), dimensions={}
+       conv_a_clamped = f32[1,16,6,6] clamp(c1_bcast, conv_a_scaled, c2_bcast)
+       ROOT conv_f8 = f8e4m3fn[1,16,6,6] convert(conv_a_clamped)
+
+    })",
+      // custom_call
+      R"(
+// CHECK: [[cudnn_conv_4_0:%[^ ]+]] = (f8e4m3fn[1,6,6,16]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[OPERAND0:%[^ ]+]], [[OPERAND1:%[^ ]+]], [[OPERAND2:%[^ ]+]], [[OPERAND3:%[^ ]+]], [[OPERAND4:%[^ ]+]], /*index=5*/[[OPERAND5:%[^ ]+]]), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, custom_call_target="__cudnn$convForwardGraph"
+      )",
+      // serialized_graph
+      R"(
+// CHECK: "serialized_graph":"[[CONV_UID:[0-9]+]]:[f32]conv();[[SCALE0_UID:[0-9]+]]:[f32]scale([[CONV_UID]]);[[SCALE1_UID:[0-9]+]]:[f32]scale([[SCALE0_UID]]);[[ADD_UID:[0-9]+]]:[f32]add([[SCALE1_UID]]);[[SCALE2_UID:[0-9]+]]:[f8e4m3fn]scale([[ADD_UID]]);"
+      )");
+}
+
+TEST_F(CudnnFusedConvRewriterTest, TestConvScaledReluF8) {
+#if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8900)
+  GTEST_SKIP() << "FP8 convolutions require CUDA 12 and cuDNN 8.9.";
+#endif
+  TestF8(
+      // pre_hlo
+      R"(
+    HloModule Test
+
+    ENTRY Test {
+       input = f8e4m3fn[1,128,6,6] parameter(0)
+       filter = f8e4m3fn[3,3,128,16] parameter(1)
+       input_f32 = f32[1,128,6,6] convert(input)
+       filter_f32 = f32[3,3,128,16] convert(filter)
+       z_scale = f32[] parameter(2)
+       z_scale_bcast = f32[1,16,6,6] broadcast(z_scale), dimensions={}
+       c = f32[] constant(0)
+       c_bcast = f32[1,16,6,6] broadcast(c), dimensions={}
+       conv_a = f32[1,16,6,6] convolution(input_f32, filter_f32), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, feature_group_count=1
+       relu_a = f32[1,16,6,6] maximum(conv_a, c_bcast)
+       relu_a_scaled = f32[1,16,6,6] multiply(relu_a, z_scale_bcast)
+       c1 = f32[] constant(-448.)
+       c1_bcast = f32[1,16,6,6] broadcast(c1), dimensions={}
+       c2 = f32[] constant(448.)
+       c2_bcast = f32[1,16,6,6] broadcast(c2), dimensions={}
+       relu_a_clamped = f32[1,16,6,6] clamp(c1_bcast, relu_a_scaled, c2_bcast)
+       ROOT conv_f8 = f8e4m3fn[1,16,6,6] convert(relu_a_clamped)
+
+    })",
+      // custom_call
+      R"(
+// CHECK: [[cudnn_conv_4_0:%[^ ]+]] = (f8e4m3fn[1,6,6,16]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[OPERAND0:%[^ ]+]], [[OPERAND1:%[^ ]+]], [[OPERAND2:%[^ ]+]]), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, custom_call_target="__cudnn$convForwardGraph"
+  )",
+      // serialized_graph
+      R"(
+// CHECK: "serialized_graph":"[[CONV_UID:[0-9]+]]:[f32]conv();[[RELU_UID:[0-9]+]]:[f32]relu([[CONV_UID]]);[[SCALE0_UID:[0-9]+]]:[f8e4m3fn]scale([[RELU_UID]]);"
+      )");
+}
+
+TEST_F(CudnnFusedConvRewriterTest, TestConvAmaxF8) {
+  TestF8(
+      // pre_hlo
+      R"(
+    HloModule Test
+
+    apply {
+      a = f32[] parameter(0)
+      b = f32[] parameter(1)
+      ROOT c = f32[] maximum(a, b)
+    }
+
+    ENTRY Test {
+       input = f8e4m3fn[1,128,6,6] parameter(0)
+       filter = f8e4m3fn[3,3,128,16] parameter(1)
+       input_scale = f32[] parameter(2)
+       input_scale_bcast = f32[1,128,6,6] broadcast(input_scale), dimensions={}
+       filter_scale = f32[] parameter(3)
+       filter_scale_bcast = f32[3,3,128,16] broadcast(filter_scale), dimensions={}
+       input_f32 = f32[1,128,6,6] convert(input)
+       input_unscaled = f32[1,128,6,6] multiply(input_f32, input_scale_bcast)
+       filter_f32 = f32[3,3,128,16] convert(filter)
+       filter_unscaled = f32[3,3,128,16] multiply(filter_f32, filter_scale_bcast)
+       conv_a = f32[1,16,6,6] convolution(input_unscaled, filter_unscaled), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, feature_group_count=1
+       z_scale = f32[] parameter(4)
+       z_scale_bcast = f32[1,16,6,6] broadcast(z_scale), dimensions={}
+       conv_a_scaled = f32[1,16,6,6] multiply(conv_a, z_scale_bcast)
+       c1 = f32[] constant(-448.)
+       c1_bcast = f32[1,16,6,6] broadcast(c1), dimensions={}
+       c2 = f32[] constant(448.)
+       c2_bcast = f32[1,16,6,6] broadcast(c2), dimensions={}
+       conv_a_clamped = f32[1,16,6,6] clamp(c1_bcast, conv_a_scaled, c2_bcast)
+       conv_a_clamped_f8 = f8e4m3fn[1,16,6,6] convert(conv_a_clamped)
+       abs_conv_a = f32[1,16,6,6] abs(conv_a)
+       c0 = f32[] constant(-inf)
+       amax = f32[] reduce(abs_conv_a, c0), dimensions={0,1,2,3}, to_apply=apply
+       ROOT conv_f8 = (f8e4m3fn[1,16,6,6], f32[]) tuple(conv_a_clamped_f8, amax)
+
+    })",
+      // custom_call
+      R"(
+// CHECK: [[cudnn_conv_4_0:%[^ ]+]] = (f8e4m3fn[1,6,6,16]{3,2,1,0}, f32[], u8[{{.*}}]{0}) custom-call([[OPERAND0:%[^ ]+]], [[OPERAND1:%[^ ]+]], [[OPERAND2:%[^ ]+]], [[OPERAND3:%[^ ]+]], [[OPERAND4:%[^ ]+]]), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, custom_call_target="__cudnn$convForwardGraph"
+    )",
+      // serialized_graph
+      R"(
+// CHECK: "serialized_graph":"[[CONV_UID:[0-9]+]]:[f32]conv();[[SCALE0_UID:[0-9]+]]:[f32]scale([[CONV_UID]]);[[SCALE1_UID:[0-9]+]]:[f32]scale([[SCALE0_UID]]);[[SCALE2_UID:[0-9]+]]:[f8e4m3fn]scale([[SCALE1_UID]]);[[AMAX_UID:[0-9]+]]:[f32]amax([[SCALE1_UID]]);"
+      )");
+}
+
+TEST_F(CudnnFusedConvRewriterTest, TestConvReluAmaxF8) {
+  TestF8(
+      // pre_hlo
+      R"(
+    HloModule Test
+
+    apply {
+      a = f32[] parameter(0)
+      b = f32[] parameter(1)
+      ROOT c = f32[] maximum(a, b)
+    }
+
+    ENTRY Test {
+       input = f8e4m3fn[1,128,6,6] parameter(0)
+       filter = f8e4m3fn[3,3,128,16] parameter(1)
+       input_scale = f32[] parameter(2)
+       input_scale_bcast = f32[1,128,6,6] broadcast(input_scale), dimensions={}
+       filter_scale = f32[] parameter(3)
+       filter_scale_bcast = f32[3,3,128,16] broadcast(filter_scale), dimensions={}
+       input_f32 = f32[1,128,6,6] convert(input)
+       input_unscaled = f32[1,128,6,6] multiply(input_f32, input_scale_bcast)
+       filter_f32 = f32[3,3,128,16] convert(filter)
+       filter_unscaled = f32[3,3,128,16] multiply(filter_f32, filter_scale_bcast)
+       c = f32[] constant(0)
+       c_bcast = f32[1,16,6,6] broadcast(c), dimensions={}
+       conv_a = f32[1,16,6,6] convolution(input_unscaled, filter_unscaled), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, feature_group_count=1
+       relu_a = f32[1,16,6,6] maximum(conv_a, c_bcast)
+       z_scale = f32[] parameter(4)
+       z_scale_bcast = f32[1,16,6,6] broadcast(z_scale), dimensions={}
+       relu_a_scaled = f32[1,16,6,6] multiply(relu_a, z_scale_bcast)
+       c1 = f32[] constant(-448.)
+       c1_bcast = f32[1,16,6,6] broadcast(c1), dimensions={}
+       c2 = f32[] constant(448.)
+       c2_bcast = f32[1,16,6,6] broadcast(c2), dimensions={}
+       relu_a_clamped = f32[1,16,6,6] clamp(c1_bcast, relu_a_scaled, c2_bcast)
+       relu_a_clamped_f8 = f8e4m3fn[1,16,6,6] convert(relu_a_clamped)
+       abs_relu_a = f32[1,16,6,6] abs(relu_a)
+       c0 = f32[] constant(-inf)
+       amax = f32[] reduce(abs_relu_a, c0), dimensions={0,1,2,3}, to_apply=apply
+       ROOT conv_f8 = (f8e4m3fn[1,16,6,6], f32[]) tuple(relu_a_clamped_f8, amax)
+
+    })",
+      // custom_call
+      R"(
+// CHECK: [[cudnn_conv_4_0:%[^ ]+]] = (f8e4m3fn[1,6,6,16]{3,2,1,0}, f32[], u8[{{.*}}]{0}) custom-call([[OPERAND0:%[^ ]+]], [[OPERAND1:%[^ ]+]], [[OPERAND2:%[^ ]+]], [[OPERAND3:%[^ ]+]], [[OPERAND4:%[^ ]+]]), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, custom_call_target="__cudnn$convForwardGraph"
+    )",
+      // serialized_graph
+      R"(
+// CHECK: "serialized_graph":"[[CONV_UID:[0-9]+]]:[f32]conv();[[SCALE0_UID:[0-9]+]]:[f32]scale([[CONV_UID]]);[[SCALE1_UID:[0-9]+]]:[f32]scale([[SCALE0_UID]]);[[RELU_UID:[0-9]+]]:[f32]relu([[SCALE1_UID]]);[[SCALE2_UID:[0-9]+]]:[f8e4m3fn]scale([[RELU_UID]]);[[AMAX_UID:[0-9]+]]:[f32]amax([[RELU_UID]]);"
+      )");
+}
+
+TEST_F(CudnnFusedConvRewriterTest, TestConvScaledOutputMultipleUsersF8) {
+#if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8900)
+  GTEST_SKIP() << "FP8 convolutions require CUDA 12 and cuDNN 8.9.";
+#endif
+  TestF8(
+      // pre_hlo
+      R"(
+    HloModule Test
+
+    ENTRY Test {
+       input = f8e4m3fn[1,128,6,6] parameter(0)
+       filter = f8e4m3fn[3,3,128,16] parameter(1)
+       input_f32 = f32[1,128,6,6] convert(input)
+       filter_f32 = f32[3,3,128,16] convert(filter)
+       z_scale0 = f32[] parameter(2)
+       z_scale0_bcast = f32[1,16,6,6] broadcast(z_scale0), dimensions={}
+       z_scale1 = f32[] parameter(3)
+       z_scale1_bcast = f32[1,16,6,6] broadcast(z_scale1), dimensions={}
+       conv_a = f32[1,16,6,6] convolution(input_f32, filter_f32), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, feature_group_count=1
+       conv_a_scaled0 = f32[1,16,6,6] multiply(conv_a, z_scale0_bcast)
+       conv_a_scaled1 = f32[1,16,6,6] multiply(conv_a, z_scale1_bcast)
+       c1 = f32[] constant(-448.)
+       c1_bcast = f32[1,16,6,6] broadcast(c1), dimensions={}
+       c2 = f32[] constant(448.)
+       c2_bcast = f32[1,16,6,6] broadcast(c2), dimensions={}
+       conv_a_clamped0 = f32[1,16,6,6] clamp(c1_bcast, conv_a_scaled0, c2_bcast)
+       conv_a_clamped1 = f32[1,16,6,6] clamp(c1_bcast, conv_a_scaled1, c2_bcast)
+       conv_a_convert0 = f8e4m3fn[1,16,6,6] convert(conv_a_clamped0)
+       conv_a_convert1 = f8e4m3fn[1,16,6,6] convert(conv_a_clamped1)
+       ROOT conv_f8 = (f8e4m3fn[1,16,6,6], f8e4m3fn[1,16,6,6]) tuple(conv_a_convert0, conv_a_convert1)
+
+    })",
+      // custom_call
+      R"(
+// CHECK: [[cudnn_conv_4_0:%[^ ]+]] = (f32[1,6,6,16]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[OPERAND0:%[^ ]+]], [[OPERAND1:%[^ ]+]]), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, custom_call_target="__cudnn$convForwardGraph"
+  )",
+      // serialized_graph
+      R"(
+// CHECK: "serialized_graph":"[[CONV_UID:[0-9]+]]:[f32]conv();"
+      )");
+}
+
+TEST_F(CudnnFusedConvRewriterTest, TestConvScaledOutputUnsupportedUserF8) {
+#if (CUDA_VERSION < 12000 || CUDNN_VERSION < 8900)
+  GTEST_SKIP() << "FP8 convolutions require CUDA 12 and cuDNN 8.9.";
+#endif
+  TestF8(
+      // pre_hlo
+      R"(
+    HloModule Test
+
+    ENTRY Test {
+       input = f8e4m3fn[1,128,6,6] parameter(0)
+       filter = f8e4m3fn[3,3,128,16] parameter(1)
+       input_f32 = f32[1,128,6,6] convert(input)
+       filter_f32 = f32[3,3,128,16] convert(filter)
+       z_scale = f32[] parameter(2)
+       z_scale_bcast = f32[1,16,6,6] broadcast(z_scale), dimensions={}
+       conv_a = f32[1,16,6,6] convolution(input_f32, filter_f32), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, feature_group_count=1
+       conv_a_cos = f32[1,16,6,6] cosine(conv_a)
+       conv_a_scaled = f32[1,16,6,6] multiply(conv_a, z_scale_bcast)
+       c1 = f32[] constant(-448.)
+       c1_bcast = f32[1,16,6,6] broadcast(c1), dimensions={}
+       c2 = f32[] constant(448.)
+       c2_bcast = f32[1,16,6,6] broadcast(c2), dimensions={}
+       conv_a_clamped = f32[1,16,6,6] clamp(c1_bcast, conv_a_scaled, c2_bcast)
+       conv_a_convert = f8e4m3fn[1,16,6,6] convert(conv_a_clamped)
+       ROOT conv_f8 = (f8e4m3fn[1,16,6,6], f32[1,16,6,6]) tuple(conv_a_convert, conv_a_cos)
+
+    })",
+      // custom_call
+      R"(
+// CHECK: [[cudnn_conv_4_0:%[^ ]+]] = (f32[1,6,6,16]{3,2,1,0}, u8[{{.*}}]{0}) custom-call([[OPERAND0:%[^ ]+]], [[OPERAND1:%[^ ]+]]), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, custom_call_target="__cudnn$convForwardGraph"
+  )",
+      // serialized_graph
+      R"(
+// CHECK: "serialized_graph":"[[CONV_UID:[0-9]+]]:[f32]conv();"
+      )");
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestConvInt8ToInt8) {
@@ -1077,8 +1593,8 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseRelu6) {
   const std::string module_str = R"(
     HloModule Test
     ENTRY Test {
-      inputs = f16[1,17,9,9] parameter(0)
-      filters = f16[3,3,17,32] parameter(1)
+      inputs = f16[1,18,9,9] parameter(0)
+      filters = f16[3,3,18,32] parameter(1)
       bias = f16[32] parameter(2)
       bias_broadcast = f16[1,32,9,9] broadcast(bias), dimensions={1}
       zero = f16[] constant(0)
@@ -1119,8 +1635,8 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseRelu6IfMultipleUses) {
   const std::string module_str = R"(
     HloModule Test
     ENTRY Test {
-      inputs = f16[1,17,9,9] parameter(0)
-      filters = f16[3,3,17,32] parameter(1)
+      inputs = f16[1,18,9,9] parameter(0)
+      filters = f16[3,3,18,32] parameter(1)
       bias = f16[1,32,9,9] broadcast(f16[32] parameter(2)), dimensions={1}
       zeros = f16[1,32,9,9] broadcast(f16[] constant(0)), dimensions={}
       sixes = f16[1,32,9,9] broadcast(f16[] constant(6)), dimensions={}

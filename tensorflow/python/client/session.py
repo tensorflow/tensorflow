@@ -1630,7 +1630,7 @@ class Session(BaseSession):
     self._default_graph_context_manager = None
     self._default_session_context_manager = None
 
-  def __enter__(self):
+  def __enter__(self) -> 'Session':
     if self._default_graph_context_manager is None:
       self._default_graph_context_manager = self.graph.as_default()
     else:

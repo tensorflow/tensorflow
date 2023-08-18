@@ -679,6 +679,46 @@ cc_library(
 )
 
 cc_library(
+    name = "quantized_variable_ops_tester",
+    testonly = 1,
+    srcs = ["quantized_variable_ops_tester.cc"],
+    hdrs = ["quantized_variable_ops_tester.h"],
+    deps = [
+        ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_conversion_utils",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//testing/base/public:gunit_for_library_testonly",
+        "@flatbuffers",
+    ],
+)
+
+# Same as quantized_variable_ops_tester above, but depends on xnnpack_delegate (no test
+# mode), used for quantized_variable_ops_multiple_subgraph_test. Why name this
+# no_test_mode instead of renaming the above to test_mode, because all testers
+# depend on test_mode by default, this keeps the name consistent.
+cc_library(
+    name = "quantized_variable_ops_tester_no_test_mode",
+    testonly = 1,
+    srcs = ["quantized_variable_ops_tester.cc"],
+    hdrs = ["quantized_variable_ops_tester.h"],
+    deps = [
+        ":xnnpack_delegate",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_conversion_utils",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//testing/base/public:gunit_for_library_testonly",
+        "@flatbuffers",
+    ],
+)
+
+cc_library(
     name = "reduce_tester",
     testonly = 1,
     srcs = ["reduce_tester.cc"],
@@ -1930,6 +1970,39 @@ cc_test(
 )
 
 cc_test(
+    name = "signed_quantized_variable_ops_multiple_subgraph_test",
+    srcs = ["signed_quantized_variable_ops_multiple_subgraph_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":test_main",
+        # Don't use xnnpack_delegate_test_mode because we use CALL_ONCE here,
+        # which XNNPACK does not yet support, and test mode enforces that there
+        # are no unsupported operations.
+        ":xnnpack_delegate",
+        ":quantized_variable_ops_tester_no_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "signed_quantized_variable_ops_test",
+    srcs = ["signed_quantized_variable_ops_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":quantized_variable_ops_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "slice_test",
     srcs = ["slice_test.cc"],
     linkopts = select({
@@ -2433,6 +2506,39 @@ cc_test(
     }),
     deps = [
         ":quantized_transpose_conv_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "unsigned_quantized_variable_ops_multiple_subgraph_test",
+    srcs = ["unsigned_quantized_variable_ops_multiple_subgraph_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":test_main",
+        # Don't use xnnpack_delegate_test_mode because we use CALL_ONCE here,
+        # which XNNPACK does not yet support, and test mode enforces that there
+        # are no unsupported operations.
+        ":xnnpack_delegate",
+        ":quantized_variable_ops_tester_no_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "unsigned_quantized_variable_ops_test",
+    srcs = ["unsigned_quantized_variable_ops_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":quantized_variable_ops_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",

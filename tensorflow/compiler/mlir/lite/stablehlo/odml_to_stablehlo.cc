@@ -381,7 +381,6 @@ void initAllPasses() {
   // These are in compiler/mlir/tf2xla and not part of the above MHLO passes.
   mlir::mhlo::registerTfXlaPasses();
   mlir::mhlo::registerLegalizeTFPass();
-  mlir::mhlo::registerLegalizeTfTypesPassPass();
   mlir::xla_framework::registerXlaFrameworkPasses();
   tensorflow::RegisterConvertMlirToXlaHloPipelineWithDefaults();
   tensorflow::RegisterGraphOptimizationPasses();

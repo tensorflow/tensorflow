@@ -24,7 +24,7 @@ import re
 import site
 import traceback
 
-from tensorflow.core.framework import graph_debug_info_pb2
+from tensorflow.python.util import tf_stack
 
 _NAME_REGEX = r"[A-Za-z0-9_.][A-Za-z0-9_.\-/]*?"
 _TAG_REGEX = fr"{{{{(?P<type>{_NAME_REGEX}) (?P<name>{_NAME_REGEX})}}}}"
@@ -306,80 +306,15 @@ def create_graph_debug_info_def(func_named_operations):
   Raises:
     TypeError: If the arguments are not of the correct proto buffer type.
   """
-  # Creates an empty GraphDebugInfoDef proto.
-  graph_debug_info_def = graph_debug_info_pb2.GraphDebugInfo()
-
-  # Gets the file names and line numbers for the exported node names. Also
-  # collects the unique file names.
-  all_file_names = set()
-  node_to_trace = {}
+  builder = tf_stack.GraphDebugInfoBuilder()
   for func_name, op in func_named_operations:
     if op.traceback is None:
       continue
-    # Gets the stack trace of the operation and then the file location.
-    node_name = op.name + "@" + func_name
-    node_to_trace[node_name] = _compute_useful_frames(op.traceback, 10)
-    for frame in node_to_trace[node_name]:
-      all_file_names.add(frame.filename)
+    builder.AccumulateStackTrace(
+        func_name, op.name, _compute_useful_frames(op.traceback, 10)
+    )
 
-  # Sets the `files` field in the GraphDebugInfo proto
-  graph_debug_info_def.files.extend(all_file_names)
-
-  # Builds a mapping between file names and index of the `files` field, so we
-  # only store the indexes for the nodes in the GraphDebugInfo.
-  file_to_index = dict(
-      [(y, x) for x, y in enumerate(graph_debug_info_def.files)])
-
-  # Creates the FileLineCol proto for each node and sets the value in the
-  # GraphDebugInfo proto. We only store the file name index for each node to
-  # save the storage space.
-  for node_name, frames in node_to_trace.items():
-    trace_def = graph_debug_info_def.traces[node_name]
-    for frame in reversed(frames):
-      trace_def.file_line_cols.add(
-          file_index=file_to_index[frame.filename],
-          line=frame.lineno)
-
-  return graph_debug_info_def
-
-
-def merge_graph_debug_info_def(per_fn_info):
-  """Construct and returns a `GraphDebugInfo` protocol buffer.
-
-  Args:
-    per_fn_info: An iterable of (func_name, GraphDebugInfo) tuples.
-
-  Returns:
-    GraphDebugInfo protocol buffer.
-
-  Raises:
-    TypeError: If the arguments are not of the correct proto buffer type.
-  """
-  graph_debug_info_def = graph_debug_info_pb2.GraphDebugInfo()
-
-  all_file_names = set()
-  for _, fn_info in per_fn_info:
-    all_file_names.update(fn_info.files)
-  # Ensure determinism.
-  all_file_names = sorted(all_file_names)
-
-  graph_debug_info_def.files.extend(all_file_names)
-  file_to_index = dict(
-      [(y, x) for x, y in enumerate(graph_debug_info_def.files)])
-
-  for fn_name, fn_info in per_fn_info:
-    for fn_node_name, fn_trace in fn_info.traces.items():
-      trace_def = graph_debug_info_def.traces[fn_node_name + "@" + fn_name]
-      for fn_frame in fn_trace.file_line_cols:
-        trace_def.file_line_cols.add(
-            file_index=file_to_index[fn_info.files[fn_frame.file_index]],
-            line=fn_frame.line,
-            col=fn_frame.col,
-            func=fn_frame.func,
-            code=fn_frame.code,
-        )
-
-  return graph_debug_info_def
+  return builder.Build()
 
 
 def _compute_field_dict(op):

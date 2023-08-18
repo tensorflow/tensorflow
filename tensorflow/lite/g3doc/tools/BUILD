@@ -1,3 +1,4 @@
+load("//tensorflow:py.default.bzl", "py_binary")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_binary")
 
 package(

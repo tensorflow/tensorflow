@@ -37,6 +37,9 @@ StatusOr<xla::PrimitiveType> ToPrimitiveType(DType dtype);
 // Converts `xla::PrimitiveType` into IFRT `DType`.
 StatusOr<DType> ToDType(xla::PrimitiveType primitive_type);
 
+// Creates IFRT `MemoryKind` from an XLA `PjRtBuffer`.
+MemoryKind MakeMemoryKindFromPjRtBuffer(PjRtBuffer* pjrt_buffer);
+
 // PjRt-compatible `Array` interface that wraps a list of `xla::PjRtBuffer`s.
 class PjRtCompatibleArray
     : public llvm::RTTIExtends<PjRtCompatibleArray, Array> {

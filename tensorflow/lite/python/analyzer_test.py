@@ -221,23 +221,19 @@ class AnalyzerTest(test_util.TensorFlowTestCase):
     with test.mock.patch.object(sys, 'stdout', mock_stdout):
       analyzer.ModelAnalyzer.analyze(model_content=fb_model)
     txt = mock_stdout.getvalue()
-    self.assertIn('Op#0 RESHAPE(T#1, T#5[512, 512]) -> [T#6]', txt)
-    self.assertIn('Op#1 RESHAPE(T#0, T#3[100, 512]) -> [T#7]', txt)
-    self.assertIn('Op#2 TRANSPOSE(T#6, T#4[1, 0]) -> [T#8]', txt)
-    self.assertIn('Op#3 FULLY_CONNECTED(T#7, T#8, T#-1) -> [T#9]', txt)
-    self.assertIn('Op#4 RESHAPE(T#9, T#2[1, 100, 8, 64]) -> [T#10]', txt)
+    self.assertIn('Op#0 RESHAPE(T#1, T#4[512, 512]) -> [T#5]', txt)
+    self.assertIn('Op#1 RESHAPE(T#0, T#3[100, 512]) -> [T#6]', txt)
+    self.assertIn('Op#2 BATCH_MATMUL(T#6, T#5) -> [T#7]', txt)
+    self.assertIn('Op#3 RESHAPE(T#7, T#2[1, 100, 8, 64]) -> [T#8]', txt)
     self.assertIn(
         'T#2(einsum/Einsum) shape:[4], type:INT32 RO 16 bytes, '
         'buffer: 3, data:[1, 100, 8, 64]', txt)
     self.assertIn(
-        'T#3(einsum/Einsum2) shape:[2], type:INT32 RO 8 bytes, '
+        'T#3(einsum/Einsum1) shape:[2], type:INT32 RO 8 bytes, '
         'buffer: 4, data:[100, 512]', txt)
     self.assertIn(
-        'T#4(einsum/Einsum3) shape:[2], type:INT32 RO 8 bytes, '
-        'buffer: 5, data:[1, 0]', txt)
-    self.assertIn(
-        'T#5(einsum/Einsum4) shape:[2], type:INT32 RO 8 bytes, '
-        'buffer: 6, data:[512, 512]', txt)
+        'T#4(einsum/Einsum2) shape:[2], type:INT32 RO 8 bytes, '
+        'buffer: 5, data:[512, 512]', txt)
 
 if __name__ == '__main__':
   test.main()

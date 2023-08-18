@@ -15,17 +15,26 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter_triton.h"
 
+#include <memory>
 #include <string>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/layout.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_padding_requirements.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_types.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/status_matchers.h"
@@ -69,6 +78,8 @@ ENTRY e {
 })")
                     .value();
   EXPECT_TRUE(GemmRewriterTriton(gpu_version_).Run(module.get()).value());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Fusion(m::Parameter(), m::Parameter())));
 }
 
 TEST_F(GemmRewriterTritonTest, BitcastChain) {
@@ -89,6 +100,24 @@ ENTRY e {
   ROOT d = f16[3,5,10] dot(c0, r1),
     lhs_contracting_dims={1}, rhs_contracting_dims={2},
     lhs_batch_dims={0}, rhs_batch_dims={0}
+})")
+                    .value();
+  EXPECT_TRUE(GemmRewriterTriton(gpu_version_).Run(module.get()).value());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Fusion(m::Parameter(), m::Parameter())));
+}
+
+TEST_F(GemmRewriterTritonTest, SplitDimensionTwice) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p0 = s8[4,2,32,4,2] parameter(0)
+  r1 = s8[8,32,8] reshape(p0)
+  t1 = s8[32,8,8] transpose(r1), dimensions={1,0,2}
+  r0 = s8[32,64] reshape(t1)
+  p1 = s8[32,32] parameter(1)
+  c0 = f16[32,32] convert(p1)
+  ROOT d = f16[64,32] dot(r0, c0),
+    lhs_contracting_dims={0}, rhs_contracting_dims={1}
 })")
                     .value();
   EXPECT_TRUE(GemmRewriterTriton(gpu_version_).Run(module.get()).value());
@@ -992,12 +1021,10 @@ ENTRY e {
       DotFusionAnalysis::Execute(dot_computation, key.split_k()));
   EXPECT_EQ(dot_computation->root_instruction()->shape(),
             ShapeUtil::MakeShapeWithDescendingLayout(F16, {8, 7, 5}));
-  EXPECT_THAT(*analysis.IterSpec(DotFusionAnalysis::Scope::LHS, p0, 0),
-              ElementsAre(FieldsAre(/*stride=*/320, /*count=*/8,
-                                    /*subfragments=*/ElementsAre(4, 2))));
-  EXPECT_THAT(*analysis.IterSpec(DotFusionAnalysis::Scope::LHS, p0, 1),
-              ElementsAre(FieldsAre(/*stride=*/1, /*count=*/320,
-                                    /*subfragments=*/ElementsAre(20, 4, 4))));
+  EXPECT_THAT(
+      *analysis.IterSpec(DotFusionAnalysis::Scope::LHS, p0, 1),
+      ElementsAre(FieldsAre(/*stride=*/1, /*count=*/2560,
+                            /*subfragments=*/ElementsAre(20, 4, 4, 4, 2))));
 }
 
 TEST_F(SplitKTest, FragmentedKUnsupported) {
@@ -1240,6 +1267,25 @@ ENTRY e {
             DotFusionAnalysis::kMaxParameterPerScope * 2);
 }
 
+TEST_F(GemmRewriterTritonLevel2Test, FusionLevelIsLimitedOnVolta) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p0 = f32[1,53] parameter(0)
+  p0e = f32[1,53] exponential(p0)
+  p1 = s16[53,1] parameter(1)
+  p1c = f32[53,1] convert(p1)
+  ROOT dot = f32[1,1] dot(p0e, p1c),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})"));
+  EXPECT_TRUE(GemmRewriterTriton(se::CudaComputeCapability{
+                                     se::CudaComputeCapability::VOLTA, 0})
+                  .Run(module.get())
+                  .value());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch((m::Fusion(m::Parameter(), m::Exp()))));
+}
+
 TEST_F(GemmRewriterTritonLevel2Test, ParameterUsedElementwiseTwiceIsFused) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
@@ -1256,7 +1302,7 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })"));
   EXPECT_TRUE(GemmRewriterTriton(se::CudaComputeCapability{
-                                     se::CudaComputeCapability::VOLTA, 0})
+                                     se::CudaComputeCapability::AMPERE, 0})
                   .Run(module.get())
                   .value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -1286,12 +1332,37 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })"));
   EXPECT_TRUE(GemmRewriterTriton(se::CudaComputeCapability{
-                                     se::CudaComputeCapability::VOLTA, 0})
+                                     se::CudaComputeCapability::AMPERE, 0})
                   .Run(module.get())
                   .value());
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
       GmockMatch((m::Fusion(m::Parameter(), m::Transpose(), m::Parameter()))));
+}
+
+TEST_F(GemmRewriterTritonLevel2Test,
+       ComputationParameterWithMultipleUsersIsNotTrivialToFuse) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p0 = f32[400,400] parameter(0)
+
+  c0 = f16[400,400] convert(p0)
+  p1 = f16[400,400] parameter(1)
+  dot0 = f16[400,400] dot(c0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+
+  c1 = f16[400,400] convert(p0)
+  p2 = f16[400,400] parameter(2)
+  dot1 = f16[400,400] dot(c1, p2),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+
+  ROOT a = f16[400,400] add(dot0, dot1)
+})"));
+  EXPECT_FALSE(GemmRewriterTriton(se::CudaComputeCapability{
+                                      se::CudaComputeCapability::AMPERE, 0})
+                   .Run(module.get())
+                   .value());
 }
 
 }  // namespace

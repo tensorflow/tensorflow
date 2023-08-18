@@ -32,7 +32,6 @@ int main(int argc, char **argv) {
   tsl::port::InitMain(argv[0], &dummyArgc, &argv);
 
   mlir::registerAllPasses();
-  mlir::RegisterMhloToLhloWithXlaPass();
   mlir::DialectRegistry registry;
   mlir::registerAllDialects(registry);
   mlir::mhlo::registerAllMhloDialects(registry);

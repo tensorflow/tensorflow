@@ -54,6 +54,10 @@ namespace {
 #define GEN_PASS_DEF_LEGALIZETF
 #include "tensorflow/compiler/mlir/tf2xla/transforms/xla_legalize_tf_passes.h.inc"
 
+auto *mlir_legalization_count = tensorflow::monitoring::Counter<1>::New(
+    "/tensorflow/core/tf2xla/v0/mlir_failed_xla_legalize_tf_count",
+    "Counts the attempts of legalization of ops", "op_name");
+
 auto *mlir_failed_legalization_count = tensorflow::monitoring::Counter<2>::New(
     "/tensorflow/core/tf2xla/v0/mlir_failed_xla_legalize_tf_pass_count",
     "Counts the failure of legalization of ops", "op_name", "legality");
@@ -167,8 +171,6 @@ LogicalResult legalizeTF(Operation *op, bool legalize_chlo,
 
   // Add TF->HLO legalization patterns.
   PopulateLegalizeTfPatterns(context, &legalize_lower_patterns);
-  stablehlo::PopulateLegalizeTfQuantizationPatterns(context,
-                                                    &legalize_lower_patterns);
 
   // Add TF->TF lowering patterns.
   TF::PopulateTFLoweringBeforeHLOPatterns(context, &legalize_lower_patterns);
@@ -214,12 +216,15 @@ LogicalResult legalizeTF(Operation *op, bool legalize_chlo,
 
 // Performs the lowering to XLA dialect.
 void LegalizeTF::runOnOperation() {
+  auto op = getOperation();
+  auto op_name = op->getName().getStringRef().str();
+  mlir_legalization_count->GetCell(op_name)->IncrementBy(1);
   std::optional<StringRef> tf2xla_fallback_device_type = std::nullopt;
   if (use_tf2xla_fallback_) {
     tf2xla_fallback_device_type = device_type_;
   }
-  if (failed(legalizeTF(getOperation(), legalize_chlo_,
-                        tf2xla_fallback_device_type, prefer_tf2xla_))) {
+  if (failed(legalizeTF(op, legalize_chlo_, tf2xla_fallback_device_type,
+                        prefer_tf2xla_))) {
     signalPassFailure();
   }
 }

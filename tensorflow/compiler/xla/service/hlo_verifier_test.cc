@@ -2909,5 +2909,22 @@ ENTRY entry {
   TF_ASSERT_OK(status);
 }
 
+TEST_F(HloVerifierTest, MixedTypeForAllGatherAllowed) {
+  constexpr absl::string_view kHlo = R"(
+HloModule module
+
+ENTRY entry {
+  p0 = f32[10] parameter(0)
+  p1 = bf16[10] parameter(1)
+  ROOT ag = (f32[20], bf16[20]) all-gather(p0, p1), dimensions={0}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(kHlo));
+  Status status = verifier().Run(module.get()).status();
+
+  TF_ASSERT_OK(status);
+}
+
 }  // namespace
 }  // namespace xla

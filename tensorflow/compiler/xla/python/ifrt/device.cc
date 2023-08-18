@@ -15,14 +15,17 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/python/ifrt/device.h"
 
+#include <memory>
 #include <utility>
 #include <vector>
 
-#include "tensorflow/compiler/xla/python/ifrt/client.h"
 #include "tensorflow/compiler/xla/python/ifrt/types.pb.h"
 
 namespace xla {
 namespace ifrt {
+
+DeviceList::DeviceList(Devices devices)
+    : state_(std::shared_ptr<State>(new State{std::move(devices)})) {}
 
 StatusOr<DeviceList> DeviceList::FromProto(LookupDeviceFunc lookup_device,
                                            const DeviceListProto& proto) {

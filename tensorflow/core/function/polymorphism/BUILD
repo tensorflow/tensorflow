@@ -1,3 +1,4 @@
+# Placeholder: load py_proto_library
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_test")
 load(
@@ -16,7 +17,9 @@ pytype_strict_library(
         "type_dispatch.py",
     ],
     srcs_version = "PY3",
-    visibility = ["//tensorflow:internal"],
+    visibility = [
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
+    ],
     deps = [
         ":function_type",
     ],
@@ -91,14 +94,18 @@ tf_proto_library(
     protodeps = [
         "//tensorflow/core/function/trace_type:serialization_proto",
     ],
-    visibility = ["//tensorflow:internal"],
+    visibility = [
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
+    ],
 )
 
 # copybara:uncomment_begin(google-only)
 # py_proto_library(
 #     name = "function_type_py_pb2",
 #     api_version = 2,
-#     visibility = ["//tensorflow:internal"],
+#     visibility = [
+#         "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
+#     ],
 #     deps = [":function_type_proto"],
 # )
 # copybara:uncomment_end

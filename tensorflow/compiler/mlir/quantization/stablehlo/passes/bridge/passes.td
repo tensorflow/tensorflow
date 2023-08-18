@@ -48,3 +48,16 @@ def ConvertTFQuantOpsToMHLO : Pass<"quant-convert-tf-quant-ops-to-mhlo", "mlir::
                            "mhlo::MhloDialect", "tf_type::TFTypeDialect",
                            "quant::QuantizationDialect"];
 }
+
+def ConvertTFQuantTypes : Pass<"convert-tf-quant-types", "mlir::func::FuncOp"> {
+  let summary = "Replace TensorFlow qint types with int types.";
+
+  let description = [{
+    Converts TF ops with qint types to int types. Some UniformQuantized ops
+    argument/result allow qint type only. For such cases, add qint <-> int
+    tf.Cast around the ops so that they are still valid.
+  }];
+
+  let constructor = "::mlir::stablehlo::CreateConvertTFQuantTypesPass()";
+  let dependentDialects = ["TF::TensorFlowDialect", "tf_type::TFTypeDialect"];
+}

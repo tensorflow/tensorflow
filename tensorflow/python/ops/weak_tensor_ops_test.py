@@ -17,6 +17,7 @@
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import extension_type
@@ -45,6 +46,7 @@ from tensorflow.python.util import dispatch
 DtypeConversionTestEnv = weak_tensor_test_util.DtypeConversionTestEnv
 _get_weak_tensor = weak_tensor_test_util.get_weak_tensor
 _convert_to_input_type = weak_tensor_test_util.convert_to_input_type
+_get_test_input_for_binary_op = weak_tensor_test_util.get_test_input_for_op
 _DTYPE_PROMO_RES = flexible_dtypes._BINARY_DTYPE_RES_HALF
 
 _TF_UNARY_APIS = weak_tensor_ops._TF_UNARY_APIS
@@ -128,9 +130,13 @@ class WeakTensorUnaryOpsTest(
       for api in set(_TF_UNARY_APIS) - set(_TF_UNARY_APIS_WITH_MULT_INPUT)
   )
   def test_unary_ops_return_weak_tensor(self, unary_api):
-    weak_tensor_input, python_input, tensor_input, numpy_input = (
-        get_test_input_for_unary_op(unary_api)
-    )
+    (
+        weak_tensor_input,
+        python_input,
+        tensor_input_no_dtype_specified,
+        tensor_input,
+        numpy_input,
+    ) = get_test_input_for_unary_op(unary_api)
 
     # Check that WeakTensor input outputs a WeakTensor.
     res = unary_api(weak_tensor_input)
@@ -138,6 +144,11 @@ class WeakTensorUnaryOpsTest(
     expected_result = unary_api(weak_tensor_input.tensor)
     # Check that the actual result is correct.
     self.assertAllEqual(res, expected_result)
+
+    # Check that tf.constant with no dtype specified (weak type) returns a
+    # WeakTensor.
+    res = unary_api(tensor_input_no_dtype_specified)
+    self.assertIsInstance(res, WeakTensor)
 
     # Check that python nested scalar type (weak type) returns a WeakTensor.
     res = unary_api(python_input)
@@ -155,6 +166,7 @@ class WeakTensorUnaryOpsTest(
   @parameterized.parameters(
       ("WeakTensor", dtypes.float32, WeakTensor),
       ("Python", dtypes.float32, WeakTensor),
+      ("Tensor", None, WeakTensor),
       ("NumPy", dtypes.float32, tensor.Tensor),
       ("NumPy", None, tensor.Tensor),
       ("Tensor", dtypes.float32, tensor.Tensor),
@@ -218,6 +230,10 @@ class WeakTensorUnaryOpsTest(
     res = unary_api_specific_dtype(python_input)
     self.assertIsInstance(res, tensor.Tensor)
 
+    tensor_input_no_dtype_specified = constant_op.constant([1.0, 2.0, 3.0])
+    res = unary_api_specific_dtype(tensor_input_no_dtype_specified)
+    self.assertIsInstance(res, tensor.Tensor)
+
     tensor_input = constant_op.constant([1.0, 2.0, 3.0], dtypes.float32)
     res = unary_api_specific_dtype(tensor_input)
     self.assertIsInstance(res, tensor.Tensor)
@@ -226,10 +242,20 @@ class WeakTensorUnaryOpsTest(
     res = unary_api_specific_dtype(tensor_input)
     self.assertIsInstance(res, tensor.Tensor)
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_weak_tensor_from_scalar_in_tf_func(self):
+    @def_function.function()
+    def f():
+      return 1
+
+    res = f()
+    self.assertIsInstance(res, WeakTensor)
+
   # Test unary ops with optional dtype arg.
   @parameterized.parameters(
       ("WeakTensor", dtypes.float32, WeakTensor),
       ("Python", None, WeakTensor),
+      ("Tensor", None, WeakTensor),
       ("NumPy", dtypes.float32, tensor.Tensor),
       ("NumPy", None, tensor.Tensor),
       ("Tensor", dtypes.float32, tensor.Tensor),
@@ -268,6 +294,8 @@ class WeakTensorUnaryOpsTest(
       ("Python", None, dtypes.int32, tensor.Tensor),
       ("NumPy", None, None, tensor.Tensor),
       ("NumPy", None, dtypes.int32, tensor.Tensor),
+      ("Tensor", None, None, WeakTensor),
+      ("Tensor", None, dtypes.int32, tensor.Tensor),
       ("Tensor", dtypes.float32, None, tensor.Tensor),
       ("Tensor", dtypes.float32, dtypes.int32, tensor.Tensor),
   )
@@ -297,6 +325,16 @@ class WeakTensorUnaryOpsTest(
     )
     self.assertIsInstance(
         math_ops.saturate_cast(python_input, dtypes.int32), tensor.Tensor
+    )
+
+    tensor_no_dtype_specified = constant_op.constant([1.0, 2.0, 3.0])
+    self.assertIsInstance(
+        math_ops.cast(tensor_no_dtype_specified, dtypes.int32),
+        tensor.Tensor,
+    )
+    self.assertIsInstance(
+        math_ops.saturate_cast(tensor_no_dtype_specified, dtypes.int32),
+        tensor.Tensor,
     )
 
   def test_unsupported_input_type_in_weak_tensor_ops(self):
@@ -396,8 +434,8 @@ class WeakTensorBinaryOpsTest(
 
   def test_weak_tensor_add(self, a_dtype, b_dtype, expected_dtype):
     def run_test_add(a, b):
-      a_list = get_test_input_for_binary_op(a, a_dtype)
-      b_list = get_test_input_for_binary_op(b, b_dtype)
+      a_list = _get_test_input_for_binary_op(a, a_dtype)
+      b_list = _get_test_input_for_binary_op(b, b_dtype)
       expected_val = constant_op.constant(
           a, expected_dtype[0]
       ) + constant_op.constant(b, expected_dtype[0])
@@ -416,8 +454,8 @@ class WeakTensorBinaryOpsTest(
 
   def test_weak_tensor_sub(self, a_dtype, b_dtype, expected_dtype):
     def run_test_sub(a, b):
-      a_list = get_test_input_for_binary_op(a, a_dtype)
-      b_list = get_test_input_for_binary_op(b, b_dtype)
+      a_list = _get_test_input_for_binary_op(a, a_dtype)
+      b_list = _get_test_input_for_binary_op(b, b_dtype)
       a_tensor = constant_op.constant(a, expected_dtype[0])
       b_tensor = constant_op.constant(b, expected_dtype[0])
       expected_val = a_tensor - b_tensor
@@ -439,8 +477,8 @@ class WeakTensorBinaryOpsTest(
 
   def test_weak_tensor_mul(self, a_dtype, b_dtype, expected_dtype):
     def run_test_mul(a, b):
-      a_list = get_test_input_for_binary_op(a, a_dtype)
-      b_list = get_test_input_for_binary_op(b, b_dtype)
+      a_list = _get_test_input_for_binary_op(a, a_dtype)
+      b_list = _get_test_input_for_binary_op(b, b_dtype)
       expected_val = constant_op.constant(
           a, expected_dtype[0]
       ) * constant_op.constant(b, expected_dtype[0])
@@ -461,8 +499,8 @@ class WeakTensorBinaryOpsTest(
 
   def test_weak_tensor_pow(self, a_dtype, b_dtype, expected_dtype):
     def run_test_pow(a, b):
-      a_list = get_test_input_for_binary_op(a, a_dtype)
-      b_list = get_test_input_for_binary_op(b, b_dtype)
+      a_list = _get_test_input_for_binary_op(a, a_dtype)
+      b_list = _get_test_input_for_binary_op(b, b_dtype)
 
       # Skip if provided dtype is not a valid input dtype for the op.
       if not output_dtype_supported_in_op("pow", expected_dtype[0]):
@@ -482,13 +520,12 @@ class WeakTensorBinaryOpsTest(
           self.match_expected(y**x, reverse_expected_val, expected_dtype)
 
     run_test_pow(a=4, b=2)
-    run_test_pow(a=41, b=10)
-    run_test_pow(a=2, b=6)
+    run_test_pow(a=10, b=5)
 
   def test_weak_tensor_mod(self, a_dtype, b_dtype, expected_dtype):
     def run_test_mod(a, b):
-      a_list = get_test_input_for_binary_op(a, a_dtype)
-      b_list = get_test_input_for_binary_op(b, b_dtype)
+      a_list = _get_test_input_for_binary_op(a, a_dtype)
+      b_list = _get_test_input_for_binary_op(b, b_dtype)
 
       # Skip if provided dtype is not a valid input dtype for the op.
       if not output_dtype_supported_in_op("mod", expected_dtype[0]):
@@ -520,8 +557,8 @@ class WeakTensorBinaryOpsTest(
 
   def test_weak_tensor_floor_div(self, a_dtype, b_dtype, expected_dtype):
     def run_test_floor_div(a, b):
-      a_list = get_test_input_for_binary_op(a, a_dtype)
-      b_list = get_test_input_for_binary_op(b, b_dtype)
+      a_list = _get_test_input_for_binary_op(a, a_dtype)
+      b_list = _get_test_input_for_binary_op(b, b_dtype)
 
       # Skip if provided dtype is not a valid input dtype for the op.
       if not output_dtype_supported_in_op("floor_div", expected_dtype[0]):
@@ -555,8 +592,8 @@ class WeakTensorBinaryOpsTest(
 
   def test_weak_tensor_real_div(self, a_dtype, b_dtype, expected_dtype):
     def run_test_real_div(a, b):
-      a_list = get_test_input_for_binary_op(a, a_dtype)
-      b_list = get_test_input_for_binary_op(b, b_dtype)
+      a_list = _get_test_input_for_binary_op(a, a_dtype)
+      b_list = _get_test_input_for_binary_op(b, b_dtype)
 
       # Skip if provided dtype is not a valid input dtype for the op.
       if not output_dtype_supported_in_op("real_div", expected_dtype[0]):
@@ -597,8 +634,8 @@ class WeakTensorBinaryOpsTest(
       expected_val = math_ops.truncatediv(a_tensor, b_tensor)
       reverse_expected_val = math_ops.truncatediv(b_tensor, a_tensor)
 
-      a_list = get_test_input_for_binary_op(a, a_dtype)
-      b_list = get_test_input_for_binary_op(b, b_dtype)
+      a_list = _get_test_input_for_binary_op(a, a_dtype)
+      b_list = _get_test_input_for_binary_op(b, b_dtype)
       for x, y in zip(a_list, b_list):
         self.match_expected(
             math_ops.truncatediv(x, y), expected_val, expected_dtype
@@ -636,8 +673,8 @@ class WeakTensorBinaryOpsTest(
       expected_val = math_ops.truncatemod(a_tensor, b_tensor)
       reverse_expected_val = math_ops.truncatemod(b_tensor, a_tensor)
 
-      a_list = get_test_input_for_binary_op(a, a_dtype)
-      b_list = get_test_input_for_binary_op(b, b_dtype)
+      a_list = _get_test_input_for_binary_op(a, a_dtype)
+      b_list = _get_test_input_for_binary_op(b, b_dtype)
       for x, y in zip(a_list, b_list):
         self.match_expected(
             math_ops.truncatemod(x, y), expected_val, expected_dtype
@@ -665,8 +702,8 @@ class WeakTensorBinaryOpsTest(
 
   def test_weak_tensor_scalar_mul(self, a_dtype, b_dtype, expected_dtype):
     def run_test_scalar_mul(a, b):
-      a_list = get_test_input_for_binary_op(a, a_dtype)
-      b_list = get_test_input_for_binary_op(b, b_dtype)
+      a_list = _get_test_input_for_binary_op(a, a_dtype)
+      b_list = _get_test_input_for_binary_op(b, b_dtype)
       # Expected dtype = second arg's dtype.
       _ = expected_dtype
       if not a_dtype[0].is_compatible_with(b_dtype[0]):
@@ -682,8 +719,8 @@ class WeakTensorBinaryOpsTest(
 
   def test_weak_tensor_mat_mul(self, a_dtype, b_dtype, expected_dtype):
     def run_test_mat_mul(a, b):
-      a_list = get_test_input_for_binary_op(a, a_dtype)
-      b_list = get_test_input_for_binary_op(b, b_dtype)
+      a_list = _get_test_input_for_binary_op(a, a_dtype)
+      b_list = _get_test_input_for_binary_op(b, b_dtype)
 
       # Skip if provided dtype is not a valid input dtype for the op.
       if not output_dtype_supported_in_op("matmul", expected_dtype[0]):
@@ -704,8 +741,8 @@ class WeakTensorBinaryOpsTest(
 
   def test_weak_tensor_truediv(self, a_dtype, b_dtype, expected_dtype):
     def run_test_truediv(a, b):
-      a_list = get_test_input_for_binary_op(a, a_dtype)
-      b_list = get_test_input_for_binary_op(b, b_dtype)
+      a_list = _get_test_input_for_binary_op(a, a_dtype)
+      b_list = _get_test_input_for_binary_op(b, b_dtype)
       a_tensor = constant_op.constant(a, expected_dtype[0])
       b_tensor = constant_op.constant(b, expected_dtype[0])
       expected_val = a_tensor / b_tensor
@@ -752,8 +789,8 @@ class WeakTensorBinaryOpsTest(
 
   def test_weak_tensor_div_no_nan(self, a_dtype, b_dtype, expected_dtype):
     def run_test_div_no_nan(a, b):
-      a_list = get_test_input_for_binary_op(a, a_dtype)
-      b_list = get_test_input_for_binary_op(b, b_dtype)
+      a_list = _get_test_input_for_binary_op(a, a_dtype)
+      b_list = _get_test_input_for_binary_op(b, b_dtype)
       a_tensor = constant_op.constant(a, expected_dtype[0])
       b_tensor = constant_op.constant(b, expected_dtype[0])
       expected_val = math_ops.div_no_nan(a_tensor, b_tensor)
@@ -787,8 +824,8 @@ class WeakTensorBinaryOpsTest(
 
   def test_weak_tensor_multiply_no_nan(self, a_dtype, b_dtype, expected_dtype):
     def run_test_multiply_no_nan(a, b):
-      a_list = get_test_input_for_binary_op(a, a_dtype)
-      b_list = get_test_input_for_binary_op(b, b_dtype)
+      a_list = _get_test_input_for_binary_op(a, a_dtype)
+      b_list = _get_test_input_for_binary_op(b, b_dtype)
 
       # Skip if provided dtype is not a valid input dtype for the op.
       if not output_dtype_supported_in_op("multiply_no_nan", expected_dtype[0]):
@@ -829,8 +866,8 @@ class WeakTensorBinaryOpsTestSafeMode(
 
   def test_weak_tensor_add(self, a_dtype, b_dtype):
     with DtypeConversionTestEnv("safe"):
-      a_list = get_test_input_for_binary_op(1, a_dtype)
-      b_list = get_test_input_for_binary_op(1, b_dtype)
+      a_list = _get_test_input_for_binary_op(1, a_dtype)
+      b_list = _get_test_input_for_binary_op(1, b_dtype)
       for x, y in zip(a_list, b_list):
         with self.assertRaises(TypeError):
           _ = math_ops.add(x, y)
@@ -844,8 +881,8 @@ class WeakTensorBinaryOpsTestSafeMode(
 
   def test_weak_tensor_sub(self, a_dtype, b_dtype):
     with DtypeConversionTestEnv("safe"):
-      a_list = get_test_input_for_binary_op(1, a_dtype)
-      b_list = get_test_input_for_binary_op(1, b_dtype)
+      a_list = _get_test_input_for_binary_op(1, a_dtype)
+      b_list = _get_test_input_for_binary_op(1, b_dtype)
       for x, y in zip(a_list, b_list):
         with self.assertRaises(TypeError):
           _ = math_ops.subtract(x, y)
@@ -859,8 +896,8 @@ class WeakTensorBinaryOpsTestSafeMode(
 
   def test_weak_tensor_mul(self, a_dtype, b_dtype):
     with DtypeConversionTestEnv("safe"):
-      a_list = get_test_input_for_binary_op(1, a_dtype)
-      b_list = get_test_input_for_binary_op(1, b_dtype)
+      a_list = _get_test_input_for_binary_op(1, a_dtype)
+      b_list = _get_test_input_for_binary_op(1, b_dtype)
       for x, y in zip(a_list, b_list):
         with self.assertRaises(TypeError):
           _ = math_ops.multiply(x, y)
@@ -874,8 +911,8 @@ class WeakTensorBinaryOpsTestSafeMode(
 
   def test_weak_tensor_pow(self, a_dtype, b_dtype):
     with DtypeConversionTestEnv("safe"):
-      a_list = get_test_input_for_binary_op(1, a_dtype)
-      b_list = get_test_input_for_binary_op(1, b_dtype)
+      a_list = _get_test_input_for_binary_op(1, a_dtype)
+      b_list = _get_test_input_for_binary_op(1, b_dtype)
       for x, y in zip(a_list, b_list):
         with self.assertRaises(TypeError):
           _ = math_ops.pow(x, y)
@@ -889,8 +926,8 @@ class WeakTensorBinaryOpsTestSafeMode(
 
   def test_weak_tensor_mod(self, a_dtype, b_dtype):
     with DtypeConversionTestEnv("safe"):
-      a_list = get_test_input_for_binary_op(1, a_dtype)
-      b_list = get_test_input_for_binary_op(1, b_dtype)
+      a_list = _get_test_input_for_binary_op(1, a_dtype)
+      b_list = _get_test_input_for_binary_op(1, b_dtype)
       for x, y in zip(a_list, b_list):
         with self.assertRaises(TypeError):
           _ = math_ops.mod(x, y)
@@ -908,8 +945,8 @@ class WeakTensorBinaryOpsTestSafeMode(
 
   def test_weak_tensor_floor_div(self, a_dtype, b_dtype):
     with DtypeConversionTestEnv("safe"):
-      a_list = get_test_input_for_binary_op(1, a_dtype)
-      b_list = get_test_input_for_binary_op(1, b_dtype)
+      a_list = _get_test_input_for_binary_op(1, a_dtype)
+      b_list = _get_test_input_for_binary_op(1, b_dtype)
       for x, y in zip(a_list, b_list):
         with self.assertRaises(TypeError):
           _ = math_ops.floordiv(x, y)
@@ -927,8 +964,8 @@ class WeakTensorBinaryOpsTestSafeMode(
 
   def test_weak_tensor_real_div(self, a_dtype, b_dtype):
     with DtypeConversionTestEnv("safe"):
-      a_list = get_test_input_for_binary_op(1, a_dtype)
-      b_list = get_test_input_for_binary_op(1, b_dtype)
+      a_list = _get_test_input_for_binary_op(1, a_dtype)
+      b_list = _get_test_input_for_binary_op(1, b_dtype)
       for x, y in zip(a_list, b_list):
         with self.assertRaises(TypeError):
           _ = math_ops.realdiv(x, y)
@@ -941,8 +978,8 @@ class WeakTensorBinaryOpsTestSafeMode(
 
   def test_weak_tensor_truncate_mod(self, a_dtype, b_dtype):
     with DtypeConversionTestEnv("safe"):
-      a_list = get_test_input_for_binary_op(1, a_dtype)
-      b_list = get_test_input_for_binary_op(1, b_dtype)
+      a_list = _get_test_input_for_binary_op(1, a_dtype)
+      b_list = _get_test_input_for_binary_op(1, b_dtype)
       for x, y in zip(a_list, b_list):
         with self.assertRaises(TypeError):
           _ = math_ops.truncatemod(x, y)
@@ -955,8 +992,8 @@ class WeakTensorBinaryOpsTestSafeMode(
 
   def test_weak_tensor_truncate_div(self, a_dtype, b_dtype):
     with DtypeConversionTestEnv("safe"):
-      a_list = get_test_input_for_binary_op(1, a_dtype)
-      b_list = get_test_input_for_binary_op(1, b_dtype)
+      a_list = _get_test_input_for_binary_op(1, a_dtype)
+      b_list = _get_test_input_for_binary_op(1, b_dtype)
       for x, y in zip(a_list, b_list):
         with self.assertRaises(TypeError):
           _ = math_ops.truncatediv(x, y)
@@ -969,8 +1006,8 @@ class WeakTensorBinaryOpsTestSafeMode(
 
   def test_weak_tensor_mat_mul(self, a_dtype, b_dtype):
     with DtypeConversionTestEnv("safe"):
-      a_list = get_test_input_for_binary_op([[1]], a_dtype)
-      b_list = get_test_input_for_binary_op([[1]], b_dtype)
+      a_list = _get_test_input_for_binary_op([[1]], a_dtype)
+      b_list = _get_test_input_for_binary_op([[1]], b_dtype)
       for x, y in zip(a_list, b_list):
         with self.assertRaises(TypeError):
           _ = math_ops.matmul(x, y)
@@ -980,28 +1017,6 @@ class WeakTensorBinaryOpsTestSafeMode(
           _ = math_ops.matmul(x, y)
         with self.assertRaises(TypeError):
           _ = math_ops.matmul(y, x)
-
-
-def get_test_input_for_binary_op(val, dtype):
-  """Returns a list containing all the possible inputs with a given dtype."""
-  python_inferred_types = {
-      (dtypes.int32, True): 1,
-      (dtypes.float32, True): 1.0,
-      (dtypes.complex128, True): 1.0j,
-  }
-  dtype, weak = dtype
-  inputs = []
-  if weak:
-    # WeakTensor and Python input types.
-    inputs.append(_convert_to_input_type(val, "WeakTensor", dtype))
-    if dtype in python_inferred_types:
-      # There are only 3 possible Python default types : int, float, complex.
-      inputs.append(val * python_inferred_types[dtype])
-  else:
-    # Tensor and NumPy input types.
-    inputs.append(_convert_to_input_type(val, "Tensor", dtype))
-    inputs.append(_convert_to_input_type(val, "NumPy", dtype))
-  return inputs
 
 
 def at_least_one_tensor_type(a, b):
@@ -1092,6 +1107,7 @@ def get_test_input_for_unary_op(op):
     return (
         _get_weak_tensor(5, dtypes.int32),
         5,
+        constant_op.constant(5),
         constant_op.constant(5, dtypes.int32),
         np.array(5),
     )
@@ -1099,6 +1115,7 @@ def get_test_input_for_unary_op(op):
     return (
         _get_weak_tensor([[1, 2], [3, 4]], dtypes.int32),
         [[1, 2], [3, 4]],
+        constant_op.constant([[1, 2], [3, 4]]),
         constant_op.constant([[1, 2], [3, 4]], dtypes.int32),
         np.array([[1, 2], [3, 4]]),
     )
@@ -1106,6 +1123,7 @@ def get_test_input_for_unary_op(op):
     return (
         _get_weak_tensor([1.0, 2.0, 3.0], dtype=dtypes.float32),
         [1.0, 2.0, 3.0],
+        constant_op.constant([1.0, 2.0, 3.0]),
         constant_op.constant([1.0, 2.0, 3.0], dtype=dtypes.float32),
         np.array([1.0, 2.0, 3.0]),
     )

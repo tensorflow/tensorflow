@@ -1,3 +1,4 @@
+load("//tensorflow:py.default.bzl", "py_library")
 load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_shared_test")
 load("//tensorflow:tensorflow.default.bzl", "tf_py_test")
 

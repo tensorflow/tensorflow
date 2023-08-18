@@ -96,6 +96,13 @@ struct MarkForCompilationPassFlags {
   // specified file system directory path.
   std::string tf_xla_persistent_cache_directory;
 
+  // If non-empty, the persistent cache will only be used for the specified
+  // devices (comma separated). Each device type should be able to be converted
+  // to `DeviceType`.
+  std::string tf_xla_persistent_cache_device_types;
+
+  bool tf_xla_persistent_cache_read_only;
+
   // If true, entries loaded into the XLA compile cache will not have their
   // signatures checked strictly. This should generally not be disabled except
   // for debugging. Defaults to false.
@@ -250,6 +257,10 @@ struct BuildXlaOpsPassFlags {
   // Disables full embedding pipelining when true. Instead, strict SparseCore
   // TensorCore sequencing will be used.
   bool tf_xla_disable_full_embedding_pipelining;
+
+  // Force the WhileOps in embedding_pipelining and embedding_sequencing to use
+  // this many parallel_iterations
+  int tf_xla_embedding_parallel_iterations;
 };
 
 // Flags for common MLIR configurations.
@@ -258,6 +269,7 @@ struct MlirCommonFlags {
 
   bool tf_mlir_enable_merge_control_flow_pass;
   bool tf_mlir_enable_convert_control_to_data_outputs_pass;
+  bool tf_mlir_enable_strict_clusters;
   bool tf_mlir_enable_generic_outside_compilation;
 };
 

@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/tsl/platform/cpu_info.h"
 
 namespace tensorflow {
@@ -118,6 +119,73 @@ static double CalculateNodeMFlops(const AttrSlice& attrs,
   }
 
   return -1;
+}
+
+// MatMulHeuristic returns true to rewrite the node with oneDNN
+// false to execute the node in Eigen
+static bool MatMulHeuristic(const Node* n) {
+  // Run heuristic only if CPU is ARM_NEOVERSE_V1
+  if (!tsl::port::TestAarch64CPU(tsl::port::Aarch64CPU::ARM_NEOVERSE_V1)) {
+    return true;
+  }
+  // Check if we can obtain dimensions for this node.
+  std::vector<const TensorShapeProto*> shape_attrs;
+  if (!TryGetNodeAttr(n->attrs(), "_input_shapes", &shape_attrs)) {
+    // We can't obtain shape so we will revert to default behaviour
+    // to rewrite node.
+    return true;
+  }
+
+  if ((n->type_string() == "MatMul" || n->type_string() == "_FusedMatMul")) {
+    TensorShape lhs_shape, rhs_shape;
+    if (TensorShape::BuildTensorShape(*shape_attrs[0], &lhs_shape) !=
+        tsl::OkStatus()) {
+      return true;
+    }
+    if (TensorShape::BuildTensorShape(*shape_attrs[1], &rhs_shape) !=
+        tsl::OkStatus()) {
+      return true;
+    }
+
+    auto M = lhs_shape.dim_size(0);
+    auto K = lhs_shape.dim_size(1);
+    auto N = rhs_shape.dim_size(1);
+    auto ops = M * N * K;
+    std::array<int, 3> n_threshold = {7560, 250, 1536};
+    std::array<int, 2> m_threshold = {378, 80};
+    std::array<int, 2> ops_threshold = {5242880, 1090519040};
+
+    if (N <= n_threshold.at(0)) {
+      if (ops <= ops_threshold.at(0)) {
+        if (M <= m_threshold.at(0)) {
+          return false;
+        } else {
+          if (N <= n_threshold.at(1)) {
+            return false;
+          } else {
+            return true;
+          }
+        }
+      } else {
+        if (M <= m_threshold.at(1)) {
+          if (N <= n_threshold.at(2)) {
+            return true;
+          } else {
+            return false;
+          }
+        } else {
+          if (ops <= ops_threshold.at(1)) {
+            return true;
+          } else {
+            return false;
+          }
+        }
+      }
+    } else {
+      return false;
+    }
+  }
+  return true;
 }
 
 }  // namespace tensorflow

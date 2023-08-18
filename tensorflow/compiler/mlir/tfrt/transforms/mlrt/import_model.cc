@@ -16,6 +16,9 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
@@ -31,16 +34,16 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/mlrt/mlir_to_bytecode.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/compiler/mlir/tfrt/utils/export.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/tfrt/fallback/cost_recorder.h"
+#include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/mlrt/attribute/attribute.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/logging.h"
-#include "tensorflow/tsl/platform/status.h"
 
 namespace tensorflow {
 namespace mlrt_compiler {
@@ -53,16 +56,41 @@ StatusOr<mlrt::bc::Buffer> ConvertTfMlirToBytecode(
   mlrt::bc::Buffer bytecode_buffer;
   TF_RETURN_IF_ERROR(ConvertTfMlirToRuntimeExecutable(
       options, module,
-      [&bytecode_buffer, &fallback_state, module_with_op_keys](
+      [&bytecode_buffer, &fallback_state, &model_context, module_with_op_keys](
           mlir::PassManager& pm, mlir::ModuleOp module,
           const TfrtPipelineOptions& options) {
+        if (auto* flib_def = model_context.function_library_definition()) {
+          // Copy the module before exporting as exporting to graph will
+          // transform the MLIR to TFG dialect.
+          mlir::OwningOpRef<mlir::ModuleOp> copy(module.clone());
+          TF_RETURN_IF_ERROR(
+              ExportFunctionDefs(*copy, [flib_def](FunctionDef function_def) {
+                VLOG(1) << "Exporting MLIR function as function_def: "
+                        << function_def.DebugString();
+
+                // The TF MLIR compiler may change the function name. Then we
+                // need to retrieve the original name from the
+                // _original_func_name attribute.
+                auto iter = function_def.attr().find("_original_func_name");
+                if (iter != function_def.attr().end()) {
+                  function_def.mutable_signature()->set_name(iter->second.s());
+                }
+
+                const auto& name = function_def.signature().name();
+                if (flib_def->Contains(name)) {
+                  TF_RETURN_IF_ERROR(flib_def->RemoveFunction(name));
+                }
+
+                return flib_def->AddFunctionDef(function_def);
+              }));
+        }
+
         mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
 
-        if (options.enable_while_parallel_iterations) {
-          pm.addPass(mlrt_compiler::CreateWhileToMapFnPass());
-          // Remove unreachable private functions after mapfn conversion.
-          pm.addPass(mlir::createSymbolDCEPass());
-        }
+        pm.addPass(mlrt_compiler::CreateWhileToMapFnPass());
+        // Remove unreachable private functions after map_fn conversion.
+        pm.addPass(mlir::createSymbolDCEPass());
+
         tensorflow::CreateTFExecutorToTFInvariantOptimizationPipelineHelper(
             pm, options);
         // TODO(b/283481729): Add test to cover unused constants that do not

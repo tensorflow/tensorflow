@@ -115,10 +115,12 @@ proto_library(
     srcs = [
         "configuration.proto",
     ],
+    compatible_with = get_compatible_with_portable(),
 )
 
 cc_proto_library(
     name = "configuration_cc_proto",
+    compatible_with = get_compatible_with_portable(),
     deps = [":configuration_proto"],
 )
 
@@ -180,6 +182,7 @@ cc_library(
         "flatbuffer_to_proto.cc",
     ],
     hdrs = ["flatbuffer_to_proto.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":configuration_cc_proto",
         ":configuration_fbs",

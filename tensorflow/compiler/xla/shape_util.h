@@ -19,8 +19,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SHAPE_UTIL_H_
 #define TENSORFLOW_COMPILER_XLA_SHAPE_UTIL_H_
 
+#include <cstdint>
 #include <functional>
 #include <initializer_list>
+#include <iterator>
 #include <numeric>
 #include <optional>
 #include <ostream>
@@ -32,11 +34,18 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/layout.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "tensorflow/tsl/platform/macros.h"
 
 namespace xla {
 
@@ -103,12 +112,12 @@ class ShapeUtil {
   static inline int64_t ElementsIn(const Shape& shape) {
     DCHECK(shape.IsArray()) << ShapeUtil::HumanString(shape);
     DCHECK_EQ(shape.dimensions_size(), shape.rank());
-    if (shape.dimensions().size() == 1) {
-      return shape.dimensions()[0];
+    if (shape.dimensions().empty()) {
+      return 1LL;
     }
-    return std::accumulate<decltype(shape.dimensions().begin()), int64_t>(
-        shape.dimensions().begin(), shape.dimensions().end(), 1LL,
-        std::multiplies<int64_t>());
+    auto begin = shape.dimensions().begin();
+    return std::accumulate(std::next(begin), shape.dimensions().end(), *begin,
+                           std::multiplies<int64_t>());
   }
 
   // As ElementsIn(), but recurses through tuples.
@@ -283,6 +292,8 @@ class ShapeUtil {
   static Shape ChangeElementType(const Shape& original, PrimitiveType type);
 
   // Returns a shape with same dimensions but with all dimensions set to static.
+  // If the shape has a layout, its dynamic_shape_metadata_prefix_bytes will be
+  // set to zero.
   static Shape MakeStaticShape(const Shape& original);
 
   // Creates a tuple shape from a slice of element shapes within the tuple.

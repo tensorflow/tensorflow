@@ -88,12 +88,6 @@ class IrEmitterUnnested : public IrEmitter {
 
   using ConstantGenerator = std::function<llvm::Value*(int64_t)>;
 
-  // Fusion root -> array of indexes, one per reduction output.
-  using ReductionOutputMap =
-      ConstHloInstructionMap<absl::Span<llvm_ir::IrArray const>>;
-
-  using ExtraOutputGensMap = ConstHloInstructionMap<llvm_ir::ElementGenerator>;
-
   IrEmitterUnnested(const IrEmitterUnnested&) = delete;
   IrEmitterUnnested& operator=(const IrEmitterUnnested&) = delete;
 
@@ -306,135 +300,6 @@ class IrEmitterUnnested : public IrEmitter {
         shape, ir_emitter_context_->llvm_module()->getDataLayout());
   }
 
-  // The return type of BuildKernelPrototype.
-  struct KernelAndIrArrays {
-    llvm::Function* kernel = nullptr;
-    std::vector<llvm_ir::IrArray> ir_arrays;
-  };
-
-  KernelAndIrArrays BuildKernelPrototype(
-      absl::string_view suggested_name,
-      absl::Span<const KernelArgument> arguments,
-      const LaunchDimensions& launch_dimensions);
-
-  // Helper for writing extra outputs from inside a reduce kernel.
-  Status EmitExtraOutputsForReduce(const Shape& reduction_operand_shape,
-                                   const ReductionOutputMap& result_ir_arrays,
-                                   const llvm_ir::IrArray::Index& index,
-                                   const ReductionCodegenInfo& reduction_info,
-                                   const ExtraOutputGensMap& extra_output_gens);
-
-  // Generates code for reduction to contiguous dimensions.
-  //
-  // Row reduction uses the following algorithm described in CUDA-like
-  // pseudocode:
-  //
-  // ```
-  //  __global__ void reduce(int num_rows, float *in, float out) {
-  //    __shared__ float[32] cache;
-  //    int offset = blockDim.x * blockIdx.x + threadIdx.x;
-  //    if (offset >= num_rows) return;
-  //    int tile_bound = std::min(offset + kTileSizeX, num_rows);
-  //    float accum = 0;
-  //    for (int i=offset; i<num_rows; i+= blockDim.x) {
-  //      accum += in[i];
-  //    }
-  //    accum = warp_reduce(accum);
-  //    if (threadIdx.x % WarpSize == 0) {
-  //      cache[threadIdx.x / WarpSize] = accum;
-  //    }
-  //    __syncthreads();
-  //    if (threadIdx.x / WarpSize == 0) {
-  //      bool warp_exists = threadIdx.x < (blockDim.x / WarpSize);
-  //      float block_accum = warp_exists ? cache[threadIdx.x % WarpSize] : 0;
-  //      block_accum = warp_reduce(accum);
-  //      if (threadIdx.x == 0) {
-  //        out += block_accum;
-  //      }
-  //    }
-  //  }
-  // ```
-  //
-  // Column reduction uses the following algorithm:
-  //
-  // ```
-  // void reduce(float** in, float* out) {
-  //   __shared__ float[32][33] cache;
-  //   int thread_id = GetThreadId();
-  //   int block_id = GetBlockId();
-  //   int tile_size = 128;
-  //
-  //   float accum = 0;
-  //   for (int i=0; i<tile_size; i++) {
-  //     accum += in[thread_id.y * tile_size + i][block_id * 32 + thread_id.x];
-  //   }
-  //   cache[thread_id.x][thread_id.y] = accum;
-  //
-  //   __syncthreads();
-  //   accum = cache[thread_id.y][thread_id.x];
-  //   accum = warp_reduce(accum); // Sum all the values of `accum` in the same
-  //                               // warp.
-  //
-  //   if (thread_id.y % 32 == 0) {
-  //     out[block_id * 32 + thread_id.x] = accum;
-  //   }
-  // }
-  // ```
-  //
-  // Moreover, a heuristic is implemented to divide the reduce instructions
-  // into groups for parallelization (see `DivideOutputInstructionsIntoGroups`
-  // for details about the heuristic.) Reduce instructions in the same group
-  // will run sequentially while different groups will run in parallel.
-  //
-  // we use raw block_id_y to select the reduce groups for execution without
-  // complicating the index calculation in the code generation of the reduce
-  // instructions. In other words, a block_id_y is assigned to a group and so
-  // different groups can be run in parallel.
-  Status EmitUnnestedReduction(mlir::lmhlo::FusionOp fusion,
-                               HloFusionAnalysis& fusion_analysis);
-
-  // Emits a kernel for the given hlo instruction using a tiled 0-2-1 transpose
-  // algorithm to improve the memory access patterns for the input parameters
-  // with a shape that is a 0-2-1 transpose of the output tensor shape. The
-  // caller is responsible for making sure that it is safe to apply the shared
-  // memory transpose on the input parameters.
-  //
-  //
-  // For the purpose of tiling, the output tensors have a logical shape of three
-  // components 0-2-1 while the relevant input parameters have a logical shape
-  // of three components 0-1-2 in the order major to minor. The x- and y-
-  // dimensions of the tensors are tiled in square tiles with an edge length
-  // `kTileSize`. Each thread block of `kTileSize` x `kNumRows` threads
-  // transposes one tile: each thread copies kTileSize/kNumRows elements from
-  // the input to a shared memory tile, then the otherwise "regular HLO kernel"
-  // reads from the shared memory instead of the original input.
-  //
-  // This is similar to the following CUDA algorithm in TensorFlow:
-  // https://goo.gl/MStRV6.
-  //
-  // `kTileSize` should usually be same as warp size. We currently choose 32 for
-  // `kTileSize` and 4 for `kNumRows`. The CUDA algorithm uses 8 for `kNumRows`.
-  //
-  // TODO(b/33320379): Here each block transposes 1 tile. It may be more
-  // efficient to launch fewer blocks so each transposes many tiles.
-  Status EmitUnnestedTranspose(mlir::lmhlo::FusionOp fusion,
-                               HloFusionAnalysis& fusion_analysis);
-
-  // Generates code for input-fusible slices.
-  //
-  // Prerequisite: ROOT is either a slice or a tuple of slices. The input shapes
-  // of all ROOT slices need to be the same while their output shapes can be
-  // different. On the other hand, the input ranges of slices can be
-  // overlapping. Further generalization/specialization when the needs are seen
-  // in the future.
-  Status EmitInputFusibleNonStridedSlices(mlir::Operation* op,
-                                          HloFusionAnalysis& fusion_analysis);
-
-  Status EmitElementForInputFusibleSlices(
-      const HloComputation* fused_computation,
-      absl::Span<const llvm_ir::IrArray> ir_arrays,
-      const llvm_ir::IrArray::Index& index);
-
   // Emits code for an in-place scatter, modifying `thunk`s launch dimensions in
   // the process. Scatter indices are taken from `scatter_indices_gen`, updates
   // from `updates_gen`. The output buffer is expected to have the operand
@@ -471,167 +336,33 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitScatter(const ScatterDescriptor& desc,
                      const LaunchDimensions& launch_dimensions);
 
-  Status EmitTransposeTile(mlir::lmhlo::FusionOp fusion,
-                           const HloComputation* fusion_hlo,
-                           absl::Span<const llvm_ir::IrArray> operand_arrays,
-                           absl::Span<const llvm_ir::IrArray> output_arrays,
-                           const TilingScheme& tiling_scheme,
-                           const LaunchDimensions& launch_dimensions);
-
   Status EmitScatter(mlir::lmhlo::FusionOp fusion_op,
                      const HloComputation* fused_computation,
                      HloFusionAnalysis& fusion_analysis);
-
-  // Creates accumulator alloca's, populates them with initial values, generates
-  // __shared__ caches and returns the populated object.
-  ReductionCodegenState GenerateReductionCodegenState(
-      mlir::lmhlo::FusionOp fusion, const ReductionCodegenInfo& reduction_info,
-      absl::Span<const HloReduceInstruction* const> reduce_instr_index_group,
-      FusedIrEmitter& fused_emitter);
-
-  // Wraps up the code generation for a tile block of a reduction kernel:
-  // write the calculated output into the output tensor.
-  void EmitReductionOutput(
-      llvm::Type* index_ty, mlir::lmhlo::FusionOp fusion,
-      absl::Span<const HloReduceInstruction* const> reduce_instr_index_group,
-      const ReductionOutputMap& result_ir_arrays,
-      const ReductionCodegenState& reduction_codegen_state,
-      const TilingKernelInfo& tiling_kernel_info);
-
-  // Returns the address to write the reduction output to.
-  llvm::Value* GetOutputAddressForReduction(
-      int partial_result_idx, llvm::Type* index_ty,
-      const ReductionCodegenState& reduction_codegen_state,
-      const TilingKernelInfo& tiling_kernel_info,
-      const ReductionOutputMap& output_arrays,
-      const HloReduceInstruction* reduction, int output_idx);
-
-  // Performs the actual write of the reduction result.
-  using TypedPointer = std::pair<llvm::Value* const, llvm::Type* const>;
-  void WriteReductionOutput(
-      llvm::Type* index_ty,
-      const ReductionCodegenState& reduction_codegen_state,
-      const TilingKernelInfo& tiling_kernel_info,
-      const ReductionOutputMap& output_arrays,
-      const HloReduceInstruction* reduction, int partial_result_idx,
-      const absl::Span<TypedPointer const> values);
-
-  // `current_output`: the value the tile has calculated.
-  // `output_address`: address where the output value has to be written.
-  void EmitReductionOutputForRowReduction(
-      const TilingKernelInfo& tiling_kernel_info,
-      const ReductionCodegenState& reduction_codegen_state,
-      llvm::Type* index_ty, const ReductionOutputMap& output_arrays,
-      const HloReduceInstruction* reduction, int partial_result_idx);
-
-  // Same arguments as EmitReductionOutputForRowReduction.
-  void EmitReductionOutputForColumnReduction(
-      const TilingKernelInfo& tiling_kernel_info,
-      const ReductionCodegenState& reduction_codegen_state,
-      llvm::Type* index_ty, const ReductionOutputMap& output_arrays,
-      const HloReduceInstruction* reduction, int partial_result_idx);
-
-  // Emits code for reductions in the output_instructions.
-  Status EmitIRForReduction(mlir::lmhlo::FusionOp fusion,
-                            absl::Span<HloInstruction* const> instr_index_group,
-                            FusedIrEmitter& fused_emitter,
-                            const ReductionOutputMap& result_ir_arrays,
-                            const ReductionCodegenInfo& reduction_info,
-                            const Shape& input_shape);
-
-  // Generate a single element of the tile (update the accumulator state) for a
-  // given reducer of index `i`.
-  void GenerateElementForReducer(
-      const HloReduceInstruction* reduction, llvm::Value* partial_result_index,
-      const ReductionCodegenState& codegen_state,
-      const llvm_ir::IrArray::Index& index_without_linear,
-      const llvm_ir::IrArray::Index& input_index, int num_partial_results,
-      const ReductionOutputMap& result_ir_arrays);
-
-  // Emits shuffle-down reduction for the `partial_result_address` using the
-  // reduction computation `reducer`, writes output into
-  // `partial_result_address`.
-  //
-  // Multiple partial_result_address inputs happen when doing variadic
-  // reduction: each one should get the output value.
-  void EmitFullWarpShuffleDownLoopForReduce(
-      const HloComputation* reducer,
-      absl::Span<TypedPointer const> partial_result_addresses,
-      int threads_per_block, int num_results_per_warp = 1);
-
-  // Allocates a shared tile of given dimensions, applying scaling specified in
-  // tilng_scheme as a major-most dimension to avoid collisions.
-  llvm::GlobalVariable* AllocateShared(
-      const TilingScheme& tiling_scheme, llvm::Type* element_type,
-      absl::Span<int64_t const> dimensions_major_to_minor,
-      absl::string_view buffer_name = "");
-
-  // Removes some unneeded defining operations from the calculation of `value`,
-  // before passing it to a KernelThunk.
-  static StatusOr<mlir::Value> RemoveTransformingOperations(mlir::Value value);
-
-  // Builds a thunk that calls a new or reused kernel for a fusion operation.
-  //
-  // The caller must specify the same launch dimensions for fusions which have
-  // the same computation.
-  //
-  // If a given fusion is implemented using multiple kernels, then for each
-  // kernel we should provide a discriminator, such as "init" and "impl".
-  //
-  // This returns an std::nullopt if the kernel was
-  // reused. In that case, the caller should not emit the code again for the
-  // implementation of the kernel.
-  //
-  // This is the typical usage pattern of this method:
-  //
-  // ```
-  // TF_ASSIGN_OR_RETURN(
-  //   std::optional<std::vector<llvm_ir::IrArray>> opt_ir_arrays,
-  //   BuildKernelThunkForFusion(fusion_op, launch_dimensions));
-  // if (!opt_ir_arrays.has_value()) {
-  //   // The kernel was reused, no need to emit code.
-  //   return OkStatus();
-  // }
-  // std::vector<llvm_ir::IrArray>& ir_arrays = opt_ir_arrays.value();
-  //
-  // EmitYourSpecificKernelCode(ir_arrays);
-  // ```
-  StatusOr<std::optional<std::vector<llvm_ir::IrArray>>>
-  BuildKernelThunkForFusion(mlir::lmhlo::FusionOp fusion_op,
-                            const LaunchDimensions& launch_dimensions,
-                            absl::string_view discriminator = "");
 
   // Builds a kernel thunk for a non-fusion operation, without reuse.
   //
   // All input and output tensors of `op` are passed to the kernel.
   //
   // TODO(tdanyluk): Consider also reusing non-fusion kernels.
-  StatusOr<std::vector<llvm_ir::IrArray>> BuildKernelThunkForNonFusionOp(
-      mlir::Operation* op, const LaunchDimensions& launch_dimensions);
+  StatusOr<std::pair<std::vector<llvm_ir::IrArray> /*inputs*/,
+                     std::vector<llvm_ir::IrArray> /*outputs*/>>
+  BuildKernelThunkForNonFusionOp(mlir::Operation* op,
+                                 const LaunchDimensions& launch_dimensions);
 
   // Builds a kernel thunk for a non-fusion operation, without reuse.
   //
   // Only the tensors specified in `needed_operands` are passed to the kernel.
   //
   // TODO(tdanyluk): Consider also reusing non-fusion kernels.
-  StatusOr<std::vector<llvm_ir::IrArray>> BuildKernelThunkForNonFusionOp(
-      mlir::Operation* op, mlir::ValueRange needed_operands,
-      const LaunchDimensions& launch_dimensions);
-
-  // Returns a thunk that, given a reduce or select-and-scatter op,
-  // initializes its memory to the appropriate initial value.
-  std::unique_ptr<Thunk> BuildConstantInitializerThunk(
-      mlir::Operation* op, absl::Span<const uint8_t> init_value,
-      mlir::Value dest, const BufferAllocation::Slice& dest_slice,
-      const Shape& output_shape);
-
-  StatusOr<std::unique_ptr<Thunk>> TryBuildConstantInitializerThunk(
-      mlir::Operation* op, mlir::Value init_value, mlir::Value dest);
+  StatusOr<std::pair<std::vector<llvm_ir::IrArray> /*inputs*/,
+                     std::vector<llvm_ir::IrArray> /*outputs*/>>
+  BuildKernelThunkForNonFusionOp(mlir::Operation* op,
+                                 mlir::ValueRange needed_operands,
+                                 const LaunchDimensions& launch_dimensions);
 
   Status BuildInitializerThunk(mlir::Operation* op, mlir::Value init_value,
                                mlir::Value dest);
-  Status BuildFusedInitializerThunk(mlir::lmhlo::FusionOp fusion,
-                                    int output_index);
 
   // Returns a WhileThunk that invokes thunk sequences for 'condition' and
   // 'body' sub-computations of while instruction 'hlo'.
@@ -649,9 +380,6 @@ class IrEmitterUnnested : public IrEmitter {
   // given conditional instruction.
   StatusOr<std::unique_ptr<Thunk>> BuildConditionalThunk(
       const HloInstruction* conditional);
-
-  // Emit __syncthreads(), synchronization barrier for all threads in a block.
-  llvm::CallInst* EmitSyncThreads();
 
   StatusOr<HloComputation*> GetOrCreateSubComputationFromRegion(
       mlir::Region* region, bool is_fusion);
@@ -671,17 +399,8 @@ class IrEmitterUnnested : public IrEmitter {
       scratch_nested_computations_;
   // End optional members for XLA HLO -> LMHLO.
 
-  // __shared__ memory uses a different address space, so we cast it to
-  // global address space before writing or reading.
-  llvm::Value* CastSharedToGlobal(llvm::Value* input, llvm::Type* element_type,
-                                  llvm::Twine name = "");
-
   // Returns the ShapedSlices for the given operands.
   StatusOr<std::vector<ShapedSlice>> GetShapedSlices(
-      mlir::Operation::operand_range operands);
-
-  // Returns the buffer allocation Slice for the given operands.
-  StatusOr<std::vector<BufferAllocation::Slice>> GetSlices(
       mlir::Operation::operand_range operands);
 
   GpuElementalIrEmitter elemental_emitter_;

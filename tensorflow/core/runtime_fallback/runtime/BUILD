@@ -186,10 +186,12 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core/framework:op_requires",
         "//tensorflow/core/kernels/batching_util:adaptive_shared_batch_scheduler",
         "//tensorflow/core/kernels/batching_util:batch_resource_base",
         "//tensorflow/core/kernels/batching_util:bounded_executor",
+        "//tensorflow/core/kernels/batching_util:warmup",
         "//tensorflow/core/lib/core:refcount",
         "//tensorflow/core/lib/core:status",
         "//tensorflow/core/platform:errors",

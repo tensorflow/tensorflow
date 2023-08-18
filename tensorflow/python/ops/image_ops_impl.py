@@ -3181,39 +3181,39 @@ def _is_png(contents, name=None):
     return math_ops.equal(substr, b'\211PN', name=name)
 
 
-tf_export(
+decode_and_crop_jpeg = tf_export(
     'io.decode_and_crop_jpeg',
     'image.decode_and_crop_jpeg',
     v1=['io.decode_and_crop_jpeg', 'image.decode_and_crop_jpeg'])(
         dispatch.add_dispatch_support(gen_image_ops.decode_and_crop_jpeg))
 
-tf_export(
+decode_bmp = tf_export(
     'io.decode_bmp',
     'image.decode_bmp',
     v1=['io.decode_bmp', 'image.decode_bmp'])(
         dispatch.add_dispatch_support(gen_image_ops.decode_bmp))
-tf_export(
+decode_gif = tf_export(
     'io.decode_gif',
     'image.decode_gif',
     v1=['io.decode_gif', 'image.decode_gif'])(
         dispatch.add_dispatch_support(gen_image_ops.decode_gif))
-tf_export(
+decode_jpeg = tf_export(
     'io.decode_jpeg',
     'image.decode_jpeg',
     v1=['io.decode_jpeg', 'image.decode_jpeg'])(
         dispatch.add_dispatch_support(gen_image_ops.decode_jpeg))
-tf_export(
+decode_png = tf_export(
     'io.decode_png',
     'image.decode_png',
     v1=['io.decode_png', 'image.decode_png'])(
         dispatch.add_dispatch_support(gen_image_ops.decode_png))
 
-tf_export(
+encode_jpeg = tf_export(
     'io.encode_jpeg',
     'image.encode_jpeg',
     v1=['io.encode_jpeg', 'image.encode_jpeg'])(
         dispatch.add_dispatch_support(gen_image_ops.encode_jpeg))
-tf_export(
+extract_jpeg_shape = tf_export(
     'io.extract_jpeg_shape',
     'image.extract_jpeg_shape',
     v1=['io.extract_jpeg_shape', 'image.extract_jpeg_shape'])(
@@ -4736,6 +4736,14 @@ def sobel_edges(image):
   return output
 
 
+@tf_export(v1=['image.resize_bicubic'])
+@dispatch.add_dispatch_support
+@deprecation.deprecated(
+    date=None,
+    instructions=(
+        'Use `tf.image.resize(...method=ResizeMethod.BICUBIC...)` instead.'
+    ),
+)
 def resize_bicubic(images,
                    size,
                    align_corners=False,
@@ -4749,6 +4757,14 @@ def resize_bicubic(images,
       name=name)
 
 
+@tf_export(v1=['image.resize_bilinear'])
+@dispatch.add_dispatch_support
+@deprecation.deprecated(
+    date=None,
+    instructions=(
+        'Use `tf.image.resize(...method=ResizeMethod.BILINEAR...)` instead.'
+    ),
+)
 def resize_bilinear(images,
                     size,
                     align_corners=False,
@@ -4762,6 +4778,15 @@ def resize_bilinear(images,
       name=name)
 
 
+@tf_export(v1=['image.resize_nearest_neighbor'])
+@dispatch.add_dispatch_support
+@deprecation.deprecated(
+    date=None,
+    instructions=(
+        'Use `tf.image.resize(...method=ResizeMethod.NEAREST_NEIGHBOR...)` '
+        'instead.'
+    ),
+)
 def resize_nearest_neighbor(images,
                             size,
                             align_corners=False,
@@ -4779,32 +4804,11 @@ resize_area_deprecation = deprecation.deprecated(
     date=None,
     instructions=(
         'Use `tf.image.resize(...method=ResizeMethod.AREA...)` instead.'))
-tf_export(v1=['image.resize_area'])(
+resize_area = tf_export(v1=['image.resize_area'])(
     resize_area_deprecation(
-        dispatch.add_dispatch_support(gen_image_ops.resize_area)))
-
-resize_bicubic_deprecation = deprecation.deprecated(
-    date=None,
-    instructions=(
-        'Use `tf.image.resize(...method=ResizeMethod.BICUBIC...)` instead.'))
-tf_export(v1=['image.resize_bicubic'])(
-    dispatch.add_dispatch_support(resize_bicubic_deprecation(resize_bicubic)))
-
-resize_bilinear_deprecation = deprecation.deprecated(
-    date=None,
-    instructions=(
-        'Use `tf.image.resize(...method=ResizeMethod.BILINEAR...)` instead.'))
-tf_export(v1=['image.resize_bilinear'])(
-    dispatch.add_dispatch_support(resize_bilinear_deprecation(resize_bilinear)))
-
-resize_nearest_neighbor_deprecation = deprecation.deprecated(
-    date=None,
-    instructions=(
-        'Use `tf.image.resize(...method=ResizeMethod.NEAREST_NEIGHBOR...)` '
-        'instead.'))
-tf_export(v1=['image.resize_nearest_neighbor'])(
-    dispatch.add_dispatch_support(
-        resize_nearest_neighbor_deprecation(resize_nearest_neighbor)))
+        dispatch.add_dispatch_support(gen_image_ops.resize_area)
+    )
+)
 
 
 @tf_export('image.crop_and_resize', v1=[])

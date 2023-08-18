@@ -25,20 +25,16 @@ namespace gpu {
 // implemented using a memcpy.
 class MemcpyFusion : public FusionInterface {
  public:
-  MemcpyFusion(IrEmitterContext& ir_emitter_context,
-               mlir::lmhlo::FusionOp fusion_op, mlir::Value src,
-               mlir::Value dst)
-      : context_(ir_emitter_context),
-        fusion_op_(fusion_op),
-        src_(src),
-        dst_(dst) {}
+  MemcpyFusion(mlir::Value src, mlir::Value dst) : src_(src), dst_(dst) {}
 
-  StatusOr<FusionEmissionResult> Emit(KernelReuseCache& kernel_cache,
+  StatusOr<FusionEmissionResult> Emit(IrEmitterContext& ir_emitter_context,
+                                      ElementalIrEmitter& elemental_emitter,
+                                      mlir::lmhlo::FusionOp fusion_op,
+                                      const HloFusionInstruction& fusion,
+                                      KernelReuseCache& kernel_cache,
                                       llvm::IRBuilder<>*) const final;
 
  private:
-  IrEmitterContext& context_;
-  mlir::lmhlo::FusionOp fusion_op_;
   mlir::Value src_;
   mlir::Value dst_;
 };

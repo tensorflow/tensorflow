@@ -3136,6 +3136,39 @@ TEST_F(ModelTimingTest, ComputeTargetTime_TestWindow) {
   EXPECT_DOUBLE_EQ(10.0, model_->ComputeTargetTimeNsec() * 1e-3);
 }
 
+TEST_F(ModelTimingTest, ComputeExperimentalTargetTime) {
+  model_ = std::make_unique<Model>();
+
+  for (int i = 0; i < 45; ++i) {
+    model_->RecordIteratorGapTime(5);
+    model_->RecordIteratorGapTime(15);
+  }
+  for (int i = 0; i < 10; ++i) {
+    model_->RecordIteratorGapTime(10);
+  }
+  for (int i = 0; i < 20; ++i) {
+    // Gap times that are >= 10 seconds are always dropped.
+    model_->RecordIteratorGapTime(10000000);
+  }
+
+  EXPECT_DOUBLE_EQ(10.0, model_->ComputeTargetTimeNsec() * 1e-3);
+}
+
+TEST_F(ModelTimingTest, ComputeExperimentalTargetTime_NotEnoughGapTimes) {
+  model_ = std::make_unique<Model>();
+
+  for (int i = 0; i < 40; ++i) {
+    model_->RecordIteratorGapTime(5);
+    model_->RecordIteratorGapTime(15);
+  }
+  for (int i = 0; i < 20; ++i) {
+    // Gap times that are >= 10 seconds are always dropped.
+    model_->RecordIteratorGapTime(10000000);
+  }
+
+  EXPECT_DOUBLE_EQ(0.0, model_->ComputeExperimentalTargetTimeNsec() * 1e-3);
+}
+
 TEST_F(ModelTimingTest, ComputeSnapshotProcessingTimeEmptyModel) {
   model::Model model;
   EXPECT_EQ(model.ComputeSnapshotProcessingTimeNsec(), 0.0);

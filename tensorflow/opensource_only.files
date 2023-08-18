@@ -16,7 +16,6 @@ tensorflow/core/platform/default/build_config/BUILD:
 tensorflow/core/platform/distribute:.bzl
 tensorflow/core/tfrt/mla/mla_test_utils.h:
 tensorflow/core/tfrt/mla/mla_utils.h:
-tensorflow/core/tfrt/saved_model/saved_model_mira_impl.h:
 tensorflow/core/tfrt/utils/bridge_graph_analysis.h:
 tensorflow/dtensor/build_defs:.bzl
 tensorflow/dtensor/python/tests/test_backend_name:.py
@@ -112,6 +111,7 @@ tensorflow/lite/model.h:
 tensorflow/lite/model_builder.h:
 tensorflow/lite/schema/conversion_metadata_generated.h:
 tensorflow/lite/schema/schema_generated.h:
+tensorflow/lite/signature_runner.h:
 tensorflow/lite/special_rules.bzl:
 tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/AndroidManifest.xml:
 tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/build_defs.bzl:
@@ -209,6 +209,10 @@ third_party/cub.BUILD:
 third_party/curl.BUILD:
 third_party/cython.BUILD:
 third_party/dill.BUILD:
+third_party/ducc/BUILD:
+third_party/ducc/ducc0_custom_lowlevel_threading.h:
+third_party/ducc/threading.cc:
+third_party/ducc/threading.h:
 third_party/eigen3/BUILD:
 third_party/eigen3/Eigen/Cholesky:
 third_party/eigen3/Eigen/Core:

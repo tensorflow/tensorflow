@@ -15,27 +15,40 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/literal_comparison.h"
 
-#include <limits>
-#include <type_traits>
-
-#include "tensorflow/compiler/xla/primitive_util.h"
-
 #ifndef _WIN32
 #include <unistd.h>
 #endif
 
+#include <array>
 #include <cmath>
+#include <cstdint>
+#include <limits>
+#include <optional>
+#include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/base/casts.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/types/span.h"
+#include "third_party/eigen3/Eigen/Core"
+#include "tensorflow/compiler/xla/error_spec.h"
+#include "tensorflow/compiler/xla/index_util.h"
+#include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/float8.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
 
 using absl::StrAppend;
 using absl::StrAppendFormat;

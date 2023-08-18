@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_sharding_util.h"
 
 #include <numeric>
+#include <string>
 #include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
@@ -24,16 +25,20 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/Error.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/xla/client/sharding_builder.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace tensorflow {
@@ -228,6 +233,49 @@ bool IsReplicatedSharding(const xla::OpSharding& sharding) {
          IsOtherReplicatedSharding(sharding);
 }
 
+mlir::LogicalResult DecodeShardingAttribute(const std::string& shard_str,
+                                            xla::OpSharding& sharding,
+                                            bool report_error) {
+  if (sharding.ParseFromString(shard_str)) return mlir::success();
+  // TODO(b/287299845) MLIR should only have human readable representation
+  // going forward. So, remove parsing binary sharding.
+  absl::StatusOr<xla::HloSharding> sharding_hlo = xla::ParseSharding(shard_str);
+  if (sharding_hlo.ok()) {
+    sharding = sharding_hlo->ToProto();
+    return mlir::success();
+  }
+  if (report_error)
+    llvm::errs() << std::string(sharding_hlo.status().message()) << "\n";
+  return mlir::failure();
+}
+
+mlir::LogicalResult DecodeShardingAttribute(mlir::Attribute shard_attr,
+                                            xla::OpSharding& sharding,
+                                            bool report_error) {
+  if (!shard_attr.isa<mlir::StringAttr>()) return mlir::failure();
+
+  auto shard_str = shard_attr.cast<mlir::StringAttr>().getValue().str();
+  return DecodeShardingAttribute(shard_str, sharding, report_error);
+}
+
+void EncodeSharding(mlir::Operation* op, llvm::StringRef shard_str) {
+  if (!op->hasAttrOfType<mlir::StringAttr>(shard_str)) return;
+
+  ::xla::OpSharding sharding;
+  auto sharding_proto_str =
+      op->getAttrOfType<mlir::StringAttr>(shard_str).getValue().str();
+  if (!sharding.ParseFromString(sharding_proto_str)) return;
+
+  auto hlosharding = xla::HloSharding::FromProto(sharding);
+  if (!hlosharding.ok()) {
+    op->emitError("Unable to encode sharding to human readable ")
+        << hlosharding.status().message();
+    return;
+  }
+  op->setAttr(shard_str,
+              mlir::StringAttr::get(op->getContext(), hlosharding->ToString()));
+}
+
 mlir::LogicalResult ExtractInputsForLogicalDevices(
     const int num_cores_per_replica,
     mlir::tf_device::ClusterFuncOp cluster_func, mlir::OpBuilder* builder,
@@ -259,8 +307,11 @@ mlir::LogicalResult ExtractInputsForLogicalDevices(
     const auto& input_value = cluster_func_inputs[input_index];
 
     xla::OpSharding sharding;
-    sharding.ParseFromString(
-        sharding_attr.cast<mlir::StringAttr>().getValue().str());
+    if (DecodeShardingAttribute(
+            sharding_attr.cast<mlir::StringAttr>().getValue().str(), sharding)
+            .failed()) {
+      return cluster_func.emitError("incorrect sharding format for inputs");
+    }
 
     const auto input_sharding_type = sharding.type();
 
@@ -355,9 +406,11 @@ mlir::LogicalResult ParseAndValidateOutputSharding(
           "non-string output sharding at index {0}", sharding_index));
 
     xla::OpSharding sharding;
-    if (!sharding.ParseFromString(
-            output_sharding.cast<mlir::StringAttr>().getValue().str()))
+    if (DecodeShardingAttribute(
+            output_sharding.cast<mlir::StringAttr>().getValue().str(), sharding)
+            .failed()) {
       return cluster_func.emitError("incorrect sharding format for outputs");
+    }
 
     if (sharding.type() == xla::OpSharding::OTHER &&
         sharding.tile_assignment_devices_size() != num_cores_per_replica)

@@ -98,8 +98,4 @@ absl::StatusCode StatusCodeFromTSLCode(TSL_Code code) {
   }
 }
 
-Status StatusFromTSL_Status(const TSL_Status* tsl_status) {
-  return tsl_status->status;
-}
-
 }  // namespace tsl

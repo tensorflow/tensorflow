@@ -29,6 +29,12 @@ limitations under the License.
 #include "tensorflow/tsl/platform/str_util.h"
 
 namespace tsl {
+namespace {
+int GetTfDeviceIdFromDeviceParsedName(
+    const DeviceNameUtils::ParsedName& device_name) {
+  return device_name.id;
+}
+}  // namespace
 
 void CheckValidTfDeviceId(const DeviceType& type,
                           const int visible_device_count,
@@ -117,20 +123,28 @@ StatusOr<size_t> GetNumberTfDevicesAndConfigurePlatformDeviceId(
   return num_tf_devices;
 }
 
-StatusOr<int> GetDeviceIdFromDeviceParsedName(
+StatusOr<int> GetPlatformDeviceIdFromDeviceParsedName(
     const DeviceNameUtils::ParsedName& device_name,
     const DeviceType& device_type) {
-  const TfDeviceId tf_device_id(device_name.id);
+  const TfDeviceId tf_device_id(GetTfDeviceIdFromDeviceParsedName(device_name));
   PlatformDeviceId platform_device_id;
   Status platform_id_status = DeviceIdManager::TfToPlatformDeviceId(
       device_type, tf_device_id, &platform_device_id);
   if (platform_id_status.ok()) {
     return platform_device_id.value();
   }
-  if (absl::IsNotFound(platform_id_status)) {
-    return tf_device_id.value();
-  }
   return platform_id_status;
+}
+
+StatusOr<int> GetDeviceIdFromDeviceParsedName(
+    const DeviceNameUtils::ParsedName& device_name,
+    const DeviceType& device_type) {
+  auto platform_id =
+      GetPlatformDeviceIdFromDeviceParsedName(device_name, device_type);
+  if (platform_id.ok()) {
+    return *platform_id;
+  }
+  return GetTfDeviceIdFromDeviceParsedName(device_name);
 }
 
 }  // namespace tsl

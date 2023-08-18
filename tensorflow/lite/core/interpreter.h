@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/async/async_signature_runner.h"
 #include "tensorflow/lite/core/c/common.h"  // IWYU pragma: export
+#include "tensorflow/lite/core/signature_runner.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/lite/experimental/resource/initialization_status.h"
@@ -54,7 +55,6 @@ limitations under the License.
 #include "tensorflow/lite/portable_type_to_tflitetype.h"
 #include "tensorflow/lite/profiling/root_profiler.h"
 #include "tensorflow/lite/profiling/telemetry/c/telemetry_setting_internal.h"
-#include "tensorflow/lite/signature_runner.h"
 #include "tensorflow/lite/stderr_reporter.h"
 #include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/type_to_tflitetype.h"
@@ -797,6 +797,7 @@ class Interpreter {
   friend class tflite::impl::InterpreterBuilder;
 #ifndef DOXYGEN_SKIP
   friend class tflite::InterpreterTest;
+  friend class tflite::SingleOpModel;
   friend class tflite::delegates::InterpreterUtils;
   friend class tflite::delegates::test_utils::TestDelegation;
   friend class tflite::interpreter_wrapper::InterpreterWrapper;

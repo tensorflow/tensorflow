@@ -29,6 +29,9 @@ constexpr absl::string_view kProfilerLockContention =
 // "active" instance, owns the profiler lock.
 class ProfilerLock {
  public:
+  // Returns true if the process has active profiling session.
+  static bool HasActiveSession();
+
   // Acquires the profiler lock if no other profiler session is currently
   // active.
   static StatusOr<ProfilerLock> Acquire();
@@ -53,7 +56,7 @@ class ProfilerLock {
   // Allow creating another active instance.
   void ReleaseIfActive();
 
-  // Returs true if this is the active instance.
+  // Returns true if this is the active instance.
   bool Active() const { return active_; }
 
  private:

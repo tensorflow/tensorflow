@@ -84,7 +84,8 @@ PJRT_Error* PJRT_GpuDeviceTopology_Create(
 
 constexpr PJRT_Api pjrt_api =
     pjrt::CreatePjrtApi(pjrt::gpu_plugin::PJRT_Client_Create,
-                        pjrt::gpu_plugin::PJRT_GpuDeviceTopology_Create);
+                        pjrt::gpu_plugin::PJRT_GpuDeviceTopology_Create,
+                        pjrt::PJRT_Plugin_Initialize_NoOp);
 
 const PJRT_Api* GetGpuPjrtApi() { return &pjrt_api; }
 

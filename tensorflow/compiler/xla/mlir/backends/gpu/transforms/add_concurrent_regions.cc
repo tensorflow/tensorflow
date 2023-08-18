@@ -142,6 +142,16 @@ llvm::SmallVector<RegionInfo> GetRegionInfos(
     region.clear();
   };
 
+  auto append_node_to_region = [&](const DataflowAnalysis::Node& node) {
+    if (region.empty()) {
+      if (!IsNoOp(node.operation)) {
+        region.push_back(node);
+      }
+    } else {
+      region.push_back(node);
+    }
+  };
+
   for (const DataflowAnalysis::Node& node : dataflow_graph) {
     if (isa<func::ReturnOp>(node.operation)) {
       break;
@@ -157,15 +167,13 @@ llvm::SmallVector<RegionInfo> GetRegionInfos(
       }
     }
 
-    if (has_dependency || IsKernelMemoryBound(node.operation)) {
+    if (IsKernelMemoryBound(node.operation)) {
       store_region_and_start_new_region();
+    } else if (has_dependency) {
+      store_region_and_start_new_region();
+      append_node_to_region(node);
     } else {
-      // No dependency with the current region.
-      if (region.empty() && IsNoOp(node.operation)) {
-        continue;
-      } else {
-        region.push_back(node);
-      }
+      append_node_to_region(node);
     }
   }
 

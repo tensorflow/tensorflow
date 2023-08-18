@@ -359,8 +359,8 @@ class ConvertCollectiveReduceV2
 
 void LegalizeTFCollective::runOnOperation() {
   // FIXME(b/226139061): Figure out a way to share the channel_id with
-  // send/recv Ops.
-  int64_t channel_id = 1;
+  // send/recv Ops. For now, start with a different range to avoid collision.
+  int64_t channel_id = 10000;
   auto module = getOperation();
   MLIRContext* context = module->getContext();
 

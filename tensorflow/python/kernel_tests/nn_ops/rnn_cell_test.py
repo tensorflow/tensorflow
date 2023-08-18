@@ -1113,7 +1113,7 @@ class LSTMTest(test.TestCase):
       if test_util.is_xla_enabled():
         comparison_fn = self.assertAllClose
       if in_graph_mode:
-        comparison_fn(outputs_static, outputs_dynamic)
+        self.assertAllClose(outputs_static, outputs_dynamic)
       else:
         self.assertAllEqual(
             array_ops_stack.stack(outputs_static), outputs_dynamic)

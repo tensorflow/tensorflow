@@ -16,14 +16,6 @@ limitations under the License.
 #include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/translate/mhlo_to_lhlo_with_xla/mhlo_to_lhlo_with_xla.h"
 
-namespace {
-// NOLINTNEXTLINE
-llvm::cl::opt<bool> optimize_xla_hlo(
-    "optimize-xla-hlo",
-    llvm::cl::desc("Enable optimizations when translating XLA HLO -> LHLO"),
-    llvm::cl::init(true));
-}  // namespace
-
 //----------------------------------------------------------------------------//
 // Hooks for tf-mlir-translate
 //----------------------------------------------------------------------------/
@@ -33,6 +25,5 @@ llvm::cl::opt<bool> optimize_xla_hlo(
 static mlir::TranslateToMLIRRegistration HloTextToLhloMlirTranslate(
     "hlo-text-to-lhlo", "hlo-text-to-lhlo",
     [](llvm::StringRef input, mlir::MLIRContext* context) {
-      return mlir::HloTextToLhloTranslateFunction(input, context,
-                                                  optimize_xla_hlo);
+      return mlir::HloTextToLhloTranslateFunction(input, context);
     });

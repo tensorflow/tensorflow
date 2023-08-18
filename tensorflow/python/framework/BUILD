@@ -1,5 +1,6 @@
 # python/framework package
 
+# Placeholder: load py_proto_library
 load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 load(
     "//tensorflow:tensorflow.bzl",
@@ -518,6 +519,7 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/util:tf_stack",
     ],
 )
 
@@ -1164,7 +1166,7 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+pytype_strict_library(
     name = "ops",  # "ops" is already the name of a deprecated target
     srcs = ["ops.py"],
     srcs_version = "PY3",
@@ -1301,12 +1303,13 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+pytype_strict_library(
     name = "tensor_conversion",
     srcs = ["tensor_conversion.py"],
     srcs_version = "PY3",
     deps = [
         ":tensor_conversion_registry",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:dispatch",
         "//tensorflow/python/util:tf_export",
@@ -1615,7 +1618,7 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+pytype_strict_library(
     name = "weak_tensor",
     srcs = ["weak_tensor.py"],
     srcs_version = "PY3",
@@ -1627,7 +1630,9 @@ py_strict_library(
         ":ops",
         ":tensor",
         ":tensor_conversion_registry",
+        ":tensor_spec",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/types:core",
         "//third_party/py/numpy",
     ],
 )
@@ -1642,16 +1647,19 @@ tf_py_strict_test(
         ":constant_op",
         ":dtypes",
         ":errors",
+        ":extension_type",
         ":ops",
         ":tensor",
         ":test_lib",
         ":weak_tensor",
         "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/module",
         "//tensorflow/python/platform:test",
         "//tensorflow/python/saved_model:load",
         "//tensorflow/python/saved_model:save",
+        "//tensorflow/python/types:core",
     ],
 )
 
@@ -1837,10 +1845,13 @@ pytype_strict_library(
     name = "flexible_dtypes",
     srcs = ["flexible_dtypes.py"],
     deps = [
+        ":composite_tensor",
         ":dtypes",
-        ":extension_type",
+        ":indexed_slices",
         ":ops",
+        ":tensor_shape",
         ":weak_tensor",
+        "//tensorflow/python/ops:variables",
         "//tensorflow/python/util:nest",
         "//third_party/py/numpy",
     ],
@@ -2006,6 +2017,7 @@ py_strict_library(
         "//tensorflow/python/ops:gradients_impl",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:script_ops",
+        "//tensorflow/python/ops:sparse_ops_gen",
         "//tensorflow/python/ops:summary_ops_v2",
         "//tensorflow/python/ops:sync_ops_gen",
         "//tensorflow/python/ops:variables",
@@ -2426,6 +2438,10 @@ tf_py_strict_test(
 tf_gen_op_wrapper_py(
     name = "test_ops",
     out = "test_ops.py",
+    api_def_srcs = [
+        "//tensorflow/core/api_def:base_api_def",
+        "//tensorflow/core/api_def:python_api_def",
+    ],
     extra_py_deps = [
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python/util:deprecation",
@@ -2450,21 +2466,6 @@ tf_kernel_library(
     alwayslink = 1,
 )
 
-tf_gen_op_wrapper_py(
-    name = "test_ops_2",
-    out = "test_ops_2.py",
-    py_lib_rule = py_strict_library,
-    deps = [":test_ops_2_kernels"],
-)
-
-cc_library(
-    name = "test_ops_2_kernels",
-    srcs = ["test_ops_2.cc"],
-    linkstatic = 1,
-    deps = ["//tensorflow/core:framework"],
-    alwayslink = 1,
-)
-
 tf_py_strict_test(
     name = "common_shapes_test",
     size = "small",
@@ -2485,7 +2486,7 @@ tf_py_strict_test(
     srcs = ["ops_test.py"],
     main = "ops_test.py",
     python_version = "PY3",
-    tags = ["no_pip"],  # test_ops_2 is not available in pip.
+    tags = ["no_pip"],
     deps = [
         ":composite_tensor",
         ":config",
@@ -2899,6 +2900,7 @@ tf_py_strict_test(
         "nomsan",  # TODO(b/149948895): Re-enable.
         "not_run:arm",
         "notsan",  # TODO(b/149948895): Re-enable.
+        "nozapfhahn",
     ],
     deps = [
         ":constant_op",

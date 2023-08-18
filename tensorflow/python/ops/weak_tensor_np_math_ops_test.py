@@ -31,6 +31,7 @@ from tensorflow.python.ops import weak_tensor_test_util
 from tensorflow.python.ops.numpy_ops import np_array_ops
 from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.numpy_ops import np_math_ops
+from tensorflow.python.ops.numpy_ops import np_random
 from tensorflow.python.platform import googletest
 
 
@@ -200,9 +201,26 @@ class MathTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertFalse(np_math_ops.isneginf(x1))
     self.assertFalse(np_math_ops.isneginf(x2))
 
+  def testRandomOpsReturnFloat32(self):
+    x = np_random.rand(2, 50)
+    np_x = np.random.rand(2, 50)
+    self.assertEqual(x.dtype, dtypes.float32)
+    self.assertEqual(np_x.shape, x.shape)
+
+    x = np_random.standard_normal(50)
+    np_x = np.random.standard_normal(50)
+    self.assertEqual(x.dtype, dtypes.float32)
+    self.assertEqual(np_x.shape, x.shape)
+
+    x = np_random.uniform(low=-1, high=0, size=(50, 50))
+    np_x = np.random.uniform(low=-1, high=0, size=(50, 50))
+    self.assertEqual(x.dtype, dtypes.float32)
+    self.assertEqual(np_x.shape, x.shape)
+
 
 if __name__ == '__main__':
   tensor.enable_tensor_equality()
+  np_math_ops.enable_numpy_methods_on_tensor()
   ops.enable_eager_execution()
   ops.set_dtype_conversion_mode('all')
   googletest.main()

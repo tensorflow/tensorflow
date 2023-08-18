@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
@@ -87,7 +88,9 @@ StatusOr<std::unique_ptr<RequestInfo>> CreateRequestInfo(
     tfrt::ResourceContext* client_graph_resource_context,
     OpKernelRunnerTable* runner_table,
     tfd::FallbackResourceArray* resource_array,
-    const FallbackState& fallback_state, CostRecorder* cost_recorder = nullptr);
+    const FallbackState& fallback_state,
+    const ProcessFunctionLibraryRuntime& process_function_library_runtime,
+    CostRecorder* cost_recorder = nullptr);
 
 // Runs on a function given input/output and other info.
 // Note: `resource_context` is per-graph-executor and
@@ -108,9 +111,11 @@ tensorflow::Status GraphExecutionRunOnFunction(
     OpKernelRunnerTable* runner_table,
     tfd::FallbackResourceArray* resource_array, const Runtime& runtime,
     const FallbackState& fallback_state,
+    const tensorflow::ProcessFunctionLibraryRuntime&
+        process_function_library_runtime,
     tfrt::RequestDeadlineTracker* req_deadline_tracker,
-    CostRecorder* cost_recorder = nullptr,
-    std::optional<StreamCallbackId> stream_callback_id = std::nullopt);
+    std::optional<StreamCallbackId> stream_callback_id,
+    CostRecorder* cost_recorder = nullptr);
 
 // Runs a MLRT function for executing tensorflow graphs.
 tensorflow::Status RunMlrtFunction(
@@ -137,28 +142,8 @@ class GraphExecutor {
                       mlir::OwningOpRef<mlir::ModuleOp> tf_mlir_with_op_keys,
                       mlir::OwningOpRef<mlir::ModuleOp> tfrt_mlir,
                       std::shared_ptr<ExecutableContext> executable_context,
-                      std::optional<StreamCallbackId> stream_callback_id)
-        : name_(std::move(name)),
-          symbol_uids_(std::move(symbol_uids)),
-          graph_executor_(graph_executor),
-          mlir_context_(std::move(mlir_context)),
-          executable_context_(std::move(executable_context)),
-          stream_callback_id_(std::move(stream_callback_id)) {
-      const auto& options = graph_executor_->options().cost_analysis_options;
-      if (options.version != Options::CostAnalysisOptions::kDisabled) {
-        // Initialize in a way that ensures recompilation on the first run.
-        cost_analysis_data_.start_time = absl::Now() - options.reset_interval;
-        cost_analysis_data_.is_available = true;
-        cost_analysis_data_.num_cost_updates = options.updates_per_interval - 1;
-        cost_analysis_data_.cost_recorder = std::make_unique<CostRecorder>();
-        if (executable_context_->IsForMlrt()) {
-          cost_analysis_data_.tf_mlir_with_op_keys =
-              std::move(tf_mlir_with_op_keys);
-        } else {
-          cost_analysis_data_.tfrt_mlir = std::move(tfrt_mlir);
-        }
-      }
-    }
+                      std::optional<StreamCallbackId> stream_callback_id,
+                      FunctionLibraryDefinition flib_def);
 
     // Returns this instance's CostRecorder if it is time to update costs,
     // else returns nullptr. Only allows one non-null return value at a time
@@ -184,8 +169,13 @@ class GraphExecutor {
     tfd::FallbackResourceArray& resource_array() { return resource_array_; }
     SyncResourceState& sync_resource_state() { return sync_resource_state_; }
 
-    const std::optional<StreamCallbackId>& stream_callback_id() const {
+    std::optional<StreamCallbackId> stream_callback_id() const {
       return stream_callback_id_;
+    }
+
+    const ProcessFunctionLibraryRuntime& process_function_library_runtime()
+        const {
+      return pflr_;
     }
 
    private:
@@ -222,6 +212,8 @@ class GraphExecutor {
     SyncResourceState sync_resource_state_;
 
     std::optional<StreamCallbackId> stream_callback_id_;
+    FunctionLibraryDefinition flib_def_;
+    ProcessFunctionLibraryRuntime pflr_;
   };
 
   // A subgraph constructed by specifying input/output tensors.
@@ -290,6 +282,7 @@ class GraphExecutor {
   tfrt::ResourceContext& resource_context() { return *resource_context_; }
 
   const Options& options() const { return options_; }
+  const FallbackState& fallback_state() const { return fallback_state_; }
 
   // Compiles graph for `graph_name` and runs any initializers.
   tensorflow::Status CompileGraph(
@@ -310,7 +303,8 @@ class GraphExecutor {
       tensorflow::tfrt_stub::WorkQueueInterface* work_queue);
   StatusOr<std::unique_ptr<GraphExecutor::LoadedClientGraph>>
   ImportAndCompileClientGraph(const GraphExecutor::ClientGraph& client_graph);
-  tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
+  tensorflow::StatusOr<
+      std::pair<FunctionLibraryDefinition, mlir::OwningOpRef<mlir::ModuleOp>>>
   ImportClientGraphToMlirModule(const GraphExecutor::ClientGraph& client_graph,
                                 mlir::MLIRContext* context) const;
   StatusOr<tfrt::BefBuffer> CompileMlirModuleToBef(mlir::ModuleOp module) const;

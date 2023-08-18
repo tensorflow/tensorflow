@@ -618,74 +618,62 @@ class DotHandler {
   }
 
   Status RegisterStrategies() {
-    std::vector<int64_t> shardable_mesh_dims =
-        VectorGreaterThanOneElementIndices(device_mesh_.dimensions());
-    // For 1D sharding
-    if (shardable_mesh_dims.size() == 1) {
-      shardable_mesh_dims.push_back((shardable_mesh_dims.at(0) + 1) %
-                                    device_mesh_.num_dimensions());
-    }
+    auto mesh_shape = device_mesh_.dimensions();
 
     // SS = SR x RS
     // Split lhs space dim and rhs space dim.
-    for (int64_t i = 0; i < shardable_mesh_dims.size(); ++i) {
-      for (int64_t j = (i + 1); j < shardable_mesh_dims.size(); ++j) {
-        SplitLhsSpaceRhsSpace(shardable_mesh_dims[i], shardable_mesh_dims[j]);
-        SplitLhsSpaceRhsSpace(shardable_mesh_dims[j], shardable_mesh_dims[i]);
+    for (int64_t i = 0; i < mesh_shape.size(); ++i) {
+      for (int64_t j = (i + 1); j < mesh_shape.size(); ++j) {
+        SplitLhsSpaceRhsSpace(i, j);
+        SplitLhsSpaceRhsSpace(j, i);
       }
     }
 
     // SSR = SSR x RR
     // Split lhs space dims only if it has more than 1 space dims.
     if (lhs_space_dims_.size() > 1) {
-      for (int64_t i = 0; i < shardable_mesh_dims.size(); ++i) {
-        for (int64_t j = (i + 1); j < shardable_mesh_dims.size(); ++j) {
-          SplitLhsSpaceOnly(shardable_mesh_dims[i], shardable_mesh_dims[j]);
-          SplitLhsSpaceOnly(shardable_mesh_dims[j], shardable_mesh_dims[i]);
+      for (int64_t i = 0; i < mesh_shape.size(); ++i) {
+        for (int64_t j = (i + 1); j < mesh_shape.size(); ++j) {
+          SplitLhsSpaceOnly(i, j);
+          SplitLhsSpaceOnly(j, i);
         }
       }
     }
     // RSS = RR x RSS
     // Split rhs space dims only if it has more than 1 space dims.
     if (rhs_space_dims_.size() > 1) {
-      for (int64_t i = 0; i < shardable_mesh_dims.size(); ++i) {
-        for (int64_t j = (i + 1); j < shardable_mesh_dims.size(); ++j) {
-          SplitRhsSpaceOnly(shardable_mesh_dims[i], shardable_mesh_dims[j]);
-          SplitRhsSpaceOnly(shardable_mesh_dims[j], shardable_mesh_dims[i]);
+      for (int64_t i = 0; i < mesh_shape.size(); ++i) {
+        for (int64_t j = (i + 1); j < mesh_shape.size(); ++j) {
+          SplitRhsSpaceOnly(i, j);
+          SplitRhsSpaceOnly(j, i);
         }
       }
     }
 
     // SR = SS x SR
     // Split lhs space dim and both contracting dims.
-    for (int64_t i = 0; i < shardable_mesh_dims.size(); ++i) {
-      for (int64_t j = (i + 1); j < shardable_mesh_dims.size(); ++j) {
-        SplitLhsSpaceBothContract(shardable_mesh_dims[i],
-                                  shardable_mesh_dims[j]);
-        SplitLhsSpaceBothContract(shardable_mesh_dims[j],
-                                  shardable_mesh_dims[i]);
+    for (int64_t i = 0; i < mesh_shape.size(); ++i) {
+      for (int64_t j = (i + 1); j < mesh_shape.size(); ++j) {
+        SplitLhsSpaceBothContract(i, j);
+        SplitLhsSpaceBothContract(j, i);
       }
     }
 
     // RS = RS x SS
     // Split rhs space dim and both contracting dims.
-    for (int64_t i = 0; i < shardable_mesh_dims.size(); ++i) {
-      for (int64_t j = (i + 1); j < shardable_mesh_dims.size(); ++j) {
-        SplitRhsSpaceBothContract(shardable_mesh_dims[i],
-                                  shardable_mesh_dims[j]);
-        SplitRhsSpaceBothContract(shardable_mesh_dims[j],
-                                  shardable_mesh_dims[i]);
+    for (int64_t i = 0; i < mesh_shape.size(); ++i) {
+      for (int64_t j = (i + 1); j < mesh_shape.size(); ++j) {
+        SplitRhsSpaceBothContract(i, j);
+        SplitRhsSpaceBothContract(j, i);
       }
     }
 
     // RR = SS x SS
     // Split two contracting dims on lhs and rhs.
-    for (int64_t i = 0; i < shardable_mesh_dims.size(); ++i) {
-      for (int64_t j = (i + 1); j < shardable_mesh_dims.size(); ++j) {
-        SplitBothContractTwoDims(shardable_mesh_dims[i],
-                                 shardable_mesh_dims[j]);
-        SplitBothContractTwoDims(shardable_mesh_dims[j],
-                                 shardable_mesh_dims[i]);
+    for (int64_t i = 0; i < mesh_shape.size(); ++i) {
+      for (int64_t j = (i + 1); j < mesh_shape.size(); ++j) {
+        SplitBothContractTwoDims(i, j);
+        SplitBothContractTwoDims(j, i);
       }
     }
 
@@ -693,12 +681,10 @@ class DotHandler {
     // This is a special case where we allow spliting only one dim in the
     // multi-dimensional mesh case. This allows some recomputation
     // (e.g., the dense layer in the LM_head of BERT).
-    for (int64_t i = 0; i < shardable_mesh_dims.size(); ++i) {
-      for (int64_t j = (i + 1); j < shardable_mesh_dims.size(); ++j) {
-        RecomputeSplitBothContract(shardable_mesh_dims[i],
-                                   shardable_mesh_dims[j]);
-        RecomputeSplitBothContract(shardable_mesh_dims[j],
-                                   shardable_mesh_dims[i]);
+    for (int64_t i = 0; i < mesh_shape.size(); ++i) {
+      for (int64_t j = (i + 1); j < mesh_shape.size(); ++j) {
+        RecomputeSplitBothContract(i, j);
+        RecomputeSplitBothContract(j, i);
       }
     }
 
@@ -721,30 +707,28 @@ class DotHandler {
 
     // SbSi = SbSi x SbR
     // Split batch dim and lhs space dim
-    for (int64_t i = 0; i < shardable_mesh_dims.size(); ++i) {
-      for (int64_t j = (i + 1); j < shardable_mesh_dims.size(); ++j) {
-        SplitBatchDimLhsSpace(shardable_mesh_dims[i], shardable_mesh_dims[j]);
-        SplitBatchDimLhsSpace(shardable_mesh_dims[j], shardable_mesh_dims[i]);
+    for (int64_t i = 0; i < mesh_shape.size(); ++i) {
+      for (int64_t j = (i + 1); j < mesh_shape.size(); ++j) {
+        SplitBatchDimLhsSpace(i, j);
+        SplitBatchDimLhsSpace(j, i);
       }
     }
 
     // SbSj = SbR x SbSj
     // Split batch dim and rhs space dim
-    for (int64_t i = 0; i < shardable_mesh_dims.size(); ++i) {
-      for (int64_t j = (i + 1); j < shardable_mesh_dims.size(); ++j) {
-        SplitBatchDimRhsSpace(shardable_mesh_dims[i], shardable_mesh_dims[j]);
-        SplitBatchDimRhsSpace(shardable_mesh_dims[j], shardable_mesh_dims[i]);
+    for (int64_t i = 0; i < mesh_shape.size(); ++i) {
+      for (int64_t j = (i + 1); j < mesh_shape.size(); ++j) {
+        SplitBatchDimRhsSpace(i, j);
+        SplitBatchDimRhsSpace(j, i);
       }
     }
 
     // SbSj = SbR x SbSj
     // Split batch dim and contracting dim
-    for (int64_t i = 0; i < shardable_mesh_dims.size(); ++i) {
-      for (int64_t j = (i + 1); j < shardable_mesh_dims.size(); ++j) {
-        SplitBatchDimBothContract(shardable_mesh_dims[i],
-                                  shardable_mesh_dims[j]);
-        SplitBatchDimBothContract(shardable_mesh_dims[j],
-                                  shardable_mesh_dims[i]);
+    for (int64_t i = 0; i < mesh_shape.size(); ++i) {
+      for (int64_t j = (i + 1); j < mesh_shape.size(); ++j) {
+        SplitBatchDimBothContract(i, j);
+        SplitBatchDimBothContract(j, i);
       }
     }
 
@@ -759,10 +743,10 @@ class DotHandler {
 
     // Sb = Sb x Sb
     // Split batch dims.
-    for (int64_t i = 0; i < shardable_mesh_dims.size(); ++i) {
-      for (int64_t j = (i + 1); j < shardable_mesh_dims.size(); ++j) {
-        SplitTwoBatchDims(shardable_mesh_dims[i], shardable_mesh_dims[j]);
-        SplitTwoBatchDims(shardable_mesh_dims[j], shardable_mesh_dims[i]);
+    for (int64_t i = 0; i < mesh_shape.size(); ++i) {
+      for (int64_t j = (i + 1); j < mesh_shape.size(); ++j) {
+        SplitTwoBatchDims(i, j);
+        SplitTwoBatchDims(j, i);
       }
     }
 
@@ -968,14 +952,8 @@ class ConvHandler {
   }
 
   Status RegisterStrategies() {
-    std::vector<int64_t> shardable_mesh_dims =
-        VectorGreaterThanOneElementIndices(device_mesh_.dimensions());
+    auto mesh_shape = device_mesh_.dimensions();
     // For 1D sharding
-    if (shardable_mesh_dims.size() == 1) {
-      shardable_mesh_dims.push_back((shardable_mesh_dims.at(0) + 1) %
-                                    device_mesh_.num_dimensions());
-    }
-
     if ((ins_->feature_group_count() ==
              lhs_->shape().dimensions(lhs_in_channel_dim_) &&
          ins_->feature_group_count() ==
@@ -983,10 +961,10 @@ class ConvHandler {
       // for depthwise conv
       // SS = SS x S
       // Split batch dim and channel dim
-      for (int64_t i = 0; i < shardable_mesh_dims.size(); ++i) {
-        for (int64_t j = (i + 1); j < shardable_mesh_dims.size(); ++j) {
-          SplitDepthwise(shardable_mesh_dims[i], shardable_mesh_dims[j], true);
-          SplitDepthwise(shardable_mesh_dims[j], shardable_mesh_dims[i], true);
+      for (int64_t i = 0; i < mesh_shape.size(); ++i) {
+        for (int64_t j = (i + 1); j < mesh_shape.size(); ++j) {
+          SplitDepthwise(i, j, true);
+          SplitDepthwise(j, i, true);
         }
       }
     } else if ((ins_->batch_group_count() ==
@@ -996,44 +974,38 @@ class ConvHandler {
       // for depthwise conv filter_backward
       // SS = SS x S
       // Split batch dim and channel dim
-      for (int64_t i = 0; i < shardable_mesh_dims.size(); ++i) {
-        for (int64_t j = (i + 1); j < shardable_mesh_dims.size(); ++j) {
-          SplitDepthwise(shardable_mesh_dims[i], shardable_mesh_dims[j], false);
-          SplitDepthwise(shardable_mesh_dims[j], shardable_mesh_dims[i], false);
+      for (int64_t i = 0; i < mesh_shape.size(); ++i) {
+        for (int64_t j = (i + 1); j < mesh_shape.size(); ++j) {
+          SplitDepthwise(i, j, false);
+          SplitDepthwise(j, i, false);
         }
       }
     }
 
     // SS = SR x RS
     // Split lhs batch dim and rhs out_channel dim.
-    for (int64_t i = 0; i < shardable_mesh_dims.size(); ++i) {
-      for (int64_t j = (i + 1); j < shardable_mesh_dims.size(); ++j) {
-        SplitLhsBatchRhsOutchannel(shardable_mesh_dims[i],
-                                   shardable_mesh_dims[j]);
-        SplitLhsBatchRhsOutchannel(shardable_mesh_dims[j],
-                                   shardable_mesh_dims[i]);
+    for (int64_t i = 0; i < mesh_shape.size(); ++i) {
+      for (int64_t j = (i + 1); j < mesh_shape.size(); ++j) {
+        SplitLhsBatchRhsOutchannel(i, j);
+        SplitLhsBatchRhsOutchannel(j, i);
       }
     }
 
     // SR = SS x SR
     // Split lhs batch dim and both in_channel dims.
-    for (int64_t i = 0; i < shardable_mesh_dims.size(); ++i) {
-      for (int64_t j = (i + 1); j < shardable_mesh_dims.size(); ++j) {
-        SplitLhsBatchBothInchannel(shardable_mesh_dims[i],
-                                   shardable_mesh_dims[j]);
-        SplitLhsBatchBothInchannel(shardable_mesh_dims[j],
-                                   shardable_mesh_dims[i]);
+    for (int64_t i = 0; i < mesh_shape.size(); ++i) {
+      for (int64_t j = (i + 1); j < mesh_shape.size(); ++j) {
+        SplitLhsBatchBothInchannel(i, j);
+        SplitLhsBatchBothInchannel(j, i);
       }
     }
 
     // RS = RS x SS
     // Split rhs out_channel dim and both in_channel dims.
-    for (int64_t i = 0; i < shardable_mesh_dims.size(); ++i) {
-      for (int64_t j = (i + 1); j < shardable_mesh_dims.size(); ++j) {
-        SplitRhsOutchannelBothInchannel(shardable_mesh_dims[i],
-                                        shardable_mesh_dims[j]);
-        SplitRhsOutchannelBothInchannel(shardable_mesh_dims[j],
-                                        shardable_mesh_dims[i]);
+    for (int64_t i = 0; i < mesh_shape.size(); ++i) {
+      for (int64_t j = (i + 1); j < mesh_shape.size(); ++j) {
+        SplitRhsOutchannelBothInchannel(i, j);
+        SplitRhsOutchannelBothInchannel(j, i);
       }
     }
 

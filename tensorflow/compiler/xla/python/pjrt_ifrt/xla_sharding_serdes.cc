@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
+#include "tensorflow/compiler/xla/python/ifrt/memory.h"
 #include "tensorflow/compiler/xla/python/ifrt/serdes.h"
 #include "tensorflow/compiler/xla/python/ifrt/sharding_serdes.h"
 #include "tensorflow/compiler/xla/python/pjrt_ifrt/xla_sharding.h"
@@ -39,6 +40,9 @@ class HloShardingSerDes : public llvm::RTTIExtends<HloSharding, SerDes> {
     const HloSharding& sharding = llvm::cast<HloSharding>(serializable);
     HloShardingProto proto;
     *proto.mutable_devices() = sharding.devices().ToProto();
+    if (sharding.memory_kind().memory_kind().has_value()) {
+      proto.set_memory_kind(std::string(*sharding.memory_kind().memory_kind()));
+    }
     *proto.mutable_xla_op_sharding() = sharding.xla_hlo_sharding().ToProto();
     return proto.SerializeAsString();
   }
@@ -58,9 +62,14 @@ class HloShardingSerDes : public llvm::RTTIExtends<HloSharding, SerDes> {
         auto devices,
         DeviceList::FromProto(deserialize_sharding_options->lookup_device,
                               proto.devices()));
+    MemoryKind memory_kind;
+    if (proto.has_memory_kind()) {
+      memory_kind = MemoryKind(proto.memory_kind());
+    }
     TF_ASSIGN_OR_RETURN(auto xla_hlo_sharding,
                         xla::HloSharding::FromProto(proto.xla_op_sharding()));
-    return HloSharding::Create(std::move(devices), std::move(xla_hlo_sharding));
+    return HloSharding::Create(std::move(devices), memory_kind,
+                               std::move(xla_hlo_sharding));
   }
 
   static char ID;  // NOLINT

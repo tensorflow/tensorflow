@@ -1565,6 +1565,10 @@ Status BaseGPUDeviceFactory::CreateDevices(
           valid_platform_device_ids == visible_gpu_order);
   }
 
+  if (num_gpus_to_use == 0) {
+    return OkStatus();
+  }
+
   struct TfDeviceSpec {
     tsl::PlatformDeviceId platform_device_id;
     int64_t memory_limit_bytes;
@@ -1650,10 +1654,18 @@ Status BaseGPUDeviceFactory::CreateDevices(
   // tf_device_id.
   std::map<int, std::unique_ptr<xla::LocalDeviceState>> local_device_states;
 
-  // TODO(b/288965419): create allowed_devices in TF.
-  TF_ASSIGN_OR_RETURN(xla::LocalClient * xla_client,
-                      xla::GetGpuXlaClient(/*platform_name=*/std::nullopt,
-                                           /*allowed_devices=*/std::nullopt));
+  std::set<int> allowed_devices;
+  if (!gpu_options.visible_device_list().empty()) {
+    for (const TfDeviceSpec& tf_device_spec : tf_device_specs) {
+      allowed_devices.insert(tf_device_spec.platform_device_id.value());
+    }
+  }
+  TF_ASSIGN_OR_RETURN(
+      xla::LocalClient * xla_client,
+      xla::GetGpuXlaClient(
+          /*platform_name=*/std::nullopt,
+          allowed_devices.empty() ? std::nullopt
+                                  : std::make_optional(allowed_devices)));
 
   bool should_create_new_pjrt_client = true;
   xla::PjRtStreamExecutorClient* pjrt_se_client = nullptr;
@@ -1792,6 +1804,8 @@ Status BaseGPUDeviceFactory::CreateDevices(
 
     auto& pjrt_rollout_config = GetXlaOpsCommonFlags()->tf_xla_use_device_api;
     pjrt_rollout_config.AllowForDeviceInXlaLaunch(DEVICE_GPU);
+    pjrt_rollout_config.AllowForDeviceInXlaCompileOnDemand(DEVICE_GPU);
+    pjrt_rollout_config.AllowForDeviceInXlaCompileAndRun(DEVICE_GPU);
 
     // Creates PJRT GPU client and places it into a TF global resource manager.
     auto gpu_run_options =

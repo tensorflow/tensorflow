@@ -320,8 +320,9 @@ static std::vector<Value> GetGraphCaptureFuncArgs(const CaptureSequence& seq) {
         [&](Value arg) { return !defined_by_seq.contains(arg); });
     args.insert(external_args.begin(), external_args.end());
   }
-
-  return args.takeVector();
+  llvm::SmallVector<Value, 0> args_sv = args.takeVector();
+  std::vector<Value> args_tv(args_sv.begin(), args_sv.end());
+  return args_tv;
 }
 
 // Given a sequence of operations, outline them into a graph capture function

@@ -14,7 +14,7 @@ func.func @main(%arg0: tensor<1x3xf32>) -> tensor<*xf32> attributes {tf.entry_fu
   // CHECK: tfrt_fallback_async.executeop.seq{{.*}}"tf.XlaLaunch"([[INPUT_0]], [[VAR_0]])
   // CHECK-SAME: {function = "xla_func_0"}
   // CHECK: gpurt.transfer_from_device
-  %2 = "tf.XlaLaunch"(%arg0, %1) {_noinline = true, _xla_compile_device_type = "GPU", device = "/device:GPU:0", function = @xla_func_0, operand_segment_sizes = array<i32: 0, 2, 0>} : (tensor<1x3xf32>, tensor<1x3xf32>) -> tensor<*xf32>
+  %2 = "tf.XlaLaunch"(%arg0, %1) {_noinline = true, _xla_compile_device_type = "GPU", device = "/device:GPU:0", function = @xla_func_0, operandSegmentSizes = array<i32: 0, 2, 0>} : (tensor<1x3xf32>, tensor<1x3xf32>) -> tensor<*xf32>
   func.return %2 : tensor<*xf32>
 }
 
@@ -39,7 +39,7 @@ func.func @multi_clusters(%arg0: tensor<1x3xf32>) -> tensor<*xf32> attributes {t
   // CHECK: tfrt_fallback_async.executeop.seq{{.*}}"tf.XlaLaunch"([[INPUT_0]], [[VAR_0]])
   // CHECK-SAME: {function = "xla_func_1"}
   // CHECK: [[RESULT_1:%.*]] = gpurt.transfer_from_device
-  %2 = "tf.XlaLaunch"(%arg0, %1) {_noinline = true, _xla_compile_device_type = "GPU", device = "/device:GPU:0", function = @xla_func_1, operand_segment_sizes = array<i32: 0, 2, 0>} : (tensor<1x3xf32>, tensor<1x3xf32>) -> tensor<1x3xf32>
+  %2 = "tf.XlaLaunch"(%arg0, %1) {_noinline = true, _xla_compile_device_type = "GPU", device = "/device:GPU:0", function = @xla_func_1, operandSegmentSizes = array<i32: 0, 2, 0>} : (tensor<1x3xf32>, tensor<1x3xf32>) -> tensor<1x3xf32>
 
   // The output of the above XLA cluster is consumed by the below XLA cluster.
   // Currently, the output is first transferred back to CPU and then
@@ -50,7 +50,7 @@ func.func @multi_clusters(%arg0: tensor<1x3xf32>) -> tensor<*xf32> attributes {t
   // CHECK: tfrt_fallback_async.executeop.seq{{.*}}"tf.XlaLaunch"([[INPUT_1]])
   // CHECK-SAME: {function = "xla_func_2"}
   // CHECK: gpurt.transfer_from_device
-  %3 = "tf.XlaLaunch"(%2) {_noinline = true, _xla_compile_device_type = "GPU", device = "/device:GPU:0", function = @xla_func_2, operand_segment_sizes = array<i32: 0, 1, 0>} : (tensor<1x3xf32>) -> tensor<*xf32>
+  %3 = "tf.XlaLaunch"(%2) {_noinline = true, _xla_compile_device_type = "GPU", device = "/device:GPU:0", function = @xla_func_2, operandSegmentSizes = array<i32: 0, 1, 0>} : (tensor<1x3xf32>) -> tensor<*xf32>
 
   func.return %3 : tensor<*xf32>
 }
@@ -75,7 +75,7 @@ func.func @skip_unused_output(%arg0: tensor<1x3xf32>) -> tensor<*xf32> attribute
   // Since only one output of the XlaLaunch is used, there is only one data transfer.
   // CHECK: gpurt.transfer_from_device
   // CHECK-NOT: gpurt.transfer_from_device
-  %2:2 = "tf.XlaLaunch"(%arg0, %1) {_noinline = true, _xla_compile_device_type = "GPU", device = "/device:GPU:0", function = @xla_func_3, operand_segment_sizes = array<i32: 0, 2, 0>} : (tensor<1x3xf32>, tensor<1x3xf32>) -> (tensor<*xf32>, tensor<*xf32>)
+  %2:2 = "tf.XlaLaunch"(%arg0, %1) {_noinline = true, _xla_compile_device_type = "GPU", device = "/device:GPU:0", function = @xla_func_3, operandSegmentSizes = array<i32: 0, 2, 0>} : (tensor<1x3xf32>, tensor<1x3xf32>) -> (tensor<*xf32>, tensor<*xf32>)
   func.return %2#0 : tensor<*xf32>
 }
 

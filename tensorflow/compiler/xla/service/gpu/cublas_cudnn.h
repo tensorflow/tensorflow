@@ -44,6 +44,8 @@ enum class CudnnConvKind {
   kBackwardFilter,     // input  + output => filter
   kForwardActivation,  // activation(conv(input, filter) + broadcast(bias) +
                        // (optionally) side_input) => output
+  kForwardGraph,       // pointwise(...pointwise(conv(input, filter))...)
+                       // => output
 };
 
 enum class CudnnfMHAKind {
@@ -130,6 +132,7 @@ extern const absl::string_view kCudnnConvForwardCallTarget;
 extern const absl::string_view kCudnnConvBackwardInputCallTarget;
 extern const absl::string_view kCudnnConvBackwardFilterCallTarget;
 extern const absl::string_view kCudnnConvBiasActivationForwardCallTarget;
+extern const absl::string_view kCudnnConvForwardGraphCallTarget;
 
 // cuDNN specific convolution helper (emitted together with a int8x32
 // convolution, if reordering is required).

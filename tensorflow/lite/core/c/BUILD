@@ -67,19 +67,6 @@ tflite_cc_library_with_c_headers_test(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/async/c:types",
     ],
-    alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
-)
-
-# This is a private target, its visibility is set to public only to be
-# used by "tflite_custom_c_library".
-# Do not use this target directly and don't consider it as a part of the public API.
-alias(
-    name = "private_c_api",
-    actual = ":c_api",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//visibility:public",
-    ],
 )
 
 tflite_cc_library_with_c_headers_test(
@@ -181,7 +168,6 @@ cc_test(
         ":c_api_experimental",
         ":c_api_types",
         ":common",
-        "//tensorflow/core/platform:resource_loader",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/core:subgraph",
@@ -208,7 +194,6 @@ cc_test(
         ":c_api_types",
         ":c_api_without_op_resolver_without_alwayslink",
         ":common",
-        "//tensorflow/core/platform:resource_loader",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/c:selectively_built_c_api_test_lib",
@@ -328,7 +313,6 @@ tflite_cc_library_with_c_headers_test(
         "//tensorflow/lite/profiling/telemetry:profiler",
         "//tensorflow/lite/profiling/telemetry/c:profiler",
     ],
-    alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
 )
 
 # Same as ":c_api_experimental", but without linking in the default CreateOpResolver implementation.
@@ -352,6 +336,7 @@ tflite_cc_library_with_c_headers_test(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:string_util",
+        "//tensorflow/lite:util",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/c:c_api_opaque_internal",
         "//tensorflow/lite/core:framework",
@@ -394,6 +379,7 @@ tflite_cc_library_with_c_headers_test(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:string_util",
+        "//tensorflow/lite:util",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/c:c_api_opaque_internal_without_alwayslink",
         "//tensorflow/lite/core:framework",
@@ -428,7 +414,6 @@ cc_test(
         ":c_api",
         ":c_api_experimental",
         ":common",
-        "//tensorflow/core/platform:resource_loader",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite/delegates:delegate_test_util",
         "//tensorflow/lite/testing:util",

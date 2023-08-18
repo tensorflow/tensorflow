@@ -1,3 +1,4 @@
+load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/tsl/platform:build_config.bzl", "pyx_library", "tf_proto_library")
@@ -17,7 +18,7 @@ load(
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("//tensorflow/tsl:tsl.default.bzl", "tsl_pybind_extension")
-load("//tensorflow:pytype.default.bzl", "pytype_library")
+load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -33,10 +34,9 @@ package_group(
     ],
 )
 
-pytype_library(
+pytype_strict_library(
     name = "xla_client",
     srcs = ["xla_client.py"],
-    pytype_srcs = ["xla_client.pyi"],
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [":xla_extension"],
@@ -50,7 +50,7 @@ pyx_library(
     srcs = ["custom_call_for_test.pyx"],
 )
 
-py_test(
+py_strict_test(
     name = "xla_client_backend_independent_test",
     srcs = ["xla_client_backend_independent_test.py"],
     python_version = "PY3",
@@ -62,7 +62,7 @@ py_test(
     ] + xla_py_test_deps(),
 )
 
-py_library(
+py_strict_library(
     name = "xla_client_test",
     testonly = 1,
     srcs = ["xla_client_test.py"],
@@ -77,7 +77,7 @@ py_library(
     ],
 )
 
-py_test(
+py_strict_test(
     name = "xla_client_test_cpu",
     srcs = ["xla_client_test.py"],
     args = ["--backend=cpu"],
@@ -99,7 +99,7 @@ py_test(
     ] + xla_py_test_deps(),
 )
 
-py_test(
+py_strict_test(
     name = "weakref_lru_cache_test",
     srcs = ["weakref_lru_cache_test.py"],
     python_version = "PY3",
@@ -114,7 +114,7 @@ py_test(
     ] + xla_py_test_deps(),
 )
 
-py_test(
+py_strict_test(
     name = "xla_client_test_gpu",
     srcs = ["xla_client_test.py"],
     args = ["--backend=gpu"],
@@ -165,7 +165,7 @@ tsl_pybind_extension(
     ],
 )
 
-py_test(
+py_strict_test(
     name = "status_casters_test",
     srcs = ["status_casters_test.py"],
     main = "status_casters_test.py",
@@ -213,6 +213,7 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/python/ifrt",
         "//tensorflow/tsl/platform:protobuf",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
@@ -308,6 +309,7 @@ cc_library(
         "py_buffer.cc",
         "py_client.cc",
         "py_compile_only_client.cc",
+        "py_device_list.cc",
         "py_executable.cc",
         "py_host_callback.cc",
         "py_values.cc",
@@ -321,6 +323,7 @@ cc_library(
         "py_buffer.h",
         "py_client.h",
         "py_compile_only_client.h",
+        "py_device_list.h",
         "py_executable.h",
         "py_host_callback.h",
         "py_values.h",
@@ -380,6 +383,7 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
@@ -493,6 +497,7 @@ cc_library(
         ":status_casters",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/hlo/utils:hlo_query",
         "//tensorflow/compiler/xla/hlo/utils:hlo_sharding_util",
         "//tensorflow/compiler/xla/service:custom_call_sharding_helper",
         "//tensorflow/compiler/xla/service/spmd:spmd_partitioner",
@@ -659,7 +664,7 @@ cc_library(
     ],
 )
 
-py_test(
+py_strict_test(
     name = "pytree_test",
     srcs = ["pytree_test.py"],
     python_version = "PY3",
@@ -891,7 +896,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/compiler/xla/service:name_uniquer",
-        "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xla/service:tuple_simplifier",
         "//tensorflow/tsl/lib/strings:proto_serialization",
         "@com_google_absl//absl/hash",
@@ -1035,6 +1039,7 @@ tsl_pybind_extension(
         "//tensorflow/compiler/xla/python/pjrt_ifrt",
         "//tensorflow/tsl/distributed_runtime/preemption:preemption_sync_manager",
         "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform/cloud:gcs_file_system",
         "//tensorflow/tsl/python/lib/core:numpy",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/strings",
@@ -1044,7 +1049,6 @@ tsl_pybind_extension(
     ] + select({
         ":gpu_enabled": [
             "//tensorflow/compiler/xla/pjrt/gpu:se_gpu_pjrt_client",
-            "//tensorflow/tsl/platform/cloud:gcs_file_system",
         ],
         "//conditions:default": [],
     }) + select({
@@ -1055,7 +1059,7 @@ tsl_pybind_extension(
     }) + select({
         ":tpu_enabled": [
             "//tensorflow/compiler/xla/pjrt:tpu_client",
-            "//tensorflow/compiler/xla/stream_executor/tpu:tpu_initializer_helper",
+            "//tensorflow/compiler/xla/stream_executor/tpu:tpu_initializer_framework_helper",
         ],
         "//conditions:default": [],
     }),
@@ -1072,6 +1076,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:types",
+        "//tensorflow/tsl/profiler/convert:xla_op_utils",
         "//tensorflow/tsl/profiler/protobuf:profiled_instructions_proto_cc",
         "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/tsl/profiler/utils:file_system_utils",

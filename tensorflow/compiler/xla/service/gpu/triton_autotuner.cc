@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <iterator>
 #include <memory>
@@ -27,6 +28,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
@@ -54,7 +56,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
+#include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/redzone_allocator.h"
@@ -89,6 +94,9 @@ static AutotuneResult::TritonGemmKey GemmKey(int64_t block_m, int64_t block_n,
   return key;
 }
 
+// Not a hard limit, just an assumption that should stay valid.
+constexpr int kMaxTileSize = 512;
+
 struct CompilationKey {
   template <typename H>
   friend H AbslHashValue(H h, const CompilationKey& k) {
@@ -118,22 +126,24 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
       return OkStatus();
     }
 
-    VLOG(1) << "Tuning " << hlo->ToString();
-    TF_ASSIGN_OR_RETURN(AutotuneResult autotune_result,
-                        AutotunerUtil::Autotune(hlo, config_, [&] {
-                          return AutotuneMatmulNoCache(hlo);
-                        }));
-    VLOG(1) << "Result: " << autotune_result.ShortDebugString();
+    VLOG(1) << "Processing " << hlo->ToString();
+    if (!backend_config.has_triton_gemm_config()) {
+      TF_ASSIGN_OR_RETURN(AutotuneResult autotune_result,
+                          AutotunerUtil::Autotune(hlo, config_, [&] {
+                            return AutotuneMatmulNoCache(hlo);
+                          }));
+      VLOG(1) << "Result: " << autotune_result.ShortDebugString();
 
-    TF_RET_CHECK(autotune_result.has_triton());
-    AutotuneResult::TritonGemmKey tiling = autotune_result.triton();
-
+      TF_RET_CHECK(autotune_result.has_triton());
+      *backend_config.mutable_triton_gemm_config() = autotune_result.triton();
+      TF_RETURN_IF_ERROR(hlo->set_backend_config(backend_config));
+    }
+    const AutotuneResult::TritonGemmKey& tiling =
+        backend_config.triton_gemm_config();
     if (tiling.split_k() > 1) {
       TF_RETURN_IF_ERROR(MakeDotSplitKBatch(hlo, tiling));
     }
 
-    *backend_config.mutable_triton_gemm_config() = tiling;
-    TF_RETURN_IF_ERROR(hlo->set_backend_config(backend_config));
     MarkAsChanged();
     return OkStatus();
   }
@@ -156,7 +166,6 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
       allocator = stream_exec->GetAllocator();
     }
 
-    HloInstruction* root = fusion.root_instruction();
     TF_ASSIGN_OR_RETURN(se::Stream* const stream,
                         allocator->GetStream(stream_exec->device_ordinal()));
 
@@ -167,11 +176,12 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
         AutotunerUtil::CreateRedzoneAllocator(config_, debug_opts));
 
     std::optional<ScopedShapedBuffer> reference_buffer;
-    BufferComparator comparator(root->shape(), fusion.parent()->config());
+    const HloInstruction& root = *fusion.root_instruction();
+    BufferComparator comparator(root.shape(), fusion.parent()->config());
 
     const std::vector<AutotuneResult::TritonGemmKey> configurations =
         GetPossibleMatmulAutotuneConfigs(
-            stream_exec->GetDeviceDescription().cuda_compute_capability(),
+            root, stream_exec->GetDeviceDescription().cuda_compute_capability(),
             config_.ExhaustiveTilingSearch());
 
     GpuDeviceInfo gpu_device_info = GetGpuDeviceInfo(config_.GetExecutor());
@@ -180,35 +190,82 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
     absl::flat_hash_map<CompilationKey, std::unique_ptr<Executable>>
         executables;
 
-    auto compile = [&](const AutotuneResult::TritonGemmKey& conf) {
+    const int log_every_n = VLOG_IS_ON(1) ? 100 : 1000;
+
+    auto compile =
+        [&](const AutotuneResult::TritonGemmKey& conf) -> StatusOr<bool> {
+      CHECK(conf.block_m() <= kMaxTileSize);
+      CHECK(conf.block_n() <= kMaxTileSize);
+      CHECK(conf.block_k() <= kMaxTileSize);
       TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
                           autotuner_compile_util_->Compile([&] {
                             return TritonGemmAutotuneExtractor(
                                 conf, gpu_device_info,
                                 fusion.FusionInstruction());
                           }));
+      const bool has_executable = executable != nullptr;
       absl::MutexLock lock(&executables_mutex);
       CHECK(executables.emplace(CompilationKey{conf}, std::move(executable))
                 .second);
-      return OkStatus();
+      return has_executable;
     };
 
     // Pre-compile all versions first.
+    int executable_count = 0;
     if (thread_pool_ &&
         debug_opts.xla_gpu_force_compilation_parallelism() != 1) {
-      tsl::BlockingCounter counter(configurations.size());
+      const int config_count = configurations.size();
+      LOG(INFO) << "Compiling " << config_count << " configs for "
+                << instr->name() << " on " << thread_pool_->NumThreads()
+                << " threads.";
+
+      tsl::BlockingCounter counter(config_count);
+      std::atomic<int> done_count = 0;
+      std::atomic<int> good_count = 0;
       for (const AutotuneResult::TritonGemmKey& conf : configurations) {
         thread_pool_->Schedule([&] {
-          TF_CHECK_OK(compile(conf));
+          StatusOr<bool> has_executable = compile(conf);
+          TF_CHECK_OK(has_executable.status());
+
+          const int done_so_far = done_count.fetch_add(1) + 1;
+          const int good_so_far = has_executable.value()
+                                      ? good_count.fetch_add(1) + 1
+                                      : good_count.load();
+          if (done_so_far % log_every_n == 0) {
+            LOG(INFO) << "Compiled " << done_so_far << " of " << config_count
+                      << " configs (successful: " << good_so_far << ")";
+          }
+
           counter.DecrementCount();
         });
       }
       counter.Wait();
+      executable_count = good_count.load();
     } else {
-      for (const AutotuneResult::TritonGemmKey& conf : configurations) {
-        TF_RETURN_IF_ERROR(compile(conf));
+      LOG(WARNING) << "Compiling " << configurations.size() << " configs for "
+                   << instr->name() << " on a single thread.";
+
+      int good_so_far = 0;
+      for (int i = 0; i < static_cast<int>(configurations.size()); ++i) {
+        const AutotuneResult::TritonGemmKey& conf = configurations[i];
+        TF_ASSIGN_OR_RETURN(bool has_executable, compile(conf));
+
+        const int done_so_far = i + 1;
+        if (has_executable) {
+          good_so_far += 1;
+        }
+
+        if (done_so_far % log_every_n == 0) {
+          LOG(INFO) << "Compiled " << done_so_far << " of "
+                    << configurations.size()
+                    << " configs (successful: " << good_so_far
+                    << ", using a single thread).";
+        }
       }
+      executable_count = good_so_far;
     }
+    LOG(INFO) << "Compiled all configs (successful: " << executable_count
+              << ").";
 
     std::vector<se::DeviceMemoryBase> inputs;
     int64_t rng_state = 0;
@@ -227,27 +284,40 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
     }
 
     std::vector<AutotuneResult> results;
+
+    LOG(INFO) << "Running " << executable_count << " configs for "
+              << instr->name() << ".";
+    int ran_so_far = 0;
     for (const AutotuneResult::TritonGemmKey& conf : configurations) {
-      VLOG(1) << "Trying triton tiling: " << conf.ShortDebugString();
+      VLOG(2) << "Trying triton tiling: " << conf.ShortDebugString();
 
       AutotuneResult res;
       *res.mutable_triton() = conf;
 
       auto it = executables.find(CompilationKey{conf});
       if (it == executables.end() || it->second == nullptr) {
-        VLOG(1) << "Skipping this tiling.";
+        VLOG(2) << "Skipping this tiling.";
         continue;
       }
       TF_ASSIGN_OR_RETURN(std::optional<ProfilingOutput> profiling_output,
                           autotuner_compile_util_->ProfileExecutable(
                               it->second.get(), stream, inputs));
+      if (++ran_so_far % log_every_n == 0) {
+        LOG(INFO) << "Ran " << ran_so_far << " configs of " << executable_count
+                  << ".";
+      }
 
       if (!profiling_output) {
-        VLOG(1) << "Skipping this tiling.";
+        VLOG(2) << "Skipping this tiling.";
         continue;
       }
 
-      VLOG(1) << "Running the kernel took: " << profiling_output->duration;
+      VLOG(2) << "Running the kernel took: " << profiling_output->duration;
+      if (profiling_output->duration >= absl::Seconds(1)) {
+        LOG(WARNING) << "Slow kernel for " << instr->name()
+                     << " took: " << profiling_output->duration
+                     << ". config: " << conf.ShortDebugString();
+      }
       *res.mutable_run_time() =
           tsl::proto_utils::ToDurationProto(profiling_output->duration);
 
@@ -258,8 +328,7 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
         if (!rz_check_status.ok()) {
           LOG(ERROR) << "Red zone modified";
           res.mutable_failure()->set_kind(AutotuneResult::REDZONE_MODIFIED);
-          *res.mutable_failure()->mutable_msg() =
-              rz_check_status.RedzoneFailureMsg();
+          res.mutable_failure()->set_msg(rz_check_status.RedzoneFailureMsg());
           CHECK(!config_.should_crash_on_check_failure());
           continue;
         }
@@ -270,20 +339,24 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
                 stream, /*current=*/profiling_output->output.root_buffer(),
                 /*expected=*/reference_buffer->root_buffer()));
         if (!outputs_match) {
-          LOG(ERROR) << "Results do not match the reference. "
-                     << "This is likely a bug/unexpected loss of precision.";
+          const char kMessage[] =
+              "Results do not match the reference. This is likely a "
+              "bug/unexpected loss of precision.";
+          LOG(ERROR) << kMessage;
           CHECK(!config_.should_crash_on_check_failure());
           // WRONG_RESULT is not taken seriously by PickBestResult(), so
           // use DISQUALIFIED.
           res.mutable_failure()->set_kind(AutotuneResult::DISQUALIFIED);
+          res.mutable_failure()->set_msg(kMessage);
         }
       }
       results.push_back(res);
     }
+    LOG(INFO) << "Ran all configs.";
 
     TF_ASSIGN_OR_RETURN(
         AutotuneResult best,
-        PickBestResult(results, root->ToString(), root->GetModule()->config()));
+        PickBestResult(results, root.ToString(), root.GetModule()->config()));
 
     if (debug_opts.xla_gpu_dump_autotuned_triton_fusions()) {
       TF_ASSIGN_OR_RETURN(
@@ -390,7 +463,7 @@ constexpr std::array<int, 4> NUM_WARPS = {2, 4, 8, 16};
 constexpr std::array<int, 5> SPLIT_K = {1, 2, 4, 8, 16};
 
 std::vector<AutotuneResult::TritonGemmKey> GetExhaustiveMatmulAutotuneConfigs(
-    const se::CudaComputeCapability compute_capability) {
+    const se::CudaComputeCapability compute_capability, const int max_split_k) {
   std::vector<AutotuneResult::TritonGemmKey> configs;
   bool mma_layout_v2 =
       compute_capability.IsAtLeast(se::CudaComputeCapability::AMPERE);
@@ -408,6 +481,9 @@ std::vector<AutotuneResult::TritonGemmKey> GetExhaustiveMatmulAutotuneConfigs(
           }
           for (int block_k : BLOCK_SIZES) {
             for (int split_k : SPLIT_K) {
+              if (split_k > max_split_k) {
+                continue;
+              }
               auto config = GemmKey(block_m, block_n, block_k, split_k,
                                     num_stages, num_warps);
               configs.push_back(std::move(config));
@@ -421,7 +497,7 @@ std::vector<AutotuneResult::TritonGemmKey> GetExhaustiveMatmulAutotuneConfigs(
 }
 
 std::vector<AutotuneResult::TritonGemmKey> GetFixedMatmulAutotuneConfigs(
-    const se::CudaComputeCapability compute_capability) {
+    const se::CudaComputeCapability compute_capability, const int max_split_k) {
   std::vector<AutotuneResult::TritonGemmKey> configs = {
       GemmKey(32, 32, 256, 1, 1, 4), GemmKey(64, 32, 32, 16, 1, 4),
       GemmKey(32, 64, 64, 4, 1, 4),  GemmKey(128, 128, 64, 4, 1, 4),
@@ -455,17 +531,38 @@ std::vector<AutotuneResult::TritonGemmKey> GetFixedMatmulAutotuneConfigs(
                        }),
         configs.end());
   }
+  configs.erase(
+      std::remove_if(configs.begin(), configs.end(),
+                     [&](const AutotuneResult::TritonGemmKey& config) {
+                       return config.split_k() > max_split_k;
+                     }),
+      configs.end());
   return configs;
 }
 
 }  // anonymous namespace
 
 std::vector<AutotuneResult::TritonGemmKey> GetPossibleMatmulAutotuneConfigs(
+    const HloInstruction& instr,
     const se::CudaComputeCapability compute_capability,
     bool exhaustive_tiling_search) {
+  // Split-K optimization enables more even utilization of a GPU in cases
+  // where tiling just the non-contracting dimensions of a GEMM does not create
+  // a sufficient number of thread block programs to occupy all available cores.
+  // Given the typical ~100 cores per GPU 500 tiles make around 5 full
+  // waves that completely avoid the need for split-K. The formula below is
+  // n_tiles = split_k * (M * N) / (block_m * block_n)
+  // with pessimistically assumed maximum block_m and block_n.
+  // Most likely there is no need for split-K already at much smaller output
+  // tensor sizes.
+  constexpr int kSufficientNumberOfTiles = 500;
+  const int max_split_k =
+      std::max(1L, kSufficientNumberOfTiles * kMaxTileSize * kMaxTileSize /
+                       ShapeUtil::ElementsIn(instr.shape()));
   return exhaustive_tiling_search
-             ? GetExhaustiveMatmulAutotuneConfigs(compute_capability)
-             : GetFixedMatmulAutotuneConfigs(compute_capability);
+             ? GetExhaustiveMatmulAutotuneConfigs(compute_capability,
+                                                  max_split_k)
+             : GetFixedMatmulAutotuneConfigs(compute_capability, max_split_k);
 }
 
 StatusOr<bool> TritonAutotuner::Run(
