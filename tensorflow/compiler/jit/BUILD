@@ -994,6 +994,7 @@ cc_library(
         ":internal",
         "//tensorflow/core/tfrt/utils:__pkg__",
         "//third_party/cloud_tpu/inference_converter:__pkg__",
+        "//waymo/onboard/ml/chauffeur_net:__pkg__",
     ],
     deps = [
         "compilability_check_util",
