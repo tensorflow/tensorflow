@@ -457,6 +457,13 @@ def get_gpu_client(
     node_id: int = ...,
     allowed_devices: Optional[Any] = ...,
     platform_name: Optional[str] = ...) -> Client:...
+def get_mock_gpu_client(
+    asynchronous: bool = ...,
+    allocator_config: GpuAllocatorConfig = ...,
+    distributed_client: Optional[DistributedRuntimeClient] = ...,
+    node_id: int = ...,
+    allowed_devices: Optional[Any] = ...,
+    platform_name: Optional[str] = ...) -> Client:...
 def get_c_api_client(platform_name: str, options: Dict[str, Union[str, int, List[int], float]]) -> Client: ...
 def get_default_c_api_topology(
     platform_name: str,
