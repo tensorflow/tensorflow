@@ -29,19 +29,6 @@ namespace tensor {
 Value castUnrankedTensor(OpBuilder& builder, Location loc, Value tensor,
                          int rank);
 
-// Return a value of type 'index' containing the total size of the input tensor.
-Value getTensorSize(OpBuilder& builder, Location loc, Value tensor);
-
-// Multiply all elements in a 1D tensor and return a scalar value of the same
-// type as the tensor elements containing the product. The given tensor is
-// expected to be a 1D ranked tensor of an integer type.
-Value multiplyTensorElements(OpBuilder& builder, Location loc, Value tensor);
-
-// Broadcast the given scalar value to a 1D tensor of the given size. Argument
-// 'size' must be an attribute or value of type 'index'.
-Value broadcastScalar(OpBuilder& builder, Location loc, Value input,
-                      OpFoldResult size, Type result_type);
-
 // Process argument 'shape' to eliminate a possible occurrence of -1. If
 // found, it is replaced with the total size of the 'input' tensor divided by
 // all remaining components of 'shape'.

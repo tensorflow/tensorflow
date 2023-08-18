@@ -13,6 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
+#include <iostream>
+#include <numeric>
+
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/IR/Linalg.h"  // from @llvm-project
 #include "mlir/Dialect/Math/IR/Math.h"  // from @llvm-project
@@ -23,19 +27,70 @@ limitations under the License.
 namespace mlir {
 namespace tensor {
 
-Value castUnrankedTensor(OpBuilder& builder, Location loc, Value tensor,
-                         int rank) {
+namespace {
 
+// Return the total size of the given tensor if it is ranked and all of its
+// dimensions have static size. Otherwise return nullopt. The given value is
+// expected to be a tensor.
+std::optional<int64_t> getTensorStaticSize(Value tensor) {
   auto tensor_type = tensor.getType().cast<TensorType>();
-  if (tensor_type.isa<RankedTensorType>())
-    return tensor;
+  auto ranked_tensor_type = tensor_type.dyn_cast<RankedTensorType>();
+  if (!ranked_tensor_type)
+    return std::nullopt;
 
-  SmallVector<int64_t> dims(rank, ShapedType::kDynamic);
-  auto element_type = tensor_type.getElementType();
-  auto ranked_shape_type = RankedTensorType::get(dims, element_type);
-  return builder.create<tensor::CastOp>(loc, ranked_shape_type, tensor);
+  int64_t size = 1;
+  for (auto dim_size : ranked_tensor_type.getShape()) {
+    if (dim_size == ShapedType::kDynamic)
+      return std::nullopt;
+    size *= dim_size;
+  }
+  return size;
 }
 
+// If the given SSA value is a constant tensor of integers, return the
+// corresponding values. Otherwise, nullopt.
+std::optional<SmallVector<int64_t>> getConstantShape(Value shape) {
+  DenseIntElementsAttr shape_attr;
+  if (!matchPattern(shape, m_Constant(&shape_attr)))
+    return std::nullopt;
+
+  return llvm::map_to_vector(shape_attr.getValues<IntegerAttr>(), [](IntegerAttr attr) {
+    return attr.getInt();
+  });
+}
+
+// Return whether the given shape has a wildcard (element set to -1).
+bool constantShapeHasWildcard(ArrayRef<int64_t> shape) {
+  return llvm::any_of(shape, [](auto size) {
+    return size == -1;
+  });
+}
+
+// Substitute the occurrence of -1 in the given shape with a new positive value
+// such that the product of all values in 'input_size' is equal to the product
+// in all values of 'shape'.
+SmallVector<int64_t> substituteConstantShapeWildcard(
+    ArrayRef<int64_t> input_size, ArrayRef<int64_t> shape) {
+  auto input_size_product = std::accumulate(input_size.begin(), input_size.end(), 1, std::multiplies<int64_t>());
+  auto shape_product = std::accumulate(shape.begin(), shape.end(), 1, std::multiplies<int64_t>());
+  auto wildcard_substitution = shape_product ? input_size_product / std::abs(shape_product) : 0;
+  return llvm::map_to_vector(shape, [&](int64_t item) {
+    return item == -1 ? wildcard_substitution : item;
+  });
+}
+
+// Emit an 'arith.constant' op with the given tensor elements and type.
+Value constantShapeToValue(OpBuilder& builder, Location loc, ArrayRef<int64_t> shape, Type element_type) {
+  assert(element_type.isa<IntegerType>());
+  auto tensor_type = RankedTensorType::get({shape.size()}, element_type);
+  auto dims_attrs = llvm::map_to_vector(shape, [&](int64_t dim_size) -> Attribute {
+    return builder.getIntegerAttr(element_type, dim_size);
+  });
+  auto shape_attr = DenseIntElementsAttr::get(tensor_type, dims_attrs);
+  return builder.create<arith::ConstantOp>(loc, shape_attr);
+}
+
+// Return a value of type 'index' containing the total size of the input tensor.
 Value getTensorSize(OpBuilder& builder, Location loc, Value tensor) {
 
   auto rank = builder.create<tensor::RankOp>(loc, tensor);
@@ -53,6 +108,9 @@ Value getTensorSize(OpBuilder& builder, Location loc, Value tensor) {
   return for_op.getResult(0);
 }
 
+// Multiply all elements in a 1D tensor and return a scalar value of the same
+// type as the tensor elements containing the product. The given tensor is
+// expected to be a 1D ranked tensor of an integer type.
 Value multiplyTensorElements(OpBuilder& builder, Location loc, Value tensor) {
   auto tensor_type = tensor.getType().cast<TensorType>();
   auto element_type = tensor_type.getElementType().cast<IntegerType>();
@@ -74,6 +132,8 @@ Value multiplyTensorElements(OpBuilder& builder, Location loc, Value tensor) {
   return builder.create<tensor::ExtractOp>(loc, product_tensor);
 }
 
+// Broadcast the given scalar value to a 1D tensor of the given size. Argument
+// 'size' must be an attribute or value of type 'index'.
 Value broadcastScalar(OpBuilder& builder, Location loc, Value input,
                       OpFoldResult size, Type result_type) {
   auto input_scalar_type = input.getType();
@@ -108,10 +168,45 @@ Value broadcastScalar(OpBuilder& builder, Location loc, Value input,
   }
 }
 
+}
+
+
+Value castUnrankedTensor(OpBuilder& builder, Location loc, Value tensor,
+                         int rank) {
+
+  auto tensor_type = tensor.getType().cast<TensorType>();
+  if (tensor_type.isa<RankedTensorType>())
+    return tensor;
+
+  SmallVector<int64_t> dims(rank, ShapedType::kDynamic);
+  auto element_type = tensor_type.getElementType();
+  auto ranked_shape_type = RankedTensorType::get(dims, element_type);
+  return builder.create<tensor::CastOp>(loc, ranked_shape_type, tensor);
+}
+
 Value substituteShapeWildcard(OpBuilder& builder, Location loc, Value input,
                               Value shape) {
   auto shape_type = shape.getType().cast<TensorType>();
   auto shape_element_type = shape_type.getElementType();
+
+  // Check if shape is constant
+  auto constant_shape = getConstantShape(shape);
+  if (constant_shape.has_value()) {
+
+    // If a constant shape is determined to not have a wildcard, we can return
+    // it as is.
+    if (!constantShapeHasWildcard(*constant_shape))
+      return shape;
+
+    // See if we can substitute the wildcard statically
+    auto static_input_size = getTensorStaticSize(input);
+    if (static_input_size.has_value()) {
+      auto substituted_shape = substituteConstantShapeWildcard(
+          *static_input_size, *constant_shape);
+      return constantShapeToValue(builder, loc, substituted_shape,
+                                  shape_element_type);
+    }
+  }
  
   // Calculate product of shape tensor elements and check if there was a
   // dimension set to -1. We check this condition by looking at the sign of
@@ -151,5 +246,4 @@ Value substituteShapeWildcard(OpBuilder& builder, Location loc, Value input,
 
 }  // namespace tensor
 }  // namespace mlir
-
 
