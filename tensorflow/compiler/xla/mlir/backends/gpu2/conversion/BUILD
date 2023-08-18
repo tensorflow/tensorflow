@@ -102,6 +102,31 @@ package(
 # )
 #
 # cc_library(
+#     name = "convert_case_op",
+#     srcs = if_gpu2(["convert_case_op.cc"]),
+#     hdrs = if_gpu2(["convert_case_op.h"]),
+#     # TODO(ezhulenev): Override cc_library()'s internal default value of ["//buildenv/target:gce"]
+#     # because IREE targets are not compatible with the `non_prod` constraint.
+#     compatible_with = [],
+#     deps = [
+#         ":de_bufferization",
+#         ":xla_gpu_api",
+#         "@llvm-project//llvm:Support",
+#         "@llvm-project//mlir:ArithDialect",
+#         "@llvm-project//mlir:BufferizationDialect",
+#         "@llvm-project//mlir:FuncDialect",
+#         "@llvm-project//mlir:IR",
+#         "@llvm-project//mlir:MemRefDialect",
+#         "@llvm-project//mlir:SCFDialect",
+#         "@llvm-project//mlir:Support",
+#         "@llvm-project//mlir:TensorDialect",
+#         "@llvm-project//mlir:Transforms",
+#         "//tensorflow/compiler/xla/mlir/backends/gpu2/ir:xla_gpu",
+#         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
+#     ] + if_gpu2(["//third_party/iree/llvm-external-projects/iree-dialects:IREEInputDialect"]),
+# )
+#
+# cc_library(
 #     name = "convert_while_op",
 #     srcs = if_gpu2(["convert_while_op.cc"]),
 #     hdrs = if_gpu2(["convert_while_op.h"]),
@@ -118,6 +143,7 @@ package(
 #         "@llvm-project//mlir:IR",
 #         "@llvm-project//mlir:MemRefDialect",
 #         "@llvm-project//mlir:SCFDialect",
+#         "@llvm-project//mlir:Support",
 #         "@llvm-project//mlir:TensorDialect",
 #         "@llvm-project//mlir:Transforms",
 #         "//tensorflow/compiler/xla/mlir/backends/gpu2/ir:xla_gpu",

@@ -50,6 +50,7 @@ package(
 #         "@llvm-project//mlir:Support",
 #         "@llvm-project//mlir:TensorDialect",
 #         "@llvm-project//mlir:Transforms",
+#         "//tensorflow/compiler/xla/mlir/backends/gpu2/conversion:convert_case_op",
 #         "//tensorflow/compiler/xla/mlir/backends/gpu2/conversion:convert_compiled_ops",
 #         "//tensorflow/compiler/xla/mlir/backends/gpu2/conversion:convert_graph_region_op",
 #         "//tensorflow/compiler/xla/mlir/backends/gpu2/conversion:convert_library_ops",

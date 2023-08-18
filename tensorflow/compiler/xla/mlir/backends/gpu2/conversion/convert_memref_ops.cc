@@ -47,7 +47,7 @@ using NotifyMatchFailure = std::function<LogicalResult(const char *)>;
 // no corresponding operation in tensor/flow/hal dialect that allows type
 // conversion, so we implement "tensor.view" through conversion to HAL buffers.
 FailureOr<IREE::Input::TensorImportOp> reinterpretCastTensor(
-    ImplicitLocOpBuilder &b, TypeConverter &converter, Value source,
+    ImplicitLocOpBuilder &b, const TypeConverter &converter, Value source,
     Value offset, MemRefType memref_ty, NotifyMatchFailure match_failure) {
   auto tensor_ty = converter.convertType(memref_ty).cast<RankedTensorType>();
 
