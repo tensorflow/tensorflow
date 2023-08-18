@@ -23,6 +23,19 @@ limitations under the License.
 namespace mlir {
 namespace tensor {
 
+Value castUnrankedTensor(OpBuilder& builder, Location loc, Value tensor,
+                         int rank) {
+
+  auto tensor_type = tensor.getType().cast<TensorType>();
+  if (tensor_type.isa<RankedTensorType>())
+    return tensor;
+
+  SmallVector<int64_t> dims(rank, ShapedType::kDynamic);
+  auto element_type = tensor_type.getElementType();
+  auto ranked_shape_type = RankedTensorType::get(dims, element_type);
+  return builder.create<tensor::CastOp>(loc, ranked_shape_type, tensor);
+}
+
 Value getTensorSize(OpBuilder& builder, Location loc, Value tensor) {
 
   auto rank = builder.create<tensor::RankOp>(loc, tensor);

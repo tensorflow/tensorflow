@@ -22,6 +22,13 @@ limitations under the License.
 namespace mlir {
 namespace tensor {
 
+// If the tensor given as an input argument is unranked, emit a 'tensor.cast'
+// op to cast it to a ranked tensor with the given number of dimensions. If the
+// given tensor is already ranked, the same tensor is returned. The given value
+// is expected to be of type tensor.
+Value castUnrankedTensor(OpBuilder& builder, Location loc, Value tensor,
+                         int rank);
+
 // Return a value of type 'index' containing the total size of the input tensor.
 Value getTensorSize(OpBuilder& builder, Location loc, Value tensor);
 

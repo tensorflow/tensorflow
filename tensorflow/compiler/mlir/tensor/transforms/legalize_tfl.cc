@@ -58,11 +58,7 @@ LogicalResult ConvertTFLReshapeOp::matchAndRewrite(
   Type result_type = tfl_reshape_op.getResult().getType();
 
   // If shape is unranked, cast it to a 1D tensor
-  if (!shape.getType().isa<RankedTensorType>()) {
-    auto element_type = shape.getType().cast<TensorType>().getElementType();
-    auto ranked_shape_type = RankedTensorType::get({ShapedType::kDynamic}, element_type);
-    shape = rewriter.create<tensor::CastOp>(op->getLoc(), ranked_shape_type, shape);
-  }
+  shape = castUnrankedTensor(rewriter, op->getLoc(), shape, 1);
 
   // Substitute a possible value set to -1 in the target shape
   shape = substituteShapeWildcard(rewriter, op->getLoc(), input, shape);
