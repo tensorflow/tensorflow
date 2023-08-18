@@ -139,6 +139,18 @@ cc_library(
 )
 
 cc_library(
+    name = "tsl_status_helper",
+    hdrs = ["tsl_status_helper.h"],
+    deps = [
+        ":c_api_decl",
+        "//tensorflow/tsl/c:tsl_status",
+        "//tensorflow/tsl/c:tsl_status_helper",
+        "//tensorflow/tsl/platform:status",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+cc_library(
     name = "proto_helper",
     srcs = ["proto_helper.cc"],
     hdrs = ["proto_helper.h"],
@@ -164,7 +176,6 @@ cc_library(
     deps = [
         ":c_api_decl",
         ":libtftpu_header",
-        ":proto_helper",
     ],
     alwayslink = True,
 )
@@ -321,6 +332,16 @@ cc_library(
 )
 
 cc_library(
+    name = "tpu_profiler_init_fns",
+    hdrs = ["tpu_profiler_init_fns.inc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":tpu_api",
+        ":tpu_profiler_c_api_hdrs",
+    ],
+)
+
+cc_library(
     name = "tpu_node_context",
     srcs = ["tpu_node_context.cc"],
     hdrs = ["tpu_node_context.h"],
@@ -348,6 +369,7 @@ cc_library(
         ":libtftpu_header",
         ":tpu_executor_api",
         ":tpu_ops_c_api_hdrs",
+        ":tpu_profiler_c_api_hdrs",
     ],
 )
 
@@ -608,6 +630,15 @@ cc_library(
     deps = [
         ":libtftpu_header",
         ":tpu_executor_c_api_hdrs",
+    ],
+)
+
+cc_library(
+    name = "tpu_profiler_c_api_hdrs",
+    hdrs = ["tpu_profiler_c_api.h"],
+    deps = [
+        ":c_api_decl",
+        ":libtftpu_header",
     ],
 )
 
