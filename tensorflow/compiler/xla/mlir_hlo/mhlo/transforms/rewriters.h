@@ -45,6 +45,10 @@ void populateOptimizeMhloPatterns(MLIRContext *context,
 void populateCreateTokenToAfterAllPatterns(mlir::MLIRContext *context,
                                            RewritePatternSet *patterns);
 
+// Rewrite patterns for cross-replica-sum to equivalent all_reduce legalization.
+void populateCrossReplicaSumToAllReducePatterns(mlir::MLIRContext *context,
+                                                RewritePatternSet *patterns);
+
 // Rewrite patterns for dot to equivalent dot_general legalization.
 void populateDotToDotGeneralPatterns(mlir::MLIRContext *context,
                                      RewritePatternSet *patterns);

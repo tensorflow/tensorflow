@@ -89,6 +89,12 @@ def LegalizeCreateTokenToAfterAllPass : Pass<"mhlo-legalize-create-token-to-afte
   let dependentDialects = ["mhlo::MhloDialect"];
 }
 
+def LegalizeCrossReplicaSumToAllReducePass : Pass<"mhlo-legalize-cross-replica-sum-to-all-reduce", "func::FuncOp"> {
+  let summary = "Legalizes cross-replica-sum ops to all_reduce ops.";
+  let constructor = "createLegalizeCrossReplicaSumToAllReducePass()";
+  let dependentDialects = ["mhlo::MhloDialect"];
+}
+
 def LegalizeDotGeneralToDotPass : Pass<"mhlo-legalize-dot-general-to-dot", "func::FuncOp"> {
   let summary = "Legalizes dot_general ops to dot ops.";
   let constructor = "createLegalizeDotGeneralToDotPass()";

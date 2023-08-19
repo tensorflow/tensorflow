@@ -159,6 +159,8 @@ std::unique_ptr<::mlir::Pass> createLegalizeGeneralDotPass();
 std::unique_ptr<OperationPass<func::FuncOp>>
 createLegalizeCreateTokenToAfterAllPass();
 std::unique_ptr<OperationPass<func::FuncOp>>
+createLegalizeCrossReplicaSumToAllReducePass();
+std::unique_ptr<OperationPass<func::FuncOp>>
 createLegalizeDotGeneralToDotPass();
 std::unique_ptr<OperationPass<func::FuncOp>>
 createLegalizeDotToDotGeneralPass();
