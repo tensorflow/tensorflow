@@ -1218,8 +1218,8 @@ class DatasetV2(
 
     Note: Like other `Dataset` methods, prefetch operates on the
     elements of the input dataset. It has no concept of examples vs. batches.
-    `examples.prefetch(2)` will prefetch two elements (2 examples),
-    while `examples.batch(20).prefetch(2)` will prefetch 2 elements
+    `examples.prefetch(2)` will prefetch 2 examples, while
+    `examples.batch(20).prefetch(2)` will prefetch 40 examples
     (2 batches, of 20 examples each).
 
     >>> dataset = tf.data.Dataset.range(3)
