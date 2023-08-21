@@ -60,7 +60,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_client.h"
 #ifdef XLA_PYTHON_ENABLE_TPU
 #include "tensorflow/compiler/xla/pjrt/tpu_client.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_initializer_framework_helper.h"  // NOLINT(unused-includes): required for tensorflow::tpu::LoadTpuLibraryAndInitializeTpuStructFns
 #endif  // XLA_PYTHON_ENABLE_TPU
 #include "tensorflow/compiler/xla/pjrt/pjrt_api.h"
 #include "tensorflow/compiler/xla/python/custom_call_sharding.h"
@@ -623,15 +622,6 @@ PYBIND11_MODULE(xla_extension, m) {
          std::shared_ptr<DistributedRuntimeClient> distributed_client)
           -> std::shared_ptr<PyClient> {
         py::gil_scoped_release gil_release;
-#ifdef XLA_PYTHON_ENABLE_TPU
-#if !defined(PLATFORM_GOOGLE)
-        if (absl::AsciiStrToLower(platform_name) == "tpu") {
-          // TODO(b/261484192): handle device specific initialization.
-          xla::ThrowIfError(
-              tensorflow::tpu::LoadTpuLibraryAndInitializeTpuStructFns());
-        }
-#endif  // PLATFORM_GOOGLE
-#endif  // XLA_PYTHON_ENABLE_TPU
         PjRtClient::KeyValueGetCallback kv_get = nullptr;
         PjRtClient::KeyValuePutCallback kv_put = nullptr;
         if (distributed_client != nullptr) {
