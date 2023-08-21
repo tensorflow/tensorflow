@@ -143,8 +143,11 @@ class TfCThunkDeviceContext final : public DeviceContext {
             device_tensor](const absl::Status& status) -> void {
       // TODO: Find a way to convert device tensor.
       done(status);
+      // Make a copy of params on local variable, since this std::function will
+      // be destructed in Destroy() below.
+      auto param_to_delete = params;
       Destroy(params);
-      delete params;
+      delete param_to_delete;
     };
 
     absl::Status tensor_status;
@@ -177,8 +180,11 @@ class TfCThunkDeviceContext final : public DeviceContext {
         tensor_status = TF_TensorToTensor(params->cpu_tensor, cpu_tensor);
       }
       done(tensor_status);
+      // Make a copy of params on local variable, since this std::function will
+      // be destructed in Destroy() below.
+      auto param_to_delete = params;
       Destroy(params);
-      delete params;
+      delete param_to_delete;
     };
 
     absl::Status tensor_status;
@@ -211,8 +217,11 @@ class TfCThunkDeviceContext final : public DeviceContext {
         tensor_status = TF_TensorToTensor(params->output_tensor, output_tensor);
       }
       done(tensor_status);
+      // Make a copy of params on local variable, since this std::function will
+      // be destructed in Destroy() below.
+      auto param_to_delete = params;
       Destroy(params);
-      delete params;
+      delete param_to_delete;
     };
 
     absl::Status tensor_status;
