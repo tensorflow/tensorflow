@@ -314,5 +314,25 @@ TEST_F(XlaCompilerOptionsTest, TfRtTpuOptions) {
   EXPECT_FALSE(options.alias_passthrough_params);
 }
 
+TEST_F(XlaCompilerOptionsTest, GenerateCompileOptions) {
+  XlaCompiler::CompileOptions option1 = GenerateCompileOptions(
+      /*has_ref_vars=*/false, /*may_alias_resource_update=*/false);
+  EXPECT_TRUE(option1.is_entry_computation);
+  EXPECT_FALSE(option1.always_return_tuple);
+  EXPECT_FALSE(option1.alias_resource_update);
+
+  XlaCompiler::CompileOptions option2 = GenerateCompileOptions(
+      /*has_ref_vars=*/false, /*may_alias_resource_update=*/true);
+  EXPECT_TRUE(option2.alias_resource_update);
+
+  XlaCompiler::CompileOptions option3 = GenerateCompileOptions(
+      /*has_ref_vars=*/true, /*may_alias_resource_update=*/false);
+  EXPECT_FALSE(option3.alias_resource_update);
+
+  XlaCompiler::CompileOptions option4 = GenerateCompileOptions(
+      /*has_ref_vars=*/true, /*may_alias_resource_update=*/true);
+  EXPECT_FALSE(option4.alias_resource_update);
+}
+
 }  // namespace
 }  // namespace tensorflow

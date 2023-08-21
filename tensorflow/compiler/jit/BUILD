@@ -499,6 +499,54 @@ cc_library(
 )
 
 cc_library(
+    name = "pjrt_compile_util",
+    srcs = ["pjrt_compile_util.cc"],
+    hdrs = ["pjrt_compile_util.h"],
+    deps = [
+        ":device_compilation_profiler",
+        ":device_compiler",
+        ":xla_compile_util",
+        ":xla_device_no_jit_rewrite_registration",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:statusor",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "pjrt_compile_util_test",
+    srcs = ["pjrt_compile_util_test.cc"],
+    tags = [
+        "config-cuda-only",
+        "no_oss",  # This test only runs with GPU.
+        "requires-gpu-nvidia",
+        "xla",
+    ],
+    deps = [
+        ":pjrt_compile_util",
+        ":test_util",
+        ":xla_gpu_jit",
+        "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:math_ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core/kernels:ops_testutil",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:status_matchers",
+        "//tensorflow/core/platform:statusor",
+        "//tensorflow/core/tfrt/common:pjrt_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "xla_launch_util",
     srcs = ["xla_launch_util.cc"],
     hdrs = ["xla_launch_util.h"],
@@ -619,7 +667,10 @@ cc_library(
         ":flags_headers",
         "//tensorflow/compiler/tf2xla:xla_argument",
         "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/tfrt/common:global_state",
         "//tensorflow/core/util:determinism",
+        "@com_google_absl//absl/status",
     ],
 )
 
