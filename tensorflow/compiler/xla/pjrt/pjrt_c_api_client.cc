@@ -22,6 +22,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/cleanup/cleanup.h"
@@ -435,11 +436,13 @@ StatusOr<std::uintptr_t> PjRtCApiClient::UnsafeBufferPointer(
   return args.buffer_pointer;
 }
 
-StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::BufferFromHostBuffer(
+StatusOr<std::unique_ptr<PjRtBuffer>>
+PjRtCApiClient::BufferFromHostBufferInternalImpl(
     const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
     std::optional<absl::Span<int64_t const>> byte_strides,
     HostBufferSemantics host_buffer_semantics,
-    std::function<void()> on_done_with_host_buffer, PjRtDevice* device,
+    std::function<void()> on_done_with_host_buffer,
+    std::variant<PjRtDevice*, PjRtMemorySpace*> device_or_memory,
     const Layout* device_layout) {
   if (host_buffer_semantics != HostBufferSemantics::kImmutableOnlyDuringCall &&
       host_buffer_semantics != HostBufferSemantics::kZeroCopy &&
@@ -479,7 +482,18 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::BufferFromHostBuffer(
 
   args.host_buffer_semantics =
       ::pjrt::ConvertToPjRtHostBufferSemantics(host_buffer_semantics);
-  args.device = tensorflow::down_cast<PjRtCApiDevice*>(device)->c_device();
+  if (std::holds_alternative<PjRtDevice*>(device_or_memory)) {
+    args.device = tensorflow::down_cast<PjRtCApiDevice*>(
+                      std::get<PjRtDevice*>(device_or_memory))
+                      ->c_device();
+    args.memory = nullptr;
+  } else {
+    CHECK(std::holds_alternative<PjRtMemorySpace*>(device_or_memory));
+    args.device = nullptr;
+    args.memory = tensorflow::down_cast<PjRtCApiMemorySpace*>(
+                      std::get<PjRtMemorySpace*>(device_or_memory))
+                      ->c_memory();
+  }
 
   RETURN_STATUS_IF_PJRT_ERROR(c_api_->PJRT_Client_BufferFromHostBuffer(&args),
                               c_api_);
@@ -521,10 +535,32 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::BufferFromHostBuffer(
     const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
     std::optional<absl::Span<int64_t const>> byte_strides,
     HostBufferSemantics host_buffer_semantics,
+    std::function<void()> on_done_with_host_buffer,
+    PjRtMemorySpace* memory_space, const Layout* device_layout) {
+  return BufferFromHostBufferInternalImpl(
+      data, type, dims, byte_strides, host_buffer_semantics,
+      on_done_with_host_buffer, memory_space, device_layout);
+}
+
+StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::BufferFromHostBuffer(
+    const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+    std::optional<absl::Span<int64_t const>> byte_strides,
+    HostBufferSemantics host_buffer_semantics,
+    std::function<void()> on_done_with_host_buffer, PjRtDevice* device,
+    const Layout* device_layout) {
+  return BufferFromHostBufferInternalImpl(
+      data, type, dims, byte_strides, host_buffer_semantics,
+      on_done_with_host_buffer, device, device_layout);
+}
+
+StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::BufferFromHostBuffer(
+    const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+    std::optional<absl::Span<int64_t const>> byte_strides,
+    HostBufferSemantics host_buffer_semantics,
     std::function<void()> on_done_with_host_buffer, PjRtDevice* device) {
-  return BufferFromHostBuffer(data, type, dims, byte_strides,
-                              host_buffer_semantics, on_done_with_host_buffer,
-                              device, /*device_layout=*/nullptr);
+  return BufferFromHostBufferInternalImpl(
+      data, type, dims, byte_strides, host_buffer_semantics,
+      on_done_with_host_buffer, device, /*device_layout=*/nullptr);
 }
 
 const PJRT_Api* PjRtCApiClient::pjrt_c_api() const { return c_api_; }

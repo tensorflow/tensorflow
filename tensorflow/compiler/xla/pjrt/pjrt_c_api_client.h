@@ -23,6 +23,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -246,6 +247,13 @@ class PjRtCApiClient : public PjRtClient {
       std::function<void()> on_done_with_host_buffer, PjRtDevice* device,
       const Layout* device_layout) override;
 
+  StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
+      const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+      std::optional<absl::Span<int64_t const>> byte_strides,
+      HostBufferSemantics host_buffer_semantics,
+      std::function<void()> on_done_with_host_buffer,
+      PjRtMemorySpace* memory_space, const Layout* device_layout) override;
+
   StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
       const LiteralSlice& literal, PjRtDevice* device) override {
     return Unimplemented("PJRT C API does not support BufferFromHostLiteral");
@@ -319,6 +327,14 @@ class PjRtCApiClient : public PjRtClient {
 
  private:
   void InitDevicesAndMemorySpaces();
+
+  StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBufferInternalImpl(
+      const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+      std::optional<absl::Span<int64_t const>> byte_strides,
+      HostBufferSemantics host_buffer_semantics,
+      std::function<void()> on_done_with_host_buffer,
+      std::variant<PjRtDevice*, PjRtMemorySpace*> device_or_memory,
+      const Layout* device_layout);
 
   const PJRT_Api* c_api_;
   std::unique_ptr<PJRT_Client, ::pjrt::PJRT_ClientDeleter> c_client_;
