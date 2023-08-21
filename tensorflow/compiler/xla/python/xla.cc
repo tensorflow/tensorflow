@@ -398,6 +398,8 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("local_device_count", &PyClient::addressable_device_count)
       .def("devices", &PyClient::Devices)
       .def("local_devices", &PyClient::LocalDevices)
+      .def("device_from_local_hardware_id",
+           xla::ValueOrThrowWrapper(&PyClient::DeviceFromLocalHardwareId))
       .def("live_buffers", &PyClient::LiveBuffers)
       .def("live_executables", &PyClient::LiveExecutables)
       .def("live_arrays", &PyClient::LiveArrays)
