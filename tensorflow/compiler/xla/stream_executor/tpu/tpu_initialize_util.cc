@@ -175,11 +175,14 @@ tsl::Status TryAcquireTpuLock() {
   }
 
   static constexpr char libtpu_lockfn[] = "/tmp/libtpu_lockfile";
+  static bool libtpu_acquired = false;
 
   // Clean-up call to remove user owned libtpu lockfile on proc exit.
   atexit([]() {
-    // Ignores any lockfile removal error at proc exit.
-    remove(libtpu_lockfn);
+    if (libtpu_acquired) {
+      // Ignores any lockfile removal error at proc exit.
+      unlink(libtpu_lockfn);
+    }
   });
 
   int fd = open(libtpu_lockfn, O_CREAT | O_RDWR, 0600);
@@ -207,6 +210,7 @@ tsl::Status TryAcquireTpuLock() {
           "Run \"$ sudo rm /tmp/libtpu_lockfile\".");
     }
   }
+  libtpu_acquired = true;
   return ::tsl::OkStatus();
 }
 
