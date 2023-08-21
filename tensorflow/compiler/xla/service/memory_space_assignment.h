@@ -637,7 +637,7 @@ class MemorySpaceAssignment {
     void AddUse(HloUse use);
 
     // Extends the end time of this allocation.
-    void Extend(int64_t end_time) { end_time_ = end_time; }
+    void Extend(int64_t end_time) { end_time_ = std::max(end_time_, end_time); }
 
     // After all of the time ranges for the allocations have been assigned,
     // Process morphs the instructions affected to assign the memory spaces and
@@ -667,6 +667,7 @@ class MemorySpaceAssignment {
     virtual int64_t earliest_available_time() const { return start_time_; }
 
     const std::vector<HloUse>& uses() const { return uses_; }
+    void clear_uses() { uses_.clear(); }
     MemorySpace memory_space() const { return memory_space_; }
     // Returns the associated chunk that may be a nullopt if the allocation is
     // in the default memory space.
@@ -679,6 +680,7 @@ class MemorySpaceAssignment {
     }
     virtual void ReplaceOffset(int64_t offset);
     void set_start_time(int64_t start_time) { start_time_ = start_time; }
+    void set_end_time(int64_t end_time) { end_time_ = end_time; }
     int64_t start_time() const { return start_time_; }
     int64_t end_time() const { return end_time_; }
     bool is_scoped_allocation() const { return is_scoped_allocation_; }
@@ -688,6 +690,13 @@ class MemorySpaceAssignment {
 
     bool operator==(const Allocation& other) const;
     virtual std::string ToString() const;
+
+    bool is_in_alternate_mem() const {
+      return memory_space_ == MemorySpace::kAlternate;
+    }
+    bool is_in_default_mem() const {
+      return memory_space_ == MemorySpace::kDefault;
+    }
 
    protected:
     // Recursively create kGetTupleElement instructions if the defining position
@@ -710,7 +719,7 @@ class MemorySpaceAssignment {
   class CopyAllocation : public Allocation {
    public:
     CopyAllocation(
-        const Allocation& prev_allocation, MemorySpace memory_space,
+        Allocation& prev_allocation, MemorySpace memory_space,
         std::optional<Chunk> chunk, int64_t start_time, int64_t end_time,
         int64_t copy_done_schedule_before_time,
         std::optional<int64_t> cross_program_prefetch_index = std::nullopt)
@@ -772,8 +781,11 @@ class MemorySpaceAssignment {
     bool operator==(const CopyAllocation& other) const;
     std::string ToString() const override;
 
+    const Allocation& prev_allocation() { return prev_allocation_; }
+    Allocation& mutable_prev_allocation() { return prev_allocation_; }
+
    private:
-    const Allocation& prev_allocation_;
+    Allocation& prev_allocation_;
     // These variables define the scheduling boundaries where CopyStart and
     // CopyDone can be scheduled. The earliest CopyStart can be scheduled is
     // after copy_start_schedule_after_ and the latest CopyDone can be scheduled
@@ -1217,7 +1229,7 @@ class MemorySpaceAssignment {
  private:
   // Process calls Process methods of the allocations after the allocations have
   // been finalized.
-  Status Process();
+  Status Process(const HloLiveRange& hlo_live_range);
 
   // Process() might have altered the computation graph by inserting kTuple and
   // kGetTupleElement instructions. SimplifyGraph performs a simple DCE and
@@ -1523,6 +1535,10 @@ struct Options {
       -> xla::StatusOr<MemorySpaceAssignment::SliceProposalCollection> {
     return UnimplementedStrCat("Generation of SliceProposals unimplemented");
   };
+
+  // Option to always spill buffers from alternate memory to default memory
+  // and prefetching back to alternate memory(if needed) just in time for use.
+  bool always_spill_to_default_memory = false;
 };
 
 // A struct representing an asynchronous copy with its logical start and end
@@ -2164,7 +2180,7 @@ class AlternateMemoryBestFitHeap
 
     // Parameters to Prefetch().
     const AllocationRequest* request;
-    const MemorySpaceAssignment::Allocation* prev_allocation_in_default_mem;
+    MemorySpaceAssignment::Allocation* prev_allocation_in_default_mem;
 
     // Intermediate calculations common to both the sliced and unsliced
     // solutions.
@@ -2323,7 +2339,7 @@ class AlternateMemoryBestFitHeap
   // Try prefetching to alternate memory space.
   Result Prefetch(
       const AllocationRequest& request,
-      const MemorySpaceAssignment::Allocation& prev_allocation_in_default_mem);
+      MemorySpaceAssignment::Allocation& prev_allocation_in_default_mem);
 
   // Helper methods used to implement Prefetch().
   //
@@ -2468,7 +2484,7 @@ class AlternateMemoryBestFitHeap
 
   // Adds an asynchronous copy to allocations.
   void AddAsyncCopy(
-      const MemorySpaceAssignment::Allocation& prev_allocation,
+      MemorySpaceAssignment::Allocation& prev_allocation,
       MemorySpace memory_space, std::optional<Chunk> chunk, int64_t start_time,
       int64_t end_time, int64_t copy_done_schedule_before_time,
       MemorySpaceAssignment::AllocationSequence* allocations,

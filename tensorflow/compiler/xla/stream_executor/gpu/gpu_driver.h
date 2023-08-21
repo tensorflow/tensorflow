@@ -367,7 +367,8 @@ class GpuDriver {
   // https://docs.nvidia.com/cuda/cuda-driver-api/structCUgraphExecUpdateResultInfo__v1.html#structCUgraphExecUpdateResultInfo__v1
   // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#graph-management
   struct GraphExecUpdateResultInfo {
-    // TODO(ezhulenev): Add `errorFromNode` and `errorNode` members.
+    GpuGraphNodeHandle error_from_node;
+    GpuGraphNodeHandle error_node;
     GraphExecUpdateResult result;
   };
 

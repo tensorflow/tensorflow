@@ -158,6 +158,10 @@ struct PJRT_SerializedExecutable {
   std::string serialized;
 };
 
+struct PJRT_SerializedTopology {
+  std::string serialized;
+};
+
 struct PJRT_TopologyDescription {
   std::unique_ptr<xla::PjRtTopologyDescription> topology;
   std::vector<std::unique_ptr<const xla::PjRtDeviceDescription>>
@@ -313,6 +317,8 @@ PJRT_Error* PJRT_TopologyDescription_PlatformVersion(
     PJRT_TopologyDescription_PlatformVersion_Args* args);
 PJRT_Error* PJRT_TopologyDescription_GetDeviceDescriptions(
     PJRT_TopologyDescription_GetDeviceDescriptions_Args* args);
+PJRT_Error* PJRT_TopologyDescription_Serialize(
+    PJRT_TopologyDescription_Serialize_Args* args);
 
 PJRT_Error* PJRT_Compile(PJRT_Compile_Args* args);
 
@@ -518,6 +524,8 @@ constexpr PJRT_Api CreatePjrtApi(
       pjrt::PJRT_TopologyDescription_PlatformVersion,
       /*PJRT_TopologyDescription_GetDeviceDescriptions=*/
       pjrt::PJRT_TopologyDescription_GetDeviceDescriptions,
+      /*PJRT_TopologyDescription_Serialize=*/
+      pjrt::PJRT_TopologyDescription_Serialize,
 
       /*.PJRT_Compile=*/pjrt::PJRT_Compile,
   };

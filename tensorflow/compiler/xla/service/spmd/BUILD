@@ -274,3 +274,35 @@ xla_cc_test(
         "//tensorflow/tsl/platform:test",
     ],
 )
+
+cc_library(
+    name = "whole_graph_manual_pass",
+    srcs = [
+        "whole_graph_manual_pass.cc",
+    ],
+    hdrs = [
+        "whole_graph_manual_pass.h",
+    ],
+    deps = [
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+xla_cc_test(
+    name = "whole_graph_manual_pass_test",
+    srcs = ["whole_graph_manual_pass_test.cc"],
+    deps = [
+        ":whole_graph_manual_pass",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/hlo/utils:hlo_matchers",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
+        "//tensorflow/compiler/xla/service:hlo_verifier",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/tsl/lib/core:status_test_util",
+    ],
+)

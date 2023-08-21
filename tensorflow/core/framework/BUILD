@@ -712,6 +712,7 @@ cc_library(
         "//tensorflow/core/lib/core:refcount",
         "//tensorflow/core/lib/core:status",
         "//tensorflow/core/platform:errors",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 

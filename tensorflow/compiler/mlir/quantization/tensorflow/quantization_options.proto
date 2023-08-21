@@ -137,17 +137,17 @@ message FreezeAllVariables {
   bool enabled = 1;
 }
 
-// TODO - b/294335910 : Reorganize the definition for calibration options.
-// Defines various calibration options. NEXT ID: 2
+// Defines various calibration options.
+// NEXT ID: 2
 message CalibrationOptions {
   // Configurations for calibration methods.
   // NEXT ID: 3
   enum CalibrationMethod {
     CALIBRATION_METHOD_UNSPECIFIED = 0;
     // Use the min, max values of all sample datasets.
-    MIN_MAX = 1;
+    CALIBRATION_METHOD_MIN_MAX = 1;
     // Use the average of min, max values in each sample dataset.
-    AVERAGE_MIN_MAX = 2;
+    CALIBRATION_METHOD_AVERAGE_MIN_MAX = 2;
   }
 
   // Determines how to calibrate.

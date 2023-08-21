@@ -248,6 +248,12 @@ class StreamExecutorInterface {
   virtual tsl::Status DeallocateEvent(Event* event) = 0;
   virtual tsl::Status RecordEvent(Stream* stream, Event* event) = 0;
   virtual tsl::Status WaitForEvent(Stream* stream, Event* event) = 0;
+  virtual tsl::Status WaitForEventOnExternalStream(std::intptr_t stream,
+                                                   Event* event) {
+    return tsl::Status(
+        absl::StatusCode::kUnimplemented,
+        "WaitForEventOnExternalStream not supported on this executor.");
+  }
   virtual Event::Status PollForEventStatus(Event* event) = 0;
   virtual bool AllocateStream(Stream* stream) = 0;
   virtual void DeallocateStream(Stream* stream) = 0;

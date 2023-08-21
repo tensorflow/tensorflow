@@ -115,6 +115,8 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
     return 1;
   }
 
+  absl::StatusOr<std::string> Serialize() const override;
+
  private:
   const PjRtPlatformId platform_id_;
   const std::string platform_name_;

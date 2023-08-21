@@ -116,6 +116,7 @@ cc_library(
         "passes/bridge/convert_tf_quant_ops_to_mhlo.cc",
         "passes/bridge/convert_tf_quant_types.cc",
         "passes/bridge/passes.cc",
+        "passes/bridge/verify_quant_legalization.cc",
     ],
     hdrs = [
         "passes/bridge/passes.h",
@@ -145,6 +146,7 @@ cc_library(
         "//tensorflow/core/framework:numeric_types",
         "//tensorflow/core/util/quantization:uniform_quant_ops_attr_proto_cc",
         "//tensorflow/core/util/quantization:uniform_quant_ops_params",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
@@ -287,6 +289,7 @@ cc_library(
     hdrs = ["utils/tf_type_utils.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:mangling_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/core:framework",

@@ -90,7 +90,7 @@ TEST_F(GpuUnrollingTest, UnrollUnfusedAdd) {
 
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
-; CHECK-LABEL: @add
+; CHECK-LABEL: @wrapped_add
 ; CHECK: load float
 ; CHECK: load float
 ; CHECK: fadd

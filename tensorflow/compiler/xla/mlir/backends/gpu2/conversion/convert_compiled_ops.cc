@@ -57,6 +57,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/backends/gpu2/ir/xla_gpu_dialect.h"
 #include "tensorflow/compiler/xla/mlir/backends/gpu2/ir/xla_gpu_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/xla/service/gpu/conditional_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/copy_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/kernel_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
@@ -106,6 +107,16 @@ ThunkSequence extractThunksForOp(ThunkSequence *from, Operation *op) {
       for (auto &thunk : extractThunksForOp(
                &while_thunk->body_thunk_sequence()->thunks(), op))
         thunks.push_back(std::move(thunk));
+    }
+
+    // Look for thunks in the conditional thunk branches.
+    if (thunk->kind() == Thunk::kConditional) {
+      auto *cond_thunk = static_cast<ConditionalThunk *>(thunk.get());
+
+      for (auto &branch : cond_thunk->branch_thunks()) {
+        for (auto &thunk : extractThunksForOp(&branch->thunks(), op))
+          thunks.push_back(std::move(thunk));
+      }
     }
 
     if (thunk->op() == op) thunks.push_back(std::move(thunk));

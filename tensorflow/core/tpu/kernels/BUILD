@@ -11,6 +11,7 @@ load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
 )
+load("//tensorflow/core/tpu:build_defs.bzl", "if_libtpu_tf_status")
 
 # Config setting to enable go/libtpu support.
 
@@ -138,7 +139,6 @@ tf_kernel_library(
         ":tpu_mesh_state_interface",
         ":tpu_op_consts",
         ":tpu_pod_state",
-        "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
@@ -162,7 +162,7 @@ tf_kernel_library(
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-    ],
+    ] + if_libtpu_tf_status(),
     alwayslink = 1,
 )
 
@@ -184,7 +184,6 @@ tf_kernel_library(
         ":tpu_mesh_state_interface",
         ":tpu_op_consts",
         ":tpu_pod_state",
-        "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
@@ -200,7 +199,7 @@ tf_kernel_library(
         "//tensorflow/core/tpu:tpu_configuration",
         "//tensorflow/core/tpu:tpu_defs",
         "@com_google_absl//absl/cleanup",
-    ],
+    ] + if_libtpu_tf_status(),
     alwayslink = 1,
 )
 
@@ -1063,14 +1062,13 @@ cc_library(
         ["//tensorflow/core/tpu/kernels:tpu_util"],
     ) + [
         ":tpu_compilation_cache_service",
-        "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/compiler/xla/stream_executor/tpu:status_helper",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_api",
         "//tensorflow/core:framework",
         "//tensorflow/tsl/platform:errors",
         "@com_google_absl//absl/cleanup",
-    ],
+    ] + if_libtpu_tf_status(),
 )
 
 cc_library(

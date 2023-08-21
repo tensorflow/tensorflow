@@ -45,6 +45,7 @@ limitations under the License.
 //   (use_locking=false), we never copy even if the variable's
 //   reference count is >1.
 
+#include "tensorflow/core/framework/op_requires.h"
 #define EIGEN_USE_THREADS
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -231,6 +232,7 @@ REGISTER_KERNEL_BUILDER(
 VarHandleOp::VarHandleOp(OpKernelConstruction* context) : OpKernel(context) {
   OP_REQUIRES_OK(context, context->GetAttr("container", &container_));
   OP_REQUIRES_OK(context, context->GetAttr("shared_name", &name_));
+  OP_REQUIRES_OK(context, context->GetAttr("debug_name", &debug_name_));
 
   OP_REQUIRES_OK(context, context->GetAttr("dtype", &dtype_and_shape_.dtype));
   OP_REQUIRES_OK(context, context->GetAttr("shape", &dtype_and_shape_.shape));
@@ -251,7 +253,7 @@ VarHandleOp::VarHandleOp(OpKernelConstruction* context) : OpKernel(context) {
 
 void VarHandleOp::Compute(OpKernelContext* ctx) {
   if (is_anonymous_) {
-    Var* resource = new Var(dtype_and_shape_.dtype);
+    Var* resource = new Var(dtype_and_shape_.dtype, debug_name_);
     ResourceMgr* mgr = ctx->resource_manager();
     ResourceHandle handle = ResourceHandle::MakeRefCountingHandle<Var>(
         resource, ctx->device()->name(),

@@ -691,7 +691,7 @@ cc_library(
         "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
-        "//testing/base/public:gunit_for_library_testonly",
+        "@com_google_googletest//:gtest",
         "@flatbuffers",
     ],
 )
@@ -713,7 +713,7 @@ cc_library(
         "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
-        "//testing/base/public:gunit_for_library_testonly",
+        "@com_google_googletest//:gtest",
         "@flatbuffers",
     ],
 )

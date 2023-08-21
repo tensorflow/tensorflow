@@ -1736,18 +1736,6 @@ gpu_kernel_library(
     # unroll_factors = "4",
 )
 
-# TODO(b/160731748): Re-enable when it works again.
-# gpu_kernel_library(
-#     name = "gpu_bias_add_kernels",
-#     op = "bias_add",
-#     tile_size = "16x16",
-#     types = [
-#         "f16",
-#         "f32",
-#         "f64",
-#     ],
-# )
-
 gpu_kernel_library(
     name = "gpu_relu_kernels",
     jit_types = [

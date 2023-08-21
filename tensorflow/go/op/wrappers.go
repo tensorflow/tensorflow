@@ -57475,6 +57475,16 @@ func VarHandleOpSharedName(value string) VarHandleOpAttr {
 	}
 }
 
+// VarHandleOpDebugName sets the optional debug_name attribute to value.
+//
+// value: the user-given name, which still applies in anonymous mode.
+// If not specified, defaults to ""
+func VarHandleOpDebugName(value string) VarHandleOpAttr {
+	return func(m optionalAttr) {
+		m["debug_name"] = value
+	}
+}
+
 // VarHandleOpAllowedDevices sets the optional allowed_devices attribute to value.
 //
 // value: DEPRECATED. The allowed devices containing the resource variable. Set when the

@@ -156,34 +156,29 @@ Status UpdateMetadataProtoXlaSpmd(const Mesh& mesh_config,
         "Xla Spmd for user specified device "
         "assignment is not supported yet.");
   }
-  if (Mesh::tpu_core_ids().empty()) {
-    // FIXME(feyu): This cannot be turned to an error because MLIR unit tests
-    // always observe an empty tpu_core_id list. We should plumb
-    // tpu_core_ids as a module attribute, such that can control tpu_core_ids
-    // from MLIR unit tests,
-    LOG(WARNING) << "Running a TPU program before initialization.";
-    return OkStatus();
-  }
-  std::string mesh_name = mesh_config.name();
-  if (Mesh::tpu_core_ids().count(mesh_name) == 0) {
-    // This can happen only for manually created meshes (2 above) with
-    // non-empty names. This mesh should use the default mapping.
-    VLOG(1) << "mesh_name " << mesh_name << " not found, using empty name";
-    mesh_name = "";
-  }
-  const std::vector<int>& tpu_core_ids = Mesh::tpu_core_ids()[mesh_name];
-  VLOG(1) << "tpu_core_ids: " << str_util::Join(tpu_core_ids, ", ");
+  if (!Mesh::tpu_core_ids().empty()) {
+    std::string mesh_name = mesh_config.name();
+    if (Mesh::tpu_core_ids().count(mesh_name) == 0) {
+      // This can happen only for manually created meshes (2 above) with
+      // non-empty names. This mesh should use the default mapping.
+      VLOG(1) << "mesh_name " << mesh_name << " not found, using empty name";
+      mesh_name = "";
+    }
+    const std::vector<int>& tpu_core_ids = Mesh::tpu_core_ids()[mesh_name];
+    VLOG(1) << "tpu_core_ids: " << str_util::Join(tpu_core_ids, ", ");
 
-  xla::DeviceAssignmentProto device_assignment;
-  device_assignment.set_replica_count(1);
-  device_assignment.set_computation_count(num_devices);
-  const int64_t start_device_id = mesh_config.min_global_device_id();
-  for (int i = 0; i < num_devices; ++i) {
-    auto* computation_device = device_assignment.add_computation_devices();
-    int tpu_core_id_index = i + start_device_id + core_id_local_offset;
-    computation_device->add_replica_device_ids(tpu_core_ids[tpu_core_id_index]);
+    xla::DeviceAssignmentProto device_assignment;
+    device_assignment.set_replica_count(1);
+    device_assignment.set_computation_count(num_devices);
+    const int64_t start_device_id = mesh_config.min_global_device_id();
+    for (int i = 0; i < num_devices; ++i) {
+      auto* computation_device = device_assignment.add_computation_devices();
+      int tpu_core_id_index = i + start_device_id + core_id_local_offset;
+      computation_device->add_replica_device_ids(
+          tpu_core_ids[tpu_core_id_index]);
+    }
+    *proto.mutable_device_assignment() = device_assignment;
   }
-  *proto.mutable_device_assignment() = device_assignment;
   return OkStatus();
 }
 
