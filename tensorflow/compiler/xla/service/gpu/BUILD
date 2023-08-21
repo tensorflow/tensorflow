@@ -2311,12 +2311,12 @@ cc_library(
     ],
     deps = [
         ":executable_proto_cc",
+        ":fusion_wrapper",
         ":gpu_constants",
         ":gpu_convert_async_collectives_to_sync",
         ":gpu_device_info",
         ":gpu_executable",
         ":gpu_hlo_schedule",
-        ":ir_emitter",
         ":ir_emitter_context",
         ":ir_emitter_unnested",
         ":metrics",
@@ -4177,6 +4177,32 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+cc_library(
+    name = "fusion_wrapper",
+    srcs = ["fusion_wrapper.cc"],
+    hdrs = ["fusion_wrapper.h"],
+    deps = [
+        ":gpu_fusible",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/tsl/platform:errors",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_cc_test(
+    name = "fusion_wrapper_test",
+    srcs = ["fusion_wrapper_test.cc"],
+    deps = [
+        ":fusion_wrapper",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

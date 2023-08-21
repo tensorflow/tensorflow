@@ -180,13 +180,6 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
   OpType CreateOpWithoutAttrs(const xla::HloInstruction* instr,
                               ValueRange operands);
 
-  tsl::StatusOr<mlir::Operation*> CreateOpInFusion(
-      const xla::HloInstruction* instr, ValueRange buffer_operands,
-      size_t num_arguments, size_t num_results);
-
-  tsl::StatusOr<mlir::Operation*> CreateOpInFusion(
-      const xla::HloInstruction* instr);
-
   template <typename T>
   DenseIntElementsAttr GetI64DenseElementsAttr(const T& container) {
     return builder_.getI64TensorAttr(

@@ -49,6 +49,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/gpu/conditional_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/for_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/fusion_wrapper.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_convert_async_collectives_to_sync.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
@@ -385,6 +386,12 @@ Status CompileModuleToLlvmIrImpl(
               << sizes.before_bytes - sizes.after_bytes << " bytes";
     }
   }
+
+  HloPassPipeline pipeline("fusion-wrapper");
+  // Wrap remaining unfused ops that have no LHLO equivalent in single-op
+  // fusions. This needs to happen after rematerialization, because it will
+  // insert additional copies.
+  TF_RETURN_IF_ERROR(FusionWrapper().Run(hlo_module).status());
 
   auto buffer_size_bytes_function =
       [pointer_size](const BufferValue& buffer_value) -> int64_t {
