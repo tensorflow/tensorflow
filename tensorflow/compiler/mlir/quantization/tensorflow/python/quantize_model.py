@@ -64,9 +64,7 @@ _UnitWiseQuantizationSpec = tf_export.tf_export(
 
 _Method = _QuantizationMethod.Method
 _ExperimentalMethod = _QuantizationMethod.ExperimentalMethod
-_CalibrationMethod = (
-    quant_opts_pb2.CalibrationOptions.CalibrationMethod
-)
+_CalibrationMethod = quant_opts_pb2.CalibrationOptions.CalibrationMethod
 
 _QuantizationComponent = _QuantizationComponentSpec.QuantizationComponent
 _TensorType = _QuantizationComponentSpec.TensorType
@@ -648,11 +646,11 @@ def _get_min_max_from_calibrator(
       pywrap_quantize_model.get_statistics_from_calibrator(node_id)
   )
   calib_method = calib_opts.calibration_method
-  if calib_method == _CalibrationMethod.MIN_MAX:
+  if calib_method == _CalibrationMethod.CALIBRATION_METHOD_MIN_MAX:
     min_max_statistics = statistics.min_max_statistics
     min_value = min_max_statistics.global_min
     max_value = min_max_statistics.global_max
-  elif calib_method == _CalibrationMethod.AVERAGE_MIN_MAX:
+  elif calib_method == _CalibrationMethod.CALIBRATION_METHOD_AVERAGE_MIN_MAX:
     average_min_max_statistics = statistics.average_min_max_statistics
     # num_samples is guaranteed to be larger than 0 because
     # get_statistics_from_calibrator throws an exception if num_samples == 0.
@@ -1142,6 +1140,26 @@ def _populate_quantization_component_spec(
     raise ValueError('At least one component spec needs to be specified.')
 
 
+def _populate_calibration_options(
+    quantization_options: quant_opts_pb2.QuantizationOptions,
+):
+  """Populates default values for CalibrationOptions.
+  
+  Args:
+    quantization_options: An instance of QuantizationOptions with a field
+      specifying CalibrationOptions
+  """
+
+  calib_opts = quantization_options.calibration_options
+  if (
+      calib_opts.calibration_method
+      == _CalibrationMethod.CALIBRATION_METHOD_UNSPECIFIED
+  ):
+    calib_opts.calibration_method = (
+        _CalibrationMethod.CALIBRATION_METHOD_MIN_MAX
+    )
+
+
 def _populate_quantization_options_default_values(
     quantization_options: _QuantizationOptions,
 ) -> None:
@@ -1206,13 +1224,8 @@ def _populate_quantization_options_default_values(
         _ExperimentalMethod.STATIC_RANGE
     )
 
-  if (
-      quantization_options.calibration_options.calibration_method
-      == _CalibrationMethod.CALIBRATION_METHOD_UNSPECIFIED
-  ):
-    quantization_options.calibration_options.calibration_method = (
-        _CalibrationMethod.MIN_MAX
-    )
+  # Check and populate calibration options.
+  _populate_calibration_options(quantization_options)
 
   # Check and populate quantization component spec
   _populate_quantization_component_spec(quantization_options)
