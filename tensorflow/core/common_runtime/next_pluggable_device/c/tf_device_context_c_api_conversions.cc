@@ -84,7 +84,7 @@ void Destroy(TF_DeviceContext_CopyDeviceTensorToCPU_Params* params) {
     return;
   }
   TF_DeleteTensor(params->device_tensor);
-  delete params->tensor_name;
+  delete[] params->tensor_name;
   TF_DeleteTensor(params->cpu_tensor);
   Destroy(params->done);
   delete params->done;
@@ -165,6 +165,9 @@ class TfCThunkDeviceContext final : public DeviceContext {
       return;
     }
     params->done = ToC(done);
+    params->tensor_name_len = tensor_name.size();
+    params->tensor_name = new char[params->tensor_name_len + 1];
+    strncpy(params->tensor_name, tensor_name.data(), params->tensor_name_len);
     const TF_DeviceContext_CopyDeviceTensorToCPU_Impl& func =
         thunk_.device_to_cpu;
     func.device_to_cpu_func(func.context, params);
