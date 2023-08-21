@@ -36,26 +36,6 @@ StatusOr<KernelArgument> KernelArgument::Create(
 
 StatusOr<KernelArguments> KernelArguments::Create(
     absl::Span<const BufferAllocation> allocations,
-    mlir::gpu::LaunchFuncOp launch) {
-  std::vector<KernelArgument> kernel_arguments;
-  unsigned num_kernel_operands = launch.getNumKernelOperands();
-  kernel_arguments.reserve(num_kernel_operands);
-  mlir::ArrayRef<mlir::Attribute> written_operands =
-      mlir::getWrittenOperandsAttribute(launch).getValue();
-  for (const auto& [operand, written] :
-       llvm::zip_first(launch.getKernelOperands(),
-                       written_operands.take_back(num_kernel_operands))) {
-    TF_ASSIGN_OR_RETURN(
-        auto arg,
-        KernelArgument::Create(allocations, operand,
-                               written.cast<mlir::BoolAttr>().getValue()));
-    kernel_arguments.emplace_back(std::move(arg));
-  }
-  return KernelArguments(std::move(kernel_arguments));
-}
-
-StatusOr<KernelArguments> KernelArguments::Create(
-    absl::Span<const BufferAllocation> allocations,
     mlir::lmhlo::FusionOp fusion) {
   auto operands = GetHloOperands(fusion);
   auto outputs = GetHloOutputs(fusion);

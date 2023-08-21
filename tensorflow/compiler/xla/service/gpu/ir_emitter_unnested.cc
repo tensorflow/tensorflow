@@ -1661,77 +1661,6 @@ static Status ProcessFusionForConversion(mlir::Region* region,
   return OkStatus();
 }
 
-Status IrEmitterUnnested::EmitLaunchFunc(mlir::Operation* op) {
-  auto launch_func = mlir::cast<mlir::gpu::LaunchFuncOp>(op);
-  auto kernel_func =
-      mlir::SymbolTable::lookupNearestSymbolFrom<mlir::LLVM::LLVMFuncOp>(
-          launch_func, launch_func.getKernel());
-  if (!kernel_func) {
-    return InternalError("kernel '%s' not found",
-                         launch_func.getKernelName().str());
-  }
-
-  // Lower kernel module to NVVM.
-  auto gpu_module = kernel_func->getParentOfType<mlir::gpu::GPUModuleOp>();
-  std::unique_ptr<llvm::Module> llvm_module = mlir::translateModuleToLLVMIR(
-      gpu_module, module_->getContext(), gpu_module.getName());
-  if (!llvm_module)
-    return InternalError("Failed to translate GPU module to LLVM");
-
-  // Add kernel to LLVM module.
-  llvm_module->setDataLayout(module_->getDataLayout());
-  llvm::Linker::linkModules(*module_, std::move(llvm_module));
-
-  // Retrieve launch dimensions from arith.constant ops.
-  auto get_dim3d = [](mlir::gpu::KernelDim3 dim3) {
-    auto get_const = [](mlir::Value value) -> int64_t {
-      auto const_op = value.getDefiningOp<mlir::arith::ConstantOp>();
-      if (!const_op) return -1;
-      auto attr = const_op.getValue().cast<mlir::IntegerAttr>();
-      if (!attr) return -1;
-      return attr.getValue().getSExtValue();
-    };
-    return LaunchDimensions::Dim3D{get_const(dim3.x), get_const(dim3.y),
-                                   get_const(dim3.z)};
-  };
-  LaunchDimensions launch_dimensions(
-      get_dim3d(launch_func.getGridSizeOperandValues()),
-      get_dim3d(launch_func.getBlockSizeOperandValues()));
-
-  // Create BufferSlice array from launch_func arguments, using the
-  // attribute depicting which arguments are written by the kernel.
-  TF_ASSIGN_OR_RETURN(
-      auto kernel_arguments,
-      KernelArguments::Create(ir_emitter_context_->allocations(), launch_func));
-
-  // Add kernel prototype to module_, kernel thunk to thunk_sequence_.
-  std::string kernel_name = GetIrNameFromLoc(launch_func.getLoc());
-  auto [kernel, input_arrays, output_arrays] = BuildKernelPrototype(
-      *ir_emitter_context_, kernel_name, kernel_arguments.args(),
-      launch_func.getNumKernelOperands(), launch_dimensions, &b_);
-  AddThunkToThunkSequence(std::make_unique<KernelThunk>(
-      op, kernel->getName().str(), kernel_arguments.args(), launch_dimensions));
-
-  // Move function body into kernel prototype.
-  llvm::Function* prototype_func = b_.GetInsertBlock()->getParent();
-  llvm::Function* implementation_func =
-      module_->getFunction(kernel_func.getName());
-  prototype_func->splice(prototype_func->end(), implementation_func);
-  for (const auto& [arg, ir_array] :
-       llvm::zip(implementation_func->args(), input_arrays)) {
-    arg.replaceAllUsesWith(ir_array.GetBasePointer());
-  }
-  implementation_func->eraseFromParent();
-
-  // Replace pre-existing return with unconditional branch to next block.
-  llvm::Instruction* terminator =
-      prototype_func->getEntryBlock().getTerminator();
-  llvm::BranchInst::Create(&*std::next(prototype_func->begin()), terminator);
-  terminator->eraseFromParent();
-
-  return OkStatus();
-}
-
 #if GOOGLE_CUDA
 Status IrEmitterUnnested::EmitTritonFusion(
     mlir::Operation* op, const AutotuneResult::TritonGemmKey& config,
@@ -3223,10 +3152,6 @@ Status IrEmitterUnnested::EmitOp(
 
   if (mlir::isa<mlir::lmhlo::WhileOp>(op)) {
     return EmitWhile(op, hlo_for_lmhlo);
-  }
-
-  if (mlir::isa<mlir::gpu::LaunchFuncOp>(op)) {
-    return EmitLaunchFunc(op);
   }
 
   // Remaining arith.constant ops are the gpu.launch_func dimensions as a result
