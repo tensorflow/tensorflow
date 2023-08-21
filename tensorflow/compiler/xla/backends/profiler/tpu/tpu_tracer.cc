@@ -137,7 +137,7 @@ Status TpuTracer::CollectData(XSpace* space) {
 void InitTpuProfilerApiFns() {
 #if defined(PLATFORM_GOOGLE) || defined(PLATFORM_WINDOWS)
   return;
-#endif
+#else
   const char* env_value = getenv("TPU_LIBRARY_PATH");
   const char* libtpu_path =
       env_value && strlen(env_value) > 0 ? env_value : "libtpu.so";
@@ -151,6 +151,7 @@ void InitTpuProfilerApiFns() {
     LOG(INFO) << "SetTpuProfilerApiFns failed: " << s.message();
   }
   return;
+#endif
 }
 }  // namespace
 
