@@ -5,13 +5,26 @@ load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",
 )
-load("//tensorflow:tensorflow.bzl", "if_libtpu", "tf_cc_test", "tf_copts")
-load("//tensorflow:tensorflow.default.bzl", "tf_grpc_cc_dependencies", "tf_kernel_library")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "if_libtpu",
+    "tf_cc_test",
+    "tf_copts",
+)
+load(
+    "//tensorflow:tensorflow.default.bzl",
+    "tf_grpc_cc_dependencies",
+    "tf_kernel_library",
+)
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
 )
-load("//tensorflow/core/tpu:build_defs.bzl", "if_libtpu_tf_status")
+load(
+    "//tensorflow/core/tpu:build_defs.bzl",
+    "if_libtpu_tf_status",
+    "if_libtpu_tf_tensor",
+)
 
 # Config setting to enable go/libtpu support.
 
@@ -232,7 +245,6 @@ cc_library(
     srcs = ["tpu_embedding_enqueue_ops.cc"],
     hdrs = ["tpu_embedding_enqueue_ops.h"],
     deps = [
-        "//tensorflow/c:tf_tensor_internal",
         "//tensorflow/compiler/xla/stream_executor/tpu:c_api_decl",
         "//tensorflow/compiler/xla/stream_executor/tpu:status_helper",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_api",
@@ -241,8 +253,10 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
+        "//tensorflow/tsl/platform:tstring",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
-    ],
+    ] + if_libtpu_tf_tensor(),
     alwayslink = 1,
 )
 
