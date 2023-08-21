@@ -274,7 +274,6 @@ py_strict_library(
         "//tensorflow/python/eager:execute",
         "//tensorflow/security/fuzzing/py:annotation_types",
         "//tensorflow/tools/docs:doc_controls",
-        "@typing_extensions_archive//:typing_extensions",
     ],
 )
 
