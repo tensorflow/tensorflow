@@ -173,9 +173,7 @@ TF_RendezvousDoneCallbackImpl ToC(
         auto sender_args = FromC(*params->sender_args);
         auto recver_args = FromC(*params->recver_args);
         Tensor tensor;
-        if (status.ok()) {
-          status = TF_TensorToTensor(params->tensor, &tensor);
-        }
+        CopyTF_TensorToTensor(params->tensor, &tensor);
         on_done(status, sender_args, recver_args, tensor, params->is_dead);
       });
   done_func.context = static_cast<void*>(c_callback);
@@ -253,7 +251,7 @@ SendParamDeleter MakeSendParamDeleter() {
     Destroy(args);
     delete params->key;
     delete params->args;
-    delete params->tensor;
+    TF_DeleteTensor(params->tensor);
     TF_DeleteStatus(params->status);
     delete params;
   };
@@ -267,12 +265,7 @@ StatusOr<SendParamPtr> SendParamsToC(const RendezvousInterface::ParsedKey& key,
   params->args = new TF_RendezvousArgsStruct(ToC(args));
   params->is_dead = is_dead;
   params->status = TF_NewStatus();
-  Status tensor_status;
-  params->tensor = TF_TensorFromTensor(tensor, &tensor_status);
-  if (!tensor_status.ok()) {
-    MakeSendParamDeleter()(params);
-    return tensor_status;
-  }
+  params->tensor = CopyTensorToTF_Tensor(tensor);
   return SendParamPtr(params, MakeSendParamDeleter());
 }
 

@@ -23,6 +23,9 @@ limitations under the License.
 
 namespace tensorflow {
 
+void CopyTF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
+TF_Tensor* CopyTensorToTF_Tensor(const Tensor& src);
+
 struct TF_DeviceContext_Deleter {
   void operator()(TF_DeviceContext* c_device_context);
 };

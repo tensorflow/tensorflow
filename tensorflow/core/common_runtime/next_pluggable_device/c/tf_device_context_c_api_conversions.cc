@@ -30,6 +30,35 @@ limitations under the License.
 
 namespace tensorflow {
 
+void CopyTF_TensorToTensor(const TF_Tensor* src, Tensor* dst) {
+  // TODO: Convert through a lookup table for better API compatibility.
+  DataType dtype = static_cast<DataType>(TF_TensorType(src));
+  TensorShape tensor_shape;
+  int dim = TF_NumDims(src);
+  for (int i = 0; i < dim; ++i) {
+    tensor_shape.AddDim(TF_Dim(src, i));
+  }
+  *dst = Tensor(dtype, tensor_shape);
+
+  std::memcpy(dst->data(), TF_TensorData(src), TF_TensorByteSize(src));
+}
+
+TF_Tensor* CopyTensorToTF_Tensor(const Tensor& src) {
+  // TODO: Convert through a lookup table for better API compatibility.
+  TF_DataType dtype = static_cast<TF_DataType>(src.dtype());
+  const TensorShape& shape = src.shape();
+  int64_t* dims = new int64_t[shape.dims()];
+  size_t len = TF_DataTypeSize(dtype);
+  for (int i = 0; i < shape.dims(); ++i) {
+    dims[i] = shape.dim_size(i);
+    len *= dims[i];
+  }
+  TF_Tensor* tf_tensor = TF_AllocateTensor(dtype, dims, shape.dims(), len);
+  void* data = TF_TensorData(tf_tensor);
+  std::memcpy(data, src.data(), len);
+  return tf_tensor;
+}
+
 namespace {
 
 char* ToC(absl::string_view str) {
@@ -207,19 +236,6 @@ class TfCThunkDeviceContext final : public DeviceContext {
   const TF_DeviceContext thunk_;
 };
 
-void CopyTF_TensorToTensor(const TF_Tensor* src, Tensor* dst) {
-  // TODO: Convert through a lookup table for better API compatibility.
-  DataType dtype = static_cast<DataType>(TF_TensorType(src));
-  TensorShape tensor_shape;
-  int dim = TF_NumDims(src);
-  for (int i = 0; i < dim; ++i) {
-    tensor_shape.AddDim(TF_Dim(src, i));
-  }
-  *dst = Tensor(dtype, tensor_shape);
-
-  std::memcpy(dst->data(), TF_TensorData(src), TF_TensorByteSize(src));
-}
-
 void CpuToDeviceThunk(void* context,
                       TF_DeviceContext_CopyCPUTensorToDevice_Params* params) {
   DeviceContext* device_context = static_cast<DeviceContext*>(context);
@@ -240,22 +256,6 @@ void CpuToDeviceThunk(void* context,
   device_context->CopyCPUTensorToDevice(cpu_tensor, /* device = */ nullptr,
                                         device_tensor, std::move(done),
                                         sync_dst_compute);
-}
-
-TF_Tensor* CopyTensorToTF_Tensor(const Tensor& src) {
-  // TODO: Convert through a lookup table for better API compatibility.
-  TF_DataType dtype = static_cast<TF_DataType>(src.dtype());
-  const TensorShape& shape = src.shape();
-  int64_t* dims = new int64_t[shape.dims()];
-  size_t len = TF_DataTypeSize(dtype);
-  for (int i = 0; i < shape.dims(); ++i) {
-    dims[i] = shape.dim_size(i);
-    len *= dims[i];
-  }
-  TF_Tensor* tf_tensor = TF_AllocateTensor(dtype, dims, shape.dims(), len);
-  void* data = TF_TensorData(tf_tensor);
-  std::memcpy(data, src.data(), len);
-  return tf_tensor;
 }
 
 void DeviceToCpuThunk(void* context,
