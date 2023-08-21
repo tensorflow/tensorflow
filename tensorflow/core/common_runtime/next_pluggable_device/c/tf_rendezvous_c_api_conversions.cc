@@ -333,7 +333,6 @@ TF_RendezvousSenderImpl BindSendFunction(RendezvousInterface* rendezvous) {
   using SendFunction = std::function<void(TF_RendezvousSend_Params*)>;
   auto sender =
       new SendFunction([rendezvous](TF_RendezvousSend_Params* params) -> void {
-        printf("Calling SendFunction");
         RendezvousInterface::ParsedKey key = FromC(*params->key);
         RendezvousInterface::Args args = FromC(*params->args);
         Tensor tensor;
@@ -345,6 +344,8 @@ TF_RendezvousSenderImpl BindSendFunction(RendezvousInterface* rendezvous) {
         } else {
           tsl::Set_TF_Status_from_Status(params->status, tensor_status);
         }
+        // Releases TfCThunkDeviceContext allocated in FromC().
+        args.device_context->Unref();
       });
   send_func.context = static_cast<void*>(sender);
   send_func.send_func = SendFunctionThunk;
@@ -366,7 +367,16 @@ TF_RendezvousAsyncRecverImpl BindAsyncRecvFunction(
       [rendezvous](TF_RendezvousAsyncRecv_Params* params) -> void {
         RendezvousInterface::ParsedKey key = FromC(*params->key);
         RendezvousInterface::Args args = FromC(*params->args);
-        RendezvousInterface::DoneCallback on_done = FromC(params->on_done);
+        RendezvousInterface::DoneCallback on_done =
+            [device_context = args.device_context, on_done = params->on_done](
+                const Status& status,
+                const RendezvousInterface::Args& send_args,
+                const RendezvousInterface::Args& recv_args,
+                const Tensor& tensor, const bool is_dead) {
+              FromC(on_done)(status, send_args, recv_args, tensor, is_dead);
+              // Releases TfCThunkDeviceContext allocated in FromC().
+              device_context->Unref();
+            };
         rendezvous->RecvAsync(key, args, on_done);
       });
   recv_func.context = static_cast<void*>(recver);
