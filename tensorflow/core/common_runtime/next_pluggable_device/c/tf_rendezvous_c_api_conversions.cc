@@ -103,6 +103,7 @@ TF_RendezvousParsedKey ToC(const RendezvousInterface::ParsedKey& key) {
   c_key.full_key_size = full_key.size();
   c_key.full_key = new char[c_key.full_key_size + 1];
   std::strncpy(c_key.full_key, full_key.data(), c_key.full_key_size);
+  c_key.full_key[c_key.full_key_size] = 0;
   return c_key;
 }
 

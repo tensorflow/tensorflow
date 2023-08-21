@@ -61,12 +61,6 @@ TF_Tensor* CopyTensorToTF_Tensor(const Tensor& src) {
 
 namespace {
 
-char* ToC(absl::string_view str) {
-  char* cstr = new char[str.size() + 1];
-  strncpy(cstr, str.data(), str.size());
-  return cstr;
-}
-
 TF_StatusCallback* ToC(tsl::StatusCallback callback) {
   TF_StatusCallback* c_callback = new TF_StatusCallback();
   tsl::StatusCallback* callback_ptr =
@@ -197,6 +191,7 @@ class TfCThunkDeviceContext final : public DeviceContext {
     params->tensor_name_len = tensor_name.size();
     params->tensor_name = new char[params->tensor_name_len + 1];
     strncpy(params->tensor_name, tensor_name.data(), params->tensor_name_len);
+    params->tensor_name[params->tensor_name_len] = 0;
     const TF_DeviceContext_CopyDeviceTensorToCPU_Impl& func =
         thunk_.device_to_cpu;
     func.device_to_cpu_func(func.context, params);
