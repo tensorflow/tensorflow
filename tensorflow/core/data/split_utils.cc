@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/split_utils.h"
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
@@ -21,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace tensorflow {
 namespace data {
@@ -31,7 +33,9 @@ constexpr char kSlash[] = "/";
 constexpr char kIndex[] = "index";
 }  // namespace
 
-IndexSplitProvider::IndexSplitProvider(int64_t n) : i_(0), n_(n) {}
+IndexSplitProvider::IndexSplitProvider(int64_t n) : i_(0), n_(n) {
+  VLOG(3) << "Created index split provider with " << n << " splits.";
+}
 
 Status IndexSplitProvider::GetNext(Tensor* split, bool* end_of_splits) {
   mutex_lock l(mu_);
