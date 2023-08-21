@@ -1122,7 +1122,7 @@ class GemmRewriterTritonVisitor : public DfsHloRewriteVisitor {
     } else {
       TF_RETURN_IF_ERROR(ReplaceInstruction(fusion_output, dot_fusion));
     }
-    XLA_VLOG_LINES(5, computation->ToString());
+    XLA_VLOG_LINES(5, computation->ToString(HloPrintOptions::ShortParsable()));
     return OkStatus();
   }
 
@@ -1554,7 +1554,7 @@ StatusOr<DotFusionAnalysis> DotFusionAnalysis::Execute(
 
 Status DotFusionAnalysis::ExecuteImpl(const HloComputation* computation,
                                       const int split_k) {
-  VLOG(5) << computation->ToString();
+  VLOG(5) << computation->ToString(HloPrintOptions::ShortParsable());
 
   const HloInstruction* dot =
       hlo_query::GetFirstInstructionWithOpcode(*computation, HloOpcode::kDot);

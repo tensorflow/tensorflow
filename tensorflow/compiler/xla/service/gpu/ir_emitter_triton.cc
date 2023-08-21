@@ -1473,7 +1473,7 @@ StatusOr<LaunchDimensions> TritonWrapper(
   auto triton_module = mlir::ModuleOp::create(loc);
   b.setInsertionPointToEnd(triton_module.getBody());
 
-  VLOG(3) << hlo_computation->ToString();
+  VLOG(3) << hlo_computation->ToString(HloPrintOptions::ShortParsable());
   VLOG(2) << config.ShortDebugString();
 
   // Build Triton kernel.
