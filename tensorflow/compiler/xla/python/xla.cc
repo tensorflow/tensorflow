@@ -829,13 +829,15 @@ static void Init(py::module_& m) {
 
   py::class_<DistributedRuntimeService,
              std::unique_ptr<DistributedRuntimeService>>
-      distributed_runtime_service(m, "DistributedRuntimeService");
+      distributed_runtime_service(m, "DistributedRuntimeService",
+                                  py::module_local());
   distributed_runtime_service.def("shutdown",
                                   &DistributedRuntimeService::Shutdown,
                                   py::call_guard<py::gil_scoped_release>());
   py::class_<DistributedRuntimeClient,
              std::shared_ptr<DistributedRuntimeClient>>
-      distributed_runtime_client(m, "DistributedRuntimeClient");
+      distributed_runtime_client(m, "DistributedRuntimeClient",
+                                 py::module_local());
   distributed_runtime_client
       .def("connect",
            [](DistributedRuntimeClient& self) {
