@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/AsmParser/Parser.h"
 #include "llvm/IR/DiagnosticInfo.h"
@@ -432,8 +433,10 @@ Status CompileModuleToLlvmIrImpl(
   mlir::OwningOpRef<mlir::ModuleOp> mlir_module = mlir::ModuleOp::create(
       mlir::Builder(mlir_context.get()).getUnknownLoc(), hlo_module->name());
 
-  TF_RETURN_IF_ERROR(
-      HloToLhloModule(*results->buffer_assignment, *hlo_module, *mlir_module));
+  absl::flat_hash_map<const mlir::Operation*, const xla::HloInstruction*>
+      operation_map;
+  TF_RETURN_IF_ERROR(HloToLhloModule(*results->buffer_assignment, *hlo_module,
+                                     *mlir_module, &operation_map));
 
   results->module_name =
       mlir::mhlo::GetDebugNameFromLocation(mlir_module->getLoc());
@@ -462,7 +465,8 @@ Status CompileModuleToLlvmIrImpl(
     XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
         "GpuCompiler::RunBackend - IR emission for ", hlo_module->name()));
 
-    TF_RETURN_IF_ERROR(ir_emitter->EmitLmhloRegion(&entry_function.getBody()));
+    TF_RETURN_IF_ERROR(
+        ir_emitter->EmitLmhloRegion(&entry_function.getBody(), operation_map));
 
     bool supports_runtime_managed_constants =
         // TODO(b/218907125): Implement this feature for ROCm as well.

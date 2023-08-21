@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/cleanup/cleanup.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/types/optional.h"
 #include "llvm/ADT/STLExtras.h"
@@ -281,7 +282,11 @@ tsl::StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(
 }
 
 tsl::Status LhloDialectEmitter::DefaultAction(const HloInstruction* instr) {
-  return EmitOp(instr).status();
+  TF_ASSIGN_OR_RETURN(auto* op, EmitOp(instr));
+  if (op) {
+    lhlo_to_hlo_[op] = instr;
+  }
+  return tsl::OkStatus();
 }
 
 tsl::StatusOr<lmhlo::SortOp> LhloDialectEmitter::EmitSortOp(
@@ -2234,8 +2239,11 @@ tsl::Status LhloDialectEmitter::Initialize() {
   return ::tsl::OkStatus();
 }
 
-tsl::Status HloToLhloModule(const BufferAssignment& assignment,
-                            const HloModule& hlo_module, ModuleOp module) {
+tsl::Status HloToLhloModule(
+    const BufferAssignment& assignment, const HloModule& hlo_module,
+    ModuleOp module,
+    absl::flat_hash_map<const mlir::Operation*, const xla::HloInstruction*>*
+        lhlo_to_hlo_map) {
   module.getContext()
       ->loadDialect<arith::ArithDialect, bufferization::BufferizationDialect,
                     func::FuncDialect, memref::MemRefDialect, mhlo::MhloDialect,
@@ -2267,6 +2275,11 @@ tsl::Status HloToLhloModule(const BufferAssignment& assignment,
   TF_RETURN_IF_ERROR(status_handler.ConsumeStatus());
 
   (void)mlir::verify(module);
+
+  if (lhlo_to_hlo_map) {
+    auto map = emitter.ConsumeLhloToHloMap();
+    std::swap(*lhlo_to_hlo_map, map);
+  }
   return status_handler.ConsumeStatus();
 }
 
