@@ -203,7 +203,7 @@ void GPUUtil::DeviceToDeviceCopy(
     return;
   }
   se::Stream* send_device_to_device_stream = nullptr;
-  if (src->merge_DtoD_copy_stream()) {
+  if (src->merge_device_to_device_stream()) {
     send_device_to_device_stream = send_stream;
   } else {
     send_device_to_device_stream =
@@ -290,7 +290,7 @@ void GPUUtil::CopyGPUTensorToCPU(Device* gpu_device,
   }
 
   se::Stream* send_device_to_host_stream = nullptr;
-  if (gpu_device->merge_DtoH_copy_stream()) {
+  if (gpu_device->merge_device_to_host_stream()) {
     send_device_to_host_stream = send_stream;
   } else {
     send_device_to_host_stream =
@@ -339,8 +339,10 @@ void GPUUtil::CopyCPUTensorToGPU(const Tensor* cpu_tensor,
     return;
   }
 
+  const bool merge_host_to_device_stream =
+      gpu_device->merge_host_to_device_stream();
   se::Stream* recv_host_to_device_stream = nullptr;
-  if (gpu_device->merge_HtoD_copy_stream()) {
+  if (merge_host_to_device_stream) {
     recv_host_to_device_stream = recv_stream;
   } else {
     recv_host_to_device_stream =
@@ -395,12 +397,11 @@ void GPUUtil::CopyCPUTensorToGPU(const Tensor* cpu_tensor,
     }
   }
 
-  bool merge_HtoD = gpu_device->merge_HtoD_copy_stream();
-  if (merge_HtoD) done(OkStatus());
+  if (merge_host_to_device_stream) done(OkStatus());
   dev_info->event_mgr->ThenExecute(
       recv_host_to_device_stream,
       [recv_host_to_device_stream, done, input_ref, do_staging, staging_buffer,
-       host_memory_allocator, merge_HtoD]() {
+       host_memory_allocator, merge_host_to_device_stream]() {
         if (do_staging) {
           host_memory_allocator->DeallocateRaw(staging_buffer);
         } else {
@@ -409,7 +410,7 @@ void GPUUtil::CopyCPUTensorToGPU(const Tensor* cpu_tensor,
         if (!recv_host_to_device_stream->ok()) {
           LOG(FATAL) << "CPU->GPU Memcpy failed";
         }
-        if (!merge_HtoD) done(OkStatus());
+        if (!merge_host_to_device_stream) done(OkStatus());
       });
 }
 

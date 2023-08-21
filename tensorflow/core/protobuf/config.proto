@@ -99,21 +99,36 @@ message GPUOptions {
   // the overall host system performance.
   bool force_gpu_compatible = 8;
 
-  // Whether to merge streams in one stream group. Four types of streams will be
-  // created within a stream group by default: one compute stream, one HtoD copy
-  // stream, one DtoH copy stream, and several DtoD copy streams. Use the
-  // STREAM_MERGE_OPTIONS to merge the copy streams into the compute stream. For
-  // example, setting "merge_h_to_d_stream = true" to make the compute stream
-  // responsible for both computation and HtoD memory copy. Stream merging helps
-  // reduce the overhead caused by stream synchronization, especially when data
-  // transfers are frequent.
-  message STREAM_MERGE_OPTIONS {
-    bool merge_h_to_d_stream = 1;
-    bool merge_d_to_h_stream = 2;
-    bool merge_d_to_d_stream = 3;
+  // Whether to merge data transfer streams into the compute stream in a stream
+  // group. Four types of streams will be created within a stream group by
+  // default: one compute stream, one host_to_device copy stream, one
+  // device_to_host copy stream, and several device_to_device copy streams. Use
+  // the StreamMergeOptions to merge the copy streams into the compute stream.
+  // For example, setting "merge_host_to_device_stream = true" to make the
+  // compute stream responsible for both computation and host to device memory
+  // copy. Stream merging helps reduce the overhead caused by stream
+  // synchronization, especially when data transfers are frequent.
+  message StreamMergeOptions {
+    // If true, the compute stream will be used for host_to_device copy as well.
+    // It's no longer necessary to record an event before the copy to let the
+    // copy stream wait for the compute stream to finish. There is also no need
+    // to wait for the copy to complete before executing the callback function.
+    bool merge_host_to_device_stream = 1;
+
+    // If true, the compute stream will be used for device_to_host copy as well.
+    // It's no longer necessary to record an event before the copy to let the
+    // copy stream wait for the compute stream to finish.
+    bool merge_device_to_host_stream = 2;
+
+    // If true, the compute stream will be used for device_to_device copy as
+    // well. It's no longer necessary to record an event before the copy to let
+    // the copy stream wait for the compute stream of the sending device to
+    // finish. There is also no need to wait for the compute stream of the
+    // receiving device to finish if the copy is within the same device.
+    bool merge_device_to_device_stream = 3;
   }
 
-  STREAM_MERGE_OPTIONS stream_merge_options = 9;
+  StreamMergeOptions stream_merge_options = 10;
 
   message Experimental {
     // Configuration for breaking down a visible GPU into multiple "virtual"
@@ -273,7 +288,7 @@ message GPUOptions {
   // Everything inside experimental is subject to change and is not subject
   // to API stability guarantees in
   // https://www.tensorflow.org/guide/version_compat.
-  Experimental experimental = 10;
+  Experimental experimental = 9;
 }
 
 // Options passed to the graph optimizer
