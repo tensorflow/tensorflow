@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/xla/python/xla.h"
+
 #include <cstdint>
 #include <exception>
 #include <functional>
@@ -138,7 +140,7 @@ bool IsSanitized() { return IsAsan() || IsMsan() || IsTsan(); }
 
 }  // namespace
 
-PYBIND11_MODULE(xla_extension, m) {
+static void Init(py::module_& m) {
   tsl::ImportNumpy();
 
   // Exceptions
@@ -1077,5 +1079,25 @@ PYBIND11_MODULE(xla_extension, m) {
         return jax::CheckAndCanonicalizeMemoryKind(memory_kind, device_list);
       });
 }  // NOLINT(readability/fn_size)
+
+// This code in essence is a copy of PYBIND11_MODULE(). We can't just call
+// PYBIND11_MODULE because we want the entry point of the module to be in
+// the py_extension() translation unit but we don't want anything else to be
+// defined there. Inside Google, py_extension() translation units are linked
+// differently and they end up with a different instance of the
+// py::module_local() state, breaking that feature of pybind11.
+static py::module_::module_def xla_module_def;
+
+PyObject* InitializeXlaExtension() {
+  PYBIND11_CHECK_PYTHON_VERSION
+  PYBIND11_ENSURE_INTERNALS_READY
+  auto m = py::module_::create_extension_module("xla_extension", nullptr,
+                                                &xla_module_def);
+  try {
+    Init(m);
+    return m.ptr();
+  }
+  PYBIND11_CATCH_INIT_EXCEPTIONS
+}
 
 }  // namespace xla

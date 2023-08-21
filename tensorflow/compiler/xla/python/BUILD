@@ -973,16 +973,7 @@ cc_library(
 
 tsl_pybind_extension(
     name = "xla_extension",
-    srcs = [
-        "xla.cc",
-    ],
-    defines = select({
-        ":gpu_enabled": ["XLA_PYTHON_ENABLE_GPU=1"],
-        "//conditions:default": [],
-    }) + select({
-        ":tpu_enabled": ["XLA_PYTHON_ENABLE_TPU=1"],
-        "//conditions:default": [],
-    }),
+    srcs = ["xla_extension.cc"],
     linkopts = select({
         ":use_jax_cuda_pip_rpaths": [
             "-Wl,-rpath,$$ORIGIN/../nvidia/cuda_cupti/lib",
@@ -999,6 +990,33 @@ tsl_pybind_extension(
     ],
     pytype_srcs = glob(["xla_extension/*.pyi"]),
     visibility = ["//visibility:public"],
+    deps = [
+        ":xla_extension_library",
+        "@pybind11",
+    ],
+)
+
+cc_library(
+    name = "xla_extension_library",
+    srcs = [
+        "xla.cc",
+    ],
+    hdrs = [
+        "xla.h",
+    ],
+    compatible_with = [],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    defines = select({
+        ":gpu_enabled": ["XLA_PYTHON_ENABLE_GPU=1"],
+        "//conditions:default": [],
+    }) + select({
+        ":tpu_enabled": ["XLA_PYTHON_ENABLE_TPU=1"],
+        "//conditions:default": [],
+    }),
+    features = ["-use_header_modules"],
     deps = [
         ":custom_call_sharding",
         ":dlpack",
