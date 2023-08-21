@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
@@ -397,6 +398,28 @@ TEST_F(ReshapeMoverTest, TransposeReordersBroadcastDims) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK(RunPass(m.get(), /*change_expected=*/false));
+}
+
+TEST_F(ReshapeMoverTest, ShardingConsistencyPreservation) {
+  const std::string hlo_string = R"(
+    HloModule module
+
+    ENTRY entry {
+      copy.2424 = bf16[3,16,128]{2,1,0} parameter(0), sharding={replicated}
+      dot.987 = bf16[3,16,128,4096]{3,2,1,0} parameter(1), sharding={devices=[1,8,1,1]0,1,2,3,4,5,6,7}
+      reshape.5843 = bf16[3,16,128,1,4096]{4,3,2,1,0} reshape(dot.987), sharding={devices=[1,8,1,1,1]0,1,2,3,4,5,6,7}
+      transpose.21172 = bf16[3,1,4096,16,128]{2,1,4,3,0} transpose(reshape.5843), dimensions={0,3,4,1,2}, sharding={devices=[1,1,1,8,1]0,1,2,3,4,5,6,7}
+      reshape.291 = bf16[3,16,128]{2,1,0} reshape(copy.2424), sharding={devices=[1,8,1]0,1,2,3,4,5,6,7}
+      broadcast.21176 = bf16[3,1,4096,16,128]{4,3,2,1,0} broadcast(reshape.291), dimensions={0,3,4}, sharding={devices=[1,1,1,8,1]0,1,2,3,4,5,6,7}
+      multiply.21177 = bf16[3,1,4096,16,128]{2,1,4,3,0} multiply(transpose.21172, broadcast.21176), sharding={devices=[1,1,1,8,1]0,1,2,3,4,5,6,7}
+      ROOT slice.21180 = bf16[1,1,4096,16,128]{4,3,2,1,0} slice(multiply.21177), slice={[1:2], [0:1], [0:4096], [0:16], [0:128]}, sharding={devices=[1,1,1,8,1]0,1,2,3,4,5,6,7}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK(RunPass(m.get(), /*change_expected=*/true));
+  auto elementwise_op = FindInstruction(m.get(), HloOpcode::kMultiply);
+  EXPECT_FALSE(elementwise_op->has_sharding());
 }
 
 }  // namespace
