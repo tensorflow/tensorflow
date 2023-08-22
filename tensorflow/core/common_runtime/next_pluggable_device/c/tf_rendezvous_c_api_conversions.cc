@@ -163,11 +163,13 @@ TF_RendezvousDoneCallbackImpl ToC(
   auto c_callback = new CallbackType(
       [on_done](TF_RendezvousDoneCallback_Params* params) -> void {
         Status status = tsl::StatusFromTF_Status(params->status);
-        auto sender_args = FromC(*params->sender_args);
-        auto recver_args = FromC(*params->recver_args);
+        // TODO: Pass args through.
+        // auto sender_args = FromC(*params->sender_args);
+        // auto recver_args = FromC(*params->recver_args);
         Tensor tensor;
         CopyTF_TensorToTensor(params->tensor, &tensor);
-        on_done(status, sender_args, recver_args, tensor, params->is_dead);
+        on_done(status, RendezvousInterface::Args(),
+                RendezvousInterface::Args(), tensor, params->is_dead);
       });
   done_func.context = static_cast<void*>(c_callback);
   done_func.callback = RendezvousCallbackThunk;
@@ -285,16 +287,17 @@ DoneCallbackParamDeleter MakeDoneCallbackParamDeleter() {
     if (params == nullptr) {
       return;
     }
-    TF_RendezvousArgsStruct* sender_args =
-        const_cast<TF_RendezvousArgsStruct*>(params->sender_args);
-    TF_RendezvousArgsStruct* recver_args =
-        const_cast<TF_RendezvousArgsStruct*>(params->recver_args);
-    Destroy(sender_args);
-    Destroy(recver_args);
+    // TODO: Pass args through.
+    // TF_RendezvousArgsStruct* sender_args =
+    //     const_cast<TF_RendezvousArgsStruct*>(params->sender_args);
+    // TF_RendezvousArgsStruct* recver_args =
+    //     const_cast<TF_RendezvousArgsStruct*>(params->recver_args);
+    // Destroy(sender_args);
+    // Destroy(recver_args);
+    // delete params->sender_args;
+    // delete params->recver_args;
     TF_Status* status = const_cast<TF_Status*>(params->status);
     TF_DeleteStatus(status);
-    delete params->sender_args;
-    delete params->recver_args;
     delete params->tensor;
     delete params;
   };
@@ -309,8 +312,9 @@ StatusOr<DoneCallbackParamPtr> DoneCallbackParamsToC(
   TF_Status* c_status = TF_NewStatus();
   tsl::Set_TF_Status_from_Status(c_status, status);
   params->status = c_status;
-  params->sender_args = new TF_RendezvousArgsStruct(ToC(sender_args));
-  params->recver_args = new TF_RendezvousArgsStruct(ToC(recver_args));
+  // TODO: Pass args through.
+  // params->sender_args = new TF_RendezvousArgsStruct(ToC(sender_args));
+  // params->recver_args = new TF_RendezvousArgsStruct(ToC(recver_args));
   Status tensor_status;
   params->tensor = TF_TensorFromTensor(tensor, &tensor_status);
   if (!tensor_status.ok()) {
