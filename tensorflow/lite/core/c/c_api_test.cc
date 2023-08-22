@@ -952,6 +952,38 @@ TEST(CApiSimple, OpaqueContextGetNodeAndRegistration) {
       EXPECT_EQ(2, TfLiteOpaqueNodeNumberOfInputs(node));
       EXPECT_EQ(1, TfLiteOpaqueNodeNumberOfOutputs(node));
     }
+
+    {
+      TfLiteOpaqueNode* node = nullptr;
+      TfLiteRegistrationExternal* registration_external = nullptr;
+      TfLiteOpaqueContextGetNodeAndRegistration(opaque_context, 0, &node,
+                                                &registration_external);
+      EXPECT_EQ(1, TfLiteOpaqueNodeGetInputTensorIndex(node, 0));
+      EXPECT_EQ(1, TfLiteOpaqueNodeGetInputTensorIndex(node, 1));
+      EXPECT_EQ(-1, TfLiteOpaqueNodeGetInputTensorIndex(node, 2));
+      EXPECT_EQ(0, TfLiteOpaqueNodeGetOutputTensorIndex(node, 0));
+      EXPECT_EQ(-1, TfLiteOpaqueNodeGetOutputTensorIndex(node, 123));
+      EXPECT_EQ(-1, TfLiteOpaqueNodeGetOutputTensorIndex(node, -1));
+
+      const TfLiteOpaqueTensor* opaque_tensor =
+          TfLiteOpaqueContextGetOpaqueTensor(opaque_context, 0);
+      EXPECT_NE(opaque_tensor, nullptr);
+      EXPECT_EQ(kTfLiteFloat32, TfLiteOpaqueTensorType(opaque_tensor));
+      size_t bytes_float_32 = 0;
+      EXPECT_EQ(kTfLiteOk,
+                TfLiteOpaqueContextGetSizeOfType(opaque_context, kTfLiteFloat32,
+                                                 &bytes_float_32));
+      EXPECT_EQ(bytes_float_32, sizeof(float));
+    }
+    {
+      TfLiteOpaqueNode* node = nullptr;
+      TfLiteRegistrationExternal* registration_external = nullptr;
+      TfLiteOpaqueContextGetNodeAndRegistration(opaque_context, 1, &node,
+                                                &registration_external);
+      EXPECT_EQ(0, TfLiteOpaqueNodeGetInputTensorIndex(node, 0));
+      EXPECT_EQ(1, TfLiteOpaqueNodeGetInputTensorIndex(node, 1));
+      EXPECT_EQ(2, TfLiteOpaqueNodeGetOutputTensorIndex(node, 0));
+    }
     return kTfLiteOk;
   };
 

@@ -186,24 +186,14 @@ class GpuCompiler : public LLVMCompiler {
       const AutotuneResults* autotune_results,
       tsl::thread::ThreadPool* thread_pool = nullptr);
 
-  // Linearize collective schedule under SPMD partitioning if online autotuning
-  // of convolutions is enabled.
-  virtual bool EnableCollectiveScheduleLinearizerForSpmd(
-      HloModule* hlo_module, se::StreamExecutor* stream_exec) {
-    return false;
-  }
-
   // CollectivesScheduleLinearizer enforces a total ordering between collectives
-  // to work around (1) divergence in initial HLOs across executables that are
-  // communicating with each other using HLO collectives, and (2) divergence in
-  // executables introduced due to auto tuning, specifically the use of extra
-  // scratch space for convolutions.
-  // We always apply this pass when not using SPMD (where initial HLO divergence
-  // may be possible). This function decided whether to apply this pass when
-  // using SPMD partitioning. When using SPMD, if convolutions are present in
+  // to work around divergence in executables introduced due to auto tuning,
+  // specifically the use of extra scratch space for convolutions. This
+  // function decided whether to apply this pass. If convolutions are present in
   // the code and we are using "online" autotuning (i.e., not AOT) we need to
   // use the pass, else we do not need to enable the pass.
-  virtual bool RequiresCollectiveScheduleLinearizer(const HloModule* module) {
+  virtual bool RequiresCollectiveScheduleLinearizer(
+      const HloModule* module, se::StreamExecutor* stream_exec) {
     return false;
   }
 

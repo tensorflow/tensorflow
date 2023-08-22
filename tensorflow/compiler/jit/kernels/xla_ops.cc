@@ -1048,11 +1048,22 @@ REGISTER_KERNEL_BUILDER(Name("_XlaCompile")
                             .HostMemory("resources"),
                         XlaCompileOp);
 
+REGISTER_KERNEL_BUILDER(Name("_XlaCompile")
+                            .Device(DEVICE_DEFAULT)
+                            .HostMemory("constants")
+                            .HostMemory("key")
+                            .HostMemory("compilation_successful")
+                            .HostMemory("resources"),
+                        XlaCompileOp);
+
 REGISTER_KERNEL_BUILDER(Name("_XlaRun").Device(DEVICE_CPU), XlaRunOp);
 REGISTER_KERNEL_BUILDER(Name("_XlaRun").Device(DEVICE_GPU).HostMemory("key"),
                         XlaRunOp);
+REGISTER_KERNEL_BUILDER(
+    Name("_XlaRun").Device(DEVICE_DEFAULT).HostMemory("key"), XlaRunOp);
 
 REGISTER_KERNEL_BUILDER(Name("_XlaMerge").Device(DEVICE_CPU), XlaMergeOp);
 REGISTER_KERNEL_BUILDER(Name("_XlaMerge").Device(DEVICE_GPU), XlaMergeOp);
+REGISTER_KERNEL_BUILDER(Name("_XlaMerge").Device(DEVICE_DEFAULT), XlaMergeOp);
 
 }  // namespace tensorflow

@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/tsl/platform/cord.h"
+#include "tensorflow/tsl/platform/platform.h"
 #include "tensorflow/tsl/platform/stringpiece.h"
 #include "tensorflow/tsl/platform/test.h"
 

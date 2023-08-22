@@ -430,7 +430,7 @@ class TpuOutsideCompilationTest(test.TestCase, parameterized.TestCase):
           y = tpu_replication.outside_compilation(host_computation, x)
           x = y
           n = n + 1
-        return y + 1.0
+        return x + 1.0
 
       return strategy.run(computation, args=(2.0,))
 

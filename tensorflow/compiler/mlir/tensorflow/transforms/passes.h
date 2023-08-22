@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -520,7 +521,8 @@ CreateTPUPartitionedOpConversionPass();
 
 // Creates a pass that forms clusters from operations of the same
 // `_replication_info` attribute.
-std::unique_ptr<OperationPass<ModuleOp>> CreateTPUClusterFormationPass();
+std::unique_ptr<OperationPass<ModuleOp>> CreateTPUClusterFormationPass(
+    bool strict_clusters = false);
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPUValidateInputsPass();
 

@@ -13,10 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace tensorflow {
 
@@ -68,10 +71,10 @@ REGISTER_OP("XlaHostCompute")
         const AttrValue* shapes;
         TF_RETURN_IF_ERROR(c->GetAttr("shapes", &shapes));
         if (shapes->list().shape_size() != c->num_outputs()) {
-          return errors::InvalidArgument(
-              "_XlaHostCompute has ", c->num_outputs(),
-              " outputs but 'shapes' attr has ", shapes->list().shape_size(),
-              " elements");
+          return absl::InvalidArgumentError(
+              absl::StrCat("_XlaHostCompute has ", c->num_outputs(),
+                           " outputs but 'shapes' attr has ",
+                           shapes->list().shape_size(), " elements"));
         }
         for (int i = 0; i < c->num_outputs(); ++i) {
           shape_inference::ShapeHandle handle;
@@ -79,7 +82,7 @@ REGISTER_OP("XlaHostCompute")
               c->MakeShapeFromShapeProto(shapes->list().shape(i), &handle));
           c->set_output(i, handle);
         }
-        return OkStatus();
+        return absl::OkStatus();
       } else {
         // There is a shape inference graph so the output shapes are not
         // statically known.
@@ -106,14 +109,14 @@ REGISTER_OP("XlaRecvFromHost")
       const AttrValue* shape_attr;
       TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape_attr));
       if (!shape_attr->has_shape()) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             "XlaRecvFromHost op does not have valid \"Toutput\" attr.");
       }
       shape_inference::ShapeHandle handle;
       TF_RETURN_IF_ERROR(
           c->MakeShapeFromShapeProto(shape_attr->shape(), &handle));
       c->set_output(0, handle);
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 }  // namespace tensorflow

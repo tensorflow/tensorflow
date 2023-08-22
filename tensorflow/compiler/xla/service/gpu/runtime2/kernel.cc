@@ -90,7 +90,7 @@ iree::Status KernelAPI::KernelDispatch(
 
   IREE_ASSIGN_OR_RETURN(auto buffer_views, GetBufferViewVector(args.get()));
   return FromStatus(DispatchKernel(*ctx, *kernel, device_allocator_,
-                                   {buffer_views.data(), buffer_views.size()},
+                                   absl::MakeSpan(buffer_views),
                                    launch_dimensions));
 }
 

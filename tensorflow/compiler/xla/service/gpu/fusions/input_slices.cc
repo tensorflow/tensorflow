@@ -152,32 +152,28 @@ StatusOr<Shape> GetConsistentInputShapeForRootSlices(
 }  // namespace
 
 StatusOr<LaunchDimensions> InputSlicesFusion::launch_dimensions(
-    int kernel_index) const {
-  bool use_experimental_block_size =
-      ir_emitter_context()
-          .debug_options()
-          .xla_gpu_enable_experimental_block_size();
-  return analysis_.GetLaunchDimensions(use_experimental_block_size);
+    IrEmitterContext& ir_emitter_context, int kernel_index) const {
+  return analysis_.GetLaunchDimensions();
 }
 
-Status InputSlicesFusion::EmitKernel(const LaunchDimensions& launch_dims,
-                                     std::vector<llvm_ir::IrArray> inputs,
-                                     std::vector<llvm_ir::IrArray> outputs,
-                                     llvm::IRBuilder<>* builder,
-                                     int kernel_index) const {
+Status InputSlicesFusion::EmitKernel(
+    IrEmitterContext& ir_emitter_context, ElementalIrEmitter& elemental_emitter,
+    mlir::lmhlo::FusionOp fusion_op, const HloFusionInstruction& fusion,
+    const LaunchDimensions& launch_dims, std::vector<llvm_ir::IrArray> inputs,
+    std::vector<llvm_ir::IrArray> outputs, llvm::IRBuilder<>* builder,
+    int kernel_index) const {
   TF_ASSIGN_OR_RETURN(Shape element_shape,
                       GetConsistentInputShapeForRootSlices(
-                          fusion().fused_instructions_computation()));
+                          fusion.fused_instructions_computation()));
   return ParallelLoopEmitter(
              [&](const llvm_ir::IrArray::Index index) -> Status {
                return EmitElementForInputFusibleSlices(
-                   elemental_emitter(),
-                   fusion().fused_instructions_computation(), inputs, outputs,
-                   index, builder);
+                   elemental_emitter, fusion.fused_instructions_computation(),
+                   inputs, outputs, index, builder);
              },
              element_shape, launch_dims, builder)
-      .EmitLoop(llvm_ir::IrName(GetIrNameFromLoc(fusion_op().getLoc())),
-                GetIndexTypeForKernel(fusion_op(), launch_dims.launch_bound(),
+      .EmitLoop(llvm_ir::IrName(GetIrNameFromLoc(fusion_op.getLoc())),
+                GetIndexTypeForKernel(fusion_op, launch_dims.launch_bound(),
                                       builder));
 }
 

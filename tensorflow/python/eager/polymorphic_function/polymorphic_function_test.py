@@ -168,7 +168,7 @@ class FunctionBenchmark(test.Benchmark):
 @dataclasses.dataclass
 class MaskedTensor:
   mask: bool
-  value: ops.Tensor
+  value: tensor_lib.Tensor
 
   def __tf_flatten__(self):
     metadata = (self.mask,)

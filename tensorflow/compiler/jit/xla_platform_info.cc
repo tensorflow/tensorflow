@@ -22,7 +22,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/jit/device_executable_persistor.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/pjrt_device_compiler_client.h"
@@ -63,10 +66,14 @@ XlaDeviceCompiler* CreateXlaDeviceCompiler(
 
 PjRtDeviceCompiler* CreatePjRtDeviceCompiler(DeviceType compilation_device_type,
                                              xla::PjRtClient* pjrt_client) {
+  std::string persistent_cache_directory =
+      GetPersistentCacheDirectory(compilation_device_type);
+
   PjRtDeviceExecutablePersistor::Config persistor_config(
-      GetMarkForCompilationPassFlags()->tf_xla_persistent_cache_directory,
+      persistent_cache_directory,
       GetMarkForCompilationPassFlags()->tf_xla_disable_strict_signature_checks,
-      GetMarkForCompilationPassFlags()->tf_xla_persistent_cache_prefix);
+      GetMarkForCompilationPassFlags()->tf_xla_persistent_cache_prefix,
+      GetMarkForCompilationPassFlags()->tf_xla_persistent_cache_read_only);
 
   return new PjRtDeviceCompiler(
       std::make_unique<PjRtDeviceExecutablePersistor>(
@@ -142,6 +149,23 @@ Status GetCompilationDeviceTypeAndPjRtClient(
 }
 }  // namespace
 
+std::string GetPersistentCacheDirectory(
+    const DeviceType& compilation_device_type) {
+  // If a persistent cache device type is specified, ensure it matches
+  // compilation device type.
+  if (!GetMarkForCompilationPassFlags()
+           ->tf_xla_persistent_cache_device_types.empty() &&
+      !absl::c_any_of(absl::StrSplit(GetMarkForCompilationPassFlags()
+                                         ->tf_xla_persistent_cache_device_types,
+                                     ','),
+                      [&](absl::string_view device) {
+                        return compilation_device_type == DeviceType(device);
+                      })) {
+    return "";
+  }
+  return GetMarkForCompilationPassFlags()->tf_xla_persistent_cache_directory;
+}
+
 xla::StatusOr<std::optional<std::set<int>>> ParseVisibleDeviceList(
     absl::string_view visible_device_list) {
   std::set<int> gpu_ids;
@@ -166,10 +190,14 @@ xla::StatusOr<std::optional<std::set<int>>> ParseVisibleDeviceList(
 Status BuildXlaDeviceCompiler(DeviceBase* device, FunctionLibraryRuntime* flr,
                               const XlaPlatformInfo& platform_info,
                               XlaDeviceCompiler** xla_device_compiler) {
+  std::string persistent_cache_directory =
+      GetPersistentCacheDirectory(platform_info.device_type());
+
   XlaDeviceExecutablePersistor::Config persistor_config(
-      GetMarkForCompilationPassFlags()->tf_xla_persistent_cache_directory,
+      persistent_cache_directory,
       GetMarkForCompilationPassFlags()->tf_xla_disable_strict_signature_checks,
-      GetMarkForCompilationPassFlags()->tf_xla_persistent_cache_prefix);
+      GetMarkForCompilationPassFlags()->tf_xla_persistent_cache_prefix,
+      GetMarkForCompilationPassFlags()->tf_xla_persistent_cache_read_only);
 
   if (platform_info.xla_device_metadata()) {
     *xla_device_compiler = CreateXlaDeviceCompiler(

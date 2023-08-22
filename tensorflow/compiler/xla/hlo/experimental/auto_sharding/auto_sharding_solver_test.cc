@@ -113,6 +113,39 @@ TEST(CallORToolsSolverTest, AvoidsInfiniteEdgeCosts) {
   EXPECT_EQ(result, expected_result);
 }
 
+TEST(CallORToolsSolverTest, HandlesFollowedEdges) {
+  AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
+  request.e.push_back({1, 3});  // Reduces to {1, 2} since node 3 follows node 2
+  request.r.push_back({5000, 5100, 5200, 5300,
+                       6000, 6100, 6200, 6300,
+                       7000, 7100, 7200, 7300});
+
+  const AutoShardingSolverResult result = CallORToolsSolver(request);
+
+  const std::vector<NodeStrategyIdx> s_val = {0, 0, 0, 0, 0};
+  const std::vector<EdgeStrategyIdx> e_val = {0, 0, 0};
+  const double objective_value = 12650.0;
+  const AutoShardingSolverResult expected_result = {
+      std::make_tuple(
+          std::move(s_val), std::move(e_val), objective_value), false};
+  EXPECT_EQ(result, expected_result);
+}
+
+TEST(CallORToolsSolverTest, UsesHint) {
+  AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
+  request.s_hint = {1, 0, 0, 0, 0};  // Not optimal, but close.
+
+  const AutoShardingSolverResult result = CallORToolsSolver(request);
+
+  const std::vector<NodeStrategyIdx> s_val = {0, 0, 0, 0, 0};
+  const std::vector<EdgeStrategyIdx> e_val = {0, 0};
+  const double objective_value = 7650.0;
+  const AutoShardingSolverResult expected_result = {
+      std::make_tuple(
+          std::move(s_val), std::move(e_val), objective_value), false};
+  EXPECT_EQ(result, expected_result);
+}
+
 TEST(AutoShardingEvaluatorTest, NoViolations) {
   const AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
   const std::vector<NodeStrategyIdx> s_val = {3, 1, 2, 2, 1};

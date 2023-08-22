@@ -52,6 +52,8 @@
 * <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 * <NOTES SHOULD BE GROUPED PER AREA>
 
+* Add ops to tensorflow.raw_ops that were missing.
+
 ## Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:

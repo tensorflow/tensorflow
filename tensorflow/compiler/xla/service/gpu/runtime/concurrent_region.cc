@@ -77,6 +77,10 @@ absl::StatusOr<se::Stream*> ConcurrentRegionStatus::GetStream(int index) {
 
 absl::Status ConcurrentRegionStatus::StartConcurrentRegion(
     se::Stream* capture_stream, int64_t size) {
+  if (disabled_) {
+    return absl::OkStatus();
+  }
+
   DCHECK(!IsInConcurrentRegion());
   se::StreamExecutor* executor = run_options_->stream()->parent();
 
@@ -102,6 +106,10 @@ absl::Status ConcurrentRegionStatus::StartConcurrentRegion(
 }
 
 void ConcurrentRegionStatus::EndConcurrentRegion() {
+  if (disabled_) {
+    return;
+  }
+
   DCHECK(IsInConcurrentRegion());
 
   // Synchronize main capture stream with all borrowed streams in capture mode.

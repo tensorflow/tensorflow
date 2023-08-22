@@ -15,27 +15,20 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
 
-#include <functional>
-#include <list>
-#include <map>
 #include <memory>
-#include <set>
+#include <optional>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include "absl/container/flat_hash_set.h"
-#include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
-#include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_map.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
@@ -209,6 +202,10 @@ struct CseKey {
         return H::combine(std::move(h), instruction->dimensions());
       case HloOpcode::kGetTupleElement:
         return H::combine(std::move(h), instruction->tuple_index());
+      case HloOpcode::kCompare:
+        return H::combine(
+            std::move(h),
+            Cast<HloCompareInstruction>(instruction)->direction());
       default:
         return std::move(h);
     }
@@ -282,8 +279,9 @@ StatusOr<bool> HloCSE::Run(
         HloInstruction* equivalent_instruction = pair.first->hlo;
         TF_RETURN_IF_ERROR(
             instruction->ReplaceAllUsesWith(equivalent_instruction));
-        TF_RETURN_IF_ERROR(
-            computation->RemoveInstructionAndUnusedOperands(instruction));
+        TF_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(
+            instruction, /*cleanup=*/std::nullopt,
+            ignore_control_dependencies_));
         changed = true;
         continue;
       }

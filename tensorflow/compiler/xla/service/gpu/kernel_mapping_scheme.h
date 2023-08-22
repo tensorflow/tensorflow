@@ -173,7 +173,7 @@ class ReductionCodegenInfo {
   explicit ReductionCodegenInfo(TilingScheme mapping_scheme,
                                 int num_partial_results, bool is_row_reduction,
                                 bool is_race_free, IndexGroups index_groups,
-                                HloInstruction* first_reduce)
+                                const HloInstruction* first_reduce)
       : tiling_scheme_(mapping_scheme),
         num_partial_results_(num_partial_results),
         is_row_reduction_(is_row_reduction),
@@ -203,7 +203,7 @@ class ReductionCodegenInfo {
   bool is_row_reduction_;
   bool is_race_free_;
   IndexGroups index_groups_;
-  HloInstruction* first_reduce_;
+  const HloInstruction* first_reduce_;
 };
 
 class ReductionCodegenState {

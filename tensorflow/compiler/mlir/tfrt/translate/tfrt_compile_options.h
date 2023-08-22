@@ -121,8 +121,12 @@ struct TfrtCompileOptions {
   // supposed to be turned on by default.
   bool sink_in_invariant_ops = false;
 
-  // If true, tf.While's iterations will be parallelized on a best-effort
-  // basis. This is currently experimental.
+  // This flag behaves differently for TFRT and MLRT.
+  // For TFRT, if true, tf.While's iterations will be parallelized on a
+  // best-effort basis. This is currently experimental. MLRT attempts to convert
+  // tf.while to tf_mlrt.map_fn regardless of this flag. For tf.While that
+  // cannot be onverted tf_mlrt.map_fn, MLRT try to parallerize tf.while's
+  // iterations on a best-effort basis.
   bool enable_while_parallel_iterations = false;
 
   // The cost threshold to decide whether a sequence of operations is cheap, and
@@ -147,6 +151,10 @@ struct TfrtCompileOptions {
 
   // Whether to compile to sync TFRT dialect.
   bool compile_to_sync_tfrt_dialect = false;
+
+  // Whether to use gpurt.compile_and_execute for GPU.
+  // TODO(b/294895431): Remove the flag and default to the fused op.
+  bool use_gpu_compile_and_execute_op = false;
 };
 
 std::ostream& operator<<(std::ostream& os, const TfrtCompileOptions& options);

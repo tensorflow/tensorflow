@@ -797,6 +797,7 @@ class Interpreter {
   friend class tflite::impl::InterpreterBuilder;
 #ifndef DOXYGEN_SKIP
   friend class tflite::InterpreterTest;
+  friend class tflite::SingleOpModel;
   friend class tflite::delegates::InterpreterUtils;
   friend class tflite::delegates::test_utils::TestDelegation;
   friend class tflite::interpreter_wrapper::InterpreterWrapper;

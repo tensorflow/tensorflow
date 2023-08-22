@@ -19,18 +19,26 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <string>
-#include <type_traits>
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/utils/string_container_utils.h"
@@ -38,9 +46,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/protobuf/tpu/topology.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -71,10 +80,11 @@ llvm::SmallVector<ParsedDevice, 8> FindMatchingDevices(
 
 // Create error message for a conflicting attribute of a device.
 template <typename T>
-Status MismatchedTPUSystemAttributeErr(absl::string_view attribute, T a, T b) {
-  return errors::InvalidArgument("found ", kDeviceTPUSystem,
-                                 " devices with conflicting ", attribute, "s '",
-                                 a, "' and '", b, "'");
+absl::Status MismatchedTPUSystemAttributeErr(absl::string_view attribute, T a,
+                                             T b) {
+  return absl::InvalidArgumentError(
+      absl::StrCat("found ", kDeviceTPUSystem, " devices with conflicting ",
+                   attribute, "s '", a, "' and '", b, "'"));
 }
 
 // Find TPU_SYSTEM:0 devices in `devices`. If multiple TPU_SYSTEM devices are
@@ -92,7 +102,8 @@ StatusOr<llvm::SmallVector<ParsedDevice, 8>> GetTPUSystemDevices(
   llvm::SmallVector<ParsedDevice, 8> system_devices =
       FindMatchingDevices(devices, spec);
   if (system_devices.empty())
-    return errors::InvalidArgument("no ", kDeviceTPUSystem, " devices found");
+    return absl::InvalidArgumentError(
+        absl::StrCat("no ", kDeviceTPUSystem, " devices found"));
 
   // Check that all system devices are part of the same job.
   const auto& job = system_devices[0].job;
@@ -156,9 +167,9 @@ GetTPUDevices(ParsedDevices devices,
     // Check number of TPU devices per host all match.
     const int64_t host_tpu_devices_size = host_tpu_devices.size();
     if (num_tpus_per_host != host_tpu_devices_size)
-      return errors::InvalidArgument(
-          "expected the number of TPU devices per host to be ",
-          num_tpus_per_host, ", got ", host_tpu_devices.size());
+      return absl::InvalidArgumentError(
+          absl::StrCat("expected the number of TPU devices per host to be ",
+                       num_tpus_per_host, ", got ", host_tpu_devices.size()));
 
     tpu_devices.push_back(std::move(host_tpu_devices));
   }
@@ -198,13 +209,14 @@ StatusOr<TPUDevicesAndHosts> GetFullMeshTPUExecutionDeviceAssignment(
   const int num_tpu_devices = num_tasks * num_tpus_per_task;
 
   if (num_replicas != 1 && num_replicas != num_tpu_devices)
-    return errors::InvalidArgument("'num_replicas' must be equal to 1 or ",
-                                   num_tpu_devices, ", got ", num_replicas);
+    return absl::InvalidArgumentError(
+        absl::StrCat("'num_replicas' must be equal to 1 or ", num_tpu_devices,
+                     ", got ", num_replicas));
 
   if (num_cores_per_replica != 1)
-    return errors::InvalidArgument(
-        "'num_cores_per_replica' must be equal to 1, got ",
-        num_cores_per_replica);
+    return absl::InvalidArgumentError(
+        absl::StrCat("'num_cores_per_replica' must be equal to 1, got ",
+                     num_cores_per_replica));
 
   TPUDevicesAndHosts devices_and_hosts;
   devices_and_hosts.reserve(num_replicas);
@@ -238,21 +250,21 @@ bool DeviceCoordinateOutOfBound(int x, int y, int z, int core, int bound_x,
 }
 
 // Create error message for an out of bound device coordinate.
-Status DeviceCoordinateErrorMsg(absl::string_view attribute, int x, int y,
-                                int z, int core, int bound_x, int bound_y,
-                                int bound_z, int bound_core) {
-  return errors::InvalidArgument("device coordinate (", x, ", ", y, ", ", z,
-                                 ", ", core, ") in '", attribute,
-                                 "' is outside of mesh shape (", bound_x, ", ",
-                                 bound_y, ", ", bound_z, ", ", bound_core, ")");
+absl::Status DeviceCoordinateErrorMsg(absl::string_view attribute, int x, int y,
+                                      int z, int core, int bound_x, int bound_y,
+                                      int bound_z, int bound_core) {
+  return absl::InvalidArgumentError(
+      absl::StrCat("device coordinate (", x, ", ", y, ", ", z, ", ", core,
+                   ") in '", attribute, "' is outside of mesh shape (", bound_x,
+                   ", ", bound_y, ", ", bound_z, ", ", bound_core, ")"));
 }
 
 // Create error message for a duplicate device coordinate.
-Status DuplicateCoordinateErrorMsg(absl::string_view attribute, int x, int y,
-                                   int z, int core) {
-  return errors::InvalidArgument("'", attribute,
-                                 "' has duplicate device coordinate (", x, ", ",
-                                 y, ", ", z, ", ", core, ")");
+absl::Status DuplicateCoordinateErrorMsg(absl::string_view attribute, int x,
+                                         int y, int z, int core) {
+  return absl::InvalidArgumentError(
+      absl::StrCat("'", attribute, "' has duplicate device coordinate (", x,
+                   ", ", y, ", ", z, ", ", core, ")"));
 }
 
 // Parse and validate topology (serialized string of TopologyProto), and maps
@@ -271,42 +283,43 @@ StatusOr<xla::Array4D<TaskAndDevice>> ParseTopologyAttr(
     llvm::StringRef topology_attr, int num_tasks, int num_tpus_per_task) {
   tpu::TopologyProto topology_proto;
   if (!topology_proto.ParseFromString(topology_attr.str()))
-    return errors::InvalidArgument("failed to parse '", kTopologyAttr,
-                                   "' attribute to TopologyProto");
+    return absl::InvalidArgumentError(absl::StrCat(
+        "failed to parse '", kTopologyAttr, "' attribute to TopologyProto"));
 
   if (topology_proto.mesh_shape_size() != kTPUTopologyRank)
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "'", kTopologyAttr, "' 'mesh_shape' must be rank ", kTPUTopologyRank,
-        ", got rank ", topology_proto.mesh_shape_size());
+        ", got rank ", topology_proto.mesh_shape_size()));
 
   for (auto mesh_shape_dim : llvm::enumerate(topology_proto.mesh_shape()))
     if (mesh_shape_dim.value() <= 0)
-      return errors::InvalidArgument(
-          "'", kTopologyAttr, "' 'mesh_shape' dimension ",
-          mesh_shape_dim.index(), " must be positive, got ",
-          mesh_shape_dim.value());
+      return absl::InvalidArgumentError(
+          absl::StrCat("'", kTopologyAttr, "' 'mesh_shape' dimension ",
+                       mesh_shape_dim.index(), " must be positive, got ",
+                       mesh_shape_dim.value()));
 
   if (topology_proto.num_tasks() != num_tasks)
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "number of tasks from available TPU devices must be 'num_tasks' in '",
-        kTopologyAttr, "' (", topology_proto.num_tasks(), "), got ", num_tasks);
+        kTopologyAttr, "' (", topology_proto.num_tasks(), "), got ",
+        num_tasks));
 
   if (topology_proto.num_tpu_devices_per_task() != num_tpus_per_task)
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "number of TPU devices available per task must be "
         "'num_tpu_devices_per_task' in '",
         kTopologyAttr, "' (", topology_proto.num_tpu_devices_per_task(),
-        "), got ", num_tpus_per_task);
+        "), got ", num_tpus_per_task));
 
   const int expected_device_coordinates_size =
       num_tasks * num_tpus_per_task * kTPUTopologyRank;
   if (topology_proto.device_coordinates_size() !=
       expected_device_coordinates_size)
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "length of 'device_coordinates' in '", kTopologyAttr,
         "' must be 'num_tasks' * 'num_tpus_per_task' * ", kTPUTopologyRank,
         " (", num_tasks, " * ", num_tpus_per_task, " * ", kTPUTopologyRank,
-        "), got ", topology_proto.device_coordinates_size());
+        "), got ", topology_proto.device_coordinates_size()));
 
   const int bound_x = topology_proto.mesh_shape(0);
   const int bound_y = topology_proto.mesh_shape(1);
@@ -364,11 +377,11 @@ GetGeneralTPUExecutionDeviceAssignment(
       num_replicas * num_cores_per_replica * kTPUTopologyRank;
   const int device_assignment_attr_size = device_assignment_attr.size();
   if (device_assignment_attr_size != expected_device_assignment_size)
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "length of '", kDeviceAssignmentAttr,
         "' must be 'num_replicas' * 'num_cores_per_replica' * ",
         kTPUTopologyRank, " (", num_replicas, " * ", num_cores_per_replica,
-        " * ", kTPUTopologyRank, "), got ", device_assignment_attr.size());
+        " * ", kTPUTopologyRank, "), got ", device_assignment_attr.size()));
 
   const int bound_x = topology.n1();
   const int bound_y = topology.n2();
@@ -404,9 +417,9 @@ GetGeneralTPUExecutionDeviceAssignment(
       const int task = task_and_device.task;
       const int device = task_and_device.device;
       if (task == -1 || device == -1)
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "no TPU device found for '", kDeviceAssignmentAttr,
-            "' device coordinate (", x, ", ", y, ", ", z, ", ", core, ")");
+            "' device coordinate (", x, ", ", y, ", ", z, ", ", core, ")"));
 
       const int device_id = location_to_id(x, y, z, core);
       if (used_device_ids[device_id])
@@ -584,7 +597,7 @@ StatusOr<llvm::SmallVector<int64_t, 8>> GetDeviceCoordinates(
     auto device_coordinate =
         device_coordinate_and_idx.value().dyn_cast<mlir::IntegerAttr>();
     if (!device_coordinate)
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           llvm::formatv(kBadIntArrayElementMsg, kDeviceAssignmentAttr,
                         device_coordinate_and_idx.index())
               .str());
@@ -609,9 +622,9 @@ StatusOr<TPUDeviceAssignment> GetTPUCompilationAndExecutionDevices(
 
   if (topology_attr.empty()) {
     if (!device_assignment_attr.empty())
-      return errors::InvalidArgument("'", kDeviceAssignmentAttr,
-                                     "' must not be set when '", kTopologyAttr,
-                                     "' is not set");
+      return absl::InvalidArgumentError(
+          absl::StrCat("'", kDeviceAssignmentAttr, "' must not be set when '",
+                       kTopologyAttr, "' is not set"));
 
     TF_ASSIGN_OR_RETURN(auto execution_devices,
                         GetFullMeshTPUExecutionDeviceAssignment(

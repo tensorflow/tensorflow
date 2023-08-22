@@ -42,12 +42,10 @@ class AMDGPUCompiler : public GpuCompiler {
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
       const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
       const AutotuneResults* autotune_results,
-	  tsl::thread::ThreadPool* thread_pool = nullptr) override;
+      tsl::thread::ThreadPool* thread_pool) override;
 
-  bool EnableCollectiveScheduleLinearizerForSpmd(
-      HloModule* hlo_module, se::StreamExecutor* stream_exec) override;
-
-  bool RequiresCollectiveScheduleLinearizer(const HloModule* module) override;
+  bool RequiresCollectiveScheduleLinearizer(
+      const HloModule* module, se::StreamExecutor* stream_exec) override;
 
   Status AddAutotuningPasses(HloPassPipeline* pipeline, HloModule* hlo_module,
                              se::StreamExecutor* stream_exec,

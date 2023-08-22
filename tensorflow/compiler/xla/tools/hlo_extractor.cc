@@ -20,7 +20,6 @@ limitations under the License.
 #include <cstdint>
 #include <deque>
 #include <memory>
-#include <string>
 #include <utility>
 #include <vector>
 
@@ -32,13 +31,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
-#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/compilation_environments.h"
+#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/tsl/platform/status.h"
 
@@ -112,7 +113,11 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
                    "parameters is not supported.";
             return ReplaceWithParameter(hlo);
           case ReplaceType::kReplaceZeroBroadcast:
-            return ReplaceWithZeroBroadcast(hlo);
+            return ReplaceWithConstantBroadcast(
+                hlo, ReplaceType::kReplaceZeroBroadcast);
+          case ReplaceType::kReplaceRandomBroadcast:
+            return ReplaceWithConstantBroadcast(
+                hlo, ReplaceType::kReplaceRandomBroadcast);
           default:
             QCHECK(false) << "Unsupported replacement type";
         }
@@ -206,18 +211,21 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
     return OkStatus();
   }
 
-  // Helper to create zero instruction (that return a zeros tensor) of the given
-  // shape. If the shape is of tuple type, we recursively reuse/create zero
-  // instruction for each of its sub-type. If it is not tuple type, we just
-  // create a zero constant and broadcast it to the desired shape.
-  HloInstruction* ReplaceWithZeroBroadcastHelper(
-      const Shape& shape, HloComputation::Builder* builder) {
+  // Helper to create constant instruction (that return a constant tensor) of
+  // the given shape. If the shape is of tuple type, we recursively reuse/create
+  // constant instruction for each of its sub-type. If it is not tuple type, we
+  // just create a constant and broadcast it to the desired shape.
+  // Currently the constant could be either a zero or a random number, depending
+  // on `replace_type`.
+  HloInstruction* ReplaceWithConstantBroadcastHelper(
+      const Shape& shape, HloComputation::Builder* builder,
+      ReplaceType replace_type) {
     if (shape.IsTuple()) {
       // If it is a tuple, recursively create a zero instruction.
       std::vector<HloInstruction*> tuple_operands;
       for (const auto& subshape : shape.tuple_shapes()) {
-        tuple_operands.push_back(
-            ReplaceWithZeroBroadcastHelper(subshape, builder));
+        tuple_operands.push_back(ReplaceWithConstantBroadcastHelper(
+            subshape, builder, replace_type));
       }
       auto zero_tuple =
           builder->AddInstruction(HloInstruction::CreateTuple(tuple_operands));
@@ -227,27 +235,44 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
       // If not a tuple, we need to create a zero constant of
       // `shape.element_type()`, and then broadcast it into the shape we want.
 
-      // Create a zero constant of `shape.element_type()`.
-      HloInstruction* element_zero;
-      Shape element_zero_shape = ShapeUtil::MakeShape(shape.element_type(), {});
-      element_zero = builder->AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::Zero(element_zero_shape.element_type())));
-      extra_created_instructions_.push_back(element_zero);
+      // Create a constant of `shape.element_type()`. The constant could be
+      // either a zero or a random number, depending on `replace_type`.
+      Shape constant_shape = ShapeUtil::MakeShape(shape.element_type(), {});
+      HloInstruction* constant_instruction;
+      CHECK(replace_type == ReplaceType::kReplaceZeroBroadcast ||
+            replace_type == ReplaceType::kReplaceRandomBroadcast);
+      if (replace_type == ReplaceType::kReplaceZeroBroadcast) {
+        constant_instruction =
+            builder->AddInstruction(HloInstruction::CreateConstant(
+                LiteralUtil::Zero(constant_shape.element_type())));
+      } else {
+        StatusOr<Literal> literal_status = MakeFakeLiteral(constant_shape);
+        TF_CHECK_OK(literal_status.status());
+        constant_instruction = builder->AddInstruction(
+            HloInstruction::CreateConstant(std::move(literal_status.value())));
+      }
+      extra_created_instructions_.push_back(constant_instruction);
 
-      // Broadcast the element_zero to create an hlo of the desired shape.
-      auto zero_broadcast = builder->AddInstruction(
-          HloInstruction::CreateBroadcast(shape, element_zero, {}));
-      extra_created_instructions_.push_back(zero_broadcast);
-      return zero_broadcast;
+      // Broadcast `constant_instruction` to create an hlo of the desired
+      // shape.
+      auto broadcast_constant_instruction = builder->AddInstruction(
+          HloInstruction::CreateBroadcast(shape, constant_instruction, {}));
+      extra_created_instructions_.push_back(broadcast_constant_instruction);
+      return broadcast_constant_instruction;
     }
   }
 
-  // Replace with `hlo` with a broadcasted Zero of the same shape.
-  Status ReplaceWithZeroBroadcast(const HloInstruction* hlo) {
+  // Replace with `hlo` with a broadcasted constant of the same shape. The
+  // constant could be either a zero or a random number, depending on
+  // `replace_type`.
+  Status ReplaceWithConstantBroadcast(const HloInstruction* hlo,
+                                      ReplaceType replace_type) {
+    CHECK(replace_type == ReplaceType::kReplaceZeroBroadcast ||
+          replace_type == ReplaceType::kReplaceRandomBroadcast);
     CHECK(old_computations_to_builders_.contains(hlo->parent()));
     auto builder = old_computations_to_builders_[hlo->parent()].get();
     HloInstruction* zero_broadcast =
-        ReplaceWithZeroBroadcastHelper(hlo->shape(), builder);
+        ReplaceWithConstantBroadcastHelper(hlo->shape(), builder, replace_type);
     clone_context_.MapInstruction(hlo, zero_broadcast);
     return OkStatus();
   }

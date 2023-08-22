@@ -490,6 +490,9 @@ static absl::Status RunGraphOpByOp(
     CustomCall::UserData user_data) {
   // Prepare options for executing graph capture function.
   Executable::ExecuteOpts opts;
+  auto* concurrent_region_status = user_data.get<ConcurrentRegionStatus>();
+  // Ops should not run in parallel during op-by-op execution.
+  concurrent_region_status->DisableConcurrentRegion();
   opts.custom_call_data = &user_data;
 
   TraceMe trace([&] {
@@ -512,6 +515,7 @@ static absl::Status RunGraphOpByOp(
 
   auto executed =
       function_ref(args, runtime::NoResultConverter{}, opts, InDebugMode());
+  concurrent_region_status->EnableConcurrentRegion();
   if (!executed.ok()) {
     return InternalError("RunGraphOpByOp failed (%s): %s",
                          diagnostic.empty() ? "<no details>" : diagnostic,

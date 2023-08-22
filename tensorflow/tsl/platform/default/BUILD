@@ -39,17 +39,6 @@ cc_library(
 )
 
 cc_library(
-    name = "cord",
-    hdrs = ["cord.h"],
-    tags = [
-        "manual",
-        "no_oss",
-        "nobuilder",
-    ],
-    deps = ["@com_google_absl//absl/strings:cord"],
-)
-
-cc_library(
     name = "criticality",
     hdrs = ["//tensorflow/tsl/platform:criticality.h"],
     textual_hdrs = ["criticality.h"],
@@ -281,7 +270,6 @@ cc_library(
 filegroup(
     name = "xla_cpu_runtime_srcs",
     srcs = [
-        "cord.h",
         "dynamic_annotations.h",
         "integral_types.h",
     ] + if_not_windows(["env_time.cc"]),
@@ -627,7 +615,6 @@ filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
         "casts.h",
-        "cord.h",
         "mutex.h",
         "mutex_data.h",
         "notification.h",

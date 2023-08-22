@@ -339,19 +339,6 @@ StatusOr<std::unique_ptr<se::KernelBase>> CreateKernel(
   return std::move(kernel_base);
 }
 
-template <int n>
-static std::unique_ptr<se::KernelArgsArrayBase> MakeKernelArgs(
-    absl::Span<const se::DeviceMemoryBase> args, uint32_t shared_mem_bytes) {
-  auto kernel_args = std::make_unique<se::KernelArgsArray<n>>();
-  for (const se::DeviceMemoryBase& buf : args) {
-    kernel_args->add_device_memory_argument(buf);
-  }
-  if (shared_mem_bytes > 0) {
-    kernel_args->add_shared_bytes(shared_mem_bytes);
-  }
-  return kernel_args;
-}
-
 Status ExecuteKernelOnStream(const se::KernelBase& kernel,
                              absl::Span<const se::DeviceMemoryBase> args,
                              const LaunchDimensions& dims, se::Stream* stream) {
@@ -364,11 +351,11 @@ Status ExecuteKernelOnStream(const se::KernelBase& kernel,
   // specializations for smaller sizes. 64 arguments are likely to fit in a
   // 4KiB page.
   if (args.size() <= 64) {
-    kernel_args = MakeKernelArgs<64>(args, shared_mem_bytes);
+    kernel_args = se::MakeKernelArgs<64>(args, shared_mem_bytes);
   } else if (args.size() <= 256) {
-    kernel_args = MakeKernelArgs<256>(args, shared_mem_bytes);
+    kernel_args = se::MakeKernelArgs<256>(args, shared_mem_bytes);
   } else {
-    kernel_args = MakeKernelArgs<kKernelArgsLimit>(args, shared_mem_bytes);
+    kernel_args = se::MakeKernelArgs<kKernelArgsLimit>(args, shared_mem_bytes);
   }
 
   LaunchDimensions::Dim3D thread_counts = dims.thread_counts_per_block();

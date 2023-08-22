@@ -611,7 +611,9 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:session_options",
         "//tensorflow/core/common_runtime:core_cpu_internal",
+        "//tensorflow/core/common_runtime/next_pluggable_device:next_pluggable_device_factory_hdrs",
         "//tensorflow/core/platform:stream_executor_no_cuda",
+        "//tensorflow/core/tfrt/common:pjrt_util",
     ],
     alwayslink = 1,
 )

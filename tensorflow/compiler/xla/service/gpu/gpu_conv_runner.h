@@ -90,9 +90,13 @@ struct GpuConvParams {
   se::DeviceMemoryBase filter_buf;
   se::DeviceMemoryBase output_buf;
 
-  // Buffers for operands of pointwise ops to be fused into the cuDNN
+  // Buffers for operands of ops to be fused into the cuDNN
   // convolution Custom Call.
   std::vector<se::DeviceMemoryBase> operand_bufs;
+
+  // Buffers for additional outputs of ops to be fused into the cuDNN
+  // convolution Custom Call.
+  std::vector<se::DeviceMemoryBase> aux_bufs;
 
   std::optional<FusionParams> fusion;
 };
@@ -212,7 +216,7 @@ struct RunConvOptions {
 // that size, if you like.
 Status RunGpuConv(const GpuConvConfig& conv_config,
                   absl::Span<const se::DeviceMemoryBase> operand_buffers,
-                  se::DeviceMemoryBase result_buffer,
+                  absl::Span<const se::DeviceMemoryBase> result_buffers,
                   se::DeviceMemoryBase scratch_memory, se::Stream* stream,
                   RunConvOptions = {});
 
@@ -245,7 +249,7 @@ StatusOr<GpuConvConfig> GetGpuConvConfig(const GpuConvDescriptor& desc,
 StatusOr<GpuConvParams> GetGpuConvParams(
     const GpuConvConfig& conv_config,
     absl::Span<const se::DeviceMemoryBase> operand_buffers,
-    se::DeviceMemoryBase result_buffer);
+    absl::Span<const se::DeviceMemoryBase> result_buffers);
 
 inline se::dnn::DataType BiasTypeForInputType(se::dnn::DataType input_type) {
   switch (input_type) {

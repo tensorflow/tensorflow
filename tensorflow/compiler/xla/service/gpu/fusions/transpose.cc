@@ -19,6 +19,7 @@ limitations under the License.
 #include "llvm/IR/IRBuilder.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/service/gpu/fusions/tiling_util.h"
+#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
@@ -70,16 +71,17 @@ llvm_ir::IrArray::Index PermuteIndex(const llvm_ir::IrArray::Index& index,
 
 }  // namespace
 
-Status TransposeFusion::EmitKernel(const LaunchDimensions& launch_dims,
-                                   std::vector<llvm_ir::IrArray> inputs,
-                                   std::vector<llvm_ir::IrArray> outputs,
-                                   llvm::IRBuilder<>* builder,
-                                   int kernel_index) const {
+Status TransposeFusion::EmitKernel(
+    IrEmitterContext& ir_emitter_context, ElementalIrEmitter& elemental_emitter,
+    mlir::lmhlo::FusionOp fusion_op, const HloFusionInstruction& fusion,
+    const LaunchDimensions& launch_dims, std::vector<llvm_ir::IrArray> inputs,
+    std::vector<llvm_ir::IrArray> outputs, llvm::IRBuilder<>* builder,
+    int kernel_index) const {
   const auto& tiling_scheme = *analysis_.GetTransposeTilingScheme();
   const auto& hlo_roots = analysis_.fusion_roots();
-  FusedIrEmitter fused_emitter(elemental_emitter());
+  FusedIrEmitter fused_emitter(elemental_emitter);
   for (auto [i, input] : llvm::enumerate(inputs)) {
-    HloInstruction* fused_operand = fusion().fused_parameter(i);
+    HloInstruction* fused_operand = fusion.fused_parameter(i);
     fused_emitter.BindGenerator(
         *fused_operand, [input = input, builder,
                          fused_operand](const llvm_ir::IrArray::Index& index) {
@@ -88,17 +90,26 @@ Status TransposeFusion::EmitKernel(const LaunchDimensions& launch_dims,
         });
   }
 
+  std::vector<const HloInstruction*> heroes;
+  std::vector<std::optional<TransposeDescription>> transposes;
+  heroes.reserve(hlo_roots.size());
+  for (const auto& root : hlo_roots) {
+    heroes.push_back(&FindNonTrivialHero(*root));
+    transposes.push_back(
+        GetDescriptionForTiledTransposeEmitter(*root, *heroes.back()));
+  }
+
   absl::flat_hash_map<const HloInstruction*, llvm::GlobalVariable*> tiles;
   Vector3 permutation;
   for (const auto& [tile_idx, root] : llvm::enumerate(hlo_roots)) {
-    if (auto tr = FindAnyTiledTranspose(*root)) {
+    if (const auto& tr = transposes[tile_idx]) {
+      const auto& hero = *heroes[tile_idx];
       permutation = tr->permutation;
-      const HloInstruction& hero = FindNonTrivialHero(*root);
       tiles[&hero] = AllocateShared(
           builder, tiling_scheme,
           llvm_ir::PrimitiveTypeToIrType(
               hero.operand(0)->shape().element_type(),
-              ir_emitter_context().llvm_module()),
+              ir_emitter_context.llvm_module()),
           {tiling_scheme.GetBlockTileSizeFor(permutation[TilingScheme::DimX]),
            tiling_scheme.GetBlockTileSizeFor(TilingScheme::DimX) + 1},
           absl::StrCat("tr_tile_", tile_idx));
@@ -127,8 +138,8 @@ Status TransposeFusion::EmitKernel(const LaunchDimensions& launch_dims,
 
               for (const auto& [output_idx, root] :
                    llvm::enumerate(hlo_roots)) {
-                if (FindAnyTiledTranspose(*root)) {
-                  const HloInstruction& hero = FindNonTrivialHero(*root);
+                if (transposes[output_idx].has_value()) {
+                  const HloInstruction& hero = *heroes[output_idx];
                   llvm_ir::ElementGenerator input_gen =
                       *fused_emitter.GetGenerator(*hero.operand(0));
                   llvm_ir::IrArray::Index untiled_index = GetUnnormalizedIndex(
@@ -156,7 +167,7 @@ Status TransposeFusion::EmitKernel(const LaunchDimensions& launch_dims,
               }
             });
 
-        EmitSyncThreads(builder, ir_emitter_context());
+        EmitSyncThreads(builder, ir_emitter_context);
 
         llvm_ir::IrArray::Index output_tile_index =
             PermuteIndex(index, permutation);
@@ -172,8 +183,8 @@ Status TransposeFusion::EmitKernel(const LaunchDimensions& launch_dims,
                 llvm::Value* x_loc) {
               for (const auto& [output_idx, root] :
                    llvm::enumerate(hlo_roots)) {
-                if (FindAnyTiledTranspose(*root)) {
-                  const HloInstruction& hero = FindNonTrivialHero(*root);
+                if (transposes[output_idx].has_value()) {
+                  const HloInstruction& hero = *heroes[output_idx];
 
                   std::vector<llvm::Value*> idx = {x_loc, y_loc};
                   llvm::Value* gep = thread_id_info.GEPIntoSharedMemory(
@@ -183,17 +194,17 @@ Status TransposeFusion::EmitKernel(const LaunchDimensions& launch_dims,
                   llvm::Value* loaded =
                       builder->CreateLoad(type, gep, "tiled_buffer");
 
-                  FusedIrEmitter fused_emitter(elemental_emitter());
+                  FusedIrEmitter fused_emitter(elemental_emitter);
                   fused_emitter.BindGenerator(
                       hero, [&](const llvm_ir::IrArray::Index& index) {
                         return loaded;
                       });
-                  for (int64_t i = 0; i < fusion()
-                                              .fused_instructions_computation()
-                                              ->num_parameters();
+                  for (int64_t i = 0;
+                       i < fusion.fused_instructions_computation()
+                               ->num_parameters();
                        ++i) {
                     llvm_ir::IrArray ir_array = inputs[i];
-                    HloInstruction* fused_operand = fusion().fused_parameter(i);
+                    HloInstruction* fused_operand = fusion.fused_parameter(i);
                     fused_emitter.BindGenerator(
                         *fused_operand,
                         [=](const llvm_ir::IrArray::Index& index) {
@@ -222,7 +233,7 @@ Status TransposeFusion::EmitKernel(const LaunchDimensions& launch_dims,
       };
 
   llvm::Type* index_type =
-      GetIndexTypeForKernel(fusion_op(), launch_dims.launch_bound(), builder);
+      GetIndexTypeForKernel(fusion_op, launch_dims.launch_bound(), builder);
   return EmitTilingKernel(builder, tiling_scheme, index_type, tile_generator)
       .status();
 }

@@ -47,6 +47,12 @@ from tensorflow.python.types import core
 _Method = quant_opts_pb2.QuantizationMethod.Method
 _ExperimentalMethod = quant_opts_pb2.QuantizationMethod.ExperimentalMethod
 
+_QuantizationComponent = (
+    quant_opts_pb2.QuantizationComponentSpec.QuantizationComponent
+)
+
+_TensorType = quant_opts_pb2.QuantizationComponentSpec.TensorType
+
 # Mapping of signature def key -> SignatureDef.
 _SignatureDefMap = Mapping[str, meta_graph_pb2.SignatureDef]
 
@@ -1009,6 +1015,96 @@ def _verify_output_dir(output_dir: Optional[str], overwrite: bool) -> None:
     )
 
 
+def _populate_quantization_component_spec(
+    quantization_options: quant_opts_pb2.QuantizationOptions,
+) -> None:
+  """Populates default values for QuantizationComponentSpec.
+
+  Args:
+    quantization_options: An instance of QuantizationOptions with a field
+      specifying QuantizationComponentSpec.
+  """
+  quant_method: quant_opts_pb2.QuantizationMethod = (
+      quantization_options.quantization_method
+  )
+
+  if quantization_options.unit_wise_quantization_spec:
+    raise ValueError('Selective quantization is not supported yet.')
+
+  # Make sure creating one spec per component.
+  updated_component_spec = dict()
+
+  # Populate default configuration.
+  if (
+      quant_method.experimental_method == _ExperimentalMethod.STATIC_RANGE
+      or quant_method.experimental_method == _ExperimentalMethod.DYNAMIC_RANGE
+  ):
+    updated_component_spec[_QuantizationComponent.COMPONENT_ACTIVATION] = (
+        quant_opts_pb2.QuantizationComponentSpec(
+            quantization_component=_QuantizationComponent.COMPONENT_ACTIVATION,
+            tensor_type=_TensorType.TENSORTYPE_INT_8,
+        )
+    )
+    updated_component_spec[_QuantizationComponent.COMPONENT_WEIGHT] = (
+        quant_opts_pb2.QuantizationComponentSpec(
+            quantization_component=_QuantizationComponent.COMPONENT_WEIGHT,
+            tensor_type=_TensorType.TENSORTYPE_INT_8,
+        )
+    )
+    updated_component_spec[_QuantizationComponent.COMPONENT_BIAS] = (
+        quant_opts_pb2.QuantizationComponentSpec(
+            quantization_component=_QuantizationComponent.COMPONENT_BIAS,
+            tensor_type=_TensorType.TENSORTYPE_INT_32,
+        )
+    )
+  else:
+    updated_component_spec[_QuantizationComponent.COMPONENT_WEIGHT] = (
+        quant_opts_pb2.QuantizationComponentSpec(
+            quantization_component=_QuantizationComponent.COMPONENT_WEIGHT,
+            tensor_type=_TensorType.TENSORTYPE_INT_8,
+        )
+    )
+
+  # Override if quantization_component_spec is specified.
+  if quant_method.quantization_component_specs:
+    # Check if the component spec is supported configuration in TF-Quant.
+    for component_spec in quant_method.quantization_component_specs:
+      if (
+          component_spec.quantization_component
+          == _QuantizationComponent.COMPONENT_WEIGHT
+      ) or (
+          component_spec.quantization_component
+          == _QuantizationComponent.COMPONENT_ACTIVATION
+      ):
+        if component_spec.tensor_type != _TensorType.TENSORTYPE_INT_8:
+          raise ValueError(
+              'Only int8 precision is supported for input operands.'
+          )
+      else:
+        if component_spec.tensor_type != _TensorType.TENSORTYPE_INT_32:
+          raise ValueError('Only int32 precision is supported for bias.')
+      # Update with the custom spec.
+      updated_component_spec[component_spec.quantization_component] = (
+          component_spec
+      )
+
+  # Update the componet spec
+  del quant_method.quantization_component_specs[:]
+  quant_method.quantization_component_specs.extend(
+      updated_component_spec.values()
+  )
+
+  if (
+      quant_method.experimental_method == _ExperimentalMethod.STATIC_RANGE
+      or quant_method.experimental_method == _ExperimentalMethod.DYNAMIC_RANGE
+  ) and (len(quant_method.quantization_component_specs) != 3):
+    raise ValueError('Only 3 components are needed for', quant_method)
+  elif (
+      quant_method.experimental_method == _ExperimentalMethod.WEIGHT_ONLY
+  ) and len(quant_method.quantization_component_specs) != 1:
+    raise ValueError('At least one component spec needs to be specified.')
+
+
 def _populate_quantization_options_default_values(
     quantization_options: quant_opts_pb2.QuantizationOptions,
 ) -> None:
@@ -1064,6 +1160,9 @@ def _populate_quantization_options_default_values(
     quantization_options.quantization_method.experimental_method = (
         _ExperimentalMethod.STATIC_RANGE
     )
+
+  # Check and populate quantization component spec
+  _populate_quantization_component_spec(quantization_options)
 
 
 def quantize(

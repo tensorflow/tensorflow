@@ -78,6 +78,8 @@ ENTRY e {
 })")
                     .value();
   EXPECT_TRUE(GemmRewriterTriton(gpu_version_).Run(module.get()).value());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Fusion(m::Parameter(), m::Parameter())));
 }
 
 TEST_F(GemmRewriterTritonTest, BitcastChain) {
@@ -98,6 +100,24 @@ ENTRY e {
   ROOT d = f16[3,5,10] dot(c0, r1),
     lhs_contracting_dims={1}, rhs_contracting_dims={2},
     lhs_batch_dims={0}, rhs_batch_dims={0}
+})")
+                    .value();
+  EXPECT_TRUE(GemmRewriterTriton(gpu_version_).Run(module.get()).value());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Fusion(m::Parameter(), m::Parameter())));
+}
+
+TEST_F(GemmRewriterTritonTest, SplitDimensionTwice) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p0 = s8[4,2,32,4,2] parameter(0)
+  r1 = s8[8,32,8] reshape(p0)
+  t1 = s8[32,8,8] transpose(r1), dimensions={1,0,2}
+  r0 = s8[32,64] reshape(t1)
+  p1 = s8[32,32] parameter(1)
+  c0 = f16[32,32] convert(p1)
+  ROOT d = f16[64,32] dot(r0, c0),
+    lhs_contracting_dims={0}, rhs_contracting_dims={1}
 })")
                     .value();
   EXPECT_TRUE(GemmRewriterTriton(gpu_version_).Run(module.get()).value());
@@ -1001,12 +1021,10 @@ ENTRY e {
       DotFusionAnalysis::Execute(dot_computation, key.split_k()));
   EXPECT_EQ(dot_computation->root_instruction()->shape(),
             ShapeUtil::MakeShapeWithDescendingLayout(F16, {8, 7, 5}));
-  EXPECT_THAT(*analysis.IterSpec(DotFusionAnalysis::Scope::LHS, p0, 0),
-              ElementsAre(FieldsAre(/*stride=*/320, /*count=*/8,
-                                    /*subfragments=*/ElementsAre(4, 2))));
-  EXPECT_THAT(*analysis.IterSpec(DotFusionAnalysis::Scope::LHS, p0, 1),
-              ElementsAre(FieldsAre(/*stride=*/1, /*count=*/320,
-                                    /*subfragments=*/ElementsAre(20, 4, 4))));
+  EXPECT_THAT(
+      *analysis.IterSpec(DotFusionAnalysis::Scope::LHS, p0, 1),
+      ElementsAre(FieldsAre(/*stride=*/1, /*count=*/2560,
+                            /*subfragments=*/ElementsAre(20, 4, 4, 4, 2))));
 }
 
 TEST_F(SplitKTest, FragmentedKUnsupported) {

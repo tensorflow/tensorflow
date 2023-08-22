@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/tpu/proto_helper.h"
 
+#include "absl/log/check.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
+
 extern "C" {
 
 void StreamExecutor_Tpu_FreeSerializedProto(const TpuSerializedProto* proto) {
