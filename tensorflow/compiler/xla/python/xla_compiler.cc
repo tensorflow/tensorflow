@@ -286,7 +286,7 @@ void DefRepeatedProperty(py::class_<T>& cls, const char* name,
 
 void BuildXlaCompilerSubmodule(py::module& m) {
   // Shapes
-  py::class_<Layout> layout_class(m, "Layout", py::module_local());
+  py::class_<Layout> layout_class(m, "Layout");
   layout_class
       .def("minor_to_major",
            [](Layout layout) { return SpanToTuple(layout.minor_to_major()); })
@@ -298,7 +298,7 @@ void BuildXlaCompilerSubmodule(py::module& m) {
            [](const Layout& layout) { return absl::HashOf(layout); })
       .def("to_string", &Layout::ToString);
 
-  py::class_<Shape> shape_class(m, "Shape", py::module_local());
+  py::class_<Shape> shape_class(m, "Shape");
   shape_class
       .def(py::init([](const std::string& s) {
         return std::make_unique<Shape>(ValueOrThrow(ParseShape(s)));
@@ -430,7 +430,7 @@ void BuildXlaCompilerSubmodule(py::module& m) {
         return shape.ToString(/*print_layout=*/true);
       });
 
-  py::class_<ProgramShape>(m, "ProgramShape", py::module_local())
+  py::class_<ProgramShape>(m, "ProgramShape")
       .def(py::init(
           [](absl::Span<const Shape> params, Shape result) -> ProgramShape {
             ProgramShape program_shape;
@@ -446,7 +446,7 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .def("result_shape", &ProgramShape::result)
       .def("__repr__", &ProgramShape::ToString);
 
-  py::class_<ShapeIndex>(m, "ShapeIndex", py::module_local())
+  py::class_<ShapeIndex>(m, "ShapeIndex")
       .def(py::init([](const std::vector<int64_t>& v) {
         return std::make_unique<ShapeIndex>(v.begin(), v.end());
       }))
@@ -459,11 +459,10 @@ void BuildXlaCompilerSubmodule(py::module& m) {
            [](const ShapeIndex& shape_ind) { return absl::HashOf(shape_ind); });
 
   // Literals
-  py::class_<Literal, std::shared_ptr<Literal>>(m, "Literal",
-                                                py::module_local())
+  py::class_<Literal, std::shared_ptr<Literal>>(m, "Literal")
       .def("__repr__", &Literal::ToString);
 
-  py::class_<XlaComputation>(m, "XlaComputation", py::module_local())
+  py::class_<XlaComputation>(m, "XlaComputation")
       .def(py::init([](const py::bytes& serialized_hlo_module_proto)
                         -> std::unique_ptr<XlaComputation> {
         HloModuleProto proto;
@@ -483,8 +482,7 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .def("hash", xla::ValueOrThrowWrapper(HashComputation))
       .def("as_hlo_module", xla::ValueOrThrowWrapper(GetHloModule));
 
-  py::class_<HloPrintOptions> hlo_print_options_class(m, "HloPrintOptions",
-                                                      py::module_local());
+  py::class_<HloPrintOptions> hlo_print_options_class(m, "HloPrintOptions");
   hlo_print_options_class.def(py::init<>())
       .def_static("short_parsable", &HloPrintOptions::ShortParsable)
       .def_static("canonical", &HloPrintOptions::Canonical)
@@ -536,7 +534,7 @@ void BuildXlaCompilerSubmodule(py::module& m) {
                     &HloPrintOptions::set_is_in_nested_computation);
 
   py::class_<HloModule, std::shared_ptr<HloModule>> hlo_module_class(
-      m, "HloModule", py::module_local());
+      m, "HloModule");
   hlo_module_class.def_property_readonly("name", &HloModule::name)
       .def(
           "to_string",
@@ -567,7 +565,7 @@ void BuildXlaCompilerSubmodule(py::module& m) {
           });
 
   py::class_<HloModuleGroup, std::shared_ptr<HloModuleGroup>>
-      hlo_module_group_class(m, "HloModuleGroup", py::module_local());
+      hlo_module_group_class(m, "HloModuleGroup");
   hlo_module_group_class
       .def(py::init(
           [](const std::string& name,
@@ -625,9 +623,9 @@ void BuildXlaCompilerSubmodule(py::module& m) {
           return result;
         }));
 
-  py::class_<XlaOp> xla_op_class(m, "XlaOp", py::module_local());
+  py::class_<XlaOp> xla_op_class(m, "XlaOp");
 
-  py::class_<XlaBuilder>(m, "XlaBuilder", py::module_local())
+  py::class_<XlaBuilder>(m, "XlaBuilder")
       .def(py::init([](const std::string& name) -> std::unique_ptr<XlaBuilder> {
         return std::make_unique<XlaBuilder>(UniquifyName(name));
       }))
@@ -673,7 +671,7 @@ void BuildXlaCompilerSubmodule(py::module& m) {
            });
 
   // Device assignments
-  py::class_<DeviceAssignment>(m, "DeviceAssignment", py::module_local())
+  py::class_<DeviceAssignment>(m, "DeviceAssignment")
       .def_static(
           "create",
           xla::ValueOrThrowWrapper(
@@ -706,8 +704,7 @@ void BuildXlaCompilerSubmodule(py::module& m) {
              return py::bytes(result);
            }));
 
-  py::class_<CompileOptions> compile_options(m, "CompileOptions",
-                                             py::module_local());
+  py::class_<CompileOptions> compile_options(m, "CompileOptions");
   compile_options
       .def(py::init([]() -> CompileOptions {
         CompileOptions options;
@@ -796,7 +793,7 @@ void BuildXlaCompilerSubmodule(py::module& m) {
               fn_name, std::move(capsule), platform));
         });
 
-  py::class_<DebugOptions>(m, "DebugOptions", py::module_local())
+  py::class_<DebugOptions>(m, "DebugOptions")
       .def("__repr__", &DebugOptions::DebugString)
       .def_property("xla_backend_optimization_level",
                     &DebugOptions::xla_backend_optimization_level,
@@ -861,8 +858,7 @@ void BuildXlaCompilerSubmodule(py::module& m) {
                     &DebugOptions::xla_test_all_input_layouts,
                     &DebugOptions::set_xla_test_all_input_layouts);
 
-  py::class_<ExecutableBuildOptions>(m, "ExecutableBuildOptions",
-                                     py::module_local())
+  py::class_<ExecutableBuildOptions>(m, "ExecutableBuildOptions")
       .def(py::init<>())
       .def("__repr__", &ExecutableBuildOptions::ToString)
       .def_property("fdo_profile", &ExecutableBuildOptions::fdo_profile,
@@ -918,15 +914,14 @@ void BuildXlaCompilerSubmodule(py::module& m) {
             options.set_allow_spmd_sharding_propagation_to_output(v);
           });
 
-  py::enum_<OpSharding::Type> op_sharding_type(m, "OpSharding_Type",
-                                               py::module_local());
+  py::enum_<OpSharding::Type> op_sharding_type(m, "OpSharding_Type");
   op_sharding_type.value("REPLICATED", OpSharding::REPLICATED)
       .value("MAXIMAL", OpSharding::MAXIMAL)
       .value("MANUAL", OpSharding::MANUAL)
       .value("TUPLE", OpSharding::TUPLE)
       .value("OTHER", OpSharding::OTHER);
 
-  py::class_<OpSharding> op_sharding(m, "OpSharding", py::module_local());
+  py::class_<OpSharding> op_sharding(m, "OpSharding");
   op_sharding
       .def_property_readonly_static(
           "Type",
@@ -969,7 +964,7 @@ void BuildXlaCompilerSubmodule(py::module& m) {
   DefRepeatedProperty(op_sharding, "last_tile_dims",
                       &xla::OpSharding::mutable_last_tile_dims);
 
-  py::class_<HloSharding> hlo_sharding(m, "HloSharding", py::module_local());
+  py::class_<HloSharding> hlo_sharding(m, "HloSharding");
   hlo_sharding
       .def_static("from_proto",
                   xla::ValueOrThrowWrapper(xla::HloSharding::FromProto))
@@ -1024,16 +1019,14 @@ void BuildXlaCompilerSubmodule(py::module& m) {
            [](const xla::HloSharding& self) { return self.ToString(); })
       .def("to_proto", &xla::HloSharding::ToProto);
 
-  py::class_<FrontendAttributes> frontend_attributes(m, "FrontendAttributes",
-                                                     py::module_local());
+  py::class_<FrontendAttributes> frontend_attributes(m, "FrontendAttributes");
   frontend_attributes.def(py::init<>())
       .def("__setitem__",
            [](FrontendAttributes* attr, std::string key, std::string value) {
              (*attr->mutable_map())[key] = value;
            });
 
-  py::enum_<PrecisionConfig::Precision>(m, "PrecisionConfig_Precision",
-                                        py::module_local())
+  py::enum_<PrecisionConfig::Precision>(m, "PrecisionConfig_Precision")
       .value("DEFAULT", PrecisionConfig::DEFAULT)
       .value("HIGH", PrecisionConfig::HIGH)
       .value("HIGHEST", PrecisionConfig::HIGHEST);
@@ -1045,8 +1038,7 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .value("IRFFT", FftType::IRFFT);
 
   // Hlo Module Passes
-  py::class_<HloPassInterface> hlo_pass_interface(m, "HloPassInterface",
-                                                  py::module_local());
+  py::class_<HloPassInterface> hlo_pass_interface(m, "HloPassInterface");
   hlo_pass_interface.def_property_readonly("name", &HloPassInterface::name)
       .def("is_pass_pipeline", &HloPassInterface::IsPassPipeline)
       .def("run",
@@ -1058,16 +1050,11 @@ void BuildXlaCompilerSubmodule(py::module& m) {
              return xla::ValueOrThrow(pass.RunOnModuleGroup(module_group));
            });
 
-  py::class_<HloDCE, HloPassInterface>(m, "HloDCE", py::module_local())
+  py::class_<HloDCE, HloPassInterface>(m, "HloDCE").def(py::init<>());
+  py::class_<CallInliner, HloPassInterface>(m, "CallInliner").def(py::init<>());
+  py::class_<FlattenCallGraph, HloPassInterface>(m, "FlattenCallGraph")
       .def(py::init<>());
-  py::class_<CallInliner, HloPassInterface>(m, "CallInliner",
-                                            py::module_local())
-      .def(py::init<>());
-  py::class_<FlattenCallGraph, HloPassInterface>(m, "FlattenCallGraph",
-                                                 py::module_local())
-      .def(py::init<>());
-  py::class_<TupleSimplifier, HloPassInterface>(m, "TupleSimplifier",
-                                                py::module_local())
+  py::class_<TupleSimplifier, HloPassInterface>(m, "TupleSimplifier")
       .def(py::init<>());
 }  // NOLINT(readability/fn_size)
 }  // namespace xla
