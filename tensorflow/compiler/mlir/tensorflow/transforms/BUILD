@@ -1,6 +1,7 @@
 load("//tensorflow:tensorflow.default.bzl", "filegroup", "get_compatible_with_portable")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 # copybara:uncomment_end(google-only)
 package(
@@ -542,7 +543,6 @@ cc_library(
         "tpu_validate_inputs.cc",
         "tpu_variable_runtime_reformatting.cc",
         "update_control_dependencies.cc",
-        "verify_no_outside_compilation_markers_pass.cc",
         "verify_suitable_for_graph_export_pass.cc",
         "xla_call_module_deserialization.cc",
         "xla_call_module_serialization.cc",
@@ -577,6 +577,7 @@ cc_library(
         ":tf_pass_inc_gen",
         ":tfe_legalize_tfg",
         ":unroll_batch_matmul_pass",
+        ":verify_no_outside_compilation_markers_pass",
         "//tensorflow/compiler/jit:flags_headers",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
         "//tensorflow/compiler/mlir/lite:validators",
@@ -670,6 +671,45 @@ cc_library(
         "@stablehlo//:stablehlo_portable_api",
         "@stablehlo//:stablehlo_serialization",
         "@stablehlo//:vhlo_ops",
+    ],
+)
+
+cc_library(
+    name = "verify_no_outside_compilation_markers_pass",
+    srcs = ["verify_no_outside_compilation_markers_pass.cc"],
+    hdrs = ["passes.h"],
+    textual_hdrs = [
+        "tf_device_passes.h.inc",
+        "tf_passes.h.inc",
+    ],
+    deps = [
+        ":tf_device_pass_inc_gen",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Dialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:FuncExtensions",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+tf_cc_test(
+    name = "verify_no_outside_compilation_markers_pass_test",
+    srcs = ["verify_no_outside_compilation_markers_pass_test.cc"],
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
+        "//tensorflow/compiler/mlir/tf2xla/transforms:test_utils",
+        "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
     ],
 )
 
