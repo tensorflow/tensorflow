@@ -101,6 +101,10 @@ tf_python_pybind_extension(
     name = "_pywrap_traceme",
     srcs = ["traceme_wrapper.cc"],
     copts = tf_profiler_copts(),
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_traceme.pyi",
+    ],
     visibility = [
         "//perftools/accelerators/xprof/xprofilez/integration_tests:__pkg__",
         "//tensorflow/python/profiler:__subpackages__",
@@ -115,6 +119,10 @@ tf_python_pybind_extension(
     name = "_pywrap_profiler",
     srcs = ["profiler_wrapper.cc"],
     copts = tf_profiler_copts(),
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_profiler.pyi",
+    ],
     visibility = [
         "//tensorflow/core/profiler:internal",
         "//tensorflow/python/eager:__pkg__",
