@@ -97,6 +97,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_async_collective_annotator.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_rewriter.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_cost_model_stats_collection.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_float_support.h"
@@ -775,11 +776,11 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
             LayoutAssignment::InstructionCanChangeLayout),
         /*debug_only=*/true);
 
+    GpuHloCostAnalysis::Options cost_analysis_options{
+        ShapeSizeBytesFunction(),
+        /*per_second_rates=*/{},
+        /*count_multiple_input_accesses=*/true};
     if (debug_options.xla_gpu_enable_priority_fusion()) {
-      GpuHloCostAnalysis::Options cost_analysis_options{
-          ShapeSizeBytesFunction(),
-          /*per_second_rates=*/{},
-          /*count_multiple_input_accesses=*/true};
       fusion.AddPass<GpuPriorityFusion>(gpu_device_info, cost_analysis_options);
     } else {
       fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/false,
@@ -801,6 +802,13 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
                            /*only_fusion_computations=*/true);
     fusion.AddPass<HloDCE>();
     TF_RETURN_IF_ERROR(fusion.Run(hlo_module).status());
+
+    if (debug_options.xla_gpu_collect_cost_model_stats()) {
+      HloPassPipeline post_fusion_analysis("post_fusion_analysis");
+      post_fusion_analysis.AddPass<GpuCostModelStatsCollection>(
+          gpu_device_info, cost_analysis_options);
+      TF_RETURN_IF_ERROR(post_fusion_analysis.Run(hlo_module).status());
+    }
   }
 
   {

@@ -600,7 +600,11 @@ message DebugOptions {
 
   bool xla_gpu_copy_insertion_use_region_analysis = 236;
 
-  // Next id: 240
+  // If true, each fusion instruction will have a cost model runtime estimate in
+  // backend config after compilation.
+  bool xla_gpu_collect_cost_model_stats = 240;
+
+  // Next id: 241
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
