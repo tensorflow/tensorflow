@@ -162,18 +162,20 @@ Location OpLoc(const OperatorT& op,
 // Returns the correct type for a quantized tensor
 // We have a special case for constants since they have a higher minimum value.
 StatusOr<QuantizedType> GetQuantizedType(const TensorT& tensor, Builder builder,
-                                         bool is_constant = false) {
+                                         bool is_constant = false,
+                                         mlir::Type storage_type = {}) {
   tflite::QuantizationParametersT& quant_params = *tensor.quantization;
   if (quant_params.details.AsCustomQuantization()) {
     return errors::Unimplemented("Cannot handle experimental quantization");
   }
 
   bool is_signed = true;
-  mlir::IntegerType storage_type;
   if (tensor.type == tflite::TensorType_UINT8) {
     is_signed = false;
-    storage_type = builder.getIntegerType(8);
-  } else {
+    storage_type = mlir::IntegerType::get(builder.getContext(), 8);
+  }
+
+  if (!storage_type) {
     auto raw_elem_type = ConvertElementType(tensor.type, builder);
     if (!raw_elem_type.isa<mlir::IntegerType>()) {
       return errors::InvalidArgument(
@@ -186,13 +188,14 @@ StatusOr<QuantizedType> GetQuantizedType(const TensorT& tensor, Builder builder,
   // Since we don't know which ones are weights, we represent this optimization
   // as a change in the storage bounds for the type for all constants of this
   // type.
-  bool is_weight_buffer = is_constant && (storage_type.getWidth() == 8);
+  int bitwidth = storage_type.getIntOrFloatBitWidth();
+  bool is_weight_buffer = is_constant && (bitwidth == 8);
 
-  int64_t storage_min = QuantizedType::getDefaultMinimumForInteger(
-                            is_signed, storage_type.getWidth()) +
-                        static_cast<int>(is_weight_buffer);
-  int64_t storage_max = QuantizedType::getDefaultMaximumForInteger(
-      is_signed, storage_type.getWidth());
+  int64_t storage_min =
+      QuantizedType::getDefaultMinimumForInteger(is_signed, bitwidth) +
+      static_cast<int>(is_weight_buffer);
+  int64_t storage_max =
+      QuantizedType::getDefaultMaximumForInteger(is_signed, bitwidth);
   uint32_t flags =
       is_signed ? mlir::quant::QuantizationFlags::FlagValue::Signed : 0;
 
@@ -232,7 +235,8 @@ StatusOr<QuantizedType> GetCalibratedQuantizedType(const TensorT& tensor,
 
 StatusOr<mlir::TensorType> GetTensorType(const TensorT& tensor, Builder builder,
                                          bool is_constant = false,
-                                         bool is_intermediate = false) {
+                                         bool is_intermediate = false,
+                                         bool get_storage = false) {
   mlir::Type elem_type = ConvertElementType(tensor.type, builder);
   if (tensor.type == tflite::TensorType_VARIANT) {
     llvm::SmallVector<mlir::TensorType> tensor_types;
@@ -254,9 +258,13 @@ StatusOr<mlir::TensorType> GetTensorType(const TensorT& tensor, Builder builder,
     }
     elem_type = mlir::TF::VariantType::get(tensor_types, builder.getContext());
   }
-  if (IsQuantized(tensor)) {
+  if (IsQuantized(tensor) && !get_storage) {
     TF_ASSIGN_OR_RETURN(elem_type,
                         GetQuantizedType(tensor, builder, is_constant));
+  } else if (IsQuantized(tensor) && get_storage) {
+    // If the type is quantized we strip the signedness from the storage type.
+    elem_type = mlir::IntegerType::get(elem_type.getContext(),
+                                       elem_type.getIntOrFloatBitWidth());
   }
 
   // Intermediate tensors with calibration value (but not scale and zero points)
@@ -355,8 +363,8 @@ std::string GetMlirOpName(const tflite::OperatorT& op,
 // The read_size parameter is present to allow reading both float16 and float32s
 // without a case split.
 template <typename T>
-std::vector<T> ReadAsHostEndian(ArrayRef<uint8_t> bytes) {
-  std::vector<T> ret;
+llvm::SmallVector<mlir::APInt> ReadAsHostEndian(ArrayRef<uint8_t> bytes) {
+  llvm::SmallVector<mlir::APInt> ret;
   size_t read_size = sizeof(T);
   int bytes_len = bytes.size();
   assert(bytes_len % read_size == 0);
@@ -366,9 +374,10 @@ std::vector<T> ReadAsHostEndian(ArrayRef<uint8_t> bytes) {
 
   const char* data_ptr = reinterpret_cast<const char*>(bytes.data());
   for (int i = 0; i < elem_count; i++) {
-    ret.push_back(llvm::support::endian::readNext<
-                  T, llvm::support::endian::system_endianness(),
-                  llvm::support::unaligned>(data_ptr));
+    T val = llvm::support::endian::readNext<
+        T, llvm::support::endian::system_endianness(),
+        llvm::support::unaligned>(data_ptr);
+    ret.push_back(mlir::APInt(sizeof(T) * 8, val));
   }
   return ret;
 }
@@ -398,12 +407,12 @@ tensorflow::TensorProto ConvertTfliteConstTensor(
 }
 
 StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
-    mlir::RankedTensorType shaped_type, mlir::FloatType elem_type,
-    const std::vector<uint8_t>& buffer) {
+    mlir::RankedTensorType shaped_type, const std::vector<uint8_t>& buffer) {
   size_t bytes_len = buffer.size();
+  mlir::Type elem_type = shaped_type.getElementType();
 
   // The bytes of floats are stored little-endian.
-  switch (elem_type.getWidth()) {
+  switch (elem_type.getIntOrFloatBitWidth()) {
     case 16: {
       assert(bytes_len % 2 == 0);
       assert(elem_type.isF16());
@@ -458,16 +467,43 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
           DenseElementsAttr::get(shaped_type, ArrayRef<double>(values)));
     }
   }
-  return errors::InvalidArgument("unsupported bit width", elem_type.getWidth());
+  return errors::InvalidArgument("unsupported bit width",
+                                 elem_type.getIntOrFloatBitWidth());
+}
+
+// If the values in the buffer can be clamped to a bitwidth, truncate
+// and return the new clamped integer width.
+void truncateLimitedIntegerAPInt(llvm::SmallVector<mlir::APInt>& values) {
+  mlir::APInt min = values[0];
+  mlir::APInt max = values[0];
+  for (auto& val : values) {
+    min = llvm::APIntOps::smin(val, min);
+    max = llvm::APIntOps::smax(val, max);
+  }
+
+  for (int64_t bw = 8; bw < min.getBitWidth(); bw += bw) {
+    auto limitMin = mlir::APInt::getSignedMinValue(bw).sext(min.getBitWidth());
+    auto limitMax = mlir::APInt::getSignedMaxValue(bw).sext(min.getBitWidth());
+    if (min.sle(limitMin) || max.sle(limitMin) || min.sge(limitMax) ||
+        max.sge(limitMax)) {
+      continue;
+    }
+
+    for (int i = 0; i < values.size(); i++) {
+      values[i] = values[i].trunc(bw);
+    }
+    break;
+  }
 }
 
 StatusOr<mlir::ElementsAttr> ConvertIntBuffer(
-    mlir::RankedTensorType shaped_type, mlir::Type elem_type,
-    const std::vector<uint8_t>& buffer) {
+    mlir::RankedTensorType shaped_type, const std::vector<uint8_t>& buffer,
+    bool truncate = false) {
+  mlir::Type elem_type = shaped_type.getElementType();
   unsigned bit_width;
   if (auto itype = elem_type.dyn_cast<mlir::IntegerType>()) {
     bit_width = itype.getWidth();
-  } else if (auto qtype = elem_type.dyn_cast<QuantizedType>()) {
+  } else if (auto qtype = elem_type.dyn_cast<mlir::quant::QuantizedType>()) {
     bit_width = qtype.getStorageTypeIntegralWidth();
     shaped_type = tensorflow::GetTypeFromTFTensorShape(shaped_type.getShape(),
                                                        qtype.getStorageType());
@@ -475,47 +511,57 @@ StatusOr<mlir::ElementsAttr> ConvertIntBuffer(
     return errors::InvalidArgument("unsupported integer constant type");
   }
 
+  llvm::SmallVector<mlir::APInt> values;
   switch (bit_width) {
     case 1: {
       // vector<bool> doesn't convert to an ArrayRef
-      llvm::SmallVector<bool, 8> values;
-      values.reserve(buffer.size());
+      llvm::SmallVector<bool, 8> boolValues;
+      boolValues.reserve(buffer.size());
       for (auto b : buffer) {
-        values.emplace_back(b != 0);
+        boolValues.emplace_back(b != 0);
       }
       return mlir::ElementsAttr(
-          DenseElementsAttr::get(shaped_type, ArrayRef<bool>(values)));
+          DenseElementsAttr::get(shaped_type, ArrayRef<bool>(boolValues)));
     }
     case 4: {
-      auto values =
+      auto i4Values =
           tflite::UnpackDenseInt4IntoInt8(buffer, shaped_type.getNumElements());
       // Use `getFromRawBuffer()` instead of `get()` to bypass a templated size
       // check which doesn't work with int4 because int4_t doesn't exist.
       return mlir::ElementsAttr(DenseElementsAttr::getFromRawBuffer(
-          shaped_type, ArrayRef<char>(values)));
+          shaped_type, ArrayRef<char>(i4Values)));
     }
     case 8: {
       return mlir::ElementsAttr(
           DenseElementsAttr::get(shaped_type, ArrayRef<uint8_t>(buffer)));
     }
     case 16: {
-      auto values = ReadAsHostEndian<uint16_t>(buffer);
-      return mlir::ElementsAttr(
-          DenseElementsAttr::get(shaped_type, ArrayRef<uint16_t>(values)));
+      values = ReadAsHostEndian<uint16_t>(buffer);
+      break;
     }
     case 32: {
-      auto values = ReadAsHostEndian<uint32_t>(buffer);
-      return mlir::ElementsAttr(
-          DenseElementsAttr::get(shaped_type, ArrayRef<uint32_t>(values)));
+      values = ReadAsHostEndian<uint32_t>(buffer);
+      break;
     }
     case 64: {
-      auto values = ReadAsHostEndian<uint64_t>(buffer);
-      return mlir::ElementsAttr(
-          DenseElementsAttr::get(shaped_type, ArrayRef<uint64_t>(values)));
+      values = ReadAsHostEndian<uint64_t>(buffer);
+      break;
     }
     default:
       return errors::Unimplemented("Cannot handle bit width ", bit_width);
   }
+
+  if (truncate) {
+    truncateLimitedIntegerAPInt(values);
+    auto sign = mlir::cast<mlir::IntegerType>(shaped_type.getElementType())
+                    .getSignedness();
+    auto ety = mlir::IntegerType::get(shaped_type.getContext(),
+                                      values[0].getBitWidth(), sign);
+    shaped_type =
+        tensorflow::GetTypeFromTFTensorShape(shaped_type.getShape(), ety);
+  }
+
+  return mlir::ElementsAttr(DenseElementsAttr::get(shaped_type, values));
 }
 
 StatusOr<Operation*> BuildExternalConstOp(const tflite::TensorT& tensor,
@@ -561,9 +607,15 @@ static mlir::ElementsAttr GetSplat(RankedTensorType type, int unique_index,
 // variable `stateful_variable_idx` is used as a unique value for each constant
 // to avoid CSEed. `tensor` is the data structure of flatbuffer. `shaped_type`
 // is the ShapedType for the const op.
-Operation* BuildVariableOp(const tflite::TensorT& tensor,
-                           mlir::RankedTensorType shaped_type,
-                           OpBuilder builder, Location loc) {
+StatusOr<Operation*> BuildVariableOp(const tflite::TensorT& tensor,
+                                     OpBuilder builder, Location loc) {
+  TF_ASSIGN_OR_RETURN(auto type, GetTensorType(tensor, builder,
+                                               /*is_constant=*/true));
+  auto shaped_type = type.dyn_cast<mlir::RankedTensorType>();
+  if (!shaped_type) {
+    return errors::Internal("Constant doesn't have a shape");
+  }
+
   static int stateful_variable_idx = 0;
   mlir::ElementsAttr value =
       GetSplat(shaped_type, stateful_variable_idx++, builder);
@@ -607,8 +659,20 @@ static StatusOr<std::vector<int32_t>> ConvertSparseIndexVector(
 
 static StatusOr<Operation*> BuildSparseConstOp(
     const tflite::TensorT& tensor, const std::vector<uint8_t>& buffer,
-    const mlir::RankedTensorType shaped_type, OpBuilder& builder,
-    Location loc) {
+    OpBuilder& builder, Location loc) {
+  TF_ASSIGN_OR_RETURN(auto type, GetTensorType(tensor, builder,
+                                               /*is_constant=*/true));
+  auto shaped_type = type.dyn_cast<mlir::RankedTensorType>();
+  if (!shaped_type) {
+    return errors::Internal("Constant doesn't have a shape");
+  }
+
+  TF_ASSIGN_OR_RETURN(type, GetTensorType(tensor, builder,
+                                          /*is_constant=*/true,
+                                          /*is_intermediate=*/false,
+                                          /*get_storage=*/true));
+  auto value_type = mlir::dyn_cast<mlir::RankedTensorType>(type);
+
   tensorflow::TensorProto repr = ConvertTfliteConstTensor(tensor, buffer);
   repr.clear_tensor_shape();
   if (IsQuantized(tensor)) {
@@ -652,13 +716,6 @@ static StatusOr<Operation*> BuildSparseConstOp(
       builder.getContext(), tensor.sparsity->traversal_order,
       tensor.sparsity->block_map, dim_metadata);
 
-  auto value_type = shaped_type;
-  if (IsQuantized(tensor)) {
-    value_type = tensorflow::GetTypeFromTFTensorShape(
-        shaped_type.getShape(), shaped_type.getElementType()
-                                    .dyn_cast<mlir::quant::QuantizedType>()
-                                    .getStorageType());
-  }
   std::vector<char> dense_buffer(
       value_type.getElementType().getIntOrFloatBitWidth() / CHAR_BIT);
   mlir::TypedAttr dummy_value =
@@ -680,28 +737,41 @@ StatusOr<Operation*> BuildConstOp(const tflite::TensorT& tensor,
                                   const std::vector<uint8_t>& buffer,
                                   bool is_variable, OpBuilder builder,
                                   Location loc, bool use_stablehlo_constant) {
+  if (tensor.sparsity != nullptr) {
+    return BuildSparseConstOp(tensor, buffer, builder, loc);
+  }
+
+  if (is_variable) {
+    return BuildVariableOp(tensor, builder, loc);
+  }
+
   TF_ASSIGN_OR_RETURN(auto type, GetTensorType(tensor, builder,
-                                               /*is_constant=*/true));
+                                               /*is_constant=*/true,
+                                               /*is_intermediate=*/false,
+                                               /*get_storage=*/true));
   auto shaped_type = type.dyn_cast<mlir::RankedTensorType>();
   if (!shaped_type) {
     return errors::Internal("Constant doesn't have a shape");
   }
 
-  if (tensor.sparsity != nullptr) {
-    return BuildSparseConstOp(tensor, buffer, shaped_type, builder, loc);
+  mlir::ElementsAttr value;
+  if (IsQuantized(tensor)) {
+    bool truncate = shaped_type.getElementType().getIntOrFloatBitWidth() == 64;
+    TF_ASSIGN_OR_RETURN(value, ConvertIntBuffer(shaped_type, buffer, truncate));
+    TF_ASSIGN_OR_RETURN(
+        auto type, GetQuantizedType(tensor, builder, /*is_constant=*/true,
+                                    /*storage_type=*/value.getElementType()));
+    shaped_type = shaped_type.clone(type);
+    auto op = builder.create<tfl::QConstOp>(
+        loc, mlir::TypeAttr::get(shaped_type), value);
+    return op.getOperation();
   }
 
   auto elem_type = shaped_type.getElementType();
-
-  mlir::ElementsAttr value;
-  if (is_variable) {
-    return BuildVariableOp(tensor, shaped_type, builder, loc);
-  } else if (auto float_type = elem_type.dyn_cast<mlir::FloatType>()) {
-    TF_ASSIGN_OR_RETURN(value,
-                        ConvertFloatBuffer(shaped_type, float_type, buffer));
-  } else if (elem_type.isa<mlir::IntegerType, QuantizedType>()) {
-    TF_ASSIGN_OR_RETURN(value,
-                        ConvertIntBuffer(shaped_type, elem_type, buffer));
+  if (auto float_type = elem_type.dyn_cast<mlir::FloatType>()) {
+    TF_ASSIGN_OR_RETURN(value, ConvertFloatBuffer(shaped_type, buffer));
+  } else if (elem_type.isa<mlir::IntegerType>()) {
+    TF_ASSIGN_OR_RETURN(value, ConvertIntBuffer(shaped_type, buffer));
   } else if (elem_type.isa<mlir::TF::StringType>()) {
     tensorflow::TensorProto repr = ConvertTfliteConstTensor(tensor, buffer);
     std::vector<llvm::StringRef> refs;
@@ -720,11 +790,6 @@ StatusOr<Operation*> BuildConstOp(const tflite::TensorT& tensor,
     return errors::Unimplemented("Constant of unsupported type");
   }
 
-  if (IsQuantized(tensor)) {
-    auto op = builder.create<tfl::QConstOp>(
-        loc, mlir::TypeAttr::get(shaped_type), value);
-    return op.getOperation();
-  }
   if (use_stablehlo_constant) {
     auto op = builder.create<mlir::stablehlo::ConstantOp>(loc, value);
     return op.getOperation();
