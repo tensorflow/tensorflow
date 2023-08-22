@@ -917,7 +917,7 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       int32_setter_for(&DebugOptions::set_xla_gpu_graph_level),
       debug_options->xla_gpu_graph_level(),
       "Set GPU graph level. 0 = off; 1 = capture fusions and memcpys; 2 = "
-      "capture convolutions and gemms; 3 = capture collectives."));
+      "capture gemms; 3 = capture convolutions."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_graph_num_runs_to_instantiate",
       int32_setter_for(

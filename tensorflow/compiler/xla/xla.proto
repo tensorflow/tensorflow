@@ -451,8 +451,8 @@ message DebugOptions {
 
   // 0:   Disable GPU graph capture.
   // 1:   Enable GPU graphs for fusions and memcpy (safest ones).
-  // 2:   Enable GPU graphs for gemms and convs.
-  // 3+   Enable GPU graphs for collectives.
+  // 2:   Enable GPU graphs for gemms.
+  // 3:   Enable GPU graphs for convolutions.
   //
   // Default: 0.
   int32 xla_gpu_graph_level = 194;

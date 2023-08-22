@@ -650,7 +650,14 @@ static absl::Status LaunchGraph(
   absl::WriterMutexLock lock(instance->mutex.get());
 
   // Update captured graph executable.
-  TF_RETURN_IF_ERROR(instance->exec.Update(std::move(g)));
+  auto update = instance->exec.Update(std::move(g));
+  if (!update.ok()) {
+    // TODO(b/297051365): We currently fallback to op-by-op mode because CUBLAS
+    // sometimes cause graph update to fail. We should remove the fallback
+    // mechanism once cuBLAS completely works in gpu graphs.
+    LOG(WARNING) << "Failed to update graph instance. Run graph op-by-op";
+    return RunGraphOpByOp(run_options, function_ref, fwd_args, user_data());
+  }
 
   // Update captured graph pointers hash.
   instance->ptr_hash = ptrs_hash;
