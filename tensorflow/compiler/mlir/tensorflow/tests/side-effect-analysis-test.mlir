@@ -2237,6 +2237,35 @@ func.func @collective_reduce_ordering_effect(
 // -----
 
 // Tests that we don't create dependencies between `CollectiveReduceV2` ops if
+// the `ordered` attribute is false
+func.func @collective_reduce_not_ordered(
+// expected-remark@above {{ID: 7}}
+  %input: tensor<f32>,
+  %group_key: tensor<i32>,
+  %group_size: tensor<i32>,
+  %instance_key: tensor<i32>) {
+  tf_executor.graph {
+  // expected-remark@above {{ID: 5}}
+    %island = tf_executor.island {
+    // expected-remark@above {{ID: 3}}
+        %0 = "tf.CollectiveReduceV2"(%input, %group_size, %group_key, %instance_key) {merge_op = "Add", final_op = "Id", is_stateless = true} : (tensor<f32>, tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<f32>
+        // expected-remark@above {{ID: 0}}
+        %1 = "tf.CollectiveReduceV2"(%input, %group_size, %group_key, %instance_key) {merge_op = "Mul", final_op = "Id", is_stateless = true} : (tensor<f32>, tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<f32>
+        // expected-remark@above {{ID: 1}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 2}}
+    }
+    tf_executor.fetch %island : !tf_executor.control
+    // expected-remark@above {{ID: 4}}
+  }
+  func.return
+  // expected-remark@above {{ID: 6}}
+  // expected-remark@above {{Sinks: {}}}
+}
+
+// -----
+
+// Tests that we don't create dependencies between `CollectiveReduceV2` ops if
 // ordering tokens are present and independent.
 func.func @collective_reduce_independent_ordering_tokens(
   // expected-remark@above {{ID: 7}}
