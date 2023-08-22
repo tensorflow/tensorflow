@@ -616,6 +616,7 @@ tf_cc_test(
         "//tensorflow/core/platform:refcount",
         "//tensorflow/core/tfrt/common:create_pjrt_client_util",
         "//tensorflow/core/tfrt/common:pjrt_util",
+        "//tensorflow/tsl/framework:device_id_utils",
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
