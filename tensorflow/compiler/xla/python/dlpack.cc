@@ -304,16 +304,18 @@ StatusOr<py::capsule> BufferToDLPackManagedTensor(
           "Cannot convert deleted/invalid buffer to DLPack tensor.");
     }
   } else {
-    // AcquireExternalReference may block; there are no API guarantees.
-    GlobalPyRefManager()->CollectGarbage();
-    py::gil_scoped_release gil_release;
-    TF_ASSIGN_OR_RETURN(pack->external_reference,
-                        pjrt_buffer->AcquireExternalReference());
-    if (stream) {
-      TF_RETURN_IF_ERROR(
-          pack->external_reference->WaitUntilBufferReadyOnStream(*stream));
-    } else {
-      TF_RETURN_IF_ERROR(AwaitBuffersReady(ifrt_array));
+    {
+      // AcquireExternalReference may block; there are no API guarantees.
+      GlobalPyRefManager()->CollectGarbage();
+      py::gil_scoped_release gil_release;
+      TF_ASSIGN_OR_RETURN(pack->external_reference,
+                          pjrt_buffer->AcquireExternalReference());
+      if (stream) {
+        TF_RETURN_IF_ERROR(
+            pack->external_reference->WaitUntilBufferReadyOnStream(*stream));
+      } else {
+        TF_RETURN_IF_ERROR(AwaitBuffersReady(ifrt_array));
+      }
     }
     pack->buffer_reference = py::reinterpret_borrow<py::object>(py_buffer);
   }
