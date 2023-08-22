@@ -41,10 +41,10 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
-using ::perftools::gputools::cuda::ScopedActivateExecutorContext;
+using ::stream_executor::cuda::ScopedActivateExecutorContext;
 #elif TENSORFLOW_USE_ROCM
 #include "tensorflow/compiler/xla/stream_executor/rocm/rocm_activation.h"
-using ::perftools::gputools::rocm::ScopedActivateExecutorContext;
+using ::stream_executor::rocm::ScopedActivateExecutorContext;
 #endif
 
 namespace tensorflow {
