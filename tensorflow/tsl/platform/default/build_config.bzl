@@ -446,6 +446,7 @@ def tf_proto_library_cc(
         js_codegen = "jspb",
         create_service = False,
         create_java_proto = False,
+        create_kotlin_proto = False,
         make_default_target_header_only = False):
     js_codegen = js_codegen  # unused argument
     native.filegroup(
@@ -454,7 +455,7 @@ def tf_proto_library_cc(
         testonly = testonly,
         visibility = visibility,
     )
-    _ignore = (create_service, create_java_proto)
+    _ignore = (create_service, create_java_proto, create_kotlin_proto)
 
     use_grpc_plugin = None
     if cc_grpc_version:
@@ -582,6 +583,7 @@ def tf_proto_library(
         js_codegen = "jspb",
         create_service = False,
         create_java_proto = False,
+        create_kotlin_proto = False,
         create_go_proto = False,
         create_grpc_library = False,
         make_default_target_header_only = False,
@@ -596,6 +598,7 @@ def tf_proto_library(
         js_codegen,
         create_service,
         create_java_proto,
+        create_kotlin_proto,
         cc_stubby_versions,
         create_go_proto,
     )
