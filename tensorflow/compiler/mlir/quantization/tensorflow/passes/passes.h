@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 
 namespace mlir {
 namespace quant {
@@ -226,6 +227,11 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateLiftHashTableOpsAsArgsPass();
 // resource ops are considered duplicated if they have the same `shared_name`.
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreateMergeDuplicateResourceOpsPass();
+
+// Apply quantization to weights based on the provided schemes.
+std::unique_ptr<OperationPass<ModuleOp>> CreateQuantizeWeightsPass(
+    const tensorflow::quantization::QuantizationOptions& quant_options);
+
 }  // namespace quant
 }  // namespace mlir
 
