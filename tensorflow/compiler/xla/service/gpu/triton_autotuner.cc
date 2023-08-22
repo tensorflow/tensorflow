@@ -182,7 +182,7 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
     const std::vector<AutotuneResult::TritonGemmKey> configurations =
         GetPossibleMatmulAutotuneConfigs(
             root, stream_exec->GetDeviceDescription().cuda_compute_capability(),
-            config_.ExhaustiveTilingSearch());
+            debug_opts, config_.ExhaustiveTilingSearch());
 
     GpuDeviceInfo gpu_device_info = GetGpuDeviceInfo(config_.GetExecutor());
 
@@ -545,7 +545,7 @@ std::vector<AutotuneResult::TritonGemmKey> GetFixedMatmulAutotuneConfigs(
 std::vector<AutotuneResult::TritonGemmKey> GetPossibleMatmulAutotuneConfigs(
     const HloInstruction& instr,
     const se::CudaComputeCapability compute_capability,
-    bool exhaustive_tiling_search) {
+    const DebugOptions& debug_options, bool exhaustive_tiling_search) {
   // Split-K optimization enables more even utilization of a GPU in cases
   // where tiling just the non-contracting dimensions of a GEMM does not create
   // a sufficient number of thread block programs to occupy all available cores.
@@ -557,8 +557,11 @@ std::vector<AutotuneResult::TritonGemmKey> GetPossibleMatmulAutotuneConfigs(
   // tensor sizes.
   constexpr int kSufficientNumberOfTiles = 500;
   const int max_split_k =
-      std::max(1L, kSufficientNumberOfTiles * kMaxTileSize * kMaxTileSize /
-                       ShapeUtil::ElementsIn(instr.shape()));
+      debug_options.xla_gpu_enable_split_k_autotuning()
+          ? std::max(1L, kSufficientNumberOfTiles * kMaxTileSize *
+                             kMaxTileSize /
+                             ShapeUtil::ElementsIn(instr.shape()))
+          : 1;
   return exhaustive_tiling_search
              ? GetExhaustiveMatmulAutotuneConfigs(compute_capability,
                                                   max_split_k)

@@ -604,7 +604,9 @@ message DebugOptions {
   // backend config after compilation.
   bool xla_gpu_collect_cost_model_stats = 240;
 
-  // Next id: 241
+  bool xla_gpu_enable_split_k_autotuning = 241;
+
+  // Next id: 242
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
