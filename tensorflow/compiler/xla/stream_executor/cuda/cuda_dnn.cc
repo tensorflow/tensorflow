@@ -472,11 +472,10 @@ void CudnnSupport::NotifyStreamDestroyed(Stream* stream) /* override */ {
   cudnn_->NotifyStreamDestroyed(stream);
 }
 
-tsl::StatusOr<perftools::gputools::dnn::VersionInfo>
-CudnnSupport::GetVersion() {
+tsl::StatusOr<stream_executor::dnn::VersionInfo> CudnnSupport::GetVersion() {
   CudnnVersion version;
   TF_RETURN_IF_ERROR(GetLoadedCudnnVersion(&version));
-  return perftools::gputools::dnn::VersionInfo(
+  return stream_executor::dnn::VersionInfo(
       version.major_version, version.minor_version, version.patch_level);
 }
 

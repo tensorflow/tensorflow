@@ -61,6 +61,7 @@ filegroup(
         "tf_file_statistics.h",
         "tf_status.h",
         "tf_tensor.h",
+        "tf_tensor_helper.h",
         "tf_tstring.h",
         "//tensorflow/core/platform:ctstring",
         "//tensorflow/tsl/c:headers",
@@ -104,6 +105,7 @@ cc_library(
         "tf_status_helper.h",
         "tf_buffer_internal.h",
         "tf_status_internal.h",
+        "tf_tensor_helper.h",
         "tf_tensor_internal.h",
         "//tensorflow/tsl/c:tsl_status_internal_headers",
     ],
@@ -498,19 +500,26 @@ cc_library(
 
 cc_library(
     name = "tf_tensor_hdrs",
-    hdrs = ["tf_tensor.h"],
+    hdrs = [
+        "tf_tensor.h",
+        "tf_tensor_helper.h",
+    ],
     visibility = ["//visibility:public"],
     deps = [
         ":c_api_macros_hdrs",
         ":tf_datatype_hdrs",
         ":tf_status_headers",
+        "//tensorflow/core/platform:status",
     ],
 )
 
 cc_library(
     name = "tf_tensor",
     srcs = ["tf_tensor.cc"],
-    hdrs = ["tf_tensor.h"],
+    hdrs = [
+        "tf_tensor.h",
+        "tf_tensor_helper.h",
+    ],
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
@@ -520,6 +529,7 @@ cc_library(
         ":tf_status",
         ":tf_status_helper",
         ":tf_tensor_internal",
+        "//tensorflow/core/platform:status",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
@@ -537,6 +547,7 @@ tf_cuda_library(
     name = "tf_tensor_internal",
     hdrs = [
         "tf_tensor.h",
+        "tf_tensor_helper.h",
         "tf_tensor_internal.h",
     ],
     visibility = ["//tensorflow:internal"],
@@ -545,6 +556,7 @@ tf_cuda_library(
         ":tensor_interface",
         ":tf_datatype",
         ":tf_status",
+        "//tensorflow/core/platform:status",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs

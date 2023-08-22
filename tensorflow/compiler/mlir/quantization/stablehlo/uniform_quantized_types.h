@@ -20,6 +20,7 @@ limitations under the License.
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 
 namespace mlir {
 namespace quant {
@@ -28,9 +29,20 @@ namespace quant {
 // values. The produced type has f32 as its expressed type and i8 as its
 // storage type. The available values use the full range of the storage value,
 // i.e. [-128, 127]. Assumes asymmetric quantization, meaning the zero point
-// values may be nonzero.
-quant::UniformQuantizedType CreateI8F32UniformQuantizedType(
-    Location loc, MLIRContext& context, float scale, int8_t zero_point);
+// values can be non-zero values.
+UniformQuantizedType CreateI8F32UniformQuantizedType(Location loc,
+                                                     MLIRContext& context,
+                                                     float scale,
+                                                     int8_t zero_point);
+
+// Creates a `UniformQuantizedPerAxisType` with the given `scales` and
+// `zero_points` values. The produced type has f32 as its expressed type and
+// i8 as its storage type. The available values use the full range of the
+// storage value, i.e. [-128, 127]. Assumes asymmetric quantization, meaning the
+// zero point values can be non-zero values.
+UniformQuantizedPerAxisType CreateI8F32UniformQuantizedPerAxisType(
+    Location loc, MLIRContext& context, ArrayRef<float> scales,
+    ArrayRef<int8_t> zero_points, int quantization_dimension);
 
 }  // namespace quant
 }  // namespace mlir

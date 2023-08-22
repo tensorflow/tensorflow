@@ -36,6 +36,9 @@ bool IsTFQintType(Type type);
 // is not qint type.
 Type GetIntTypeFromTFQint(Type type);
 
+// Check if an op is TF UniformQuantized op.
+bool IsTFUniformQuantizedOp(Operation *op);
+
 }  // namespace stablehlo
 }  // namespace mlir
 

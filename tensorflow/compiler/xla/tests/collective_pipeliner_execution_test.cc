@@ -34,17 +34,13 @@ namespace {
 
 using CollectivePipelinerExecutionTest = HloTestBase;
 
-// Note: For testing the pipeliner transform, this test uses non-collective
-// operations as stand-ins for collectives. This is sufficient to test the basic
-// correctness of the pipelining transformation.
 StatusOr<bool> RunOptimizer(
     HloModule* module, bool last_run, int64_t level_to_operate_on = 0,
-    HloOpcode op = HloOpcode::kNegate,
+    HloPredicate should_process = HloPredicateIsOp<HloOpcode::kNegate>,
     CollectivePipeliner::PipeliningDirection pipelining_direction =
         CollectivePipeliner::PipeliningDirection::kForward,
     bool pipeline_use_tree = false) {
   CollectivePipeliner::Config config = {
-      /*op=*/op,
       /*level_to_operate_on=*/level_to_operate_on,
       /*max_pipelining_per_loop=*/INT64_MAX,
       /*last_run=*/last_run,
@@ -52,7 +48,7 @@ StatusOr<bool> RunOptimizer(
       /*process_different_sized_ops=*/true,
       /*direction=*/
       pipelining_direction,
-      /*should_process=*/HloPredicateTrue,
+      /*should_process=*/should_process,
   };
 
   HloPassPipeline pass("optimizer");
@@ -743,8 +739,9 @@ ENTRY entry {
   auto module = ParseAndReturnUnverifiedModule(hlo_string).value();
   auto module2 = ParseAndReturnUnverifiedModule(hlo_string).value();
 
-  EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/true, 0,
-                           /*op=*/HloOpcode::kConcatenate,
+  EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/true,
+                           0, /*should_process=*/
+                           HloPredicateIsOp<HloOpcode::kConcatenate>,
                            CollectivePipeliner::PipeliningDirection::kBackward)
                   .value());
   EXPECT_TRUE(RunOptimizer(module2.get(), /*last_run=*/true, 0).value());
@@ -803,11 +800,12 @@ ENTRY entry {
   auto module = ParseAndReturnUnverifiedModule(hlo_string).value();
   auto module2 = ParseAndReturnUnverifiedModule(hlo_string).value();
 
-  EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/true, 0,
-                           /*op=*/HloOpcode::kNegate,
-                           CollectivePipeliner::PipeliningDirection::kForward,
-                           /*pipeline_use_tree=*/true)
-                  .value());
+  EXPECT_TRUE(
+      RunOptimizer(module.get(), /*last_run=*/true, 0,
+                   /*should_process=*/HloPredicateIsOp<HloOpcode::kNegate>,
+                   CollectivePipeliner::PipeliningDirection::kForward,
+                   /*pipeline_use_tree=*/true)
+          .value());
   XLA_VLOG_LINES(1, module->ToString());
   XLA_VLOG_LINES(1, module2->ToString());
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(module), std::move(module2),
@@ -859,11 +857,12 @@ ENTRY entry {
   auto module = ParseAndReturnUnverifiedModule(hlo_string).value();
   auto module2 = ParseAndReturnUnverifiedModule(hlo_string).value();
 
-  EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/true, 0,
-                           /*op=*/HloOpcode::kNegate,
-                           CollectivePipeliner::PipeliningDirection::kForward,
-                           /*pipeline_use_tree=*/true)
-                  .value());
+  EXPECT_TRUE(
+      RunOptimizer(module.get(), /*last_run=*/true, 0,
+                   /*should_process=*/HloPredicateIsOp<HloOpcode::kNegate>,
+                   CollectivePipeliner::PipeliningDirection::kForward,
+                   /*pipeline_use_tree=*/true)
+          .value());
   XLA_VLOG_LINES(1, module->ToString());
   XLA_VLOG_LINES(1, module2->ToString());
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(module), std::move(module2),

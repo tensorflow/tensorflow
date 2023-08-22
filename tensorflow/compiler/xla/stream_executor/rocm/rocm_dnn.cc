@@ -758,10 +758,9 @@ tsl::Status MIOpenSupport::Init() {
                                   ToString(status))};
 }
 
-tsl::StatusOr<perftools::gputools::dnn::VersionInfo>
-MIOpenSupport::GetVersion() {
+tsl::StatusOr<stream_executor::dnn::VersionInfo> MIOpenSupport::GetVersion() {
   // ROCM TODO: retrieve MIOpen version with its API
-  return perftools::gputools::dnn::VersionInfo(1, 3, 0);
+  return stream_executor::dnn::VersionInfo(1, 3, 0);
 }
 
 // Turns a BatchDescriptor structure into a miopen tensor handle within a scope.

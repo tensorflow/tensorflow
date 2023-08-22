@@ -43,6 +43,9 @@ void populateGpu2RuntimePasses(mlir::OpPassManager& pm,
   if (use_graph_api) pm.addPass(createCreateGraphRegionsPass());
   pm.addPass(createConvertToGpu2RuntimePass(thunk_sequence, backend));
   if (use_graph_api) pm.addPass(createFinalizeGraphDispatchesPass());
+
+  // Clean up IR before passing it to IREE compiler.
+  pm.addPass(createCSEPass());
   pm.addPass(createCanonicalizerPass());
 }
 

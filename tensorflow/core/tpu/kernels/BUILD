@@ -5,11 +5,25 @@ load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",
 )
-load("//tensorflow:tensorflow.bzl", "if_libtpu", "tf_cc_test", "tf_copts")
-load("//tensorflow:tensorflow.default.bzl", "tf_grpc_cc_dependencies", "tf_kernel_library")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "if_libtpu",
+    "tf_cc_test",
+    "tf_copts",
+)
+load(
+    "//tensorflow:tensorflow.default.bzl",
+    "tf_grpc_cc_dependencies",
+    "tf_kernel_library",
+)
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
+)
+load(
+    "//tensorflow/core/tpu:build_defs.bzl",
+    "if_libtpu_tf_status",
+    "if_libtpu_tf_tensor",
 )
 
 # Config setting to enable go/libtpu support.
@@ -138,7 +152,6 @@ tf_kernel_library(
         ":tpu_mesh_state_interface",
         ":tpu_op_consts",
         ":tpu_pod_state",
-        "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
@@ -162,7 +175,7 @@ tf_kernel_library(
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-    ],
+    ] + if_libtpu_tf_status(),
     alwayslink = 1,
 )
 
@@ -184,7 +197,6 @@ tf_kernel_library(
         ":tpu_mesh_state_interface",
         ":tpu_op_consts",
         ":tpu_pod_state",
-        "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
@@ -200,7 +212,7 @@ tf_kernel_library(
         "//tensorflow/core/tpu:tpu_configuration",
         "//tensorflow/core/tpu:tpu_defs",
         "@com_google_absl//absl/cleanup",
-    ],
+    ] + if_libtpu_tf_status(),
     alwayslink = 1,
 )
 
@@ -233,7 +245,6 @@ cc_library(
     srcs = ["tpu_embedding_enqueue_ops.cc"],
     hdrs = ["tpu_embedding_enqueue_ops.h"],
     deps = [
-        "//tensorflow/c:tf_tensor_internal",
         "//tensorflow/compiler/xla/stream_executor/tpu:c_api_decl",
         "//tensorflow/compiler/xla/stream_executor/tpu:status_helper",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_api",
@@ -242,8 +253,10 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
+        "//tensorflow/tsl/platform:tstring",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
-    ],
+    ] + if_libtpu_tf_tensor(),
     alwayslink = 1,
 )
 
@@ -1063,14 +1076,13 @@ cc_library(
         ["//tensorflow/core/tpu/kernels:tpu_util"],
     ) + [
         ":tpu_compilation_cache_service",
-        "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/compiler/xla/stream_executor/tpu:status_helper",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_api",
         "//tensorflow/core:framework",
         "//tensorflow/tsl/platform:errors",
         "@com_google_absl//absl/cleanup",
-    ],
+    ] + if_libtpu_tf_status(),
 )
 
 cc_library(

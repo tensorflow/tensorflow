@@ -568,13 +568,18 @@ static std::string_view StreamCaptureModeToString(
 
 #if CUDA_VERSION >= 12000
   CUgraphExecUpdateResultInfo cu_result;
-  RETURN_IF_CUDA_RES_ERROR(cuGraphExecUpdate(exec, graph, &cu_result),
-                           "Failed to update CUDA graph");
+  memset(&cu_result, 0, sizeof(cu_result));
+  CUresult err_code = cuGraphExecUpdate(exec, graph, &cu_result);
   auto cu_result_enum = cu_result.result;
+  if (cu_result.errorFromNode) {
+    result->error_from_node = cu_result.errorFromNode;
+  }
+  if (cu_result.errorNode) {
+    result->error_node = cu_result.errorNode;
+  }
 #else
   CUgraphExecUpdateResult cu_result;
-  RETURN_IF_CUDA_RES_ERROR(cuGraphExecUpdate(exec, graph, nullptr, &cu_result),
-                           "Failed to update CUDA graph");
+  CUresult err_code = cuGraphExecUpdate(exec, graph, nullptr, &cu_result);
   auto cu_result_enum = cu_result;
 #endif  // CUDA_VERSION >= 12000
 
@@ -609,6 +614,7 @@ static std::string_view StreamCaptureModeToString(
       break;
   }
 
+  RETURN_IF_CUDA_RES_ERROR(err_code, "Failed to update CUDA graph");
   return ::tsl::OkStatus();
 }
 

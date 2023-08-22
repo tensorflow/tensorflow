@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,26 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PYTHON_LIB_CORE_BFLOAT16_H_
-#define TENSORFLOW_PYTHON_LIB_CORE_BFLOAT16_H_
+#ifndef TENSORFLOW_C_TF_TENSOR_HELPER_H_
+#define TENSORFLOW_C_TF_TENSOR_HELPER_H_
 
-#include <Python.h>
-
-#include "tensorflow/tsl/python/lib/core/ml_dtypes.h"
+#include "tensorflow/c/tf_tensor.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 
-// Deprecated, use underlying methods.
-inline PyObject* Bfloat16Dtype() { return tsl::ml_dtypes::GetBfloat16Dtype(); }
+class Tensor;
 
-inline int Bfloat16NumpyType() { return tsl::ml_dtypes::GetBfloat16TypeNum(); }
+Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
 
-inline bool RegisterNumpyBfloat16() { return tsl::ml_dtypes::RegisterTypes(); }
+TF_Tensor* TF_TensorFromTensor(const Tensor& src, Status* status);
 
-inline PyObject* Float8_E4M3B11Dtype() {
-  return tsl::ml_dtypes::GetFloat8E4m3b11fnuzDtype();
-}
+TF_Tensor* TF_TensorFromTensorShallow(const Tensor& src, Status* status);
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_PYTHON_LIB_CORE_BFLOAT16_H_
+#endif  // TENSORFLOW_C_TF_TENSOR_HELPER_H_

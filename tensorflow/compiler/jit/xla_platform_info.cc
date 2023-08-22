@@ -271,27 +271,10 @@ Status BuildXlaDeviceCompiler(DeviceBase* device, FunctionLibraryRuntime* flr,
 }
 
 Status GetOrCreatePjRtDeviceCompilerAndProfiler(
-    const OpKernelContext& ctx, const XlaPlatformInfo& platform_info,
+    const XlaPlatformInfo& platform_info, ResourceMgr* rm,
     FunctionLibraryRuntime* flr, PjRtDeviceCompiler** pjrt_device_compiler,
     DeviceCompilationProfiler** profiler) {
   const auto& device_type = platform_info.device_type();
-
-  // We store information about the JIT-compiled XLA computation in the
-  // ResourceMgr. The DeviceCompiler (which contains the DeviceCompilationCache)
-  // is stored in the tfrt_global ResourceMgr for TPU and the Device ResourceMgr
-  // for CPU/GPU. This is to make sure the DeviceCompiler's lifecycle is
-  // maintained appropriately.
-  ResourceMgr* rm = nullptr;
-  if (device_type == DEVICE_TPU) {
-    rm = tfrt_global::GetTFGlobalResourceMgr();
-  } else {
-    rm = ctx.resource_manager();
-  }
-
-  if (!rm) {
-    return absl::InternalError("No resource manager found.");
-  }
-
   const std::string& compiler_name =
       GetPjRtDeviceCompilerResourceName(device_type);
 
@@ -323,6 +306,18 @@ Status GetOrCreatePjRtDeviceCompilerAndProfiler(
       }));
 
   return OkStatus();
+}
+
+Status GetOrCreatePjRtDeviceCompilerAndProfiler(
+    const OpKernelContext& ctx, const XlaPlatformInfo& platform_info,
+    FunctionLibraryRuntime* flr,
+    DeviceCompiler<xla::PjRtLoadedExecutable, xla::PjRtClient>**
+        pjrt_device_compiler,
+    DeviceCompilationProfiler** profiler) {
+  TF_ASSIGN_OR_RETURN(ResourceMgr * rm, GetResourceMgrForDeviceCompiler(
+                                            ctx, platform_info.device_type()));
+  return GetOrCreatePjRtDeviceCompilerAndProfiler(
+      platform_info, rm, flr, pjrt_device_compiler, profiler);
 }
 
 XlaPlatformInfo XlaPlatformInfoFromDevice(DeviceBase* device_base) {

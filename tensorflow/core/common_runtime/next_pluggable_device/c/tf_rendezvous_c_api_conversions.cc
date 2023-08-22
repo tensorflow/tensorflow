@@ -103,6 +103,7 @@ TF_RendezvousParsedKey ToC(const RendezvousInterface::ParsedKey& key) {
   c_key.full_key_size = full_key.size();
   c_key.full_key = new char[c_key.full_key_size + 1];
   std::strncpy(c_key.full_key, full_key.data(), c_key.full_key_size);
+  c_key.full_key[c_key.full_key_size] = 0;
   return c_key;
 }
 
@@ -118,14 +119,11 @@ void Destroy(TF_RendezvousParsedKey* c_key) { delete[] c_key->full_key; }
 namespace {
 
 using SendParamDeleter = std::function<void(TF_RendezvousSend_Params*)>;
-using RecvParamDeleter = std::function<void(TF_RendezvousAsyncRecv_Params*)>;
 using DoneCallbackParamDeleter =
     std::function<void(TF_RendezvousDoneCallback_Params*)>;
 
 using SendParamPtr =
     std::unique_ptr<TF_RendezvousSend_Params, SendParamDeleter>;
-using RecvParamPtr =
-    std::unique_ptr<TF_RendezvousAsyncRecv_Params, RecvParamDeleter>;
 using DoneCallbackParamPtr =
     std::unique_ptr<TF_RendezvousDoneCallback_Params, DoneCallbackParamDeleter>;
 
@@ -133,11 +131,6 @@ SendParamDeleter MakeSendParamDeleter();
 StatusOr<SendParamPtr> SendParamsToC(const RendezvousInterface::ParsedKey& key,
                                      const RendezvousInterface::Args& args,
                                      const Tensor& tensor, bool is_dead);
-
-RecvParamDeleter MakeRecvParamDeleter();
-RecvParamPtr RecvParamsToC(const RendezvousInterface::ParsedKey& key,
-                           const RendezvousInterface::Args& args,
-                           RendezvousInterface::DoneCallback on_done);
 
 DoneCallbackParamDeleter MakeDoneCallbackParamDeleter();
 StatusOr<DoneCallbackParamPtr> DoneCallbackParamsToC(
@@ -173,9 +166,7 @@ TF_RendezvousDoneCallbackImpl ToC(
         auto sender_args = FromC(*params->sender_args);
         auto recver_args = FromC(*params->recver_args);
         Tensor tensor;
-        if (status.ok()) {
-          status = TF_TensorToTensor(params->tensor, &tensor);
-        }
+        CopyTF_TensorToTensor(params->tensor, &tensor);
         on_done(status, sender_args, recver_args, tensor, params->is_dead);
       });
   done_func.context = static_cast<void*>(c_callback);
@@ -253,7 +244,7 @@ SendParamDeleter MakeSendParamDeleter() {
     Destroy(args);
     delete params->key;
     delete params->args;
-    delete params->tensor;
+    TF_DeleteTensor(params->tensor);
     TF_DeleteStatus(params->status);
     delete params;
   };
@@ -267,17 +258,12 @@ StatusOr<SendParamPtr> SendParamsToC(const RendezvousInterface::ParsedKey& key,
   params->args = new TF_RendezvousArgsStruct(ToC(args));
   params->is_dead = is_dead;
   params->status = TF_NewStatus();
-  Status tensor_status;
-  params->tensor = TF_TensorFromTensor(tensor, &tensor_status);
-  if (!tensor_status.ok()) {
-    MakeSendParamDeleter()(params);
-    return tensor_status;
-  }
+  params->tensor = CopyTensorToTF_Tensor(tensor);
   return SendParamPtr(params, MakeSendParamDeleter());
 }
 
-RecvParamDeleter MakeRecvParamDeleter() {
-  return [](TF_RendezvousAsyncRecv_Params* params) {
+struct RecvParamDeleter {
+  void operator()(TF_RendezvousAsyncRecv_Params* params) {
     if (params == nullptr) {
       return;
     }
@@ -291,18 +277,8 @@ RecvParamDeleter MakeRecvParamDeleter() {
     delete params->key;
     delete params->args;
     delete params;
-  };
-}
-
-RecvParamPtr RecvParamsToC(const RendezvousInterface::ParsedKey& key,
-                           const RendezvousInterface::Args& args,
-                           RendezvousInterface::DoneCallback on_done) {
-  TF_RendezvousAsyncRecv_Params* params = new TF_RendezvousAsyncRecv_Params();
-  params->key = new TF_RendezvousParsedKey(ToC(key));
-  params->args = new TF_RendezvousArgsStruct(ToC(args));
-  params->on_done = ToC(on_done);
-  return RecvParamPtr(params, MakeRecvParamDeleter());
-}
+  }
+};
 
 DoneCallbackParamDeleter MakeDoneCallbackParamDeleter() {
   return [](TF_RendezvousDoneCallback_Params* params) {
@@ -357,7 +333,6 @@ TF_RendezvousSenderImpl BindSendFunction(RendezvousInterface* rendezvous) {
   using SendFunction = std::function<void(TF_RendezvousSend_Params*)>;
   auto sender =
       new SendFunction([rendezvous](TF_RendezvousSend_Params* params) -> void {
-        printf("Calling SendFunction");
         RendezvousInterface::ParsedKey key = FromC(*params->key);
         RendezvousInterface::Args args = FromC(*params->args);
         Tensor tensor;
@@ -369,6 +344,8 @@ TF_RendezvousSenderImpl BindSendFunction(RendezvousInterface* rendezvous) {
         } else {
           tsl::Set_TF_Status_from_Status(params->status, tensor_status);
         }
+        // Releases TfCThunkDeviceContext allocated in FromC().
+        args.device_context->Unref();
       });
   send_func.context = static_cast<void*>(sender);
   send_func.send_func = SendFunctionThunk;
@@ -390,7 +367,16 @@ TF_RendezvousAsyncRecverImpl BindAsyncRecvFunction(
       [rendezvous](TF_RendezvousAsyncRecv_Params* params) -> void {
         RendezvousInterface::ParsedKey key = FromC(*params->key);
         RendezvousInterface::Args args = FromC(*params->args);
-        RendezvousInterface::DoneCallback on_done = FromC(params->on_done);
+        RendezvousInterface::DoneCallback on_done =
+            [device_context = args.device_context, on_done = params->on_done](
+                const Status& status,
+                const RendezvousInterface::Args& send_args,
+                const RendezvousInterface::Args& recv_args,
+                const Tensor& tensor, const bool is_dead) {
+              FromC(on_done)(status, send_args, recv_args, tensor, is_dead);
+              // Releases TfCThunkDeviceContext allocated in FromC().
+              device_context->Unref();
+            };
         rendezvous->RecvAsync(key, args, on_done);
       });
   recv_func.context = static_cast<void*>(recver);
@@ -456,9 +442,21 @@ Status TfCThunkRendezvous::Send(const ParsedKey& key, const Args& args,
 
 void TfCThunkRendezvous::RecvAsync(const ParsedKey& key, const Args& args,
                                    DoneCallback done) {
-  RecvParamPtr params = RecvParamsToC(key, args, done);
+  TF_RendezvousAsyncRecv_Params* params = new TF_RendezvousAsyncRecv_Params();
+  params->key = new TF_RendezvousParsedKey(ToC(key));
+  params->args = new TF_RendezvousArgsStruct(ToC(args));
+  params->on_done =
+      ToC([done = std::move(done), params](
+              const absl::Status& status,
+              const tensorflow::RendezvousInterface::Args& send_args,
+              const tensorflow::RendezvousInterface::Args& recv_args,
+              const tensorflow::Tensor& tensor, bool is_dead) {
+        done(status, send_args, recv_args, tensor, is_dead);
+        RecvParamDeleter()(params);
+      });
+
   const TF_RendezvousAsyncRecverImpl& async_recv = thunk_->async_recv;
-  async_recv.async_recv_func(async_recv.context, params.get());
+  async_recv.async_recv_func(async_recv.context, params);
 }
 
 void TfCThunkRendezvous::StartAbort(const Status& status) {

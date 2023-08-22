@@ -295,6 +295,7 @@ xla_cc_test(
         ":pjrt_client",
         ":pjrt_compiler",
         "//tensorflow/compiler/xla/client:xla_computation",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
     ],
 )

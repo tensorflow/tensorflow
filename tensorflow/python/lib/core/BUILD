@@ -27,32 +27,13 @@ package(
     licenses = ["notice"],
 )
 
-# Deprecated, use //third_party/tensorflow/tsl/python/lib/core:ml_dtypes_lib
-cc_library(
-    name = "bfloat16_lib",
-    hdrs = [
-        "bfloat16.h",
-    ],
-    deprecation = "Please use //third_party/tensorflow/tsl/python/lib/core:ml_dtypes_lib",
-    visibility = visibility + [
-        "//third_party/courier:__subpackages__",
-        "//third_party/py/courier:__subpackages__",
-    ],
-    deps = [
-        "//tensorflow/tsl/python/lib/core:ml_dtypes_lib",
-        "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
-    ],
-)
-
 cc_library(
     name = "ndarray_tensor_bridge",
     srcs = ["ndarray_tensor_bridge.cc"],
     hdrs = ["ndarray_tensor_bridge.h"],
-    visibility = tf_external_workspace_visible(
-        visibility + [
-            "//tensorflow:ndarray_tensor_allow_list",
-        ],
-    ),
+    visibility = tf_external_workspace_visible(visibility + [
+        "//tensorflow:ndarray_tensor_allow_list",
+    ]),
     deps = [
         ":py_util",
         "//tensorflow/c:c_api_no_xla",

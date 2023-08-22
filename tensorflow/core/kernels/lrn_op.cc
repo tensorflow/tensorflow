@@ -257,14 +257,14 @@ struct LaunchLRN<GPUDevice, T> {
                                                    transformed_output_shape,
                                                    &transformed_output));
 
-    perftools::gputools::dnn::BatchDescriptor dimensions_desc;
+    stream_executor::dnn::BatchDescriptor dimensions_desc;
     dimensions_desc.set_count(batch)
         .set_height(rows)
         .set_width(cols)
         .set_feature_map_count(depth)
-        .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
+        .set_layout(stream_executor::dnn::DataLayout::kBatchDepthYX);
 
-    perftools::gputools::dnn::NormalizeDescriptor normalize_desc;
+    stream_executor::dnn::NormalizeDescriptor normalize_desc;
     normalize_desc.set_bias(bias_)
         .set_range(depth_radius_)
         .set_alpha(alpha_)
@@ -579,14 +579,14 @@ struct LaunchLRNGrad<GPUDevice, T> {
                                                    transformed_output_shape,
                                                    &transformed_output));
 
-    perftools::gputools::dnn::BatchDescriptor dimensions_desc;
+    stream_executor::dnn::BatchDescriptor dimensions_desc;
     dimensions_desc.set_count(batch)
         .set_height(rows)
         .set_width(cols)
         .set_feature_map_count(depth)
-        .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
+        .set_layout(stream_executor::dnn::DataLayout::kBatchDepthYX);
 
-    perftools::gputools::dnn::NormalizeDescriptor normalize_desc;
+    stream_executor::dnn::NormalizeDescriptor normalize_desc;
     normalize_desc.set_bias(bias_)
         .set_range(depth_radius_)
         .set_alpha(alpha_)

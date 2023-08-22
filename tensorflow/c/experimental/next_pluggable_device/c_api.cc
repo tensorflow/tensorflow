@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/c/experimental/next_pluggable_device/c_api.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -204,19 +205,21 @@ bool TF_CoordinationServiceIsInitialized(TF_CoordinationServiceAgent* agent) {
   return cc_agent->IsInitialized();
 }
 
-void TF_CoordinationServiceInsertKeyValue(const char* key, const char* value,
+void TF_CoordinationServiceInsertKeyValue(const char* key, int64_t key_size,
+                                          const char* value, int64_t value_size,
                                           TF_CoordinationServiceAgent* agent,
                                           TF_Status* status) {
   auto* cc_agent = reinterpret_cast<tsl::CoordinationServiceAgent*>(agent);
-  tsl::Status cc_status = cc_agent->InsertKeyValue(key, value);
+  absl::Status cc_status =
+      cc_agent->InsertKeyValue(key, key_size, value, value_size);
   tsl::Set_TF_Status_from_Status(status, cc_status);
 }
 
-TF_Buffer* TF_CoordinationServiceGetKeyValue(const char* key,
+TF_Buffer* TF_CoordinationServiceGetKeyValue(const char* key, int64_t key_size,
                                              TF_CoordinationServiceAgent* agent,
                                              TF_Status* status) {
   auto* cc_agent = reinterpret_cast<tsl::CoordinationServiceAgent*>(agent);
-  auto value = cc_agent->GetKeyValue(key);
+  auto value = cc_agent->GetKeyValue(key, key_size);
   tsl::Set_TF_Status_from_Status(status, value.status());
   if (!value.ok()) {
     return nullptr;
@@ -232,11 +235,11 @@ TF_Buffer* TF_CoordinationServiceGetKeyValue(const char* key,
   return result;
 }
 
-void TF_CoordinationServiceDeleteKeyValue(const char* key,
+void TF_CoordinationServiceDeleteKeyValue(const char* key, int64_t key_size,
                                           TF_CoordinationServiceAgent* agent,
                                           TF_Status* status) {
   auto* cc_agent = reinterpret_cast<tsl::CoordinationServiceAgent*>(agent);
-  tsl::Status cc_status = cc_agent->DeleteKeyValue(key);
+  absl::Status cc_status = cc_agent->DeleteKeyValue(key, key_size);
   tsl::Set_TF_Status_from_Status(status, cc_status);
 }
 

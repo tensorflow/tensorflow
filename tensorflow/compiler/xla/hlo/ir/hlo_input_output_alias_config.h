@@ -193,8 +193,7 @@ class HloBufferDonorConfig {
       const HloBufferDonorProto& proto);
 
   // Verifies that the given config is valid for the given module.
-  // The config's input should be in-bound and this config cannot overlap with
-  // the given module's input_output_alias_config.
+  // Specifically, the config's input should be in-bound.
   Status Verify(const HloModule& module) const;
 
   // Returns the registered buffer donors

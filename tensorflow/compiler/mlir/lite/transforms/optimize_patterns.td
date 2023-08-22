@@ -452,6 +452,9 @@ def IsLastDimEqualToNumElements : Constraint<CPred<
 def IsDefinedByFullyConnectedOp : Constraint<CPred<
   "$0.getDefiningOp<TFL::FullyConnectedOp>() != nullptr">>;
 
+def IsDefinedByConv2DOp : Constraint<CPred<
+  "$0.getDefiningOp<TFL::Conv2DOp>() != nullptr">>;
+
 // Returns true if the supplied value-
 // 1) Has only one use or
 // 2) Is only used by binary op like AddOp, SubOp, MulOp or DivOp.
@@ -750,6 +753,18 @@ def UndoBroadcastFullyConnectedBiasAdd : Pat<
    (HasRankAtMost<4> $bias),
    (HasRankAtLeast<2> $bias),
    (IsDefinedByFullyConnectedOp $rhs)]>;
+
+// TODO(b/294385379): This pattern only appears when we convert
+// from shlo due to differences in broadcasting behavior.
+def UndoBroadcastConvBiasAdd : Pat<
+  (TFL_AddOp $rhs, (Arith_ConstantOp:$const_op $bias), TFL_AF_None),
+  (TFL_AddOp $rhs, (Arith_ConstantOp (FlattenTo1D $bias)), TFL_AF_None),
+  [(AnyStaticShapeTensor $rhs),
+   (IsLastDimEqualToNumElements $bias, $bias),
+   (HasOneUse $const_op),
+   (HasRankAtMost<4> $bias),
+   (HasRankAtLeast<2> $bias),
+   (IsDefinedByConv2DOp $rhs)]>;
 
 // Function to map final permutation to initial permutation
 // initial -> permutation1 -> permutation2 -> final

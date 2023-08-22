@@ -392,9 +392,6 @@ cc_library(
         # JIT compilation kernels need access to fallback state to set up
         # Eigen thread pool as async runtime worker threads.
         "//tensorflow/compiler/mlir/tfrt:__pkg__",
-        # TPU runtime needs to access fallback state to configure MLIR bridge
-        # rollout state
-        "//third_party/tf_runtime_google:__pkg__",
         # Sync fallback kernels need access to the fallback state.
         "//learning/brain/experimental/tfrt/native_lowering/kernels:__subpackages__",
         "//tensorflow/core/tfrt/graph_executor:__subpackages__",

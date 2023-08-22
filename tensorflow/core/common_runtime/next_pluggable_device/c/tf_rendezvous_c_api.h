@@ -49,7 +49,7 @@ typedef struct TF_RendezvousParsedKey {
 typedef struct TF_RendezvousSend_Params {
   const TF_RendezvousParsedKey* key;
   const TF_RendezvousArgsStruct* args;
-  const TF_Tensor* tensor;
+  TF_Tensor* tensor;
   bool is_dead;
 
   TF_Status* status;  // out

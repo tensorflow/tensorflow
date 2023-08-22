@@ -78,6 +78,11 @@ class BufferSequencingEvent {
   // called, blocks the calling thread until the event has been recorded.
   void WaitForEventOnStream(se::Stream* stream);
 
+  // Same as WaitForEventOnStream, but takes a raw platform-specific
+  // stream. Currently on implemented for CUDA and ROCM GPU, where stream is a
+  // GpuStreamHandle (e.g. a cudaStream_t).
+  Status WaitForEventOnExternalStream(std::intptr_t stream);
+
   // Returns true if the event is known to have occurred by the tail of
   // 'stream'. If RecordOnStream has not yet been called, blocks the calling
   // thread until the event has been recorded.

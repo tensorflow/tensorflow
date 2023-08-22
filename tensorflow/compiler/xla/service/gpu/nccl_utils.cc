@@ -154,17 +154,6 @@ std::shared_ptr<StatusOr<NcclClique::Lock>> AcquireNcclClique(
     size_t num_local_participants) {
   static auto& cliques = *new ThreadSafeMap<NcclCliqueKey, NcclClique>;
 
-  // RendezvousSingle should only be used to guard nccl communicator
-  // initialization. Return the clique state when we are done with such
-  // initialization.
-  {
-    // Destruct clique if it hasn't been notified.
-    NcclClique::Lock clique = cliques[clique_key].Acquire();
-    if (clique->ready.HasBeenNotified() && clique->run_id == run_id.ToInt()) {
-      return std::make_shared<StatusOr<NcclClique::Lock>>(std::move(clique));
-    }
-  }
-
   VLOG(2) << "AcquireNcclClique Rendezvous key (clique_key:"
           << clique_key.ToString() << ", run" << run_id.ToString() << ", op"
           << op_id.value() << ")";

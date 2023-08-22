@@ -45,6 +45,7 @@ namespace mlir {
 namespace odml {
 namespace {
 
+using ::mlir::quant::CreateI8F32UniformQuantizedPerAxisType;
 using ::mlir::quant::CreateI8F32UniformQuantizedType;
 using ::mlir::quant::UniformQuantizedPerAxisType;
 using ::mlir::quant::UniformQuantizedType;
@@ -97,20 +98,6 @@ bool IsI32ToF32Cast(stablehlo::ConvertOp convert_op) {
   const bool is_f32_result =
       convert_op.getResult().getType().getElementType().isa<Float32Type>();
   return is_i32_operand && is_f32_result;
-}
-
-// Creates a `UniformQuantizedPerAxisType` with the given `scales` and
-// `zero_points` values. The produced type has f32 as its expressed type and
-// i8 as its storage type with default storage type min and max values, set to
-// -128 and 127, respectively.
-UniformQuantizedPerAxisType CreateI8F32UniformQuantizedPerAxisType(
-    Location loc, PatternRewriter& rewriter, const ArrayRef<double> scales,
-    const ArrayRef<int64_t> zero_points, const int quantization_dimension) {
-  return UniformQuantizedPerAxisType::getChecked(
-      loc, /*flags=*/true, /*storageType=*/rewriter.getI8Type(),
-      /*expressedType=*/rewriter.getF32Type(), scales, zero_points,
-      /*quantizedDimension=*/quantization_dimension, /*storageTypeMin=*/-128,
-      /*storageTypeMax=*/127);
 }
 
 // Matches the zero points operand for the uniform_quantize and
@@ -735,7 +722,7 @@ class ComposeUniformQuantizedConvolutionOp
     auto combined_scale_constant_op = cast<stablehlo::ConstantOp>(
         scale_combined_broadcast_in_dim_op.getOperand().getDefiningOp());
 
-    SmallVector<double> filter_scale_values;
+    SmallVector<float> filter_scale_values;
     for (const auto combined_scale_value : combined_scale_constant_op.getValue()
                                                .cast<DenseFPElementsAttr>()
                                                .getValues<float>()) {
@@ -745,7 +732,7 @@ class ComposeUniformQuantizedConvolutionOp
     }
 
     // Assumes it is symmetric.
-    SmallVector<int64_t> filter_zero_point_values(
+    SmallVector<int8_t> filter_zero_point_values(
         /*Size=*/filter_scale_values.size(), /*Value=*/0);
 
     // Use quantization dimension = 3 that corresponds to the output channel
@@ -753,10 +740,10 @@ class ComposeUniformQuantizedConvolutionOp
     // TODO: b/291029962 - Lift the assumption above and retrieve the
     // quantization dimension from the `dimension_numbers` attribute.
     UniformQuantizedPerAxisType filter_quantized_element_type =
-        CreateI8F32UniformQuantizedPerAxisType(filter_op->getLoc(), rewriter,
-                                               filter_scale_values,
-                                               filter_zero_point_values,
-                                               /*quantization_dimension=*/3);
+        CreateI8F32UniformQuantizedPerAxisType(
+            filter_op->getLoc(), *rewriter.getContext(), filter_scale_values,
+            filter_zero_point_values,
+            /*quantization_dimension=*/3);
 
     // Create a new constant op for the filter in i8.
     auto quantized_filter_constant_op = rewriter.create<stablehlo::ConstantOp>(
@@ -1087,7 +1074,7 @@ class ComposeUniformQuantizedDotGeneralOp
     // s1 * s2
     auto merged_scale_constant_op =
         cast<stablehlo::ConstantOp>(multiply_op_second_operand.getDefiningOp());
-    SmallVector<double> filter_scale_values;
+    SmallVector<float> filter_scale_values;
     for (const auto merged_scale : merged_scale_constant_op.getValue()
                                        .cast<DenseFPElementsAttr>()
                                        .getValues<float>()) {
@@ -1095,7 +1082,7 @@ class ComposeUniformQuantizedDotGeneralOp
       filter_scale_values.push_back(merged_scale * input_inverse_scale_value);
     }
 
-    SmallVector<int64_t> filter_zero_point_values(
+    SmallVector<int8_t> filter_zero_point_values(
         /*Size=*/filter_scale_values.size(), /*Value=*/0);
 
     const int quantization_dimension = GetFilterQuantizationDimension(
@@ -1103,8 +1090,9 @@ class ComposeUniformQuantizedDotGeneralOp
         filter_value_attr.getType().cast<TensorType>().getRank());
     const UniformQuantizedPerAxisType filter_uniform_quantized_type =
         CreateI8F32UniformQuantizedPerAxisType(
-            filter_constant_op.getLoc(), rewriter, filter_scale_values,
-            filter_zero_point_values, quantization_dimension);
+            filter_constant_op.getLoc(), *rewriter.getContext(),
+            filter_scale_values, filter_zero_point_values,
+            quantization_dimension);
 
     // Create a new constant op for the filter in i8.
     auto quantized_filter_constant_op = rewriter.create<stablehlo::ConstantOp>(

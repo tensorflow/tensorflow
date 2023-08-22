@@ -38,7 +38,7 @@ typedef struct TF_DeviceContext_CopyCPUTensorToDevice_Params {
   TF_Tensor* cpu_tensor;
   // API for `Device` is not available.
   // Device* device;
-  TF_Tensor* device_tensor;
+  TF_Tensor* device_tensor;  // out
   TF_StatusCallback* done;
   bool sync_dst_compute;
 } TF_DeviceContext_CopyCPUTensorToDevice_Params;
@@ -58,7 +58,7 @@ typedef struct TF_DeviceContext_CopyDeviceTensorToCPU_Params {
   // API for `Device` is not available.
   // Device* device;
   uint32_t tensor_name_len;
-  TF_Tensor* cpu_tensor;
+  TF_Tensor* cpu_tensor;  // out
   TF_StatusCallback* done;
 } TF_DeviceContext_CopyDeviceTensorToCPU_Params;
 
@@ -75,7 +75,7 @@ typedef struct TF_DeviceContext_CopyTensorInSameDevice_Params {
   TF_Tensor* input_tensor;
   // API for `Device` is not available.
   // Device* device;
-  TF_Tensor* output_tensor;
+  TF_Tensor* output_tensor;  // out
   TF_StatusCallback* done;
 } TF_DeviceContext_CopyTensorInSameDevice_Params;
 

@@ -53,7 +53,7 @@ extern "C" {
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 21
+#define PJRT_API_MINOR 23
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -692,6 +692,10 @@ struct PJRT_Client_BufferFromHostBuffer_Args {
 
   // Device to copy host data to.
   PJRT_Device* device;
+
+  // If nullptr, host data will be copied to `device`, otherwise we copy data to
+  // `memory`.
+  PJRT_Memory* memory;
 
   // The caller is responsible to keep the data (tiled or strides) in the
   // device_layout alive during the call. If nullptr, the device layout is
@@ -1846,6 +1850,30 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_TopologyDescription_GetDeviceDescriptions_Args,
 typedef PJRT_Error* PJRT_TopologyDescription_GetDeviceDescriptions(
     PJRT_TopologyDescription_GetDeviceDescriptions_Args* args);
 
+typedef struct PJRT_SerializedTopology PJRT_SerializedTopology;
+
+struct PJRT_TopologyDescription_Serialize_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_TopologyDescription* topology;
+
+  // Lives only as long as serialized_topology.
+  const char* serialized_bytes;  // out
+  size_t serialized_bytes_size;  // out
+
+  PJRT_SerializedTopology* serialized_topology;  // out
+  // Must be called exactly once to free the backing memory for
+  // serialized_bytes.
+  void (*serialized_topology_deleter)(
+      PJRT_SerializedTopology* serialized_topology);  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_TopologyDescription_Serialize_Args,
+                          serialized_topology_deleter);
+
+// Serializes the TopologyDescription to a string for use in cache keys.
+typedef PJRT_Error* PJRT_TopologyDescription_Serialize(
+    PJRT_TopologyDescription_Serialize_Args* args);
+
 struct PJRT_Compile_Args {
   size_t struct_size;
   void* priv;
@@ -1977,6 +2005,7 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_PlatformName);
   _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_PlatformVersion);
   _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_GetDeviceDescriptions);
+  _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_Serialize);
 
   _PJRT_API_STRUCT_FIELD(PJRT_Compile);
 } PJRT_Api;

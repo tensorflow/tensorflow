@@ -757,6 +757,11 @@ tsl::Status StreamExecutor::WaitForEvent(Stream* stream, Event* event) {
   return implementation_->WaitForEvent(stream, event);
 }
 
+tsl::Status StreamExecutor::WaitForEventOnExternalStream(std::intptr_t stream,
+                                                         Event* event) {
+  return implementation_->WaitForEventOnExternalStream(stream, event);
+}
+
 Event::Status StreamExecutor::PollForEventStatus(Event* event) {
   return implementation_->PollForEventStatus(event);
 }

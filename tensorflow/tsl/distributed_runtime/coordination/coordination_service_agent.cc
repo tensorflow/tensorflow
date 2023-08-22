@@ -93,6 +93,7 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
   Status Reset() override;
 
   StatusOr<std::string> GetKeyValue(const std::string& key) override;
+  StatusOr<std::string> GetKeyValue(const char* key, int64_t key_size) override;
   StatusOr<std::string> GetKeyValue(const std::string& key,
                                     absl::Duration timeout) override;
   std::shared_ptr<CallOptions> GetKeyValueAsync(
@@ -104,7 +105,10 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
                            StatusOrValueDirCallback done) override;
   Status InsertKeyValue(const std::string& key,
                         const std::string& value) override;
+  Status InsertKeyValue(const char* key, int64_t key_size, const char* value,
+                        int64_t value_size) override;
   Status DeleteKeyValue(const std::string& key) override;
+  Status DeleteKeyValue(const char* key, int64_t key_size) override;
   Status UpdateKeyValue(const std::string& key,
                         const std::string& value) override;
 
@@ -567,6 +571,11 @@ StatusOr<std::string> CoordinationServiceAgentImpl::GetKeyValue(
 }
 
 StatusOr<std::string> CoordinationServiceAgentImpl::GetKeyValue(
+    const char* key, int64_t key_size) {
+  return GetKeyValue(std::string(key, key_size));
+}
+
+StatusOr<std::string> CoordinationServiceAgentImpl::GetKeyValue(
     const std::string& key, absl::Duration timeout) {
   auto n = std::make_shared<absl::Notification>();
   auto result = std::make_shared<StatusOr<std::string>>();
@@ -703,6 +712,14 @@ Status CoordinationServiceAgentImpl::InsertKeyValue(const std::string& key,
   return status;
 }
 
+Status CoordinationServiceAgentImpl::InsertKeyValue(const char* key,
+                                                    int64_t key_size,
+                                                    const char* value,
+                                                    int64_t value_size) {
+  return InsertKeyValue(std::string(key, key_size),
+                        std::string(value, value_size));
+}
+
 Status CoordinationServiceAgentImpl::DeleteKeyValue(const std::string& key) {
   DeleteKeyValueRequest request;
   request.set_key(key);
@@ -719,6 +736,11 @@ Status CoordinationServiceAgentImpl::DeleteKeyValue(const std::string& key) {
   n.WaitForNotification();
   VLOG(3) << "DeleteKeyValueResponse " << status;
   return OkStatus();
+}
+
+Status CoordinationServiceAgentImpl::DeleteKeyValue(const char* key,
+                                                    int64_t key_size) {
+  return DeleteKeyValue(std::string(key, key_size));
 }
 
 Status CoordinationServiceAgentImpl::UpdateKeyValue(const std::string& key,

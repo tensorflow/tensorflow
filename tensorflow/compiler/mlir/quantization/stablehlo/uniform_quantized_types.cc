@@ -21,11 +21,12 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 
 namespace mlir {
 namespace quant {
 
-UniformQuantizedType CreateI8F32UniformQuantizedType(Location loc,
+UniformQuantizedType CreateI8F32UniformQuantizedType(const Location loc,
                                                      MLIRContext& context,
                                                      const float scale,
                                                      const int8_t zero_point) {
@@ -34,6 +35,18 @@ UniformQuantizedType CreateI8F32UniformQuantizedType(Location loc,
       /*storageType=*/IntegerType::get(&context, /*width=*/8),
       /*expressedType=*/FloatType::getF32(&context), scale, zero_point,
       /*storageTypeMin=*/llvm::minIntN(8), /*storageTypeMax=*/llvm::maxIntN(8));
+}
+
+UniformQuantizedPerAxisType CreateI8F32UniformQuantizedPerAxisType(
+    const Location loc, MLIRContext& context, const ArrayRef<float> scales,
+    const ArrayRef<int8_t> zero_points, const int quantization_dimension) {
+  return UniformQuantizedPerAxisType::getChecked(
+      loc, /*flags=*/QuantizationFlags::Signed,
+      /*storageType=*/IntegerType::get(&context, /*width=*/8),
+      /*expressedType=*/FloatType::getF32(&context),
+      SmallVector<double>(scales), SmallVector<int64_t>(zero_points),
+      quantization_dimension, /*storageTypeMin=*/llvm::minIntN(8),
+      /*storageTypeMax=*/llvm::maxIntN(8));
 }
 
 }  // namespace quant

@@ -64901,6 +64901,13 @@ op {
     }
   }
   attr {
+    name: "debug_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
     name: "dtype"
     type: "type"
   }

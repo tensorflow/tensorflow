@@ -45,6 +45,11 @@ void PopulateLegalizeTfQuantizationPatterns(MLIRContext *context,
 // int casts.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateConvertTFQuantTypesPass();
 
+// Creates an instance of the VerifyQuantLegalization pass, which verifies all
+// quant ops and types are lowered.
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateVerifyQuantLegalizationPass();
+
 // Add all passes for lowering TF quant ops and types to MHLO int.
 void AddQuantizationLoweringPasses(mlir::OpPassManager &pm);
 
@@ -52,6 +57,7 @@ void AddQuantizationLoweringPasses(mlir::OpPassManager &pm);
 #define GEN_PASS_DECL_CONVERTMHLOQUANTTOINT
 #define GEN_PASS_DECL_CONVERTTFQUANTOPSTOMHLO
 #define GEN_PASS_DECL_CONVERTTFQUANTTYPES
+#define GEN_PASS_DECL_VERIFYQUANTLEGALIZATION
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h.inc"
 }  // namespace stablehlo
 }  // namespace mlir

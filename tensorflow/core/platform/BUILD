@@ -8,7 +8,7 @@
 #   The libraries in this package are not allowed to have ANY dependencies
 #   to any TensorFlow code outside this package.
 
-load("//tensorflow:py.default.bzl", "py_test")
+load("//tensorflow:strict.default.bzl", "py_strict_test")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
@@ -505,12 +505,28 @@ cc_library(
     ],
 )
 
-py_test(
+py_strict_test(
     name = "ram_file_system_test",
     srcs = ["ram_file_system_test.py"],
     python_version = "PY3",
     deps = [
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/estimator",
+        "//tensorflow/python/estimator:model_fn",
+        "//tensorflow/python/estimator:run_config",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/layers",
+        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/module",
+        "//tensorflow/python/ops/losses",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:gfile",
+        "//tensorflow/python/saved_model",
+        "//tensorflow/python/training:adam",
+        "//tensorflow/python/training:training_util",
+        "//third_party/py/numpy",
     ],
 )
 

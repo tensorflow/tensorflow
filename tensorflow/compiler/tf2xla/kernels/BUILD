@@ -146,6 +146,7 @@ cc_library(
         ":tridiagonal_ops",
         ":unary_ops",
         ":unary_ops_composition",
+        ":uniform_quantized_ops",
         ":unique_op",
         ":unpack_op",
         ":variable_ops",
@@ -1748,6 +1749,7 @@ tf_kernel_library(
     deps = [
         ":case_op",
         ":if_op",
+        ":shape_util",
         ":while_op",
         ":xla_call_module_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -3988,4 +3990,16 @@ tf_cc_test(
         "//tensorflow/core:framework",
         "@com_google_googletest//:gtest_main",
     ],
+)
+
+tf_kernel_library(
+    name = "uniform_quantized_ops",
+    srcs = ["uniform_quantized_ops.cc"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:mlir_xla_op_kernel",
+        "//tensorflow/compiler/tf2xla:xla_op_registry",
+    ] + if_cuda_or_rocm(
+        if_false = [],
+        if_true = [":light_outside_compilation"],
+    ),
 )

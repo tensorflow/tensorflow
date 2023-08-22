@@ -42,7 +42,7 @@
 // CHECK:         br label %[[VAL_34:.*]]
 // CHECK:       concatenate.pivot.1024.1:                         ; preds = %[[VAL_11]]
 // CHECK:         br label %[[VAL_35:.*]]
-// CHECK:       concatenate.7.merge:                              ; preds = %[[VAL_35]], %[[VAL_34]]
+// CHECK:       concat.1.merge:                                   ; preds = %[[VAL_35]], %[[VAL_34]]
 // CHECK:         %[[VAL_36:.*]] = phi half [ %[[VAL_21]], %[[VAL_34]] ], [ %[[VAL_32]], %[[VAL_35]] ]
 // CHECK:         %[[VAL_37:.*]] = icmp sge i32 %[[VAL_5]], 0
 // CHECK:         %[[VAL_38:.*]] = icmp slt i32 %[[VAL_5]], 1024

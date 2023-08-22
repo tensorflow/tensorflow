@@ -20,7 +20,6 @@ limitations under the License.
 #include <limits>
 #include <memory>
 #include <optional>
-#include <string>
 #include <utility>
 #include <vector>
 
@@ -592,15 +591,10 @@ class WhileLoopAnalysis {
         max_pipelining_per_loop_(max_pipelining_per_loop),
         pipeline_use_tree_(pipeline_use_tree),
         process_different_sized_options_(process_different_sized_options) {}
-
-  std::optional<ConstantValue> GetLoopIterationCount() const {
-    return loop_iteration_count_;
-  }
-  std::optional<ConstantValue> GetLoopStart() const { return loop_start_; }
-  std::optional<ConstantValue> GetLoopIncrement() const {
-    return loop_increment_;
-  }
-  const std::vector<WhileMoveInfo>& GetMoveInfos() const { return move_infos_; }
+  std::optional<ConstantValue> GetLoopIterationCount() const;
+  std::optional<ConstantValue> GetLoopStart() const;
+  std::optional<ConstantValue> GetLoopIncrement() const;
+  const std::vector<WhileMoveInfo>& GetMoveInfos() const;
   std::optional<int64_t> GetLoopIterationIdx() const {
     return loop_iteration_idx_;
   }
@@ -729,15 +723,20 @@ void WhileLoopAnalysis::CollectCollectivesToMove(
   const HloInstruction* loop_parameter =
       while_body->parameter_instructions()[0];
 
-  HloPredicate IsGTE = HloPredicateIsOp<HloOpcode::kGetTupleElement>;
   // If the parameter tuple escapes then we can't guarantee that the replacement
   // for the next iteration is used by everybody unless we create a tuple with
   // the replacement that would probably limit overlap, so avoid this.
-  if (!absl::c_all_of(loop_parameter->users(), IsGTE) ||
-      !absl::c_all_of(while_->users(), IsGTE)) {
+  if (absl::c_any_of(loop_parameter->users(), [](const HloInstruction* instr) {
+        return instr->opcode() != HloOpcode::kGetTupleElement;
+      })) {
     return;
   }
 
+  if (absl::c_any_of(while_->users(), [](const HloInstruction* instr) {
+        return instr->opcode() != HloOpcode::kGetTupleElement;
+      })) {
+    return;
+  }
   absl::flat_hash_map<int64_t, int64_t> parameter_gtes_count;
   for (auto* user : loop_parameter->users()) {
     CHECK_EQ(user->opcode(), HloOpcode::kGetTupleElement);
@@ -902,9 +901,26 @@ void WhileLoopAnalysis::CollectCollectivesToMove(
   }
 }
 
+std::optional<ConstantValue> WhileLoopAnalysis::GetLoopIterationCount() const {
+  return loop_iteration_count_;
+}
+
+std::optional<ConstantValue> WhileLoopAnalysis::GetLoopStart() const {
+  return loop_start_;
+}
+
+std::optional<ConstantValue> WhileLoopAnalysis::GetLoopIncrement() const {
+  return loop_increment_;
+}
+
+const std::vector<WhileMoveInfo>& WhileLoopAnalysis::GetMoveInfos() const {
+  return move_infos_;
+}
+
+}  // namespace
+
 // Function that does the work of pushing forward instructions that have been
-// determined that can be pipelined. Rough transformation:
-// while (i < LAYERS) {
+// determined that can be pipelined. Rough transformation: while (i < LAYERS) {
 //   p0 = param(0)
 //   p1 = param(1)
 //   x = computation(p0)
@@ -1325,12 +1341,12 @@ Status TransformLoopForward(const WhileLoopAnalysis& loop_analysis,
 //   x_ag = p0_ag_next
 // }
 // x_last = computation(p0_ag_next)
-Status TransformLoopBackward(const WhileLoopAnalysis& loop_analysis,
-                             bool insert_non_alias_custom_call,
-                             int64_t level_to_operate_on,
-                             bool process_different_sized_ops,
-                             HloPredicate should_process,
-                             int64_t& next_channel_id) {
+static Status TransformLoopBackward(const WhileLoopAnalysis& loop_analysis,
+                                    bool insert_non_alias_custom_call,
+                                    int64_t level_to_operate_on,
+                                    bool process_different_sized_ops,
+                                    HloPredicate should_process,
+                                    int64_t& next_channel_id) {
   // Defining some maps/sets to keep track of instructions duplicated.
   absl::flat_hash_map<HloInstruction*, HloInstruction*> while_body_to_peeled;
   absl::flat_hash_map<HloInstruction*, int64_t> collective_to_move_map;
@@ -1572,26 +1588,10 @@ Status TransformLoopBackward(const WhileLoopAnalysis& loop_analysis,
   return OkStatus();
 }
 
-std::string GetPassName(const CollectivePipeliner::Config& config) {
-  return std::string(HloOpcodeString(config.op)) +
-         (config.pipelining_direction == CollectivePipeliner::kForward
-              ? "-forward"
-              : "-backward") +
-         "-pipeliner";
-}
-
-}  // namespace
-
-CollectivePipeliner::CollectivePipeliner(const Config& config)
-    : config_(config), pass_name_(GetPassName(config)) {}
-
 StatusOr<bool> CollectivePipeliner::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  HloPredicate should_process = [this](const HloInstruction* hlo) {
-    return hlo->opcode() == config_.op && config_.should_process(hlo);
-  };
   std::vector<HloInstruction*> while_loop_instructions;
   for (HloComputation* computation : module->MakeComputationPostOrder()) {
     for (HloInstruction* instruction :
@@ -1616,7 +1616,7 @@ StatusOr<bool> CollectivePipeliner::Run(
             << loop_analysis.GetLoopIterationCount()->ToString();
     loop_analysis.CollectCollectivesToMove(config_.level_to_operate_on,
                                            config_.pipelining_direction,
-                                           should_process);
+                                           config_.should_process);
     if (loop_analysis.GetMoveInfos().empty()) {
       continue;
     }
@@ -1634,12 +1634,12 @@ StatusOr<bool> CollectivePipeliner::Run(
       TF_RETURN_IF_ERROR(TransformLoopForward(
           loop_analysis, !config_.last_run, config_.level_to_operate_on,
           config_.pipeline_use_tree, config_.process_different_sized_ops,
-          should_process, next_channel_id));
+          config_.should_process, next_channel_id));
     } else {
       CHECK_EQ(config_.pipelining_direction, PipeliningDirection::kBackward);
       TF_RETURN_IF_ERROR(TransformLoopBackward(
           loop_analysis, !config_.last_run, config_.level_to_operate_on,
-          config_.process_different_sized_ops, should_process,
+          config_.process_different_sized_ops, config_.should_process,
           next_channel_id));
     }
     changed = true;

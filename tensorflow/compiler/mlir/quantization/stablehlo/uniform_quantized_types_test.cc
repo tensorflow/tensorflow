@@ -14,17 +14,21 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/quantization/stablehlo/uniform_quantized_types.h"
 
+#include <cstdint>
+
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 
 namespace mlir {
 namespace quant {
 namespace {
 
-using ::mlir::quant::UniformQuantizedType;
+using ::testing::ElementsAreArray;
 
 class CreateI8F32UniformQuantizedTypeTest : public ::testing::Test {
  protected:
@@ -75,6 +79,86 @@ TEST_F(CreateI8F32UniformQuantizedTypeTest, HasScaleAndZeroPointProperlySet) {
 
   EXPECT_EQ(quantized_type.getScale(), 8.0);
   EXPECT_EQ(quantized_type.getZeroPoint(), 99);
+}
+
+class CreateI8F32UniformQuantizedPerAxisTypeTest : public ::testing::Test {
+ protected:
+  CreateI8F32UniformQuantizedPerAxisTypeTest() : ctx_() {
+    ctx_.loadDialect<quant::QuantizationDialect>();
+  }
+
+  MLIRContext ctx_;
+};
+
+TEST_F(CreateI8F32UniformQuantizedPerAxisTypeTest, HasI8StorageType) {
+  const UniformQuantizedPerAxisType quantized_type =
+      CreateI8F32UniformQuantizedPerAxisType(
+          UnknownLoc::get(&ctx_), ctx_,
+          /*scales=*/SmallVector<float, 2>{1.0, 1.0},
+          /*zero_points=*/SmallVector<int8_t, 2>{0, 0},
+          /*quantization_dimension=*/0);
+
+  EXPECT_TRUE(quantized_type.getStorageType().isSignlessInteger(8));
+}
+
+TEST_F(CreateI8F32UniformQuantizedPerAxisTypeTest, HasF32ExpressedType) {
+  const UniformQuantizedPerAxisType quantized_type =
+      CreateI8F32UniformQuantizedPerAxisType(
+          UnknownLoc::get(&ctx_), ctx_,
+          /*scales=*/SmallVector<float, 2>{1.0, 1.0},
+          /*zero_points=*/SmallVector<int8_t, 2>{0, 0},
+          /*quantization_dimension=*/0);
+
+  EXPECT_TRUE(quantized_type.getExpressedType().isF32());
+}
+
+TEST_F(CreateI8F32UniformQuantizedPerAxisTypeTest, IsSigned) {
+  const UniformQuantizedPerAxisType quantized_type =
+      CreateI8F32UniformQuantizedPerAxisType(
+          UnknownLoc::get(&ctx_), ctx_,
+          /*scales=*/SmallVector<float, 2>{1.0, 1.0},
+          /*zero_points=*/SmallVector<int8_t, 2>{0, 0},
+          /*quantization_dimension=*/0);
+
+  EXPECT_TRUE(quantized_type.isSigned());
+}
+
+TEST_F(CreateI8F32UniformQuantizedPerAxisTypeTest,
+       StorageTypeMinMaxEqualToI8MinMax) {
+  const UniformQuantizedPerAxisType quantized_type =
+      CreateI8F32UniformQuantizedPerAxisType(
+          UnknownLoc::get(&ctx_), ctx_,
+          /*scales=*/SmallVector<float, 2>{1.0, 1.0},
+          /*zero_points=*/SmallVector<int8_t, 2>{0, 0},
+          /*quantization_dimension=*/0);
+
+  EXPECT_EQ(quantized_type.getStorageTypeMin(), -128);
+  EXPECT_EQ(quantized_type.getStorageTypeMax(), 127);
+}
+
+TEST_F(CreateI8F32UniformQuantizedPerAxisTypeTest,
+       HasQuantizationDimensionProperlySet) {
+  const UniformQuantizedPerAxisType quantized_type =
+      CreateI8F32UniformQuantizedPerAxisType(
+          UnknownLoc::get(&ctx_), ctx_,
+          /*scales=*/SmallVector<float, 2>{1.0, 1.0},
+          /*zero_points=*/SmallVector<int8_t, 2>{0, 0},
+          /*quantization_dimension=*/3);
+
+  EXPECT_EQ(quantized_type.getQuantizedDimension(), 3);
+}
+
+TEST_F(CreateI8F32UniformQuantizedPerAxisTypeTest,
+       HasScaleAndZeroPointProperlySet) {
+  const UniformQuantizedPerAxisType quantized_type =
+      CreateI8F32UniformQuantizedPerAxisType(
+          UnknownLoc::get(&ctx_), ctx_,
+          /*scales=*/SmallVector<float, 2>{8.0, 9.0},
+          /*zero_points=*/SmallVector<int8_t, 2>{98, 99},
+          /*quantization_dimension=*/0);
+
+  EXPECT_THAT(quantized_type.getScales(), ElementsAreArray({8.0, 9.0}));
+  EXPECT_THAT(quantized_type.getZeroPoints(), ElementsAreArray({98, 99}));
 }
 
 }  // namespace

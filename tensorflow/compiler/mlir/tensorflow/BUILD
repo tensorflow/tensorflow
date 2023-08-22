@@ -2003,18 +2003,8 @@ build_test(
 # these BUILD targets in a follow up.
 aliased_targets = [
     "tensorflow_passes",
-    "graph_optimization_pass_registration",
-    "bridge_pass_test_pipeline_registration",
-    "tensorflow_reduce_patterns_inc_gen",
-    "tf_device_pass_inc_gen",
-    "tensorflow_test_passes",
-    "tf_graph_optimization_pass",
-    "unroll_batch_matmul_pass",
-    "tf_dialect_passes",
-    "graph_optimization_pass",
-    "constant_fold_utils",
     "tf_saved_model_freeze_variables",
-    "tf_saved_model_asset_sinking_pass",
+    "tf_dialect_passes",
 ]
 
 [

@@ -950,6 +950,13 @@ class PjRtBuffer {
     // Return opaque device memory pointer to root buffer.
     void* OpaqueDeviceMemoryDataPointer() const { return data_ptr_; }
 
+    // Stream is platform-specific. This is intended to support dlpack on GPU
+    // and is not expected to be implemented for all hardware platforms.
+    virtual Status WaitUntilBufferReadyOnStream(std::intptr_t stream) {
+      return Unimplemented(
+          "WaitUntilBufferReadyOnExternalStream is only implemented for GPU.");
+    }
+
    protected:
     void* data_ptr_;
   };

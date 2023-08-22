@@ -49,11 +49,11 @@
 // CHECK:         %[[VAL_39:.*]] = udiv i32 %[[VAL_34]], 30000
 // CHECK:         %[[VAL_40:.*]] = icmp ult i32 %[[VAL_16]], 6000000
 // CHECK:         br i1 %[[VAL_40]], label %[[VAL_41:.*]], label %[[VAL_2]]
-// CHECK:       b.in_bounds-after:                                ; preds = %[[VAL_41]], %[[VAL_7]]
+// CHECK:       wrapped_b.in_bounds-after:
 // CHECK:         br label %[[VAL_1]], !llvm.loop
 // CHECK:       loop.loop_exit:                                   ; preds = %[[VAL_1]]
 // CHECK:         ret void
-// CHECK:       b.in_bounds-true:                                 ; preds = %[[VAL_7]]
+// CHECK:       wrapped_b.in_bounds-true:
 // CHECK:         %[[VAL_42:.*]] = getelementptr inbounds [100 x [200 x [300 x float]]], ptr %[[VAL_43:.*]], i32 0, i32 %[[VAL_20]], i32 %[[VAL_21]], i32 %[[VAL_18]]
 // CHECK:         %[[VAL_44:.*]] = load float, ptr %[[VAL_42]], align 4, !invariant.load
 // CHECK:         %[[VAL_45:.*]] = getelementptr inbounds float, ptr %[[VAL_46:.*]], i32 %[[VAL_16]]

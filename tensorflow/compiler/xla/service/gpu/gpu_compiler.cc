@@ -97,6 +97,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_async_collective_annotator.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_rewriter.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_cost_model_stats_collection.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_float_support.h"
@@ -199,6 +200,24 @@ namespace gpu {
 namespace {
 bool ConvIsLowerable(HloInstruction* conv) {
   return GpuConvRewriter::ConvIsLowerable(conv);
+}
+
+StatusOr<AutotuneConfig> GetAutotuneConfig(
+    se::StreamExecutor* stream_exec, const DebugOptions& debug_options,
+    const GpuCompiler::CompileOptions& options,
+    const GpuTargetConfig& gpu_target_config,
+    const AutotuneResults* autotune_results) {
+  if (stream_exec) {
+    return AutotuneConfig{DeviceConfig{stream_exec, options.device_allocator},
+                          debug_options};
+  }
+  AutotuneConfig deviceless_config =
+      AutotuneConfig{DevicelessConfig{gpu_target_config.device_description_str},
+                     debug_options};
+  // Deviceless config means we can't run autotuning, and need to rely on saved
+  // results.
+  TF_RETURN_IF_ERROR(AutotunerUtil::LoadAutotuneResults(*autotune_results));
+  return deviceless_config;
 }
 }  // end anonymous namespace
 
@@ -630,7 +649,6 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
     if (enable_all_pipelined ||
         debug_options.xla_gpu_enable_pipelined_all_reduce()) {
       CollectivePipeliner::Config config{
-          /*op=*/HloOpcode::kAllReduce,
           /*level_to_operate_on=*/0,
           /*max_pipelining_per_loop=*/INT64_MAX,
           /*last_run=*/true,
@@ -638,13 +656,12 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
           /*process_different_sized_ops=*/true,
           /*pipelining_direction=*/
           CollectivePipeliner::PipeliningDirection::kForward,
-          /*should_process=*/HloPredicateTrue};
+          /*should_process=*/HloPredicateIsOp<HloOpcode::kAllReduce>};
       collectives_pipeline.AddPass<CollectivePipeliner>(config);
     }
     if (enable_all_pipelined ||
         debug_options.xla_gpu_enable_pipelined_all_gather()) {
       CollectivePipeliner::Config config{
-          /*op=*/HloOpcode::kAllGather,
           /*level_to_operate_on=*/0,
           /*max_pipelining_per_loop=*/INT64_MAX,
           /*last_run=*/true,
@@ -652,13 +669,12 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
           /*process_different_sized_ops=*/true,
           /*pipelining_direction=*/
           CollectivePipeliner::PipeliningDirection::kBackward,
-          /*should_process=*/HloPredicateTrue};
+          /*should_process=*/HloPredicateIsOp<HloOpcode::kAllGather>};
       collectives_pipeline.AddPass<CollectivePipeliner>(config);
     }
     if (enable_all_pipelined ||
         debug_options.xla_gpu_enable_pipelined_reduce_scatter()) {
       CollectivePipeliner::Config config{
-          /*op=*/HloOpcode::kReduceScatter,
           /*level_to_operate_on=*/0,
           /*max_pipelining_per_loop=*/INT64_MAX,
           /*last_run=*/true,
@@ -666,7 +682,7 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
           /*process_different_sized_ops=*/true,
           /*pipelining_direction=*/
           CollectivePipeliner::PipeliningDirection::kForward,
-          /*should_process=*/HloPredicateTrue};
+          /*should_process=*/HloPredicateIsOp<HloOpcode::kReduceScatter>};
       collectives_pipeline.AddPass<CollectivePipeliner>(config);
     }
 
@@ -757,11 +773,11 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
             LayoutAssignment::InstructionCanChangeLayout),
         /*debug_only=*/true);
 
+    GpuHloCostAnalysis::Options cost_analysis_options{
+        ShapeSizeBytesFunction(),
+        /*per_second_rates=*/{},
+        /*count_multiple_input_accesses=*/true};
     if (debug_options.xla_gpu_enable_priority_fusion()) {
-      GpuHloCostAnalysis::Options cost_analysis_options{
-          ShapeSizeBytesFunction(),
-          /*per_second_rates=*/{},
-          /*count_multiple_input_accesses=*/true};
       fusion.AddPass<GpuPriorityFusion>(gpu_device_info, cost_analysis_options);
     } else {
       fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/false,
@@ -783,6 +799,13 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
                            /*only_fusion_computations=*/true);
     fusion.AddPass<HloDCE>();
     TF_RETURN_IF_ERROR(fusion.Run(hlo_module).status());
+
+    if (debug_options.xla_gpu_collect_cost_model_stats()) {
+      HloPassPipeline post_fusion_analysis("post_fusion_analysis");
+      post_fusion_analysis.AddPass<GpuCostModelStatsCollection>(
+          gpu_device_info, cost_analysis_options);
+      TF_RETURN_IF_ERROR(post_fusion_analysis.Run(hlo_module).status());
+    }
   }
 
   {
@@ -1062,9 +1085,11 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   // f32).
   add_float_normalization(pipeline);
 
-  TF_RETURN_IF_ERROR(AddAutotuningPasses(
-      &pipeline, hlo_module, stream_exec, debug_options, options,
-      gpu_target_config, autotune_results, thread_pool));
+  TF_ASSIGN_OR_RETURN(AutotuneConfig autotune_config,
+                      GetAutotuneConfig(stream_exec, debug_options, options,
+                                        gpu_target_config, autotune_results));
+  TF_RETURN_IF_ERROR(
+      AddAutotuningPasses(&pipeline, hlo_module, autotune_config, thread_pool));
 
   // The Triton autotuner can insert new bf16 reductions that need to be
   // normalized again.

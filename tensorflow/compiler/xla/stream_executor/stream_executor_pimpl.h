@@ -628,6 +628,11 @@ class StreamExecutor {
   // Wait for the specified event at the end of the specified stream.
   tsl::Status WaitForEvent(Stream* stream, Event* event);
 
+  // Wait for the specified event at the end of the raw platform-specific
+  // stream. Currently only implemented for GPU, where stream is a
+  // GpuStreamHandle (e.g. cudaStream_t).
+  tsl::Status WaitForEventOnExternalStream(std::intptr_t stream, Event* event);
+
   // Requests the current status of the event from the underlying platform.
   Event::Status PollForEventStatus(Event* event);
 
