@@ -26,19 +26,23 @@ func.func @fusion(
 // CHECK:   %[[ARG0:.*]]: tensor<12xi8>, %[[ARG1:.*]]: tensor<12xi8>,
 // CHECK:   %[[ARG2:.*]]: tensor<12xi8> {lmhlo.output_index = {{.*}}}
 // CHECK: ) {
-// CHECK:   %[[TENSOR0:.*]] = iree_input.tensor.import {{.*}} -> tensor<3xf32>
-// CHECK:   %[[TENSOR1:.*]] = iree_input.tensor.import {{.*}} -> tensor<3xf32>
-// CHECK:   %[[TENSOR2:.*]] = iree_input.tensor.import {{.*}} -> tensor<3xf32>
-//
+
+// CHECK-DAG: %[[BUFFER0:.*]] = iree_input.tensor.export %[[ARG0]]
+// CHECK-DAG: %[[BUFFER1:.*]] = iree_input.tensor.export %[[ARG1]]
+// CHECK-DAG: %[[BUFFER2:.*]] = iree_input.tensor.export %[[ARG2]]
+// CHECK-DAG: %[[TENSOR0:.*]] = iree_input.tensor.import %[[BUFFER0]]
+// CHECK-DAG: %[[TENSOR1:.*]] = iree_input.tensor.import %[[BUFFER1]]
+// CHECK-DAG: %[[TENSOR2:.*]] = iree_input.tensor.import %[[BUFFER2]]
+
 // CHECK:   %[[KERNEL:.*]] = iree_input.global.load @[[KERNEL_NAME:.*]] :
-//
+
 // CHECK:   %[[C3:.*]] = arith.constant 3 : index
 // CHECK:   %[[ARGS:.*]] = iree_input.list.create %[[C3]]
 // CHECK-SAME: !iree_input.list<!iree_input.buffer_view>
 // CHECK:   iree_input.list.set
 // CHECK:   iree_input.list.set
 // CHECK:   iree_input.list.set
-//
+
 // CHECK:   call @xla_gpu.kernel.dispatch(%[[CTX]], %[[KERNEL]], %[[ARGS]]
 // CHECK-SAME:   (!xla_gpu.execution_context, !xla_gpu.kernel,
 // CHECK-SAME:    !iree_input.list<!iree_input.buffer_view>, i32, i32, i32,
