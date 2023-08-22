@@ -561,11 +561,10 @@ ENTRY e {
   const HloInstruction* scalar = dot_computation->parameter_instruction(1);
   TF_ASSERT_OK_AND_ASSIGN(const auto analysis,
                           DotFusionAnalysis::Execute(dot_computation));
-  EXPECT_EQ(analysis.IterSpec(DotFusionAnalysis::Scope::RHS, scalar, 0)->size(),
-            1);
-  EXPECT_THAT(*analysis.IterSpec(DotFusionAnalysis::Scope::RHS, scalar, 0),
-              ElementsAre(FieldsAre(/*stride=*/0, /*count=*/1,
-                                    /*subfragments=*/ElementsAre(1))));
+  EXPECT_EQ(analysis.IterSpec(DotFusionAnalysis::Scope::RHS, scalar, 0),
+            nullptr);
+  EXPECT_EQ(analysis.IterSpec(DotFusionAnalysis::Scope::RHS, scalar, 1),
+            nullptr);
 }
 
 TEST_F(TritonDotAnalysisTest, InputBroadcastFromVectorIsHandled) {

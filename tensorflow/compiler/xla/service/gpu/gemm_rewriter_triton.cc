@@ -69,19 +69,26 @@ namespace xla {
 namespace gpu {
 
 bool TensorIterationSpec::operator==(const TensorIterationSpec& other) const {
-  for (int dim = 0; dim < TensorIterationSpec::kMaxDimsPerTensor; ++dim) {
-    if (dim_iteration_specs_[dim].size() != other[dim].size()) {
+  auto it_this = dim_iteration_specs_.cbegin();
+  while (it_this != dim_iteration_specs_.cend()) {
+    auto it_other = other.dim_iteration_specs_.find(it_this->first);
+    if (it_other == other.dim_iteration_specs_.cend()) {
       return false;
     }
-    for (int fragment = 0; fragment < dim_iteration_specs_[dim].size();
-         ++fragment) {
-      if (dim_iteration_specs_[dim][fragment].stride !=
-              other[dim][fragment].stride ||
-          dim_iteration_specs_[dim][fragment].count !=
-              other[dim][fragment].count) {
+    if (it_this->second.size() != it_other->second.size()) {
+      return false;
+    }
+    for (int fragment = 0; fragment < it_this->second.size(); ++fragment) {
+      if (it_this->second.size() != it_other->second.size()) {
+        return false;
+      }
+      if (it_this->second[fragment].stride !=
+              it_other->second[fragment].stride ||
+          it_this->second[fragment].count != it_other->second[fragment].count) {
         return false;
       }
     }
+    ++it_this;
   }
   return true;
 }
@@ -201,6 +208,8 @@ class DimensionOrder {
     std::string ToString() const {
       return absl::StrCat(dst_dim_number, ":", size);
     }
+    Fragment(int dst_dim_number, int64_t size)
+        : dst_dim_number(dst_dim_number), size(size) {}
   };
   using Fragments = std::vector<Fragment>;
   using FragmentOrders = absl::flat_hash_map<int, std::vector<int>>;
@@ -253,10 +262,11 @@ class DimensionOrder {
   bool IsPhysicallyEquivalent(const DimensionOrder& other) const;
 
   std::string ToString() const {
-    std::string ret = absl::StrJoin(tensor_fragments_order_, "-",
+    std::string ret = absl::StrJoin(tensor_fragments_order_, " - ",
                                     [](std::string* out, const Fragment& f) {
-                                      absl::StrAppend(out, f.ToString());
+                                      absl::StrAppend(out, f.ToString(), " ");
                                     });
+    absl::StrAppend(&ret, "|");
     for (const auto& [dim, fragments] : dim_fragments_orders_) {
       absl::StrAppend(&ret, dim, ":", absl::StrJoin(fragments, ","), " ");
     }
@@ -272,8 +282,8 @@ class DimensionOrder {
   // the shape due to reshapes and transposes).
   FragmentOrders dim_fragments_orders_;
 
-  const int64_t splittable_dimension_index_;
-  const int64_t splittable_dimension_supported_major_part_size_;
+  const int64_t splittable_dimension_index_ = -1;
+  const int64_t splittable_dimension_supported_major_part_size_ = 0;
 };
 
 using DimIterationSpec = TensorIterationSpec::DimIterationSpec;
@@ -321,7 +331,7 @@ TensorIterationSpec DimensionOrderToTensorIterationSpec(
   }
   remove_last_fragment_if_degenerate();
   // Create all absent dimensions as degenerate ones to simplify later queries.
-  for (DimIterationSpec& dim_spec : tensor_spec) {
+  for (auto& [dim_idx, dim_spec] : tensor_spec) {
     if (dim_spec.empty()) {
       dim_spec.push_back({/*stride=*/0, /*count=*/1, /*subfragments=*/{1}});
     }
@@ -865,15 +875,17 @@ int64_t NumAddedParameters(const HloInstruction& hlo) {
   return hlo.operand_count() - 1;
 }
 
-Status MergeDimOrderMapUpdates(DimOrderMap& target,
-                               const DimOrderMap& updates) {
+bool MergeDimOrderMapUpdates(DimOrderMap& target, const DimOrderMap& updates) {
+  // First check that all updates to insert are compatible to avoid
+  // incomplete merges.
   for (const auto& [key, value] : updates) {
-    auto [it, inserted] = target.insert({key, value});
-    if (!inserted) {
-      TF_RET_CHECK(it->second.IsPhysicallyEquivalent(value));
+    auto it = target.find(key);
+    if (it != target.cend() && !it->second.IsPhysicallyEquivalent(value)) {
+      return false;
     }
   }
-  return OkStatus();
+  target.insert(updates.begin(), updates.end());
+  return true;
 }
 
 // Fuse an instruction with all its fusible inputs.
@@ -912,8 +924,9 @@ void TryToFuseWithInputsRecursively(
         return false;
       }
     }
-    CHECK_OK(
-        MergeDimOrderMapUpdates(dim_orders, std::get<DimOrderMap>(result)));
+    if (!MergeDimOrderMapUpdates(dim_orders, std::get<DimOrderMap>(result))) {
+      return false;
+    }
     to_fuse.push(&hlo);
     if (hlo.opcode() != HloOpcode::kParameter) {
       inputs.erase(&hlo);
@@ -1041,7 +1054,7 @@ StatusOr<FusionDecision> FuseDot(HloInstruction& dot,
     if (!std::holds_alternative<DimOrderMap>(result)) {
       continue;
     }
-    TF_RETURN_IF_ERROR(
+    TF_RET_CHECK(
         MergeDimOrderMapUpdates(out_dim_orders, std::get<DimOrderMap>(result)));
     for (HloInstruction* operand : user->operands()) {
       if (!old_to_new_mapping.contains(operand)) {
@@ -1188,9 +1201,12 @@ StatusOr<HloInstruction*> MakeSplitKOperand(
     // does not need analysis for fragmentation.
     const DimIterationSpec* spec =
         analysis.IterSpec(scope, param, contracting_dim_idx);
-    if (spec->size() > 1) {
-      return UncompilableMatmul(
-          "Split contracting dimension is not implemented yet.");
+    if (spec == nullptr) {
+      // No contracting dimension in the parameter - no checks needed.
+      continue;
+    }
+    if (spec->size() != 1) {
+      return UncompilableMatmul("Unsupported case.");
     }
     auto fragment = spec->at(0).subfragments.crbegin();
     int64_t size_to_split = tiling.split_k();
@@ -1383,7 +1399,7 @@ Status PropagateDimensionOrdersToParameters(
     auto result =
         HandleInstruction(hlo, dim_orders, TransformDirection::kOutputToInput);
     TF_RET_CHECK(std::holds_alternative<DimOrderMap>(result));
-    TF_RETURN_IF_ERROR(
+    TF_RET_CHECK(
         MergeDimOrderMapUpdates(dim_orders, std::get<DimOrderMap>(result)));
     TF_RET_CHECK(
         RequireTritonGemmSupportedDimOrders(*hlo, dim_orders).CanFuse());
@@ -1572,7 +1588,7 @@ Status DotFusionAnalysis::ExecuteImpl(const HloComputation* computation,
     const DimIterationSpec* lhs_nc_iter_spec =
         IterSpec(Scope::LHS, *ScopeParameters(Scope::LHS).cbegin(),
                  NonContractingDimensionIndex(*dot, 0));
-    if (lhs_nc_iter_spec->size() > 1) {
+    if (lhs_nc_iter_spec != nullptr && lhs_nc_iter_spec->size() > 1) {
       lhs_nc_split_major_part_size = lhs_nc_iter_spec->at(1).count;
     }
   }
@@ -1590,7 +1606,7 @@ Status DotFusionAnalysis::ExecuteImpl(const HloComputation* computation,
     TF_RET_CHECK(std::holds_alternative<DimOrderMap>(result));
     TF_RET_CHECK(RequireTritonGemmSupportedDimOrder(
         std::get<DimOrderMap>(result).at(output)));
-    TF_RETURN_IF_ERROR(
+    TF_RET_CHECK(
         MergeDimOrderMapUpdates(dim_orders, std::get<DimOrderMap>(result)));
   }
   TF_RET_CHECK(iter_specs_[Scope::OUTPUT]
@@ -1609,9 +1625,12 @@ Status DotFusionAnalysis::ExecuteImpl(const HloComputation* computation,
 const DimIterationSpec* DotFusionAnalysis::IterSpec(
     const DotFusionAnalysis::Scope scope, const HloInstruction* hlo,
     const int dimension) const {
-  auto ret = iter_specs_.at(scope).find(hlo);
-  if (ret != iter_specs_.at(scope).end()) {
-    return &ret->second[dimension];
+  auto hlo_spec = iter_specs_.at(scope).find(hlo);
+  if (hlo_spec != iter_specs_.at(scope).cend()) {
+    auto dim_spec = hlo_spec->second.Storage().find(dimension);
+    if (dim_spec != hlo_spec->second.Storage().cend()) {
+      return &dim_spec->second;
+    }
   }
   return nullptr;
 }

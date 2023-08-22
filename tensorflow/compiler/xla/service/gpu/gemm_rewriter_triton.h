@@ -77,21 +77,14 @@ class TensorIterationSpec {
   // separated into multiple fragments by other dimensions.
   using DimIterationSpec = std::vector<IterationSpecFragment>;
 
-  // At most: contracting, non-contracting, split-K, another batch.
-  static constexpr int kMaxDimsPerTensor = 4;
-  using StorageType = std::array<DimIterationSpec, kMaxDimsPerTensor>;
-
-  const DimIterationSpec& operator[](int dimension) const {
+  using StorageType = absl::flat_hash_map<int, DimIterationSpec>;
+  const DimIterationSpec& operator[](const int dimension) const {
+    return dim_iteration_specs_.at(dimension);
+  }
+  DimIterationSpec& operator[](const int dimension) {
     return dim_iteration_specs_[dimension];
   }
-
-  DimIterationSpec& operator[](int dimension) {
-    return dim_iteration_specs_[dimension];
-  }
-
-  // Compares physical layouts of tensors ignoring subfragments of dimensions.
-  bool operator==(const TensorIterationSpec& other) const;
-
+  const StorageType& Storage() const { return dim_iteration_specs_; }
   StorageType::iterator begin() { return dim_iteration_specs_.begin(); }
   StorageType::iterator end() { return dim_iteration_specs_.end(); }
   StorageType::const_iterator cbegin() const {
@@ -101,6 +94,9 @@ class TensorIterationSpec {
     return dim_iteration_specs_.cend();
   }
 
+  // Compares physical layouts of tensors ignoring subfragments of dimensions.
+  bool operator==(const TensorIterationSpec& other) const;
+
  private:
   StorageType dim_iteration_specs_;
 };
@@ -109,7 +105,7 @@ class TensorIterationSpec {
 class DotFusionAnalysis {
   DotFusionAnalysis() {}
 
-  Status ExecuteImpl(const HloComputation* computation, int split_k = 1);
+  Status ExecuteImpl(const HloComputation* computation, int split_k);
 
  public:
   // Execute the analysis of a dot fusion computation.
