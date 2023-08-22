@@ -162,13 +162,12 @@ function prepare_src() {
     cp -L \
       bazel-bin/tensorflow/tools/pip_package/build_pip_package.exe.runfiles/org_tensorflow/LICENSE \
       "${TMPDIR}"
-
-	# Change the format of file path (TMPDIR-->TMPDIR_rsync) which is input to the rsync from
-	# Windows-compatible to Linux-compatible to resolve the error below 
-	# error: ssh: Could not resolve hostname c: No such host is known. 
-	
-	TMPDIR_rsync=`cygpath $TMPDIR`
-
+      
+    # Change the format of file path (TMPDIR-->TMPDIR_rsync) which is input to the rsync from
+    # Windows-compatible to Linux-compatible to resolve the error below 
+    # error: ssh: Could not resolve hostname c: No such host is known. 
+    
+    TMPDIR_rsync=`cygpath $TMPDIR`  
     rsync -a \
       bazel-bin/tensorflow/tools/pip_package/build_pip_package.exe.runfiles/org_tensorflow/tensorflow \
       "${TMPDIR_rsync}"
