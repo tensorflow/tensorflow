@@ -53,6 +53,7 @@ package_group(
         "//third_party/mlperf/submissions/training/v0_7/models/...",
         "//third_party/py/keras/...",
         "//third_party/py/keras_cv/...",
+        "//third_party/py/tf_keras/...",
         "//waymo/ml/deploy/benchmark/...",
     ],
 )
