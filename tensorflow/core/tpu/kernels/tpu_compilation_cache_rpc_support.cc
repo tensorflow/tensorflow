@@ -14,28 +14,38 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_rpc_support.h"
 
+#include <climits>
+#include <cstdint>
 #include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
-#include "tensorflow/compiler/tf2xla/host_compute_metadata.pb.h"
-#include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
-#include "tensorflow/core/platform/casts.h"
-#if defined(LIBTPU_ON_GCE)
-#include "tensorflow/core/tpu/kernels/tpu_compilation_cache.pb.h"
-#endif
 #include "absl/cleanup/cleanup.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "third_party/grpc/include/grpcpp/security/credentials.h"
+#include "third_party/grpc/include/grpcpp/support/slice.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/proto_helper.h"
-#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_common.pb.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
+#include "tensorflow/core/tpu/kernels/tpu_compilation_cache.pb.h"
+#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_common.pb.h"  // IWYU pragma: keep
+#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_entry.h"
 #include "tensorflow/core/tpu/kernels/tpu_program_group.h"
+#include "tensorflow/tsl/platform/casts.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace tensorflow {
 namespace tpu {
+
 std::shared_ptr<::grpc::ChannelCredentials> CreateChannelCredentials() {
   return ::grpc::InsecureChannelCredentials();  // NOLINT
 }
 
-#if defined(LIBTPU_ON_GCE)
 template <>
-Status DeserializeRpcResponseToCacheEntry<GetTpuProgramResponseExternal>(
+absl::Status DeserializeRpcResponseToCacheEntry<GetTpuProgramResponseExternal>(
     absl::string_view local_proto_key, GetTpuProgramResponseExternal* response,
     std::shared_ptr<CacheEntry>* cache_entry) {
   CHECK_NE(response, nullptr);
@@ -64,10 +74,10 @@ Status DeserializeRpcResponseToCacheEntry<GetTpuProgramResponseExternal>(
     entry.size = entry.tpu_program_group->program_size();
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-xla::StatusOr<std::vector<::grpc::Slice>> SerializeCacheEntryToBufferSlices(
+absl::StatusOr<std::vector<::grpc::Slice>> SerializeCacheEntryToBufferSlices(
     const TpuCompilationCacheEntry& cache_entry) {
   if (cache_entry.tpu_program_group() == nullptr) {
     // It's possible that the sharding/unsharding entry does not exist, but the
@@ -76,7 +86,7 @@ xla::StatusOr<std::vector<::grpc::Slice>> SerializeCacheEntryToBufferSlices(
     header.set_is_empty(true);
     std::string encoded_header;
     if (!header.AppendToString(&encoded_header)) {
-      return errors::Internal("Failed to serialize TPU program metadata.");
+      return absl::InternalError("Failed to serialize TPU program metadata.");
     }
     ::grpc::Slice slice(encoded_header);
     return std::vector<::grpc::Slice>{slice};
@@ -89,9 +99,9 @@ xla::StatusOr<std::vector<::grpc::Slice>> SerializeCacheEntryToBufferSlices(
   CHECK_GE(tpu_program_group->program_count(), 0);
   CHECK_GE(cache_entry.core_index(), 0);
   CHECK_LT(cache_entry.core_index(), tpu_program_group->program_count());
-  const int64 program_size = tpu_program_group->program_size();
+  const int64_t program_size = tpu_program_group->program_size();
   if (program_size > INT_MAX) {
-    return errors::Internal("TPU program exceeded 2 GiB.");
+    return absl::InternalError("TPU program exceeded 2 GiB.");
   }
 
   TpuExecutableSerializedProto executable;
@@ -103,14 +113,14 @@ xla::StatusOr<std::vector<::grpc::Slice>> SerializeCacheEntryToBufferSlices(
   auto get_executable_status = tpu_program_group->SerializeExecutable(
       cache_entry.core_index(), &executable);
   if (!get_executable_status.ok()) {
-    return errors::Internal("Failed to serialize TPU program.");
+    return absl::InternalError("Failed to serialize TPU program.");
   }
 
   // Encode and serialize header fields.
   GetTpuProgramResponseExternal header;
   if (!header.mutable_proto()->ParseFromArray(executable.bytes,
                                               executable.size)) {
-    return errors::Internal("Failed to serialize TPU program.");
+    return absl::InternalError("Failed to serialize TPU program.");
   }
   header.set_is_empty(false);
 
@@ -124,23 +134,23 @@ xla::StatusOr<std::vector<::grpc::Slice>> SerializeCacheEntryToBufferSlices(
       stream_executor::tpu::SerializedProto_Free(compiler_metadata);
     }
   });
-  Status get_compiler_metadata_status =
+  absl::Status get_compiler_metadata_status =
       tpu_program_group->SerializeCompilerMetadata(cache_entry.core_index(),
                                                    &compiler_metadata);
   if (!get_compiler_metadata_status.ok()) {
-    return errors::Internal("Failed to serialize compiler metadata.");
+    return absl::InternalError("Failed to serialize compiler metadata.");
   }
   if (!header.mutable_compiler_metadata()->ParseFromArray(
           compiler_metadata.bytes, compiler_metadata.size)) {
-    return errors::Internal("Failed to deserialize compiler metadata.");
+    return absl::InternalError("Failed to deserialize compiler metadata.");
   }
   std::string encoded_header;
   if (!header.AppendToString(&encoded_header)) {
-    return errors::Internal("Failed to serialize TPU program metadata.");
+    return absl::InternalError("Failed to serialize TPU program metadata.");
   }
 
   return std::vector<::grpc::Slice>{::grpc::Slice(encoded_header)};
 }
-#endif  // LIBTPU_ON_GCE
+
 }  // namespace tpu
 }  // namespace tensorflow

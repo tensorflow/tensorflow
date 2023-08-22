@@ -14,6 +14,7 @@ load(
 load(
     "//tensorflow:tensorflow.default.bzl",
     "tf_grpc_cc_dependencies",
+    "tf_grpc_dependencies",
     "tf_kernel_library",
 )
 load(
@@ -595,11 +596,14 @@ cc_library(
         [":tpu_compilation_cache_proto_cc"],
         ["//tensorflow/core/tpu/kernels:tpu_compilation_cache_cc_proto"],
     ) + [
+        ":tpu_compilation_cache_common_proto_cc",
         ":tpu_compilation_cache_entry",
         ":tpu_compilation_cache_interface",
         ":tpu_compilation_cache_lookup",
         ":tpu_program_group_interface",
-        "//tensorflow/core/platform:status",
+        "//tensorflow/tsl/platform:logging",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
     ] + tf_grpc_cc_dependencies(),
 )
@@ -610,16 +614,20 @@ cc_library(
     copts = tf_copts(),
     deps = [
         ":tpu_compilation_cache_common_proto_cc",
+        ":tpu_compilation_cache_entry",
         ":tpu_compilation_cache_proto_cc",
         ":tpu_compilation_cache_rpc_support_hdrs",
         ":tpu_program_group",
-        "//tensorflow/compiler/tf2xla:host_compute_metadata_proto_cc",
         "//tensorflow/compiler/xla/stream_executor/tpu:proto_helper",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_ops_c_api_hdrs",
         "//tensorflow/core:lib",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_util",
+        "//tensorflow/tsl/distributed_runtime/rpc:grpc_util",
+        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/cleanup",
-    ],
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ] + tf_grpc_cc_dependencies(),
 )
 
 cc_library(
@@ -628,8 +636,14 @@ cc_library(
     hdrs = ["tpu_compilation_cache_rpc_lookup.h"],
     copts = tf_copts(),
     deps = if_libtpu(
-        [":tpu_compilation_cache_rpc_support"],
-        ["//tensorflow/core/tpu/kernels:tpu_compilation_cache_rpc_support"],
+        [
+            ":tpu_compilation_cache_rpc_support",
+            ":tpu_compilation_cache_proto_cc",
+        ],
+        [
+            "//tensorflow/core/tpu/kernels:tpu_compilation_cache_rpc_support",
+            "//tensorflow/core/tpu/kernels:tpu_compilation_cache_cc_proto",
+        ],
     ) + [
         ":tpu_compilation_cache_common_proto_cc",
         ":tpu_compilation_cache_grpc",
@@ -638,10 +652,16 @@ cc_library(
         ":tpu_compilation_cache_rpc_support_hdrs",
         ":tpu_program_group_interface",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:logging",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
-    ] + tf_grpc_cc_dependencies(),
+    ] + tf_grpc_cc_dependencies() + tf_grpc_dependencies(),
 )
 
 tf_proto_library(
@@ -673,6 +693,8 @@ cc_library(
         ["//tensorflow/core/tpu/kernels:tpu_compilation_cache_cc_proto"],
     ) + [
         ":tpu_compilation_cache_common_proto_cc",
+        "//tensorflow/tsl/distributed_runtime/rpc:grpc_util",
+        "@com_google_absl//absl/status",
     ] + tf_grpc_cc_dependencies(),
 )
 

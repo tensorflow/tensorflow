@@ -15,20 +15,22 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_CACHE_RPC_SUPPORT_H_
 #define TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_CACHE_RPC_SUPPORT_H_
 
-#include <functional>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "grpcpp/security/credentials.h"
-#include "grpcpp/support/slice.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/platform/status.h"
+#include "third_party/grpc/include/grpcpp/security/credentials.h"
+#include "third_party/grpc/include/grpcpp/support/slice.h"
+#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_common.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_entry.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_interface.h"
-#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_lookup.h"
 #include "tensorflow/core/tpu/kernels/tpu_program_group_interface.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace tensorflow {
 namespace tpu {
@@ -70,7 +72,8 @@ class CacheWrapper : public CompilationCacheEntryRef {
                                     /*core_index=*/0);
   }
 
-  Status ToSubEntryRef(CompilationCacheFetchTarget fetch_target) override {
+  absl::Status ToSubEntryRef(
+      CompilationCacheFetchTarget fetch_target) override {
     LOG(FATAL) << "Not implemented by designed.";
   }
 
@@ -81,16 +84,17 @@ class CacheWrapper : public CompilationCacheEntryRef {
 // Creates gRPC channel credentials for the current runtime env.
 std::shared_ptr<::grpc::ChannelCredentials> CreateChannelCredentials();
 
-// Fills an uinitialized `CacheEntry` from `GetTpuProgramResponse` proto. The
+// Fills an uninitialized `CacheEntry` from `GetTpuProgramResponse` proto. The
 // `cache_entry` will be instantiated by the function.
 template <typename ResponseType>
-Status DeserializeRpcResponseToCacheEntry(
+absl::Status DeserializeRpcResponseToCacheEntry(
     absl::string_view local_proto_key, ResponseType* response,
     std::shared_ptr<CacheEntry>* cache_entry);
 
-// Serializes `TpuCompilationCacheEntry` to gRPC bufer slices.
-xla::StatusOr<std::vector<::grpc::Slice>> SerializeCacheEntryToBufferSlices(
+// Serializes `TpuCompilationCacheEntry` to gRPC buffer slices.
+absl::StatusOr<std::vector<::grpc::Slice>> SerializeCacheEntryToBufferSlices(
     const TpuCompilationCacheEntry& cache_entry);
+
 }  // namespace tpu
 }  // namespace tensorflow
 

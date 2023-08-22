@@ -12,18 +12,42 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_rpc_lookup.h"
 
+#include <cstdint>
+#include <ctime>
 #include <limits>
 #include <memory>
 #include <string>
 #include <vector>
 
-#include "grpcpp/security/credentials.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "third_party/grpc/include/grpc/compression.h"
+#include "third_party/grpc/include/grpcpp/client_context.h"
+#include "third_party/grpc/include/grpcpp/create_channel.h"
+#include "third_party/grpc/include/grpcpp/security/credentials.h"
+#include "third_party/grpc/include/grpcpp/support/channel_arguments.h"
+#include "third_party/grpc/include/grpcpp/support/time.h"  // IWYU pragma: keep
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_common.pb.h"
+#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_grpc.h"
+#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_interface.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_rpc_support.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
+
+#if defined(LIBTPU_ON_GCE)
+#include "tensorflow/core/tpu/kernels/tpu_compilation_cache.pb.h"
+#else /* !LIBTPU_ON_GCE */
+#include "tensorflow/core/tpu/kernels/tpu_compilation_cache.pb.h"  // copybara"
+#endif /* LIBTPU_ON_GCE */
 
 namespace tensorflow {
 namespace tpu {
@@ -31,11 +55,12 @@ namespace {
 
 #if defined(LIBTPU_ON_GCE)
 using ResponseType = GetTpuProgramResponseExternal;
-#else
+#else  /* !defined(LIBTPU_ON_GCE) */
 using ResponseType = GetTpuProgramResponse;
-#endif
+#endif /* defined(LIBTPU_ON_GCE) */
 
 static constexpr absl::Duration kProtoTimeout = absl::Minutes(15);
+
 static gpr_timespec TimeToGprTimespec(absl::Time time) {
   if (time == absl::InfiniteFuture()) {
     return gpr_inf_future(GPR_CLOCK_REALTIME);
@@ -52,12 +77,14 @@ static gpr_timespec TimeToGprTimespec(absl::Time time) {
   return spec;
 }
 }  // namespace
+
 TpuCompilationCacheRpcLookup::TpuCompilationCacheRpcLookup(
     const std::string& server_address, int64_t max_cache_size)
     : max_cache_size_(max_cache_size) {
   // Ensure that large TPU program can get sent over the channel.
   ::grpc::ChannelArguments args;
-  args.SetInt(GRPC_ARG_MAX_MESSAGE_LENGTH, std::numeric_limits<int32>::max());
+  args.SetInt("grpc.max_receive_message_length",
+              std::numeric_limits<int32_t>::max());
   auto channel =
       ::grpc::CreateCustomChannel(absl::StrCat("dns:///", server_address),
                                   CreateChannelCredentials(), args);
@@ -142,10 +169,10 @@ Status TpuCompilationCacheRpcLookup::Lookup(
     }
     PostLookupLocked(&cache_entry, entry, &removed_entries);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status TpuCompilationCacheRpcLookup::RemoteLookupLocked(
+absl::Status TpuCompilationCacheRpcLookup::RemoteLookupLocked(
     const std::string& local_proto_key,
     const tpu::GetTpuProgramRequest& request,
     std::shared_ptr<CacheEntry>* cache_entry) {
@@ -158,7 +185,7 @@ Status TpuCompilationCacheRpcLookup::RemoteLookupLocked(
   client_context.set_compression_algorithm(GRPC_COMPRESS_GZIP);
 
   ResponseType response;
-  Status s =
+  absl::Status s =
       FromGrpcStatus(stub_->GetTpuProgram(&client_context, request, &response));
   VLOG(1) << "Looked up key " << local_proto_key
           << " in remote subgraph cache status " << s;
@@ -202,5 +229,6 @@ void TpuCompilationCacheRpcLookup::PostLookupLocked(
 std::string TpuCompilationCacheRpcLookup::DebugString() const {
   return "TpuCompilationCacheRpcLookup";
 }
+
 }  // namespace tpu
 }  // namespace tensorflow
