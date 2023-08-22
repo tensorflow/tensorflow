@@ -613,38 +613,6 @@ tsl::Status StreamExecutor::SynchronousMemSet(DeviceMemoryBase* location,
 }
 
 bool StreamExecutor::SynchronousMemcpy(DeviceMemoryBase* device_dst,
-                                       const void* host_src, uint64_t size) {
-  VLOG(1) << "Called StreamExecutor::SynchronousMemcpy(device_dst="
-          << device_dst->opaque() << ", host_src=" << host_src
-          << ", size=" << size << ") H2D" << StackTraceIfVLOG10();
-
-  // Tracing overloaded methods is very difficult due to issues with type
-  // inference on template args. Since use of these overloaded methods is
-  // discouraged anyway, this isn't a huge deal.
-  tsl::Status status =
-      implementation_->SynchronousMemcpy(device_dst, host_src, size);
-  if (!status.ok()) {
-    LOG(ERROR) << "synchronous memcpy: " << status;
-  }
-  return status.ok();
-}
-
-bool StreamExecutor::SynchronousMemcpy(void* host_dst,
-                                       const DeviceMemoryBase& device_src,
-                                       uint64_t size) {
-  VLOG(1) << "Called StreamExecutor::SynchronousMemcpy(host_dst=" << host_dst
-          << ", device_src=" << device_src.opaque() << ", size=" << size
-          << ") D2H" << StackTraceIfVLOG10();
-
-  tsl::Status status =
-      implementation_->SynchronousMemcpy(host_dst, device_src, size);
-  if (!status.ok()) {
-    LOG(ERROR) << "synchronous memcpy: " << status;
-  }
-  return status.ok();
-}
-
-bool StreamExecutor::SynchronousMemcpy(DeviceMemoryBase* device_dst,
                                        const DeviceMemoryBase& device_src,
                                        uint64_t size) {
   VLOG(1) << "Called StreamExecutor::SynchronousMemcpy(device_dst="

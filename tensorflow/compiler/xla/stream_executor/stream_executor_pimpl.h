@@ -249,20 +249,6 @@ class StreamExecutor {
   tsl::Status SynchronousMemSet(DeviceMemoryBase* location, int value,
                                 uint64_t size) ABSL_MUST_USE_RESULT;
 
-  // [deprecated] Blocks the caller while a data segment of the given size is
-  // copied from the host source to the device destination.
-  ABSL_DEPRECATED(
-      "Prefer SynchronousMemcpyH2D, to avoid error-prone API usage.")
-  bool SynchronousMemcpy(DeviceMemoryBase* device_dst, const void* host_src,
-                         uint64_t size) ABSL_MUST_USE_RESULT;
-
-  // [deprecated] Blocks the caller while a data segment of the given size is
-  // copied from the device source to the host destination.
-  ABSL_DEPRECATED(
-      "Prefer SynchronousMemcpyD2H, to avoid error-prone API usage.")
-  bool SynchronousMemcpy(void* host_dst, const DeviceMemoryBase& device_src,
-                         uint64_t size) ABSL_MUST_USE_RESULT;
-
   // Same as SynchronousMemcpy(DeviceMemoryBase*, ...) above.
   tsl::Status SynchronousMemcpyH2D(const void* host_src, int64_t size,
                                    DeviceMemoryBase* device_dst);
