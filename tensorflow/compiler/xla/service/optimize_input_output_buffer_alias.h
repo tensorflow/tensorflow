@@ -66,18 +66,29 @@ class OptimizeInputOutputBufferAlias : public HloModulePass {
  private:
   friend class OptimizeInputOutputBufferAliasTest;
 
-  // If true, we only consider the registered buffer donor in
-  // HloBufferDonorConfig, ignoring unregistered input parameters. If false, we
-  // treat all input parameters as buffer donors.
+  // If true, we only consider the registered buffer donors, ignoring
+  // unregistered input parameters. If false, we treat all input parameters as
+  // buffer donors.
   bool registered_buffer_donor_only_ = false;
 
-  // Match buffer donors and donees and save the matched paired in the
-  // alias_config. The availability of buffer donors is controlled by the flag
-  // registered_buffer_donor_only_.
+  // Match buffer donors and donees and save the matched pairs in the
+  // alias_config. The range of available buffer donors is controlled by the
+  // flag registered_buffer_donor_only_.
   StatusOr<bool> Build(absl::Span<const Shape> input_shapes,
                        const Shape& output_shape,
                        HloInputOutputAliasConfig* alias_config,
                        HloBufferDonorConfig* buffer_donor_config);
+
+  // For each input-output alias, we add control dependencies to avoid the
+  // alias-miss in the run-time. An example is listed below.
+  //
+  // Parameter P1 is used in 3 instructions (I1, I2, I3). I3 is an output and we
+  // match P1 and I3 as the input-output alias. P1 can donate its memory only
+  // after the 3 instructions are finished. If I3 seeks the donated memory
+  // before I1 and I2 finish, there will be a alias-miss in the runtime. We add
+  // control dependencies I1-I3, I2-I3 such that I3 is the last instruction
+  // among these 3 to avoid the alias-miss.
+  StatusOr<bool> AddControlDependencyForAlias(HloModule* module);
 
   std::function<int64_t(const Shape&)> shape_size_fn_ = [](const Shape& shape) {
     return ShapeUtil::ByteSizeOf(shape);

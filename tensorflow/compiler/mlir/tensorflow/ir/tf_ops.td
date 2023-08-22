@@ -1975,7 +1975,7 @@ format which contains three 1D tensors.
   );
 }
 
-def TF_GlobalIterIdOp : TF_Op<"GlobalIterId", [TF_NoConstantFold]> {
+def TF_GlobalIterIdOp : TF_Op<"GlobalIterId", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, TF_GlobalIterIdEffect]> {
   let summary = [{
 Op that gets the global step id.
   }];

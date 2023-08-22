@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/optimize_input_output_buffer_alias.h"
 
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -22,14 +23,22 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_input_output_alias_config.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_reachability.h"
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
+#include "tensorflow/compiler/xla/service/hlo_buffer.h"
+#include "tensorflow/compiler/xla/service/hlo_value.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -125,6 +134,187 @@ StatusOr<bool> OptimizeInputOutputBufferAlias::Build(
   return changed;
 }
 
+StatusOr<bool> AddControlDependencyForAlias(
+    const HloInputOutputAliasConfig::Alias& alias,
+    const ShapeIndex& output_index,
+    const HloComputation* const entry_computation,
+    const HloAliasAnalysis& alias_analysis, HloReachabilityMap* reachability) {
+  bool changed = false;
+
+  // Step 1. Collect where the input and output buffers are used.
+  const auto& input_buffers = alias_analysis.ComputeBuffersAt(
+      entry_computation->parameter_instruction(alias.parameter_number),
+      alias.parameter_index);
+  const auto& output_buffers = alias_analysis.ComputeBuffersAt(
+      entry_computation->root_instruction(), output_index);
+
+  // We only consider the instructions in the entry computation for data
+  // dependency analysis.
+  std::vector<HloInstruction*> input_instructions;
+  for (const HloBuffer* const buffer : input_buffers) {
+    for (const HloPosition& position : buffer->ComputePositions()) {
+      if (position.instruction->parent() == entry_computation) {
+        input_instructions.push_back(position.instruction);
+      }
+    }
+  }
+  std::vector<HloInstruction*> output_instructions;
+  for (const HloBuffer* const buffer : output_buffers) {
+    for (const HloPosition& position : buffer->ComputePositions()) {
+      if (position.instruction->parent() == entry_computation) {
+        output_instructions.push_back(position.instruction);
+      }
+    }
+  }
+
+  // Step 2. We only need the potential earliest instructions for the
+  // output buffer.
+  std::vector<HloInstruction*> potential_earlist_output_instructions;
+  {
+    std::vector<bool> potential_earlist_output_flag(output_instructions.size(),
+                                                    true);
+    for (int64_t i = 0; i < output_instructions.size(); ++i) {
+      if (!potential_earlist_output_flag[i]) {
+        continue;
+      }
+      for (int64_t j = i + 1; j < output_instructions.size(); ++j) {
+        if (reachability->IsReachable(output_instructions[i],
+                                      output_instructions[j])) {
+          potential_earlist_output_flag[j] = false;
+        } else if (reachability->IsReachable(output_instructions[j],
+                                             output_instructions[i])) {
+          potential_earlist_output_flag[i] = false;
+          break;
+        }
+      }
+    }
+    for (int64_t i = 0; i < output_instructions.size(); ++i) {
+      if (potential_earlist_output_flag[i]) {
+        potential_earlist_output_instructions.push_back(output_instructions[i]);
+      }
+    }
+  }
+
+  // Step 3. Similar to Step 2, we only need the potential latest
+  // instructions for the input buffer.
+  std::vector<HloInstruction*> potential_latest_input_instructions;
+  {
+    std::vector<bool> potential_latest_input_flag(input_instructions.size(),
+                                                  true);
+    for (int64_t i = 0; i < input_instructions.size(); ++i) {
+      if (!potential_latest_input_flag[i]) {
+        continue;
+      }
+      for (int64_t j = i + 1; j < input_instructions.size(); ++j) {
+        if (reachability->IsReachable(input_instructions[i],
+                                      input_instructions[j])) {
+          potential_latest_input_flag[i] = false;
+          break;
+        } else if (reachability->IsReachable(input_instructions[j],
+                                             input_instructions[i])) {
+          potential_latest_input_flag[j] = false;
+        }
+      }
+    }
+    for (int64_t i = 0; i < input_instructions.size(); ++i) {
+      if (potential_latest_input_flag[i]) {
+        potential_latest_input_instructions.push_back(input_instructions[i]);
+      }
+    }
+  }
+
+  // Step 4. Collect the users of the input_instructions.
+  // The input_instructions is where buffers are used. We further collect
+  // the users of these positions. An example is listed below. Input P1
+  // and Output O1 are aliased. P1 is used by two instructions I1, I2. We
+  // have to ensure that I1 and I2 are executed before O1. The
+  // input_instructions is {P1}, the input_users is {I1, I2}.
+  absl::flat_hash_set<HloInstruction*> input_users;
+  for (const auto& input_instr : potential_latest_input_instructions) {
+    for (const auto& user : input_instr->users()) {
+      input_users.emplace(user);
+    }
+  }
+
+  // Step 5. If there is a input user later than the output_instr, the
+  // current input and output share memory. It is not necessary to add
+  // control dependency.
+  for (const auto& input_user : input_users) {
+    for (const auto& output_instr : potential_earlist_output_instructions) {
+      if (input_user != output_instr &&
+          reachability->IsReachable(output_instr, input_user)) {
+        return changed;
+      }
+    }
+  }
+
+  // Step 6. Add control dependency if the input_user is not
+  // strictly before the output_instruction.
+  for (const auto& input_user : input_users) {
+    for (const auto& output_instr : potential_earlist_output_instructions) {
+      if (!reachability->IsReachable(input_user, output_instr)) {
+        // If there is a path from input_user to output_instr (including
+        // the case that two instructions are the same), it is redundant
+        // to add control dependency.
+        VLOG(1) << "Add control dependency between predecessor "
+                << input_user->ToString() << " and successor "
+                << output_instr->ToString();
+        TF_RETURN_IF_ERROR(input_user->AddControlDependencyTo(output_instr));
+        reachability->UpdateReachabilityThroughInstruction(output_instr);
+        changed = true;
+      }
+    }
+  }
+
+  return changed;
+}
+
+StatusOr<bool> OptimizeInputOutputBufferAlias::AddControlDependencyForAlias(
+    HloModule* module) {
+  bool global_changed = false;
+
+  // When we call HloAliasAnalysis, we need to reset input_output_alias_config.
+  // Otherwise, HloAliasAnalysis will consider the input output alias.
+  const auto real_alias_config = module->input_output_alias_config();
+  module->input_output_alias_config() = HloInputOutputAliasConfig(
+      module->entry_computation()->root_instruction()->shape());
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                      HloAliasAnalysis::Run(module));
+  module->input_output_alias_config() = real_alias_config;
+
+  auto reachability = HloReachabilityMap::Build(module->entry_computation());
+
+  // Add control dependency for must-alias at first. Then consider the
+  // may-alias.
+  TF_RETURN_IF_ERROR(module->input_output_alias_config().ForEachAliasWithStatus(
+      [&](const ShapeIndex& output_index,
+          const HloInputOutputAliasConfig::Alias& alias) -> Status {
+        if (alias.kind == HloInputOutputAliasConfig::AliasKind::kMustAlias) {
+          TF_ASSIGN_OR_RETURN(
+              bool local_changed,
+              ::xla::AddControlDependencyForAlias(
+                  alias, output_index, module->entry_computation(),
+                  *alias_analysis, reachability.get()));
+          global_changed |= local_changed;
+        }
+        return OkStatus();
+      }));
+  TF_RETURN_IF_ERROR(module->input_output_alias_config().ForEachAliasWithStatus(
+      [&](const ShapeIndex& output_index,
+          const HloInputOutputAliasConfig::Alias& alias) -> Status {
+        if (alias.kind == HloInputOutputAliasConfig::AliasKind::kMayAlias) {
+          TF_ASSIGN_OR_RETURN(
+              bool local_changed,
+              ::xla::AddControlDependencyForAlias(
+                  alias, output_index, module->entry_computation(),
+                  *alias_analysis, reachability.get()));
+          global_changed |= local_changed;
+        }
+        return OkStatus();
+      }));
+  return global_changed;
+}
+
 StatusOr<bool> OptimizeInputOutputBufferAlias::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
@@ -141,11 +331,14 @@ StatusOr<bool> OptimizeInputOutputBufferAlias::Run(
       &module->input_output_alias_config();
   HloBufferDonorConfig* buffer_donor_config = &module->buffer_donor_config();
 
-  TF_ASSIGN_OR_RETURN(bool changed, Build(input_shapes, output_shape,
-                                          alias_config, buffer_donor_config));
+  TF_ASSIGN_OR_RETURN(
+      bool alias_added,
+      Build(input_shapes, output_shape, alias_config, buffer_donor_config));
   TF_RETURN_IF_ERROR(alias_config->Verify(*module, shape_size_fn_));
+  TF_ASSIGN_OR_RETURN(bool control_dependency_added,
+                      AddControlDependencyForAlias(module));
 
-  return changed;
+  return alias_added || control_dependency_added;
 }
 
 }  // namespace xla

@@ -2911,3 +2911,27 @@ func.func @random_uniform_ordering_effect() -> (tensor<3xf32>) {
   // expected-remark@above {{ID: 8}}
   // expected-remark@above {{Sinks: {7}}}
 }
+
+// -----
+
+// Tests that we don't create dependencies between `GlobalIterId`s.
+func.func @global_iter_id_effect() -> () {
+  // expected-remark@above {{ID: 7}}
+  tf_executor.graph {
+  // expected-remark@above {{ID: 5}}
+    %island = tf_executor.island {
+    // expected-remark@above {{ID: 3}}
+      %0 = "tf.GlobalIterId"() : () -> tensor<i64>
+      // expected-remark@above {{ID: 0}}
+      %1 = "tf.GlobalIterId"() : () -> tensor<i64>
+      // expected-remark@above {{ID: 1}}
+      tf_executor.yield
+      // expected-remark@above {{ID: 2}}
+    }
+    tf_executor.fetch
+    // expected-remark@above {{ID: 4}}
+  }
+  func.return
+  // expected-remark@above {{ID: 6}}
+  // expected-remark@above {{Sinks: {}}}
+}
