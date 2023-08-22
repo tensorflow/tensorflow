@@ -657,6 +657,7 @@ static std::string_view StreamCaptureModeToString(
   return ::tsl::OkStatus();
 }
 
+#if GOOGLE_CUDA
 /* static */ tsl::Status GpuDriver::GraphAddMemcpyD2DNode(
     GpuContext* context, hipGraphNode_t* node, hipGraph_t graph,
     absl::Span<hipGraphNode_t> deps, hipDeviceptr_t gpu_dst,
@@ -664,6 +665,7 @@ static std::string_view StreamCaptureModeToString(
   return tsl::Status{absl::StatusCode::kInternal,
                      "hipDrvGraphAddMemcopyNode is not available on ROCm yet"};
 }
+#endif
 
 /* static */ tsl::Status GpuDriver::LaunchKernel(
     GpuContext* context, absl::string_view kernel_name, hipFunction_t function,
