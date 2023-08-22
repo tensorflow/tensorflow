@@ -427,6 +427,12 @@ enum BuiltinOperator : int32 {
   STABLEHLO_DIVIDE = 164, // WARNING: No runtime support yet
   STABLEHLO_MULTIPLY = 165, // WARNING: No runtime support yet
   STABLEHLO_MAXIMUM = 166, // WARNING: No runtime support yet
+  STABLEHLO_RESHAPE = 167, // WARNING: No runtime support yet
+  STABLEHLO_CLAMP = 168, // WARNING: No runtime support
+  STABLEHLO_CONCATENATE = 169, // WARNING: No runtime support
+  STABLEHLO_BROADCAST_IN_DIM = 170, // WARNING: No runtime support
+  STABLEHLO_CONVOLUTION = 171, // WARNING: No runtime support
+  STABLEHLO_SLICE = 172, // WARNING: No runtime support
 }
 // LINT.ThenChange(nnapi_linter/linter.proto)
 
@@ -558,6 +564,56 @@ union BuiltinOptions {
   BitcastOptions,
   BitwiseXorOptions,
   RightShiftOptions,
+  // DO NOT add new options this union, will cause failure in Java api
+  // generation otherwise
+  // Add new builtin options into builtin options 2 instead
+}
+
+union BuiltinOptions2{
+  StablehloConcatenateOptions,
+  StablehloBroadcastInDimOptions,
+  StablehloSliceOptions,
+  StablehloConvolutionOptions,
+}
+
+enum StablehloPrecisionConfig : uint {
+  DEFAULT,
+  HIGH,
+  HIGHEST,
+}
+
+table StablehloConcatenateOptions {
+  dimension : long;
+}
+
+table StablehloBroadcastInDimOptions{
+  broadcast_dimensions : [long];
+}
+
+table StablehloSliceOptions{
+  start_indices : [long];
+  limit_indices : [long];
+  strides : [long];
+}
+
+table StablehloConvolutionOptions{
+  window_strides : [long];
+  padding : [long];
+  lhs_dilation : [long];
+  rhs_dilation : [long];
+  window_reversal : [bool];
+  input_batch_dimension : long;
+  input_feature_dimension : long;
+  input_spatial_dimensions : [long];
+  kernel_input_feature_dimension : long;
+  kernel_output_feature_dimension : long;
+  kernel_spatial_dimensions : [long];
+  output_batch_dimension : long;
+  output_feature_dimension : long;
+  output_spatial_dimensions	: [long];
+  feature_group_count : long;
+  batch_group_count : long;
+  precision_config : [StablehloPrecisionConfig];
 }
 
 // LINT.IfChange
@@ -1271,6 +1327,11 @@ table Operator {
   // beginning of the file and is only valid if > 1
   large_custom_options_offset: ulong;
   large_custom_options_size: ulong;
+
+  // Flatbuffers union struct has a 128 elements limit in JAVA, so a second
+  // union is added, in the case of where BuitlinOptions2 runs out, a third
+  // one can be added
+  builtin_options_2 : BuiltinOptions2;
 }
 
 // The root type, defining a subgraph, which typically represents an entire

@@ -18,19 +18,26 @@ limitations under the License.
 #include <string>
 
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow::tpu {
 namespace {
+
+using absl::Status;
+using absl::StatusOr;
 
 StatusOr<std::string> GenerateTFStatusOr(absl::StatusCode code,
                                          absl::string_view value = "") {
   if (code == absl::StatusCode::kOk) {
     return std::string(value);
   } else {
-    return tsl::Status(code, value);
+    return absl::Status(code, value);
   }
 }
 
@@ -38,7 +45,7 @@ TEST(TpuEmbeddingErrors, StatusOk) {
   constexpr absl::string_view kValue = "success";
 
   {
-    const Status status = AppendTpuEmbeddingErrorPayload(OkStatus());
+    const Status status = AppendTpuEmbeddingErrorPayload(absl::OkStatus());
     TF_EXPECT_OK(status);
     EXPECT_FALSE(HasTpuEmbeddingErrorPayload(status));
     EXPECT_FALSE(HasTpuEmbeddingErrorMessage(status));

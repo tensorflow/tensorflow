@@ -83,6 +83,13 @@ std::vector<ClientAndPtr<PjRtDevice>> PyClient::LocalDevices() {
   return devices;
 }
 
+StatusOr<ClientAndPtr<PjRtDevice>> PyClient::DeviceFromLocalHardwareId(
+    int local_hardware_id) {
+  TF_ASSIGN_OR_RETURN(PjRtDevice * device,
+                      ifrt_client_->LookupAddressableDevice(local_hardware_id));
+  return WrapWithClient(shared_from_this(), device);
+}
+
 std::vector<py::object> PyClient::LiveBuffers() {
   CHECK(PyGILState_Check());
   std::vector<py::object> buffers;

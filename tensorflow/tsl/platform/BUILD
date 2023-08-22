@@ -597,6 +597,7 @@ filegroup(
 filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
+        "error_logging.h",
         "fingerprint.h",
         "notification.h",
         "png.h",
@@ -1107,7 +1108,10 @@ cc_library(
     visibility = [
         "//visibility:public",
     ],
-    deps = tf_error_logging_deps(),
+    deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ] + tf_error_logging_deps(),
 )
 
 cc_library(

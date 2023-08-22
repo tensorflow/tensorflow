@@ -48,6 +48,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/iterator_util.h"
 #include "tensorflow/compiler/xla/layout.h"
@@ -1777,7 +1778,7 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
     if (in_operand_list) {
       DetachFrom(instruction_to_append);
       // When the instruction_to_append does not have other users, we don't
-      // need to generate a multioutput instruction.
+      // need to generate a multi-output instruction.
       if (instruction_to_append->user_count() == 0) {
         add_output = false;
       }

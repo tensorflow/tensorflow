@@ -282,7 +282,7 @@ Attribute encodePrecisionConfig(Attribute hloAttrs) {
 //  }
 FailureOr<func::FuncOp> rewriteMhloRegionAsFunc(
     Operation* op, ConversionPatternRewriter& rewriter,
-    TypeConverter* typeConverter) {
+    const TypeConverter* typeConverter) {
   auto& region = op->getRegion(0);
   if (!region.hasOneBlock()) return failure();
 
@@ -331,7 +331,7 @@ FailureOr<func::FuncOp> rewriteMhloRegionAsFunc(
 template <typename HloOpTy>
 LogicalResult rewriteMhloOpAsCustomCall(HloOpTy hloOp,
                                         ConversionPatternRewriter& rewriter,
-                                        TypeConverter* typeConverter,
+                                        const TypeConverter* typeConverter,
                                         ValueRange stablehloOperands) {
   if (hloOp->getNumRegions() > 1) {
     // Extensibility protocol for regions is only supported for single-region

@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
-#include "tensorflow/core/framework/graph.pb.h"
 
 namespace tensorflow {
 namespace quantization {

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_barrier_proxy.h"
 
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <optional>
@@ -40,7 +41,6 @@ using ::testing::_;
 using ::testing::Return;
 using tsl::CallOptions;
 using tsl::CoordinationClient;
-using tsl::CoordinationClientCache;
 using tsl::CoordinationServiceAgent;
 
 class MockCoordinationServiceAgent : public CoordinationServiceAgent {
@@ -81,6 +81,8 @@ class MockCoordinationServiceAgent : public CoordinationServiceAgent {
   MOCK_METHOD(StatusOr<std::string>, GetKeyValue, (const std::string& key),
               (override));
   MOCK_METHOD(StatusOr<std::string>, GetKeyValue,
+              (const char* key, int64_t key_size), (override));
+  MOCK_METHOD(StatusOr<std::string>, GetKeyValue,
               (const std::string& key, absl::Duration timeout), (override));
   MOCK_METHOD(std::shared_ptr<CallOptions>, GetKeyValueAsync,
               (const std::string& key, StatusOrValueCallback done), (override));
@@ -93,7 +95,13 @@ class MockCoordinationServiceAgent : public CoordinationServiceAgent {
               (override));
   MOCK_METHOD(Status, InsertKeyValue,
               (const std::string& key, const std::string& value), (override));
+  MOCK_METHOD(Status, InsertKeyValue,
+              (const char* key, int64_t key_size, const char* value,
+               int64_t value_size),
+              (override));
   MOCK_METHOD(Status, DeleteKeyValue, (const std::string& key), (override));
+  MOCK_METHOD(Status, DeleteKeyValue, (const char* key, int64_t key_size),
+              (override));
   MOCK_METHOD(Status, UpdateKeyValue,
               (const std::string& key, const std::string& value), (override));
   MOCK_METHOD(Status, StartWatchKey,

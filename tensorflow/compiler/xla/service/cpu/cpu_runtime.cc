@@ -155,8 +155,6 @@ extern const char* const kCollectivePermuteSymbolName =
 extern const char* const kPartitionIdSymbolName =
     "__xla_cpu_runtime_PartitionId";
 extern const char* const kReplicaIdSymbolName = "__xla_cpu_runtime_ReplicaId";
-extern const char* const kOneDnnMatMulSymbolName =
-    "__xla_cpu_runtime_OneDnnMatMul";
 
 namespace {
 

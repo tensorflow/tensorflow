@@ -24,7 +24,7 @@ namespace thlo {
 namespace {
 
 using mlir::bufferization::AliasingOpOperandList;
-using mlir::bufferization::AliasingOpResultList;
+using mlir::bufferization::AliasingValueList;
 using mlir::bufferization::AnalysisState;
 using mlir::bufferization::BufferizableOpInterface;
 using mlir::bufferization::BufferizationOptions;
@@ -110,7 +110,9 @@ struct ThloSortOpBufferizationModel
   }
 
   AliasingOpOperandList getAliasingOpOperands(
-      Operation *op, OpResult opResult, const AnalysisState & /*state*/) const {
+      Operation *op, Value value, const AnalysisState & /*state*/) const {
+    auto opResult = value.dyn_cast<OpResult>();
+    if (!opResult) return {};
     auto dstStyleOp = cast<DestinationStyleOpInterface>(op);
 
     // The i-th OpResult aliases with the i-th "out" tensor.
@@ -118,9 +120,8 @@ struct ThloSortOpBufferizationModel
              BufferRelation::Equivalent}};
   }
 
-  AliasingOpResultList getAliasingOpResults(
-      Operation *op, OpOperand &opOperand,
-      const AnalysisState & /*state*/) const {
+  AliasingValueList getAliasingValues(Operation *op, OpOperand &opOperand,
+                                      const AnalysisState & /*state*/) const {
     auto dstStyleOp = cast<DestinationStyleOpInterface>(op);
 
     // The i-th "out" tensor aliases with the i-th OpResult.

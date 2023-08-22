@@ -54,6 +54,7 @@ class MultiHostHloRunnerFlags {
     bool xla_dump_as_proto = false;
     std::string hlo_argument_mode = "use_random_inputs";
     int32_t while_execution_count = -1;
+    bool remove_infeed_outfeed = true;
     int32_t num_repeats = 1;
     std::string execution_options_path = "";
   };

@@ -123,7 +123,6 @@ py_strict_library(
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:tensor_array_ops",
         "//tensorflow/python/ops:while_loop",
-        "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/types:distribute",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:variable_utils",

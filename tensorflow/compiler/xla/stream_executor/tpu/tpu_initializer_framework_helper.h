@@ -16,14 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_TPU_INITIALIZER_FRAMEWORK_HELPER_H_
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_TPU_INITIALIZER_FRAMEWORK_HELPER_H_
 
-
-#include "tensorflow/tsl/platform/status.h"
+#include "absl/status/status.h"
 
 namespace tensorflow {
 namespace tpu {
 
 // This will check the lock and then load the library.
-tsl::Status FindAndLoadTpuLibrary();  // TENSORFLOW_STATUS_OK
+absl::Status FindAndLoadTpuLibrary();  // TENSORFLOW_STATUS_OK
 absl::Status LoadTpuLibraryAndInitializeTpuStructFns();
 
 }  // namespace tpu

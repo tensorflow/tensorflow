@@ -34,9 +34,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
+#include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/tools/hlo_control_flow_flattening.h"
+#include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/statusor.h"
 
@@ -441,7 +443,7 @@ FunctionalHloRunner::LoadHloModuleAndArguments(absl::string_view hlo_file,
 }
 
 Status FunctionalHloRunner::LoadAndRunAndDump(
-    PjRtClient& client,
+    PjRtClient& client, const DebugOptions& debug_options,
     const xla::FunctionalHloRunner::PreprocessingOptions& preproc_options,
     const xla::FunctionalHloRunner::RawCompileOptions& raw_compile_options,
     const xla::FunctionalHloRunner::RunningOptions& running_options,
@@ -450,10 +452,11 @@ Status FunctionalHloRunner::LoadAndRunAndDump(
   TF_ASSIGN_OR_RETURN(CompileOptions compile_options,
                       FunctionalHloRunner::CreateCompileOptions(
                           client, raw_compile_options, task_id));
-  TF_ASSIGN_OR_RETURN(FunctionalHloRunner::PerDeviceLiteralVecType output,
-                      FunctionalHloRunner::LoadAndRun(
-                          client, preproc_options, compile_options,
-                          running_options, hlo_files, input_format));
+  TF_ASSIGN_OR_RETURN(
+      FunctionalHloRunner::PerDeviceLiteralVecType output,
+      FunctionalHloRunner::LoadAndRun(client, debug_options, preproc_options,
+                                      compile_options, running_options,
+                                      hlo_files, input_format));
   return dump_output_to.empty()
              ? OkStatus()
              : FunctionalHloRunner::DumpOutput(output, dump_output_to, task_id);
@@ -461,6 +464,7 @@ Status FunctionalHloRunner::LoadAndRunAndDump(
 
 StatusOr<FunctionalHloRunner::PerDeviceLiteralVecType>
 FunctionalHloRunner::LoadAndRun(PjRtClient& client,
+                                const DebugOptions& debug_options,
                                 const PreprocessingOptions& preproc_options,
                                 const CompileOptions& compile_options,
                                 const RunningOptions& running_options,
@@ -484,18 +488,19 @@ FunctionalHloRunner::LoadAndRun(PjRtClient& client,
     }
   }
   if (!arguments.empty()) {
-    return CompileAndRun(client, preproc_options, compile_options,
-                         running_options,
+    return CompileAndRun(client, debug_options, preproc_options,
+                         compile_options, running_options,
                          hlo_module_and_arguments.hlo_module.get(), arguments);
   }
   return CompileAndRun(
-      client, preproc_options, compile_options, running_options,
+      client, debug_options, preproc_options, compile_options, running_options,
       hlo_module_and_arguments.hlo_module.get(), loaded_arguments);
 }
 
 StatusOr<FunctionalHloRunner::PerDeviceLiteralVecType>
 FunctionalHloRunner::LoadAndRun(
-    PjRtClient& client, const PreprocessingOptions& preproc_options,
+    PjRtClient& client, const DebugOptions& debug_options,
+    const PreprocessingOptions& preproc_options,
     const CompileOptions& compile_options,
     const RunningOptions& running_options,
     absl::Span<const std::string> hlo_files, InputFormat input_format,
@@ -504,17 +509,20 @@ FunctionalHloRunner::LoadAndRun(
   CHECK(!hlo_files.empty());
   // We only support SPMD as of now, i.e., all devices are supposed
   // to execute the same HLO module.
+  // TODO(tdanyluk): Consider revising this API which takes multiple HLOs, but
+  // uses only one.
   HloModuleAndArguments hlo_module_and_arguments;
   TF_ASSIGN_OR_RETURN(hlo_module_and_arguments,
                       LoadHloModuleAndArguments(hlo_files[0], input_format));
-  return CompileAndRun(client, preproc_options, compile_options,
+  return CompileAndRun(client, debug_options, preproc_options, compile_options,
                        running_options,
                        hlo_module_and_arguments.hlo_module.get(),
                        argument_literals, per_device_index_vec);
 }
 
 Status FunctionalHloRunner::LoadAndCompile(
-    PjRtClient& client, const PreprocessingOptions& preproc_options,
+    PjRtClient& client, const DebugOptions& debug_options,
+    const PreprocessingOptions& preproc_options,
     const RawCompileOptions& raw_compile_options, std::string_view hlo_file,
     InputFormat input_format, int task_id) {
   TF_ASSIGN_OR_RETURN(CompileOptions compile_options,
@@ -539,7 +547,7 @@ Status FunctionalHloRunner::LoadAndCompile(
 
   TF_RETURN_IF_ERROR(FunctionalHloRunner::Compile(
                          client, hlo_module_and_arguments.hlo_module.get(),
-                         preproc_options, compile_options)
+                         debug_options, preproc_options, compile_options)
                          .status());
 
   return OkStatus();
@@ -598,28 +606,30 @@ StatusOr<std::unique_ptr<HloModule>> FunctionalHloRunner::ReadModuleFromProto(
 
 StatusOr<FunctionalHloRunner::PerDeviceLiteralVecType>
 FunctionalHloRunner::CompileAndRun(PjRtClient& client,
+                                   const DebugOptions& debug_options,
                                    const PreprocessingOptions& preproc_options,
                                    const CompileOptions& compile_options,
                                    const RunningOptions& running_options,
                                    HloModule* hlo_module,
                                    const PerDeviceLiteralVecType& arguments) {
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<PjRtLoadedExecutable> executable,
-      Compile(client, hlo_module, preproc_options, compile_options));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> executable,
+                      Compile(client, hlo_module, debug_options,
+                              preproc_options, compile_options));
 
   return Run(client, executable.get(), arguments, running_options);
 }
 
 StatusOr<FunctionalHloRunner::PerDeviceLiteralVecType>
 FunctionalHloRunner::CompileAndRun(
-    PjRtClient& client, const PreprocessingOptions& preproc_options,
+    PjRtClient& client, const DebugOptions& debug_options,
+    const PreprocessingOptions& preproc_options,
     const CompileOptions& compile_options,
     const RunningOptions& running_options, HloModule* hlo_module,
     const LiteralVec& argument_literals,
     const PerDeviceIndexVecType& argument_indices) {
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<PjRtLoadedExecutable> executable,
-      Compile(client, hlo_module, preproc_options, compile_options));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> executable,
+                      Compile(client, hlo_module, debug_options,
+                              preproc_options, compile_options));
   return Run(client, executable.get(), argument_literals, argument_indices,
              running_options);
 }
@@ -697,7 +707,10 @@ ParameterType GetParameterType(const HloModule& module) {
 }  // namespace
 
 Status FunctionalHloRunner::PrepareHloModuleForCompilation(
-    HloModule* hlo_module, const PreprocessingOptions& preproc_options) {
+    HloModule* hlo_module, const DebugOptions& debug_options,
+    const PreprocessingOptions& preproc_options) {
+  hlo_module->config().set_debug_options(debug_options);
+
   if (preproc_options.is_spmd_partitioned_module()) {
     // If the module has already been partitioned by SPMD, add sharding
     // annotations (replicated) to module parameters and result.
@@ -706,9 +719,12 @@ Status FunctionalHloRunner::PrepareHloModuleForCompilation(
 
   if (preproc_options.flatten_while_loop() ||
       preproc_options.remove_infeed_outfeed) {
+    // The pipeline will check for the presence of
+    // debug_options().xla_disable_hlo_passes().
+    HloPassPipeline pipeline("control-flow-flattening-pipeline");
     int while_execution_count =
         preproc_options.while_execution_count.value_or(0);
-    HloControlFlowFlattening hlo_control_flow_flattening(
+    pipeline.AddPass<HloControlFlowFlattening>(
         HloControlFlowFlattening::Options{
             /*while_execution_count=*/while_execution_count,
             /*max_outer_loop_count=*/
@@ -718,7 +734,7 @@ Status FunctionalHloRunner::PrepareHloModuleForCompilation(
             /*remove_infeed_outfeed=*/preproc_options.remove_infeed_outfeed,
             /*flatten_while_loop=*/preproc_options.flatten_while_loop(),
             /*remove_comm=*/false, /*remove_host_transfer=*/true});
-    TF_RETURN_IF_ERROR(hlo_control_flow_flattening.Run(hlo_module).status());
+    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
   return OkStatus();
 }
@@ -733,10 +749,11 @@ CompileOptions FunctionalHloRunner::CompleteCompileOptions(
 
 StatusOr<std::unique_ptr<PjRtLoadedExecutable>> FunctionalHloRunner::Compile(
     PjRtClient& client, HloModule* hlo_module,
+    const DebugOptions& debug_options,
     const PreprocessingOptions& preproc_options,
     const CompileOptions& compile_options) {
-  TF_RETURN_IF_ERROR(
-      PrepareHloModuleForCompilation(hlo_module, preproc_options));
+  TF_RETURN_IF_ERROR(PrepareHloModuleForCompilation(hlo_module, debug_options,
+                                                    preproc_options));
   CompileOptions modified_compile_options =
       CompleteCompileOptions(*hlo_module, compile_options);
   XlaComputation computation(hlo_module->ToProto());
@@ -749,11 +766,12 @@ StatusOr<std::unique_ptr<PjRtLoadedExecutable>> FunctionalHloRunner::Compile(
 
 StatusOr<std::unique_ptr<PjRtExecutable>> FunctionalHloRunner::Compile(
     PjRtClient& client, HloModule* hlo_module,
+    const DebugOptions& debug_options,
     const PreprocessingOptions& preproc_options,
     const CompileOptions& compile_options,
     const PjRtTopologyDescription& topology) {
-  TF_RETURN_IF_ERROR(
-      PrepareHloModuleForCompilation(hlo_module, preproc_options));
+  TF_RETURN_IF_ERROR(PrepareHloModuleForCompilation(hlo_module, debug_options,
+                                                    preproc_options));
   CompileOptions modified_compile_options =
       CompleteCompileOptions(*hlo_module, compile_options);
   XlaComputation computation(hlo_module->ToProto());

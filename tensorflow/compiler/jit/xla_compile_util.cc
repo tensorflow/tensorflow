@@ -19,9 +19,14 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/compiler/jit/flags.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/tfrt/common/global_state.h"
 #include "tensorflow/core/util/determinism.h"
 
 namespace tensorflow {
@@ -89,4 +94,25 @@ std::string GetPjRtDeviceCompilationProfilerResourceName(
   return absl::StrCat(kPjRtDeviceCompilationProfilerResourceName, "_",
                       device_type.type_string());
 }
+
+StatusOr<ResourceMgr*> GetResourceMgrForDeviceCompiler(
+    const OpKernelContext& ctx, const DeviceType& device_type) {
+  // We store information about the JIT-compiled XLA computation in the
+  // ResourceMgr. The DeviceCompiler (which contains the DeviceCompilationCache)
+  // is stored in the tfrt_global ResourceMgr for TPU and the Device ResourceMgr
+  // for CPU/GPU. This is to make sure the DeviceCompiler's lifecycle is
+  // maintained appropriately.
+  ResourceMgr* rm = nullptr;
+  if (device_type == DEVICE_TPU) {
+    rm = tfrt_global::GetTFGlobalResourceMgr();
+  } else {
+    rm = ctx.resource_manager();
+  }
+
+  if (!rm) {
+    return absl::InternalError("No resource manager found.");
+  }
+  return rm;
+}
+
 }  // namespace tensorflow

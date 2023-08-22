@@ -25,3 +25,25 @@ cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+cc_library(
+    name = "resize",
+    srcs = ["resize.cc"],
+    hdrs = ["resize.h"],
+    deps = [
+        "//tensorflow/lite/experimental/ml_adjacent:lib",
+        "//tensorflow/lite/kernels/internal:compatibility",
+    ],
+)
+
+cc_test(
+    name = "resize_test",
+    srcs = ["resize_test.cc"],
+    deps = [
+        ":resize",
+        "//tensorflow/lite/experimental/ml_adjacent:lib",
+        "//tensorflow/lite/experimental/ml_adjacent/data:owning_vector_ref",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

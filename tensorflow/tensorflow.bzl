@@ -2999,6 +2999,7 @@ def pybind_extension_opensource(
         defines = [],
         deprecation = None,
         enable_stub_generation = False,  # Unused.
+        additional_stubgen_deps = [],  # Unused.
         features = [],
         link_in_framework = False,
         licenses = None,
@@ -3011,7 +3012,7 @@ def pybind_extension_opensource(
         visibility = None,
         win_def_file = None):
     """Builds a generic Python extension module."""
-    _ignore = [enable_stub_generation, module_name]  # buildifier: disable=unused-variable
+    _ignore = [enable_stub_generation, additional_stubgen_deps, module_name]  # buildifier: disable=unused-variable
     p = name.rfind("/")
     if p == -1:
         sname = name
@@ -3298,7 +3299,10 @@ def tf_python_pybind_extension_opensource(
         compatible_with = None,
         copts = [],
         defines = [],
+        enable_stub_generation = False,
+        additional_stubgen_deps = [],
         features = [],
+        pytype_srcs = [],
         testonly = False,
         visibility = None,
         win_def_file = None):
@@ -3322,7 +3326,10 @@ def tf_python_pybind_extension_opensource(
         compatible_with = compatible_with,
         copts = copts,
         defines = defines,
+        enable_stub_generation = enable_stub_generation,
+        additional_stubgen_deps = additional_stubgen_deps,
         features = features,
+        pytype_srcs = pytype_srcs,
         testonly = testonly,
         visibility = visibility,
         win_def_file = win_def_file,

@@ -388,7 +388,7 @@ py_strict_library(
 
 tf_py_strict_test(
     name = "tfr_gen_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/tfr_gen_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",

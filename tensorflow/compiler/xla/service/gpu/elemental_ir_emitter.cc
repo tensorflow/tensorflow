@@ -30,6 +30,7 @@ limitations under the License.
 #include "llvm/IR/Type.h"
 #include "llvm/Support/ModRef.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/layout.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
@@ -158,15 +159,20 @@ llvm_ir::IrArray::Index GpuElementalIrEmitter::GetSourceIndexOfBitcast(
   Shape shape = hlo->shape();
   Shape operand_shape = hlo->operand(0)->shape();
 
-  // Decode the layout of the shape from the Protobugs attached to
+  // Decode the layout of the shape from the Protobufs attached to
   // backend_config_.
   BitcastBackendConfig bitcast_config;
   CHECK(bitcast_config.ParseFromString(hlo->raw_backend_config_string()));
 
-  *shape.mutable_layout() =
-      xla::Layout::CreateFromProto(bitcast_config.result_layout());
-  *operand_shape.mutable_layout() =
-      xla::Layout::CreateFromProto(bitcast_config.source_layout());
+  // If there is no layout in the protobuf, do not override it.
+  if (!bitcast_config.result_layout().minor_to_major().empty()) {
+    *shape.mutable_layout() =
+        xla::Layout::CreateFromProto(bitcast_config.result_layout());
+  }
+  if (!bitcast_config.source_layout().minor_to_major().empty()) {
+    *operand_shape.mutable_layout() =
+        xla::Layout::CreateFromProto(bitcast_config.source_layout());
+  }
   return index.SourceIndexOfBitcast(shape, operand_shape, b());
 }
 

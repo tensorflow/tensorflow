@@ -266,6 +266,7 @@ tf_cc_test(
     tags = ["no_oss"],
     deps = [
         ":fallback_tensor",
+        "//tensorflow/core/common_runtime:dma_helper",
         "@com_google_googletest//:gtest_main",
     ],
 )

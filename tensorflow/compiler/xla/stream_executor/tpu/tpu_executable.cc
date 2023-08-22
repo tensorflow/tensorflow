@@ -24,7 +24,6 @@ limitations under the License.
 
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/log/check.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
@@ -39,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_stream.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace ApiConverter {
 

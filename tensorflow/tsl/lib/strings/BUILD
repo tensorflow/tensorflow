@@ -12,10 +12,12 @@ cc_library(
     srcs = ["proto_serialization.cc"],
     hdrs = ["proto_serialization.h"],
     visibility = set_external_visibility([
+        "//tensorflow/compiler/xla/pjrt:__subpackages__",
         "//tensorflow/compiler/xla/python:__pkg__",
         "//tensorflow/compiler/xla/service:__pkg__",
         "//tensorflow/compiler/xla/stream_executor:__pkg__",
         "//tensorflow/core/lib/strings:__pkg__",
+        "//tensorflow/compiler/tf2xla/kernels:__pkg__",
     ]),
     deps = [
         "//tensorflow/tsl/lib/gtl:inlined_vector",

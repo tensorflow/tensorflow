@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/utils.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <cstdlib>
 #include <functional>
 #include <memory>
@@ -24,16 +25,31 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_set.h"
+#include "absl/algorithm/container.h"
+#include "absl/strings/numbers.h"
+#include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
+#include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/platform/cpu_info.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -337,6 +353,39 @@ StatusOr<Shape> MakeShapeWithTrivialByteStrides(
   }
   return ShapeUtil::MakeShapeWithDenseLayout(element_type, dimensions,
                                              minor_to_major);
+}
+
+Status TestBufferDonationClashes(
+    void* opaque_key,
+    absl::flat_hash_map<const void*, std::pair<bool, int>>& donation_clashes,
+    bool is_donated, int arg_idx, int replica, int partition) {
+  auto [donation_clash_it, first_use] =
+      donation_clashes.emplace(opaque_key, std::make_pair(is_donated, arg_idx));
+  if (!first_use && (is_donated || donation_clash_it->second.first)) {
+    auto [prev_is_donated, prev_arg_idx] = donation_clash_it->second;
+    if (is_donated && prev_is_donated) {
+      return InvalidArgument(
+          "Attempt to donate the same buffer twice in Execute() ("
+          "flattened argument %d, replica %d, partition %d, first use: %d). "
+          "Toy "
+          "example for this bug: `f(donate(a), donate(a))`.",
+          arg_idx, replica, partition, prev_arg_idx);
+    } else if (is_donated) {
+      return InvalidArgument(
+          "Attempt to donate a buffer which is also used by the same call "
+          "to Execute() (flattened argument %d, replica %d, partition %d, "
+          "first use: %d). Toy example for this bug: `f(a, donate(a))`.",
+          arg_idx, replica, partition, prev_arg_idx);
+    } else {
+      return InvalidArgument(
+          "Attempt to use a buffer that was previously donated in the same "
+          "call to Execute() (flattened argument %d, replica %d, partition "
+          "%d, first use: %d). Toy example for this bug: `f(donate(a), "
+          "a)`.",
+          arg_idx, replica, partition, prev_arg_idx);
+    }
+  }
+  return absl::OkStatus();
 }
 
 }  // namespace xla

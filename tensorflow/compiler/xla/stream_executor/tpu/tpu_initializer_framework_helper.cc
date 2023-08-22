@@ -29,8 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_c_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_initialize_util.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
 
 #if !defined(PLATFORM_GOOGLE)
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
@@ -47,8 +46,8 @@ namespace tpu {
 #if !defined(PLATFORM_GOOGLE)
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_library_init_fns.inc"
 
-tsl::Status InitializeTpuLibrary(void* library_handle) {
-  tsl::Status s = InitializeTpuStructFns(library_handle);
+absl::Status InitializeTpuLibrary(void* library_handle) {
+  absl::Status s = InitializeTpuStructFns(library_handle);
 
   // Retrieve arguments from environment if applicable
   std::pair<std::vector<std::string>, std::vector<const char*>> args =
@@ -70,36 +69,37 @@ tsl::Status InitializeTpuLibrary(void* library_handle) {
   return s;
 }
 
-static tsl::StatusOr<void*> OpenTpuLibrary() {
+static absl::StatusOr<void*> OpenTpuLibrary() {
   const char* env_value = getenv("TPU_LIBRARY_PATH");
   const char* libtpu_path =
       env_value && strlen(env_value) > 0 ? env_value : "libtpu.so";
   LOG(INFO) << "Libtpu path is: " << libtpu_path;
   void* library = dlopen(libtpu_path, RTLD_LAZY);
   if (library == nullptr) {
-    return tsl::errors::Internal("Failed to open libtpu ", dlerror());
+    return absl::InternalError(
+        absl::StrCat("Failed to open libtpu ", dlerror()));
   }
   return library;
 }
 
 // TODO(b/261484192): remove after StreamExecutor is fully deprecated in Cloud
 // TPU.
-tsl::Status FindAndLoadTpuLibrary() {
-  tsl::StatusOr<void*> library = OpenTpuLibrary();
+absl::Status FindAndLoadTpuLibrary() {
+  absl::StatusOr<void*> library = OpenTpuLibrary();
   if (!library.ok()) {
     LOG(INFO) << library.status();
-    return ::tsl::OkStatus();
+    return absl::OkStatus();
   }
 
   // We can open the shared library which means we are in a TPU environment.
   // Try to acquire exclusive access.
   TF_RETURN_IF_ERROR(TryAcquireTpuLock());
   TF_RETURN_IF_ERROR(InitializeTpuLibrary(*library));
-  return ::tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status LoadTpuLibraryAndInitializeTpuStructFns() {
-  tsl::StatusOr<void*> library = OpenTpuLibrary();
+  absl::StatusOr<void*> library = OpenTpuLibrary();
   if (!library.ok()) {
     LOG(INFO) << library.status();
     return absl::OkStatus();
@@ -112,7 +112,7 @@ absl::Status LoadTpuLibraryAndInitializeTpuStructFns() {
 
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_library_init_fns.inc"
 
-tsl::Status InitializeTpuLibrary() {
+absl::Status InitializeTpuLibrary() {
   // Retrieve arguments from environment if applicable
   std::pair<std::vector<std::string>, std::vector<const char*>> args =
       GetLibTpuInitArguments();
@@ -121,21 +121,20 @@ tsl::Status InitializeTpuLibrary() {
                    args.second.data());
 
   RegisterTpuPlatform();
-  return ::tsl::OkStatus();
+  return absl::OkStatus();
 }
 
-tsl::Status FindAndLoadTpuLibrary() {
+absl::Status FindAndLoadTpuLibrary() {
   // We can open the shared library which means we are in a TPU environment.
   // Try to acquire exclusive access.
   TF_RETURN_IF_ERROR(TryAcquireTpuLock());
   TF_RETURN_IF_ERROR(InitializeTpuLibrary());
-  return ::tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 #else   // PLATFORM_GOOGLE
-tsl::Status InitializeTpuLibrary(void* library_handle) {
-  return tsl::errors::Unimplemented(
-      "You must statically link in a TPU library.");
+absl::Status InitializeTpuLibrary(void* library_handle) {
+  return absl::UnimplementedError("You must statically link in a TPU library.");
 }
 
 absl::Status LoadTpuLibraryAndInitializeTpuStructFns() {

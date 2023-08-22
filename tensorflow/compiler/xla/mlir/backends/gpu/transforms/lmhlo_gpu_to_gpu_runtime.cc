@@ -236,18 +236,9 @@ class CublasLtMatmulF8OpLowering : public OpRewritePattern<CublasLtMatmulF8Op> {
 
   LogicalResult matchAndRewrite(CublasLtMatmulF8Op op,
                                 PatternRewriter& rewriter) const override {
-    // Get the custom call target.
-    std::string matmul = kCustomCallTarget;
-
-    if (op.getNumOperands() == 9) {
-      matmul += ".d_amax";
-    } else if (op.getNumOperands() != 8) {
-      return op.emitOpError("unexpected number of operands for matmul");
-    }
-
     // Get or create a custom call function declaration.
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
-    func::FuncOp callee = custom_calls_.GetOrCreate(b, matmul, op);
+    func::FuncOp callee = custom_calls_.GetOrCreate(b, kCustomCallTarget, op);
 
     // Convert matmul to a function call.
     auto call = rewriter.create<func::CallOp>(op.getLoc(), callee.getName(),

@@ -3473,17 +3473,6 @@ xla::Status PrepareForExport(mlir::ModuleOp module) {
 
 }  // namespace
 
-xla::Status ConvertRegionToComputation(mlir::Region* region,
-                                       xla::XlaComputation* func,
-                                       MlirToHloConversionOptions options) {
-  mlir::ModuleOp module;
-  xla::XlaBuilder module_builder("main");
-  ConvertToHloModule converter(module, module_builder, true, true, options);
-  if (failed(converter.LowerRegionAsComputation(region, func)))
-    return tsl::errors::Internal("failed to convert region to computation");
-  return ::tsl::OkStatus();
-}
-
 xla::Status ConvertMlirHloToHlo(mlir::ModuleOp module, xla::HloProto* hlo_proto,
                                 bool use_tuple_args, bool return_tuple,
                                 MlirToHloConversionOptions options) {

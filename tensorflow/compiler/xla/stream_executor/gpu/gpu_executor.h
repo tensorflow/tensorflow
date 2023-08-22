@@ -214,6 +214,9 @@ class GpuExecutor : public internal::StreamExecutorInterface {
 
   tsl::Status WaitForEvent(Stream* stream, Event* event) override;
 
+  tsl::Status WaitForEventOnExternalStream(std::intptr_t stream,
+                                           Event* event) override;
+
   Event::Status PollForEventStatus(Event* event) override;
 
   tsl::Status BlockHostUntilDone(Stream* stream) override;

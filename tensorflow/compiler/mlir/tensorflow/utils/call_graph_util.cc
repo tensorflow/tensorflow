@@ -57,4 +57,8 @@ LogicalResult GetCallees(SymbolUserOpInterface op, SymbolTable &symtab,
   return success();
 }
 
+bool HasSingleBlock(func::FuncOp func) {
+  return func->getNumRegions() == 1 && func.getBody().hasOneBlock();
+}
+
 }  // namespace mlir

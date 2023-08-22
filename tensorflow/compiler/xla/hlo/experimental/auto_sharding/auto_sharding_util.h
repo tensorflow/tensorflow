@@ -207,6 +207,12 @@ inline bool IsCustomCallMarker(const HloInstruction* inst) {
   return inst->IsCustomCall({kPipelineMarker, kIdentityMarker});
 }
 
+// Return whether this instruction is a TopK custom call.
+inline bool IsTopKCustomCall(const HloInstruction* inst) {
+  return inst->opcode() == HloOpcode::kCustomCall &&
+         inst->custom_call_target() == "TopK";
+}
+
 // Pass through the custom call marker and get the source instruction
 inline const HloInstruction* PassThroughCustomCallMarkerGetSource(
     const HloInstruction* ins) {

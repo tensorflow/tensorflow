@@ -171,8 +171,6 @@ LogicalResult legalizeTF(Operation *op, bool legalize_chlo,
 
   // Add TF->HLO legalization patterns.
   PopulateLegalizeTfPatterns(context, &legalize_lower_patterns);
-  stablehlo::PopulateLegalizeTfQuantizationPatterns(context,
-                                                    &legalize_lower_patterns);
 
   // Add TF->TF lowering patterns.
   TF::PopulateTFLoweringBeforeHLOPatterns(context, &legalize_lower_patterns);

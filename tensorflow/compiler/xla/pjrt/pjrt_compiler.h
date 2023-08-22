@@ -115,6 +115,10 @@ class PjRtTopologyDescription {
     return absl::UnimplementedError(
         "CoreCountOfDefaultTypePerChip is unsupported.");
   }
+
+  // Serializes the topology for use in cache keys. (No guarantees on
+  // stability).
+  virtual absl::StatusOr<std::string> Serialize() const = 0;
 };
 
 // Abstract interface that all registered compilers must implement.

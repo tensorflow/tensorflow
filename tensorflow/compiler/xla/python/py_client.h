@@ -153,6 +153,8 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
 
   std::vector<ClientAndPtr<PjRtDevice>> Devices();
   std::vector<ClientAndPtr<PjRtDevice>> LocalDevices();
+  StatusOr<ClientAndPtr<PjRtDevice>> DeviceFromLocalHardwareId(
+      int local_hardware_id);
 
   // Returns a vector of live PyArray objects. PyArray objects may share
   // PjRtBuffers, so there may be duplicates of the same underlying device

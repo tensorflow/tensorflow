@@ -468,6 +468,26 @@ std::pair<std::vector<int64_t>, std::vector<int64_t>> ConstructFromDotMaps(
   return {map_ab_a, map_ab_b};
 }
 
+bool DotHasOnlyBatchAndContractingOnOneOperand(
+    int64_t lhs_rank, int64_t rhs_rank, const DotDimensionNumbers dnums) {
+  return (dnums.lhs_batch_dimensions_size() +
+              dnums.lhs_contracting_dimensions_size() ==
+          lhs_rank) ||
+         (dnums.rhs_contracting_dimensions_size() +
+              dnums.rhs_batch_dimensions_size() ==
+          rhs_rank);
+}
+
+// Estimates the number of flops a reduce requires
+int64_t GetReduceFlops(const HloInstruction* reduce) {
+  int64_t reduce_product = 1;
+  for (int64_t dim : reduce->dimensions()) {
+    reduce_product *= reduce->operand(0)->shape().dimensions(dim);
+  }
+  // Reduce along a dimension of size n requires n-1 reductions
+  return ShapeUtil::ElementsIn(reduce->shape()) * (reduce_product - 1);
+}
+
 }  // namespace
 
 void AlgebraicSimplifierVisitor::ResetState(HloComputation* computation) {
@@ -2920,6 +2940,263 @@ AlgebraicSimplifierVisitor::OptimizeDotOfReorderContractingDims(
   return new_dot;
 }
 
+// If appropriate, reorder operation on dot operand to the mirror operation on
+// the other dot operand
+StatusOr<HloInstruction*>
+AlgebraicSimplifierVisitor::AssociativeReorderDotOperator(HloInstruction* dot) {
+  DotDimensionNumbers dnums = dot->dot_dimension_numbers();
+  HloInstruction* lhs = dot->mutable_operand(0);
+  HloInstruction* rhs = dot->mutable_operand(1);
+
+  HloInstruction *reorder_from, *reorder_to;
+  bool lhs_to_rhs = false;
+  bool rhs_to_lhs = false;
+
+  // Check whether we should try to reorder either operand
+  if (lhs->opcode() == HloOpcode::kBroadcast ||
+      lhs->opcode() == HloOpcode::kPad ||
+      lhs->opcode() == HloOpcode::kReverse) {
+    reorder_from = lhs;
+    reorder_to = rhs;
+    lhs_to_rhs = true;
+  } else if (rhs->opcode() == HloOpcode::kBroadcast ||
+             rhs->opcode() == HloOpcode::kPad ||
+             rhs->opcode() == HloOpcode::kReverse) {
+    reorder_from = rhs;
+    reorder_to = lhs;
+    rhs_to_lhs = true;
+  }
+
+  if (lhs_to_rhs || rhs_to_lhs) {
+    HloInstruction* reordered = reorder_to;
+    HloInstruction* unreordered = reorder_from->mutable_operand(0);
+    DotDimensionNumbers new_dnums = dnums;
+    HloOpcode opcode = reorder_from->opcode();
+    double threshold_multiplier = 1.0;
+    bool make_hlo = false;
+
+    // Construct maps between corresponding dot contracting dimensions
+    std::vector<int64_t> contracting_dim_map_forward(
+        reorder_from->shape().rank(), -1);
+    std::vector<int64_t> contracting_dim_map_backward(
+        reorder_to->shape().rank(), -1);
+    for (int64_t i = 0; i < dnums.lhs_contracting_dimensions_size(); i++) {
+      auto from_index = lhs_to_rhs ? dnums.lhs_contracting_dimensions()[i]
+                                   : dnums.rhs_contracting_dimensions()[i];
+      auto to_index = lhs_to_rhs ? dnums.rhs_contracting_dimensions()[i]
+                                 : dnums.lhs_contracting_dimensions()[i];
+      contracting_dim_map_forward[from_index] = to_index;
+      contracting_dim_map_backward[to_index] = from_index;
+    }
+
+    // Perform computations specific to each opcode
+    if (opcode == HloOpcode::kReverse) {
+      // We should check that the reordering will be beneficial before we
+      // create the new Hlo to avoid OOM issues
+      if (ShapeUtil::ElementsIn(reorder_from->shape()) /
+              static_cast<double>(ShapeUtil::ElementsIn(reorder_to->shape())) <
+          options_.associative_reordering_threshold()) {
+        return nullptr;
+      }
+
+      // Reverses of dot contracting dimensions can be reordered to
+      // reverses of the corresponding contracting dimensions in the other dot
+      // operand
+      DimensionVector reordered_dims, unreordered_dims;
+      for (auto dim : reorder_from->dimensions()) {
+        if (contracting_dim_map_forward[dim] != -1) {
+          reordered_dims.push_back(contracting_dim_map_forward[dim]);
+          make_hlo = true;
+        } else {
+          unreordered_dims.push_back(dim);
+        }
+      }
+
+      // Create Hlo for reordered reverse and unreordered reverse
+      if (!make_hlo) {
+        return nullptr;
+      }
+      if (!reordered_dims.empty()) {
+        TF_ASSIGN_OR_RETURN(reordered,
+                            MakeReverseHlo(reorder_to, reordered_dims));
+      }
+      if (!unreordered_dims.empty()) {
+        // Want to use a greater threshold if reordering means increasing the
+        // number of Hlos
+        threshold_multiplier = 2.0;
+        TF_ASSIGN_OR_RETURN(
+            unreordered,
+            MakeReverseHlo(reorder_from->mutable_operand(0), unreordered_dims));
+      }
+    } else if (opcode == HloOpcode::kPad) {
+      // Padding of dot contracting dimensions can be reordered to slices of
+      // the corresponding contracting dimensions in the other dot operand
+      DimensionVector start_indices, limit_indices, strides;
+      PaddingConfig new_padding_config = reorder_from->padding_config();
+
+      // Compute start_indices, limit_indices, and strides for slicing from
+      // the padding dimensions
+      for (int64_t to_dim = 0; to_dim < reorder_to->shape().rank(); to_dim++) {
+        int64_t start_index = 0;
+        int64_t limit_index = reorder_to->shape().dimensions(to_dim);
+        int64_t stride = 1;
+        if (contracting_dim_map_backward[to_dim] != -1) {
+          // If it's a contracting dimension, we want to slice it according to
+          // the corresponding padding in the other operand
+          const int64_t from_dim = contracting_dim_map_backward[to_dim];
+          auto padding_dimension =
+              reorder_from->padding_config().dimensions(from_dim);
+
+          // Edge padding can be negative which acts as a slice. If this is
+          // the case, we don't want to reorder
+          if (padding_dimension.edge_padding_low() > 0 ||
+              padding_dimension.edge_padding_high() > 0 ||
+              padding_dimension.interior_padding() > 0) {
+            make_hlo = true;
+            start_index += padding_dimension.edge_padding_low();
+            limit_index -= padding_dimension.edge_padding_high();
+            stride += padding_dimension.interior_padding();
+
+            // We then remove this dimension from the padding
+            new_padding_config.mutable_dimensions(from_dim)
+                ->set_edge_padding_low(0);
+            new_padding_config.mutable_dimensions(from_dim)
+                ->set_edge_padding_high(0);
+            new_padding_config.mutable_dimensions(from_dim)
+                ->set_interior_padding(0);
+          }
+        }
+        start_indices.push_back(start_index);
+        limit_indices.push_back(limit_index);
+        strides.push_back(stride);
+      }
+
+      // Create Hlo for slice
+      if (!make_hlo) {
+        return nullptr;
+      }
+      TF_ASSIGN_OR_RETURN(reordered, MakeSliceHlo(reorder_to, start_indices,
+                                                  limit_indices, strides));
+
+      // Check if we still need a padding instruction, and create Hlo if so
+      for (auto& dim : new_padding_config.dimensions()) {
+        if (dim.edge_padding_low() != 0 || dim.edge_padding_high() != 0) {
+          // Want to use a greater threshold if reordering means increasing
+          // the number of Hlos
+          threshold_multiplier = 2.0;
+          TF_ASSIGN_OR_RETURN(
+              unreordered,
+              MakePadHlo(reorder_from->mutable_operand(0),
+                         reorder_from->mutable_operand(1), new_padding_config));
+          break;
+        }
+      }
+    } else if (opcode == HloOpcode::kBroadcast) {
+      // Broadcasts of dot contracting dimensions can be reordered to reduces
+      // of the corresponding contracting dimensions in the other dot operand
+      DimensionVector reduce_dims, broadcast_dim_sizes;
+      const int64_t pre_broadcast_rank =
+          reorder_from->mutable_operand(0)->shape().rank();
+      int64_t post_broadcast_rank = reorder_from->shape().rank();
+      Shape new_broadcast_shape = reorder_from->shape();
+      DimensionVector contracting_reordered;
+
+      // Construct map from broadcasted shape to its original shape. Broadcast
+      // dimensions are mapped to -1 since they were not present
+      std::vector<int64_t> map_broadcast_dims(post_broadcast_rank, -1);
+      for (int64_t i = 0; i < pre_broadcast_rank; i++) {
+        map_broadcast_dims[reorder_from->dimensions(i)] = i;
+      }
+
+      // Use maps to create new dot dnums and vector of reduce dims
+      new_dnums.clear_lhs_contracting_dimensions();
+      new_dnums.clear_rhs_contracting_dimensions();
+      int64_t deleted_dims = 0;
+      for (int64_t i = 0; i < dnums.lhs_contracting_dimensions_size(); i++) {
+        auto from_index = lhs_to_rhs ? dnums.lhs_contracting_dimensions()[i]
+                                     : dnums.rhs_contracting_dimensions()[i];
+        auto to_index = lhs_to_rhs ? dnums.rhs_contracting_dimensions()[i]
+                                   : dnums.lhs_contracting_dimensions()[i];
+        if (map_broadcast_dims[from_index] == -1) {
+          // This is a contracting broadcast dimension
+          reduce_dims.push_back(to_index);
+          new_broadcast_shape.DeleteDimension(from_index - deleted_dims);
+          deleted_dims++;
+          make_hlo = true;
+        } else {
+          // This is a contracting nonbroadcast dimension
+          if (lhs_to_rhs) {
+            new_dnums.add_lhs_contracting_dimensions(
+                map_broadcast_dims[from_index]);
+            new_dnums.add_rhs_contracting_dimensions(to_index);
+          } else {
+            new_dnums.add_lhs_contracting_dimensions(to_index);
+            new_dnums.add_rhs_contracting_dimensions(
+                map_broadcast_dims[from_index]);
+          }
+        }
+      }
+
+      if (!make_hlo) {
+        return nullptr;
+      }
+      // Create constant 0 to use as the init_value for reduce
+      HloInstruction* zero = dot->AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::Zero(reorder_from->shape().element_type())));
+
+      // Create Hlo for unreordered broadcast and reordered reduce
+      if (reorder_from->mutable_operand(0)->shape() != new_broadcast_shape) {
+        // Want to use a greater threshold if reordering means increasing
+        // the number of Hlos
+        threshold_multiplier = 2.0;
+        unreordered =
+            MakeBroadcastHlo(reorder_from->mutable_operand(0),
+                             reorder_from->dimensions(), new_broadcast_shape);
+      }
+      TF_ASSIGN_OR_RETURN(
+          reordered,
+          MakeReduceHlo(reorder_to, zero, reduce_dims, HloOpcode::kAdd));
+    }
+
+    if (!make_hlo) {
+      return nullptr;
+    }
+
+    // Create Hlo for new dot operands, depending on the direction in which
+    // we are reordering
+    HloInstruction *new_lhs, *new_rhs;
+    if (lhs_to_rhs) {
+      new_lhs = unreordered;
+      new_rhs = reordered;
+    } else {
+      new_lhs = reordered;
+      new_rhs = unreordered;
+    }
+
+    // Create Hlo for new dot
+    HloInstruction* new_dot;
+    TF_ASSIGN_OR_RETURN(new_dot, MakeDotHlo(new_lhs, new_rhs, new_dnums,
+                                            dot->precision_config(),
+                                            dot->shape().element_type()));
+
+    // Do cost analysis to determine whether we should reorder. Reverse uses
+    // the ratio of the two shapes a heuristic, while the others use the
+    // number of dot flops
+    const int64_t old_flops =
+        HloCostAnalysis::GetDotFlops(lhs->shape(), dot->shape(), dnums);
+    const int64_t new_flops = HloCostAnalysis::GetDotFlops(
+        new_lhs->shape(), new_dot->shape(), new_dnums);
+    bool reorder =
+        old_flops / static_cast<double>(new_flops) >
+        threshold_multiplier * options_.associative_reordering_threshold();
+
+    if (reorder || opcode == HloOpcode::kReverse) {
+      return new_dot;
+    }
+  }
+  return nullptr;
+}
+
 Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
   CHECK(computation_ == dot->parent());
   const auto& dnums = dot->dot_dimension_numbers();
@@ -2988,109 +3265,287 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
 
   // Reorder nested dots with associativity using flops as a heuristic
   if (options_.use_associative_reordering()) {
-    HloInstruction *a, *b, *c;
-    HloInstruction *old_inner, *old_outer, *new_inner, *new_outer;
-    DotDimensionNumbers ab_dnums, ac_dnums, bc_dnums;
-    // Here we extract the batch/contracting dimensions shared between A and B,
-    // A and C, and B and C, and use these to build up the dimension numbers for
-    // the reordered dot A(BC).
-    if (Match(dot, m::Dot(m::Dot(m::Op(&a), m::Op(&b)), m::Op(&c)))) {
-      // We already have the ab_dnums for free
-      ab_dnums = dot->operand(0)->dot_dimension_numbers();
-      // Get maps for converting AB dimensions to A and B
-      std::vector<int64_t> map_ab_a, map_ab_b;
-      std::tie(map_ab_a, map_ab_b) =
-          ConstructFromDotMaps(dot->operand(0), a->shape(), b->shape());
-      // Recover ac_dnums and bc_dnums from ab_c_dnums
-      DotDimensionNumbers ab_c_dnums = dot->dot_dimension_numbers();
-      for (int64_t i = 0; i < ab_c_dnums.lhs_batch_dimensions_size(); i++) {
-        auto ab_index = ab_c_dnums.lhs_batch_dimensions(i);
-        auto c_index = ab_c_dnums.rhs_batch_dimensions(i);
-        if (map_ab_b[ab_index] == -1) {
-          // This is a batch dimension between a and c
-          ac_dnums.add_lhs_batch_dimensions(map_ab_a[ab_index]);
-          ac_dnums.add_rhs_batch_dimensions(c_index);
-        } else {
-          // This is a batch dimension between b and c
-          bc_dnums.add_lhs_batch_dimensions(map_ab_b[ab_index]);
-          bc_dnums.add_rhs_batch_dimensions(c_index);
-        }
+    HloInstruction *inner, *outer;
+    HloInstruction *new_inner, *new_outer;
+
+    // We only proceed if one of this dot's operands is itself a dot
+    bool outer_lhs_dot = false;
+    bool outer_rhs_dot = false;
+
+    if (lhs->opcode() == HloOpcode::kDot) {
+      outer = dot;
+      inner = lhs;
+      outer_lhs_dot = true;
+    } else if (rhs->opcode() == HloOpcode::kDot) {
+      outer = dot;
+      inner = rhs;
+      outer_rhs_dot = true;
+    }
+
+    if (outer_lhs_dot || outer_rhs_dot) {
+      DotDimensionNumbers ab_dnums, ac_dnums, bc_dnums;
+
+      // We will now use inner and outer to build up ab_dnums, ac_dnums, and
+      // bc_dnums. One of these three comes for free from inner
+      if (outer_lhs_dot) {
+        ab_dnums = inner->dot_dimension_numbers();
+      } else if (outer_rhs_dot) {
+        bc_dnums = inner->dot_dimension_numbers();
       }
-      for (int64_t i = 0; i < ab_c_dnums.lhs_contracting_dimensions_size();
-           i++) {
-        auto ab_index = ab_c_dnums.lhs_contracting_dimensions(i);
-        auto c_index = ab_c_dnums.rhs_contracting_dimensions(i);
-        if (map_ab_b[ab_index] == -1) {
-          // This is a contraction dimension between a and c
-          ac_dnums.add_lhs_contracting_dimensions(map_ab_a[ab_index]);
-          ac_dnums.add_rhs_contracting_dimensions(c_index);
+
+      // For the other two, it's more complicated. First, we construct maps from
+      // the dimensions of inner to the dimensions of inner's operands
+      std::vector<int64_t> map_inner_lhs, map_inner_rhs;
+      std::tie(map_inner_lhs, map_inner_rhs) = ConstructFromDotMaps(
+          inner, inner->operand(0)->shape(), inner->operand(1)->shape());
+      DotDimensionNumbers outer_dnums = outer->dot_dimension_numbers();
+
+      // We now iterate through the batch dimensions of outer, and recover
+      // the batch dimensions shared between each operand of inner and the
+      // other operand of outer
+      for (int64_t i = 0; i < outer_dnums.lhs_batch_dimensions_size(); ++i) {
+        // First we retrieve inner_index and other_index depending on which side
+        // of outer that inner is on
+        int64_t inner_index, other_index;
+        if (outer_lhs_dot) {
+          inner_index = outer_dnums.lhs_batch_dimensions(i);
+          other_index = outer_dnums.rhs_batch_dimensions(i);
         } else {
-          // This is a contraction dimension between b and c
-          bc_dnums.add_lhs_contracting_dimensions(map_ab_b[ab_index]);
-          bc_dnums.add_rhs_contracting_dimensions(c_index);
+          inner_index = outer_dnums.rhs_batch_dimensions(i);
+          other_index = outer_dnums.lhs_batch_dimensions(i);
+        }
+
+        // Once we have the inner_index, we determine whether this index
+        // corresponds to a dimension coming from the lhs or rhs of inner
+        bool from_inner_lhs = map_inner_rhs[inner_index] == -1;
+
+        // The map we use depends on which operand of inner this dim comes from
+        std::vector<int64_t> map;
+        if (from_inner_lhs) {
+          map = map_inner_lhs;
+        } else {
+          map = map_inner_rhs;
+        }
+
+        // Whether the mapped value goes into the lhs or rhs of the new dnums
+        // depends on whether inner was the lhs or rhs operand of outer
+        int64_t lhs_index, rhs_index;
+        if (outer_lhs_dot) {
+          lhs_index = map[inner_index];
+          rhs_index = other_index;
+        } else {
+          lhs_index = other_index;
+          rhs_index = map[inner_index];
+        }
+
+        // Finally, we have to determine which dnums to add to
+        DotDimensionNumbers* dnums;
+        if (outer_lhs_dot) {
+          if (from_inner_lhs) {
+            dnums = &ac_dnums;
+          } else {
+            dnums = &bc_dnums;
+          }
+        } else {
+          if (from_inner_lhs) {
+            dnums = &ab_dnums;
+          } else {
+            dnums = &ac_dnums;
+          }
+        }
+
+        // Add the batch dimensions
+        dnums->add_lhs_batch_dimensions(lhs_index);
+        dnums->add_rhs_batch_dimensions(rhs_index);
+      }
+
+      // We now do the same thing for the contracting dimensions of outer
+      for (int64_t i = 0; i < outer_dnums.lhs_contracting_dimensions_size();
+           ++i) {
+        // First we retrieve inner_index and other_index depending on which side
+        // of outer that inner is on
+        int64_t inner_index, other_index;
+        if (outer_lhs_dot) {
+          inner_index = outer_dnums.lhs_contracting_dimensions(i);
+          other_index = outer_dnums.rhs_contracting_dimensions(i);
+        } else {
+          inner_index = outer_dnums.rhs_contracting_dimensions(i);
+          other_index = outer_dnums.lhs_contracting_dimensions(i);
+        }
+
+        // Once we have the inner_index, we determine whether this index
+        // corresponds to a dimension coming from the lhs or rhs of inner
+        bool from_inner_lhs = map_inner_rhs[inner_index] == -1;
+
+        // The map we use depends on which operand of inner this dim comes from
+        std::vector<int64_t> map;
+        if (from_inner_lhs) {
+          map = map_inner_lhs;
+        } else {
+          map = map_inner_rhs;
+        }
+
+        // Whether the mapped value goes into the lhs or rhs of the new dnums
+        // depends on whether inner was the lhs or rhs operand of outer
+        int64_t lhs_index, rhs_index;
+        if (outer_lhs_dot) {
+          lhs_index = map[inner_index];
+          rhs_index = other_index;
+        } else {
+          lhs_index = other_index;
+          rhs_index = map[inner_index];
+        }
+
+        // Finally, we have to determine which dnums to add to
+        DotDimensionNumbers* dnums;
+        if (outer_lhs_dot) {
+          if (from_inner_lhs) {
+            dnums = &ac_dnums;
+          } else {
+            dnums = &bc_dnums;
+          }
+        } else {
+          if (from_inner_lhs) {
+            dnums = &ab_dnums;
+          } else {
+            dnums = &ac_dnums;
+          }
+        }
+
+        // Add the contracting dimensions
+        dnums->add_lhs_contracting_dimensions(lhs_index);
+        dnums->add_rhs_contracting_dimensions(rhs_index);
+      }
+
+      // ab_dnums, ac_dnums, and bc_dnums are now complete. We can now use these
+      // dnums to construct the dnums for the new_inner and new_outer.
+      HloInstruction *new_inner_lhs, *new_inner_rhs;
+      DotDimensionNumbers new_inner_dnums;
+      if (outer_lhs_dot) {
+        new_inner_lhs = inner->mutable_operand(1);
+        new_inner_rhs = outer->mutable_operand(1);
+        new_inner_dnums = bc_dnums;
+      } else {
+        new_inner_lhs = outer->mutable_operand(0);
+        new_inner_rhs = inner->mutable_operand(0);
+        new_inner_dnums = ab_dnums;
+      }
+
+      // For dnums for new_outer, we will need some additional maps
+      std::vector<int64_t> map_lhs_new_inner, map_rhs_new_inner;
+      std::tie(map_lhs_new_inner, map_rhs_new_inner) = ConstructToDotMaps(
+          new_inner_dnums, new_inner_lhs->shape(), new_inner_rhs->shape());
+      DotDimensionNumbers new_outer_dnums;
+
+      // To build up new_outer dnums, we need to combine two "pairs". If the
+      // inner dot was originally on lhs, these pairs are ab and ac. If the
+      // inner dot was originally on the rhs, these pairs ac and bc
+      std::vector<DotDimensionNumbers> dnums_to_reorder;
+      if (outer_lhs_dot) {
+        dnums_to_reorder.push_back(ab_dnums);
+        dnums_to_reorder.push_back(ac_dnums);
+      } else {
+        dnums_to_reorder.push_back(ac_dnums);
+        dnums_to_reorder.push_back(bc_dnums);
+      }
+
+      // We now iterate through the batch and contracting dimensions of each
+      // pair, using the previously constructed maps to add to new_outer dnums
+      for (int pair = 0; pair < 2; ++pair) {
+        DotDimensionNumbers dnums = dnums_to_reorder[pair];
+        std::vector<int64_t> map =
+            (pair % 2) == 0 ? map_lhs_new_inner : map_rhs_new_inner;
+
+        for (int64_t i = 0; i < dnums.lhs_batch_dimensions_size(); ++i) {
+          int64_t new_inner_index, other_index;
+          if (outer_lhs_dot) {
+            new_inner_index = dnums.rhs_batch_dimensions(i);
+            other_index = dnums.lhs_batch_dimensions(i);
+          } else {
+            new_inner_index = dnums.lhs_batch_dimensions(i);
+            other_index = dnums.rhs_batch_dimensions(i);
+          }
+
+          int64_t lhs_index, rhs_index;
+          if (outer_lhs_dot) {
+            lhs_index = other_index;
+            rhs_index = map[new_inner_index];
+          } else {
+            lhs_index = map[new_inner_index];
+            rhs_index = other_index;
+          }
+
+          new_outer_dnums.add_lhs_batch_dimensions(lhs_index);
+          new_outer_dnums.add_rhs_batch_dimensions(rhs_index);
+        }
+        for (int64_t i = 0; i < dnums.lhs_contracting_dimensions_size(); ++i) {
+          int64_t new_inner_index, other_index;
+          if (outer_lhs_dot) {
+            new_inner_index = dnums.rhs_contracting_dimensions(i);
+            other_index = dnums.lhs_contracting_dimensions(i);
+          } else {
+            new_inner_index = dnums.lhs_contracting_dimensions(i);
+            other_index = dnums.rhs_contracting_dimensions(i);
+          }
+
+          int64_t lhs_index, rhs_index;
+          if (outer_lhs_dot) {
+            lhs_index = other_index;
+            rhs_index = map[new_inner_index];
+          } else {
+            lhs_index = map[new_inner_index];
+            rhs_index = other_index;
+          }
+
+          new_outer_dnums.add_lhs_contracting_dimensions(lhs_index);
+          new_outer_dnums.add_rhs_contracting_dimensions(rhs_index);
         }
       }
 
-      // Get maps for converting B and C dimensions to BC
-      std::vector<int64_t> map_b_bc, map_c_bc;
-      std::tie(map_b_bc, map_c_bc) =
-          ConstructToDotMaps(bc_dnums, b->shape(), c->shape());
-      // Now build a_bc_dnums from ab_dnums and bc_dnums
-      DotDimensionNumbers a_bc_dnums;
-      for (int64_t i = 0; i < ab_dnums.lhs_batch_dimensions_size(); i++) {
-        auto a_index = ab_dnums.lhs_batch_dimensions(i);
-        auto b_index = ab_dnums.rhs_batch_dimensions(i);
-        a_bc_dnums.add_lhs_batch_dimensions(a_index);
-        a_bc_dnums.add_rhs_batch_dimensions(map_b_bc[b_index]);
-      }
-      for (int64_t i = 0; i < ab_dnums.lhs_contracting_dimensions_size(); i++) {
-        auto a_index = ab_dnums.lhs_contracting_dimensions(i);
-        auto b_index = ab_dnums.rhs_contracting_dimensions(i);
-        a_bc_dnums.add_lhs_contracting_dimensions(a_index);
-        a_bc_dnums.add_rhs_contracting_dimensions(map_b_bc[b_index]);
-      }
-      for (int64_t i = 0; i < ac_dnums.lhs_batch_dimensions_size(); i++) {
-        auto a_index = ac_dnums.lhs_batch_dimensions(i);
-        auto c_index = ac_dnums.rhs_batch_dimensions(i);
-        a_bc_dnums.add_lhs_batch_dimensions(a_index);
-        a_bc_dnums.add_rhs_batch_dimensions(map_c_bc[c_index]);
-      }
-      for (int64_t i = 0; i < ac_dnums.lhs_contracting_dimensions_size(); i++) {
-        auto a_index = ac_dnums.lhs_contracting_dimensions(i);
-        auto c_index = ac_dnums.rhs_contracting_dimensions(i);
-        a_bc_dnums.add_lhs_contracting_dimensions(a_index);
-        a_bc_dnums.add_rhs_contracting_dimensions(map_c_bc[c_index]);
-      }
-
-      // Make Hlo for reordering dot
-      old_inner = lhs;
-      old_outer = dot;
-      TF_ASSIGN_OR_RETURN(new_inner,
-                          MakeDotHlo(b, c, bc_dnums, dot->precision_config(),
-                                     dot->shape().element_type()));
-      TF_ASSIGN_OR_RETURN(new_outer, MakeDotHlo(a, new_inner, a_bc_dnums,
-                                                dot->precision_config(),
-                                                dot->shape().element_type()));
+      // Get Shape for new_inner
+      TF_ASSIGN_OR_RETURN(
+          Shape new_inner_shape,
+          ShapeInference::InferDotOpShape(
+              new_inner_lhs->shape(), new_inner_rhs->shape(), new_inner_dnums,
+              new_inner_lhs->shape().element_type()));
+      Shape new_outer_lhs_shape =
+          outer_lhs_dot ? inner->operand(0)->shape() : new_inner_shape;
 
       // Use HloCostAnalysis to compute flops for both the original and
       // reordered instructions, and reorder if doing so decreases flops by a
       // factor of the reordering threshold.
       const int64_t old_flops =
-          HloCostAnalysis::GetDotFlops(old_inner->operand(0)->shape(),
-                                       old_inner->shape(),
-                                       old_inner->dot_dimension_numbers()) +
-          HloCostAnalysis::GetDotFlops(old_outer->operand(0)->shape(),
-                                       old_outer->shape(),
-                                       old_outer->dot_dimension_numbers());
+          HloCostAnalysis::GetDotFlops(inner->operand(0)->shape(),
+                                       inner->shape(),
+                                       inner->dot_dimension_numbers()) +
+          HloCostAnalysis::GetDotFlops(outer->operand(0)->shape(),
+                                       outer->shape(), outer_dnums);
       const int64_t new_flops =
-          HloCostAnalysis::GetDotFlops(new_inner->operand(0)->shape(),
-                                       new_inner->shape(),
-                                       new_inner->dot_dimension_numbers()) +
-          HloCostAnalysis::GetDotFlops(new_outer->operand(0)->shape(),
-                                       new_outer->shape(),
-                                       new_outer->dot_dimension_numbers());
+          HloCostAnalysis::GetDotFlops(new_inner_lhs->shape(), new_inner_shape,
+                                       new_inner_dnums) +
+          HloCostAnalysis::GetDotFlops(new_outer_lhs_shape, outer->shape(),
+                                       new_outer_dnums);
 
-      if (old_flops / new_flops > options_.associative_reordering_threshold()) {
+      if (old_flops / static_cast<double>(new_flops) >
+          options_.associative_reordering_threshold()) {
+        // We can now make the Hlo for new_inner and new_outer
+        TF_ASSIGN_OR_RETURN(
+            new_inner,
+            MakeDotHlo(new_inner_lhs, new_inner_rhs, new_inner_dnums,
+                       dot->precision_config(), dot->shape().element_type()));
+        HloInstruction *new_outer_lhs, *new_outer_rhs;
+        if (outer_lhs_dot) {
+          new_outer_lhs = inner->mutable_operand(0);
+          new_outer_rhs = new_inner;
+        } else {
+          new_outer_lhs = new_inner;
+          new_outer_rhs = inner->mutable_operand(1);
+        }
+        TF_ASSIGN_OR_RETURN(
+            new_outer,
+            MakeDotHlo(new_outer_lhs, new_outer_rhs, new_outer_dnums,
+                       dot->precision_config(), dot->shape().element_type()));
+
         // Depending on the batch dimensions of the original instruction,
         // reordering may permute the dimensions of the shape. To correct for
         // this, we build a map from old_outer dimensions to new_outer
@@ -3098,32 +3553,55 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
         DimensionVector permutation(new_outer->shape().rank());
 
         // Construct additional maps to make the permutation
-        std::vector<int64_t> map_old_outer_ab, map_old_outer_c;
-        std::tie(map_old_outer_ab, map_old_outer_c) =
-            ConstructFromDotMaps(old_outer, old_inner->shape(), c->shape());
-        std::vector<int64_t> map_a_new_outer, map_bc_new_outer;
-        std::tie(map_a_new_outer, map_bc_new_outer) =
-            ConstructToDotMaps(a_bc_dnums, a->shape(), new_inner->shape());
+        std::vector<int64_t> map_outer_lhs, map_outer_rhs;
+        std::tie(map_outer_lhs, map_outer_rhs) = ConstructFromDotMaps(
+            outer, outer->operand(0)->shape(), outer->operand(1)->shape());
+
+        std::vector<int64_t> map_outer_inner, map_outer_other;
+        map_outer_inner = outer_lhs_dot ? map_outer_lhs : map_outer_rhs;
+        map_outer_other = outer_lhs_dot ? map_outer_rhs : map_outer_lhs;
+
+        std::vector<int64_t> map_inner_new_other;
+        map_inner_new_other = outer_lhs_dot ? map_inner_lhs : map_inner_rhs;
+
+        std::vector<int64_t> map_other_new_inner;
+        map_other_new_inner =
+            outer_lhs_dot ? map_rhs_new_inner : map_lhs_new_inner;
+
+        std::vector<int64_t> map_lhs_new_outer, map_rhs_new_outer;
+        std::tie(map_lhs_new_outer, map_rhs_new_outer) =
+            ConstructToDotMaps(new_outer_dnums, new_outer->operand(0)->shape(),
+                               new_outer->operand(1)->shape());
+
+        std::vector<int64_t> map_new_inner_new_outer, map_new_other_new_outer;
+        map_new_inner_new_outer =
+            outer_lhs_dot ? map_rhs_new_outer : map_lhs_new_outer;
+        map_new_other_new_outer =
+            outer_lhs_dot ? map_lhs_new_outer : map_rhs_new_outer;
 
         // Create permutation to do the transpose
         bool add_transpose = false;
-        for (int64_t i = 0; i < old_outer->shape().rank(); i++) {
+        for (int64_t i = 0; i < outer->shape().rank(); i++) {
           int64_t new_outer_index;
-          if (map_old_outer_c[i] == -1) {
-            int64_t ab_index = map_old_outer_ab[i];
-            if (map_ab_b[ab_index] == -1) {
-              // Dimension i in old_outer comes from a
-              int64_t a_index = map_ab_a[ab_index];
-              new_outer_index = map_a_new_outer[a_index];
+          if (map_outer_other[i] == -1) {
+            int64_t inner_index = map_outer_inner[i];
+            if (map_inner_new_other[inner_index] == -1) {
+              int64_t new_inner_index;
+              if (outer_lhs_dot) {
+                new_inner_index = map_lhs_new_inner[map_inner_rhs[inner_index]];
+              } else {
+                new_inner_index = map_rhs_new_inner[map_inner_lhs[inner_index]];
+              }
+              new_outer_index = map_new_inner_new_outer[new_inner_index];
             } else {
-              // Dimension i in old_outer comes from b
-              int64_t b_index = map_ab_b[ab_index];
-              new_outer_index = map_bc_new_outer[map_b_bc[b_index]];
+              int64_t new_other_index = map_inner_new_other[inner_index];
+              new_outer_index = map_new_other_new_outer[new_other_index];
             }
           } else {
-            // Dimension i in old_outer comes from c
-            int64_t c_index = map_old_outer_c[i];
-            new_outer_index = map_bc_new_outer[map_c_bc[c_index]];
+            // Dimension i in outer comes from other
+            int64_t other_index = map_outer_other[i];
+            new_outer_index =
+                map_new_inner_new_outer[map_other_new_inner[other_index]];
           }
           permutation[i] = new_outer_index;
           if (i != new_outer_index) {
@@ -3143,18 +3621,22 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
         }
       }
     }
-    // TODO(b/289120301) Implement other direction after first looks good
+  }
+
+  if (options_.use_associative_reordering()) {
+    TF_ASSIGN_OR_RETURN(HloInstruction * dot_operator_reordered,
+                        AssociativeReorderDotOperator(dot));
+    if (dot_operator_reordered) {
+      VLOG(10) << "Reordering dot operand to its mirror";
+      return ReplaceInstruction(dot, dot_operator_reordered);
+    }
   }
 
   // If the lhs or rhs have only batch and contracting dimensions, a dot can be
   // rewritten as reduce(mul(broadcast(transpose(x)),broadcast(transpose(y))))
   if (!is_packed_nibble && options_.enable_dot_strength_reduction() &&
-      ((dnums.lhs_batch_dimensions_size() +
-            dnums.lhs_contracting_dimensions_size() ==
-        lhs->shape().rank()) ||
-       (dnums.rhs_contracting_dimensions_size() +
-            dnums.rhs_batch_dimensions_size() ==
-        rhs->shape().rank())) &&
+      DotHasOnlyBatchAndContractingOnOneOperand(lhs->shape().rank(),
+                                                rhs->shape().rank(), dnums) &&
       ShouldStrengthReduceDotToReduce(dot)) {
     TF_ASSIGN_OR_RETURN(HloInstruction * new_lhs,
                         NormalizeDotOperandToBatchMajorAndContractingMinor(
@@ -5361,6 +5843,102 @@ Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
     return ReplaceInstruction(slice, new_broadcast);
   }
 
+  // Try to reorder slice of dot to the operand it comes from
+  if (!options_.is_layout_sensitive() &&
+      options_.use_associative_reordering() &&
+      slice->operand(0)->opcode() == HloOpcode::kDot) {
+    // Unpack the dot operands
+    HloInstruction* dot = slice->mutable_operand(0);
+    HloInstruction* lhs = dot->mutable_operand(0);
+    HloInstruction* rhs = dot->mutable_operand(1);
+    DotDimensionNumbers dnums = dot->dot_dimension_numbers();
+
+    // Construct map from lhs and rhs dimensions to dot dimensions
+    std::vector<int64_t> map_lhs_dot, map_rhs_dot;
+    std::tie(map_lhs_dot, map_rhs_dot) =
+        ConstructToDotMaps(dnums, lhs->shape(), rhs->shape());
+
+    // We use these booleans to keep track of where to add slice instructions
+    bool slice_lhs = false;
+    bool slice_rhs = false;
+
+    // Here we build up the slice dimensions for lhs
+    DimensionVector lhs_start_indices, lhs_limit_indices, lhs_strides;
+    for (int64_t lhs_index = 0; lhs_index < lhs->shape().rank(); ++lhs_index) {
+      int64_t start = 0;
+      int64_t limit = lhs->shape().dimensions(lhs_index);
+      int64_t stride = 1;
+      if (map_lhs_dot[lhs_index] != -1) {
+        // If it is not a contracting dimension, we slice it according to the
+        // slicing of the corresponding dimension in dot
+        int64_t dot_index = map_lhs_dot[lhs_index];
+        start = slice->slice_starts(dot_index);
+        limit = slice->slice_limits(dot_index);
+        stride = slice->slice_strides(dot_index);
+      }
+      lhs_start_indices.push_back(start);
+      lhs_limit_indices.push_back(limit);
+      lhs_strides.push_back(stride);
+      // Record if any slicing occurs here
+      if (start != 0 || limit < lhs->shape().dimensions(lhs_index)) {
+        slice_lhs = true;
+      }
+    }
+
+    // Here we do the same for rhs
+    DimensionVector rhs_start_indices, rhs_limit_indices, rhs_strides;
+    for (int64_t rhs_index = 0; rhs_index < rhs->shape().rank(); ++rhs_index) {
+      int64_t start = 0;
+      int64_t limit = rhs->shape().dimensions(rhs_index);
+      int64_t stride = 1;
+      if (map_rhs_dot[rhs_index] != -1) {
+        // If it is not a contracting dimension, we slice it according to the
+        // slicing of the corresponding dimension in dot
+        int64_t dot_index = map_rhs_dot[rhs_index];
+        start = slice->slice_starts(dot_index);
+        limit = slice->slice_limits(dot_index);
+        stride = slice->slice_strides(dot_index);
+      }
+      rhs_start_indices.push_back(start);
+      rhs_limit_indices.push_back(limit);
+      rhs_strides.push_back(stride);
+      // Record if any slicing occurs here
+      if (start != 0 || limit < rhs->shape().dimensions(rhs_index)) {
+        slice_rhs = true;
+      }
+    }
+
+    // Create Hlo for new slices
+    HloInstruction* new_lhs = lhs;
+    HloInstruction* new_rhs = rhs;
+    if (slice_lhs) {
+      TF_ASSIGN_OR_RETURN(
+          new_lhs,
+          MakeSliceHlo(lhs, lhs_start_indices, lhs_limit_indices, lhs_strides));
+    }
+    if (slice_rhs) {
+      TF_ASSIGN_OR_RETURN(
+          new_rhs,
+          MakeSliceHlo(rhs, rhs_start_indices, rhs_limit_indices, rhs_strides));
+    }
+
+    // Finally, create Hlo for the new dot and reorder
+    HloInstruction* new_dot;
+    TF_ASSIGN_OR_RETURN(
+        new_dot, MakeDotHlo(new_lhs, new_rhs, dnums, dot->precision_config(),
+                            dot->shape().element_type()));
+
+    // We should only do this reorder if both new_lhs and new_rhs have free
+    // dimensions. Otherwise, it will conflict with an existing optimization
+    // that converts dot to mul(broadcast)
+    if (!DotHasOnlyBatchAndContractingOnOneOperand(
+            ShapeUtil::TrueRank(new_lhs->shape()),
+            ShapeUtil::TrueRank(new_rhs->shape()), dnums)) {
+      VLOG(10) << "Reordering slice into dot operands";
+      return ReplaceInstruction(slice, new_dot);
+    }
+  }
+
   // Try to simplify concat -> slice to an operand of concat.
   if (slice->operand(0)->opcode() == HloOpcode::kConcatenate &&
       IsUnstridedSlice(slice)) {
@@ -6066,6 +6644,107 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
 
   if (options_.is_layout_sensitive()) {
     return OkStatus();
+  }
+
+  // Try to reorder reduce(dot(A, B)) to dot(A, reduce(B))
+  if (options_.use_associative_reordering()) {
+    HloInstruction *a, *b;
+    // Reordering does not seem possible if the dot has batch dimensions. We
+    // also need the reduction operation to be add, and the reduce to have an
+    // initial value of 0.
+    if (Match(arg, m::Dot(m::Op(&a), m::Op(&b))) &&
+        IsScalarConstantZero(init_value) &&
+        Match(reduce->to_apply()->root_instruction(),
+              m::AddAnyOrder(m::Parameter(0), m::Parameter(1))) &&
+        arg->dot_dimension_numbers().lhs_batch_dimensions().empty()) {
+      // Create maps for converting AB dimensions to A and B
+      DotDimensionNumbers ab_dnums = arg->dot_dimension_numbers();
+      std::vector<int64_t> map_ab_a, map_ab_b;
+      std::tie(map_ab_a, map_ab_b) =
+          ConstructFromDotMaps(arg, a->shape(), b->shape());
+
+      // Create new reduce dimensions using the maps
+      std::vector<int64_t> reduce_a_dims, reduce_b_dims;
+      for (int64_t dim : reduce->dimensions()) {
+        if (map_ab_a[dim] != -1) {
+          reduce_a_dims.push_back(map_ab_a[dim]);
+        }
+        if (map_ab_b[dim] != -1) {
+          reduce_b_dims.push_back(map_ab_b[dim]);
+        }
+      }
+
+      // Create Hlo for reducing a and b
+      TF_ASSIGN_OR_RETURN(
+          HloInstruction * reduce_a,
+          MakeReduceHlo(a, init_value, reduce_a_dims, function));
+      TF_ASSIGN_OR_RETURN(
+          HloInstruction * reduce_b,
+          MakeReduceHlo(b, init_value, reduce_b_dims, function));
+
+      // Construct maps from reduce_a and reduce_b to a and b
+      std::vector<int64_t> map_reduce_a_a(reduce_a->shape().rank(), -1),
+          map_reduce_b_b(reduce_b->shape().rank(), -1);
+      int64_t reduce_a_index = 0;
+      for (int64_t a_index = 0; a_index < a->shape().rank(); ++a_index) {
+        if (!absl::c_linear_search(reduce_a_dims, a_index)) {
+          map_reduce_a_a[reduce_a_index] = a_index;
+          ++reduce_a_index;
+        }
+      }
+      int64_t reduce_b_index = 0;
+      for (int64_t b_index = 0; b_index < b->shape().rank(); ++b_index) {
+        if (!absl::c_linear_search(reduce_b_dims, b_index)) {
+          map_reduce_b_b[reduce_b_index] = b_index;
+          ++reduce_b_index;
+        }
+      }
+
+      // Construct dot dimension numbers for new dot
+      auto a_contracting_dims = ab_dnums.lhs_contracting_dimensions();
+      auto b_contracting_dims = ab_dnums.rhs_contracting_dimensions();
+      DotDimensionNumbers new_dot_dnums;
+      for (int64_t reduce_a_index = 0;
+           reduce_a_index < reduce_a->shape().rank(); ++reduce_a_index) {
+        if (map_reduce_a_a[reduce_a_index] != -1) {
+          int64_t a_index = map_reduce_a_a[reduce_a_index];
+          if (absl::c_linear_search(a_contracting_dims, a_index)) {
+            new_dot_dnums.add_lhs_contracting_dimensions(reduce_a_index);
+          }
+        }
+      }
+      for (int64_t reduce_b_index = 0;
+           reduce_b_index < reduce_b->shape().rank(); ++reduce_b_index) {
+        if (map_reduce_b_b[reduce_b_index] != -1) {
+          int64_t b_index = map_reduce_b_b[reduce_b_index];
+          if (absl::c_linear_search(b_contracting_dims, b_index)) {
+            new_dot_dnums.add_rhs_contracting_dimensions(reduce_b_index);
+          }
+        }
+      }
+
+      // Create Hlo for new dot
+      TF_ASSIGN_OR_RETURN(
+          HloInstruction * new_dot,
+          MakeDotHlo(reduce_a, reduce_b, new_dot_dnums, arg->precision_config(),
+                     reduce->shape().element_type()));
+
+      // Compute the number of flops for both old and new operations
+      const int64_t old_flops =
+          HloCostAnalysis::GetDotFlops(a->shape(), arg->shape(), ab_dnums) +
+          GetReduceFlops(reduce);
+      const int64_t new_flops =
+          GetReduceFlops(reduce_a) + GetReduceFlops(reduce_b) +
+          HloCostAnalysis::GetDotFlops(reduce_a->shape(), new_dot->shape(),
+                                       new_dot_dnums);
+
+      // Only reorder if it would result in sufficiently fewer flops
+      if (old_flops / static_cast<double>(new_flops) >
+          options_.associative_reordering_threshold()) {
+        VLOG(10) << "Reordering reduce into dot operands";
+        return ReplaceInstruction(reduce, new_dot);
+      }
+    }
   }
 
   // TODO(b/131122694): Most of those optimizations below can be done for

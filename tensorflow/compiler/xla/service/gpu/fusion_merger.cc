@@ -120,7 +120,6 @@ Status FusionInstructionMerger::FuseIntoAllUsers(HloInstruction* producer) {
                           *consumer);
     }
 
-    GpuPerformanceModel::RecordEstimatedRunTime(consumer, &*cost_analysis_);
     changed_ = true;
   }
 

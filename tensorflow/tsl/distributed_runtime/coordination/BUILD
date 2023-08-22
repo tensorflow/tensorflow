@@ -167,6 +167,7 @@ tsl_cc_test(
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:env_impl",
         "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:protobuf",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",

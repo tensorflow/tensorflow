@@ -31,7 +31,6 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "absl/base/call_once.h"
-#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
@@ -100,6 +99,7 @@ limitations under the License.
 #include "tensorflow/core/util/dump_graph.h"
 #include "tensorflow/core/util/reffed_status_callback.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tensorflow/tsl/platform/statusor.h"
 #include "absl/container/flat_hash_map.h"
 

@@ -158,6 +158,10 @@ struct PJRT_SerializedExecutable {
   std::string serialized;
 };
 
+struct PJRT_SerializedTopology {
+  std::string serialized;
+};
+
 struct PJRT_TopologyDescription {
   std::unique_ptr<xla::PjRtTopologyDescription> topology;
   std::vector<std::unique_ptr<const xla::PjRtDeviceDescription>>
@@ -267,11 +271,6 @@ PJRT_Error* PJRT_Executable_DeserializeAndLoad(
 PJRT_Error* PJRT_LoadedExecutable_GetExecutable(
     PJRT_LoadedExecutable_GetExecutable_Args* args);
 
-PJRT_Error* PJRT_SerializedExecutable_Destroy(
-    PJRT_SerializedExecutable_Destroy_Args* args);
-PJRT_Error* PJRT_SerializedExecutable_Data(
-    PJRT_SerializedExecutable_Data_Args* args);
-
 PJRT_Error* PJRT_Buffer_Destroy(PJRT_Buffer_Destroy_Args* args);
 PJRT_Error* PJRT_Buffer_ElementType(PJRT_Buffer_ElementType_Args* args);
 PJRT_Error* PJRT_Buffer_Dimensions(PJRT_Buffer_Dimensions_Args* args);
@@ -318,6 +317,8 @@ PJRT_Error* PJRT_TopologyDescription_PlatformVersion(
     PJRT_TopologyDescription_PlatformVersion_Args* args);
 PJRT_Error* PJRT_TopologyDescription_GetDeviceDescriptions(
     PJRT_TopologyDescription_GetDeviceDescriptions_Args* args);
+PJRT_Error* PJRT_TopologyDescription_Serialize(
+    PJRT_TopologyDescription_Serialize_Args* args);
 
 PJRT_Error* PJRT_Compile(PJRT_Compile_Args* args);
 
@@ -475,11 +476,6 @@ constexpr PJRT_Api CreatePjrtApi(
       /*PJRT_Executable_DeserializeAndLoad=*/
       pjrt::PJRT_Executable_DeserializeAndLoad,
 
-      /*PJRT_SerializedExecutable_Destroy=*/
-      pjrt::PJRT_SerializedExecutable_Destroy,
-      /*PJRT_SerializedExecutable_Data=*/
-      pjrt::PJRT_SerializedExecutable_Data,
-
       /*PJRT_Buffer_Destroy=*/pjrt::PJRT_Buffer_Destroy,
       /*PJRT_Buffer_ElementType=*/pjrt::PJRT_Buffer_ElementType,
       /*PJRT_Buffer_Dimensions=*/pjrt::PJRT_Buffer_Dimensions,
@@ -528,6 +524,8 @@ constexpr PJRT_Api CreatePjrtApi(
       pjrt::PJRT_TopologyDescription_PlatformVersion,
       /*PJRT_TopologyDescription_GetDeviceDescriptions=*/
       pjrt::PJRT_TopologyDescription_GetDeviceDescriptions,
+      /*PJRT_TopologyDescription_Serialize=*/
+      pjrt::PJRT_TopologyDescription_Serialize,
 
       /*.PJRT_Compile=*/pjrt::PJRT_Compile,
   };

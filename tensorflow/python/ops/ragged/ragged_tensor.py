@@ -63,8 +63,11 @@ _convert_row_partition = RowPartition._convert_row_partition
 
 
 @tf_export("RaggedTensor")
-class RaggedTensor(composite_tensor.CompositeTensor,
-                   internal_types.NativeObject):
+class RaggedTensor(
+    composite_tensor.CompositeTensor,
+    internal_types.NativeObject,
+    internal_types.RaggedTensor,
+):
   """Represents a ragged tensor.
 
   A `RaggedTensor` is a tensor with one or more *ragged dimensions*, which are
@@ -923,7 +926,7 @@ class RaggedTensor(composite_tensor.CompositeTensor,
     value_shape = self._values.shape[1:]
     return tensor_shape.TensorShape([nrows, ncols]).concatenate(value_shape)
 
-  def get_shape(self):
+  def get_shape(self) -> tensor_shape.TensorShape:
     """The statically known shape of this ragged tensor.
 
     Returns:
@@ -2315,7 +2318,8 @@ def match_row_splits_dtypes(*tensors, **kwargs):
 # ===============================================================================
 @tf_export("RaggedTensorSpec")
 @type_spec_registry.register("tf.RaggedTensorSpec")
-class RaggedTensorSpec(type_spec.BatchableTypeSpec):
+class RaggedTensorSpec(
+    type_spec.BatchableTypeSpec, internal_types.RaggedTensorSpec):
   """Type specification for a `tf.RaggedTensor`."""
 
   __slots__ = [

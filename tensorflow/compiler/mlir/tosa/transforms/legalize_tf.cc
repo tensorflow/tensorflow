@@ -560,7 +560,7 @@ LogicalResult ConvertTFArgMaxOp::matchAndRewrite(
     return rewriter.notifyMatchFailure(op, "invalid axis value");
   }
 
-  IntegerAttr axis_attr = rewriter.getI64IntegerAttr(axis);
+  IntegerAttr axis_attr = rewriter.getI32IntegerAttr(axis);
 
   CreateReplaceOpAndInfer<tosa::ArgMaxOp>(rewriter, op, output_type,
                                           tf_argmax_op.getInput(), axis_attr);
@@ -1619,7 +1619,7 @@ LogicalResult ConvertTFPackOp::matchAndRewrite(
   assert(inputs.size() >= 2);
 
   IntegerAttr axis_attr = tf_pack_op.getAxisAttr();
-  if (!axis_attr) axis_attr = rewriter.getI64IntegerAttr(0);
+  if (!axis_attr) axis_attr = rewriter.getI32IntegerAttr(0);
 
   int32_t axis_i32 = axis_attr.getInt();
 
@@ -1640,7 +1640,7 @@ LogicalResult ConvertTFUnpackOp::matchAndRewrite(
   IntegerAttr axis_attr;
   {
     auto tmpAttr = tf_unpack_op.getAxisAttr();
-    if (!tmpAttr) tmpAttr = rewriter.getI64IntegerAttr(0);
+    if (!tmpAttr) tmpAttr = rewriter.getI32IntegerAttr(0);
     axis_attr = tmpAttr;
   }
   int32_t axis_i32 = axis_attr.getInt();
@@ -2209,7 +2209,7 @@ LogicalResult ConvertTFReverseV2Op::matchAndRewrite(
     for (int i = 0; i < axis_elems.getNumElements(); i++) {
       int64_t axis_val = axis_elems.getValues<IntegerAttr>()[i].getInt();
       if (axis_val < 0) axis_val += input_rank;
-      auto axis_attr = rewriter.getI64IntegerAttr(axis_val);
+      auto axis_attr = rewriter.getI32IntegerAttr(axis_val);
       auto reverse_op = CreateOpAndInfer<tosa::ReverseOp>(
           rewriter, op->getLoc(), output_type, val, axis_attr);
 

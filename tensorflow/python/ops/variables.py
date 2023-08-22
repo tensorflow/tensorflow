@@ -1115,7 +1115,7 @@ class Variable(trackable.Trackable, metaclass=VariableMetaclass):
     """
     raise NotImplementedError
 
-  def get_shape(self):
+  def get_shape(self) -> tensor_shape.TensorShape:
     """Alias of `Variable.shape`."""
     return self.shape
 
@@ -1637,7 +1637,7 @@ class PartitionedVariable:
     # NOTE(yuefengz): Today, no partitioned variables in a distribute strategy.
     return None
 
-  def get_shape(self):
+  def get_shape(self) -> tensor_shape.TensorShape:
     return self._shape
 
   def _get_variable_list(self):

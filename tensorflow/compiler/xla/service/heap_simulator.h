@@ -399,6 +399,9 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   enum Type {
     kSpatial = 0,
     kTemporal,
+    // Custom uses a custom BufferIntervalCompare function provided in the
+    // constructor.
+    kCustom
   };
 
   // BufferInterval stores a buffer's size and time interval.
@@ -685,8 +688,9 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
     FreeChunkRoots free_chunks_;
   };
 
-  explicit GlobalDecreasingSizeBestFitHeap(int64_t alignment,
-                                           Type type = kSpatial);
+  explicit GlobalDecreasingSizeBestFitHeap(
+      int64_t alignment, Type type = kSpatial,
+      BufferIntervalCompare buffer_interval_compare = nullptr);
   ~GlobalDecreasingSizeBestFitHeap() override {}
 
   void Alloc(const BufferType* buffer, int64_t size) override;
@@ -805,8 +809,10 @@ class ConstrainedGlobalDecreasingSizeBestFitHeap
     : public GlobalDecreasingSizeBestFitHeap<HloValue> {
  public:
   explicit ConstrainedGlobalDecreasingSizeBestFitHeap(
-      uint64_t size_limit_per_heap, int64_t alignment, Type type = kSpatial)
-      : GlobalDecreasingSizeBestFitHeap<HloValue>(alignment, type),
+      uint64_t size_limit_per_heap, int64_t alignment, Type type = kSpatial,
+      BufferIntervalCompare buffer_interval_compare = nullptr)
+      : GlobalDecreasingSizeBestFitHeap<HloValue>(alignment, type,
+                                                  buffer_interval_compare),
         size_limit_per_heap_(size_limit_per_heap) {}
   ~ConstrainedGlobalDecreasingSizeBestFitHeap() override {}
 

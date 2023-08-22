@@ -18,6 +18,7 @@ tensorflow/contrib/cmake/_build/
 .idea/**
 /build/
 [Bb]uild/
+/build_output/
 /tensorflow/core/util/version_info.cc
 /tensorflow/python/framework/fast_tensor_util.cpp
 /tensorflow/lite/gen/**

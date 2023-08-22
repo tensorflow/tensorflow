@@ -1159,7 +1159,7 @@ to be batched.}]>:$captured_tensors,
 
     // Gets the argument operands to the called function.
     operand_range getArgOperands() {
-      // Merge `in_tensors` and `captured_tensors`. `operand_segment_sizes`
+      // Merge `in_tensors` and `captured_tensors`. `operandSegmentSizes`
       // has two elements, so it will be merging two operand ranges (the two
       // variadic arguments). Attributes like `batch_timeout_micros` will not
       // make it to the return array.
@@ -12744,7 +12744,7 @@ the outputs of that operation (both work equivalently).}]>:$features
   }];
 }
 
-def TF_RemoteCallOp : TF_Op<"RemoteCall", []> {
+def TF_RemoteCallOp : TF_Op<"RemoteCall", [CallOpInterface]> {
   let summary = "Runs function `f` on a remote device indicated by `target`.";
 
   let arguments = (ins
@@ -12760,6 +12760,27 @@ def TF_RemoteCallOp : TF_Op<"RemoteCall", []> {
 
   TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<1>;
   TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
+
+  let extraClassDeclaration = [{
+    /// Get the argument operands to the called function.
+    operand_range getArgOperands() {
+      return getArgs();
+    }
+
+    MutableOperandRange getArgOperandsMutable() {
+      return getArgsMutable();
+    }
+
+    /// Return the callee of this operation.
+    CallInterfaceCallable getCallableForCallee() {
+      return (*this)->getAttrOfType<SymbolRefAttr>("f");
+    }
+
+    /// Set the callee for this operation.
+    void setCalleeFromCallable(CallInterfaceCallable callee) {
+      (*this)->setAttr("f", callee.get<SymbolRefAttr>());
+    }
+  }];
 }
 
 def TF_RepeatDatasetOp : TF_Op<"RepeatDataset", [Pure]> {

@@ -82,6 +82,10 @@ tf_python_pybind_extension(
     name = "pywrap_tensor_test_util",
     testonly = True,
     srcs = ["pywrap_tensor_test_util.cc"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "pywrap_tensor_test_util.pyi",
+    ],
     deps = [
         ":pywrap_tfe_lib",
         "//tensorflow/c:tf_status_helper",
@@ -227,6 +231,10 @@ tf_python_pybind_extension(
     name = "custom_device_testutil",
     testonly = True,
     srcs = ["custom_device_testutil.cc"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "custom_device_testutil.pyi",
+    ],
     deps = [
         "//tensorflow/c:c_api",
         "//tensorflow/c:safe_ptr",

@@ -30,6 +30,7 @@ import re
 import tempfile
 import threading
 import time
+from typing import Union
 import unittest
 
 from absl.testing import parameterized
@@ -69,6 +70,7 @@ from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import control_flow_util_v2
+from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import gen_sync_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
@@ -1699,7 +1701,7 @@ def _run_vn_only(func=None, v2=True, reason=None):
     reason: string giving a reason for limiting the test to a particular mode.
 
   Returns:
-    Returns a decorator that will conditionally skip the decorated test method.
+    A decorator that will skip the test method in the specified version.
   """
   if not reason:
     reason = f"Test is only compatible with {'v2 ' if v2 else 'v1'}"
@@ -1730,7 +1732,7 @@ def _run_vn_only(func=None, v2=True, reason=None):
 
         return f(self, *args, **kwargs)
 
-      return decorated
+      return tf_decorator.make_decorator(f, decorated)
 
   if func is not None:
     return decorator(func)
@@ -2684,7 +2686,13 @@ class TensorFlowTestCase(googletest.TestCase):
       return None
     return nest.map_structure(self._eval_tensor, tensors)
 
-  def evaluate(self, tensors):
+  def evaluate(
+      self, tensors
+  ) -> Union[
+      ragged_tensor_value.RaggedTensorValue,
+      sparse_tensor.SparseTensorValue,
+      None
+  ]:
     """Evaluates tensors and returns numpy values.
 
     Args:
@@ -2703,7 +2711,6 @@ class TensorFlowTestCase(googletest.TestCase):
           flattened_results = sess.run(flattened_tensors)
       else:
         flattened_results = sess.run(flattened_tensors)
-
       return nest.pack_sequence_as(tensors, flattened_results)
 
   # pylint: disable=g-doc-return-or-yield

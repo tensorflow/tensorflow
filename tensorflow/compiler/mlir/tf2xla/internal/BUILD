@@ -37,7 +37,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:serialize_mlir_module_utils",
-        "//tensorflow/compiler/mlir/tensorflow:set_tpu_infeed_layout",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:set_tpu_infeed_layout",
         "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util",
         "//tensorflow/compiler/tf2xla:layout_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -46,7 +46,6 @@ cc_library(
         "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
         "//tensorflow/core/tpu:tpu_compile",
         "//tensorflow/core/tpu/kernels:tpu_compile_op_support",

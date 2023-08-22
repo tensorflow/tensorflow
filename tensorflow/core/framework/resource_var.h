@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_RESOURCE_VAR_H_
 #define TENSORFLOW_CORE_FRAMEWORK_RESOURCE_VAR_H_
 
+#include <string>
+
 #include "tensorflow/core/framework/resource_base.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -66,6 +68,9 @@ namespace tensorflow {
 class Var : public ResourceBase {
  public:
   explicit Var(DataType dtype) : tensor_(dtype) {}
+  explicit Var(DataType dtype, std::string& debug_name) : tensor_(dtype) {
+    debug_name_ = debug_name;
+  }
 
   // When locking multiple variables, the locks must be acquired in order of
   // increasing mu() address.
@@ -88,6 +93,8 @@ class Var : public ResourceBase {
                            tensor_.shape().DebugString());
   }
 
+  std::string MakeRefCountingHandleName(int64_t resource_id) const override;
+
   // Only used in the resource variable path. In resource variables,
   // tensor.IsInitialized() can be true (i.e. have memory allocated to it) while
   // there is not a good value there due to a race condition, and it's possible
@@ -106,6 +113,7 @@ class Var : public ResourceBase {
  private:
   mutex mu_;
   Tensor tensor_;
+  std::string debug_name_;
 
   ~Var() override {}
   TF_DISALLOW_COPY_AND_ASSIGN(Var);

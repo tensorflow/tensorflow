@@ -162,6 +162,7 @@ array([[1.5, 1.5],
        [1. , 1. ],
        [1. , 1. ]], dtype=float32)
 
+API docstring: tensorflow.nn
 """
 
 import functools

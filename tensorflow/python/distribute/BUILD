@@ -939,6 +939,7 @@ py_strict_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_conversion_registry",
+        "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/framework:type_spec",
         "//tensorflow/python/ops:array_ops",
@@ -1840,7 +1841,7 @@ distribute_py_strict_test(
     name = "moving_averages_test",
     srcs = ["moving_averages_test.py"],
     main = "moving_averages_test.py",
-    shard_count = 5,
+    shard_count = 12,
     tags = [
         "multi_gpu",
         "no_windows",  # TODO(b/184424727): Re-enable this.

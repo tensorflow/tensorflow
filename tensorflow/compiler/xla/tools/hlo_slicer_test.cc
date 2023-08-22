@@ -1014,19 +1014,19 @@ TEST_F(HloSlicerTest, TestSliceModuleAndExtractRemoveSharding) {
                               /*slice_starting_instructions=*/
                               absl::MakeSpan(relevant_instructions),
                               /*slicing_configuration=*/slicing_config);
-    CHECK_EQ(sliced_modules.size(), 1);
+    EXPECT_EQ(sliced_modules.size(), 1);
     auto sliced_module = std::move(sliced_modules[0]);
 
     // Test if the custom-call to sharding is removed.
     for (HloInstruction* instruction :
          sliced_module->entry_computation()->instructions()) {
-      CHECK_NE(instruction->opcode(), HloOpcode::kCustomCall);
+      EXPECT_NE(instruction->opcode(), HloOpcode::kCustomCall);
     }
 
     // Check that both the operands of %add.39786 are %multiply.39766.
     for (HloInstruction* instruction :
          sliced_module->entry_computation()->root_instruction()->operands()) {
-      CHECK_EQ(instruction->name(), "multiply.39766");
+      EXPECT_EQ(instruction->name(), "multiply.39766");
     }
   }
 }
@@ -1066,18 +1066,75 @@ TEST_F(HloSlicerTest, TestSliceModuleAndExtractReduceTupleParameter) {
                               /*slice_starting_instructions=*/
                               absl::MakeSpan(relevant_instructions),
                               /*slicing_configuration=*/slicing_config);
-    CHECK_EQ(sliced_modules.size(), 1);
+    EXPECT_EQ(sliced_modules.size(), 1);
     auto sliced_module = std::move(sliced_modules[0]);
 
     // Check that the new p.0 only has one element.
     HloInstruction* p_0 = FindInstruction(sliced_module.get(), "p.0");
-    CHECK_NE(p_0, nullptr);
-    CHECK_EQ(p_0->shape().tuple_shapes_size(), 1);
+    EXPECT_NE(p_0, nullptr);
+    EXPECT_EQ(p_0->shape().tuple_shapes_size(), 1);
 
     // Check that the new p.1 only has one element.
     HloInstruction* p_1 = FindInstruction(sliced_module.get(), "p.1");
-    CHECK_NE(p_1, nullptr);
-    CHECK_EQ(p_1->shape().tuple_shapes_size(), 1);
+    EXPECT_NE(p_1, nullptr);
+    EXPECT_EQ(p_1->shape().tuple_shapes_size(), 1);
+  }
+}
+
+TEST_F(HloSlicerTest, TestSliceModuleAndExtractSlicingGroup) {
+  const std::string& hlo_string = R"(
+  HloModule axpy_module
+    ENTRY axpy_computation (p.0: (s32[], s32[3]{0}), p.1: (s32[3]{0}, s32[])) -> s32[] {
+      p.0 = (s32[], s32[3]{0}) parameter(0)
+      gte.0 = s32[] get-tuple-element(p.0), index=0    
+      p.1 = (s32[3]{0}, s32[]) parameter(1)
+      gte.1 = s32[] get-tuple-element(p.1), index=1    
+      ROOT add.0 = s32[] add(gte.0, gte.1)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  HloInstruction* gte_0 = FindInstruction(hlo_module.get(), "gte.0");
+  CHECK_NE(gte_0, nullptr);
+  HloInstruction* gte_1 = FindInstruction(hlo_module.get(), "gte.1");
+  CHECK_NE(gte_1, nullptr);
+
+  // slice_starting_instructions: {gte.0, gte.1}.
+  // forward_slicing: kNca.
+  // backward_slicing: true.
+  // remove_sharding: false.
+  // reduce_tuple_parameter: false.
+  // slicing_group: 1
+  {
+    // Generate two sliced modules, sliced from gte.0 and gte.1, respectively
+    // (`slicing_group` = 1).
+    std::vector<const HloInstruction*> relevant_instructions({gte_0, gte_1});
+    SlicingConfiguration slicing_config = {
+        /*forward_slicing=*/SlicingConfiguration::ForwardSlicingConfig::kNca,
+        /*backward_slicing=*/true, /*remove_sharding=*/false,
+        /*reduce_tuple_parameter=*/false, /*slicing_group=*/1};
+    std::vector<std::unique_ptr<HloModule>> sliced_modules =
+        SliceModuleAndExtract(hlo_module.get(),
+                              /*slice_starting_instructions=*/
+                              absl::MakeSpan(relevant_instructions),
+                              /*slicing_configuration=*/slicing_config);
+
+    // There are two sliced module.
+    EXPECT_EQ(sliced_modules.size(), 2);
+
+    // The first sliced module contains gte.0 and p.0.
+    auto sliced_module_0 = std::move(sliced_modules[0]);
+    EXPECT_EQ(sliced_module_0->entry_computation()->instruction_count(), 2);
+    HloInstruction* p_0 = FindInstruction(sliced_module_0.get(), "p.0");
+    EXPECT_NE(p_0, nullptr);
+
+    // The second sliced module contains gte.1 and p.1.
+    auto sliced_module_1 = std::move(sliced_modules[1]);
+    EXPECT_EQ(sliced_module_0->entry_computation()->instruction_count(), 2);
+    HloInstruction* p_1 = FindInstruction(sliced_module_1.get(), "p.1");
+    EXPECT_NE(p_1, nullptr);
   }
 }
 

@@ -122,4 +122,16 @@ XlaCompiler::Options GenerateCompilerOptionsForPjRt(
   return options;
 }
 
+XlaCompiler::CompileOptions GenerateCompileOptions(
+    bool has_ref_vars, bool may_alias_resource_update) {
+  XlaCompiler::CompileOptions compile_options;
+  compile_options.is_entry_computation = true;
+  // Optimization: where possible, have the computation return a naked array
+  // rather than a one-element tuple.
+  compile_options.always_return_tuple = false;
+  compile_options.alias_resource_update =
+      !has_ref_vars && may_alias_resource_update;
+  return compile_options;
+}
+
 }  // namespace tensorflow

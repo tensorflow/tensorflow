@@ -42,7 +42,7 @@ namespace mhlo {
 
 namespace {
 
-using bufferization::AliasingOpResultList;
+using bufferization::AliasingValueList;
 using bufferization::AnalysisState;
 using bufferization::BufferizableOpInterface;
 using bufferization::BufferizationOptions;
@@ -62,8 +62,8 @@ struct CustomCallOpInterface
     return false;  // Arguments are read-only.
   }
 
-  AliasingOpResultList getAliasingOpResults(Operation *, OpOperand &,
-                                            const AnalysisState &) const {
+  AliasingValueList getAliasingValues(Operation *, OpOperand &,
+                                      const AnalysisState &) const {
     return {};
   }
 
@@ -177,9 +177,8 @@ struct ReshapeOpInterface
     return false;
   }
 
-  AliasingOpResultList getAliasingOpResults(
-      Operation *op, OpOperand & /*opOperand*/,
-      const AnalysisState & /*state*/) const {
+  AliasingValueList getAliasingValues(Operation *op, OpOperand & /*opOperand*/,
+                                      const AnalysisState & /*state*/) const {
     return {{op->getResult(0), BufferRelation::Equivalent}};
   }
 
@@ -217,9 +216,8 @@ struct DynamicReshapeOpInterface
     return false;
   }
 
-  AliasingOpResultList getAliasingOpResults(
-      Operation *op, OpOperand & /*opOperand*/,
-      const AnalysisState & /*state*/) const {
+  AliasingValueList getAliasingValues(Operation *op, OpOperand & /*opOperand*/,
+                                      const AnalysisState & /*state*/) const {
     return {{op->getResult(0), BufferRelation::Equivalent}};
   }
 
@@ -376,9 +374,8 @@ struct DynamicBroadcastInDimOpInterface
     return false;
   }
 
-  AliasingOpResultList getAliasingOpResults(
-      Operation *op, OpOperand & /*opOperand*/,
-      const AnalysisState & /*state*/) const {
+  AliasingValueList getAliasingValues(Operation *op, OpOperand & /*opOperand*/,
+                                      const AnalysisState & /*state*/) const {
     return {{op->getResult(0), BufferRelation::Unknown}};
   }
 

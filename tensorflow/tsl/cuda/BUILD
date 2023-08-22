@@ -189,7 +189,7 @@ cc_library(
     srcs = if_cuda_is_configured(["cupti_stub.cc"]),
     data = if_cuda_is_configured(["@local_config_cuda//cuda:cupti_dsos"]),
     linkopts = if_cuda_is_configured(cuda_rpath_flags("nvidia/cuda_cupti/lib")),
-    textual_hdrs = ["cupti_10_0.inc"],
+    textual_hdrs = glob(["cupti_*.inc"]),
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",

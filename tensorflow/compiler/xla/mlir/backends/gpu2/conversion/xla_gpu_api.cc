@@ -101,8 +101,9 @@ func::FuncOp XlaGpuApi::addDecl(OpBuilder &b, ModuleOp module,
   // Skip exporting tensor that was just imported from a buffer view.
   if (auto tensor_import = dyn_cast_or_null<IREE::Input::TensorImportOp>(
           tensor.getDefiningOp())) {
-    return cast<TypedValue<IREE::Input::BufferViewType>>(
-        tensor_import.getSource());
+    if (auto buffer_view = dyn_cast<TypedValue<IREE::Input::BufferViewType>>(
+            tensor_import.getSource()))
+      return buffer_view;
   }
 
   Value view = b.create<IREE::Input::TensorExportOp>(

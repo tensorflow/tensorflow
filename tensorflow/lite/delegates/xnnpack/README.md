@@ -214,7 +214,7 @@ using delegate options:
 ```c++
 TfLiteXNNPackDelegateOptions xnnpack_options =
     TfLiteXNNPackDelegateOptionsDefault();
-xnnpack_options.handle_variable_ops = true;
+xnnpack_options.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_VARIABLE_OPERATORS;
 ```
 
 When XNNPACK handles resource variables,

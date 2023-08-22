@@ -53,6 +53,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/tsl/platform/host_info.h"
+#include "tensorflow/tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -392,6 +393,9 @@ DataServiceClient::CreateWorkerClient(const TaskInfo& task_info) {
         << default_protocol << "' for worker '" << task_info.worker_address()
         << "'; falling back to grpc. Original error: "
         << transfer_server.status();
+    metrics::RecordTFDataServiceDataTransferProtocolFallback(
+        default_protocol, error::Code::NOT_FOUND,
+        "Failed to find transfer server for default protocol");
   }
   return CreateGrpcWorkerClient(task_info);
 }

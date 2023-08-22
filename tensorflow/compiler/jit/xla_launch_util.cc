@@ -611,9 +611,6 @@ Status PreparePjRtExecutableArguments(
     } else {
       tensor = inputs[arg_num - num_missing_prefix_ctx_inputs];
     }
-    if (!tensor->RefCountIsOne()) {
-      non_donatable_input_indices->insert(arg_num);
-    }
 
     // The input tensor can have the following cases.
     // 1. Tensor with PjRtTensorBuffer, containing a PjRtBuffer. This case
@@ -670,6 +667,10 @@ Status PreparePjRtExecutableArguments(
         continue;
       }
       args->push_back(av_tensor->GetBuffer().get());
+    }
+
+    if (!tensor->RefCountIsOne()) {
+      non_donatable_input_indices->insert(args->size() - 1);
     }
   }
   return OkStatus();
@@ -838,11 +839,6 @@ Status RunPjRtExecutable(
     const XlaCompiler::CompilationResult& compilation_result,
     xla::PjRtClient* pjrt_client, xla::PjRtLoadedExecutable* executable,
     OpKernelContext* ctx) {
-  std::vector<xla::PjRtBuffer*> executable_args;
-  executable_args.reserve(compilation_result.input_mapping.size());
-  std::vector<std::unique_ptr<xla::PjRtBuffer>> owned_executable_args;
-
-  absl::flat_hash_set<int> non_donatable_input_indices;
   const bool use_pjrt_tensor_buffer = ctx->device()
                                           ->tensorflow_accelerator_device_info()
                                           ->use_pjrt_tensor_buffer;
@@ -853,6 +849,33 @@ Status RunPjRtExecutable(
                           ctx->device()->parsed_name(), device_type));
   TF_ASSIGN_OR_RETURN(xla::PjRtDevice * device,
                       pjrt_client->LookupAddressableDevice(pjrt_device_id));
+
+  TF_ASSIGN_OR_RETURN(
+      std::vector<std::unique_ptr<xla::PjRtBuffer>> execute_outputs,
+      RunPjRtExecutable(num_missing_prefix_ctx_inputs, inputs,
+                        variable_snapshots, updated_variables, device_type,
+                        use_pjrt_tensor_buffer, compilation_result, device,
+                        pjrt_client, executable));
+
+  TF_RETURN_IF_ERROR(PopulateCtxOutputsFromPjRtExecutableOutputs(
+      num_missing_prefix_ctx_inputs, inputs, updated_variables,
+      compilation_result, use_pjrt_tensor_buffer, execute_outputs, ctx));
+  return OkStatus();
+}
+
+StatusOr<std::vector<std::unique_ptr<xla::PjRtBuffer>>> RunPjRtExecutable(
+    int num_missing_prefix_ctx_inputs, const std::vector<const Tensor*>& inputs,
+    const absl::flat_hash_map<int, const Tensor*>& variable_snapshots,
+    const std::vector<VariableInfo>& updated_variables,
+    const DeviceType& device_type, bool use_pjrt_tensor_buffer,
+    const XlaCompiler::CompilationResult& compilation_result,
+    xla::PjRtDevice* device, xla::PjRtClient* pjrt_client,
+    xla::PjRtLoadedExecutable* executable) {
+  std::vector<xla::PjRtBuffer*> executable_args;
+  executable_args.reserve(compilation_result.input_mapping.size());
+  std::vector<std::unique_ptr<xla::PjRtBuffer>> owned_executable_args;
+
+  absl::flat_hash_set<int> non_donatable_input_indices;
 
   TF_RETURN_IF_ERROR(PreparePjRtExecutableArguments(
       num_missing_prefix_ctx_inputs, compilation_result.input_mapping, inputs,
@@ -886,11 +909,7 @@ Status RunPjRtExecutable(
       TF_RETURN_IF_ERROR(output->GetReadyFuture().Await());
     }
   }
-
-  TF_RETURN_IF_ERROR(PopulateCtxOutputsFromPjRtExecutableOutputs(
-      num_missing_prefix_ctx_inputs, inputs, updated_variables,
-      compilation_result, use_pjrt_tensor_buffer, execute_outputs, ctx));
-  return OkStatus();
+  return execute_outputs;
 }
 
 }  // namespace tensorflow

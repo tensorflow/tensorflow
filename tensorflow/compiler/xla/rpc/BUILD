@@ -119,6 +119,7 @@ cc_library(
 # xla_py_grpc_library(
 #     name = "xla_py_pb2_grpc",
 #     srcs = [":xla_service_proto"],
+#     use_pytype = True,
 #     deps = [":xla_py_pb2"],
 # )
 # copybara:uncomment_end

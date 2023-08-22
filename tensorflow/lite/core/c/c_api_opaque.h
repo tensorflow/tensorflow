@@ -173,6 +173,48 @@ TfLiteStatus TfLiteOpaqueTensorWriteStrings(TfLiteOpaqueTensor* tensor,
 TfLiteStatus TfLiteOpaqueTensorWriteString(TfLiteOpaqueTensor* tensor,
                                            const char* str, int len);
 
+// An opaque type to create a tensor.
+typedef struct TfLiteOpaqueTensorBuilder TfLiteOpaqueTensorBuilder;
+
+// Creates an opaque tensor builder object.
+TfLiteOpaqueTensorBuilder* TfLiteOpaqueTensorBuilderCreate();
+
+// Deletes an opaque tensor builder object.
+void TfLiteOpaqueTensorBuilderDelete(TfLiteOpaqueTensorBuilder* builder);
+
+// Sets the 'TfLiteType' of the provided 'builder' to the provided 'type'.
+// Returns the address of the provided 'builder', so that builder calls can be
+// chained together.
+TfLiteOpaqueTensorBuilder* TfLiteOpaqueTensorBuilderSetType(
+    TfLiteOpaqueTensorBuilder* builder, TfLiteType type);
+
+// Sets the raw data of the provided 'builder' to the provided 'data'. Returns
+// the address of the provided 'builder', so that builder calls can be chained
+// together.
+TfLiteOpaqueTensorBuilder* TfLiteOpaqueTensorBuilderSetData(
+    TfLiteOpaqueTensorBuilder* builder, void* data);
+
+// Sets the allocation type of the provided 'builder' to the provided
+// 'allocation_type'.  The 'allocation_type' must be one of the following:
+// 'kTfLiteDynamic', 'kTfLiteArenaRw' or 'kTfLiteArenaRwPersistent'.  If the
+// provided 'allocation_type' is not one of those values then
+// 'TfLiteOpaqueContextAddTensor' will return an error. Returns the address of
+// the provided 'builder', so that builder calls can be chained together.
+TfLiteOpaqueTensorBuilder* TfLiteOpaqueTensorBuilderSetAllocationType(
+    TfLiteOpaqueTensorBuilder* builder, TfLiteAllocationType allocation_type);
+
+// Sets the quantization params of the provided 'builder' to the provided
+// 'params'. Returns the address of the provided 'builder', so that builder
+// calls can be chained together.
+TfLiteOpaqueTensorBuilder* TfLiteOpaqueTensorBuilderSetQuantizationParams(
+    TfLiteOpaqueTensorBuilder* builder, TfLiteQuantizationParams params);
+
+// Sets the quantization of the provided 'builder' to the provided
+// 'quantization'. Returns the address of the provided 'builder', so that
+// builder calls can be chained together.
+TfLiteOpaqueTensorBuilder* TfLiteOpaqueTensorBuilderSetQuantization(
+    TfLiteOpaqueTensorBuilder* builder, TfLiteQuantization quantization);
+
 // --------------------------------------------------------------------------
 // Accessors for TfLiteOpaqueNode.
 
@@ -518,16 +560,15 @@ TfLiteStatus TfLiteOpaqueContextGetNodeInitDataMmapInfo(
     int64_t* custom_initial_data_offset_in_file,
     int64_t* custom_initial_data_size);
 
-// Add 'tensors_to_add' tensors, preserving pre-existing Tensor entries.  If
-// non-null, the value pointed to by 'first_new_tensor_index' will be set to
-// the index of the first new tensor.  Returns 'kTfLiteOk' when the tensors have
-// been added successfully.  Returns 'kTfLiteError' in case of failure. Suppling
-// a value equal to or smaller than 0 for 'tensors_to_add' will result in
-// 'kTfLiteError' being returned.
+// Adds an additional tensor and configures its properties based on the provided
+// 'builder', preserving pre-existing Tensor entries.  If non-null, the value
+// pointed to by 'new_tensor_index' will be set to the index of the
+// new tensor.  Returns 'kTfLiteOk' when the tensor has been added
+// successfully.  Returns 'kTfLiteError' in case of failure.
 TFL_CAPI_EXPORT
-TfLiteStatus TfLiteOpaqueContextAddTensors(TfLiteOpaqueContext* context,
-                                           int tensors_to_add,
-                                           int* first_new_tensor_index);
+TfLiteStatus TfLiteOpaqueContextAddTensor(TfLiteOpaqueContext* context,
+                                          TfLiteOpaqueTensorBuilder* builder,
+                                          int* new_tensor_index);
 
 // Populates the size in bytes of a provide 'type' into 'bytes'.  Returns
 // 'kTfLiteOk' for valid types, and 'kTfLiteError' otherwise.

@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v1/device_type.pb.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
@@ -51,8 +52,18 @@ static const char kMlirWithFallbackModeSuccess[] =
     "kMlirWithFallbackModeSuccess";
 static const char kMlirWithFallbackModeFailure[] =
     "kMlirWithFallbackModeFailure";
+static const char kOldBridgeMlirFilteredFailure[] =
+    "kOldBridgeMlirFilteredFailure";
 static const char kOldBridgeWithFallbackModeFailure[] =
     "kOldBridgeWithFallbackModeFailure";
+static const char kOldBridgeMlirFilteredSuccess[] =
+    "kOldBridgeMlirFilteredSuccess";
+static const char kOldBridgeWithFallbackModeSuccess[] =
+    "kOldBridgeWithFallbackModeSuccess";
+static const char kMlirCombinedMlirSuccess[] = "kMlirCombinedMlirSuccess";
+static const char kMlirCombinedMlirFailure[] = "kMlirCombinedMlirFailure";
+static const char kMlirCombinedOldSuccess[] = "kMlirCombinedOldSuccess";
+static const char kMlirCombinedOldFailure[] = "kMlirCombinedOldFailure";
 
 static constexpr char kMlirModuleStr[] = R"(
   module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
@@ -61,11 +72,23 @@ static constexpr char kMlirModuleStr[] = R"(
   }
 })";
 
+// MLIR which should legalize at all
 static constexpr char kBadMlirModuleStr[] = R"(
   module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
   func.func @main() -> () {
     %0 = tf.Unknown() -> ()
     func.return %0
+  }
+})";
+
+// MLIR which should be filtered by the MLIR bridge but fully legalize with the
+// combined bridge.
+static constexpr char kUnsupportedMlirBridgeModuleStr[] = R"(
+  module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
+  func.func @main() -> () {
+    %cst0 = "tf.Const"(){ value = dense<0> : tensor<3x5xi1>} : () -> tensor<3x5xi1>
+    %0 = "tf.Where"(%cst0) : (tensor<3x5xi1>) -> tensor<?x2xi64>
+    func.return
   }
 })";
 
@@ -132,7 +155,27 @@ TEST(LegalizeTFTest, RecordsStreamzForFailedLegalizeWithMlirBridge) {
   EXPECT_FALSE(result.ok());
   EXPECT_EQ(compilation_status.Delta(kMlirWithFallbackModeSuccess), 0);
   EXPECT_EQ(compilation_status.Delta(kMlirWithFallbackModeFailure), 1);
-  EXPECT_EQ(compilation_status.Delta(kOldBridgeWithFallbackModeFailure), 1);
+  EXPECT_EQ(compilation_status.Delta(kMlirCombinedMlirFailure), 1);
+}
+
+TEST(LegalizeTFTest, RecordsStreamzForSuccessWithCombinedBridge) {
+  CellReader<int64_t> compilation_status(kCompilationStatusStreamzName);
+
+  auto result = CompileMlirModule(
+      kUnsupportedMlirBridgeModuleStr,
+      ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_UNSPECIFIED);
+
+  // MLIR Bridge will filter this unsupported MLIR, Combined will succeed.
+  EXPECT_TRUE(result.ok());
+  EXPECT_EQ(compilation_status.Delta(kMlirCombinedMlirSuccess), 1);
+  EXPECT_EQ(compilation_status.Delta(kMlirCombinedMlirFailure), 0);
+  EXPECT_EQ(compilation_status.Delta(kMlirCombinedOldSuccess), 1);
+  EXPECT_EQ(compilation_status.Delta(kMlirCombinedOldFailure), 0);
+  // Old bridge should never be called at all.
+  EXPECT_EQ(compilation_status.Delta(kOldBridgeMlirFilteredFailure), 0);
+  EXPECT_EQ(compilation_status.Delta(kOldBridgeWithFallbackModeFailure), 0);
+  EXPECT_EQ(compilation_status.Delta(kOldBridgeMlirFilteredSuccess), 0);
+  EXPECT_EQ(compilation_status.Delta(kOldBridgeWithFallbackModeSuccess), 0);
 }
 
 TEST(LegalizeTFTest, RecordsStreamzForNoMlirFallback) {

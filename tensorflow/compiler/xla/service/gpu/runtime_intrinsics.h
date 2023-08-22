@@ -16,9 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_RUNTIME_INTRINSICS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_RUNTIME_INTRINSICS_H_
 
+#include "absl/strings/string_view.h"
+
 namespace xla {
 
-extern const char* const kXlaGpuAssertCustomCallTag;
+inline constexpr absl::string_view kXlaGpuAssertCustomCallTag =
+    "__xla_gpu_assert";
 
 }  // namespace xla
 

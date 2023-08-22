@@ -21,6 +21,10 @@ package(
 tf_python_pybind_extension(
     name = "_pywrap_file_io",
     srcs = ["file_io_wrapper.cc"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_file_io.pyi",
+    ],
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:protos_all_cc",
@@ -58,6 +62,10 @@ py_strict_library(
 tf_python_pybind_extension(
     name = "_pywrap_record_io",
     srcs = ["record_io_wrapper.cc"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_record_io.pyi",
+    ],
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",

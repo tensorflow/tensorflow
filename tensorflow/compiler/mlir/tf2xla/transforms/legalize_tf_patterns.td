@@ -617,7 +617,7 @@ def : Pat<(TF_TransposeOp:$res $arg, (ConstantLikeMatcher ElementsAttr:$permutat
 // Lowering these ops with static shape to mhlo.reshape
 foreach TfOp = [TF_ExpandDimsOp, TF_ReshapeOp, TF_SqueezeOp, ] in {
   def : Pat<(TfOp:$res MHLO_Tensor:$arg, $ignored),
-            (MHLO_ReshapeOp $arg), [(AnyStaticShapeTensor $res)],
+            (MHLO_ReshapeOp $arg), [(AnyStaticShapeTensor $res)], [],
             (addBenefit 2)>;
 }
 

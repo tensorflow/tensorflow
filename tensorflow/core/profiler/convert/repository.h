@@ -23,13 +23,30 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/tsl/profiler/utils/file_system_utils.h"
 
 namespace tensorflow {
 namespace profiler {
+
+constexpr char kAllHostsIdentifier[] = "ALL_HOSTS";
+constexpr char kNoHostIdentifier[] = "NO_HOST";
+
+enum StoredDataType {
+  DCN_COLLECTIVE_STATS,
+};
+
+static auto* kHostDataSuffixes =
+    new std::vector<std::pair<StoredDataType, const char*>>(
+        {{StoredDataType::DCN_COLLECTIVE_STATS, ".dcn_collective_stats.pb"}});
 
 // File system directory snapshot of a profile session.
 class SessionSnapshot {
@@ -68,6 +85,54 @@ class SessionSnapshot {
   std::optional<std::string> GetFilePath(absl::string_view toolname,
                                          absl::string_view host) const;
 
+  // Gets the name of the host data file.
+  StatusOr<std::string> GetHostDataFileName(StoredDataType data_type,
+                                            std::string host) const;
+
+  // Gets the path of the host data file.
+  StatusOr<std::optional<std::string>> GetHostDataFilePath(
+      StoredDataType data_type, std::string host) const;
+
+  /* Gets whether the cache file is present in run dir. First value indicates
+  whether cache file is present or not. Second value indicates the path of cache
+  file. Possible cases are:
+      1. <false, "">: If no cache file is present
+      2. <true, "">: If cache file is present but file contains no data_type
+     events
+      3. <true, filepath>: If cache file is present and file contains data_type
+     events
+  */
+  StatusOr<std::pair<bool, std::string>> HasCacheFile(
+      StoredDataType data_type) const;
+
+  template <typename T>
+  absl::Status WriteBinaryProto(const StoredDataType data_type,
+                                const std::string host, T& proto) const {
+    // Gets name for host data file.
+    TF_ASSIGN_OR_RETURN(std::string filename,
+                        GetHostDataFileName(data_type, host));
+
+    std::string filepath =
+        tsl::profiler::ProfilerJoinPath(GetSessionRunDir(), filename);
+
+    return tensorflow::WriteBinaryProto(tsl::Env::Default(), filepath, proto);
+  }
+
+  template <typename T>
+  absl::Status ReadBinaryProto(const StoredDataType data_type,
+                               const std::string host, T* proto) const {
+    // Gets file path for host data.
+    TF_ASSIGN_OR_RETURN(std::optional<std::string> filepath,
+                        GetHostDataFilePath(data_type, host));
+    if (filepath) {
+      return tensorflow::ReadBinaryProto(tsl::Env::Default(), filepath.value(),
+                                         proto);
+    }
+
+    return absl::NotFoundError(
+        absl::StrCat("No binary proto found for ", host, " and ", data_type));
+  }
+
  private:
   SessionSnapshot(std::vector<std::string> xspace_paths,
                   std::optional<std::vector<std::unique_ptr<XSpace>>> xspaces)
@@ -99,6 +164,22 @@ class SessionSnapshot {
   // of using pre-loaded XSpaces.
   mutable std::optional<std::vector<std::unique_ptr<XSpace>>> xspaces_;
 };
+
+// Writes binary proto format T for a host and data_type to a session.
+template <typename T>
+absl::Status WriteBinaryProto(const SessionSnapshot& session_snapshot,
+                              const StoredDataType data_type,
+                              const std::string& host, T& proto) {
+  return session_snapshot.WriteBinaryProto(data_type, host, proto);
+}
+
+// Reads binary proto format T for a host and data_type to a session.
+template <typename T>
+absl::Status ReadBinaryProto(const SessionSnapshot& session_snapshot,
+                             const StoredDataType data_type,
+                             const std::string& host, T* proto) {
+  return session_snapshot.ReadBinaryProto(data_type, host, proto);
+}
 
 }  // namespace profiler
 }  // namespace tensorflow

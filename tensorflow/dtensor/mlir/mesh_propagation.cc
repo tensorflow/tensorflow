@@ -20,10 +20,12 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -35,6 +37,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
@@ -52,14 +55,9 @@ namespace {
 // Extracts mesh of `block_arg` by parsing function argument attributes of it's
 // enclosing function. Mesh is inferred either using `tf._layout` or `tf._mesh`
 // attributes.
-mlir::LogicalResult ExtractMeshFromBlockArgument(mlir::BlockArgument block_arg,
-                                                 std::optional<Mesh>* out) {
-  auto func_op = mlir::dyn_cast_or_null<mlir::func::FuncOp>(
-      block_arg.getOwner()->getParentOp());
-  if (!func_op) {
-    return block_arg.getOwner()->getParentOp()->emitOpError(
-        "must be enclosed by a function");
-  }
+mlir::LogicalResult ExtractMeshFromBlockArgumentFunction(
+    mlir::BlockArgument block_arg, mlir::func::FuncOp func_op,
+    std::optional<Mesh>* out) {
   auto layout_or_status = ExtractLayoutFromOperand(block_arg);
   if (!layout_or_status.ok())
     return func_op.emitOpError(layout_or_status.status().message());
@@ -83,6 +81,57 @@ mlir::LogicalResult ExtractMeshFromBlockArgument(mlir::BlockArgument block_arg,
 
   out->emplace(mesh_from_block_arg_or_status.value());
   return mlir::success();
+}
+
+// Extracts mesh of `block_arg` which is an operand of while op.
+mlir::LogicalResult ExtractMeshFromBlockArgumentWhile(
+    mlir::BlockArgument block_arg, mlir::TF::WhileRegionOp while_op,
+    std::optional<Mesh>* out) {
+  auto while_op_operand = while_op.getOperand(block_arg.getArgNumber());
+  auto defining_op = while_op_operand.getDefiningOp();
+  if (defining_op) {
+    // The while op operand is the result of another op, then follow the
+    // defining op to get mesh.
+    auto mesh = ExtractDeviceMeshFromOp(defining_op);
+    if (!mesh.ok()) {
+      return while_op.emitOpError(mesh.status().message());
+    }
+    if (mesh->has_value()) {
+      *out = mesh->value();
+    }
+    return mlir::success();
+  } else if (auto func_block_arg =
+                 while_op_operand.dyn_cast<mlir::BlockArgument>()) {
+    // The while op operand is a block argument of the function, then follow the
+    // same routine of getting mesh from function argument.
+    auto function_op = mlir::dyn_cast_or_null<mlir::func::FuncOp>(
+        func_block_arg.getOwner()->getParentOp());
+    if (!function_op) {
+      return while_op.emitOpError(
+          "Block argument must be enclosed by a function");
+    }
+    return ExtractMeshFromBlockArgumentFunction(func_block_arg, function_op,
+                                                out);
+  } else {
+    return while_op.emitOpError("Can not resolve block argument of while op");
+  }
+}
+
+// Extracts mesh of `block_arg`.
+mlir::LogicalResult ExtractMeshFromBlockArgument(mlir::BlockArgument block_arg,
+                                                 std::optional<Mesh>* out) {
+  if (auto func_op = mlir::dyn_cast_or_null<mlir::func::FuncOp>(
+          block_arg.getOwner()->getParentOp())) {
+    return ExtractMeshFromBlockArgumentFunction(block_arg, func_op, out);
+  }
+
+  if (auto while_op = mlir::dyn_cast_or_null<mlir::TF::WhileRegionOp>(
+          block_arg.getOwner()->getParentOp())) {
+    return ExtractMeshFromBlockArgumentWhile(block_arg, while_op, out);
+  }
+
+  return block_arg.getOwner()->getParentOp()->emitOpError(
+      "must be enclosed by a function of a while op");
 }
 
 // Extracts mesh of operation that produces `value`.
@@ -187,19 +236,9 @@ mlir::LogicalResult ExtractMeshFromOperand(
 // operands must have same mesh.
 mlir::LogicalResult InferMeshFromInputs(
     const llvm::DenseMap<mlir::OpOperand*, std::vector<mlir::Value>>& producers,
-    mlir::tf_device::ClusterOp cluster, std::optional<Mesh>* mesh,
-    llvm::SmallVector<mlir::OpOperand*, 8>* inputs_with_inferred_mesh) {
+    mlir::tf_device::ClusterOp cluster, std::optional<Mesh>* mesh) {
+  llvm::SmallVector<mlir::OpOperand*, 8> inputs_with_inferred_mesh;
   auto result = mlir::success();
-
-  // If `cluster` wraps a `tf.CopyToMesh` op, do not infer mesh from it's
-  // inputs. `tf.CopyToMesh` specifies that all operations following the
-  // operation is executed on target device mesh cluster specified by
-  // `tf.CopyToMesh`.
-  if (llvm::isa<mlir::TF::CopyToMeshOp, mlir::TF::RelayoutOp,
-                mlir::TF::CopyToMeshGradOp, mlir::TF::RelayoutLikeOp>(
-          &cluster.GetBody().front())) {
-    return result;
-  }
 
   mlir::visitUsedValuesDefinedAbove(
       cluster.getBody(), cluster.getBody(), [&](mlir::OpOperand* operand) {
@@ -226,11 +265,11 @@ mlir::LogicalResult InferMeshFromInputs(
         // DTensorLayout ops will empty layouts.
         if (!extracted_config || extracted_config->IsEmpty()) return;
 
-        inputs_with_inferred_mesh->emplace_back(operand);
+        inputs_with_inferred_mesh.emplace_back(operand);
         if (mesh->has_value() && extracted_config != mesh->value()) {
           llvm::SmallVector<std::string, 8> input_debug_strings;
           int index = 0;
-          for (const auto& input : *inputs_with_inferred_mesh) {
+          for (const auto& input : inputs_with_inferred_mesh) {
             input_debug_strings.push_back(
                 llvm::formatv("Input Cluster {0}: {1}", index, input->get()));
             ++index;
@@ -346,7 +385,8 @@ mlir::LogicalResult InferMeshFromConsumers(
 mlir::LogicalResult InferFunctionDefaultMesh(
     const llvm::DenseMap<mlir::OpOperand*, std::vector<mlir::Value>>& producers,
     mlir::func::FuncOp function, mlir::OpBuilder* builder,
-    std::optional<mlir::StringAttr>* inferred_default_mesh) {
+    mlir::StringAttr* inferred_default_mesh) {
+  mlir::StringAttr inferred_mesh;
   auto terminator = function.getCallableRegion()->front().getTerminator();
   for (auto& result_value : terminator->getOpOperands()) {
     auto result_defining_op = result_value.get().getDefiningOp();
@@ -358,12 +398,10 @@ mlir::LogicalResult InferFunctionDefaultMesh(
         result_cluster->getAttrOfType<mlir::StringAttr>(kMeshAttr);
     if (!result_mesh) continue;
 
-    if (inferred_default_mesh->has_value() &&
-        inferred_default_mesh->value() != result_mesh) {
-      inferred_default_mesh->reset();
+    if (inferred_mesh && inferred_mesh != result_mesh) {
       return mlir::success();
     }
-    inferred_default_mesh->emplace(result_mesh);
+    inferred_mesh = result_mesh;
   }
 
   std::optional<Mesh> inferred_mesh_from_args;
@@ -382,71 +420,14 @@ mlir::LogicalResult InferFunctionDefaultMesh(
     if (!inferred_mesh_from_args) continue;
 
     std::string mesh_str = inferred_mesh_from_args->ToString();
-    if (inferred_default_mesh->has_value() &&
-        inferred_default_mesh->value().getValue().str() != mesh_str) {
-      inferred_default_mesh->reset();
+    if (inferred_mesh && inferred_mesh.getValue().str() != mesh_str) {
       return mlir::success();
     }
-
-    inferred_default_mesh->emplace(builder->getStringAttr(std::move(mesh_str)));
+    inferred_mesh = builder->getStringAttr(std::move(mesh_str));
   }
-  return mlir::success();
-}
-
-// Annotates `tf._mesh` attribute to argument of `function` with
-// string of `mesh`.
-void AnnotateFunctionArgumentsWithMeshInformation(
-    const Mesh& mesh,
-    const llvm::SmallVector<mlir::OpOperand*, 8>& input_values_from_mesh,
-    mlir::func::FuncOp function, mlir::OpBuilder* builder) {
-  for (auto value : input_values_from_mesh) {
-    function.setArgAttr(value->getOperandNumber(), kCustomDeviceMeshAttr,
-                        builder->getStringAttr(mesh.ToString()));
-  }
-}
-
-// Annotates return value attributes of `function_to_annotate` with mesh
-// information parsed from usages of the function. `callsite_operation` is
-// callable op whose function definition is `function_to_annotate`.
-mlir::LogicalResult AnnotateFunctionReturnValuesWithMeshInformation(
-    const llvm::SmallVector<mlir::OpOperand*, 8>& return_values_from_mesh,
-    mlir::Operation* callsite_operation,
-    mlir::func::FuncOp function_to_annotate, mlir::OpBuilder* builder) {
-  for (auto value : return_values_from_mesh) {
-    std::optional<mlir::StringAttr> result_mesh_attribute;
-    if (llvm::isa<mlir::func::ReturnOp>(value->getOwner())) {
-      auto parent_function =
-          callsite_operation->getParentOfType<mlir::func::FuncOp>();
-      auto function_result_layout =
-          parent_function.getResultAttrOfType<mlir::StringAttr>(
-              value->getOperandNumber(), kCustomDefaultLayoutAttr);
-      if (function_result_layout) {
-        auto layout_or_status =
-            Layout::FromString(function_result_layout.getValue().str());
-        if (!layout_or_status.ok())
-          return parent_function.emitOpError(
-              layout_or_status.status().message());
-
-        result_mesh_attribute.emplace(
-            builder->getStringAttr(layout_or_status->mesh().ToString()));
-      } else {
-        auto function_result_mesh =
-            parent_function.getResultAttrOfType<mlir::StringAttr>(
-                value->getOperandNumber(), kCustomDeviceMeshAttr);
-        if (function_result_mesh)
-          result_mesh_attribute.emplace(function_result_mesh);
-      }
-    } else {
-      auto op_mesh =
-          value->getOwner()->getAttrOfType<mlir::StringAttr>(kMeshAttr);
-      if (op_mesh) result_mesh_attribute.emplace(std::move(op_mesh));
-    }
-
-    if (result_mesh_attribute)
-      function_to_annotate.setResultAttr(
-          value->get().cast<mlir::OpResult>().getResultNumber(),
-          kCustomDeviceMeshAttr, result_mesh_attribute.value());
-  }
+  // At this time, we are sure that all the inputs and outputs of a function
+  // belong to the same mesh. Use this as the inferred default mesh.
+  *inferred_default_mesh = inferred_mesh;
   return mlir::success();
 }
 
@@ -485,20 +466,23 @@ struct DTensorMeshPropagation
       }
     }
 
-    bool mesh_changed = true;
-    while (mesh_changed) {
-      mesh_changed = false;
-      if (mlir::failed(
-              PropagateMesh(producers, main_func, &builder, &mesh_changed)))
-        return signalPassFailure();
+    if (mlir::failed(PropagateMesh(producers, main_func, &builder))) {
+      return signalPassFailure();
     }
 
-    auto default_mesh =
-        module->getAttrOfType<mlir::StringAttr>(kCustomDefaultMeshAttr);
+    mlir::StringAttr default_mesh;
+    if (mlir::failed(InferFunctionDefaultMesh(producers, main_func, &builder,
+                                              &default_mesh))) {
+      return signalPassFailure();
+    }
+    if (!default_mesh) {
+      default_mesh =
+          module->getAttrOfType<mlir::StringAttr>(kCustomDefaultMeshAttr);
+    }
 
     if (default_mesh) {
       if (mlir::failed(PropagateDefaultMeshToUnAssignedClusters(
-              producers, main_func, default_mesh, &builder, &mesh_changed)))
+              producers, main_func, default_mesh, &builder)))
         return signalPassFailure();
     }
   }
@@ -508,21 +492,19 @@ struct DTensorMeshPropagation
   mlir::LogicalResult PropagateMesh(
       const llvm::DenseMap<mlir::OpOperand*, std::vector<mlir::Value>>&
           producers,
-      mlir::func::FuncOp, mlir::OpBuilder* builder, bool* mesh_changed);
+      mlir::func::FuncOp, mlir::OpBuilder* builder);
 
   // Infers mesh of `cluster` from its input operations.
   mlir::LogicalResult PropagateMeshFromInputs(
       const llvm::DenseMap<mlir::OpOperand*, std::vector<mlir::Value>>&
           producers,
-      mlir::tf_device::ClusterOp cluster, mlir::OpBuilder* builder,
-      bool* mesh_changed);
+      mlir::tf_device::ClusterOp cluster, mlir::OpBuilder* builder);
 
   // Infers mesh of `cluster` from its consuming operations.
   mlir::LogicalResult PropagateMeshFromConsumers(
       const llvm::DenseMap<mlir::OpOperand*, std::vector<mlir::Value>>&
           producers,
-      mlir::tf_device::ClusterOp cluster, mlir::OpBuilder* builder,
-      bool* mesh_changed);
+      mlir::tf_device::ClusterOp cluster, mlir::OpBuilder* builder);
 
   // Assigns function default mesh to clusters with no mesh specified. Note that
   // function has default mesh if all its dtensor inputs/outputs are assigned to
@@ -530,15 +512,14 @@ struct DTensorMeshPropagation
   mlir::LogicalResult PropagateDefaultMeshToUnAssignedClusters(
       const llvm::DenseMap<mlir::OpOperand*, std::vector<mlir::Value>>&
           producers,
-      mlir::func::FuncOp, mlir::StringAttr mesh, mlir::OpBuilder* builder,
-      bool* mesh_changed);
+      mlir::func::FuncOp, mlir::StringAttr mesh, mlir::OpBuilder* builder);
 };
 
 mlir::LogicalResult
 DTensorMeshPropagation::PropagateDefaultMeshToUnAssignedClusters(
     const llvm::DenseMap<mlir::OpOperand*, std::vector<mlir::Value>>& producers,
     mlir::func::FuncOp function, mlir::StringAttr mesh,
-    mlir::OpBuilder* builder, bool* mesh_changed) {
+    mlir::OpBuilder* builder) {
   llvm::SmallVector<mlir::tf_device::ClusterOp, 4> clusters_without_mesh;
   auto walk_result = function.walk([&](mlir::tf_device::ClusterOp cluster) {
     if (llvm::isa<mlir::TF::CopyToMeshGradOp>(&cluster.GetBody().front()))
@@ -561,7 +542,6 @@ DTensorMeshPropagation::PropagateDefaultMeshToUnAssignedClusters(
 
   // Set function default mesh to cluster with unspecified mesh.
   for (auto cluster_without_mesh : clusters_without_mesh) {
-    *mesh_changed = true;
     cluster_without_mesh->setAttr(kMeshAttr, mesh);
   }
 
@@ -570,57 +550,28 @@ DTensorMeshPropagation::PropagateDefaultMeshToUnAssignedClusters(
 
 mlir::LogicalResult DTensorMeshPropagation::PropagateMeshFromInputs(
     const llvm::DenseMap<mlir::OpOperand*, std::vector<mlir::Value>>& producers,
-    mlir::tf_device::ClusterOp cluster, mlir::OpBuilder* builder,
-    bool* mesh_changed) {
-  // If operation inside a mesh cluster is not a callable operation and
-  // mesh is already specified on a cluster, do nothing.
-  auto inner_func = MaybeFindFunction(&cluster.GetBody().front());
+    mlir::tf_device::ClusterOp cluster, mlir::OpBuilder* builder) {
+  // If mesh is already specified on a cluster, do nothing.
   auto cluster_mesh = cluster->getAttrOfType<mlir::StringAttr>(kMeshAttr);
-  if (!inner_func && cluster_mesh) return mlir::success();
+  if (cluster_mesh) return mlir::success();
+
+  // If `cluster` wraps a `tf.CopyToMesh` op, do not infer mesh from it's
+  // inputs. `tf.CopyToMesh` specifies that all operations following the
+  // operation is executed on target device mesh cluster specified by
+  // `tf.CopyToMesh`.
+  if (llvm::isa<mlir::TF::CopyToMeshOp, mlir::TF::RelayoutOp,
+                mlir::TF::CopyToMeshGradOp, mlir::TF::RelayoutLikeOp>(
+          &cluster.GetBody().front())) {
+    return mlir::success();
+  }
 
   // If mesh of `cluster` is not specified, infer mesh using inputs of mesh
   // cluster.
   std::optional<Mesh> extracted_mesh;
-  llvm::SmallVector<mlir::OpOperand*, 8> inputs_with_inferred_mesh;
-  if (failed(InferMeshFromInputs(producers, cluster, &extracted_mesh,
-                                 &inputs_with_inferred_mesh))) {
+  if (failed(InferMeshFromInputs(producers, cluster, &extracted_mesh))) {
     return mlir::failure();
   }
-
-  // If operation include 'cluster` is a function call, annotate input and
-  // output mesh of `cluster` using function argument and return value
-  // attributes, then recursively propagate mesh of the function definition.
-  if (inner_func) {
-    // All inputs to cluster must be from the same mesh. If input mesh to
-    // callable operation is inferred, then annotated the input mesh to
-    // function argument attribute so that this information can be used to
-    // infer mesh of ops inside `inner_func`.
-    if (extracted_mesh.has_value()) {
-      AnnotateFunctionArgumentsWithMeshInformation(extracted_mesh.value(),
-                                                   inputs_with_inferred_mesh,
-                                                   inner_func.value(), builder);
-    }
-
-    // Recursively propagate mesh to clusters in function definition of
-    // `inner_func`.
-    if (mlir::failed(PropagateMesh(producers, inner_func.value(), builder,
-                                   mesh_changed)))
-      return mlir::failure();
-
-    // Once all clusters inside `inner_func` callable has been set, now we can
-    // infer mesh of `cluster`. That is, mesh of call site operation is equal
-    // to mesh of return values of the function.
-    std::optional<mlir::StringAttr> function_mesh;
-    if (mlir::failed(InferFunctionDefaultMesh(producers, inner_func.value(),
-                                              builder, &function_mesh)))
-      return mlir::failure();
-
-    if (function_mesh && !cluster_mesh) {
-      *mesh_changed = true;
-      cluster->setAttr(kMeshAttr, function_mesh.value());
-    }
-  } else if (!cluster_mesh && extracted_mesh.has_value()) {
-    *mesh_changed = true;
+  if (extracted_mesh.has_value()) {
     cluster->setAttr(kMeshAttr,
                      builder->getStringAttr(extracted_mesh->ToString()));
   }
@@ -630,13 +581,10 @@ mlir::LogicalResult DTensorMeshPropagation::PropagateMeshFromInputs(
 // Set mesh of `cluster`, inferring mesh from consumer operations of `cluster`.
 mlir::LogicalResult DTensorMeshPropagation::PropagateMeshFromConsumers(
     const llvm::DenseMap<mlir::OpOperand*, std::vector<mlir::Value>>& producers,
-    mlir::tf_device::ClusterOp cluster, mlir::OpBuilder* builder,
-    bool* mesh_changed) {
-  mlir::Operation* op_inside_cluster = &cluster.GetBody().front();
-  auto inner_func = MaybeFindFunction(op_inside_cluster);
+    mlir::tf_device::ClusterOp cluster, mlir::OpBuilder* builder) {
   auto cluster_mesh = cluster->getAttrOfType<mlir::StringAttr>(kMeshAttr);
   // If mesh is already set, then do nothing.
-  if (!inner_func && cluster_mesh) return mlir::success();
+  if (cluster_mesh) return mlir::success();
 
   // Infer mesh of `cluster` from its output usages.
   std::optional<Mesh> extracted_mesh_from_consumers;
@@ -645,29 +593,7 @@ mlir::LogicalResult DTensorMeshPropagation::PropagateMeshFromConsumers(
                                     &consumers_with_mesh_information)))
     return mlir::failure();
 
-  // If operation inside mesh cluster is a function callsite operation,
-  // then propagate mesh of the function recursively.
-  if (inner_func) {
-    if (mlir::failed(AnnotateFunctionReturnValuesWithMeshInformation(
-            consumers_with_mesh_information, op_inside_cluster,
-            inner_func.value(), builder)))
-      return mlir::failure();
-
-    if (mlir::failed(PropagateMesh(producers, inner_func.value(), builder,
-                                   mesh_changed)))
-      return mlir::failure();
-
-    std::optional<mlir::StringAttr> function_mesh;
-    if (mlir::failed(InferFunctionDefaultMesh(producers, inner_func.value(),
-                                              builder, &function_mesh)))
-      return mlir::failure();
-
-    if (function_mesh && !cluster_mesh) {
-      *mesh_changed = true;
-      cluster->setAttr(kMeshAttr, function_mesh.value());
-    }
-  } else if (extracted_mesh_from_consumers && !cluster_mesh) {
-    *mesh_changed = true;
+  if (extracted_mesh_from_consumers && !cluster_mesh) {
     cluster->setAttr(kMeshAttr, builder->getStringAttr(
                                     extracted_mesh_from_consumers->ToString()));
   }
@@ -676,8 +602,7 @@ mlir::LogicalResult DTensorMeshPropagation::PropagateMeshFromConsumers(
 
 mlir::LogicalResult PropagateLikeMesh(
     const llvm::DenseMap<mlir::OpOperand*, std::vector<mlir::Value>>& producers,
-    mlir::tf_device::ClusterOp cluster, mlir::OpBuilder* builder,
-    bool* mesh_changed) {
+    mlir::tf_device::ClusterOp cluster, mlir::OpBuilder* builder) {
   mlir::Operation* backward_op = &cluster.GetBody().front();
 
   if (!mlir::isa<mlir::TF::CopyToMeshGradOp>(backward_op) &&
@@ -704,7 +629,6 @@ mlir::LogicalResult PropagateLikeMesh(
 
   cluster->setAttr(kMeshAttr, builder->getStringAttr(mesh->ToString()));
 
-  *mesh_changed = true;
   return mlir::success();
 }
 
@@ -715,39 +639,36 @@ mlir::LogicalResult PropagateLikeMesh(
 // tf_device.cluster ops are enclosing a single operation.
 mlir::LogicalResult DTensorMeshPropagation::PropagateMesh(
     const llvm::DenseMap<mlir::OpOperand*, std::vector<mlir::Value>>& producers,
-    mlir::func::FuncOp function, mlir::OpBuilder* builder, bool* mesh_changed) {
-  // Iterate clusters in topological order propagating mesh from operations'
-  // inputs.
+    mlir::func::FuncOp function, mlir::OpBuilder* builder) {
+  // Iterate clusters (including nested clusters) in topological order
+  // propagating mesh from operations' inputs.
   llvm::SmallVector<mlir::tf_device::ClusterOp, 8> cluster_ops;
-  for (auto cluster : function.getOps<mlir::tf_device::ClusterOp>()) {
-    cluster_ops.emplace_back(cluster);
-
-    if (mlir::failed(
-            PropagateMeshFromInputs(producers, cluster, builder, mesh_changed)))
-      return mlir::failure();
+  llvm::SmallVector<mlir::tf_device::ClusterOp, 8> while_cluster_ops;
+  auto walk_result = function.walk([&](mlir::tf_device::ClusterOp cluster)
+                                       -> mlir::WalkResult {
+    if (llvm::isa<mlir::TF::WhileRegionOp>(cluster.GetBody().front())) {
+      while_cluster_ops.emplace_back(cluster);
+    } else {
+      cluster_ops.emplace_back(cluster);
+      if (mlir::failed(PropagateMeshFromInputs(producers, cluster, builder))) {
+        return mlir::WalkResult::interrupt();
+      }
+    }
+    return mlir::WalkResult::advance();
+  });
+  if (walk_result.wasInterrupted()) {
+    return mlir::failure();
   }
 
   // Iterate clusters in reverse topological order and propagate mesh from
   // consumers.
   for (auto cluster : llvm::reverse(cluster_ops)) {
-    if (mlir::failed(PropagateMeshFromConsumers(producers, cluster, builder,
-                                                mesh_changed)))
+    if (mlir::failed(PropagateMeshFromConsumers(producers, cluster, builder)))
       return mlir::failure();
   }
 
-  std::optional<mlir::StringAttr> mesh;
-  if (mlir::failed(
-          InferFunctionDefaultMesh(producers, function, builder, &mesh)))
-    return mlir::failure();
-
-  if (mesh.has_value()) {
-    if (mlir::failed(PropagateDefaultMeshToUnAssignedClusters(
-            producers, function, mesh.value(), builder, mesh_changed)))
-      return mlir::failure();
-  }
   for (auto cluster : llvm::reverse(cluster_ops)) {
-    if (mlir::failed(
-            PropagateLikeMesh(producers, cluster, builder, mesh_changed))) {
+    if (mlir::failed(PropagateLikeMesh(producers, cluster, builder))) {
       return mlir::failure();
     }
   }
