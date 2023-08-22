@@ -31,11 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/multi_platform_manager.h"
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
-<<<<<<< HEAD
-#include "tensorflow/compiler/xla/service/platform_util.h"
-=======
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
->>>>>>> upstream/master
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/errors.h"

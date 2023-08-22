@@ -40,30 +40,7 @@ build --linkopt="-lm"
 build --profile=/tf/pkg/profile.json.gz
 
 # CUDA: Set up compilation CUDA version and paths
-<<<<<<< HEAD
-build:cudaclang --@local_config_cuda//:enable_cuda
-build:cudaclang --@local_config_cuda//:cuda_compiler=clang
-build:cudaclang --repo_env TF_NEED_CUDA=1
-build:cudaclang --config cuda_clang
-build:cudaclang --action_env=TF_CUDA_VERSION="11"
-build:cudaclang --action_env=TF_CUDNN_VERSION="8"
-build:cudaclang --action_env=CUDA_TOOLKIT_PATH="/usr/local/cuda-11.8"
-build:cudaclang --action_env=GCC_HOST_COMPILER_PATH="/dt9/usr/bin/gcc"
-build:cudaclang --action_env=CLANG_CUDA_COMPILER_PATH="/usr/lib/llvm-16/bin/clang"
-build:cudaclang --action_env=TF_CUDA_CLANG="1"
-build:cudaclang --action_env=LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:/usr/local/tensorrt/lib"
-build:cudaclang --crosstool_top="@sigbuild-r2.14-clang_config_cuda//crosstool:toolchain"
-
-# CUDA: Enable TensorRT optimizations
-# https://developer.nvidia.com/tensorrt
-build:cudaclang --repo_env TF_NEED_TENSORRT=1
-
-# CUDA: Select supported compute capabilities (supported graphics cards).
-# This is the same as the official TensorFlow builds.
-# See https://developer.nvidia.com/cuda-gpus#compute
-# TODO(angerson, perfinion): What does sm_ vs compute_ mean?
-# TODO(angerson, perfinion): How can users select a good value for this?
-build:cudaclang --repo_env=TF_CUDA_COMPUTE_CAPABILITIES="sm_35,sm_50,sm_60,sm_70,sm_75,compute_80"
+build --config=cuda_clang_official
 
 # ROCM: Set up compilation ROCM version and paths
 build:rocmclang --crosstool_top=@local_config_rocm//crosstool:toolchain
@@ -74,9 +51,6 @@ build:rocmclang --repo_env TF_NEED_ROCM=1
 build:cudaclang --action_env=TF_ROCM_CLANG="1"
 # Disable unused-result on rocm builds.
 build:rocmclang --copt="-Wno-error=unused-result"
-=======
-build --config=cuda_clang_official
->>>>>>> upstream/master
 
 # Test-related settings below this point.
 test:cudaclang --test_env=LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64"

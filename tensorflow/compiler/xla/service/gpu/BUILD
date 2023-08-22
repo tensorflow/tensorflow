@@ -3178,12 +3178,8 @@ xla_cc_test(
 xla_cc_test(
     name = "hlo_op_profiler_test",
     srcs = ["hlo_op_profiler_test.cc"],
-<<<<<<< HEAD
-    tags = tf_cuda_tests_tags() + ["no_rocm",],
-=======
     local_defines = if_cuda(["GOOGLE_CUDA"]),
     tags = tf_cuda_tests_tags(),
->>>>>>> upstream/master
     deps = [
         ":hlo_op_profiler_lib",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
