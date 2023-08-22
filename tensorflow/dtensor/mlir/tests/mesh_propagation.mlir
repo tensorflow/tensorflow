@@ -320,6 +320,76 @@ module @test_while {
 
 // -----
 
+// Check mesh propagation of while op with gpu and cpu
+// CHECK-LABEL: module @test_while_gpu_cpu
+module @test_while_gpu_cpu {
+  func.func @main(%arg0: tensor<i32> {tf._layout = "sharding_specs:unsharded, mesh:|x=1,y=2|0,1|0,1|/job:localhost/replica:0/task:0/device:CPU:0,/job:localhost/replica:0/task:0/device:CPU:1", tf._mesh="|x=1,y=2|0,1|0,1|/job:localhost/replica:0/task:0/device:CPU:0,/job:localhost/replica:0/task:0/device:CPU:1"},
+    %arg1: tensor<4xf32> {tf._layout = "sharding_specs:unsharded, mesh:|x=1,y=2|0,1|0,1|/job:localhost/replica:0/task:0/device:CPU:0,/job:localhost/replica:0/task:0/device:CPU:1", tf._mesh="|x=1,y=2|0,1|0,1|/job:localhost/replica:0/task:0/device:CPU:0,/job:localhost/replica:0/task:0/device:CPU:1"},
+    %arg2: tensor<4xf32> {tf._layout = "sharding_specs:unsharded, mesh:|x=1,y=2|0,1|0,1|/job:localhost/replica:0/task:0/device:GPU:0,/job:localhost/replica:0/task:0/device:GPU:1", tf._mesh="|x=1,y=2|0,1|0,1|/job:localhost/replica:0/task:0/device:GPU:0,/job:localhost/replica:0/task:0/device:GPU:1"})
+  -> (tensor<4xf32> {tf._default_layout = "sharding_specs:unsharded, mesh:|x=1,y=2|0,1|0,1|/job:localhost/replica:0/task:0/device:GPU:0,/job:localhost/replica:0/task:0/device:GPU:1"}) attributes {tf.entry_function = {control_outputs = "eager_operation", inputs = "device_id,op_input_0,op_input_1", outputs = "op_output_0"}} {
+    // CHECK:      tf.Sub
+    // CHECK-NEXT: tf_device.return
+    // CHECK-NEXT: _mesh = "|x=1,y=2|0,1|0,1|/job:localhost/replica:0/task:0/device:CPU:0,/job:localhost/replica:0/task:0/device:CPU:1"
+    // CHECK:      tf.NotEqual
+    // CHECK-NEXT: tf_device.return
+    // CHECK-NEXT: _mesh = "|x=1,y=2|0,1|0,1|/job:localhost/replica:0/task:0/device:CPU:0,/job:localhost/replica:0/task:0/device:CPU:1"
+    // CHECK:      tf.Add
+    // CHECK-NEXT: tf_device.return
+    // CHECK-NEXT: _mesh = "|x=1,y=2|0,1|0,1|/job:localhost/replica:0/task:0/device:CPU:0,/job:localhost/replica:0/task:0/device:CPU:1"
+    // CHECK:      tf.Relayout
+    // CHECK-NEXT: tf_device.return
+    // CHECK-NEXT: "|x=1,y=2|0,1|0,1|/job:localhost/replica:0/task:0/device:GPU:0,/job:localhost/replica:0/task:0/device:GPU:1"
+    // CHECK:      tf.DTensorLayout
+    // CHECK-NEXT: tf_device.return
+    // CHECK-NEXT: "|x=1,y=2|0,1|0,1|/job:localhost/replica:0/task:0/device:GPU:0,/job:localhost/replica:0/task:0/device:GPU:1"
+    // CHECK:      tf.Mul
+    // CHECK-NEXT: tf_device.return
+    // CHECK-NEXT: "|x=1,y=2|0,1|0,1|/job:localhost/replica:0/task:0/device:GPU:0,/job:localhost/replica:0/task:0/device:GPU:1"
+    %11 = "tf_device.cluster"() ({
+      %12 = "tf.Sub"(%arg0, %arg0) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+      tf_device.return %12 : tensor<i32>
+    }) : () -> tensor<i32>
+    %1:3 = "tf_device.cluster"() ({
+      %2:3 = "tf.WhileRegion"(%11, %arg1, %arg2) ({
+        ^bb0(%barg0: tensor<i32>, %barg1: tensor<4xf32>, %barg2: tensor<4xf32>):
+          %cond = "tf_device.cluster"() ({
+            %c = "tf.NotEqual"(%barg0, %barg0) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+            tf_device.return %c : tensor<i1>
+          }) : () -> tensor<i1>
+
+          "tf.Yield"(%cond) : (tensor<i1>) -> ()
+      }, {
+        ^bb0(%carg0: tensor<i32>, %carg1: tensor<4xf32>, %carg2: tensor<4xf32>):
+          %3 = "tf_device.cluster"() ({
+            %4 = "tf.Add"(%carg1, %carg1) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+            tf_device.return %4 : tensor<4xf32>
+          }) : () -> tensor<4xf32>
+
+          %5 = "tf_device.cluster"() ({
+            %6 = "tf.Relayout"(%3) {device="/job:localhost/replica:0/task:0/device:CUSTOM:0", layout="sharding_specs:unsharded, mesh:|x=1,y=2|0,1|0,1|/job:localhost/replica:0/task:0/device:GPU:0,/job:localhost/replica:0/task:0/device:GPU:1"} : (tensor<4xf32>) -> tensor<4xf32>
+            tf_device.return %6 : tensor<4xf32>
+          }) {_mesh = "|x=1,y=2|0,1|0,1|/job:localhost/replica:0/task:0/device:GPU:0,/job:localhost/replica:0/task:0/device:GPU:1"} : () -> tensor<4xf32>
+
+          %7 = "tf_device.cluster"() ({
+            %8 = "tf.DTensorLayout"(%5) {device="", global_shape = #tf_type.shape<4>, layout = #dtensor.layout<sharding_specs:unsharded, mesh:|x=1,y=2|0,1|0,1|/job:localhost/replica:0/task:0/device:GPU:0,/job:localhost/replica:0/task:0/device:GPU:1>} : (tensor<4xf32>) -> tensor<4xf32>
+            tf_device.return %8 : tensor<4xf32>
+          }) {_mesh = "|x=1,y=2|0,1|0,1|/job:localhost/replica:0/task:0/device:GPU:0,/job:localhost/replica:0/task:0/device:GPU:1"} : () -> tensor<4xf32>
+
+          %9 = "tf_device.cluster"() ({
+            %10 = "tf.Mul"(%7, %carg2) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+            tf_device.return %10 : tensor<4xf32>
+          }) : () -> tensor<4xf32>
+
+          "tf.Yield"(%carg0, %carg1, %9) : (tensor<i32>, tensor<4xf32>, tensor<4xf32>) -> ()
+      }) {is_stateless = true} : (tensor<i32>, tensor<4xf32>, tensor<4xf32>) -> (tensor<i32>, tensor<4xf32>, tensor<4xf32>)
+      tf_device.return %2#0, %2#1, %2#2  : tensor<i32>, tensor<4xf32>, tensor<4xf32>
+    }) : () -> (tensor<i32>, tensor<4xf32>, tensor<4xf32>)
+    func.return %1#2 : tensor<4xf32>
+  }
+}
+
+// -----
+
 // Check mesh propagation of ops inside tf.IfRegion op.
 // CHECK-LABEL: module @test_if
 module @test_if {

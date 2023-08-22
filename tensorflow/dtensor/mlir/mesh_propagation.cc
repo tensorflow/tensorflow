@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -36,6 +37,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
@@ -53,14 +55,9 @@ namespace {
 // Extracts mesh of `block_arg` by parsing function argument attributes of it's
 // enclosing function. Mesh is inferred either using `tf._layout` or `tf._mesh`
 // attributes.
-mlir::LogicalResult ExtractMeshFromBlockArgument(mlir::BlockArgument block_arg,
-                                                 std::optional<Mesh>* out) {
-  auto func_op = mlir::dyn_cast_or_null<mlir::func::FuncOp>(
-      block_arg.getOwner()->getParentOp());
-  if (!func_op) {
-    return block_arg.getOwner()->getParentOp()->emitOpError(
-        "must be enclosed by a function");
-  }
+mlir::LogicalResult ExtractMeshFromBlockArgumentFunction(
+    mlir::BlockArgument block_arg, mlir::func::FuncOp func_op,
+    std::optional<Mesh>* out) {
   auto layout_or_status = ExtractLayoutFromOperand(block_arg);
   if (!layout_or_status.ok())
     return func_op.emitOpError(layout_or_status.status().message());
@@ -84,6 +81,57 @@ mlir::LogicalResult ExtractMeshFromBlockArgument(mlir::BlockArgument block_arg,
 
   out->emplace(mesh_from_block_arg_or_status.value());
   return mlir::success();
+}
+
+// Extracts mesh of `block_arg` which is an operand of while op.
+mlir::LogicalResult ExtractMeshFromBlockArgumentWhile(
+    mlir::BlockArgument block_arg, mlir::TF::WhileRegionOp while_op,
+    std::optional<Mesh>* out) {
+  auto while_op_operand = while_op.getOperand(block_arg.getArgNumber());
+  auto defining_op = while_op_operand.getDefiningOp();
+  if (defining_op) {
+    // The while op operand is the result of another op, then follow the
+    // defining op to get mesh.
+    auto mesh = ExtractDeviceMeshFromOp(defining_op);
+    if (!mesh.ok()) {
+      return while_op.emitOpError(mesh.status().message());
+    }
+    if (mesh->has_value()) {
+      *out = mesh->value();
+    }
+    return mlir::success();
+  } else if (auto func_block_arg =
+                 while_op_operand.dyn_cast<mlir::BlockArgument>()) {
+    // The while op operand is a block argument of the function, then follow the
+    // same routine of getting mesh from function argument.
+    auto function_op = mlir::dyn_cast_or_null<mlir::func::FuncOp>(
+        func_block_arg.getOwner()->getParentOp());
+    if (!function_op) {
+      return while_op.emitOpError(
+          "Block argument must be enclosed by a function");
+    }
+    return ExtractMeshFromBlockArgumentFunction(func_block_arg, function_op,
+                                                out);
+  } else {
+    return while_op.emitOpError("Can not resolve block argument of while op");
+  }
+}
+
+// Extracts mesh of `block_arg`.
+mlir::LogicalResult ExtractMeshFromBlockArgument(mlir::BlockArgument block_arg,
+                                                 std::optional<Mesh>* out) {
+  if (auto func_op = mlir::dyn_cast_or_null<mlir::func::FuncOp>(
+          block_arg.getOwner()->getParentOp())) {
+    return ExtractMeshFromBlockArgumentFunction(block_arg, func_op, out);
+  }
+
+  if (auto while_op = mlir::dyn_cast_or_null<mlir::TF::WhileRegionOp>(
+          block_arg.getOwner()->getParentOp())) {
+    return ExtractMeshFromBlockArgumentWhile(block_arg, while_op, out);
+  }
+
+  return block_arg.getOwner()->getParentOp()->emitOpError(
+      "must be enclosed by a function of a while op");
 }
 
 // Extracts mesh of operation that produces `value`.
@@ -592,14 +640,24 @@ mlir::LogicalResult PropagateLikeMesh(
 mlir::LogicalResult DTensorMeshPropagation::PropagateMesh(
     const llvm::DenseMap<mlir::OpOperand*, std::vector<mlir::Value>>& producers,
     mlir::func::FuncOp function, mlir::OpBuilder* builder) {
-  // Iterate clusters in topological order propagating mesh from operations'
-  // inputs.
+  // Iterate clusters (including nested clusters) in topological order
+  // propagating mesh from operations' inputs.
   llvm::SmallVector<mlir::tf_device::ClusterOp, 8> cluster_ops;
-  for (auto cluster : function.getOps<mlir::tf_device::ClusterOp>()) {
-    cluster_ops.emplace_back(cluster);
-
-    if (mlir::failed(PropagateMeshFromInputs(producers, cluster, builder)))
-      return mlir::failure();
+  llvm::SmallVector<mlir::tf_device::ClusterOp, 8> while_cluster_ops;
+  auto walk_result = function.walk([&](mlir::tf_device::ClusterOp cluster)
+                                       -> mlir::WalkResult {
+    if (llvm::isa<mlir::TF::WhileRegionOp>(cluster.GetBody().front())) {
+      while_cluster_ops.emplace_back(cluster);
+    } else {
+      cluster_ops.emplace_back(cluster);
+      if (mlir::failed(PropagateMeshFromInputs(producers, cluster, builder))) {
+        return mlir::WalkResult::interrupt();
+      }
+    }
+    return mlir::WalkResult::advance();
+  });
+  if (walk_result.wasInterrupted()) {
+    return mlir::failure();
   }
 
   // Iterate clusters in reverse topological order and propagate mesh from
