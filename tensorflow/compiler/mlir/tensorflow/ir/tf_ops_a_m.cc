@@ -3004,6 +3004,15 @@ void GatherOp::getCanonicalizationPatterns(RewritePatternSet& results,
 }
 
 //===----------------------------------------------------------------------===//
+// GlobalIterIdOp
+//===----------------------------------------------------------------------===//
+
+// Disable side effects.
+std::optional<std::string> GlobalIterIdOp::GetResourceInstanceStr() {
+  return std::nullopt;
+}
+
+//===----------------------------------------------------------------------===//
 // IfOp
 //===----------------------------------------------------------------------===//
 
