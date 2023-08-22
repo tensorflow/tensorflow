@@ -89,6 +89,7 @@ xla_cc_test(
         "//tensorflow/compiler/xla/hlo/utils:hlo_sharding_util",
         "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
         "//tensorflow/compiler/xla/service:hlo_verifier",
+        "//tensorflow/compiler/xla/service:sharding_format_picker",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/algorithm:container",

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "llvm/ADT/TypeSwitch.h"  // IWYU pragma: keep
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project  // IWYU pragma: keep
+#include "tensorflow/compiler/xla/mlir/backends/gpu2/ir/xla_gpu_ops.h"  // IWYU pragma: keep
 
 //===----------------------------------------------------------------------===//
 // XLA GPU Dialect
@@ -27,6 +28,10 @@ limitations under the License.
 namespace xla::gpu {
 
 void XlaGpuDialect::initialize() {
+  addOperations<
+#define GET_OP_LIST
+#include "tensorflow/compiler/xla/mlir/backends/gpu2/ir/xla_gpu_ops.cc.inc"
+      >();
   addTypes<
 #define GET_TYPEDEF_LIST
 #include "tensorflow/compiler/xla/mlir/backends/gpu2/ir/xla_gpu_types.cc.inc"

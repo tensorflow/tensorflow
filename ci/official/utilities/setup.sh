@@ -48,7 +48,15 @@ fi
 # ignores the "build" directory), and ensure all further commands are executed
 # inside of the $TFCI_GIT_DIR as well.
 cd "$TFCI_GIT_DIR"
+ # Kind of awkward, but handles the fact that Windows treats "build" (the output
+ # directory) and BUILD (the root BUILD file) as the same name, due to Windows
+ # ignoring uppercase/lowercase differences
+mv BUILD BUILD.bazel 
 mkdir -p build
+
+# In addition to dumping all script output to the terminal, place it into
+# build/script.log
+exec > >(tee "build/script.log") 2>&1
 
 # Setup tfrun, a helper function for executing steps that can either be run
 # locally or run under Docker. docker.sh, below, redefines it as "docker exec".
@@ -86,12 +94,12 @@ if [[ "$TFCI_INDEX_HTML_ENABLE" == 1 ]]; then
   ./ci/official/utilities/generate_index_html.sh build/index.html
 fi
 
-# If enabled, gather test logs into a format that the CI system Kokoro can
-# parse into a list of individual targets.
-if [[ "$TFCI_CAPTURE_LOGS_ENABLE" == 1 ]]; then
-  capture_test_logs() {
-    # Uses tfrun to avoid permissions issues with the generated log files
-    tfrun ./ci/official/utilities/capture_test_logs.sh "$TFCI_GIT_DIR" "$TFCI_GIT_DIR/build/logs"
-  }
-  trap capture_test_logs EXIT 
-fi
+# Single handler for all cleanup actions, triggered on an EXIT trap.
+# TODO(angerson) Making this use different scripts may be overkill.
+cleanup() {
+  if [[ "$TFCI_DOCKER_ENABLE" == 1 ]]; then
+    ./ci/official/utilities/cleanup_docker.sh
+  fi
+  ./ci/official/utilities/cleanup_summary.sh
+}
+trap cleanup EXIT

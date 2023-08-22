@@ -102,11 +102,15 @@ build:libtensorflow_build -- //tensorflow/tools/lib_package:libtensorflow.tar.gz
 # For outputting Build Event Protocol files
 build:build_event_export --build_event_json_file=build/bep.json
 
+# Allow creation of resultstore URLs for any bazel invocation
+build:resultstore --google_default_credentials
+build:resultstore --bes_backend=buildeventservice.googleapis.com
+build:resultstore --bes_results_url="https://source.cloud.google.com/results/invocations"
+build:resultstore --bes_timeout=600s
+build:resultstore --bes_instance_name="tensorflow-testing"
+
 # For Remote Build Execution.
-build:rbe --google_default_credentials
-build:rbe --bes_backend=buildeventservice.googleapis.com
-build:rbe --bes_results_url="https://source.cloud.google.com/results/invocations"
-build:rbe --bes_timeout=600s
+build:rbe --config=resultstore
 build:rbe --define=EXECUTOR=remote
 build:rbe --jobs=800
 build:rbe --remote_executor=grpcs://remotebuildexecution.googleapis.com

@@ -38,12 +38,22 @@ limitations under the License.
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_executor.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
+#include "tensorflow/tsl/platform/protobuf.h"
 #include "tfrt/host_context/function.h"  // from @tf_runtime
 #include "tfrt/host_context/request_deadline_tracker.h"  // from @tf_runtime
 #include "tfrt/host_context/resource_context.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace tfrt_stub {
+
+// Filename for serialized BEF Buffer.
+inline constexpr char kBefBufferFilenameMLIRBEF[] = "serialized_bef.mlir.bef";
+
+// Filename for serialized MLIR_MODULE.
+inline constexpr char kMLIRModuleFilename[] = "serialized_mlir.mlir";
+
+// Subdirectory where AoT Packages are saved
+inline constexpr char kAoTPackagesDirectory[] = "aot_packages";
 
 // TODO(tfrt-dev): Replace tfrt::TensorSpec with tensorflow::TensorSpec once the
 // latter is checked in.
@@ -71,7 +81,7 @@ struct Signature {
   // The following two fields should have the same size.
   std::vector<std::string> output_names;
   std::vector<TensorSpec> output_specs;
-  proto2::Map<std::string, TensorProto> default_inputs;
+  protobuf::Map<std::string, TensorProto> default_inputs;
 };
 
 }  // namespace internal
@@ -101,6 +111,17 @@ struct InitializersAndSignatures {
 
 StatusOr<InitializersAndSignatures> GetInitializersAndSignatures(
     mlir::ModuleOp module);
+
+std::string GetAotPackagePath(absl::string_view saved_model_dir);
+
+std::string GetBEFFilePath(std::string aot_package_directory);
+
+// TODO(b/295241000): Implement MLIR deserialization to skip it AoT and remove
+// redundant steps
+absl::StatusOr<tfrt::BefBuffer> LoadAotPackages(
+    const TfrtCompileOptions& options, mlir::ModuleOp mlir_module,
+    const std::string& saved_model_dir,
+    tfrt_stub::FallbackState* fallback_state);
 
 }  // namespace tfrt_stub
 }  // namespace tensorflow

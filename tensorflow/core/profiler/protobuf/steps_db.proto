@@ -13,6 +13,10 @@ message GenericStepBreakdown {
   // Map event type to the accumulated duration in
   // picoseconds of that type.
   map<int32, uint64> type_ps = 1;
+
+  // Map of string category to accumulated duration in picoseconds for
+  // that category.
+  map<string, uint64> category_ps = 2;
 }
 
 // Information about memory transfer to/from device memory.

@@ -41,6 +41,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
@@ -51,6 +52,7 @@ limitations under the License.
 #include "mlir/IR/Region.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -1613,18 +1615,18 @@ class DotDimensionsInfo {
  public:
   DotDimensionsInfo(ShapedType type, ArrayRef<int64_t> batch_dimensions,
                     ArrayRef<int64_t> contracting_dimensions) {
-    const int rank = type.getRank();
-    for (const int dim : batch_dimensions) {
+    const int64_t rank = type.getRank();
+    for (const int64_t dim : batch_dimensions) {
       batch_dimensions_.axes.push_back(dim);
       batch_dimensions_.sizes.push_back(type.getDimSize(dim));
     }
 
-    for (const int dim : contracting_dimensions) {
+    for (const int64_t dim : contracting_dimensions) {
       contracting_dimensions_.axes.push_back(dim);
       contracting_dimensions_.sizes.push_back(type.getDimSize(dim));
     }
 
-    for (int dim = 0; dim < rank; ++dim) {
+    for (int64_t dim = 0; dim < rank; ++dim) {
       if (llvm::count(contracting_dimensions_.axes, dim) > 0 ||
           llvm::count(batch_dimensions_.axes, dim) > 0) {
         continue;
@@ -1644,14 +1646,20 @@ class DotDimensionsInfo {
 
   // Returns the total dimension size after flattening all contracting
   // dimensions.
-  int FlattenedContractingDimensionSize() const {
+  int64_t FlattenedContractingDimensionSize() const {
+    if (ShapedType::isDynamicShape(contracting_dimensions_.sizes)) {
+      return ShapedType::kDynamic;
+    }
     return std::accumulate(contracting_dimensions_.sizes.begin(),
                            contracting_dimensions_.sizes.end(), 1,
                            std::multiplies<int64_t>());
   }
 
   // Returns the total dimension size after flattening all out dimensions.
-  int FlattenedOutDimensionSize() const {
+  int64_t FlattenedOutDimensionSize() const {
+    if (ShapedType::isDynamicShape(out_dimensions_.sizes)) {
+      return ShapedType::kDynamic;
+    }
     return std::accumulate(out_dimensions_.sizes.begin(),
                            out_dimensions_.sizes.end(), 1,
                            std::multiplies<int64_t>());
@@ -1665,6 +1673,95 @@ class DotDimensionsInfo {
   DimensionVector out_dimensions_;
 };
 
+// Calculates the flattened shapes for dynamic shaped operands in
+// mhlo.dot_general:
+//   1. flattened_out_dim = UnsortedSegmentProdOp(operand_shape, out_axes)
+//   2. flattened_contracting_dim = UnsortedSegmentProdOp(operand_shape,
+//   contracting_axes)
+//   3. batch_dimensions = Gather(operand_shape, batch_axes)
+//   4. flattened_shape = Concat(batch_dimensions, flattened_out_dim,
+//   flattened_contracting_dim)
+// The flattened shape for LHS
+// is like [batch_dimensions, flattened_out_dimension,
+// flattened_contracting_dimension] and [batch_dimensions,
+// flattened_contracting_dimension, flattened_out_dimension] for RHS.
+Value BuildDotOperandFlattenedShapeOp(Value operand,
+                                      DotDimensionsInfo dot_dimensions_info,
+                                      ImplicitLocOpBuilder& builder,
+                                      bool is_lhs) {
+  auto operand_type = operand.getType().cast<ShapedType>();
+  BoolAttr true_attr = builder.getBoolAttr(true);
+  auto operand_shape = builder.create<TF::ShapeOp>(operand, true_attr);
+  const int64_t operand_rank = operand_type.getRank();
+  // Compute flattened out dimension and contracting dimension using
+  // TF::UnsortedSegmentProdOp.
+  llvm::SmallVector<int32_t, 4> flattened_out_segids =
+      llvm::SmallVector<int32_t, 4>(operand_rank, static_cast<int32_t>(-1));
+  for (int64_t i : dot_dimensions_info.out_dimensions().AxesArray()) {
+    flattened_out_segids[i] = 0;
+  }
+  llvm::SmallVector<int32_t, 4> flattened_contracting_segids =
+      llvm::SmallVector<int32_t, 4>(operand_rank, static_cast<int32_t>(-1));
+  for (int64_t i : dot_dimensions_info.contracting_dimensions().AxesArray()) {
+    flattened_contracting_segids[i] = 0;
+  }
+  auto seg_prod_result_type =
+      RankedTensorType::get(static_cast<int32_t>(1), builder.getI32Type());
+  auto out_segids_cst = builder.create<TF::ConstOp>(
+      builder.getI32TensorAttr(flattened_out_segids));
+  auto contracting_segids_cst = builder.create<TF::ConstOp>(
+      builder.getI32TensorAttr(flattened_contracting_segids));
+  auto num_segids_tensor =
+      builder.create<TF::ConstOp>(builder.getI32IntegerAttr(1));
+  auto flattened_out_dims = builder.create<TF::UnsortedSegmentProdOp>(
+      seg_prod_result_type, operand_shape, out_segids_cst, num_segids_tensor);
+  auto flattened_contracting_dims = builder.create<TF::UnsortedSegmentProdOp>(
+      seg_prod_result_type, operand_shape, contracting_segids_cst,
+      num_segids_tensor);
+  llvm::SmallVector<Value, 3> flattend_shape_values;
+  // Gather the batch dimensions.
+  if (!dot_dimensions_info.batch_dimensions().AxesArray().empty()) {
+    if (ShapedType::isDynamicShape(
+            dot_dimensions_info.batch_dimensions().SizesArray())) {
+      auto batch_axes_tensor =
+          builder.create<TF::ConstOp>(builder.getI64TensorAttr(
+              dot_dimensions_info.batch_dimensions().AxesArray()));
+      auto batch_dims = builder.create<TF::GatherOp>(
+          RankedTensorType::get(
+              {static_cast<int>(
+                  dot_dimensions_info.batch_dimensions().AxesArray().size())},
+              builder.getIntegerType(32)),
+          operand_shape, batch_axes_tensor, true_attr);
+      flattend_shape_values.push_back(batch_dims);
+    } else {
+      llvm::SmallVector<int32_t> batch_i32_vec;
+      for (int64_t element :
+           dot_dimensions_info.batch_dimensions().SizesArray()) {
+        batch_i32_vec.push_back(static_cast<int32_t>(element));
+      }
+      auto batch_dims =
+          builder.create<TF::ConstOp>(builder.getI32TensorAttr(batch_i32_vec));
+      flattend_shape_values.push_back(batch_dims);
+    }
+  }
+  flattend_shape_values.push_back(
+      (is_lhs ? flattened_out_dims : flattened_contracting_dims));
+  flattend_shape_values.push_back(
+      (is_lhs ? flattened_contracting_dims : flattened_out_dims));
+
+  auto concat_result_type = RankedTensorType::get(
+      {static_cast<int32_t>(
+           dot_dimensions_info.batch_dimensions().AxesArray().size()) +
+       2},
+      builder.getIntegerType(32));
+  // Concatenate the batch dimensions, flattened out dimension and flattened
+  // contracting dimension.
+  return builder.create<TF::ConcatOp>(
+      concat_result_type,
+      builder.create<TF::ConstOp>(builder.getI32IntegerAttr(0)),
+      flattend_shape_values);
+}
+
 Value ConvertDot(PatternRewriter& rewriter, Value lhs, Value rhs,
                  DotDimensionNumbersAttr dot_dimension_numbers,
                  ShapedType result_type, mlir::Location loc) {
@@ -1672,6 +1769,7 @@ Value ConvertDot(PatternRewriter& rewriter, Value lhs, Value rhs,
   auto rhs_type = rhs.getType().cast<ShapedType>();
   const int lhs_rank = lhs_type.getRank();
   const int rhs_rank = rhs_type.getRank();
+  ImplicitLocOpBuilder builder(loc, rewriter);
 
   // Collects lhs and rhs dimensions information.
   DotDimensionsInfo lhs_dot_dimensions_info(
@@ -1724,10 +1822,20 @@ Value ConvertDot(PatternRewriter& rewriter, Value lhs, Value rhs,
           lhs_dot_dimensions_info.FlattenedOutDimensionSize()},
       llvm::ArrayRef<int64_t>{
           lhs_dot_dimensions_info.FlattenedContractingDimensionSize()});
-  auto lhs_flattend = rewriter.create<mhlo::ReshapeOp>(
-      loc,
-      RankedTensorType::get(lhs_flattened_shape, lhs_type.getElementType()),
-      lhs_transposed.getResult());
+  Value lhs_flattend;
+  if (lhs_type.hasStaticShape()) {
+    lhs_flattend = rewriter.create<mhlo::ReshapeOp>(
+        loc,
+        RankedTensorType::get(lhs_flattened_shape, lhs_type.getElementType()),
+        lhs_transposed.getResult());
+  } else {
+    auto lhs_flattend_shape_op = BuildDotOperandFlattenedShapeOp(
+        lhs, lhs_dot_dimensions_info, builder, /*is_lhs=*/true);
+    lhs_flattend = rewriter.create<mhlo::DynamicReshapeOp>(
+        loc,
+        RankedTensorType::get(lhs_flattened_shape, lhs_type.getElementType()),
+        lhs_transposed, lhs_flattend_shape_op);
+  }
 
   // Reshapes rhs to flatten out_dimensions and contracting_dimensions.
   llvm::SmallVector<int64_t, 4> rhs_flattened_shape = Concat<int64_t>(
@@ -1736,10 +1844,20 @@ Value ConvertDot(PatternRewriter& rewriter, Value lhs, Value rhs,
           rhs_dot_dimensions_info.FlattenedContractingDimensionSize()},
       llvm::ArrayRef<int64_t>{
           rhs_dot_dimensions_info.FlattenedOutDimensionSize()});
-  auto rhs_flattend = rewriter.create<mhlo::ReshapeOp>(
-      loc,
-      RankedTensorType::get(rhs_flattened_shape, rhs_type.getElementType()),
-      rhs_transposed.getResult());
+  Value rhs_flattend;
+  if (rhs_type.hasStaticShape()) {
+    rhs_flattend = rewriter.create<mhlo::ReshapeOp>(
+        loc,
+        RankedTensorType::get(rhs_flattened_shape, rhs_type.getElementType()),
+        rhs_transposed.getResult());
+  } else {
+    auto rhs_flattend_shape_op = BuildDotOperandFlattenedShapeOp(
+        rhs, rhs_dot_dimensions_info, builder, /*is_lhs=*/false);
+    rhs_flattend = rewriter.create<mhlo::DynamicReshapeOp>(
+        loc,
+        RankedTensorType::get(rhs_flattened_shape, rhs_type.getElementType()),
+        rhs_transposed, rhs_flattend_shape_op);
+  }
 
   // Creates matmul op of `lhs_flattend` and `rhs_flattend`.
   llvm::SmallVector<int64_t, 4> matmul_shape =
@@ -1750,9 +1868,52 @@ Value ConvertDot(PatternRewriter& rewriter, Value lhs, Value rhs,
                           rhs_dot_dimensions_info.FlattenedOutDimensionSize()});
   auto matmul = rewriter.create<TF::BatchMatMulV3Op>(
       loc, RankedTensorType::get(matmul_shape, result_type.getElementType()),
-      lhs_flattend.getResult(), rhs_flattend.getResult());
-  auto reshaped =
-      rewriter.create<mhlo::ReshapeOp>(loc, result_type, matmul.getResult());
+      lhs_flattend, rhs_flattend);
+
+  if (result_type.hasStaticShape()) {
+    auto reshaped =
+        rewriter.create<mhlo::ReshapeOp>(loc, result_type, matmul.getResult());
+    return reshaped.getResult();
+  }
+
+  // Reshape for dynamic shaped operands. The result shape is
+  // [lhs_batch_dimensions, lhs_out_dimensions, rhs_out_dimensions].
+  BoolAttr true_attr = rewriter.getBoolAttr(true);
+  auto lhs_shape = rewriter.create<TF::ShapeOp>(loc, lhs, true_attr);
+  auto rhs_shape = rewriter.create<TF::ShapeOp>(loc, rhs, true_attr);
+  llvm::SmallVector<int64_t, 4> lhs_batch_and_out =
+      Concat<int64_t>(lhs_dot_dimensions_info.batch_dimensions().AxesArray(),
+                      lhs_dot_dimensions_info.out_dimensions().AxesArray());
+  auto lhs_batch_and_out_cst = rewriter.create<TF::ConstOp>(
+      loc, rewriter.getI64TensorAttr(lhs_batch_and_out));
+  auto lhs_batch_and_out_dims = rewriter.create<TF::GatherOp>(
+      loc,
+      RankedTensorType::get({static_cast<int>(lhs_batch_and_out.size())},
+                            rewriter.getIntegerType(32)),
+      lhs_shape, lhs_batch_and_out_cst, true_attr);
+  auto rhs_out_cst = rewriter.create<TF::ConstOp>(
+      loc, rewriter.getI64TensorAttr(
+               rhs_dot_dimensions_info.out_dimensions().AxesArray()));
+  auto rhs_out_dims = rewriter.create<TF::GatherOp>(
+      loc,
+      RankedTensorType::get(
+          {static_cast<int32_t>(
+              rhs_dot_dimensions_info.out_dimensions().AxesArray().size())},
+          rewriter.getIntegerType(32)),
+      rhs_shape, rhs_out_cst, true_attr);
+  auto result_shape_type = RankedTensorType::get(
+      {static_cast<int32_t>(
+          lhs_dot_dimensions_info.batch_dimensions().AxesArray().size() +
+          lhs_dot_dimensions_info.out_dimensions().AxesArray().size() +
+          rhs_dot_dimensions_info.out_dimensions().AxesArray().size())},
+      rewriter.getIntegerType(32));
+  auto result_shape = rewriter.create<TF::ConcatOp>(
+      loc, result_shape_type,
+      rewriter.create<TF::ConstOp>(loc, rewriter.getI32IntegerAttr(0)),
+      ValueRange{lhs_batch_and_out_dims, rhs_out_dims});
+
+  auto reshaped = rewriter.create<mhlo::DynamicReshapeOp>(
+      loc, result_type, matmul.getResult(), result_shape);
   return reshaped.getResult();
 }
 

@@ -137,6 +137,10 @@ Status RunGpuConvGraph(const GpuConvParams& params, se::Stream* stream,
   operands.insert(operands.end() - 1, params.operand_bufs.begin(),
                   params.operand_bufs.end());
 
+  // Insert any additional outputs at the end.
+  operands.insert(operands.end(), params.aux_bufs.begin(),
+                  params.aux_bufs.end());
+
   return (*runner)(stream, options.profile_result, scratch_memory, operands);
 }
 
@@ -535,7 +539,9 @@ StatusOr<GpuConvConfig> GetGpuConvConfig(
   descriptor.operand0_shape = cudnn_call->operand(0)->shape();
   descriptor.operand1_shape = cudnn_call->operand(1)->shape();
   descriptor.result_shape = cudnn_call->shape().tuple_shapes(0);
-  descriptor.scratch_size = cudnn_call->shape().tuple_shapes(1).dimensions(0);
+  descriptor.scratch_size =
+      cudnn_call->shape().tuple_shapes().back().dimensions(0);
+
   descriptor.window = cudnn_call->window();
   descriptor.dnums = cudnn_call->convolution_dimension_numbers();
   descriptor.feature_group_count = cudnn_call->feature_group_count();
@@ -545,7 +551,7 @@ StatusOr<GpuConvConfig> GetGpuConvConfig(
 StatusOr<GpuConvParams> GetGpuConvParams(
     const GpuConvConfig& config,
     absl::Span<const se::DeviceMemoryBase> operand_buffers,
-    se::DeviceMemoryBase result_buffer) {
+    absl::Span<const se::DeviceMemoryBase> result_buffers) {
   GpuConvParams params;
   params.config = &config;
 
@@ -555,22 +561,23 @@ StatusOr<GpuConvParams> GetGpuConvParams(
     case CudnnConvKind::kForwardGraph:
       params.input_buf = operand_buffers[0];
       params.filter_buf = operand_buffers[1];
-      params.output_buf = result_buffer;
+      params.output_buf = result_buffers[0];
       break;
     case CudnnConvKind::kBackwardInput:
-      params.input_buf = result_buffer;
+      params.input_buf = result_buffers[0];
       params.filter_buf = operand_buffers[1];
       params.output_buf = operand_buffers[0];
       break;
     case CudnnConvKind::kBackwardFilter:
       params.input_buf = operand_buffers[0];
-      params.filter_buf = result_buffer;
+      params.filter_buf = result_buffers[0];
       params.output_buf = operand_buffers[1];
       break;
   }
 
   if (config.kind == CudnnConvKind::kForwardGraph) {
     params.operand_bufs = {operand_buffers.begin() + 2, operand_buffers.end()};
+    params.aux_bufs = {result_buffers.begin() + 1, result_buffers.end()};
   }
 
   if (config.kind == CudnnConvKind::kForwardActivation) {
@@ -587,11 +594,12 @@ StatusOr<GpuConvParams> GetGpuConvParams(
 
 Status RunGpuConv(const gpu::GpuConvConfig& config,
                   absl::Span<const se::DeviceMemoryBase> operand_buffers,
-                  se::DeviceMemoryBase result_buffer,
+                  absl::Span<const se::DeviceMemoryBase> result_buffers,
                   se::DeviceMemoryBase scratch_memory, se::Stream* stream,
                   RunConvOptions options) {
-  TF_ASSIGN_OR_RETURN(GpuConvParams params,
-                      GetGpuConvParams(config, operand_buffers, result_buffer));
+  TF_ASSIGN_OR_RETURN(
+      GpuConvParams params,
+      GetGpuConvParams(config, operand_buffers, result_buffers));
 
   PrimitiveType input_primitive_type = config.input_type;
   switch (input_primitive_type) {

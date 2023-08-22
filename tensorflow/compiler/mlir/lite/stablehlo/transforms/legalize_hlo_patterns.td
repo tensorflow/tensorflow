@@ -299,8 +299,8 @@ def : Pat<(MHLO_DotOp:$old_value StaticShapeTensorOf<[TF_ElementType]>:$lhs,
 def ConvertDotGeneralOp : NativeCodeCall<"ConvertDotGeneralOp($_builder, "
                                                "$0.getDefiningOp())">;
 def : Pat<(MHLO_DotGeneralOp:$old_value
-               StaticShapeTensorOf<[TF_ElementType]>:$lhs,
-               StaticShapeTensorOf<[TF_ElementType]>:$rhs,
+               RankedTensorOf<[TF_ElementType]>:$lhs,
+               RankedTensorOf<[TF_ElementType]>:$rhs,
                $dot_dimension_numbers, $precision_config),
           (ConvertDotGeneralOp $old_value)>;
 

@@ -2877,3 +2877,37 @@ func.func @tpu_execute_effect(
   // expected-remark@above {{ID: 6}}
   // expected-remark@above {{Sinks: {5}}}
 }
+
+// -----
+
+// Tests that we don't create dependencies between any two `RandomUniform` ops.
+func.func @random_uniform_ordering_effect() -> (tensor<3xf32>) {
+  // expected-remark@above {{ID: 9}}
+  %graph = tf_executor.graph {
+    // expected-remark@above {{ID: 7}}
+    %island:2 = tf_executor.island {
+      // expected-remark@above {{ID: 5}}
+      // expected-remark@above {{Successors: {6}}}
+      %0 = arith.constant dense<[3]> : tensor<1xi32>
+      // expected-remark@above {{ID: 0}}
+      %1 = "tf.RandomUniform"(%0) {device = "", seed = 3 : i64, seed2 = 5 : i64} : (tensor<1xi32>) -> tensor<3xf32>
+      // expected-remark@above {{ID: 1}}
+      // expected-remark@above {{Successors: {4}}}
+      %2 = "tf.RandomUniform"(%0) {device = "", seed = 3 : i64, seed2 = 5 : i64} : (tensor<1xi32>) -> tensor<3xf32>
+      // expected-remark@above {{ID: 2}}
+      // expected-remark@above {{Successors: {4}}}
+      %3 = "tf.RandomUniform"(%0) {device = "CPU:0", seed = 3 : i64, seed2 = 5 : i64} : (tensor<1xi32>) -> tensor<3xf32>
+      // expected-remark@above {{ID: 3}}
+      // expected-remark@above {{Successors: {4}}}
+      tf_executor.yield %3: tensor<3xf32>
+      // expected-remark@above {{ID: 4}}
+      // expected-remark@above {{Predecessors: {1,2,3}}}
+    }
+    tf_executor.fetch %island#0 : tensor<3xf32>
+    // expected-remark@above {{ID: 6}}
+    // expected-remark@above {{Predecessors: {5}}}
+  }
+  func.return %graph : tensor<3xf32>
+  // expected-remark@above {{ID: 8}}
+  // expected-remark@above {{Sinks: {7}}}
+}

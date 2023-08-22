@@ -93,6 +93,19 @@ cc_library(
 )
 
 cc_library(
+    name = "next_pluggable_device_factory_hdrs",
+    hdrs = ["next_pluggable_device_factory.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":next_pluggable_device_api",
+        "//tensorflow/c:tf_status_headers",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/common_runtime:device_factory",
+        "//tensorflow/core/common_runtime/next_pluggable_device/c:plugin_c_api_hdrs",
+    ],
+)
+
+cc_library(
     name = "pjrt_compile_on_demand_op",
     srcs = [
         "pjrt_compile_on_demand_op.cc",

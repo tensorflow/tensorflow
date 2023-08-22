@@ -65,6 +65,14 @@ def DotPrecisionType : XLA_GPU_Type<"DotPrecision", "dot_precision"> {
   let summary = "Precision for dot operation";
 }
 
+def GraphType : XLA_GPU_Type<"Graph", "graph"> {
+  let summary = "XLA:GPU graph";
+}
+
+def GraphNodeType : XLA_GPU_Type<"GraphNode", "graph.node"> {
+  let summary = "XLA:GPU graph node";
+}
+
 def KernelType : XLA_GPU_Type<"Kernel", "kernel"> {
   let summary = "XLA:GPU device kernel";
 }

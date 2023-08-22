@@ -1134,6 +1134,40 @@ XLA_TEST_F(CollectiveOpsTest, ReduceScatter) {
   LiteralTestUtil::ExpectR1Equal<uint32_t>({19, 21, 23, 25}, results[1]);
 }
 
+XLA_TEST_F(CollectiveOpsTest, ReduceScatterConstrainLayout) {
+  const char* const kModuleStr = R"(
+  HloModule reduce-scatter
+    %sum (a: u32[], b: u32[]) -> u32[] {
+    %a = u32[] parameter(0)
+    %b = u32[] parameter(1)
+    ROOT %add = u32[] add(u32[] a, u32[] b)
+  }
+  ENTRY main {
+    %param = u32[16] parameter(0)
+    ROOT %rs = u32[8] reduce-scatter(u32[16] %param), replica_groups={},
+                       constrain_layout=true, to_apply=%sum, dimensions={0}
+  }
+  )";
+
+  const int64_t kNumReplicas = 2;
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  std::vector<uint32_t> input_vec = {
+      {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}};
+  auto input_literal = LiteralUtil::CreateR1<uint32_t>(input_vec);
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), {&input_literal}, kNumReplicas,
+                        /*use_threads=*/true, /*run_hlo_passes=*/true));
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({2, 4, 6, 8, 10, 12, 14, 16},
+                                           results[0]);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({18, 20, 22, 24, 26, 28, 30, 32},
+                                           results[1]);
+}
+
 XLA_TEST_F(CollectiveOpsTest, ReduceScatter_Dim1) {
   const char* const kModuleStr = R"(
   HloModule test

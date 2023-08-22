@@ -17,6 +17,7 @@ limitations under the License.
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/mlir/backends/gpu2/ir/xla_gpu_dialect.h"
 #include "tensorflow/compiler/xla/mlir/backends/gpu2/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
@@ -34,7 +35,8 @@ int main(int argc, char **argv) {
   DialectRegistry registry;
   registry.insert<arith::ArithDialect, memref::MemRefDialect, func::FuncDialect,
                   mhlo::MhloDialect, bufferization::BufferizationDialect,
-                  lmhlo::LmhloDialect, lmhlo_gpu::LmhloGpuDialect>();
+                  lmhlo::LmhloDialect, lmhlo_gpu::LmhloGpuDialect,
+                  xla::gpu::XlaGpuDialect>();
 
   // General MLIR passes like `-cse` and `-canonicalize`.
   registerTransformsPasses();

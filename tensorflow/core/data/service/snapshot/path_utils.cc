@@ -20,12 +20,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/path.h"
-#include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
@@ -85,47 +86,47 @@ std::string SplitPath(absl::string_view snapshot_path, int64_t stream_index,
       absl::StrCat("split_", local_index, "_", global_index));
 }
 
-tsl::StatusOr<int64_t> ParseStreamDirectoryName(
+absl::StatusOr<int64_t> ParseStreamDirectoryName(
     absl::string_view stream_directory_name) {
   std::vector<std::string> tokens = absl::StrSplit(stream_directory_name, '_');
   int64_t stream_index = 0;
   if (tokens.size() != 2 || tokens[0] != "stream" ||
       !absl::SimpleAtoi(tokens[1], &stream_index) || stream_index < 0) {
-    return tsl::errors::InvalidArgument(
-        "Invalid stream directory name: ", stream_directory_name,
-        ". Expected stream_<stream_index>.");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Invalid stream directory name: ", stream_directory_name,
+                     ". Expected stream_<stream_index>."));
   }
   return stream_index;
 }
 
-tsl::StatusOr<int64_t> ParseSourceDirectoryName(
+absl::StatusOr<int64_t> ParseSourceDirectoryName(
     absl::string_view source_directory_name) {
   std::vector<std::string> tokens = absl::StrSplit(source_directory_name, '_');
   int64_t source_index = 0;
   if (tokens.size() != 2 || tokens[0] != "source" ||
       !absl::SimpleAtoi(tokens[1], &source_index) || source_index < 0) {
-    return tsl::errors::InvalidArgument(
-        "Invalid source directory name: ", source_directory_name,
-        ". Expected source_<source_index>.");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Invalid source directory name: ", source_directory_name,
+                     ". Expected source_<source_index>."));
   }
   return source_index;
 }
 
-tsl::StatusOr<int64_t> ParseRepetitionDirectoryName(
+absl::StatusOr<int64_t> ParseRepetitionDirectoryName(
     absl::string_view repetition_directory_name) {
   std::vector<std::string> tokens =
       absl::StrSplit(repetition_directory_name, '_');
   int64_t repetition_index = 0;
   if (tokens.size() != 2 || tokens[0] != "repetition" ||
       !absl::SimpleAtoi(tokens[1], &repetition_index) || repetition_index < 0) {
-    return tsl::errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Invalid repetition directory name: ", repetition_directory_name,
-        ". Expected repetition_<repetition_index>.");
+        ". Expected repetition_<repetition_index>."));
   }
   return repetition_index;
 }
 
-tsl::StatusOr<std::pair<int64_t, int64_t>> ParseSplitFilename(
+absl::StatusOr<std::pair<int64_t, int64_t>> ParseSplitFilename(
     absl::string_view split_filename) {
   std::vector<std::string> tokens =
       absl::StrSplit(tsl::io::Basename(split_filename), '_');
@@ -135,20 +136,20 @@ tsl::StatusOr<std::pair<int64_t, int64_t>> ParseSplitFilename(
       local_split_index < 0 ||
       !absl::SimpleAtoi(tokens[2], &global_split_index) ||
       global_split_index < 0) {
-    return tsl::errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Invalid split file name: ", split_filename,
-        ". Expected split_<local_split_index>_<global_split_index>.");
+        ". Expected split_<local_split_index>_<global_split_index>."));
   }
   if (local_split_index > global_split_index) {
-    return tsl::errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Invalid split file name: ", split_filename, ". The local split index ",
         local_split_index, " exceeds the global split index ",
-        global_split_index, ".");
+        global_split_index, "."));
   }
   return std::make_pair(local_split_index, global_split_index);
 }
 
-tsl::StatusOr<std::pair<int64_t, int64_t>> ParseCheckpointFilename(
+absl::StatusOr<std::pair<int64_t, int64_t>> ParseCheckpointFilename(
     absl::string_view checkpoint_filename) {
   std::vector<std::string> tokens = absl::StrSplit(checkpoint_filename, '_');
   int64_t checkpoint_index = 0, checkpoint_num_elements = 0;
@@ -157,14 +158,14 @@ tsl::StatusOr<std::pair<int64_t, int64_t>> ParseCheckpointFilename(
       !absl::SimpleAtoi(tokens[2], &checkpoint_num_elements) ||
       (checkpoint_num_elements < 0 &&
        checkpoint_num_elements != kUnknownNumElements)) {
-    return tsl::errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Invalid checkpoint file name: ", checkpoint_filename,
-        ". Expected checkpoint_<checkpoint_index>_<checkpoint_num_elements>.");
+        ". Expected checkpoint_<checkpoint_index>_<checkpoint_num_elements>."));
   }
   return std::make_pair(checkpoint_index, checkpoint_num_elements);
 }
 
-tsl::StatusOr<std::tuple<int64_t, int64_t, int64_t>> ParseChunkFilename(
+absl::StatusOr<std::tuple<int64_t, int64_t, int64_t>> ParseChunkFilename(
     absl::string_view chunk_filename) {
   std::vector<std::string> tokens = absl::StrSplit(chunk_filename, '_');
   int64_t stream_index = 0, stream_chunk_index = 0, chunk_num_elements = 0;
@@ -174,10 +175,10 @@ tsl::StatusOr<std::tuple<int64_t, int64_t, int64_t>> ParseChunkFilename(
       stream_chunk_index < 0 ||
       !absl::SimpleAtoi(tokens[3], &chunk_num_elements) ||
       (chunk_num_elements < 0 && chunk_num_elements != kUnknownNumElements)) {
-    return tsl::errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Invalid chunk file name: ", chunk_filename,
         ". Expected "
-        "chunk_<stream_index>_<stream_chunk_index>_<chunk_num_elements>.");
+        "chunk_<stream_index>_<stream_chunk_index>_<chunk_num_elements>."));
   }
   return std::make_tuple(stream_index, stream_chunk_index, chunk_num_elements);
 }

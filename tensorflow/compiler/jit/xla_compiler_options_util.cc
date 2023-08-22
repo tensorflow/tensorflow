@@ -117,7 +117,6 @@ XlaCompiler::Options GenerateCompilerOptionsForPjRt(
   // TODO(b/255826209): Confirm below options are correctly set after testing.
   options.allow_cpu_custom_calls = false;
   options.alias_passthrough_params = false;
-  options.detailed_logging = false;
 
   LogOptions(options);
   return options;

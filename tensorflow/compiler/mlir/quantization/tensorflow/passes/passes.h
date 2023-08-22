@@ -201,6 +201,9 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateMarkFunctionsNoinlinePass(
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateRemoveVariableInitializationByConstPass();
 
+// Creates a pass that converts Tensorflow Xla ops to non-Xla ops.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateConvertTfXlaOpToTfOpPass();
+
 // Creates a pass that converts TPU models for CPU by removing TPU related ops
 // such as TPUPartitionedCall, TPUReplicatedOp, etc. The TF quantizer does not
 // work with models specifically designed for TPU, so this pass makes the input

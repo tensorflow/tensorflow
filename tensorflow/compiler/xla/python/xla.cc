@@ -58,7 +58,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_client.h"
 #ifdef XLA_PYTHON_ENABLE_TPU
 #include "tensorflow/compiler/xla/pjrt/tpu_client.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_initializer_framework_helper.h"  // NOLINT(unused-includes): required for tensorflow::tpu::FindAndLoadTpuLibrary
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_initializer_framework_helper.h"  // NOLINT(unused-includes): required for tensorflow::tpu::LoadTpuLibraryAndInitializeTpuStructFns
 #endif  // XLA_PYTHON_ENABLE_TPU
 #include "tensorflow/compiler/xla/pjrt/pjrt_api.h"
 #include "tensorflow/compiler/xla/python/custom_call_sharding.h"
@@ -74,6 +74,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/py_array.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/py_compile_only_client.h"
+#include "tensorflow/compiler/xla/python/py_device_list.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/pytree.h"
@@ -525,19 +526,6 @@ PYBIND11_MODULE(xla_extension, m) {
       py::arg("platform_name") = std::nullopt);
 #endif  // XLA_PYTHON_ENABLE_GPU
 
-#ifdef XLA_PYTHON_ENABLE_TPU
-  m.def(
-      "get_tpu_client",
-      [](int max_inflight_computations) -> std::shared_ptr<PyClient> {
-        py::gil_scoped_release gil_release;
-        std::shared_ptr<PjRtClient> client =
-            xla::ValueOrThrow(GetTpuClient(max_inflight_computations));
-        return std::make_shared<PyClient>(
-            ifrt::PjRtClient::Create(std::move(client)));
-      },
-      py::arg("max_inflight_computations") = 32);
-#endif  // XLA_PYTHON_ENABLE_TPU
-
   m.def(
       "get_c_api_client",
       [](std::string platform_name,
@@ -546,14 +534,13 @@ PYBIND11_MODULE(xla_extension, m) {
           -> std::shared_ptr<PyClient> {
         py::gil_scoped_release gil_release;
 #ifdef XLA_PYTHON_ENABLE_TPU
-    // TODO(b/262050449): use a common plugin discovery mechanism, rather than
-    // having TPU-specific code here.
-#if !defined(PLATFORM_GOOGLE) || defined(LIBTPU_STATIC)
+#if !defined(PLATFORM_GOOGLE)
         if (absl::AsciiStrToLower(platform_name) == "tpu") {
           // TODO(b/261484192): handle device specific initialization.
-          xla::ThrowIfError(tensorflow::tpu::FindAndLoadTpuLibrary());
+          xla::ThrowIfError(
+              tensorflow::tpu::LoadTpuLibraryAndInitializeTpuStructFns());
         }
-#endif
+#endif  // PLATFORM_GOOGLE
 #endif  // XLA_PYTHON_ENABLE_TPU
         PjRtClient::KeyValueGetCallback kv_get = nullptr;
         PjRtClient::KeyValuePutCallback kv_put = nullptr;
@@ -608,6 +595,7 @@ PYBIND11_MODULE(xla_extension, m) {
         });
 
   TF_CHECK_OK(PyArray::RegisterTypes(m));
+  jax::RegisterDeviceList(m);
   jax::RegisterSharding(m);
 
   py::class_<CompiledMemoryStats>(m, "CompiledMemoryStats")
@@ -860,13 +848,13 @@ PYBIND11_MODULE(xla_extension, m) {
 
   m.def(
       "get_distributed_runtime_service",
-      [](std::string address, int num_nodes, bool use_coordination_service,
+      [](std::string address, int num_nodes,
          std::optional<int> heartbeat_interval,
          std::optional<int> max_missing_heartbeats,
          std::optional<int> enumerate_devices_timeout,
          std::optional<int> shutdown_timeout)
           -> std::unique_ptr<DistributedRuntimeService> {
-        DistributedRuntimeServiceImpl::Options options;
+        CoordinationServiceImpl::Options options;
         options.num_nodes = num_nodes;
         if (heartbeat_interval.has_value()) {
           options.heartbeat_interval = absl::Seconds(*heartbeat_interval);
@@ -882,12 +870,10 @@ PYBIND11_MODULE(xla_extension, m) {
           options.shutdown_timeout = absl::Seconds(*shutdown_timeout);
         }
         std::unique_ptr<DistributedRuntimeService> service =
-            xla::ValueOrThrow(GetDistributedRuntimeService(
-                address, options, use_coordination_service));
+            xla::ValueOrThrow(GetDistributedRuntimeService(address, options));
         return service;
       },
-      py::arg("address"), py::arg("num_nodes"),
-      py::arg("use_coordination_service"), py::kw_only(),
+      py::arg("address"), py::arg("num_nodes"), py::kw_only(),
       py::arg("heartbeat_interval") = std::nullopt,
       py::arg("max_missing_heartbeats") = std::nullopt,
       py::arg("enumerate_devices_timeout") = std::nullopt,
@@ -895,9 +881,8 @@ PYBIND11_MODULE(xla_extension, m) {
 
   m.def(
       "get_distributed_runtime_client",
-      [](std::string address, int node_id, bool use_coordination_service,
-         std::optional<int> rpc_timeout, std::optional<int> init_timeout,
-         std::optional<int> shutdown_timeout,
+      [](std::string address, int node_id, std::optional<int> rpc_timeout,
+         std::optional<int> init_timeout, std::optional<int> shutdown_timeout,
          std::optional<int> heartbeat_interval,
          std::optional<int> max_missing_heartbeats,
          std::optional<std::function<void(xla::Status,
@@ -929,11 +914,9 @@ PYBIND11_MODULE(xla_extension, m) {
         if (shutdown_on_destruction.has_value()) {
           options.shutdown_on_destruction = *shutdown_on_destruction;
         }
-        return GetDistributedRuntimeClient(address, options,
-                                           use_coordination_service);
+        return GetDistributedRuntimeClient(address, options);
       },
-      py::arg("address"), py::arg("node_id"),
-      py::arg("use_coordination_service"), py::kw_only(),
+      py::arg("address"), py::arg("node_id"), py::kw_only(),
       py::arg("rpc_timeout") = std::nullopt,
       py::arg("init_timeout") = std::nullopt,
       py::arg("shutdown_timeout") = std::nullopt,

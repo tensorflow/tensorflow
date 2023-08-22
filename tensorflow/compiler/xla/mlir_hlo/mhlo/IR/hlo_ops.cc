@@ -949,69 +949,6 @@ LogicalResult DotGeneralOp::verify() {
       getPrecisionConfig(), getResult());
 }
 
-namespace {
-
-constexpr char kFrontendAttributesAttr[] = "mhlo.frontend_attributes";
-
-// Handle the generic case of DotGeneral and convert to a regulat DotOp.
-struct DotGeneralToDot : public OpRewritePattern<DotGeneralOp> {
-  using OpRewritePattern<DotGeneralOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(DotGeneralOp dot,
-                                PatternRewriter& rewriter) const override {
-    auto lhs = dot.getLhs();
-    auto rhs = dot.getRhs();
-    auto lhsTy = lhs.getType().cast<ShapedType>();
-    auto rhsTy = rhs.getType().cast<ShapedType>();
-
-    int64_t lhsRank = lhsTy.getRank();
-    int64_t rhsRank = rhsTy.getRank();
-    if ((lhsRank != 1 && lhsRank != 2) || (rhsRank != 1 && rhsRank != 2)) {
-      return rewriter.notifyMatchFailure(
-          dot, "input tensors must have rank of 1 or 2");
-    }
-
-    auto nums = dot.getDotDimensionNumbers();
-    if ((!nums.getLhsBatchingDimensions().empty()) ||
-        (!nums.getRhsBatchingDimensions().empty())) {
-      return rewriter.notifyMatchFailure(dot, "cannot have batch dimensions");
-    }
-
-    auto lhsContract = nums.getLhsContractingDimensions();
-    auto rhsContract = nums.getRhsContractingDimensions();
-
-    if (lhsContract.size() != 1 || rhsContract.size() != 1) {
-      return rewriter.notifyMatchFailure(
-          dot, "input tensors must only have 1 contracting dimension");
-    }
-    if (rhsContract.front() != 0) {
-      return rewriter.notifyMatchFailure(
-          dot, "rhs must contract the first dimension");
-    }
-    if (lhsContract.front() != lhsRank - 1) {
-      return rewriter.notifyMatchFailure(
-          dot, "lhs must contract the last dimension");
-    }
-
-    DictionaryAttr frontendAttributes =
-        dot->getAttrOfType<DictionaryAttr>(kFrontendAttributesAttr);
-    auto newDotOp = rewriter.replaceOpWithNewOp<mhlo::DotOp>(
-        dot, dot.getType(), lhs, rhs,
-        dot.getPrecisionConfig().value_or(nullptr));
-    if (frontendAttributes) {
-      newDotOp->setAttr(kFrontendAttributesAttr, frontendAttributes);
-    }
-
-    return success();
-  }
-};
-}  // namespace
-
-void DotGeneralOp::getCanonicalizationPatterns(RewritePatternSet& results,
-                                               MLIRContext* context) {
-  results.add<DotGeneralToDot>(context);
-}
-
 LogicalResult DotGeneralOp::reifyReturnTypeShapes(
     OpBuilder& builder, ValueRange operands,
     SmallVectorImpl<Value>& reifiedReturnShapes) {

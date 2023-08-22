@@ -415,6 +415,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":cord",
+        ":platform",
         ":stringpiece",
     ],
 )
@@ -992,9 +993,8 @@ cc_library(
     hdrs = ["cord.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        ":platform",
         "@com_google_absl//absl/strings:cord",
-    ] + tf_platform_deps("cord"),
+    ],
 )
 
 cc_library(
@@ -1322,6 +1322,7 @@ tsl_cc_test(
     srcs = ["tstring_test.cc"],
     deps = [
         ":cord",
+        ":platform",
         ":stringpiece",
         ":test",
         ":test_main",

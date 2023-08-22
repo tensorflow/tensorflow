@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/service/gpu/hlo_traversal.h"
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/buffer_assignment_util.h"
@@ -444,31 +445,17 @@ StatusOr<BufferAllocation::Slice> GetAllocationSlice(
 }
 
 std::vector<HloInstruction*> GetOutputDefiningDynamicUpdateSlices(
-    const HloComputation* fusion) {
+    const std::vector<HloInstruction*>& roots) {
   // Same as GetOutputDefiningDynamicUpdateSliceOps but on a HLO fusion
   // computation instead of a LMHLO FusionOp.
-  HloInstruction* root = fusion->root_instruction();
-
-  if (root->opcode() == HloOpcode::kDynamicUpdateSlice) {
-    return {root};
-  }
-
-  if (root->opcode() == HloOpcode::kBitcast &&
-      root->operand(0)->opcode() == HloOpcode::kDynamicUpdateSlice) {
-    return {root->mutable_operand(0)};
-  }
-
   std::vector<HloInstruction*> dus_ops;
+  for (HloInstruction* root : roots) {
+    while (root->opcode() == HloOpcode::kBitcast) {
+      root = root->mutable_operand(0);
+    }
 
-  if (root->opcode() == HloOpcode::kTuple) {
-    for (HloInstruction* operand : root->operands()) {
-      while (operand->opcode() == HloOpcode::kBitcast) {
-        operand = operand->mutable_operand(0);
-      }
-
-      if (operand->opcode() == HloOpcode::kDynamicUpdateSlice) {
-        dus_ops.push_back(operand);
-      }
+    if (root->opcode() == HloOpcode::kDynamicUpdateSlice) {
+      dus_ops.push_back(root);
     }
   }
 
@@ -708,13 +695,11 @@ std::optional<TransposeDescription> FindTiledLogicalTranspose(
   return std::nullopt;
 }
 
-std::optional<TransposeDescription> FindAnyTiledTranspose(
-    const HloInstruction& instr) {
-  const HloInstruction& hero = FindNonTrivialHero(instr);
+std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
+    const HloInstruction& root, const HloInstruction& hero) {
   // TODO(b/284431534): Figure out how to make the shared memory transpose
   // emitter faster for this case.
-  if (hero.shape().element_type() == F32 &&
-      instr.shape().element_type() == S8) {
+  if (hero.shape().element_type() == F32 && root.shape().element_type() == S8) {
     return std::nullopt;
   }
 
@@ -764,52 +749,57 @@ bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count) {
   }
 }
 
-const HloInstruction& FindNonTrivialHero(const HloInstruction& instr) {
+static bool IsParameter(const HloInstruction& instr) {
+  return instr.opcode() == HloOpcode::kParameter;
+}
+
+const HloInstruction& FindNonTrivialHero(
+    const HloInstruction& instr,
+    const std::function<bool(const HloInstruction& producer,
+                             const HloInstruction& consumer)>& is_boundary) {
   const HloInstruction* idx = &instr;
 
-  // Go up the chain of trivial elementwise(+bitcast, -copy) operations. Such
+  // Go up the chain of trivial element-wise(+bitcast, -copy) operations. Such
   // chains are bound to be quite small, as we restrict the number of users as
   // well. Note that no memoization is needed due to user number constraints: we
   // never have to revisit same nodes.
-  while (IsIntermediate(idx)) {
+  while (IsIntermediate(idx) && !is_boundary(*idx->operand(0), *idx)) {
     idx = idx->operand(0);
   }
-  if (!IsIntermediate(idx, /*allowed_operand_count=*/3)) {
-    return *idx;
-  }
+
+  const HloInstruction* transpose = nullptr;
   // Try a bit harder to find a transpose hero. The shared memory transpose
   // emitter also works if there are ops with more than 1 operand on the path
   // between root and the transpose op, we still want the restriction though
   // that each op on the path is elementwise and has only 1 user.
-  absl::flat_hash_set<const HloInstruction*> visited;
-  std::queue<const HloInstruction*> q;
-  auto enqueue_operands = [&](const HloInstruction* idx) {
-    for (HloInstruction* hlo : idx->operands()) {
-      if (visited.insert(hlo).second) {
-        q.push(hlo);
-      }
-    }
-  };
-  enqueue_operands(idx);
-  const HloInstruction* non_trivial_hero = nullptr;
-  while (!q.empty()) {
-    const HloInstruction* hlo = q.front();
-    q.pop();
-    if (FindTiledLogicalTranspose(*hlo)) {
+  auto visit = [&transpose](const HloInstruction& node) {
+    if (FindTiledLogicalTranspose(node)) {
       // If we do not find a unique transpose op, use the original non-trivial
       // hero.
-      if (non_trivial_hero != nullptr) {
-        return *idx;
+      if (transpose) {
+        transpose = nullptr;
+        return TraversalResult::kAbortTraversal;
       }
-      non_trivial_hero = hlo;
-    } else if (IsIntermediate(hlo, /*allowed_operand_count=*/3)) {
-      enqueue_operands(hlo);
+      transpose = &node;
+      return TraversalResult::kDoNotVisitOperands;
     }
-  }
-  if (non_trivial_hero == nullptr) {
-    return *idx;
-  }
-  return *non_trivial_hero;
+
+    if (node.opcode() != HloOpcode::kParameter &&
+        node.opcode() != HloOpcode::kFusion &&
+        !IsIntermediate(&node, /*allowed_operand_count=*/3)) {
+      return TraversalResult::kDoNotVisitOperands;
+    }
+    return TraversalResult::kVisitOperands;
+  };
+  HloBfsConsumersFirstTraversal(*idx, is_boundary, visit);
+  return transpose ? *transpose : *idx;
+}
+
+const HloInstruction& FindNonTrivialHero(const HloInstruction& instr) {
+  return FindNonTrivialHero(instr, [](const HloInstruction& producer,
+                                      const HloInstruction& consumer) {
+    return consumer.opcode() == HloOpcode::kParameter;
+  });
 }
 
 void LogAndVerify(const llvm::Module* m) {

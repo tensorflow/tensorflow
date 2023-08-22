@@ -377,10 +377,12 @@ std::pair<CancellationToken, bool> RegisterCancellation(
   return std::pair<CancellationToken, bool>(token, already_cancelled);
 }
 
-void UnregisterCancellation(
-    OpKernelContext* ctx, CancellationManager* cancellation_manager,
-    se::Stream* stream, int device_ordinal, CancellationToken token,
-    std::shared_ptr<HostTransferManager> host_transfer_manager) {
+typedef std::unique_ptr<SE_OutsideCompilationParams, DestroyOCParams>
+    OcParamsPtr;
+void UnregisterCancellation(OpKernelContext* ctx,
+                            CancellationManager* cancellation_manager,
+                            se::Stream* stream, int device_ordinal,
+                            CancellationToken token, OcParamsPtr oc_param) {
   // If execution reaches this point, the host callback enqueued below will get
   // called regardless of stream status. Call inc_num_deferred_ops_function here
   // and dec_num_deferred_ops_function in the host callback.
@@ -393,10 +395,7 @@ void UnregisterCancellation(
   // have the substream wait on the compute stream.
   se::Stream* deregister_stream = stream->GetOrCreateSubStream();
   deregister_stream->ThenWaitFor(stream);
-  deregister_stream->ThenDoHostCallback([=]() {
-    // Ensure the host_transfer_manager is copied into the callback scope.
-    (void)host_transfer_manager;
-
+  deregister_stream->ThenDoHostCallback([=, oc_param = std::move(oc_param)]() {
     // We must deregister the callback in the success case, to avoid closing all
     // devices. In the failure case we must NOT call DeregisterCallback as that
     // waits for all previous cancellation callbacks to complete and any call
@@ -429,14 +428,10 @@ void UnregisterCancellation(
   stream->ReturnSubStream(deregister_stream);
 }
 
-std::unique_ptr<SE_OutsideCompilationParams,
-                std::function<void(SE_OutsideCompilationParams*)>>
-CreateOcParams(const std::string& rendezvous_key_base,
-               OpKernelContext* op_kernel_context,
-               const TPUHostTransferInfoProto& host_transfers) {
-  std::unique_ptr<SE_OutsideCompilationParams,
-                  std::function<void(SE_OutsideCompilationParams*)>>
-      oc_params(new SE_OutsideCompilationParams(), &DestroyOCParams);
+OcParamsPtr CreateOcParams(const std::string& rendezvous_key_base,
+                           OpKernelContext* op_kernel_context,
+                           const TPUHostTransferInfoProto& host_transfers) {
+  OcParamsPtr oc_params(new SE_OutsideCompilationParams());
   const std::string& device_name = op_kernel_context->device()->name();
   oc_params->device_name = new char[device_name.size() + 1];
   std::strncpy(oc_params->device_name, device_name.c_str(),
@@ -563,9 +558,8 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
     arguments.push_back(std::move(input));
   }
 
-  std::unique_ptr<SE_OutsideCompilationParams,
-                  std::function<void(SE_OutsideCompilationParams*)>>
-      oc_params = CreateOcParams(rendezvous_key_base, ctx, host_transfers);
+  OcParamsPtr oc_params =
+      CreateOcParams(rendezvous_key_base, ctx, host_transfers);
 
   auto tpu_executable = std::make_unique<TpuOpExecutable>(
       tpu_program, std::move(module), oc_params.get());
@@ -603,7 +597,8 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
     }
   }
   UnregisterCancellation(ctx, cancellation_manager, stream, device_ordinal,
-                         token, host_transfer_manager);
+                         token, std::move(oc_params));
+
   VLOG(1) << "Cloud TPU: TPUExecute done";
   return output;
 }

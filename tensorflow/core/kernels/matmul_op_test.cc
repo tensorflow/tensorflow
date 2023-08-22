@@ -185,10 +185,6 @@ class FusedMatMulOpTest : public OpsTestBase {
                      .Attr("transpose_b", transpose_b)
                      .Finalize(&fused_matmul));
 
-#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
-    printf("Disallowing the FusedMatMul GPU test (neither CUDA nor ROCM observed)\n");
-    allow_gpu_device = false;
-#endif
     RunAndFetch(root, fused_matmul.name(), output, allow_gpu_device,
                 &fused_matmul);
   }

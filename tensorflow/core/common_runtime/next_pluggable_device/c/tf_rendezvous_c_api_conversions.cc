@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/log/check.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/c/tf_tensor_internal.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/tsl/platform/status.h"
 
 using TF_StatusCallback = std::function<void(const TF_Status*)>;
 
@@ -112,111 +114,23 @@ void Destroy(TF_RendezvousArgsStruct* c_args) {
   Destroy(c_args->device_context);
 }
 
-TF_DeviceUtilsParsedName ToC(const DeviceNameUtils::ParsedName& name) {
-  TF_DeviceUtilsParsedName c_name;
-  if (name.has_job) {
-    c_name.job_str = new char[name.job.size() + 1];
-    c_name.job_str_size = name.job.size();
-    std::strncpy(c_name.job_str, name.job.data(), name.job.size());
-  } else {
-    c_name.job_str = nullptr;
-    c_name.job_str_size = 0;
-    std::strncpy(c_name.type_str, name.type.data(), name.type.size());
-  }
-  if (name.has_type) {
-    c_name.type_str = new char[name.type.size() + 1];
-    c_name.type_str_size = name.type.size();
-  } else {
-    c_name.type_str = nullptr;
-    c_name.type_str_size = 0;
-  }
-  c_name.has_replica = name.has_replica;
-  c_name.replica = name.replica;
-  c_name.has_task = name.has_task;
-  c_name.task = name.task;
-  c_name.has_id = name.has_id;
-  c_name.id = name.id;
-  return c_name;
-}
-
-DeviceNameUtils::ParsedName FromC(const TF_DeviceUtilsParsedName& c_name) {
-  DeviceNameUtils::ParsedName name;
-  if (c_name.job_str != nullptr) {
-    name.job = absl::string_view(c_name.job_str, c_name.job_str_size);
-    name.has_job = true;
-  } else {
-    name.has_job = false;
-  }
-  if (c_name.type_str != nullptr) {
-    name.type = absl::string_view(c_name.type_str, c_name.type_str_size);
-    name.has_type = true;
-  } else {
-    name.has_type = false;
-  }
-  name.has_replica = c_name.has_replica;
-  name.replica = c_name.replica;
-  name.has_task = c_name.has_task;
-  name.task = c_name.task;
-  name.has_id = c_name.has_id;
-  name.id = c_name.id;
-  return name;
-}
-
-void Destroy(TF_DeviceUtilsParsedName* c_name) {
-  if (c_name->job_str != nullptr) {
-    delete[] c_name->job_str;
-  }
-  if (c_name->type_str != nullptr) {
-    delete[] c_name->type_str;
-  }
-}
-
 TF_RendezvousParsedKey ToC(const RendezvousInterface::ParsedKey& key) {
   TF_RendezvousParsedKey c_key;
-  c_key.src_device_str_size = key.src_device.size();
-  c_key.src_device_str = new char[c_key.src_device_str_size + 1];
-  std::strncpy(c_key.src_device_str, key.src_device.data(),
-               key.src_device.size());
-  c_key.src_parsed_name = ToC(key.src);
-  c_key.src_incarnation = key.src_incarnation;
-
-  c_key.dst_device_str_size = key.dst_device.size();
-  c_key.dst_device_str = new char[c_key.dst_device_str_size + 1];
-  c_key.dst_device_str_size = key.dst_device.size();
-  std::strncpy(c_key.dst_device_str, key.dst_device.data(),
-               key.dst_device.size());
-  c_key.dst_parsed_name = ToC(key.dst);
-
-  c_key.edge_name = new char[key.edge_name.size() + 1];
-  c_key.edge_name_size = key.edge_name.size();
-  std::strncpy(c_key.edge_name, key.edge_name.data(), key.edge_name.size());
-
+  absl::string_view full_key = key.FullKey();
+  c_key.full_key_size = full_key.size();
+  c_key.full_key = new char[c_key.full_key_size + 1];
+  std::strncpy(c_key.full_key, full_key.data(), c_key.full_key_size);
   return c_key;
 }
 
 RendezvousInterface::ParsedKey FromC(const TF_RendezvousParsedKey& c_key) {
   RendezvousInterface::ParsedKey key;
-  key.src_device =
-      absl::string_view(c_key.src_device_str, c_key.src_device_str_size);
-  key.src = FromC(c_key.src_parsed_name);
-  key.src_incarnation = c_key.src_incarnation;
-
-  key.dst_device =
-      absl::string_view(c_key.dst_device_str, c_key.dst_device_str_size);
-  key.dst = FromC(c_key.dst_parsed_name);
-
-  key.edge_name = absl::string_view(c_key.edge_name, c_key.edge_name_size);
-
+  absl::string_view full_key(c_key.full_key, c_key.full_key_size);
+  TF_CHECK_OK(Rendezvous::ParseKey(full_key, &key));
   return key;
 }
 
-void Destroy(TF_RendezvousParsedKey* c_key) {
-  delete[] c_key->src_device_str;
-  delete[] c_key->dst_device_str;
-  delete[] c_key->edge_name;
-  Destroy(&c_key->src_parsed_name);
-  Destroy(&c_key->dst_parsed_name);
-}
+void Destroy(TF_RendezvousParsedKey* c_key) { delete[] c_key->full_key; }
 
 namespace {
 
@@ -331,7 +245,7 @@ TF_RendezvousThunk* ToC(RendezvousInterface* rendezvous) {
 
 std::unique_ptr<c_api::TfCThunkRendezvous> FromC(
     const TF_RendezvousThunk* thunk) {
-  return std::make_unique<c_api::TfCThunkRendezvous>(thunk);
+  return std::make_unique<c_api::TfCThunkRendezvous>(*thunk);
 }
 
 void Destroy(TF_RendezvousThunk* thunk) {
@@ -463,6 +377,7 @@ TF_RendezvousSenderImpl BindSendFunction(RendezvousInterface* rendezvous) {
   using SendFunction = std::function<void(TF_RendezvousSend_Params*)>;
   auto sender =
       new SendFunction([rendezvous](TF_RendezvousSend_Params* params) -> void {
+        printf("Calling SendFunction");
         RendezvousInterface::ParsedKey key = FromC(*params->key);
         RendezvousInterface::Args args = FromC(*params->args);
         Tensor tensor;
@@ -561,7 +476,7 @@ Status TfCThunkRendezvous::Send(const ParsedKey& key, const Args& args,
                                 const Tensor& val, const bool is_dead) {
   CHECK_OK_AND_ASSIGN(SendParamPtr params,
                       SendParamsToC(key, args, val, is_dead));
-  const TF_RendezvousSenderImpl& sender = thunk_->send;
+  const TF_RendezvousSenderImpl& sender = thunk_.send;
   sender.send_func(sender.context, params.get());
   return tsl::StatusFromTF_Status(params->status);
 }
@@ -569,7 +484,7 @@ Status TfCThunkRendezvous::Send(const ParsedKey& key, const Args& args,
 void TfCThunkRendezvous::RecvAsync(const ParsedKey& key, const Args& args,
                                    DoneCallback done) {
   RecvParamPtr params = RecvParamsToC(key, args, done);
-  const TF_RendezvousAsyncRecverImpl& async_recv = thunk_->async_recv;
+  const TF_RendezvousAsyncRecverImpl& async_recv = thunk_.async_recv;
   async_recv.async_recv_func(async_recv.context, params.get());
 }
 
@@ -577,13 +492,13 @@ void TfCThunkRendezvous::StartAbort(const Status& status) {
   std::unique_ptr<TF_Status, std::function<void(TF_Status*)>> c_status(
       TF_NewStatus(), &TF_DeleteStatus);
   tsl::Set_TF_Status_from_Status(c_status.get(), status);
-  const TF_RendezvousStartAbortImpl& start_abort = thunk_->start_abort;
+  const TF_RendezvousStartAbortImpl& start_abort = thunk_.start_abort;
   start_abort.start_abort_func(start_abort.context, c_status.get());
 }
 
 }  // namespace c_api
 
-void DestroyOCParams(SE_OutsideCompilationParams* params) {
+void DestroyOCParams::operator()(SE_OutsideCompilationParams* params) {
   if (params == nullptr) {
     return;
   }

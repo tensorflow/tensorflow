@@ -200,7 +200,7 @@ class MklEinsum : public OpKernel {
   virtual ~MklEinsum() {}
 
   void Compute(OpKernelContext* ctx) override {
-    OpInputList inputs;
+    OpInputList inputs(ctx, 0, 0);
     OP_REQUIRES_OK(ctx, ctx->input_list("inputs", &inputs));
 
     if (std::is_same<T, float>::value) {

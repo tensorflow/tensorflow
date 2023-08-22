@@ -15,12 +15,16 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/tools/hlo_extractor.h"
 
+#include <memory>
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -371,8 +375,8 @@ ENTRY %entry {
                 op::Add(op::GetTupleElement(op::Constant()), op::Parameter()));
   }
 
-  // Testing kReplaceZeroBroadcast -- replace a scalar (`element`) with a
-  // constant.
+  // Testing kReplaceZeroBroadcast -- replace a scalar (`element`) with
+  // a broadcasted zero.
   {
     auto hlo_selector = [](const HloInstruction* hlo_inst) -> bool {
       return hlo_inst->opcode() != HloOpcode::kGetTupleElement;
@@ -388,8 +392,24 @@ ENTRY %entry {
                 op::Add(op::Broadcast(), op::Parameter()));
   }
 
-  // Testing kReplaceZeroBroadcast -- replace a tuple op (`tuple.1`) with a
-  // constant.
+  // Testing kReplaceRandomBroadcast -- replace a scalar (`element`) with a
+  // broadcasted random constant.
+  {
+    auto hlo_selector = [](const HloInstruction* hlo_inst) -> bool {
+      return hlo_inst->opcode() != HloOpcode::kGetTupleElement;
+    };
+    auto replace_type_selector =
+        [](const HloInstruction* hlo_inst) -> ReplaceType {
+      return ReplaceType::kReplaceRandomBroadcast;
+    };
+    auto extracted_module =
+        ExtractModule(FindInstruction(hlo_module.get(), "add"),
+                      /*height=*/-1, hlo_selector, replace_type_selector);
+    EXPECT_THAT(extracted_module->entry_computation()->root_instruction(),
+                op::Add(op::Broadcast(), op::Parameter()));
+  }
+
+  // Testing kReplaceZeroBroadcast -- replace a tuple op (`tuple.1`) with zeros.
   {
     auto hlo_selector = [](const HloInstruction* hlo_inst) -> bool {
       return hlo_inst->opcode() != HloOpcode::kTuple;
@@ -397,6 +417,25 @@ ENTRY %entry {
     auto replace_type_selector =
         [](const HloInstruction* hlo_inst) -> ReplaceType {
       return ReplaceType::kReplaceZeroBroadcast;
+    };
+    auto extracted_module =
+        ExtractModule(FindInstruction(hlo_module.get(), "add"),
+                      /*height=*/-1, hlo_selector, replace_type_selector);
+    EXPECT_THAT(
+        extracted_module->entry_computation()->root_instruction(),
+        op::Add(op::GetTupleElement(op::Tuple(op::Tuple(), op::Broadcast())),
+                op::Parameter()));
+  }
+
+  // Testing kReplaceRandomBroadcast -- replace a tuple op (`tuple.1`) with a
+  // broadcasted random constant.
+  {
+    auto hlo_selector = [](const HloInstruction* hlo_inst) -> bool {
+      return hlo_inst->opcode() != HloOpcode::kTuple;
+    };
+    auto replace_type_selector =
+        [](const HloInstruction* hlo_inst) -> ReplaceType {
+      return ReplaceType::kReplaceRandomBroadcast;
     };
     auto extracted_module =
         ExtractModule(FindInstruction(hlo_module.get(), "add"),

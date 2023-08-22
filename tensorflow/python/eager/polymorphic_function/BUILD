@@ -623,7 +623,9 @@ py_strict_library(
     name = "compiler_ir",
     srcs = ["compiler_ir.py"],
     srcs_version = "PY3",
-    visibility = ["//tensorflow:internal"],
+    visibility = [
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
+    ],
     deps = [
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python/eager:context",

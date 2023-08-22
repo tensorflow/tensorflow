@@ -40,7 +40,10 @@ class FusionInterface {
   virtual ~FusionInterface() = default;
 
   virtual StatusOr<FusionEmissionResult> Emit(
-      KernelReuseCache& kernel_cache, llvm::IRBuilder<>* builder) const = 0;
+      IrEmitterContext& ir_emitter_context,
+      ElementalIrEmitter& elemental_emitter, mlir::lmhlo::FusionOp fusion_op,
+      const HloFusionInstruction& fusion, KernelReuseCache& kernel_cache,
+      llvm::IRBuilder<>* builder) const = 0;
 };
 
 class KernelFusionEmitterBase : public FusionInterface {
@@ -48,37 +51,26 @@ class KernelFusionEmitterBase : public FusionInterface {
   // The downstream code that is used by this emitter operates on a mix of MLIR
   // and HLO classes. Ideally this would not be the case, but it's hard to
   // change.
-  KernelFusionEmitterBase(IrEmitterContext& ir_emitter_context,
-                          ElementalIrEmitter& elemental_emitter,
-                          mlir::lmhlo::FusionOp fusion_op,
-                          const HloFusionInstruction& fusion)
-      : ir_emitter_context_(ir_emitter_context),
-        elemental_emitter_(elemental_emitter),
-        fusion_op_(fusion_op),
-        fusion_(fusion) {}
-
-  StatusOr<FusionEmissionResult> Emit(KernelReuseCache& kernel_cache,
+  StatusOr<FusionEmissionResult> Emit(IrEmitterContext& ir_emitter_context,
+                                      ElementalIrEmitter& elemental_emitter,
+                                      mlir::lmhlo::FusionOp fusion_op,
+                                      const HloFusionInstruction& fusion,
+                                      KernelReuseCache& kernel_cache,
                                       llvm::IRBuilder<>* builder) const final;
   virtual StatusOr<LaunchDimensions> launch_dimensions(
-      int kernel_index) const = 0;
+      IrEmitterContext& ir_emitter_context, int kernel_index) const = 0;
 
  protected:
-  virtual Status EmitKernel(const LaunchDimensions& launch_dims,
+  virtual Status EmitKernel(IrEmitterContext& ir_emitter_context,
+                            ElementalIrEmitter& elemental_emitter,
+                            mlir::lmhlo::FusionOp fusion_op,
+                            const HloFusionInstruction& fusion,
+                            const LaunchDimensions& launch_dims,
                             std::vector<llvm_ir::IrArray> inputs,
                             std::vector<llvm_ir::IrArray> outputs,
                             llvm::IRBuilder<>* builder,
                             int kernel_index) const = 0;
   virtual int num_kernels() const { return 1; }
-  const HloFusionInstruction& fusion() const { return fusion_; }
-  mlir::lmhlo::FusionOp fusion_op() const { return fusion_op_; }
-  IrEmitterContext& ir_emitter_context() const { return ir_emitter_context_; }
-  ElementalIrEmitter& elemental_emitter() const { return elemental_emitter_; }
-
- private:
-  IrEmitterContext& ir_emitter_context_;
-  ElementalIrEmitter& elemental_emitter_;
-  mlir::lmhlo::FusionOp fusion_op_;
-  const HloFusionInstruction& fusion_;
 };
 
 std::tuple<llvm::Function*, std::vector<llvm_ir::IrArray /*inputs*/>,

@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/graph_executor/graph_executor.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_util.h"
+#include "tensorflow/tsl/platform/protobuf.h"
 #include "tfrt/host_context/function.h"  // from @tf_runtime
 #include "tfrt/host_context/request_deadline_tracker.h"  // from @tf_runtime
 #include "tfrt/host_context/resource_context.h"  // from @tf_runtime
@@ -73,7 +74,7 @@ class FunctionMetadata {
     return signature_->output_specs;
   }
 
-  const proto2::Map<std::string, TensorProto>& GetDefaultInputs() const {
+  const protobuf::Map<std::string, TensorProto>& GetDefaultInputs() const {
     return signature_->default_inputs;
   }
 

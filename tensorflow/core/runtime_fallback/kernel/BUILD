@@ -400,6 +400,7 @@ cc_library(
         "//tensorflow/core/tfrt/graph_executor:__subpackages__",
         "//tensorflow/core/tfrt/saved_model:__subpackages__",
         "//tensorflow/core/tfrt/mlrt/kernel:__subpackages__",
+        "//tensorflow/core/tfrt/gpu/kernel:__subpackages__",
     ],
     deps = [
         "//tensorflow/core/tfrt/fallback:cost_recorder",
@@ -438,26 +439,4 @@ cc_library(
         "//tensorflow/core/tfrt/fallback:op_kernel_runner",
         "@com_google_absl//absl/container:inlined_vector",
     ],
-)
-
-cc_library(
-    name = "gpurt_kernels",
-    srcs = ["gpurt_kernels.cc"],
-    visibility = [
-        "//tensorflow/core/runtime_fallback:internal",
-        "//tensorflow/core/tfrt/saved_model:__pkg__",
-    ],
-    deps = [
-        ":kernel_fallback_compat_request_state",
-        ":kernel_fallback_utils",
-        ":tensor_util",
-        "//tensorflow/core/tfrt/utils:fallback_tensor",
-        "//tensorflow/core/tfrt/utils:gpu_variables_table",
-        "//tensorflow/core/tfrt/utils:tensor_util",
-        "@tf_runtime//:core_runtime",
-        "@tf_runtime//:hostcontext",
-        "@tf_runtime//:support",
-        "@tf_runtime//:tensor_alwayslink",
-    ],
-    alwayslink = True,
 )

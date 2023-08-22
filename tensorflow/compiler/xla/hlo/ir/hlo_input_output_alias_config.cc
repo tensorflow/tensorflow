@@ -306,7 +306,7 @@ std::string HloBufferDonorConfig::ToShortString() const {
   std::vector<std::string> pieces;
   pieces.reserve(buffer_donor_.size());
   for (const auto& donor : buffer_donor_) {
-    pieces.push_back(absl::StrFormat("%lld at %s", donor.param_number,
+    pieces.push_back(absl::StrFormat("(%lld, %s)", donor.param_number,
                                      donor.param_index.ToString()));
   }
   return absl::StrJoin(pieces, ", ");

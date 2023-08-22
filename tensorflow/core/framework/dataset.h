@@ -621,6 +621,9 @@ class SerializationContext {
   TF_DISALLOW_COPY_AND_ASSIGN(SerializationContext);
 };
 
+// Specifies the tf.data pipeline run mode.
+enum RunMode { DEFAULT, STANDALONE };
+
 // A cut-down version of `OpKernelContext` for running computations in
 // iterators. Note that we cannot simply use `OpKernelContext` here because we
 // might run computation in an iterator whose lifetime is not nested within the
@@ -753,6 +756,9 @@ class IteratorContext {
     // the iterator is created. Otherwise, they are started upon first `GetNext`
     // request. Default value is set to false to ensure backward compatibility.
     bool warm_start = false;
+
+    // Specifies the tf.data pipeline run mode.
+    RunMode run_mode = RunMode::DEFAULT;
   };
 
   explicit IteratorContext(IteratorContext* ctx)

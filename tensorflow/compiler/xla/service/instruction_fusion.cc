@@ -592,6 +592,9 @@ StatusOr<bool> InstructionFusion::Run(
 
           fusion_queue->PreFusion(operand, instruction);
           fusion_instruction = Fuse(operand, instruction, computation);
+        } else {
+          VLOG(3) << "not fusing operand " << operand->ToString() << " because "
+                  << use_regular_fusion.Explain();
         }
 
         FusionDecision use_mof;

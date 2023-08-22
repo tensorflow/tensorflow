@@ -21,6 +21,8 @@ tensorflow::swig::RegisterPyObject
 tensorflow::swig::RegisterType
 tensorflow::swig::IsEagerTensorSlow
 tensorflow::swig::GetRegisteredPyObject
+tensorflow::swig::IsTensorProtocol
+tensorflow::swig::IsCoreTypeValue
 
 [//tensorflow/python/util:cpp_nest] # nest
 tensorflow::FlattenDictItems

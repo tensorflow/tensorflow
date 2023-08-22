@@ -98,8 +98,9 @@ class DeviceList {
 // Returns the id of each device in `device_list`.
 std::vector<int> GetDeviceIds(DeviceList device_list);
 
-// Hash function for `DeviceList`. Assumes that every device has a unique
-// `Device*` address ("d1 == d2 if d1->id() == d2->id()").
+// Hash function for `DeviceList`. Assumes that every unique device has a unique
+// `Device` object, not duplicate `Device` objects ("d1 == d2 if d1->id() ==
+// d2->id()").
 template <typename H>
 H AbslHashValue(H h, const DeviceList& devices) {
   return H::combine(std::move(h), devices.devices());

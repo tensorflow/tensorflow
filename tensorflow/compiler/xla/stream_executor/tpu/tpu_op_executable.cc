@@ -15,19 +15,29 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_op_executable.h"
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/types/span.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/status.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/proto_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executable_interface.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/platform/casts.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace tensorflow {
 
