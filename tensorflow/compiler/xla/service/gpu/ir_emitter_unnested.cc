@@ -75,6 +75,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_query.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
@@ -288,6 +289,37 @@ StatusOr<std::unique_ptr<Thunk>> BuildKernelThunkForFusion(
 
   return std::make_unique<KernelThunk>(
       fusion_op, entry.kernel_name, kernel_arguments.args(), launch_dimensions);
+}
+
+// Derives the number of warps to use for processing a Triton Softmax fusion.
+int DeriveNumWarpsFromTritonSoftmaxComputation(
+    const HloComputation* computation) {
+  const HloInstruction* reduce = hlo_query::GetFirstInstructionWithOpcode(
+      *computation, HloOpcode::kReduce);
+
+  CHECK_NE(reduce, nullptr);
+  Shape reduce_input_shape = reduce->operand(0)->shape();
+
+  CHECK_EQ(reduce->dimensions().size(), 1);
+  CHECK_EQ(reduce->dimensions()[0], reduce_input_shape.rank() - 1);
+
+  int reduction_dim = reduce_input_shape.dimensions_minor(0);
+
+  int num_warps = 32;
+
+  if (reduction_dim <= 512) {
+    num_warps = 1;
+  } else if (reduction_dim <= 1024) {
+    num_warps = 2;
+  } else if (reduction_dim <= 16384) {
+    num_warps = 4;
+  } else if (reduction_dim <= 32768) {
+    num_warps = 8;
+  } else if (reduction_dim <= 65536) {
+    num_warps = 16;
+  }
+
+  return num_warps;
 }
 
 }  // namespace
@@ -1817,7 +1849,8 @@ Status IrEmitterUnnested::EmitFusion(
       if (backend_config.kind() == kTritonSoftmaxFusionKind) {
         auto& triton_config = *backend_config.mutable_triton_gemm_config();
         triton_config.set_num_stages(1);
-        triton_config.set_num_warps(4);
+        triton_config.set_num_warps(
+            DeriveNumWarpsFromTritonSoftmaxComputation(fused_computation));
         return EmitTritonFusion(fusion_op, backend_config.triton_gemm_config(),
                                 hlo_for_lmhlo);
       }
