@@ -179,6 +179,10 @@ cc_library(
 tf_python_pybind_extension(
     name = "_pywrap_py_func",
     srcs = ["py_func_wrapper.cc"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_py_func.pyi",
+    ],
     deps = [
         "//tensorflow/python:py_func_headers_lib",
         "//third_party/python_runtime:headers",
