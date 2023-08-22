@@ -459,7 +459,6 @@ StatusOr<bool> GpuMultiOutputFusion::DoMultiOutputFusion() {
         absl::StrCat("Fusing producer |", producer_name, "| into consumer |",
                      input_fusion->name(), "| inside GPU multi-output fusion"));
     RecomputeReachability();
-    GpuPerformanceModel::RecordEstimatedRunTime(input_fusion, &cost_analysis);
   }
   return changed;
 }
