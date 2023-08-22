@@ -322,14 +322,20 @@ def embedding_lookup(
   Raises:
     ValueError: If `params` is empty.
   """
+  
+  
   """
     **Behavior Difference between CPU and GPU**
 
-    Please note that when using `tf.nn.embedding_lookup` on a GPU, if an out-of-bound index is encountered, a value of 0 will be stored in the corresponding output value. 
-    On the other hand, when using `tf.nn.embedding_lookup` on a CPU, an error will be returned if an out-of-bound index is found.
+    Please note that when using `tf.nn.embedding_lookup` on a GPU, if an out-of-bound 
+    index is encountered, a value of 0 will be stored in the corresponding output value. 
+    On the other hand, when using `tf.nn.embedding_lookup` on a CPU, an error will be 
+    returned if an out-of-bound index is found.
 
-    This behavior difference can impact the results of your computation, especially when dealing with indices that may go beyond the bounds of the tensor. 
-    Make sure to be mindful of this distinction when using the `tf.nn.embedding_lookup` function in your computations.
+    This behavior difference can impact the results of your computation, especially when 
+    dealing with indices that may go beyond the bounds of the tensor. 
+    Make sure to be mindful of this distinction when using the `tf.nn.embedding_lookup` 
+    function in your computations.
 
     **Usage Example**
 
