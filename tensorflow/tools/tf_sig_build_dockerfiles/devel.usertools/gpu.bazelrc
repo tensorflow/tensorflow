@@ -16,16 +16,16 @@ build --action_env=CACHEBUSTER=565341047
 build --config=release_gpu_linux
 
 # ROCM: Set up compilation ROCM version and paths
-build:rocmclang --linkopt="-fuse-ld=gold"
-build:rocmclang --crosstool_top=@local_config_rocm//crosstool:toolchain
-build:rocmclang --define=using_rocm_hipcc=true
-build:rocmclang --define=tensorflow_mkldnn_contraction_kernel=0
-build:rocmclang --repo_env TF_NEED_ROCM=1
-build:rocmclang --action_env=TF_ROCM_CLANG="1"
-build:rocmclang --repo_env=BAZEL_COMPILER="/usr/lib/llvm-16/bin/clang"
-build:rocmclang --action_env=CLANG_COMPILER_PATH="/usr/lib/llvm-16/bin/clang"
+build:rocm --linkopt="-fuse-ld=gold"
+build:rocm --crosstool_top=@local_config_rocm//crosstool:toolchain
+build:rocm --define=using_rocm_hipcc=true
+build:rocm --define=tensorflow_mkldnn_contraction_kernel=0
+build:rocm --repo_env TF_NEED_ROCM=1
+build:rocm --action_env=TF_ROCM_CLANG="1"
+build:rocm --repo_env=BAZEL_COMPILER="/usr/lib/llvm-16/bin/clang"
+build:rocm --action_env=CLANG_COMPILER_PATH="/usr/lib/llvm-16/bin/clang"
 # Disable unused-result on rocm builds.
-build:rocmclang --copt="-Wno-error=unused-result"
+build:rocm --copt="-Wno-error=unused-result"
 
 # Test-related settings below this point.
 test:rocmclang --test_env=HSA_TOOLS_LIB=libroctracer64.so --test_sharding_strategy=disabled
