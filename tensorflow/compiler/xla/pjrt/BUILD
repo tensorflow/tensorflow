@@ -447,7 +447,6 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executable_interface",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_interface",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_initializer_framework_helper",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_on_demand_compiler",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_platform_interface",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_topology_external",
