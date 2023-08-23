@@ -237,6 +237,56 @@ diff -ruN --strip-trailing-cr a/clang/lib/AST/Interp/InterpBuiltin.cpp b/clang/l
      break;
  
    case Builtin::BI__builtin_fabs:
+diff -ruN --strip-trailing-cr a/clang/lib/CodeGen/CGDebugInfo.cpp b/clang/lib/CodeGen/CGDebugInfo.cpp
+--- a/clang/lib/CodeGen/CGDebugInfo.cpp
++++ b/clang/lib/CodeGen/CGDebugInfo.cpp
+@@ -391,14 +391,12 @@
+   SourceManager &SM = CGM.getContext().getSourceManager();
+   StringRef FileName;
+   FileID FID;
+-  std::optional<llvm::DIFile::ChecksumInfo<StringRef>> CSInfo;
+ 
+   if (Loc.isInvalid()) {
+     // The DIFile used by the CU is distinct from the main source file. Call
+     // createFile() below for canonicalization if the source file was specified
+     // with an absolute path.
+     FileName = TheCU->getFile()->getFilename();
+-    CSInfo = TheCU->getFile()->getChecksum();
+   } else {
+     PresumedLoc PLoc = SM.getPresumedLoc(Loc);
+     FileName = PLoc.getFilename();
+@@ -419,13 +417,13 @@
+       return cast<llvm::DIFile>(V);
+   }
+ 
+-  if (!CSInfo) {
+-    SmallString<64> Checksum;
+-    std::optional<llvm::DIFile::ChecksumKind> CSKind =
++  SmallString<64> Checksum;
++
++  std::optional<llvm::DIFile::ChecksumKind> CSKind =
+       computeChecksum(FID, Checksum);
+-    if (CSKind)
+-      CSInfo.emplace(*CSKind, Checksum);
+-  }
++  std::optional<llvm::DIFile::ChecksumInfo<StringRef>> CSInfo;
++  if (CSKind)
++    CSInfo.emplace(*CSKind, Checksum);
+   return createFile(FileName, CSInfo, getSource(SM, SM.getFileID(Loc)));
+ }
+ 
+diff -ruN --strip-trailing-cr a/clang/lib/CodeGen/CGDebugInfo.h b/clang/lib/CodeGen/CGDebugInfo.h
+--- a/clang/lib/CodeGen/CGDebugInfo.h
++++ b/clang/lib/CodeGen/CGDebugInfo.h
+@@ -148,7 +148,7 @@
+   llvm::BumpPtrAllocator DebugInfoNames;
+   StringRef CWDName;
+ 
+-  llvm::DenseMap<const char *, llvm::TrackingMDRef> DIFileCache;
++  llvm::StringMap<llvm::TrackingMDRef> DIFileCache;
+   llvm::DenseMap<const FunctionDecl *, llvm::TrackingMDRef> SPCache;
+   /// Cache declarations relevant to DW_TAG_imported_declarations (C++
+   /// using declarations and global alias variables) that aren't covered
 diff -ruN --strip-trailing-cr a/clang/test/AST/Interp/builtin-functions.cpp b/clang/test/AST/Interp/builtin-functions.cpp
 --- a/clang/test/AST/Interp/builtin-functions.cpp
 +++ b/clang/test/AST/Interp/builtin-functions.cpp
@@ -365,3 +415,24 @@ diff -ruN --strip-trailing-cr a/clang/test/AST/Interp/builtin-functions.cpp b/cl
    char classify_zero    [__builtin_fpclassify(-1, -1, -1, -1, +1, 0.0)];
    char classify_neg_zero[__builtin_fpclassify(-1, -1, -1, -1, +1, -0.0)];
    char classify_subnorm [__builtin_fpclassify(-1, -1, -1, +1, -1, 1.0e-38f)];
+diff -ruN --strip-trailing-cr a/clang/test/CodeGenCXX/debug-info-function-context.cpp b/clang/test/CodeGenCXX/debug-info-function-context.cpp
+--- a/clang/test/CodeGenCXX/debug-info-function-context.cpp
++++ b/clang/test/CodeGenCXX/debug-info-function-context.cpp
+@@ -1,5 +1,5 @@
+ // RUN: %clang_cc1 -emit-llvm -debug-info-kind=limited -triple x86_64-pc-linux-gnu %s \
+-// RUN:     -dwarf-version=5 -main-file-name debug-info-function-context.cpp  -o - | FileCheck %s
++// RUN:     -dwarf-version=5 -main-file-name %s  -o - | FileCheck %s
+ 
+ struct C {
+   void member_function();
+@@ -31,8 +31,8 @@
+ 
+ // The first DIFile is for the CU, the second is what everything else uses.
+ // We're using DWARF v5 so both should have MD5 checksums.
+-// CHECK: !DIFile(filename: "{{.*}}context.cpp",{{.*}} checksumkind: CSK_MD5, checksum: [[CKSUM:".*"]]
+-// CHECK: ![[FILE:[0-9]+]] = !DIFile(filename: "{{.*}}context.cpp",{{.*}} checksumkind: CSK_MD5, checksum: [[CKSUM]]
++// CHECK: !DIFile(filename: "{{.*}}context.cpp",{{.*}} checksumkind: CSK_MD5
++// CHECK: ![[FILE:[0-9]+]] = !DIFile(filename: "{{.*}}context.cpp",{{.*}} checksumkind: CSK_MD5
+ // CHECK: ![[C:[0-9]+]] = distinct !DICompositeType(tag: DW_TAG_structure_type, name: "C",
+ // CHECK: ![[NS:.*]] = !DINamespace(name: "ns"
+ // CHECK: !DISubprogram(name: "member_function",{{.*}} scope: ![[C]],{{.*}} DISPFlagDefinition
