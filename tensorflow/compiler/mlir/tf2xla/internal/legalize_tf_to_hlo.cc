@@ -21,6 +21,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tf2xla/api/v0/compile_tf_graph.h"
+#include "tensorflow/compiler/mlir/tf2xla/internal/compilation_timer.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/legalize_tf_mlir.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
@@ -31,11 +32,19 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
+#include "tensorflow/tsl/lib/monitoring/sampler.h"
 #include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace tf2xla {
 namespace internal {
+auto* phase2_combined_bridge_compilation_time =
+    tsl::monitoring::Sampler<1>::New(
+        {"/tensorflow/core/tf2xla/api/v1/phase2_combined_compilation_time",
+         "The wall-clock time spent on combined graphs in milliseconds.",
+         "configuration"},
+        // Power of 1.5 with bucket count 45 (> 23 hours)
+        {tsl::monitoring::Buckets::Exponential(1, 1.5, 45)});
 
 using metrics::IncrementTfMlirBridgeSecondPhaseCounter;
 using metrics::MlirBridgeSecondPhaseMetric;
@@ -51,6 +60,9 @@ tsl::StatusOr<XlaCompilationResult> LegalizeTfToHlo(
     std::vector<std::vector<xla::Shape>>* per_core_arg_shapes,
     std::vector<std::unique_ptr<mlir::Pass>>& custom_legalization_passes,
     xla::CompileOnlyClient* client, XlaCompilationResult* compilation_result) {
+  CompilationTimer timer;
+  constexpr char kCombinedBridgeTimer[] = "combined_bridge";
+
   auto mlir_compilation = internal::CompileFromMlirToXlaHlo(
       /*lower_to_xla_hlo=*/false, computation, metadata, device_type,
       shape_determination_fns, use_tuple_args, compilation_result,
@@ -78,6 +90,9 @@ tsl::StatusOr<XlaCompilationResult> LegalizeTfToHlo(
   }
   IncrementTfMlirBridgeSecondPhaseCounter(
       MlirBridgeSecondPhaseMetric::kMlirCombinedOldSuccess);
+
+  phase2_combined_bridge_compilation_time->GetCell(kCombinedBridgeTimer)
+      ->Add(timer.ElapsedCyclesInMilliseconds());
   return *compilation_result;
 }
 
