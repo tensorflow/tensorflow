@@ -2065,7 +2065,6 @@ StatusOr<DynamicDimensionInference> DynamicDimensionInference::Run(
     ShapeCheckMode shape_check_mode,
     const AssertionGenerator& assertion_generator,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  VLOG(2) << "Param Config " << module->dynamic_parameter_binding().ToString();
   DynamicDimensionInference inference(module, std::move(custom_call_handler),
                                       shape_check_mode, assertion_generator,
                                       execution_threads);
@@ -2099,8 +2098,8 @@ DynamicDimensionInference::DynamicDimensionInference(
 
 Status DynamicDimensionInference::AnalyzeDynamicDimensions() {
   return DynamicDimensionInferenceVisitor::Run(
-      module_->entry_computation(), module_->dynamic_parameter_binding(), this,
-      custom_call_handler_, shape_check_mode_, assertion_generator_);
+      module_->entry_computation(), {}, this, custom_call_handler_,
+      shape_check_mode_, assertion_generator_);
 }
 
 void DynamicDimensionInference::ReplaceAllDynamicDimensionUsesWith(

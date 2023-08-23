@@ -207,53 +207,6 @@ def MHLO_CrossProgramPrefetch : AttrDef<MHLO_Dialect, "CrossProgramPrefetch"> {
   let assemblyFormat = "`<` struct(params) `>`";
 }
 
-def MHLO_DynamicParameterBinding : AttrDef<MHLO_Dialect, "DynamicParameterBinding"> {
-  let mnemonic = "dynamic_parameter_binding";
-  let summary = "Indicates which parameters represent dynamic dimension sizes.";
-  let description = [{
-    This attribute indicates which parameters to the `main` function of a
-    given module have the runtime values for dynamic dimension sizes for
-    other parameters.
-
-    Each binding here specifies that parameter containing the runtime value of
-    the dynamic dimension size `dynamic_param_num` (which contains the
-    runtime size at a subshape given by the shape index
-    `dynamic_param_index`) and the dimension for which that is the size,
-    which is the `target_param_dim_num` dimension of the `target_param_num`
-    parameter to `main` at subshape `target_param_index`.
-
-    See cross_program_prefetch for a discussion of subshapes.
-
-    For example,
-
-    module @main attributes {
-     mhlo.dynamic_parameter_bindings = [
-       #mhlo.dynamic_parameter_binding<
-         dynamic_param_num = 0,
-         dynamic_param_indices = [],
-         target_param_num = 1,
-         target_param_indices = [],
-         target_param_dim_num = 0>] } {
-     func.func @main(%a : tensor<f32>, %b : tensor<?xf32, #mhlo.type_extensions<bounds = [2]>>) -> () {
-       func.return
-     }
-    }
-
-    Here, 'b' (param index 1) has a dynamic shape whose real size is
-    determined at runtime. 'a' represents the real size of b's zeroth
-    dimension.
-
-  }];
-  let parameters = (ins
-      "int64_t":$dynamic_param_num,
-      MHLO_Dims:$dynamic_param_indices,
-      "int64_t":$target_param_num,
-      MHLO_Dims:$target_param_indices,
-      "int64_t":$target_param_dim_num
-  );
-  let assemblyFormat = "`<` struct(params) `>`";
-}
-
 // Note: This is an experimental attribute and shouldn't be relied upon for
 // production.
 def MHLO_TypeExtensions : AttrDef<MHLO_Dialect, "TypeExtensions", [

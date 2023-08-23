@@ -7067,70 +7067,6 @@ LogicalResult verifyCrossProgramPrefetchAttr(CrossProgramPrefetchAttr cpp,
   return success();
 }
 
-// Each DynamicParameterBinding specifies a dynamic parameter, a target
-// parameter, a shape index of each and a target dimension.
-// (1) the parameters must be valid
-// (2) there must be a subshape at the given ShapeIndex for each parameter
-// (3) the given subshape for the dynamic parameter must be of type tensor<i32>
-// (4) there must be a dimension at the given dimension number for the given
-// subshape of the target parameter
-// (5) that dimension is dynamic
-LogicalResult verifyDynamicParameterBinding(DynamicParameterBindingAttr bind,
-                                            ModuleOp module) {
-  func::FuncOp main = module.lookupSymbol<func::FuncOp>("main");
-
-  // (1)
-  if (bind.getDynamicParamNum() >= main.getNumArguments() ||
-      bind.getTargetParamNum() >= main.getNumArguments())
-    return module->emitOpError()
-           << "dynamic_parameter_binding: parameters "
-           << bind.getDynamicParamNum() << " and " << bind.getTargetParamNum()
-           << " out of range. main has only " << main.getNumArguments()
-           << " arguments";
-
-  // (2)
-  auto dynamicParamSubshape =
-      getTypeFromTupleIndices(
-          main.getArgument(bind.getDynamicParamNum()).getType(),
-          bind.getDynamicParamIndices())
-          .dyn_cast_or_null<RankedTensorType>();
-  if (!dynamicParamSubshape)
-    return module->emitOpError() << "dynamic_parameter_binding: no ranked "
-                                    "tensor type at dynamic_param_indices: "
-                                 << bind.getDynamicParamIndices();
-  // (3)
-  if (dynamicParamSubshape.getRank() != 0 ||
-      !dynamicParamSubshape.getElementType().isInteger(32))
-    return module->emitOpError()
-           << "dynamic_parameter_binding: dynamic size must be tensor<i32>";
-
-  // (2)
-  auto targetParamSubshape =
-      getTypeFromTupleIndices(
-          main.getArgument(bind.getTargetParamNum()).getType(),
-          bind.getTargetParamIndices())
-          .dyn_cast_or_null<RankedTensorType>();
-  if (!targetParamSubshape)
-    return module->emitOpError() << "dynamic_parameter_binding: no ranked "
-                                    "tensor type at target_param_indices: "
-                                 << bind.getTargetParamIndices();
-  // (4)
-  if (targetParamSubshape.getRank() <= bind.getTargetParamDimNum())
-    return module->emitOpError()
-           << "dynamic_parameter_binding: no dimension number "
-           << bind.getTargetParamDimNum() << " in target subshape "
-           << targetParamSubshape;
-
-  // (5)
-  if (!targetParamSubshape.isDynamicDim(bind.getTargetParamDimNum()))
-    return module->emitOpError()
-           << "dynamic_parameter_binding: dimension number "
-           << bind.getTargetParamDimNum() << " in target subshape "
-           << targetParamSubshape << " is not dynamic";
-
-  return success();
-}
-
 //===----------------------------------------------------------------------===//
 // Builder utilities
 //===----------------------------------------------------------------------===//
@@ -7270,23 +7206,6 @@ LogicalResult MhloDialect::verifyOperationAttribute(Operation* op,
         return op->emitOpError()
                << "has cross_program_prefetches but is not a module";
       auto res = verifyCrossProgramPrefetchAttr(prefetchAttr, module);
-      if (failed(res)) return res;
-    }
-  }
-  if (attr.getName() == "mhlo.dynamic_parameter_bindings") {
-    auto arrayAttr = attr.getValue().dyn_cast<ArrayAttr>();
-    if (!arrayAttr)
-      return op->emitOpError() << "dynamic_parameter_bindings must be an array";
-    auto module = dyn_cast<ModuleOp>(op);
-    if (!module)
-      return op->emitOpError()
-             << "has dynamic_parameter_bindings but is not a module";
-    for (auto attrElt : arrayAttr) {
-      auto bindingAttr = attrElt.dyn_cast<DynamicParameterBindingAttr>();
-      if (!bindingAttr)
-        return op->emitOpError() << "dynamic_parameter_bindings must be an "
-                                    "array of dynamic_parameter_binding attrs";
-      auto res = verifyDynamicParameterBinding(bindingAttr, module);
       if (failed(res)) return res;
     }
   }

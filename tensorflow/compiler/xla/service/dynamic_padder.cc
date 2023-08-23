@@ -2175,37 +2175,6 @@ StatusOr<bool> DynamicPadder::Run(
   bool changed = false;
   VLOG(2) << "Pre DynamicPadder HLO:";
   XLA_VLOG_LINES(2, module->ToString());
-  // Removes dynamic dimensions on parameters if there is already a binding for
-  // it. We do this because we have two different APIs to express a dynamic
-  // dimension:
-  //
-  // 1. Dynamic dimension as specified directly in the shape -- Needed for
-  // PyTorch.
-  //
-  // 2. Dynamic dimension using dynamic parameter binding object. This
-  // is needed for tensorflow.
-  //
-  // For case 1, we will insert "pad-to-static" instruction in the
-  // beginning of xla execution, to make it into a static layout.
-  //
-  // For case 2, since it already has a static layout, we remove the
-  // dynamic dimension.
-  //
-  // TODO(b/145140571): Convert all API invocations to case 1.
-  //
-  TF_RETURN_IF_ERROR(module->dynamic_parameter_binding().ForEachBinding(
-      [&](const DynamicParameterBinding::DynamicParameter& dynamic_parameter,
-          const DynamicParameterBinding::DynamicDimension& dynamic_dimension)
-          -> Status {
-        HloInstruction* parameter =
-            module->entry_computation()->parameter_instruction(
-                dynamic_dimension.parameter_num);
-        ShapeUtil::UpdateDynamicDimension(parameter->mutable_shape(),
-                                          dynamic_dimension.parameter_index,
-                                          dynamic_dimension.dimension, false);
-        return OkStatus();
-      }));
-
   TF_RETURN_IF_ERROR(
       InsertPadToStaticAfterModuleInputs(module, execution_threads));
   TF_ASSIGN_OR_RETURN(
