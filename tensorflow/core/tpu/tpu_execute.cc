@@ -377,8 +377,25 @@ std::pair<CancellationToken, bool> RegisterCancellation(
   return std::pair<CancellationToken, bool>(token, already_cancelled);
 }
 
+struct DestroyOCParams {
+  void operator()(SE_OutsideCompilationParams* params) {
+    if (params == nullptr) {
+      return;
+    }
+    delete[] params->device_name;
+    delete[] params->rendezvous_key;
+    Destroy(params->rendezvous);
+    delete params->rendezvous;
+    if (params->host_transfers.size > 0) {
+      StreamExecutor_Tpu_FreeSerializedProto(&params->host_transfers);
+    }
+    delete params;
+  }
+};
+
 typedef std::unique_ptr<SE_OutsideCompilationParams, DestroyOCParams>
     OcParamsPtr;
+
 void UnregisterCancellation(OpKernelContext* ctx,
                             CancellationManager* cancellation_manager,
                             se::Stream* stream, int device_ordinal,
