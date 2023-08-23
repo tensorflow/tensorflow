@@ -1,4 +1,46 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/clang/docs/ReleaseNotes.rst b/clang/docs/ReleaseNotes.rst
+--- a/clang/docs/ReleaseNotes.rst
++++ b/clang/docs/ReleaseNotes.rst
+@@ -92,10 +92,6 @@
+ 
+ Resolutions to C++ Defect Reports
+ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+-- Implemented `CWG1473 <https://wg21.link/CWG1473>`_ which allows spaces after ``operator""``.
+-  Clang used to err on the lack of space when the literal suffix identifier was invalid in
+-  all the language modes, which contradicted the deprecation of the whitespaces.
+-  Also turn on ``-Wdeprecated-literal-operator`` by default in all the language modes.
+ 
+ C Language Changes
+ ------------------
+diff -ruN --strip-trailing-cr a/clang/include/clang/Basic/DiagnosticLexKinds.td b/clang/include/clang/Basic/DiagnosticLexKinds.td
+--- a/clang/include/clang/Basic/DiagnosticLexKinds.td
++++ b/clang/include/clang/Basic/DiagnosticLexKinds.td
+@@ -276,6 +276,12 @@
+   "identifier after literal will be treated as a reserved user-defined literal "
+   "suffix in C++11">,
+   InGroup<CXX11CompatReservedUserDefinedLiteral>, DefaultIgnore;
++def ext_reserved_user_defined_literal : ExtWarn<
++  "invalid suffix on literal; C++11 requires a space between literal and "
++  "identifier">, InGroup<ReservedUserDefinedLiteral>, DefaultError;
++def ext_ms_reserved_user_defined_literal : ExtWarn<
++  "invalid suffix on literal; C++11 requires a space between literal and "
++  "identifier">, InGroup<ReservedUserDefinedLiteral>;
+ def err_unsupported_string_concat : Error<
+   "unsupported non-standard concatenation of string literals">;
+ 
+diff -ruN --strip-trailing-cr a/clang/include/clang/Basic/DiagnosticSemaKinds.td b/clang/include/clang/Basic/DiagnosticSemaKinds.td
+--- a/clang/include/clang/Basic/DiagnosticSemaKinds.td
++++ b/clang/include/clang/Basic/DiagnosticSemaKinds.td
+@@ -411,7 +411,7 @@
+   InGroup<ReservedIdentifier>, DefaultIgnore;
+ def warn_deprecated_literal_operator_id: Warning<
+   "identifier %0 preceded by whitespace in a literal operator declaration "
+-  "is deprecated">, InGroup<DeprecatedLiteralOperator>;
++  "is deprecated">, InGroup<DeprecatedLiteralOperator>, DefaultIgnore;
+ def warn_reserved_module_name : Warning<
+   "%0 is a reserved name for a module">, InGroup<ReservedModuleIdentifier>;
+ 
 diff -ruN --strip-trailing-cr a/clang/lib/AST/Interp/Integral.h b/clang/lib/AST/Interp/Integral.h
 --- a/clang/lib/AST/Interp/Integral.h
 +++ b/clang/lib/AST/Interp/Integral.h
@@ -287,6 +329,67 @@ diff -ruN --strip-trailing-cr a/clang/lib/CodeGen/CGDebugInfo.h b/clang/lib/Code
    llvm::DenseMap<const FunctionDecl *, llvm::TrackingMDRef> SPCache;
    /// Cache declarations relevant to DW_TAG_imported_declarations (C++
    /// using declarations and global alias variables) that aren't covered
+diff -ruN --strip-trailing-cr a/clang/lib/Lex/Lexer.cpp b/clang/lib/Lex/Lexer.cpp
+--- a/clang/lib/Lex/Lexer.cpp
++++ b/clang/lib/Lex/Lexer.cpp
+@@ -2009,11 +2009,53 @@
+   }
+ 
+   // C++11 [lex.ext]p10, [usrlit.suffix]p1: A program containing a ud-suffix
+-  // that does not start with an underscore is ill-formed. We assume a suffix
+-  // beginning with a UCN or UTF-8 character is more likely to be a ud-suffix
+-  // than a macro, however, and accept that.
+-  if (!Consumed)
++  // that does not start with an underscore is ill-formed. As a conforming
++  // extension, we treat all such suffixes as if they had whitespace before
++  // them. We assume a suffix beginning with a UCN or UTF-8 character is more
++  // likely to be a ud-suffix than a macro, however, and accept that.
++  if (!Consumed) {
++    bool IsUDSuffix = false;
++    if (C == '_')
++      IsUDSuffix = true;
++    else if (IsStringLiteral && LangOpts.CPlusPlus14) {
++      // In C++1y, we need to look ahead a few characters to see if this is a
++      // valid suffix for a string literal or a numeric literal (this could be
++      // the 'operator""if' defining a numeric literal operator).
++      const unsigned MaxStandardSuffixLength = 3;
++      char Buffer[MaxStandardSuffixLength] = { C };
++      unsigned Consumed = Size;
++      unsigned Chars = 1;
++      while (true) {
++        unsigned NextSize;
++        char Next = getCharAndSizeNoWarn(CurPtr + Consumed, NextSize, LangOpts);
++        if (!isAsciiIdentifierContinue(Next)) {
++          // End of suffix. Check whether this is on the allowed list.
++          const StringRef CompleteSuffix(Buffer, Chars);
++          IsUDSuffix =
++              StringLiteralParser::isValidUDSuffix(LangOpts, CompleteSuffix);
++          break;
++        }
++
++        if (Chars == MaxStandardSuffixLength)
++          // Too long: can't be a standard suffix.
++          break;
++
++        Buffer[Chars++] = Next;
++        Consumed += NextSize;
++      }
++    }
++
++    if (!IsUDSuffix) {
++      if (!isLexingRawMode())
++        Diag(CurPtr, LangOpts.MSVCCompat
++                         ? diag::ext_ms_reserved_user_defined_literal
++                         : diag::ext_reserved_user_defined_literal)
++            << FixItHint::CreateInsertion(getSourceLocation(CurPtr), " ");
++      return CurPtr;
++    }
++
+     CurPtr = ConsumeChar(CurPtr, Size, Result);
++  }
+ 
+   Result.setFlag(Token::HasUDSuffix);
+   while (true) {
 diff -ruN --strip-trailing-cr a/clang/test/AST/Interp/builtin-functions.cpp b/clang/test/AST/Interp/builtin-functions.cpp
 --- a/clang/test/AST/Interp/builtin-functions.cpp
 +++ b/clang/test/AST/Interp/builtin-functions.cpp
@@ -415,6 +518,553 @@ diff -ruN --strip-trailing-cr a/clang/test/AST/Interp/builtin-functions.cpp b/cl
    char classify_zero    [__builtin_fpclassify(-1, -1, -1, -1, +1, 0.0)];
    char classify_neg_zero[__builtin_fpclassify(-1, -1, -1, -1, +1, -0.0)];
    char classify_subnorm [__builtin_fpclassify(-1, -1, -1, +1, -1, 1.0e-38f)];
+diff -ruN --strip-trailing-cr a/clang/test/CXX/drs/dr14xx.cpp b/clang/test/CXX/drs/dr14xx.cpp
+--- a/clang/test/CXX/drs/dr14xx.cpp
++++ b/clang/test/CXX/drs/dr14xx.cpp
+@@ -484,17 +484,8 @@
+ #endif
+ } // dr1467
+ 
+-namespace dr1473 { // dr1473: 18
+-                   // NB: sup 1762, test reused there
+-#if __cplusplus >= 201103L
+-  float operator ""_E(const char *);
+-  float operator ""E(const char *); // don't err on the lack of spaces even when the literal suffix identifier is invalid
+-  // expected-warning@-1 {{user-defined literal suffixes not starting with '_' are reserved; no literal will invoke this operator}}
+-#endif
+-}
+-
+ namespace dr1479 { // dr1479: yes
+-  int operator""_a(const char*, std::size_t = 0); // expected-error {{literal operator cannot have a default argument}}
++  int operator"" _a(const char*, std::size_t = 0); // expected-error {{literal operator cannot have a default argument}}
+ }
+ 
+ namespace dr1482 { // dr1482: yes
+diff -ruN --strip-trailing-cr a/clang/test/CXX/drs/dr17xx.cpp b/clang/test/CXX/drs/dr17xx.cpp
+--- a/clang/test/CXX/drs/dr17xx.cpp
++++ b/clang/test/CXX/drs/dr17xx.cpp
+@@ -139,11 +139,11 @@
+ }
+ 
+ namespace dr1762 { // dr1762: 14
+-                   // NB: reusing 1473 test
+ #if __cplusplus >= 201103L
+   float operator ""_E(const char *);
++  // expected-error@+2 {{invalid suffix on literal; C++11 requires a space between literal and identifier}}
++  // expected-warning@+1 {{user-defined literal suffixes not starting with '_' are reserved; no literal will invoke this operator}}
+   float operator ""E(const char *);
+-  // expected-warning@-1 {{user-defined literal suffixes not starting with '_' are reserved; no literal will invoke this operator}}
+ #endif
+ }
+ 
+diff -ruN --strip-trailing-cr a/clang/test/CXX/drs/dr25xx.cpp b/clang/test/CXX/drs/dr25xx.cpp
+--- a/clang/test/CXX/drs/dr25xx.cpp
++++ b/clang/test/CXX/drs/dr25xx.cpp
+@@ -64,6 +64,8 @@
+ 
+ namespace dr2521 { // dr2521: 17
+ #if __cplusplus >= 201103L
++#pragma clang diagnostic push
++#pragma clang diagnostic warning "-Wdeprecated-literal-operator"
+ long double operator""      _\u03C0___(long double);
+ // expected-warning@-1 {{identifier '_π___' preceded by whitespace in a literal operator declaration is deprecated}}
+ // expected-warning@-2 {{user-defined literal suffixes containing '__' are reserved}}
+@@ -75,6 +77,7 @@
+ using ::dr2521::operator"" _\u03C0___;
+ using ::dr2521::operator""_div;
+ // expected-warning@-2 {{identifier '_π___' preceded by whitespace in a literal operator declaration is deprecated}}
++#pragma clang diagnostic pop
+ #endif
+ } // namespace dr2521
+ 
+diff -ruN --strip-trailing-cr a/clang/test/CXX/lex/lex.literal/lex.ext/p1.cpp b/clang/test/CXX/lex/lex.literal/lex.ext/p1.cpp
+--- a/clang/test/CXX/lex/lex.literal/lex.ext/p1.cpp
++++ b/clang/test/CXX/lex/lex.literal/lex.ext/p1.cpp
+@@ -1,7 +1,7 @@
+ // RUN: %clang_cc1 -fsyntax-only -std=c++11 -verify %s
+ 
+-void operator ""p31(long double); // expected-warning{{user-defined literal suffixes not starting with '_' are reserved}}
+-void operator ""_p31(long double);
+-long double operator ""pi(long double); // expected-warning{{user-defined literal suffixes not starting with '_' are reserved}}
++void operator "" p31(long double); // expected-warning{{user-defined literal suffixes not starting with '_' are reserved}}
++void operator "" _p31(long double);
++long double operator "" pi(long double); // expected-warning{{user-defined literal suffixes not starting with '_' are reserved}}
+ 
+ float hexfloat = 0x1p31; // allow hexfloats
+diff -ruN --strip-trailing-cr a/clang/test/CXX/lex/lex.literal/lex.ext/p10.cpp b/clang/test/CXX/lex/lex.literal/lex.ext/p10.cpp
+--- a/clang/test/CXX/lex/lex.literal/lex.ext/p10.cpp
++++ b/clang/test/CXX/lex/lex.literal/lex.ext/p10.cpp
+@@ -1,14 +1,14 @@
+ // RUN: %clang_cc1 -std=c++11 -verify %s
+ 
+ using size_t = decltype(sizeof(int));
+-void operator ""wibble(const char *); // expected-warning {{user-defined literal suffixes not starting with '_' are reserved; no literal will invoke this operator}}
+-void operator ""wibble(const char *, size_t); // expected-warning {{user-defined literal suffixes not starting with '_' are reserved; no literal will invoke this operator}}
++void operator "" wibble(const char *); // expected-warning {{user-defined literal suffixes not starting with '_' are reserved; no literal will invoke this operator}}
++void operator "" wibble(const char *, size_t); // expected-warning {{user-defined literal suffixes not starting with '_' are reserved; no literal will invoke this operator}}
+ 
+ template<typename T>
+ void f() {
+   // A program containing a reserved ud-suffix is ill-formed.
+   123wibble; // expected-error {{invalid suffix 'wibble'}}
+   123.0wibble; // expected-error {{invalid suffix 'wibble'}}
+-  const char *p = ""wibble; // expected-error {{cannot initialize a variable of type 'const char *' with an rvalue of type 'void'}}
+-  const char *q = R"x("hello")x"wibble; // expected-error {{cannot initialize a variable of type 'const char *' with an rvalue of type 'void'}}
++  const char *p = ""wibble; // expected-error {{invalid suffix on literal; C++11 requires a space between literal and identifier}} expected-error {{expected ';'}}
++  const char *q = R"x("hello")x"wibble; // expected-error {{invalid suffix on literal; C++11 requires a space between literal and identifier}} expected-error {{expected ';'}}
+ }
+diff -ruN --strip-trailing-cr a/clang/test/CXX/lex/lex.literal/lex.ext/p11.cpp b/clang/test/CXX/lex/lex.literal/lex.ext/p11.cpp
+--- a/clang/test/CXX/lex/lex.literal/lex.ext/p11.cpp
++++ b/clang/test/CXX/lex/lex.literal/lex.ext/p11.cpp
+@@ -6,16 +6,16 @@
+ template<typename T> struct same_type<T, T> {};
+ template<typename T> using X = T;
+ template<typename CharT, X<CharT>...>
+-int operator ""_x(); // expected-warning {{string literal operator templates are a GNU extension}}
++int operator "" _x(); // expected-warning {{string literal operator templates are a GNU extension}}
+ template<char...>
+-double operator ""_x();
++double operator "" _x();
+ 
+ auto a="string"_x;
+ auto b=42_x;
+ same_type<decltype(a), int> test_a;
+ same_type<decltype(b), double> test_b;
+ 
+-char operator ""_x(const char *begin, size_t size);
++char operator "" _x(const char *begin, size_t size);
+ auto c="string"_x;
+ auto d=L"string"_x;
+ same_type<decltype(c), char> test_c;
+diff -ruN --strip-trailing-cr a/clang/test/CXX/lex/lex.literal/lex.ext/p3.cpp b/clang/test/CXX/lex/lex.literal/lex.ext/p3.cpp
+--- a/clang/test/CXX/lex/lex.literal/lex.ext/p3.cpp
++++ b/clang/test/CXX/lex/lex.literal/lex.ext/p3.cpp
+@@ -1,18 +1,18 @@
+ // RUN: %clang_cc1 -fsyntax-only -std=c++11 -verify %s
+ 
+-int &operator ""_x1 (unsigned long long);
++int &operator "" _x1 (unsigned long long);
+ int &i1 = 0x123_x1;
+ 
+-double &operator ""_x1 (const char *);
++double &operator "" _x1 (const char *);
+ int &i2 = 45_x1;
+ 
+-template<char...> char &operator ""_x1 ();
++template<char...> char &operator "" _x1 ();
+ int &i3 = 0377_x1;
+ 
+ int &i4 = 90000000000000000000000000000000000000000000000_x1; // expected-error {{integer literal is too large to be represented in any integer type}}
+ 
+-double &operator ""_x2 (const char *);
++double &operator "" _x2 (const char *);
+ double &i5 = 123123123123123123123123123123123123123123123_x2;
+ 
+-template<char...Cs> constexpr int operator ""_x3() { return sizeof...(Cs); }
++template<char...Cs> constexpr int operator "" _x3() { return sizeof...(Cs); }
+ static_assert(123456789012345678901234567890123456789012345678901234567890_x3 == 60, "");
+diff -ruN --strip-trailing-cr a/clang/test/CXX/lex/lex.literal/lex.ext/p4.cpp b/clang/test/CXX/lex/lex.literal/lex.ext/p4.cpp
+--- a/clang/test/CXX/lex/lex.literal/lex.ext/p4.cpp
++++ b/clang/test/CXX/lex/lex.literal/lex.ext/p4.cpp
+@@ -1,18 +1,18 @@
+ // RUN: %clang_cc1 -fsyntax-only -std=c++11 -verify %s
+ 
+-int &operator ""_x1 (long double);
++int &operator "" _x1 (long double);
+ int &i1 = 0.123_x1;
+ 
+-double &operator ""_x1 (const char *);
++double &operator "" _x1 (const char *);
+ int &i2 = 45._x1;
+ 
+-template<char...> char &operator ""_x1 ();
++template<char...> char &operator "" _x1 ();
+ int &i3 = 0377e-1_x1;
+ 
+ int &i4 = 1e1000000_x1; // expected-warning {{too large for type 'long double'}}
+ 
+-double &operator ""_x2 (const char *);
++double &operator "" _x2 (const char *);
+ double &i5 = 1e1000000_x2;
+ 
+-template<char...Cs> constexpr int operator ""_x3() { return sizeof...(Cs); }
++template<char...Cs> constexpr int operator "" _x3() { return sizeof...(Cs); }
+ static_assert(1e1000000_x3 == 9, "");
+diff -ruN --strip-trailing-cr a/clang/test/CXX/lex/lex.literal/lex.ext/p5.cpp b/clang/test/CXX/lex/lex.literal/lex.ext/p5.cpp
+--- a/clang/test/CXX/lex/lex.literal/lex.ext/p5.cpp
++++ b/clang/test/CXX/lex/lex.literal/lex.ext/p5.cpp
+@@ -3,19 +3,19 @@
+ 
+ using size_t = decltype(sizeof(int));
+ 
+-int &operator ""_x1 (const char *);
+-double &operator ""_x1 (const char *, size_t);
++int &operator "" _x1 (const char *);
++double &operator "" _x1 (const char *, size_t);
+ double &i1 = "foo"_x1;
+ #if __cplusplus >= 202002L
+ using char8 = float;
+-float &operator ""_x1 (const char8_t *, size_t);
++float &operator "" _x1 (const char8_t *, size_t);
+ #else
+ using char8 = double;
+ #endif
+ char8 &i2 = u8"foo"_x1;
+ double &i3 = L"foo"_x1; // expected-error {{no matching literal operator for call to 'operator""_x1' with arguments of types 'const wchar_t *' and 'unsigned long'}}
+ 
+-char &operator ""_x1(const wchar_t *, size_t);
++char &operator "" _x1(const wchar_t *, size_t);
+ char &i4 = L"foo"_x1; // ok
+ double &i5 = R"(foo)"_x1; // ok
+ char8 &i6 = u\
+diff -ruN --strip-trailing-cr a/clang/test/CXX/lex/lex.literal/lex.ext/p6.cpp b/clang/test/CXX/lex/lex.literal/lex.ext/p6.cpp
+--- a/clang/test/CXX/lex/lex.literal/lex.ext/p6.cpp
++++ b/clang/test/CXX/lex/lex.literal/lex.ext/p6.cpp
+@@ -2,13 +2,13 @@
+ 
+ using size_t = decltype(sizeof(int));
+ 
+-int &operator ""_x1 (const char *);
++int &operator "" _x1 (const char *);
+ double &i1 = 'a'_x1; // expected-error {{no matching literal operator}}
+-double &operator ""_x1 (wchar_t);
++double &operator "" _x1 (wchar_t);
+ double &i2 = L'a'_x1;
+ double &i3 = 'a'_x1; // expected-error {{no matching literal operator}}
+-double &i4 = operator""_x1('a'); // ok
++double &i4 = operator"" _x1('a'); // ok
+ 
+-char &operator ""_x1(char16_t);
++char &operator "" _x1(char16_t);
+ char &i5 = u'a'_x1; // ok
+ double &i6 = L'a'_x1; // ok
+diff -ruN --strip-trailing-cr a/clang/test/CXX/lex/lex.literal/lex.ext/p7.cpp b/clang/test/CXX/lex/lex.literal/lex.ext/p7.cpp
+--- a/clang/test/CXX/lex/lex.literal/lex.ext/p7.cpp
++++ b/clang/test/CXX/lex/lex.literal/lex.ext/p7.cpp
+@@ -10,9 +10,9 @@
+ 
+ namespace std_example {
+ 
+-long double operator ""_w(long double);
+-std::string operator ""_w(const char16_t*, size_t);
+-unsigned operator ""_w(const char*);
++long double operator "" _w(long double);
++std::string operator "" _w(const char16_t*, size_t);
++unsigned operator "" _w(const char*);
+ int main() {
+   auto v1 = 1.2_w;    // calls operator""_w(1.2L)
+   auto v2 = u"one"_w; // calls operator""_w(u"one", 3)
+diff -ruN --strip-trailing-cr a/clang/test/CXX/lex/lex.literal/lex.ext/p8.cpp b/clang/test/CXX/lex/lex.literal/lex.ext/p8.cpp
+--- a/clang/test/CXX/lex/lex.literal/lex.ext/p8.cpp
++++ b/clang/test/CXX/lex/lex.literal/lex.ext/p8.cpp
+@@ -1,7 +1,7 @@
+ // RUN: %clang_cc1 -std=c++11 -verify %s
+ 
+ using size_t = decltype(sizeof(int));
+-constexpr const char *operator ""_id(const char *p, size_t) { return p; }
++constexpr const char *operator "" _id(const char *p, size_t) { return p; }
+ constexpr const char *s = "foo"_id "bar" "baz"_id "quux";
+ 
+ constexpr bool streq(const char *p, const char *q) {
+@@ -9,8 +9,8 @@
+ }
+ static_assert(streq(s, "foobarbazquux"), "");
+ 
+-constexpr const char *operator ""_trim(const char *p, size_t n) {
+-  return *p == ' ' ? operator ""_trim(p + 1, n - 1) : p;
++constexpr const char *operator "" _trim(const char *p, size_t n) {
++  return *p == ' ' ? operator "" _trim(p + 1, n - 1) : p;
+ }
+ constexpr const char *t = "   " " "_trim "  foo";
+ static_assert(streq(t, "foo"), "");
+diff -ruN --strip-trailing-cr a/clang/test/CXX/lex/lex.literal/lex.ext/p9.cpp b/clang/test/CXX/lex/lex.literal/lex.ext/p9.cpp
+--- a/clang/test/CXX/lex/lex.literal/lex.ext/p9.cpp
++++ b/clang/test/CXX/lex/lex.literal/lex.ext/p9.cpp
+@@ -1,7 +1,7 @@
+ // RUN: %clang_cc1 -std=c++11 -fsyntax-only -verify %s
+ 
+ using size_t = decltype(sizeof(int));
+-void operator ""_x(const wchar_t *, size_t);
++void operator "" _x(const wchar_t *, size_t);
+ 
+ namespace std_example {
+ 
+diff -ruN --strip-trailing-cr a/clang/test/CXX/over/over.oper/over.literal/p2.cpp b/clang/test/CXX/over/over.oper/over.literal/p2.cpp
+--- a/clang/test/CXX/over/over.oper/over.literal/p2.cpp
++++ b/clang/test/CXX/over/over.oper/over.literal/p2.cpp
+@@ -1,43 +1,43 @@
+ // RUN: %clang_cc1 -std=c++11 %s -verify
+ 
+-void operator ""_a(const char *);
++void operator "" _a(const char *);
+ 
+ namespace N {
+-  using ::operator ""_a;
++  using ::operator "" _a;
+ 
+-  void operator ""_b(const char *);
++  void operator "" _b(const char *);
+ }
+ 
+-using N::operator ""_b;
++using N::operator "" _b;
+ 
+ class C {
+-  void operator ""_c(const char *); // expected-error {{must be in a namespace or global scope}}
++  void operator "" _c(const char *); // expected-error {{must be in a namespace or global scope}}
+ 
+-  static void operator ""_c(unsigned long long); // expected-error {{must be in a namespace or global scope}}
++  static void operator "" _c(unsigned long long); // expected-error {{must be in a namespace or global scope}}
+ 
+-  friend void operator ""_d(const char *);
++  friend void operator "" _d(const char *);
+ };
+ 
+-int operator ""_e; // expected-error {{cannot be the name of a variable}}
++int operator "" _e; // expected-error {{cannot be the name of a variable}}
+ 
+ void f() {
+-  int operator ""_f; // expected-error {{cannot be the name of a variable}}
++  int operator "" _f; // expected-error {{cannot be the name of a variable}}
+ }
+ 
+ extern "C++" {
+-  void operator ""_g(const char *);
++  void operator "" _g(const char *);
+ }
+ 
+-template<char...> void operator ""_h() {}
++template<char...> void operator "" _h() {}
+ 
+-template<> void operator ""_h<'a', 'b', 'c'>() {}
++template<> void operator "" _h<'a', 'b', 'c'>() {}
+ 
+-template void operator ""_h<'a', 'b', 'c', 'd'>();
++template void operator "" _h<'a', 'b', 'c', 'd'>();
+ 
+ namespace rdar13605348 {
+ 
+ class C {
+-  double operator""_x(long double value) { return double(value); } // expected-error{{literal operator 'operator""_x' must be in a namespace or global scope}}
++  double operator"" _x(long double value) { return double(value); } // expected-error{{literal operator 'operator""_x' must be in a namespace or global scope}}
+   double value() { return 3.2_x; } // expected-error{{no matching literal operator for call to}}
+ };
+ 
+diff -ruN --strip-trailing-cr a/clang/test/CXX/over/over.oper/over.literal/p3.cpp b/clang/test/CXX/over/over.oper/over.literal/p3.cpp
+--- a/clang/test/CXX/over/over.oper/over.literal/p3.cpp
++++ b/clang/test/CXX/over/over.oper/over.literal/p3.cpp
+@@ -3,38 +3,38 @@
+ using size_t = decltype(sizeof(int));
+ 
+ // Acceptable parameter declarations
+-char operator ""_a(const char *);
+-char operator ""_a(const char []);
+-char operator ""_a(unsigned long long);
+-char operator ""_a(long double);
+-char operator ""_a(char);
+-char operator ""_a(const volatile char);
+-char operator ""_a(wchar_t);
+-char operator ""_a(char16_t);
+-char operator ""_a(char32_t);
+-char operator ""_a(const char *, size_t);
+-char operator ""_a(const wchar_t *, size_t);
+-char operator ""_a(const char16_t *, size_t);
+-char operator ""_a(const char32_t *, size_t);
+-char operator ""_a(const char [32], size_t);
++char operator "" _a(const char *);
++char operator "" _a(const char []);
++char operator "" _a(unsigned long long);
++char operator "" _a(long double);
++char operator "" _a(char);
++char operator "" _a(const volatile char);
++char operator "" _a(wchar_t);
++char operator "" _a(char16_t);
++char operator "" _a(char32_t);
++char operator "" _a(const char *, size_t);
++char operator "" _a(const wchar_t *, size_t);
++char operator "" _a(const char16_t *, size_t);
++char operator "" _a(const char32_t *, size_t);
++char operator "" _a(const char [32], size_t);
+ 
+ // Unacceptable parameter declarations
+-char operator ""_b(); // expected-error {{parameter}}
+-char operator ""_b(const wchar_t *); // expected-error {{parameter}}
+-char operator ""_b(long long); // expected-error {{parameter}}
+-char operator ""_b(double); // expected-error {{parameter}}
+-char operator ""_b(short); // expected-error {{parameter}}
+-char operator ""_a(char, int = 0); // expected-error {{parameter}}
+-char operator ""_b(unsigned short); // expected-error {{parameter}}
+-char operator ""_b(signed char); // expected-error {{parameter}}
+-char operator ""_b(unsigned char); // expected-error {{parameter}}
+-char operator ""_b(const short *, size_t); // expected-error {{parameter}}
+-char operator ""_b(const unsigned short *, size_t); // expected-error {{parameter}}
+-char operator ""_b(const signed char *, size_t); // expected-error {{parameter}}
+-char operator ""_b(const unsigned char *, size_t); // expected-error {{parameter}}
+-char operator ""_a(const volatile char *, size_t); // expected-error {{parameter}}
+-char operator ""_a(volatile wchar_t *, size_t); // expected-error {{parameter}}
+-char operator ""_a(char16_t *, size_t); // expected-error {{parameter}}
+-char operator ""_a(const char32_t *, size_t, bool = false); // expected-error {{parameter}}
+-char operator ""_a(const char *, signed long); // expected-error {{parameter}}
+-char operator ""_a(const char *, size_t = 0); // expected-error {{default argument}}
++char operator "" _b(); // expected-error {{parameter}}
++char operator "" _b(const wchar_t *); // expected-error {{parameter}}
++char operator "" _b(long long); // expected-error {{parameter}}
++char operator "" _b(double); // expected-error {{parameter}}
++char operator "" _b(short); // expected-error {{parameter}}
++char operator "" _a(char, int = 0); // expected-error {{parameter}}
++char operator "" _b(unsigned short); // expected-error {{parameter}}
++char operator "" _b(signed char); // expected-error {{parameter}}
++char operator "" _b(unsigned char); // expected-error {{parameter}}
++char operator "" _b(const short *, size_t); // expected-error {{parameter}}
++char operator "" _b(const unsigned short *, size_t); // expected-error {{parameter}}
++char operator "" _b(const signed char *, size_t); // expected-error {{parameter}}
++char operator "" _b(const unsigned char *, size_t); // expected-error {{parameter}}
++char operator "" _a(const volatile char *, size_t); // expected-error {{parameter}}
++char operator "" _a(volatile wchar_t *, size_t); // expected-error {{parameter}}
++char operator "" _a(char16_t *, size_t); // expected-error {{parameter}}
++char operator "" _a(const char32_t *, size_t, bool = false); // expected-error {{parameter}}
++char operator "" _a(const char *, signed long); // expected-error {{parameter}}
++char operator "" _a(const char *, size_t = 0); // expected-error {{default argument}}
+diff -ruN --strip-trailing-cr a/clang/test/CXX/over/over.oper/over.literal/p5.cpp b/clang/test/CXX/over/over.oper/over.literal/p5.cpp
+--- a/clang/test/CXX/over/over.oper/over.literal/p5.cpp
++++ b/clang/test/CXX/over/over.oper/over.literal/p5.cpp
+@@ -3,20 +3,20 @@
+ using size_t = decltype(sizeof(int));
+ template<char...> struct S {};
+ 
+-template<char...> void operator ""_a();
+-template<char... C> S<C...> operator ""_a();
++template<char...> void operator "" _a();
++template<char... C> S<C...> operator "" _a();
+ 
+ template<typename T> struct U {
+-  friend int operator ""_a(const char *, size_t);
++  friend int operator "" _a(const char *, size_t);
+   // FIXME: It's not entirely clear whether this is intended to be legal.
+-  friend U operator ""_a(const T *, size_t); // expected-error {{parameter}}
++  friend U operator "" _a(const T *, size_t); // expected-error {{parameter}}
+ };
+ template<char...> struct V {
+-  friend void operator ""_b(); // expected-error {{parameters}}
++  friend void operator "" _b(); // expected-error {{parameters}}
+ };
+ 
+-template<char... C, int N = 0> void operator ""_b(); // expected-error {{template}}
+-template<char... C> void operator ""_b(int N = 0); // expected-error {{template}}
+-template<char, char...> void operator ""_b(); // expected-error {{template}}
+-template<typename T> T operator ""_b(const char *); // expected-error {{template}}
+-template<typename T> int operator ""_b(const T *, size_t); // expected-error {{template}}
++template<char... C, int N = 0> void operator "" _b(); // expected-error {{template}}
++template<char... C> void operator "" _b(int N = 0); // expected-error {{template}}
++template<char, char...> void operator "" _b(); // expected-error {{template}}
++template<typename T> T operator "" _b(const char *); // expected-error {{template}}
++template<typename T> int operator "" _b(const T *, size_t); // expected-error {{template}}
+diff -ruN --strip-trailing-cr a/clang/test/CXX/over/over.oper/over.literal/p6.cpp b/clang/test/CXX/over/over.oper/over.literal/p6.cpp
+--- a/clang/test/CXX/over/over.oper/over.literal/p6.cpp
++++ b/clang/test/CXX/over/over.oper/over.literal/p6.cpp
+@@ -1,15 +1,15 @@
+ // RUN: %clang_cc1 -std=c++11 %s -verify
+ 
+ // expected-note@+1 {{extern "C" language linkage specification begins here}}
+-extern "C" void operator ""_a(const char *); // expected-error {{must have C++ linkage}}
+-extern "C" template<char...> void operator ""_b(); // expected-error {{must have C++ linkage}}
++extern "C" void operator "" _a(const char *); // expected-error {{must have C++ linkage}}
++extern "C" template<char...> void operator "" _b(); // expected-error {{must have C++ linkage}}
+ // expected-note@-1 {{extern "C" language linkage specification begins here}}
+ 
+ extern "C" { // expected-note 4 {{extern "C" language linkage specification begins here}}
+-  void operator ""_c(const char *); // expected-error {{must have C++ linkage}}
+-  template<char...> void operator ""_d(); // expected-error {{must have C++ linkage}}
++  void operator "" _c(const char *); // expected-error {{must have C++ linkage}}
++  template<char...> void operator "" _d(); // expected-error {{must have C++ linkage}}
+   namespace N {
+-    void operator ""_e(const char *); // expected-error {{must have C++ linkage}}
+-    template<char...> void operator ""_f(); // expected-error {{must have C++ linkage}}
++    void operator "" _e(const char *); // expected-error {{must have C++ linkage}}
++    template<char...> void operator "" _f(); // expected-error {{must have C++ linkage}}
+   }
+ }
+diff -ruN --strip-trailing-cr a/clang/test/CXX/over/over.oper/over.literal/p7.cpp b/clang/test/CXX/over/over.oper/over.literal/p7.cpp
+--- a/clang/test/CXX/over/over.oper/over.literal/p7.cpp
++++ b/clang/test/CXX/over/over.oper/over.literal/p7.cpp
+@@ -1,17 +1,17 @@
+ // RUN: %clang_cc1 -std=c++11 %s -verify
+ // expected-no-diagnostics
+ 
+-constexpr int operator ""_a(const char *c) {
++constexpr int operator "" _a(const char *c) {
+   return c[0];
+ }
+ 
+-static_assert(operator ""_a("foo") == 'f', "");
++static_assert(operator "" _a("foo") == 'f', "");
+ 
+ void puts(const char *);
+-static inline void operator ""_puts(const char *c) {
++static inline void operator "" _puts(const char *c) {
+   puts(c);
+ }
+ void f() {
+-  operator ""_puts("foo");
+-  operator ""_puts("bar");
++  operator "" _puts("foo");
++  operator "" _puts("bar");
+ }
+diff -ruN --strip-trailing-cr a/clang/test/CXX/over/over.oper/over.literal/p8.cpp b/clang/test/CXX/over/over.oper/over.literal/p8.cpp
+--- a/clang/test/CXX/over/over.oper/over.literal/p8.cpp
++++ b/clang/test/CXX/over/over.oper/over.literal/p8.cpp
+@@ -5,13 +5,13 @@
+   using size_t = decltype(sizeof(int));
+ }
+ 
+-void operator ""_km(long double); // ok
+-string operator ""_i18n(const char*, std::size_t); // ok
+-template<char...> int operator ""\u03C0(); // ok, UCN for lowercase pi // expected-warning {{reserved}}
+-float operator ""E(const char *); // expected-warning {{reserved}}
+-float operator " "B(const char *); // expected-error {{must be '""'}} expected-warning {{reserved}}
++void operator "" _km(long double); // ok
++string operator "" _i18n(const char*, std::size_t); // ok
++template<char...> int operator "" \u03C0(); // ok, UCN for lowercase pi // expected-warning {{reserved}}
++float operator ""E(const char *); // expected-error {{invalid suffix on literal}} expected-warning {{reserved}}
++float operator " " B(const char *); // expected-error {{must be '""'}} expected-warning {{reserved}}
+ string operator "" 5X(const char *, std::size_t); // expected-error {{expected identifier}}
+-double operator ""_miles(double); // expected-error {{parameter}}
+-template<char...> int operator ""j(const char*); // expected-error {{template}}
++double operator "" _miles(double); // expected-error {{parameter}}
++template<char...> int operator "" j(const char*); // expected-error {{template}}
+ 
+ float operator ""_E(const char *);
+diff -ruN --strip-trailing-cr a/clang/test/CodeGenCXX/cxx11-user-defined-literal.cpp b/clang/test/CodeGenCXX/cxx11-user-defined-literal.cpp
+--- a/clang/test/CodeGenCXX/cxx11-user-defined-literal.cpp
++++ b/clang/test/CodeGenCXX/cxx11-user-defined-literal.cpp
+@@ -2,12 +2,12 @@
+ 
+ struct S { S(); ~S(); S(const S &); void operator()(int); };
+ using size_t = decltype(sizeof(int));
+-S operator""_x(const char *, size_t);
+-S operator""_y(wchar_t);
+-S operator""_z(unsigned long long);
+-S operator""_f(long double);
+-S operator""_r(const char *);
+-template<char...Cs> S operator""_t() { return S(); }
++S operator"" _x(const char *, size_t);
++S operator"" _y(wchar_t);
++S operator"" _z(unsigned long long);
++S operator"" _f(long double);
++S operator"" _r(const char *);
++template<char...Cs> S operator"" _t() { return S(); }
+ 
+ // CHECK: @[[s_foo:.*]] = {{.*}} constant [4 x i8] c"foo\00"
+ // CHECK: @[[s_bar:.*]] = {{.*}} constant [4 x i8] c"bar\00"
+@@ -47,7 +47,7 @@
+ // CHECK: define {{.*}} @_Zli2_tIJLc48ELc120ELc49ELc50ELc51ELc52ELc53ELc54ELc55ELc56EEE1Sv(
+ 
+ template<typename T> auto g(T t) -> decltype("foo"_x(t)) { return "foo"_x(t); }
+-template<typename T> auto i(T t) -> decltype(operator""_x("foo", 3)(t)) { return operator""_x("foo", 3)(t); }
++template<typename T> auto i(T t) -> decltype(operator"" _x("foo", 3)(t)) { return operator"" _x("foo", 3)(t); }
+ 
+ void h() {
+   g(42);
 diff -ruN --strip-trailing-cr a/clang/test/CodeGenCXX/debug-info-function-context.cpp b/clang/test/CodeGenCXX/debug-info-function-context.cpp
 --- a/clang/test/CodeGenCXX/debug-info-function-context.cpp
 +++ b/clang/test/CodeGenCXX/debug-info-function-context.cpp
@@ -436,3 +1086,511 @@ diff -ruN --strip-trailing-cr a/clang/test/CodeGenCXX/debug-info-function-contex
  // CHECK: ![[C:[0-9]+]] = distinct !DICompositeType(tag: DW_TAG_structure_type, name: "C",
  // CHECK: ![[NS:.*]] = !DINamespace(name: "ns"
  // CHECK: !DISubprogram(name: "member_function",{{.*}} scope: ![[C]],{{.*}} DISPFlagDefinition
+diff -ruN --strip-trailing-cr a/clang/test/CodeGenCXX/mangle-ms-cxx11.cpp b/clang/test/CodeGenCXX/mangle-ms-cxx11.cpp
+--- a/clang/test/CodeGenCXX/mangle-ms-cxx11.cpp
++++ b/clang/test/CodeGenCXX/mangle-ms-cxx11.cpp
+@@ -210,7 +210,7 @@
+ // CHECK-DAG: @"?foo@A@PR19361@@QIHAEXXZ"
+ }
+ 
+-int operator""_deg(long double) { return 0; }
++int operator"" _deg(long double) { return 0; }
+ // CHECK-DAG: @"??__K_deg@@YAHO@Z"
+ 
+ template <char...>
+diff -ruN --strip-trailing-cr a/clang/test/FixIt/fixit-c++11.cpp b/clang/test/FixIt/fixit-c++11.cpp
+--- a/clang/test/FixIt/fixit-c++11.cpp
++++ b/clang/test/FixIt/fixit-c++11.cpp
+@@ -1,4 +1,4 @@
+-// RUN: %clang_cc1 -verify -std=c++11 -Wno-anonymous-pack-parens -Wno-deprecated-literal-operator %s
++// RUN: %clang_cc1 -verify -std=c++11 -Wno-anonymous-pack-parens %s
+ // RUN: cp %s %t
+ // RUN: not %clang_cc1 -x c++ -std=c++11 -fixit %t
+ // RUN: %clang_cc1 -Wall -pedantic -x c++ -std=c++11 %t
+@@ -68,9 +68,9 @@
+ }
+ 
+ #define bar "bar"
+-const char *p = "foo" bar;
++const char *p = "foo"bar; // expected-error {{requires a space between}}
+ #define ord - '0'
+-int k = '4' ord;
++int k = '4'ord; // expected-error {{requires a space between}}
+ 
+ void operator"x" _y(char); // expected-error {{must be '""'}}
+ void operator L"" _z(char); // expected-error {{encoding prefix}}
+diff -ruN --strip-trailing-cr a/clang/test/OpenMP/amdgcn_ldbl_check.cpp b/clang/test/OpenMP/amdgcn_ldbl_check.cpp
+--- a/clang/test/OpenMP/amdgcn_ldbl_check.cpp
++++ b/clang/test/OpenMP/amdgcn_ldbl_check.cpp
+@@ -6,7 +6,7 @@
+ 
+ void print(double);
+ 
+-constexpr double operator""_X (long double a)
++constexpr double operator"" _X (long double a)
+ {
+ 	return (double)a;
+ }
+diff -ruN --strip-trailing-cr a/clang/test/PCH/cxx11-user-defined-literals.cpp b/clang/test/PCH/cxx11-user-defined-literals.cpp
+--- a/clang/test/PCH/cxx11-user-defined-literals.cpp
++++ b/clang/test/PCH/cxx11-user-defined-literals.cpp
+@@ -9,7 +9,7 @@
+ #define HEADER_INCLUDED
+ 
+ using size_t = decltype(sizeof(int));
+-int operator""_foo(const char *p, size_t);
++int operator"" _foo(const char *p, size_t);
+ 
+ template<typename T> auto f(T t) -> decltype(t + ""_foo) { return 0; }
+ 
+diff -ruN --strip-trailing-cr a/clang/test/Parser/cxx0x-literal-operators.cpp b/clang/test/Parser/cxx0x-literal-operators.cpp
+--- a/clang/test/Parser/cxx0x-literal-operators.cpp
++++ b/clang/test/Parser/cxx0x-literal-operators.cpp
+@@ -1,8 +1,8 @@
+ // RUN: %clang_cc1 -fsyntax-only -verify -std=c++11 %s
+ 
+ void operator "" (const char *); // expected-error {{expected identifier}}
+-void operator "k"foo(const char *); // \
++void operator "k" foo(const char *); // \
+   expected-error {{string literal after 'operator' must be '""'}} \
+   expected-warning{{user-defined literal suffixes not starting with '_' are reserved}}
+-void operator ""tester (const char *); // \
++void operator "" tester (const char *); // \
+   expected-warning{{user-defined literal suffixes not starting with '_' are reserved}}
+diff -ruN --strip-trailing-cr a/clang/test/Parser/cxx11-user-defined-literals.cpp b/clang/test/Parser/cxx11-user-defined-literals.cpp
+--- a/clang/test/Parser/cxx11-user-defined-literals.cpp
++++ b/clang/test/Parser/cxx11-user-defined-literals.cpp
+@@ -38,19 +38,19 @@
+ #endif
+ 
+ // But they can appear in expressions.
+-constexpr char operator""_id(char c) { return c; }
+-constexpr wchar_t operator""_id(wchar_t c) { return c; }
+-constexpr char16_t operator""_id(char16_t c) { return c; }
+-constexpr char32_t operator""_id(char32_t c) { return c; }
++constexpr char operator"" _id(char c) { return c; }
++constexpr wchar_t operator"" _id(wchar_t c) { return c; }
++constexpr char16_t operator"" _id(char16_t c) { return c; }
++constexpr char32_t operator"" _id(char32_t c) { return c; }
+ 
+ using size_t = decltype(sizeof(int));
+-constexpr const char operator""_id(const char *p, size_t n) { return *p; }
+-constexpr const wchar_t operator""_id(const wchar_t *p, size_t n) { return *p; }
+-constexpr const char16_t operator""_id(const char16_t *p, size_t n) { return *p; }
+-constexpr const char32_t operator""_id(const char32_t *p, size_t n) { return *p; }
++constexpr const char operator"" _id(const char *p, size_t n) { return *p; }
++constexpr const wchar_t operator"" _id(const wchar_t *p, size_t n) { return *p; }
++constexpr const char16_t operator"" _id(const char16_t *p, size_t n) { return *p; }
++constexpr const char32_t operator"" _id(const char32_t *p, size_t n) { return *p; }
+ 
+-constexpr unsigned long long operator""_id(unsigned long long n) { return n; }
+-constexpr long double operator""_id(long double d) { return d; }
++constexpr unsigned long long operator"" _id(unsigned long long n) { return n; }
++constexpr long double operator"" _id(long double d) { return d; }
+ 
+ template<int n> struct S {};
+ S<"a"_id> sa;
+@@ -96,20 +96,20 @@
+ // Make sure we handle more interesting ways of writing a string literal which
+ // is "" in translation phase 7.
+ void operator "\
+-"_foo(unsigned long long); // ok
++" _foo(unsigned long long); // ok
+ 
+-void operator R"xyzzy()xyzzy"_foo(long double); // ok
++void operator R"xyzzy()xyzzy" _foo(long double); // ok
+ 
+-void operator"" "" R"()" ""_foo(const char *); // ok
++void operator"" "" R"()" "" _foo(const char *); // ok
+ 
+ void operator ""_no_space(const char *); // ok
+ 
+ // Ensure we diagnose the bad cases.
+-void operator "\0"_non_empty(const char *); // expected-error {{must be '""'}}
+-void operator L""_not_char(const char *); // expected-error {{cannot have an encoding prefix}}
++void operator "\0" _non_empty(const char *); // expected-error {{must be '""'}}
++void operator L"" _not_char(const char *); // expected-error {{cannot have an encoding prefix}}
+ void operator "" ""
+ U"" // expected-error {{cannot have an encoding prefix}}
+-""_also_not_char(const char *);
++"" _also_not_char(const char *);
+ void operator "" u8"" "\u0123" "hello"_all_of_the_things ""(const char*); // expected-error {{must be '""'}}
+ 
+ // Make sure we treat UCNs and UTF-8 as equivalent.
+diff -ruN --strip-trailing-cr a/clang/test/SemaCXX/cxx11-ast-print.cpp b/clang/test/SemaCXX/cxx11-ast-print.cpp
+--- a/clang/test/SemaCXX/cxx11-ast-print.cpp
++++ b/clang/test/SemaCXX/cxx11-ast-print.cpp
+@@ -1,22 +1,22 @@
+ // RUN: %clang_cc1 -std=c++11 -ast-print %s | FileCheck %s
+ 
+ // CHECK: auto operator""_foo(const char *p, decltype(sizeof(int))) -> decltype(nullptr);
+-auto operator""_foo(const char *p, decltype(sizeof(int))) -> decltype(nullptr);
++auto operator"" _foo(const char *p, decltype(sizeof(int))) -> decltype(nullptr);
+ 
+ // CHECK: decltype(""_foo) operator""_bar(unsigned long long);
+-decltype(""_foo) operator""_bar(unsigned long long);
++decltype(""_foo) operator"" _bar(unsigned long long);
+ 
+ // CHECK: decltype(42_bar) operator""_baz(long double);
+-decltype(42_bar) operator""_baz(long double);
++decltype(42_bar) operator"" _baz(long double);
+ 
+ // CHECK: decltype(4.5_baz) operator""_baz(char);
+-decltype(4.5_baz) operator""_baz(char);
++decltype(4.5_baz) operator"" _baz(char);
+ 
+ // CHECK: const char *operator""_quux(const char *);
+-const char *operator""_quux(const char *);
++const char *operator"" _quux(const char *);
+ 
+ // CHECK: template <char ...> const char *operator""_fritz();
+-template<char...> const char *operator""_fritz();
++template<char...> const char *operator"" _fritz();
+ 
+ // CHECK: const char *p1 = "bar1"_foo;
+ const char *p1 = "bar1"_foo;
+@@ -39,7 +39,7 @@
+ // CHECK: const char *p10 = 3.300e+15_fritz;
+ const char *p10 = 3.300e+15_fritz;
+ 
+-template <class C, C...> const char *operator""_suffix();
++template <class C, C...> const char *operator"" _suffix();
+ // CHECK: const char *PR23120 = operator""_suffix<char32_t, U'\U00010437'>();
+ const char *PR23120 = U"𐐷"_suffix;
+ 
+diff -ruN --strip-trailing-cr a/clang/test/SemaCXX/cxx11-user-defined-literals-unused.cpp b/clang/test/SemaCXX/cxx11-user-defined-literals-unused.cpp
+--- a/clang/test/SemaCXX/cxx11-user-defined-literals-unused.cpp
++++ b/clang/test/SemaCXX/cxx11-user-defined-literals-unused.cpp
+@@ -1,8 +1,8 @@
+ // RUN: %clang_cc1 -std=c++11 -verify %s -Wunused
+ 
+ namespace {
+-double operator""_x(long double value) { return double(value); }
+-int operator""_ii(long double value) { return int(value); } // expected-warning {{not needed and will not be emitted}}
++double operator"" _x(long double value) { return double(value); }
++int operator"" _ii(long double value) { return int(value); } // expected-warning {{not needed and will not be emitted}}
+ }
+ 
+ namespace rdar13589856 {
+diff -ruN --strip-trailing-cr a/clang/test/SemaCXX/cxx11-user-defined-literals.cpp b/clang/test/SemaCXX/cxx11-user-defined-literals.cpp
+--- a/clang/test/SemaCXX/cxx11-user-defined-literals.cpp
++++ b/clang/test/SemaCXX/cxx11-user-defined-literals.cpp
+@@ -6,18 +6,18 @@
+   CharStr, WideStr, Char16Str, Char32Str,
+   Integer, Floating, Raw, Template
+ };
+-constexpr LitKind operator""_kind(char p) { return LitKind::Char; }
+-constexpr LitKind operator""_kind(wchar_t p) { return LitKind::WideChar; }
+-constexpr LitKind operator""_kind(char16_t p) { return LitKind::Char16; }
+-constexpr LitKind operator""_kind(char32_t p) { return LitKind::Char32; }
+-constexpr LitKind operator""_kind(const char *p, size_t n) { return LitKind::CharStr; }
+-constexpr LitKind operator""_kind(const wchar_t *p, size_t n) { return LitKind::WideStr; }
+-constexpr LitKind operator""_kind(const char16_t *p, size_t n) { return LitKind::Char16Str; }
+-constexpr LitKind operator""_kind(const char32_t *p, size_t n) { return LitKind::Char32Str; }
+-constexpr LitKind operator""_kind(unsigned long long n) { return LitKind::Integer; }
+-constexpr LitKind operator""_kind(long double n) { return LitKind::Floating; }
+-constexpr LitKind operator""_kind2(const char *p) { return LitKind::Raw; }
+-template<char ...Cs> constexpr LitKind operator""_kind3() { return LitKind::Template; }
++constexpr LitKind operator"" _kind(char p) { return LitKind::Char; }
++constexpr LitKind operator"" _kind(wchar_t p) { return LitKind::WideChar; }
++constexpr LitKind operator"" _kind(char16_t p) { return LitKind::Char16; }
++constexpr LitKind operator"" _kind(char32_t p) { return LitKind::Char32; }
++constexpr LitKind operator"" _kind(const char *p, size_t n) { return LitKind::CharStr; }
++constexpr LitKind operator"" _kind(const wchar_t *p, size_t n) { return LitKind::WideStr; }
++constexpr LitKind operator"" _kind(const char16_t *p, size_t n) { return LitKind::Char16Str; }
++constexpr LitKind operator"" _kind(const char32_t *p, size_t n) { return LitKind::Char32Str; }
++constexpr LitKind operator"" _kind(unsigned long long n) { return LitKind::Integer; }
++constexpr LitKind operator"" _kind(long double n) { return LitKind::Floating; }
++constexpr LitKind operator"" _kind2(const char *p) { return LitKind::Raw; }
++template<char ...Cs> constexpr LitKind operator"" _kind3() { return LitKind::Template; }
+ 
+ static_assert('x'_kind == LitKind::Char, "");
+ static_assert(L'x'_kind == LitKind::WideChar, "");
+@@ -41,7 +41,7 @@
+ constexpr const char *fractional_digits_impl(const char *p) {
+   return *p == '.' ? p + 1 : *p ? fractional_digits_impl(p + 1) : 0;
+ }
+-constexpr const char *operator""_fractional_digits(const char *p) {
++constexpr const char *operator"" _fractional_digits(const char *p) {
+   return fractional_digits_impl(p) ?: p;
+ }
+ constexpr bool streq(const char *p, const char *q) {
+@@ -56,57 +56,57 @@
+ static_assert(streq(0377_fractional_digits, "0377"), "");
+ static_assert(streq(0377.5_fractional_digits, "5"), "");
+ 
+-int operator""_ambiguous(char); // expected-note {{candidate}}
++int operator"" _ambiguous(char); // expected-note {{candidate}}
+ namespace N {
+-  void *operator""_ambiguous(char); // expected-note {{candidate}}
++  void *operator"" _ambiguous(char); // expected-note {{candidate}}
+ }
+ using namespace N;
+ int k = 'x'_ambiguous; // expected-error {{ambiguous}}
+ 
+-int operator""_deleted(unsigned long long) = delete; // expected-note {{here}}
++int operator"" _deleted(unsigned long long) = delete; // expected-note {{here}}
+ int m = 42_deleted; // expected-error {{attempt to use a deleted}}
+ 
+ namespace Using {
+   namespace M {
+-    int operator""_using(char);
++    int operator"" _using(char);
+   }
+   int k1 = 'x'_using; // expected-error {{no matching literal operator for call to 'operator""_using'}}
+ 
+-  using M::operator ""_using;
++  using M::operator "" _using;
+   int k2 = 'x'_using;
+ }
+ 
+ namespace AmbiguousRawTemplate {
+-  int operator""_ambig1(const char *); // expected-note {{candidate}}
+-  template<char...> int operator""_ambig1(); // expected-note {{candidate}}
++  int operator"" _ambig1(const char *); // expected-note {{candidate}}
++  template<char...> int operator"" _ambig1(); // expected-note {{candidate}}
+ 
+   int k1 = 123_ambig1; // expected-error {{call to 'operator""_ambig1' is ambiguous}}
+ 
+   namespace Inner {
+-    template<char...> int operator""_ambig2(); // expected-note 3{{candidate}}
++    template<char...> int operator"" _ambig2(); // expected-note 3{{candidate}}
+   }
+-  int operator""_ambig2(const char *); // expected-note 3{{candidate}}
+-  using Inner::operator""_ambig2;
++  int operator"" _ambig2(const char *); // expected-note 3{{candidate}}
++  using Inner::operator"" _ambig2;
+ 
+   int k2 = 123_ambig2; // expected-error {{call to 'operator""_ambig2' is ambiguous}}
+ 
+   namespace N {
+-    using Inner::operator""_ambig2;
++    using Inner::operator"" _ambig2;
+ 
+     int k3 = 123_ambig2; // ok
+ 
+-    using AmbiguousRawTemplate::operator""_ambig2;
++    using AmbiguousRawTemplate::operator"" _ambig2;
+ 
+     int k4 = 123_ambig2; // expected-error {{ambiguous}}
+ 
+     namespace M {
+ 
+-      template<char...> int operator""_ambig2();
++      template<char...> int operator"" _ambig2();
+ 
+       int k5 = 123_ambig2; // ok
+     }
+ 
+-    int operator""_ambig2(unsigned long long);
++    int operator"" _ambig2(unsigned long long);
+ 
+     int k6 = 123_ambig2; // ok
+     int k7 = 123._ambig2; // expected-error {{ambiguous}}
+@@ -121,7 +121,7 @@
+  return hash<Cs...>(mash(a ^ mash(C)));
+ }
+ template<typename T, T v> struct constant { constexpr static T value = v; };
+-template<char...Cs> constexpr unsigned operator""_hash() {
++template<char...Cs> constexpr unsigned operator"" _hash() {
+   return constant<unsigned, hash<Cs...>(0)>::value;
+ }
+ static_assert(0x1234_hash == 0x103eff5e, "");
+@@ -129,7 +129,7 @@
+ 
+ // Functions and literal suffixes go in separate namespaces.
+ namespace Namespace {
+-  template<char...> int operator""_x();
++  template<char...> int operator"" _x();
+   int k = _x(); // expected-error {{undeclared identifier '_x'}}
+ 
+   int _y(unsigned long long);
+@@ -138,7 +138,7 @@
+ 
+ namespace PR14950 {
+   template<...> // expected-error {{expected template parameter}}
+-  int operator""_b(); // expected-error {{no function template matches function template specialization}}
++  int operator"" _b(); // expected-error {{no function template matches function template specialization}}
+   int main() { return 0_b; } // expected-error {{no matching literal operator for call to 'operator""_b'}}
+ }
+ 
+diff -ruN --strip-trailing-cr a/clang/test/SemaCXX/cxx1y-user-defined-literals.cpp b/clang/test/SemaCXX/cxx1y-user-defined-literals.cpp
+--- a/clang/test/SemaCXX/cxx1y-user-defined-literals.cpp
++++ b/clang/test/SemaCXX/cxx1y-user-defined-literals.cpp
+@@ -32,7 +32,7 @@
+ using namespace std;
+ duration a = 1ns, b = 1us, c = 1ms, d = 1s, e = 1min, f = 1h;
+ string s = "foo"s;
+-char error = 'x's; // expected-error {{no matching literal operator for call to 'operator""s' with argument of type 'char'}}
++char error = 'x's; // expected-error {{invalid suffix}} expected-error {{expected ';'}}
+ 
+ int _1y = 1y; // expected-error {{invalid suffix}}
+ int _1b = 1b; // expected-error {{invalid digit}}
+diff -ruN --strip-trailing-cr a/clang/test/SemaCXX/cxx1z-user-defined-literals.cpp b/clang/test/SemaCXX/cxx1z-user-defined-literals.cpp
+--- a/clang/test/SemaCXX/cxx1z-user-defined-literals.cpp
++++ b/clang/test/SemaCXX/cxx1z-user-defined-literals.cpp
+@@ -16,6 +16,6 @@
+ using namespace std;
+ string_view s = "foo"sv;
+ const char* p = "bar"sv; // expected-error {{no viable conversion}}
+-char error = 'x'sv; // expected-error {{no matching literal operator for call to 'operator""sv' with argument of type 'char'}}
++char error = 'x'sv; // expected-error {{invalid suffix}} expected-error {{expected ';'}}
+ 
+ #endif
+diff -ruN --strip-trailing-cr a/clang/test/SemaCXX/cxx2a-consteval.cpp b/clang/test/SemaCXX/cxx2a-consteval.cpp
+--- a/clang/test/SemaCXX/cxx2a-consteval.cpp
++++ b/clang/test/SemaCXX/cxx2a-consteval.cpp
+@@ -158,17 +158,17 @@
+ 
+ namespace user_defined_literal {
+ 
+-consteval int operator""_test(unsigned long long i) {
++consteval int operator"" _test(unsigned long long i) {
+ // expected-note@-1+ {{declared here}}
+   return 0;
+ }
+ 
+ int i = 0_test;
+ 
+-auto ptr = &operator""_test;
++auto ptr = &operator"" _test;
+ // expected-error@-1 {{take address}}
+ 
+-consteval auto operator""_test1(unsigned long long i) {
++consteval auto operator"" _test1(unsigned long long i) {
+   return &f_eval;
+ }
+ 
+diff -ruN --strip-trailing-cr a/clang/test/SemaCXX/cxx98-compat.cpp b/clang/test/SemaCXX/cxx98-compat.cpp
+--- a/clang/test/SemaCXX/cxx98-compat.cpp
++++ b/clang/test/SemaCXX/cxx98-compat.cpp
+@@ -84,7 +84,7 @@
+   }
+ };
+ 
+-int operator""_hello(const char *); // expected-warning {{literal operators are incompatible with C++98}}
++int operator"" _hello(const char *); // expected-warning {{literal operators are incompatible with C++98}}
+ 
+ enum EnumFixed : int { // expected-warning {{enumeration types with a fixed underlying type are incompatible with C++98}}
+ };
+diff -ruN --strip-trailing-cr a/clang/test/SemaCXX/literal-operators.cpp b/clang/test/SemaCXX/literal-operators.cpp
+--- a/clang/test/SemaCXX/literal-operators.cpp
++++ b/clang/test/SemaCXX/literal-operators.cpp
+@@ -3,46 +3,46 @@
+ #include <stddef.h>
+ 
+ struct tag {
+-  void operator ""_tag_bad (const char *); // expected-error {{literal operator 'operator""_tag_bad' must be in a namespace or global scope}}
+-  friend void operator ""_tag_good (const char *);
++  void operator "" _tag_bad (const char *); // expected-error {{literal operator 'operator""_tag_bad' must be in a namespace or global scope}}
++  friend void operator "" _tag_good (const char *);
+ };
+ 
+-namespace ns { void operator ""_ns_good (const char *); }
++namespace ns { void operator "" _ns_good (const char *); }
+ 
+ // Check extern "C++" declarations
+-extern "C++" void operator ""_extern_good (const char *);
+-extern "C++" { void operator ""_extern_good (const char *); }
++extern "C++" void operator "" _extern_good (const char *);
++extern "C++" { void operator "" _extern_good (const char *); }
+ 
+-void fn () { void operator ""_fn_good (const char *); }
++void fn () { void operator "" _fn_good (const char *); }
+ 
+ // One-param declarations (const char * was already checked)
+-void operator ""_good (char);
+-void operator ""_good (wchar_t);
+-void operator ""_good (char16_t);
+-void operator ""_good (char32_t);
+-void operator ""_good (unsigned long long);
+-void operator ""_good (long double);
++void operator "" _good (char);
++void operator "" _good (wchar_t);
++void operator "" _good (char16_t);
++void operator "" _good (char32_t);
++void operator "" _good (unsigned long long);
++void operator "" _good (long double);
+ 
+ // Two-param declarations
+-void operator ""_good (const char *, size_t);
+-void operator ""_good (const wchar_t *, size_t);
+-void operator ""_good (const char16_t *, size_t);
+-void operator ""_good (const char32_t *, size_t);
++void operator "" _good (const char *, size_t);
++void operator "" _good (const wchar_t *, size_t);
++void operator "" _good (const char16_t *, size_t);
++void operator "" _good (const char32_t *, size_t);
+ 
+ // Check typedef and array equivalences
+-void operator ""_good (const char[]);
++void operator "" _good (const char[]);
+ typedef const char c;
+-void operator ""_good (c*);
++void operator "" _good (c*);
+ 
+ // Check extra cv-qualifiers
+-void operator ""_cv_good (volatile const char *, const size_t); // expected-error {{invalid literal operator parameter type 'const volatile char *', did you mean 'const char *'?}}
++void operator "" _cv_good (volatile const char *, const size_t); // expected-error {{invalid literal operator parameter type 'const volatile char *', did you mean 'const char *'?}}
+ 
+ // Template declaration
+-template <char...> void operator ""_good ();
++template <char...> void operator "" _good ();
+ 
+-template <typename...> void operator ""_invalid(); // expected-error {{template parameter list for literal operator must be either 'char...' or 'typename T, T...'}}
+-template <wchar_t...> void operator ""_invalid();  // expected-error {{template parameter list for literal operator must be either 'char...' or 'typename T, T...'}}
+-template <unsigned long long...> void operator ""_invalid();  // expected-error {{template parameter list for literal operator must be either 'char...' or 'typename T, T...'}}
++template <typename...> void operator "" _invalid(); // expected-error {{template parameter list for literal operator must be either 'char...' or 'typename T, T...'}}
++template <wchar_t...> void operator "" _invalid();  // expected-error {{template parameter list for literal operator must be either 'char...' or 'typename T, T...'}}
++template <unsigned long long...> void operator "" _invalid();  // expected-error {{template parameter list for literal operator must be either 'char...' or 'typename T, T...'}}
+ 
+ _Complex float operator""if(long double); // expected-warning {{reserved}}
+ _Complex float test_if_1() { return 2.0f + 1.5if; };
+diff -ruN --strip-trailing-cr a/clang/test/SemaCXX/no-warn-user-defined-literals-in-system-headers.cpp b/clang/test/SemaCXX/no-warn-user-defined-literals-in-system-headers.cpp
+--- a/clang/test/SemaCXX/no-warn-user-defined-literals-in-system-headers.cpp
++++ b/clang/test/SemaCXX/no-warn-user-defined-literals-in-system-headers.cpp
+@@ -2,4 +2,4 @@
+ 
+ #include <no-warn-user-defined-literals-in-system-headers.h>
+ 
+-void operator ""bar(long double); // expected-warning{{user-defined literal suffixes not starting with '_' are reserved}}
++void operator "" bar(long double); // expected-warning{{user-defined literal suffixes not starting with '_' are reserved}}
+diff -ruN --strip-trailing-cr a/clang/test/SemaCXX/reserved-identifier.cpp b/clang/test/SemaCXX/reserved-identifier.cpp
+--- a/clang/test/SemaCXX/reserved-identifier.cpp
++++ b/clang/test/SemaCXX/reserved-identifier.cpp
+@@ -89,6 +89,7 @@
+ long double sacrebleu = operator"" _SacreBleu(1.2); // expected-warning {{identifier '_SacreBleu' is reserved because it starts with '_' followed by a capital letter}}
+ long double sangbleu = operator""_SacreBleu(1.2);   // no-warning
+ 
++void operator"" _lowercase(unsigned long long); // no-warning
+ void operator""_lowercase(unsigned long long); // no-warning
+ 
+ struct _BarbeRouge { // expected-warning {{identifier '_BarbeRouge' is reserved because it starts with '_' followed by a capital letter}}
+diff -ruN --strip-trailing-cr a/clang/test/SemaCXX/warn-xor-as-pow.cpp b/clang/test/SemaCXX/warn-xor-as-pow.cpp
+--- a/clang/test/SemaCXX/warn-xor-as-pow.cpp
++++ b/clang/test/SemaCXX/warn-xor-as-pow.cpp
+@@ -19,10 +19,10 @@
+ #define flexor 7
+ 
+ #ifdef __cplusplus
+-constexpr long long operator""_xor(unsigned long long v) { return v; }
++constexpr long long operator"" _xor(unsigned long long v) { return v; }
+ 
+-constexpr long long operator""_0b(unsigned long long v) { return v; }
+-constexpr long long operator""_0X(unsigned long long v) { return v; }
++constexpr long long operator"" _0b(unsigned long long v) { return v; }
++constexpr long long operator"" _0X(unsigned long long v) { return v; }
+ #else
+ #define xor ^ // iso646.h
+ #endif
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+@@ -1126,6 +1126,7 @@
+     hdrs = [
+         "include/llvm-c/BitWriter.h",
+         "include/llvm/Bitcode/BitcodeCommon.h",
++        "include/llvm/Bitcode/BitcodeConvenience.h",
+         "include/llvm/Bitcode/BitcodeWriter.h",
+         "include/llvm/Bitcode/BitcodeWriterPass.h",
+         "include/llvm/Bitcode/LLVMBitCodes.h",
