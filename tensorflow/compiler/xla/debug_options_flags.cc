@@ -1226,6 +1226,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "If true, use the new fine-grain region-based live range interference"
       " analysis in the copy insertion optimization pass."));
   flag_list->push_back(tsl::Flag(
+      "xla_gpu_collect_cost_model_stats",
+      bool_setter_for(&DebugOptions::set_xla_gpu_collect_cost_model_stats),
+      debug_options->xla_gpu_collect_cost_model_stats(),
+      "If true, each fusion instruction will have a cost model runtime "
+      "estimate in backend config after compilation."));
+  flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_split_k_autotuning",
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_split_k_autotuning),
       debug_options->xla_gpu_enable_split_k_autotuning(),
