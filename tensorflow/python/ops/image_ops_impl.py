@@ -1149,7 +1149,9 @@ def pad_to_bounding_box_internal(image, offset_height, offset_width,
         array_ops_stack.stack([
             0, 0, offset_height, after_padding_height, offset_width,
             after_padding_width, 0, 0
-        ]), [4, 2])
+        ]),
+        constant_op.constant([4, 2])
+    )
     padded = array_ops.pad(image, paddings)
 
     padded_shape = [
