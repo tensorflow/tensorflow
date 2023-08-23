@@ -165,16 +165,13 @@ FusionDecision RequireTritonFusibleConvert(const HloInstruction* input,
 // Used to calculate cumulative index transformations done by non-elementwise
 // instructions between source and target.
 class DimensionOrder {
+ public:
+  DimensionOrder() = default;
+
   // Dimension order constructed for the output shape of `hlo`.
-  // `hlo` is currently supposed to be either an operand or the output of dot();
-  // properties describing the dimensions are stored for later analysis.
-  explicit DimensionOrder(
-      const HloInstruction* hlo, const int64_t splittable_dimension_index = -1,
-      const int64_t splittable_dimension_supported_major_size = 0,
-      const int split_k_dimension_index = -1)
-      : splittable_dimension_index_(splittable_dimension_index),
-        splittable_dimension_supported_major_part_size_(
-            splittable_dimension_supported_major_size) {
+  // `hlo` is currently supposed to be either an operand or the output of dot().
+  explicit DimensionOrder(const HloInstruction* hlo,
+                          const int split_k_dimension_index = -1) {
     tensor_fragments_order_.reserve(hlo->shape().rank());
     for (const int i : hlo->shape().layout().minor_to_major()) {
       int target_dim_number = i;
@@ -191,14 +188,6 @@ class DimensionOrder {
     }
   }
 
-  explicit DimensionOrder(
-      const int64_t splittable_dimension_index,
-      const int64_t splittable_dimension_supported_major_size)
-      : splittable_dimension_index_(splittable_dimension_index),
-        splittable_dimension_supported_major_part_size_(
-            splittable_dimension_supported_major_size) {}
-
- public:
   // Description of a continuous fragment of one dimension of a tensor.
   struct Fragment {
     // Label carrying the dimension number of an defining operation.
@@ -214,27 +203,6 @@ class DimensionOrder {
   using Fragments = std::vector<Fragment>;
   using FragmentOrders = absl::flat_hash_map<int, std::vector<int>>;
 
-  DimensionOrder(const DimensionOrder&) = default;
-
-  // Copies fusion context attributes from `other` leaving internal structures
-  // describing dimension fragments empty. Used to create derived dimension
-  // orders.
-  static DimensionOrder EmptyLike(const DimensionOrder& other) {
-    return DimensionOrder(
-        other.splittable_dimension_index_,
-        other.splittable_dimension_supported_major_part_size_);
-  }
-
-  // Create dimension order describing a dot operand according to
-  // the currently supported configurations.
-  static DimensionOrder FromDotOperand(const HloInstruction& dot,
-                                       int operand_number, int split_k = 1);
-
-  // Create dimension order describing dot's output.
-  static DimensionOrder FromDotOutput(
-      const HloInstruction& dot, int split_k = 1,
-      int64_t splittable_dimension_supported_major_part_size = 0);
-
   const Fragments& TensorFragmentsOrder() const {
     return tensor_fragments_order_;
   }
@@ -244,19 +212,6 @@ class DimensionOrder {
     return dim_fragments_orders_;
   }
   FragmentOrders& DimFragmentsOrders() { return dim_fragments_orders_; }
-
-  // Index of dot dimension that can be split.
-  // Currently typically LHS non-contracting one.
-  int64_t SplittableDimensionIndex() const {
-    return splittable_dimension_index_;
-  }
-
-  // Tells whether `size` major part of a dimension can be physically split.
-  bool IsSupportedSplittableDimensionMajorPartSize(int64_t size) const {
-    // 0 means no specific size requirement.
-    return splittable_dimension_supported_major_part_size_ == 0 ||
-           splittable_dimension_supported_major_part_size_ == size;
-  }
 
   // Tells that two dimension orders describe the same tensor physical layout.
   bool IsPhysicallyEquivalent(const DimensionOrder& other) const;
@@ -281,9 +236,6 @@ class DimensionOrder {
   // (fragments can be physically unordered and disconnected within
   // the shape due to reshapes and transposes).
   FragmentOrders dim_fragments_orders_;
-
-  const int64_t splittable_dimension_index_ = -1;
-  const int64_t splittable_dimension_supported_major_part_size_ = 0;
 };
 
 using DimIterationSpec = TensorIterationSpec::DimIterationSpec;
@@ -291,6 +243,11 @@ using Fragment = DimensionOrder::Fragment;
 using Fragments = DimensionOrder::Fragments;
 using FragmentOrders = DimensionOrder::FragmentOrders;
 using DimOrderMap = absl::flat_hash_map<const HloInstruction*, DimensionOrder>;
+
+struct DimOrderUpdates {
+  DimOrderMap map;
+  int64_t splittable_dimension_major_part_size = 0;
+};
 
 TensorIterationSpec DimensionOrderToTensorIterationSpec(
     const DimensionOrder& order) {
@@ -344,53 +301,12 @@ bool DimensionOrder::IsPhysicallyEquivalent(const DimensionOrder& other) const {
          DimensionOrderToTensorIterationSpec(other);
 }
 
-DimensionOrder DimensionOrder::FromDotOperand(const HloInstruction& dot,
-                                              const int operand_number,
-                                              const int split_k) {
-  const HloInstruction* operand = dot.operand(operand_number);
-  // There can be either none or one split-K batch dimension.
-  const int num_split_k_batch_dims = split_k > 1;
-  int split_k_dimension_index = -1;
-  if (split_k > 1) {
-    split_k_dimension_index =
-        ContractingDimensionIndex(dot, operand_number) - 1;
-  }
-  int splittable_dimension_index = -1;
-  // LHS non-contracting dimension can be split if non-splitK batch is absent.
-  if (operand_number == 0 &&
-      dot.dot_dimension_numbers().lhs_batch_dimensions_size() -
-              num_split_k_batch_dims ==
-          0) {
-    splittable_dimension_index =
-        NonContractingDimensionIndex(dot, operand_number);
-  }
-  return DimensionOrder(operand, splittable_dimension_index,
-                        /*splittable_dimension_supported_major_size=*/0,
-                        split_k_dimension_index);
-}
-
-DimensionOrder DimensionOrder::FromDotOutput(
-    const HloInstruction& dot, const int split_k,
-    const int64_t splittable_dimension_supported_major_part_size) {
-  // Allow non-contracting dimension originating from LHS to split if
-  // this dimension is split at the output at the same ratio as
-  // at the input.
-  int64_t splittable_dimension_index = -1;
-  if (splittable_dimension_supported_major_part_size > 1) {
-    // Split-K dimension is the first one in the output if present;
-    // LHS non-contracting follows (batch is absent in this case).
-    splittable_dimension_index = (split_k > 1) ? 1 : 0;
-  }
-  return DimensionOrder(&dot, splittable_dimension_index,
-                        splittable_dimension_supported_major_part_size);
-}
-
 enum class TransformDirection { kInputToOutput, kOutputToInput };
 
-using DimOrderMapOrError = std::variant<FusionDecision, DimOrderMap>;
+using DimOrderUpdatesOrError = std::variant<FusionDecision, DimOrderUpdates>;
 
-DimOrderMapOrError HandleElementwise(const HloInstruction* hlo,
-                                     const DimOrderMap& dim_orders) {
+DimOrderUpdatesOrError HandleElementwise(const HloInstruction* hlo,
+                                         const DimOrderMap& dim_orders) {
   // The output and all the input dimension orders of `hlo` have to be the same.
   const HloInstruction* src = nullptr;
   const DimensionOrder* src_dim_order;
@@ -410,17 +326,17 @@ DimOrderMapOrError HandleElementwise(const HloInstruction* hlo,
     CHECK_NE(src, nullptr);
   }
 
-  DimOrderMap result;
-  result.insert({hlo, DimensionOrder(*src_dim_order)});
+  DimOrderUpdates result;
+  result.map.insert({hlo, DimensionOrder(*src_dim_order)});
   for (const HloInstruction* operand : hlo->operands()) {
-    result.insert({operand, DimensionOrder(dim_orders.at(src))});
+    result.map.insert({operand, DimensionOrder(dim_orders.at(src))});
   }
   return result;
 }
 
-DimOrderMapOrError HandleBitcast(const HloInstruction* hlo,
-                                 const DimOrderMap& dim_orders,
-                                 const TransformDirection direction) {
+DimOrderUpdatesOrError HandleBitcast(const HloInstruction* hlo,
+                                     const DimOrderMap& dim_orders,
+                                     const TransformDirection direction) {
   const HloInstruction* src =
       (direction == TransformDirection::kOutputToInput) ? hlo : hlo->operand(0);
   const HloInstruction* dst =
@@ -428,10 +344,9 @@ DimOrderMapOrError HandleBitcast(const HloInstruction* hlo,
   const Shape& dst_shape = dst->shape();
   const Fragments& src_fragments_order =
       dim_orders.at(src).TensorFragmentsOrder();
-  DimOrderMap result;
+  DimOrderUpdates result;
   DimensionOrder& dst_dim_order =
-      result.insert({dst, DimensionOrder::EmptyLike(dim_orders.at(src))})
-          .first->second;
+      result.map.insert({dst, DimensionOrder()}).first->second;
   Fragments& dst_fragments_order = dst_dim_order.TensorFragmentsOrder();
   // Size of not yet assigned part of current target dimension.
   int64_t dst_remaining_size = 1;
@@ -525,7 +440,7 @@ DimOrderMapOrError HandleBitcast(const HloInstruction* hlo,
   return result;
 }
 
-DimOrderMapOrError HandleCopyOrTransposeOrBroadcast(
+DimOrderUpdatesOrError HandleCopyOrTransposeOrBroadcast(
     const HloInstruction* hlo, const DimOrderMap& dim_orders,
     const TransformDirection direction) {
   const HloInstruction* src =
@@ -534,10 +449,9 @@ DimOrderMapOrError HandleCopyOrTransposeOrBroadcast(
       (direction == TransformDirection::kOutputToInput) ? hlo->operand(0) : hlo;
   const Fragments& src_fragments_order =
       dim_orders.at(src).TensorFragmentsOrder();
-  DimOrderMap result;
+  DimOrderUpdates result;
   DimensionOrder& dst_dim_order =
-      result.insert({dst, DimensionOrder::EmptyLike(dim_orders.at(src))})
-          .first->second;
+      result.map.insert({dst, DimensionOrder()}).first->second;
   Fragments& dst_fragments_order = dst_dim_order.TensorFragmentsOrder();
   // Every HLO dimension can correspond to a group of subdimensions in
   // dim_order_. For the easier handling of permutations: group dim_order_ by
@@ -615,13 +529,13 @@ DimOrderMapOrError HandleCopyOrTransposeOrBroadcast(
 
 // Infers DimensionOrders of all unknown sides (output, operands)
 // of `hlo` from the known ones.
-DimOrderMapOrError HandleInstruction(const HloInstruction* hlo,
-                                     const DimOrderMap& dim_orders,
-                                     TransformDirection direction) {
+DimOrderUpdatesOrError HandleInstruction(const HloInstruction* hlo,
+                                         const DimOrderMap& dim_orders,
+                                         TransformDirection direction) {
   VLOG(7) << hlo->ToString();
   if (hlo->opcode() == HloOpcode::kParameter ||
       hlo_query::IsScalarConstant(hlo)) {
-    return DimOrderMap{};
+    return DimOrderUpdates{};
   } else if (hlo->opcode() == HloOpcode::kTranspose ||
              hlo->opcode() == HloOpcode::kCopy) {
     return HandleCopyOrTransposeOrBroadcast(hlo, dim_orders, direction);
@@ -645,52 +559,199 @@ DimOrderMapOrError HandleInstruction(const HloInstruction* hlo,
   return "Unimplemented instruction.";
 }
 
-// Tells if the dimension order is supported by the triton GEMM emitter.
-// Only the dimension indicated by SplittableDimensionIndex() can be split
-// physically once by other dimensions. Other ones can be only split logically.
-// All subdimensions within a dimension have to be ordered.
-FusionDecision RequireTritonGemmSupportedDimOrder(const DimensionOrder& order) {
+class FusionContext {
+  explicit FusionContext(
+      const int64_t splittable_dimension_index,
+      const int64_t splittable_dimension_supported_major_size)
+      : splittable_dimension_index_(splittable_dimension_index),
+        splittable_dimension_supported_major_part_size_(
+            splittable_dimension_supported_major_size) {}
+
+ public:
+  // Create fusion context from a dot operand according to
+  // the currently supported configurations.
+  static FusionContext FromDotOperand(const HloInstruction& dot,
+                                      int operand_number, int split_k = 1);
+
+  // Create fusion context from dot's output.
+  static FusionContext FromDotOutput(
+      const HloInstruction& dot, int split_k,
+      int64_t splittable_dimension_supported_major_part_size);
+
+  // Tells if the dimension order is supported by the triton GEMM emitter.
+  // Only the dimension indicated by SplittableDimensionIndex() can be split
+  // physically once by other dimensions. Other ones can be only split
+  // logically. All subdimensions within a dimension have to be ordered.
+  // Return major part of splittable dimension in split_dim_major_part if a
+  // supported split is detected.
+  FusionDecision RequireTritonGemmSupportedDimOrder(
+      const DimensionOrder& order, int64_t& split_dim_major_part) const;
+  // Apply RequireTritonGemmSupportedDimOrder() to all known dimension orders
+  // around `hlo`.
+  FusionDecision RequireTritonGemmSupportedDimOrders(
+      const HloInstruction& hlo, DimOrderUpdates& updates) const;
+  // Checks if the instruction is possible and profitable to fuse.
+  // If so tries to transform dim_order describing one side of `hlo` into
+  // description(s) of its other side if it is supported.
+  DimOrderUpdatesOrError AnalyzeForFusion(
+      const HloInstruction& hlo, bool as_input,
+      absl::flat_hash_map<const HloInstruction*, HloInstruction*>&
+          old_to_new_mapping,
+      GpuVersion gpu_version) const;
+  // Add dimension orders from `updates` to `dim_orders_` and update the
+  // splittable dimension ratio if all of them are compatible.
+  bool MergeUpdates(const DimOrderUpdates& updates);
+  // Fuse an instruction with all its fusible inputs.
+  // If an input is not fusible stop there and make a parameter of the new
+  // fusion, otherwise put it onto stack and check its own inputs first.
+  void TryToFuseWithInputsRecursively(
+      HloInstruction& root, GpuVersion gpu_version,
+      absl::flat_hash_map<const HloInstruction*, HloInstruction*>&
+          old_to_new_mapping,
+      std::vector<HloInstruction*>& fusion_inputs,
+      HloComputation::Builder& builder);
+  // Propagate dimension orders in consumer->producer direction starting at
+  // `origin` with output `origin_dim_order` till parameters of the computation.
+  // Store the found parameters and their iteration specs.
+  Status PropagateDimensionOrdersToParameters(
+      const HloInstruction& origin,
+      absl::flat_hash_set<const HloInstruction*>& parameters,
+      absl::flat_hash_map<const HloInstruction*, TensorIterationSpec>&
+          iter_specs);
+
+  // Index of dot dimension that can be split.
+  // Currently typically LHS non-contracting one.
+  int64_t SplittableDimensionIndex() const {
+    return splittable_dimension_index_;
+  }
+  // Tells whether `size` major part of a dimension can be physically split.
+  bool IsSupportedSplittableDimensionMajorPartSize(const int64_t size) const {
+    CHECK_NE(size, 0);
+    // 0 means no specific size requirement.
+    return splittable_dimension_supported_major_part_size_ == 0 ||
+           splittable_dimension_supported_major_part_size_ == size;
+  }
+  int SplittableDimensionMajorPartSize() const {
+    return splittable_dimension_supported_major_part_size_;
+  }
+  const DimOrderMap& DimOrders() const { return dim_orders_; }
+
+ private:
+  bool SetSplittableDimensionMajorPartSize(const int64_t size) {
+    if (IsSupportedSplittableDimensionMajorPartSize(size)) {
+      splittable_dimension_supported_major_part_size_ = size;
+      return true;
+    }
+    return false;
+  }
+
+  const int splittable_dimension_index_;
+  int64_t splittable_dimension_supported_major_part_size_;
+  DimOrderMap dim_orders_;
+};
+
+FusionContext FusionContext::FromDotOperand(const HloInstruction& dot,
+                                            const int operand_number,
+                                            const int split_k) {
+  // There can be either none or one split-K batch dimension.
+  const int num_split_k_batch_dims = split_k > 1;
+  int split_k_dimension_index = -1;
+  if (split_k > 1) {
+    split_k_dimension_index =
+        ContractingDimensionIndex(dot, operand_number) - 1;
+  }
+  int splittable_dimension_index = -1;
+  // LHS non-contracting dimension can be split if non-splitK batch is absent.
+  if (operand_number == 0 &&
+      dot.dot_dimension_numbers().lhs_batch_dimensions_size() -
+              num_split_k_batch_dims ==
+          0) {
+    splittable_dimension_index =
+        NonContractingDimensionIndex(dot, operand_number);
+  }
+  FusionContext context(splittable_dimension_index,
+                        /*splittable_dimension_supported_major_size=*/0);
+  context.dim_orders_[dot.operand(operand_number)] =
+      DimensionOrder(dot.operand(operand_number), split_k_dimension_index);
+  return context;
+}
+
+FusionContext FusionContext::FromDotOutput(
+    const HloInstruction& dot, const int split_k,
+    const int64_t splittable_dimension_supported_major_part_size) {
+  // Allow non-contracting dimension originating from LHS to split if
+  // this dimension is split at the output at the same ratio as
+  // at the input.
+  int64_t splittable_dimension_index = -1;
+  if (splittable_dimension_supported_major_part_size > 1) {
+    // Split-K dimension is the first one in the output if present;
+    // LHS non-contracting follows (batch is absent in this case).
+    splittable_dimension_index = (split_k > 1) ? 1 : 0;
+  }
+  FusionContext context(splittable_dimension_index,
+                        splittable_dimension_supported_major_part_size);
+  context.dim_orders_[&dot] = DimensionOrder(&dot);
+  return context;
+}
+
+FusionDecision FusionContext::RequireTritonGemmSupportedDimOrder(
+    const DimensionOrder& order, int64_t& split_dim_major_part) const {
   VLOG(8) << order.ToString();
   const Fragments& tensor_dim_fragments = order.TensorFragmentsOrder();
   for (const auto& [dim_index, dim_fragments] : order.DimFragmentsOrders()) {
-    int last_fragment_number = -1;
     int split_counter = -1;
-    for (const int fragment_number : dim_fragments) {
-      CHECK_EQ(tensor_dim_fragments[fragment_number].dst_dim_number, dim_index);
-      const int size = tensor_dim_fragments[fragment_number].size;
-      if (fragment_number <= last_fragment_number) {
-        return "Transpose within a dimension.";
+    auto fragment = dim_fragments.cbegin();
+    while (true) {
+      if (fragment == dim_fragments.cend()) {
+        break;
       }
-      if (size == 1) {
-        last_fragment_number = fragment_number;
+      int64_t grouped_size = tensor_dim_fragments[*fragment].size;
+      // Gather contiguous fragments.
+      while ((fragment + 1) != dim_fragments.cend() &&
+             *(fragment + 1) == *fragment + 1) {
+        ++fragment;
+        grouped_size *= tensor_dim_fragments[*fragment].size;
+      }
+
+      if (grouped_size == 1) {
+        ++fragment;
         continue;
       }
-      if (fragment_number == 0 ||
-          tensor_dim_fragments[fragment_number - 1].dst_dim_number !=
-              dim_index) {
-        ++split_counter;
-        if (dim_index == order.SplittableDimensionIndex() &&
-            order.IsSupportedSplittableDimensionMajorPartSize(size)) {
-          if (split_counter > 1) {
+
+      if (fragment != dim_fragments.cbegin() && *fragment < *(fragment - 1)) {
+        return "Transpose within a dimension.";
+      }
+
+      ++split_counter;
+      if (split_counter > 0) {
+        if (dim_index == SplittableDimensionIndex() &&
+            IsSupportedSplittableDimensionMajorPartSize(grouped_size)) {
+          if (split_counter == 1) {
+            if (split_dim_major_part != 0 &&
+                split_dim_major_part != grouped_size) {
+              return "Conflicting splits of splittable dimension";
+            }
+            split_dim_major_part = grouped_size;
+          } else if (split_counter > 1) {
             return "2nd split of a splittable dimension.";
           }
-        } else if (split_counter > 0) {
-          return "Split of a non-splittable dimension.";
+        } else {
+          return "Unsupported split of a dimension.";
         }
       }
-      last_fragment_number = fragment_number;
+
+      ++fragment;
     }
   }
   return FusionDecision{};
 }
 
-// Apply RequireTritonGemmSupportedDimOrder() to all known dimension orders
-// around `hlo`.
-FusionDecision RequireTritonGemmSupportedDimOrders(
-    const HloInstruction& hlo, const DimOrderMap& dim_orders) {
+FusionDecision FusionContext::RequireTritonGemmSupportedDimOrders(
+    const HloInstruction& hlo, DimOrderUpdates& updates) const {
   auto check_if_present = [&](const HloInstruction* instr) {
-    if (auto it = dim_orders.find(instr); it != dim_orders.end()) {
-      return RequireTritonGemmSupportedDimOrder(it->second);
+    if (auto it = updates.map.find(instr); it != updates.map.end()) {
+      return RequireTritonGemmSupportedDimOrder(
+          it->second, updates.splittable_dimension_major_part_size);
     }
     return FusionDecision{};
   };
@@ -741,14 +802,11 @@ bool IsOutputWorthFusing(const HloInstruction& hlo) {
          InputMinusOutputBytes(hlo) >= -kIoToleranceBytes;
 }
 
-// Checks if the instruction is possible and profitable to fuse.
-// If so tries to transform dim_order describing one side of `hlo` into
-// description(s) of its other side if it is supported.
-DimOrderMapOrError AnalyzeForFusion(
-    const HloInstruction& hlo, bool as_input, DimOrderMap& dim_orders,
+DimOrderUpdatesOrError FusionContext::AnalyzeForFusion(
+    const HloInstruction& hlo, bool as_input,
     absl::flat_hash_map<const HloInstruction*, HloInstruction*>&
         old_to_new_mapping,
-    const GpuVersion gpu_version) {
+    const GpuVersion gpu_version) const {
   int fusion_level =
       hlo.GetModule()->config().debug_options().xla_gpu_triton_fusion_level();
   if (!std::get<se::CudaComputeCapability>(gpu_version)
@@ -812,19 +870,19 @@ DimOrderMapOrError AnalyzeForFusion(
   }
 
   auto result =
-      HandleInstruction(&hlo, dim_orders,
+      HandleInstruction(&hlo, dim_orders_,
                         as_input ? TransformDirection::kOutputToInput
                                  : TransformDirection::kInputToOutput);
-  if (!std::holds_alternative<DimOrderMap>(result)) {
+  if (!std::holds_alternative<DimOrderUpdates>(result)) {
     return std::get<FusionDecision>(result);
   }
 
   if (FusionDecision supported = RequireTritonGemmSupportedDimOrders(
-          hlo, std::get<DimOrderMap>(result));
+          hlo, std::get<DimOrderUpdates>(result));
       !supported) {
     return supported;
   }
-  return std::get<DimOrderMap>(result);
+  return std::get<DimOrderUpdates>(result);
 }
 
 // Clone an instruction into the fusion.
@@ -875,26 +933,26 @@ int64_t NumAddedParameters(const HloInstruction& hlo) {
   return hlo.operand_count() - 1;
 }
 
-bool MergeDimOrderMapUpdates(DimOrderMap& target, const DimOrderMap& updates) {
+bool FusionContext::MergeUpdates(const DimOrderUpdates& updates) {
   // First check that all updates to insert are compatible to avoid
   // incomplete merges.
-  for (const auto& [key, value] : updates) {
-    auto it = target.find(key);
-    if (it != target.cend() && !it->second.IsPhysicallyEquivalent(value)) {
+  for (const auto& [key, value] : updates.map) {
+    auto it = dim_orders_.find(key);
+    if (it != dim_orders_.cend() && !it->second.IsPhysicallyEquivalent(value)) {
       return false;
     }
   }
-  target.insert(updates.begin(), updates.end());
+  if (updates.splittable_dimension_major_part_size > 1 &&
+      !SetSplittableDimensionMajorPartSize(
+          updates.splittable_dimension_major_part_size)) {
+    return false;
+  }
+  dim_orders_.insert(updates.map.begin(), updates.map.end());
   return true;
 }
 
-// Fuse an instruction with all its fusible inputs.
-// If an input is not fusible stop there and make a parameter of the new
-// fusion, otherwise put it onto stack and check its own inputs first.
-void TryToFuseWithInputsRecursively(
-    HloInstruction& root,
-    // Dimension orders describing outputs of corresponding instructions.
-    DimOrderMap& dim_orders, const GpuVersion gpu_version,
+void FusionContext::TryToFuseWithInputsRecursively(
+    HloInstruction& root, const GpuVersion gpu_version,
     absl::flat_hash_map<const HloInstruction*, HloInstruction*>&
         old_to_new_mapping,
     std::vector<HloInstruction*>& fusion_inputs,
@@ -910,21 +968,21 @@ void TryToFuseWithInputsRecursively(
   // of them to be physically compatible.
   const HloInstruction* reference_dim_order_hlo = nullptr;
   auto try_fuse_one = [&](HloInstruction& hlo) {
-    const DimOrderMapOrError result = AnalyzeForFusion(
-        hlo, /*as_input=*/true, dim_orders, old_to_new_mapping, gpu_version);
-    if (!std::holds_alternative<DimOrderMap>(result)) {
+    const DimOrderUpdatesOrError result = AnalyzeForFusion(
+        hlo, /*as_input=*/true, old_to_new_mapping, gpu_version);
+    if (!std::holds_alternative<DimOrderUpdates>(result)) {
       return false;
     }
     for (const HloInstruction* operand : hlo.operands()) {
       const DimensionOrder& dim_order =
-          std::get<DimOrderMap>(result).at(operand);
+          std::get<DimOrderUpdates>(result).map.at(operand);
       if (reference_dim_order_hlo != nullptr &&
           !dim_order.IsPhysicallyEquivalent(
-              dim_orders.at(reference_dim_order_hlo))) {
+              dim_orders_.at(reference_dim_order_hlo))) {
         return false;
       }
     }
-    if (!MergeDimOrderMapUpdates(dim_orders, std::get<DimOrderMap>(result))) {
+    if (!MergeUpdates(std::get<DimOrderUpdates>(result))) {
       return false;
     }
     to_fuse.push(&hlo);
@@ -986,45 +1044,19 @@ StatusOr<FusionDecision> FuseDot(HloInstruction& dot,
   // differently shaped tiles but may go through same HLO graph nodes.
   // Direct dot inputs have well defined dimension orders.
 
-  auto fuse_inputs = [&](int operand_number) -> StatusOr<DimOrderMap> {
+  auto fuse_inputs = [&](int operand_number) -> StatusOr<FusionContext> {
     const int operand_count_before = fusion_inputs.size();
-    DimOrderMap dim_orders;
     // Direct dot inputs have well defined dimension orders.
-    dim_orders.insert({dot.operand(operand_number),
-                       DimensionOrder::FromDotOperand(dot, operand_number)});
-    TryToFuseWithInputsRecursively(*dot.mutable_operand(operand_number),
-                                   dim_orders, gpu_version, old_to_new_mapping,
-                                   fusion_inputs, builder);
+    auto context = FusionContext::FromDotOperand(dot, operand_number);
+    context.TryToFuseWithInputsRecursively(*dot.mutable_operand(operand_number),
+                                           gpu_version, old_to_new_mapping,
+                                           fusion_inputs, builder);
     TF_RET_CHECK(fusion_inputs.size() - operand_count_before <=
                  DotFusionAnalysis::kMaxParameterPerScope);
-    return dim_orders;
+    return context;
   };
-  // Check if non-contracting dimension originating from LHS operand in the
-  // output can be split. This currently requires this dimension being split
-  // in the operand the same way.
-  int64_t lhs_nc_split_major_part = -1;
-  {
-    TF_ASSIGN_OR_RETURN(const auto lhs_dim_orders, fuse_inputs(0));
-    // Looking at first LHS parameter to find split non-contracting dimension
-    // is sufficient because currently all parameters of one scope have to use
-    // the same tiling.
-    auto first_lhs_parameter_it = lhs_dim_orders.cbegin();
-    while (first_lhs_parameter_it != lhs_dim_orders.cend()) {
-      if (auto it = old_to_new_mapping.find(first_lhs_parameter_it->first);
-          it != old_to_new_mapping.cend() &&
-          it->second->opcode() == HloOpcode::kParameter) {
-        break;
-      }
-      ++first_lhs_parameter_it;
-    }
-    if (first_lhs_parameter_it != lhs_dim_orders.cend()) {
-      const auto lhs_nc_iter_spec = DimensionOrderToTensorIterationSpec(
-          first_lhs_parameter_it->second)[NonContractingDimensionIndex(dot, 0)];
-      if (lhs_nc_iter_spec.size() > 1) {
-        lhs_nc_split_major_part = lhs_nc_iter_spec.at(1).count;
-      }
-    }
-  }
+
+  TF_ASSIGN_OR_RETURN(const FusionContext lhs_context, fuse_inputs(0));
   if (auto result = fuse_inputs(1); !result.ok()) {
     return result.status();
   }
@@ -1034,10 +1066,8 @@ StatusOr<FusionDecision> FuseDot(HloInstruction& dot,
   // Fusion at dot's output.
 
   // These describe _outputs_ of corresponding HLOs.
-  DimOrderMap out_dim_orders;
-  out_dim_orders.insert(
-      {&dot, DimensionOrder::FromDotOutput(dot, /*split_k=*/1,
-                                           lhs_nc_split_major_part)});
+  auto context = FusionContext::FromDotOutput(
+      dot, /*split_k=*/1, lhs_context.SplittableDimensionMajorPartSize());
   HloInstruction* fusion_output = &dot;
   bool output_changed = true;
   while (output_changed) {
@@ -1049,18 +1079,16 @@ StatusOr<FusionDecision> FuseDot(HloInstruction& dot,
     if (!IsDistributiveOverAddition(*user)) {
       break;
     }
-    auto result = AnalyzeForFusion(*user, /*as_input=*/false, out_dim_orders,
-                                   old_to_new_mapping, gpu_version);
-    if (!std::holds_alternative<DimOrderMap>(result)) {
+    auto result = context.AnalyzeForFusion(*user, /*as_input=*/false,
+                                           old_to_new_mapping, gpu_version);
+    if (!std::holds_alternative<DimOrderUpdates>(result)) {
       continue;
     }
-    TF_RET_CHECK(
-        MergeDimOrderMapUpdates(out_dim_orders, std::get<DimOrderMap>(result)));
+    TF_RET_CHECK(context.MergeUpdates(std::get<DimOrderUpdates>(result)));
     for (HloInstruction* operand : user->operands()) {
       if (!old_to_new_mapping.contains(operand)) {
-        TryToFuseWithInputsRecursively(*operand, out_dim_orders, gpu_version,
-                                       old_to_new_mapping, fusion_inputs,
-                                       builder);
+        context.TryToFuseWithInputsRecursively(
+            *operand, gpu_version, old_to_new_mapping, fusion_inputs, builder);
       }
     }
     Fuse(*user, old_to_new_mapping, fusion_inputs, builder);
@@ -1368,20 +1396,14 @@ Status MakeDotComputationSplitKBatch(
   return OkStatus();
 }
 
-// Propagate dimension orders in consumer->producer direction starting at
-// `origin` with output `origin_dim_order` till parameters of the computation.
-// Store the found parameters and their iteration specs.
-Status PropagateDimensionOrdersToParameters(
-    const HloInstruction& origin, DimensionOrder origin_dim_order,
+Status FusionContext::PropagateDimensionOrdersToParameters(
+    const HloInstruction& origin,
     absl::flat_hash_set<const HloInstruction*>& parameters,
     absl::flat_hash_map<const HloInstruction*, TensorIterationSpec>&
         iter_specs) {
   absl::flat_hash_set<const HloInstruction*> visited;
   std::queue<const HloInstruction*> to_process;
   // Dimension orders describing outputs of corresponding instructions.
-  DimOrderMap dim_orders;
-  TF_RET_CHECK(RequireTritonGemmSupportedDimOrder(origin_dim_order));
-  dim_orders.insert({&origin, origin_dim_order});
   visited.insert(&origin);
   to_process.push(&origin);
   while (!to_process.empty()) {
@@ -1397,12 +1419,11 @@ Status PropagateDimensionOrdersToParameters(
       VLOG(5) << hlo->ToString();
     }
     auto result =
-        HandleInstruction(hlo, dim_orders, TransformDirection::kOutputToInput);
-    TF_RET_CHECK(std::holds_alternative<DimOrderMap>(result));
-    TF_RET_CHECK(
-        MergeDimOrderMapUpdates(dim_orders, std::get<DimOrderMap>(result)));
-    TF_RET_CHECK(
-        RequireTritonGemmSupportedDimOrders(*hlo, dim_orders).CanFuse());
+        HandleInstruction(hlo, dim_orders_, TransformDirection::kOutputToInput);
+    TF_RET_CHECK(std::holds_alternative<DimOrderUpdates>(result));
+    TF_RET_CHECK(RequireTritonGemmSupportedDimOrders(
+        *hlo, std::get<DimOrderUpdates>(result)));
+    TF_RET_CHECK(MergeUpdates(std::get<DimOrderUpdates>(result)));
     for (const HloInstruction* operand : hlo->operands()) {
       if (!visited.insert(operand).second) {
         continue;
@@ -1417,10 +1438,10 @@ Status PropagateDimensionOrdersToParameters(
   }
   // For now all parameters of one scope have to use the same tiling.
   for (const HloInstruction* parameter : parameters) {
-    TF_RET_CHECK(dim_orders.at(parameter).IsPhysicallyEquivalent(
-        dim_orders.at(*parameters.cbegin())));
+    TF_RET_CHECK(dim_orders_.at(parameter).IsPhysicallyEquivalent(
+        dim_orders_.at(*parameters.cbegin())));
     iter_specs[parameter] =
-        DimensionOrderToTensorIterationSpec(dim_orders.at(parameter));
+        DimensionOrderToTensorIterationSpec(dim_orders_.at(parameter));
   }
   return OkStatus();
 }
@@ -1575,49 +1596,40 @@ Status DotFusionAnalysis::ExecuteImpl(const HloComputation* computation,
   const HloInstruction* dot =
       hlo_query::GetFirstInstructionWithOpcode(*computation, HloOpcode::kDot);
 
+  int64_t lhs_nc_split_major_part_size = -1;
   for (const Scope scope : {Scope::LHS, Scope::RHS}) {
     const int operand_number = static_cast<int>(scope);
-    TF_RETURN_IF_ERROR(PropagateDimensionOrdersToParameters(
-        *dot->operand(operand_number),
-        DimensionOrder::FromDotOperand(*dot, operand_number, split_k),
-        parameters_[scope], iter_specs_[scope]));
-  }
-
-  int64_t lhs_nc_split_major_part_size = -1;
-  if (!ScopeParameters(Scope::LHS).empty()) {
-    const DimIterationSpec* lhs_nc_iter_spec =
-        IterSpec(Scope::LHS, *ScopeParameters(Scope::LHS).cbegin(),
-                 NonContractingDimensionIndex(*dot, 0));
-    if (lhs_nc_iter_spec != nullptr && lhs_nc_iter_spec->size() > 1) {
-      lhs_nc_split_major_part_size = lhs_nc_iter_spec->at(1).count;
+    auto context = FusionContext::FromDotOperand(*dot, operand_number, split_k);
+    TF_RETURN_IF_ERROR(context.PropagateDimensionOrdersToParameters(
+        *dot->operand(operand_number), parameters_[scope], iter_specs_[scope]));
+    if (scope == Scope::LHS && context.SplittableDimensionMajorPartSize() > 1) {
+      lhs_nc_split_major_part_size = context.SplittableDimensionMajorPartSize();
     }
   }
-  DimOrderMap dim_orders;
-  dim_orders.insert({dot, DimensionOrder::FromDotOutput(
-                              *dot, split_k, lhs_nc_split_major_part_size)});
+
+  auto context =
+      FusionContext::FromDotOutput(*dot, split_k, lhs_nc_split_major_part_size);
   const HloInstruction* output = dot;
   // Currently supported is one fusion output and one path from dot to it.
   // Propagate dimension order from dot to root.
   while (!output->IsRoot()) {
     TF_RET_CHECK(output->user_count() == 1);
     output = output->users()[0];
-    auto result = HandleInstruction(output, dim_orders,
+    auto result = HandleInstruction(output, context.DimOrders(),
                                     TransformDirection::kInputToOutput);
-    TF_RET_CHECK(std::holds_alternative<DimOrderMap>(result));
-    TF_RET_CHECK(RequireTritonGemmSupportedDimOrder(
-        std::get<DimOrderMap>(result).at(output)));
-    TF_RET_CHECK(
-        MergeDimOrderMapUpdates(dim_orders, std::get<DimOrderMap>(result)));
+    TF_RET_CHECK(std::holds_alternative<DimOrderUpdates>(result));
+    TF_RET_CHECK(context.RequireTritonGemmSupportedDimOrders(
+        *output, std::get<DimOrderUpdates>(result)));
+    TF_RET_CHECK(context.MergeUpdates(std::get<DimOrderUpdates>(result)));
   }
   TF_RET_CHECK(iter_specs_[Scope::OUTPUT]
                    .insert({output, DimensionOrderToTensorIterationSpec(
-                                        dim_orders.at(output))})
+                                        context.DimOrders().at(output))})
                    .second);
   if (output != dot) {
     // Propagate back to parameters of the output fusion.
-    TF_RETURN_IF_ERROR(PropagateDimensionOrdersToParameters(
-        *output, dim_orders.at(output), parameters_[Scope::OUTPUT],
-        iter_specs_[Scope::OUTPUT]));
+    TF_RETURN_IF_ERROR(context.PropagateDimensionOrdersToParameters(
+        *output, parameters_[Scope::OUTPUT], iter_specs_[Scope::OUTPUT]));
   }
   return OkStatus();
 }
