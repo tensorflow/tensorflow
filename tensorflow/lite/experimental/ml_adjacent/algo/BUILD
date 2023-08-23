@@ -47,3 +47,24 @@ cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+cc_library(
+    name = "rotate",
+    srcs = ["rotate.cc"],
+    hdrs = ["rotate.h"],
+    deps = [
+        "//tensorflow/lite/experimental/ml_adjacent:lib",
+        "//tensorflow/lite/kernels/internal:compatibility",
+    ],
+)
+
+cc_test(
+    name = "rotate_test",
+    srcs = ["rotate_test.cc"],
+    deps = [
+        ":rotate",
+        "//tensorflow/lite/experimental/ml_adjacent:lib",
+        "//tensorflow/lite/experimental/ml_adjacent/data:owning_vector_ref",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
