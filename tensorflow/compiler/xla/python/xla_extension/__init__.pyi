@@ -712,12 +712,14 @@ class XLACompatibleSharding(Sharding): ...
 
 class NamedSharding(XLACompatibleSharding):
   def __init__(self, mesh: Any, spec: Any, *, memory_kind: Optional[str] = None,
-               _parsed_pspec: Any = None): ...
+               _parsed_pspec: Any = None,
+               _manual_axes: frozenset[Any] = frozenset()): ...
   mesh: Any
   spec: Any
   _memory_kind: Optional[str]
   _parsed_pspec: Any
   _internal_device_list: DeviceList
+  _manual_axes: frozenset[Any]
 
 class SingleDeviceSharding(XLACompatibleSharding):
   def __init__(self, device: Device, *, memory_kind: Optional[str] = None): ...

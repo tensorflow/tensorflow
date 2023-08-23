@@ -84,12 +84,14 @@ class XLACompatibleSharding : public Sharding {
 class NamedSharding : public XLACompatibleSharding {
  public:
   NamedSharding(pybind11::object mesh, pybind11::object spec,
-                pybind11::object memory_kind, pybind11::object parsed_pspec);
+                pybind11::object memory_kind, pybind11::object parsed_pspec,
+                pybind11::object manual_axes);
 
   const pybind11::object& mesh() const { return mesh_; }
   const pybind11::object& spec() const { return spec_; }
   const pybind11::object& memory_kind() const { return memory_kind_; }
   const pybind11::object& parsed_pspec() const { return parsed_pspec_; }
+  const pybind11::object& manual_axes() const { return manual_axes_; }
   void set_parsed_pspec(pybind11::object parsed_pspec) {
     parsed_pspec_ = std::move(parsed_pspec);
   }
@@ -108,6 +110,7 @@ class NamedSharding : public XLACompatibleSharding {
   pybind11::object spec_;
   pybind11::object memory_kind_;
   pybind11::object parsed_pspec_;
+  pybind11::object manual_axes_;
   std::shared_ptr<PyDeviceList> internal_device_list_;
 };
 

@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "pybind11/cast.h"  // from @pybind11
 #include "pybind11/detail/common.h"  // from @pybind11
+#include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
@@ -146,7 +147,9 @@ bool ShardingEqual(const pybind11::object& a, const pybind11::object& b) {
     return a_named_sharding->mesh().ptr() == b_named_sharding->mesh().ptr() &&
            a_named_sharding->spec().equal(b_named_sharding->spec()) &&
            a_named_sharding->memory_kind().equal(
-               b_named_sharding->memory_kind());
+               b_named_sharding->memory_kind()) &&
+           a_named_sharding->manual_axes().equal(
+               b_named_sharding->manual_axes());
   }
 
   if (a_type.is(GSPMDSharding::type())) {
@@ -211,7 +214,8 @@ xla::ClientAndPtr<xla::PjRtMemorySpace> GetMemory(
 }
 
 NamedSharding::NamedSharding(py::object mesh, py::object spec,
-                             py::object memory_kind, py::object parsed_pspec)
+                             py::object memory_kind, py::object parsed_pspec,
+                             py::object manual_axes)
     : XLACompatibleSharding(/*num_devices=*/[&mesh]() {
         py::array devices = mesh.attr("devices");
         return devices.size();
@@ -219,7 +223,8 @@ NamedSharding::NamedSharding(py::object mesh, py::object spec,
       mesh_(std::move(mesh)),
       spec_(std::move(spec)),
       memory_kind_(std::move(memory_kind)),
-      parsed_pspec_(std::move(parsed_pspec)) {
+      parsed_pspec_(std::move(parsed_pspec)),
+      manual_axes_(std::move(manual_axes)) {
   py::cast(this).attr("_preprocess")();
   internal_device_list_ = py::cast<std::shared_ptr<jax::PyDeviceList>>(
       mesh_.attr("_internal_device_list"));
@@ -291,13 +296,16 @@ void RegisterSharding(py::module& m) {
 
   py::class_<NamedSharding, XLACompatibleSharding>(m, "NamedSharding",
                                                    py::dynamic_attr())
-      .def(py::init<py::object, py::object, py::object, py::object>(),
+      .def(py::init<py::object, py::object, py::object, py::object,
+                    py::object>(),
            py::arg("mesh"), py::arg("spec"), py::kw_only(),
            py::arg("memory_kind") = py::none(),
-           py::arg("_parsed_pspec") = py::none())
+           py::arg("_parsed_pspec") = py::none(),
+           py::arg("_manual_axes") = py::frozenset(py::set()))
       .def_property_readonly("mesh", &NamedSharding::mesh)
       .def_property_readonly("spec", &NamedSharding::spec)
       .def_property_readonly("_memory_kind", &NamedSharding::memory_kind)
+      .def_property_readonly("_manual_axes", &NamedSharding::manual_axes)
       .def_property("_parsed_pspec", &NamedSharding::parsed_pspec,
                     &NamedSharding::set_parsed_pspec)
       .def_property_readonly("_internal_device_list",
