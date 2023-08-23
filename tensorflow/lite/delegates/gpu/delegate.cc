@@ -38,7 +38,7 @@ limitations under the License.
 #include "tensorflow/lite/builtin_ops.h"
 
 #if defined(__ANDROID__)
-#include "tensorflow/lite/core/async/backend_async_kernel_interface.h"
+#include "tensorflow/lite/async/backend_async_kernel_interface.h"
 #include "tensorflow/lite/core/async/c/task.h"
 #include "tensorflow/lite/core/async/interop/c/attribute_map.h"
 #include "tensorflow/lite/core/async/interop/c/constants.h"
