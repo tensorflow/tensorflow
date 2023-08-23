@@ -17,17 +17,16 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
-#include "absl/status/status.h"
-#include "third_party/grpc/include/grpcpp/impl/channel_interface.h"
-#include "third_party/grpc/include/grpcpp/impl/client_unary_call.h"
-#include "third_party/grpc/include/grpcpp/impl/rpc_service_method.h"
-#include "third_party/grpc/include/grpcpp/impl/service_type.h"
-#include "third_party/grpc/include/grpcpp/support/async_unary_call.h"
-#include "third_party/grpc/include/grpcpp/support/client_callback.h"
-#include "third_party/grpc/include/grpcpp/support/method_handler.h"
-#include "third_party/grpc/include/grpcpp/support/status.h"
-#include "third_party/grpc/include/grpcpp/support/stub_options.h"
-#include "tensorflow/tsl/distributed_runtime/rpc/grpc_util.h"
+#include "grpcpp/impl/codegen/async_stream.h"
+#include "grpcpp/impl/codegen/async_unary_call.h"
+#include "grpcpp/impl/codegen/channel_interface.h"
+#include "grpcpp/impl/codegen/client_callback.h"
+#include "grpcpp/impl/codegen/client_unary_call.h"
+#include "grpcpp/impl/codegen/method_handler.h"
+#include "grpcpp/impl/codegen/rpc_service_method.h"
+#include "grpcpp/impl/codegen/server_callback.h"
+#include "grpcpp/impl/codegen/service_type.h"
+#include "grpcpp/impl/codegen/sync_stream.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -35,14 +34,14 @@ namespace tpu {
 static const char* grpcTpuCompilationCacheService_method_names[] = {
 #if defined(LIBTPU_ON_GCE)
     "/tensorflow.tpu.TpuCompilationCacheServiceExternal/GetTpuProgram",
-#else   // !LIBTPU_ON_GCE
+#else  // LIBTPU_ON_GCE
     "/tensorflow.tpu.TpuCompilationCacheService/GetTpuProgram",
 #endif  // LIBTPU_ON_GCE
 };
 
 std::unique_ptr<grpc::TpuCompilationCacheService::Stub>
 grpc::TpuCompilationCacheService::NewStub(
-    const std::shared_ptr<::grpc::ChannelInterface>& channel,
+    const std::shared_ptr< ::grpc::ChannelInterface>& channel,
     const ::grpc::StubOptions& options) {
   (void)options;
   std::unique_ptr<grpc::TpuCompilationCacheService::Stub> stub(
@@ -51,7 +50,7 @@ grpc::TpuCompilationCacheService::NewStub(
 }
 
 grpc::TpuCompilationCacheService::Stub::Stub(
-    const std::shared_ptr<::grpc::ChannelInterface>& channel)
+    const std::shared_ptr< ::grpc::ChannelInterface>& channel)
     : channel_(channel),
       rpcmethod_get_tpu_program_(grpcTpuCompilationCacheService_method_names[0],
                                  ::grpc::internal::RpcMethod::NORMAL_RPC,
@@ -103,7 +102,7 @@ grpc::TpuCompilationCacheService::Service::~Service() = default;
   (void)context;
   (void)request;
   (void)response;
-  return tsl::ToGrpcStatus(absl::UnimplementedError("Unimplemented"));
+  return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
 }
 
 }  // namespace tpu
