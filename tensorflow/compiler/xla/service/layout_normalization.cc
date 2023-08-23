@@ -279,7 +279,11 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
           new_unary,
           MakeUnaryHlo(hlo->opcode(), normalized_input, &hlo->metadata()));
     }
-    SetVisited(*new_unary);
+    if (normalized_input != new_unary) {
+      // SetVisited() should only be called for unvisited ops.
+      // 'normalized_input' is already marked as visited.
+      SetVisited(*new_unary);
+    }
     auto bc_to_orig = MakeBitcastHlo(new_unary, s);
     TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
     return OkStatus();
