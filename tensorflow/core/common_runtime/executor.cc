@@ -74,7 +74,6 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/annotated_traceme.h"
 #include "tensorflow/core/profiler/lib/connected_traceme.h"
-#include "tensorflow/core/profiler/lib/context_types.h"
 #include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
@@ -632,15 +631,6 @@ void ExecutorState<PropagatorStateType>::ProcessAsync(
       new AsyncState(params, tagged_node, &item, first_input, stats);
 
   auto done = [this, state, activity_id]() {
-    // Trace async op done.
-    profiler::TraceMeConsumer consumer(
-        [&] {
-          return profiler::TraceMeEncode(
-              "ExecutorState::ProcessAsync::Done",
-              {{"name", state->item->kernel->name()}, {"step_id", step_id_}});
-        },
-        profiler::ContextType::kTfExecutor, trace_id_);
-
     Device* device = immutable_state_.params().device;
     NodeExecStatsInterface* stats = state->stats;  // Shorthand
     Entry* first_input = state->first_input;       // Shorthand
@@ -681,16 +671,6 @@ void ExecutorState<PropagatorStateType>::ProcessAsync(
               state->ctx, /*verbose=*/profiler::TfOpDetailsEnabled());
         },
         profiler::GetTFTraceMeLevel(/*is_expensive=*/false));
-
-    // Trace async op start.
-    profiler::TraceMeProducer producer(
-        [&] {
-          return profiler::TraceMeEncode(
-              "ExecutorState::ProcessAsync::Start",
-              {{"name", async_kernel->name()}, {"step_id", step_id_}});
-        },
-        profiler::ContextType::kTfExecutor, trace_id_);
-
     immutable_state_.params().device->ComputeAsync(async_kernel, &state->ctx,
                                                    std::move(done));
   }
