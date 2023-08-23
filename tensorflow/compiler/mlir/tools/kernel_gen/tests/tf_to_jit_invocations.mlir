@@ -39,9 +39,9 @@ func.func @unary_tanh(%arg : tensor<*xf32>) -> tensor<*xf32> {
 
 // CHECK-JFLT-LABEL: @unary_tanh
 // CHECK-JFLT-SAME:  %[[ARG0:.*]]: tensor<*xf32>
-// CHECK-JFLT-DAG:   %[[LIMIT:.*]] = arith.constant 2147483647
 // CHECK-JFLT:       %[[SHAPE:.*]] = shape.shape_of %[[ARG0]]
 // CHECK-JFLT:       %[[NUM:.*]] = shape.num_elements %[[SHAPE]]
+// CHECK-JFLT:       %[[LIMIT:.*]] = arith.constant 2147483647
 // CHECK-JFLT:       %[[CMPI:.*]] = arith.cmpi sgt, %[[NUM]], %[[LIMIT]]
 // CHECK-JFLT:       %[[IF:.*]] = scf.if %[[CMPI]]
 // CHECK-JFLT:         %[[JIT:.*]] = tf_framework.jit_compile_from_str
@@ -91,9 +91,9 @@ func.func @binary_sub(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>) -> tensor<*x
 
 // CHECK-JFLT-LABEL: @binary_sub
 // CHECK-JFLT:  %[[ARG0:.*]]: tensor<*xf32>, %[[ARG1:.*]]: tensor<*xf32>
-// CHECK-JFLT:  %[[LIMIT:.*]] = arith.constant 2147483647
 // CHECK-JFLT:  %[[SHAPE1:.*]] = shape.shape_of %[[ARG0]] : tensor<*xf32> -> tensor<?xindex>
 // CHECK-JFLT:  %[[ELEMENTCOUNT1:.*]] = shape.num_elements %[[SHAPE1]] : tensor<?xindex> -> index
+// CHECK-JFLT:  %[[LIMIT:.*]] = arith.constant 2147483647
 // CHECK-JFLT:  %[[COMP1:.*]] = arith.cmpi sgt, %[[ELEMENTCOUNT1]], %[[LIMIT]] : index
 // CHECK-JFLT:  %[[SHAPE2:.*]] = shape.shape_of %[[ARG1]] : tensor<*xf32> -> tensor<?xindex>
 // CHECK-JFLT:  %[[ELEMENTCOUNT2:.*]] = shape.num_elements %[[SHAPE2]] : tensor<?xindex> -> index
@@ -119,9 +119,62 @@ func.func @binary_sub(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>) -> tensor<*x
 // CHECK-JFLT-SAME:        unrollFactors = [3, 2, 1]
 // CHECK-JFLT-SAME:      }
 // CHECK-JFLT:       %[[RES:.*]] = tf_framework.jit_execute %[[CALLABLE]](%[[ARG0]], %[[ARG1]])
-// CHECK-JFLT: scf.yield %[[RES]] : tensor<*xf32>
+// CHECK-JFLT:       scf.yield %[[RES]] : tensor<*xf32>
 // CHECK-JFLT:     } else {
 // CHECK-JFLT:       %[[RES2:.*]] = chlo.broadcast_subtract %[[ARG0]], %[[ARG1]] : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
 // CHECK-JFLT:       scf.yield %[[RES2]] : tensor<*xf32>
 // CHECK-JFLT:     }
-// CHECK-JFLT:       return %[[IFRES]]
+// CHECK-JFLT:     return %[[IFRES]]
+
+// -----
+
+func.func @reciprocal(%arg0: tensor<*xf32>)
+    -> tensor<*xf32> attributes {tf_entry, llvm.emit_c_interface} {
+  %0 = mhlo.constant dense<1.0> : tensor<f32>
+  %1 = chlo.broadcast_divide %0, %arg0 : (tensor<f32>, tensor<*xf32>) -> tensor<*xf32>
+  func.return %1 : tensor<*xf32>
+}
+
+// CHECK-LABEL: @reciprocal
+// CHECK-SAME:  %[[ARG:.*]]: tensor<*xf32>
+// CHECK:       %[[CALLABLE:.*]] = tf_framework.jit_compile_from_str
+// CHECK-SAME:    module {
+// CHECK-SAME:     func.func @main(%[[ARG0_JIT:.*]]: tensor<*xf32>) -> tensor<*xf32>
+// CHECK-SAME:       %[[CST:.*]] = mhlo.constant dense<1.000000e+00> : tensor<f32>
+// CHECK-SAME:       %[[RES_JIT:.*]] = chlo.broadcast_divide %[[CST]], %[[ARG0_JIT]] : (tensor<f32>, tensor<*xf32>) -> tensor<*xf32>
+// CHECK=SAME:       return %[[RES_JIT]] : tensor<*xf32>
+// CHECK-SAME:     }
+// CHECK-SAME:   }
+// CHECK-SAME:   {
+// CHECK-SAME:     cpuCodegen = false,
+// CHECK-SAME:     enableFtz = false,
+// CHECK-SAME:     index64Bit = false,
+// CHECK-SAME:     maxSupportedRank = 32 : i64,
+// CHECK-SAME:     tileSizes = [1, 2, 3],
+// CHECK-SAME:     unrollFactors = [3, 2, 1]
+// CHECK-SAME:   }
+// CHECK:      %[[RES:.*]] = tf_framework.jit_execute %[[CALLABLE]](%[[ARG]]) : tensor<*xf32> -> tensor<*xf32>
+// CHECK:      return %[[RES]] : tensor<*xf32>
+
+// CHECK-JFLT-LABEL: @reciprocal
+// CHECK-JFLT-SAME:  %[[ARG0:.*]]: tensor<*xf32>
+// CHECK-JFLT:       %[[SHAPE:.*]] = shape.shape_of %[[ARG0]]
+// CHECK-JFLT:       %[[NUM:.*]] = shape.num_elements %[[SHAPE]]
+// CHECK-JFLT:       %[[LIMIT:.*]] = arith.constant 2147483647
+// CHECK-JFLT:       %[[CMPI:.*]] = arith.cmpi sgt, %[[NUM]], %[[LIMIT]]
+// CHECK-JFLT:       %[[IF:.*]] = scf.if %[[CMPI]]
+// CHECK-JFLT:         %[[JIT:.*]] = tf_framework.jit_compile_from_str
+// CHECK-JFLT-SAME:        "module
+// CHECK-JFLT-SAME:        cpuCodegen = false
+// CHECK-JFLT-SAME:        enableFtz = false
+// CHECK-JFLT-SAME:        index64Bit = true
+// CHECK-JFLT-SAME:        maxSupportedRank = 32
+// CHECK-JFLT-SAME:        tileSizes = [1, 2, 3]
+// CHECK-JFLT-SAME:        unrollFactors = [3, 2, 1]
+// CHECK-JFLT:         %[[JIT_0:.*]] = tf_framework.jit_execute %[[JIT]](%[[ARG0]])
+// CHECK-JFLT:         scf.yield %[[JIT_0]]
+// CHECK-JFLT:       else
+// CHECK-JFLT:         %[[CST:.*]] = mhlo.constant dense<1.000000e+00> : tensor<f32>
+// CHECK-JFLT:         %[[VAL:.*]] = chlo.broadcast_divide %[[CST]], %[[ARG0]] : (tensor<f32>, tensor<*xf32>) -> tensor<*xf32>
+// CHECK-JFLT:         scf.yield %[[VAL]]
+// CHECK-JFLT:       return %[[IF]]
