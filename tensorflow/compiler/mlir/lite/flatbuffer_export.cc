@@ -724,6 +724,11 @@ class Translator {
                                        const std::vector<int32_t>& results,
                                        tflite::BuiltinOperator op_code);
 
+  // create a subgraph given a unnamed mlir region, return the corresponding
+  // subgraph index
+  int32_t UnnamedRegionToSubgraph(mlir::Region* region,
+                                  tflite::BuiltinOperator op_code);
+
   ModuleOp module_;
 
   tensorflow::OpOrArgNameMapper& name_mapper_;
@@ -791,6 +796,8 @@ class Translator {
   // A mapping table to mlir::Operation objects for TFL subgraph and operator
   // index in a flatbuffer.
   std::vector<std::vector<Operation*>> subgraph_op_inst_map_;
+  // A list of subgraphs in the model
+  std::vector<BufferOffset<tflite::SubGraph>> subgraphs_;
 
   // Will be populated by ExtractControlEdges to contain the control
   // dependencies contained in the ControlNodeOps. Will then be used to populate
@@ -926,6 +933,21 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
         tensor_data.size());
     return tflite::CreateBuffer(builder_, buffer_data);
   }
+}
+
+int32_t Translator::UnnamedRegionToSubgraph(
+    mlir::Region* region, const tflite::BuiltinOperator op_code) {
+  int32_t subgraph_index = subgraphs_.size();
+  std::string graph_name =
+      tflite::EnumNamesBuiltinOperator()[op_code] + subgraph_index;
+  auto subgraph = BuildSubGraph(graph_name, region, subgraph_index);
+  if (!subgraph.has_value()) {
+    mlir::emitError(region->getLoc(), "failed to build subgraph");
+    return -1;
+  }
+  subgraphs_.push_back(subgraph.value());
+  subgraph_index_map_[graph_name] = subgraph_index;
+  return subgraph_index;
 }
 
 std::optional<std::vector<BufferOffset<tflite::VariantSubType>>>
@@ -1568,10 +1590,12 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
           builder_.CreateVector(input_spatial_dimension_vec);
 
       std::vector<uint32_t> precision_config_vec;
-      for (auto it = shlo_op.getPrecisionConfig()->begin();
-           it != shlo_op.getPrecisionConfig()->end(); it++) {
-        precision_config_vec.push_back(static_cast<uint32_t>(
-            (it->cast<mlir::stablehlo::PrecisionAttr>()).getValue()));
+      if (shlo_op.getPrecisionConfig()) {
+        for (auto it = shlo_op.getPrecisionConfig()->begin();
+             it != shlo_op.getPrecisionConfig()->end(); it++) {
+          precision_config_vec.push_back(static_cast<uint32_t>(
+              (it->cast<mlir::stablehlo::PrecisionAttr>()).getValue()));
+        }
       }
       auto precision_config = builder_.CreateVector(precision_config_vec);
 
@@ -1610,6 +1634,67 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
           tflite::CustomOptionsFormat_FLEXBUFFERS, 0, 0, 0, 0,
           tflite::BuiltinOptions2_StablehloBroadcastInDimOptions,
           broadcast_option.Union());
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::CustomCallOp>(inst)) {
+      std::string op_name = inst->getName().getStringRef().str();
+      uint32_t opcode_index = GetOpcodeIndex(
+          op_name, tflite::BuiltinOperator_STABLEHLO_CUSTOM_CALL);
+      auto call_target_name =
+          builder_.CreateString(shlo_op.getCallTargetName().str());
+      auto backend_config =
+          builder_.CreateString(shlo_op.getBackendConfig().str());
+      // building the computation info
+      auto flex_builder = std::make_unique<flexbuffers::Builder>();
+      size_t map_start = flex_builder->StartMap();
+      auto attrs = shlo_op->getAttrs();
+      std::vector<mlir::NamedAttribute> extra_attributes;
+
+      for (size_t i = 0; i < attrs.size(); ++i) {
+        auto name = attrs[i].getName().str();
+        auto attr = attrs[i].getValue();
+        if (name == "call_target_name" || name == "backend_config") continue;
+        if (llvm::isa<mlir::BoolAttr>(attr))
+          flex_builder->Bool(name.c_str(),
+                             attr.cast<mlir::BoolAttr>().getValue());
+        if (llvm::isa<mlir::StringAttr>(attr))
+          flex_builder->String(name.c_str(),
+                               attr.cast<mlir::StringAttr>().getValue().str());
+      }
+      flex_builder->EndMap(map_start);
+      flex_builder->Finish();
+      auto custom_call_option = tflite::CreateStablehloCustomCallOptions(
+          builder_, call_target_name, shlo_op.getHasSideEffect(),
+          backend_config, 0, 0,
+          builder_.CreateVector(flex_builder->GetBuffer()));
+
+      return tflite::CreateOperator(
+          builder_, opcode_index, builder_.CreateVector(operands),
+          builder_.CreateVector(results), tflite::BuiltinOptions_NONE, 0, 0,
+          tflite::CustomOptionsFormat_FLEXBUFFERS, 0, 0, 0, 0,
+          tflite::BuiltinOptions2_StablehloCustomCallOptions,
+          custom_call_option.Union());
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::ReduceOp>(inst)) {
+      std::string op_name = inst->getName().getStringRef().str();
+      uint32_t opcode_index =
+          GetOpcodeIndex(op_name, tflite::BuiltinOperator_STABLEHLO_REDUCE);
+
+      auto dimension = builder_.CreateVector(
+          mlir::GetOptionalVector<int64_t>(shlo_op.getDimensions()));
+      auto& body = shlo_op.getBody();
+      int32_t subgraph_index = UnnamedRegionToSubgraph(
+          &body, tflite::BuiltinOperator_STABLEHLO_REDUCE);
+      if (subgraph_index < 0) return std::nullopt;
+
+      auto reduce_option = tflite::CreateStablehloReduceOptions(
+          builder_, dimension, subgraph_index);
+
+      return tflite::CreateOperator(
+          builder_, opcode_index, builder_.CreateVector(operands),
+          builder_.CreateVector(results), tflite::BuiltinOptions_NONE, 0, 0,
+          tflite::CustomOptionsFormat_FLEXBUFFERS, 0, 0, 0, 0,
+          tflite::BuiltinOptions2_StablehloReduceOptions,
+          reduce_option.Union());
     }
   }
 
@@ -2105,7 +2190,10 @@ std::vector<SignatureDefData> BuildSignaturedef(
   // Fetch function inputs and outputs tensor names.
   auto dict_attr =
       main_op->getAttrOfType<mlir::DictionaryAttr>(kEntryFunctionAttributes);
-  if (!dict_attr) return {};
+  if (!dict_attr) {
+    main_op.emitWarning() << "failed to get entry function attr.";
+    return {};
+  }
 
   // Get Input and output tensor names from attribute.
   llvm::SmallVector<llvm::StringRef, 2> input_names =
@@ -2115,7 +2203,7 @@ std::vector<SignatureDefData> BuildSignaturedef(
 
   // Verify input size match the number of arguments.
   if (input_names.size() != main_op.getNumArguments()) {
-    main_op.emitWarning() << "invalid entry function specification";
+    main_op.emitWarning() << "invalid entry function specification.";
     return {};
   }
   // Verify output size match the number of arguments.
@@ -2139,7 +2227,7 @@ std::vector<SignatureDefData> BuildSignaturedef(
   auto exported_name =
       main_op->getAttrOfType<mlir::ArrayAttr>(kTfSavedModelExportedNamesAttr);
   if (exported_name.empty()) {
-    main_op.emitError("Empty exported names for main Function");
+    main_op.emitError("Empty exported names for main Function.");
     return {};
   }
   // Fill the SignatureDefData container.
@@ -2326,8 +2414,7 @@ std::optional<std::string> Translator::TranslateInternal() {
   }
 
   // Build subgraph for each of the named regions.
-  std::vector<BufferOffset<tflite::SubGraph>> subgraphs;
-  subgraphs.reserve(named_regions.size());
+  subgraphs_.resize(named_regions.size());
   model_control_dependencies_.assign(named_regions.size(), {});
   int first_failed_func = -1;
 
@@ -2347,7 +2434,7 @@ std::optional<std::string> Translator::TranslateInternal() {
         // we collect the list of missing ops from the entire module.
         first_failed_func = it.index();
     } else {
-      subgraphs.push_back(*subgraph_or);
+      subgraphs_[subgraph_index] = *subgraph_or;
       ++subgraph_index;
     }
   }
@@ -2470,7 +2557,7 @@ std::optional<std::string> Translator::TranslateInternal() {
 
   auto model = tflite::CreateModel(builder_, TFLITE_SCHEMA_VERSION,
                                    builder_.CreateVector(opcodes_),
-                                   builder_.CreateVector(subgraphs),
+                                   builder_.CreateVector(subgraphs_),
                                    description, builder_.CreateVector(buffers_),
                                    metadata_buffer, *metadata, *signature_defs);
   tflite::FinishModelBuffer(builder_, model);

@@ -73,6 +73,14 @@ struct StablehloBroadcastInDimOptions;
 struct StablehloBroadcastInDimOptionsBuilder;
 struct StablehloBroadcastInDimOptionsT;
 
+struct StablehloCustomCallOptions;
+struct StablehloCustomCallOptionsBuilder;
+struct StablehloCustomCallOptionsT;
+
+struct StablehloReduceOptions;
+struct StablehloReduceOptionsBuilder;
+struct StablehloReduceOptionsT;
+
 struct StablehloSliceOptions;
 struct StablehloSliceOptionsBuilder;
 struct StablehloSliceOptionsT;
@@ -1115,11 +1123,13 @@ enum BuiltinOperator : int32_t {
   BuiltinOperator_STABLEHLO_BROADCAST_IN_DIM = 170,
   BuiltinOperator_STABLEHLO_CONVOLUTION = 171,
   BuiltinOperator_STABLEHLO_SLICE = 172,
+  BuiltinOperator_STABLEHLO_CUSTOM_CALL = 173,
+  BuiltinOperator_STABLEHLO_REDUCE = 174,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_STABLEHLO_SLICE
+  BuiltinOperator_MAX = BuiltinOperator_STABLEHLO_REDUCE
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[173] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[175] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -1293,13 +1303,15 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[173] {
     BuiltinOperator_STABLEHLO_CONCATENATE,
     BuiltinOperator_STABLEHLO_BROADCAST_IN_DIM,
     BuiltinOperator_STABLEHLO_CONVOLUTION,
-    BuiltinOperator_STABLEHLO_SLICE
+    BuiltinOperator_STABLEHLO_SLICE,
+    BuiltinOperator_STABLEHLO_CUSTOM_CALL,
+    BuiltinOperator_STABLEHLO_REDUCE
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOperator() {
-  static const char * const names[174] = {
+  static const char * const names[176] = {
     "ADD",
     "AVERAGE_POOL_2D",
     "CONCATENATION",
@@ -1473,13 +1485,15 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "STABLEHLO_BROADCAST_IN_DIM",
     "STABLEHLO_CONVOLUTION",
     "STABLEHLO_SLICE",
+    "STABLEHLO_CUSTOM_CALL",
+    "STABLEHLO_REDUCE",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOperator(BuiltinOperator e) {
-  if (::flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_STABLEHLO_SLICE)) return "";
+  if (::flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_STABLEHLO_REDUCE)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOperator()[index];
 }
@@ -3954,35 +3968,41 @@ enum BuiltinOptions2 : uint8_t {
   BuiltinOptions2_StablehloBroadcastInDimOptions = 2,
   BuiltinOptions2_StablehloSliceOptions = 3,
   BuiltinOptions2_StablehloConvolutionOptions = 4,
+  BuiltinOptions2_StablehloCustomCallOptions = 5,
+  BuiltinOptions2_StablehloReduceOptions = 6,
   BuiltinOptions2_MIN = BuiltinOptions2_NONE,
-  BuiltinOptions2_MAX = BuiltinOptions2_StablehloConvolutionOptions
+  BuiltinOptions2_MAX = BuiltinOptions2_StablehloReduceOptions
 };
 
-inline const BuiltinOptions2 (&EnumValuesBuiltinOptions2())[5] {
+inline const BuiltinOptions2 (&EnumValuesBuiltinOptions2())[7] {
   static const BuiltinOptions2 values[] = {
     BuiltinOptions2_NONE,
     BuiltinOptions2_StablehloConcatenateOptions,
     BuiltinOptions2_StablehloBroadcastInDimOptions,
     BuiltinOptions2_StablehloSliceOptions,
-    BuiltinOptions2_StablehloConvolutionOptions
+    BuiltinOptions2_StablehloConvolutionOptions,
+    BuiltinOptions2_StablehloCustomCallOptions,
+    BuiltinOptions2_StablehloReduceOptions
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOptions2() {
-  static const char * const names[6] = {
+  static const char * const names[8] = {
     "NONE",
     "StablehloConcatenateOptions",
     "StablehloBroadcastInDimOptions",
     "StablehloSliceOptions",
     "StablehloConvolutionOptions",
+    "StablehloCustomCallOptions",
+    "StablehloReduceOptions",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOptions2(BuiltinOptions2 e) {
-  if (::flatbuffers::IsOutRange(e, BuiltinOptions2_NONE, BuiltinOptions2_StablehloConvolutionOptions)) return "";
+  if (::flatbuffers::IsOutRange(e, BuiltinOptions2_NONE, BuiltinOptions2_StablehloReduceOptions)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOptions2()[index];
 }
@@ -4007,6 +4027,14 @@ template<> struct BuiltinOptions2Traits<tflite::StablehloConvolutionOptions> {
   static const BuiltinOptions2 enum_value = BuiltinOptions2_StablehloConvolutionOptions;
 };
 
+template<> struct BuiltinOptions2Traits<tflite::StablehloCustomCallOptions> {
+  static const BuiltinOptions2 enum_value = BuiltinOptions2_StablehloCustomCallOptions;
+};
+
+template<> struct BuiltinOptions2Traits<tflite::StablehloReduceOptions> {
+  static const BuiltinOptions2 enum_value = BuiltinOptions2_StablehloReduceOptions;
+};
+
 template<typename T> struct BuiltinOptions2UnionTraits {
   static const BuiltinOptions2 enum_value = BuiltinOptions2_NONE;
 };
@@ -4025,6 +4053,14 @@ template<> struct BuiltinOptions2UnionTraits<tflite::StablehloSliceOptionsT> {
 
 template<> struct BuiltinOptions2UnionTraits<tflite::StablehloConvolutionOptionsT> {
   static const BuiltinOptions2 enum_value = BuiltinOptions2_StablehloConvolutionOptions;
+};
+
+template<> struct BuiltinOptions2UnionTraits<tflite::StablehloCustomCallOptionsT> {
+  static const BuiltinOptions2 enum_value = BuiltinOptions2_StablehloCustomCallOptions;
+};
+
+template<> struct BuiltinOptions2UnionTraits<tflite::StablehloReduceOptionsT> {
+  static const BuiltinOptions2 enum_value = BuiltinOptions2_StablehloReduceOptions;
 };
 
 struct BuiltinOptions2Union {
@@ -4088,6 +4124,22 @@ struct BuiltinOptions2Union {
   const tflite::StablehloConvolutionOptionsT *AsStablehloConvolutionOptions() const {
     return type == BuiltinOptions2_StablehloConvolutionOptions ?
       reinterpret_cast<const tflite::StablehloConvolutionOptionsT *>(value) : nullptr;
+  }
+  tflite::StablehloCustomCallOptionsT *AsStablehloCustomCallOptions() {
+    return type == BuiltinOptions2_StablehloCustomCallOptions ?
+      reinterpret_cast<tflite::StablehloCustomCallOptionsT *>(value) : nullptr;
+  }
+  const tflite::StablehloCustomCallOptionsT *AsStablehloCustomCallOptions() const {
+    return type == BuiltinOptions2_StablehloCustomCallOptions ?
+      reinterpret_cast<const tflite::StablehloCustomCallOptionsT *>(value) : nullptr;
+  }
+  tflite::StablehloReduceOptionsT *AsStablehloReduceOptions() {
+    return type == BuiltinOptions2_StablehloReduceOptions ?
+      reinterpret_cast<tflite::StablehloReduceOptionsT *>(value) : nullptr;
+  }
+  const tflite::StablehloReduceOptionsT *AsStablehloReduceOptions() const {
+    return type == BuiltinOptions2_StablehloReduceOptions ?
+      reinterpret_cast<const tflite::StablehloReduceOptionsT *>(value) : nullptr;
   }
 };
 
@@ -5428,6 +5480,214 @@ inline ::flatbuffers::Offset<StablehloBroadcastInDimOptions> CreateStablehloBroa
 }
 
 ::flatbuffers::Offset<StablehloBroadcastInDimOptions> CreateStablehloBroadcastInDimOptions(::flatbuffers::FlatBufferBuilder &_fbb, const StablehloBroadcastInDimOptionsT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
+struct StablehloCustomCallOptionsT : public ::flatbuffers::NativeTable {
+  typedef StablehloCustomCallOptions TableType;
+  std::string call_target_name{};
+  bool has_side_effect = false;
+  std::string backend_config{};
+  int32_t api_version = 0;
+  std::vector<int32_t> called_computations{};
+  std::vector<uint8_t> custom_attributes{};
+};
+
+struct StablehloCustomCallOptions FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
+  typedef StablehloCustomCallOptionsT NativeTableType;
+  typedef StablehloCustomCallOptionsBuilder Builder;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_CALL_TARGET_NAME = 4,
+    VT_HAS_SIDE_EFFECT = 6,
+    VT_BACKEND_CONFIG = 8,
+    VT_API_VERSION = 10,
+    VT_CALLED_COMPUTATIONS = 12,
+    VT_CUSTOM_ATTRIBUTES = 14
+  };
+  const ::flatbuffers::String *call_target_name() const {
+    return GetPointer<const ::flatbuffers::String *>(VT_CALL_TARGET_NAME);
+  }
+  bool has_side_effect() const {
+    return GetField<uint8_t>(VT_HAS_SIDE_EFFECT, 0) != 0;
+  }
+  const ::flatbuffers::String *backend_config() const {
+    return GetPointer<const ::flatbuffers::String *>(VT_BACKEND_CONFIG);
+  }
+  int32_t api_version() const {
+    return GetField<int32_t>(VT_API_VERSION, 0);
+  }
+  const ::flatbuffers::Vector<int32_t> *called_computations() const {
+    return GetPointer<const ::flatbuffers::Vector<int32_t> *>(VT_CALLED_COMPUTATIONS);
+  }
+  const ::flatbuffers::Vector<uint8_t> *custom_attributes() const {
+    return GetPointer<const ::flatbuffers::Vector<uint8_t> *>(VT_CUSTOM_ATTRIBUTES);
+  }
+  bool Verify(::flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyOffset(verifier, VT_CALL_TARGET_NAME) &&
+           verifier.VerifyString(call_target_name()) &&
+           VerifyField<uint8_t>(verifier, VT_HAS_SIDE_EFFECT, 1) &&
+           VerifyOffset(verifier, VT_BACKEND_CONFIG) &&
+           verifier.VerifyString(backend_config()) &&
+           VerifyField<int32_t>(verifier, VT_API_VERSION, 4) &&
+           VerifyOffset(verifier, VT_CALLED_COMPUTATIONS) &&
+           verifier.VerifyVector(called_computations()) &&
+           VerifyOffset(verifier, VT_CUSTOM_ATTRIBUTES) &&
+           verifier.VerifyVector(custom_attributes()) &&
+           verifier.EndTable();
+  }
+  StablehloCustomCallOptionsT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(StablehloCustomCallOptionsT *_o, const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static ::flatbuffers::Offset<StablehloCustomCallOptions> Pack(::flatbuffers::FlatBufferBuilder &_fbb, const StablehloCustomCallOptionsT* _o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct StablehloCustomCallOptionsBuilder {
+  typedef StablehloCustomCallOptions Table;
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  void add_call_target_name(::flatbuffers::Offset<::flatbuffers::String> call_target_name) {
+    fbb_.AddOffset(StablehloCustomCallOptions::VT_CALL_TARGET_NAME, call_target_name);
+  }
+  void add_has_side_effect(bool has_side_effect) {
+    fbb_.AddElement<uint8_t>(StablehloCustomCallOptions::VT_HAS_SIDE_EFFECT, static_cast<uint8_t>(has_side_effect), 0);
+  }
+  void add_backend_config(::flatbuffers::Offset<::flatbuffers::String> backend_config) {
+    fbb_.AddOffset(StablehloCustomCallOptions::VT_BACKEND_CONFIG, backend_config);
+  }
+  void add_api_version(int32_t api_version) {
+    fbb_.AddElement<int32_t>(StablehloCustomCallOptions::VT_API_VERSION, api_version, 0);
+  }
+  void add_called_computations(::flatbuffers::Offset<::flatbuffers::Vector<int32_t>> called_computations) {
+    fbb_.AddOffset(StablehloCustomCallOptions::VT_CALLED_COMPUTATIONS, called_computations);
+  }
+  void add_custom_attributes(::flatbuffers::Offset<::flatbuffers::Vector<uint8_t>> custom_attributes) {
+    fbb_.AddOffset(StablehloCustomCallOptions::VT_CUSTOM_ATTRIBUTES, custom_attributes);
+  }
+  explicit StablehloCustomCallOptionsBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  ::flatbuffers::Offset<StablehloCustomCallOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = ::flatbuffers::Offset<StablehloCustomCallOptions>(end);
+    return o;
+  }
+};
+
+inline ::flatbuffers::Offset<StablehloCustomCallOptions> CreateStablehloCustomCallOptions(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    ::flatbuffers::Offset<::flatbuffers::String> call_target_name = 0,
+    bool has_side_effect = false,
+    ::flatbuffers::Offset<::flatbuffers::String> backend_config = 0,
+    int32_t api_version = 0,
+    ::flatbuffers::Offset<::flatbuffers::Vector<int32_t>> called_computations = 0,
+    ::flatbuffers::Offset<::flatbuffers::Vector<uint8_t>> custom_attributes = 0) {
+  StablehloCustomCallOptionsBuilder builder_(_fbb);
+  builder_.add_custom_attributes(custom_attributes);
+  builder_.add_called_computations(called_computations);
+  builder_.add_api_version(api_version);
+  builder_.add_backend_config(backend_config);
+  builder_.add_call_target_name(call_target_name);
+  builder_.add_has_side_effect(has_side_effect);
+  return builder_.Finish();
+}
+
+inline ::flatbuffers::Offset<StablehloCustomCallOptions> CreateStablehloCustomCallOptionsDirect(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    const char *call_target_name = nullptr,
+    bool has_side_effect = false,
+    const char *backend_config = nullptr,
+    int32_t api_version = 0,
+    const std::vector<int32_t> *called_computations = nullptr,
+    const std::vector<uint8_t> *custom_attributes = nullptr) {
+  auto call_target_name__ = call_target_name ? _fbb.CreateString(call_target_name) : 0;
+  auto backend_config__ = backend_config ? _fbb.CreateString(backend_config) : 0;
+  auto called_computations__ = called_computations ? _fbb.CreateVector<int32_t>(*called_computations) : 0;
+  auto custom_attributes__ = custom_attributes ? _fbb.CreateVector<uint8_t>(*custom_attributes) : 0;
+  return tflite::CreateStablehloCustomCallOptions(
+      _fbb,
+      call_target_name__,
+      has_side_effect,
+      backend_config__,
+      api_version,
+      called_computations__,
+      custom_attributes__);
+}
+
+::flatbuffers::Offset<StablehloCustomCallOptions> CreateStablehloCustomCallOptions(::flatbuffers::FlatBufferBuilder &_fbb, const StablehloCustomCallOptionsT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
+struct StablehloReduceOptionsT : public ::flatbuffers::NativeTable {
+  typedef StablehloReduceOptions TableType;
+  std::vector<int64_t> dimensions{};
+  int32_t body_subgraph_index = 0;
+};
+
+struct StablehloReduceOptions FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
+  typedef StablehloReduceOptionsT NativeTableType;
+  typedef StablehloReduceOptionsBuilder Builder;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_DIMENSIONS = 4,
+    VT_BODY_SUBGRAPH_INDEX = 6
+  };
+  const ::flatbuffers::Vector<int64_t> *dimensions() const {
+    return GetPointer<const ::flatbuffers::Vector<int64_t> *>(VT_DIMENSIONS);
+  }
+  int32_t body_subgraph_index() const {
+    return GetField<int32_t>(VT_BODY_SUBGRAPH_INDEX, 0);
+  }
+  bool Verify(::flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyOffset(verifier, VT_DIMENSIONS) &&
+           verifier.VerifyVector(dimensions()) &&
+           VerifyField<int32_t>(verifier, VT_BODY_SUBGRAPH_INDEX, 4) &&
+           verifier.EndTable();
+  }
+  StablehloReduceOptionsT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(StablehloReduceOptionsT *_o, const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static ::flatbuffers::Offset<StablehloReduceOptions> Pack(::flatbuffers::FlatBufferBuilder &_fbb, const StablehloReduceOptionsT* _o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct StablehloReduceOptionsBuilder {
+  typedef StablehloReduceOptions Table;
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  void add_dimensions(::flatbuffers::Offset<::flatbuffers::Vector<int64_t>> dimensions) {
+    fbb_.AddOffset(StablehloReduceOptions::VT_DIMENSIONS, dimensions);
+  }
+  void add_body_subgraph_index(int32_t body_subgraph_index) {
+    fbb_.AddElement<int32_t>(StablehloReduceOptions::VT_BODY_SUBGRAPH_INDEX, body_subgraph_index, 0);
+  }
+  explicit StablehloReduceOptionsBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  ::flatbuffers::Offset<StablehloReduceOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = ::flatbuffers::Offset<StablehloReduceOptions>(end);
+    return o;
+  }
+};
+
+inline ::flatbuffers::Offset<StablehloReduceOptions> CreateStablehloReduceOptions(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    ::flatbuffers::Offset<::flatbuffers::Vector<int64_t>> dimensions = 0,
+    int32_t body_subgraph_index = 0) {
+  StablehloReduceOptionsBuilder builder_(_fbb);
+  builder_.add_body_subgraph_index(body_subgraph_index);
+  builder_.add_dimensions(dimensions);
+  return builder_.Finish();
+}
+
+inline ::flatbuffers::Offset<StablehloReduceOptions> CreateStablehloReduceOptionsDirect(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    const std::vector<int64_t> *dimensions = nullptr,
+    int32_t body_subgraph_index = 0) {
+  auto dimensions__ = dimensions ? _fbb.CreateVector<int64_t>(*dimensions) : 0;
+  return tflite::CreateStablehloReduceOptions(
+      _fbb,
+      dimensions__,
+      body_subgraph_index);
+}
+
+::flatbuffers::Offset<StablehloReduceOptions> CreateStablehloReduceOptions(::flatbuffers::FlatBufferBuilder &_fbb, const StablehloReduceOptionsT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
 struct StablehloSliceOptionsT : public ::flatbuffers::NativeTable {
   typedef StablehloSliceOptions TableType;
@@ -13061,6 +13321,12 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   const tflite::StablehloConvolutionOptions *builtin_options_2_as_StablehloConvolutionOptions() const {
     return builtin_options_2_type() == tflite::BuiltinOptions2_StablehloConvolutionOptions ? static_cast<const tflite::StablehloConvolutionOptions *>(builtin_options_2()) : nullptr;
   }
+  const tflite::StablehloCustomCallOptions *builtin_options_2_as_StablehloCustomCallOptions() const {
+    return builtin_options_2_type() == tflite::BuiltinOptions2_StablehloCustomCallOptions ? static_cast<const tflite::StablehloCustomCallOptions *>(builtin_options_2()) : nullptr;
+  }
+  const tflite::StablehloReduceOptions *builtin_options_2_as_StablehloReduceOptions() const {
+    return builtin_options_2_type() == tflite::BuiltinOptions2_StablehloReduceOptions ? static_cast<const tflite::StablehloReduceOptions *>(builtin_options_2()) : nullptr;
+  }
   bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<uint32_t>(verifier, VT_OPCODE_INDEX, 4) &&
@@ -13608,6 +13874,14 @@ template<> inline const tflite::StablehloSliceOptions *Operator::builtin_options
 
 template<> inline const tflite::StablehloConvolutionOptions *Operator::builtin_options_2_as<tflite::StablehloConvolutionOptions>() const {
   return builtin_options_2_as_StablehloConvolutionOptions();
+}
+
+template<> inline const tflite::StablehloCustomCallOptions *Operator::builtin_options_2_as<tflite::StablehloCustomCallOptions>() const {
+  return builtin_options_2_as_StablehloCustomCallOptions();
+}
+
+template<> inline const tflite::StablehloReduceOptions *Operator::builtin_options_2_as<tflite::StablehloReduceOptions>() const {
+  return builtin_options_2_as_StablehloReduceOptions();
 }
 
 struct OperatorBuilder {
@@ -14788,6 +15062,76 @@ inline ::flatbuffers::Offset<StablehloBroadcastInDimOptions> CreateStablehloBroa
   return tflite::CreateStablehloBroadcastInDimOptions(
       _fbb,
       _broadcast_dimensions);
+}
+
+inline StablehloCustomCallOptionsT *StablehloCustomCallOptions::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = std::unique_ptr<StablehloCustomCallOptionsT>(new StablehloCustomCallOptionsT());
+  UnPackTo(_o.get(), _resolver);
+  return _o.release();
+}
+
+inline void StablehloCustomCallOptions::UnPackTo(StablehloCustomCallOptionsT *_o, const ::flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = call_target_name(); if (_e) _o->call_target_name = _e->str(); }
+  { auto _e = has_side_effect(); _o->has_side_effect = _e; }
+  { auto _e = backend_config(); if (_e) _o->backend_config = _e->str(); }
+  { auto _e = api_version(); _o->api_version = _e; }
+  { auto _e = called_computations(); if (_e) { _o->called_computations.resize(_e->size()); for (::flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->called_computations[_i] = _e->Get(_i); } } else { _o->called_computations.resize(0); } }
+  { auto _e = custom_attributes(); if (_e) { _o->custom_attributes.resize(_e->size()); std::copy(_e->begin(), _e->end(), _o->custom_attributes.begin()); } }
+}
+
+inline ::flatbuffers::Offset<StablehloCustomCallOptions> StablehloCustomCallOptions::Pack(::flatbuffers::FlatBufferBuilder &_fbb, const StablehloCustomCallOptionsT* _o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateStablehloCustomCallOptions(_fbb, _o, _rehasher);
+}
+
+inline ::flatbuffers::Offset<StablehloCustomCallOptions> CreateStablehloCustomCallOptions(::flatbuffers::FlatBufferBuilder &_fbb, const StablehloCustomCallOptionsT *_o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { ::flatbuffers::FlatBufferBuilder *__fbb; const StablehloCustomCallOptionsT* __o; const ::flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _call_target_name = _o->call_target_name.empty() ? 0 : _fbb.CreateString(_o->call_target_name);
+  auto _has_side_effect = _o->has_side_effect;
+  auto _backend_config = _o->backend_config.empty() ? 0 : _fbb.CreateString(_o->backend_config);
+  auto _api_version = _o->api_version;
+  auto _called_computations = _o->called_computations.size() ? _fbb.CreateVector(_o->called_computations) : 0;
+  auto _custom_attributes = _o->custom_attributes.size() ? _fbb.CreateVector(_o->custom_attributes) : 0;
+  return tflite::CreateStablehloCustomCallOptions(
+      _fbb,
+      _call_target_name,
+      _has_side_effect,
+      _backend_config,
+      _api_version,
+      _called_computations,
+      _custom_attributes);
+}
+
+inline StablehloReduceOptionsT *StablehloReduceOptions::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = std::unique_ptr<StablehloReduceOptionsT>(new StablehloReduceOptionsT());
+  UnPackTo(_o.get(), _resolver);
+  return _o.release();
+}
+
+inline void StablehloReduceOptions::UnPackTo(StablehloReduceOptionsT *_o, const ::flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = dimensions(); if (_e) { _o->dimensions.resize(_e->size()); for (::flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->dimensions[_i] = _e->Get(_i); } } else { _o->dimensions.resize(0); } }
+  { auto _e = body_subgraph_index(); _o->body_subgraph_index = _e; }
+}
+
+inline ::flatbuffers::Offset<StablehloReduceOptions> StablehloReduceOptions::Pack(::flatbuffers::FlatBufferBuilder &_fbb, const StablehloReduceOptionsT* _o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateStablehloReduceOptions(_fbb, _o, _rehasher);
+}
+
+inline ::flatbuffers::Offset<StablehloReduceOptions> CreateStablehloReduceOptions(::flatbuffers::FlatBufferBuilder &_fbb, const StablehloReduceOptionsT *_o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { ::flatbuffers::FlatBufferBuilder *__fbb; const StablehloReduceOptionsT* __o; const ::flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _dimensions = _o->dimensions.size() ? _fbb.CreateVector(_o->dimensions) : 0;
+  auto _body_subgraph_index = _o->body_subgraph_index;
+  return tflite::CreateStablehloReduceOptions(
+      _fbb,
+      _dimensions,
+      _body_subgraph_index);
 }
 
 inline StablehloSliceOptionsT *StablehloSliceOptions::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {
@@ -21502,6 +21846,14 @@ inline bool VerifyBuiltinOptions2(::flatbuffers::Verifier &verifier, const void 
       auto ptr = reinterpret_cast<const tflite::StablehloConvolutionOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions2_StablehloCustomCallOptions: {
+      auto ptr = reinterpret_cast<const tflite::StablehloCustomCallOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    case BuiltinOptions2_StablehloReduceOptions: {
+      auto ptr = reinterpret_cast<const tflite::StablehloReduceOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return true;
   }
 }
@@ -21537,6 +21889,14 @@ inline void *BuiltinOptions2Union::UnPack(const void *obj, BuiltinOptions2 type,
       auto ptr = reinterpret_cast<const tflite::StablehloConvolutionOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions2_StablehloCustomCallOptions: {
+      auto ptr = reinterpret_cast<const tflite::StablehloCustomCallOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
+    case BuiltinOptions2_StablehloReduceOptions: {
+      auto ptr = reinterpret_cast<const tflite::StablehloReduceOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -21560,6 +21920,14 @@ inline ::flatbuffers::Offset<void> BuiltinOptions2Union::Pack(::flatbuffers::Fla
       auto ptr = reinterpret_cast<const tflite::StablehloConvolutionOptionsT *>(value);
       return CreateStablehloConvolutionOptions(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions2_StablehloCustomCallOptions: {
+      auto ptr = reinterpret_cast<const tflite::StablehloCustomCallOptionsT *>(value);
+      return CreateStablehloCustomCallOptions(_fbb, ptr, _rehasher).Union();
+    }
+    case BuiltinOptions2_StablehloReduceOptions: {
+      auto ptr = reinterpret_cast<const tflite::StablehloReduceOptionsT *>(value);
+      return CreateStablehloReduceOptions(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -21580,6 +21948,14 @@ inline BuiltinOptions2Union::BuiltinOptions2Union(const BuiltinOptions2Union &u)
     }
     case BuiltinOptions2_StablehloConvolutionOptions: {
       value = new tflite::StablehloConvolutionOptionsT(*reinterpret_cast<tflite::StablehloConvolutionOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions2_StablehloCustomCallOptions: {
+      value = new tflite::StablehloCustomCallOptionsT(*reinterpret_cast<tflite::StablehloCustomCallOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions2_StablehloReduceOptions: {
+      value = new tflite::StablehloReduceOptionsT(*reinterpret_cast<tflite::StablehloReduceOptionsT *>(u.value));
       break;
     }
     default:
@@ -21606,6 +21982,16 @@ inline void BuiltinOptions2Union::Reset() {
     }
     case BuiltinOptions2_StablehloConvolutionOptions: {
       auto ptr = reinterpret_cast<tflite::StablehloConvolutionOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions2_StablehloCustomCallOptions: {
+      auto ptr = reinterpret_cast<tflite::StablehloCustomCallOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions2_StablehloReduceOptions: {
+      auto ptr = reinterpret_cast<tflite::StablehloReduceOptionsT *>(value);
       delete ptr;
       break;
     }

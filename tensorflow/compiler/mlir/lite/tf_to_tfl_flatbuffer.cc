@@ -282,8 +282,7 @@ Status ConvertTFExecutorToStablehloFlatbuffer(
     return statusHandler.ConsumeStatus();
   }
 
-  // for now always output mlir
-  if (/*export_to_mlir*/ /* DISABLES CODE */ (true)) {
+  if (export_to_mlir) {
     llvm::raw_string_ostream os(*result);
     module.print(os);
     return statusHandler.ConsumeStatus();

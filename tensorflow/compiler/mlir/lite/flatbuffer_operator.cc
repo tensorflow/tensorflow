@@ -460,6 +460,39 @@ void mlir::BuiltinOptions2ToAttributes(
 
     return;
   }
+  if (const auto* op = op_union.AsStablehloCustomCallOptions()) {
+    attributes.emplace_back(builder.getNamedAttr(
+        "call_target_name", BuildStrAttr(op->call_target_name, builder)));
+    attributes.emplace_back(builder.getNamedAttr(
+        "backend_config", BuildStrAttr(op->backend_config, builder)));
+    const flexbuffers::Map& computation_map =
+        flexbuffers::GetRoot(op->custom_attributes).AsMap();
+    std::vector<mlir::Attribute> symbol_vec;
+    symbol_vec.reserve(computation_map.size());
+    const auto& keys = computation_map.Keys();
+    for (size_t i = 0; i < keys.size(); ++i) {
+      const auto key = keys[i].AsKey();
+      const auto& value = computation_map[key];
+      if (value.IsBool()) {
+        auto attr = value.AsBool();
+        auto named_attr =
+            builder.getNamedAttr(key, BuildBoolAttr(attr, builder));
+        attributes.emplace_back(named_attr);
+      }
+      if (value.IsString()) {
+        auto attr = value.AsString();
+        auto named_attr =
+            builder.getNamedAttr(key, BuildStrAttr(attr.str(), builder));
+        attributes.emplace_back(named_attr);
+      }
+    }
+    return;
+  }
+  if (const auto* op = op_union.AsStablehloReduceOptions()) {
+    attributes.emplace_back(builder.getNamedAttr(
+        "dimensions", BuildDenseElementAttr(op->dimensions, builder)));
+    return;
+  }
 }
 
 // Pull in FlatBuffer writers for TFLite generated using TableGen
