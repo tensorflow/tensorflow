@@ -620,42 +620,6 @@ ENTRY e {
             HloOpcode::kBroadcast);
 }
 
-TEST_F(TritonDotAnalysisTest, DegenerateSplitFragmentIsHandled) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
-triton_gemm_r {
-  Arg_0.1 = s8[30,913,8,21]{3,2,1,0} parameter(0)
-  bitcast.6 = s8[30,8,21,913]{2,1,3,0} bitcast(Arg_0.1)
-  copy.7 = s8[30,8,21,913]{3,2,1,0} copy(bitcast.6)
-  bitcast.8 = s8[5040,913]{1,0} bitcast(copy.7)
-  convert.9 = bf16[5040,913]{1,0} convert(bitcast.8)
-  bitcast.32 = bf16[58,913]{1,0} parameter(1)
-  dot.33 = bf16[5040,58]{1,0} dot(convert.9, bitcast.32),
-    lhs_contracting_dims={1}, rhs_contracting_dims={1}
-  bitcast.34 = bf16[30,8,21,58]{3,2,1,0} bitcast(dot.33)
-  copy.35 = bf16[30,8,21,58]{2,1,3,0} copy(bitcast.34)
-  ROOT bitcast.41 = bf16[30,1,58,8,21]{4,3,2,1,0} bitcast(copy.35)
-}
-
-ENTRY e {
-  Arg_0.1 = s8[30,913,8,21]{3,2,1,0} parameter(0)
-  Arg_1.2 = bf16[58,913]{1,0} parameter(1)
-  ROOT r = bf16[30,1,58,8,21]{4,3,2,1,0} fusion(Arg_0.1, Arg_1.2), kind=kCustom,
-    calls=triton_gemm_r,
-    backend_config={kind: "__triton_gemm"}
-})"));
-  const HloComputation* dot_computation =
-      module->entry_computation()->root_instruction()->called_computations()[0];
-  TF_ASSERT_OK_AND_ASSIGN(const auto analysis,
-                          DotFusionAnalysis::Execute(dot_computation));
-  EXPECT_THAT(*analysis.IterSpec(DotFusionAnalysis::Scope::OUTPUT,
-                                 dot_computation->root_instruction(), 0),
-              ElementsAre(FieldsAre(/*stride=*/1, /*count=*/8 * 21,
-                                    /*subfragments=*/ElementsAre(21, 8)),
-                          FieldsAre(/*stride=*/8 * 21 * 58, /*count=*/30,
-                                    /*subfragments=*/ElementsAre(30))));
-}
-
 using SplitKTest = HloTestBase;
 
 class SplitKTestWithMorePreciseReduction

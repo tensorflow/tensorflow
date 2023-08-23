@@ -254,39 +254,34 @@ TensorIterationSpec DimensionOrderToTensorIterationSpec(
   const Fragments& dim_fragments = order.TensorFragmentsOrder();
   TensorIterationSpec tensor_spec;
   int64_t accumulated_stride = 1;
-  int last_dim = -1;
-  auto remove_last_fragment_if_degenerate = [&]() {
-    if (last_dim >= 0 && !tensor_spec[last_dim].empty() &&
-        tensor_spec[last_dim].back().count == 1) {
-      tensor_spec[last_dim].pop_back();
-    }
-  };
   for (int dim_order_index = 0; dim_order_index < dim_fragments.size();
        ++dim_order_index) {
     const DimensionOrder::Fragment& dim = dim_fragments[dim_order_index];
     VLOG(6) << dim.dst_dim_number << "\t" << dim.size;
 
+    if (dim.size == 1) {
+      continue;
+    }
+
     DimIterationSpec& dim_spec = tensor_spec[dim.dst_dim_number];
-    if (last_dim == dim.dst_dim_number) {
-      // Contiguous dimension, split only logically. Merge it back.
-      if (!dim_spec.empty() && dim_spec.back().subfragments.back() == 1) {
-        // Remove previous 1-sized subfragment.
-        dim_spec.back().subfragments.pop_back();
-      }
-      if (dim.size > 1) {
+    if (dim_order_index > 0 &&
+        dim_fragments[dim_order_index - 1].dst_dim_number ==
+            dim.dst_dim_number) {
+      if (dim_spec.empty()) {
+        // Previous parts of this dimension were degenerate -
+        // so create the dimension here.
+        dim_spec.push_back({accumulated_stride, dim.size, {dim.size}});
+      } else {
+        // Contiguous dimension, split only logically. Merge it back.
         dim_spec.back().count *= dim.size;
         dim_spec.back().subfragments.push_back(dim.size);
       }
     } else {
-      remove_last_fragment_if_degenerate();
-      // Add part of the dimension.
       dim_spec.push_back({accumulated_stride, dim.size, {dim.size}});
     }
 
     accumulated_stride *= dim.size;
-    last_dim = dim.dst_dim_number;
   }
-  remove_last_fragment_if_degenerate();
   // Create all absent dimensions as degenerate ones to simplify later queries.
   for (auto& [dim_idx, dim_spec] : tensor_spec) {
     if (dim_spec.empty()) {
