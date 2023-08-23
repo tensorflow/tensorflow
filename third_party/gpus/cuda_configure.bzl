@@ -344,20 +344,20 @@ def _get_cxx_inc_directories_impl(repository_ctx, cc, lang_is_cpp, tf_sysroot):
       else:
         # Fallback to the CC path
         cc_topdir = repository_ctx.path(cc).dirname.dirname
-    # We now have the GCC installation prefix, e.g. /symlink/gcc
+    # We now have the compiler installation prefix, e.g. /symlink/gcc
+    # And the resolved installation prefix, e.g. /opt/gcc
     cc_topdir_resolved = str(cc_topdir.realpath).strip()
     cc_topdir = str(cc_topdir).strip()
     # If there is (any!) symlink involved we add paths where the unresolved installation prefix is kept.
-    # e.g.   [/symlink/include/c++/11, /symlink/lib/gcc/x86_64-linux-gnu/11/include, /other/path]
-    # yields [/symlink/include/c++/11, /symlink/lib/gcc/x86_64-linux-gnu/11/include, /other/path] +
-    #        [/opt/gcc/include/c++/11, /opt/gcc/lib/gcc/x86_64-linux-gnu/11/include]
+    # e.g. [/opt/gcc/include/c++/11, /opt/gcc/lib/gcc/x86_64-linux-gnu/11/include, /other/path]
+    # adds [/symlink/include/c++/11, /symlink/lib/gcc/x86_64-linux-gnu/11/include]
     if cc_topdir_resolved != cc_topdir:
-        original_compiler_includes = [
-            inc.replace(cc_topdir_resolved, cc_topdir)
+        unresolved_compiler_includes = [
+            cc_topdir + inc[len(cc_topdir_resolved):]
             for inc in compiler_includes
-            cc_topdir_resolved in inc
+            if inc.startswith(cc_topdir_resolved)
         ]
-        compiler_includes = compiler_includes + original_compiler_includes
+        compiler_includes = compiler_includes + unresolved_compiler_includes
     return compiler_includes
 
 def get_cxx_inc_directories(repository_ctx, cc, tf_sysroot):
