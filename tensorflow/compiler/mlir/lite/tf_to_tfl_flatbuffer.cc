@@ -307,7 +307,8 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
     const toco::TocoFlags& toco_flags, const mlir::TFL::PassConfig& pass_config,
     const std::unordered_set<std::string>& saved_model_tags,
     llvm::StringRef saved_model_dir,
-    std::optional<tensorflow::Session*> session, std::string* result) {
+    std::optional<tensorflow::Session*> session, std::string* result,
+    bool serialize_stablehlo_ops) {
   // Explicitly disable dumping Op details on failures.
   module.getContext()->printOpOnDiagnostic(false);
 
@@ -422,8 +423,8 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
     options.metadata.insert(
         MetadataForReducedPrecisionSupport(quant_specs.support_mask));
   }
-  if (!tflite::MlirToFlatBufferTranslateFunction(module, options,
-                                                 &translated_result)) {
+  if (!tflite::MlirToFlatBufferTranslateFunction(
+          module, options, &translated_result, serialize_stablehlo_ops)) {
     return statusHandler.ConsumeStatus();
   }
 

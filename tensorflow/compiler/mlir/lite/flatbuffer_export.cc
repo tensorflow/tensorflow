@@ -534,7 +534,8 @@ class Translator {
       ModuleOp module, const toco::TocoFlags& toco_flags,
       const std::unordered_set<std::string>& tags,
       OpOrArgNameMapper* op_or_arg_name_mapper,
-      const std::map<std::string, std::string>& metadata);
+      const std::map<std::string, std::string>& metadata,
+      bool serialize_stablehlo_ops);
 
  private:
   enum class OpType : char { kTfliteBuiltin, kSelectTf, kCustomOp };
@@ -803,6 +804,9 @@ class Translator {
   // dependencies contained in the ControlNodeOps. Will then be used to populate
   // metadata in the exported flatbuffer file.
   tflite::ModelControlDependencies model_control_dependencies_;
+
+  // Decide if we convert stablehlo ops in flatbuffer
+  bool convert_stablehlo_ = true;
 
   bool use_buffer_offset_ = false;
 
@@ -1474,7 +1478,7 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
 
   // EXPERIMENTAL: If the source is in stablehlo dialect, also create them as
   // builtin ops
-  if (dialect == stablehlo_dialect_) {
+  if (dialect == stablehlo_dialect_ && convert_stablehlo_) {
     if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::LogisticOp>(inst)) {
       return BuildStablehloOperatorwithoutOptions(
           inst, operands, results, tflite::BuiltinOperator_STABLEHLO_LOGISTIC);
@@ -2320,7 +2324,8 @@ std::optional<std::string> Translator::Translate(
     ModuleOp module, const toco::TocoFlags& toco_flags,
     const std::unordered_set<std::string>& tags,
     OpOrArgNameMapper* op_or_arg_name_mapper,
-    const std::map<std::string, std::string>& metadata) {
+    const std::map<std::string, std::string>& metadata,
+    bool serialize_stablehlo_ops) {
   OpOrArgLocNameMapper default_op_or_arg_name_mapper;
   if (!op_or_arg_name_mapper)
     op_or_arg_name_mapper = &default_op_or_arg_name_mapper;
@@ -2328,6 +2333,7 @@ std::optional<std::string> Translator::Translate(
   if (!IsValidTFLiteMlirModule(module)) return std::nullopt;
   Translator translator(module, toco_flags, tags, op_or_arg_name_mapper,
                         metadata);
+  translator.convert_stablehlo_ = serialize_stablehlo_ops;
   auto ret = translator.TranslateInternal();
   if (translator.require_use_buffer_offset_) {
     auto new_toco_flags = toco_flags;
@@ -2834,10 +2840,11 @@ namespace tflite {
 
 bool MlirToFlatBufferTranslateFunction(mlir::ModuleOp module,
                                        const FlatbufferExportOptions& options,
-                                       std::string* serialized_flatbuffer) {
+                                       std::string* serialized_flatbuffer,
+                                       bool serialize_stablehlo_ops) {
   auto maybe_translated = Translator::Translate(
       module, options.toco_flags, options.saved_model_tags,
-      options.op_or_arg_name_mapper, options.metadata);
+      options.op_or_arg_name_mapper, options.metadata, serialize_stablehlo_ops);
   if (!maybe_translated) return false;
   *serialized_flatbuffer = std::move(*maybe_translated);
   return true;
