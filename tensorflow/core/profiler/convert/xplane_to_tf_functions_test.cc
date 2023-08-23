@@ -21,12 +21,12 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/profiler/protobuf/tf_function.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_test_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
+#include "tensorflow/tsl/profiler/utils/tf_xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -45,7 +45,7 @@ TfFunctionDb ConvertXSpaceToTfFunctionDb(const XSpace& space) {
   TfFunctionDb result;
   const XPlane* host_plane = FindPlaneWithName(space, kHostThreadsPlaneName);
   if (host_plane) {
-    XPlaneVisitor plane = CreateTfXPlaneVisitor(host_plane);
+    XPlaneVisitor plane = tsl::profiler::CreateTfXPlaneVisitor(host_plane);
     plane.ForEachLine([&result](const XLineVisitor& line) {
       TfFunctionDb tf_function_db = ConvertHostThreadsXLineToTfFunctionDb(line);
       CombineTfFunctionDb(tf_function_db, &result);

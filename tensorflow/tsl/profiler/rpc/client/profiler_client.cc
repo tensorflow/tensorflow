@@ -40,7 +40,7 @@ using tensorflow::ProfileResponse;
 
 inline Status FromGrpcStatus(const ::grpc::Status& s) {
   return s.ok() ? OkStatus()
-                : Status(static_cast<error::Code>(s.error_code()),
+                : Status(static_cast<absl::StatusCode>(s.error_code()),
                          s.error_message());
 }
 
@@ -54,6 +54,7 @@ std::unique_ptr<typename T::Stub> CreateStub(
       service_address, ::grpc::InsecureChannelCredentials(), channel_args);
   if (!channel) {
     LOG(ERROR) << "Unable to create channel" << service_address;
+    return nullptr;
   }
   return T::NewStub(channel);
 }

@@ -16,6 +16,9 @@ limitations under the License.
 // This file combines patterns for lowering shape dialect to standard ops,
 // structured control flow and descriptors.
 
+#include <memory>
+#include <utility>
+
 #include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project

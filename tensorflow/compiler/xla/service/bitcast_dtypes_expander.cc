@@ -73,7 +73,7 @@ StatusOr<HloInstruction*> BitcastDtypesExpander::ExpandInstruction(
                                                 from_shape.dimensions().end());
       broadcasted_input_shape.push_back(input_bit_width / output_bit_width);
       reshaped_input_shape.push_back(1);
-      int64_t output_bit_width_mask = (1l << output_bit_width) - 1;
+      int64_t output_bit_width_mask = (int64_t{1} << output_bit_width) - 1;
 
       TF_ASSIGN_OR_RETURN(input,
                           BroadcastTo(Reshape(input, reshaped_input_shape),

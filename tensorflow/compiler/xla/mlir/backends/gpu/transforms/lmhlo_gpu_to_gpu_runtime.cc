@@ -52,8 +52,12 @@ using mlir::lmhlo_gpu::ConvBackwardFilterOp;
 using mlir::lmhlo_gpu::ConvBackwardInputOp;
 using mlir::lmhlo_gpu::ConvForwardFusedOp;
 using mlir::lmhlo_gpu::ConvForwardFusedSideInputOp;
+using mlir::lmhlo_gpu::ConvForwardGraphOp;
 using mlir::lmhlo_gpu::ConvForwardOp;
+using mlir::lmhlo_gpu::CublasLtMatmulF8Op;
 using mlir::lmhlo_gpu::CublasLtMatmulOp;
+using mlir::lmhlo_gpu::CudnnConvReorderFilterAndBiasOp;
+using mlir::lmhlo_gpu::CudnnConvReorderFilterOp;
 using mlir::lmhlo_gpu::GEMMOp;
 
 using xla::runtime::CustomCallDeclarations;
@@ -102,6 +106,17 @@ class GemmOpLowering : public OpRewritePattern<GEMMOp> {
     call->setAttr(b.getStringAttr("alpha_real"), op.getAlphaRealAttr());
     call->setAttr(b.getStringAttr("beta"), op.getBetaAttr());
     call->setAttr(b.getStringAttr("dot_dims"), op.getDotDimensionNumbers());
+
+    if (auto precisions = op.getPrecisionConfig()) {
+      llvm::SmallVector<int32_t> values;
+      for (auto precision : *precisions) {
+        auto value = precision.cast<mhlo::PrecisionAttr>().getValue();
+        values.push_back(static_cast<int32_t>(value));
+      }
+      call->setAttr(b.getStringAttr("precision"), b.getI32TensorAttr(values));
+    } else {
+      call->setAttr(b.getStringAttr("precision"), b.getI32TensorAttr({0, 0}));
+    }
 
     // Erase the original gemm operation.
     rewriter.eraseOp(op);
@@ -206,6 +221,65 @@ class CublasLtMatmulOpLowering : public OpRewritePattern<CublasLtMatmulOp> {
   CustomCallDeclarations& custom_calls_;
 };
 
+// As above for FP8 Custom Calls.
+class CublasLtMatmulF8OpLowering : public OpRewritePattern<CublasLtMatmulF8Op> {
+ private:
+  static constexpr const char kCustomCallTarget[] =
+      "xla.gpu.cublas.lt.matmul.f8";
+
+ public:
+  CublasLtMatmulF8OpLowering(MLIRContext* ctx, UidGenerator& uid,
+                             CustomCallDeclarations& custom_calls)
+      : OpRewritePattern<CublasLtMatmulF8Op>(ctx),
+        uid_(uid),
+        custom_calls_(custom_calls) {}
+
+  LogicalResult matchAndRewrite(CublasLtMatmulF8Op op,
+                                PatternRewriter& rewriter) const override {
+    // Get or create a custom call function declaration.
+    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+    func::FuncOp callee = custom_calls_.GetOrCreate(b, kCustomCallTarget, op);
+
+    // Convert matmul to a function call.
+    auto call = rewriter.create<func::CallOp>(op.getLoc(), callee.getName(),
+                                              TypeRange(), op.getOperands());
+
+    // Assign a unique id to this instance of a matmul operation.
+    call->setAttr(b.getStringAttr("uid"), b.getI64IntegerAttr(uid_.uid()));
+
+    // Copy backend specific attributes.
+    call->setAttr(b.getStringAttr("algorithm"), op.getAlgorithmAttr());
+    call->setAttr(b.getStringAttr("alpha_imag"), op.getAlphaImagAttr());
+    call->setAttr(b.getStringAttr("alpha_real"), op.getAlphaRealAttr());
+    call->setAttr(b.getStringAttr("beta"), op.getBetaAttr());
+    call->setAttr(b.getStringAttr("dot_dims"), op.getDotDimensionNumbers());
+    call->setAttr(b.getStringAttr("epilogue"), op.getEpilogueAttr());
+
+    // TODO(ezhulenev): Today we can't pass an array of enum attributes to the
+    // custom call. Also we do not have a corresponding precision enum on the
+    // SE/XLA side, so we encode it as an i32 array (tensor).
+    if (auto precisions = op.getPrecisionConfig()) {
+      llvm::SmallVector<int32_t> values;
+      for (auto precision : *precisions) {
+        auto value = precision.cast<mhlo::PrecisionAttr>().getValue();
+        values.push_back(static_cast<int32_t>(value));
+      }
+      call->setAttr(b.getStringAttr("precision"), b.getI32TensorAttr(values));
+    } else {
+      call->setAttr(b.getStringAttr("precision"), b.getI32TensorAttr({0, 0}));
+    }
+
+    // Erase the original matmul operation.
+    rewriter.eraseOp(op);
+
+    return success();
+  }
+
+ private:
+  UidGenerator& uid_;
+  CustomCallDeclarations& custom_calls_;
+};
+
 //===----------------------------------------------------------------------===//
 
 template <typename Conv>
@@ -225,6 +299,9 @@ class ConvOpLowering : public OpRewritePattern<Conv> {
   }
   static StringRef CustomCallTarget(ConvBackwardInputOp) {
     return "xla.gpu.conv.backward.input";
+  }
+  static StringRef CustomCallTarget(ConvForwardGraphOp) {
+    return "xla.gpu.conv.forward.graph";
   }
 
  public:
@@ -248,7 +325,8 @@ class ConvOpLowering : public OpRewritePattern<Conv> {
       call->setAttr(b.getStringAttr(name), attr);
     };
 
-    auto set_xi64 = [&](StringRef name, Optional<DenseIntElementsAttr> attr) {
+    auto set_xi64 = [&](StringRef name,
+                        std::optional<DenseIntElementsAttr> attr) {
       SmallVector<int64_t> values;
       if (attr.has_value())
         values = llvm::to_vector(attr->getValues<int64_t>());
@@ -257,7 +335,7 @@ class ConvOpLowering : public OpRewritePattern<Conv> {
 
     // Convert `BoolElementsAttr` to i64 before passing to the runtime.
     // TODO(ezhulenev): Allow passing boolean tensors to the XLA custom calls.
-    auto set_xi1 = [&](StringRef name, Optional<DenseElementsAttr> attr) {
+    auto set_xi1 = [&](StringRef name, std::optional<DenseElementsAttr> attr) {
       SmallVector<int64_t> values;
       if (attr.has_value())
         values.assign(attr->getValues<bool>().begin(),
@@ -289,6 +367,7 @@ class ConvOpLowering : public OpRewritePattern<Conv> {
     if (auto fused = dyn_cast<ConvForwardFusedOp>(op.getOperation())) {
       call->setAttr(b.getStringAttr("activation_mode"),
                     fused.getActivationModeAttr());
+      set_attr("leakyrelu_alpha", fused.getLeakyreluAlphaAttr());
     }
 
     // Copy attributes specific for fused convolutions with side input.
@@ -296,6 +375,14 @@ class ConvOpLowering : public OpRewritePattern<Conv> {
       call->setAttr(b.getStringAttr("activation_mode"),
                     fused.getActivationModeAttr());
       set_attr("side_input_scale", fused.getSideInputScaleAttr());
+    }
+
+    // Copy attributes specific for graph convolutions.
+    if (auto fused = dyn_cast<ConvForwardGraphOp>(op.getOperation())) {
+      call->setAttr(b.getStringAttr("n_aux_outputs"),
+                    fused.getNAuxOutputsAttr());
+      call->setAttr(b.getStringAttr("serialized_graph"),
+                    fused.getSerializedGraphAttr());
     }
 
     // Erase the original conv operation.
@@ -334,6 +421,62 @@ class ConvForwardFusedSideInputOpLowering
     : public ConvOpLowering<ConvForwardFusedSideInputOp> {
  public:
   using ConvOpLowering::ConvOpLowering;
+};
+
+class ConvForwardGraphOpLowering : public ConvOpLowering<ConvForwardGraphOp> {
+ public:
+  using ConvOpLowering::ConvOpLowering;
+};
+
+//===----------------------------------------------------------------------===//
+
+template <typename ConvReorder>
+class CudnnConvReorderOpLowering : public OpRewritePattern<ConvReorder> {
+ private:
+  static StringRef CustomCallTarget(CudnnConvReorderFilterOp) {
+    return "xla.gpu.conv.reorder.filter";
+  }
+  static StringRef CustomCallTarget(CudnnConvReorderFilterAndBiasOp) {
+    return "xla.gpu.conv.reorder.filter_and_bias";
+  }
+
+ public:
+  explicit CudnnConvReorderOpLowering(MLIRContext* ctx,
+                                      CustomCallDeclarations& custom_calls)
+      : OpRewritePattern<ConvReorder>(ctx), custom_calls_(custom_calls) {}
+
+  LogicalResult matchAndRewrite(ConvReorder op,
+                                PatternRewriter& rewriter) const override {
+    // Get or create a custom call function declaration.
+    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+    func::FuncOp callee =
+        custom_calls_.GetOrCreate(b, CustomCallTarget(op), op);
+
+    auto filterDims = rewriter.getDenseI64ArrayAttr(
+        llvm::to_vector(op.getFilterDims().template getValues<int64_t>()));
+
+    // Replace ConvOp with an equivalent custom call.
+    auto call = rewriter.replaceOpWithNewOp<func::CallOp>(
+        op, callee.getName(), TypeRange(), op.getOperands());
+    call->setAttr(b.getStringAttr("filter_dims"), filterDims);
+
+    return success();
+  }
+
+ private:
+  CustomCallDeclarations& custom_calls_;
+};
+
+class CudnnConvReorderFilterOpLowering
+    : public CudnnConvReorderOpLowering<CudnnConvReorderFilterOp> {
+ public:
+  using CudnnConvReorderOpLowering::CudnnConvReorderOpLowering;
+};
+
+class CudnnConvReorderFilterAndBiasOpLowering
+    : public CudnnConvReorderOpLowering<CudnnConvReorderFilterAndBiasOp> {
+ public:
+  using CudnnConvReorderOpLowering::CudnnConvReorderOpLowering;
 };
 
 //===----------------------------------------------------------------------===//
@@ -398,17 +541,20 @@ void ConvertLmhloGpuToGpuRuntimePass::runOnOperation() {
 
   // Each unique Gemm/Matmul operation in the module will get assigned a uid.
   UidGenerator matmul_uid;
-  patterns.insert<GemmOpLowering, CublasLtMatmulOpLowering>(ctx, matmul_uid,
-                                                            custom_calls);
+  patterns.insert<GemmOpLowering, CublasLtMatmulOpLowering,
+                  CublasLtMatmulF8OpLowering>(ctx, matmul_uid, custom_calls);
 
   // Each unique Conv operation in the module will get assigned a uid.
   UidGenerator conv_uid;
-  patterns.insert<ConvForwardOpLowering, ConvForwardFusedOpLowering,
-                  ConvForwardFusedSideInputOpLowering,
-                  ConvBackwardFilterOpLowering, ConvBackwardInputOpLowering>(
-      ctx, conv_uid, custom_calls);
+  patterns
+      .insert<ConvForwardOpLowering, ConvForwardFusedOpLowering,
+              ConvForwardFusedSideInputOpLowering, ConvBackwardFilterOpLowering,
+              ConvBackwardInputOpLowering, ConvForwardGraphOpLowering>(
+          ctx, conv_uid, custom_calls);
 
   // Patterns for every other Gpu operation.
+  patterns.insert<CudnnConvReorderFilterOpLowering>(ctx, custom_calls);
+  patterns.insert<CudnnConvReorderFilterAndBiasOpLowering>(ctx, custom_calls);
   patterns.insert<CholeskyOpLowering>(ctx, custom_calls);
 
   if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns))))

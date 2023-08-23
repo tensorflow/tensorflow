@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple, Union
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Set, Tuple, Type, Union
 
 import numpy
 
@@ -23,14 +23,14 @@ from .xla_extension import Layout as Layout
 from .xla_extension import ops as ops
 from .xla_extension import profiler as profiler
 
-from .xla_extension import Buffer as Buffer
-from .xla_extension import ShardedBuffer as ShardedBuffer
 from .xla_extension import ArrayImpl as ArrayImpl
 from .xla_extension import Client as Client
 from .xla_extension import CompileOptions as CompileOptions
 from .xla_extension import Device as Device
-from .xla_extension import DeviceArrayBase as DeviceArrayBase
+from .xla_extension import Memory as Memory
 from .xla_extension import DeviceAssignment as DeviceAssignment
+from .xla_extension import DeviceList as DeviceList
+from .xla_extension import DeviceTopology as DeviceTopology
 from .xla_extension import DistributedRuntimeClient as DistributedRuntimeClient
 from .xla_extension import LoadedExecutable as LoadedExecutable
 from .xla_extension import FftType as FftType
@@ -48,14 +48,21 @@ from .xla_extension import XLACompatibleSharding as XLACompatibleSharding
 from .xla_extension import NamedSharding as NamedSharding
 from .xla_extension import SingleDeviceSharding as SingleDeviceSharding
 from .xla_extension import PmapSharding as PmapSharding
-from .xla_extension import OpShardingSharding as OpShardingSharding
+from .xla_extension import GSPMDSharding as GSPMDSharding
 
 _version: int
 
 mlir_api_version: int
 
-bfloat16: numpy.dtype
+bfloat16: Type[numpy.generic]
+float8_e4m3fn: Type[numpy.generic]
+float8_e4m3b11fnuz: Type[numpy.generic]
+float8_e4m3fnuz: Type[numpy.generic]
+float8_e5m2: Type[numpy.generic]
+float8_e5m2fnuz: Type[numpy.generic]
 XLA_ELEMENT_TYPE_TO_DTYPE: Dict[PrimitiveType, numpy.dtype]
+
+_NameValueMapping = Mapping[str, Union[str, int, List[int], float]]
 
 
 def dtype_to_etype(dtype: numpy.dtype) -> PrimitiveType:
@@ -81,6 +88,7 @@ def make_cpu_client(*, use_tfrt: bool = ...) -> Client:
 def make_gpu_client(
     distributed_client: Optional[DistributedRuntimeClient] = ...,
     node_id: int = ...,
+    num_nodes: int = ...,
     platform_name: Optional[str] = ...,
     allowed_devices: Optional[Set[int]] = ...) -> Client:
   ...
@@ -90,7 +98,15 @@ def make_interpreter_client() -> Client:
   ...
 
 
-def make_tfrt_tpu_c_api_client() -> Client:
+def make_tfrt_tpu_c_api_client(options: Optional[_NameValueMapping] = None) -> Client:
+  ...
+
+
+def make_tfrt_tpu_c_api_device_topology(topology_name: Optional[str] = None, **kwargs) -> DeviceTopology:
+  ...
+
+
+def get_topology_for_devices(devices: List[Device]) -> DeviceTopology:
   ...
 
 
@@ -98,11 +114,26 @@ def make_tpu_client() -> Client:
   ...
 
 
-def make_plugin_device_client() -> Client:
+def make_c_api_client(
+    plugin_name: str,
+    options: Optional[_NameValueMapping] = None,
+    distributed_client: Optional[DistributedRuntimeClient] = None) -> Client:
   ...
 
-def maybe_load_pjrt_plugins() -> None:
+def pjrt_plugin_loaded(plugin_name: str) -> bool:
   ...
+
+def load_pjrt_plugin_dynamically(plugin_name: str, library_path: str) -> None:
+  ...
+
+
+def pjrt_plugin_initialized(plugin_name: str) -> bool:
+  ...
+
+
+def initialize_pjrt_plugin(plugin_name: str) -> None:
+  ...
+
 
 class OpMetadata:
 
@@ -202,3 +233,24 @@ def make_replica_groups(
 
 def weakref_lru_cache(cache_context_fn: Callable, call: Callable, maxsize=...):
   ...
+
+def copy_array_to_devices_with_sharding(self: ArrayImpl, devices: List[Device], sharding: Any) -> ArrayImpl: ...
+
+def batched_device_put(aval: Any, sharding: Any, shards: Sequence[Any], devices: List[Device]) -> ArrayImpl: ...
+
+def check_and_canonicalize_memory_kind(
+    memory_kind: Optional[str], device_list: DeviceList) -> Optional[str]: ...
+
+def array_result_handler(
+               aval: Any,
+               sharding: Any,
+               committed: bool,
+               _skip_checks: bool = ...) -> Callable:
+  ...
+
+
+def register_custom_call_target(
+    name: str, fn: Callable, platform: str = ...
+) -> None:
+  ...
+def encode_inspect_sharding_callback(handler: Any) -> bytes: ...

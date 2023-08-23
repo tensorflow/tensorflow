@@ -14,15 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 #include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
+#include "tensorflow/compiler/xla/python/ifrt/test_util.h"
 
 int main(int argc, char** argv) {
   // TfrtCpuExecutable::IsDeleted() always returns false.
-  const char* kFilter = "-LoadedExecutableImplTest.IsDeleted";
-#ifdef GTEST_FLAG_SET
-  GTEST_FLAG_SET(filter, kFilter);
-#else
-  testing::GTEST_FLAG(filter) = kFilter;
-#endif
+  static constexpr absl::string_view kFilter =
+      "-LoadedExecutableImplTest.IsDeleted";
+  xla::ifrt::test_util::SetTestFilterIfNotUserSpecified(kFilter);
 
   testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

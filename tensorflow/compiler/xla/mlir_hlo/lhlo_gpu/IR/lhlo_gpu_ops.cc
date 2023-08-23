@@ -21,6 +21,8 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
+#include <optional>
+
 #include "lhlo/utils/lhlo_utils.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
@@ -107,6 +109,59 @@ using mlir::hlo::printWindowAttributes;
 mlir::LogicalResult AllReduceStartOp::verify() {
   AllReduceStartOp op = *this;
   return lmhlo::verifyAllReduce(op);
+}
+
+//===----------------------------------------------------------------------===//
+// AllToAllStartOp
+//===----------------------------------------------------------------------===//
+
+mlir::LogicalResult AllToAllStartOp::verify() {
+  AllToAllStartOp op = *this;
+  return mlir::hlo::verifyReplicaGroups(op.getLoc(), op.getReplicaGroups(),
+                                        /*allGroupsMustHaveSameSize=*/true,
+                                        /*useGlobalDeviceIds=*/false,
+                                        /*expectedGroupSize=*/std::nullopt);
+}
+
+//===----------------------------------------------------------------------===//
+// CollectivePermuteStartOp
+//===----------------------------------------------------------------------===//
+
+mlir::LogicalResult CollectivePermuteStartOp::verify() {
+  CollectivePermuteStartOp op = *this;
+  return mlir::hlo::verifyCollectivePermuteSourceTargetPairs(
+      op, op.getSourceTargetPairs());
+}
+
+//===----------------------------------------------------------------------===//
+// AllGatherStartOp
+//===----------------------------------------------------------------------===//
+
+mlir::LogicalResult AllGatherStartOp::verify() {
+  AllGatherStartOp op = *this;
+  return mlir::hlo::verifyReplicaGroups(op.getLoc(), op.getReplicaGroups(),
+                                        /*allGroupsMustHaveSameSize=*/true,
+                                        op.getUseGlobalDeviceIds(),
+                                        /*expectedGroupSize=*/std::nullopt);
+}
+
+//===----------------------------------------------------------------------===//
+// ReduceScatterStartOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ReduceScatterStartOp::verify() {
+  ReduceScatterStartOp op = *this;
+  if (failed(hlo::verifyReplicaGroups(op.getLoc(), op.getReplicaGroups(),
+                                      /*allGroupsMustHaveSameSize=*/true,
+                                      op.getUseGlobalDeviceIds(),
+                                      /*expectedGroupSize=*/std::nullopt)))
+    return failure();
+  if (failed(mlir::hlo::verifyReduceScatter(
+          op, /*operandTypes=*/op.getInputs().getTypes(),
+          /*resultTypes=*/op.getOutputs().getTypes(),
+          /*scatterDimension=*/op.getScatterDimension())))
+    return failure();
+  return success();
 }
 
 }  // namespace lmhlo_gpu

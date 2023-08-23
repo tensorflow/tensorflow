@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_LOCAL_RENDEZVOUS_H_
 #define TENSORFLOW_CORE_FRAMEWORK_LOCAL_RENDEZVOUS_H_
 
+#include <memory>
+#include <optional>
 #include <vector>
 
 #include "tensorflow/core/framework/rendezvous.h"
@@ -42,19 +44,31 @@ class LocalRendezvous {
   // can make sure it outlives the async recv requests.
   // Pass in nullptr if the wrapping class is not refcounted.
   explicit LocalRendezvous(Rendezvous* owner, int num_shards)
-      : rc_owner_(owner), table_buckets_(num_shards > 0 ? num_shards : 1) {}
+      : num_buckets_(num_shards > 0 ? num_shards : 1),
+        rc_owner_(owner),
+        table_buckets_(std::make_unique<TableBucket[]>(num_buckets_)) {}
   ~LocalRendezvous();
 
   Status Send(const Rendezvous::ParsedKey& key,
               const Rendezvous::Args& send_args, const Tensor& val,
-              const bool is_dead);
+              bool is_dead);
   void RecvAsync(const Rendezvous::ParsedKey& key,
                  const Rendezvous::Args& recv_args,
                  Rendezvous::DoneCallback done);
   void StartAbort(const Status& status);
   Status status();
 
+  // Releases all the references to the aborted rendezvous. Used in unit tests.
+  static void ReleaseAbortedRendezvous() {
+    mutex_lock l(aborted_rendezs_mu_);
+    aborted_rendezs_.clear();
+  }
+
  private:
+  void DoAbort(const Status& status);
+
+  tsl::core::RefCountPtr<Rendezvous> GetOwnerRefCountPtr();
+
   struct Item;
 
   // By invariant, the item queue under each key is of the form
@@ -70,8 +84,10 @@ class LocalRendezvous {
 
   typedef gtl::FlatMap<uint64, ItemQueue> Table;
 
-  // Pointer to the owner class of this LocalRendezvous if it is refcounted.
-  const Rendezvous* rc_owner_;
+  const int num_buckets_;
+  // Pointer to the owner class of this LocalRendezvous if it is refcounted,
+  // nullptr otherwise.
+  Rendezvous* rc_owner_;
 
   struct TableBucket {
     mutex mu;
@@ -82,10 +98,19 @@ class LocalRendezvous {
     condition_variable pending_callback_cond_var TF_GUARDED_BY(mu);
   };
 
-  // Immutable vector.
-  std::vector<TableBucket> table_buckets_;
+  // Immutable set of buckets. This uses less memory than std::vector.
+  const std::unique_ptr<TableBucket[]> table_buckets_;
   mutex mu_;
   Status status_ TF_GUARDED_BY(mu_);
+
+  // We deliberately leak one reference of the aborted rendezvous here, so that
+  // they won't be destructed, and lose the status_.
+  // This is necessary because subsequent calls to RendezvousMgr::Find() will
+  // return the aborted rendezvous, and proper errors will be propagated.
+  // TODO(hhb): find a better way to manage rendezvous lifespan.
+  static mutex& aborted_rendezs_mu_;
+  static std::vector<tsl::core::RefCountPtr<Rendezvous> >& aborted_rendezs_
+      TF_GUARDED_BY(aborted_rendezs_mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(LocalRendezvous);
 };

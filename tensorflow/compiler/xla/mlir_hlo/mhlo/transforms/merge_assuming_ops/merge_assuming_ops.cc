@@ -15,6 +15,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <tuple>
 #include <utility>
 
 #include "llvm/ADT/STLExtras.h"
@@ -26,9 +27,9 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
-#include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/OperationSupport.h"
@@ -146,7 +147,7 @@ LogicalResult moveUpIntoAssumingOpMatchAndRewrite(Operation *op,
       assumingOp.getLoc(), assumingOp.getWitness(),
       [&](OpBuilder &b, Location) {
         // Copy body.
-        BlockAndValueMapping mapping;
+        IRMapping mapping;
         for (auto &nested : body->without_terminator())
           b.clone(nested, mapping);
 
@@ -302,7 +303,7 @@ struct MoveUpOutOfAssumingOpPattern : public OpRewritePattern<OpTy> {
         assumingOp.getLoc(), assumingOp.getWitness(),
         [&](OpBuilder &b, Location) {
           // Copy body.
-          BlockAndValueMapping mapping;
+          IRMapping mapping;
           for (Operation &nested : body->without_terminator()) {
             b.clone(nested, mapping);
           }
@@ -358,7 +359,7 @@ struct MergeAssumingOpsPattern : public OpRewritePattern<shape::AssumingOp> {
     auto newAssumingOp = rewriter.create<shape::AssumingOp>(
         precedingOp.getLoc(), newWitness, [&](OpBuilder &b, Location) {
           // Copy preceding op's body.
-          BlockAndValueMapping mapping;
+          IRMapping mapping;
           for (auto &nested : body_a->without_terminator()) {
             b.clone(nested, mapping);
           }
@@ -432,7 +433,7 @@ struct MergeAssumingOpsPass
     RewritePatternSet patterns(ctx);
     mhlo::populateMergeAssumingOpsPatterns(ctx, &patterns);
     GreedyRewriteConfig config;
-    config.maxIterations = GreedyRewriteConfig::kNoIterationLimit;
+    config.maxIterations = GreedyRewriteConfig::kNoLimit;
     if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns),
                                             config))) {
       return signalPassFailure();

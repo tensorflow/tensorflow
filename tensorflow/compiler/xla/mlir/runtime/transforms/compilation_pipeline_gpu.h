@@ -16,8 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_MLIR_RUNTIME_TRANSFORMS_COMPILATION_PIPELINE_GPU_H_
 #define TENSORFLOW_COMPILER_XLA_MLIR_RUNTIME_TRANSFORMS_COMPILATION_PIPELINE_GPU_H_
 
-#include <functional>
-
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compilation_pipeline_options.h"
 #include "tensorflow/compiler/xla/runtime/compiler.h"
 
@@ -42,7 +40,8 @@ void RegisterTestlibDialect(DialectRegistry& dialects);
 // it is expected that all end users will construct their own compilation
 // pipelines from the available XLA and MLIR passes.
 void CreateDefaultXlaGpuRuntimeCompilationPipeline(
-    PassManager& passes, const CompilationPipelineOptions& opts);
+    PassManager& passes, const CompilationPipelineOptions& opts,
+    bool add_async_passes = false);
 
 void AppendXlaGpuDialectRegistry(mlir::MLIRContext& context);
 

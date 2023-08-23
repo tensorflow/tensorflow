@@ -17,6 +17,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "ExtensionTypeSpec"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Optional"
     mtype: "<type \'type\'>"
   }
@@ -63,6 +67,10 @@ tf_module {
   member_method {
     name: "dispatch_for_unary_elementwise_apis"
     argspec: "args=[\'x_type\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "enable_strict_mode"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "function_executor_type"

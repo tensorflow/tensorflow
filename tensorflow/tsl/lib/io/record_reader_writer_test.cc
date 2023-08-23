@@ -257,13 +257,13 @@ TEST(RecordReaderWriterTest, TestMalformedInput) {
     Status s = reader.ReadRecord(&offset, &record);
     EXPECT_EQ(error::DATA_LOSS, s.code());
     EXPECT_EQ("corrupted record at 0 (Is this even a TFRecord file?)",
-              s.error_message());
+              s.message());
     // Beyond offset 0, we assume that earlier read or skip operations found
     // a usable TFRecord format or else messaged about that already.
     offset = 1;
     s = reader.ReadRecord(&offset, &record);
     EXPECT_EQ(error::DATA_LOSS, s.code());
-    EXPECT_EQ("corrupted record at 1", s.error_message());
+    EXPECT_EQ("corrupted record at 1", s.message());
   }
 }
 

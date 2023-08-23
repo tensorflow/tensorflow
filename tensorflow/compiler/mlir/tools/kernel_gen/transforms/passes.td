@@ -111,12 +111,6 @@ def PropagateShapeKnowledgeToKernels
   let constructor = "transforms::CreatePropagateShapeKnowledgeToKernels()";
 }
 
-def EmbedMemRefPrintsPass : Pass<"embed-memref-prints", "mlir::ModuleOp"> {
-  let summary = "Pass to print content of memrefs";
-  let constructor = "transforms::CreateEmbedMemRefPrintsPass()";
-  let dependentDialects = ["LLVM::LLVMDialect"];
-}
-
 def FuseInnerParallelLoopsPass
     : Pass<"fuse-inner-parallel-loops", "mlir::func::FuncOp"> {
   let summary = "Limited pass to forward stores to loads.";

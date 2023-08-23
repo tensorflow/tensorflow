@@ -20,6 +20,7 @@ limitations under the License.
 #include "mlir/ExecutionEngine/RunnerUtils.h"  // from @llvm-project
 #include "tensorflow/core/framework/resource_op_kernel.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/tsl/platform/hash.h"
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
@@ -36,9 +37,11 @@ class GPURuntimeCache : public tensorflow::ResourceBase {
  public:
 #if GOOGLE_CUDA
   using GPUModule = CUmodule;
+  using GPUFunction = CUfunction;
 #endif
 #if TENSORFLOW_USE_ROCM
   using GPUModule = hipModule_t;
+  using GPUFunction = hipFunction_t;
 #endif
 
   ~GPURuntimeCache() override;
@@ -51,10 +54,30 @@ class GPURuntimeCache : public tensorflow::ResourceBase {
   // modules are unloaded on destruction of this cache.
   GPUModule LookupOrLoadModule(void* data);
 
+  GPUFunction LookupOrGetFunction(GPUModule module, const char* kernel_name);
+
  private:
+  struct FunctionKey {
+    GPUModule module;
+    const char* kernel_name;
+
+    friend bool operator==(const FunctionKey& lhs, const FunctionKey& rhs) {
+      return lhs.module == rhs.module && lhs.kernel_name == rhs.kernel_name;
+    }
+
+    struct Hash {
+      size_t operator()(const FunctionKey& key) const {
+        return tsl::Hash64Combine(tsl::hash<GPUModule>()(key.module),
+                                  tsl::Hash64(key.kernel_name));
+      }
+    };
+  };
+
   tensorflow::mutex mu_;
   absl::flat_hash_map<void*, GPUModule> gpu_module_by_data_ptr_
       TF_GUARDED_BY(mu_);
+  absl::flat_hash_map<FunctionKey, GPUFunction, FunctionKey::Hash>
+      gpu_function_by_module_and_name_ TF_GUARDED_BY(mu_);
 };
 
 // Implements a C wrapper around the TensorFlow runtime and CUDA (or ROCm)

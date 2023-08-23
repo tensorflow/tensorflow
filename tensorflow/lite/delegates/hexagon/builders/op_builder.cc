@@ -16,7 +16,7 @@ limitations under the License.
 
 #include "hexagon/hexagon_nn_ops.h"
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/hexagon/builders/op_factory.h"
 #include <farmhash.h>
 

@@ -111,9 +111,9 @@ func.func @sort(%arg0 : tensor<37xi32>, %arg1 : tensor<37xi32>) -> (tensor<37xi3
 // CHECK:     scf.yield %[[ADDI_3]], %[[SUBI_3]], %[[ARG6]], %[[ARG7]], %[[ARG4_0]], %[[ARG5_0]] : index, i1, memref<37xi32>, memref<37xi32>, memref<37xi32>, memref<37xi32>
 // CHECK:   }
 // CHECK:   %[[SELECT_7:.*]] = arith.select %[[WHILE_0]]#1, %[[ALLOC_0]], %[[ALLOC]] : memref<37xi32>
-// CHECK:   %[[TO:.*]] = bufferization.to_tensor %[[SELECT_7]] : memref<37xi32>
+// CHECK:   %[[TO:.*]] = bufferization.to_tensor %[[SELECT_7]] restrict : memref<37xi32>
 // CHECK:   %[[SELECT_8:.*]] = arith.select %[[WHILE_0]]#1, %[[ALLOC_2]], %[[ALLOC_1]] : memref<37xi32>
-// CHECK:   %[[TO_0:.*]] = bufferization.to_tensor %[[SELECT_8]] : memref<37xi32>
+// CHECK:   %[[TO_0:.*]] = bufferization.to_tensor %[[SELECT_8]] restrict : memref<37xi32>
 // CHECK:   return %[[TO]], %[[TO_0]] : tensor<37xi32>, tensor<37xi32>
 
 // -----

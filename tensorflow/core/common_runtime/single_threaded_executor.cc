@@ -484,16 +484,16 @@ class SingleThreadedExecutorImpl : public Executor {
     return OkStatus();
   }
 
+ private:
   // Execute all operations in the calling thread when asynchronous execution
   // is requested. Callers may expect to perform expensive work in the calling
   // thread even when the execution itself is single-threaded.
   //
   // This also avoid stack-overflow issues with functional control flow.
-  void RunAsync(const Args& args, DoneCallback done) override {
+  void RunAsyncInternal(const Args& args, DoneCallback done) override {
     args.runner([this, args, done]() { done(Run(args)); });
   }
 
- private:
   const LocalExecutorParams params_;
 
   // All following members are read-only after Initialize().

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/transforms/region_to_functional/impl.h"
 
+#include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -23,15 +24,16 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/iterator.h"
 #include "llvm/Support/ScopedPrinter.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/FunctionInterfaces.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
@@ -142,7 +144,7 @@ class BasePattern {
 
   // Try to find a name for a data or control value. For op results, check the
   // op for a name. Otherwise, check the enclosing function's arg attributes.
-  StringAttr TryFindName(Value value, Optional<ValueRange> args) const;
+  StringAttr TryFindName(Value value, std::optional<ValueRange> args) const;
 
   // Get the `control_ret_attrs` attributes for control returns. Use a name
   // uniquer to unique names across function arguments, results, and control
@@ -420,7 +422,7 @@ void BasePattern::CollectValuesDefinedAbove(Region &region,
     Value value = operand->get();
     if (value.getType() != control_ty) {
       datas.insert(value);
-    } else if (Optional<Value> data = LookupDataValue(value)) {
+    } else if (std::optional<Value> data = LookupDataValue(value)) {
       datas.insert(*data);
     } else {
       ctls.insert(value);
@@ -464,8 +466,8 @@ FailureOr<std::vector<Value>> BasePattern::CollectValuesDefinedAboveAll(
   SetVector<Value> data_set, ctl_only;
   for (Region &region : llvm::make_pointee_range(regions))
     CollectValuesDefinedAbove(region, data_set, ctl_only);
-  std::vector<Value> datas = data_set.takeVector();
-
+  llvm::SmallVector<Value, 0> data_sv = data_set.takeVector();
+  std::vector<Value> datas(data_sv.begin(), data_sv.end());
   // If in any of the regions we found a use of a control token defined above
   // the regions with no associated data value, then it cannot be converted to
   // explicit capture unless we insert chain constants. If this option was not
@@ -473,7 +475,7 @@ FailureOr<std::vector<Value>> BasePattern::CollectValuesDefinedAboveAll(
   if (!force_control_capture_ && !ctl_only.empty()) return failure();
 
   Operation *parent = regions.front()->getParentOp();
-  for (auto &ctl : llvm::enumerate(ctl_only.takeVector())) {
+  for (const auto &ctl : llvm::enumerate(ctl_only.takeVector())) {
     Operation *const_op =
         MakeChainConstant(parent, ctl.value(), ctl.index(), rewriter);
     for (Region *region : regions)
@@ -516,7 +518,7 @@ NamedAttrList BasePattern::BuildAttributes(RegionAttr preserved,
 
   // For each argument and result, lookup a name and regenerate output shapes.
   const auto build_attrs = [&](ArrayAttr attr, auto &it,
-                               Optional<ValueRange> args) {
+                               std::optional<ValueRange> args) {
     NamedAttrList attrs(attr ? attr[it.index()].template cast<DictionaryAttr>()
                              : DictionaryAttr());
     // If no name was preserved, try to find one.
@@ -528,14 +530,14 @@ NamedAttrList BasePattern::BuildAttributes(RegionAttr preserved,
     return attrs.getDictionary(ctx_);
   };
 
-  for (auto &it : llvm::enumerate(arguments)) {
+  for (const auto &it : llvm::enumerate(arguments)) {
     arg_attrs.append({build_attrs(preserved_arg_attrs, it, {}),
                       DictionaryAttr::get(ctx_, {})});
   }
-  for (auto &it : llvm::enumerate(results))
+  for (const auto &it : llvm::enumerate(results))
     res_attrs.push_back(build_attrs(preserved_res_attrs, it, arguments));
 
-  Optional<RegisteredOperationName> name =
+  std::optional<RegisteredOperationName> name =
       RegisteredOperationName::lookup(GraphFuncOp::getOperationName(), ctx_);
   attrs.append(GraphFuncOp::getArgAttrsAttrName(*name),
                ArrayAttr::get(ctx_, arg_attrs));
@@ -545,7 +547,7 @@ NamedAttrList BasePattern::BuildAttributes(RegionAttr preserved,
 }
 
 StringAttr BasePattern::TryFindName(Value value,
-                                    Optional<ValueRange> args) const {
+                                    std::optional<ValueRange> args) const {
   // If this is an op result, return the op's name.
   if (auto result = value.dyn_cast<OpResult>()) {
     Operation *op = result.getOwner();
@@ -578,7 +580,7 @@ StringAttr BasePattern::TryFindName(Value value,
     return TryFindName(for_op.getInit()[arg_idx - 1], {});
   }
   auto branch = cast<RegionBranchOpInterface>(parent);
-  ValueRange inputs = branch.getSuccessorEntryOperands(
+  ValueRange inputs = branch.getEntrySuccessorOperands(
       arg.getParentRegion()->getRegionNumber());
   return TryFindName(inputs[arg.getArgNumber()], {});
 }
@@ -733,7 +735,7 @@ static bool RegionEqualTo(Region &region, GraphFuncOp func) {
 
   // Compare the non-control block arguments.
   if (region.getNumArguments() != func.getNumArguments()) return false;
-  for (auto &it : llvm::enumerate(GetLoopRegionDataArgs(region))) {
+  for (const auto &it : llvm::enumerate(GetLoopRegionDataArgs(region))) {
     Value rhs = GraphFuncOp::getDataValue(func.getBody(), it.index());
     if (!map_value(it.value(), rhs)) return false;
   }
@@ -899,7 +901,7 @@ LogicalResult ConvertCaseLikeOp<CaseLikeRegionOp, CaseLikeOp>::matchAndRewrite(
   // Outline the regions.
   ArrayAttr branch_func_attrs = op.getBranchAttrsAttr();
   SmallVector<BasePattern::RegionFunction> branch_regions;
-  for (auto &it : llvm::enumerate(op.getBranches())) {
+  for (const auto &it : llvm::enumerate(op.getBranches())) {
     unsigned idx = it.index();
     // Get the preserved attributes, if there are any.
     RegionAttr preserved =

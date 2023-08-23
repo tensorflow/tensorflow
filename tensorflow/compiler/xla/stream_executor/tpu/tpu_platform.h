@@ -16,16 +16,25 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_TPU_PLATFORM_H_
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_TPU_PLATFORM_H_
 
+#include <cstdint>
+#include <map>
 #include <memory>
+#include <string>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/stream_executor/executor_cache.h"
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
+#include "tensorflow/compiler/xla/stream_executor/plugin.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_c_api.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_c_api.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
-#include "tensorflow/tsl/platform/types.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_topology.h"
+#include "tensorflow/compiler/xla/stream_executor/trace_listener.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -41,9 +50,8 @@ class TpuPlatform : public ::tensorflow::tpu::TpuPlatformInterface {
 
   static const ::stream_executor::Platform::Id kId;
 
-  using Status = ::stream_executor::port::Status;
   template <typename T>
-  using StatusOr = ::stream_executor::port::StatusOr<T>;
+  using StatusOr = ::tsl::StatusOr<T>;
 
   TpuPlatform();
 
@@ -70,10 +78,10 @@ class TpuPlatform : public ::tensorflow::tpu::TpuPlatformInterface {
 
   bool Initialized() const override;
 
-  Status Initialize(
+  tsl::Status Initialize(
       const std::map<std::string, std::string>& platform_options) override;
 
-  Status Reset(bool only_tear_down, absl::string_view reason) override {
+  tsl::Status Reset(bool only_tear_down, absl::string_view reason) override {
     LOG(FATAL) << "Not yet implemented";
   }
 
@@ -132,10 +140,10 @@ class TpuPlatform : public ::tensorflow::tpu::TpuPlatformInterface {
   SE_Platform* se_platform() const { return platform_; }
 
   // Returns the number of TPUs per host.
-  static Status TpusPerHost(int* tpus);
+  static tsl::Status TpusPerHost(int* tpus);
 
   // Returns the memory capacity of the TPUs on this host.
-  static Status TpuMemoryLimit(int64_t* memory_limit);
+  static tsl::Status TpuMemoryLimit(int64_t* memory_limit);
 
   absl::Mutex& mutex() { return event_map_mu_; }
 

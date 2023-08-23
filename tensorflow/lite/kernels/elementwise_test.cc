@@ -178,6 +178,52 @@ TEST(ElementWise, Log) {
   EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
 }
 
+TEST(ElementWise, LogInt8) {
+  const float input_min = 0.0f;
+  const float input_max = 13.2f;
+  const float output_min = -2.3026f;
+  const float output_max = 2.5802f;
+
+  const float kQuantizedTolerance =
+      GetLUTTolerance<int8_t>(input_min, input_max, output_min, output_max);
+
+  ElementWiseOpQuantizedModel m(
+      BuiltinOperator_LOG,
+      {TensorType_INT8, {1, 2, 2, 2}, input_min, input_max},
+      {TensorType_INT8, {}, output_min, output_max});
+  m.QuantizeAndPopulate<int8_t>(
+      m.input(), {0.1f, 0.5f, 1.0f, 1.15f, 2.3f, 5.01f, 11.0f, 13.2f});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(
+      m.ExtractDequantVector<int8_t>(m.output()),
+      ElementsAreArray(ArrayFloatNear({-2.3026f, -0.6931f, 0.0f, 0.1398f,
+                                       0.8329f, 1.6114, 2.3979f, 2.5802f},
+                                      kQuantizedTolerance)));
+}
+
+TEST(ElementWise, LogInt16) {
+  const float input_min = -13.2f;
+  const float input_max = 13.2f;
+  const float output_min = -2.5802f;
+  const float output_max = 2.5802f;
+
+  const float kQuantizedTolerance =
+      GetLUTTolerance<int16_t>(input_min, input_max, output_min, output_max);
+
+  ElementWiseOpQuantizedModel m(
+      BuiltinOperator_LOG,
+      {TensorType_INT16, {1, 2, 2, 2}, input_min, input_max},
+      {TensorType_INT16, {}, output_min, output_max});
+  m.QuantizeAndPopulate<int16_t>(
+      m.input(), {0.1f, 0.5f, 1.0f, 1.15f, 2.3f, 5.01f, 11.0f, 13.2f});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(
+      m.ExtractDequantVector<int16_t>(m.output()),
+      ElementsAreArray(ArrayFloatNear({-2.3026f, -0.6931f, 0.0f, 0.1398f,
+                                       0.8329f, 1.6114, 2.3979f, 2.5802f},
+                                      kQuantizedTolerance)));
+}
+
 TEST(ElementWise, Abs) {
   ElementWiseOpFloatModel m(BuiltinOperator_ABS, {1, 2, 4, 1});
   m.PopulateTensor<float>(m.input(), {

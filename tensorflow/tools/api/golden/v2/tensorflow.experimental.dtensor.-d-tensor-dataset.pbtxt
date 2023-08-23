@@ -11,7 +11,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'dataset\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'dataset\', \'mesh\', \'layouts\', \'global_batch_size\', \'dataset_already_batched\', \'batch_dim\', \'prefetch\', \'tf_data_service_config\'], varargs=None, keywords=None, defaults=[\'False\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "apply"
@@ -199,6 +199,6 @@ tf_class {
   }
   member_method {
     name: "zip"
-    argspec: "args=[\'datasets\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'datasets\', \'name\'], varargs=args, keywords=None, defaults=[\'None\', \'None\'], "
   }
 }

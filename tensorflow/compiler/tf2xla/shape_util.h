@@ -58,6 +58,11 @@ Status TensorShapeToXLAShape(DataType dtype,
 xla::Shape TensorShapeToXLAShape(xla::PrimitiveType type,
                                  const PartialTensorShape& tensor_shape);
 
+Status TensorShapeToBoundedXLAShape(DataType dtype,
+                                    const PartialTensorShape& tensor_shape,
+                                    const TensorShape& bound,
+                                    xla::Shape* shape);
+
 // Given an XLA shape with layouts, builds a layout vector in the form able to
 // be fed to ops like InfeedEnqueue/InfeedEnqueueTuple/XRTAllocateV2/....
 // THe returned vector is a linearized sequence of the minor-to-major values of

@@ -362,7 +362,6 @@ XLA_TEST_F(HloProfileTest, DISABLED_ON_GPU(ProfileWhileComputation)) {
 }  // namespace xla
 
 static std::pair<int, char**> AddXlaHloProfileFlag(int argc, char** argv) {
-  // Intentional "leak".
   char** new_argv = new char*[argc + 2];
   for (int i = 0; i < argc; i++) {
     new_argv[i] = argv[i];
@@ -386,9 +385,15 @@ GTEST_API_ int main(int argc, char** argv) {
   std::vector<tsl::Flag> flag_list;
   xla::AppendDebugOptionsFlags(&flag_list);
   std::tie(argc, argv) = AddXlaHloProfileFlag(argc, argv);
+  std::unique_ptr<char*[]> argv_ptr(argv);
+  char* to_be_freed[] = {argv[argc - 1], argv[argc - 2]};
 
   auto usage = tsl::Flags::Usage(argv[0], flag_list);
-  if (!tsl::Flags::Parse(&argc, argv, flag_list)) {
+  const bool parseResult = tsl::Flags::Parse(&argc, argv, flag_list);
+  for (auto p : to_be_freed) {
+    free(p);
+  }
+  if (!parseResult) {
     LOG(ERROR) << "\n" << usage;
     return 2;
   }

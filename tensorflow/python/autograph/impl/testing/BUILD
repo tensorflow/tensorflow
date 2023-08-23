@@ -9,6 +9,10 @@ package(
 pybind_extension(
     name = "pybind_for_testing",
     srcs = ["pybind_for_testing.cc"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "pybind_for_testing.pyi",
+    ],
     deps = [
         "@pybind11",
     ],

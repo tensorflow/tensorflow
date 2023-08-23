@@ -1,6 +1,0 @@
-# Test dependencies for pip tests
-grpcio ~= 1.49.1
-portpicker ~= 1.4.0
-scipy ~= 1.9.2
-jax ~= 0.3.24
-jaxlib ~= 0.3.24

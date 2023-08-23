@@ -16,9 +16,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/cudnn_support_utils.h"
 
 #include <functional>
+#include <vector>
 
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
+#include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
@@ -115,5 +118,93 @@ StatusOr<bool> CudnnSupportsOptimizedIntegerConvolution(
 
   return true;
 }
+
+StatusOr<CudnnReorderTransposeConfig> CudnnInferTransposeForFilterReordering(
+    const Shape& shape, const ConvolutionDimensionNumbers& dimension_numbers) {
+  // A normal filter should have four dimensions: [O, I, H, W]
+  // An already vectorized filter will have five: [O, I/k, H, W, k]; k=4|32
+  if (shape.rank() != 4 && shape.rank() != 5) {
+    return InternalError("Filter shape has unexpected rank.");
+  }
+
+  // Get convolution dimension numbers.
+  const int64_t dO = dimension_numbers.kernel_output_feature_dimension();
+  const int64_t dI = dimension_numbers.kernel_input_feature_dimension();
+  const int64_t dH = dimension_numbers.kernel_spatial_dimensions().at(0);
+  const int64_t dW = dimension_numbers.kernel_spatial_dimensions().at(1);
+  // In case of re-vectorization (rank=5), the missing dimension can be
+  // calculated as Σi(i=0..4)-(dO+dI+dH+dW)
+  bool revectorize = shape.rank() == 5;
+  const int64_t dZ = revectorize ? 10 - dO - dI - dH - dW : -1;
+  const int64_t vsize = revectorize ? shape.dimensions(dZ) : 1;
+
+  // Verify convolution dimensions (should be vectorizable).
+  if (shape.dimensions(dO) % 32 != 0 ||
+      shape.dimensions(dI) % (32 / vsize) != 0 ||
+      (revectorize && vsize != 4 && vsize != 32)) {
+    return InternalError("Filter shape is not vectorizable.");
+  }
+
+  // Build the resulting shape: [O, I/32, H, W, 32]
+  std::vector<int64_t> output = {
+      shape.dimensions(dO), shape.dimensions(dI) / (32 / vsize),
+      shape.dimensions(dH), shape.dimensions(dW), 32};
+  Shape output_shape = ShapeUtil::MakeShape(shape.element_type(), output);
+
+  // Compute the positions of filter components in the transposable shape.
+  // Every dimension preceding the given one moves it to the right, and
+  // feature dimensions are split (into 2 or 3 components).
+  auto calc_index = [&](int dim) {
+    bool split_v = vsize == 32;
+    return (revectorize
+                ? (dI < dim ? 2 - split_v : 0) + (dZ < dim ? 1 + split_v : 0)
+                : (dI < dim ? 3 : 0)) +
+           (dO < dim ? 3 : 0) + (dH < dim) + (dW < dim);
+  };
+  int idx_O = calc_index(dO);
+  int idx_I = calc_index(dI);
+  int idx_H = calc_index(dH);
+  int idx_W = calc_index(dW);
+  // Position of input features split dimensions (8 and 4).
+  int idx_Y = vsize == 32 ? calc_index(dZ) : idx_I + 1;
+  int idx_Z = vsize == 4 ? calc_index(dZ) : vsize == 32 ? idx_Y + 1 : idx_I + 2;
+
+  // Build the transposable shape: [O/8, 4, 2, I/32, 8, 4, H, W]
+  std::vector<int64_t> dims(8);
+  dims[idx_O] = shape.dimensions(dO) / 8;
+  dims[idx_O + 1] = 4;
+  dims[idx_O + 2] = 2;
+  dims[idx_I] = shape.dimensions(dI) / (32 / vsize);
+  dims[idx_Y] = 8;
+  dims[idx_Z] = 4;
+  dims[idx_H] = shape.dimensions(dH);
+  dims[idx_W] = shape.dimensions(dW);
+  Shape split_shape = ShapeUtil::MakeShape(shape.element_type(), dims);
+
+  // Build the transposition permutation: [I/32, H, W, O/8, 2, 8, 4, 4]
+  std::vector<int64_t> permutation = {idx_I,     idx_H, idx_W,     idx_O,
+                                      idx_O + 2, idx_Y, idx_O + 1, idx_Z};
+  return CudnnReorderTransposeConfig{split_shape, output_shape, permutation};
+}
+
+StatusOr<CudnnReorderTransposeConfig> CudnnInferTransposeForBiasReordering(
+    const Shape& shape) {
+  // Expected bias has one dimension: [O]
+  if (shape.rank() != 1) {
+    return InternalError("Bias shape has unexpected rank.");
+  }
+  if (shape.dimensions(0) % 32 != 0) {
+    return InternalError("Bias shape is not vectorizable.");
+  }
+
+  // Build the transposable shape: [O/32, 4, 2, 4]
+  std::vector<int64_t> dims = {shape.dimensions(0) / 32, 4, 2, 4};
+  Shape split_shape = ShapeUtil::MakeShape(shape.element_type(), dims);
+
+  // Build the transposition permutation: [O/32, 2, 4, 4]
+  std::vector<int64_t> permutation = {0, 2, 1, 3};
+  return CudnnReorderTransposeConfig{split_shape, shape, permutation};
+}
+
 }  // namespace gpu
 }  // namespace xla

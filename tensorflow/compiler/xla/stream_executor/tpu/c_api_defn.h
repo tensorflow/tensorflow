@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/event.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
-#include "tensorflow/compiler/xla/stream_executor/timer.h"
 
 // Definitions for XLA API data structures. Any underlying C++ data structures
 // are implementation details and should only be used from within the stream
@@ -48,11 +47,6 @@ struct SE_Stream {
 struct SE_Event {
   explicit SE_Event(stream_executor::StreamExecutor* parent) : event(parent) {}
   stream_executor::Event event;
-};
-
-struct SE_Timer {
-  explicit SE_Timer(stream_executor::StreamExecutor* parent) : timer(parent) {}
-  stream_executor::Timer timer;
 };
 
 struct SE_StreamExecutorConfig {

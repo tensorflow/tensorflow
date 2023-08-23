@@ -22,6 +22,8 @@ from typing import Union
 import numpy as np
 
 from tensorflow.python.types import doc_typealias
+from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import, g-bad-import-order
+from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util.tf_export import tf_export
 
 # pylint:disable=g-import-not-at-top
@@ -56,6 +58,13 @@ class Tensor(object):
     pass
 
 
+# `ops.EagerTensor` subclasses `Symbol` by way of subclassing `tensor.Tensor`;
+# care should be taken when performing `isinstance` checks on `Value`, e.g.:
+#
+# ```
+# if isinstance(core.Symbol) and not isinstance(core.Value):
+#   ...
+# ```
 class Symbol(Tensor):
   """Symbolic "graph" Tensor.
 
@@ -179,9 +188,10 @@ class GenericFunction(Callable):
     backwards compatibility of returned IR or the allowed values of `stage`.
 
     Args:
-      *args: Arguments used for compilation; same arguments as used for calling
-        the function. Need to be eager tensors.
-      **kwargs: Keyword arguments used for compilation.
+      *args: compilation args supports inputs either: (1) all inputs are
+        TensorSpec or (2) all inputs are tf.Tensor/Python variables.
+      **kwargs: Keyword arguments used for compilation. Same requirement as
+        compiliation args.
 
     Returns:
       Function callable with the following kwargs:
@@ -229,9 +239,63 @@ class GenericFunction(Callable):
       }
       ```
 
+      Here is another example using tf.TensorSpec inputs:
+
+      ```python
+      y = tf.Variable(tf.zeros([10, 20], dtype=tf.float32))
+
+      @tf.function(jit_compile=True)
+      def f(x):
+        return x + y
+
+      hlo_str = f.experimental_get_compiler_ir(tf.TensorSpec(shape=(10,
+      20)))(stage='hlo')
+      ```
+
+      The output is:
+
+      ```
+      HloModule a_inference_f_120__.8,
+      entry_computation_layout={(f32[10,20]{1,0},f32[10,20]{1,0})->f32[10,20]{1,0}}
+
+      ENTRY %a_inference_f_120__.8 (arg0.1: f32[10,20], arg1.2: f32[10,20]) ->
+      f32[10,20] {
+        %arg0.1 = f32[10,20]{1,0} parameter(0), parameter_replication={false},
+        metadata={op_name="XLA_Args"}
+        %reshape.3 = f32[10,20]{1,0} reshape(f32[10,20]{1,0} %arg0.1)
+        %arg1.2 = f32[10,20]{1,0} parameter(1), parameter_replication={false},
+        metadata={op_name="XLA_Args"}
+        %add.4 = f32[10,20]{1,0} add(f32[10,20]{1,0} %reshape.3, f32[10,20]{1,0}
+        %arg1.2), metadata={op_type="AddV2" op_name="add"
+        source_file="<ipython-input-16-ea04879c1873>" source_line=4}
+        %reshape.5 = f32[10,20]{1,0} reshape(f32[10,20]{1,0} %add.4),
+        metadata={op_name="XLA_Retvals"}
+        %tuple.6 = (f32[10,20]{1,0}) tuple(f32[10,20]{1,0} %reshape.5),
+        metadata={op_name="XLA_Retvals"}
+        ROOT %get-tuple-element.7 = f32[10,20]{1,0}
+        get-tuple-element((f32[10,20]{1,0}) %tuple.6), index=0,
+        metadata={op_name="XLA_Retvals"}
+      }
+    ```
+
+    The HLO module accepts a flat list of inputs. To retrieve the order
+    of these inputs signatures, users can call the
+    `concrete_fn.structured_input_signature` and `concrete_fn.captured_inputs`:
+
+    ```python
+    # Use concrete_fn to get the hlo_module flat_args.
+    concrete_fn = f.get_concrete_function(tf.TensorSpec(shape=(10, 20)))
+    flat_args = list(
+        tf.nest.flatten(concrete_fn.structured_input_signature)
+        ) + concrete_fn.captured_inputs
+    ```
+
     Raises:
-      ValueError: If an invalid `stage` is selected or if applied to a function
-        which is not compiled (`jit_compile=True` is not set).
+      ValueError:
+        (1) If an invalid `stage` is selected
+        (2) or if applied to a function which is not compiled
+        (`jit_compile=True` is not set).
+        (3) or if input shapes are not fully defined for tf.TensorSpec inputs
       TypeError: When called with input in graph mode.
     """
     pass
@@ -251,6 +315,10 @@ class TensorProtocol(Protocol):
       A Tensor.
     """
     pass
+
+
+_pywrap_utils.RegisterType("TensorProtocol", TensorProtocol)
+_pywrap_utils.RegisterType("CoreTypeValue", Value)
 
 
 # TODO(rahulkamat): Add missing types that are convertible to Tensor.

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef MLIR_HLO_DIALECT_MHLO_TRANSFORMS_MAP_STABLEHLO_TO_HLO_OP_H
-#define MLIR_HLO_DIALECT_MHLO_TRANSFORMS_MAP_STABLEHLO_TO_HLO_OP_H
+#ifndef MLIR_HLO_MHLO_TRANSFORMS_MAP_STABLEHLO_TO_HLO_OP_H
+#define MLIR_HLO_MHLO_TRANSFORMS_MAP_STABLEHLO_TO_HLO_OP_H
 
 #include <type_traits>
 
@@ -165,4 +165,4 @@ MAP_STABLEHLO_TO_HLO(XorOp)
 }  // namespace stablehlo
 }  // namespace mlir
 
-#endif  // MLIR_HLO_DIALECT_MHLO_TRANSFORMS_MAP_STABLEHLO_TO_HLO_OP_H
+#endif  // MLIR_HLO_MHLO_TRANSFORMS_MAP_STABLEHLO_TO_HLO_OP_H

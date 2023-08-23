@@ -19,8 +19,8 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "pybind11/pybind11.h"
-#include "pybind11/stl.h"
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/stl.h"  // from @pybind11
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
@@ -135,8 +135,9 @@ PYBIND11_MODULE(_pywrap_tf_item, m) {
                 "buffer");
           }
           if (metagraph.collection_def().count("train_op") == 0) {
-            MaybeRaiseRegisteredFromStatus(tensorflow::errors::InvalidArgument(
-                "train_op not specified in the metagraph"));
+            tsl::MaybeRaiseRegisteredFromStatus(
+                tensorflow::errors::InvalidArgument(
+                    "train_op not specified in the metagraph"));
           }
 
           tensorflow::grappler::ItemConfig cfg;
@@ -146,7 +147,7 @@ PYBIND11_MODULE(_pywrap_tf_item, m) {
               tensorflow::grappler::GrapplerItemFromMetaGraphDef(
                   "item", metagraph, cfg);
           if (item == nullptr) {
-            MaybeRaiseRegisteredFromStatus(
+            tsl::MaybeRaiseRegisteredFromStatus(
                 tensorflow::errors::InvalidArgument("Invalid metagraph"));
           }
           return item.release();

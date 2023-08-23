@@ -85,7 +85,8 @@ class PosixRandomAccessFile : public RandomAccessFile {
         n -= r;
         offset += r;
       } else if (r == 0) {
-        s = Status(error::OUT_OF_RANGE, "Read less bytes than requested");
+        s = Status(absl::StatusCode::kOutOfRange,
+                   "Read less bytes than requested");
       } else if (errno == EINTR || errno == EAGAIN) {
         // Retry
       } else {

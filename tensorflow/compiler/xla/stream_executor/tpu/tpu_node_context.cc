@@ -15,13 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_node_context.h"
 
+#include <memory>
+
+#include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 
 namespace tensorflow {
 namespace tpu {
 
-using stream_executor::port::Status;
-using stream_executor::port::StatusOr;
+using tsl::StatusOr;
 
 /*static*/
 StatusOr<std::unique_ptr<TpuNodeContext>> TpuNodeContext::Create(
@@ -44,7 +46,7 @@ TpuNodeContext::~TpuNodeContext() {
 }
 
 /* static */
-Status TpuNodeContext::StopChipHeartbeats() {
+tsl::Status TpuNodeContext::StopChipHeartbeats() {
   StatusHelper status;
   stream_executor::tpu::OpsApiFn()->TpuNodeContext_StopChipHeartbeatsFn(
       status.c_status);
@@ -52,7 +54,7 @@ Status TpuNodeContext::StopChipHeartbeats() {
 }
 
 /* static */
-Status TpuNodeContext::CloseTpuHost() {
+tsl::Status TpuNodeContext::CloseTpuHost() {
   StatusHelper status;
   stream_executor::tpu::OpsApiFn()->TpuNodeContext_CloseTpuHostFn(
       status.c_status);
@@ -60,7 +62,7 @@ Status TpuNodeContext::CloseTpuHost() {
 }
 
 /* static */
-Status TpuNodeContext::Initialize(int device_ordinal) {
+tsl::Status TpuNodeContext::Initialize(int device_ordinal) {
   StatusHelper status;
   stream_executor::tpu::OpsApiFn()->TpuNodeContext_InitializeFn(
       device_ordinal, status.c_status);

@@ -247,7 +247,7 @@ class JfifHeaderParser {
 
   static TfLiteStatus ReadWordAt(const tflite::StringRef& jpeg_image_data,
                                  int read_offset, uint16_t* result) {
-    if (read_offset < 0 || read_offset > jpeg_image_data.len - 2) {
+    if (read_offset < 0 || read_offset + 2 > jpeg_image_data.len) {
       return kTfLiteError;
     }
     // Cast to unsigned since char can be signed.

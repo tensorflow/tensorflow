@@ -62,7 +62,7 @@ struct HloPosition {
 
   template <typename H>
   friend H AbslHashValue(H h, const HloPosition& pos) {
-    return H::combine(std::move(h), *pos.instruction, pos.index);
+    return H::combine(std::move(h), pos.instruction, pos.index);
   }
 };
 
@@ -73,7 +73,7 @@ struct HloUse {
   // Instruction at which the value is used.
   HloInstruction* instruction;
 
-  // The operand number in which the value is appears.
+  // The operand number in which the value appears.
   int64_t operand_number;
 
   // The shape index within the operand in which the value appears.
@@ -142,8 +142,9 @@ class HloValue : public BufferValue {
   // Return the shape of this HloValue.
   const Shape& shape() const override { return defining_position().shape(); }
 
+  using Positions = absl::InlinedVector<HloPosition, 3>;
   // Return all positions of the HloValue in the module.
-  const std::vector<HloPosition>& positions() const { return positions_; }
+  const Positions& positions() const { return positions_; }
 
   // Return all uses of the HloValue. This computes the uses lazily, and the
   // overhead could be non-trivial for the first invocation. Therefore even
@@ -167,16 +168,17 @@ class HloValue : public BufferValue {
   std::string ToString() const override { return ToString(0); }
 
  private:
+  using Uses = absl::InlinedVector<HloUse, 3>;
   // Called when lazily computing the uses.
-  std::vector<HloUse> ComputeUses() const;
+  Uses ComputeUses() const;
 
   // The set of positions of this HloValue. The first element is always the
   // position of the definition.
-  std::vector<HloPosition> positions_;
+  Positions positions_;
 
   // The set of uses of this HloValue. This is lazily constructed until getting
   // accessed.
-  Lazy<std::vector<HloUse>> uses_;
+  Lazy<Uses> uses_;
 
   // Whether this instruction is a phi value.
   const bool is_phi_;

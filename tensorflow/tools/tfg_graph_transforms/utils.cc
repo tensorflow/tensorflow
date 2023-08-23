@@ -17,16 +17,47 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/core/platform/env.h"
+#include "absl/strings/string_view.h"
+#include "tensorflow/tools/proto_splitter_public/internal_api.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/tsl/platform/stringpiece.h"
 
 namespace mlir {
 namespace tfg {
 namespace graph_transforms {
 
+namespace {
+
+tsl::StringPiece GetNameWithoutExtension(tsl::StringPiece filename) {
+  auto pos = filename.rfind('.');
+  if (pos == tsl::StringPiece::npos) return filename;
+  return filename.substr(0, pos);
+}
+
+}  // namespace
+
 bool IsTextProto(const std::string& input_file) {
   tensorflow::StringPiece extension = tensorflow::io::Extension(input_file);
   return !extension.compare("pbtxt");
+}
+
+tensorflow::Status ReadSavedModelImageFormat(
+    const std::string& input_file, tensorflow::SavedModel& model_proto) {
+  std::string saved_model_prefix(GetNameWithoutExtension(input_file));
+  return tensorflow::image_format::ReadSavedModel(saved_model_prefix,
+                                                  &model_proto);
+}
+tensorflow::Status WriteSavedModelImageFormat(
+    tensorflow::SavedModel* model_proto, const std::string& output_file,
+    int debug_max_size) {
+  std::string saved_model_prefix(GetNameWithoutExtension(output_file));
+  if (debug_max_size > 0) {
+    return tensorflow::image_format::WriteSavedModel(
+        model_proto, saved_model_prefix, debug_max_size);
+  } else {
+    return tensorflow::image_format::WriteSavedModel(model_proto,
+                                                     saved_model_prefix);
+  }
 }
 
 }  // namespace graph_transforms

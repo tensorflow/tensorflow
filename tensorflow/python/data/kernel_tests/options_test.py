@@ -149,6 +149,7 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
     options.experimental_optimization.noop_elimination = True
     options.experimental_optimization.parallel_batch = True
     options.experimental_optimization.shuffle_and_repeat_fusion = True
+    options.experimental_optimization.warm_start = True
     options.experimental_slack = True
     options.threading.max_intra_op_parallelism = 30
     options.threading.private_threadpool_size = 40
@@ -177,6 +178,7 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
         dataset_options_pb2.DistributeOptions())
     expected_pb.optimization_options.CopyFrom(
         dataset_options_pb2.OptimizationOptions())
+    expected_pb.optimization_options.warm_start = True
     expected_pb.threading_options.CopyFrom(
         dataset_options_pb2.ThreadingOptions())
     self.assertProtoEquals(expected_pb, result)

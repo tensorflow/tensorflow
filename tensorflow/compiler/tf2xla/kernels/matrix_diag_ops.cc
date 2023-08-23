@@ -13,6 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
+#include <tuple>
+#include <utility>
+#include <vector>
+
 #include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
@@ -452,7 +457,7 @@ REGISTER_XLA_OP(Name("MatrixDiagPartV2")
 REGISTER_XLA_OP(Name("MatrixDiagPartV3")
                     .CompileTimeConstantInput("k")
                     .CompileTimeConstantInput("padding_value"),
-                MatrixDiagPartOp);
+                MlirXlaOpKernel);
 
 class MatrixSetDiagOp : public XlaOpKernel {
  public:

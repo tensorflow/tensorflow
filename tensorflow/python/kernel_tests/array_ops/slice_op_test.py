@@ -145,6 +145,7 @@ class SliceTest(test.TestCase):
         slice_val = self.evaluate(slice_t)
         self.assertAllEqual(slice_val, inp[lo:hi])
 
+  @test_util.run_without_tensor_float_32("Use FP32 in conv3d.")
   def test3Dimension(self):
     with self.cached_session():
       input_shape = [8, 16, 16, 16, 8]
@@ -180,7 +181,8 @@ class SliceTest(test.TestCase):
     input_val = 0
     # Test with constant input; shape inference fails.
     with self.assertRaisesWithPredicateMatch(
-        (ValueError, errors_impl.InvalidArgumentError), "out of range"):
+        (ValueError, errors_impl.InvalidArgumentError),
+        "Attempting to slice scalar input."):
       constant_op.constant(input_val)[:].get_shape()
 
     # Test evaluating with non-constant input; kernel execution fails.

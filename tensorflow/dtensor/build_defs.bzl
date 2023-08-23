@@ -1,23 +1,30 @@
 """Helpers for defining multi-platform DTensor test targets."""
 
-load("//tensorflow:tensorflow.bzl", "py_strict_test")
+load("//tensorflow:strict.default.bzl", "py_strict_test")
 
 # LINT.IfChange
-ALL_BACKENDS = ["cpu", "gpu", "tpu"]
-TPU_V3_DONUT_BACKEND = "tpu_v3_2x2"
-TPU_V4_DONUT_BACKEND = "tpu_v4_2x2"
-GPU_2DEVS_BACKEND = "2gpus"
+ALL_BACKENDS = [
+    "cpu",  # 1 physical CPU,
+    "gpu",  # 1 physical GPU,
+    "tpu",  # 2 physical TPU devices
+]
+TPU_V3_DONUT_BACKEND = "tpu_v3_2x2"  # 8 TPU devices; includes TFRT and non-TFRT targets
+TPU_V4_DONUT_BACKEND = "tpu_v4_2x2"  # 8 TPU devices for non-Megacore targets and 4 for Megacore targets
+GPU_2DEVS_BACKEND = "2gpus"  # 2 Physical GPUs.
 PATHWAYS = "pw"
+PATHWAYS_V3_DONUT_BACKEND = "pw_v3_2x2"
 # LINT.ThenChange(
 #     python/tests/test_backend_name.py:backend_name,
 #     python/tests/test_backend_name.oss.py:backend_name
 # )
 
 # FIXME(feyu): Gradually increase the coverage of OSS tests.
+# LINT.IfChange
 def _get_configurations(
         disable,
         enable,
         disable_tfrt,
+        disable_tfrt_tpu,  # buildifier: disable=unused-variable
         backend_tags,
         backend_deps,
         additional_backends,  # buildifier: disable=unused-variable
@@ -26,11 +33,43 @@ def _get_configurations(
     disabled_tags = ["manual", "disabled"]
     disabled_tfrt_configs = [d + "_tfrt" for d in disable_tfrt]
     disabled_backends = [backend for backend in disable if backend not in enable]
+
+    backend_variant_deps = {
+        "gpu": [],
+        "tpu": [
+        ],
+        TPU_V3_DONUT_BACKEND: [
+        ],
+        TPU_V4_DONUT_BACKEND: [
+        ],
+        PATHWAYS: [
+        ],
+        PATHWAYS_V3_DONUT_BACKEND: [
+        ],
+    }
     configurations = [
         dict(suffix = "cpu", backend = "cpu", tags = [], flags = [], env = {}, deps = []),
+        dict(
+            suffix = "gpu",
+            backend = "gpu",
+            tags = ["requires-gpu", "gpu"],
+            flags = [],
+            env = {},
+            deps = [],
+        ),
     ]
-
-    backend_variant_deps = {}
+    if GPU_2DEVS_BACKEND in additional_backends:
+        configurations = configurations + [
+            dict(
+                suffix = GPU_2DEVS_BACKEND,
+                backend = GPU_2DEVS_BACKEND,
+                tags = ["requires-gpu:2", "gpu"],
+                flags = [],
+                env = {
+                },
+                deps = [],
+            ),
+        ]
 
     # Post processing configurations.
     for config in configurations:
@@ -48,6 +87,8 @@ def _get_configurations(
         config["shard_count"] = shard_count.get(config["backend"], None) if shard_count else None
     return configurations
 
+# LINT.ThenChange(build_defs.bzl)
+
 def dtensor_test(
         name,
         srcs,
@@ -57,6 +98,7 @@ def dtensor_test(
         disable = [],
         enable = [],
         disable_tfrt = [],
+        disable_tfrt_tpu = [],
         data = [],
         tags = [],
         backend_tags = {},
@@ -65,7 +107,8 @@ def dtensor_test(
         main = None,
         shard_count = None,
         size = None,
-        get_configurations = _get_configurations):
+        get_configurations = _get_configurations,
+        test_rule = py_strict_test):
     """Defines a set of per-platform DTensor test targets.
 
     Generates test targets named:
@@ -86,6 +129,7 @@ def dtensor_test(
       enable: list of specific configs on which the test should be enabled,
         e.g., ["tpu"]. This overrides 'disable'.
       disable_tfrt: list of backends that are disabled for tfrt. This overrides 'enable'.
+      disable_tfrt_tpu: list of backends that are disabled for tfrt tpu.
       data: data dependencies
       tags: test tags
       backend_tags: a dictionary keyed by backend name of per-backend tags.
@@ -95,11 +139,13 @@ def dtensor_test(
       shard_count: a dictionary keyed by backend name of per-backend shard counts.
       size: the test size.
       get_configurations: a function that returns the list of configurations. Used to generate non-OSS test targets.
+      test_rule: test rule
     """
     configurations = get_configurations(
         disable = disable,
         enable = enable,
         disable_tfrt = disable_tfrt,
+        disable_tfrt_tpu = disable_tfrt_tpu,
         backend_tags = backend_tags,
         backend_deps = backend_deps,
         additional_backends = additional_backends,
@@ -118,7 +164,6 @@ def dtensor_test(
 
         all_tests.append(config_name)
 
-        test_rule = py_strict_test
         python_version = "PY3"
         test_env = {}
         test_env.update(config["env"])

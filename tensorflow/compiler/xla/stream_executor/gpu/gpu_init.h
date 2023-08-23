@@ -18,14 +18,14 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace stream_executor {
 class Platform;
 
 // Initializes the GPU platform and returns OK if the GPU
 // platform could be initialized.
-port::Status ValidateGPUMachineManager();
+tsl::Status ValidateGPUMachineManager();
 
 // Returns the GPU machine manager singleton, creating it and
 // initializing the GPUs on the machine if needed the first time it is

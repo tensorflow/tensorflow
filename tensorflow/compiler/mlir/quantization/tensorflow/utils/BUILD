@@ -1,5 +1,5 @@
 load("@llvm-project//mlir:tblgen.bzl", "td_library")
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
@@ -14,7 +14,7 @@ cc_library(
     name = "fake_quant_utils",
     srcs = ["fake_quant_utils.cc"],
     hdrs = ["fake_quant_utils.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
@@ -29,7 +29,7 @@ td_library(
     srcs = [
         "lift_as_function_call_utils.td",
     ],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "@llvm-project//mlir:FuncTdFiles",
     ],
@@ -39,7 +39,7 @@ cc_library(
     name = "lift_as_function_call_utils",
     srcs = ["lift_as_function_call_utils.cc"],
     hdrs = ["lift_as_function_call_utils.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/quantization/tensorflow:pass_utils",
@@ -56,15 +56,38 @@ cc_library(
     name = "tf_to_uniform_attribute_utils",
     srcs = ["tf_to_uniform_attribute_utils.cc"],
     hdrs = ["tf_to_uniform_attribute_utils.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/quantization/tensorflow:pass_utils",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:uniform_op_quant_spec",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/ops:uniform_op_quant_spec",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+tf_cc_test(
+    name = "tf_to_uniform_attribute_utils_test",
+    srcs = ["tf_to_uniform_attribute_utils_test.cc"],
+    deps = [
+        ":tf_to_uniform_attribute_utils",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -72,9 +95,10 @@ cc_library(
     name = "tf_to_xla_attribute_utils",
     srcs = ["tf_to_xla_attribute_utils.cc"],
     hdrs = ["tf_to_xla_attribute_utils.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/compiler/mlir/quantization/tensorflow:pass_utils",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/cc:constant_fold",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/lite/kernels:padding",
         "@com_google_absl//absl/algorithm:container",
@@ -89,6 +113,7 @@ tf_cc_test(
     srcs = ["tf_to_xla_attribute_utils_test.cc"],
     deps = [
         ":tf_to_xla_attribute_utils",
+        "//tensorflow/c/eager:c_api",
         "//tensorflow/compiler/mlir/quantization/tensorflow:pass_utils",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "@com_google_googletest//:gtest_main",

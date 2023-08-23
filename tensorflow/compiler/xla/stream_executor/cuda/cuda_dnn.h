@@ -20,13 +20,17 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_CUDA_CUDA_DNN_H_
 
 #include <cstdint>
+#include <optional>
+#include <string>
+#include <vector>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
 #include "tensorflow/compiler/xla/stream_executor/dnn.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
 #include "tensorflow/compiler/xla/stream_executor/plugin_registry.h"
 #include "tensorflow/compiler/xla/stream_executor/temporary_device_memory.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -40,12 +44,10 @@ class CudnnCtcLossDescriptor;
 // Opaque and unique identifier for the cuDNN plugin.
 extern const PluginId kCuDnnPlugin;
 
-using BatchDescriptorSlice =
-    port::ArraySlice<dnn::BatchDescriptor>;  // non-absl ok
+using BatchDescriptorSlice = absl::Span<const dnn::BatchDescriptor>;
 
 template <typename T>
-using DeviceMemorySlice =
-    port::ArraySlice<const DeviceMemory<T>*>;  // non-absl ok
+using DeviceMemorySlice = absl::Span<const DeviceMemory<T>* const>;
 
 // cudnn-library based DNN support. For details on overridden interface
 // functions, see dnn.h.
@@ -53,30 +55,30 @@ class CudnnSupport : public dnn::DnnSupport {
  public:
   explicit CudnnSupport(GpuExecutor* parent);
 
-  port::Status Init() override;
-  port::StatusOr<perftools::gputools::dnn::VersionInfo> GetVersion() override;
+  tsl::Status Init() override;
+  tsl::StatusOr<stream_executor::dnn::VersionInfo> GetVersion() override;
 
-  port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>> createRnnDescriptor(
+  tsl::StatusOr<std::unique_ptr<dnn::RnnDescriptor>> createRnnDescriptor(
       int num_layers, int hidden_size, int input_size, int cell_size,
       int batch_size, dnn::RnnInputMode input_mode,
       dnn::RnnDirectionMode direction_mode, dnn::RnnMode rnn_mode,
       dnn::DataType data_type, const dnn::AlgorithmConfig& algorithm_config,
-      float dropout, uint64_t seed, ScratchAllocator* state_allocator,
-      bool use_padded_io) override;
+      const NumericOptions& numeric_options, float dropout, uint64_t seed,
+      ScratchAllocator* state_allocator, bool use_padded_io) override;
 
-  port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
+  tsl::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
   createRnnSequenceTensorDescriptor(int max_seq_length, int batch_size,
                                     int data_size,
                                     dnn::DataType data_type) override;
 
-  port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
+  tsl::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
   createRnnSequenceTensorDescriptor(int max_seq_length, int batch_size,
                                     int data_size,
                                     const absl::Span<const int>& seq_lengths,
                                     bool time_major,
                                     dnn::DataType data_type) override;
 
-  port::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
+  tsl::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
   createRnnStateTensorDescriptor(int num_layer, int batch_size, int data_size,
                                  dnn::DataType data_type) override;
 
@@ -215,11 +217,7 @@ class CudnnSupport : public dnn::DnnSupport {
                      ScratchAllocator* workspace_allocator,
                      dnn::ProfileResult* output_profile_result) override;
 
-  bool GetConvolveAlgorithms(
-      CudaComputeCapability cuda_compute_capability,
-      std::vector<dnn::AlgorithmDesc>* out_algorithms) override;
-
-  port::Status GetConvolveRunners(
+  tsl::Status GetConvolveRunners(
       bool use_cudnn_frontend, dnn::ConvolutionKind kind,
       dnn::DataType input_type, dnn::DataType output_type, Stream* stream,
       const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
@@ -229,10 +227,11 @@ class CudnnSupport : public dnn::DnnSupport {
       DeviceMemoryBase output_data,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       bool use_fallback, ScratchAllocator* scratch_allocator,
+      const NumericOptions& numeric_options,
       std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_exec_plans)
       override;
 
-  port::StatusOr<std::unique_ptr<const dnn::ConvRunner>> ConvolveRunnerFromDesc(
+  tsl::StatusOr<std::unique_ptr<const dnn::ConvRunner>> ConvolveRunnerFromDesc(
       Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
       dnn::ConvolutionKind kind, dnn::DataType input_type,
       dnn::DataType output_type, const dnn::BatchDescriptor& input_descriptor,
@@ -240,7 +239,28 @@ class CudnnSupport : public dnn::DnnSupport {
       const dnn::BatchDescriptor& output_descriptor,
       const dnn::ConvolutionDescriptor& convolution_descriptor) override;
 
-  port::Status GetFusedConvolveRunners(
+  tsl::Status GetGraphConvolveRunners(
+      dnn::ConvolutionKind kind, dnn::DataType input_type,
+      dnn::DataType output_type, Stream* stream,
+      const dnn::BatchDescriptor& input_descriptor,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const dnn::BatchDescriptor& output_descriptor,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      bool use_fallback, const NumericOptions& numeric_options,
+      std::vector<std::unique_ptr<const dnn::GraphConvRunner>>* out_exec_plans,
+      std::string serialized_graph) override;
+
+  tsl::StatusOr<std::unique_ptr<const dnn::GraphConvRunner>>
+  GraphConvolveRunnerFromDesc(
+      Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+      dnn::ConvolutionKind kind, dnn::DataType input_type,
+      dnn::DataType output_type, const dnn::BatchDescriptor& input_descriptor,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const dnn::BatchDescriptor& output_descriptor,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      std::string serialized_graph) override;
+
+  tsl::Status GetFusedConvolveRunners(
       bool use_cudnn_frontend, dnn::ConvolutionKind kind,
       dnn::DataType input_type, dnn::DataType bias_type,
       dnn::DataType output_type, double conv_scale, double side_input_scale,
@@ -251,19 +271,21 @@ class CudnnSupport : public dnn::DnnSupport {
       const dnn::BatchDescriptor& output_descriptor,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       bool use_fallback, dnn::ActivationMode activation_mode,
+      const NumericOptions& numeric_options,
       std::vector<std::unique_ptr<const dnn::FusedConvRunner>>* out_exec_plans)
       override;
 
-  port::Status GetFusedMatmulRunners(
+  tsl::Status GetFusedMatmulRunners(
       bool use_cudnn_frontend, dnn::DataType input_type,
       dnn::DataType bias_type, dnn::DataType output_type, Stream* stream,
       bool trans_a, bool trans_b, uint64_t m, uint64_t n, uint64_t k,
       int64_t lda, int64_t ldb, int64_t ldc,
       dnn::ActivationMode activation_mode, bool use_fallback,
+      const NumericOptions& numeric_options,
       std::vector<std::unique_ptr<const dnn::FusedMatmulRunner>>*
           out_exec_plans) override;
 
-  port::StatusOr<std::unique_ptr<const dnn::FusedConvRunner>>
+  tsl::StatusOr<std::unique_ptr<const dnn::FusedConvRunner>>
   FusedConvolveRunnerFromDesc(
       Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
       dnn::ConvolutionKind kind, dnn::DataType input_type,
@@ -276,15 +298,91 @@ class CudnnSupport : public dnn::DnnSupport {
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       dnn::ActivationMode activation_mode) override;
 
+  tsl::StatusOr<std::unique_ptr<const dnn::FusedMHASoftmaxRunner>>
+  FusedMHASoftmaxRunnerFromDesc(
+      Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+      dnn::FusedMHAKind kind,
+      const dnn::MatmulTensorDescriptor& bmm1_lhs_descriptor,
+      const dnn::MatmulTensorDescriptor& bmm1_rhs_descriptor,
+      const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
+      const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
+      const dnn::TensorDescriptor& output_descriptor,
+      std::optional<dnn::TensorDescriptor> activation_descriptor,
+      std::optional<double> dropout_rate, std::optional<int64_t> seed) override;
+
+  tsl::StatusOr<std::unique_ptr<const dnn::FusedMHAMaskRunner>>
+  FusedMHAScaleMaskSoftmaxRunnerFromDesc(
+      Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+      dnn::FusedMHAKind kind,
+      const dnn::MatmulTensorDescriptor& bmm1_lhs_descriptor,
+      const dnn::MatmulTensorDescriptor& bmm1_rhs_descriptor,
+      const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
+      const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
+      const dnn::TensorDescriptor& output_descriptor,
+      std::optional<dnn::TensorDescriptor> activation_descriptor,
+      const dnn::TensorDescriptor& mask_descriptor, double scale,
+      std::optional<double> dropout_rate, std::optional<int64_t> seed) override;
+
+  tsl::StatusOr<std::unique_ptr<const dnn::FusedMHABiasMaskRunner>>
+  FusedMHAScaleBiasMaskSoftmaxRunnerFromDesc(
+      Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+      dnn::FusedMHAKind kind,
+      const dnn::MatmulTensorDescriptor& bmm1_lhs_descriptor,
+      const dnn::MatmulTensorDescriptor& bmm1_rhs_descriptor,
+      const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
+      const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
+      const dnn::TensorDescriptor& output_descriptor,
+      std::optional<dnn::TensorDescriptor> activation_descriptor,
+      const dnn::TensorDescriptor& mask_descriptor,
+      const dnn::TensorDescriptor& bias_descriptor, double scale,
+      std::optional<double> dropout_rate, std::optional<int64_t> seed) override;
+
+  tsl::StatusOr<std::unique_ptr<const dnn::FusedMHABiasRunner>>
+  FusedMHAScaleBiasSoftmaxRunnerFromDesc(
+      Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+      dnn::FusedMHAKind kind,
+      const dnn::MatmulTensorDescriptor& bmm1_lhs_descriptor,
+      const dnn::MatmulTensorDescriptor& bmm1_rhs_descriptor,
+      const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
+      const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
+      const dnn::TensorDescriptor& output_descriptor,
+      std::optional<dnn::TensorDescriptor> activation_descriptor,
+      const dnn::TensorDescriptor& bias_descriptor, double scale,
+      std::optional<double> dropout_rate, std::optional<int64_t> seed) override;
+
+  tsl::StatusOr<std::unique_ptr<const dnn::FusedMHASoftmaxBackwardRunner>>
+  FusedMHASoftmaxBackwardRunnerFromDesc(
+      Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+      dnn::FusedMHAKind kind,
+      const dnn::MatmulTensorDescriptor& bmm1_grad_gemm1_rhs_descriptor,
+      const dnn::MatmulTensorDescriptor& bmm1_grad_gemm2_rhs_descriptor,
+      const dnn::MatmulTensorDescriptor& bmm2_grad_gemm1_lhs_descriptor,
+      const dnn::MatmulTensorDescriptor& bmm2_grad_gemm2_rhs_descriptor,
+      const dnn::MatmulTensorDescriptor& d_output_descriptor,
+      const dnn::TensorDescriptor& d_bmm1_lhs_descriptor,
+      const dnn::TensorDescriptor& d_bmm1_rhs_descriptor,
+      const dnn::TensorDescriptor& d_bmm2_rhs_descriptor,
+      const dnn::TensorDescriptor& d_s_descriptor,
+      std::optional<dnn::TensorDescriptor> d_bias_descriptor, double scale,
+      std::optional<double> dropout_rate, std::optional<int64_t> seed) override;
+
+  tsl::StatusOr<std::unique_ptr<const dnn::FusedMHAMaskBackwardRunner>>
+  FusedMHAScaleMaskSoftmaxBackwardRunnerFromDesc(
+      Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+      dnn::FusedMHAKind kind,
+      const dnn::MatmulTensorDescriptor& bmm1_grad_gemm1_rhs_descriptor,
+      const dnn::MatmulTensorDescriptor& bmm1_grad_gemm2_rhs_descriptor,
+      const dnn::MatmulTensorDescriptor& bmm2_grad_gemm1_lhs_descriptor,
+      const dnn::MatmulTensorDescriptor& bmm2_grad_gemm2_rhs_descriptor,
+      const dnn::MatmulTensorDescriptor& d_output_descriptor,
+      const dnn::TensorDescriptor& d_bmm1_lhs_descriptor,
+      const dnn::TensorDescriptor& d_bmm1_rhs_descriptor,
+      const dnn::TensorDescriptor& d_bmm2_rhs_descriptor,
+      const dnn::TensorDescriptor& d_s_descriptor,
+      const dnn::TensorDescriptor& mask_descriptor,
+      std::optional<dnn::TensorDescriptor> d_bias_descriptor, double scale,
+      std::optional<double> dropout_rate, std::optional<int64_t> seed) override;
   bool GetRnnAlgorithms(
-      std::vector<dnn::AlgorithmDesc>* out_algorithms) override;
-
-  bool GetConvolveBackwardDataAlgorithms(
-      CudaComputeCapability cuda_compute_capability,
-      std::vector<dnn::AlgorithmDesc>* out_algorithms) override;
-
-  bool GetConvolveBackwardFilterAlgorithms(
-      CudaComputeCapability cuda_compute_capability,
       std::vector<dnn::AlgorithmDesc>* out_algorithms) override;
 
   bool DoBatchNormalizationForward(
@@ -373,7 +471,7 @@ class CudnnSupport : public dnn::DnnSupport {
       DeviceMemory<uint8_t>* reserve_space_data,
       ScratchAllocator* workspace_allocator) override;
 
-  port::Status DoConvolve(
+  tsl::Status DoConvolve(
       dnn::ConvolutionKind kind, dnn::DataType element_type,
       dnn::DataType output_type, Stream* stream,
       const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
@@ -385,7 +483,7 @@ class CudnnSupport : public dnn::DnnSupport {
       dnn::AlgorithmDesc algorithm_desc, DeviceMemory<uint8_t> scratch_memory,
       dnn::ProfileResult* output_profile_result) override;
 
-  port::Status DoFusedConvolve(
+  tsl::Status DoFusedConvolve(
       Stream* stream, dnn::DataType input_type, dnn::DataType side_input_type,
       dnn::DataType bias_type, dnn::DataType output_type,
       const dnn::BatchDescriptor& conv_input_descriptor,
@@ -400,6 +498,13 @@ class CudnnSupport : public dnn::DnnSupport {
       DeviceMemoryBase output_data, ScratchAllocator* scratch_allocator,
       const dnn::AlgorithmConfig& algorithm_config,
       dnn::ProfileResult* output_profile_result) override;
+
+  tsl::Status CudnnReorderConvolutionFilterAndBias(
+      Stream* stream, const dnn::FilterDescriptor& filter_descriptor,
+      const DeviceMemory<int8_t>& filter_input,
+      DeviceMemory<int8_t>* filter_output,
+      std::optional<const DeviceMemory<float>> bias_input,
+      std::optional<DeviceMemory<float>> bias_output) override;
 
   bool DoConvolveQuantized(
       Stream* stream, const dnn::BatchDescriptor& input_descriptor,
@@ -476,23 +581,43 @@ class CudnnSupport : public dnn::DnnSupport {
                   const DeviceMemory<float>& input_data,
                   DeviceMemory<float>* output_data, uint64_t options) override;
 
-  port::Status DoPoolForward(dnn::DataType element_type, Stream* stream,
+  tsl::Status DoPoolForward(dnn::DataType element_type, Stream* stream,
+                            const dnn::PoolingDescriptor& pooling_dimensions,
+                            const dnn::BatchDescriptor& input_dimensions,
+                            DeviceMemoryBase input_data,
+                            const dnn::BatchDescriptor& output_dimensions,
+                            DeviceMemoryBase output_data,
+                            ScratchAllocator* workspace_allocator) override;
+
+  tsl::Status DoPoolForward(dnn::DataType element_type, Stream* stream,
+                            const dnn::PoolingDescriptor& pooling_dimensions,
+                            const NumericOptions& numeric_options,
+                            const dnn::BatchDescriptor& input_dimensions,
+                            DeviceMemoryBase input_data,
+                            const dnn::BatchDescriptor& output_dimensions,
+                            DeviceMemoryBase output_data,
+                            ScratchAllocator* workspace_allocator) override;
+
+  tsl::Status DoPoolBackward(dnn::DataType element_type, Stream* stream,
                              const dnn::PoolingDescriptor& pooling_dimensions,
                              const dnn::BatchDescriptor& input_dimensions,
                              DeviceMemoryBase input_data,
                              const dnn::BatchDescriptor& output_dimensions,
                              DeviceMemoryBase output_data,
+                             DeviceMemoryBase input_diff_data,
+                             DeviceMemoryBase output_diff_data,
                              ScratchAllocator* workspace_allocator) override;
 
-  port::Status DoPoolBackward(dnn::DataType element_type, Stream* stream,
-                              const dnn::PoolingDescriptor& pooling_dimensions,
-                              const dnn::BatchDescriptor& input_dimensions,
-                              DeviceMemoryBase input_data,
-                              const dnn::BatchDescriptor& output_dimensions,
-                              DeviceMemoryBase output_data,
-                              DeviceMemoryBase input_diff_data,
-                              DeviceMemoryBase output_diff_data,
-                              ScratchAllocator* workspace_allocator) override;
+  tsl::Status DoPoolBackward(dnn::DataType element_type, Stream* stream,
+                             const dnn::PoolingDescriptor& pooling_dimensions,
+                             const NumericOptions& numeric_options,
+                             const dnn::BatchDescriptor& input_dimensions,
+                             DeviceMemoryBase input_data,
+                             const dnn::BatchDescriptor& output_dimensions,
+                             DeviceMemoryBase output_data,
+                             DeviceMemoryBase input_diff_data,
+                             DeviceMemoryBase output_diff_data,
+                             ScratchAllocator* workspace_allocator) override;
 
   bool DoNormalizeWithDimensions(
       Stream* stream, const dnn::NormalizeDescriptor& normalize_descriptor,
@@ -547,17 +672,17 @@ class CudnnSupport : public dnn::DnnSupport {
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       dnn::BatchDescriptor* output_batch_descriptor);
 
-  port::Status DoCtcLoss(Stream* stream, dnn::DataType element_type,
-                         const dnn::RnnStateTensorDescriptor& probs_desc,
-                         const DeviceMemoryBase probs_data,
-                         absl::Span<const int> labels_data,
-                         absl::Span<const int> labels_lengths_data,
-                         absl::Span<const int> input_lengths_data,
-                         DeviceMemoryBase costs_data,
-                         const dnn::RnnStateTensorDescriptor& grads_desc,
-                         DeviceMemoryBase grads_data,
-                         DeviceMemory<uint8_t> scratch_memory,
-                         int ctc_loss_algo_id) override;
+  tsl::Status DoCtcLoss(Stream* stream, dnn::DataType element_type,
+                        const dnn::RnnStateTensorDescriptor& probs_desc,
+                        const DeviceMemoryBase probs_data,
+                        absl::Span<const int> labels_data,
+                        absl::Span<const int> labels_lengths_data,
+                        absl::Span<const int> input_lengths_data,
+                        DeviceMemoryBase costs_data,
+                        const dnn::RnnStateTensorDescriptor& grads_desc,
+                        DeviceMemoryBase grads_data,
+                        DeviceMemory<uint8_t> scratch_memory,
+                        int ctc_loss_algo_id) override;
 
   bool DoTransformTensor(Stream* stream, const dnn::BatchDescriptor& input_desc,
                          dnn::DataType input_type,
@@ -574,8 +699,23 @@ class CudnnSupport : public dnn::DnnSupport {
   // Provides access to the cuDNN handle.
   std::unique_ptr<class CudnnAccess> cudnn_;
 
+  bool GetConvolveAlgorithms(CudaComputeCapability cuda_compute_capability,
+                             dnn::DataType input_type,
+                             const NumericOptions& numeric_options,
+                             std::vector<dnn::AlgorithmDesc>* out_algorithms);
+
+  bool GetConvolveBackwardDataAlgorithms(
+      CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
+      const NumericOptions& numeric_options,
+      std::vector<dnn::AlgorithmDesc>* out_algorithms);
+
+  bool GetConvolveBackwardFilterAlgorithms(
+      CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
+      const NumericOptions& numeric_options,
+      std::vector<dnn::AlgorithmDesc>* out_algorithms);
+
   template <class T, class U>
-  port::Status DoBatchNormalizationForwardImpl(
+  tsl::Status DoBatchNormalizationForwardImpl(
       Stream* stream, dnn::DataType input_data_type,
       dnn::DataType scale_data_type, const DeviceMemory<T>& x,
       const DeviceMemory<U>& scale, const DeviceMemory<U>& offset,
@@ -591,7 +731,7 @@ class CudnnSupport : public dnn::DnnSupport {
       ScratchAllocator* workspace_allocator);
 
   template <class T, class U>
-  port::Status DoBatchNormalizationBackwardImpl(
+  tsl::Status DoBatchNormalizationBackwardImpl(
       Stream* stream, int cudnn_input_type, int cudnn_scale_type,
       const DeviceMemory<T>& y_backprop, const DeviceMemory<T>& x,
       const DeviceMemory<U>& scale, const DeviceMemory<U>& offset,
@@ -605,7 +745,7 @@ class CudnnSupport : public dnn::DnnSupport {
       ScratchAllocator* workspace_allocator);
 
   template <class T>
-  port::Status DoRnnForwardImpl(
+  tsl::Status DoRnnForwardImpl(
       Stream* stream, const CudnnRnnDescriptor& rnn_desc,
       const CudnnRnnSequenceTensorDescriptor& input_desc,
       const DeviceMemory<T>& input_data,
@@ -625,7 +765,7 @@ class CudnnSupport : public dnn::DnnSupport {
       dnn::ProfileResult* output_profile_result);
 
   template <class T>
-  port::Status DoRnnBackwardImpl(
+  tsl::Status DoRnnBackwardImpl(
       Stream* stream, const CudnnRnnDescriptor& rnn_desc,
       const CudnnRnnSequenceTensorDescriptor& input_desc,
       const DeviceMemory<T>& input_data,
@@ -651,7 +791,7 @@ class CudnnSupport : public dnn::DnnSupport {
       ScratchAllocator* workspace_allocator,
       dnn::ProfileResult* output_profile_result);
 
-  port::Status DoCtcLossImpl(
+  tsl::Status DoCtcLossImpl(
       Stream* stream, const CudnnRnnStateTensorDescriptor& probs_desc,
       const DeviceMemoryBase probs_data, absl::Span<const int> labels_data,
       absl::Span<const int> labels_lengths_data,
@@ -661,7 +801,7 @@ class CudnnSupport : public dnn::DnnSupport {
       DeviceMemory<uint8_t> scratch_memory, int ctc_loss_algo_id);
 
  private:
-  port::Status DoPrepareForConvolution(
+  tsl::Status DoPrepareForConvolution(
       dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,
       const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
       const dnn::FilterDescriptor& filter_descriptor,
@@ -673,13 +813,14 @@ class CudnnSupport : public dnn::DnnSupport {
       ScratchAllocator* scratch_allocator, dnn::AlgorithmDesc* algorithm_desc,
       DeviceMemory<uint8_t>* scratch_memory) override;
 
-  port::Status DoPrepareForCtcLoss(
+  tsl::Status DoPrepareForCtcLoss(
       Stream* stream, dnn::DataType element_type,
       const dnn::RnnStateTensorDescriptor& probs_desc,
       const dnn::RnnStateTensorDescriptor& grads_desc,
       absl::Span<const int> labels_data,
       absl::Span<const int> labels_lengths_data,
       absl::Span<const int> input_lengths_data,
+      const NumericOptions& numeric_options,
       ScratchAllocator* scratch_allocator,
       DeviceMemory<uint8_t>* scratch_memory, int* ctc_loss_algo_id) override;
 

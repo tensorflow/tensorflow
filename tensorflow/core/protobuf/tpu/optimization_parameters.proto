@@ -213,6 +213,17 @@ message MomentumParameters {
   reserved 3;
 }
 
+// https://www.tensorflow.org/api_docs/python/tf/keras/optimizers/Lion
+// momenta(new) = beta2 * momenta(old) + (1 - beta2) * grad
+// momenta_t = beta1 * momenta(old) + (1 - beta1) * grad
+// var(new) = var(old) - lr * sign(momenta_t)
+// Algorithm described in https://arxiv.org/abs/2302.06675.
+message LionParameters {
+  float beta1 = 1;
+  float beta2 = 2;
+  bool use_non_lazy_lion = 3;
+}
+
 // https://www.tensorflow.org/api_docs/python/tf/keras/optimizers/RMSprop
 // https://github.com/tensorflow/tensorflow/blob/6b6471f3ffb7f1fefe42d814aa5fb9ab7a535b58/tensorflow/core/kernels/training_ops.cc#L4229
 message RmsPropParameters {
@@ -476,11 +487,14 @@ message LowDimensionalPackingStatus {
 // that is currently disabled (by default).
 message HotIdReplicationConfiguration {
   // Whether to enable or disable hot ID optimization.
-  // If UNSPECIFIED (default), hot ID optimization is DISABLED.
+  // If set to UNSPECIFIED (default), hot ID optimization is DISABLED.
+  // If set to ENABLED, hot ID replication is turned ON.
+  // If set to MIGRATION_ONLY, hot ID migration is turned ON.
   enum Status {
     UNSPECIFIED = 0;
     ENABLED = 1;
     DISABLED = 2;
+    MIGRATION_ONLY = 3;
   }
   Status status = 1;
 }
@@ -540,6 +554,7 @@ message OptimizationParameters {
     FtrlParameters ftrl = 5;
     AdamParameters adam = 6;
     MomentumParameters momentum = 8;
+    LionParameters lion = 29;
     RmsPropParameters rms_prop = 9;
     CenteredRmsPropParameters centered_rms_prop = 10;
     MdlAdagradLightParameters mdl_adagrad_light = 11;
@@ -554,7 +569,7 @@ message OptimizationParameters {
 
   reserved 15;  // Old use_gradient_accumulation.
 
-  // NEXT_ID: 29
+  // NEXT_ID: 30
 }
 
 // Specification of an optimization algorithm's state variables (both the main

@@ -15,37 +15,42 @@ limitations under the License.
 // Copied and modified from
 // //third_party/tensorflow/compiler/mlir/lite/transforms/quantize.cc
 // This transformation pass applies quantization on TF dialect.
+#include <memory>
 #include <string>
 #include <utility>
 
+#include "absl/container/flat_hash_set.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/CommandLine.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Matchers.h"  // from @llvm-project
+#include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/ops/tf_op_quant_spec.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/core/framework/types.pb.h"
 
 namespace mlir {
 namespace quant {
@@ -80,21 +85,38 @@ struct TFQuantizationBase
   // range quantization.
   static bool AllowDynamicRangeQuantizedOperand(
       Operation* quantized_op, const CustomMap& custom_op_map) {
-    return quantization_trait == kDynamicRangeQuantization;
+    auto call_op = cast<TF::PartitionedCallOp>(quantized_op);
+    StringRef function_name =
+        call_op.getFAttr().cast<FlatSymbolRefAttr>().getValue();
+    // The below can be generalized as there are more read-only ops added such
+    // as slice.
+    const bool is_gather = function_name.contains("gather");
+    return quantization_trait != kFullQuantization || is_gather;
   }
 
   // All the quantized ops are supported if the quantization method is dynamic
   // range quantization.
   static bool AllowDynamicRangeQuantizedResult(Operation* quantized_op,
                                                const CustomMap& custom_op_map) {
-    return quantization_trait == kDynamicRangeQuantization;
+    auto call_op = cast<TF::PartitionedCallOp>(quantized_op);
+    StringRef function_name =
+        call_op.getFAttr().cast<FlatSymbolRefAttr>().getValue();
+    // The below can be generalized as there are more read-only ops added such
+    // as slice.
+    bool is_gather = false;
+    if (function_name.contains("gather")) is_gather = true;
+    return quantization_trait != kFullQuantization ||
+           (quantization_trait == kFullQuantization && is_gather);
   }
 
-  // Weight-only quantization is not supported.
-  static bool IsWeightOnlyOp(Operation* quantized_op, StringSet& ops_blocklist,
+  // If weight_only_quantization is true, the legacy weight-only quantization is
+  // applied. The legacy weight-only graph has dequantization logic at the
+  // front.
+  static bool IsWeightOnlyOp(Operation* quantized_op,
+                             absl::flat_hash_set<std::string>& ops_blocklist,
                              bool weight_only_quantization,
                              const CustomMap& custom_op_map) {
-    return false;
+    return weight_only_quantization;
   }
 };
 
@@ -160,7 +182,7 @@ class QuantizeSameScaleOpsPattern
 
   LogicalResult matchAndRewrite(quantfork::DequantizeCastOp op,
                                 PatternRewriter& rewriter) const override {
-    llvm::SmallVector<Operation*, 4> quantizing_ops;
+    SmallVector<Operation*, 4> quantizing_ops;
     auto users = op.getResult().getUsers();
     quantizing_ops.append(users.begin(), users.end());
 
@@ -187,6 +209,11 @@ class QuantizeSameScaleOpsPattern
 
       if (target_opset_ == OpSet::XLA &&
           !IsConnectedWithCompsiteFunction(quantizing_op)) {
+        continue;
+      }
+
+      // Same scale op is not supported for Uniform Quantized ops.
+      if (target_opset_ == OpSet::UNIFORM_QUANTIZED) {
         continue;
       }
 
@@ -269,7 +296,7 @@ class QuantizeSameScaleOpsPattern
       if (quantizing_op->getNumRegions() != 0) {
         for (const auto& indexed_regions :
              llvm::enumerate(quantizing_op->getRegions())) {
-          BlockAndValueMapping mapping;
+          IRMapping mapping;
           indexed_regions.value().cloneInto(
               &quantized_op->getRegion(indexed_regions.index()), mapping);
         }
@@ -476,6 +503,10 @@ class QuantizePass
     return "Apply quantization on models in TensorFlow dialect";
   }
 
+  // Determine if the unused Q-DQ pairs need to be removed. For weight-only
+  // quantizable ops, Q-DQ ops need to be preserved.
+  bool shouldKeepUnusedQdqPattern();
+
   void runOnOperation() override;
 
  private:
@@ -494,6 +525,12 @@ class QuantizePass
           clEnumValN(OpSet::UNIFORM_QUANTIZED, "UNIFORM_QUANTIZED",
                      "Uses TF Uniform Quantized ops"))};
 };
+
+bool QuantizePass::shouldKeepUnusedQdqPattern() {
+  return target_opset_ == OpSet::XLA &&
+         (quant_specs_.weight_only_quantization ||
+          quant_specs_.weight_quantization);
+}
 
 void QuantizePass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
@@ -515,11 +552,17 @@ void QuantizePass::runOnOperation() {
                                               target_opset_);
     patterns.add<QuantizeAvgPoolOpPattern>(ctx);
   }
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+  if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
+    func.emitWarning("Failed to converge pattern at QuantizePass.");
+  }
 
-  RewritePatternSet patterns_2(&getContext());
-  patterns_2.add<RemoveUnusedQdqPattern>(ctx);
-  (void)applyPatternsAndFoldGreedily(func, std::move(patterns_2));
+  if (!shouldKeepUnusedQdqPattern()) {
+    RewritePatternSet patterns_2(&getContext());
+    patterns_2.add<RemoveUnusedQdqPattern>(ctx);
+    if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns_2)))) {
+      signalPassFailure();
+    }
+  }
 }
 }  // namespace
 

@@ -16,8 +16,11 @@ limitations under the License.
 // XLA-specific ListDiff Op. This only supports constant DT_INT32 and DT_INT64
 // input.
 
+#include <array>
 #include <unordered_set>
+#include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
@@ -74,7 +77,7 @@ class ListDiffOp : public XlaOpKernel {
     TF_RETURN_IF_ERROR(context->ConstantInputAsIntVector(0, &x_input));
     TF_RETURN_IF_ERROR(context->ConstantInputAsIntVector(1, &y_input));
 
-    std::unordered_set<Tval> y_input_set;
+    absl::flat_hash_set<Tval> y_input_set;
     y_input_set.reserve(y_input.size());
     for (auto y : y_input) {
       y_input_set.insert(y);

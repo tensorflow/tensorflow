@@ -20,7 +20,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/serialization.h"
 #include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
@@ -93,7 +93,7 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     // of number of nodes and selecting them until the limit is reached.
     int max_number_delegated_partitions = 3;
 
-    // allow fp32 compuation to be run in fp16.
+    // allow fp32 computation to be run in fp16.
     bool allow_fp16 = false;
 
     // Specifies the relative priority for executions of the model.
@@ -255,7 +255,7 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     ANeuralNetworksMemory* memory;
     CopyToHostTensorFnPtr callback;
     void* callback_context;
-    // The registeration timestamp. It is unique for each registered memory in
+    // The registration timestamp. It is unique for each registered memory in
     // the lifetime of a StatefulNnApiDelegate.
     uint64_t timestamp;
   };

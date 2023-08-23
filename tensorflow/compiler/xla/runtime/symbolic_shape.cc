@@ -21,6 +21,7 @@ limitations under the License.
 #include <numeric>
 
 #include "absl/status/status.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"

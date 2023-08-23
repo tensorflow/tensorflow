@@ -15,6 +15,8 @@ limitations under the License.
 
 // XLA-specific MatMul Op.
 
+#include <array>
+
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -22,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/tsl/platform/tensor_float_32_utils.h"
 
 namespace tensorflow {
 namespace {
@@ -88,7 +91,12 @@ class MatMulOp : public XlaOpKernel {
         b = xla::ConvertElementType(b, xla::F32);
       }
     }
-    ctx->SetOutput(0, xla::BatchDot(a, transpose_a_, b, transpose_b_));
+    xla::PrecisionConfig::Precision precision =
+        tsl::tensor_float_32_execution_enabled()
+            ? xla::PrecisionConfig::DEFAULT
+            : xla::PrecisionConfig::HIGHEST;
+    ctx->SetOutput(0,
+                   xla::BatchDot(a, transpose_a_, b, transpose_b_, precision));
   }
 
  private:

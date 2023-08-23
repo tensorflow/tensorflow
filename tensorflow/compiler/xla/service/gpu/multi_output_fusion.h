@@ -23,11 +23,11 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_reachability.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
-#include "tensorflow/compiler/xla/service/hlo_reachability.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
@@ -94,8 +94,9 @@ namespace gpu {
 class GpuMultiOutputFusion : public HloModulePass {
  public:
   explicit GpuMultiOutputFusion(const GpuDeviceInfo& d,
+                                se::CudaComputeCapability cc,
                                 HloCostAnalysis::ShapeSizeFunction f)
-      : device_info_(d), shape_size_function_(f) {}
+      : device_info_(d), compute_capability_(cc), shape_size_function_(f) {}
 
   absl::string_view name() const override { return "multi_output_fusion"; }
 
@@ -123,6 +124,7 @@ class GpuMultiOutputFusion : public HloModulePass {
   std::unique_ptr<HloReachabilityMap> reachability_;
 
   const GpuDeviceInfo device_info_;
+  se::CudaComputeCapability compute_capability_;
   HloCostAnalysis::ShapeSizeFunction shape_size_function_;
 };
 

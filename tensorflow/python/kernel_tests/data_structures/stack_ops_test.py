@@ -21,9 +21,9 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import test
 
 
@@ -75,7 +75,7 @@ class StackOpTest(test.TestCase):
         with ops.control_dependencies([v]):
           return math_ops.add(x, 1)
 
-      r = control_flow_ops.while_loop(c, b, [n])
+      r = while_loop.while_loop(c, b, [n])
 
       v = constant_op.constant(np.zeros(2000), dtype=dtypes.float32)
 
@@ -88,8 +88,9 @@ class StackOpTest(test.TestCase):
         ny = y + gen_data_flow_ops.stack_pop_v2(h, dtypes.float32)
         return [nx, ny]
 
-      _, ry = control_flow_ops.while_loop(
-          c1, b1, [r, v], [r.get_shape(), tensor_shape.unknown_shape()])
+      _, ry = while_loop.while_loop(
+          c1, b1, [r, v],
+          [r.get_shape(), tensor_shape.unknown_shape()])
       self.assertAllClose(np.ones(2000) * 10.0, self.evaluate(ry))
 
   @test_util.run_v1_only("b/120545219")
@@ -227,7 +228,7 @@ class StackOpRefTest(test.TestCase):
         with ops.control_dependencies([v]):
           return math_ops.add(x, 1)
 
-      r = control_flow_ops.while_loop(c, b, [n])
+      r = while_loop.while_loop(c, b, [n])
 
       v = constant_op.constant(np.zeros(2000), dtype=dtypes.float32)
 
@@ -240,8 +241,9 @@ class StackOpRefTest(test.TestCase):
         ny = y + gen_data_flow_ops.stack_pop(h, dtypes.float32)
         return [nx, ny]
 
-      _, ry = control_flow_ops.while_loop(
-          c1, b1, [r, v], [r.get_shape(), tensor_shape.unknown_shape()])
+      _, ry = while_loop.while_loop(
+          c1, b1, [r, v],
+          [r.get_shape(), tensor_shape.unknown_shape()])
       self.assertAllClose(np.ones(2000) * 10.0, self.evaluate(ry))
 
   @test_util.run_v1_only("b/120545219")

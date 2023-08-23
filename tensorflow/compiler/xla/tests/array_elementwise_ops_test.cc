@@ -2480,6 +2480,38 @@ XLA_TEST_F(ArrayElementwiseOpTest, SinF32s) {
                     ErrorSpec(0, std::numeric_limits<float>::epsilon()));
 }
 
+XLA_TEST_F(ArrayElementwiseOpTest, TanF32s) {
+  XlaBuilder builder(TestName());
+  auto kInf = std::numeric_limits<float>::infinity();
+  auto kQNaN = std::numeric_limits<float>::quiet_NaN();
+  auto a = ConstantR1<float>(
+      &builder,
+      {-1.9938988e-28, 1.9938988e-28, -1e20f, 1e20f, -2.3564024f, -3.14159f,
+       3.14159f, -0.0f, 0.0f, -1.570796f, 1.570796f, -0.78539f, 0.78539f,
+       -2.19993846e+10, -1.70141183e+38, -kInf, kInf, kQNaN});
+  Tan(a);
+
+  // This error spec corresponds to 1 ULP max relative error.
+  ComputeAndCompare(&builder, {},
+                    ErrorSpec(0, 2 * std::numeric_limits<float>::epsilon()));
+}
+
+// TODO(rmlarsen): Fix Sin/Cos for large F64 arguments.
+XLA_TEST_F(ArrayElementwiseOpTest, TanF64s) {
+  XlaBuilder builder(TestName());
+  auto kInf = std::numeric_limits<double>::infinity();
+  auto kQNaN = std::numeric_limits<double>::quiet_NaN();
+  auto a = ConstantR1<double>(
+      &builder,
+      {-1.9938988e-28, 1.9938988e-28, -2.3564024f, -3.14159f, 3.14159f, -0.0f,
+       0.0f, -1.570796f, 1.570796f, -0.78539f, 0.78539f, kInf, kInf, kQNaN});
+  Tan(a);
+
+  // This error spec corresponds to 1 ULP max relative error.
+  ComputeAndCompare(&builder, {},
+                    ErrorSpec(0, 100 * std::numeric_limits<double>::epsilon()));
+}
+
 XLA_TEST_F(ArrayElementwiseOpTest, RealF64s) {
   XlaBuilder builder(TestName());
   std::vector<double> xs = {3.14159f, 0.0f, 1.570796f, -0.78539f};
@@ -3258,7 +3290,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, NonIdentityBroadcastOfSameRankIsDisallowed) {
 
   auto computation_status = builder.Build();
   ASSERT_FALSE(computation_status.ok());
-  EXPECT_THAT(computation_status.status().error_message(),
+  EXPECT_THAT(computation_status.status().message(),
               ::testing::ContainsRegex("must.*be the identity"));
 }
 
@@ -3278,6 +3310,34 @@ XLA_TEST_F(ArrayElementwiseOpTest, ImplicitBroadcastInFusedExpressions) {
 
   ComputeAndCompareR1<float>(&builder, {-2, -3}, {x_data.get(), y_data.get()},
                              error_spec_);
+}
+
+// Regression test for b/294880521.
+XLA_TEST_F(ArrayElementwiseOpTest, LessEqual2D) {
+  XlaBuilder builder(TestName());
+  auto x_literal = LiteralUtil::CreateR1<int>({0, 1});
+  auto y_literal = LiteralUtil::CreateR1<int>({0, 0});
+  auto x_data = client_->TransferToServer(x_literal).value();
+  auto y_data = client_->TransferToServer(y_literal).value();
+  auto x = Parameter(&builder, 0, x_literal.shape(), "x");
+  auto y = Parameter(&builder, 1, y_literal.shape(), "y");
+  auto slice_x_0 = Slice(x, {0}, {1}, {1});
+  auto x_0 = Reshape(slice_x_0, {});
+  auto slice_y_0 = Slice(y, {0}, {1}, {1});
+  auto y_0 = Reshape(slice_y_0, {});
+  auto compare_0 = Compare(x_0, y_0, Comparison::Direction::kLt);
+  auto compare_eq = Compare(x_0, y_0, Comparison::Direction::kEq);
+  auto slice_x_1 = Slice(x, {1}, {2}, {1});
+  auto x_1 = Reshape(slice_x_1, {});
+  auto slice_y_1 = Slice(y, {1}, {2}, {1});
+  auto y_1 = Reshape(slice_y_1, {});
+  auto compare_1 = Compare(x_1, y_1, Comparison::Direction::kLe);
+  auto logical_and = And(compare_eq, compare_1);
+  auto result = Or(compare_0, logical_and);
+  Reshape(result, {1});
+  tsl::core::Bitmap expected(1);
+  expected.clear(0);
+  ComputeAndCompareR1(&builder, expected, {x_data.get(), y_data.get()});
 }
 
 INSTANTIATE_TEST_CASE_P(ArrayElementwiseOpTestParamCount,

@@ -467,7 +467,7 @@ func.func @generator_op(%str : tensor<!tf_type.string>, %arg0: tensor<*x!tf_type
         finalize_func = @__finalize_func_790,
         init_func = @__init_func_530, next_func = @__next_func_680,
         next_func.experimental_ints_on_device = true,
-        operand_segment_sizes = array<i32: 2, 2, 1>,
+        operandSegmentSizes = array<i32: 2, 2, 1>,
         output_shapes = [#tf_type.shape<?>],
         output_types = [f32],
         metadata = ""
@@ -479,7 +479,7 @@ func.func @generator_op(%str : tensor<!tf_type.string>, %arg0: tensor<*x!tf_type
         finalize_func = @__finalize_func_790,
         init_func = @__init_func_530, next_func = @__next_func_680,
         next_func.experimental_ints_on_device = true,
-        operand_segment_sizes = array<i32: 2, 2, 1>,
+        operandSegmentSizes = array<i32: 2, 2, 1>,
         output_shapes = [#tf_type.shape<?>],
         output_types = [f32],
         metadata = ""

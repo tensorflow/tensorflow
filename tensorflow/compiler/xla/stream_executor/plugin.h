@@ -39,7 +39,6 @@ enum class PluginKind {
   kBlas,
   kDnn,
   kFft,
-  kRng,
 };
 
 // A PluginConfig describes the set of plugins to be used by a StreamExecutor
@@ -47,7 +46,7 @@ enum class PluginKind {
 // to the address static member in the implementation (to avoid conflicts).
 //
 // A PluginConfig may be passed to the StreamExecutor constructor - the plugins
-// described therein will be used to provide BLAS, DNN, FFT, and RNG
+// described therein will be used to provide BLAS, DNN, and FFT
 // functionality. Platform-appropriate defaults will be used for any un-set
 // libraries. If a platform does not support a specified plugin (ex. cuBLAS on
 // an OpenCL executor), then an error will be logged and no plugin operations
@@ -71,15 +70,13 @@ class PluginConfig {
   PluginConfig& SetBlas(PluginId blas);
   PluginConfig& SetDnn(PluginId dnn);
   PluginConfig& SetFft(PluginId fft);
-  PluginConfig& SetRng(PluginId rng);
 
   PluginId blas() const { return blas_; }
   PluginId dnn() const { return dnn_; }
   PluginId fft() const { return fft_; }
-  PluginId rng() const { return rng_; }
 
  private:
-  PluginId blas_, dnn_, fft_, rng_;
+  PluginId blas_, dnn_, fft_;
 };
 
 }  // namespace stream_executor

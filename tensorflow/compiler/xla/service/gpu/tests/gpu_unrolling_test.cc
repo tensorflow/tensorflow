@@ -45,8 +45,6 @@ TEST_F(GpuUnrollingTest, UnrollDefaultTimes) {
   // The default unrolling factor is 4.
   HloModuleConfig config;
   auto debug_options = GetDebugOptionsFromFlags();
-  debug_options.set_xla_gpu_enable_softmax_fusion(false);
-  debug_options.set_xla_gpu_enable_mlir_lowering(false);
   config.set_debug_options(debug_options);
   auto hlo_module = ParseAndReturnVerifiedModule(kAddModule, config).value();
 
@@ -78,8 +76,6 @@ TEST_F(GpuUnrollingTest, UnrollDefaultTimes) {
 TEST_F(GpuUnrollingTest, UnrollUnfusedAdd) {
   HloModuleConfig config;
   auto debug_options = HloTestBase::GetDebugOptionsForTest();
-  debug_options.set_xla_gpu_enable_softmax_fusion(false);
-  debug_options.set_xla_gpu_enable_mlir_lowering(false);
   config.set_debug_options(debug_options);
 
   const char *const kUnfusedAddModule = R"(
@@ -94,7 +90,7 @@ TEST_F(GpuUnrollingTest, UnrollUnfusedAdd) {
 
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
-; CHECK-LABEL: @add
+; CHECK-LABEL: @wrapped_add
 ; CHECK: load float
 ; CHECK: load float
 ; CHECK: fadd
@@ -135,7 +131,8 @@ TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedSine) {
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
 ; CHECK: load float
-; CHECK-NOT: load float }
+; CHECK-NOT: load float
+; CHECK: }
       )",
                      /*match_optimized_ir=*/true);
 }
@@ -158,7 +155,8 @@ TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedCosine) {
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
 ; CHECK: load float
-; CHECK-NOT: load float }
+; CHECK-NOT: load float
+; CHECK: }
       )",
                      /*match_optimized_ir=*/true);
 }
@@ -178,11 +176,13 @@ TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedPower) {
   auto hlo_module =
       ParseAndReturnVerifiedModule(kUnfusedAddModule, config).value();
 
+  // There is only 1 load, because we pass the `p0` parameter to the kernel only
+  // once.
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
 ; CHECK: load float
 ; CHECK-NOT: load float
-}
+; CHECK: }
       )",
                      /*match_optimized_ir=*/true);
 }
@@ -202,11 +202,13 @@ TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedAtan2) {
   auto hlo_module =
       ParseAndReturnVerifiedModule(kUnfusedAddModule, config).value();
 
+  // There is only 1 load, because we pass the `p0` parameter to the kernel only
+  // once.
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
 ; CHECK: load float
 ; CHECK-NOT: load float
-}
+; CHECK: }
       )",
                      /*match_optimized_ir=*/true);
 }

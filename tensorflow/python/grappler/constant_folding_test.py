@@ -23,10 +23,10 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import test
 
 
@@ -54,7 +54,7 @@ class ConstantFoldingTest(test.TestCase):
 
     if test.is_gpu_available(cuda_only=True):
       init_y = array_ops.zeros([10, 20, 30], dtype=dtypes.float32)
-      _, y = control_flow_ops.while_loop(
+      _, y = while_loop.while_loop(
           loop_cond,
           loop_body,
           loop_vars=[0, init_y],

@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/export_utils.h"
 
+#include <algorithm>
+#include <memory>
+#include <set>
+#include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 

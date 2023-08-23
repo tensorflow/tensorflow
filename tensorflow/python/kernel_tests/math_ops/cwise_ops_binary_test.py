@@ -239,6 +239,7 @@ class BinaryOpTest(test.TestCase):
   def testFloatDifferentShapes(self):
     x = np.array([1, 2, 3, 4]).reshape(2, 2).astype(np.float32)
     y = np.array([1, 2]).reshape(2, 1).astype(np.float32)
+    self._compareBoth(y, x, np.arctan2, math_ops.atan2)
     with self.cached_session() as sess:
       inx = ops.convert_to_tensor(x)
       iny = ops.convert_to_tensor(y)
@@ -881,6 +882,26 @@ class BinaryOpTest(test.TestCase):
     y = np.array([-1, 0, -2, -2, -3]).astype(np.int64)
     z = math_ops.pow(x, y)
     self.assertAllEqual(self.evaluate(z), [0, 1, 1, 1, -1])
+
+  def testFloorModInfDenominator(self):
+    """Regression test for GitHub issue #58369."""
+    if not test_util.is_gpu_available():
+      self.skipTest("Requires GPU")
+
+    dtypes = [
+        dtypes_lib.bfloat16.as_numpy_dtype,
+        np.float16,
+        np.float32,
+        np.float64,
+    ]
+
+    for dtype in dtypes:
+      x = np.array([4, 0, -1, 4, 0, -1], dtype=dtype)
+      y = np.array([np.inf, np.inf, np.inf, -np.inf, -np.inf, -np.inf],
+                   dtype=dtype)
+      expected = np.array([4, 0, np.inf, -np.inf, 0, -1], dtype=dtype)
+
+      self.assertAllClose(self.evaluate(math_ops.mod(x, y)), expected)
 
 
 class ComparisonOpTest(test.TestCase):

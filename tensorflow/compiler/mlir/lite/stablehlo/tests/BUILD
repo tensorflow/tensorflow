@@ -10,8 +10,12 @@ package(
 )
 
 glob_lit_tests(
+    name = "all_tests",
     data = [":test_utilities"],
     driver = "//tensorflow/compiler/mlir/lite/stablehlo:run_lit.sh",
+    size_override = {
+        "legalize-skip-quantization-ops.mlir": "medium",
+    },
     test_file_exts = [
         "mlir",
         "cc",

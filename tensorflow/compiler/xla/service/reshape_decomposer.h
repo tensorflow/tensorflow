@@ -21,10 +21,10 @@ limitations under the License.
 namespace xla {
 
 // Decomposes a reshape which does not satisfy the ReshapeIsBitcast precondition
-// into a reshape and a copy (physical transposition). Tries to create only one
+// into a bitcast and a copy (physical transposition). Tries to create only one
 // transposition, but when it's not possible, creates two.
 //
-// Postcondition: ReshapeIsBitcast is true for all reshapes in the graph.
+// Postcondition: All reshapes are turned into bitcasts.
 class ReshapeDecomposer : public HloModulePass {
  public:
   absl::string_view name() const override { return "reshape-decomposer"; }

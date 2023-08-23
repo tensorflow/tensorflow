@@ -22,6 +22,7 @@ limitations under the License.
 #include <sstream>
 #include <vector>
 
+#include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
@@ -91,6 +92,65 @@ std::optional<int64_t> NumTrailingZeroOutputFeatures(HloInstruction* conv) {
       conv->convolution_dimension_numbers();
   int64_t feature_dim = dnums.kernel_output_feature_dimension();
   const HloInstruction* weights = conv->operand(1);
+
+  // If the filter is reordered for an int8x32 NCHW_VECT_C convolution, find the
+  // original, un-reordered filter and check *it* for trailing zero output
+  // features.
+  auto backend_config = conv->backend_config<CudnnConvBackendConfig>();
+  if (backend_config.ok() && backend_config->reordered_int8_nchw_vect()) {
+    VLOG(2) << "Matched int8x32 convolution with filter reordering";
+
+    // Try to set weights to the original, un-reordered value.
+    const HloInstruction *reshape, *transpose;
+    bool matched =
+        Match(weights, m::Reshape(m::Transpose(
+                           &transpose, m::Reshape(&reshape, m::Op(&weights)))));
+
+    // Verify some properties of the reshape-transpose-reshape pattern.
+    // If these don't hold, it means that some pass (e.g. constant folding)
+    // has modified the filter, making making it infeasible to get the original,
+    // un-reordered value.
+    if (!matched || feature_dim != 0 || transpose->shape().rank() != 8) {
+      VLOG(2) << "The filter output feature dimension cannot be determined, as "
+                 "the reordering sequence is modified";
+      return std::nullopt;
+    }
+
+    // Calculate the actual output feature dimension before the transpose.
+    // For example: the input filter [I, O, H, W] will get reshaped to
+    // [I/32, 8, 4, O/8, 4, 2, H, W], transposed in a way that is compatible
+    // with cuDNN INT8x32_CONFIG convolutions (see 'cudnn_support_utils.h') and
+    // reshaped again to [O, I/32, H, W, 32]. While the output features
+    // dimension is zero, we need to get the dimension in the original shape
+    // (equals to one in this example).
+    const auto& transpose_dimensions =
+        Cast<HloTransposeInstruction>(transpose)->dimensions();
+
+    // Calculate combined dimensions size before the first appearing output
+    // component [O/8], which appears in position 3 of the transpose.
+    int64_t preceding_size = 1;
+    for (int64_t i = transpose_dimensions.at(3) - 1; i >= 0; --i) {
+      preceding_size *= reshape->shape().dimensions(i);
+    }
+
+    // Skip dimensions in front until the output features dimension is found.
+    int64_t accumulated_size = 1;
+    for (int64_t size : weights->shape().dimensions()) {
+      if (accumulated_size < preceding_size) {
+        accumulated_size *= size;
+        ++feature_dim;
+      } else {
+        break;
+      }
+    }
+    // Sanity check; if this condition doesn't hold, something is off.
+    if (accumulated_size != preceding_size) {
+      VLOG(2) << "Something is really wrong here, I give up";
+      return std::nullopt;
+    }
+    VLOG(2) << "Computed output feature dimension: " << feature_dim;
+  }
+
   VLOG(2) << "Computing NumTrailingZeroOutputFeatures of " << conv->ToString()
           << "\nwith weights " << weights->ToString();
   if (Match(weights, m::Pad(m::Op(), m::ConstantEffectiveScalar(0)))) {
@@ -164,36 +224,43 @@ std::optional<int64_t> NumTrailingZeroOutputFeatures(HloInstruction* conv) {
     for (int64_t dim : dims) {
       multi_index.push_back(dim - 1);
     }
-    while (true) {
+    // This iterates through the literal with feature_dim as the most
+    // major dimension looking for the final non-zero feature.
+    auto decrement_multi_index = [&] {
+      for (int i = 0; i < multi_index.size(); ++i) {
+        if (i != feature_dim) {
+          int64_t& idx = multi_index[i];
+          --idx;
+          if (idx == -1) {
+            idx = dims[i] - 1;
+          } else {
+            return true;
+          }
+        }
+      }
+      int64_t& idx = multi_index[feature_dim];
+      --idx;
+      return idx != -1;
+    };
+    do {
       if (!lit.IsZero(multi_index)) {
         break;
       }
-      multi_index[multi_index.size() - 1]--;
-      for (int i = multi_index.size() - 2; i > 0; i--) {
-        if (multi_index[i] == -1) {
-          multi_index[i] = dims[i] - 1;
-          multi_index[i - 1]--;
-        } else {
-          break;
-        }
-      }
-      if (multi_index[0] == -1) {
-        break;
-      }
-    }
+    } while (decrement_multi_index());
 
-    VLOG(2) << "First nonzero index in weights constant is "
-            << absl::StrJoin(multi_index, ",");
-    int64_t first_nonzero_feature = multi_index[feature_dim];
-    // "round up" the first nonzero feature index if it's not *all* zeros.
-    for (int i = 0; i < multi_index.size(); i++) {
-      if (i != feature_dim && multi_index[i] != 0) {
-        first_nonzero_feature++;
-        break;
-      }
+    // The iteration stops if a feature has a non-zero value (or -1), but we
+    // want the first zero feature which is always the next one (or 0 if -1).
+    int64_t first_trailing_zero_feature = multi_index[feature_dim] + 1;
+
+    if (first_trailing_zero_feature == 0) {
+      VLOG(2) << "Weights constant is entirely zero.";
+    } else {
+      VLOG(2) << "First nonzero index in weights constant is "
+              << absl::StrJoin(multi_index, ",");
     }
-    int64_t ret = std::max<int64_t>(
-        0, weights->shape().dimensions(feature_dim) - first_nonzero_feature);
+    int64_t ret =
+        std::max<int64_t>(0, weights->shape().dimensions(feature_dim) -
+                                 first_trailing_zero_feature);
     VLOG(2) << "Success: weights is a constant; num zero trailing output "
                "features is "
             << ret;
@@ -333,8 +400,10 @@ StatusOr<bool> TrySimplifyPadding(HloInstruction* instr) {
 
   // We're only allowed to slice the feature dim.
   for (int64_t dim = 0; dim < slice->slice_limits().size(); dim++) {
-    if (dim != output_feature_dim &&
-        slice->slice_limits(dim) != slice->shape().dimensions(dim)) {
+    if (slice->slice_starts(dim) != 0 || slice->slice_strides(dim) != 1 ||
+        (dim != output_feature_dim &&
+         slice->slice_limits(dim) !=
+             slice->operand(0)->shape().dimensions(dim))) {
       VLOG(2) << "fail: Slice removes something other than the features dim.";
       return false;
     }

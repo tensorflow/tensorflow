@@ -4,7 +4,7 @@
 // RUN: hlo_to_llvm_ir --ptx --sm=70 %s | FileCheck %s --check-prefix=CHECK-SM70
 // RUN: hlo_to_llvm_ir --ptx --sm=86 %s | FileCheck %s --check-prefix=CHECK-SM86
 
-// CHECK-LABEL: .entry reduce_odd_row
+// CHECK-LABEL: .entry wrapped_reduce_odd_row
 // CHECK-NOT: ld.global.nc.v2.f32
 // CHECK-NOT: ld.global.nc.v4.f32
 // CHECK-NOT: ld.global.nc.u64
@@ -26,7 +26,7 @@ ENTRY %main {
 
 // -----
 
-// CHECK-SM86-LABEL: .entry reduce_small_row
+// CHECK-SM86-LABEL: .entry wrapped_reduce_small_row
 // CHECK-SM86: .reqntid 96, 1, 1
 
 HloModule ReduceSmallRow
@@ -45,7 +45,7 @@ ENTRY main {
 
 // -----
 
-// CHECK-LABEL: .entry reduce_sine
+// CHECK-LABEL: .entry wrapped_reduce_sine
 // CHECK-COUNT-7: ld.global.nc.v2.f32
 
 HloModule DisableSin
@@ -67,16 +67,16 @@ ENTRY %main {
 
 // SM dependent tests
 
-// CHECK-SM50-LABEL: .entry reduce_exp
+// CHECK-SM50-LABEL: .entry wrapped_reduce_exp
 // CHECK-SM50-NOT: ld.global.nc.v2.f32
 // CHECK-SM50-COUNT-8: ld.global.nc.f32
 
-// CHECK-SM60: .entry exp
-// CHECK-SM60-LABEL: .entry reduce_exp
+// CHECK-SM60: .entry wrapped_exp
+// CHECK-SM60-LABEL: .entry wrapped_reduce_exp
 // CHECK-SM60-COUNT-8: ld.global.nc.v2.f32
 
-// CHECK-SM70: .entry exp
-// CHECK-SM70-LABEL: .entry reduce_exp
+// CHECK-SM70: .entry wrapped_exp
+// CHECK-SM70-LABEL: .entry wrapped_reduce_exp
 // CHECK-SM70-COUNT-8: ld.global.nc.v2.f32
 
 HloModule Exp
@@ -98,14 +98,14 @@ ENTRY %main {
 
 HloModule ReduceTileFit
 
-// CHECK-SM50-LABEL: .entry reduce_tile_fit
+// CHECK-SM50-LABEL: .entry wrapped_reduce_tile_fit
 // CHECK-SM50-NOT: ld.global.nc.v2.f32
 // CHECK-SM50-COUNT-8: ld.global.nc.f32
 
-// CHECK-SM60-LABEL: .entry reduce_tile_fit
+// CHECK-SM60-LABEL: .entry wrapped_reduce_tile_fit
 // CHECK-SM60-COUNT-8: ld.global.nc.v2.f32
 
-// CHECK-SM70-LABEL: .entry reduce_tile_fit
+// CHECK-SM70-LABEL: .entry wrapped_reduce_tile_fit
 // CHECK-SM70-COUNT-4: ld.global.nc.v2.f32
 
 %max_ {
@@ -124,14 +124,14 @@ ENTRY %main {
 
 HloModule ReducePower2
 
-// CHECK-SM50-LABEL: .entry reduce_pow_2
+// CHECK-SM50-LABEL: .entry wrapped_reduce_pow_2
 // CHECK-SM50-NOT: ld.global.nc.v2.f32
 // CHECK-SM50-COUNT-8: ld.global.nc.f32
 
-// CHECK-SM60-LABEL: .entry reduce_pow_2
+// CHECK-SM60-LABEL: .entry wrapped_reduce_pow_2
 // CHECK-SM60-COUNT-4: ld.global.nc.v2.f32
 
-// CHECK-SM70-LABEL: .entry reduce_pow_2
+// CHECK-SM70-LABEL: .entry wrapped_reduce_pow_2
 // CHECK-SM70-COUNT-4: ld.global.nc.v2.f32
 
 %max_ {
@@ -150,11 +150,11 @@ ENTRY %main {
 
 HloModule ReduceEvenColumns
 
-// CHECK-SM60-LABEL: .entry reduce_even_col
+// CHECK-SM60-LABEL: .entry wrapped_reduce_even_col
 // CHECK-SM60-NOT: ld.global.nc.f32
 // CHECK-SM60-COUNT-8: ld.global.nc.f32
 
-// CHECK-SM70-LABEL: .entry reduce_even_col
+// CHECK-SM70-LABEL: .entry wrapped_reduce_even_col
 // CHECK-SM70-COUNT-2: ld.global.nc.v2.f32
 // CHECK-SM70-COUNT-2: ld.global.nc.f32
 

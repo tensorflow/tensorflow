@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <optional>
+#include <vector>
 
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/tf2xla/kernels/gather_op_helpers.h"
@@ -218,8 +220,9 @@ Status XlaGatherWithBatchDimsOpImpl(XlaOpKernelContext* context,
 
   axis = axis.value_or(0);
   DataType index_type = context->input_type(1);
-  if (index_type != DT_INT32 && index_type != DT_INT64) {
-    return errors::InvalidArgument("indices must be int32 or int64");
+  if (index_type != DT_INT16 && index_type != DT_INT32 &&
+      index_type != DT_INT64) {
+    return errors::InvalidArgument("indices must be int16, int32, or int64");
   }
 
   xla::XlaOp gather;

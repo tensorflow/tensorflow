@@ -13,9 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef MLIR_HLO_DIALECT_MHLO_TRANSFORMS_MAP_CHLO_TO_HLO_OP_H
-#define MLIR_HLO_DIALECT_MHLO_TRANSFORMS_MAP_CHLO_TO_HLO_OP_H
+#ifndef MLIR_HLO_MHLO_TRANSFORMS_MAP_CHLO_TO_HLO_OP_H
+#define MLIR_HLO_MHLO_TRANSFORMS_MAP_CHLO_TO_HLO_OP_H
 
+#include <optional>
 #include <type_traits>
 
 #include "mhlo/IR/hlo_ops.h"
@@ -34,7 +35,7 @@ struct HloNaryElementwiseAdaptor {
   }
 };
 
-inline llvm::Optional<mhlo::ComparisonDirection> mhloComparisonDirection(
+inline std::optional<mhlo::ComparisonDirection> mhloComparisonDirection(
     chlo::ComparisonDirection value) {
   switch (value) {
     case chlo::ComparisonDirection::EQ:
@@ -53,7 +54,7 @@ inline llvm::Optional<mhlo::ComparisonDirection> mhloComparisonDirection(
   return {};
 }
 
-inline llvm::Optional<mhlo::ComparisonType> mhloComparisonType(
+inline std::optional<mhlo::ComparisonType> mhloComparisonType(
     chlo::ComparisonType value) {
   switch (value) {
     case chlo::ComparisonType::NOTYPE:
@@ -133,4 +134,4 @@ void populateForBroadcastingBinaryOp(MLIRContext *context,
 }  // namespace chlo
 }  // namespace mlir
 
-#endif  // MLIR_HLO_DIALECT_MHLO_TRANSFORMS_MAP_CHLO_TO_HLO_OP_H
+#endif  // MLIR_HLO_MHLO_TRANSFORMS_MAP_CHLO_TO_HLO_OP_H

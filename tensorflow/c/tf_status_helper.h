@@ -16,8 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_C_TF_STATUS_HELPER_H_
 #define TENSORFLOW_C_TF_STATUS_HELPER_H_
 
+#include <utility>
+
 #include "tensorflow/c/tf_status.h"
-#include "tensorflow/core/platform/status.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace tsl {
 // Set the attribute of "tf_status" from the attributes of "status".
@@ -40,5 +42,31 @@ struct TF_StatusDeleter {
 using TF_StatusPtr = std::unique_ptr<TF_Status, internal::TF_StatusDeleter>;
 
 }  // namespace tensorflow
+
+#define TF_STATUS_ASSIGN_OR_RETURN(lhs, rexpr, c_status) \
+  _TF_STATUS_ASSIGN_OR_RETURN_IMPL(                      \
+      _TF_STATUS_CONCAT(_status_or_value, __COUNTER__), lhs, rexpr, c_status);
+
+#define _TF_STATUS_ASSIGN_OR_RETURN_IMPL(statusor, lhs, rexpr, c_status) \
+  auto statusor = (rexpr);                                               \
+  if (!statusor.ok()) {                                                  \
+    tensorflow::Set_TF_Status_from_Status(c_status, statusor.status());  \
+    return;                                                              \
+  }                                                                      \
+  lhs = std::move(*statusor)
+
+#define TF_STATUS_RETURN_IF_ERROR(rexpr, c_status)                         \
+  _TF_STATUS_RETURN_IF_ERROR_IMPL(_TF_STATUS_CONCAT(_status, __COUNTER__), \
+                                  rexpr, c_status);
+
+#define _TF_STATUS_RETURN_IF_ERROR_IMPL(status, rexpr, c_status) \
+  auto status = (rexpr);                                         \
+  if (!status.ok()) {                                            \
+    tensorflow::Set_TF_Status_from_Status(c_status, status);     \
+    return;                                                      \
+  }
+
+#define _TF_STATUS_CONCAT(x, y) _TF_STATUS_CONCAT_IMPL(x, y)
+#define _TF_STATUS_CONCAT_IMPL(x, y) x##y
 
 #endif  // TENSORFLOW_C_TF_STATUS_HELPER_H_

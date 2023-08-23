@@ -192,7 +192,7 @@ typename std::enable_if<sizeof(I) == 8, void>::type EIGEN_DEVICE_FUNC
     EIGEN_STRONG_INLINE static LSBZeroSetterHelper(I& t, int n) {
   // Only zero the bits for non-NaNs.
   // For NaNs, let the non-truncation version handle it.
-  if (!std::isnan(t)) {
+  if (!Eigen::numext::isnan(t)) {
     uint64_t* p = reinterpret_cast<uint64_t*>(&t);
     *p &= (0xFFFFFFFFFFFFFFFF << n);
   }
@@ -203,7 +203,7 @@ typename std::enable_if<sizeof(I) == 4, void>::type EIGEN_DEVICE_FUNC
     EIGEN_STRONG_INLINE static LSBZeroSetterHelper(I& t, int n) {
   // Only zero the bits for non-NaNs.
   // For NaNs, let the non-truncation version handle it.
-  if (!std::isnan(t)) {
+  if (!Eigen::numext::isnan(t)) {
     uint32_t* p = reinterpret_cast<uint32_t*>(&t);
     *p &= (0xFFFFFFFF << n);
   }
@@ -214,7 +214,7 @@ typename std::enable_if<sizeof(I) == 2, void>::type EIGEN_DEVICE_FUNC
     EIGEN_STRONG_INLINE static LSBZeroSetterHelper(I& t, int n) {
   // Only zero the bits for non-NaNs.
   // For NaNs, let the non-truncation version handle it.
-  if (!std::isnan(t)) {
+  if (!Eigen::numext::isnan(t)) {
     uint16_t* p = reinterpret_cast<uint16_t*>(&t);
     *p &= (0xFFFF << n);
   }
@@ -253,8 +253,8 @@ struct LSBZeroSetter<std::complex<I>, std::complex<O>> {
     static_assert(
         bits > 0,
         "The output type must have fewer mantissa bits than the input type\n");
-    I re = std::real(a);
-    I img = std::imag(a);
+    I re = Eigen::numext::real(a);
+    I img = Eigen::numext::imag(a);
     LSBZeroSetterHelper(re, bits);
     LSBZeroSetterHelper(img, bits);
     std::complex<I> toReturn(re, img);
@@ -271,8 +271,8 @@ struct LSBZeroSetter<std::complex<I>, O> {
     static_assert(
         bits > 0,
         "The output type must have fewer mantissa bits than the input type\n");
-    I re = std::real(a);
-    I img = std::imag(a);
+    I re = Eigen::numext::real(a);
+    I img = Eigen::numext::imag(a);
     LSBZeroSetterHelper(re, bits);
     LSBZeroSetterHelper(img, bits);
     std::complex<I> toReturn(re, img);
@@ -298,6 +298,14 @@ struct scalar_cast_op<std::complex<From>, To> {
   }
 };
 
+template <typename From>
+struct scalar_cast_op<std::complex<From>, bool> {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE bool operator()(
+      const std::complex<From>& a) const {
+    return static_cast<bool>(a.real());
+  }
+};
+
 template <typename From, typename To>
 struct scalar_cast_op<From, std::complex<To>> {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE std::complex<To> operator()(
@@ -320,6 +328,10 @@ template <typename From, typename To>
 struct functor_traits_complex_impl {
   enum { Cost = NumTraits<To>::AddCost, PacketAccess = false };
 };
+
+template <typename From>
+struct functor_traits<scalar_cast_op<std::complex<From>, bool>>
+    : functor_traits_complex_impl<std::complex<From>, bool> {};
 
 template <typename From, typename To>
 struct functor_traits<scalar_cast_op<std::complex<From>, To>>

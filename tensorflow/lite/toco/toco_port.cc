@@ -74,9 +74,8 @@ namespace file {
 // Conversion to our wrapper Status.
 tensorflow::Status ToStatus(const absl::Status& uts) {
   if (!uts.ok()) {
-    return tensorflow::Status(
-        tensorflow::errors::Code(::util::RetrieveErrorCode(uts)),
-        uts.error_message());
+    return tensorflow::Status(absl::StatusCode(::util::RetrieveErrorCode(uts)),
+                              uts.message());
   }
   return ::tensorflow::OkStatus();
 }

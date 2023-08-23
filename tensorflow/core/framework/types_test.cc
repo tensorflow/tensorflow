@@ -153,5 +153,20 @@ TEST(TypesTest, IntegerTypes) {
   }
 }
 
+TEST(TypesTest, MapDtypeToTensor) {
+  FullTypeDef ft;
+  map_dtype_to_tensor(DT_FLOAT, ft);
+  EXPECT_EQ(ft.type_id(), TFT_FLOAT);
+  EXPECT_EQ(ft.args_size(), 0);
+}
+
+TEST(TypesTest, MapDtypeToChildTensor) {
+  FullTypeDef ft;
+  map_dtype_to_child_of_tensor(DT_FLOAT, ft);
+  EXPECT_EQ(ft.type_id(), TFT_TENSOR);
+  EXPECT_EQ(ft.args_size(), 1);
+  EXPECT_EQ(ft.args(0).type_id(), TFT_FLOAT);
+}
+
 }  // namespace
 }  // namespace tensorflow

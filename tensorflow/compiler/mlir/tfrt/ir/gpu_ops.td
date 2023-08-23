@@ -87,4 +87,28 @@ def MaybeTransferVariableOp: Gpu_Op<"maybe_transfer_variable"> {
   let assemblyFormat = "operands attr-dict";
 }
 
+def CompileAndExecuteOp: Gpu_Op<"compile_and_execute"> {
+  let summary = "GPU compile and execute operation.";
+  let description = [{
+    The op compiles and executes a GPU cluster function.
+
+    func_name is the name of the function to be executed on GPU.
+    resource_indices are the indices of inputs that are resources.
+    used_output_indices are the indices of outputs that have users.
+
+    Example:
+      %results = gpurt.compile_and_execute {func_name = "xla_func_0", resource_indices = [1] ...}
+  }];
+
+  let arguments = (ins
+    Variadic<TFTensorType>:$operands,
+    StrAttr:$func_name,
+    I64ArrayAttr:$resource_indices,
+    I64ArrayAttr:$used_output_indices
+  );
+  let results = (outs
+    Variadic<TFTensorType>:$results
+  );
+}
+
 #endif // TFRT_GPU_OPS

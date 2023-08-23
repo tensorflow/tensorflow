@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/kernel_thunk.h"
 
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -27,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/stream_executor/kernel.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
+#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/location_exporter.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/platform/errors.h"
@@ -34,17 +36,41 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+namespace {
 
-KernelThunk::KernelThunk(ThunkInfo thunk_info,
-                         absl::Span<const BufferAllocation* const> args,
-                         const std::string& kernel_name,
-                         const LaunchDimensions& launch_dimensions,
-                         std::vector<mlir::Value> values)
-    : Thunk(Kind::kKernel, thunk_info),
-      args_(args.begin(), args.end()),
-      kernel_name_(kernel_name),
-      launch_dimensions_(launch_dimensions),
-      values_(std::move(values)) {}
+mlir::Value RemoveTransformingOperations(mlir::Value value) {
+  mlir::Operation* defining_op = value.getDefiningOp();
+  if (auto cast_op = llvm::isa<mlir::memref::ReinterpretCastOp,
+                               mlir::memref::CollapseShapeOp>(defining_op)) {
+    return defining_op->getOperand(0);
+  }
+  return value;
+}
+
+}  // namespace
+
+KernelThunk::KernelThunk(mlir::Operation* op, std::string kernel_name,
+                         absl::Span<const KernelArgument> kernel_arguments,
+                         LaunchDimensions launch_dimensions)
+    : Thunk(Kind::kKernel, Thunk::ThunkInfo::WithProfileAnnotation(op)),
+      kernel_name_(std::move(kernel_name)),
+      launch_dimensions_(std::move(launch_dimensions)) {
+  args_.reserve(kernel_arguments.size());
+  written_.reserve(kernel_arguments.size());
+  for (const auto& kernel_argument : kernel_arguments) {
+    if (!kernel_argument.first_with_same_slice().has_value()) {
+      args_.push_back(kernel_argument.slice());
+      written_.push_back(kernel_argument.written());
+    }
+  }
+
+  values_.reserve(kernel_arguments.size());
+  for (const auto& kernel_argument : kernel_arguments) {
+    if (!kernel_argument.first_with_same_slice().has_value()) {
+      values_.push_back(RemoveTransformingOperations(kernel_argument.value()));
+    }
+  }
+}
 
 std::string KernelThunk::ToStringExtra(int indent) const {
   return absl::StrFormat(", kernel = %s, launch dimensions = %s", kernel_name_,
@@ -65,7 +91,8 @@ Status KernelThunk::Initialize(const GpuExecutable& executable,
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<se::KernelBase> kernel,
         CreateKernel(kernel_name_, args_.size(), executable.text(),
-                     executable.binary(), executor));
+                     executable.binary(), executor,
+                     launch_dimensions_.SharedMemBytes()));
 
     kernel_cache_.emplace(executor, std::move(kernel));
   }
@@ -107,11 +134,10 @@ Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   VLOG(3) << "Launching " << kernel->name();
   absl::InlinedVector<se::DeviceMemoryBase, 4> buffer_args;
-  for (const BufferAllocation* arg : args_) {
-    se::DeviceMemoryBase buf =
-        params.buffer_allocations->GetDeviceAddress(arg->index());
-    VLOG(3) << "  Arg: alloc #" << arg->index() << ": " << buf.opaque() << "  ("
-            << buf.size() << "B)";
+  for (const BufferAllocation::Slice& arg : args_) {
+    se::DeviceMemoryBase buf = params.buffer_allocations->GetDeviceAddress(arg);
+    VLOG(3) << "  Arg: alloc #" << arg.index() << ", offset: " << arg.offset()
+            << ": " << buf.opaque() << " (" << buf.size() << "B)";
     buffer_args.push_back(buf);
   }
 

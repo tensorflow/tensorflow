@@ -20,12 +20,6 @@ VERS_1.0 {
       # than the overloaded global ::operator new and ::operator delete functions.
       operator?new*;
       operator?delete*;
-
-      # Currently the demangler doesn't output the leading "::" for global symbols.
-      # But just in case a future symbol demangler outputs the leading "::",
-      # we also export those names too...
-      ::operator?new*;
-      ::operator?delete*;
     };
 
   # Hide everything else.

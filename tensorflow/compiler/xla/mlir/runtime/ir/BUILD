@@ -1,5 +1,5 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 
 package(
@@ -15,7 +15,7 @@ td_library(
         "rt_interfaces.td",
         "rt_ops.td",
     ],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     includes = ["include"],
     visibility = ["//visibility:private"],
     deps = [
@@ -27,7 +27,7 @@ td_library(
 
 gentbl_cc_library(
     name = "rt_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             ["-gen-dialect-decls"],
@@ -54,14 +54,6 @@ gentbl_cc_library(
             "rt_types.cc.inc",
         ),
         (
-            ["-gen-attr-interface-decls"],
-            "rt_attr_interfaces.h.inc",
-        ),
-        (
-            ["-gen-attr-interface-defs"],
-            "rt_attr_interfaces.cc.inc",
-        ),
-        (
             ["-gen-attrdef-decls"],
             "rt_attrs.h.inc",
         ),
@@ -72,6 +64,24 @@ gentbl_cc_library(
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "rt_ops.td",
+    deps = [":rt_ops_td_files"],
+)
+
+gentbl_cc_library(
+    name = "rt_interfaces_inc_gen",
+    compatible_with = get_compatible_with_portable(),
+    tbl_outs = [
+        (
+            ["-gen-attr-interface-decls"],
+            "rt_attr_interfaces.h.inc",
+        ),
+        (
+            ["-gen-attr-interface-defs"],
+            "rt_attr_interfaces.cc.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "rt_interfaces.td",
     deps = [":rt_ops_td_files"],
 )
 
@@ -87,9 +97,10 @@ cc_library(
         "rt_interfaces.h",
         "rt_ops.h",
     ],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":rt_inc_gen",
+        ":rt_interfaces_inc_gen",
         "//tensorflow/compiler/xla/runtime:constraints",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ControlFlowInterfaces",

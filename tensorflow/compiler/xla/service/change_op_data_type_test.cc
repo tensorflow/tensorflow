@@ -45,7 +45,7 @@ TEST_F(ChangeOpDataTypeTest, Simple) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleStr));
 
-  ChangeOpDataType pass(F16, F32, [](const HloInstruction*) { return true; });
+  ChangeOpDataType pass(F16, F32, HloPredicateTrue);
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, module.get()));
   SCOPED_TRACE(module->ToString());
   EXPECT_TRUE(changed);
@@ -66,7 +66,7 @@ TEST_F(ChangeOpDataTypeTest, AllTypesMustBeSame) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleStr));
 
-  ChangeOpDataType pass(F16, F32, [](const HloInstruction*) { return true; });
+  ChangeOpDataType pass(F16, F32, HloPredicateTrue);
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, module.get()));
   SCOPED_TRACE(module->ToString());
   EXPECT_FALSE(changed);
@@ -85,10 +85,8 @@ TEST_F(ChangeOpDataTypeTest, DotAndConv) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleStr));
 
-  ChangeOpDataType pass(F16, F32, [](const HloInstruction* instr) {
-    return instr->opcode() == HloOpcode::kDot ||
-           instr->opcode() == HloOpcode::kConvolution;
-  });
+  ChangeOpDataType pass(
+      F16, F32, HloPredicateIsOp<HloOpcode::kDot, HloOpcode::kConvolution>);
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, module.get()));
   SCOPED_TRACE(module->ToString());
   EXPECT_TRUE(changed);
@@ -114,7 +112,7 @@ TEST_F(ChangeOpDataTypeTest, SimpleWithCloner) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleStr));
 
-  HloPredicate matcher = [](const HloInstruction*) { return true; };
+  HloPredicate matcher = HloPredicateTrue;
 
   int count = 0;
   ChangeOpDataType::HloCloner cloner =
@@ -141,7 +139,7 @@ TEST_F(ChangeOpDataTypeTest, SimpleWithMultipleTypes) {
   })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleStr));
-  HloPredicate matcher = [](const HloInstruction*) { return true; };
+  HloPredicate matcher = HloPredicateTrue;
   ChangeOpDataType pass({{F16, F32}, {U16, U32}}, matcher);
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, module.get()));
   SCOPED_TRACE(module->ToString());

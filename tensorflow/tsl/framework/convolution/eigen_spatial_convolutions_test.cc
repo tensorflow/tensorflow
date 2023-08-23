@@ -271,7 +271,7 @@ TEST(EigenSpatialConvolutionsTest, ValidSpatialConvolutionUnequalStrides) {
   EXPECT_EQ(result.dimension(1), output_rows);
   EXPECT_EQ(result.dimension(2), output_cols);
   EXPECT_EQ(result.dimension(3), num_batches);
-  if (true) return;
+  if (/* DISABLES CODE */ (true)) return;
 
   for (int b = 0; b < num_batches; ++b) {
     for (int od = 0; od < output_depth; ++od) {

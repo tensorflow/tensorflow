@@ -18,15 +18,17 @@ limitations under the License.
 
 #include <functional>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/strings/string_view.h"
+#include "absl/algorithm/container.h"
+#include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/xla/pjrt/compile_options.pb.h"
+#include "tensorflow/compiler/xla/service/compilation_environments.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/threadpool.h"
 
 namespace stream_executor {
@@ -59,8 +61,16 @@ class ExecutableBuildOptions {
   ExecutableBuildOptions& set_result_layout(const Shape& shape_with_layout);
   const Shape* result_layout() const;
 
+  // Expose access to the XLA compilation environments, which will be passed to
+  // the compilation process. `comp_envs()` must not be called if
+  // `has_comp_envs()` returns false.
+  bool has_comp_envs() const { return comp_envs_.has_value(); }
+  const CompilationEnvironments& comp_envs() const { return *comp_envs_; }
+  CompilationEnvironments* mutable_comp_envs();
+
   // Expose access to the XLA debug options which will be passed to the
-  // compilation process.
+  // compilation process. `debug_options()` must not be called if
+  // `has_debug_options()` returns false.
   bool has_debug_options() const { return debug_options_.has_value(); }
   const DebugOptions& debug_options() const { return *debug_options_; }
   DebugOptions* mutable_debug_options();
@@ -75,10 +85,6 @@ class ExecutableBuildOptions {
   ExecutableBuildOptions& set_device_allocator(
       se::DeviceMemoryAllocator* allocator);
   se::DeviceMemoryAllocator* device_allocator() const;
-
-  // Returns a string representation of the build options, suitable for
-  // debugging.
-  std::string ToString() const;
 
   // The number of replicas of this computation that are to be executed.
   // Defaults to 1.
@@ -127,6 +133,7 @@ class ExecutableBuildOptions {
     CHECK(device_assignment_.has_value());
     return device_assignment_.value();
   }
+  void clear_device_assignment() { device_assignment_.reset(); }
 
   // Whether input and output buffers are aliased if the associated parameter is
   // passed-through XLA modules without being changed.
@@ -146,8 +153,12 @@ class ExecutableBuildOptions {
     return *this;
   }
 
-  bool allow_spmd_sharding_propagation_to_output() const {
+  absl::Span<const bool> allow_spmd_sharding_propagation_to_output() const {
     return allow_spmd_sharding_propagation_to_output_;
+  }
+  bool any_allow_spmd_sharding_propagation_to_output() const {
+    return absl::c_linear_search(allow_spmd_sharding_propagation_to_output_,
+                                 true);
   }
   // Allows sharding propagation to propagate to the outputs. This changes the
   // output shape of the computation (which is undesirable), but it can be used
@@ -157,9 +168,10 @@ class ExecutableBuildOptions {
   // sharding of operations when multiple computation would be chained and
   // merged together.
   ExecutableBuildOptions& set_allow_spmd_sharding_propagation_to_output(
-      bool allow_spmd_sharding_propagation_to_output) {
-    allow_spmd_sharding_propagation_to_output_ =
-        allow_spmd_sharding_propagation_to_output;
+      absl::Span<const bool> allow_spmd_sharding_propagation_to_output) {
+    allow_spmd_sharding_propagation_to_output_.assign(
+        allow_spmd_sharding_propagation_to_output.begin(),
+        allow_spmd_sharding_propagation_to_output.end());
     return *this;
   }
 
@@ -173,8 +185,6 @@ class ExecutableBuildOptions {
     return *this;
   }
 
-  StatusOr<ExecutableBuildOptionsProto> ToProto() const;
-
   using LayoutCanonicalizationCallback =
       std::function<StatusOr<std::pair<std::vector<Shape>, Shape>>(
           const HloModule& module)>;
@@ -186,10 +196,30 @@ class ExecutableBuildOptions {
     return layout_canonicalization_callback_;
   }
 
+  absl::string_view fdo_profile() const { return fdo_profile_; }
+  void set_fdo_profile(const std::string& fdo_profile) {
+    fdo_profile_ = fdo_profile;
+  }
+  std::string* mutable_fdo_profile() { return &fdo_profile_; }
+
+  // The amount of device memory available for the executable.
+  int64_t device_memory_size() const { return device_memory_size_; }
+  ExecutableBuildOptions& set_device_memory_size(int64_t device_memory_size) {
+    device_memory_size_ = device_memory_size;
+    return *this;
+  }
+
+  // Returns a string representation of the build options, suitable for
+  // debugging.
+  std::string ToString() const;
+
+  StatusOr<ExecutableBuildOptionsProto> ToProto() const;
+
  private:
   int device_ordinal_ = -1;
   Shape result_layout_;
   bool result_layout_set_ = false;
+  std::optional<CompilationEnvironments> comp_envs_;
   std::optional<DebugOptions> debug_options_;
   se::DeviceMemoryAllocator* device_allocator_ = nullptr;
   int num_replicas_ = 1;
@@ -203,9 +233,12 @@ class ExecutableBuildOptions {
   std::optional<DeviceAssignment> device_assignment_;
   bool alias_passthrough_params_ = false;
   bool run_backend_only_ = false;
-  bool allow_spmd_sharding_propagation_to_output_ = false;
+  absl::InlinedVector<bool, 1> allow_spmd_sharding_propagation_to_output_ = {
+      false};
   tsl::thread::ThreadPool* compile_thread_pool_ = nullptr;
   LayoutCanonicalizationCallback layout_canonicalization_callback_;
+  std::string fdo_profile_;
+  int64_t device_memory_size_ = 0;
 };
 
 StatusOr<ExecutableBuildOptions> ExecutableBuildOptionsFromProto(

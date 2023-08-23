@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
@@ -229,8 +230,9 @@ StatusOr<bool> ReplaceSetBound(HloInstruction* instr) {
   return true;
 }
 
-bool ShouldSkipPadOnOperand(const HloInstruction* inst, int64_t operand_num,
-                            int64_t dimension) {
+bool ShouldSkipPadOnOperand(
+    const HloInstruction* inst, int64_t operand_num, int64_t dimension,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   switch (inst->opcode()) {
     case HloOpcode::kConvolution: {
       if (operand_num == 0) {
@@ -269,6 +271,15 @@ bool ShouldSkipPadOnOperand(const HloInstruction* inst, int64_t operand_num,
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kReduceWindow:
       return inst->window().dimensions(dimension).size() == 1;
+    case HloOpcode::kAsyncStart:
+      if (!HloInstruction::IsThreadIncluded(inst->async_execution_thread(),
+                                            execution_threads)) {
+        // Async-start not included in specificed execution thread set will use
+        // metadata-prefix version of dynamic shapes (result of
+        // slice-to-dynamic) so there is no need to do pad on operand.
+        return true;
+      }
+      return false;
     default:
       return false;
   }
@@ -1850,14 +1861,39 @@ StatusOr<HloInstruction*> InsertPadToStaticOnInstruction(HloInstruction* inst) {
 
 // Inserts PadToStatic for parameters and custom-calls which "materialize"
 // dynamic outputs given only static inputs.
-Status InsertPadToStaticAfterModuleInputs(HloModule* module) {
+Status InsertPadToStaticAfterModuleInputs(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   std::vector<HloInstruction*> params;
   HloComputation* entry = module->entry_computation();
   for (HloComputation* comp : module->MakeNonfusionComputationsSorted()) {
+    if (!HloInstruction::IsThreadIncluded(comp->execution_thread(),
+                                          execution_threads)) {
+      continue;
+    }
     for (HloInstruction* instr : comp->instructions()) {
+      auto should_do_pad_to_static =
+          [&execution_threads](HloInstruction* instr) {
+            for (auto user : instr->users()) {
+              if (user->opcode() == HloOpcode::kAsyncStart) {
+                if (HloInstruction::IsThreadIncluded(
+                        user->async_execution_thread(), execution_threads)) {
+                  return true;
+                }
+              } else {
+                return true;
+              }
+            }
+            // If there are users, they must be the bypassing cases. Don't to
+            // pad-to-static.
+            return instr->users().empty();
+          };
+
       if (!instr->shape().is_static() &&
           ((instr->opcode() == HloOpcode::kParameter && comp == entry) ||
-           instr->opcode() == HloOpcode::kCustomCall) &&
+           instr->opcode() == HloOpcode::kCustomCall ||
+           instr->opcode() == HloOpcode::kAsyncDone) &&
+          should_do_pad_to_static(instr) &&
           absl::c_all_of(instr->operands(), [&](HloInstruction* operand) {
             return operand->shape().is_static();
           })) {
@@ -1909,6 +1945,10 @@ class DynamicShapeRemovingVisitor : public DfsHloVisitorWithDefault {
   Status HandleGetTupleElement(HloInstruction* hlo) override;
 
   Status HandleParameter(HloInstruction* hlo) override;
+  Status HandleInfeed(HloInstruction* hlo) override;
+
+  Status HandleAsyncStart(HloInstruction* hlo) override;
+  Status HandleAsyncDone(HloInstruction* hlo) override;
 
   static Status Run(HloComputation* computation,
                     const DynamicPadderOptions::OpSupportsDynamismHandler&
@@ -2098,6 +2138,10 @@ Status DynamicShapeRemovingVisitor::HandleTuple(HloInstruction* hlo) {
   return OkStatus();
 }
 
+Status DynamicShapeRemovingVisitor::HandleInfeed(HloInstruction* hlo) {
+  return OkStatus();
+}
+
 Status DynamicShapeRemovingVisitor::HandleParameter(HloInstruction* hlo) {
   return OkStatus();
 }
@@ -2113,6 +2157,16 @@ Status DynamicShapeRemovingVisitor::HandleCustomCall(HloInstruction* hlo) {
   return DefaultAction(hlo);
 }
 
+Status DynamicShapeRemovingVisitor::HandleAsyncStart(HloInstruction* hlo) {
+  // async-start is handled specially in InsertPadToStaticAfterModuleInputs().
+  return OkStatus();
+}
+
+Status DynamicShapeRemovingVisitor::HandleAsyncDone(HloInstruction* hlo) {
+  // async-done is handled specially in InsertPadToStaticAfterModuleInputs().
+  return OkStatus();
+}
+
 }  // namespace
 
 StatusOr<bool> DynamicPadder::Run(
@@ -2121,43 +2175,13 @@ StatusOr<bool> DynamicPadder::Run(
   bool changed = false;
   VLOG(2) << "Pre DynamicPadder HLO:";
   XLA_VLOG_LINES(2, module->ToString());
-  // Removes dynamic dimensions on parameters if there is already a binding for
-  // it. We do this because we have two different APIs to express a dynamic
-  // dimension:
-  //
-  // 1. Dynamic dimension as specified directly in the shape -- Needed for
-  // PyTorch.
-  //
-  // 2. Dynamic dimension using dynamic parameter binding object. This
-  // is needed for tensorflow.
-  //
-  // For case 1, we will insert "pad-to-static" instruction in the
-  // beginning of xla execution, to make it into a static layout.
-  //
-  // For case 2, since it already has a static layout, we remove the
-  // dynamic dimension.
-  //
-  // TODO(b/145140571): Convert all API invocations to case 1.
-  //
-  TF_RETURN_IF_ERROR(module->dynamic_parameter_binding().ForEachBinding(
-      [&](const DynamicParameterBinding::DynamicParameter& dynamic_parameter,
-          const DynamicParameterBinding::DynamicDimension& dynamic_dimension)
-          -> Status {
-        HloInstruction* parameter =
-            module->entry_computation()->parameter_instruction(
-                dynamic_dimension.parameter_num);
-        ShapeUtil::UpdateDynamicDimension(parameter->mutable_shape(),
-                                          dynamic_dimension.parameter_index,
-                                          dynamic_dimension.dimension, false);
-        return OkStatus();
-      }));
-
-  TF_RETURN_IF_ERROR(InsertPadToStaticAfterModuleInputs(module));
+  TF_RETURN_IF_ERROR(
+      InsertPadToStaticAfterModuleInputs(module, execution_threads));
   TF_ASSIGN_OR_RETURN(
       DynamicDimensionInference dynamic_dimension_inference,
-      DynamicDimensionInference::Run(module, options_.custom_call_handler,
-                                     options_.shape_check_mode,
-                                     options_.assertion_generator));
+      DynamicDimensionInference::Run(
+          module, options_.custom_call_handler, options_.shape_check_mode,
+          options_.assertion_generator, execution_threads));
 
   std::vector<HloComputation*> computations =
       module->MakeComputationPostOrder(execution_threads);
@@ -2268,7 +2292,8 @@ StatusOr<bool> DynamicPadder::Run(
           VLOG(2) << "Has dynamic dimension of operand" << operand_num << " @"
                   << input_dim;
 
-          if (ShouldSkipPadOnOperand(inst, operand_num, input_dim)) {
+          if (ShouldSkipPadOnOperand(inst, operand_num, input_dim,
+                                     execution_threads)) {
             continue;
           }
 

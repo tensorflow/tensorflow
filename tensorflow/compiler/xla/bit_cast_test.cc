@@ -15,7 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/bit_cast.h"
 
+#include <cstdint>
+
+#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/compiler/xla/test.h"
+#include "tensorflow/tsl/platform/bfloat16.h"
 
 namespace xla {
 namespace {

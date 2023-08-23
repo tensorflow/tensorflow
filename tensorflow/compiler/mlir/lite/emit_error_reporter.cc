@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/emit_error_reporter.h"
 
+#include <cstdio>
+#include <vector>
+
 namespace tflite {
 
 int EmitErrorReporter::Report(const char* format, va_list args) {

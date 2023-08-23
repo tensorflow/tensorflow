@@ -1,11 +1,19 @@
 path: "tensorflow.saved_model.experimental"
 tf_module {
   member {
+    name: "Fingerprint"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "TrackableResource"
     mtype: "<class \'tensorflow.python.trackable.resource._ResourceMetaclass\'>"
   }
   member {
     name: "VariablePolicy"
     mtype: "<class \'enum.EnumMeta\'>"
+  }
+  member_method {
+    name: "read_fingerprint"
+    argspec: "args=[\'export_dir\'], varargs=None, keywords=None, defaults=None"
   }
 }

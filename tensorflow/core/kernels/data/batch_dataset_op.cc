@@ -109,14 +109,6 @@ class BatchDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType, params);
   }
 
-  int64_t CardinalityInternal() const override {
-    int64_t n = input_->Cardinality();
-    if (n == kInfiniteCardinality || n == kUnknownCardinality) {
-      return n;
-    }
-    return n / batch_size_ + (n % batch_size_ == 0 || drop_remainder_ ? 0 : 1);
-  }
-
   int64_t CardinalityInternal(CardinalityOptions options) const override {
     int64_t n = input_->Cardinality(options);
     if (n == kInfiniteCardinality || n == kUnknownCardinality) {
@@ -249,7 +241,7 @@ class BatchDatasetOp::Dataset : public DatasetBase {
                         IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(writer->WriteScalar(
-          full_name(kInputImplEmpty), static_cast<int64_t>(!input_impl_)));
+          prefix(), kInputImplEmpty, static_cast<int64_t>(!input_impl_)));
       if (input_impl_) {
         TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       }
@@ -261,7 +253,7 @@ class BatchDatasetOp::Dataset : public DatasetBase {
       mutex_lock l(mu_);
       int64_t input_empty;
       TF_RETURN_IF_ERROR(
-          reader->ReadScalar(full_name(kInputImplEmpty), &input_empty));
+          reader->ReadScalar(prefix(), kInputImplEmpty, &input_empty));
       if (!static_cast<bool>(input_empty)) {
         TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
       } else {

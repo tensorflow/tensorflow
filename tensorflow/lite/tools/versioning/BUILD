@@ -2,7 +2,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
 )
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -20,7 +20,7 @@ cc_library(
         "op_version.h",
         "runtime_version.h",
     ],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":op_signature",
         "//tensorflow/core:tflite_portable_logging",
@@ -46,7 +46,8 @@ tf_cc_test(
     deps = [
         ":versioning",
         "//tensorflow/lite:builtin_op_data",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_fbs_with_mutable",
         "@com_google_googletest//:gtest_main",
@@ -61,7 +62,7 @@ cc_library(
     hdrs = [
         "op_signature.h",
     ],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/lite:stderr_reporter",
         "//tensorflow/lite/core/api",
@@ -87,7 +88,7 @@ tf_cc_test(
         ":op_signature",
         "//tensorflow/core/platform:resource_loader",
         "//tensorflow/lite:builtin_ops",
-        "//tensorflow/lite:model_builder",
+        "//tensorflow/lite/core:model_builder",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -100,7 +101,7 @@ cc_library(
     hdrs = [
         "gpu_compatibility.h",
     ],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":op_signature",
         "//tensorflow/lite:builtin_op_data",
@@ -128,8 +129,11 @@ tf_cc_test(
     ],
     deps = [
         ":gpu_compatibility",
+        ":op_signature",
         "//tensorflow/core/platform:resource_loader",
-        "//tensorflow/lite:model_builder",
+        "//tensorflow/lite/core:model_builder",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/kernels/internal:types",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
     ],

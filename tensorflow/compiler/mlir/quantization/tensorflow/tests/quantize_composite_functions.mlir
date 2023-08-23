@@ -177,3 +177,25 @@ module {
 // CHECK: Number of quantize layers added: 1
 // CHECK: Number of dequantize layers added: 1
 }
+
+
+// -----
+
+module {
+  func.func @float_einsum(%arg0: tensor<?x64x32xf32>, %arg1: tensor<32x2x16xf32>) -> (tensor<?x64x2x16xf32>) {
+    %0 = "tf.Einsum"(%arg0, %arg1) {equation = "abc,cde->abde"} : (tensor<?x64x32xf32>, tensor<32x2x16xf32>) -> tensor<?x64x2x16xf32>
+    func.return %0 : tensor<?x64x2x16xf32>
+  }
+
+// CHECK-LABEL: func @float_einsum
+// CHECK: -------- Quantization Summary --------
+// CHECK: Number of quantized layers in the model
+// CHECK: --------------------------------
+// CHECK: Name    Count/Total
+// CHECK: ================================
+// CHECK: Einsum  0/1
+
+// CHECK: Number of quantized layers with quantized outputs: 0/0
+// CHECK: Number of quantize layers added: 0
+// CHECK: Number of dequantize layers added: 0
+}

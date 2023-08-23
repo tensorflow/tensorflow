@@ -17,11 +17,14 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_PJRT_HOST_CALLBACK_H_
 
 #include <atomic>
+#include <deque>
 #include <functional>
+#include <memory>
 #include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
 
 // The following provides an API for implementing host callbacks on top of
 // PjRT's send/recv interface (see xla::SendCallback and xla::RecvCallback).
@@ -38,18 +41,25 @@ class ThreadSafePjRtChunkQueue {
   // Push a PjRtChunk into the queue.
   void Push(PjRtChunk chunk) {
     absl::MutexLock lock(&mu_);
-    queue_.push_back(std::move(chunk));
+    if (promises_.empty()) {
+      queue_.push_back(std::move(chunk));
+      return;
+    }
+    auto pop_promise = promises_.front();
+    pop_promise.Set(std::move(chunk));
+    promises_.pop_front();
   }
 
-  // Pop a PjRtChunk from the queue. This method blocks if the queue is empty.
-  PjRtChunk Pop() {
+  // Pop a PjRtChunk future from the queue.
+  PjRtFuture<PjRtChunk> Pop() {
     absl::MutexLock lock(&mu_);
-    auto cond = [this]() {
-      mu_.AssertHeld();
-      return !queue_.empty();
-    };
-    mu_.Await(absl::Condition(&cond));
-    auto chunk = std::move(queue_.front());
+    if (queue_.empty()) {
+      auto promise = PjRtFuture<PjRtChunk>::CreatePromise();
+      promises_.push_back(promise);
+      return PjRtFuture<PjRtChunk>(std::move(promise));
+    }
+
+    auto chunk = PjRtFuture<PjRtChunk>(std::move(queue_.front()));
     queue_.pop_front();
     return chunk;
   }
@@ -57,6 +67,8 @@ class ThreadSafePjRtChunkQueue {
  private:
   absl::Mutex mu_;
   std::deque<PjRtChunk> queue_ ABSL_GUARDED_BY(mu_);
+  // Contains unfulfilled pop promises.
+  std::deque<PjRtFuture<PjRtChunk>::Promise> promises_ ABSL_GUARDED_BY(mu_);
 };
 
 struct HostCallbackArgInfo {
@@ -83,20 +95,20 @@ struct HostCallback {
 // A helper class that maintains the send/recv states for a host callback.
 class HostCallbackContext {
  public:
-  HostCallbackContext(HostCallback host_callback, PjRtClient* client)
-      : HostCallbackContext(std::move(host_callback),
-                            client->GetPjRtHostMemoryForDeviceManager()) {}
-
   HostCallbackContext(
       HostCallback host_callback,
+      bool use_major_to_minor_data_layout_for_callbacks,
       PjRtHostMemoryForDeviceManager* host_memory_for_device_manager)
       : host_callback_(std::move(host_callback)),
+        use_major_to_minor_data_layout_for_callbacks_(
+            use_major_to_minor_data_layout_for_callbacks),
         host_memory_for_device_manager_(host_memory_for_device_manager),
         args_(host_callback_.operands.size()),
         result_channels_(host_callback_.results.size()),
         ready_count_(args_.size()) {
-    CHECK(host_memory_for_device_manager_);
-
+    if (!use_major_to_minor_data_layout_for_callbacks_) {
+      CHECK(host_memory_for_device_manager_);
+    }
     for (auto& channel : result_channels_) {
       channel = std::make_unique<ThreadSafePjRtChunkQueue>();
     }
@@ -106,12 +118,13 @@ class HostCallbackContext {
                 PjRtChunk data);
 
   void Receive(int res_num, const PjRtTransferMetadata& metadata,
-               CopyToDeviceStream& stream);
+               std::unique_ptr<CopyToDeviceStream> stream);
 
   const HostCallback& host_callback() const { return host_callback_; }
 
  private:
   HostCallback host_callback_;
+  bool use_major_to_minor_data_layout_for_callbacks_;
   PjRtHostMemoryForDeviceManager* host_memory_for_device_manager_ = nullptr;
   std::vector<PjRtChunk> args_;
   std::vector<std::unique_ptr<ThreadSafePjRtChunkQueue>> result_channels_;
@@ -128,13 +141,20 @@ struct HostCallbackStates {
   std::vector<std::vector<RecvCallback>> recv_callbacks;
 };
 
-// Creates the execution context for the `host_callback` for one replica.
+// Creates the execution context for the `host_callback` for one
+// replica.
+//
+// `use_major_to_minor_data_layout_for_callbacks` should match the value set in
+// the corresponding ExecuteOptions; see the comment there for more
+// info. `host_memory_for_device_manager` may be nullptr if
+// `use_major_to_minor_data_layout_for_callbacks` is true.
 std::unique_ptr<HostCallbackContext>
 CreateHostCallbackStateAndAppendSendRecvCallbacks(
     HostCallback host_callback,
     PjRtHostMemoryForDeviceManager* host_memory_for_device_manager,
     std::vector<SendCallback>& send_callbacks,
-    std::vector<RecvCallback>& recv_callbacks);
+    std::vector<RecvCallback>& recv_callbacks,
+    bool use_major_to_minor_data_layout_for_callbacks);
 
 }  // namespace xla
 

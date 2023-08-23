@@ -205,15 +205,15 @@ func.func @tpu_load_embedding_ops_sink_controls(%arg0: tensor<*x!tf_type.resourc
 
 // -----
 
-// Test that we don't create dependencies between ops on different devices, even
-// if both have unknown side effects.
+// Tests that we don't create dependencies between ops with same parallel group
+// ID but different branch IDs, even if both ops have unknown side effects.
 // Also test that the fetch op still depends on all side-effecting ops.
-func.func @different_devices() {
+func.func @same_group_different_branches() {
   tf_executor.graph {
     // CHECK: %[[control:.*]] = tf_executor.island wraps "tf.A"()
-    tf_executor.island wraps "tf.A"() {is_stateless = false, device = "CPU:0"} : () -> ()
+    tf_executor.island wraps "tf.A"() {is_stateless = false, _parallel_execution_ids = "p0:0"} : () -> ()
     // CHECK: %[[control_2:.*]] = tf_executor.island wraps "tf.B"()
-    tf_executor.island wraps "tf.B"() {is_stateless = false, device = "CPU:1"} : () -> ()
+    tf_executor.island wraps "tf.B"() {is_stateless = false, _parallel_execution_ids = "p0:1"} : () -> ()
     // CHECK: tf_executor.fetch %[[control]], %[[control_2]] : !tf_executor.control, !tf_executor.control
     tf_executor.fetch
   }
@@ -222,14 +222,14 @@ func.func @different_devices() {
 
 // -----
 
-// Test that we do create dependencies between ops with different but compatible
-// device attributes, if both ops have unknown side effects.
-func.func @compatible_devices() {
+// Tests that we create dependencies between ops with same parallel group ID and
+// same branch ID, if both ops have unknown side effects.
+func.func @same_group_same_branch() {
   tf_executor.graph {
     // CHECK: %[[control:.*]] = tf_executor.island wraps "tf.A"()
-    tf_executor.island wraps "tf.A"() {is_stateless = false, device = "CPU:0"} : () -> ()
+    tf_executor.island wraps "tf.A"() {is_stateless = false, _parallel_execution_ids = "p0:0"} : () -> ()
     // CHECK: %[[control_2:.*]] =  tf_executor.island(%[[control]]) wraps "tf.B"()
-    tf_executor.island wraps "tf.B"() {is_stateless = false, device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> ()
+    tf_executor.island wraps "tf.B"() {is_stateless = false, _parallel_execution_ids = "p0:0"} : () -> ()
     // CHECK: tf_executor.fetch %[[control_2]] : !tf_executor.control
     tf_executor.fetch
   }
@@ -238,24 +238,147 @@ func.func @compatible_devices() {
 
 // -----
 
-// More complex test with mixed compatible and different devices. In this case,
-// side effect analysis should report following dependencies
+// Tests one group with multiple branches. In this case, side effect analysis
+// should report following dependencies
 // A -> B -> C -> D -> E -> fetch
-// and we expect following dependency chains (one chain per device)
+// and we expect following dependency chains after the pass
 // A -> D -> fetch, B -> E -> fetch, C -> fetch.
-func.func @mixed_compatible_and_different_devices() {
+func.func @one_group_multiple_branches() {
   tf_executor.graph {
     // CHECK: %[[control:.*]] = tf_executor.island wraps "tf.A"()
-    tf_executor.island wraps "tf.A"() {is_stateless = false, device = "CPU:0"} : () -> ()
+    tf_executor.island wraps "tf.A"() {is_stateless = false, _parallel_execution_ids = "p0:0"} : () -> ()
     // CHECK: %[[control_2:.*]] =  tf_executor.island wraps "tf.B"()
-    tf_executor.island wraps "tf.B"() {is_stateless = false, device = "TPU:0"} : () -> ()
+    tf_executor.island wraps "tf.B"() {is_stateless = false, _parallel_execution_ids = "p0:1"} : () -> ()
     // CHECK: %[[control_3:.*]] =  tf_executor.island wraps "tf.C"()
-    tf_executor.island wraps "tf.C"() {is_stateless = false, device = "CPU:2"} : () -> ()
+    tf_executor.island wraps "tf.C"() {is_stateless = false, _parallel_execution_ids = "p0:2000"} : () -> ()
     // CHECK: %[[control_4:.*]] =  tf_executor.island(%[[control]]) wraps "tf.D"()
-    tf_executor.island wraps "tf.D"() {is_stateless = false, device = "CPU:0"} : () -> ()
+    tf_executor.island wraps "tf.D"() {is_stateless = false, _parallel_execution_ids = "p0:0"} : () -> ()
     // CHECK: %[[control_5:.*]] =  tf_executor.island(%[[control_2]]) wraps "tf.E"()
-    tf_executor.island wraps "tf.E"() {is_stateless = false, device = "TPU:0"} : () -> ()
+    tf_executor.island wraps "tf.E"() {is_stateless = false, _parallel_execution_ids = "p0:1"} : () -> ()
     // CHECK: tf_executor.fetch %[[control_3]], %[[control_4]], %[[control_5]] : !tf_executor.control, !tf_executor.control, !tf_executor.control
+    tf_executor.fetch
+  }
+  func.return
+}
+
+// -----
+
+// Tests nested replica and parallel execute groups.
+func.func @nested_replica_and_parallel_execute_groups() {
+  tf_executor.graph {
+    // CHECK: %[[control:.*]] = tf_executor.island wraps "tf.A"()
+    tf_executor.island wraps "tf.A"() : () -> ()
+    // CHECK-NEXT: %[[control_2:.*]] = tf_executor.island(%[[control]]) wraps "tf.B"()
+    tf_executor.island wraps "tf.B"() {_parallel_execution_ids = "r1:1"} : () -> ()
+    // CHECK-NEXT: %[[control_3:.*]] = tf_executor.island(%[[control_2]]) wraps "tf.C"()
+    tf_executor.island wraps "tf.C"() {_parallel_execution_ids = "r1:1,p2:1"} : () -> ()
+    // CHECK-NEXT: %[[control_4:.*]] = tf_executor.island(%[[control_2]]) wraps "tf.D"()
+    tf_executor.island wraps "tf.D"() {_parallel_execution_ids = "r1:1,p2:2"} : () -> ()
+    // CHECK-NEXT: %[[control_5:.*]] = tf_executor.island(%[[control]]) wraps "tf.B"()
+    tf_executor.island wraps "tf.B"() {_parallel_execution_ids = "r1:2"} : () -> ()
+    // CHECK-NEXT: %[[control_6:.*]] = tf_executor.island(%[[control_5]]) wraps "tf.C"()
+    tf_executor.island wraps "tf.C"() {_parallel_execution_ids = "r1:2,p3:1"} : () -> ()
+    // CHECK-NEXT: %[[control_7:.*]] = tf_executor.island(%[[control_5]]) wraps "tf.D"()
+    tf_executor.island wraps "tf.D"() {_parallel_execution_ids = "r1:2,p3:2"} : () -> ()
+    // CHECK-NEXT: tf_executor.fetch %[[control_3]], %[[control_4]], %[[control_6]], %[[control_7]] : !tf_executor.control, !tf_executor.control, !tf_executor.control, !tf_executor.control
+    tf_executor.fetch
+  }
+  func.return
+}
+
+// -----
+
+// Tests mixed and nested groups and branches. In this case, side effect
+// analysis should report following dependencies
+// A -> B -> C -> D -> E -> fetch
+// and we expect following dependency chains after the pass
+// A -> B -> D -> fetch, C -> fetch, E -> fetch.
+func.func @mixed_groups_and_branches_nested() {
+  tf_executor.graph {
+    // CHECK: %[[control:.*]] = tf_executor.island wraps "tf.A"()
+    tf_executor.island wraps "tf.A"() {is_stateless = false, _parallel_execution_ids = "p0:0"} : () -> ()
+    // CHECK-NEXT: %[[control_2:.*]] =  tf_executor.island(%[[control]]) wraps "tf.B"()
+    tf_executor.island wraps "tf.B"() {is_stateless = false, _parallel_execution_ids = "p0:0,r1000:0"} : () -> ()
+    // CHECK-NEXT: %[[control_3:.*]] =  tf_executor.island wraps "tf.C"()
+    tf_executor.island wraps "tf.C"() {is_stateless = false, _parallel_execution_ids = "p0:1,r1000:0"} : () -> ()
+    // CHECK-NEXT: %[[control_4:.*]] =  tf_executor.island(%[[control_2]], %[[control_3]]) wraps "tf.D"()
+    tf_executor.island wraps "tf.D"() {is_stateless = false, _parallel_execution_ids = "r1000:0"} : () -> ()
+    // CHECK-NEXT: %[[control_5:.*]] =  tf_executor.island wraps "tf.E"()
+    tf_executor.island wraps "tf.E"() {is_stateless = false, _parallel_execution_ids = "p0:1,r1000:3000"} : () -> ()
+    // CHECK-NEXT: tf_executor.fetch %[[control_4]], %[[control_5]] : !tf_executor.control, !tf_executor.control
+    tf_executor.fetch
+  }
+  func.return
+}
+
+// -----
+
+// Tests that we create dependencies between ops where one op has a parallel
+// execution ID and the other has not.
+func.func @unspecified_parallel_execution_ids() {
+  tf_executor.graph {
+    // CHECK: %[[control:.*]] = tf_executor.island wraps "tf.A"()
+    tf_executor.island wraps "tf.A"() {is_stateless = false} : () -> ()
+    // CHECK-NEXT: %[[control_2:.*]] =  tf_executor.island(%[[control]]) wraps "tf.B"()
+    tf_executor.island wraps "tf.B"() {is_stateless = false, _parallel_execution_ids = "p0:0"} : () -> ()
+    // CHECK-NEXT: %[[control_3:.*]] =  tf_executor.island(%[[control]]) wraps "tf.C"()
+    tf_executor.island wraps "tf.C"() {is_stateless = false, _parallel_execution_ids = "p0:1"} : () -> ()
+    // CHECK-NEXT: tf_executor.fetch %[[control_2]], %[[control_3]] : !tf_executor.control, !tf_executor.control
+    tf_executor.fetch
+  }
+  func.return
+}
+
+// -----
+
+func.func @missing_branch_id() {
+  tf_executor.graph {
+    // expected-error@+1 {{Malformed _parallel_execution_ids attribute}}
+    tf_executor.island wraps "tf.A"() {is_stateless = false, _parallel_execution_ids = "p0:"} : () -> ()
+    tf_executor.fetch
+  }
+  func.return
+}
+
+// -----
+
+func.func @missing_colon() {
+  tf_executor.graph {
+    // expected-error@+1 {{Malformed _parallel_execution_ids attribute}}
+    tf_executor.island wraps "tf.A"() {is_stateless = false, _parallel_execution_ids = "r01"} : () -> ()
+    tf_executor.fetch
+  }
+  func.return
+}
+
+// -----
+
+func.func @missing_group_id_prefix() {
+  tf_executor.graph {
+    // expected-error@+1 {{Malformed _parallel_execution_ids attribute}}
+    tf_executor.island wraps "tf.A"() {is_stateless = false, _parallel_execution_ids = "0:0"} : () -> ()
+    tf_executor.fetch
+  }
+  func.return
+}
+
+// -----
+
+func.func @invalid_group_id_prefix() {
+  tf_executor.graph {
+    // expected-error@+1 {{Malformed _parallel_execution_ids attribute}}
+    tf_executor.island wraps "tf.A"() {is_stateless = false, _parallel_execution_ids = "s0:0"} : () -> ()
+    tf_executor.fetch
+  }
+  func.return
+}
+
+// -----
+
+func.func @extra_colon() {
+  tf_executor.graph {
+    // expected-error@+1 {{Malformed _parallel_execution_ids attribute}}
+    tf_executor.island wraps "tf.A"() {is_stateless = false, _parallel_execution_ids = "r0:0:1"} : () -> ()
     tf_executor.fetch
   }
   func.return

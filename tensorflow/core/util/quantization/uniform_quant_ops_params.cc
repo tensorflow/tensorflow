@@ -174,7 +174,7 @@ Status UniformQuantizedConvolutionParams::ValidateOrFillParamsAndValidateShape(
   }
   if (lhs_feature_count / feature_group_count_ != rhs_input_feature_count) {
     return InvalidArgument(
-        "lhs fetaure dimension size divided by feature_group_count must equal "
+        "lhs feature dimension size divided by feature_group_count must equal "
         "the rhs input feature dimension size, but ",
         lhs_feature_count, " / ", feature_group_count_,
         " != ", rhs_input_feature_count);
@@ -315,8 +315,8 @@ Status UniformQuantizedConvolutionParams::ValidateOrFillPaddingList(
       const int64_t total_padding = std::max(
           (output_size - 1) * stride + rhs_size_dilated - lhs_size_dilated,
           static_cast<int64_t>(0));
-      const int64_t padding_end = total_padding / 2;
-      const int64_t padding_begin = total_padding - padding_end;
+      const int64_t padding_begin = total_padding / 2;
+      const int64_t padding_end = total_padding - padding_begin;
       padding_list_[2 * i] = padding_begin;
       padding_list_[2 * i + 1] = padding_end;
     }

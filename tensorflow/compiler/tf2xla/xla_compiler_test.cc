@@ -572,14 +572,13 @@ TEST_F(XlaCompilerTest, HasSaneErrorOnNonCompileTimeConstantInputToReshape) {
       compiler.CompileGraph(XlaCompiler::CompileOptions(), "reshape",
                             std::move(graph), args, &result);
   EXPECT_FALSE(status.ok());
+  EXPECT_TRUE(absl::StrContains(status.message(), "depends on a parameter"))
+      << status.message();
+  EXPECT_TRUE(absl::StrContains(status.message(), "{{node C}}"))
+      << status.message();
   EXPECT_TRUE(
-      absl::StrContains(status.error_message(), "depends on a parameter"))
-      << status.error_message();
-  EXPECT_TRUE(absl::StrContains(status.error_message(), "{{node C}}"))
-      << status.error_message();
-  EXPECT_TRUE(absl::StrContains(status.error_message(),
-                                "must be a compile-time constant"))
-      << status.error_message();
+      absl::StrContains(status.message(), "must be a compile-time constant"))
+      << status.message();
 }
 
 // Tests handling of compile-time constant outputs.
@@ -943,8 +942,8 @@ TEST_F(XlaCompilerTest, UndefinedFunctionFails) {
       compiler.CompileFunction(XlaCompiler::CompileOptions(), name_attr,
                                /*args=*/{}, &result);
   EXPECT_FALSE(status.ok());
-  EXPECT_TRUE(absl::StrContains(status.error_message(), "is not defined."))
-      << status.error_message();
+  EXPECT_TRUE(absl::StrContains(status.message(), "is not defined."))
+      << status.message();
 }
 
 FunctionDef FillFn() {
@@ -1022,11 +1021,11 @@ TEST_F(XlaCompilerTest, LocalFunctionWithWrongArgumentsFail) {
 
   ASSERT_FALSE(status.ok());
   // Flib lookup failure.
-  EXPECT_TRUE(absl::StrContains(status.error_message(), "is not defined."))
-      << status.error_message();
+  EXPECT_TRUE(absl::StrContains(status.message(), "is not defined."))
+      << status.message();
   // Local flib lookup failure.
-  EXPECT_TRUE(absl::StrContains(status.error_message(), "Attr T is not found"))
-      << status.error_message();
+  EXPECT_TRUE(absl::StrContains(status.message(), "Attr T is not found"))
+      << status.message();
 }
 
 FunctionDef SliceFn() {
@@ -1521,10 +1520,10 @@ TEST_F(XlaCompilerTest, FunctionWithInvalidOp) {
   status = compiler.CompileGraph(XlaCompiler::CompileOptions(), "fill",
                                  std::move(graph), args, &result);
   ASSERT_FALSE(status.ok());
-  EXPECT_TRUE(absl::StrContains(status.error_message(), "InvalidOp"))
-      << status.error_message();
-  EXPECT_TRUE(absl::StrContains(status.error_message(), "{{node fill_fn}}"))
-      << status.error_message();
+  EXPECT_TRUE(absl::StrContains(status.message(), "InvalidOp"))
+      << status.message();
+  EXPECT_TRUE(absl::StrContains(status.message(), "{{node fill_fn}}"))
+      << status.message();
 }
 
 // Tests a graph which has a node with invalid data type.
@@ -1546,11 +1545,11 @@ TEST_F(XlaCompilerTest, NodeWithInvalidDataType) {
   status = compiler.CompileGraph(XlaCompiler::CompileOptions(), "invalid_type",
                                  std::move(graph), args, &result);
   ASSERT_FALSE(status.ok());
-  EXPECT_TRUE(absl::StrContains(status.error_message(),
+  EXPECT_TRUE(absl::StrContains(status.message(),
                                 "is not in the list of allowed values"))
-      << status.error_message();
-  EXPECT_TRUE(absl::StrContains(status.error_message(), "{{node Shape}}"))
-      << status.error_message();
+      << status.message();
+  EXPECT_TRUE(absl::StrContains(status.message(), "{{node Shape}}"))
+      << status.message();
 }
 
 TEST_F(XlaCompilerTest, SingleOpWithoutInputs) {

@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_CLIENT_LIB_ARITHMETIC_H_
 #define TENSORFLOW_COMPILER_XLA_CLIENT_LIB_ARITHMETIC_H_
 
+#include <functional>
 #include <memory>
+#include <string>
 
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"

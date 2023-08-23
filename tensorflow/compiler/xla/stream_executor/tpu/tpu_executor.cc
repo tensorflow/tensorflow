@@ -16,17 +16,30 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor.h"
 
 #include <cstdint>
+#include <memory>
+#include <optional>
+#include <utility>
 
 #include "absl/cleanup/cleanup.h"
+#include "absl/functional/any_invocable.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/compiler/xla/stream_executor/allocator_stats.h"
+#include "tensorflow/compiler/xla/stream_executor/device_description.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory.h"
+#include "tensorflow/compiler/xla/stream_executor/device_options.h"
+#include "tensorflow/compiler/xla/stream_executor/event.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_event.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_stream.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_timer.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_topology.h"
 #include "tensorflow/tsl/c/tsl_status.h"
-
-using stream_executor::DeviceMemoryBase;
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace stream_executor {
 namespace tpu {
@@ -35,54 +48,48 @@ namespace {
 using xla::Status;
 }  // namespace
 
-TpuExecutor::~TpuExecutor() {
-  tensorflow::tpu::ExecutorApiFn()->TpuExecutor_FreeFn(executor_);
-}
+TpuExecutor::~TpuExecutor() { ExecutorApiFn()->TpuExecutor_FreeFn(executor_); }
 
 Status TpuExecutor::Init(int device_ordinal,
                          ::stream_executor::DeviceOptions device_options) {
   StatusHelper status;
   SE_DeviceOptions* options =
-      tensorflow::tpu::ExecutorApiFn()->TpuExecutor_NewDeviceOptionsFn(
-          device_options.flags());
-  tensorflow::tpu::ExecutorApiFn()->TpuExecutor_InitFn(
-      executor_, device_ordinal, options, status.c_status);
-  tensorflow::tpu::ExecutorApiFn()->TpuExecutor_FreeDeviceOptionsFn(options);
+      ExecutorApiFn()->TpuExecutor_NewDeviceOptionsFn(device_options.flags());
+  ExecutorApiFn()->TpuExecutor_InitFn(executor_, device_ordinal, options,
+                                      status.c_status);
+  ExecutorApiFn()->TpuExecutor_FreeDeviceOptionsFn(options);
   return status.status();
 }
 
 int TpuExecutor::PlatformDeviceCount() {
-  return tensorflow::tpu::ExecutorApiFn()->TpuExecutor_PlatformDeviceCountFn(
-      executor_);
+  return ExecutorApiFn()->TpuExecutor_PlatformDeviceCountFn(executor_);
 }
 
 void TpuExecutor::SyncAndForgetFailedStreams() {
-  tensorflow::tpu::ExecutorApiFn()->TpuExecutor_SyncAndForgetFailedStreamsFn(
-      executor_);
+  ExecutorApiFn()->TpuExecutor_SyncAndForgetFailedStreamsFn(executor_);
 }
 
 bool TpuExecutor::SynchronizeAllActivity() {
-  return tensorflow::tpu::ExecutorApiFn()->TpuExecutor_SynchronizeAllActivityFn(
-      executor_);
+  return ExecutorApiFn()->TpuExecutor_SynchronizeAllActivityFn(executor_);
 }
 
 Status TpuExecutor::BlockHostUntilDone(Stream* stream) {
   StatusHelper status;
-  tensorflow::tpu::ExecutorApiFn()->TpuExecutor_BlockHostUntilDoneFn(
+  ExecutorApiFn()->TpuExecutor_BlockHostUntilDoneFn(
       executor_, get_stream(stream->implementation()), status.c_status);
   return status.status();
 }
 
 Status TpuExecutor::BlockUntilDoneOrFailed() {
   StatusHelper status;
-  tensorflow::tpu::ExecutorApiFn()->TpuExecutor_BlockUntilDoneOrFailedFn(
-      executor_, status.c_status);
+  ExecutorApiFn()->TpuExecutor_BlockUntilDoneOrFailedFn(executor_,
+                                                        status.c_status);
   return status.status();
 }
 
 Status TpuExecutor::GetStatus(Stream* stream) {
   StatusHelper status;
-  tensorflow::tpu::ExecutorApiFn()->TpuExecutor_GetStatusFn(
+  ExecutorApiFn()->TpuExecutor_GetStatusFn(
       executor_, get_stream(stream->implementation()), status.c_status);
   return status.status();
 }
@@ -90,17 +97,16 @@ Status TpuExecutor::GetStatus(Stream* stream) {
 tensorflow::tpu::TpuCoreLocationExternal TpuExecutor::GetCoreLocationExternal()
     const {
   return tensorflow::tpu::TpuCoreLocationExternal(
-      tensorflow::tpu::ExecutorApiFn()->TpuExecutor_GetCoreLocationFn(
-          executor_));
+      ExecutorApiFn()->TpuExecutor_GetCoreLocationFn(executor_));
 }
 
 bool TpuExecutor::AllocateStream(Stream* stream) {
-  return tensorflow::tpu::ExecutorApiFn()->TpuExecutor_AllocateStreamFn(
+  return ExecutorApiFn()->TpuExecutor_AllocateStreamFn(
       executor_, get_stream(stream->implementation()));
 }
 
 void TpuExecutor::DeallocateStream(Stream* stream) {
-  tensorflow::tpu::ExecutorApiFn()->TpuExecutor_DeallocateStreamFn(
+  ExecutorApiFn()->TpuExecutor_DeallocateStreamFn(
       executor_, get_stream(stream->implementation()));
   tpu_platform().mutex().Lock();
   stream_map().erase(stream->implementation());
@@ -108,7 +114,7 @@ void TpuExecutor::DeallocateStream(Stream* stream) {
 }
 
 bool TpuExecutor::CreateStreamDependency(Stream* dependent, Stream* other) {
-  return tensorflow::tpu::ExecutorApiFn()->TpuExecutor_CreateStreamDependencyFn(
+  return ExecutorApiFn()->TpuExecutor_CreateStreamDependencyFn(
       executor_, get_stream(dependent->implementation()),
       get_stream(other->implementation()));
 }
@@ -120,36 +126,18 @@ Status TpuExecutor::DeallocateEvent(Event* event) {
   return tsl::OkStatus();
 }
 
-// AllocateTimer/DeallocateTimer have no specialization.
-bool TpuExecutor::AllocateTimer(Timer* timer) { return true; }
-
-void TpuExecutor::DeallocateTimer(Timer* timer) {}
-
-bool TpuExecutor::StartTimer(Stream* stream, ::stream_executor::Timer* timer) {
-  return tensorflow::tpu::ExecutorApiFn()->TpuExecutor_StartTimerFn(
-      executor_, get_stream(stream->implementation()),
-      timer_map_.at(timer->implementation()));
-}
-
-bool TpuExecutor::StopTimer(Stream* stream, ::stream_executor::Timer* timer) {
-  return tensorflow::tpu::ExecutorApiFn()->TpuExecutor_StopTimerFn(
-      executor_, get_stream(stream->implementation()),
-      timer_map_.at(timer->implementation()));
-}
-
 stream_executor::Event::Status TpuExecutor::PollForEventStatus(
     stream_executor::Event* event) {
   auto se_event = tpu_platform().LookupEvent(event->implementation());
   return stream_executor::Event::Status(
-      tensorflow::tpu::ExecutorApiFn()->TpuExecutor_PollForEventStatusFn(
-          executor_, se_event));
+      ExecutorApiFn()->TpuExecutor_PollForEventStatusFn(executor_, se_event));
 }
 
 Status TpuExecutor::RecordEvent(Stream* stream,
                                 ::stream_executor::Event* event) {
   StatusHelper status;
   auto se_event = tpu_platform().LookupEvent(event->implementation());
-  tensorflow::tpu::ExecutorApiFn()->TpuExecutor_RecordEventFn(
+  ExecutorApiFn()->TpuExecutor_RecordEventFn(
       executor_, get_stream(stream->implementation()), se_event,
       status.c_status);
   return status.status();
@@ -159,33 +147,22 @@ Status TpuExecutor::WaitForEvent(Stream* stream,
                                  ::stream_executor::Event* event) {
   StatusHelper status;
   auto se_event = tpu_platform().LookupEvent(event->implementation());
-  tensorflow::tpu::ExecutorApiFn()->TpuExecutor_WaitForEventFn(
+  ExecutorApiFn()->TpuExecutor_WaitForEventFn(
       executor_, get_stream(stream->implementation()), se_event,
       status.c_status);
   return status.status();
 }
 
-// Implementations for Timer, Stream, Event
+// Implementations for Stream, Event
 // We need to map these implementations to internal equivalents -- thus we
-// allocate the internal Timer, Stream and Event operations here, and map
+// allocate the internal Stream and Event operations here, and map
 // the implementations to the internal values. The "wrapper" interfaces are
 // responsible for deallocating the internal value when they are destroyed.
-
-// Called by Timer::Timer
-std::unique_ptr<::stream_executor::internal::TimerInterface>
-TpuExecutor::GetTimerImplementation() {
-  SE_Timer* tpu_timer =
-      tensorflow::tpu::ExecutorApiFn()->TpuTimer_NewFn(executor_);
-  auto ptr = std::make_unique<tensorflow::TpuTimer>(tpu_timer);
-  timer_map_[ptr.get()] = tpu_timer;
-  return ptr;
-}
 
 // Called by Stream::Stream
 std::unique_ptr<::stream_executor::internal::StreamInterface>
 TpuExecutor::GetStreamImplementation() {
-  SE_Stream* tpu_stream =
-      tensorflow::tpu::ExecutorApiFn()->TpuStream_NewFn(executor_);
+  SE_Stream* tpu_stream = ExecutorApiFn()->TpuStream_NewFn(executor_);
   auto ptr = std::make_unique<tensorflow::tpu::TpuStream>(tpu_stream);
   tpu_platform().mutex().Lock();
   stream_map()[ptr.get()] = tpu_stream;
@@ -196,37 +173,33 @@ TpuExecutor::GetStreamImplementation() {
 // Called by Event::Event
 std::unique_ptr<::stream_executor::internal::EventInterface>
 TpuExecutor::CreateEventImplementation() {
-  SE_Event* tpu_event =
-      tensorflow::tpu::ExecutorApiFn()->TpuEvent_NewFn(executor_);
-  auto ptr = std::make_unique<stream_executor::tpu::TpuEvent>(tpu_event);
+  SE_Event* tpu_event = ExecutorApiFn()->TpuEvent_NewFn(executor_);
+  auto ptr = std::make_unique<TpuEvent>(tpu_event);
   tpu_platform().InsertEvent(ptr.get(), tpu_event);
   return ptr;
 }
 
 DeviceMemoryBase TpuExecutor::Allocate(uint64_t size, int64_t memory_space) {
   SE_DeviceMemoryBase se_base =
-      tensorflow::tpu::ExecutorApiFn()->TpuExecutor_AllocateFn(executor_, size,
-                                                               memory_space);
+      ExecutorApiFn()->TpuExecutor_AllocateFn(executor_, size, memory_space);
   return ApiConverter::FromC(se_base);
 }
 
 void TpuExecutor::Deallocate(const DeviceMemoryBase& memory) {
   SE_DeviceMemoryBase se_base = ApiConverter::ToC(memory);
-  tensorflow::tpu::ExecutorApiFn()->TpuExecutor_DeallocateFn(executor_,
-                                                             &se_base);
+  ExecutorApiFn()->TpuExecutor_DeallocateFn(executor_, &se_base);
 }
 
 void TpuExecutor::Deallocate(DeviceMemoryBase* memory) {
   SE_DeviceMemoryBase se_base = ApiConverter::ToC(*memory);
-  tensorflow::tpu::ExecutorApiFn()->TpuExecutor_DeallocateFn(executor_,
-                                                             &se_base);
+  ExecutorApiFn()->TpuExecutor_DeallocateFn(executor_, &se_base);
 }
 
 bool TpuExecutor::DeviceMemoryUsage(int64_t* free, int64_t* total) const {
   int64_t _free;
   int64_t _total;
-  if (tensorflow::tpu::ExecutorApiFn()->TpuExecutor_DeviceMemoryUsageFn(
-          executor_, &_free, &_total)) {
+  if (ExecutorApiFn()->TpuExecutor_DeviceMemoryUsageFn(executor_, &_free,
+                                                       &_total)) {
     *free = _free;
     *total = _total;
     return true;
@@ -237,8 +210,7 @@ bool TpuExecutor::DeviceMemoryUsage(int64_t* free, int64_t* total) const {
 std::optional<stream_executor::AllocatorStats>
 TpuExecutor::GetAllocatorStats() {
   SE_AllocatorStats c_stats;
-  if (tensorflow::tpu::ExecutorApiFn()->TpuExecutor_GetAllocatorStatsFn(
-          executor_, &c_stats)) {
+  if (ExecutorApiFn()->TpuExecutor_GetAllocatorStatsFn(executor_, &c_stats)) {
     ::stream_executor::AllocatorStats stats;
     stats.num_allocs = c_stats.num_allocs;
     stats.bytes_in_use = c_stats.bytes_in_use;
@@ -260,14 +232,14 @@ TpuExecutor::GetAllocatorStats() {
 
 Status TpuExecutor::WaitForInfeedReady(int32_t infeed_queue_index) {
   StatusHelper status;
-  tensorflow::tpu::ExecutorApiFn()->TpuExecutor_WaitForInfeedReadyFn(
+  ExecutorApiFn()->TpuExecutor_WaitForInfeedReadyFn(
       executor_, infeed_queue_index, status.c_status);
   return status.status();
 }
 
 Status TpuExecutor::WaitForOutfeedReady(int32_t outfeed_queue_index) {
   StatusHelper status;
-  tensorflow::tpu::ExecutorApiFn()->TpuExecutor_WaitForOutfeedReadyFn(
+  ExecutorApiFn()->TpuExecutor_WaitForOutfeedReadyFn(
       executor_, outfeed_queue_index, status.c_status);
   return status.status();
 }
@@ -276,18 +248,18 @@ void TpuExecutor::DequeueOutfeed(int32_t outfeed_queue_index,
                                  absl::Span<uint8_t> bytes,
                                  StatusCallback done) {
   StatusHelper status;
-  tensorflow::tpu::ExecutorApiFn()->TpuExecutor_DequeueOutfeedFn(
-      executor_, outfeed_queue_index, bytes.data(), bytes.size(),
-      status.c_status);
+  ExecutorApiFn()->TpuExecutor_DequeueOutfeedFn(executor_, outfeed_queue_index,
+                                                bytes.data(), bytes.size(),
+                                                status.c_status);
   done(status.status());
 }
 
 Status TpuExecutor::EnqueueInfeed(int32_t infeed_queue_index,
                                   absl::Span<const uint8_t> bytes) {
   StatusHelper status;
-  tensorflow::tpu::ExecutorApiFn()->TpuExecutor_EnqueueInfeedFn(
-      executor_, infeed_queue_index, bytes.data(), bytes.size(),
-      status.c_status);
+  ExecutorApiFn()->TpuExecutor_EnqueueInfeedFn(executor_, infeed_queue_index,
+                                               bytes.data(), bytes.size(),
+                                               status.c_status);
   return status.status();
 }
 
@@ -295,7 +267,7 @@ bool TpuExecutor::Memcpy(Stream* stream, void* host_dst,
                          const ::stream_executor::DeviceMemoryBase& device_src,
                          uint64_t size) {
   SE_DeviceMemoryBase se_base = ApiConverter::ToC(device_src);
-  return tensorflow::tpu::ExecutorApiFn()->TpuExecutor_MemcpyToHostFn(
+  return ExecutorApiFn()->TpuExecutor_MemcpyToHostFn(
       executor_, get_stream(stream->implementation()), host_dst, &se_base,
       size);
 }
@@ -304,7 +276,7 @@ bool TpuExecutor::Memcpy(Stream* stream,
                          ::stream_executor::DeviceMemoryBase* device_dst,
                          const void* host_src, uint64_t size) {
   SE_DeviceMemoryBase se_base = ApiConverter::ToC(*device_dst);
-  return tensorflow::tpu::ExecutorApiFn()->TpuExecutor_MemcpyFromHostFn(
+  return ExecutorApiFn()->TpuExecutor_MemcpyFromHostFn(
       executor_, get_stream(stream->implementation()), &se_base, host_src,
       size);
 }
@@ -314,7 +286,7 @@ Status TpuExecutor::SynchronousMemcpy(
     uint64_t size) {
   StatusHelper status;
   SE_DeviceMemoryBase se_base = ApiConverter::ToC(*device_dst);
-  tensorflow::tpu::ExecutorApiFn()->TpuExecutor_SynchronousMemcpyFromHostFn(
+  ExecutorApiFn()->TpuExecutor_SynchronousMemcpyFromHostFn(
       executor_, &se_base, host_src, size, status.c_status);
   return status.status();
 }
@@ -324,7 +296,7 @@ Status TpuExecutor::SynchronousMemcpy(
     uint64_t size) {
   StatusHelper status;
   SE_DeviceMemoryBase se_base = ApiConverter::ToC(device_src);
-  tensorflow::tpu::ExecutorApiFn()->TpuExecutor_SynchronousMemcpyToHostFn(
+  ExecutorApiFn()->TpuExecutor_SynchronousMemcpyToHostFn(
       executor_, host_dst, &se_base, size, status.c_status);
   return status.status();
 }
@@ -332,8 +304,7 @@ Status TpuExecutor::SynchronousMemcpy(
 Status TpuExecutor::SynchronousMemcpyDeviceToDevice(
     ::stream_executor::DeviceMemoryBase* device_dst,
     const ::stream_executor::DeviceMemoryBase& device_src, uint64_t size) {
-  return ::stream_executor::port::UnimplementedError(
-      "This operation not supported on TPU");
+  return tsl::errors::Unimplemented("This operation not supported on TPU");
 }
 
 bool TpuExecutor::MemcpyDeviceToDevice(
@@ -344,37 +315,35 @@ bool TpuExecutor::MemcpyDeviceToDevice(
 
 Status TpuExecutor::UnloadAllPrograms() {
   StatusHelper status;
-  tensorflow::tpu::ExecutorApiFn()->TpuExecutor_UnloadAllProgramsFn(
-      executor_, status.c_status);
+  ExecutorApiFn()->TpuExecutor_UnloadAllProgramsFn(executor_, status.c_status);
   return status.status();
 }
 
 Status TpuExecutor::EnqueueCompactionOnStreamForHbm(Stream* compaction_stream) {
   StatusHelper status;
-  tensorflow::tpu::ExecutorApiFn()
-      ->TpuExecutor_EnqueueCompactionOnStreamForHbmFn(
-          executor_, get_stream(compaction_stream->implementation()),
-          status.c_status);
+  ExecutorApiFn()->TpuExecutor_EnqueueCompactionOnStreamForHbmFn(
+      executor_, get_stream(compaction_stream->implementation()),
+      status.c_status);
   return status.status();
 }
 
 struct HostCallbackContext {
-  std::function<Status()> callback;
+  absl::AnyInvocable<Status() &&> callback;
 };
 
 TSL_Status* HostCallbackTrampoline(void* ctx) {
   HostCallbackContext* host_ctx = reinterpret_cast<HostCallbackContext*>(ctx);
-  Status status = host_ctx->callback();
-  TSL_Status* c_status = tensorflow::tpu::ExecutorApiFn()->TpuStatus_CreateFn(
-      status.code(), status.error_message().c_str());
+  Status status = std::move(host_ctx->callback)();
+  TSL_Status* c_status = ExecutorApiFn()->TpuStatus_CreateFn(
+      status.raw_code(), tsl::NullTerminatedMessage(status));
   delete host_ctx;
   return c_status;
 }
 
 bool TpuExecutor::HostCallback(Stream* stream,
-                               std::function<Status()> callback) {
-  HostCallbackContext* ctx = new HostCallbackContext{callback};
-  return tensorflow::tpu::ExecutorApiFn()->TpuExecutor_HostCallbackFn(
+                               absl::AnyInvocable<Status() &&> callback) {
+  HostCallbackContext* ctx = new HostCallbackContext{std::move(callback)};
+  return ExecutorApiFn()->TpuExecutor_HostCallbackFn(
       executor_, get_stream(stream->implementation()), &HostCallbackTrampoline,
       ctx);
 }
@@ -383,12 +352,12 @@ TpuExecutor::StatusOr<std::unique_ptr<::stream_executor::DeviceDescription>>
 TpuExecutor::CreateDeviceDescription() const {
   StatusHelper status;
   SE_DeviceDescription* description =
-      tensorflow::tpu::ExecutorApiFn()->TpuDeviceDescription_NewFn();
+      ExecutorApiFn()->TpuDeviceDescription_NewFn();
   absl::Cleanup cleanup = [description]() {
-    tensorflow::tpu::ExecutorApiFn()->TpuDeviceDescription_FreeFn(description);
+    ExecutorApiFn()->TpuDeviceDescription_FreeFn(description);
   };
-  tensorflow::tpu::ExecutorApiFn()->TpuExecutor_CreateDeviceDescriptionFn(
-      executor_, description, status.c_status);
+  ExecutorApiFn()->TpuExecutor_CreateDeviceDescriptionFn(executor_, description,
+                                                         status.c_status);
   if (status.status().ok()) {
     stream_executor::internal::DeviceDescriptionBuilder builder;
     CHECK_NE(description->device_vendor, nullptr);

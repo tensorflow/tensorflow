@@ -10,11 +10,11 @@ func.func @test(%arg0: memref<f32>) {
   // CHECK-SAME:   backend_config = ""
   // CHECK-SAME:   call_target_name = "target"
   // CHECK-SAME: : (memref<f32>) -> ()
-  "lmhlo.custom_call"(%arg0) {
+  "lmhlo.custom_call"(%arg0) ({}) {
     api_version = 2 : i32,
     backend_config = "",
     call_target_name = "target",
-    operand_segment_sizes = array<i32: 0, 1>
+    operandSegmentSizes = array<i32: 0, 1>
   } : (memref<f32>) -> ()
   return
 }
@@ -44,11 +44,11 @@ func.func @test_with_mapping(
   // CHECK-SAME:   api_version = 1 : i32
   // CHECK-SAME:   backend_config = ""
   // CHECK-SAME:   call_target_name = "target"
-  "lmhlo.custom_call"(%arg0, %arg1, %arg2, %arg3, %arg4) {
+  "lmhlo.custom_call"(%arg0, %arg1, %arg2, %arg3, %arg4) ({}) {
     api_version = 1 : i32,
     backend_config = "",
     call_target_name = "target",
-    operand_segment_sizes = array<i32: 2, 3>,
+    operandSegmentSizes = array<i32: 2, 3>,
     target_arg_mapping = #lmhlo.custom_call_target_arg_mapping<
       num_args = 4,
       num_results = 4,

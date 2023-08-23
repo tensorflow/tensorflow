@@ -94,7 +94,8 @@ Status ShapeProfileBinaryOp(std::vector<nvinfer1::Dims>* x,
   for (int i = 0; i < x->size(); i++) {
     if (x->at(i).nbDims != y[i].nbDims)
       return errors::InvalidArgument(
-          "Number of input dimensions differ during profile creation");
+          "Number of input dimensions differ during profile creation at dim ",
+          i, ", values ", x->at(i).nbDims, y[i].nbDims);
     for (int j = 0; j < x->at(i).nbDims; j++) {
       x->at(i).d[j] = op(x->at(i).d[j], y[i].d[j]);
     }
@@ -162,6 +163,12 @@ Status TrtShapeOptimizationProfile::CollectShapeValues(OpKernelContext* ctx) {
       if (ctx->input_dtype(i) != DT_INT32) {
         // In case the is_shape_tensor mask was initialized with the input
         // shapes only (without knowledge of dtype) then we apply correction.
+        is_shape_tensor_[i] = false;
+        continue;
+      }
+      if (input_shape_values_.size() > 0 &&
+          input_shape_values_[0][i].nbDims != ctx->input(i).NumElements()) {
+        // Shape tensor dims should not change. It must be a value tensor.
         is_shape_tensor_[i] = false;
         continue;
       }
@@ -271,6 +278,11 @@ void TrtShapeOptimizationProfile::InitProfiles(
     auto shape_vec = input_shapes_[i];
     VLOG(2) << "Initprofiles, processing shape " << i;
     if (!shape_vec.empty()) {
+      // Correct for values that are mistakenly used as shape values
+      for (int k = 0; k < input_shape_values_[i].size(); k++) {
+        if (!is_shape_tensor_[k])
+          input_shape_values_[i][k] = nvinfer1::Dims{0, {}};
+      }
       std::vector<nvinfer1::Dims> dimvec = GetDimVec(shape_vec);
       dimvec.insert(dimvec.end(), input_shape_values_[i].begin(),
                     input_shape_values_[i].end());
@@ -481,12 +493,13 @@ int TrtShapeOptimizationProfile::GetProfileNumber(
   // TODO(tfeher): Return the best profile not just the first compatible.
   for (int i = 0; i < profiles_.size(); i++) {
     if (profiles_[i].IncludesShapes(shapes, HasShapeTensor(),
-                                    actual_shape_values_, is_pruned_input_)) {
+                                    actual_shape_values_, is_pruned_input_,
+                                    is_shape_tensor_)) {
       return i;
     }
   }
-  VLOG(1) << "Profile not found for input shapes " << DebugString(shapes)
-          << ".";
+  VLOG(1) << "Profile not found for input shapes " << DebugString(shapes);
+  VLOG(2) << "  and shape values " << DebugString(actual_shape_values_);
   return -1;
 }
 

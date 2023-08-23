@@ -19,16 +19,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace tensorflow {
 namespace tpu {
 
 class TpuStreamInterface : public stream_executor::internal::StreamInterface {
  public:
-  using Status = stream_executor::port::Status;
-
   virtual bool IsSameSharedMemoryLocation(TpuStreamInterface* other) = 0;
-  virtual Status EnqueueOnTpuDeviceSendRecvLocal(
+  virtual tsl::Status EnqueueOnTpuDeviceSendRecvLocal(
       stream_executor::DeviceMemoryBase send_buffer,
       stream_executor::DeviceMemoryBase recv_buffer) = 0;
 };

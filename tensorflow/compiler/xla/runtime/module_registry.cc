@@ -69,7 +69,7 @@ ModulesState::InitializeUserData(CustomCall::UserData& user_data) {
     ref_vec.push_back(std::move(*ref));
   }
 
-  return ref_vec;
+  return {std::move(ref_vec)};
 }
 
 }  // namespace runtime

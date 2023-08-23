@@ -7,6 +7,8 @@
 #
 #   The libraries in this package are not allowed to have ANY dependencies
 #   to any TensorFlow code outside this package.
+
+load("//tensorflow:strict.default.bzl", "py_strict_test")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
@@ -73,6 +75,7 @@ exports_files(
         "demangle.h",
         "env.h",
         "env_time.h",
+        "error_logging.h",
         "file_system.h",
         "file_system_helper.h",
         "float8.h",
@@ -180,9 +183,9 @@ cc_library(
     hdrs = ["cord.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        ":platform",
+        "//tensorflow/tsl/platform:cord",
         "@com_google_absl//absl/strings:cord",
-    ] + tf_platform_deps("cord"),
+    ],
 )
 
 cc_library(
@@ -208,12 +211,18 @@ cc_library(
     ],
 )
 
+# Required to avoid ODR issues in the pybind wrapper.
+cc_library(
+    name = "cpu_feature_guard_hdr",
+    hdrs = ["cpu_feature_guard.h"],
+)
+
 cc_library(
     name = "casts",
     hdrs = ["casts.h"],
     deps = [
-        "//tensorflow/tsl/platform:casts",
         ":platform",
+        "//tensorflow/tsl/platform:casts",
     ] + tf_platform_deps("casts"),
 )
 
@@ -339,6 +348,15 @@ cc_library(
 )
 
 cc_library(
+    name = "error_logging",
+    hdrs = ["error_logging.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/tsl/platform:error_logging",
+    ],
+)
+
+cc_library(
     name = "file_statistics",
     hdrs = ["file_statistics.h"],
     deps = [
@@ -438,13 +456,13 @@ filegroup(
     name = "xla_cpu_runtime_srcs",
     srcs = tf_platform_deps("xla_cpu_runtime_srcs") + [
         "cord.h",
-        ":ctstring",
         "dynamic_annotations.h",
         "env_time.h",
         "macros.h",
         "platform.h",
         "tstring.h",
         "types.h",
+        ":ctstring",
     ] + if_windows([
         "//tensorflow/tsl/platform/windows:xla_cpu_runtime_srcs",
     ]),
@@ -487,12 +505,28 @@ cc_library(
     ],
 )
 
-py_test(
+py_strict_test(
     name = "ram_file_system_test",
     srcs = ["ram_file_system_test.py"],
     python_version = "PY3",
     deps = [
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/estimator",
+        "//tensorflow/python/estimator:model_fn",
+        "//tensorflow/python/estimator:run_config",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/layers",
+        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/module",
+        "//tensorflow/python/ops/losses",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:gfile",
+        "//tensorflow/python/saved_model",
+        "//tensorflow/python/training:adam",
+        "//tensorflow/python/training:training_util",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -835,8 +869,8 @@ cc_library(
         ":platform",
         ":protobuf",
         ":refcount",
-        ":stringpiece",
         ":strcat",
+        ":stringpiece",
         ":types",
     ] + tf_additional_tensor_coding_deps(),
 )
@@ -987,10 +1021,11 @@ cc_binary(
         ":byte_order",
         ":cord",
         ":cpu_feature_guard",
+        ":crash_analysis",
         ":denormal",
         ":dynamic_annotations",
-        ":crash_analysis",
         ":env_time",
+        ":error_logging",
         ":file_statistics",
         ":fingerprint",
         ":gif",
@@ -1005,8 +1040,8 @@ cc_binary(
         ":png",
         ":prefetch",
         ":protobuf",
-        ":retrying_utils",
         ":retrying_file_system",
+        ":retrying_utils",
         ":scanner",
         ":setround",
         ":stacktrace",
@@ -1253,7 +1288,7 @@ tf_cc_test(
 
 tf_cc_test(
     name = "fake_python_env_test",
-    size = "small",
+    size = "medium",
     srcs = ["fake_python_env_test.cc"],
     args = [
         "/some/path/to/pythontest.runfiles/org_tensorflow/stuff/to/run.py",
@@ -1595,7 +1630,6 @@ filegroup(
         "context.h",
         "cord.h",
         "cpu_info.h",
-        ":ctstring",
         "demangle.h",
         "denormal.h",
         "dynamic_annotations.h",
@@ -1624,13 +1658,13 @@ filegroup(
         "ram_file_system.h",
         "raw_coding.h",
         "refcount.h",
-        "resource.h",
         "regexp.h",
+        "resource.h",
         "scanner.h",
         "setround.h",
         "snappy.h",
-        "stacktrace.h",
         "stack_frame.h",
+        "stacktrace.h",
         "status.h",
         "statusor.h",
         "str_util.h",
@@ -1645,6 +1679,7 @@ filegroup(
         "tracing.h",
         "tstring.h",
         "types.h",
+        ":ctstring",
         "//tensorflow/tsl/platform:mobile_srcs_no_runtime",
     ] + tf_platform_alias("additional_mobile_srcs_no_runtime"),
     visibility = ["//tensorflow/core:__pkg__"],
@@ -1656,6 +1691,7 @@ filegroup(
         "base64.h",
         "cpu_feature_guard.cc",
         "cpu_feature_guard.h",
+        "error_logging.h",
         "fingerprint.h",
         "notification.h",
         "platform_strings.cc",
@@ -1701,9 +1737,9 @@ filegroup(
         ],
     ) + [
         "//tensorflow/core/platform/profile_utils:android_armv7a_cpu_utils_helper.h",
+        "//tensorflow/core/platform/profile_utils:clock_cycle_profiler.h",
         "//tensorflow/core/platform/profile_utils:cpu_utils.h",
         "//tensorflow/core/platform/profile_utils:i_cpu_utils_helper.h",
-        "//tensorflow/core/platform/profile_utils:clock_cycle_profiler.h",
         "//tensorflow/tsl/platform:legacy_lib_internal_headers",
     ],
     visibility = ["//tensorflow/core:__pkg__"],

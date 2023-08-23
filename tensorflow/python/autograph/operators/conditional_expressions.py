@@ -17,7 +17,7 @@
 
 from tensorflow.python.autograph.operators import control_flow
 from tensorflow.python.autograph.utils import tensors
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond as tf_cond
 
 
 def if_exp(cond, if_true, if_false, expr_repr):
@@ -45,7 +45,7 @@ def _tf_if_exp(cond, if_true, if_false, expr_repr):
       control_flow.verify_single_cond_var(expr_repr, true_val[0], false_val[0])
     return false_val[0]
 
-  return control_flow_ops.cond(cond, true_fn, false_fn)
+  return tf_cond.cond(cond, true_fn, false_fn)
 
 
 def _py_if_exp(cond, if_true, if_false):

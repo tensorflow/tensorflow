@@ -43,6 +43,8 @@ TEST_F(OpenCLOperationTest, FloorDiv) { ASSERT_OK(FloorDivTest(&exec_env_)); }
 
 TEST_F(OpenCLOperationTest, FloorMod) { ASSERT_OK(FloorModTest(&exec_env_)); }
 
+TEST_F(OpenCLOperationTest, Gelu) { ASSERT_OK(GeluTest(&exec_env_)); }
+
 TEST_F(OpenCLOperationTest, HardSwish) { ASSERT_OK(HardSwishTest(&exec_env_)); }
 
 TEST_F(OpenCLOperationTest, Log) { ASSERT_OK(LogTest(&exec_env_)); }

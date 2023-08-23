@@ -54,10 +54,24 @@ Value castToIndex(OpBuilder& b, Location loc, TensorType originalType,
   Type elementTy = originalType.getElementType();
   if (elementTy.isIndex()) return value;
 
-  Type ty = RankedTensorType::get(originalType.getShape(), b.getIndexType());
-  return elementTy.isUnsignedInteger()
-             ? b.create<arith::IndexCastUIOp>(loc, ty, value).getResult()
-             : b.create<arith::IndexCastOp>(loc, ty, value).getResult();
+  Type indexType = b.getIndexType();
+  Value emptyTensor = b.create<tensor::EmptyOp>(
+      loc, tensor::getMixedSizes(b, loc, value), indexType);
+
+  auto map = b.create<linalg::MapOp>(
+      loc, value, emptyTensor,
+      [&](OpBuilder& nestedB, Location loc, ValueRange args) {
+        Value elem = args.front();
+        Value res =
+            elementTy.isUnsignedInteger()
+                ? nestedB.create<arith::IndexCastUIOp>(loc, indexType, elem)
+                      .getResult()
+                : nestedB.create<arith::IndexCastOp>(loc, indexType, elem)
+                      .getResult();
+
+        b.create<linalg::YieldOp>(loc, res);
+      });
+  return map->getResult(0);
 }
 
 struct ConcatenateOpPattern : public OpConversionPattern<mhlo::ConcatenateOp> {
@@ -390,6 +404,12 @@ struct ReversePattern : public OpConversionPattern<mhlo::ReverseOp> {
 
 class LegalizeMHLOToTHLOPass
     : public impl::LegalizeMHLOToTHLOPassBase<LegalizeMHLOToTHLOPass> {
+ public:
+  explicit LegalizeMHLOToTHLOPass(bool enableExperimentalOps) {
+    enableExperimental = enableExperimentalOps;
+  }
+
+ private:
   void runOnOperation() final {
     MLIRContext* ctx = &getContext();
     RewritePatternSet patterns(ctx);
@@ -416,13 +436,16 @@ class LegalizeMHLOToTHLOPass
     // clang-format off
     patterns.insert<
         ConcatenateOpPattern,
-        DynamicBroadcastInDimOpPattern,
         GatherPattern,
         ReversePattern,
         ScatterPattern,
         SortPattern,
         ThloRegionReturnOpConversion>(*typeConverter, ctx);
     // clang-format on
+
+    if (enableExperimental) {
+      patterns.insert<DynamicBroadcastInDimOpPattern>(*typeConverter, ctx);
+    }
 
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns)))) {
@@ -433,8 +456,9 @@ class LegalizeMHLOToTHLOPass
 
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeMHLOToTHLOPass() {
-  return std::make_unique<LegalizeMHLOToTHLOPass>();
+std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeMHLOToTHLOPass(
+    bool enableExperimentalOps) {
+  return std::make_unique<LegalizeMHLOToTHLOPass>(enableExperimentalOps);
 }
 
 }  // namespace mhlo

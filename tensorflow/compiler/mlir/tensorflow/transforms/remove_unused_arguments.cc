@@ -22,7 +22,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/FunctionInterfaces.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -110,7 +110,7 @@ void EraseResults(Operation* op, llvm::BitVector erase) {
   Operation* new_op = builder.create(state);
   for (const auto& indexed_regions : llvm::enumerate(op->getRegions())) {
     Region& region = op->getRegion(indexed_regions.index());
-    BlockAndValueMapping mapping;
+    IRMapping mapping;
     indexed_regions.value().cloneInto(&region, mapping);
   }
   int new_position = 0;

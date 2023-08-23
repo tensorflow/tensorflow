@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_DTENSOR_MLIR_COLLECTIVES_COMMON_H_
 #define TENSORFLOW_DTENSOR_MLIR_COLLECTIVES_COMMON_H_
 
+#include <map>
 #include <string>
+#include <vector>
 
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 

@@ -35,6 +35,18 @@ namespace gpu {
 
 class GpuExecutable;
 
+enum AsyncStreamKind {
+  kAsyncStreamCollective = 0,  // Stream for asynchronous collective ops.
+  kAsyncStreamP2P = 1,         // Stream for P2P Send and Recv ops.
+};
+constexpr static int64_t kAsyncStreamTotal = kAsyncStreamP2P + 1;
+// Assigns a unique ID to a stream for asynchronous or synchronous execution.
+// These IDs can be used, for example, to look up the NCCL communicator.
+inline uint64_t GetStreamId(
+    bool is_async, AsyncStreamKind stream_kind = kAsyncStreamCollective) {
+  return is_async ? stream_kind + 1 : 0;
+}
+
 // Thunk acts as the bridge between IrEmitter and GpuExecutable. It stores the
 // metadata IrEmitter generates for GpuExecutable to invoke an HloInstruction.
 //
@@ -50,6 +62,7 @@ class Thunk {
     kCholesky,
     kConditional,
     kConvolution,
+    kConvolutionReorder,
     kCopy,
     kCublasLtMatmul,
     kCustomCall,
@@ -61,18 +74,29 @@ class Thunk {
     kMemset32BitValue,
     kMemzero,
     kNcclAllGather,
+    kNcclAllGatherStart,
+    kNcclAllGatherDone,
     kNcclAllReduce,
     kNcclAllReduceStart,
     kNcclAllReduceDone,
     kNcclCollectivePermute,
+    kNcclCollectivePermuteStart,
+    kNcclCollectivePermuteDone,
     kNcclReduceScatter,
+    kNcclReduceScatterStart,
+    kNcclReduceScatterDone,
     kNcclAllToAll,
+    kNcclAllToAllStart,
+    kNcclAllToAllDone,
+    kNcclSend,
+    kNcclRecv,
     kOutfeed,
     kReplicaId,
     kPartitionId,
     kSequential,
     kTriangularSolve,
     kWhile,
+    kFusedMHA
   };
 
   struct ThunkInfo {
@@ -80,6 +104,8 @@ class Thunk {
     std::optional<int64_t> profile_index;
     std::string profile_annotation;
     mlir::Operation* op;
+
+    static ThunkInfo WithProfileAnnotation(mlir::Operation* op);
   };
 
   // The hlo_instruction argument is meant to be the instruction this thunk was
@@ -117,11 +143,12 @@ class Thunk {
   struct ExecuteParams {
     ExecuteParams(const ServiceExecutableRunOptions& run_options,
                   const BufferAllocations& buffer_allocations,
-                  se::Stream* stream, se::Stream* async_comms_stream);
+                  se::Stream* stream,
+                  absl::Span<se::Stream* const> async_streams);
 
     const BufferAllocations* buffer_allocations;  // never null
     se::Stream* stream;
-    se::Stream* async_comms_stream;
+    absl::InlinedVector<se::Stream*, kAsyncStreamTotal> async_comms_streams;
     NcclExecuteParams nccl_params;
   };
 

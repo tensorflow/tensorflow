@@ -15,12 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/python/callback.h"
 
+#include <sys/types.h>
+
 #include <cstring>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/python/exceptions.h"
 #include "tensorflow/compiler/xla/service/custom_call_status.h"
@@ -41,7 +44,11 @@ Status CpuCallback::PrepareAndCallInternal(void* result, void** arg_ptrs) {
     if (args_[i].type == xla::TOKEN) {
       args[i] = py::none();
     } else {
-      args[i] = py::array(args_[i].dtype, args_[i].dims, args_[i].strides,
+      static_assert(sizeof(ssize_t) == sizeof(int64_t));
+      absl::Span<ssize_t> strides(
+          reinterpret_cast<ssize_t*>(args_[i].strides.data()),
+          args_[i].strides.size());
+      args[i] = py::array(args_[i].dtype, args_[i].dims, strides,
                           const_cast<void*>(inputs[i]));
       args[i].attr("flags").attr("writeable") = Py_False;
     }
@@ -79,8 +86,8 @@ void CpuCallback::PrepareAndCall(void* result, void** arg_ptrs,
                                  XlaCustomCallStatus* status) {
   auto s = PrepareAndCallInternal(result, arg_ptrs);
   if (!s.ok()) {
-    XlaCustomCallStatusSetFailure(status, s.error_message().c_str(),
-                                  s.error_message().length());
+    auto msg = s.message();
+    XlaCustomCallStatusSetFailure(status, msg.data(), msg.length());
     return;
   }
 }
@@ -143,9 +150,8 @@ std::optional<py::tuple> CpuCallback::Call(py::tuple args,
                                            XlaCustomCallStatus* status) {
   auto statusor = CallInternal(std::move(args));
   if (!statusor.ok()) {
-    XlaCustomCallStatusSetFailure(status,
-                                  statusor.status().error_message().c_str(),
-                                  statusor.status().error_message().length());
+    absl::string_view msg = statusor.status().message();
+    XlaCustomCallStatusSetFailure(status, msg.data(), msg.length());
     return std::nullopt;
   }
   return std::move(statusor).value();

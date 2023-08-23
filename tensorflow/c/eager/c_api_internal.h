@@ -34,11 +34,6 @@ struct TFE_ContextOptions {
       TFE_DEVICE_PLACEMENT_SILENT};
   // If true, use TFRT backend
   bool use_tfrt = false;
-  // This option is effective only when use_tfrt is true. If true, TFRT will use
-  // native TFRT distributed runtime. Otherwise, TFRT will use current runtime's
-  // distributed runtime. Note that TFRT distributed runtime is in development
-  // and not functionally complete.
-  bool use_tfrt_distributed_runtime = false;
   // Whether to run elementary eager ops wrapped in a call op.
   bool run_eager_op_as_function = false;
   // Whether to rewrite jit_compile functions.

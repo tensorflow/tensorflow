@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
@@ -23,9 +24,11 @@ limitations under the License.
 
 int main(int argc, char **argv) {
   mlir::DialectRegistry registry;
-  registry.insert<mlir::memref::MemRefDialect, mlir::func::FuncDialect,
-                  mlir::gpu::GPUDialect, mlir::lmhlo::LmhloDialect,
-                  mlir::lmhlo_gpu::LmhloGpuDialect>();
+  registry
+      .insert<mlir::memref::MemRefDialect, mlir::func::FuncDialect,
+              mlir::gpu::GPUDialect, mlir::mhlo::MhloDialect,
+              mlir::lmhlo::LmhloDialect, mlir::lmhlo_gpu::LmhloGpuDialect>();
+  mlir::func::registerAllExtensions(registry);
 
   xla::gpu::registerGpuTransformsPasses();
 

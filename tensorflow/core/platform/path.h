@@ -30,6 +30,7 @@ using tsl::io::internal::JoinPathImpl;
 using tsl::io::JoinPath;
 #endif /* SWIG */
 using tsl::io::Basename;
+using tsl::io::BasenamePrefix;
 using tsl::io::CleanPath;
 using tsl::io::CommonPathPrefix;
 using tsl::io::CreateURI;

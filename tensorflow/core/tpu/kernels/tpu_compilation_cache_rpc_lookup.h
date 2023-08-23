@@ -15,19 +15,21 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_CACHE_RPC_LOOKUP_H_
 #define TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_CACHE_RPC_LOOKUP_H_
 
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_common.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_grpc.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_interface.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_lookup.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_rpc_support.h"
-#include "tensorflow/core/tpu/kernels/tpu_program_group_interface.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -37,11 +39,11 @@ class TpuCompilationCacheRpcLookup : public TpuCompilationCacheLookup {
  public:
   using StubType = tpu::grpc::TpuCompilationCacheService::Stub;
 
-  TpuCompilationCacheRpcLookup(const string& server_address,
+  TpuCompilationCacheRpcLookup(const std::string& server_address,
                                int64_t max_cache_size);
   ~TpuCompilationCacheRpcLookup() override = default;
 
-  Status Lookup(const string& proto_key,
+  Status Lookup(const std::string& proto_key,
                 std::unique_ptr<tpu::CompilationCacheEntryRef>* entry,
                 tpu::CompilationCacheFetchTarget fetch_target) override;
 
@@ -49,16 +51,16 @@ class TpuCompilationCacheRpcLookup : public TpuCompilationCacheLookup {
                 std::unique_ptr<tpu::CompilationCacheEntryRef>* entry,
                 tpu::CompilationCacheFetchTarget fetch_target) override;
 
-  string DebugString() const override;
+  std::string DebugString() const override;
 
  private:
   // Helper method to make the RPC request to the central cache.
-  Status RemoteLookupLocked(const string& local_proto_key,
+  Status RemoteLookupLocked(const std::string& local_proto_key,
                             const tpu::GetTpuProgramRequest& request,
                             std::shared_ptr<CacheEntry>* cache_entry)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  // Helper method to adjust datastructures after a cache lookup.
+  // Helper method to adjust data structures after a cache lookup.
   // We use `removed_entries` so that actual CacheEntry destruction happens
   // outside the lock.
   void PostLookupLocked(
@@ -89,6 +91,7 @@ class TpuCompilationCacheRpcLookup : public TpuCompilationCacheLookup {
   // Map from last_use to entry, used to evict entries in LRU order.
   std::map<int64_t, CacheEntry*> entries_by_last_use_ ABSL_GUARDED_BY(mu_);
 };
+
 }  // namespace tpu
 }  // namespace tensorflow
 

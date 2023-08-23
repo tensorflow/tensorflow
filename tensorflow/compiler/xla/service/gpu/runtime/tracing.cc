@@ -45,16 +45,16 @@ void RegisterTracingTypeIdNames(runtime::TypeIDNameRegistry& registry) {
 //===----------------------------------------------------------------------===//
 
 static absl::StatusOr<int64_t> ActivityStart(runtime::HloTrace annotation) {
+  SetCurrentTracingScope(annotation.hlo_op);
   return ScopedAnnotationStack::ActivityStart([&] {
     // We use the same tracing annotation scheme as the ThunkSequence (see
     // implementation of `GetThunkInfo` in `ir_emitter_unnested.cc`).
-    return absl::StrFormat("Thunk:#hlo_op=%s,hlo_module=%s,program_id=%d#",
-                           annotation.hlo_op, annotation.module,
-                           annotation.program_id);
+    return absl::StrFormat("Thunk:#hlo_op=%s#", annotation.hlo_op);
   });
 }
 
 static absl::Status ActivityEnd(int64_t activity_id) {
+  ResetCurrentTracingScope();
   ScopedAnnotationStack::ActivityEnd(activity_id);
   return absl::OkStatus();
 }

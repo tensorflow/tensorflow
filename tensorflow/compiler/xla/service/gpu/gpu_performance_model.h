@@ -16,38 +16,29 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_PERFORMANCE_MODEL_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_PERFORMANCE_MODEL_H_
 
-#include <cstdint>
+#include <optional>
 #include <vector>
 
 #include "absl/time/time.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_cost_analysis.h"
 
 namespace xla {
 namespace gpu {
 
 class GpuPerformanceModel {
-  // Estimated values in the absence of easy ways to query them.
-  static constexpr absl::Duration kKernelLaunchOverhead = absl::Microseconds(1);
-  static constexpr float kL2CacheSpeedup = 2.5;
-  static constexpr float kL1CacheSpeedup = 8;
-  // A very conservative estimate. L1 size varies because it can be dynamically
-  // configured as shared memory; there is no easy way to query its actual size;
-  // also we do not count what occupies cache, but rather claim that what is
-  // much smaller than the cache size will likely stay in it.
-  // For reference, it can be up to 256 kB per SM on RTX A6000.
-  static constexpr float kL1CacheSizePerSM = 2 * 1024;
-
  public:
   struct RunTimes {
     absl::Duration time_unfused;
     absl::Duration time_fused;
   };
-  static struct RunTimes EstimateRunTimes(
+  static RunTimes EstimateRunTimes(
       const HloInstruction* producer, const GpuHloCostAnalysis* cost_analysis,
-      const GpuDeviceInfo& gpu_device_info,
-      const std::vector<HloInstruction*> fused_users = {},
-      bool multi_output = false);
+      std::optional<se::CudaComputeCapability> cc = std::nullopt,
+      std::vector<HloInstruction*> fused_users = {}, bool multi_output = false);
+
+  // Writes estimated execution time to FusionBackendConfig.reification_cost.
+  static void RecordEstimatedRunTime(HloInstruction* instruction,
+                                     const GpuHloCostAnalysis* cost_analysis);
 };
 
 }  // namespace gpu

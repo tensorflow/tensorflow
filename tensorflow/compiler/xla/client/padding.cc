@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/padding.h"
 
 #include <algorithm>
+#include <utility>
+#include <vector>
 
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/lib/math/math_util.h"
@@ -34,6 +36,16 @@ Status ValidatePaddingValues(absl::Span<const int64_t> input_dimensions,
         "strides size %u",
         input_dimensions.size(), window_dimensions.size(),
         window_strides.size());
+  }
+  for (size_t i = 0; i < input_dimensions.size(); ++i) {
+    if (window_dimensions[i] <= 0) {
+      return InvalidArgument("Window dimension %u has non-positive size %d", i,
+                             window_dimensions[i]);
+    }
+    if (window_strides[i] <= 0) {
+      return InvalidArgument("Window dimension %u has non-positive stride %d",
+                             i, window_strides[i]);
+    }
   }
   return OkStatus();
 }

@@ -156,7 +156,7 @@ TEST(EagerExecutorTest, TestSyncExecutorFailPrepare) {
                                               errors::InvalidArgument("test"));
   auto status = sync_executor->AddOrExecute(std::move(node));
 
-  ASSERT_EQ(status.code(), tensorflow::error::INVALID_ARGUMENT);
+  ASSERT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
   ASSERT_EQ(state->read_state(), TestState::State::kNotRun);
 }
 
@@ -223,7 +223,7 @@ TEST(EagerExecutorTest, TestAsyncExecutorFailPrepare) {
 
   auto status = async_executor->AddOrExecute(std::move(node));
 
-  ASSERT_EQ(status.code(), tensorflow::error::INVALID_ARGUMENT);
+  ASSERT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
   ASSERT_EQ(state->read_state(), TestState::State::kNotRun);
 }
 
@@ -250,7 +250,7 @@ TEST(EagerExecutorTest, TestAsyncExecutorFailPrepareWithAsyncNode) {
       state.get(), errors::InvalidArgument("test"));
   auto status = async_executor->AddOrExecute(std::move(node));
 
-  ASSERT_EQ(status.code(), tensorflow::error::INVALID_ARGUMENT);
+  ASSERT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
   ASSERT_EQ(state->read_state(), TestState::State::kNotRun);
 }
 

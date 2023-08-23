@@ -11,6 +11,10 @@ pybind_extension(
     srcs = [
         "analyzer_wrapper.cc",
     ],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_analyzer_wrapper.pyi",
+    ],
     deps = [
         ":model_analyzer",
         "@pybind11",
@@ -23,8 +27,8 @@ cc_library(
     hdrs = ["model_analyzer.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/lite:model_builder",
         "//tensorflow/lite:version",
+        "//tensorflow/lite/core:model_builder",
         "//tensorflow/lite/core/api:error_reporter",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",

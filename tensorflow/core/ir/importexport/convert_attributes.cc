@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/ir/importexport/convert_attributes.h"
 
 #include <string>
+#include <vector>
 
 #include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/TypeSwitch.h"
@@ -264,6 +265,7 @@ Status ConvertAttributes(ArrayRef<NamedAttribute> attrs,
     // calls.
     std::vector<std::string> name_tokens =
         absl::StrSplit(name, '.', absl::SkipEmpty());
+    TF_RET_CHECK(!name_tokens.empty());
     TF_RET_CHECK(name_tokens.size() <= 2);
     auto it = func_call_attrs.find(name_tokens[0]);
     if (it == func_call_attrs.end())
@@ -359,8 +361,7 @@ StatusOr<Attribute> ConvertNonFuncAttributeValue(const AttrValue& value,
         attrs.push_back(FuncAttr::get(builder.getContext(), func_attr.name(),
                                       builder.getDictionaryAttr(subattrs)));
       }
-      return builder.getArrayAttr(
-          llvm::makeArrayRef(attrs.begin(), attrs.end()));
+      return builder.getArrayAttr(llvm::ArrayRef(attrs.begin(), attrs.end()));
     }
     case AttrValue::VALUE_NOT_SET:
       return builder.getUnitAttr();

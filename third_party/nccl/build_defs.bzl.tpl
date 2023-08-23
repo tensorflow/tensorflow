@@ -5,6 +5,7 @@ load("@bazel_tools//tools/cpp:toolchain_utils.bzl", "find_cpp_toolchain")
 
 # CUDA toolkit version as tuple (e.g. '(11, 1)').
 _cuda_version = %{cuda_version}
+_cuda_clang = %{cuda_clang}
 
 def _gen_device_srcs_impl(ctx):
     ops = ["sum", "prod", "min", "max", "premulsum", "sumpostdiv"]

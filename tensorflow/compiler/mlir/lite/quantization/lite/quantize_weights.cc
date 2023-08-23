@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Debug.h"
@@ -51,7 +52,7 @@ using llvm::StringRef;
 // Convert op represented in TFLite builtin_code to its corresponding MLIR
 // OperationName.
 void TfLiteBuiltinOpToMlir(const BuiltinOperatorSet& tflite_builtin_codes,
-                           StringSet& mlir_op_names) {
+                           absl::flat_hash_set<std::string>& mlir_op_names) {
   for (const auto& entry : tflite_builtin_codes) {
     StringRef tflite_op_name = EnumNameBuiltinOperator(entry);
     std::string mlir_name = llvm::Twine("tfl.", tflite_op_name.lower()).str();
@@ -77,12 +78,13 @@ std::unique_ptr<tflite::ModelT> CreateMutableModelFromFile(
 TfLiteStatus QuantizeWeights(
     flatbuffers::FlatBufferBuilder* builder, const tflite::Model* input_model,
     tflite::ErrorReporter* error_reporter,
-    const tflite::TensorType& inference_type, const StringSet& denylisted_ops,
+    const tflite::TensorType& inference_type,
+    const absl::flat_hash_set<std::string>& denylisted_ops,
     const CustomOpMap& custom_op_map, int64_t minimum_elements_for_weights,
     bool disable_per_channel, bool weight_only_quantization,
     bool legacy_float_scale) {
   // Translate TFLite names to mlir op names.
-  StringSet denylisted_mlir_op_names;
+  absl::flat_hash_set<std::string> denylisted_mlir_op_names;
   for (auto& entry : denylisted_ops) {
     denylisted_mlir_op_names.insert(TfLiteToMlir(entry));
   }
@@ -106,7 +108,7 @@ TfLiteStatus QuantizeWeights(
       serialized_model, &context, UnknownLoc::get(&context));
 
   // Apply quantization passes.
-  PassManager pm(module->getContext(), OpPassManager::Nesting::Implicit);
+  PassManager pm((*module)->getName(), OpPassManager::Nesting::Implicit);
   quant::QuantizationSpecs quant_specs;
   quant_specs.inference_type = tflite::TflTypeToTfType(inference_type);
   quant_specs.weight_quantization = true;
@@ -145,7 +147,7 @@ TfLiteStatus QuantizeWeights(
   tensorflow::AddDynamicRangeQuantizationPasses(quant_specs, pm);
 
   if (failed(pm.run(module.get()))) {
-    absl::string_view err = statusHandler.ConsumeStatus().error_message();
+    absl::string_view err = statusHandler.ConsumeStatus().message();
     error_reporter->Report("Failed to quantize: %s", err);
     return kTfLiteError;
   }
@@ -215,7 +217,7 @@ TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
   tflite::StderrReporter error_reporter;
   const tflite::TensorType inference_type = tflite::TensorType_INT8;
 
-  StringSet mlir_op_denylist;
+  absl::flat_hash_set<std::string> mlir_op_denylist;
   TfLiteBuiltinOpToMlir(op_denylist, mlir_op_denylist);
 
   return QuantizeWeights(

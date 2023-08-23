@@ -33,6 +33,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "PreemptionWatcher"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "TPUStrategy"
     mtype: "<type \'type\'>"
   }

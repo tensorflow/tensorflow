@@ -17,7 +17,7 @@
 import os
 
 from absl import app
-from keras.optimizers.optimizers_v2 import adam
+from keras.optimizers.legacy import adam
 
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.compat import v2_compat

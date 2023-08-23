@@ -1,7 +1,7 @@
 -r requirements_common.txt
 
 # Dependencies only required for Mac
-certifi ~= 2020.12.5
+certifi ~= 2022.12.07
 
 # Install build related dependencies
 twine ~= 3.6.0

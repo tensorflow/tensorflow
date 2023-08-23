@@ -15,48 +15,61 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_op_executable.h"
 
+#include <cstdint>
+#include <memory>
+#include <utility>
+#include <vector>
+
+#include "absl/algorithm/container.h"
+#include "absl/types/span.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/status.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/proto_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executable_interface.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/casts.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace tensorflow {
 
-TpuOpExecutable::TpuOpExecutable(const XLA_TpuProgram* core_program,
-                                 std::unique_ptr<xla::HloModule> hlo_module,
-                                 HostCommandHandler host_command_handler)
+TpuOpExecutable::TpuOpExecutable(
+    const XLA_TpuProgram* core_program,
+    std::unique_ptr<xla::HloModule> hlo_module,
+    SE_OutsideCompilationParams* outside_compilation_params)
     : TpuExecutableInterface(std::move(hlo_module)),
       core_program_(core_program),
-      host_command_handler_(std::move(host_command_handler)) {}
+      outside_compilation_params_(outside_compilation_params) {}
 
 xla::Status TpuOpExecutable::LoadProgramAndEnqueueToStream(
     const xla::ServiceExecutableRunOptions& run_options,
     absl::Span<const se::DeviceMemoryBase> arguments,
     se::DeviceMemoryBase result,
-    std::optional<se::DeviceMemoryBase> cross_program_prefetch_addr) {
-  SE_DeviceMemoryBase* arguments_bases = nullptr;
-  if (!arguments.empty()) {
-    arguments_bases = new SE_DeviceMemoryBase[arguments.size()];
-    for (int i = 0; i < arguments.size(); i++) {
-      arguments_bases[i] =
-          SE_DeviceMemoryBase{const_cast<void*>(arguments[i].opaque()),
-                              arguments[i].size(), arguments[i].payload()};
-    }
-  }
+    const std::vector<se::DeviceMemoryBase>& cross_program_prefetch_addrs,
+    const std::vector<uint32_t>& cross_program_prefetch_offsets) {
+  auto DeviceMemoryBaseToC = [](const se::DeviceMemoryBase& addr) {
+    return SE_DeviceMemoryBase{const_cast<void*>(addr.opaque()), addr.size(),
+                               addr.payload()};
+  };
 
-  SE_DeviceMemoryBase result_base{result.opaque(), result.size(),
-                                  result.payload()};
-  SE_DeviceMemoryBase prefetch_base;
-  if (cross_program_prefetch_addr.has_value()) {
-    prefetch_base = SE_DeviceMemoryBase{cross_program_prefetch_addr->opaque(),
-                                        cross_program_prefetch_addr->size(),
-                                        cross_program_prefetch_addr->payload()};
-  }
+  std::vector<SE_DeviceMemoryBase> arguments_bases;
+  arguments_bases.resize(arguments.size());
+  absl::c_transform(arguments, arguments_bases.begin(), DeviceMemoryBaseToC);
+
+  SE_DeviceMemoryBase result_base = DeviceMemoryBaseToC(result);
+
+  std::vector<SE_DeviceMemoryBase> prefetch_bases;
+  prefetch_bases.resize(cross_program_prefetch_addrs.size());
+  absl::c_transform(cross_program_prefetch_addrs, prefetch_bases.begin(),
+                    DeviceMemoryBaseToC);
   int32_t rng_seed = run_options.run_options().rng_seed();
 
   XLA_DeviceAssignment c_dev_assign{/*bytes=*/nullptr, /*size=*/0};
@@ -81,16 +94,22 @@ xla::Status TpuOpExecutable::LoadProgramAndEnqueueToStream(
   params.struct_size = TpuExecutable_LoadProgramAndEnqueueToStream_Params_SIZE;
   params.priv = nullptr;
   params.program = core_program_;
-  params.arguments = arguments_bases;
-  params.arguments_len = arguments.size();
+  params.arguments = arguments_bases.empty() ? nullptr : arguments_bases.data();
+  params.arguments_len = arguments_bases.size();
   params.result = &result_base;
-  params.has_cross_program_prefetch_addr =
-      cross_program_prefetch_addr.has_value();
-  params.cross_program_prefetch_addr =
-      cross_program_prefetch_addr.has_value() ? &prefetch_base : nullptr;
+  params.cross_program_prefetch_addrs =
+      prefetch_bases.empty() ? nullptr : prefetch_bases.data();
+  params.cross_program_prefetch_addrs_len = prefetch_bases.size();
+  params.cross_program_prefetch_offsets =
+      cross_program_prefetch_offsets.empty()
+          ? nullptr
+          : cross_program_prefetch_offsets.data();
+  params.cross_program_prefetch_offsets_len =
+      cross_program_prefetch_offsets.size();
   params.rng_seed = rng_seed;
   params.device_assignment = &c_dev_assign;
   params.stream = stream;
+  params.outside_compilation_params = outside_compilation_params_;
   params.status = status.c_status;
 
   stream_executor::tpu::OpsApiFn()
@@ -99,30 +118,7 @@ xla::Status TpuOpExecutable::LoadProgramAndEnqueueToStream(
   if (dev_assign != nullptr) {
     stream_executor::tpu::SerializedProto_Free(dev_assign_serialized);
   }
-  delete[] arguments_bases;
   return status.status();
-}
-
-xla::Shape TpuOpExecutable::HostShapeToDeviceShape(
-    const xla::Shape& host_shape) {
-  XLA_Shape c_host_shape;
-  XLA_Shape c_device_shape;
-  ApiConverter::ToC(host_shape, &c_host_shape);
-  stream_executor::tpu::OpsApiFn()->HardwareLayout_HostShapeToDeviceShapeFn(
-      &c_host_shape, &c_device_shape);
-  xla::Shape device_shape = ApiConverter::FromC(&c_device_shape);
-  ApiConverter::Destroy(&c_host_shape);
-  ApiConverter::Destroy(&c_device_shape);
-  return device_shape;
-}
-
-int64_t TpuOpExecutable::ShapeSize(const xla::Shape& shape) {
-  XLA_Shape c_shape;
-  ApiConverter::ToC(shape, &c_shape);
-  int64_t size =
-      stream_executor::tpu::OpsApiFn()->HardwareLayout_ShapeSizeFn(&c_shape);
-  ApiConverter::Destroy(&c_shape);
-  return size;
 }
 
 absl::string_view TpuOpExecutable::fingerprint() const {

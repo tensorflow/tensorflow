@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_TOOLS_VERSIONING_OP_SIGNATURE_H_
 
 #include <string>
+#include <vector>
 
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
@@ -56,6 +57,7 @@ typedef struct {
       float input1_scale;
       float input2_scale;
       float output_scale;
+      bool input_quantized;
     } mul;
     struct {
       int32_t num_dims;
@@ -69,6 +71,9 @@ typedef struct {
     struct {
       bool is_per_channel_quantized;
     } quantize;
+    struct {
+      bool input_quantized;
+    } add;
   } ext_options;
 } OpSignature;
 

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <sys/types.h>
 
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -124,20 +125,6 @@ mlir::ArrayAttr ConvertOutputOperandAliasing(
     attrs.push_back(attr);
   }
   return builder->getArrayAttr(attrs);
-}
-
-mlir::ArrayAttr ConvertCrossProgramPrefetches(
-    const absl::Span<const std::pair<int64_t, ShapeIndex>> prefetches,
-    mlir::Builder* builder) {
-  llvm::SmallVector<mlir::Attribute, 4> shapes;
-  for (auto [parameter, index] : prefetches) {
-    llvm::SmallVector<int64_t, 4> dims;
-    for (auto dim : index) dims.push_back(dim);
-    shapes.push_back(mlir::mhlo::CrossProgramPrefetchAttr::get(
-        builder->getContext(), parameter, dims));
-  }
-
-  return mlir::ArrayAttr::get(builder->getContext(), shapes);
 }
 
 StatusOr<mlir::mhlo::FftType> ConvertFftType(FftType type) {

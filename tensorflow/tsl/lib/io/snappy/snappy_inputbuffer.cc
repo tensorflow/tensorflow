@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <algorithm>
 
+#include "absl/status/status.h"
+
 namespace tsl {
 namespace io {
 SnappyInputBuffer::SnappyInputBuffer(
@@ -182,7 +184,7 @@ Status SnappyInputBuffer::ReadFromFile() {
   avail_in_ += data.size();
   file_pos_ += data.size();
 
-  if (!s.ok() && !errors::IsOutOfRange(s)) {
+  if (!s.ok() && !absl::IsOutOfRange(s)) {
     return s;
   }
 
@@ -194,7 +196,7 @@ Status SnappyInputBuffer::ReadFromFile() {
   if (data.empty()) {
     return errors::OutOfRange("EOF reached");
   }
-  if (errors::IsOutOfRange(s)) {
+  if (absl::IsOutOfRange(s)) {
     return OkStatus();
   }
 

@@ -16,18 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_TPU_NODE_CONTEXT_H_
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_TPU_NODE_CONTEXT_H_
 
-#include <string>
+#include <memory>
 
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/stream_pool.h"
-#include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
 #include "tensorflow/tsl/platform/macros.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -39,9 +37,8 @@ namespace tpu {
 // individual nodes.
 class TpuNodeContext final {
  public:
-  using Status = stream_executor::port::Status;
   template <typename T>
-  using StatusOr = stream_executor::port::StatusOr<T>;
+  using StatusOr = tsl::StatusOr<T>;
 
   static StatusOr<std::unique_ptr<TpuNodeContext>> Create(int device_ordinal);
 
@@ -51,11 +48,11 @@ class TpuNodeContext final {
   }
   ~TpuNodeContext();
 
-  static Status StopChipHeartbeats();
+  static tsl::Status StopChipHeartbeats();
 
-  static Status CloseTpuHost();
+  static tsl::Status CloseTpuHost();
 
-  static Status Initialize(int device_ordinal);
+  static tsl::Status Initialize(int device_ordinal);
 
   static TpuPlatformInterface* platform();
 

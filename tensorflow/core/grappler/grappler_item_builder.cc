@@ -19,6 +19,8 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -118,16 +120,18 @@ Status UpdatePlaceholderShape(
     const std::unordered_set<string>& signature_feed_nodes,
     GrapplerItem* new_item, NodeDef* node) {
   if (node->attr().count("dtype") == 0) {
-    return errors::Internal("Unknown type for placeholder ", node->name(),
-                            ", skipping this input");
+    return absl::InternalError(absl::StrCat("Unknown type for placeholder ",
+                                            node->name(),
+                                            ", skipping this input"));
   }
   DataType type = node->attr().at("dtype").type();
 
   // TODO(andiryxu): Consider cfg.placeholder_unknown_output_shape_dim >= 0 and
   // _output_shapes is present case.
   if (node->attr().count("shape") == 0) {
-    return errors::Internal("Unknown shape for placeholder ", node->name(),
-                            ", skipping this input");
+    return absl::InternalError(absl::StrCat("Unknown shape for placeholder ",
+                                            node->name(),
+                                            ", skipping this input"));
   }
 
   // Replace all unknown dimensions in the placeholder's tensorshape proto
@@ -139,8 +143,9 @@ Status UpdatePlaceholderShape(
   Status make_shape_status = ReplaceUnknownShapeDim(
       cfg, node->attr().at("shape").shape(), &shape_proto, &shape);
   if (!make_shape_status.ok()) {
-    return errors::Internal("Invalid shape for placeholder ", node->name(),
-                            ": ", make_shape_status, ", skipping this input");
+    return absl::InternalError(
+        absl::StrCat("Invalid shape for placeholder ", node->name(), ": ",
+                     make_shape_status.ToString(), ", skipping this input"));
   }
 
   // Some placeholder nodes have a mismatch between the node
@@ -166,7 +171,7 @@ Status UpdatePlaceholderShape(
       for (const auto& dim : output_shapes.dim()) {
         auto size = dim.size();
         if (size == -1) size = cfg.placeholder_unknown_output_shape_dim;
-        shape.AddDim(size);
+        TF_RETURN_IF_ERROR(shape.AddDimWithStatus(size));
         shape_proto.add_dim()->set_size(size);
       }
     }
@@ -621,7 +626,7 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
       0, true);
   if (!attr_status.ok()) {
     LOG(ERROR) << "Failed to instantiate default attribute values: "
-               << attr_status.error_message();
+               << attr_status.message();
     return nullptr;
   }
 
@@ -641,7 +646,7 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
     VLOG(1) << "Pruning graph...";
     auto status = PruneGraph(new_item.get());
     if (!status.ok()) {
-      LOG(ERROR) << "Pruning failed: " << status.error_message();
+      LOG(ERROR) << "Pruning failed: " << status.message();
       return nullptr;
     }
     VLOG(1) << "Number of nodes in graph after pruning: "

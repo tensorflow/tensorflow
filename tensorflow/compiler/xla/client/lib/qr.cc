@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/lib/qr.h"
 
+#include <algorithm>
 #include <memory>
 #include <vector>
 

@@ -13,14 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <utility>
 
 #include "mhlo/IR/hlo_ops.h"
 #include "mhlo/transforms/passes.h"
 #include "mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
@@ -58,7 +59,7 @@ struct ConvertMapOfElementwiseOps : public OpRewritePattern<MapOp> {
     }
 
     rewriter.setInsertionPointAfter(map);
-    BlockAndValueMapping blockAndValueMap;
+    IRMapping blockAndValueMap;
     for (mlir::BlockArgument barg :
          map.getComputation().front().getArguments()) {
       blockAndValueMap.map(barg, map->getOperand(barg.getArgNumber()));

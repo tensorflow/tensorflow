@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 #include <type_traits>
 
+#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/logging.h"
 
@@ -68,32 +69,6 @@ inline std::optional<T> OverflowSafeAdd(T x, T y) {
     return std::nullopt;
   }
   return sum;
-}
-
-inline bool FitsInIntegralType(int64_t x, PrimitiveType ty) {
-  switch (ty) {
-    case S8:
-      return std::numeric_limits<int8_t>::min() <= x &&
-             std::numeric_limits<int8_t>::max() >= x;
-    case S16:
-      return std::numeric_limits<int16_t>::min() <= x &&
-             std::numeric_limits<int16_t>::max() >= x;
-    case S32:
-      return std::numeric_limits<int32_t>::min() <= x &&
-             std::numeric_limits<int32_t>::max() >= x;
-    case S64:
-      return true;
-    case U8:
-      return 0 <= x && std::numeric_limits<uint8_t>::max() >= x;
-    case U16:
-      return 0 <= x && std::numeric_limits<uint16_t>::max() >= x;
-    case U32:
-      return 0 <= x && std::numeric_limits<uint32_t>::max() >= x;
-    case U64:
-      return 0 <= x;
-    default:
-      LOG(FATAL) << "Invalid primitive type " << PrimitiveType_Name(ty);
-  }
 }
 
 }  // namespace xla

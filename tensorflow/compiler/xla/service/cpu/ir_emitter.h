@@ -29,11 +29,11 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "llvm/ADT/Triple.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
+#include "llvm/TargetParser/Triple.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
@@ -113,7 +113,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // If 'allow_reassociation' is true, the fast-math reassociation flag will
   // be enabled in the function's body. This is used when emitting reducers.
   StatusOr<llvm::Function*> EmitComputation(
-      HloComputation* computation, const std::string& function_name_prefix,
+      HloComputation* computation, absl::string_view function_name_prefix,
       bool is_top_level_computation,
       absl::Span<HloInstruction* const> instruction_order,
       bool allow_reassociation);
@@ -488,8 +488,11 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // management rules, their memory is owned by the module (Note that IrFunction
   // creates the encapsulated llvm::Function s.t. it is added to the llvm
   // module's function list).
-  std::unique_ptr<IrFunction> compute_function_;
+  // N.B. `b_` must be ordered before `compute_function_` as
+  // `IrFunction::~IrFunction` references `b_`. This will ensure that the
+  // destructor for `compute_function_` will run before the destructor for `b_`.
   llvm::IRBuilder<> b_;
+  std::unique_ptr<IrFunction> compute_function_;
   mlir::MLIRContext* mlir_context_;
   bool allow_reassociation_;
 

@@ -1,9 +1,17 @@
 load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_binary")
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
+)
+
+build_test(
+    name = "xla-translate_build_test",
+    targets = [
+        ":xla-translate",
+    ],
 )
 
 xla_cc_binary(
@@ -19,7 +27,6 @@ xla_cc_binary(
         "//tensorflow/compiler/xla/translate/mhlo_to_hlo:translate_registration",
         "//tensorflow/compiler/xla/translate/mhlo_to_lhlo_with_xla:translate_registration",
         "//tensorflow/tsl/platform:platform_port",
-        "//tensorflow/tsl/protobuf:dnn_proto_cc_impl",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",

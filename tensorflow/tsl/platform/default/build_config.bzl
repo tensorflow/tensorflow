@@ -243,7 +243,6 @@ def cc_proto_library(
 
     if use_grpc_plugin:
         cc_libs += select({
-            clean_dep("//tensorflow/tsl:linux_s390x"): ["//external:grpc_lib_unsecure"],
             "//conditions:default": ["//external:grpc_lib"],
         })
 
@@ -326,7 +325,6 @@ def cc_grpc_library(
     proto_targets += srcs
 
     extra_deps += select({
-        clean_dep("//tensorflow/tsl:linux_s390x"): ["//external:grpc_lib_unsecure"],
         "//conditions:default": ["//external:grpc_lib"],
     })
 
@@ -401,6 +399,13 @@ def py_proto_library(
         # is not explicitly listed in py_libs. Instead, host system is assumed to
         # have grpc installed.
 
+    genproto_deps = []
+    for dep in deps:
+        if dep != "@com_google_protobuf//:protobuf_python":
+            genproto_deps.append(dep + "_genproto")
+        else:
+            genproto_deps.append("@com_google_protobuf//:well_known_types_py_pb2_genproto")
+
     proto_gen(
         name = name + "_genproto",
         srcs = srcs,
@@ -411,7 +416,7 @@ def py_proto_library(
         plugin_language = "grpc",
         protoc = protoc,
         visibility = ["//visibility:public"],
-        deps = [s + "_genproto" for s in deps],
+        deps = genproto_deps,
     )
 
     if default_runtime and not default_runtime in py_libs + deps:
@@ -441,6 +446,7 @@ def tf_proto_library_cc(
         js_codegen = "jspb",
         create_service = False,
         create_java_proto = False,
+        create_kotlin_proto = False,
         make_default_target_header_only = False):
     js_codegen = js_codegen  # unused argument
     native.filegroup(
@@ -449,7 +455,7 @@ def tf_proto_library_cc(
         testonly = testonly,
         visibility = visibility,
     )
-    _ignore = (create_service, create_java_proto)
+    _ignore = (create_service, create_java_proto, create_kotlin_proto)
 
     use_grpc_plugin = None
     if cc_grpc_version:
@@ -577,6 +583,7 @@ def tf_proto_library(
         js_codegen = "jspb",
         create_service = False,
         create_java_proto = False,
+        create_kotlin_proto = False,
         create_go_proto = False,
         create_grpc_library = False,
         make_default_target_header_only = False,
@@ -591,6 +598,7 @@ def tf_proto_library(
         js_codegen,
         create_service,
         create_java_proto,
+        create_kotlin_proto,
         cc_stubby_versions,
         create_go_proto,
     )
@@ -646,7 +654,7 @@ def tf_additional_lib_hdrs():
     return [
         clean_dep("//tensorflow/tsl/platform/default:casts.h"),
         clean_dep("//tensorflow/tsl/platform/default:context.h"),
-        clean_dep("//tensorflow/tsl/platform/default:cord.h"),
+        clean_dep("//tensorflow/tsl/platform/default:criticality.h"),
         clean_dep("//tensorflow/tsl/platform/default:dynamic_annotations.h"),
         clean_dep("//tensorflow/tsl/platform/default:integral_types.h"),
         clean_dep("//tensorflow/tsl/platform/default:logging.h"),
@@ -654,6 +662,8 @@ def tf_additional_lib_hdrs():
         clean_dep("//tensorflow/tsl/platform/default:mutex_data.h"),
         clean_dep("//tensorflow/tsl/platform/default:notification.h"),
         clean_dep("//tensorflow/tsl/platform/default:stacktrace.h"),
+        clean_dep("//tensorflow/tsl/platform/default:status.h"),
+        clean_dep("//tensorflow/tsl/platform/default:statusor.h"),
         clean_dep("//tensorflow/tsl/platform/default:tracing_impl.h"),
         clean_dep("//tensorflow/tsl/platform/default:unbounded_work_queue.h"),
     ] + select({
@@ -678,7 +688,7 @@ def tf_protos_all():
         extra_deps = [
             clean_dep("//tensorflow/core/protobuf:conv_autotuning_proto_cc_impl"),
             clean_dep("//tensorflow/core:protos_all_cc_impl"),
-            clean_dep("//tensorflow/tsl/protobuf:autotuning_proto_cc_impl"),
+            clean_dep("//tensorflow/compiler/xla:autotuning_proto_cc_impl"),
             clean_dep("//tensorflow/tsl/protobuf:protos_all_cc_impl"),
         ],
         otherwise = [clean_dep("//tensorflow/core:protos_all_cc")],
@@ -789,6 +799,7 @@ def tsl_cc_test(
                 # granularly
                 clean_dep("//tensorflow/tsl/protobuf:error_codes_proto_impl_cc_impl"),
                 clean_dep("//tensorflow/tsl/protobuf:histogram_proto_cc_impl"),
+                clean_dep("//tensorflow/tsl/protobuf:status_proto_cc_impl"),
                 clean_dep("//tensorflow/tsl/profiler/protobuf:xplane_proto_cc_impl"),
                 clean_dep("//tensorflow/tsl/profiler/protobuf:profiler_options_proto_cc_impl"),
             ],
@@ -797,7 +808,7 @@ def tsl_cc_test(
     )
 
 def tf_portable_proto_lib():
-    return ["//tensorflow/core:protos_all_cc_impl"]
+    return ["//tensorflow/core:protos_all_cc_impl", "//tensorflow/tsl/protobuf:protos_all_cc_impl"]
 
 def tf_protobuf_compiler_deps():
     return if_static(
@@ -831,6 +842,9 @@ def tf_platform_alias(name, platform_dir = "//tensorflow/tsl/platform/"):
 
 def tf_logging_deps():
     return [clean_dep("//tensorflow/tsl/platform/default:logging")]
+
+def tf_error_logging_deps():
+    return [clean_dep("//tensorflow/tsl/platform/default:error_logging")]
 
 def tf_resource_deps():
     return [clean_dep("//tensorflow/tsl/platform/default:resource")]

@@ -37,6 +37,9 @@ StatusOr<xla::PrimitiveType> ToPrimitiveType(DType dtype);
 // Converts `xla::PrimitiveType` into IFRT `DType`.
 StatusOr<DType> ToDType(xla::PrimitiveType primitive_type);
 
+// Creates IFRT `MemoryKind` from an XLA `PjRtBuffer`.
+MemoryKind MakeMemoryKindFromPjRtBuffer(PjRtBuffer* pjrt_buffer);
+
 // PjRt-compatible `Array` interface that wraps a list of `xla::PjRtBuffer`s.
 class PjRtCompatibleArray
     : public llvm::RTTIExtends<PjRtCompatibleArray, Array> {
@@ -45,6 +48,8 @@ class PjRtCompatibleArray
   virtual absl::Span<const std::shared_ptr<PjRtBuffer>> pjrt_buffers() = 0;
   virtual StatusOr<absl::Span<std::shared_ptr<PjRtBuffer>>>
   mutable_pjrt_buffers() = 0;
+
+  static char ID;  // NOLINT
 };
 
 // `Array` implementation that wraps a list of `xla::PjRtBuffer`s.
@@ -56,22 +61,19 @@ class PjRtArray final
       absl::InlinedVector<std::shared_ptr<PjRtBuffer>, kPjRtBufferInlineSize>;
 
   // General array construction.
-  static StatusOr<tsl::RCReference<Array>> Create(
+  static StatusOr<tsl::RCReference<PjRtArray>> Create(
       PjRtCompatibleClient* client, DType dtype, Shape shape,
       std::shared_ptr<const Sharding> sharding, PjRtBuffers pjrt_buffers);
 
   // Shorthand for a single-shard array construction.
-  static StatusOr<tsl::RCReference<Array>> Create(
+  static StatusOr<tsl::RCReference<PjRtArray>> Create(
       PjRtCompatibleClient* client, std::shared_ptr<PjRtBuffer> pjrt_buffer);
-  static StatusOr<tsl::RCReference<Array>> Create(
-      PjRtCompatibleClient* client, std::unique_ptr<PjRtBuffer> pjrt_buffer);
 
-  // Shorthand for a multi-shard array construction using OpaqueSharding.
+  // Shorthand for a multi-shard array construction using ConcreteSharding.
   // TODO(hyeontaek): Remove this once IFRT Sharding and JAX Sharding is unified
-  // so that OpaqueSharding can be replaced with a real Sharding.
-  static StatusOr<tsl::RCReference<Array>> Create(PjRtCompatibleClient* client,
-                                                  Shape shape,
-                                                  PjRtBuffers pjrt_buffers);
+  // so that ConcreteSharding can be replaced with a real Sharding.
+  static StatusOr<tsl::RCReference<PjRtArray>> Create(
+      PjRtCompatibleClient* client, Shape shape, PjRtBuffers pjrt_buffers);
 
   // PjRtCompatibleArray implementation.
 
@@ -84,6 +86,9 @@ class PjRtArray final
     DCHECK(this);
     return absl::MakeSpan(pjrt_buffers_);
   }
+
+  StatusOr<tsl::RCReference<Array>> FullyReplicatedShard(
+      ArrayCopySemantics semantics) override;
 
   // Array implementation.
 
@@ -124,6 +129,9 @@ class PjRtArray final
       ArrayCopySemantics semantics) override;
 
   Future<Status> GetReadyFuture() const override;
+
+  std::shared_ptr<PjRtBuffer> GetPjRtBuffer(ArrayCopySemantics semantics,
+                                            int index) const;
 
   Future<Status> Delete() override;
   bool IsDeleted() const override;

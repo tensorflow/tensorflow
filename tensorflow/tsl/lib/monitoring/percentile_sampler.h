@@ -199,20 +199,20 @@ class PercentileSampler {
     if (registration_handle_) {
       for (size_t i = 0; i < percentiles_.size(); ++i) {
         if (percentiles_[i] < 0.0 || percentiles_[i] > 100.0) {
-          status_ = Status(tensorflow::error::Code::INVALID_ARGUMENT,
+          status_ = Status(absl::StatusCode::kInvalidArgument,
                            "Percentile values must be in [0, 100] range.");
           break;
         }
         if (i + 1 < percentiles_.size() &&
             percentiles_[i] >= percentiles_[i + 1]) {
           status_ =
-              Status(tensorflow::error::Code::INVALID_ARGUMENT,
+              Status(absl::StatusCode::kInvalidArgument,
                      "Percentile values must be in strictly ascending order.");
           break;
         }
       }
     } else {
-      status_ = Status(tensorflow::error::Code::ALREADY_EXISTS,
+      status_ = Status(absl::StatusCode::kAlreadyExists,
                        "Another metric with the same name already exists.");
     }
   }

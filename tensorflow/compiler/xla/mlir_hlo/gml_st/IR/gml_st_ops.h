@@ -15,32 +15,21 @@ limitations under the License.
 
 // This file defines the operations used in the GML ST dialect.
 
-#ifndef MLIR_HLO_DIALECT_GML_ST_IR_GML_ST_OPS_H
-#define MLIR_HLO_DIALECT_GML_ST_IR_GML_ST_OPS_H
+#ifndef MLIR_HLO_GML_ST_IR_GML_ST_OPS_H
+#define MLIR_HLO_GML_ST_IR_GML_ST_OPS_H
 
-#include "mlir/Dialect/Utils/StructuredOpsUtils.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/Interfaces/ControlFlowInterfaces.h"
-#include "mlir/Interfaces/InferTypeOpInterface.h"
-#include "mlir/Interfaces/LoopLikeInterface.h"
+#include "mlir/Interfaces/DestinationStyleOpInterface.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
-#include "mlir/Interfaces/ViewLikeInterface.h"
 
 // Generated dialect declarations.
 #include "gml_st/IR/gml_st_dialect.h.inc"
-
-// Generated custom type declarations.
-#define GET_TYPEDEF_CLASSES
-#include "gml_st/IR/gml_st_types.h.inc"
-
-// Generated attribute classes.
-#define GET_ATTRDEF_CLASSES
-#include "gml_st/IR/gml_st_attrs.h.inc"
 
 // Generated operation classes.
 #define GET_OP_CLASSES
 #include "gml_st/IR/gml_st_ops.h.inc"
 
-#endif  // MLIR_HLO_DIALECT_GML_ST_IR_GML_ST_OPS_H
+#endif  // MLIR_HLO_GML_ST_IR_GML_ST_OPS_H

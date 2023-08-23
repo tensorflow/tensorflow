@@ -29,9 +29,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_RUNTIME_FALLBACK_KERNEL_TFRT_OP_KERNEL_H_
 #define TENSORFLOW_CORE_RUNTIME_FALLBACK_KERNEL_TFRT_OP_KERNEL_H_
 
+#include <memory>
+#include <optional>
 #include <string>
+#include <vector>
 
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/ManagedStatic.h"
@@ -48,12 +50,7 @@ namespace tfrt {
 class AsyncKernelFrame;
 }  // namespace tfrt
 
-namespace tsl {
-class Status;
-}  // namespace tsl
-
 namespace tensorflow {
-using tsl::Status;
 
 class TFRTOpKernel;
 class TFRTOpMeta;
@@ -82,12 +79,12 @@ class TFRTOpKernelConstruction {
     return OkStatus();
   }
 
-  const llvm::Optional<std::string>& error();
+  const std::optional<std::string>& error();
 
  private:
   const tfrt::OpAttrsRef& attributes_;
   // If an error occurs, the error message is stored here.
-  llvm::Optional<std::string> error_;
+  std::optional<std::string> error_;
 };
 
 template <>
@@ -127,7 +124,7 @@ class TFRTOpKernelContext {
       llvm::ArrayRef<tfrt::RCReference<tfrt::AsyncValue>> inputs,
       int num_outputs, const TFRTOpMeta* op_meta, tfrt::HostContext* host);
   const Tensor& output(int index);
-  const llvm::Optional<std::string>& error();
+  const std::optional<std::string>& error();
 
   // OpKernelContext interface implementation.
   bool ValidateInputsAreSameShape(TFRTOpKernel* op);
@@ -166,7 +163,7 @@ class TFRTOpKernelContext {
   std::vector<Tensor> outputs_;
 
   // If an error occurs, the error message is stored here.
-  llvm::Optional<std::string> error_;
+  std::optional<std::string> error_;
 
   tfrt::compat::EigenHostContext eigen_host_context_;
 };
@@ -174,7 +171,7 @@ class TFRTOpKernelContext {
 class TFRTOpKernel {
  public:
   explicit TFRTOpKernel(TFRTOpKernelConstruction* context) {}
-  virtual ~TFRTOpKernel() {}
+  virtual ~TFRTOpKernel() = default;
   virtual void Compute(TFRTOpKernelContext* context) = 0;
 };
 

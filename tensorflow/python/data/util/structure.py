@@ -23,15 +23,18 @@ from tensorflow.python.data.util import nest
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
+from tensorflow.python.framework import type_spec_registry
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.types import internal
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.compat import collections_abc
+from tensorflow.python.util.nest_util import CustomNestProtocol
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -39,7 +42,7 @@ from tensorflow.python.util.tf_export import tf_export
 @tf_export(v1=["data.experimental.TensorStructure"])
 @deprecation.deprecated(None, "Use `tf.TensorSpec` instead.")
 def _TensorStructure(dtype, shape):
-  return tensor_spec.TensorSpec(shape, dtype)
+  return tensor_lib.TensorSpec(shape, dtype)
 
 
 @tf_export(v1=["data.experimental.SparseTensorStructure"])
@@ -96,8 +99,6 @@ def normalize_element(element, element_signature=None):
     components = nest.flatten_up_to(element_signature, element)
     pack_as = element_signature
   with ops.name_scope("normalize_element"):
-    # Imported here to avoid circular dependency.
-    from tensorflow.python.data.ops import dataset_ops  # pylint: disable=g-import-not-at-top
     for i, (t, spec) in enumerate(zip(components, flattened_signature)):
       try:
         if spec is None:
@@ -108,14 +109,17 @@ def normalize_element(element, element_signature=None):
         normalized_components.append(
             ops.convert_to_tensor(t, name="component_%d" % i))
       else:
-        if isinstance(spec, sparse_tensor.SparseTensorSpec):
+        # To avoid a circular dependency between dataset_ops and structure,
+        # we check the class name instead of using `isinstance`.
+        if spec.__class__.__name__ == "DatasetSpec":
+          normalized_components.append(t)
+        elif isinstance(spec, sparse_tensor.SparseTensorSpec):
           normalized_components.append(sparse_tensor.SparseTensor.from_value(t))
         elif isinstance(spec, ragged_tensor.RaggedTensorSpec):
           normalized_components.append(
               ragged_tensor.convert_to_tensor_or_ragged_tensor(
                   t, name="component_%d" % i))
-        elif isinstance(
-            spec, (tensor_array_ops.TensorArraySpec, dataset_ops.DatasetSpec)):
+        elif isinstance(spec, (tensor_array_ops.TensorArraySpec)):
           normalized_components.append(t)
         elif isinstance(spec, NoneTensorSpec):
           normalized_components.append(NoneTensor())
@@ -168,8 +172,8 @@ def convert_legacy_structure(output_types, output_shapes, output_classes):
       flat_ret.append(flat_class)
     elif issubclass(flat_class, sparse_tensor.SparseTensor):
       flat_ret.append(sparse_tensor.SparseTensorSpec(flat_shape, flat_type))
-    elif issubclass(flat_class, ops.Tensor):
-      flat_ret.append(tensor_spec.TensorSpec(flat_shape, flat_type))
+    elif issubclass(flat_class, tensor_lib.Tensor):
+      flat_ret.append(tensor_lib.TensorSpec(flat_shape, flat_type))
     elif issubclass(flat_class, tensor_array_ops.TensorArray):
       # We sneaked the dynamic_size and infer_shape into the legacy shape.
       flat_ret.append(
@@ -339,6 +343,19 @@ def _to_tensor_list_helper(encode_fn, element_spec, element):
 
   def reduce_fn(state, value):
     spec, component = value
+    if isinstance(spec, internal.TensorSpec):
+      try:
+        component = ops.convert_to_tensor(component, spec.dtype)
+      except (TypeError, ValueError):
+        raise ValueError(
+            f"Value {component} is not convertible to a tensor with "
+            f"dtype {spec.dtype} and shape {spec.shape}."
+        )
+      if not component.shape.is_compatible_with(spec.shape):
+        raise ValueError(
+            f"Value {component} is not convertible to a tensor with "
+            f"dtype {spec.dtype} and shape {spec.shape}."
+        )
     return encode_fn(state, spec, component)
 
   return functools.reduce(
@@ -477,6 +494,12 @@ def type_spec_from_value(element, use_fallback=True):
         type_spec_from_value(getattr(element, a.name)) for a in attrs
     ])
 
+  if isinstance(element, CustomNestProtocol):
+    # pylint: disable=protected-access
+    metadata, children = element.__tf_flatten__()
+    return element.__tf_unflatten__(metadata, type_spec_from_value(children))
+    # pylint: enable=protected-access
+
   if use_fallback:
     # As a fallback try converting the element to a tensor.
     try:
@@ -505,7 +528,7 @@ class NoneTensor(composite_tensor.CompositeTensor):
 
 # TODO(b/149584798): Move this to framework and add tests for non-tf.data
 # functionality.
-@type_spec.register("tf.NoneTensorSpec")
+@type_spec_registry.register("tf.NoneTensorSpec")
 class NoneTensorSpec(type_spec.BatchableTypeSpec):
   """Type specification for `None` value."""
 

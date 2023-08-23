@@ -22,6 +22,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
@@ -190,7 +191,7 @@ class ReconstructionOpsTest(test.TestCase, parameterized.TestCase):
     # the second batch item by the integers from 0 to 99. Since there is zero
     # overlap, the gradient for this batch item will be 0-99 shaped as (10,
     # 10).
-    reconstruction *= array_ops.stack(
+    reconstruction *= array_ops_stack.stack(
         [array_ops.zeros((100,)),
          math_ops.cast(math_ops.range(100), dtypes.float32)])
     loss = math_ops.reduce_sum(reconstruction)

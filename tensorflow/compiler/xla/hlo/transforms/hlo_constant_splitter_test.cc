@@ -93,7 +93,7 @@ TEST_F(HloConstantSplitterTest, SplittingExpressions) {
       b2 = f32[1024] broadcast(constant3), dimensions={}
       b3 = f32[1024] broadcast(constant4), dimensions={}
       cmp = pred[1024] compare(constant1, b), direction=LT
-      %s = f32[1024] select(cmp, b2, b3)
+      s = f32[1024] select(cmp, b2, b3)
       a1 = f32[1024] add(s, gte0)
       a2 = f32[1024] add(s, gte1)
       ROOT root = (f32[1024], f32[1024]) tuple(a1, a2)
@@ -109,6 +109,39 @@ TEST_F(HloConstantSplitterTest, SplittingExpressions) {
   EXPECT_TRUE(status_or.value());
   XLA_VLOG_LINES(1, module->entry_computation()->ToString());
   EXPECT_EQ(module->entry_computation()->instruction_count(), 23);
+}
+
+TEST_F(HloConstantSplitterTest, NoSplittingSideEffectExpressions) {
+  const char* module_str = R"(
+    HloModule test_module
+
+    ENTRY entry_computation {
+      gte0 = f32[1024] parameter(0)
+      gte1 = f32[1024] parameter(1)
+      constant1 = f32[1024] iota(), iota_dimension=0
+      constant2 = f32[] constant(9.1934)
+      constant3 = f32[] constant(0.0)
+      constant4 = f32[] constant(0.0)
+      constant5 = f32[] constant(1.0)
+      b = f32[1024] broadcast(constant2), dimensions={}
+      b2 = f32[1024] broadcast(constant3), dimensions={}
+      rng = f32[] rng(constant4, constant5), distribution=rng_uniform
+      b3 = f32[1024] broadcast(rng), dimensions={}
+      cmp = pred[1024] compare(constant1, b), direction=LT
+      s = f32[1024] select(cmp, b2, b3)
+      a1 = f32[1024] add(s, gte0)
+      a2 = f32[1024] add(s, gte1)
+      ROOT root = (f32[1024], f32[1024]) tuple(a1, a2)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(module_str));
+  HloConstantSplitter pass = HloConstantSplitter(/*split_expressions=*/true);
+  // Verify that the module is not changed as splitting on rng is prevented.
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          HloTestBase::RunHloPass(&pass, module.get()));
+  EXPECT_FALSE(changed);
 }
 
 }  // namespace

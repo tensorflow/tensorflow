@@ -45,7 +45,8 @@ bool StatusIsMatcherCommonImpl::MatchAndExplain(
   ::testing::StringMatchResultListener inner_listener;
 
   inner_listener.Clear();
-  if (!code_matcher_.MatchAndExplain(status.code(), &inner_listener)) {
+  if (!code_matcher_.MatchAndExplain(
+          static_cast<absl::StatusCode>(status.code()), &inner_listener)) {
     *result_listener << (inner_listener.str().empty()
                              ? "whose status code is wrong"
                              : "which has a status code " +
@@ -53,7 +54,7 @@ bool StatusIsMatcherCommonImpl::MatchAndExplain(
     return false;
   }
 
-  if (!message_matcher_.Matches(std::string(status.error_message()))) {
+  if (!message_matcher_.Matches(std::string(status.message()))) {
     *result_listener << "whose error message is wrong";
     return false;
   }

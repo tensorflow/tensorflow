@@ -37,11 +37,8 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
-#include "stablehlo/dialect/Register.h"  // from @stablehlo
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/register.h"
 
 namespace mlir {
 namespace odml {
@@ -60,11 +57,6 @@ class StablehloToTflPass
   void runOnOperation() override;
 
   void getDependentDialects(DialectRegistry& registry) const override {
-    mlir::mhlo::registerAllMhloDialects(registry);
-    mlir::stablehlo::registerAllDialects(registry);
-    registry.insert<mlir::func::FuncDialect, mlir::arith::ArithDialect>();
-    registry.insert<::mlir::mhlo::MhloDialect>();
-    registry.insert<shape::ShapeDialect>();
     registry.insert<TFL::TensorFlowLiteDialect>();
   }
   inline TFL::ConstBytesAttr CustomOption(OpBuilder* builder,
@@ -87,8 +79,8 @@ void StablehloToTflPass::runOnOperation() {
   func::FuncOp fn = getOperation();
   OpBuilder builder(fn.getContext());
   fn.walk([&](Operation* op) {
-    // Process only MHLO ops.
-    if (op->getDialect()->getNamespace() != "mhlo") return;
+    // Process only StableHLO ops.
+    if (op->getDialect()->getNamespace() != "stablehlo") return;
 
     // Build options.
     std::string custom_option_buffer;
@@ -142,16 +134,16 @@ void StablehloToTflPass::runOnOperation() {
         auto start = fbb->StartVector(key);
         auto array_attr = attr.dyn_cast<mlir::ArrayAttr>();
         if (array_attr.size() > 1 && !array_attr[0].isa<mlir::StringAttr>() &&
-            !array_attr[0].isa<mlir::mhlo::PrecisionAttr>()) {
+            !array_attr[0].isa<mlir::stablehlo::PrecisionAttr>()) {
           emitWarning(op->getLoc(), "serialization of ArrayAttr for ")
               << key << " only supports Strings.";
           continue;
         }
         for (auto value : array_attr) {
-          if (value.isa<mlir::mhlo::PrecisionAttr>()) {
+          if (value.isa<mlir::stablehlo::PrecisionAttr>()) {
             auto string_value =
-                mlir::mhlo::stringifyPrecision(
-                    value.cast<mlir::mhlo::PrecisionAttr>().getValue())
+                mlir::stablehlo::stringifyPrecision(
+                    value.cast<mlir::stablehlo::PrecisionAttr>().getValue())
                     .data();
             fbb->Add(string_value);
           } else {
@@ -164,9 +156,9 @@ void StablehloToTflPass::runOnOperation() {
         continue;
       }
 
-      if (attr.isa<::mlir::mhlo::ConvDimensionNumbersAttr>()) {
+      if (attr.isa<::mlir::stablehlo::ConvDimensionNumbersAttr>()) {
         auto dimension_attr =
-            attr.dyn_cast<::mlir::mhlo::ConvDimensionNumbersAttr>();
+            attr.dyn_cast<::mlir::stablehlo::ConvDimensionNumbersAttr>();
         auto start = fbb->StartVector(key);
         fbb->Add(dimension_attr.getInputBatchDimension());
         fbb->Add(dimension_attr.getInputFeatureDimension());
@@ -181,9 +173,9 @@ void StablehloToTflPass::runOnOperation() {
         continue;
       }
 
-      if (attr.isa<::mlir::mhlo::GatherDimensionNumbersAttr>()) {
+      if (attr.isa<::mlir::stablehlo::GatherDimensionNumbersAttr>()) {
         auto dimension_attr =
-            attr.dyn_cast<::mlir::mhlo::GatherDimensionNumbersAttr>();
+            attr.dyn_cast<::mlir::stablehlo::GatherDimensionNumbersAttr>();
         auto start = fbb->StartVector(key);
         AddIntegerArray(fbb.get(), dimension_attr.getOffsetDims());
         AddIntegerArray(fbb.get(), dimension_attr.getCollapsedSliceDims());
@@ -193,9 +185,9 @@ void StablehloToTflPass::runOnOperation() {
         continue;
       }
 
-      if (attr.isa<::mlir::mhlo::ScatterDimensionNumbersAttr>()) {
+      if (attr.isa<::mlir::stablehlo::ScatterDimensionNumbersAttr>()) {
         auto dimension_attr =
-            attr.dyn_cast<::mlir::mhlo::ScatterDimensionNumbersAttr>();
+            attr.dyn_cast<::mlir::stablehlo::ScatterDimensionNumbersAttr>();
         auto start = fbb->StartVector(key);
         AddIntegerArray(fbb.get(), dimension_attr.getUpdateWindowDims());
         AddIntegerArray(fbb.get(), dimension_attr.getInsertedWindowDims());
@@ -206,9 +198,9 @@ void StablehloToTflPass::runOnOperation() {
         continue;
       }
 
-      if (attr.isa<::mlir::mhlo::DotDimensionNumbersAttr>()) {
+      if (attr.isa<::mlir::stablehlo::DotDimensionNumbersAttr>()) {
         auto dimension_attr =
-            attr.dyn_cast<::mlir::mhlo::DotDimensionNumbersAttr>();
+            attr.dyn_cast<::mlir::stablehlo::DotDimensionNumbersAttr>();
         auto start = fbb->StartVector(key);
         AddIntegerArray(fbb.get(), dimension_attr.getLhsBatchingDimensions());
         AddIntegerArray(fbb.get(), dimension_attr.getRhsBatchingDimensions());
@@ -220,19 +212,20 @@ void StablehloToTflPass::runOnOperation() {
         continue;
       }
 
-      if (attr.isa<::mlir::mhlo::ComparisonDirectionAttr>()) {
+      if (attr.isa<::mlir::stablehlo::ComparisonDirectionAttr>()) {
         auto string_value =
-            mlir::mhlo::stringifyComparisonDirection(
-                attr.cast<mlir::mhlo::ComparisonDirectionAttr>().getValue())
+            mlir::stablehlo::stringifyComparisonDirection(
+                attr.cast<mlir::stablehlo::ComparisonDirectionAttr>()
+                    .getValue())
                 .str();
         fbb->String(key, string_value);
         continue;
       }
 
-      if (attr.isa<::mlir::mhlo::ComparisonTypeAttr>()) {
+      if (attr.isa<::mlir::stablehlo::ComparisonTypeAttr>()) {
         auto string_value =
-            mlir::mhlo::stringifyComparisonType(
-                attr.cast<mlir::mhlo::ComparisonTypeAttr>().getValue())
+            mlir::stablehlo::stringifyComparisonType(
+                attr.cast<mlir::stablehlo::ComparisonTypeAttr>().getValue())
                 .str();
         fbb->String(key, string_value);
         continue;

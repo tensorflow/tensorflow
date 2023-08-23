@@ -13,6 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
+#include <numeric>
+#include <vector>
+
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -22,7 +26,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-void SpaceToBatch(XlaOpKernelContext* ctx, const xla::XlaOp& input,
+void SpaceToBatch(XlaOpKernelContext* ctx, const xla::XlaOp input,
                   DataType input_dtype, const TensorShape& input_tensor_shape,
                   absl::Span<const int64_t> block_shape,
                   const xla::Literal& paddings) {

@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_profiler_c_api.h"
+
 namespace stream_executor {
 namespace tpu {
 
@@ -26,6 +29,11 @@ TfTpu_BaseFn* InitializeApiFn() {
 const TfTpu_OpsApiFn* OpsApiFn() {
   static TfTpu_OpsApiFn ops_api_fn;
   return &ops_api_fn;
+}
+
+const TfTpu_ProfilerApiFn* ProfilerApiFn() {
+  static TfTpu_ProfilerApiFn profiler_api_fn;
+  return &profiler_api_fn;
 }
 
 }  // namespace tpu

@@ -15,10 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/tpu/tpu_init_mode.h"
 
-#include <atomic>
-
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 

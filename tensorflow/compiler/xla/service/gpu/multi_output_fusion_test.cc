@@ -16,13 +16,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/multi_output_fusion.h"
 
 #include <optional>
-#include <string>
-#include <utility>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info_for_tests.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
+#include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
 namespace xla {
@@ -39,15 +39,19 @@ class MultiOutputFusionTest : public HloTestBase {
   }
 
  public:
-  GpuMultiOutputFusion mof_{TestGpuDeviceInfo::RTXA6000DeviceInfo(),
-                            ShapeSizeBytesFunction()};
+  GpuMultiOutputFusion mof_{
+      TestGpuDeviceInfo::RTXA6000DeviceInfo(),
+      se::CudaComputeCapability({se::CudaComputeCapability::AMPERE, 0}),
+      ShapeSizeBytesFunction()};
 
   void CheckGpuMultiOutputFusion(absl::string_view hlo,
                                  std::optional<absl::string_view> expected) {
     RunAndFilecheckHloRewrite(
         hlo,
-        GpuMultiOutputFusion{TestGpuDeviceInfo::RTXA6000DeviceInfo(),
-                             ShapeSizeBytesFunction()},
+        GpuMultiOutputFusion{
+            TestGpuDeviceInfo::RTXA6000DeviceInfo(),
+            se::CudaComputeCapability({se::CudaComputeCapability::AMPERE, 0}),
+            ShapeSizeBytesFunction()},
         expected);
   }
 };
@@ -242,6 +246,45 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionSiblingReduceFusions) {
               op::Tuple(op::Reduce(), op::Reduce()));
 }
 
+TEST_F(MultiOutputFusionTest, MultiOutputFusionNoSiblingFusionForCommonScalar) {
+  // Two sibling fusions with bitcast roots sharing the same scalar input param.
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    fused_computation_1 {
+      param_0.87 = bf16[32,4096,16384]{2,1,0} parameter(0)
+      param_1.4620 = s32[] parameter(1)
+      constant_3949 = s32[] constant(0)
+      compare.1026 = pred[] compare(param_1.4620, constant_3949), direction=LT
+      constant_5437 = s32[] constant(32)
+      add.6859 = s32[] add(param_1.4620, constant_5437)
+      select.1599 = s32[] select(compare.1026, add.6859, param_1.4620)
+      dynamic-slice.59 = bf16[1,4096,16384]{2,1,0} dynamic-slice(param_0.87, select.1599, constant_3949, constant_3949), dynamic_slice_sizes={1,4096,16384}
+      ROOT bitcast.41089 = bf16[4096,16384]{1,0} bitcast(dynamic-slice.59)
+    }
+
+    fused_computation_2 {
+      param_0 = bf16[32,4096,16384]{2,1,0} parameter(0)
+      param_1 = s32[] parameter(1)
+      constant = s32[] constant(0)
+      compare = pred[] compare(param_1, constant), direction=LT
+      constant.32 = s32[] constant(32)
+      add = s32[] add(param_1, constant.32)
+      select = s32[] select(compare, add, param_1)
+      dynamic-slice = bf16[1,4096,16384]{2,1,0} dynamic-slice(param_0, select, constant, constant), dynamic_slice_sizes={1,4096,16384}
+      ROOT bitcast.41087 = bf16[4096,16384]{1,0} bitcast(dynamic-slice)
+    }
+
+    ENTRY entry {
+      p0 = s32[] parameter(0)
+      p1 = bf16[32,4096,16384]{2,1,0} parameter(1)
+      p2 = bf16[32,4096,16384]{2,1,0} parameter(2)
+      fusion.1 = bf16[4096,16384]{1,0} fusion(p1, p0), kind=kLoop, calls=fused_computation_1
+      fusion.2 = bf16[4096,16384]{1,0} fusion(p2, p0), kind=kLoop, calls=fused_computation_2
+      ROOT root = (bf16[4096,16384]{1,0}, bf16[4096,16384]{1,0}) tuple(fusion.1, fusion.2)
+    })"))
+                    .value();
+  ASSERT_FALSE(mof_.Run(module.get()).value());
+}
+
 TEST_F(MultiOutputFusionTest,
        MultiOutputFusionSiblingReduceAndReduceMultiOutputFusion) {
   // Multi-output fusion with two reduce instructions root and a sibling reduce
@@ -306,6 +349,119 @@ TEST_F(MultiOutputFusionTest,
     })"))
                     .value();
   ASSERT_FALSE(mof_.Run(module.get()).value());
+}
+
+TEST_F(MultiOutputFusionTest, LoopVariadicReductionFusions) {
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    fused_computation.94 {
+      tmp_0 = f32[] parameter(0)
+      tmp_1 = f32[] parameter(1)
+      tmp_2 = pred[] compare(tmp_0, tmp_1), direction=GE
+      tmp_3 = f32[] select(tmp_2, tmp_0, tmp_1)
+      tmp_4 = pred[] compare(tmp_0, tmp_1), direction=EQ
+      tmp_5 = s32[] parameter(2)
+      tmp_6 = s32[] parameter(3)
+      tmp_7 = s32[] minimum(tmp_5, tmp_6)
+      tmp_8 = s32[] select(tmp_2, tmp_5, tmp_6)
+      tmp_9 = s32[] select(tmp_4, tmp_7, tmp_8)
+      ROOT tmp_10 = (f32[], s32[]) tuple(tmp_3, tmp_9)
+    }
+
+    minmax_func.1536 {
+      tmp_0 = f32[] parameter(0)
+      tmp_1 = f32[] parameter(2)
+      tmp_2 = s32[] parameter(1)
+      tmp_3 = s32[] parameter(3)
+      ROOT tmp_4 = (f32[], s32[]) fusion(tmp_0, tmp_1, tmp_2, tmp_3), kind=kLoop, calls=fused_computation.94
+    }
+
+    fused_computation {
+      tmp_0 = f32[554112,10]{1,0} parameter(0)
+      tmp_1 = s32[554112,10]{1,0} iota(), iota_dimension=1
+      tmp_2 = f32[] constant(-inf)
+      tmp_3 = s32[] constant(0)
+      ROOT tmp_4 = (f32[554112]{0}, s32[554112]{0}) reduce(tmp_0, tmp_1, tmp_2, tmp_3), dimensions={1}, to_apply=minmax_func.1536
+    }
+
+    fused_computation2 {
+      tmp_0 = f32[554112,10]{1,0} parameter(0)
+      tmp_1 = s32[554112,10]{1,0} iota(), iota_dimension=1
+      tmp_2 = f32[] constant(inf)
+      tmp_3 = s32[] constant(1)
+      ROOT tmp_4 = (f32[554112]{0}, s32[554112]{0}) reduce(tmp_0, tmp_1, tmp_2, tmp_3), dimensions={1}, to_apply=minmax_func.1536
+    }
+
+    ENTRY e {
+      tmp_0 = f32[554112,10]{1,0} parameter(0)
+      tmp_1 = (f32[554112]{0}, s32[554112]{0}) fusion(tmp_0), kind=kLoop, calls=fused_computation
+      tmp_2 = s32[554112]{0} get-tuple-element(tmp_1), index=1
+      tmp_4 = (f32[554112]{0}, s32[554112]{0}) fusion(tmp_0), kind=kLoop, calls=fused_computation2
+      tmp_5 = s32[554112]{0} get-tuple-element(tmp_4), index=1
+      ROOT tmp_6 = s32[554112]{0} add(tmp_2, tmp_5)
+    })"))
+                    .value();
+  EXPECT_FALSE(mof_.Run(module.get()).value());
+}
+
+TEST_F(MultiOutputFusionTest, InputVariadicReductionFusions) {
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    fused_computation.1117 {
+      param_0.2433 = f32[] parameter(0)
+      param_1.2571 = f32[] parameter(1)
+      compare.1770 = pred[] compare(param_0.2433, param_1.2571), direction=LE
+      select.682 = f32[] select(compare.1770, param_0.2433, param_1.2571)
+      compare.1303.clone.1 = pred[] compare(param_0.2433, param_1.2571), direction=EQ
+      param_2.6460 = s32[] parameter(2)
+      param_3.6755 = s32[] parameter(3)
+      minimum.633.clone.1 = s32[] minimum(param_2.6460, param_3.6755)
+      select.398.clone.1 = s32[] select(compare.1770, param_2.6460, param_3.6755)
+      select.397.clone.1 = s32[] select(compare.1303.clone.1, minimum.633.clone.1, select.398.clone.1)
+      ROOT tuple.151 = (f32[], s32[]) tuple(select.682, select.397.clone.1)
+    }
+
+    minmax_func.223 {
+      lhs_value.224 = f32[] parameter(0)
+      rhs_value.226 = f32[] parameter(2)
+      lhs_index.225 = s32[] parameter(1)
+      rhs_index.227 = s32[] parameter(3)
+      ROOT fusion.1117 = (f32[], s32[]) fusion(lhs_value.224, rhs_value.226, lhs_index.225, rhs_index.227), kind=kLoop, calls=fused_computation.1117
+    }
+
+    fused_computation.73 {
+      bitcast.86661 = f32[3,1024,300]{2,1,0} parameter(0)
+      iota.734 = s32[3,1,1024,300]{3,2,1,0} iota(), iota_dimension=3
+      bitcast.97555 = s32[3,1024,300]{2,1,0} bitcast(iota.734)
+      constant_3917 = f32[] constant(inf)
+      constant_3918 = s32[] constant(0)
+      ROOT reduce.1069 = (f32[3,1024]{1,0}, s32[3,1024]{1,0}) reduce(bitcast.86661, bitcast.97555, constant_3917, constant_3918), dimensions={2}, to_apply=minmax_func.223
+    }
+
+    fused_computation.84 {
+      bitcast.86676 = f32[3,1024,300]{2,1,0} parameter(0)
+      iota.732 = s32[3,1,1024,300]{3,2,1,0} iota(), iota_dimension=3
+      bitcast.97553 = s32[3,1024,300]{2,1,0} bitcast(iota.732)
+      constant_3915 = f32[] constant(inf)
+      constant_3916 = s32[] constant(0)
+      ROOT reduce.1070 = (f32[3,1024]{1,0}, s32[3,1024]{1,0}) reduce(bitcast.86676, bitcast.97553, constant_3915, constant_3916), dimensions={2}, to_apply=minmax_func.223
+    }
+
+    ENTRY e {
+      p0 = f32[3,1024,300]{2,1,0} parameter(0)
+      fusion.84 = (f32[3,1024]{1,0}, s32[3,1024]{1,0}) fusion(p0), kind=kInput, calls=fused_computation.84
+      gte.391 = s32[3,1024]{1,0} get-tuple-element(fusion.84), index=1
+      fusion.73 = (f32[3,1024]{1,0}, s32[3,1024]{1,0}) fusion(p0), kind=kInput, calls=fused_computation.73
+      gte.393 = s32[3,1024]{1,0} get-tuple-element(fusion.73), index=1
+      ROOT r = s32[3,1024]{1,0} add(gte.391, gte.393)
+    })"))
+                    .value();
+  EXPECT_TRUE(mof_.Run(module.get()).value());
+  EXPECT_EQ(module->entry_computation()->parameter_instruction(0)->user_count(),
+            1);
+  const HloInstruction* fusion =
+      module->entry_computation()->parameter_instruction(0)->users()[0];
+  EXPECT_THAT(fusion, op::Fusion());
+  EXPECT_THAT(fusion->fused_expression_root(),
+              op::Tuple(op::Reduce(), op::Reduce()));
 }
 
 TEST_F(MultiOutputFusionTest, MultiOutputFusionTwoLoops) {
@@ -1441,46 +1597,79 @@ ENTRY e {
   EXPECT_FALSE(mof_.Run(module.get()).value());
 }
 
-TEST_F(MultiOutputFusionTest, SkipSoftmaxCustomCallComputation) {
+TEST_F(MultiOutputFusionTest, NoOverlappingRead) {
   auto module = ParseAndReturnVerifiedModule(R"(
-HloModule softmax
+    HloModule module
 
-%max_computation (arg_0: f32[], arg_1: f32[]) -> f32[] {
-  %arg_0 = f32[] parameter(0)
-  %arg_1 = f32[] parameter(1)
-  ROOT %maximum.2 = f32[] maximum(f32[] %arg_0, f32[] %arg_1)
-}
+    fused_computation_1 {
+      p0.1 = f32[100,200]{1,0} parameter(0)
+      slice.0 = f32[50,100]{1,0} slice(p0.1), slice={[0:50],[0:100]}
+      mul = f32[50,100]{1,0} multiply(slice.0, slice.0)
+      exp = f32[50,100]{1,0} exponential(slice.0)
+      ROOT tuple = (f32[50,100]{1,0}, f32[50,100]{1,0}) tuple(mul, exp)
+    }
 
-%add_computation (arg_0.1: f32[], arg_1.1: f32[]) -> f32[] {
-  %arg_0.1 = f32[] parameter(0)
-  %arg_1.1 = f32[] parameter(1)
-  ROOT %add = f32[] add(f32[] %arg_0.1, f32[] %arg_1.1)
-}
+    fused_computation_2 {
+      p0.2 = f32[100,200]{1,0} parameter(0)
+      slice.1 = f32[50,100]{1,0} slice(p0.2), slice={[0:50],[100:200]}
+      const.2 = f32[] constant(0)
+      broadcast = f32[50,100]{1,0} broadcast(const.2), dimensions={}
+      ROOT add = f32[50,100]{1,0} add(slice.1, broadcast)
+    }
 
-%softmax_computation (parameter_0: f32[10,2]) -> f32[10,2] {
-  %parameter_0 = f32[10,2]{1,0} parameter(0)
-  %constant = f32[] constant(-inf)
-  %reduce.1 = f32[10]{0} reduce(f32[10,2]{1,0} %parameter_0, f32[] %constant), dimensions={1}, to_apply=%max_computation
-  %broadcast.3 = f32[10,2]{1,0} broadcast(f32[10]{0} %reduce.1), dimensions={0}
-  %subtract.3 = f32[10,2]{1,0} subtract(f32[10,2]{1,0} %parameter_0, f32[10,2]{1,0} %broadcast.3)
-  %exponential.3 = f32[10,2]{1,0} exponential(f32[10,2]{1,0} %subtract.3)
-  %constant.1 = f32[] constant(0)
-  %second_reduce.1 = f32[10]{0} reduce(f32[10,2]{1,0} %exponential.3, f32[] %constant.1), dimensions={1}, to_apply=%add_computation
-  %broadcast.4 = f32[10,2]{1,0} broadcast(f32[10]{0} %second_reduce.1), dimensions={0}
-  ROOT %divide.2 = f32[10,2]{1,0} divide(f32[10,2]{1,0} %exponential.3, f32[10,2]{1,0} %broadcast.4)
-}
-
-ENTRY %main (param_0: f32[10,2]) -> f32[10,2] {
-  %param_0 = f32[10,2]{1,0} parameter(0)
-  ROOT %custom-call = f32[10,2]{1,0} custom-call(f32[10,2]{1,0} %param_0), custom_call_target="__softmax_fusion", called_computations={%softmax_computation}
-}
-)")
+    ENTRY entry {
+      p0 = f32[100,200]{1,0} parameter(0)
+      fusion.1 = (f32[50,100]{1,0}, f32[50,100]{1,0}) fusion(p0), kind=kLoop,
+        calls=fused_computation_1
+      gte0 = f32[50,100]{1,0} get-tuple-element(fusion.1), index=0
+      gte1 = f32[50,100]{1,0} get-tuple-element(fusion.1), index=1
+      fusion.2 = f32[50,100]{1,0} fusion(p0), kind=kLoop,
+        calls=fused_computation_2
+      ROOT root = (f32[50,100]{1,0}, f32[50,100]{1,0}, f32[50,100]{1,0})
+        tuple(gte0, gte1, fusion.2)
+    })")
                     .value();
+
   EXPECT_FALSE(mof_.Run(module.get()).value());
 }
 
-class TransposeMultiOutputFusionTest : public MultiOutputFusionTest {
-};
+TEST_F(MultiOutputFusionTest, OverlappingRead) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule module
+
+    fused_computation_1 {
+      p0.1 = f32[100,200]{1,0} parameter(0)
+      slice.0 = f32[50,100]{1,0} slice(p0.1), slice={[0:50],[50:150]}
+      mul = f32[50,100]{1,0} multiply(slice.0, slice.0)
+      exp = f32[50,100]{1,0} exponential(slice.0)
+      ROOT tuple = (f32[50,100]{1,0}, f32[50,100]{1,0}) tuple(mul, exp)
+    }
+
+    fused_computation_2 {
+      p0.2 = f32[100,200]{1,0} parameter(0)
+      slice.1 = f32[50,100]{1,0} slice(p0.2), slice={[30:80],[20:120]}
+      const.2 = f32[] constant(0)
+      broadcast = f32[50,100]{1,0} broadcast(const.2), dimensions={}
+      ROOT add = f32[50,100]{1,0} add(slice.1, broadcast)
+    }
+
+    ENTRY entry {
+      p0 = f32[100,200]{1,0} parameter(0)
+      fusion.1 = (f32[50,100]{1,0}, f32[50,100]{1,0}) fusion(p0), kind=kLoop,
+        calls=fused_computation_1
+      gte0 = f32[50,100]{1,0} get-tuple-element(fusion.1), index=0
+      gte1 = f32[50,100]{1,0} get-tuple-element(fusion.1), index=1
+      fusion.2 = f32[50,100]{1,0} fusion(p0), kind=kLoop,
+        calls=fused_computation_2
+      ROOT root = (f32[50,100]{1,0}, f32[50,100]{1,0}, f32[50,100]{1,0})
+        tuple(gte0, gte1, fusion.2)
+    })")
+                    .value();
+
+  EXPECT_TRUE(mof_.Run(module.get()).value());
+}
+
+class TransposeMultiOutputFusionTest : public MultiOutputFusionTest {};
 
 TEST_F(TransposeMultiOutputFusionTest, MultipleCopies) {
   const char* hlo = R"(
@@ -1561,7 +1750,15 @@ ENTRY main {
 }
   )";
 
-  CheckGpuMultiOutputFusion(hlo, std::nullopt);
+  CheckGpuMultiOutputFusion(hlo, R"(
+  // CHECK: %fused_computation ({{[^ ]+}} f32[16,32]) -> (f32[16,32], f32[32,16]) {
+  // CHECK-NEXT: [[param_0:%[^ ]+]] = f32[16,32]{1,0} parameter(0)
+  // CHECK-NEXT: [[s_1:%[^ ]+]] = f32[16,32]{1,0} sqrt([[param_0]])
+  // CHECK-NEXT: [[copy:%[^ ]+]] = f32[16,32]{0,1} copy([[s_1]])
+  // CHECK-NEXT: [[transpose:[^ ]+]] = f32[32,16]{1,0} transpose([[param_0]]), dimensions={1,0}
+  // CHECK-NEXT: ROOT {{[^ ]+}} = (f32[16,32]{0,1}, f32[32,16]{1,0}) tuple([[copy]], [[transpose]])
+  // CHECK: %fusion = (f32[16,32]{0,1}, f32[32,16]{1,0}) fusion(%{{.*}}), kind=kInput, calls=%fused_computation
+)");
 }
 
 TEST_F(TransposeMultiOutputFusionTest, MultipleCopiesDifferentTypes) {
@@ -1622,7 +1819,88 @@ ENTRY main {
   CheckGpuMultiOutputFusion(hlo, std::nullopt);
 }
 
-TEST_F(TransposeMultiOutputFusionTest, MultipleCopiesAndInput) {
+// Do not group incompatible transposes.
+TEST_F(TransposeMultiOutputFusionTest, IncompatibleTransposes) {
+  const char* hlo = R"(
+HloModule module
+
+fused_computation {
+  param_0.1 = f32[18,16,32]{2,1,0} parameter(0)
+  param_1.1 = f32[32,16,18]{2,1,0} parameter(1)
+  s.1 = f32[18,16,32]{2,1,0} sqrt(param_0.1)
+  t.1 = f32[32,16,18]{2,1,0} transpose(s.1), dimensions={2,1,0}
+  sub.1 = f32[32,16,18]{2,1,0} subtract(t.1, param_1.1)
+  exp.1 = f32[32,16,18]{2,1,0} exponential(sub.1)
+  ROOT add.1 = f32[32,16,18]{2,1,0} add(exp.1, exp.1)
+}
+
+fused_computation.2 {
+  param_0.2 = f32[18,16,32]{2,1,0} parameter(0)
+  s.2 = f32[18,16,32]{2,1,0} sqrt(param_0.2)
+  ROOT t.2 = f32[18,32,16]{2,1,0} transpose(s.2), dimensions={0,2,1}
+}
+
+ENTRY main {
+  p = f32[18,16,32]{2,1,0} parameter(0)
+  p2 = f32[32,16,18]{2,1,0} parameter(1)
+  fusion = f32[32,16,18]{2,1,0} fusion(p, p2), kind=kLoop, calls=fused_computation
+  fusion2 = f32[18,32,16]{2,1,0} fusion(p), kind=kInput, calls=fused_computation.2
+  ROOT t = (f32[32,16,18]{2,1,0}, f32[18,32,16]{2,1,0}) tuple(fusion, fusion2)
+}
+  )";
+
+  CheckGpuMultiOutputFusion(hlo, std::nullopt);
+}
+
+// A variation of the test above, where no CSE was run, so we don't detect
+// 'fusion' as a transpose fusion.
+TEST_F(TransposeMultiOutputFusionTest, IncompatibleTransposesNoCSE) {
+  const char* hlo = R"(
+HloModule module
+
+fused_computation {
+  param_0.1 = f32[18,16,32]{2,1,0} parameter(0)
+  param_1.1 = f32[32,16,18]{2,1,0} parameter(1)
+  s.1 = f32[18,16,32]{2,1,0} sqrt(param_0.1)
+  t.1 = f32[32,16,18]{2,1,0} transpose(s.1), dimensions={2,1,0}
+  sub.1 = f32[32,16,18]{2,1,0} subtract(t.1, param_1.1)
+  exp.1 = f32[32,16,18]{2,1,0} exponential(sub.1)
+  exp.2 = f32[32,16,18]{2,1,0} exponential(sub.1)
+  ROOT add.1 = f32[32,16,18]{2,1,0} add(exp.1, exp.2)
+}
+
+fused_computation.2 {
+  param_0.2 = f32[18,16,32]{2,1,0} parameter(0)
+  s.2 = f32[18,16,32]{2,1,0} sqrt(param_0.2)
+  ROOT t.2 = f32[18,32,16]{2,1,0} transpose(s.2), dimensions={0,2,1}
+}
+
+ENTRY main {
+  p = f32[18,16,32]{2,1,0} parameter(0)
+  p2 = f32[32,16,18]{2,1,0} parameter(1)
+  fusion = f32[32,16,18]{2,1,0} fusion(p, p2), kind=kLoop, calls=fused_computation
+  fusion2 = f32[18,32,16]{2,1,0} fusion(p), kind=kInput, calls=fused_computation.2
+  ROOT t = (f32[32,16,18]{2,1,0}, f32[18,32,16]{2,1,0}) tuple(fusion, fusion2)
+}
+  )";
+
+  CheckGpuMultiOutputFusion(hlo, R"(
+// CHECK: %fused_computation (param_0.1: f32[18,16,32], param_1.1: f32[32,16,18]) -> (f32[32,16,18], f32[18,32,16]) {
+// CHECK-NEXT: [[param_0:%[^ ]+]] = f32[18,16,32]{2,1,0} parameter(0)
+// CHECK-NEXT: [[s_1:%[^ ]+]] = f32[18,16,32]{2,1,0} sqrt([[param_0]])
+// CHECK-NEXT: [[t_1:%[^ ]+]] = f32[32,16,18]{2,1,0} transpose([[s_1]]), dimensions={2,1,0}
+// CHECK-NEXT: [[param_1:%[^ ]+]] = f32[32,16,18]{2,1,0} parameter(1)
+// CHECK-NEXT: [[sub:%[^ ]+]] = f32[32,16,18]{2,1,0} subtract([[t_1]], [[param_1]])
+// CHECK-NEXT: [[exp_1:%[^ ]+]] = f32[32,16,18]{2,1,0} exponential([[sub]])
+// CHECK-NEXT: [[exp_2:%[^ ]+]] = f32[32,16,18]{2,1,0} exponential([[sub]])
+// CHECK-NEXT: [[add:%[^ ]+]] = f32[32,16,18]{2,1,0} add([[exp_1]], [[exp_2]])
+// CHECK-NEXT: [[s_2:%[^ ]+]] = f32[18,16,32]{2,1,0} sqrt([[param_0]])
+// CHECK-NEXT: [[t_2:%[^ ]+]] = f32[18,32,16]{2,1,0} transpose([[s_2]]), dimensions={0,2,1}
+// CHECK-NEXT: ROOT %{{.*}} = (f32[32,16,18]{2,1,0}, f32[18,32,16]{2,1,0}) tuple([[add]], [[t_2]])
+})");
+}
+
+TEST_F(TransposeMultiOutputFusionTest, CopyAndInput) {
   const char* hlo = R"(
 HloModule module
 
@@ -1652,7 +1930,7 @@ ENTRY main {
 )");
 }
 
-TEST_F(TransposeMultiOutputFusionTest, MultipleCopiesAndInputEpilogueFusion) {
+TEST_F(TransposeMultiOutputFusionTest, CopyAndInputEpilogueFusion) {
   const char* hlo = R"(
 HloModule module
 

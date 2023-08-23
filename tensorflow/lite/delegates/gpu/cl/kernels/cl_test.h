@@ -30,6 +30,10 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
+#ifndef ASSERT_OK
+#define ASSERT_OK(x) ASSERT_TRUE(x.ok());
+#endif
+
 class ClExecutionEnvironment : public TestExecutionEnvironment {
  public:
   ClExecutionEnvironment() = default;

@@ -16,13 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_TPU_EXECUTOR_INTERFACE_H_
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_TPU_EXECUTOR_INTERFACE_H_
 
+#include <cstdint>
 #include <memory>
 
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_topology.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace tpu {
 class TpuCore;
@@ -34,9 +36,8 @@ namespace tpu {
 class TpuExecutorInterface
     : public stream_executor::internal::StreamExecutorInterface {
  public:
-  using Status = stream_executor::port::Status;
   template <typename T>
-  using StatusOr = stream_executor::port::StatusOr<T>;
+  using StatusOr = tsl::StatusOr<T>;
 
   class TemporaryDeviceMemory {
    public:
@@ -60,9 +61,9 @@ class TpuExecutorInterface
     LOG(FATAL) << "Unimplemented.";
   }
 
-  virtual Status UnloadAllPrograms() { LOG(FATAL) << "Unimplemented."; }
+  virtual tsl::Status UnloadAllPrograms() { LOG(FATAL) << "Unimplemented."; }
 
-  virtual Status EnqueueCompactionOnStreamForHbm(
+  virtual tsl::Status EnqueueCompactionOnStreamForHbm(
       stream_executor::Stream* compaction_stream) {
     LOG(FATAL) << "Unimplemented.";
   }

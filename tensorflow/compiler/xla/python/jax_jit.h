@@ -17,24 +17,22 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_PYTHON_JAX_JIT_H_
 
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
-#include "pybind11/pybind11.h"
-#ifdef JAX_ENABLE_IFRT
-#include "tensorflow/compiler/xla/python/ifrt/array.h"
-#endif
+#include "absl/types/span.h"
+#include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
-#include "tensorflow/compiler/xla/python/py_client.h"
+#include "tensorflow/compiler/xla/python/ifrt/array.h"
 #include "tensorflow/compiler/xla/python/py_values.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/pytree.h"
 #include "tensorflow/compiler/xla/python/sharding.h"
-#include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace jax {
 
@@ -56,7 +54,6 @@ struct JitState {
 
   std::optional<bool> disable_jit;
   std::optional<bool> enable_x64;
-  std::optional<bool> jax_array;
 
   // Used to manually set the default device jax should use. May be unset even
   // in global state, indicating there is no manual override.
@@ -82,7 +79,6 @@ JitState& ThreadLocalJitState();
 // fallback to global state.
 bool GetDisableJit();
 bool GetEnableX64();
-bool GetEnableJaxArray();
 // TODO(skyewm): return a C++ type when all JAX backends support a single C++
 // device interface
 std::optional<pybind11::object> GetDefaultDevice();
@@ -130,7 +126,10 @@ struct CallSignature {
   // This is not the case for PMAP, and is set to `nullptr`.
   xla::PjRtDevice* device = nullptr;
   bool jax_enable_x64;
-  bool jax_array = false;
+
+  // For JIT on PJIT, we need to fallback to python whenever default_device
+  // changes.
+  std::optional<pybind11::object> default_device;
 
   // Opaque additional context that should be included as part of the cache key.
   std::optional<pybind11::object> global_extra_jit_context;
@@ -208,19 +207,9 @@ struct ParsedArgumentsAsBuffers {
   absl::InlinedVector<pybind11::object, 2> flat_dynamic_args;
   std::vector<pybind11::object> keep_alive_objects;
 
-#ifdef JAX_ENABLE_IFRT
   xla::ifrt::Client* ifrt_client;
   // The following is only valid if the parsing succeeds.
   std::vector<tsl::RCReference<xla::ifrt::Array>> ifrt_arg_arrays;
-#else
-  // The following is only valid if the parsing succeeds.
-  std::vector<xla::PjRtBuffer*> arg_buffers;
-  // We may need to keep these objects around, because:
-  // (a) we need to extend the lifetime of objects created within
-  //    `CopyBuffersToDevice`
-  // (b) `arg_buffers` do not maintain ownership
-  std::vector<std::unique_ptr<xla::PjRtBuffer>> keep_alive;
-#endif
 };
 
 // Filter out static arguments, flatten and concatenate other arguments (i.e.
@@ -230,9 +219,17 @@ xla::Status ParseArguments(absl::Span<PyObject* const> positional_args,
                            pybind11::handle kwnames,
                            absl::Span<int const> static_argnums,
                            absl::Span<pybind11::str const> static_argnames,
+                           xla::PyTreeRegistry* pytree_registry,
                            ParsedArgumentsAsBuffers& arguments);
 
 // The function to call in `xla.cc` to add the bindings for this module.
+//
+// pybind11-index-annotation BEGIN
+// refs {
+//   module_path: "tensorflow/compiler/xla/python/xla.cc"
+//   module_arg {}
+// }
+// pybind11-index-annotation END
 void BuildJaxjitSubmodule(pybind11::module& m);
 
 }  // namespace jax

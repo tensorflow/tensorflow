@@ -15,12 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_freeze_variables.h"
 
+#include <iterator>
+#include <tuple>
 #include <utility>
 #include <vector>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
@@ -32,7 +35,6 @@ limitations under the License.
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/analysis/resource_value_typed_analyzer.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
@@ -45,6 +47,9 @@ limitations under the License.
 namespace mlir {
 namespace tf_saved_model {
 namespace {
+
+// Attribute name that specifies the input shapes of a function.
+constexpr StringRef kTfInputShapesAttr = "tf._input_shapes";
 
 // Build and returns ElementsAttr which holds the data in 'tensor'.
 ElementsAttr GetTensorValueAsElementsAttr(const tensorflow::Tensor& tensor,
@@ -133,6 +138,12 @@ void PropagateUsage(
     for (auto callee : {&while_op.getCond(), &while_op.getBody()}) {
       work_list->push_back(std::make_pair(callee, argument_index));
     }
+  } else if (auto batch_func_op = dyn_cast<TF::BatchFunctionOp>(user_op)) {
+    (*arguments_to_erase)[batch_func_op].push_back(argument_index);
+    // Add the called function to the work list.
+    func::FuncOp func_op = batch_func_op.func();
+    (*arguments_to_erase)[func_op].push_back(argument_index);
+    work_list->push_back({&func_op.getRegion(), argument_index});
   }
 }
 
@@ -176,22 +187,6 @@ void ReplaceVarWithConstant(
   }
 }
 
-// Helper that returns the FuncOp that is the SessionInit function which
-// will be called to initialize all resources.
-// Returns nullptr if no function is found.
-func::FuncOp GetSessionInitializerFunc(ModuleOp module) {
-  auto session_init_op = tf_saved_model::GetSessionInitializerOp(module);
-  SymbolTable symbol_table(module);
-  if (session_init_op && !session_init_op.getInitializers().empty()) {
-    func::FuncOp init_func_op = symbol_table.lookup<mlir::func::FuncOp>(
-        session_init_op.getInitializers()[0]
-            .cast<FlatSymbolRefAttr>()
-            .getValue());
-    return init_func_op;
-  }
-  return nullptr;
-}
-
 // Returns ID for identifying a resource.
 std::tuple<llvm::StringRef, llvm::StringRef, llvm::StringRef> GetResourceKey(
     Operation* op) {
@@ -215,10 +210,10 @@ std::tuple<llvm::StringRef, llvm::StringRef, llvm::StringRef> GetResourceKey(
 }
 
 // Remove the initialization of the variables in 'var_handle_ops' from
-// the session init function 'sesion_init_func'
+// the session init function 'session_init_func'
 void RemoveVariablesInitializations(
     const llvm::SmallVector<TF::VarHandleOp, 4>& var_handle_ops,
-    func::FuncOp sesion_init_func) {
+    func::FuncOp session_init_func) {
   // We identify the variables using (device, container, shared_name) of the
   // resource. Capture them here and use them to identify the useless
   // initializations.
@@ -228,7 +223,7 @@ void RemoveVariablesInitializations(
     variables.insert(GetResourceKey(var_handle_op));
 
   llvm::SmallVector<Operation*, 4> work_list;
-  for (auto var_handle_op : sesion_init_func.getOps<TF::VarHandleOp>()) {
+  for (auto var_handle_op : session_init_func.getOps<TF::VarHandleOp>()) {
     if (variables.count(GetResourceKey(var_handle_op)))
       work_list.push_back(var_handle_op);
   }
@@ -254,9 +249,9 @@ void RemoveVariablesInitializations(
 // Updates terminator op arguments of 'func' after removing arguments
 // specified in 'arguments_to_erase'.
 template <typename T>
-void UpdateTerminatorArguments(
-    T& func, const llvm::SmallVector<unsigned, 4>& arguments_to_erase,
-    llvm::BitVector& erase_indices) {
+void UpdateTerminatorArguments(T& func,
+                               const ArrayRef<unsigned> arguments_to_erase,
+                               llvm::BitVector& erase_indices) {
   auto terminator = func.front().getTerminator();
   int num_operands = terminator->getNumOperands();
   erase_indices.resize(num_operands);
@@ -264,8 +259,7 @@ void UpdateTerminatorArguments(
     auto argument = func.getArgument(arg_index);
     for (auto& use : argument.getUses()) {
       if (llvm::isa<func::ReturnOp, TF::YieldOp>(use.getOwner())) {
-        int operand_index = use.getOperandNumber();
-        erase_indices.set(operand_index);
+        erase_indices.set(use.getOperandNumber());
       }
     }
     func.getArgument(arg_index).dropAllUses();
@@ -305,18 +299,79 @@ T GetUpdatedWhileOp(T while_op, const U& argument_types,
   return new_while_op;
 }
 
+// Erases function arguments indexed at `args_to_erase`. Also applies the
+// changes to any relevant function attributes accordingly.
+void EraseFuncOpArguments(func::FuncOp func_op,
+                          const ArrayRef<unsigned> args_to_erase) {
+  BitVector args_to_erase_bit_vector(func_op.getNumArguments());
+  for (const unsigned i : args_to_erase) args_to_erase_bit_vector.set(i);
+
+  func_op.eraseArguments(args_to_erase_bit_vector);
+
+  // Erases entries in "tf._input_shapes" attribute of `func_op` that correspond
+  // to the erased arguments.
+  if (auto input_shapes_attr =
+          func_op->getAttrOfType<ArrayAttr>(kTfInputShapesAttr);
+      input_shapes_attr) {
+    // Construct a new array of input shapes excluding the input shapes of the
+    // erased arguments.
+    SmallVector<Attribute> updated_input_shapes_attr;
+    for (const unsigned i : args_to_erase_bit_vector.flip().set_bits()) {
+      updated_input_shapes_attr.emplace_back(input_shapes_attr[i]);
+    }
+
+    // Replaces the attribute with the updated "#tf_type.shape" array.
+    // Builder builder(func_op.getContext());
+    func_op->setAttr(
+        kTfInputShapesAttr,
+        ArrayAttr::get(func_op.getContext(), updated_input_shapes_attr));
+  }
+}
+
+// Validates func ops. Returns `failure` if the function is invalid.
+LogicalResult ValidateFuncOp(func::FuncOp func_op) {
+  auto input_shapes_attr =
+      func_op->getAttrOfType<ArrayAttr>(kTfInputShapesAttr);
+  if (!input_shapes_attr) return success();
+
+  if (input_shapes_attr.size() != func_op.getNumArguments()) {
+    return func_op->emitError(
+               "Number of arguments and 'tf._input_shapes' "
+               "attribute size do not match. ")
+           << "Num args: " << func_op.getNumArguments()
+           << ", tf._input_shapes size: " << input_shapes_attr.size();
+  }
+
+  return success();
+}
+
+// Validates ModuleOp. Returns `failure` if the module op is invalid.
+LogicalResult ValidateModule(ModuleOp module_op) {
+  for (auto func_op : module_op.getOps<func::FuncOp>()) {
+    if (failed(ValidateFuncOp(func_op))) {
+      return failure();
+    }
+  }
+  return success();
+}
+
 }  // namespace
 
 LogicalResult FreezeVariables(ModuleOp module, tensorflow::Session* session) {
+  if (failed(ValidateModule(module))) return failure();
+
   const tensorflow::DeviceMgr* mgr = nullptr;
   auto status = session->LocalDeviceManager(&mgr);
   if (!status.ok()) {
-    module->emitError("failed to fetch device manager: " +
-                      status.error_message());
+    module->emitError(
+        absl::StrCat("failed to fetch device manager: ", status.message()));
     return failure();
   }
 
-  func::FuncOp session_init_func = GetSessionInitializerFunc(module);
+  SmallVector<func::FuncOp, 2> session_init_funcs =
+      tf_saved_model::GetInitializerFunctions(module);
+  func::FuncOp session_init_func =
+      session_init_funcs.empty() ? nullptr : session_init_funcs[0];
 
   TF::ResourceAnalyzer analyzer(module, /*skip_session_init=*/true);
   llvm::SmallVector<TF::VarHandleOp, 4> variables;
@@ -347,40 +402,34 @@ LogicalResult FreezeVariables(ModuleOp module, tensorflow::Session* session) {
 
   // Container to hold all update actions on ops.
   // Key: Operation to update.
-  // Value: optional list of arguments to delete from this op.
+  // Value: optional list of argument indices to delete from this op.
   // Note that we use MapVector because we want to iterate on the same order
   // of insertion.
   llvm::MapVector<Operation*, llvm::SmallVector<unsigned int, 4>>
       arguments_to_erase;
-  for (auto variable_value_pair :
+  for (auto [var_handle_op, resource_tensor] :
        llvm::zip(variables, resource_tensors_or.value())) {
-    auto var_handle_op = std::get<0>(variable_value_pair);
     builder.setInsertionPointAfterValue(var_handle_op);
     auto elements_attr = GetTensorValueAsElementsAttr(
-        var_handle_op, std::get<1>(variable_value_pair), mgr, builder);
+        var_handle_op, resource_tensor, mgr, builder);
     ReplaceVarWithConstant(var_handle_op, elements_attr, &arguments_to_erase);
   }
 
   // All updates to different ops are captured in 'arguments_to_erase'.
   // Now loop on them and based on each item type update accordingly.
-  for (auto& items : arguments_to_erase) {
-    auto* user_op = items.first;
-    auto& args_to_erase = items.second;
+  for (auto& [user_op, args_to_erase] : arguments_to_erase) {
     if (auto func = dyn_cast<func::FuncOp>(user_op)) {
       // To update a function we will need to:
       // 1) Remove the unused arguments from the function itself.
+      //    1-2) Remove func attributes corresponding to the removed arguments.
       // 2) Remove any returns that are not needed from the function terminator
-      // op in the function. 3) Update function result to match the terminator.
+      //    op in the function.
+      // 3) Update function result to match the terminator.
       llvm::BitVector result_indices_to_erase;
       UpdateTerminatorArguments(func, args_to_erase, result_indices_to_erase);
-      llvm::BitVector args_to_erase_bit_vector(func.getNumArguments());
-      for (auto i : args_to_erase) args_to_erase_bit_vector.set(i);
-      func.eraseArguments(args_to_erase_bit_vector);
-      llvm::BitVector indices_to_erase(func.getNumResults());
-      const int indices_to_erase_size = result_indices_to_erase.size();
-      for (int i = 0; i < indices_to_erase_size; ++i)
-        if (result_indices_to_erase.test(i)) indices_to_erase.set(i);
-      func.eraseResults(indices_to_erase);
+      EraseFuncOpArguments(func, args_to_erase);
+
+      func.eraseResults(result_indices_to_erase);
     } else if (auto read_var = dyn_cast<TF::ReadVariableOp>(user_op)) {
       // Read variables was already replaced by constant op. Just remove the op.
       read_var->erase();
@@ -405,6 +454,12 @@ LogicalResult FreezeVariables(ModuleOp module, tensorflow::Session* session) {
       for (auto i : args_to_erase) cond_bit_vector.set(i);
       new_while_op.getCond().front().eraseArguments(cond_bit_vector);
       while_op->erase();
+    } else if (auto batch_func_op = dyn_cast<TF::BatchFunctionOp>(user_op)) {
+      llvm::BitVector erase_indices(user_op->getNumOperands());
+      for (auto operand_index : args_to_erase) {
+        erase_indices.set(operand_index);
+      }
+      batch_func_op.eraseArguments(erase_indices);
     } else {
       llvm::BitVector erase_indices(user_op->getNumOperands());
       for (auto operand_index : args_to_erase) {

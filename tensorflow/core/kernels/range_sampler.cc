@@ -233,36 +233,37 @@ void UnigramSampler::Update(ArraySlice<int64_t> values) {
   unsafe_sampler_.Update(values);
 }
 
-FixedUnigramSampler::FixedUnigramSampler(Env* env, int64_t range,
-                                         const string& vocab_file,
-                                         float distortion,
+FixedUnigramSampler::FixedUnigramSampler(int64_t range, float distortion,
                                          int32_t num_reserved_ids,
                                          int32_t num_shards, int32_t shard)
     : RangeSampler(range),
       total_weight_(0.0),
       num_shards_(num_shards),
-      shard_(shard) {
+      shard_(shard),
+      distortion_(distortion) {
   FillReservedIds(num_reserved_ids);
-  // TODO(vanhoucke): make this non-crashing.
-  TF_CHECK_OK(LoadFromFile(env, vocab_file, distortion));
-  CHECK_EQ(range, weights_.size());
-  dist_sampler_.reset(new random::DistributionSampler(weights_));
 }
 
-FixedUnigramSampler::FixedUnigramSampler(int64_t range,
-                                         const std::vector<float>& unigrams,
-                                         float distortion,
-                                         int32_t num_reserved_ids,
-                                         int32_t num_shards, int32_t shard)
-    : RangeSampler(range),
-      total_weight_(0.0),
-      num_shards_(num_shards),
-      shard_(shard) {
-  FillReservedIds(num_reserved_ids);
-  LoadFromUnigrams(unigrams, distortion);
-  // TODO(vanhoucke): make this non-crashing.
-  CHECK_EQ(range, weights_.size());
+Status FixedUnigramSampler::SetDistributionSampler(Env* env,
+                                                   const string& vocab_file) {
+  TF_RETURN_IF_ERROR(LoadFromFile(env, vocab_file, distortion_));
+  if (!TF_PREDICT_TRUE(FixedUnigramSampler::range() == weights_.size()))
+    return (errors::InvalidArgument("range is ", FixedUnigramSampler::range(),
+                                    " must be equal to weights size  ",
+                                    weights_.size()));
   dist_sampler_.reset(new random::DistributionSampler(weights_));
+  return OkStatus();
+}
+
+Status FixedUnigramSampler::SetDistributionSampler(
+    const std::vector<float>& unigrams) {
+  LoadFromUnigrams(unigrams, distortion_);
+  if (!TF_PREDICT_TRUE(FixedUnigramSampler::range() == weights_.size()))
+    return (errors::InvalidArgument("range is ", FixedUnigramSampler::range(),
+                                    " must be equal to weights size  ",
+                                    weights_.size()));
+  dist_sampler_.reset(new random::DistributionSampler(weights_));
+  return OkStatus();
 }
 
 float FixedUnigramSampler::Probability(int64_t value) const {

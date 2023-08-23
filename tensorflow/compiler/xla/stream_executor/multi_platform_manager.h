@@ -28,7 +28,7 @@ limitations under the License.
 // This will register platform plugins that can be discovered via this
 // interface. Sample API usage:
 //
-//   port::StatusOr<Platform*> platform_status =
+//   tsl::StatusOr<Platform*> platform_status =
 //      se::MultiPlatformManager::PlatformWithName("OpenCL");
 //   if (!platform_status.ok()) { ... }
 //   Platform* platform = platform_status.value();
@@ -36,7 +36,7 @@ limitations under the License.
 //   if (platform->VisibleDeviceCount() <= 0) { return; }
 //
 //   for (int i = 0; i < platform->VisibleDeviceCount(); ++i) {
-//     port::StatusOr<StreamExecutor*> executor_status =
+//     tsl::StatusOr<StreamExecutor*> executor_status =
 //        platform->ExecutorForDevice(i);
 //     if (!executor_status.ok()) {
 //       LOG(INFO) << "could not retrieve executor for device ordinal " << i
@@ -53,13 +53,12 @@ limitations under the License.
 //  - Platform name lookup is case-insensitive. "OpenCL" or "opencl" (or even
 //    ("OpEnCl") would work correctly in the above example.
 //
-// And similarly, for standard interfaces (BLAS, RNG, etc.) you can add
+// And similarly, for standard interfaces (BLAS, etc.) you can add
 // dependencies on support libraries, e.g.:
 //
 //    //third_party/tensorflow/compiler/xla/stream_executor/cuda:pluton_blas_plugin
 //    //third_party/tensorflow/compiler/xla/stream_executor/cuda:cudnn_plugin
 //    //third_party/tensorflow/compiler/xla/stream_executor/cuda:cublas_plugin
-//    //third_party/tensorflow/compiler/xla/stream_executor/cuda:curand_plugin
 
 #ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_MULTI_PLATFORM_MANAGER_H_
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_MULTI_PLATFORM_MANAGER_H_
@@ -70,11 +69,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/string_view.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/initialize.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
+#include "tensorflow/compiler/xla/stream_executor/platform/initialize.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace stream_executor {
 
@@ -85,7 +84,7 @@ class MultiPlatformManager {
   // already registered. The associated listener, if not null, will be used to
   // trace events for ALL executors for that platform.
   // Takes ownership of platform.
-  static port::Status RegisterPlatform(std::unique_ptr<Platform> platform);
+  static tsl::Status RegisterPlatform(std::unique_ptr<Platform> platform);
 
   // Retrieves the platform registered with the given platform name (e.g.
   // "CUDA", "OpenCL", ...) or id (an opaque, comparable value provided by the
@@ -97,15 +96,15 @@ class MultiPlatformManager {
   // If the requested platform is not registered, an error status is returned.
   // Ownership of the platform is NOT transferred to the caller --
   // the MultiPlatformManager owns the platforms in a singleton-like fashion.
-  static port::StatusOr<Platform*> PlatformWithName(absl::string_view target);
-  static port::StatusOr<Platform*> PlatformWithId(const Platform::Id& id);
+  static tsl::StatusOr<Platform*> PlatformWithName(absl::string_view target);
+  static tsl::StatusOr<Platform*> PlatformWithId(const Platform::Id& id);
 
   // Same functions as above, but allows platforms to be returned without
   // initialization if initialize_platform == false.
-  static port::StatusOr<Platform*> PlatformWithName(absl::string_view target,
-                                                    bool initialize_platform);
-  static port::StatusOr<Platform*> PlatformWithId(const Platform::Id& id,
-                                                  bool initialize_platform);
+  static tsl::StatusOr<Platform*> PlatformWithName(absl::string_view target,
+                                                   bool initialize_platform);
+  static tsl::StatusOr<Platform*> PlatformWithId(const Platform::Id& id,
+                                                 bool initialize_platform);
 
   // Retrieves the platform registered with the given platform name (e.g.
   // "CUDA", "OpenCL", ...) or id (an opaque, comparable value provided by the
@@ -117,20 +116,20 @@ class MultiPlatformManager {
   // If the requested platform is not registered, an error status is returned.
   // Ownership of the platform is NOT transferred to the caller --
   // the MultiPlatformManager owns the platforms in a singleton-like fashion.
-  static port::StatusOr<Platform*> InitializePlatformWithName(
+  static tsl::StatusOr<Platform*> InitializePlatformWithName(
       absl::string_view target,
       const std::map<std::string, std::string>& options);
 
-  static port::StatusOr<Platform*> InitializePlatformWithId(
+  static tsl::StatusOr<Platform*> InitializePlatformWithId(
       const Platform::Id& id,
       const std::map<std::string, std::string>& options);
 
   // Retrieves the platforms satisfying the given filter, i.e. returns true.
   // Returned Platforms are always initialized.
-  static port::StatusOr<std::vector<Platform*>> PlatformsWithFilter(
+  static tsl::StatusOr<std::vector<Platform*>> PlatformsWithFilter(
       const std::function<bool(const Platform*)>& filter);
 
-  static port::StatusOr<std::vector<Platform*>> PlatformsWithFilter(
+  static tsl::StatusOr<std::vector<Platform*>> PlatformsWithFilter(
       const std::function<bool(const Platform*)>& filter,
       bool initialize_platform);
 
@@ -156,7 +155,7 @@ class MultiPlatformManager {
   };
   // Registers a listeners to receive notifications about certain events.
   // Precondition: No Platform has been registered yet.
-  static port::Status RegisterListener(std::unique_ptr<Listener> listener);
+  static tsl::Status RegisterListener(std::unique_ptr<Listener> listener);
 };
 
 }  // namespace stream_executor

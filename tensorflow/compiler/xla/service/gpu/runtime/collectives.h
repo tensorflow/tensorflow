@@ -16,9 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_RUNTIME_COLLECTIVES_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_RUNTIME_COLLECTIVES_H_
 
+#include <cstdint>
+
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/node_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/runtime/custom_call_registry.h"
+#include "tensorflow/compiler/xla/service/gpu/nccl_collective_thunk.h"
 #include "tensorflow/compiler/xla/stream_executor/event.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 
@@ -39,35 +42,36 @@ class CollectivesSupport {
   //
   // This basically ports workaround from cr/435058849 to Xla runtime (see
   // details in the b/215649390).
-  Status MaybeBlockAfterFirstRun(int32_t uid, int32_t device_ordinal,
-                                 se::Stream* stream);
+  absl::Status MaybeBlockAfterFirstRun(int32_t uid, int32_t device_ordinal,
+                                       se::Stream* stream);
 
  private:
-  mutable absl::Mutex mutex_;
+  absl::Mutex mutex_;
 
   // Store if a particular collective operation was executed at least once. We
   // rely on unique `uid` assigned to each collective operation by the lowering
   // pass.
-  absl::flat_hash_map<int64_t, bool> executed_ ABSL_GUARDED_BY(mutex_);
+  absl::flat_hash_set<int64_t> executed_ ABSL_GUARDED_BY(mutex_);
 };
 
 // Support for running async collective operations communicating via events.
 class AsyncCollectivesSupport {
  public:
-  explicit AsyncCollectivesSupport(se::Stream* async_comm_stream);
+  explicit AsyncCollectivesSupport(absl::Span<se::Stream* const> async_streams);
 
-  StatusOr<se::Event> PopEvent(int32_t uid, int32_t device_ordinal);
-  Status PushEvent(int32_t uid, int32_t device_ordinal, se::Event done_event);
+  absl::Status RecordEvent(int32_t uid, AsyncStreamKind async_stream_kind);
+  absl::StatusOr<se::Event> PopEvent(int32_t uid);
 
-  se::Stream* async_comm_stream() const { return async_comm_stream_; }
+  se::Stream* async_comm_stream(AsyncStreamKind async_stream_kind) const {
+    return async_comm_streams_[async_stream_kind];
+  }
 
  private:
-  mutable absl::Mutex mutex_;
+  absl::Mutex mutex_;
+  absl::InlinedVector<se::Stream*, kAsyncStreamTotal> async_comm_streams_;
 
-  se::Stream* async_comm_stream_;
-
-  // Store done events for the AllReduceDone to wait on.
-  absl::node_hash_map<int64_t, se::Event> done_events_ ABSL_GUARDED_BY(mutex_);
+  // Store done events for the Done ops to wait upon.
+  absl::flat_hash_map<int, se::Event> done_events_ ABSL_GUARDED_BY(mutex_);
 };
 
 }  // namespace gpu

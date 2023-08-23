@@ -15,7 +15,7 @@
 """Exception handling statements: assert, etc."""
 
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.util import tf_inspect
 
 
@@ -73,7 +73,7 @@ def _tf_assert_stmt(expression1, expression2):
   expression2_tensors = expression2()
   if not isinstance(expression2_tensors, list):
     expression2_tensors = [expression2_tensors]
-  return control_flow_ops.Assert(expression1, expression2_tensors)
+  return control_flow_assert.Assert(expression1, expression2_tensors)
 
 
 def _py_assert_stmt(expression1, expression2):

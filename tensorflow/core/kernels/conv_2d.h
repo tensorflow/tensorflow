@@ -356,6 +356,30 @@ struct MatMulConvFunctor {
   }
 };
 
+// Use float32 accumulation for float16 by default to deal with precision
+// accumulation issues.  To enable float16 accumulation, set the environment
+// variable TF_CONV2D_USE_FP16_ACCUMULATE.
+template <typename Device, typename OutputKernel>
+struct MatMulConvFunctor<Device, Eigen::half, OutputKernel> {
+  // Computes on device "d": out = in0 * in1, where * is matrix
+  // multiplication.
+  void operator()(
+      const Device& d, typename TTypes<Eigen::half, 2>::Tensor out,
+      typename TTypes<Eigen::half, 2>::ConstTensor in0,
+      typename TTypes<Eigen::half, 2>::ConstTensor in1,
+      const Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1>& dim_pair,
+      const OutputKernel& output_kernel = OutputKernel()) {
+    if (Conv2dUseFp16Accumulate()) {
+      out.device(d) = in0.contract(in1, dim_pair, output_kernel);
+    } else {
+      out.device(d) =
+          in0.cast<float>()
+              .contract(in1.template cast<float>(), dim_pair, output_kernel)
+              .template cast<Eigen::half>();
+    }
+  }
+};
+
 // Use float32 accumulation for bfloat16 to deal with precision accumulation
 // issues.
 template <typename Device, typename OutputKernel>

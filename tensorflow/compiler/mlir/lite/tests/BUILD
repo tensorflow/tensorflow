@@ -7,6 +7,7 @@ package(
 )
 
 glob_lit_tests(
+    name = "all_tests",
     data = [":test_utilities"],
     driver = "@llvm-project//mlir:run_lit.sh",
     exclude = ["load-quantization-recipe.mlir"],
@@ -21,6 +22,7 @@ glob_lit_tests(
         "legalize-tf.mlir": ["no_rocm"],
         "optimize.mlir": ["no_rocm"],
         "prepare-tf.mlir": ["no_rocm"],
+        "const-fold.mlir": ["no_mac_arm64"],
     },
     test_file_exts = ["mlir"],
 )

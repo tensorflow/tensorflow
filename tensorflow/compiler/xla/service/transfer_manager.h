@@ -177,7 +177,7 @@ class TransferManager {
   // The shape of the buffer also have to be compatible with the host shape and
   // device shape.
   virtual Status ReadDynamicShapes(se::Stream* stream,
-                                   ShapedBuffer* device_buffer,
+                                   const ShapedBuffer* device_buffer,
                                    Shape* device_shape);
 
   // Transfers the given literal into the Infeed interface of the device,

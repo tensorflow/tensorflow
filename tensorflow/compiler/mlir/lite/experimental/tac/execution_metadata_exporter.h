@@ -15,16 +15,16 @@
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_TAC_EXECUTION_METADATA_EXPORTER_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_TAC_EXECUTION_METADATA_EXPORTER_H_
 
+#include <optional>
 #include <string>
 
-#include "llvm/ADT/Optional.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 
 namespace tflite {
 
 // Returns serialized string for the generated flatbuffer.
-llvm::Optional<std::string> ExportRuntimeMetadata(mlir::ModuleOp module);
+std::optional<std::string> ExportRuntimeMetadata(mlir::ModuleOp module);
 
 }  // namespace tflite
 

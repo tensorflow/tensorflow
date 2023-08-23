@@ -111,9 +111,11 @@ class PrepareDRQQuantizableOp : public OpRewritePattern<arith::ConstantOp> {
  public:
   explicit PrepareDRQQuantizableOp(MLIRContext* context,
                                    const quant::QuantizationSpecs& quant_specs,
+                                   OpSet op_set,
                                    bool enable_per_channel_quantization)
       : OpRewritePattern<arith::ConstantOp>(context),
         quant_specs_(quant_specs),
+        op_set_(op_set),
         enable_per_channel_quantization_(enable_per_channel_quantization) {}
 
   LogicalResult matchAndRewrite(arith::ConstantOp op,
@@ -178,6 +180,15 @@ class PrepareDRQQuantizableOp : public OpRewritePattern<arith::ConstantOp> {
     DenseFPElementsAttr attr;
     if (!matchPattern(op->getResult(0), m_Constant(&attr))) return false;
 
+    if (attr.size() < quant_specs_.minimum_elements_for_weights) {
+      op->emitRemark("Quantization is skipped for ")
+          << quantized_op->getName().getStringRef().str() << " because it has "
+          << attr.dyn_cast<DenseFPElementsAttr>().size()
+          << " elements which is fewer than the threshold("
+          << quant_specs_.minimum_elements_for_weights << " elements).";
+      return false;
+    }
+
     if (is_per_channel_quantization) {
       quant_type = quant::GetUniformQuantizedPerAxisTypeForWeight(
                        attr, quant_dim,
@@ -240,6 +251,7 @@ class PrepareDRQQuantizableOp : public OpRewritePattern<arith::ConstantOp> {
 
  protected:
   QuantizationSpecs quant_specs_;
+  OpSet op_set_;
   bool enable_per_channel_quantization_;
 };
 
@@ -251,90 +263,6 @@ void PrepareQuantizeDRQPass::removeAllStatsOp(func::FuncOp func) {
   });
 }
 
-// Apply constant transformations for the op_set.
-class PreprocessConstantOp : public OpRewritePattern<TF::PartitionedCallOp> {
- public:
-  explicit PreprocessConstantOp(MLIRContext* context, OpSet op_set)
-      : OpRewritePattern<TF::PartitionedCallOp>(context), op_set_(op_set) {}
-
-  LogicalResult matchAndRewrite(TF::PartitionedCallOp op,
-                                PatternRewriter& rewriter) const override {
-    const auto f_attr = op.getFAttr().dyn_cast<FlatSymbolRefAttr>();
-    // Non-quantizable op
-    if (!op->hasAttr(kQuantTraitAttrName)) return failure();
-    StringRef function_name = f_attr.getValue();
-    if (!function_name.startswith("composite_")) {
-      return failure();
-    }
-
-    std::unique_ptr<OpQuantSpec> spec = GetTFOpQuantSpec(op);
-    absl::flat_hash_set<int> operands = spec->quantizable_operands;
-
-    if (function_name.contains("depthwise_conv2d")) {
-      // Uniform Quantized op requires weights of tf.DepthwiseConv2dNative to
-      // be transformed from [H,W,C,M] to [H,W,1,CxM] where
-      // H=height,W=width,C=channel,M=multiplier. Therefore, a reshape op is
-      // inserted between the constant op and the function op so that the
-      // constant is safely transformed for the multi-use cases as well. Note
-      // that bias doesn't need transformation as its shape is already in [CxM].
-      if (operands.size() != 1) return failure();
-      int weight_operand_idx = *(operands.begin());
-      Operation* weight_op = op.getOperand(weight_operand_idx).getDefiningOp();
-
-      if (op_set_ == OpSet::UNIFORM_QUANTIZED) {
-        DenseFPElementsAttr attr;
-        if (!matchPattern(weight_op->getResult(0), m_Constant(&attr))) {
-          return failure();
-        }
-
-        // Get new shape.
-        llvm::ArrayRef<int64_t> cur_shape = attr.getType().getShape();
-        int cur_rank = cur_shape.size();
-        if (cur_rank != 4 || cur_shape[2] == 1) return failure();
-        TensorType new_shape = RankedTensorType::get(
-            {cur_shape[0], cur_shape[1], 1, cur_shape[2] * cur_shape[3]},
-            attr.getElementType());
-
-        // Inserts a reshape op.
-        RankedTensorType shape_spec_type =
-            RankedTensorType::get({cur_rank}, rewriter.getIntegerType(64));
-        DenseElementsAttr new_shape_const_attr =
-            DenseElementsAttr::get(shape_spec_type, new_shape.getShape());
-        rewriter.setInsertionPointAfter(weight_op);
-        arith::ConstantOp new_shape_const = rewriter.create<arith::ConstantOp>(
-            weight_op->getLoc(), shape_spec_type, new_shape_const_attr);
-        TF::ReshapeOp reshape_op = rewriter.create<TF::ReshapeOp>(
-            weight_op->getLoc(), new_shape, weight_op->getResult(0),
-            new_shape_const);
-        op->setOperand(weight_operand_idx, reshape_op);
-
-        // Create a new function with preprocessed types.
-        ModuleOp module = op->getParentOfType<ModuleOp>();
-        SymbolTable symbol_table(module);
-        func::FuncOp float_func =
-            dyn_cast<func::FuncOp>(symbol_table.lookup(function_name));
-        OperandRange func_args = op.getArgs();
-        func::FuncOp new_float_func = float_func.clone();
-
-        SmallVector<Value> new_float_func_args{func_args.begin(),
-                                               func_args.end()};
-        new_float_func_args[weight_operand_idx] = reshape_op;
-        new_float_func.getArgument(weight_operand_idx).setType(new_shape);
-        new_float_func.setType(FunctionType::get(
-            getContext(), TypeRange{ValueRange{new_float_func_args}},
-            new_float_func.getResultTypes()));
-        symbol_table.insert(new_float_func);
-
-        op->setAttr("f", SymbolRefAttr::get(rewriter.getContext(),
-                                            new_float_func.getName()));
-        return success();
-      }
-    }
-    return failure();
-  }
-  OpSet op_set_;
-};
-
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/prepare_quantize.inc"
 
 void PrepareQuantizeDRQPass::runOnOperation() {
@@ -343,8 +271,7 @@ void PrepareQuantizeDRQPass::runOnOperation() {
   ModuleOp module_op = getOperation();
 
   populateWithGenerated(patterns);
-  patterns.add<PreprocessConstantOp>(ctx, op_set_);
-  patterns.add<PrepareDRQQuantizableOp>(ctx, quant_specs_,
+  patterns.add<PrepareDRQQuantizableOp>(ctx, quant_specs_, op_set_,
                                         enable_per_channel_quantization_);
   FrozenRewritePatternSet frozen_patterns(std::move(patterns));
 

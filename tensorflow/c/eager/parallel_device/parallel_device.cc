@@ -211,7 +211,7 @@ int ParallelTensorNumDims(void* data, TF_Status* status) {
   const std::vector<int64_t>* shape;
   Status s = reinterpret_cast<ParallelTensor*>(data)->Shape(&shape);
   if (!s.ok()) {
-    Set_TF_Status_from_Status(status, s);
+    tsl::Set_TF_Status_from_Status(status, s);
     return -1;
   }
   return shape->size();
@@ -223,7 +223,7 @@ int64_t ParallelTensorDim(void* data, int dim_index, TF_Status* status) {
   const std::vector<int64_t>* shape;
   Status s = reinterpret_cast<ParallelTensor*>(data)->Shape(&shape);
   if (!s.ok()) {
-    Set_TF_Status_from_Status(status, s);
+    tsl::Set_TF_Status_from_Status(status, s);
     return -1;
   }
   return (*shape)[dim_index];
@@ -234,7 +234,7 @@ TF_Buffer* ParallelTensorSummarize(void* data, TF_Status* status) {
   std::string summary;
   Status cpp_status = parallel_tensor->SummarizeValue(summary);
   if (!cpp_status.ok()) {
-    Set_TF_Status_from_Status(status, cpp_status);
+    tsl::Set_TF_Status_from_Status(status, cpp_status);
     return nullptr;
   }
   return TF_NewBufferFromString(summary.data(), summary.size());

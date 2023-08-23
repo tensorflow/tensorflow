@@ -32,13 +32,12 @@ namespace {
 
 using RedzoneCheckStatus = RedzoneAllocator::RedzoneCheckStatus;
 
-static void EXPECT_REDZONE_OK(port::StatusOr<RedzoneCheckStatus> status) {
+static void EXPECT_REDZONE_OK(tsl::StatusOr<RedzoneCheckStatus> status) {
   EXPECT_TRUE(status.ok());
   EXPECT_TRUE(status.value().ok());
 }
 
-static void EXPECT_REDZONE_VIOLATION(
-    port::StatusOr<RedzoneCheckStatus> status) {
+static void EXPECT_REDZONE_VIOLATION(tsl::StatusOr<RedzoneCheckStatus> status) {
   EXPECT_TRUE(status.ok());
   EXPECT_FALSE(status.value().ok());
 }

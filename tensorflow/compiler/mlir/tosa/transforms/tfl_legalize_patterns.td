@@ -31,7 +31,6 @@ def ConvertTFLCeilOp : Pat<(TFL_CeilOp $arg), (Tosa_CeilOp $arg)>;
 def ConvertTFLFloorOp : Pat<(TFL_FloorOp $arg), (Tosa_FloorOp $arg)>;
 def ConvertTFLExpOp : Pat<(TFL_ExpOp $arg), (Tosa_ExpOp $arg)>;
 def ConvertTFLLogOp : Pat<(TFL_LogOp $arg), (Tosa_LogOp $arg)>;
-def ConvertTFLRsqrtOp : Pat<(TFL_RsqrtOp $arg), (Tosa_RsqrtOp $arg)>;
 def ConvertTFLLogicalNotOp : Pat<(TFL_LogicalNotOp $arg), (Tosa_LogicalNotOp $arg)>;
 def ConvertTFLCastOp: Pat<(TFL_CastOp $in), (Tosa_CastOp $in)>;
 

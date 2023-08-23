@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_TENSOR_ARRAY_H_
 
 #include <limits.h>
+
 #include <vector>
 
 #include "tensorflow/core/framework/op_kernel.h"

@@ -21,13 +21,12 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import math_ops
-from tensorflow.python.util.tf_export import keras_export
+from tensorflow.python.ops import while_loop
 from tensorflow.tools.docs import doc_controls
 
 
-@keras_export('keras.constraints.Constraint')
 class Constraint:
   """Base class for weight constraints.
 
@@ -79,7 +78,6 @@ class Constraint:
     return {}
 
 
-@keras_export('keras.constraints.MaxNorm', 'keras.constraints.max_norm')
 class MaxNorm(Constraint):
   """MaxNorm weight constraint.
 
@@ -120,7 +118,6 @@ class MaxNorm(Constraint):
     return {'max_value': self.max_value, 'axis': self.axis}
 
 
-@keras_export('keras.constraints.NonNeg', 'keras.constraints.non_neg')
 class NonNeg(Constraint):
   """Constrains the weights to be non-negative.
 
@@ -131,7 +128,6 @@ class NonNeg(Constraint):
     return w * math_ops.cast(math_ops.greater_equal(w, 0.), backend.floatx())
 
 
-@keras_export('keras.constraints.UnitNorm', 'keras.constraints.unit_norm')
 class UnitNorm(Constraint):
   """Constrains the weights incident to each hidden unit to have unit norm.
 
@@ -166,7 +162,6 @@ class UnitNorm(Constraint):
     return {'axis': self.axis}
 
 
-@keras_export('keras.constraints.MinMaxNorm', 'keras.constraints.min_max_norm')
 class MinMaxNorm(Constraint):
   """MinMaxNorm weight constraint.
 
@@ -223,8 +218,6 @@ class MinMaxNorm(Constraint):
     }
 
 
-@keras_export('keras.constraints.RadialConstraint',
-              'keras.constraints.radial_constraint')
 class RadialConstraint(Constraint):
   """Constrains `Conv2D` kernel weights to be the same for each radius.
 
@@ -268,9 +261,10 @@ class RadialConstraint(Constraint):
     # backend.switch is supported.
     w = backend.map_fn(
         self._kernel_constraint,
-        backend.stack(array_ops.unstack(w, axis=-1), axis=0))
-    return backend.reshape(backend.stack(array_ops.unstack(w, axis=0), axis=-1),
-                           (height, width, channels, kernels))
+        backend.stack(array_ops_stack.unstack(w, axis=-1), axis=0))
+    return backend.reshape(
+        backend.stack(array_ops_stack.unstack(w, axis=0), axis=-1),
+        (height, width, channels, kernels))
 
   def _kernel_constraint(self, kernel):
     """Radially constraints a kernel with shape (height, width, channels)."""
@@ -296,12 +290,13 @@ class RadialConstraint(Constraint):
           padding,
           constant_values=kernel[start + i, start + i])
 
-    _, kernel_new = control_flow_ops.while_loop(
+    _, kernel_new = while_loop.while_loop(
         while_condition,
-        body_fn,
-        [index, kernel_new],
-        shape_invariants=[index.get_shape(),
-                          tensor_shape.TensorShape([None, None])])
+        body_fn, [index, kernel_new],
+        shape_invariants=[
+            index.get_shape(),
+            tensor_shape.TensorShape([None, None])
+        ])
     return kernel_new
 
 
@@ -319,12 +314,10 @@ nonneg = non_neg
 unitnorm = unit_norm
 
 
-@keras_export('keras.constraints.serialize')
 def serialize(constraint):
   return serialize_keras_object(constraint)
 
 
-@keras_export('keras.constraints.deserialize')
 def deserialize(config, custom_objects=None):
   return deserialize_keras_object(
       config,
@@ -333,7 +326,6 @@ def deserialize(config, custom_objects=None):
       printable_module_name='constraint')
 
 
-@keras_export('keras.constraints.get')
 def get(identifier):
   if identifier is None:
     return None

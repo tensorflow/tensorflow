@@ -20,6 +20,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/profiling/telemetry/c/telemetry_setting_internal.h"
 #include "tensorflow/lite/profiling/telemetry/profiler.h"
 #include "tensorflow/lite/profiling/telemetry/telemetry_status.h"
 
@@ -29,7 +30,7 @@ namespace {
 constexpr char kEventName[] = "event_name";
 constexpr char kSettingName[] = "setting_name";
 
-class MockTelemtryProfiler : public TelemetryProfiler {
+class MockTelemetryProfiler : public TelemetryProfiler {
  public:
   MOCK_METHOD(void, ReportTelemetryEvent,
               (const char* event_name, TelemetryStatusCode status), (override));
@@ -56,7 +57,7 @@ class TelemetryTest : public ::testing::Test {
  protected:
   TelemetryTest() { context_.profiler = &profiler_; }
 
-  MockTelemtryProfiler profiler_;
+  MockTelemetryProfiler profiler_;
   TfLiteContext context_;
 };
 

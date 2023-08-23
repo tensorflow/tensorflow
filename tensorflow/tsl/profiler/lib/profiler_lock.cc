@@ -35,6 +35,10 @@ static_assert(ATOMIC_INT_LOCK_FREE == 2, "Assumed atomic<int> was lock free");
 
 }  // namespace
 
+/*static*/ bool ProfilerLock::HasActiveSession() {
+  return g_session_active.load(std::memory_order_relaxed) != 0;
+}
+
 /*static*/ StatusOr<ProfilerLock> ProfilerLock::Acquire() {
   // Use environment variable to permanently lock the profiler.
   // This allows running TensorFlow under an external profiling tool with all
@@ -51,7 +55,7 @@ static_assert(ATOMIC_INT_LOCK_FREE == 2, "Assumed atomic<int> was lock free");
   }
   int already_active = g_session_active.exchange(1, std::memory_order_acq_rel);
   if (already_active) {
-    return errors::AlreadyExists("Another profiling session active.");
+    return errors::AlreadyExists(kProfilerLockContention);
   }
   return ProfilerLock(/*active=*/true);
 }

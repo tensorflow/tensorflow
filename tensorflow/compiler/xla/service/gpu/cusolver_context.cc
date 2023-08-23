@@ -293,17 +293,15 @@ Status ConvertStatus(rocblas_status status) {
 
 }  // namespace
 
-StatusOr<GpuSolverContext> GpuSolverContext::Create(se::Stream* stream) {
+StatusOr<GpuSolverContext> GpuSolverContext::Create() {
   gpusolverHandle_t handle;
   TF_RETURN_IF_ERROR(ConvertStatus(GpuSolverCreate(&handle)));
-  GpuSolverContext context(handle);
+  return GpuSolverContext(handle);
+}
 
-  if (stream != nullptr) {
-    TF_RETURN_IF_ERROR(ConvertStatus(
-        GpuSolverSetStream(handle, se::gpu::AsGpuStreamValue(stream))));
-  }
-
-  return std::move(context);
+Status GpuSolverContext::SetStream(se::Stream* stream) {
+  return ConvertStatus(
+      GpuSolverSetStream(handle_.get(), se::gpu::AsGpuStreamValue(stream)));
 }
 
 GpuSolverContext::GpuSolverContext(gpusolverHandle_t handle)

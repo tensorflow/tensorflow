@@ -324,5 +324,58 @@ TEST(UnsignedQuantizedConcatenation, 4D_of_4) {
   }
 }
 
+TEST(UnsignedQuantizedConcatenation,
+     DISABLED_2D_2_inputs_different_zero_points) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto shape_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 10), std::ref(rng));
+
+  for (int i = -1; i < 2; i++) {
+    // All dimensions must be the same, except for axis.
+    const std::vector<int32_t> shape1({shape_rng(), shape_rng()});
+    auto shape2 = SameShapeDifferentAxis(shape1, i, shape_rng());
+
+    // clang-format off
+    ConcatenationTester()
+        .InputShapes({shape1, shape2})
+        .Axis(i)
+        .InputZeroPoint({2, 3})
+        .OutputZeroPoint(1)
+        .Test(TensorType_UINT8, xnnpack_delegate.get());
+    // clang-format on
+  }
+}
+
+TEST(UnsignedQuantizedConcatenation, DISABLED_2D_2_inputs_different_scales) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto shape_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 10), std::ref(rng));
+
+  for (int i = -1; i < 2; i++) {
+    // All dimensions must be the same, except for axis.
+    const std::vector<int32_t> shape1({shape_rng(), shape_rng()});
+    auto shape2 = SameShapeDifferentAxis(shape1, i, shape_rng());
+
+    // clang-format off
+    ConcatenationTester()
+        .InputShapes({shape1, shape2})
+        .Axis(i)
+        .InputScales({2, 3})
+        .OutputScale(1)
+        .Test(TensorType_UINT8, xnnpack_delegate.get());
+    // clang-format on
+  }
+}
+
 }  // namespace xnnpack
 }  // namespace tflite

@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TOOLS_KERNEL_GEN_TRANSFORMS_PASSES_H_
 
 #include <memory>
+#include <string>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
@@ -35,7 +36,6 @@ limitations under the License.
 #define GEN_PASS_DECL_PARALLELLOOPSTOSEQUENTIAL
 #define GEN_PASS_DECL_PROPAGATETFABIKNOWLEDGETOKERNELS
 #define GEN_PASS_DECL_PROPAGATESHAPEKNOWLEDGETOKERNELS
-#define GEN_PASS_DECL_EMBEDMEMREFPRINTSPASS
 #define GEN_PASS_DECL_FUSEINNERPARALLELLOOPSPASS
 #define GEN_PASS_DECL_COPYCLEANUPPASS
 
@@ -94,9 +94,6 @@ CreatePropagateTfAbiKnowledgeToKernels();
 // Pass to propagate shape equalities across kernel boundaries.
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreatePropagateShapeKnowledgeToKernels();
-
-// Pass to print content of memrefs.
-std::unique_ptr<OperationPass<ModuleOp>> CreateEmbedMemRefPrintsPass();
 
 /// Greedily maps loops to GPU hardware dimensions.
 std::unique_ptr<mlir::OperationPass<func::FuncOp>> CreateMapParallelLoopsPass();

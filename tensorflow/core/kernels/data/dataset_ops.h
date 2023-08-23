@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_DATA_DATASET_OPS_H_
 #define TENSORFLOW_CORE_KERNELS_DATA_DATASET_OPS_H_
 
+#include <memory>
+
 #include "tensorflow/core/platform/platform.h"
 
 // On mobile we do not provide this functionality because not all of its
@@ -47,9 +49,12 @@ class DatasetToGraphOp : public OpKernel {
 
 class DatasetCardinalityOp : public OpKernel {
  public:
-  explicit DatasetCardinalityOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  explicit DatasetCardinalityOp(OpKernelConstruction* ctx);
 
   void Compute(OpKernelContext* ctx) override;
+
+ private:
+  std::unique_ptr<CardinalityOptions> cardinality_options_;
 };
 
 class DatasetFromGraphOp : public OpKernel {

@@ -88,18 +88,6 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64_t CardinalityInternal() const override {
-    if (input_cardinality_ == kInfiniteCardinality ||
-        to_concatenate_cardinality_ == kInfiniteCardinality) {
-      return kInfiniteCardinality;
-    }
-    if (input_cardinality_ == kUnknownCardinality ||
-        to_concatenate_cardinality_ == kUnknownCardinality) {
-      return kUnknownCardinality;
-    }
-    return input_cardinality_ + to_concatenate_cardinality_;
-  }
-
   int64_t CardinalityInternal(CardinalityOptions options) const override {
     int64_t input_cardinality = input_->Cardinality(options);
     int64_t to_concatenate_cardinality = to_concatenate_->Cardinality(options);
@@ -206,9 +194,9 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
     Status SaveInternal(SerializationContext* ctx,
                         IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
-      TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kIndex), i_));
+      TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kIndex, i_));
       TF_RETURN_IF_ERROR(
-          writer->WriteScalar(full_name(kInputImplUninitialized),
+          writer->WriteScalar(prefix(), kInputImplUninitialized,
                               static_cast<int64_t>(!input_impl_)));
       if (input_impl_) {
         TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
@@ -219,9 +207,9 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
-      TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kIndex), &i_));
+      TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kIndex, &i_));
       int64_t input_uninitialized;
-      TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kInputImplUninitialized),
+      TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kInputImplUninitialized,
                                             &input_uninitialized));
       if (static_cast<bool>(input_uninitialized)) {
         input_impl_.reset();

@@ -30,6 +30,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.saved_model.model_utils import mode_keys
 
 
@@ -154,7 +155,7 @@ class RegroupAndSelectDeviceTest(test.TestCase, parameterized.TestCase):
       ))
   def testMirroredContainer(self, distribution):
     with distribution.scope():
-      v = variable_scope.variable(
+      v = variable_v1.VariableV1(
           1., aggregation=variable_scope.VariableAggregation.SUM)
     self.assertTrue(distribute_utils.is_distributed_variable(v))
     self.assertTrue(distribute_utils.is_distributed_variable(

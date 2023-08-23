@@ -23,6 +23,8 @@ namespace mlir {
 namespace thlo {
 namespace {
 
+using mlir::bufferization::AliasingOpOperandList;
+using mlir::bufferization::AliasingValueList;
 using mlir::bufferization::AnalysisState;
 using mlir::bufferization::BufferizableOpInterface;
 using mlir::bufferization::BufferizationOptions;
@@ -107,22 +109,25 @@ struct ThloSortOpBufferizationModel
     return cast<DestinationStyleOpInterface>(op).isDpsInit(&opOperand);
   }
 
-  SmallVector<OpOperand *> getAliasingOpOperand(
-      Operation *op, OpResult opResult, const AnalysisState & /*state*/) const {
+  AliasingOpOperandList getAliasingOpOperands(
+      Operation *op, Value value, const AnalysisState & /*state*/) const {
+    auto opResult = value.dyn_cast<OpResult>();
+    if (!opResult) return {};
     auto dstStyleOp = cast<DestinationStyleOpInterface>(op);
 
-    // The i-th OpResult may alias with the i-th "out" tensor.
-    return {dstStyleOp.getDpsInitOperand(opResult.getResultNumber())};
+    // The i-th OpResult aliases with the i-th "out" tensor.
+    return {{dstStyleOp.getDpsInitOperand(opResult.getResultNumber()),
+             BufferRelation::Equivalent}};
   }
 
-  SmallVector<OpResult> getAliasingOpResult(
-      Operation *op, OpOperand &opOperand,
-      const AnalysisState & /*state*/) const {
+  AliasingValueList getAliasingValues(Operation *op, OpOperand &opOperand,
+                                      const AnalysisState & /*state*/) const {
     auto dstStyleOp = cast<DestinationStyleOpInterface>(op);
 
-    // The i-th "out" tensor may alias with the i-th OpResult.
+    // The i-th "out" tensor aliases with the i-th OpResult.
     if (dstStyleOp.isDpsInit(&opOperand))
-      return {dstStyleOp.getTiedOpResult(&opOperand)};
+      return {
+          {dstStyleOp.getTiedOpResult(&opOperand), BufferRelation::Equivalent}};
     return {};
   }
 
@@ -130,11 +135,6 @@ struct ThloSortOpBufferizationModel
                           const BufferizationOptions &options) const {
     return bufferizeDestinationStyleOpInterface(
         rewriter, cast<DestinationStyleOpInterface>(op), options);
-  }
-
-  BufferRelation bufferRelation(Operation * /*op*/, OpResult /*opResult*/,
-                                const AnalysisState & /*state*/) const {
-    return BufferRelation::Equivalent;
   }
 };
 

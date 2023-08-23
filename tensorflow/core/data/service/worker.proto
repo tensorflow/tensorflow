@@ -55,6 +55,12 @@ message GetWorkerTasksResponse {
   repeated TaskInfo tasks = 1;
 }
 
+message GetSnapshotTaskProgressesRequest {}
+
+message GetSnapshotTaskProgressesResponse {
+  repeated SnapshotTaskProgress snapshot_task_progresses = 1;
+}
+
 service WorkerService {
   // Processes a task for a dataset, making elements available to clients.
   rpc ProcessTask(ProcessTaskRequest) returns (ProcessTaskResponse);
@@ -64,4 +70,9 @@ service WorkerService {
 
   // Gets the tasks currently being executed by the worker.
   rpc GetWorkerTasks(GetWorkerTasksRequest) returns (GetWorkerTasksResponse);
+
+  // Gets the progresses of the snapshot tasks currently being executed by the
+  // worker.
+  rpc GetSnapshotTaskProgresses(GetSnapshotTaskProgressesRequest)
+      returns (GetSnapshotTaskProgressesResponse);
 }

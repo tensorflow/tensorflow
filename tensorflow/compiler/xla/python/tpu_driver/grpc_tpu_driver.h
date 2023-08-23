@@ -16,6 +16,8 @@
 // limitations under the License.
 // ==============================================================================
 
+#include <memory>
+
 #include "grpcpp/grpcpp.h"
 #include "tensorflow/compiler/xla/python/tpu_driver/tpu_driver.h"
 #include "tensorflow/compiler/xla/python/tpu_driver/tpu_driver.pb.h"

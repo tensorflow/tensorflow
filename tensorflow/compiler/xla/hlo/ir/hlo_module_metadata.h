@@ -18,6 +18,8 @@ limitations under the License.
 
 #include <functional>
 #include <optional>
+#include <string>
+#include <vector>
 
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/status_macros.h"

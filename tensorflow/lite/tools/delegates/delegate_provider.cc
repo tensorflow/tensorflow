@@ -59,7 +59,15 @@ ProvidedDelegateList::CreateAllRankedDelegates(const ToolParams& params) const {
     // It's possible that a delegate of certain type won't be created as
     // user-specified tool params tells not to.
     if (ptr_rank.first == nullptr) continue;
-    TFLITE_LOG(INFO) << provider->GetName() << " delegate created.";
+
+    static bool already_logged = false;
+    if (!already_logged) {
+      TFLITE_LOG(INFO) << provider->GetName() << " delegate created.";
+#ifndef NDEBUG
+      provider->LogParams(params, /*verbose=*/false);
+#endif
+      already_logged = true;
+    }
 
     ProvidedDelegateList::ProvidedDelegate info;
     info.provider = provider.get();

@@ -50,7 +50,7 @@ def RemoveRedundantDynamicBroadcast : Pat<
 
 
 // Convert DPad to Pad if edge_padding_low, edge_padding_high and
-// interior_padding are MHLO_ConstantOp
+// interior_padding are constant.
 def DPadToPad: Pat<
           (MHLO_DynamicPadOp $input,
             $padding_value,
@@ -63,13 +63,13 @@ def DPadToPad: Pat<
             (GetI64DenseElementsAttr (CastIntElementsAttr $interior_padding)))>;
 
 // Convert RealDynamicSliceOp to SliceOp if start_indices, limit_indices and
-// strides are MHLO_ConstantOp
+// strides are constant.
 def RealDSliceToSlice: Pat<
           (MHLO_RealDynamicSliceOp $operand,
-            (MHLO_ConstantOp I64ElementsAttr:$start_indices),
-            (MHLO_ConstantOp I64ElementsAttr:$limit_indices),
-            (MHLO_ConstantOp I64ElementsAttr:$strides)),
+            (ConstantLikeMatcher AnyIntElementsAttr:$start_indices),
+            (ConstantLikeMatcher AnyIntElementsAttr:$limit_indices),
+            (ConstantLikeMatcher AnyIntElementsAttr:$strides)),
           (MHLO_SliceOp $operand,
-            (CastIntElementsAttr $start_indices),
-            (CastIntElementsAttr $limit_indices),
-            (CastIntElementsAttr $strides))>;
+            (GetI64DenseElementsAttr (CastIntElementsAttr $start_indices)),
+            (GetI64DenseElementsAttr (CastIntElementsAttr $limit_indices)),
+            (GetI64DenseElementsAttr (CastIntElementsAttr $strides)))>;
