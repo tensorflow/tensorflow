@@ -446,6 +446,7 @@ cc_library(
         "cluster_outlining.cc",
         "cluster_tf_ops_pass.cc",
         "collection_ops_util.cc",
+        "colocate_tpu_copy_with_dynamic_shape.cc",
         "constant_op_device_assignment.cc",
         "convert_control_to_data_outputs.cc",
         "convert_launch_func_to_tf_call.cc",
