@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/next_pluggable_device/c/tf_device_context_c_api_conversions.h"
 
+#include <cstdint>
 #include <cstring>
 #include <memory>
 #include <utility>
@@ -47,13 +48,14 @@ TF_Tensor* CopyTensorToTF_Tensor(const Tensor& src) {
   // TODO: Convert through a lookup table for better API compatibility.
   TF_DataType dtype = static_cast<TF_DataType>(src.dtype());
   const TensorShape& shape = src.shape();
-  int64_t* dims = new int64_t[shape.dims()];
+  auto dims = std::make_unique<int64_t[]>(shape.dims());
   size_t len = TF_DataTypeSize(dtype);
   for (int i = 0; i < shape.dims(); ++i) {
     dims[i] = shape.dim_size(i);
     len *= dims[i];
   }
-  TF_Tensor* tf_tensor = TF_AllocateTensor(dtype, dims, shape.dims(), len);
+  TF_Tensor* tf_tensor =
+      TF_AllocateTensor(dtype, dims.get(), shape.dims(), len);
   void* data = TF_TensorData(tf_tensor);
   std::memcpy(data, src.data(), len);
   return tf_tensor;
@@ -79,6 +81,7 @@ tsl::StatusCallback FromC(TF_StatusCallback* callback) {
     TF_Status* c_status = TF_NewStatus();
     Set_TF_Status_from_Status(c_status, status);
     callback->callback(callback->context, c_status);
+    TF_DeleteStatus(c_status);
   };
 }
 

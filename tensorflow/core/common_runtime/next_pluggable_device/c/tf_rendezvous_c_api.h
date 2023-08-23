@@ -104,7 +104,6 @@ typedef struct TF_RendezvousStartAbortImpl {
 } TF_RendezvousStartAbortImpl;
 
 typedef struct TF_RendezvousThunk {
-  void* context;  // not owned
   TF_RendezvousSenderImpl send;
   TF_RendezvousAsyncRecverImpl async_recv;
   TF_RendezvousStartAbortImpl start_abort;

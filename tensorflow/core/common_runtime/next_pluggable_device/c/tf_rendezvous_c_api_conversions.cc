@@ -228,7 +228,6 @@ void Destroy(TF_RendezvousThunk* thunk) {
   Destroy(&thunk->send);
   Destroy(&thunk->async_recv);
   Destroy(&thunk->start_abort);
-  delete thunk;
 }
 
 namespace {
@@ -480,6 +479,7 @@ void DestroyOCParams::operator()(SE_OutsideCompilationParams* params) {
   delete[] params->device_name;
   delete[] params->rendezvous_key;
   Destroy(params->rendezvous);
+  delete params->rendezvous;
   if (params->host_transfers.size > 0) {
     StreamExecutor_Tpu_FreeSerializedProto(&params->host_transfers);
   }
