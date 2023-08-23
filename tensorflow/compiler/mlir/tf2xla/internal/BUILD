@@ -10,6 +10,34 @@ package(
 )
 
 cc_library(
+    name = "test_matchers",
+    testonly = True,
+    hdrs = ["test_matchers.h"],
+    deps = [
+        "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util",
+        "//tensorflow/tsl/platform:statusor",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "test_matchers_test",
+    srcs = ["test_matchers_test.cc"],
+    deps = [
+        ":test_matchers",
+        "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util",
+        "//tensorflow/compiler/tf2xla:xla_helpers",
+        "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/lib/monitoring:cell_reader",
+        "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "mlir_pass_instrumentation",
     srcs = ["mlir_pass_instrumentation.cc"],
     hdrs = ["mlir_pass_instrumentation.h"],
@@ -86,6 +114,7 @@ tf_cc_test(
     srcs = ["legalize_tf_mlir_test.cc"],
     deps = [
         ":legalize_tf_mlir",
+        ":test_matchers",
         "//tensorflow/compiler/jit",
         "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -107,6 +136,7 @@ tf_cc_test(
     srcs = ["legalize_tf_to_hlo_test.cc"],
     deps = [
         ":legalize_tf_to_hlo",
+        ":test_matchers",
         "//tensorflow/compiler/jit",
         "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
