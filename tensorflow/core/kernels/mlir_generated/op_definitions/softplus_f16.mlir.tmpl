@@ -1,0 +1,15 @@
+func.func @Softplus_platform_elem_type_output_type(%arg0: tensor<*xelem_type>)
+    -> tensor<*xoutput_type> attributes {tf_entry, llvm.emit_c_interface} {
+  %0 = mhlo.exponential %arg0 : tensor<*xelem_type>
+  %1 = mhlo.constant dense<1.220700e-04> : tensor<elem_type>
+  %2 = mhlo.log %1 : tensor<elem_type>
+  %3 = mhlo.constant dense<2.000000e+00> : tensor<elem_type>
+  %4 = chlo.broadcast_add %2, %3 : (tensor<elem_type>, tensor<elem_type>) -> tensor<elem_type>
+  %5 = mhlo.negate %4 : tensor<elem_type>
+  %6 = chlo.broadcast_compare %arg0, %5 {comparison_direction = #chlo<comparison_direction GT>} : (tensor<*xelem_type>, tensor<elem_type>) -> tensor<*xi1>
+  %7 = chlo.broadcast_compare %arg0, %4 {comparison_direction = #chlo<comparison_direction LT>} : (tensor<*xelem_type>, tensor<elem_type>) -> tensor<*xi1>
+  %8 = mhlo.log_plus_one %0 : tensor<*xelem_type>
+  %9 = mhlo.select %7, %0, %8 : tensor<*xi1>, tensor<*xelem_type>
+  %10 = mhlo.select %6, %arg0, %9 : tensor<*xi1>, tensor<*xelem_type>
+  func.return %10 : tensor<*xoutput_type>
+}
