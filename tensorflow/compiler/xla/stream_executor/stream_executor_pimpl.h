@@ -89,10 +89,6 @@ class StreamExecutor {
   tsl::Status Init();
   tsl::Status Init(DeviceOptions device_options);
 
-  // Returns the platform that this StreamExecutor is acting upon.
-  ABSL_DEPRECATED("Use platform() instead.")
-  PlatformKind platform_kind() const { return platform_kind_; }
-
   // Returns a reference to the platform that created this executor.
   const Platform* platform() const { return platform_; }
 
@@ -696,12 +692,6 @@ class StreamExecutor {
   // once it has been queried from DeviceDescription().
   mutable std::unique_ptr<DeviceDescription> device_description_
       ABSL_GUARDED_BY(mu_);
-
-  // The kind of the underlying platform that is being targeted, as passed
-  // during construction.
-  //
-  // Immutable post-initialization.
-  PlatformKind platform_kind_;
 
   // The device ordinal that this object was initialized with.
   //

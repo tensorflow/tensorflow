@@ -149,20 +149,7 @@ StreamExecutor::StreamExecutor(
       tracing_enabled_(false),
       mem_alloc_bytes_(0),
       memory_limit_bytes_(GetMemoryLimitBytes()),
-      allocator_(this) {
-  std::string name = absl::AsciiStrToLower(platform_->Name());
-  if (name == "cuda") {
-    platform_kind_ = PlatformKind::kCuda;
-  } else if (name == "rocm") {
-    platform_kind_ = PlatformKind::kROCm;
-  } else if (name == "opencl") {
-    platform_kind_ = PlatformKind::kOpenCL;
-  } else if (name == "host") {
-    platform_kind_ = PlatformKind::kHost;
-  } else {
-    platform_kind_ = PlatformKind::kInvalid;
-  }
-}
+      allocator_(this) {}
 
 StreamExecutor::~StreamExecutor() {
   BlockOnThreadExecutor(background_threads_.get());
