@@ -33,6 +33,8 @@
 
 ### Major Features and Improvements
 
+*  Support for Python 3.8 has been removed starting TF 2.14. TensorFlow 2.13.1 patch release will still have Python 3.8 support
+
 *   Enable JIT-compiled i64-indexed kernels on GPU for large tensors with more
     than 2**32 elements.
     *   Unary GPU kernels: Abs, Atanh, Acos, Acosh, Asin, Asinh, Atan, Cos,
