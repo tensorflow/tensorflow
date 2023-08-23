@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
+#include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/c/outside_compilation_params.h"  // IWYU pragma: keep
@@ -267,7 +268,7 @@ DoneCallbackParamDeleter MakeDoneCallbackParamDeleter() {
     // delete params->recver_args;
     TF_Status* status = const_cast<TF_Status*>(params->status);
     TF_DeleteStatus(status);
-    delete params->tensor;
+    TF_DeleteTensor(const_cast<TF_Tensor*>(params->tensor));
     delete params;
   };
 }
