@@ -2899,6 +2899,9 @@ tpu_py_strict_test(
     srcs = ["mean_op_test.py"],
     disable_experimental = False,
     disable_mlir_bridge = False,
+    tags = [
+        "notsan",  # timesout
+    ],
     deps = [
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework",
