@@ -161,9 +161,7 @@ class TfCThunkDeviceContext final : public DeviceContext {
     }
     params->done = ToC(done);
     params->sync_dst_compute = sync_dst_compute;
-    const TF_DeviceContext_CopyCPUTensorToDevice_Impl& func =
-        thunk_.cpu_to_device;
-    func.cpu_to_device_func(func.context, params);
+    thunk_.cpu_to_device_func(thunk_.device_context, params);
   }
   void CopyDeviceTensorToCPU(const Tensor* device_tensor,
                              absl::string_view tensor_name, Device* device,
@@ -201,9 +199,7 @@ class TfCThunkDeviceContext final : public DeviceContext {
     params->tensor_name = new char[params->tensor_name_len + 1];
     strncpy(params->tensor_name, tensor_name.data(), params->tensor_name_len);
     params->tensor_name[params->tensor_name_len] = 0;
-    const TF_DeviceContext_CopyDeviceTensorToCPU_Impl& func =
-        thunk_.device_to_cpu;
-    func.device_to_cpu_func(func.context, params);
+    thunk_.device_to_cpu_func(thunk_.device_context, params);
   }
   void CopyTensorInSameDevice(const Tensor* input_tensor, Device* device,
                               Tensor* output_tensor,
@@ -234,9 +230,7 @@ class TfCThunkDeviceContext final : public DeviceContext {
       return;
     }
     params->done = ToC(done);
-    const TF_DeviceContext_CopyTensorInSameDevice_Impl& func =
-        thunk_.same_device;
-    func.same_device_func(func.context, params);
+    thunk_.same_device_func(thunk_.device_context, params);
   }
 
  private:
@@ -289,30 +283,6 @@ void SameDeviceThunk(void* context,
   LOG(FATAL) << "Unimplemented";  // Crash OK
 }
 
-TF_DeviceContext_CopyCPUTensorToDevice_Impl BindCpuToDevice(
-    DeviceContext* device_context) {
-  TF_DeviceContext_CopyCPUTensorToDevice_Impl cpu_to_device_func;
-  cpu_to_device_func.context = static_cast<void*>(device_context);
-  cpu_to_device_func.cpu_to_device_func = CpuToDeviceThunk;
-  return cpu_to_device_func;
-}
-
-TF_DeviceContext_CopyDeviceTensorToCPU_Impl BindDeviceToCpu(
-    DeviceContext* device_context) {
-  TF_DeviceContext_CopyDeviceTensorToCPU_Impl device_to_cpu_func;
-  device_to_cpu_func.context = static_cast<void*>(device_context);
-  device_to_cpu_func.device_to_cpu_func = DeviceToCpuThunk;
-  return device_to_cpu_func;
-}
-
-TF_DeviceContext_CopyTensorInSameDevice_Impl BindSameDevice(
-    DeviceContext* device_context) {
-  TF_DeviceContext_CopyTensorInSameDevice_Impl same_device_func;
-  same_device_func.context = static_cast<void*>(device_context);
-  same_device_func.same_device_func = SameDeviceThunk;
-  return same_device_func;
-}
-
 }  // namespace
 
 void Destroy(TF_DeviceContext* c_device_context) {}
@@ -324,9 +294,10 @@ void TF_DeviceContext_Deleter::operator()(TF_DeviceContext* c_device_context) {
 
 TF_DeviceContext* ToC(DeviceContext* device_context) {
   TF_DeviceContext* c_device_context = new TF_DeviceContext();
-  c_device_context->cpu_to_device = BindCpuToDevice(device_context);
-  c_device_context->device_to_cpu = BindDeviceToCpu(device_context);
-  c_device_context->same_device = BindSameDevice(device_context);
+  c_device_context->device_context = static_cast<void*>(device_context);
+  c_device_context->cpu_to_device_func = CpuToDeviceThunk;
+  c_device_context->device_to_cpu_func = DeviceToCpuThunk;
+  c_device_context->same_device_func = SameDeviceThunk;
   return c_device_context;
 }
 
