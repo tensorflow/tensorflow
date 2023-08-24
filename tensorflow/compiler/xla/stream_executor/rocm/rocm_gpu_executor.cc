@@ -148,7 +148,7 @@ void GpuExecutor::UnloadKernel(const KernelBase* kernel) {
   kernel_to_gpu_binary_.erase(gpu_binary_it);
 }
 
-tsl::Status GpuExecutor::Init(int device_ordinal,
+tsl::Status GpuExecutor::Init(int device_ordinal, int stream_id,
                               DeviceOptions device_options) {
   device_ordinal_ = device_ordinal;
 
@@ -162,8 +162,8 @@ tsl::Status GpuExecutor::Init(int device_ordinal,
     return status;
   }
 
-  status = GpuDriver::CreateContext(device_ordinal_, device_, device_options,
-                                    &context_);
+  status = GpuDriver::CreateContext(device_ordinal_, stream_id, device_,
+                                    device_options, &context_);
   if (!status.ok()) {
     return status;
   }

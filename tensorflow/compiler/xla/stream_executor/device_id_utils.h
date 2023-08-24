@@ -31,9 +31,8 @@ class DeviceIdUtil {
   static tsl::StatusOr<StreamExecutor*> ExecutorForPlatformDeviceId(
       Platform* device_manager, tsl::PlatformDeviceId platform_device_id,
       int stream_id = 0) {
-    int device_ordinal = DeviceOrdinalHelper::EncodeDeviceOrdinal(
-        stream_id, platform_device_id.value());
-    return device_manager->ExecutorForDevice(device_ordinal);
+    return device_manager->ExecutorForDeviceStream(platform_device_id.value(),
+                                                   stream_id);
   }
   static tsl::StatusOr<StreamExecutor*> ExecutorForTfDeviceId(
       const tsl::DeviceType& type, Platform* device_manager,

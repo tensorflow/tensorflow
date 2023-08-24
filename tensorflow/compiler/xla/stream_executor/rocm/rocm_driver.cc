@@ -352,8 +352,8 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
 }
 
 /* static */ tsl::Status GpuDriver::CreateContext(
-    int device_ordinal, hipDevice_t device, const DeviceOptions& device_options,
-    GpuContext** context) {
+    int device_ordinal, int stream_id, hipDevice_t device,
+    const DeviceOptions& device_options, GpuContext** context) {
   // TODO(hanbinyoon): Create a real context, i.e., by calling hipCtxCreate().
   *context = new GpuContext(device_ordinal);
   return tsl::OkStatus();

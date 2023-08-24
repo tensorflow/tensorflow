@@ -28,12 +28,16 @@ namespace tensorflow {
 namespace {
 using ::tsl::protobuf::util::MessageDifferencer;
 
-uint64 ComputeHash(int device_id, const ConvParametersProto& proto) {
-  return Hash64Combine(device_id, tsl::DeterministicProtoHash64(proto));
+uint64 ComputeHash(int device_id, int stream_id,
+                   const ConvParametersProto& proto) {
+  return Hash64Combine(Hash64Combine(device_id, stream_id),
+                       tsl::DeterministicProtoHash64(proto));
 }
 
-uint64 ComputeHash(int device_id, const MatmulParametersProto& proto) {
-  return Hash64Combine(device_id, tsl::DeterministicProtoHash64(proto));
+uint64 ComputeHash(int device_id, int stream_id,
+                   const MatmulParametersProto& proto) {
+  return Hash64Combine(Hash64Combine(device_id, stream_id),
+                       tsl::DeterministicProtoHash64(proto));
 }
 }  // namespace
 
@@ -45,7 +49,8 @@ ConvParameters::ConvParameters(
     const absl::Span<const int64_t> stride,
     const absl::Span<const int64_t> padding, DataType dtype, int group_count,
     absl::optional<ConvParameters::FusionInfo> fusion_info, int version)
-    : device_id_(stream_exec->device_ordinal()) {
+    : device_id_(stream_exec->device_ordinal()),
+      stream_id_(stream_exec->stream_id()) {
   proto_.set_batch(batch);
   proto_.set_in_depths(in_depths);
   *proto_.mutable_in() = {in.begin(), in.end()};
@@ -70,15 +75,17 @@ ConvParameters::ConvParameters(
   proto_.set_device_identifier(
       std::string(stream_exec->GetDeviceDescription().model_str()));
   proto_.set_version(version);
-  hash_code_ = ComputeHash(device_id_, proto_);
+  hash_code_ = ComputeHash(device_id_, stream_id_, proto_);
 }
-ConvParameters::ConvParameters(int device_id, const ConvParametersProto& proto)
+ConvParameters::ConvParameters(int device_id, int stream_id,
+                               const ConvParametersProto& proto)
     : device_id_(device_id),
+      stream_id_(stream_id),
       proto_(proto),
-      hash_code_(ComputeHash(device_id_, proto_)) {}
+      hash_code_(ComputeHash(device_id_, stream_id_, proto_)) {}
 
 bool ConvParameters::operator==(const ConvParameters& other) const {
-  return device_id_ == other.device_id_ &&
+  return device_id_ == other.device_id_ && stream_id_ == other.stream_id_ &&
          MessageDifferencer::Equals(this->proto_, other.proto_);
 }
 
@@ -89,7 +96,8 @@ MatmulParameters::MatmulParameters(
     bool trans_a, bool trans_b, uint64_t m, uint64_t n, uint64_t k, int64_t lda,
     int64_t ldb, int64_t ldc,
     stream_executor::dnn::ActivationMode activation_mode, int version)
-    : device_id_(stream_exec->device_ordinal()) {
+    : device_id_(stream_exec->device_ordinal()),
+      stream_id_(stream_exec->stream_id()) {
   proto_.set_ab_dtype(ab_dtype);
   proto_.set_c_dtype(c_dtype);
 
@@ -108,17 +116,18 @@ MatmulParameters::MatmulParameters(
   proto_.set_device_identifier(
       std::string(stream_exec->GetDeviceDescription().model_str()));
   proto_.set_version(version);
-  hash_code_ = ComputeHash(device_id_, proto_);
+  hash_code_ = ComputeHash(device_id_, stream_id_, proto_);
 }
 
 MatmulParameters::MatmulParameters(se::StreamExecutor* stream_exec,
                                    const MatmulParametersProto& proto)
     : device_id_(stream_exec->device_ordinal()),
+      stream_id_(stream_exec->stream_id()),
       proto_(proto),
-      hash_code_(ComputeHash(device_id_, proto_)) {}
+      hash_code_(ComputeHash(device_id_, stream_id_, proto_)) {}
 
 bool MatmulParameters::operator==(const MatmulParameters& other) const {
-  return device_id_ == other.device_id_ &&
+  return device_id_ == other.device_id_ && stream_id_ == other.stream_id_ &&
          MessageDifferencer::Equals(this->proto_, other.proto_);
 }
 

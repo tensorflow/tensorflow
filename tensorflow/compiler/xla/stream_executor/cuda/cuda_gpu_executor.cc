@@ -110,14 +110,14 @@ GpuExecutor::~GpuExecutor() {
   }
 }
 
-tsl::Status GpuExecutor::Init(int device_ordinal,
+tsl::Status GpuExecutor::Init(int device_ordinal, int stream_id,
                               DeviceOptions device_options) {
   device_ordinal_ = device_ordinal;
 
   TF_RETURN_IF_ERROR(GpuDriver::Init());
   TF_RETURN_IF_ERROR(GpuDriver::GetDevice(device_ordinal_, &device_));
-  TF_RETURN_IF_ERROR(GpuDriver::CreateContext(device_ordinal_, device_,
-                                              device_options, &context_));
+  TF_RETURN_IF_ERROR(GpuDriver::CreateContext(
+      device_ordinal_, stream_id, device_, device_options, &context_));
   TF_RETURN_IF_ERROR(
       GpuDriver::GetComputeCapability(&cc_major_, &cc_minor_, device_));
   return tsl::OkStatus();

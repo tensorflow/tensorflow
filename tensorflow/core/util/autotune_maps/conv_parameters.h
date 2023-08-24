@@ -71,11 +71,13 @@ class ConvParameters {
       // This argument should be set only for test use.
       int version = kVersion);
 
-  ConvParameters(int device_id, const ConvParametersProto& proto);
+  ConvParameters(int device_id, int stream_id,
+                 const ConvParametersProto& proto);
 
   ConvParameters(se::StreamExecutor* stream_exec,
                  const ConvParametersProto& proto)
-      : ConvParameters(stream_exec->device_ordinal(), proto) {}
+      : ConvParameters(stream_exec->device_ordinal(), stream_exec->stream_id(),
+                       proto) {}
 
   bool operator==(const ConvParameters& other) const;
 
@@ -90,6 +92,7 @@ class ConvParameters {
 
  private:
   int device_id_;
+  int stream_id_;
   ConvParametersProto proto_;
   uint64 hash_code_;
 };
@@ -127,6 +130,7 @@ class MatmulParameters {
 
  private:
   int device_id_;
+  int stream_id_;
   MatmulParametersProto proto_;
   uint64 hash_code_;
 };

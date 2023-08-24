@@ -72,10 +72,18 @@ class CudaPlatform : public Platform {
   tsl::StatusOr<std::unique_ptr<DeviceDescription>> DescriptionForDevice(
       int ordinal) const override;
 
-  tsl::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) override;
+  tsl::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) override {
+    return ExecutorForDeviceStream(ordinal, 0);
+  }
+  tsl::StatusOr<StreamExecutor*> ExecutorForDeviceStream(
+      int ordinal, int stream_id) override;
 
   tsl::StatusOr<StreamExecutor*> ExecutorForDeviceWithPluginConfig(
-      int ordinal, const PluginConfig& config) override;
+      int ordinal, const PluginConfig& config) override {
+    return ExecutorForDeviceStreamWithPluginConfig(ordinal, 0, config);
+  }
+  tsl::StatusOr<StreamExecutor*> ExecutorForDeviceStreamWithPluginConfig(
+      int ordinal, int stream_id, const PluginConfig& config) override;
 
   tsl::StatusOr<StreamExecutor*> GetExecutor(
       const StreamExecutorConfig& config) override;

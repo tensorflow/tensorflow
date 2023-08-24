@@ -139,10 +139,11 @@ static int64_t GetMemoryLimitBytes() {
 StreamExecutor::StreamExecutor(
     const Platform* platform,
     std::unique_ptr<internal::StreamExecutorInterface> implementation,
-    int device_ordinal)
+    int device_ordinal, int stream_id)
     : platform_(platform),
       implementation_(std::move(implementation)),
       device_ordinal_(device_ordinal),
+      stream_id_(stream_id),
       background_threads_(new tsl::thread::ThreadPool(
           tsl::Env::Default(), "stream_executor", kNumBackgroundThreads)),
       live_stream_count_(0),
@@ -184,8 +185,8 @@ StreamExecutor::~StreamExecutor() {
 }
 
 tsl::Status StreamExecutor::Init(DeviceOptions device_options) {
-  TF_RETURN_IF_ERROR(
-      implementation_->Init(device_ordinal_, std::move(device_options)));
+  TF_RETURN_IF_ERROR(implementation_->Init(device_ordinal_, stream_id_,
+                                           std::move(device_options)));
   return ::tsl::OkStatus();
 }
 

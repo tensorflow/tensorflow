@@ -93,39 +93,14 @@ struct StreamExecutorConfig {
   // The ordinal of the device to be managed by the returned StreamExecutor.
   int ordinal;
 
+  // The index of the stream to be managed by the returned StreamExecutor.
+  int stream_id = 0;
+
   // The PluginConfig for the returned StreamExecutor.
   PluginConfig plugin_config;
 
   // The DeviceOptions for the returned StreamExecutor.
   DeviceOptions device_options;
-};
-
-// Help to encode and decode the device_ordinal variable in stream_executor.
-class DeviceOrdinalHelper {
- public:
-  // Encode the stream and device information to the integer device_ordinal,
-  // where the high half part is the stream index, and the low half part is
-  // the device index.
-  static int EncodeDeviceOrdinal(int stream_part, int device_part) {
-    return ((stream_part & low_mask_) << (4 * sizeof(int))) |
-           (device_part & low_mask_);
-  }
-
-  // Decode the stream information from the device_ordinal.
-  static int DecodeStreamFromOrdinal(int device_ordinal) {
-    return (device_ordinal & high_mask_) >> (4 * sizeof(int));
-  }
-
-  // Decode the device information from the device_ordinal.
-  static int DecodeDeviceFromOrdinal(int device_ordinal) {
-    return device_ordinal & low_mask_;
-  }
-
- private:
-  static const int low_mask_ =
-      (1 << (4 * sizeof(int))) - 1;  // for int32, low_mask_ = 0x0000FFFFL;
-  static const int high_mask_ =
-      ~((1 << (4 * sizeof(int))) - 1);  // for int32, high_mask_ = 0xFFFF0000L;
 };
 
 // Abstract base class for a platform registered with the MultiPlatformManager.
@@ -191,12 +166,21 @@ class Platform {
   // Ownership of the executor is NOT transferred to the caller --
   // the Platform owns the executors in a singleton-like fashion.
   virtual tsl::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) = 0;
+  virtual tsl::StatusOr<StreamExecutor*> ExecutorForDeviceStream(
+      int ordinal, int stream_id) {
+    return ExecutorForDevice(ordinal);
+  }
 
   // Returns a device or error, as above, with the specified plugins.
   //
   // Ownership of the executor is NOT transferred to the caller.
   virtual tsl::StatusOr<StreamExecutor*> ExecutorForDeviceWithPluginConfig(
       int ordinal, const PluginConfig& plugin_config) = 0;
+  virtual tsl::StatusOr<StreamExecutor*>
+  ExecutorForDeviceStreamWithPluginConfig(int ordinal, int stream_id,
+                                          const PluginConfig& plugin_config) {
+    return ExecutorForDeviceWithPluginConfig(ordinal, plugin_config);
+  }
 
   // Returns a device constructed with the options specified in "config".
   // Ownership of the executor is NOT transferred to the caller.

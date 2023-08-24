@@ -151,7 +151,7 @@ Status PopulateConvMap(
       entry = AutotuneEntry<Op>(primary, fallback);
 #endif
 
-      autotune_map->Insert(ConvParameters(ordinal, params_proto), entry);
+      autotune_map->Insert(ConvParameters(ordinal, 0, params_proto), entry);
     }
 
     if (!devices_matched) {

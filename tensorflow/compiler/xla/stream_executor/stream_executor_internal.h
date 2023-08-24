@@ -163,6 +163,10 @@ class StreamExecutorInterface {
   // See the StreamExecutor interface for comments on the same-named methods.
   virtual tsl::Status Init(int device_ordinal,
                            DeviceOptions device_options) = 0;
+  virtual tsl::Status Init(int device_ordinal, int stream_id,
+                           DeviceOptions device_options) {
+    return Init(device_ordinal, device_options);
+  }
 
   // This value is cached by the wrapping StreamExecutor instance, so it's OK if
   // this function is slow.

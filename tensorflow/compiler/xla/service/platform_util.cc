@@ -190,10 +190,8 @@ PlatformUtil::GetStreamExecutors(
                          std::vector<se::StreamExecutor*>& stream_executors,
                          int device_ordinal, int count) {
       VLOG(1) << "Started device init " << device_ordinal;
-      int encoded_ordinal =
-          stream_executor::DeviceOrdinalHelper::EncodeDeviceOrdinal(
-              stream_id, device_ordinal);
-      auto executor_status = platform->ExecutorForDevice(encoded_ordinal);
+      auto executor_status =
+          platform->ExecutorForDeviceStream(device_ordinal, stream_id);
       if (executor_status.ok()) {
         se::StreamExecutor* executor = executor_status.value();
         if (IsDeviceSupported(executor)) {

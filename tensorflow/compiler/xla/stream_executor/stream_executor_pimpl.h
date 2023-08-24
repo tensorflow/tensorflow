@@ -82,7 +82,7 @@ class StreamExecutor {
   StreamExecutor(
       const Platform* platform,
       std::unique_ptr<internal::StreamExecutorInterface> implementation,
-      int device_ordinal);
+      int device_ordinal, int stream_id = 0);
 
   ~StreamExecutor();
 
@@ -464,6 +464,8 @@ class StreamExecutor {
   // Meaningless before initialization.
   int device_ordinal() const { return device_ordinal_; }
 
+  int stream_id() const { return stream_id_; }
+
   // Returns a borrowed pointer to the underlying StreamExecutor implementation.
   internal::StreamExecutorInterface* implementation();
 
@@ -716,6 +718,7 @@ class StreamExecutor {
   //
   // Immutable post-initialization.
   int device_ordinal_;
+  int stream_id_;
 
   // Executor for handling host callback work that cannot be performed
   // by a host callback thread - for example, cleanup after a host BLAS routine
