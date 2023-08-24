@@ -286,6 +286,18 @@ PjRtLoadedExecutable::CreateInternal(
     output_shapes.push_back(Shape({}));
     output_shardings.push_back(OpaqueSharding::Create(devices, MemoryKind()));
   };
+  auto check_tuple_output_sharding_condition =
+      [](const xla::Shape& shape, const xla::HloSharding& sharding) {
+        // Check that the HLO sharding of the result is a tuple and that it has
+        // the same number of elements as the output tuple shape. If the output
+        // is an empty tuple then the output sharding will have a single element
+        // for the tuple as a special case, so we will have to allow that by
+        // checking this condition specifically.
+        return sharding.IsTuple() && (shape.tuple_shapes().size() ==
+                                          sharding.tuple_elements().size() ||
+                                      (shape.tuple_shapes().empty() &&
+                                       sharding.tuple_elements().size() == 1));
+      };
 
   if (result_shape.IsArray()) {
     output_dtypes.reserve(1);
@@ -313,9 +325,8 @@ PjRtLoadedExecutable::CreateInternal(
     output_shapes.reserve(result_shape.tuple_shapes().size());
     output_shardings.reserve(result_shape.tuple_shapes().size());
     if (result_hlo_sharding.has_value() &&
-        (!result_hlo_sharding->IsTuple() ||
-         result_hlo_sharding->tuple_elements().size() !=
-             result_shape.tuple_shapes().size())) {
+        !check_tuple_output_sharding_condition(result_shape,
+                                               *result_hlo_sharding)) {
       return FailedPrecondition(
           "Output sharding is inconsistent with the tuple result");
     }
