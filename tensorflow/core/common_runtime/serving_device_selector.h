@@ -74,6 +74,10 @@ class ServingDeviceSelector {
     // Selects a device based on the tracked states of all devices.
     virtual int SelectDevice(absl::string_view program_fingerprint,
                              const DeviceStates& device_states) = 0;
+    // Frees a selected device.
+    virtual void FreeDevice(absl::string_view program_fingerprint,
+                            const DeviceStates& device_states,
+                            int device_index) = 0;
   };
 
   virtual ~ServingDeviceSelector() = default;

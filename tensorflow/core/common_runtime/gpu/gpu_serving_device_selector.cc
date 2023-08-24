@@ -55,6 +55,12 @@ void GpuServingDeviceSelector::FreeDeviceReservation(
   auto& scheduled_programs =
       device_states_.at(reservation.device_index()).scheduled_programs;
   DCHECK(!scheduled_programs.empty());
+  DeviceStates device_states;
+  device_states.states = absl::Span<const DeviceState>(device_states_);
+  absl::string_view program_fingerprint =
+      scheduled_programs.front().fingerprint;
+  device_selector_policy_->FreeDevice(program_fingerprint, device_states,
+                                      reservation.device_index());
   scheduled_programs.pop_front();
 }
 
