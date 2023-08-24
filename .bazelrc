@@ -338,7 +338,7 @@ build:windows --host_copt=/d2ReducedOptimizeHugeFunctions
 # the pip package on Windows without an intermediate data-file archive, as the
 # build_pip_package script in its current form (as of Aug 2023) uses the
 # runfiles symlink tree to decide what to put into the Python wheel.
-startup:windows --windows_enable_symlinks
+startup --windows_enable_symlinks
 build:windows --enable_runfiles
 
 # Default paths for TF_SYSTEM_LIBS
