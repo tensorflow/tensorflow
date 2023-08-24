@@ -178,6 +178,11 @@ class AsyncCheckpointHelper:
     # list and created the object map between the original and copied variables.
     self._initialized = False
 
+    # The callback function that needs to be executed after checkpoint write.
+    # Currently this is only applied to the scenario where CheckpointManager is
+    # used, which triggers the _write() method.
+    self._async_write_done_callback = None
+
     # The list of all nodes from the original checkpoint items.
     # TODO(chienchunh): Consider changing this to local variable.
     self._original_nodes = None
@@ -371,6 +376,7 @@ class AsyncCheckpointHelper:
                 self.checkpointer()._write(  # pylint: disable=protected-access
                     self._save_file_prefix,
                     options=self._checkpoint_options,
+                    write_done_callback=self._async_write_done_callback,
                 )
         except Exception as e:   # # pylint: disable=broad-except
           self._async_error = e
@@ -458,9 +464,9 @@ class AsyncCheckpointHelper:
     Returns:
       The full path of the checkpoint file.
     """
-    return self._write(save_path, options)
+    self._write(save_path, options)
 
-  def _write(self, save_path, options=None):
+  def _write(self, save_path, options=None, write_done_callback=None):
     """Save the checkpointed variables.
 
     This method has exactly the same logic as save(), except it does not
@@ -470,6 +476,8 @@ class AsyncCheckpointHelper:
     Args:
       save_path: The file prefix of the checkpoint file.
       options: Optional CheckpointOption instance.
+      write_done_callback: Optional callback function executed after the async
+        write is done.
 
     Returns:
       The full path of the checkpoint file.
@@ -502,6 +510,7 @@ class AsyncCheckpointHelper:
     if self._checkpoint_options:
       self._checkpoint_options.experimental_enable_async_checkpoint = False
 
+    self._async_write_done_callback = write_done_callback
     self._queue.put(True)  # Trigger save in async thread
 
     write_end_time = time.time()

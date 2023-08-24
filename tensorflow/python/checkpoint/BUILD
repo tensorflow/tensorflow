@@ -112,7 +112,6 @@ tf_py_strict_test(
         "no_windows",  # TODO(b/201457117)
     ],
     deps = [
-        ":async_checkpoint_helper",
         ":checkpoint",
         ":checkpoint_management",
         ":checkpoint_options",
@@ -473,7 +472,6 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/checkpoint:checkpoint_options",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",

@@ -16,10 +16,8 @@
 
 import abc
 import collections
-import copy
 import functools
 import glob
-import inspect
 import os
 import threading
 import time
@@ -122,21 +120,6 @@ def _get_checkpoint_size(prefix):
     # Use TensorFlow's C++ FileSystem API.
     size += metrics.CalculateFileSize(file)
   return size
-
-
-def _execute_callbacks(callbacks, save_path):
-  """Executes a list of callback functions, providing `save_path` if needed."""
-  for callback in callbacks:
-    num_params = len(inspect.signature(callback).parameters)
-    if num_params == 0:
-      callback()
-    elif num_params == 1:
-      callback(save_path)
-    else:
-      raise AssertionError(
-          "Callback functions for checkpoint are required to have 0 or 1"
-          f"parameters, but this has {num_params} parameters: {callback}"
-      )
 
 
 class ObjectGraphProtoPrettyPrinter:
@@ -1743,7 +1726,7 @@ class CheckpointV1(autotrackable.AutoTrackable):
                 dtype=dtypes.int64,
                 trainable=False))
 
-  def write(self, file_prefix, session=None, options=None):
+  def write(self, file_prefix, session=None):
     """Writes a training checkpoint.
 
     The checkpoint includes variables created by this object and any
@@ -1761,14 +1744,13 @@ class CheckpointV1(autotrackable.AutoTrackable):
       session: The session to evaluate variables in. Ignored when executing
         eagerly. If not provided when graph building, the default session is
         used.
-      options: Optional `tf.train.CheckpointOptions` object.
 
     Returns:
       The full path to the checkpoint (i.e. `file_prefix`).
     """
-    return self._write(file_prefix, session, options=options)
+    return self._write(file_prefix, session)
 
-  def _write(self, file_prefix, session=None, options=None):
+  def _write(self, file_prefix, session=None, write_done_callback=None):
     """Writes a training checkpoint.
 
     The checkpoint includes variables created by this object and any
@@ -1786,14 +1768,15 @@ class CheckpointV1(autotrackable.AutoTrackable):
       session: The session to evaluate variables in. Ignored when executing
         eagerly. If not provided when graph building, the default session is
         used.
-      options: Optional `tf.train.CheckpointOptions` object.
+      write_done_callback: Optional callback function to be executed once
+        the underlying checkpoint saving is finished. Example usage includes
+        updating the checkpoint internal state.
 
     Returns:
       The full path to the checkpoint (i.e. `file_prefix`).
     """
     start_time = time.time()
-    output = self._saver.save(file_prefix=file_prefix, session=session,
-                              options=options)
+    output = self._saver.save(file_prefix=file_prefix, session=session)
     end_time = time.time()
 
     metrics.AddCheckpointWriteDuration(
@@ -1822,10 +1805,8 @@ class CheckpointV1(autotrackable.AutoTrackable):
       # Graph + Session, so we already session.ran it.
       output = compat.as_str(output)
 
-    # Execute callbacks
-    if (options is not None and
-        options.experimental_write_callbacks is not None):
-      _execute_callbacks(options.experimental_write_callbacks, output)
+    if write_done_callback:
+      write_done_callback(output)
 
     metrics.RecordCheckpointSize(
         api_label=_CHECKPOINT_V1, filesize=_get_checkpoint_size(output))
@@ -1843,7 +1824,7 @@ class CheckpointV1(autotrackable.AutoTrackable):
     self._maybe_create_save_counter()
     return self._save_counter
 
-  def save(self, file_prefix, session=None, options=None):
+  def save(self, file_prefix, session=None):
     """Saves a training checkpoint and provides basic checkpoint management.
 
     The saved checkpoint includes variables created by this object and any
@@ -1864,7 +1845,6 @@ class CheckpointV1(autotrackable.AutoTrackable):
       session: The session to evaluate variables in. Ignored when executing
         eagerly. If not provided when graph building, the default session is
         used.
-      options: Optional `tf.train.CheckpointOptions` object.
 
     Returns:
       The full path to the checkpoint.
@@ -1896,10 +1876,7 @@ class CheckpointV1(autotrackable.AutoTrackable):
     else:
       checkpoint_number = assign_op.numpy()
     file_path = self.write(
-        "%s-%d" % (file_prefix, checkpoint_number),
-        session=session,
-        options=options
-    )
+        "%s-%d" % (file_prefix, checkpoint_number), session=session)
     checkpoint_management.update_checkpoint_state_internal(
         save_dir=os.path.dirname(file_prefix),
         model_checkpoint_path=file_path,
@@ -2304,13 +2281,16 @@ class Checkpoint(autotrackable.AutoTrackable):
 
     return self._async_checkpointer_impl
 
-  def _write(self, file_prefix, options=None):
+  def _write(self, file_prefix, options=None, write_done_callback=None):
     """Internal method that implements Checkpoint.write().
 
     Args:
       file_prefix: A prefix to use for the checkpoint filenames
         (/path/to/directory/and_a_prefix).
       options: Optional `tf.train.CheckpointOptions` object.
+      write_done_callback: Optional callback function to be executed once
+        the underlying checkpoint saving is finished. Example usage includes
+        updating the checkpoint internal state.
 
     Returns:
       The full path to the checkpoint (i.e. `file_prefix`).
@@ -2333,7 +2313,7 @@ class Checkpoint(autotrackable.AutoTrackable):
         )
       elif context.executing_eagerly():
         return self._async_checkpointer()._write(  # pylint: disable=protected-access
-            file_prefix, options)
+            file_prefix, options, write_done_callback)
       else:
         logging.warning(
             "Saving async checkpoint in graph mode is currently not supported;"
@@ -2344,10 +2324,8 @@ class Checkpoint(autotrackable.AutoTrackable):
     output = self._saver.save(file_prefix=file_prefix, options=options)
     output = _convert_file_name_tensor_to_string(output)
 
-    # Execute callbacks (the only place they are executed; i.e. all entry points
-    # for callbacks will ultimately be directed to here for execution)
-    if options.experimental_write_callbacks:
-      _execute_callbacks(options.experimental_write_callbacks, output)
+    if write_done_callback:
+      write_done_callback(output)
 
     # Ensure save operations have completed when running in eager runtime.
     if context.executing_eagerly():
@@ -2467,9 +2445,7 @@ class Checkpoint(autotrackable.AutoTrackable):
     if isinstance(file_prefix, os.PathLike):
       file_prefix = os.fspath(file_prefix)
     # pylint:enable=line-too-long
-    # We create a copy so that user's `options` instance would not be mutated
-    # by internal mechanisms.
-    options = copy.copy(options) or checkpoint_options.CheckpointOptions()
+    options = options or checkpoint_options.CheckpointOptions()
     graph_building = not context.executing_eagerly()
     if graph_building:
       if ops.inside_function():
@@ -2498,16 +2474,10 @@ class Checkpoint(autotrackable.AutoTrackable):
     else:
       checkpoint_number = assign_op.numpy()
 
-    if options.experimental_write_callbacks is None:
-      options.experimental_write_callbacks = [_update_checkpoint_state_internal]
-    else:
-      options.experimental_write_callbacks.append(
-          _update_checkpoint_state_internal
-      )
-
     return self._write(
         "%s-%d" % (file_prefix, checkpoint_number),
-        options=options)
+        options=options,
+        write_done_callback=_update_checkpoint_state_internal)
 
   def read(self, save_path, options=None):
     """Reads a training checkpoint written with `write`.
