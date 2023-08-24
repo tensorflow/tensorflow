@@ -1037,6 +1037,18 @@ diff --ruN a/stablehlo/stablehlo/reference/InterpreterOps.td b/stablehlo/stableh
  }
  
  def Interpreter_ArrayOfStrArrayAttr : TypedArrayAttrBase<StrArrayAttr,
+diff --ruN a/stablehlo/stablehlo/reference/Ops.cpp b/stablehlo/stablehlo/reference/Ops.cpp
+--- stablehlo/stablehlo/reference/Ops.cpp
++++ stablehlo/stablehlo/reference/Ops.cpp
+@@ -924,7 +924,7 @@
+       process->rendezvous(*processGroup, channelId, operand).getSortedTensors();
+ 
+   SmallVector<Tensor> scatteredParts;
+-  for (auto groupOperand : groupOperands) {
++  for (const auto &groupOperand : groupOperands) {
+     auto splitParts = split(groupOperand, splitCount, splitDimension,
+                             operand.getType().getContext());
+     for (auto [i, processId] : llvm::enumerate(*processGroup))
 diff --ruN a/stablehlo/stablehlo/tests/CheckOps.h b/stablehlo/stablehlo/tests/CheckOps.h
 --- stablehlo/stablehlo/tests/CheckOps.h
 +++ stablehlo/stablehlo/tests/CheckOps.h
