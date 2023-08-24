@@ -21,9 +21,11 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "tensorflow/c/experimental/next_pluggable_device/tensor_pjrt_buffer_util.h"
+#include "tensorflow/compiler/jit/pjrt_tensor_buffer.h"
 #include "tensorflow/compiler/jit/pjrt_tensor_buffer_util.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_api.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/device_factory.h"
@@ -102,11 +104,32 @@ void PjRtDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor,
                                                                 literal.get());
   if (!status.ok()) {
     done(status);
+    return;
   }
-  xla::PjRtBuffer* device_buffer =
-      tensorflow::AsyncValueTensor::FromTensor(device_tensor)
-          ->GetBuffer()
-          .get();
+
+  xla::PjRtBuffer* device_buffer;
+  AsyncValueTensor* device_tensor_av =
+      tensorflow::AsyncValueTensor::FromTensor(device_tensor);
+  if (use_pjrt_tensor_buffer_) {
+    if (device_tensor_av) {
+      done(absl::InvalidArgumentError(
+          "If use_pjrt_tensor_buffer is set, the device tensor should not "
+          "contain an AsyncValueTensor."));
+      return;
+    }
+    const PjRtTensorBuffer* pjrt_tensor_buffer =
+        dynamic_cast<const PjRtTensorBuffer*>(DMAHelper::buffer(device_tensor));
+    if (pjrt_tensor_buffer == nullptr) {
+      done(absl::UnimplementedError(
+          "use_pjrt_tensor_buffer is set to true. Transferring a tensor "
+          "without pjrt_tensor_buffer in this case is not supported."));
+      return;
+    }
+    device_buffer = pjrt_tensor_buffer->pjrt_buffer();
+  } else {
+    device_buffer = device_tensor_av->GetBuffer().get();
+  }
+
   xla::PjRtFuture<Status> future = device_buffer->ToLiteral(literal.get());
   future.OnReady([literal = std::move(literal), done = std::move(done)](
                      const tensorflow::Status& status) { done(status); });
@@ -167,17 +190,20 @@ void PjRtDeviceContext::CopyTensorInSameDevice(const Tensor* input_tensor,
     done(absl::UnimplementedError(
         "Same-device copies in PjRtDeviceContext is only implemented when "
         "is_pluggable_device is true."));
+    return;
   }
   // TODO(b/288585098): consider whether to support same device copy in PJRT
   // API.
   StatusOr<PJRT_Buffer*> c_src_buffer = GetPjRtCBufferFromTensor(input_tensor);
   if (!c_src_buffer.ok()) {
     done(c_src_buffer.status());
+    return;
   }
   StatusOr<xla::PjRtCApiClient*> c_api_client = tensorflow::GetPjRtCApiClient(
       tensorflow::DeviceType(device->device_type()));
   if (!c_api_client.ok()) {
     done(c_api_client.status());
+    return;
   }
 
   TSL_Status c_status;
@@ -185,12 +211,14 @@ void PjRtDeviceContext::CopyTensorInSameDevice(const Tensor* input_tensor,
       *c_src_buffer, (*c_api_client)->pjrt_c_client(), &c_status);
   if (!c_status.status.ok()) {
     done(c_status.status);
+    return;
   }
 
   auto set_c_buffer_status =
       SetPjRtCBufferToTensor(dst_buffer, *c_api_client, output_tensor);
   if (!set_c_buffer_status.ok()) {
     done(set_c_buffer_status);
+    return;
   }
   AsyncValueTensor* result_tensor =
       tensorflow::AsyncValueTensor::FromTensor(output_tensor);
