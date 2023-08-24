@@ -162,9 +162,15 @@ function prepare_src() {
     cp -L \
       bazel-bin/tensorflow/tools/pip_package/build_pip_package.exe.runfiles/org_tensorflow/LICENSE \
       "${TMPDIR}"
+      
+    # Change the format of file path (TMPDIR-->TMPDIR_rsync) which is input to the rsync from
+    # Windows-compatible to Linux-compatible to resolve the error below 
+    # error: ssh: Could not resolve hostname c: No such host is known. 
+    
+    TMPDIR_rsync=`cygpath $TMPDIR`  
     rsync -a \
       bazel-bin/tensorflow/tools/pip_package/build_pip_package.exe.runfiles/org_tensorflow/tensorflow \
-      "${TMPDIR}"
+      "${TMPDIR_rsync}"
     cp_external \
       bazel-bin/tensorflow/tools/pip_package/build_pip_package.exe.runfiles \
       "${EXTERNAL_INCLUDES}/"
@@ -245,12 +251,15 @@ function prepare_src() {
     else
       chmod +rw ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_ml_dtypes.so
       chmod +rw ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
+      chmod +rw ${TMPDIR}/tensorflow/compiler/mlir/quantization/tensorflow/python/pywrap_quantize_model.so
       patchelf --replace-needed libtensorflow_Stsl_Spython_Slib_Score_Slibml_Udtypes.so.so libml_dtypes.so.so ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_ml_dtypes.so
       patchelf --replace-needed libtensorflow_Stsl_Spython_Slib_Score_Slibml_Udtypes.so.so libml_dtypes.so.so ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
       patchelf --set-rpath $(patchelf --print-rpath ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_ml_dtypes.so):\$ORIGIN ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_ml_dtypes.so
       patchelf --set-rpath $(patchelf --print-rpath ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so):\$ORIGIN/../tsl/python/lib/core ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
+      patchelf --set-rpath $(patchelf --print-rpath ${TMPDIR}/tensorflow/compiler/mlir/quantization/tensorflow/python/pywrap_quantize_model.so):\$ORIGIN/../../../../../python ${TMPDIR}/tensorflow/compiler/mlir/quantization/tensorflow/python/pywrap_quantize_model.so
       patchelf --shrink-rpath ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_ml_dtypes.so
       patchelf --shrink-rpath ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
+      patchelf --shrink-rpath ${TMPDIR}/tensorflow/compiler/mlir/quantization/tensorflow/python/pywrap_quantize_model.so
     fi
     mkl_so_dir=$(ls ${RUNFILES}/${so_lib_dir} | grep mkl) || true
     if [ -n "${mkl_so_dir}" ]; then

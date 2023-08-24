@@ -53,7 +53,7 @@ extern "C" {
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 22
+#define PJRT_API_MINOR 23
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -692,6 +692,10 @@ struct PJRT_Client_BufferFromHostBuffer_Args {
 
   // Device to copy host data to.
   PJRT_Device* device;
+
+  // If nullptr, host data will be copied to `device`, otherwise we copy data to
+  // `memory`.
+  PJRT_Memory* memory;
 
   // The caller is responsible to keep the data (tiled or strides) in the
   // device_layout alive during the call. If nullptr, the device layout is

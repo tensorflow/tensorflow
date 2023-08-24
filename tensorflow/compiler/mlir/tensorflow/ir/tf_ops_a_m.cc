@@ -1087,35 +1087,43 @@ OpFoldResult CastOp::fold(FoldAdaptor) {
 // CollectiveReduceV2Op
 //===----------------------------------------------------------------------===//
 
-// For `CollectiveReduceV2Op` we have two cases:
-// 1) If at least one ordering token is present, then we purely rely on ordering
+// For `CollectiveReduceV2Op` we have 3 cases:
+// 1) `is_stateless` is true turns off automatic ordering and we purely rely on
+//    instance_key to distinguish collective groups. In this case, ordering
+//    tokens are irrelevant. Each collective group should have a unique
+//    instance_key at runtime.
+// 2) If at least one ordering token is present, then we purely rely on ordering
 //    tokens for side effect modeling and ignore the op-based effect
 //    `TF_CollectiveReduceOrderingEffect` for which this function is relevant
 //    (note that returning `std::nullopt` here signals exactly that).
-// 2) If no ordering token is present, then we treat the op conservatively which
-//    means that different op instances need dependencies. This is realized by
-//    always returning the same string ("") in this case. In fact, we could
-//    return any string here, as long as it is the same string for all op
-//    instances without ordering tokens.
+// 3) If `is_stateless` is false and no ordering token is present, then we treat
+//    the op conservatively which means that different op instances need
+//    dependencies. This is realized by always returning the same string ("")
+//    in this case. In fact, we could return any string here, as long as it is
+//    the same string for all op instances without ordering tokens.
 std::optional<std::string> CollectiveReduceV2Op::GetResourceInstanceStr() {
-  return getNorderingToken() == 0 ? std::optional<std::string>("")
-                                  : std::nullopt;
+  if (!getIsStateless() && getNorderingToken() == 0)
+    return std::optional<std::string>("");
+  return std::nullopt;
 }
 
 std::optional<std::string>
 CollectiveReduceScatterV2Op::GetResourceInstanceStr() {
-  return getNorderingToken() == 0 ? std::optional<std::string>("")
-                                  : std::nullopt;
+  if (!getIsStateless() && getNorderingToken() == 0)
+    return std::optional<std::string>("");
+  return std::nullopt;
 }
 
 std::optional<std::string> CollectiveAllToAllV2Op::GetResourceInstanceStr() {
-  return getNorderingToken() == 0 ? std::optional<std::string>("")
-                                  : std::nullopt;
+  if (!getIsStateless() && getNorderingToken() == 0)
+    return std::optional<std::string>("");
+  return std::nullopt;
 }
 
 std::optional<std::string> CollectiveGatherV2Op::GetResourceInstanceStr() {
-  return getNorderingToken() == 0 ? std::optional<std::string>("")
-                                  : std::nullopt;
+  if (!getIsStateless() && getNorderingToken() == 0)
+    return std::optional<std::string>("");
+  return std::nullopt;
 }
 
 //===----------------------------------------------------------------------===//
@@ -3001,6 +3009,15 @@ LogicalResult GatherV2Op::verify() {
 void GatherOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                            MLIRContext* context) {
   results.add<GatherToV2>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// GlobalIterIdOp
+//===----------------------------------------------------------------------===//
+
+// Disable side effects.
+std::optional<std::string> GlobalIterIdOp::GetResourceInstanceStr() {
+  return std::nullopt;
 }
 
 //===----------------------------------------------------------------------===//

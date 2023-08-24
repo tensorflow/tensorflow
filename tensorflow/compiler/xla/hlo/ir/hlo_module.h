@@ -429,16 +429,6 @@ class HloModule {
     return buffer_donor_config_;
   }
 
-  // DynamicParameterBinding holds the list of bindings that indicates which
-  // parameter dimensions are dynamic and which parameters represent their
-  // runtime value.
-  DynamicParameterBinding& dynamic_parameter_binding() {
-    return dynamic_parameter_binding_;
-  }
-  const DynamicParameterBinding& dynamic_parameter_binding() const {
-    return dynamic_parameter_binding_;
-  }
-
   // Returns an id that is unique to this module across all modules created over
   // the lifetime of this process.
   int unique_id() const { return unique_id_; }
@@ -661,9 +651,6 @@ class HloModule {
   // buffer_donor_config_ indicates the donor information of input buffers that
   // are expected from the module.
   HloBufferDonorConfig buffer_donor_config_;
-
-  // Bindings for dynamic parameter mapping.
-  DynamicParameterBinding dynamic_parameter_binding_;
 
   // The HLO shardings of the entry computation's parameters for
   // SPMD-partitioned programs.

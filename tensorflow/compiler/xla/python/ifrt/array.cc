@@ -33,11 +33,5 @@ std::vector<Array*> MakeArrayPointerList(
   return result;
 }
 
-StatusOr<tsl::RCReference<Array>> Array::FullyReplicatedShard(
-    ArrayCopySemantics semantics) {
-  TF_ASSIGN_OR_RETURN(auto items, DisassembleIntoSingleDeviceArrays(semantics));
-  return items.front();
-}
-
 }  // namespace ifrt
 }  // namespace xla

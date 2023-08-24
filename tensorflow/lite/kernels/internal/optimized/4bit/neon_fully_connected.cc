@@ -273,16 +273,12 @@ void NeonPackInner(const int8_t* src, uint8_t* box, int src_rows, int src_cols,
   }
 }
 
-void NeonPrepack(uint8_t** dest, const int8_t* tensor, int layout_rows,
+void NeonPrepack(uint8_t* dest, const int8_t* tensor, int layout_rows,
                  int layout_cols, int src_rows, int src_cols, int width,
                  int depth) {
   // depth is always cols
   size_t size = layout_rows * layout_cols / 2;
-  int res =
-      posix_memalign(reinterpret_cast<void**>(dest), EIGEN_MAX_ALIGN_BYTES,
-                     size + (EIGEN_MAX_ALIGN_BYTES));
-  (void)res;
-  memset(*dest, static_cast<uint8_t>(119), sizeof(uint8_t) * size);
+  memset(dest, static_cast<uint8_t>(119), sizeof(uint8_t) * size);
   // basically, we need to make a new 4D matrix
   // [rows / width, cols / depth, width, depth] in depth-first
   int outer_cols = layout_cols / depth;
@@ -293,7 +289,7 @@ void NeonPrepack(uint8_t** dest, const int8_t* tensor, int layout_rows,
     for (int outer_col = 0; outer_col < outer_cols; ++outer_col) {
       const int cluster_index = outer_row * outer_cols + outer_col;
       const int real_depth = inner_cols / 2;
-      uint8_t* box = *dest + cluster_index * real_depth * inner_rows;
+      uint8_t* box = dest + cluster_index * real_depth * inner_rows;
       NeonPackInner(tensor, box, src_rows, src_cols, outer_row, outer_col,
                     outer_rows, outer_cols, inner_rows, inner_cols);
     }

@@ -174,7 +174,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/quantization/tensorflow/utils:lift_as_function_call_utils",
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:constant_fold_utils",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:constant_fold_utils",
         "@com_google_absl//absl/container:flat_hash_set",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",

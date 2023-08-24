@@ -332,39 +332,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "tf_op_quant_spec",
-    srcs = [
-        "ops/tf_op_quant_spec.cc",
-    ],
-    hdrs = ["ops/tf_op_quant_spec.h"],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
-        "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
-        "//tensorflow/compiler/mlir/tensorflow",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@llvm-project//mlir:IR",
-    ],
-)
-
-cc_library(
-    name = "uniform_op_quant_spec",
-    srcs = [
-        "ops/uniform_op_quant_spec.cc",
-    ],
-    hdrs = ["ops/uniform_op_quant_spec.h"],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        ":tf_quant_ops",
-        "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
-        "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
-        "//tensorflow/compiler/mlir/tensorflow",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@llvm-project//mlir:IR",
-    ],
-)
-
 gentbl_cc_library(
     name = "replace_cast_hacks_with_tf_xla_ops_inc_gen",
     compatible_with = get_compatible_with_portable(),
@@ -420,6 +387,7 @@ cc_library(
         "passes/quantize.cc",
         "passes/quantize_composite_functions.cc",
         "passes/quantize_composite_functions.inc",
+        "passes/quantize_weights.cc",
         "passes/quantized_function_library.h",
         "passes/remove_var_init_by_const.cc",
         "passes/replace_cast_hacks_with_tf_xla_ops.cc",
@@ -432,11 +400,22 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        ":cast_bf16_ops_to_f32_inc_gen",
+        ":convert_tf_xla_op_to_tf_op_inc_gen",
+        ":convert_tpu_model_to_cpu_inc_gen",
+        ":lift_quantizable_spots_as_functions_drq_inc_gen",
+        ":lift_quantizable_spots_as_functions_inc_gen",
         ":manipulate_model_attr",
+        ":optimize_inc_gen",
         ":pass_utils",
+        ":post_quantize_inc_gen",
+        ":prepare_lifting_inc_gen",
+        ":prepare_quantize_inc_gen",
+        ":preprocess_op_gen",
         ":quantization_options_proto_cc",
+        ":quantize_composite_functions_inc_gen",
         ":remove_identity_op_pattern",
-        ":tf_op_quant_spec",
+        ":replace_cast_hacks_with_tf_xla_ops_inc_gen",
         ":tf_quant_ops",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
@@ -445,6 +424,7 @@ cc_library(
         "//tensorflow/compiler/mlir/quantization/tensorflow/cc:const_op_size",
         "//tensorflow/compiler/mlir/quantization/tensorflow/cc:constant_fold",
         "//tensorflow/compiler/mlir/quantization/tensorflow/cc:run_passes",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/ops:tf_op_quant_spec",
         "//tensorflow/compiler/mlir/quantization/tensorflow/utils:fake_quant_utils",
         "//tensorflow/compiler/mlir/quantization/tensorflow/utils:lift_as_function_call_utils",
         "//tensorflow/compiler/mlir/quantization/tensorflow/utils:tf_to_uniform_attribute_utils",
@@ -487,6 +467,7 @@ cc_library(
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:Rewrite",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
@@ -623,8 +604,8 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tf_dialect_passes",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FuncExtensions",

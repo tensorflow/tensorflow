@@ -1619,14 +1619,21 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     )
     saved_model_save.save(model, self._input_saved_model_path)
 
+    # Generate model input data.
+    rng = np.random.default_rng(seed=1234)
+    static_input_shape = [dim if dim is not None else 2 for dim in input_shape]
+    input_data = ops.convert_to_tensor(
+        rng.uniform(low=0.0, high=1.0, size=static_input_shape).astype(
+            np.float32
+        )
+    )
+
     def data_gen() -> repr_dataset.RepresentativeDataset:
-      for _ in range(8):
+      for _ in range(500):
         yield {
-            'input_tensor': ops.convert_to_tensor(
-                np.random.uniform(low=0, high=150, size=(1, 3, 4, 3)).astype(
-                    'f4'
-                )
-            ),
+            'input_tensor': rng.uniform(
+                low=0.0, high=1.0, size=static_input_shape
+            ).astype(np.float32)
         }
 
     tags = {tag_constants.SERVING}
@@ -1656,6 +1663,19 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         self._output_saved_model_path
     )
     output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
+
+    # The difference between float model and target path quantized model is
+    # expected to be small.
+    # The atol value is arbitrary.
+    # TODO(b/296916785): Revisit the per-channel conv implementation and
+    # complete numerical verification.
+    if not enable_per_channel_quantization:
+      expected_outputs = model.conv(input_data)
+      target_outputs = converted_model.signatures['serving_default'](
+          input_tensor=ops.convert_to_tensor(input_data)
+      )
+      self.assertAllClose(target_outputs, expected_outputs, atol=0.05)
+
     if target_opset == quant_opts_pb2.XLA:
       self.assertTrue(self._contains_op(output_graphdef, 'XlaConvV2'))
     elif target_opset == quant_opts_pb2.UNIFORM_QUANTIZED:

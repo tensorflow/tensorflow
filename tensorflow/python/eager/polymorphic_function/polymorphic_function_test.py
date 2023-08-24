@@ -183,20 +183,20 @@ class MaskedTensor:
 
 @dataclasses.dataclass
 class MaskedTensorPair:
-  flag: bool
+  masks: list[bool]
   value1: MaskedTensor
   value2: MaskedTensor
 
   def __tf_flatten__(self):
-    metadata = (self.flag,)
+    metadata = (self.masks,)
     components = (self.value1, self.value2)
     return metadata, components
 
   @classmethod
   def __tf_unflatten__(cls, metadata, leaves):
-    flag = metadata[0]
+    masks = metadata[0]
     value1, value2 = leaves
-    return MaskedTensorPair(flag=flag, value1=value1, value2=value2)
+    return MaskedTensorPair(masks=masks, value1=value1, value2=value2)
 
 
 # TODO(mdan): Organize these tests.
@@ -4963,9 +4963,9 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
 
     mt = MaskedTensor(mask=True, value=constant_op.constant([1.0]))
     mt2 = MaskedTensor(mask=False, value=constant_op.constant([2.0]))
-    mtp = MaskedTensorPair(flag=True, value1=mt, value2=mt2)
+    mtp = MaskedTensorPair(masks=[True, False], value1=mt, value2=mt2)
     result = f(mtp)
-    self.assertEqual(result.flag, mtp.flag)
+    self.assertEqual(result.masks, mtp.masks)
     self.assertEqual(result.value1.mask, mt.mask)
     self.assertAllEqual(result.value1.value, mt.value)
     self.assertEqual(result.value2.mask, mt2.mask)
@@ -4981,6 +4981,26 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     result = f(mt, mt2)
     self.assertEqual(result.mask, mt.mask)
     self.assertAllEqual(result.value, mt2.value)
+
+  def testDataclassWithUnhashableMetadata(self):
+    @polymorphic_function.function
+    def f(x, y):
+      return MaskedTensorPair(
+          masks=x.masks + y.masks, value1=x.value1, value2=y.value2
+      )
+
+    mt = MaskedTensor(mask=False, value=constant_op.constant([1.0]))
+    mt2 = MaskedTensor(mask=True, value=constant_op.constant([2.0]))
+    mtp = MaskedTensorPair(masks=[True, True], value1=mt, value2=mt2)
+    mt3 = MaskedTensor(mask=False, value=constant_op.constant([3.0]))
+    mt4 = MaskedTensor(mask=True, value=constant_op.constant([4.0]))
+    mtp2 = MaskedTensorPair(masks=[False, False], value1=mt3, value2=mt4)
+    result = f(mtp, mtp2)
+    self.assertEqual(result.masks, mtp.masks + mtp2.masks)
+    self.assertEqual(result.value1.mask, mt.mask)
+    self.assertAllEqual(result.value1.value, mt.value)
+    self.assertEqual(result.value2.mask, mt4.mask)
+    self.assertAllEqual(result.value2.value, mt4.value)
 
   def testDataClassWithSubTraceType(self):
     @polymorphic_function.function

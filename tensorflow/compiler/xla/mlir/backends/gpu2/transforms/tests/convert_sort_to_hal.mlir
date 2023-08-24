@@ -30,9 +30,14 @@ func.func @main(%arg0: memref<16xi8>, %arg1: memref<16xi8>,
 // CHECK:   %[[ARG0:.*]]: tensor<16xi8>, %[[ARG1:.*]]: tensor<16xi8>,
 // CHECK:   %[[ARG2:.*]]: tensor<16xi8>
 // CHECK: ) {
-// CHECK:   %[[I:.*]] = iree_input.tensor.import {{.*}} -> tensor<4xf32>
-// CHECK:   %[[O:.*]] = iree_input.tensor.import {{.*}} -> tensor<4xf32>
-// CHECK:   %[[TMP:.*]] = iree_input.tensor.import {{.*}} -> tensor<4xi32>
+
+// CHECK-DAG: %[[BUFFER0:.*]] = iree_input.tensor.export %[[ARG0]]
+// CHECK-DAG: %[[BUFFER1:.*]] = iree_input.tensor.export %[[ARG1]]
+// CHECK-DAG: %[[BUFFER2:.*]] = iree_input.tensor.export %[[ARG2]]
+// CHECK-DAG: %[[I:.*]] = iree_input.tensor.import %[[BUFFER0]]
+// CHECK-DAG: %[[O:.*]] = iree_input.tensor.import %[[BUFFER1]]
+// CHECK-DAG: %[[TMP:.*]] = iree_input.tensor.import %[[BUFFER2]]
+
 // CHECK:   %[[SORT:.*]]:2 = iree_input.dispatch @xla.module.ptx
 // CHECK:     (%[[I]], %[[TMP]], %[[O]], %[[TMP]]) {{.*}} -> (%[[O]], %[[TMP]])
 // CHECK: }

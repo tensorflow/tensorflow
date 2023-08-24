@@ -37,6 +37,9 @@ tsl::Status SetTpuOpsStructFns(void* library_handle) {  // TENSORFLOW_STATUS_OK
   TFTPU_SET_FN(ops_api_fn, TpuCompile_XrtCompileAndBuild);
 
   TFTPU_SET_FN(ops_api_fn, TpuExecutable_LoadProgramAndEnqueueToStream);
+  TFTPU_SET_FN(ops_api_fn, TpuExecutable_CreateOpaqueTransferManager);
+  TFTPU_SET_FN(ops_api_fn, TpuExecutable_FreeOpaqueTransferManager);
+
   TFTPU_SET_FN(ops_api_fn, HardwareLayout_HostShapeToDeviceShape);
   TFTPU_SET_FN(ops_api_fn, HardwareLayout_ShapeSize);
   TFTPU_SET_FN(ops_api_fn, HardwareLayout_ShapeSizeCompact);

@@ -85,7 +85,8 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
     const toco::TocoFlags& toco_flags, const mlir::TFL::PassConfig& pass_config,
     const std::unordered_set<std::string>& saved_model_tags,
     llvm::StringRef saved_model_dir,
-    std::optional<tensorflow::Session*> session, std::string* result);
+    std::optional<tensorflow::Session*> session, std::string* result,
+    bool serialize_stablehlo_ops = true);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_TF_TO_TFL_FLATBUFFER_H_

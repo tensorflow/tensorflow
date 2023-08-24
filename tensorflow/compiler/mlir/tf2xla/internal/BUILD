@@ -10,6 +10,52 @@ package(
 )
 
 cc_library(
+    name = "compilation_timer",
+    hdrs = ["compilation_timer.h"],
+    deps = [
+        "//tensorflow/core/platform:profile_utils_cpu_utils",
+    ],
+)
+
+tf_cc_test(
+    name = "compilation_timer_test",
+    srcs = ["compilation_timer_test.cc"],
+    deps = [
+        ":compilation_timer",
+        "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "test_matchers",
+    testonly = True,
+    hdrs = ["test_matchers.h"],
+    deps = [
+        "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util",
+        "//tensorflow/tsl/platform:statusor",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "test_matchers_test",
+    srcs = ["test_matchers_test.cc"],
+    deps = [
+        ":test_matchers",
+        "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util",
+        "//tensorflow/compiler/tf2xla:xla_helpers",
+        "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/lib/monitoring:cell_reader",
+        "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "mlir_pass_instrumentation",
     srcs = ["mlir_pass_instrumentation.cc"],
     hdrs = ["mlir_pass_instrumentation.h"],
@@ -35,6 +81,7 @@ cc_library(
     srcs = ["legalize_tf_mlir.cc"],
     hdrs = ["legalize_tf_mlir.h"],
     deps = [
+        ":compilation_timer",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:serialize_mlir_module_utils",
         "//tensorflow/compiler/mlir/tensorflow/transforms:set_tpu_infeed_layout",
@@ -64,6 +111,7 @@ cc_library(
     srcs = ["legalize_tf_to_hlo.cc"],
     hdrs = ["legalize_tf_to_hlo.h"],
     deps = [
+        ":compilation_timer",
         ":legalize_tf_mlir",
         "//tensorflow/compiler/mlir/tf2xla/api/v0:compile_tf_graph",
         "//tensorflow/compiler/tf2xla:layout_util",
@@ -72,6 +120,7 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/client:compile_only_client",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
         "//tensorflow/core/tpu/kernels:tpu_compile_op_support",
@@ -86,6 +135,7 @@ tf_cc_test(
     srcs = ["legalize_tf_mlir_test.cc"],
     deps = [
         ":legalize_tf_mlir",
+        ":test_matchers",
         "//tensorflow/compiler/jit",
         "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -107,6 +157,7 @@ tf_cc_test(
     srcs = ["legalize_tf_to_hlo_test.cc"],
     deps = [
         ":legalize_tf_to_hlo",
+        ":test_matchers",
         "//tensorflow/compiler/jit",
         "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",

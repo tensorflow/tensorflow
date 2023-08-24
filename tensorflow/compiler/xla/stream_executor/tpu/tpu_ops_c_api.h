@@ -207,6 +207,24 @@ typedef struct TpuExecutable_LoadProgramAndEnqueueToStream_Params {
 TFTPU_CAPI_EXPORT void TpuExecutable_LoadProgramAndEnqueueToStream(
     TpuExecutable_LoadProgramAndEnqueueToStream_Params* params);
 
+typedef struct TpuExecutable_CreateOpaqueTransferManager_Params {
+  int32_t struct_size;
+  void* priv;
+  SE_Stream* stream;
+
+  OpaqueTransferManagerImpl* transfer_manager;  // out
+  TF_Status* status;                            // out
+} TpuExecutable_CreateOpaqueTransferManager_Params;
+
+#define TpuExecutable_CreateOpaqueTransferManager_Params_SIZE \
+  (sizeof(struct TpuExecutable_CreateOpaqueTransferManager_Params))
+
+TFTPU_CAPI_EXPORT void TpuExecutable_CreateOpaqueTransferManager(
+    TpuExecutable_CreateOpaqueTransferManager_Params* params);
+
+TFTPU_CAPI_EXPORT void TpuExecutable_FreeOpaqueTransferManager(
+    OpaqueTransferManagerImpl* transfer_manager);
+
 TFTPU_CAPI_EXPORT void HardwareLayout_HostShapeToDeviceShape(
     XLA_Shape* host_shape, XLA_Shape* device_shape);
 TFTPU_CAPI_EXPORT int64_t HardwareLayout_ShapeSize(XLA_Shape* shape);
@@ -715,6 +733,9 @@ struct TfTpu_OpsApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuEmbeddingEngineState_GetState);
 
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutable_LoadProgramAndEnqueueToStream);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutable_CreateOpaqueTransferManager);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutable_FreeOpaqueTransferManager);
+
   TFTPU_ADD_FN_IN_STRUCT(HardwareLayout_HostShapeToDeviceShape);
   TFTPU_ADD_FN_IN_STRUCT(HardwareLayout_ShapeSize);
   TFTPU_ADD_FN_IN_STRUCT(HardwareLayout_ShapeSizeCompact);

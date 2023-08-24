@@ -433,6 +433,8 @@ enum BuiltinOperator : int32 {
   STABLEHLO_BROADCAST_IN_DIM = 170, // WARNING: No runtime support
   STABLEHLO_CONVOLUTION = 171, // WARNING: No runtime support
   STABLEHLO_SLICE = 172, // WARNING: No runtime support
+  STABLEHLO_CUSTOM_CALL = 173, // WARNING: No runtime support
+  STABLEHLO_REDUCE = 174, // WARNING: No runtime support
 }
 // LINT.ThenChange(nnapi_linter/linter.proto)
 
@@ -574,6 +576,8 @@ union BuiltinOptions2{
   StablehloBroadcastInDimOptions,
   StablehloSliceOptions,
   StablehloConvolutionOptions,
+  StablehloCustomCallOptions,
+  StablehloReduceOptions,
 }
 
 enum StablehloPrecisionConfig : uint {
@@ -588,6 +592,20 @@ table StablehloConcatenateOptions {
 
 table StablehloBroadcastInDimOptions{
   broadcast_dimensions : [long];
+}
+
+table StablehloCustomCallOptions {
+  call_target_name : string;
+  has_side_effect : bool;
+  backend_config: string;
+  api_version : int; // will be decprecated b/189822916
+  called_computations: [int]; // should point to subgraphs of the computations
+  custom_attributes : [ubyte];
+}
+
+table StablehloReduceOptions {
+  dimensions : [long];
+  body_subgraph_index : int;
 }
 
 table StablehloSliceOptions{

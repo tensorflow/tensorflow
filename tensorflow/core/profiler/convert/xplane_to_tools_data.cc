@@ -16,8 +16,10 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/xplane_to_tools_data.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 
+#include "absl/status/status.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/env.h"
@@ -35,12 +37,14 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/repository.h"
 #include "tensorflow/core/profiler/convert/tool_options.h"
 #include "tensorflow/core/profiler/convert/trace_viewer/trace_events_to_json.h"
+#include "tensorflow/core/profiler/convert/xplane_to_dcn_collective_stats.h"
 #include "tensorflow/core/profiler/convert/xplane_to_memory_profile.h"
 #include "tensorflow/core/profiler/convert/xplane_to_op_stats.h"
 #include "tensorflow/core/profiler/convert/xplane_to_tf_data_stats.h"
 #include "tensorflow/core/profiler/convert/xplane_to_tf_functions.h"
 #include "tensorflow/core/profiler/convert/xplane_to_tool_names.h"
 #include "tensorflow/core/profiler/convert/xplane_to_trace_container.h"
+#include "tensorflow/core/profiler/protobuf/dcn_slack_analysis.pb.h"
 #include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
 #include "tensorflow/core/profiler/protobuf/input_pipeline.pb.h"
 #include "tensorflow/core/profiler/protobuf/kernel_stats.pb.h"
@@ -291,6 +295,24 @@ StatusOr<std::string> PreprocessXSpace(
   return xspace->SerializeAsString();
 }
 
+StatusOr<std::string> ConvertDcnCollectiveStatsToToolData(
+    const SessionSnapshot& session_snapshot, const ToolOptions& options) {
+  // <options> must provide a host_name field.
+  std::optional<std::string> hostname =
+      GetParam<std::string>(options, "host_name");
+  if (!hostname.has_value() || hostname->empty()) {
+    return absl::InvalidArgumentError(
+        "Cannot find host_name from options for dcn_collective_stats tool.");
+  }
+
+  // Load DcnSlackAnalysis for a host.
+  TF_ASSIGN_OR_RETURN(
+      DcnSlackAnalysis dcnSlackAnalysis,
+      GetDcnSlackAnalysisByHostName(session_snapshot, hostname.value()));
+
+  return dcnSlackAnalysis.SerializeAsString();
+}
+
 }  // namespace
 
 StatusOr<std::string> ConvertMultiXSpacesToToolData(
@@ -318,6 +340,8 @@ StatusOr<std::string> ConvertMultiXSpacesToToolData(
     return ConvertMultiXSpacesToOpProfileViewer(session_snapshot);
   } else if (tool_name == "memory_viewer" || tool_name == "graph_viewer") {
     return ConvertHloProtoToToolData(session_snapshot, tool_name, options);
+  } else if (tool_name == "dcn_collective_stats") {
+    return ConvertDcnCollectiveStatsToToolData(session_snapshot, options);
   } else if (tool_name == "tool_names") {
     return GetAvailableToolNames(session_snapshot);
   } else if (tool_name == "_xplane.pb") {  // internal test only.

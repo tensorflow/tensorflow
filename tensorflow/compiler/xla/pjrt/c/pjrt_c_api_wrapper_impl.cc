@@ -577,7 +577,20 @@ PJRT_Error* PJRT_Client_BufferFromHostBuffer(
   };
 
   std::unique_ptr<xla::PjRtBuffer> buffer;
-  if (layout.has_value()) {
+  bool has_layout_and_memory = layout.has_value() && args->memory != nullptr;
+  bool has_layout_and_no_memory = layout.has_value() && args->memory == nullptr;
+  bool has_memory_and_no_layout =
+      !layout.has_value() && args->memory != nullptr;
+  if (has_layout_and_memory) {
+    PJRT_ASSIGN_OR_RETURN(
+        buffer, args->client->client->BufferFromHostBuffer(
+                    args->data, ::pjrt::ConvertFromPjRtBufferType(args->type),
+                    dims, byte_strides,
+                    ::pjrt::ConvertFromPjRtHostBufferSemantics(
+                        args->host_buffer_semantics),
+                    on_done_with_host_buffer, args->memory->memory_space,
+                    &layout.value()));
+  } else if (has_layout_and_no_memory) {
     PJRT_ASSIGN_OR_RETURN(
         buffer,
         args->client->client->BufferFromHostBuffer(
@@ -586,6 +599,15 @@ PJRT_Error* PJRT_Client_BufferFromHostBuffer(
             ::pjrt::ConvertFromPjRtHostBufferSemantics(
                 args->host_buffer_semantics),
             on_done_with_host_buffer, args->device->device, &layout.value()));
+  } else if (has_memory_and_no_layout) {
+    PJRT_ASSIGN_OR_RETURN(
+        buffer, args->client->client->BufferFromHostBuffer(
+                    args->data, ::pjrt::ConvertFromPjRtBufferType(args->type),
+                    dims, byte_strides,
+                    ::pjrt::ConvertFromPjRtHostBufferSemantics(
+                        args->host_buffer_semantics),
+                    on_done_with_host_buffer, args->memory->memory_space,
+                    /*device_layout=*/nullptr));
   } else {
     PJRT_ASSIGN_OR_RETURN(
         buffer, args->client->client->BufferFromHostBuffer(

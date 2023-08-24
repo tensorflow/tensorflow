@@ -32,15 +32,7 @@ limitations under the License.
 
 namespace xla {
 namespace {
-class DynamicParameterBindingTest : public HloTestBase {
- protected:
-  // Serialize and then deserialize a binding.
-  void SerializeAndDeserialize(DynamicParameterBinding* binding) {
-    DynamicParameterBindingProto proto = binding->ToProto();
-    TF_ASSERT_OK_AND_ASSIGN(*binding,
-                            DynamicParameterBinding::CreateFromProto(proto));
-  }
-};
+using DynamicParameterBindingTest = HloTestBase;
 
 TEST_F(DynamicParameterBindingTest, SimpleBinding) {
   // 'b' is a dynamic shape; 'a' represents the real size of b's first
@@ -74,8 +66,6 @@ ENTRY main {
     EXPECT_EQ(param->parameter_index, ShapeIndex({}));
     TF_EXPECT_OK(binding.Verify(*module));
   };
-  test(binding);
-  SerializeAndDeserialize(&binding);
   test(binding);
 }
 
@@ -113,8 +103,6 @@ ENTRY main {
     EXPECT_EQ(param->parameter_index, ShapeIndex({0}));
     TF_EXPECT_OK(binding.Verify(*module));
   };
-  test(binding);
-  SerializeAndDeserialize(&binding);
   test(binding);
 }
 
@@ -167,11 +155,6 @@ ENTRY main {
     TF_EXPECT_OK(binding.Verify(*module));
   };
 
-  test(binding);
-
-  SerializeAndDeserialize(&binding);
-
-  // Test the binding again after deserialization.
   test(binding);
 }
 

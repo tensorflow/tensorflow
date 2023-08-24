@@ -24,6 +24,7 @@ visibility = [
     "//third_party/py/tf_slim:__subpackages__",
     "//third_party/py/tensorflow_docs:__subpackages__",
     "//third_party/py/keras:__subpackages__",
+    "//third_party/py/tf_keras:__subpackages__",
 ]
 
 util_subpackage_visibility = visibility + [

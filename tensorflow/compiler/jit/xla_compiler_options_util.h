@@ -47,6 +47,10 @@ XlaCompiler::Options GenerateCompilerOptionsForPjRt(
     const DeviceCompiler<xla::PjRtLoadedExecutable, xla::PjRtClient>*
         pjrt_device_compiler = nullptr);
 
+// Returns created CompileOptions for XLA compiler.
+XlaCompiler::CompileOptions GenerateCompileOptions(
+    bool has_ref_vars, bool may_alias_resource_update);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_JIT_XLA_COMPILER_OPTIONS_UTIL_H_

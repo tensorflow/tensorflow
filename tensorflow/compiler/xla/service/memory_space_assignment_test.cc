@@ -30,6 +30,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -6260,12 +6261,16 @@ ENTRY entry {
   Options options = DefaultMemorySpaceOptions();
   // Make instruction c reserve 64 bytes in the alternate memory. This should
   // prevent both b and c to put their outputs in the alternate memory.
-  options.reserved_scoped_memory_fn = [&](const HloInstruction* instruction) {
-    if (instruction->name() == "c") {
-      return 100;
-    }
-    return 0;
-  };
+  options.reserved_scoped_memory_fn =
+      [&](const HloInstruction* instruction,
+          const absl::flat_hash_set<std::pair<int, ShapeIndex>>
+              operands_in_alternate_memory,
+          const absl::flat_hash_set<ShapeIndex> outputs_in_alternate_memory) {
+        if (instruction->name() == "c") {
+          return 100;
+        }
+        return 0;
+      };
   AssignMemorySpace(module.get(), options);
   auto get_memory_space = [&](absl::string_view instruction_name) {
     return module->entry_computation()
@@ -6649,12 +6654,16 @@ ENTRY entry {
   Options options = DefaultMemorySpaceOptions();
   options.max_repacks = 1;
   // Make two instructions reserve scoped memory.
-  options.reserved_scoped_memory_fn = [&](const HloInstruction* instruction) {
-    if (instruction->name() == "c" || instruction->name() == "d") {
-      return 100;
-    }
-    return 0;
-  };
+  options.reserved_scoped_memory_fn =
+      [&](const HloInstruction* instruction,
+          const absl::flat_hash_set<std::pair<int, ShapeIndex>>
+              operands_in_alternate_memory,
+          const absl::flat_hash_set<ShapeIndex> outputs_in_alternate_memory) {
+        if (instruction->name() == "c" || instruction->name() == "d") {
+          return 100;
+        }
+        return 0;
+      };
 
   absl::flat_hash_map<std::pair<int64_t, int64_t>, int64_t> repack_map;
   bool repacker_ran = false;
@@ -6675,6 +6684,148 @@ ENTRY entry {
   EXPECT_TRUE(repacker_ran);
 }
 
+TEST_P(MemorySpaceAssignmentTest, ReduceReservedScopedVmemIfOperandInVmem) {
+  // This test is designed to test UpdateReservedScopedVmemSize() in MSA, which
+  // will invoke reserved_scoped_memory_fn to update scoped allocation
+  // size. UpdateReservedScopedVmemSize() should iterate through all scheduled
+  // instruction and check if either their operands or outputs has been assigned
+  // in alternate memory. If so, corresponding operand/output will be passed to
+  // reserved_scoped_memory_fn. We isolate UpdateReservedScopedVmemSize() by
+  // constructing a dummy reserved_scoped_memory_fn that return +1 when operand
+  // set is empty, and return +2 when output set is empty, because if either set
+  // of an instruction is empty, it is gureented that some scoped allocation is
+  // required. We use +1/+2 to distinguish the correctness of each set.
+  // Therefore, after MSA pass, for each instruction, there are a few possible
+  // outcomes:
+  // 1. If both operand set and output set are not empty, scoped allocation
+  //    size should be 0, since reserved_scoped_memory_fn will return 0.
+  // 2. If only operand set is empty, scoped allocation size should be 2, since
+  //    reserved_scoped_memory_fn will return 2.
+  // 3. If only output set is empty, scoped allocation size should be 1, since
+  //    reserved_scoped_memory_fn will return 1.
+  // 4. If both sets are empty, scoped allocation size should be 3.
+  // Initially, UpdateReservedScopedVmemSize() will only be invoked after each
+  // MSA repacking, we use a similar test HLO module as used in "Repack" test.
+  // This test is capable of testing if UpdateReservedScopedVmemSize() can
+  // correctly pass operand/output set of all instructions to
+  // reserved_scoped_memory_fn.
+  absl::string_view hlo_string = R"(
+  HloModule bug, is_scheduled=true
+
+  ENTRY Entry {
+    param0 = f32[8,3] parameter(0)
+    param1 = f32[2,4] parameter(1)
+    a = f32[2,4] sine(param1)
+    b = f32[2,4] cosine(param1)
+    c = f32[8,3] negate(param0)
+    j = f32[2,4] negate(a)
+    d = f32[8,3] tanh(param0)
+    k = f32[2,4] negate(j)
+    l = f32[2,4] add(b, k)
+    m = f32[8,3] negate(d)
+    n = f32[2,4] sine(l)
+    o = f32[8,3] negate(m)
+    p = f32[2,4] negate(n)
+    q = f32[8,3] negate(m)
+    ROOT tuple = (f32[2,4], f32[8,3], f32[8,3], f32[8,3]) tuple(p, q, o, c)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  absl::flat_hash_map<std::pair<int64_t, int64_t>, int64_t> repack_map;
+  Options options = DefaultMemorySpaceOptions();
+  options.max_repacks = 10;
+  options.repack_after_every_allocation = true;
+  options.reduce_scoped_vmem_limit = true;
+  options.reserved_scoped_memory_fn =
+      [&](const HloInstruction* instruction,
+          const absl::flat_hash_set<std::pair<int, ShapeIndex>>
+              operands_in_alternate_memory,
+          const absl::flat_hash_set<ShapeIndex> outputs_in_alternate_memory) {
+        int64_t scoped_memory_size = 0;
+        if (operands_in_alternate_memory.empty()) {
+          scoped_memory_size += 1;
+          LOG(INFO) << instruction->name() << " has no operand in vmem";
+        }
+        if (outputs_in_alternate_memory.empty()) {
+          scoped_memory_size += 2;
+          LOG(INFO) << instruction->name() << " has no output in vmem";
+        }
+        return scoped_memory_size;
+      };
+  FakeMemorySpaceAssignmentRepacker repacker =
+      FakeMemorySpaceAssignmentRepacker(repack_map, nullptr);
+  options.repacker = &repacker;
+  std::unique_ptr<PresetAssignments> assignments =
+      AssignMemorySpace(module.get(), options);
+  // This lambda checks if an instruction's operand has been assigned in
+  // alternate memory.
+  auto instruction_consumes_assignment_fn =
+      [&](absl::string_view instruction_name) -> bool {
+    HloInstruction* instruction =
+        module->entry_computation()->GetInstructionWithName(instruction_name);
+    for (auto& pair : assignments->chunks()) {
+      HloInstruction* consumer = pair.first.instruction;
+      if (absl::c_any_of(instruction->operands(),
+                         [&](const HloInstruction* operand) {
+                           return operand == consumer;
+                         })) {
+        return true;
+      }
+    }
+    return false;
+  };
+  // This lambda checks if an instruction's output has been assigned in
+  // alternate memory.
+  auto instruction_produces_assignment_fn =
+      [&](absl::string_view instruction_name) -> bool {
+    HloInstruction* instruction =
+        module->entry_computation()->GetInstructionWithName(instruction_name);
+    for (auto& pair : assignments->chunks()) {
+      HloInstruction* producer = pair.first.instruction;
+      if (producer == instruction) {
+        return true;
+      }
+    }
+    return false;
+  };
+  auto check_reserved_scoped_memory_fn =
+      [&](absl::string_view instruction_name) -> bool {
+    int64_t scoped_memory_size = -1;
+    for (auto& pair : assignments->scoped_allocation_chunks()) {
+      HloInstruction* instruction = pair.first;
+      if (instruction->name() == instruction_name) {
+        scoped_memory_size = pair.second.size;
+      }
+    }
+    if (!instruction_consumes_assignment_fn(instruction_name)) {
+      scoped_memory_size -= 1;
+    }
+    if (!instruction_produces_assignment_fn(instruction_name)) {
+      scoped_memory_size -= 2;
+    }
+    return scoped_memory_size == 0;
+  };
+  for (auto& pair : assignments->assignment_informations()) {
+    LOG(INFO) << "  space: " << pair.first << ", size: " << pair.second.size;
+  }
+  for (auto& pair : assignments->scoped_allocation_chunks()) {
+    HloInstruction* instruction = pair.first;
+    LOG(INFO) << instruction->name() << ": " << pair.second.size;
+  }
+  EXPECT_TRUE(check_reserved_scoped_memory_fn("a"));
+  EXPECT_TRUE(check_reserved_scoped_memory_fn("b"));
+  EXPECT_TRUE(check_reserved_scoped_memory_fn("c"));
+  EXPECT_TRUE(check_reserved_scoped_memory_fn("j"));
+  EXPECT_TRUE(check_reserved_scoped_memory_fn("d"));
+  EXPECT_TRUE(check_reserved_scoped_memory_fn("k"));
+  EXPECT_TRUE(check_reserved_scoped_memory_fn("l"));
+  EXPECT_TRUE(check_reserved_scoped_memory_fn("m"));
+  EXPECT_TRUE(check_reserved_scoped_memory_fn("n"));
+  EXPECT_TRUE(check_reserved_scoped_memory_fn("o"));
+  EXPECT_TRUE(check_reserved_scoped_memory_fn("p"));
+  EXPECT_TRUE(check_reserved_scoped_memory_fn("q"));
+}
 TEST_P(MemorySpaceAssignmentTest,
        RepackShouldntEraseRequiredAssignmentForConditionalOutput) {
   // This is a test case for b/171040271. Repacks erase the required assignments

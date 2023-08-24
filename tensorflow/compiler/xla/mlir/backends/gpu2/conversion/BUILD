@@ -92,10 +92,12 @@ package(
 #     compatible_with = [],
 #     deps = [
 #         ":de_bufferization",
+#         "@llvm-project//llvm:Support",
 #         "@llvm-project//mlir:ArithDialect",
 #         "@llvm-project//mlir:FuncDialect",
 #         "@llvm-project//mlir:IR",
 #         "@llvm-project//mlir:MemRefDialect",
+#         "@llvm-project//mlir:Support",
 #         "@llvm-project//mlir:TensorDialect",
 #         "@llvm-project//mlir:Transforms",
 #     ] + if_gpu2(["//third_party/iree/llvm-external-projects/iree-dialects:IREEInputDialect"]),

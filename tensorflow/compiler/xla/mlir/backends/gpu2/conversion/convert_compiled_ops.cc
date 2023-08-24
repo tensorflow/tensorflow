@@ -287,6 +287,46 @@ IREE::Input::PipelineLayoutAttr getPipelineLayout(OpTy op,
 // Converts compiled op to an iree_input.dispatch operation
 //===----------------------------------------------------------------------===//
 
+// Keep a shared cache of optimization barriers between all compiled operation
+// lowerings to minimize the number of created operations.
+class OptimizationBarriers {
+ public:
+  struct Barrier {
+    SmallVector<Value> values;
+    IREE::Input::OptimizationBarrierOp optimization_barrier;
+  };
+
+  // Materializes values as constants at the top of the parent function entry
+  // block and wraps them into optimization barrier.
+  Barrier &getOrCreate(ImplicitLocOpBuilder &b, ArrayRef<int64_t> values);
+
+ private:
+  using Key = std::pair<func::FuncOp, ArrayAttr>;
+  llvm::DenseMap<Key, Barrier> barriers_;
+};
+
+OptimizationBarriers::Barrier &OptimizationBarriers::getOrCreate(
+    ImplicitLocOpBuilder &b, ArrayRef<int64_t> values) {
+  Operation *parent = b.getInsertionBlock()->getParentOp();
+
+  auto func = dyn_cast<func::FuncOp>(parent);
+  if (!func) func = parent->getParentOfType<func::FuncOp>();
+
+  auto &barrier = barriers_[std::make_pair(func, b.getIndexArrayAttr(values))];
+  if (barrier.optimization_barrier) return barrier;
+
+  OpBuilder::InsertionGuard guard(b);
+  b.setInsertionPointToStart(&func.front());
+
+  barrier.values = llvm::to_vector(llvm::map_range(values, [&](int64_t value) {
+    return b.create<arith::ConstantIndexOp>(value).getResult();
+  }));
+  barrier.optimization_barrier =
+      b.create<IREE::Input::OptimizationBarrierOp>(barrier.values);
+
+  return barrier;
+}
+
 template <typename OpTy>
 struct ConvertCompiledOpToHal : public OpConversionPattern<OpTy> {
   using OpAdaptor = typename OpConversionPattern<OpTy>::OpAdaptor;
@@ -294,13 +334,15 @@ struct ConvertCompiledOpToHal : public OpConversionPattern<OpTy> {
   ConvertCompiledOpToHal(TypeConverter &converter, MLIRContext *ctx,
                          IREE::Input::ExecutableSourceOp executable_source,
                          ThunkSequence *thunk_sequence, DeBufferization &state,
-                         std::shared_ptr<int64_t> ordinal)
+                         std::shared_ptr<int64_t> ordinal,
+                         std::shared_ptr<OptimizationBarriers> barriers)
       : OpConversionPattern<OpTy>(converter, ctx),
         executable_source(executable_source.getSymNameAttr()),
         executable_source_body(&executable_source.getBody().front()),
         thunk_sequence(thunk_sequence),
         state(state),
-        ordinal(std::move(ordinal)) {}
+        ordinal(std::move(ordinal)),
+        barriers(std::move(barriers)) {}
 
   LogicalResult matchAndRewrite(
       OpTy op, OpAdaptor adaptor,
@@ -311,6 +353,7 @@ struct ConvertCompiledOpToHal : public OpConversionPattern<OpTy> {
   ThunkSequence *thunk_sequence;
   DeBufferization &state;
   std::shared_ptr<int64_t> ordinal;
+  std::shared_ptr<OptimizationBarriers> barriers;
 
   // Keep a mapping from a kernel name to exported function declaration.
   mutable llvm::StringMap<IREE::Input::ExecutableExportOp> exported;
@@ -347,28 +390,12 @@ LogicalResult ConvertCompiledOpToHal<OpTy>::matchAndRewrite(
     auto dyn_tensor =
         RankedTensorType::get(SmallVector<int64_t>(rank, ShapedType::kDynamic),
                               dst.getType().getElementType());
-
-    // Construct constants and optimization barrier at the top of the parent
-    // block to avoid breaking command buffers with optimization barrier.
-    auto [dims, dims_barrier] = [&]() -> std::pair<ValueRange, ValueRange> {
-      OpBuilder::InsertionGuard guard(b);
-      b.setInsertionPointToStart(block);
-
-      // Materialize dynamic dimensions for passing them to tensor update op.
-      SmallVector<Value> dims = llvm::to_vector(
-          llvm::map_range(dst.getType().getShape(), [&](int64_t dim) -> Value {
-            return b.create<arith::ConstantIndexOp>(dim);
-          }));
-
-      // Add a barrier to prevent folding of reshape operation.
-      auto dims_barrier = b.create<IREE::Input::OptimizationBarrierOp>(dims);
-
-      return {ValueRange(dims), ValueRange(dims_barrier.getResults())};
-    }();
+    auto &[dims, dims_barrier] =
+        barriers->getOrCreate(b, dst.getType().getShape());
 
     Value dyn_src = b.create<IREE::Input::TensorReshapeOp>(
         dyn_tensor, src, /*source_dims=*/ValueRange(),
-        /*result_dims=*/dims_barrier);
+        /*result_dims=*/dims_barrier.getResults());
 
     // Update dst tensor with src.
     SmallVector<Value> start_indices(rank, b.create<arith::ConstantIndexOp>(0));
@@ -861,7 +888,8 @@ void populateCompiledOpsConversionPatterns(
   auto *ctx = patterns.getContext();
   patterns.insert<ConvertFusionOpToHal, ConvertSortOpToHal>(
       converter, ctx, executable_source, thunk_sequence, state,
-      /*ordinal=*/std::make_shared<int64_t>(0));
+      /*ordinal=*/std::make_shared<int64_t>(0),
+      std::make_shared<OptimizationBarriers>());
   patterns.insert<TerminatorOpLowering>(converter, ctx, state);
 }
 

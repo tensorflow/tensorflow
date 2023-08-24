@@ -217,11 +217,6 @@ void AsyncWhileOp::OnPredicateReady(
   thread_execution_context.CallByMove(body_fn, absl::MakeSpan(body_args),
                                       absl::Span<mlrt::Value>());
 
-  thread_execution_context.work_queue()->AddTask(
-      [&execution_context = thread_execution_context]() {
-        mlrt::Execute(execution_context);
-      });
-
   // save handles
   async_handles.push_back(std::move(async_handle));
 
@@ -257,6 +252,10 @@ void AsyncWhileOp::OnPredicateReady(
                          std::move(futures), immutable_tensors,
                          std::move(final_promises), body_fn,
                          std::move(preallocated_handle_promise), ++counter);
+      });
+  thread_execution_context.work_queue()->AddTask(
+      [&execution_context = thread_execution_context]() {
+        mlrt::Execute(execution_context);
       });
 }
 

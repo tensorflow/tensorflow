@@ -540,6 +540,11 @@ class Delegate {
     return false;
   }
 
+  bool transient_indirection_buffer() const {
+    return (options_.flags &
+            TFLITE_XNNPACK_DELEGATE_FLAG_TRANSIENT_INDIRECTION_BUFFER) != 0;
+  }
+
   pthreadpool_t threadpool() const {
 #if defined(__EMSCRIPTEN__) && !defined(__EMSCRIPTEN_PTHREADS__)
     return nullptr;
@@ -988,6 +993,9 @@ class Subgraph {
     uint32_t flags = XNN_FLAG_YIELD_WORKERS;
     if (has_sparse_weights) {
       flags |= XNN_FLAG_HINT_SPARSE_INFERENCE;
+    }
+    if (delegate.transient_indirection_buffer()) {
+      flags |= XNN_FLAG_TRANSIENT_INDIRECTION_BUFFER;
     }
     if (delegate.force_fp16()) {
       flags |= XNN_FLAG_FORCE_FP16_INFERENCE;
@@ -6455,6 +6463,9 @@ TfLiteXNNPackDelegateOptions TfLiteXNNPackDelegateOptionsDefault() {
 #endif
 #ifdef XNNPACK_DELEGATE_ENABLE_DYNAMIC_FULLY_CONNECTED
   options.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_DYNAMIC_FULLY_CONNECTED;
+#endif
+#ifdef XNNPACK_DELEGATE_ENABLE_TRANSIENT_INDIRECTION_BUFFER
+  options.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_TRANSIENT_INDIRECTION_BUFFER;
 #endif
 
   // Enable quantized inference for the delegate build used in unit tests.

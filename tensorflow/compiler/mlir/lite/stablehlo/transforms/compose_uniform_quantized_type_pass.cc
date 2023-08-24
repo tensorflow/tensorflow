@@ -90,6 +90,15 @@ bool IsI8ToF32Cast(stablehlo::ConvertOp convert_op) {
   return is_i8_operand && is_f32_result;
 }
 
+// Tests whether a `stablehlo::ConvertOp` is a i8 -> i32 cast.
+bool IsI8ToI32Cast(stablehlo::ConvertOp convert_op) {
+  const bool is_i8_operand =
+      convert_op.getOperand().getType().getElementType().isInteger(/*width=*/8);
+  const bool is_i32_result =
+      convert_op.getResult().getType().getElementType().isInteger(/*width=*/32);
+  return is_i8_operand && is_i32_result;
+}
+
 // Tests whether a `stablehlo::ConvertOp` is a i32 -> f32 cast.
 bool IsI32ToF32Cast(stablehlo::ConvertOp convert_op) {
   const bool is_i32_operand =
@@ -1252,7 +1261,8 @@ class ComposeUniformQuantizedDotGeneralOp
 //
 // Unlike `ComposeUniformQuantizedDotGeneralOp`, the pattern assumes that the
 // term "(q1 - z1) * (q2 - z2)" is not expanded. This is done to reduce
-// unnecessary op count.
+// unnecessary op count. Also, the subtractions "(q - z)" are performed in i32
+// to avoid underflows.
 //
 // In StableHLO text representation, the pattern is as the following
 // (simplified):
@@ -1261,29 +1271,32 @@ class ComposeUniformQuantizedDotGeneralOp
 // %0 = // Input tensor r1.
 // %1 = // Input tensor r2.
 // %2 = stablehlo.constant  // Input 1 inverse scale 1 / s1.
-// %3 = stablehlo.constant  // Input 1 zero point z1.
-// %4 = stablehlo.constant  // Input 2 inverse scale 1 / s2.
-// %5 = stablehlo.constant  // Input 2 zero point z2.
-// %6 = stablehlo.constant  // Input 3 inverse scale 1 / s3.
-// %7 = stablehlo.constant  // Input 3 zero point z3.
-// %8 = stablehlo.constant  // s1 * s2.
-// %9 = call @uniform_quantize(%0, %2, %3)  // Quantize input (q1).
-// %10 = call @uniform_quantize_0(%1, %4, %5)  // Quantize input (q2).
-// %11 = stablehlo.broadcast_in_dim %3
-// %12 = stablehlo.subtract %9, %11  // q1 - z1
-// %13 = stablehlo.broadcast_in_dim %5
-// %14 = stablehlo.subtract %10, %13  // q2 - z2
-// %15 = stablehlo.convert %12  // i8 -> f32 cast trick for input 1.
-// %16 = stablehlo.convert %14  // i8 -> f32 cast trick for input 2.
-// %17 = stablehlo.dot_general(%15, %16)  // (q1 - z1) * (q2 - z2).
-// %18 = stablehlo.broadcast_in_dim %8
-// %19 = stablehlo.multiply %17 %18  // * s1 s2
+// %3 = stablehlo.constant  // Input 1 zero point z1 (i8).
+// %4 = stablehlo.constant  // Input 1 zero point z1 (i32).
+// %5 = stablehlo.constant  // Input 2 inverse scale 1 / s2.
+// %6 = stablehlo.constant  // Input 2 zero point z2 (i8).
+// %7 = stablehlo.constant  // Input 2 zero point z2 (i32).
+// %8 = stablehlo.constant  // Input 3 inverse scale 1 / s3.
+// %9 = stablehlo.constant  // Input 3 zero point z3.
+// %10 = stablehlo.constant  // s1 * s2.
+// %11 = call @uniform_quantize(%0, %2, %3)  // Quantize input (q1).
+// %12 = call @uniform_quantize_0(%1, %5, %6)  // Quantize input (q2).
+// %13 = stablehlo.convert %11  // i8 -> i32 cast for q1.
+// %14 = stablehlo.convert %12  // i8 -> i32 cast for q2.
+// %15 = stablehlo.broadcast_in_dim %4
+// %16 = stablehlo.subtract %13, %15  // q1 - z1
+// %17 = stablehlo.broadcast_in_dim %7
+// %18 = stablehlo.subtract %14, %17  // q2 - z2
+// %19 = stablehlo.dot_general(%16, %18)  // (q1 - z1) * (q2 - z2).
+// %20 = stablehlo.convert %19  // i32 -> f32 cast.
+// %21 = stablehlo.broadcast_in_dim %10
+// %22 = stablehlo.multiply %20 %21  // * s1 s2
 //
 // The following quant -> dequant pattern is a no-op, but is required to
 // retrieve the quantization parameters for the output tensor.
 //
-// %20 = call @uniform_quantize_1(%19, %6, %7)  // r3 -> q3
-// %21 = call @uniform_dequantize(%20, %6, %7)  // q3 -> r3
+// %23 = call @uniform_quantize_1(%22, %8, %9)  // r3 -> q3
+// %24 = call @uniform_dequantize(%23, %8, %9)  // q3 -> r3
 // ```
 //
 // The rewritten pattern looks like:
@@ -1294,28 +1307,15 @@ class ComposeUniformQuantizedDotGeneralOp
 // %4 = stablehlo.dot_general(%2, %3)   // In uniform quantized type.
 // %5 = stablehlo.uniform_dequantize %4  // Dequantize the output.
 // ```
-//
-// TODO: b/295460588 - Add e2e integration tests for this pattern.
 class ComposeUniformQuantizedDotGeneralOpWithTwoQuantizedActivations
     : public OpRewritePattern<stablehlo::DotGeneralOp> {
  public:
   using OpRewritePattern<stablehlo::DotGeneralOp>::OpRewritePattern;
 
   LogicalResult match(stablehlo::DotGeneralOp op) const final {
-    auto input1_i8_to_f32_convert_op =
-        TryCast<stablehlo::ConvertOp>(op.getOperand(0).getDefiningOp(),
-                                      /*name=*/"input1_i8_to_f32_convert_op");
-    if (failed(input1_i8_to_f32_convert_op)) return failure();
-
-    if (!IsI8ToF32Cast(*input1_i8_to_f32_convert_op)) {
-      LLVM_DEBUG(llvm::dbgs() << "Failed to match input1_i8_to_f32_convert_op. "
-                                 "It should be a i8->f32 cast.\n");
-      return failure();
-    }
-
     // q1 - z1
     auto input1_zero_point_subtract_op = TryCast<stablehlo::SubtractOp>(
-        input1_i8_to_f32_convert_op->getOperand().getDefiningOp(),
+        op.getOperand(0).getDefiningOp(),
         /*name=*/"input1_zero_point_subtract_op");
     if (failed(input1_zero_point_subtract_op)) return failure();
 
@@ -1332,8 +1332,20 @@ class ComposeUniformQuantizedDotGeneralOpWithTwoQuantizedActivations
     if (failed(input1_zero_point_constant_op)) return failure();
 
     // q1
-    auto input1_uniform_quantize_call_op = TryCast<func::CallOp>(
+    auto input1_i8_to_i32_convert_op = TryCast<stablehlo::ConvertOp>(
         input1_zero_point_subtract_op->getOperand(0).getDefiningOp(),
+        /*name=*/"input1_i8_to_i32_convert_op");
+    if (failed(input1_i8_to_i32_convert_op)) return failure();
+
+    if (!IsI8ToI32Cast(*input1_i8_to_i32_convert_op)) {
+      LLVM_DEBUG(
+          llvm::dbgs()
+          << "Failed to match. The ConvertOp is not an i8->i32 type cast.\n");
+      return failure();
+    }
+
+    auto input1_uniform_quantize_call_op = TryCast<func::CallOp>(
+        input1_i8_to_i32_convert_op->getOperand().getDefiningOp(),
         /*name=*/"input1_uniform_quantize_call_op");
     if (failed(input1_uniform_quantize_call_op)) return failure();
 
@@ -1346,20 +1358,9 @@ class ComposeUniformQuantizedDotGeneralOpWithTwoQuantizedActivations
       return failure();
     }
 
-    auto input2_i8_to_f32_convert_op =
-        TryCast<stablehlo::ConvertOp>(op.getOperand(1).getDefiningOp(),
-                                      /*name=*/"input2_i8_to_f32_convert_op");
-    if (failed(input2_i8_to_f32_convert_op)) return failure();
-
-    if (!IsI8ToF32Cast(*input2_i8_to_f32_convert_op)) {
-      LLVM_DEBUG(llvm::dbgs() << "Failed to match input2_i8_to_f32_convert_op. "
-                                 "It should be a i8->f32 cast.\n");
-      return failure();
-    }
-
     // q2 - z2
     auto input2_zero_point_subtract_op = TryCast<stablehlo::SubtractOp>(
-        input2_i8_to_f32_convert_op->getOperand().getDefiningOp(),
+        op.getOperand(1).getDefiningOp(),
         /*name=*/"input2_zero_point_subtract_op");
     if (failed(input2_zero_point_subtract_op)) return failure();
 
@@ -1376,8 +1377,20 @@ class ComposeUniformQuantizedDotGeneralOpWithTwoQuantizedActivations
     if (failed(input2_zero_point_constant_op)) return failure();
 
     // q2
-    auto input2_uniform_quantize_call_op = TryCast<func::CallOp>(
+    auto input2_i8_to_i32_convert_op = TryCast<stablehlo::ConvertOp>(
         input2_zero_point_subtract_op->getOperand(0).getDefiningOp(),
+        /*name=*/"input2_i8_to_i32_convert_op");
+    if (failed(input2_i8_to_i32_convert_op)) return failure();
+
+    if (!IsI8ToI32Cast(*input2_i8_to_i32_convert_op)) {
+      LLVM_DEBUG(
+          llvm::dbgs()
+          << "Failed to match. The ConvertOp is not an i8->i32 type cast.\n");
+      return failure();
+    }
+
+    auto input2_uniform_quantize_call_op = TryCast<func::CallOp>(
+        input2_i8_to_i32_convert_op->getOperand().getDefiningOp(),
         /*name=*/"input2_uniform_quantize_call_op");
     if (failed(input2_uniform_quantize_call_op)) return failure();
 
@@ -1392,9 +1405,13 @@ class ComposeUniformQuantizedDotGeneralOpWithTwoQuantizedActivations
 
     // Go downstream from `op`.
     // * s1 s2
-    auto combined_scale_multiply_op =
-        TryCast<stablehlo::MulOp>(*op.getResult().user_begin(),
-                                  /*name=*/"combined_scale_multiply_op");
+    auto output_i32_to_f32_convert_op = TryCast<stablehlo::ConvertOp>(
+        *op.getResult().user_begin(), /*name=*/"output_i32_to_f32_convert_op");
+    if (failed(output_i32_to_f32_convert_op)) return failure();
+
+    auto combined_scale_multiply_op = TryCast<stablehlo::MulOp>(
+        *output_i32_to_f32_convert_op->getResult().user_begin(),
+        /*name=*/"combined_scale_multiply_op");
     if (failed(combined_scale_multiply_op)) return failure();
 
     // call @uniform_quantize()
@@ -1431,12 +1448,12 @@ class ComposeUniformQuantizedDotGeneralOpWithTwoQuantizedActivations
   void rewrite(stablehlo::DotGeneralOp op,
                PatternRewriter& rewriter) const final {
     // Build uniform quantized type for input 1 (lhs).
-    auto input1_i8_to_f32_convert_op =
-        cast<stablehlo::ConvertOp>(op.getOperand(0).getDefiningOp());
-    auto input1_zero_point_subtract_op = cast<stablehlo::SubtractOp>(
-        input1_i8_to_f32_convert_op.getOperand().getDefiningOp());
-    auto input1_uniform_quantize_call_op = cast<func::CallOp>(
+    auto input1_zero_point_subtract_op =
+        cast<stablehlo::SubtractOp>(op.getOperand(0).getDefiningOp());
+    auto input1_i8_to_i32_convert_op = cast<stablehlo::ConvertOp>(
         input1_zero_point_subtract_op.getOperand(0).getDefiningOp());
+    auto input1_uniform_quantize_call_op = cast<func::CallOp>(
+        input1_i8_to_i32_convert_op.getOperand().getDefiningOp());
     auto input1_uniform_quantize_call_pattern =
         UniformQuantizeFunctionCallPattern::Match(
             input1_uniform_quantize_call_op);
@@ -1460,22 +1477,22 @@ class ComposeUniformQuantizedDotGeneralOpWithTwoQuantizedActivations
     Value input1_value = input1_uniform_quantize_call_pattern->GetInputValue();
     auto input1_uniform_quantize_op =
         rewriter.create<stablehlo::UniformQuantizeOp>(
-            input1_i8_to_f32_convert_op.getLoc(),
+            input1_uniform_quantize_call_op.getLoc(),
             /*result=*/
             input1_value.getType().cast<TensorType>().clone(
                 input1_uniform_quantized_type),
             /*operand=*/input1_value);
 
-    rewriter.replaceAllUsesWith(input1_i8_to_f32_convert_op.getResult(),
+    rewriter.replaceAllUsesWith(input1_zero_point_subtract_op.getResult(),
                                 input1_uniform_quantize_op.getResult());
 
     // Build uniform quantized type for input 2 (rhs).
-    auto input2_i8_to_f32_convert_op =
-        cast<stablehlo::ConvertOp>(op.getOperand(1).getDefiningOp());
-    auto input2_zero_point_subtract_op = cast<stablehlo::SubtractOp>(
-        input2_i8_to_f32_convert_op.getOperand().getDefiningOp());
-    auto input2_uniform_quantize_call_op = cast<func::CallOp>(
+    auto input2_zero_point_subtract_op =
+        cast<stablehlo::SubtractOp>(op.getOperand(1).getDefiningOp());
+    auto input2_i8_to_i32_convert_op = cast<stablehlo::ConvertOp>(
         input2_zero_point_subtract_op.getOperand(0).getDefiningOp());
+    auto input2_uniform_quantize_call_op = cast<func::CallOp>(
+        input2_i8_to_i32_convert_op.getOperand().getDefiningOp());
     auto input2_uniform_quantize_call_pattern =
         UniformQuantizeFunctionCallPattern::Match(
             input2_uniform_quantize_call_op);
@@ -1499,19 +1516,21 @@ class ComposeUniformQuantizedDotGeneralOpWithTwoQuantizedActivations
     Value input2_value = input2_uniform_quantize_call_pattern->GetInputValue();
     auto input2_uniform_quantize_op =
         rewriter.create<stablehlo::UniformQuantizeOp>(
-            input2_i8_to_f32_convert_op.getLoc(),
+            input2_uniform_quantize_call_op.getLoc(),
             /*result=*/
             input2_value.getType().cast<TensorType>().clone(
                 input2_uniform_quantized_type),
             /*operand=*/input2_value);
 
-    rewriter.replaceAllUsesWith(input2_i8_to_f32_convert_op.getResult(),
+    rewriter.replaceAllUsesWith(input2_zero_point_subtract_op.getResult(),
                                 input2_uniform_quantize_op.getResult());
 
     // Recreate stablehlo::DotGeneralOp with a uniform quantized output type.
     // * s1 s2
-    auto combined_scale_multiply_op =
-        cast<stablehlo::MulOp>(*op.getResult().user_begin());
+    auto output_i32_to_f32_convert_op =
+        cast<stablehlo::ConvertOp>(*op.getResult().user_begin());
+    auto combined_scale_multiply_op = cast<stablehlo::MulOp>(
+        *output_i32_to_f32_convert_op.getResult().user_begin());
 
     // call @uniform_quantize()
     auto output_uniform_quantize_call_op = cast<func::CallOp>(
@@ -1567,11 +1586,14 @@ class ComposeUniformQuantizedDotGeneralOpWithTwoQuantizedActivations
     rewriter.eraseOp(output_uniform_dequantize_call_pattern->GetCallOp());
     rewriter.eraseOp(output_uniform_quantize_call_pattern->GetCallOp());
     rewriter.eraseOp(combined_scale_multiply_op);
-    rewriter.eraseOp(input1_i8_to_f32_convert_op);
+    rewriter.eraseOp(output_i32_to_f32_convert_op);
+
     rewriter.eraseOp(input1_zero_point_subtract_op);
+    rewriter.eraseOp(input1_i8_to_i32_convert_op);
     rewriter.eraseOp(input1_uniform_quantize_call_pattern->GetCallOp());
-    rewriter.eraseOp(input2_i8_to_f32_convert_op);
+
     rewriter.eraseOp(input2_zero_point_subtract_op);
+    rewriter.eraseOp(input2_i8_to_i32_convert_op);
     rewriter.eraseOp(input2_uniform_quantize_call_pattern->GetCallOp());
   }
 };

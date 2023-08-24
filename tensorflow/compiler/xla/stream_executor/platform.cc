@@ -23,23 +23,6 @@ limitations under the License.
 
 namespace stream_executor {
 
-std::string PlatformKindString(PlatformKind kind) {
-  switch (kind) {
-    case PlatformKind::kCuda:
-      return "CUDA";
-    case PlatformKind::kROCm:
-      return "ROCm";
-    case PlatformKind::kOpenCL:
-      return "OpenCL";
-    case PlatformKind::kHost:
-      return "Host";
-    case PlatformKind::kMock:
-      return "Mock";
-    default:
-      return absl::StrCat("InvalidPlatformKind(", static_cast<int>(kind), ")");
-  }
-}
-
 std::string StreamPriorityToString(StreamPriority priority) {
   switch (priority) {
     case StreamPriority::Lowest:
@@ -49,45 +32,6 @@ std::string StreamPriorityToString(StreamPriority priority) {
     default:
       return "Default Priority";
   }
-}
-
-PlatformKind PlatformKindFromString(std::string kind) {
-  for (int i = 0; i < static_cast<int>(PlatformKind::kSize); ++i) {
-    if (kind == PlatformKindString(static_cast<PlatformKind>(i))) {
-      return static_cast<PlatformKind>(i);
-    }
-  }
-
-  return PlatformKind::kInvalid;
-}
-
-bool PlatformIsRunnable(PlatformKind kind) {
-  switch (kind) {
-    case PlatformKind::kCuda:
-    case PlatformKind::kROCm:
-    case PlatformKind::kOpenCL:
-    case PlatformKind::kHost:
-      return true;
-    default:
-      return false;
-  }
-}
-
-bool PlatformIsRunnableOnDevice(PlatformKind kind) {
-  switch (kind) {
-    case PlatformKind::kCuda:
-    case PlatformKind::kROCm:
-    case PlatformKind::kOpenCL:
-      return true;
-    default:
-      return false;
-  }
-}
-
-void CheckPlatformKindIsValid(PlatformKind kind) {
-  CHECK(static_cast<int>(PlatformKind::kCuda) <= static_cast<int>(kind) &&
-        static_cast<int>(kind) <= static_cast<int>(PlatformKind::kMock))
-      << "invalid GPU executor kind: " << PlatformKindString(kind);
 }
 
 StreamExecutorConfig::StreamExecutorConfig()

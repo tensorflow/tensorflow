@@ -390,8 +390,6 @@ HloInstruction* GpuPriorityFusion::FuseInstruction(
   } else {
     result = InstructionFusion::FuseInstruction(fusion_instruction, producer);
   }
-  GpuPerformanceModel::RecordEstimatedRunTime(fusion_instruction,
-                                              &*cost_analysis_);
   return result;
 }
 

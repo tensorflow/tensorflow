@@ -200,6 +200,8 @@ typedef enum {
   kTfLiteBuiltinStablehloBroadcastInDim = 170,
   kTfLiteBuiltinStablehloConvolution = 171,
   kTfLiteBuiltinStablehloSlice = 172,
+  kTfLiteBuiltinStablehloCustomCall = 173,
+  kTfLiteBuiltinStablehloReduce = 174,
 } TfLiteBuiltinOperator;
 
 #ifdef __cplusplus

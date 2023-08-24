@@ -116,8 +116,6 @@ hlo_module       {
   }
   id: 3
   entry_computation_id: 3
-  dynamic_parameter_binding {
-  }
   spmd_output_sharding {
     type: OTHER
     tile_assignment_dimensions: 1

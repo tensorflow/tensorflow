@@ -62,34 +62,45 @@ class TfToUniformAttributeUtilsTest : public ::testing::Test {
   MLIRContext ctx_;
 };
 
-TF::UniformQuantizedConvolutionOp ParseUniformQuantizedConvolutionOp(
-    const absl::string_view conv_op_str, Block& block, MLIRContext& ctx) {
+TF::UniformQuantizedAddOp ParseUniformQuantizedAddOp(
+    const absl::string_view add_op_str, Block& block, MLIRContext& ctx) {
   const LogicalResult parse_result =
-      parseSourceString(conv_op_str, &block, ParserConfig(&ctx));
+      parseSourceString(add_op_str, &block, ParserConfig(&ctx));
   EXPECT_TRUE(succeeded(parse_result));
 
-  auto uq_conv_op =
-      dyn_cast_or_null<TF::UniformQuantizedConvolutionOp>(block.back());
-  EXPECT_TRUE(uq_conv_op);
+  auto uq_add_op = dyn_cast_or_null<TF::UniformQuantizedAddOp>(block.back());
+  EXPECT_TRUE(uq_add_op);
 
-  return uq_conv_op;
+  return uq_add_op;
 }
 
-TEST_F(TfToUniformAttributeUtilsTest, UniformQuantizedConvolutionOpAttributes) {
+TF::UniformRequantizeOp ParseUniformRequantizedOp(
+    const absl::string_view requant_op_str, Block& block, MLIRContext& ctx) {
+  const LogicalResult parse_result =
+      parseSourceString(requant_op_str, &block, ParserConfig(&ctx));
+  EXPECT_TRUE(succeeded(parse_result));
+
+  auto uq_requant_op = dyn_cast_or_null<TF::UniformRequantizeOp>(block.back());
+  EXPECT_TRUE(uq_requant_op);
+
+  return uq_requant_op;
+}
+
+TEST_F(TfToUniformAttributeUtilsTest, UniformQuantizedAddOpAttributes) {
   TfToUniformAttributeUtilsTestPeer test_peer(&ctx_);
 
-  constexpr absl::string_view kConvOpExpr =
+  constexpr absl::string_view kAddOpExpr =
       R"mlir(
-      %0 = "tf.Const"() {value = #tf_type<tensor_proto : "0x746674656"> : tensor<1x3x4x3x!tf_type.qint8>} : () -> tensor<1x3x4x3x!tf_type.qint8>
-      %1 = "tf.Const"() {value = #tf_type<tensor_proto : "0x746674656"> : tensor<2x3x3x2x!tf_type.qint8>} : () -> tensor<2x3x3x2x!tf_type.qint8>
+      %0 = "tf.Const"() {value = #tf_type<tensor_proto : "0x746674656"> : tensor<1x3x2x2x!tf_type.qint32>} : () -> tensor<1x3x2x2x!tf_type.qint32>
+      %1 = "tf.Const"() {value = #tf_type<tensor_proto : "0x746674656"> : tensor<2x!tf_type.qint32>} : () -> tensor<2x!tf_type.qint32>
       %2 = "tf.Const"() {value = dense<1.0> : tensor<f32>} : () -> tensor<f32>
       %3 = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
-      %4 = "tf.UniformQuantizedConvolution"(%0, %1, %2, %3, %2, %3, %2, %3) {Tin = "tfdtype$DT_QINT8", Tout = "tfdtype$DT_QINT32", attr_map = "", batch_group_count = 1 : i64, dimension_numbers = "", explicit_padding = [], feature_group_count = 1 : i64, lhs_dilation = [], lhs_quantization_axis = -1 : i64, lhs_quantization_max_val = 1 : i64, lhs_quantization_min_val = -1 : i64, output_quantization_axis = -1 : i64, output_quantization_max_val = 1 : i64, output_quantization_min_val = -1 : i64, padding = "SAME", rhs_dilation = [], rhs_quantization_axis = -1 : i64, rhs_quantization_max_val = 1 : i64, rhs_quantization_min_val = -1 : i64, window_strides = [1, 1]} : (tensor<1x3x4x3x!tf_type.qint8>, tensor<2x3x3x2x!tf_type.qint8>, tensor<f32>, tensor<i32>, tensor<f32>, tensor<i32>, tensor<f32>, tensor<i32>) -> tensor<1x3x4x2x!tf_type.qint32>
+      %4 = "tf.UniformQuantizedAdd"(%0, %1, %2, %3, %2, %3, %2, %3) {device = "", lhs_quantization_axis = -1 : i64, lhs_quantization_max_val = 127 : i64, lhs_quantization_min_val = -127 : i64, output_quantization_axis = -1 : i64, output_quantization_max_val = 127 : i64, output_quantization_min_val = -127 : i64, rhs_quantization_axis = -1 : i64, rhs_quantization_max_val = 127 : i64, rhs_quantization_min_val = -127 : i64} : (tensor<1x3x2x2x!tf_type.qint32>, tensor<2x!tf_type.qint32>, tensor<f32>, tensor<i32>, tensor<f32>, tensor<i32>, tensor<f32>, tensor<i32>) -> tensor<1x3x2x2x!tf_type.qint32>
       )mlir";
 
   Block block{};
-  TF::UniformQuantizedConvolutionOp op =
-      ParseUniformQuantizedConvolutionOp(kConvOpExpr, block, ctx_);
+  TF::UniformQuantizedAddOp op =
+      ParseUniformQuantizedAddOp(kAddOpExpr, block, ctx_);
 
   llvm::StringMap<Attribute> identifier_to_attr;
   QuantMethod quantization_method =
@@ -98,12 +109,113 @@ TEST_F(TfToUniformAttributeUtilsTest, UniformQuantizedConvolutionOpAttributes) {
       test_peer.rewriter_, op, identifier_to_attr, quantization_method,
       /*enable_per_channel_quantization=*/false);
   ASSERT_TRUE(succeeded(res));
-  ASSERT_EQ(127, op.getLhsQuantizationMaxValAttr().getInt());
-  ASSERT_EQ(-128, op.getLhsQuantizationMinValAttr().getInt());
-  ASSERT_EQ(127, op.getRhsQuantizationMaxValAttr().getInt());
-  ASSERT_EQ(-128, op.getRhsQuantizationMinValAttr().getInt());
+  ASSERT_EQ(2147483647, op.getLhsQuantizationMaxValAttr().getInt());
+  ASSERT_EQ(-2147483648, op.getLhsQuantizationMinValAttr().getInt());
+  ASSERT_EQ(2147483647, op.getRhsQuantizationMaxValAttr().getInt());
+  ASSERT_EQ(-2147483648, op.getRhsQuantizationMinValAttr().getInt());
   ASSERT_EQ(2147483647, op.getOutputQuantizationMaxValAttr().getInt());
   ASSERT_EQ(-2147483648, op.getOutputQuantizationMinValAttr().getInt());
+  ASSERT_EQ(-1, op.getLhsQuantizationAxisAttr().getInt());
+  ASSERT_EQ(-1, op.getRhsQuantizationAxisAttr().getInt());
+  ASSERT_EQ(-1, op.getOutputQuantizationAxisAttr().getInt());
+}
+
+TEST_F(TfToUniformAttributeUtilsTest, UniformQuantizedRequantizeOpAttributes) {
+  TfToUniformAttributeUtilsTestPeer test_peer(&ctx_);
+
+  constexpr absl::string_view kRequantOpExpr =
+      R"mlir(
+      %0 = "tf.Const"() {value = #tf_type<tensor_proto : "0x746674656"> : tensor<1x3x2x2x!tf_type.qint32>, quantization_axis = 3} : () -> tensor<1x3x2x2x!tf_type.qint32>
+      %1 = "tf.Const"() {value = dense<1.0> : tensor<2xf32>} : () -> tensor<2xf32>
+      %2 = "tf.Const"() {value = dense<2> : tensor<2xi32>} : () -> tensor<2xi32>
+      %3 = "tf.Const"() {value = dense<1.0> : tensor<f32>} : () -> tensor<f32>
+      %4 = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+      %5 = "tf.UniformRequantize"(%0, %1, %2, %3, %4) {device = "", input_quantization_axis = 3 : i64, input_quantization_max_val = 127 : i64, input_quantization_min_val = -127 : i64, output_quantization_axis = -1 : i64, output_quantization_max_val = 127 : i64, output_quantization_min_val = -127 : i64} : (tensor<1x3x2x2x!tf_type.qint32>, tensor<2xf32>, tensor<2xi32>, tensor<f32>, tensor<i32>) -> tensor<1x3x2x2x!tf_type.qint8>
+      )mlir";
+
+  Block block{};
+  TF::UniformRequantizeOp op =
+      ParseUniformRequantizedOp(kRequantOpExpr, block, ctx_);
+
+  llvm::StringMap<Attribute> identifier_to_attr;
+  QuantMethod quantization_method =
+      tensorflow::quantization::QuantizationMethod::STATIC_RANGE;
+  auto res = FillAttributesForUniformRequantizeOp(
+      test_peer.rewriter_, op, identifier_to_attr, quantization_method,
+      /*enable_per_channel_quantization=*/true);
+  ASSERT_TRUE(succeeded(res));
+  ASSERT_EQ(2147483647, op.getInputQuantizationMaxValAttr().getInt());
+  ASSERT_EQ(-2147483648, op.getInputQuantizationMinValAttr().getInt());
+  ASSERT_EQ(127, op.getOutputQuantizationMaxValAttr().getInt());
+  ASSERT_EQ(-128, op.getOutputQuantizationMinValAttr().getInt());
+  ASSERT_EQ(3, op.getInputQuantizationAxisAttr().getInt());
+  ASSERT_EQ(-1, op.getOutputQuantizationAxisAttr().getInt());
+}
+
+TEST_F(TfToUniformAttributeUtilsTest,
+       UniformQuantizedRequantizeOpAttributes_OutputPerChannel) {
+  TfToUniformAttributeUtilsTestPeer test_peer(&ctx_);
+
+  constexpr absl::string_view kRequantOpExpr =
+      R"mlir(
+      %0 = "tf.Const"() {value = #tf_type<tensor_proto : "0x746674656"> : tensor<1x3x2x2x!tf_type.qint32>, quantization_axis = 3} : () -> tensor<1x3x2x2x!tf_type.qint32>
+      %1 = "tf.Const"() {value = dense<1.0> : tensor<2xf32>} : () -> tensor<2xf32>
+      %2 = "tf.Const"() {value = dense<2> : tensor<2xi32>} : () -> tensor<2xi32>
+      %3 = "tf.Const"() {value = dense<1.0> : tensor<2xf32>} : () -> tensor<2xf32>
+      %4 = "tf.Const"() {value = dense<0> : tensor<2xi32>} : () -> tensor<2xi32>
+      %5 = "tf.UniformRequantize"(%0, %1, %2, %3, %4) {device = "", input_quantization_axis = 3 : i64, input_quantization_max_val = 127 : i64, input_quantization_min_val = -127 : i64, output_quantization_axis = 1 : i64, output_quantization_max_val = 127 : i64, output_quantization_min_val = -127 : i64} : (tensor<1x3x2x2x!tf_type.qint32>, tensor<2xf32>, tensor<2xi32>, tensor<2xf32>, tensor<2xi32>) -> tensor<1x3x2x2x!tf_type.qint8>
+      )mlir";
+
+  Block block{};
+  TF::UniformRequantizeOp op =
+      ParseUniformRequantizedOp(kRequantOpExpr, block, ctx_);
+
+  llvm::StringMap<Attribute> identifier_to_attr;
+  QuantMethod quantization_method =
+      tensorflow::quantization::QuantizationMethod::STATIC_RANGE;
+  auto res = FillAttributesForUniformRequantizeOp(
+      test_peer.rewriter_, op, identifier_to_attr, quantization_method,
+      /*enable_per_channel_quantization=*/true);
+  ASSERT_TRUE(succeeded(res));
+  ASSERT_EQ(2147483647, op.getInputQuantizationMaxValAttr().getInt());
+  ASSERT_EQ(-2147483648, op.getInputQuantizationMinValAttr().getInt());
+  ASSERT_EQ(127, op.getOutputQuantizationMaxValAttr().getInt());
+  ASSERT_EQ(-128, op.getOutputQuantizationMinValAttr().getInt());
+  ASSERT_EQ(3, op.getInputQuantizationAxisAttr().getInt());
+  ASSERT_EQ(3, op.getOutputQuantizationAxisAttr().getInt());
+}
+
+TEST_F(TfToUniformAttributeUtilsTest,
+       UniformQuantizedRequantizeOpAttributes_DisablePerChannelQuantization) {
+  TfToUniformAttributeUtilsTestPeer test_peer(&ctx_);
+
+  constexpr absl::string_view kRequantOpExpr =
+      R"mlir(
+      %0 = "tf.Const"() {value = #tf_type<tensor_proto : "0x746674656"> : tensor<1x3x2x2x!tf_type.qint32>, quantization_axis = 3} : () -> tensor<1x3x2x2x!tf_type.qint32>
+      %1 = "tf.Const"() {value = dense<1.0> : tensor<2xf32>} : () -> tensor<2xf32>
+      %2 = "tf.Const"() {value = dense<2> : tensor<2xi32>} : () -> tensor<2xi32>
+      %3 = "tf.Const"() {value = dense<1.0> : tensor<f32>} : () -> tensor<f32>
+      %4 = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+      %5 = "tf.UniformRequantize"(%0, %1, %2, %3, %4) {device = "", input_quantization_axis = 3 : i64, input_quantization_max_val = 127 : i64, input_quantization_min_val = -127 : i64, output_quantization_axis = -1 : i64, output_quantization_max_val = 127 : i64, output_quantization_min_val = -127 : i64} : (tensor<1x3x2x2x!tf_type.qint32>, tensor<2xf32>, tensor<2xi32>, tensor<f32>, tensor<i32>) -> tensor<1x3x2x2x!tf_type.qint8>
+      )mlir";
+
+  Block block{};
+  TF::UniformRequantizeOp op =
+      ParseUniformRequantizedOp(kRequantOpExpr, block, ctx_);
+
+  llvm::StringMap<Attribute> identifier_to_attr;
+  QuantMethod quantization_method =
+      tensorflow::quantization::QuantizationMethod::STATIC_RANGE;
+  auto res = FillAttributesForUniformRequantizeOp(
+      test_peer.rewriter_, op, identifier_to_attr, quantization_method,
+      /*enable_per_channel_quantization=*/false);
+  ASSERT_TRUE(succeeded(res));
+  ASSERT_EQ(2147483647, op.getInputQuantizationMaxValAttr().getInt());
+  ASSERT_EQ(-2147483648, op.getInputQuantizationMinValAttr().getInt());
+  ASSERT_EQ(127, op.getOutputQuantizationMaxValAttr().getInt());
+  ASSERT_EQ(-128, op.getOutputQuantizationMinValAttr().getInt());
+  ASSERT_EQ(-1, op.getInputQuantizationAxisAttr().getInt());
+  ASSERT_EQ(-1, op.getOutputQuantizationAxisAttr().getInt());
 }
 
 }  // namespace

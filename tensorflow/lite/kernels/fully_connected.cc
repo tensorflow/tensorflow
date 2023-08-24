@@ -143,6 +143,7 @@ constexpr int kQuantizedInputTensor = 0;
 constexpr int kScalingFactorsTensor = 1;
 constexpr int kAccumulatorTensor = 2;
 constexpr int kInputOffsetsTensor = 3;
+constexpr int kPackedCacheTensor = 4;
 
 inline TfLiteStatus CheckTypes(TfLiteContext* context,
                                const TfLiteTensor* input,
@@ -240,6 +241,8 @@ TfLiteStatus PrepareImpl4Bit(TfLiteContext* context, TfLiteNode* node,
                              int lhs_width, int rhs_width, int depth,
                              int batch_size, int cols, int output_depth) {
   const int units = output_depth;
+  const int lhs_layout_rows =
+      (units + (optimized_4bit::FilterWidth - 1)) & ~(lhs_width - 1);
   const int lhs_layout_cols =
       (cols + (optimized_4bit::FilterDepth - 1)) & ~(depth - 1);
   const int rhs_layout_rows = (batch_size + (rhs_width - 1)) & ~(rhs_width - 1);
@@ -296,6 +299,19 @@ TfLiteStatus PrepareImpl4Bit(TfLiteContext* context, TfLiteNode* node,
   input_offsets_size->data[0] = rhs_layout_rows;
   TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, input_offsets,
                                                    input_offsets_size));
+
+  TfLiteTensor* packed_cache;
+  TF_LITE_ENSURE_OK(context, GetTemporarySafe(context, node, kPackedCacheTensor,
+                                              &packed_cache));
+  packed_cache->type = kTfLiteUInt8;
+  packed_cache->allocation_type = kTfLiteArenaRwPersistent;
+  TfLiteIntArray* packed_cache_size = TfLiteIntArrayCreate(1);
+  const uintptr_t padding = optimized_4bit::kDefaultAlignmentPadding;
+  packed_cache_size->data[0] =
+      padding + (lhs_layout_rows * lhs_layout_cols / 2);
+  TF_LITE_ENSURE_OK(
+      context, context->ResizeTensor(context, packed_cache, packed_cache_size));
+  data->op_data_4bit->needs_prepack = true;
 
   const TfLiteTensor* input;
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
@@ -859,8 +875,8 @@ TfLiteStatus EvalHybridDense4Bit(
     TfLiteFullyConnectedParams* params, OpData* data, const TfLiteTensor* input,
     const TfLiteTensor* filter, const TfLiteTensor* bias,
     TfLiteTensor* input_quantized, TfLiteTensor* scaling_factors,
-    TfLiteTensor* accum_scratch, TfLiteTensor* input_offsets,
-    TfLiteTensor* output) {
+    TfLiteTensor* accum_scratch, TfLiteTensor* prepacked_cache,
+    TfLiteTensor* input_offsets, TfLiteTensor* output) {
   float* scaling_factors_ptr = GetTensorData<float>(scaling_factors);
   int8_t* quant_data = GetTensorData<int8_t>(input_quantized);
   int32_t* input_offset_ptr = GetTensorData<int32_t>(input_offsets);
@@ -877,12 +893,19 @@ TfLiteStatus EvalHybridDense4Bit(
   const int rhs_layout_cols = lhs_layout_cols;
   const int dst_layout_rows = rhs_layout_rows;
   const int dst_layout_cols = lhs_layout_rows;
+  uint8_t* prepacked_cache_ptr = GetTensorData<uint8_t>(prepacked_cache);
+  const uintptr_t padding = optimized_4bit::kDefaultAlignmentPadding;
+  const uintptr_t aligned =
+      (reinterpret_cast<uintptr_t>(prepacked_cache_ptr) + padding) & ~padding;
+  prepacked_cache_ptr = reinterpret_cast<uint8_t*>(aligned);
   if (data->op_data_4bit->needs_prepack) {
-    optimized_4bit::Prepack(
-        &data->op_data_4bit->prepacked_cache, GetTensorData<int8_t>(filter),
-        lhs_layout_rows, lhs_layout_cols, output_depth, cols, lhs_width, depth);
+    optimized_4bit::Prepack(prepacked_cache_ptr, GetTensorData<int8_t>(filter),
+                            lhs_layout_rows, lhs_layout_cols, output_depth,
+                            cols, lhs_width, depth);
     data->op_data_4bit->needs_prepack = false;
   }
+  data->op_data_4bit->prepacked_cache = prepacked_cache_ptr;
+
   std::vector<float> filter_scales(lhs_layout_rows, filter->params.scale);
   auto* filter_params =
       reinterpret_cast<TfLiteAffineQuantization*>(filter->quantization.params);
@@ -1188,9 +1211,13 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
     TF_LITE_ENSURE_OK(
         context, GetTemporarySafe(context, node, /*index=*/3, &input_offsets));
     if (data->op_data_4bit) {
-      return EvalHybridDense4Bit(context, node, params, data, input, filter,
-                                 bias, input_quantized, scaling_factors,
-                                 accum_scratch, input_offsets, output);
+      TfLiteTensor* packed_cache;
+      TF_LITE_ENSURE_OK(
+          context,
+          GetTemporarySafe(context, node, kPackedCacheTensor, &packed_cache));
+      return EvalHybridDense4Bit(
+          context, node, params, data, input, filter, bias, input_quantized,
+          scaling_factors, accum_scratch, packed_cache, input_offsets, output);
     }
     TfLiteTensor* row_sums;
     TF_LITE_ENSURE_OK(context,

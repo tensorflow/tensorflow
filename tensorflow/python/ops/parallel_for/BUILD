@@ -61,7 +61,6 @@ py_strict_library(
         "//tensorflow/python/ops:nn_ops",
         "//tensorflow/python/ops:nn_ops_gen",
         "//tensorflow/python/ops:optional_ops_gen",
-        "//tensorflow/python/ops:parsing_ops",
         "//tensorflow/python/ops:parsing_ops_gen",
         "//tensorflow/python/ops:random_ops_gen",
         "//tensorflow/python/ops:resource_variable_ops",

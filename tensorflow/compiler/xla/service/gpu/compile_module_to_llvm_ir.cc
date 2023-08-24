@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/AsmParser/Parser.h"
 #include "llvm/IR/DiagnosticInfo.h"
@@ -90,6 +91,21 @@ namespace {
 static mlir::LogicalResult DiagnosticHandler(mlir::Diagnostic& diag) {
   VLOG(2) << diag.str();
   return mlir::failure();
+}
+
+static bool HasFp8(const HloModule& hlo_module) {
+  for (const HloComputation* computation : hlo_module.computations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      if (ShapeUtil::HasPrimitiveType(instruction->shape(), F8E5M2) ||
+          ShapeUtil::HasPrimitiveType(instruction->shape(), F8E5M2FNUZ) ||
+          ShapeUtil::HasPrimitiveType(instruction->shape(), F8E4M3FN) ||
+          ShapeUtil::HasPrimitiveType(instruction->shape(), F8E4M3B11FNUZ) ||
+          ShapeUtil::HasPrimitiveType(instruction->shape(), F8E4M3FNUZ)) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 // Lowers MLIR module to the XLA Gpu runtime custom calls.
@@ -432,8 +448,10 @@ Status CompileModuleToLlvmIrImpl(
   mlir::OwningOpRef<mlir::ModuleOp> mlir_module = mlir::ModuleOp::create(
       mlir::Builder(mlir_context.get()).getUnknownLoc(), hlo_module->name());
 
-  TF_RETURN_IF_ERROR(
-      HloToLhloModule(*results->buffer_assignment, *hlo_module, *mlir_module));
+  absl::flat_hash_map<const mlir::Operation*, const xla::HloInstruction*>
+      operation_map;
+  TF_RETURN_IF_ERROR(HloToLhloModule(*results->buffer_assignment, *hlo_module,
+                                     *mlir_module, &operation_map));
 
   results->module_name =
       mlir::mhlo::GetDebugNameFromLocation(mlir_module->getLoc());
@@ -462,7 +480,8 @@ Status CompileModuleToLlvmIrImpl(
     XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
         "GpuCompiler::RunBackend - IR emission for ", hlo_module->name()));
 
-    TF_RETURN_IF_ERROR(ir_emitter->EmitLmhloRegion(&entry_function.getBody()));
+    TF_RETURN_IF_ERROR(
+        ir_emitter->EmitLmhloRegion(&entry_function.getBody(), operation_map));
 
     bool supports_runtime_managed_constants =
         // TODO(b/218907125): Implement this feature for ROCm as well.
@@ -489,7 +508,10 @@ Status CompileModuleToLlvmIrImpl(
       results->allocations, std::back_inserter(buffer_sizes),
       [](const BufferAllocation& allocation) { return allocation.size(); });
 
-  if (IsXlaRuntimeExecutableEnabled(hlo_module->config())) {
+  // TODO(ezhulenev): Remove the FP8 check once https://reviews.llvm.org/D140088
+  // is submitted. Currently we can't emit LLVM IR with fp8 types.
+  if (IsXlaRuntimeExecutableEnabled(hlo_module->config()) &&
+      !HasFp8(*hlo_module)) {
     TF_ASSIGN_OR_RETURN(
         results->executable,
         LowerToJitRt(*mlir_module, entry_function.getName(), buffer_sizes,

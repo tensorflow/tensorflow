@@ -641,6 +641,10 @@ CreateTPUCompileOpReplicationPass();
 // for the first or frontier convolutions consume host inputs on TPU.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPUSpaceToDepthPass();
 
+// Adjusts the device on TPUCopyWithDynamicShape ops.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateColocateTPUCopyWithDynamicShapePass();
+
 }  // namespace TFTPU
 
 // Define the registrations in a detail namespace, just so that we can overload

@@ -41,17 +41,21 @@ func.func @main(%arg0: memref<4xi8>, %arg1: memref<4xi8>, %arg2: memref<4xi8>) {
 // CHECK:   %[[ARG2:.*]]: tensor<4xi8>
 // CHECK: ) {
 
-// CHECK:   %[[BUFFER:.*]] = iree_input.tensor.import {{.*}} -> tensor<1xf32>
-// CHECK:   %[[CST:.*]] = iree_input.tensor.import {{.*}} -> tensor<1xf32>
-// CHECK:   %[[CASE:.*]] = iree_input.tensor.import {{.*}} -> tensor<1xi32>
+// CHECK-DAG: %[[BUFFER0:.*]] = iree_input.tensor.export %[[ARG0]]
+// CHECK-DAG: %[[BUFFER1:.*]] = iree_input.tensor.export %[[ARG1]]
+// CHECK-DAG: %[[BUFFER2:.*]] = iree_input.tensor.export %[[ARG2]]
+
+// CHECK-DAG: %[[TENSOR:.*]] = iree_input.tensor.import %[[BUFFER0]]
+// CHECK-DAG: %[[CST:.*]] = iree_input.tensor.import %[[BUFFER1]]
+// CHECK-DAG: %[[CASE:.*]] = iree_input.tensor.import %[[BUFFER2]]
 
 // CHECK:   %[[INDEX:.*]] = iree_input.tensor.load %[[CASE]]
 
 // CHECK:   %[[IF:.*]] = scf.if {{.*}} -> (tensor<1xf32>) {
-// CHECK:     %[[RES0:.*]] = iree_input.dispatch {{.*}} -> %[[BUFFER]]
+// CHECK:     %[[RES0:.*]] = iree_input.dispatch {{.*}} -> %[[TENSOR]]
 // CHECK:     scf.yield %[[RES0]] : tensor<1xf32>
 // CHECK:   } else {
-// CHECK:     %[[RES1:.*]] = iree_input.dispatch {{.*}} -> %[[BUFFER]]
+// CHECK:     %[[RES1:.*]] = iree_input.dispatch {{.*}} -> %[[TENSOR]]
 // CHECK:     scf.yield %[[RES1]] : tensor<1xf32>
 // CHECK:   }
 // CHECK: }
@@ -104,26 +108,30 @@ func.func @main(%arg0: memref<4xi8>, %arg1: memref<4xi8>, %arg2: memref<4xi8>) {
 // CHECK:   %[[ARG2:.*]]: tensor<4xi8>
 // CHECK: ) {
 
-// CHECK:   %[[BUFFER:.*]] = iree_input.tensor.import {{.*}} -> tensor<1xf32>
-// CHECK:   %[[CST:.*]] = iree_input.tensor.import {{.*}} -> tensor<1xf32>
-// CHECK:   %[[CASE:.*]] = iree_input.tensor.import {{.*}} -> tensor<1xi32>
+// CHECK-DAG: %[[BUFFER0:.*]] = iree_input.tensor.export %[[ARG0]]
+// CHECK-DAG: %[[BUFFER1:.*]] = iree_input.tensor.export %[[ARG1]]
+// CHECK-DAG: %[[BUFFER2:.*]] = iree_input.tensor.export %[[ARG2]]
+
+// CHECK-DAG: %[[TENSOR:.*]] = iree_input.tensor.import %[[BUFFER0]]
+// CHECK-DAG: %[[CST:.*]] = iree_input.tensor.import %[[BUFFER1]]
+// CHECK-DAG: %[[CASE:.*]] = iree_input.tensor.import %[[BUFFER2]]
 
 // CHECK:   %[[INDEX:.*]] = iree_input.tensor.load %[[CASE]]
 
 // CHECK:   %[[SWITCH:.*]] = scf.index_switch {{.*}} -> tensor<1xf32>
 // CHECK:   case 0 {
-// CHECK:     %[[RES0:.*]] = iree_input.dispatch {{.*}} -> %[[BUFFER]]
+// CHECK:     %[[RES0:.*]] = iree_input.dispatch {{.*}} -> %[[TENSOR]]
 // CHECK:     scf.yield %[[RES0]] : tensor<1xf32>
 // CHECK:   }
 // CHECK:   case 1 {
-// CHECK:     %[[RES1:.*]] = iree_input.dispatch {{.*}} -> %[[BUFFER]]
+// CHECK:     %[[RES1:.*]] = iree_input.dispatch {{.*}} -> %[[TENSOR]]
 // CHECK:     scf.yield %[[RES1]] : tensor<1xf32>
 // CHECK:   }
 // CHECK:   case 2 {
-// CHECK:     %[[RES2:.*]] = iree_input.dispatch {{.*}} -> %[[BUFFER]]
+// CHECK:     %[[RES2:.*]] = iree_input.dispatch {{.*}} -> %[[TENSOR]]
 // CHECK:     scf.yield %[[RES2]] : tensor<1xf32>
 // CHECK:   }
 // CHECK:   default {
-// CHECK:     scf.yield %[[BUFFER]] : tensor<1xf32>
+// CHECK:     scf.yield %[[TENSOR]] : tensor<1xf32>
 // CHECK:   }
 // CHECK: }

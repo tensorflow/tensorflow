@@ -429,26 +429,29 @@ module {
   func.func @dot_general_with_two_activations(%arg0: tensor<8x16x16xf32>, %arg1: tensor<8x16x4xf32>) -> tensor<8x16x4xf32> {
     %1 = stablehlo.constant dense<2.000000e-01> : tensor<1x1x1xf32>  // Input 1 inverse scale (1 / s1).
     %2 = stablehlo.constant dense<-128> : tensor<1x1x1xi8>  // Input 1 zero point (z1).
-    %3 = stablehlo.constant dense<4.000000e-01> : tensor<1x1x1xf32>  // Input 2 inverse scale (1 / s2).
-    %4 = stablehlo.constant dense<-3> : tensor<1x1x1xi8>  // Input 2 zero point (z2).
-    %5 = stablehlo.constant dense<5.000000e-01> : tensor<1x1x1xf32>  // Output inverse scale (1 / s3).
-    %6 = stablehlo.constant dense<-5> : tensor<1x1x1xi8>  // Output zero point (z3).
-    %7 = stablehlo.constant dense<1.250000e+01> : tensor<1x1x1xf32>  // Merged scale (s1 * s2).
-    %8 = call @uniform_quantize(%arg0, %1, %2) : (tensor<8x16x16xf32>, tensor<1x1x1xf32>, tensor<1x1x1xi8>) -> tensor<8x16x16xi8>  // q1
-    %9 = call @uniform_quantize_0(%arg1, %3, %4) : (tensor<8x16x4xf32>, tensor<1x1x1xf32>, tensor<1x1x1xi8>) -> tensor<8x16x4xi8>  // q2
-    %10 = stablehlo.broadcast_in_dim %2, dims = [0, 1, 2] : (tensor<1x1x1xi8>) -> tensor<8x16x16xi8>
-    %11 = stablehlo.subtract %8, %10 : tensor<8x16x16xi8>  // q1 - z1
-    %12 = stablehlo.broadcast_in_dim %4, dims = [0, 1, 2] : (tensor<1x1x1xi8>) -> tensor<8x16x4xi8>
-    %13 = stablehlo.subtract %9, %12 : tensor<8x16x4xi8>  // q2 - z2
-    %14 = stablehlo.convert %11 : (tensor<8x16x16xi8>) -> tensor<8x16x16xf32>  // i8 -> f32 cast
-    %15 = stablehlo.convert %13 : (tensor<8x16x4xi8>) -> tensor<8x16x4xf32>  // i8 -> f32 cast
+    %3 = stablehlo.constant dense<-128> : tensor<1x1x1xi32>  // Input 1 zero point (z1) (upcast & folded into i32).
+    %4 = stablehlo.constant dense<4.000000e-01> : tensor<1x1x1xf32>  // Input 2 inverse scale (1 / s2).
+    %5 = stablehlo.constant dense<-3> : tensor<1x1x1xi8>  // Input 2 zero point (z2).
+    %6 = stablehlo.constant dense<-3> : tensor<1x1x1xi32>  // Input 2 zero point (z2) (upcast & folded into i32).
+    %7 = stablehlo.constant dense<5.000000e-01> : tensor<1x1x1xf32>  // Output inverse scale (1 / s3).
+    %8 = stablehlo.constant dense<-5> : tensor<1x1x1xi8>  // Output zero point (z3).
+    %9 = stablehlo.constant dense<1.250000e+01> : tensor<1x1x1xf32>  // Merged scale (s1 * s2).
+    %10 = call @uniform_quantize(%arg0, %1, %2) : (tensor<8x16x16xf32>, tensor<1x1x1xf32>, tensor<1x1x1xi8>) -> tensor<8x16x16xi8>  // q1
+    %11 = call @uniform_quantize_0(%arg1, %4, %5) : (tensor<8x16x4xf32>, tensor<1x1x1xf32>, tensor<1x1x1xi8>) -> tensor<8x16x4xi8>  // q2
+    %12 = stablehlo.convert %10 : (tensor<8x16x16xi8>) -> tensor<8x16x16xi32>
+    %13 = stablehlo.broadcast_in_dim %3, dims = [0, 1, 2] : (tensor<1x1x1xi32>) -> tensor<8x16x16xi32>
+    %14 = stablehlo.subtract %12, %13 : tensor<8x16x16xi32>  // q1 - z1
+    %15 = stablehlo.convert %11 : (tensor<8x16x4xi8>) -> tensor<8x16x4xi32>
+    %16 = stablehlo.broadcast_in_dim %6, dims = [0, 1, 2] : (tensor<1x1x1xi32>) -> tensor<8x16x4xi32>
+    %17 = stablehlo.subtract %15, %16 : tensor<8x16x4xi32>  // q2 - z2
     // Corresponds to einsum expression: b i j, b j d -> b i d
-    %16 = stablehlo.dot_general %14, %15, batching_dims = [0] x [0], contracting_dims = [2] x [1] : (tensor<8x16x16xf32>, tensor<8x16x4xf32>) -> tensor<8x16x4xf32>
-    %17 = stablehlo.broadcast_in_dim %7, dims = [0, 1, 2] : (tensor<1x1x1xf32>) -> tensor<8x16x4xf32>
-    %18 = stablehlo.multiply %16, %17 : tensor<8x16x4xf32>  // * s1 s2
-    %19 = call @uniform_quantize_1(%18, %5, %6) : (tensor<8x16x4xf32>, tensor<1x1x1xf32>, tensor<1x1x1xi8>) -> tensor<8x16x4xi8>
-    %20 = call @uniform_dequantize(%19, %5, %6) : (tensor<8x16x4xi8>, tensor<1x1x1xf32>, tensor<1x1x1xi8>) -> tensor<8x16x4xf32>
-    return %20 : tensor<8x16x4xf32>
+    %18 = stablehlo.dot_general %14, %17, batching_dims = [0] x [0], contracting_dims = [2] x [1] : (tensor<8x16x16xi32>, tensor<8x16x4xi32>) -> tensor<8x16x4xi32>
+    %19 = stablehlo.convert %18 : (tensor<8x16x4xi32>) -> tensor<8x16x4xf32>
+    %20 = stablehlo.broadcast_in_dim %9, dims = [0, 1, 2] : (tensor<1x1x1xf32>) -> tensor<8x16x4xf32>
+    %21 = stablehlo.multiply %19, %20 : tensor<8x16x4xf32>  // * s1 s2
+    %22 = call @uniform_quantize_1(%21, %7, %8) : (tensor<8x16x4xf32>, tensor<1x1x1xf32>, tensor<1x1x1xi8>) -> tensor<8x16x4xi8>
+    %23 = call @uniform_dequantize(%22, %7, %8) : (tensor<8x16x4xi8>, tensor<1x1x1xf32>, tensor<1x1x1xi8>) -> tensor<8x16x4xf32>
+    return %23 : tensor<8x16x4xf32>
   }
 // CHECK: %[[UQ_0:.*]] = stablehlo.uniform_quantize %[[ARG_0]] : (tensor<8x16x16xf32>) -> tensor<8x16x16x!quant.uniform<i8:f32, 5.000000e+00:-128>>
 // CHECK: %[[UQ_1:.*]] = stablehlo.uniform_quantize %[[ARG_1]] : (tensor<8x16x4xf32>) -> tensor<8x16x4x!quant.uniform<i8:f32, 2.500000e+00:-3>>

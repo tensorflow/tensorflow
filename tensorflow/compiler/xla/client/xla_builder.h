@@ -432,24 +432,6 @@ class XlaBuilder {
   // evaluating the computation.
   StatusOr<bool> IsConstant(XlaOp operand) const;
 
-  // Sets up binding which indicates that the `target_dim_num` in the subshape
-  // `target_param_index` of parameter `target_param_num` is a dynamic dimension
-  // and its real dynamic size is represented by `dynamic_param_index` in
-  // parameter `dynamic_param_num`.
-  //
-  // Note that this should be called before the dynamic parameters are used to
-  // create other operations, otherwise created operations won't have the
-  // dynamic dimensions information.
-  //
-  // TODO(b/119520625): Remove this API once we have more dynamic shape infra
-  // ready.
-  ABSL_DEPRECATED("Use SetDimensionSize to set a dynamic dimension.")
-  Status SetDynamicBinding(int64_t dynamic_size_param_num,
-                           ShapeIndex dynamic_size_param_index,
-                           int64_t target_param_num,
-                           ShapeIndex target_param_index,
-                           int64_t target_dim_num);
-
   // Adds a new input/output alias. Since the input/output shape information are
   // not available until the computation is built, any eventual error in the
   // arguments of this API will be detected only at computation Build() time.
