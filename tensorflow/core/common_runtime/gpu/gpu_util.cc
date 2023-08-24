@@ -397,7 +397,12 @@ void GPUUtil::CopyCPUTensorToGPU(const Tensor* cpu_tensor,
     }
   }
 
-  if (merge_host_to_device_stream) done(OkStatus());
+  if (merge_host_to_device_stream) {
+    if (!recv_host_to_device_stream->ok()) {
+      LOG(FATAL) << "CPU->GPU Memcpy failed";
+    }
+    done(OkStatus());
+  }
   dev_info->event_mgr->ThenExecute(
       recv_host_to_device_stream,
       [recv_host_to_device_stream, done, input_ref, do_staging, staging_buffer,
@@ -407,10 +412,12 @@ void GPUUtil::CopyCPUTensorToGPU(const Tensor* cpu_tensor,
         } else {
           input_ref.Unref();
         }
-        if (!recv_host_to_device_stream->ok()) {
-          LOG(FATAL) << "CPU->GPU Memcpy failed";
+        if (!merge_host_to_device_stream) {
+          if (!recv_host_to_device_stream->ok()) {
+            LOG(FATAL) << "CPU->GPU Memcpy failed";
+          }
+          done(OkStatus());
         }
-        if (!merge_host_to_device_stream) done(OkStatus());
       });
 }
 
