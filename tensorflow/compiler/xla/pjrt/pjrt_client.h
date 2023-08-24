@@ -932,7 +932,7 @@ class PjRtBuffer {
     return shape;
   }
 
-  virtual PjRtMemorySpace* memory_space() const { return nullptr; }
+  virtual PjRtMemorySpace* memory_space() const = 0;
   // TODO(b/277820585): remove device() after the migration is done.
   virtual PjRtDevice* device() const = 0;
   virtual PjRtClient* client() const = 0;

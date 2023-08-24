@@ -379,6 +379,8 @@ class PjRtCApiBuffer : public PjRtBuffer {
 
   StatusOr<Shape> logical_on_device_shape() override;
 
+  PjRtMemorySpace* memory_space() const override;
+
   PjRtDevice* device() const override;
 
   PjRtClient* client() const override { return client_; }

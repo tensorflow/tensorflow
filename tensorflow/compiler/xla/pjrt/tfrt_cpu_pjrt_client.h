@@ -322,6 +322,7 @@ class TfrtCpuBuffer final : public AbstractTfrtCpuBuffer {
   TfrtCpuBuffer& operator=(const TfrtCpuBuffer&) = delete;
   TfrtCpuBuffer& operator=(TfrtCpuBuffer&&) = delete;
 
+  PjRtMemorySpace* memory_space() const override { return nullptr; }
   TfrtCpuDevice* device() const override { return device_; }
   TfrtCpuClient* client() const override { return client_; }
 
