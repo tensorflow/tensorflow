@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/executor_factory.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_serving_device_selector.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/common_runtime/local_session_selection.h"
@@ -40,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/common_runtime/scoped_allocator_mgr.h"
+#include "tensorflow/core/common_runtime/serving_device_selector_policies.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -327,10 +329,9 @@ DirectSession::DirectSession(const SessionOptions& options,
       factory_(factory),
       cancellation_manager_(new CancellationManager()),
       operation_timeout_in_ms_(options_.config.operation_timeout_in_ms()),
-      stream_group_mgr_(device_mgr->StreamGroupCount() > 1
-                            ? absl::make_unique<StreamGroupMgr>(
-                                  device_mgr->StreamGroupCount())
-                            : nullptr) {
+      stream_selector_(absl::make_unique<gpu::GpuServingDeviceSelector>(
+          std::max(device_mgr->StreamGroupCount(), 1),
+          std::make_unique<MinHeapPolicy>())) {
   const int thread_pool_size =
       options_.config.session_inter_op_thread_pool_size();
   if (thread_pool_size > 0) {
@@ -590,9 +591,8 @@ Status DirectSession::RunInternal(
 #endif
 
   // Get the stream group.
-  int stream_group_idx = stream_group_mgr_ == nullptr
-                             ? -1
-                             : stream_group_mgr_->RequireStreamGroup();
+  DeviceReservation reservation = stream_selector_->ReserveDevice("TensorFlow");
+  int stream_group_idx = reservation.device_index();
 
   thread::ThreadPool* pool;
   // Use std::unique_ptr to ensure garbage collection
@@ -797,10 +797,6 @@ Status DirectSession::RunInternal(
   if (step_cancellation_manager.IsCancelled()) {
     run_status.Update(errors::Cancelled("Run call was cancelled"));
   }
-
-  // Release the stream group.
-  if (stream_group_mgr_ != nullptr)
-    stream_group_mgr_->ReleaseStreamGroup(stream_group_idx);
 
   if (device_profiler_session) {
     TF_RETURN_IF_ERROR(device_profiler_session->CollectData(
@@ -2187,98 +2183,6 @@ DirectSession::Callable::~Callable() {
   // or not).
   executors_and_keys.reset();
   function_info.reset();
-}
-
-StreamGroupMgr::StreamGroupMgr(const size_t total_num) : total_num_(total_num) {
-  stream_group_heap_.resize(total_num);
-  for (int i = 0; i < total_num; ++i) {
-    stream_group_heap_[i] = absl::make_unique<StreamGroupNode>(i);
-    id2heap_map_.insert(std::make_pair(i, i));
-  }
-}
-
-void StreamGroupMgr::swap(const size_t idx1, const size_t idx2) {
-  id2heap_map_[stream_group_heap_[idx1]->id_] = idx2;
-  id2heap_map_[stream_group_heap_[idx2]->id_] = idx1;
-  std::swap(stream_group_heap_[idx1], stream_group_heap_[idx2]);
-}
-
-void StreamGroupMgr::reset_accumulators() {
-  VLOG(2) << "One of the Stream Group Node reaches access limit"
-          << ", reset...";
-  for (auto& node : stream_group_heap_) {
-    node->accumulator_ = 0;
-  }
-}
-
-int StreamGroupMgr::RequireStreamGroup() {
-  mutex_lock l(mu_);
-  int ret(stream_group_heap_[0]->id_);
-  ++stream_group_heap_[0]->workload_;
-  if (++stream_group_heap_[0]->accumulator_ == 0xFFFFFFFFFFFFFFFFull) {
-    reset_accumulators();
-  }
-  size_t ptr(0);
-  while (true) {
-    if (2 * ptr + 2 >= total_num_) {
-      if (2 * ptr + 2 == total_num_ &&
-          stream_group_heap_[ptr]->workload_ >
-              stream_group_heap_[2 * ptr + 1]->workload_) {
-        swap(ptr, 2 * ptr + 1);
-      }
-      break;
-    }
-    if (stream_group_heap_[2 * ptr + 1]->workload_ <
-        stream_group_heap_[2 * ptr + 2]->workload_) {
-      if (stream_group_heap_[ptr]->workload_ >
-          stream_group_heap_[2 * ptr + 1]->workload_) {
-        swap(ptr, 2 * ptr + 1);
-        ptr = 2 * ptr + 1;
-      } else {
-        break;
-      }
-    } else if (stream_group_heap_[2 * ptr + 1]->workload_ >
-               stream_group_heap_[2 * ptr + 2]->workload_) {
-      if (stream_group_heap_[ptr]->workload_ >
-          stream_group_heap_[2 * ptr + 2]->workload_) {
-        swap(ptr, 2 * ptr + 2);
-        ptr = 2 * ptr + 2;
-      } else {
-        break;
-      }
-    } else {
-      if (stream_group_heap_[ptr]->workload_ >
-          stream_group_heap_[2 * ptr + 1]->workload_) {
-        if (stream_group_heap_[2 * ptr + 1]->accumulator_ <
-            stream_group_heap_[2 * ptr + 2]->accumulator_) {
-          swap(ptr, 2 * ptr + 1);
-          ptr = 2 * ptr + 1;
-        } else {
-          swap(ptr, 2 * ptr + 2);
-          ptr = 2 * ptr + 2;
-        }
-      } else {
-        break;
-      }
-    }
-  }
-  return ret;
-}
-
-void StreamGroupMgr::ReleaseStreamGroup(const int stream_id) {
-  mutex_lock l(mu_);
-  size_t ptr = id2heap_map_[stream_id];
-  --stream_group_heap_[ptr]->workload_;
-  while (ptr != 0) {
-    size_t parent = (ptr + 1) / 2 - 1;
-    if (stream_group_heap_[ptr]->workload_ <
-        stream_group_heap_[parent]->workload_) {
-      swap(ptr, parent);
-      ptr = parent;
-    } else {
-      break;
-    }
-  }
 }
 
 }  // namespace tensorflow

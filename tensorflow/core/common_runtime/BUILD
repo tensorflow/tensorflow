@@ -2048,6 +2048,9 @@ tf_cuda_library(
     deps = [
         ":core_cpu_internal",
         ":local_session_selection",
+        ":serving_device_selector",
+        ":serving_device_selector_policies",
+        "//tensorflow/core/common_runtime/gpu:gpu_serving_device_selector",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:graph",
