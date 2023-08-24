@@ -648,9 +648,6 @@ fft::FftSupport* GpuExecutor::CreateFft() {
   return status.value()(this);
 }
 
-// TODO(rspringer): Remove in b/18544742.
-bool GpuExecutor::SupportsDnn() const { return true; }
-
 bool GpuExecutor::CanEnablePeerAccessTo(StreamExecutorInterface* other) {
   GpuExecutor* rocm_other = static_cast<GpuExecutor*>(other);
   return GpuDriver::CanEnablePeerAccess(context_, rocm_other->context_);
@@ -705,10 +702,6 @@ tsl::Status FillBlockDimLimit(GpuDeviceHandle device,
   block_dim_limit->z = z;
   return tsl::OkStatus();
 }
-
-bool GpuExecutor::SupportsBlas() const { return true; }
-
-bool GpuExecutor::SupportsFft() const { return true; }
 
 std::unique_ptr<internal::EventInterface>
 GpuExecutor::CreateEventImplementation() {

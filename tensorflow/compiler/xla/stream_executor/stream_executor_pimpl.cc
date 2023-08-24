@@ -218,18 +218,6 @@ int64_t StreamExecutor::GetDeviceLoad() const {
   return implementation_->GetDeviceLoad();
 }
 
-int StreamExecutor::PlatformDeviceCount() const {
-  return implementation_->PlatformDeviceCount();
-}
-
-bool StreamExecutor::SupportsBlas() const {
-  return implementation_->SupportsBlas();
-}
-
-bool StreamExecutor::SupportsDnn() const {
-  return implementation_->SupportsDnn();
-}
-
 tsl::Status StreamExecutor::GetConvolveRunners(
     bool use_cudnn_frontend, dnn::ConvolutionKind kind,
     dnn::DataType input_type, dnn::DataType output_type, Stream* stream,

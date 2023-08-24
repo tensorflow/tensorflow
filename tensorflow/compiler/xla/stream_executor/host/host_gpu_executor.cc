@@ -280,13 +280,6 @@ HostExecutor::CreateDeviceDescription(int device_ordinal) {
   return builder.Build();
 }
 
-bool HostExecutor::SupportsBlas() const {
-  return PluginRegistry::Instance()
-      ->GetFactory<PluginRegistry::BlasFactory>(kHostPlatformId,
-                                                plugin_config_.blas())
-      .ok();
-}
-
 blas::BlasSupport* HostExecutor::CreateBlas() {
   PluginRegistry* registry = PluginRegistry::Instance();
   tsl::StatusOr<PluginRegistry::BlasFactory> status =
@@ -299,13 +292,6 @@ blas::BlasSupport* HostExecutor::CreateBlas() {
   }
 
   return status.value()(this);
-}
-
-bool HostExecutor::SupportsFft() const {
-  return PluginRegistry::Instance()
-      ->GetFactory<PluginRegistry::FftFactory>(kHostPlatformId,
-                                               plugin_config_.fft())
-      .ok();
 }
 
 fft::FftSupport* HostExecutor::CreateFft() {

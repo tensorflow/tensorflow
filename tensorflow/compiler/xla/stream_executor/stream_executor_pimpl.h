@@ -310,22 +310,6 @@ class StreamExecutor {
   // will be reflected in "free".
   bool DeviceMemoryUsage(int64_t* free, int64_t* total) const;
 
-  // The device count reported by this StreamExecutor's platform.
-  // Note: on OpenCL we implicitly select platform zero at the moment.
-  int PlatformDeviceCount() const;
-
-  // Returns whether the StreamExecutor supports BLAS routines for the platform
-  // that underlies this interface.
-  bool SupportsBlas() const;
-
-  // Returns whether the StreamExecutor supports FFT routines for the platform
-  // that underlies this interface.
-  bool SupportsFft() const;
-
-  // Returns whether the StreamExecutor support neural net routines for the
-  // platform that underlies this interface.
-  bool SupportsDnn() const;
-
   // Returns the supported algorithms / execution plans for a convolution.
   tsl::Status GetConvolveRunners(
       bool use_cudnn_frontend, dnn::ConvolutionKind kind,
