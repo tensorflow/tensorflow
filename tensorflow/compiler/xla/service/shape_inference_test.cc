@@ -848,15 +848,14 @@ TEST_F(ShapeInferenceTest,
 
 TEST_F(ShapeInferenceTest, ConvolveWithNarrowerPreferredElementType) {
   ConvolveArgs args = MakeConvolveArgs(S8, S16);
-  auto inferred_status =
+  TF_ASSERT_OK_AND_ASSIGN(
+      Shape inferred_shape,
       ShapeInference::InferConvolveShape(
           args.lhs_shape, args.rhs_shape, /*feature_group_count=*/1,
           /*batch_group_count=*/1, args.window, args.dnums,
-          /*preferred_element_type=*/S8)
-          .status();
-  ASSERT_FALSE(inferred_status.ok());
-  ASSERT_THAT(inferred_status.message(),
-              HasSubstr("must not be narrower than the original type"));
+          /*preferred_element_type=*/S8));
+  ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(S8, {10, 12, 2, 3}),
+                               inferred_shape));
 }
 
 namespace fft {
@@ -1873,14 +1872,13 @@ TEST_F(ShapeInferenceTest, DotWithNarrowerPreferredElementType) {
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
-  auto inferred_status = ShapeInference::InferDotOpShape(
-                             ShapeUtil::MakeShape(S8, {32, 32}),
-                             ShapeUtil::MakeShape(S16, {32, 32}), dot_dnums,
-                             /*preferred_element_type=*/S8)
-                             .status();
-  ASSERT_FALSE(inferred_status.ok());
-  ASSERT_THAT(inferred_status.message(),
-              HasSubstr("must not be narrower than the original type"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape inferred_shape,
+                          ShapeInference::InferDotOpShape(
+                              ShapeUtil::MakeShape(S8, {32, 32}),
+                              ShapeUtil::MakeShape(S16, {32, 32}), dot_dnums,
+                              /*preferred_element_type=*/S8));
+  EXPECT_TRUE(
+      ShapeUtil::Equal(inferred_shape, ShapeUtil::MakeShape(S8, {32, 32})));
 }
 
 TEST_F(ShapeInferenceTest, BinOpBroadcastMatrixVector) {
