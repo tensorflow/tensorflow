@@ -1059,6 +1059,20 @@ diff --ruN a/stablehlo/stablehlo/tests/CheckOps.td b/stablehlo/stablehlo/tests/C
  }
  
  //===----------------------------------------------------------------------===//
+diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo_roundtrip.mlir b/stablehlo/stablehlo/tests/ops_stablehlo_roundtrip.mlir
+--- stablehlo/stablehlo/tests/ops_stablehlo_roundtrip.mlir
++++ stablehlo/stablehlo/tests/ops_stablehlo_roundtrip.mlir
+@@ -764,8 +764,8 @@
+ 
+ // Attribute Tests:
+ func.func @test_attr_frontend_attributes(%arg: tensor<3x4xf32>, %token: !stablehlo.token) -> tuple<tensor<3x4xf32>, !stablehlo.token> {
+-  %0 = "stablehlo.send"(%arg, %token) {channel_handle = #stablehlo.channel_handle<handle = 1, type = 2>, is_host_transfer = true, stablehlo.frontend_attributes = {_xla_host_transfer_original_type = "f32", _xla_host_transfer_rendezvous = "channel_dtoh_0"}} : (tensor<3x4xf32>, !stablehlo.token) -> !stablehlo.token
+-  %1:2 = "stablehlo.recv"(%0) {channel_handle = #stablehlo.channel_handle<handle = 2, type = 3>, is_host_transfer = true, stablehlo.frontend_attributes = {_xla_host_transfer_original_type = "f32", _xla_host_transfer_rendezvous = "channel_htod_0"}} : (!stablehlo.token) -> (tensor<3x4xf32>, !stablehlo.token)
++  %0 = "stablehlo.send"(%arg, %token) {channel_handle = #stablehlo.channel_handle<handle = 1, type = 2>, is_host_transfer = true, stablehlo.frontend_attributes = {_xla_host_transfer_rendezvous = "channel_dtoh_0"}} : (tensor<3x4xf32>, !stablehlo.token) -> !stablehlo.token
++  %1:2 = "stablehlo.recv"(%0) {channel_handle = #stablehlo.channel_handle<handle = 2, type = 3>, is_host_transfer = true, stablehlo.frontend_attributes = {_xla_host_transfer_rendezvous = "channel_htod_0"}} : (!stablehlo.token) -> (tensor<3x4xf32>, !stablehlo.token)
+   %2 = "stablehlo.tuple"(%1#0, %1#1) : (tensor<3x4xf32>, !stablehlo.token) -> tuple<tensor<3x4xf32>, !stablehlo.token>
+   func.return %2 : tuple<tensor<3x4xf32>, !stablehlo.token>
+ }
 diff --ruN a/stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir b/stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir
 --- stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir
 +++ stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir

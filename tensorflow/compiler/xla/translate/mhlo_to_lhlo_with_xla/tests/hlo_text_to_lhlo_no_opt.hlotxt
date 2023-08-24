@@ -590,8 +590,6 @@ HloModule Send
 // CHECK:   channel_handle = #mhlo.channel_handle<handle = 1, type = 2>,
 // CHECK:   frontend_attributes = {_xla_dcn_recv_channel = "2",
 // CHECK:                          _xla_host_transfer_handler_name = "undef",
-// CHECK                           _xla_host_transfer_is_lower_bits = "false",
-// CHECK:                          _xla_host_transfer_original_type = "f32",
 // CHECK:                          _xla_host_transfer_rendezvous = "undef"}
 // CHECK:   is_host_transfer = true
 // CHECK: } : (memref<4xf32>) -> !mhlo.token
@@ -602,7 +600,7 @@ HloModule Send
 ENTRY main {
   %tok = token[] parameter(0)
   %buf = f32[4]{0} parameter(1)
-  %send = (f32[4]{0}, u32[], token[]) send(f32[4]{0} %buf, token[] %tok), channel_id=1, is_host_transfer=true, frontend_attributes={_xla_dcn_recv_channel="2",_xla_host_transfer_handler_name="undef",_xla_host_transfer_is_lower_bits="false",_xla_host_transfer_original_type="f32",_xla_host_transfer_rendezvous="undef"}
+  %send = (f32[4]{0}, u32[], token[]) send(f32[4]{0} %buf, token[] %tok), channel_id=1, is_host_transfer=true, frontend_attributes={_xla_dcn_recv_channel="2",_xla_host_transfer_handler_name="undef",_xla_host_transfer_rendezvous="undef"}
   ROOT %send-done = token[] send-done((f32[4]{0}, u32[], token[]) %send), channel_id=1, is_host_transfer=true
 }
 
@@ -616,8 +614,6 @@ HloModule Recv
 // CHECK: %[[TOKEN:.*]] = "lmhlo.recv"(%[[VIEW]]) {
 // CHECK:   channel_handle = #mhlo.channel_handle<handle = 1, type = 3>,
 // CHECK:    frontend_attributes = {_xla_host_transfer_handler_name = "undef",
-// CHECK:                           _xla_host_transfer_is_lower_bits = "false",
-// CHECK:                           _xla_host_transfer_original_type = "f32",
 // CHECK:                           _xla_host_transfer_rendezvous = "undef"}
 // CHECK:   is_host_transfer = true
 // CHECK: } : (memref<4xf32>) -> !mhlo.token
@@ -627,7 +623,7 @@ HloModule Recv
 // CHECK: } : (!mhlo.token) -> ()
 ENTRY main {
   %tok = token[] parameter(0)
-  %recv = (f32[4]{0}, u32[], token[]) recv(token[] %tok), channel_id=1, is_host_transfer=true, frontend_attributes={_xla_host_transfer_handler_name="undef",_xla_host_transfer_is_lower_bits="false",_xla_host_transfer_original_type="f32",_xla_host_transfer_rendezvous="undef"}
+  %recv = (f32[4]{0}, u32[], token[]) recv(token[] %tok), channel_id=1, is_host_transfer=true, frontend_attributes={_xla_host_transfer_handler_name="undef",_xla_host_transfer_rendezvous="undef"}
   ROOT %recv-done = (f32[4]{0}, token[]) recv-done((f32[4]{0}, u32[], token[]) %recv), channel_id=1, is_host_transfer=true
 }
 

@@ -103,7 +103,6 @@ xla_cc_test(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/pjrt:utils",
-        "//tensorflow/compiler/xla/pjrt/distributed:topology_util",
         "//tensorflow/compiler/xla/service:gpu_plugin",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/tests:literal_test_util",
