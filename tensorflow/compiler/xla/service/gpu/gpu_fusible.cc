@@ -130,6 +130,9 @@ bool IsNestableVariadicReduction(const HloInstruction& instr) {
 }
 
 bool IsInputFusibleTranspose(const HloInstruction& instr) {
+  if (instr.opcode() == HloOpcode::kBitcast) {
+    return false;
+  }
   auto& hero = FindNonTrivialHero(instr);
   if (GetDescriptionForTiledTransposeEmitter(instr, hero).has_value()) {
     return true;
@@ -345,9 +348,10 @@ bool IsUniversallyLoopFusible(const HloInstruction& instr,
 
 bool IsLoopFusibleAsConsumer(const HloInstruction& instr,
                              const HloInstruction& hero) {
-  return instr.IsFusible() && (IsUniversallyLoopFusible(instr, hero) ||
-                               // Any reduction can be fused as a consumer.
-                               instr.opcode() == HloOpcode::kReduce);
+  return instr.IsFusible() && instr.opcode() != HloOpcode::kBitcast &&
+         (IsUniversallyLoopFusible(instr, hero) ||
+          // Any reduction can be fused as a consumer.
+          instr.opcode() == HloOpcode::kReduce);
 }
 
 bool IsLoopFusibleAsProducer(const HloInstruction& instr,

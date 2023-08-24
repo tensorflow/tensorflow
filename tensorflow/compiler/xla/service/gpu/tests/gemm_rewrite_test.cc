@@ -2335,20 +2335,15 @@ ENTRY test {
   MatchOptimizedHlo(hlo_text,
                     R"(
 
-; CHECK:        [[FUSED_COMPUTATION:%[^ ]+]] ([[DUMMY0:[^ ]+]]: f32[3,5,6]) -> f32[6,30] {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[3,5,6]{2,1,0} parameter(0)
-; CHECK-NEXT:    [[P0_BCAST:%[^ ]+]] = f32[2,3,5,6]{3,2,1,0} broadcast([[P0]]), dimensions={1,2,3}
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[6,30]{1,0} bitcast([[P0_BCAST]])
-}
-
 ; CHECK-LABEL: ENTRY %test (x: f32[2,3,4], y: f32[4,5,6], z: f32[3,5,6]) -> f32[2,3,5,6] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3,4]{2,1,0} parameter(0)
 ; CHECK-NEXT:    [[P0_BITCAST:%[^ ]+]] = f32[6,4]{1,0} bitcast([[P0]])
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[4,5,6]{2,1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_BITCAST:%[^ ]+]] = f32[4,30]{1,0}
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[3,5,6]{2,1,0} parameter(2)
-; CHECK-NEXT:    [[FUSION:%[^ ]+]] = f32[6,30]{1,0} fusion([[P2]]), kind=kLoop, calls=[[FUSED_COMPUTATION]]
-; CHECK-NEXT:    [[MATMUL:%[^ ]+]] = f32[6,30]{1,0} custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[FUSION]]),
+; CHECK-NEXT:    [[BROADCAST:%[^ ]+]] = f32[2,3,5,6]{3,2,1,0} broadcast([[P2]]), dimensions={1,2,3}
+; CHECK-NEXT:    [[BITCAST:%[^ ]+]] = f32[6,30]{1,0} bitcast([[BROADCAST]])
+; CHECK-NEXT:    [[MATMUL:%[^ ]+]] = f32[6,30]{1,0} custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[BITCAST]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
 ; CHECK:           output_to_operand_aliasing={{[{][{]}}}: (2, {})},
 ; CHECK:           backend_config={
@@ -2389,20 +2384,15 @@ ENTRY test {
   MatchOptimizedHlo(hlo_text,
                     R"(
 
-; CHECK:        [[FUSED_COMPUTATION:%[^ ]+]] ([[DUMMY0:[^ ]+]]: f32[6]) -> f32[6,30] {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[6]{0} parameter(0)
-; CHECK-NEXT:    [[P0_BCAST:%[^ ]+]] = f32[2,3,5,6]{3,2,1,0} broadcast([[P0]]), dimensions={3}
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[6,30]{1,0} bitcast([[P0_BCAST]])
-}
-
 ; CHECK-LABEL: ENTRY %test (x: f32[2,3,4], y: f32[4,5,6], z: f32[6]) -> f32[2,3,5,6] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3,4]{2,1,0} parameter(0)
 ; CHECK-NEXT:    [[P0_BITCAST:%[^ ]+]] = f32[6,4]{1,0} bitcast([[P0]])
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[4,5,6]{2,1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_BITCAST:%[^ ]+]] = f32[4,30]{1,0}
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[6]{0} parameter(2)
-; CHECK-NEXT:    [[FUSION:%[^ ]+]] = f32[6,30]{1,0} fusion([[P2]]), kind=kLoop, calls=[[FUSED_COMPUTATION]]
-; CHECK-NEXT:    [[MATMUL:%[^ ]+]] = f32[6,30]{1,0} custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[FUSION]]),
+; CHECK-NEXT:    [[BROADCAST:%[^ ]+]] = f32[2,3,5,6]{3,2,1,0} broadcast([[P2]]), dimensions={3}
+; CHECK-NEXT:    [[BITCAST:%[^ ]+]] = f32[6,30]{1,0} bitcast([[BROADCAST]])
+; CHECK-NEXT:    [[MATMUL:%[^ ]+]] = f32[6,30]{1,0} custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[BITCAST]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
 ; CHECK:           output_to_operand_aliasing={{[{][{]}}}: (2, {})},
 ; CHECK:           backend_config={
@@ -3076,20 +3066,15 @@ ENTRY test {
   MatchOptimizedHlo(hlo_text,
                     R"(
 
-; CHECK:        [[FUSED_COMPUTATION:%[^ ]+]] ([[DUMMY0:[^ ]+]]: f32[3,5,6]) -> f32[6,30] {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[3,5,6]{2,1,0} parameter(0)
-; CHECK-NEXT:    [[P0_BCAST:%[^ ]+]] = f32[2,3,5,6]{3,2,1,0} broadcast([[P0]]), dimensions={1,2,3}
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[6,30]{1,0} bitcast([[P0_BCAST]])
-}
-
 ; CHECK-LABEL: ENTRY %test (x: f32[2,3,4], y: f32[4,5,6], z: f32[3,5,6]) -> f32[2,3,5,6] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3,4]{2,1,0} parameter(0)
 ; CHECK-NEXT:    [[P0_BITCAST:%[^ ]+]] = f32[6,4]{1,0} bitcast([[P0]])
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[4,5,6]{2,1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_BITCAST:%[^ ]+]] = f32[4,30]{1,0}
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[3,5,6]{2,1,0} parameter(2)
-; CHECK-NEXT:    [[FUSION:%[^ ]+]] = f32[6,30]{1,0} fusion([[P2]]), kind=kLoop, calls=[[FUSED_COMPUTATION]]
-; CHECK-NEXT:    [[MATMUL:%[^ ]+]] = f32[6,30]{1,0} custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[FUSION]]),
+; CHECK-NEXT:    [[BROADCAST:%[^ ]+]] = f32[2,3,5,6]{3,2,1,0} broadcast([[P2]]), dimensions={1,2,3}
+; CHECK-NEXT:    [[BITCAST:%[^ ]+]] = f32[6,30]{1,0} bitcast([[BROADCAST]])
+; CHECK-NEXT:    [[MATMUL:%[^ ]+]] = f32[6,30]{1,0} custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[BITCAST]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "alpha_real":1
