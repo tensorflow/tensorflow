@@ -3,7 +3,6 @@
 #  ":platform" - Low-level and platform-specific Python code.
 
 # Placeholder: load py_proto_library
-load("//tensorflow:py.default.bzl", "py_library")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.bzl", "VERSION", "cc_header_only_library", "clean_dep", "if_google", "if_mlir", "if_oss", "if_windows", "if_xla_available", "tf_enable_mlir_bridge", "tf_python_pybind_static_deps", "tsl_async_value_deps")
@@ -66,7 +65,7 @@ package(
 
 # Description:
 
-py_library(
+py_strict_library(
     name = "python",
     srcs = ["__init__.py"],
     srcs_version = "PY3",
@@ -83,8 +82,10 @@ py_library(
         "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/ops:gradient_checker_v2",
         "//tensorflow/python/ops:stateful_random_ops",
+        "//tensorflow/python/ops/distributions",
         "//tensorflow/python/ops/structured:structured_ops",
         "//tensorflow/python/tpu:tpu_estimator",
+        "//tensorflow/python/tpu:tpu_noestimator",
     ],
 )
 
@@ -116,7 +117,7 @@ py_strict_library(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "no_contrib",
     srcs = ["__init__.py"],
     srcs_version = "PY3",
@@ -326,7 +327,7 @@ py_strict_library(
 )
 
 # This target should only be used for API generation.
-py_library(
+py_strict_library(
     name = "modules_with_exports",
     srcs = ["modules_with_exports.py"],
     srcs_version = "PY3",
@@ -356,8 +357,10 @@ py_library(
         "//tensorflow/python/distribute:merge_call_interim",
         "//tensorflow/python/distribute:multi_process_runner",
         "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python/distribute:parameter_server_strategy_v2",
         "//tensorflow/python/distribute:sharded_variable",
         "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/distribute/coordinator:cluster_coordinator",
         "//tensorflow/python/distribute/experimental/rpc:rpc_ops",
         "//tensorflow/python/distribute/failure_handling:failure_handling_lib",
         "//tensorflow/python/distribute/failure_handling:preemption_watcher",
@@ -407,7 +410,6 @@ py_library(
         "//tensorflow/python/ops:tpu_ops_gen",
         "//tensorflow/python/ops:uniform_quant_ops_gen",
         "//tensorflow/python/ops:while_v2",
-        "//tensorflow/python/ops/distributions",
         "//tensorflow/python/ops/linalg",
         "//tensorflow/python/ops/linalg/sparse:sparse_py",
         "//tensorflow/python/ops/losses",
