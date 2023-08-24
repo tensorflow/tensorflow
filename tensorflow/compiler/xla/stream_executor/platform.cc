@@ -53,43 +53,4 @@ tsl::Status Platform::Initialize(
   return ::tsl::OkStatus();
 }
 
-tsl::Status Platform::ForceExecutorShutdown() {
-  return tsl::Status(absl::StatusCode::kUnimplemented,
-                     "executor shutdown is not supported on this platform");
-}
-
-std::unique_ptr<Platform::PeerAccessMap> Platform::GetPeerAccessMap() {
-  auto *map = new PeerAccessMap;
-
-  int device_count = VisibleDeviceCount();
-  for (int i = 0; i < device_count; ++i) {
-    for (int j = 0; j < device_count; ++j) {
-      StreamExecutor *from = ExecutorForDevice(i).value();
-      StreamExecutor *to = ExecutorForDevice(j).value();
-      (*map)[{i, j}] = from->CanEnablePeerAccessTo(to);
-    }
-  }
-
-  return std::unique_ptr<Platform::PeerAccessMap>{map};
-}
-
-tsl::Status Platform::EnablePeerAccess() {
-  auto peer_access_map = GetPeerAccessMap();
-  for (const auto &access : *peer_access_map) {
-    auto devices = access.first;
-    if (access.second) {
-      StreamExecutor *from = ExecutorForDevice(devices.first).value();
-      StreamExecutor *to = ExecutorForDevice(devices.second).value();
-      auto status = from->EnablePeerAccessTo(to);
-      if (!status.ok()) {
-        return status;
-      }
-    } else {
-      LOG(INFO) << "cannot enable peer access from device ordinal "
-                << devices.first << " to device ordinal " << devices.second;
-    }
-  }
-  return ::tsl::OkStatus();
-}
-
 }  // namespace stream_executor

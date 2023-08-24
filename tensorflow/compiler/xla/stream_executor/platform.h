@@ -147,19 +147,6 @@ class Platform {
   virtual tsl::StatusOr<std::unique_ptr<StreamExecutor>> GetUncachedExecutor(
       const StreamExecutorConfig& config) = 0;
 
-  // Warning: this is a dangerous API and should be used with caution.
-  //
-  // Forces the platform to delete executor instances, releasing their
-  // associated device contexts. There must be no held instances of the executor
-  // and there must be no outstanding activity on the devices for this platform.
-  //
-  // This is only useful on platforms which bind a device to a single process
-  // that has obtained the device context. May return UNIMPLEMENTED on platforms
-  // that have no reason to destroy device contexts.
-  //
-  // The platform must be reinitialized after this is called.
-  virtual tsl::Status ForceExecutorShutdown();
-
   // Registers a TraceListener to listen to all StreamExecutors for this
   // platform.
   // Takes ownership of listener.
@@ -168,20 +155,6 @@ class Platform {
 
   // Removes the specified TraceListener from all StreamExecutors.
   virtual void UnregisterTraceListener(TraceListener* listener) = 0;
-
-  // Map of executor-to-executor coordinate and boolean, indicating if the first
-  // executor can access the second's memory.
-  using PeerAccessMap = std::map<std::pair<int, int>, bool>;
-
-  // Returns a matrix indicating which executors can access which other
-  // executors' memory.
-  virtual std::unique_ptr<PeerAccessMap> GetPeerAccessMap();
-
-  // Attempts to enable all peer-to-peer access links described by the result of
-  // GetPeerAccessMap(). Note that calling this routine will force the creation
-  // of a default-argument (see StreamExecutorConfig) StreamExecutor object for
-  // each device ordinal in the system, should any not yet exist.
-  virtual tsl::Status EnablePeerAccess();
 
  protected:
   // SE_DISALLOW_COPY_AND_ASSIGN declares a constructor, which suppresses the
