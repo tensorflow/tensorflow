@@ -61,10 +61,6 @@ class MultiPlatformManagerImpl {
       const std::function<bool(const Platform*)>& filter,
       bool initialize_platform) ABSL_LOCKS_EXCLUDED(mu_);
 
-  using Listener = MultiPlatformManager::Listener;
-  tsl::Status RegisterListener(std::unique_ptr<Listener> listener)
-      ABSL_LOCKS_EXCLUDED(mu_);
-
  private:
   // Looks up the platform object with the given name.  Assumes the Platforms
   // mutex is held.
@@ -84,7 +80,6 @@ class MultiPlatformManagerImpl {
       }) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   absl::Mutex mu_;
-  std::vector<std::unique_ptr<Listener>> listeners_ ABSL_GUARDED_BY(mu_);
   absl::flat_hash_map<Platform::Id, Platform*> id_map_ ABSL_GUARDED_BY(mu_);
   absl::flat_hash_map<std::string, Platform*> name_map_ ABSL_GUARDED_BY(mu_);
 };
@@ -107,9 +102,6 @@ tsl::Status MultiPlatformManagerImpl::RegisterPlatform(
   // platforms (CUDA, OpenCL) during exit. Since these are fixed-size and 1x per
   // program, these are deemed acceptable.
   name_map_[key] = platform.release();
-  for (const auto& listener : listeners_) {
-    listener->PlatformRegistered(platform_ptr);
-  }
   return ::tsl::OkStatus();
 }
 
@@ -178,15 +170,6 @@ tsl::StatusOr<Platform*> MultiPlatformManagerImpl::InitializePlatformWithId(
   TF_RETURN_IF_ERROR(platform->Initialize(options));
 
   return platform;
-}
-
-tsl::Status MultiPlatformManagerImpl::RegisterListener(
-    std::unique_ptr<Listener> listener) {
-  absl::MutexLock lock(&mu_);
-  CHECK(id_map_.empty());
-  CHECK(name_map_.empty());
-  listeners_.push_back(std::move(listener));
-  return ::tsl::OkStatus();
 }
 
 tsl::StatusOr<std::vector<Platform*>>
@@ -272,32 +255,15 @@ MultiPlatformManagerImpl& Impl() {
   return Impl().PlatformWithId(id);
 }
 
-/*static*/ tsl::StatusOr<Platform*> MultiPlatformManager::PlatformWithId(
-    const Platform::Id& id, bool initialize_platform) {
-  return Impl().PlatformWithId(id, initialize_platform);
-}
-
 /*static*/ tsl::StatusOr<Platform*> MultiPlatformManager::PlatformWithName(
     absl::string_view target, bool initialize_platform) {
   return Impl().PlatformWithName(target, initialize_platform);
 }
 
 /*static*/ tsl::StatusOr<Platform*>
-MultiPlatformManager::InitializePlatformWithName(
-    absl::string_view target,
-    const std::map<std::string, std::string>& options) {
-  return Impl().InitializePlatformWithName(target, options);
-}
-
-/*static*/ tsl::StatusOr<Platform*>
 MultiPlatformManager::InitializePlatformWithId(
     const Platform::Id& id, const std::map<std::string, std::string>& options) {
   return Impl().InitializePlatformWithId(id, options);
-}
-
-/*static*/ tsl::Status MultiPlatformManager::RegisterListener(
-    std::unique_ptr<Listener> listener) {
-  return Impl().RegisterListener(std::move(listener));
 }
 
 /*static*/ tsl::StatusOr<std::vector<Platform*>>
