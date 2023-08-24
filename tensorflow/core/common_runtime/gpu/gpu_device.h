@@ -189,15 +189,15 @@ class BaseGPUDevice : public LocalDevice {
   static std::optional<tsl::TfDeviceId> FindTfDeviceId(se::Stream* compute);
 
   bool merge_device_to_device_stream() const override {
-    return gpu_stream_merge_options_.merge_device_to_device_stream();
+    return stream_merge_options_.merge_device_to_device_stream();
   }
 
   bool merge_device_to_host_stream() const override {
-    return gpu_stream_merge_options_.merge_device_to_host_stream();
+    return stream_merge_options_.merge_device_to_host_stream();
   }
 
   bool merge_host_to_device_stream() const override {
-    return gpu_stream_merge_options_.merge_host_to_device_stream();
+    return stream_merge_options_.merge_host_to_device_stream();
   }
 
  protected:
@@ -229,7 +229,7 @@ class BaseGPUDevice : public LocalDevice {
   int32 pending_cap_ = 0;
   bool timestamped_allocator_ = false;
   NodeFileWriter* node_file_writer_ = nullptr;  // not owned
-  const GPUOptions::StreamMergeOptions gpu_stream_merge_options_;
+  const GPUOptions::StreamMergeOptions stream_merge_options_;
 
   // Initialize scratch buffers used by Eigen.
   Status InitScratchBuffers();

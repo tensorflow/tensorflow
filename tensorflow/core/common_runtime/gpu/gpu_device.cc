@@ -435,7 +435,7 @@ BaseGPUDevice::BaseGPUDevice(const SessionOptions& options, const string& name,
       scoped_allocator_mgr_(new ScopedAllocatorMgr(name)),
       tf_device_id_(tf_device_id),
       sync_every_op_(sync_every_op),
-      gpu_stream_merge_options_(
+      stream_merge_options_(
           options.config.gpu_options().stream_merge_options()) {
   // XLA device IDs for GPUs are arbitrary but must be unique, so we hash device
   // names (which include a replica index even for multi-client).
