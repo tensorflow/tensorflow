@@ -1125,11 +1125,26 @@ enum BuiltinOperator : int32_t {
   BuiltinOperator_STABLEHLO_SLICE = 172,
   BuiltinOperator_STABLEHLO_CUSTOM_CALL = 173,
   BuiltinOperator_STABLEHLO_REDUCE = 174,
+  BuiltinOperator_STABLEHLO_ABS = 175,
+  BuiltinOperator_STABLEHLO_AND = 176,
+  BuiltinOperator_STABLEHLO_COSINE = 177,
+  BuiltinOperator_STABLEHLO_EXPONENTIAL = 178,
+  BuiltinOperator_STABLEHLO_FLOOR = 179,
+  BuiltinOperator_STABLEHLO_LOG = 180,
+  BuiltinOperator_STABLEHLO_MINIMUM = 181,
+  BuiltinOperator_STABLEHLO_NEGATE = 182,
+  BuiltinOperator_STABLEHLO_OR = 183,
+  BuiltinOperator_STABLEHLO_POWER = 184,
+  BuiltinOperator_STABLEHLO_REMAINDER = 185,
+  BuiltinOperator_STABLEHLO_RSQRT = 186,
+  BuiltinOperator_STABLEHLO_SELECT = 187,
+  BuiltinOperator_STABLEHLO_SUBTRACT = 188,
+  BuiltinOperator_STABLEHLO_TANH = 189,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_STABLEHLO_REDUCE
+  BuiltinOperator_MAX = BuiltinOperator_STABLEHLO_TANH
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[175] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[190] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -1305,13 +1320,28 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[175] {
     BuiltinOperator_STABLEHLO_CONVOLUTION,
     BuiltinOperator_STABLEHLO_SLICE,
     BuiltinOperator_STABLEHLO_CUSTOM_CALL,
-    BuiltinOperator_STABLEHLO_REDUCE
+    BuiltinOperator_STABLEHLO_REDUCE,
+    BuiltinOperator_STABLEHLO_ABS,
+    BuiltinOperator_STABLEHLO_AND,
+    BuiltinOperator_STABLEHLO_COSINE,
+    BuiltinOperator_STABLEHLO_EXPONENTIAL,
+    BuiltinOperator_STABLEHLO_FLOOR,
+    BuiltinOperator_STABLEHLO_LOG,
+    BuiltinOperator_STABLEHLO_MINIMUM,
+    BuiltinOperator_STABLEHLO_NEGATE,
+    BuiltinOperator_STABLEHLO_OR,
+    BuiltinOperator_STABLEHLO_POWER,
+    BuiltinOperator_STABLEHLO_REMAINDER,
+    BuiltinOperator_STABLEHLO_RSQRT,
+    BuiltinOperator_STABLEHLO_SELECT,
+    BuiltinOperator_STABLEHLO_SUBTRACT,
+    BuiltinOperator_STABLEHLO_TANH
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOperator() {
-  static const char * const names[176] = {
+  static const char * const names[191] = {
     "ADD",
     "AVERAGE_POOL_2D",
     "CONCATENATION",
@@ -1487,13 +1517,28 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "STABLEHLO_SLICE",
     "STABLEHLO_CUSTOM_CALL",
     "STABLEHLO_REDUCE",
+    "STABLEHLO_ABS",
+    "STABLEHLO_AND",
+    "STABLEHLO_COSINE",
+    "STABLEHLO_EXPONENTIAL",
+    "STABLEHLO_FLOOR",
+    "STABLEHLO_LOG",
+    "STABLEHLO_MINIMUM",
+    "STABLEHLO_NEGATE",
+    "STABLEHLO_OR",
+    "STABLEHLO_POWER",
+    "STABLEHLO_REMAINDER",
+    "STABLEHLO_RSQRT",
+    "STABLEHLO_SELECT",
+    "STABLEHLO_SUBTRACT",
+    "STABLEHLO_TANH",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOperator(BuiltinOperator e) {
-  if (::flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_STABLEHLO_REDUCE)) return "";
+  if (::flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_STABLEHLO_TANH)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOperator()[index];
 }

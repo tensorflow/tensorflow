@@ -435,6 +435,21 @@ enum BuiltinOperator : int32 {
   STABLEHLO_SLICE = 172, // WARNING: No runtime support
   STABLEHLO_CUSTOM_CALL = 173, // WARNING: No runtime support
   STABLEHLO_REDUCE = 174, // WARNING: No runtime support
+  STABLEHLO_ABS = 175, // WARNING: No runtime support
+  STABLEHLO_AND = 176, // WARNING: No runtime support
+  STABLEHLO_COSINE = 177, // WARNING: No runtime support
+  STABLEHLO_EXPONENTIAL = 178, // WARNING: No runtime support
+  STABLEHLO_FLOOR = 179, // WARNING: No runtime support
+  STABLEHLO_LOG = 180, // WARNING: No runtime support
+  STABLEHLO_MINIMUM = 181, // WARNING: No runtime support
+  STABLEHLO_NEGATE = 182, // WARNING: No runtime support
+  STABLEHLO_OR = 183, // WARNING: No runtime support
+  STABLEHLO_POWER = 184, // WARNING: No runtime support
+  STABLEHLO_REMAINDER = 185, // WARNING: No runtime support
+  STABLEHLO_RSQRT = 186, // WARNING: No runtime support
+  STABLEHLO_SELECT = 187, // WARNING: No runtime support
+  STABLEHLO_SUBTRACT = 188, // WARNING: No runtime support
+  STABLEHLO_TANH = 189, // WARNING: No runtime support
 }
 // LINT.ThenChange(nnapi_linter/linter.proto)
 

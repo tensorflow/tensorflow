@@ -942,8 +942,8 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
 int32_t Translator::UnnamedRegionToSubgraph(
     mlir::Region* region, const tflite::BuiltinOperator op_code) {
   int32_t subgraph_index = subgraphs_.size();
-  std::string graph_name =
-      tflite::EnumNamesBuiltinOperator()[op_code] + subgraph_index;
+  std::string op_name = tflite::EnumNamesBuiltinOperator()[op_code];
+  std::string graph_name = op_name + std::to_string(subgraph_index);
   auto subgraph = BuildSubGraph(graph_name, region, subgraph_index);
   if (!subgraph.has_value()) {
     mlir::emitError(region->getLoc(), "failed to build subgraph");
@@ -1509,6 +1509,71 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
     if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::ClampOp>(inst)) {
       return BuildStablehloOperatorwithoutOptions(
           inst, operands, results, tflite::BuiltinOperator_STABLEHLO_CLAMP);
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::AbsOp>(inst)) {
+      return BuildStablehloOperatorwithoutOptions(
+          inst, operands, results, tflite::BuiltinOperator_STABLEHLO_ABS);
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::AddOp>(inst)) {
+      return BuildStablehloOperatorwithoutOptions(
+          inst, operands, results, tflite::BuiltinOperator_STABLEHLO_ADD);
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::AndOp>(inst)) {
+      return BuildStablehloOperatorwithoutOptions(
+          inst, operands, results, tflite::BuiltinOperator_STABLEHLO_AND);
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::CosineOp>(inst)) {
+      return BuildStablehloOperatorwithoutOptions(
+          inst, operands, results, tflite::BuiltinOperator_STABLEHLO_COSINE);
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::ExpOp>(inst)) {
+      return BuildStablehloOperatorwithoutOptions(
+          inst, operands, results,
+          tflite::BuiltinOperator_STABLEHLO_EXPONENTIAL);
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::FloorOp>(inst)) {
+      return BuildStablehloOperatorwithoutOptions(
+          inst, operands, results, tflite::BuiltinOperator_STABLEHLO_FLOOR);
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::LogOp>(inst)) {
+      return BuildStablehloOperatorwithoutOptions(
+          inst, operands, results, tflite::BuiltinOperator_STABLEHLO_LOG);
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::MinOp>(inst)) {
+      return BuildStablehloOperatorwithoutOptions(
+          inst, operands, results, tflite::BuiltinOperator_STABLEHLO_MINIMUM);
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::NegOp>(inst)) {
+      return BuildStablehloOperatorwithoutOptions(
+          inst, operands, results, tflite::BuiltinOperator_STABLEHLO_NEGATE);
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::OrOp>(inst)) {
+      return BuildStablehloOperatorwithoutOptions(
+          inst, operands, results, tflite::BuiltinOperator_STABLEHLO_OR);
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::PowOp>(inst)) {
+      return BuildStablehloOperatorwithoutOptions(
+          inst, operands, results, tflite::BuiltinOperator_STABLEHLO_POWER);
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::RemOp>(inst)) {
+      return BuildStablehloOperatorwithoutOptions(
+          inst, operands, results, tflite::BuiltinOperator_STABLEHLO_REMAINDER);
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::RsqrtOp>(inst)) {
+      return BuildStablehloOperatorwithoutOptions(
+          inst, operands, results, tflite::BuiltinOperator_STABLEHLO_RSQRT);
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::SelectOp>(inst)) {
+      return BuildStablehloOperatorwithoutOptions(
+          inst, operands, results, tflite::BuiltinOperator_STABLEHLO_SELECT);
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::SubtractOp>(inst)) {
+      return BuildStablehloOperatorwithoutOptions(
+          inst, operands, results, tflite::BuiltinOperator_STABLEHLO_SUBTRACT);
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::TanhOp>(inst)) {
+      return BuildStablehloOperatorwithoutOptions(
+          inst, operands, results, tflite::BuiltinOperator_STABLEHLO_TANH);
     }
     if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::ConcatenateOp>(inst)) {
       std::string op_name = inst->getName().getStringRef().str();

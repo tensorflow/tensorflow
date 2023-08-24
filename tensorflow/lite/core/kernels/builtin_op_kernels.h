@@ -235,6 +235,50 @@ Register_STABLEHLO_CUSTOM_CALL();  // WARNING: not implemented, using this
 TfLiteRegistration*
 Register_STABLEHLO_REDUCE();  // WARNING: not implemented, using this
                               // op will crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_ABS();  // WARNING: not implemented, using this
+                           // op will crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_AND();  // WARNING: not implemented, using this
+                           // op will crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_COSINE();  // WARNING: not implemented, using this
+                              // op will crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_EXPONENTIAL();  // WARNING: not implemented, using this
+                                   // op will crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_FLOOR();  // WARNING: not implemented, using this
+                             // op will crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_LOG();  // WARNING: not implemented, using this
+                           // op will crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_MINIMUM();  // WARNING: not implemented, using this
+                               // op will crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_NEGATE();  // WARNING: not implemented, using this
+                              // op will crash the runtime
+TfLiteRegistration* Register_STABLEHLO_OR();  // WARNING: not implemented, using
+                                              // this op will crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_POWER();  // WARNING: not implemented, using this
+                             // op will crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_REMAINDER();  // WARNING: not implemented, using this
+                                 // op will crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_RSQRT();  // WARNING: not implemented, using this
+                             // op will crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_SELECT();  // WARNING: not implemented, using this
+                              // op will crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_SUBTRACT();  // WARNING: not implemented, using this
+                                // op will crash the runtime
+TfLiteRegistration*
+Register_STABLEHLO_TANH();  // WARNING: not implemented, using this
+                            // op will crash the runtime
 
 }  // namespace builtin
 }  // namespace ops

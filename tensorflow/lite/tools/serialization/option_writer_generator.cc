@@ -230,8 +230,23 @@ class OpOptionData {
     op_to_option_["STABLEHLO_DIVIDE"] = "";
     op_to_option_["STABLEHLO_MULTIPLY"] = "";
     op_to_option_["STABLEHLO_MAXIMUM"] = "";
+    op_to_option_["STABLEHLO_MINIMUM"] = "";
     op_to_option_["STABLEHLO_RESHAPE"] = "";
     op_to_option_["STABLEHLO_CLAMP"] = "";
+    op_to_option_["STABLEHLO_ABS"] = "";
+    op_to_option_["STABLEHLO_AND"] = "";
+    op_to_option_["STABLEHLO_COSINE"] = "";
+    op_to_option_["STABLEHLO_EXPONENTIAL"] = "";
+    op_to_option_["STABLEHLO_FLOOR"] = "";
+    op_to_option_["STABLEHLO_LOG"] = "";
+    op_to_option_["STABLEHLO_OR"] = "";
+    op_to_option_["STABLEHLO_NEGATE"] = "";
+    op_to_option_["STABLEHLO_POWER"] = "";
+    op_to_option_["STABLEHLO_REMAINDER"] = "";
+    op_to_option_["STABLEHLO_RSQRT"] = "";
+    op_to_option_["STABLEHLO_SELECT"] = "";
+    op_to_option_["STABLEHLO_SUBTRACT"] = "";
+    op_to_option_["STABLEHLO_TANH"] = "";
 
     // TODO(aselle): These are undesirable hacks. Consider changing C structs
     option_to_struct_["Pool2DOptions"] = "TfLitePoolParams";
