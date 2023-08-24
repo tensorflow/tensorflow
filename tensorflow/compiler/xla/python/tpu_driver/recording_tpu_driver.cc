@@ -14,7 +14,11 @@
 // =============================================================================
 #include <atomic>
 #include <functional>
+#include <memory>
 #include <optional>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/base/internal/sysinfo.h"
 #include "absl/strings/str_split.h"
@@ -49,7 +53,7 @@ class RecordingEvent : public Event {
   explicit RecordingEvent(std::shared_ptr<Event> event, int64_t id)
       : shared_event_(event), id_(id) {}
 
-  ~RecordingEvent() override {}
+  ~RecordingEvent() override = default;
 
   xla::Status Await() override { return shared_event_->Await(); }
 
@@ -135,7 +139,7 @@ class RecordingTpuDriver : public TpuDriver {
         tsl::Env::Default()->NewAppendableFile(recording_path_, &log_file_);
     if (!file_status.ok()) {
       LOG(FATAL) << "Unable to open " << recording_path_
-                 << " for appending. Error: " << file_status.ToString();
+                 << " for appending. Error: " << file_status;
     }
   }
   ~RecordingTpuDriver() override {
@@ -511,7 +515,7 @@ class RecordingTpuDriver : public TpuDriver {
       if (!data_status.ok()) {
         LOG(WARNING) << "Unable to write data to log file. File possibly "
                         "corrupt. Error: "
-                     << data_status.ToString();
+                     << data_status;
       }
 
       if (flush_) {
@@ -519,14 +523,14 @@ class RecordingTpuDriver : public TpuDriver {
         if (!flush_status.ok()) {
           LOG(WARNING) << "Unable to flush data to log file. File possibly "
                           "corrupt. Error: "
-                       << flush_status.ToString();
+                       << flush_status;
         }
 
         auto sync_status = log_file_->Sync();
         if (!sync_status.ok()) {
           LOG(WARNING) << "Unable to sync log file. File possibly "
                           "corrupt. Error: "
-                       << sync_status.ToString();
+                       << sync_status;
         }
       }
     }

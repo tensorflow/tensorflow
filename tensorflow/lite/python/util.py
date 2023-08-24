@@ -19,10 +19,9 @@ import datetime
 import sys
 
 from absl import logging
-
 import flatbuffers
+
 from tensorflow.core.protobuf import config_pb2 as _config_pb2
-from tensorflow.core.protobuf import graph_debug_info_pb2
 from tensorflow.core.protobuf import meta_graph_pb2 as _meta_graph_pb2
 from tensorflow.lite.python import conversion_metadata_schema_py_generated as conversion_metadata_fb
 from tensorflow.lite.python import schema_py_generated as schema_fb
@@ -173,7 +172,7 @@ def set_tensor_shapes(tensors, shapes):
   """Sets Tensor shape for each tensor if the shape is defined.
 
   Args:
-    tensors: TensorFlow ops.Tensor.
+    tensors: TensorFlow tensor.Tensor.
     shapes: Dict of strings representing input tensor names to list of
       integers representing input shapes (e.g., {"foo": : [1, 16, 16, 3]}).
 
@@ -351,7 +350,7 @@ def build_debug_info_func(original_graph):
           useful_ops.append((func, original_graph.get_operation_by_name(name)))
         else:
           sub_func = original_graph._get_function(func)  # pylint: disable=protected-access
-          if isinstance(sub_func, function._EagerDefinedFunction):  # pylint: disable=protected-access
+          if isinstance(sub_func, function.AtomicFunction):  # pylint: disable=protected-access
             useful_ops.append(
                 (func, sub_func.graph.get_operation_by_name(name)))
           else:
@@ -380,18 +379,8 @@ def convert_debug_info_func(saved_debug_info):
 
   def f(original_nodes):
     """Function to create `GraphDebugInfo` for the given `original_nodes`."""
-    if not saved_debug_info:
-      return None
-
-    output_debug_info = graph_debug_info_pb2.GraphDebugInfo()
-    # All the files are copied over, so the index wouldn't be changed.
-    output_debug_info.files[:] = saved_debug_info.files
-    # We only copy over the debug info for the input nodes
-    for func, node in original_nodes:
-      debug_key = node + "@" + func
-      output_debug_info.traces[debug_key].CopyFrom(
-          saved_debug_info.traces[debug_key])
-    return output_debug_info
+    del original_nodes
+    return saved_debug_info
 
   return f
 
@@ -921,8 +910,15 @@ def _remove_redundant_quantize_ops_per_subgraph(model, subgraph_index,
         for output in signature_def.outputs:
           if output.tensorIndex == op.outputs[0]:
             output.tensorIndex = op.inputs[0]
+      deleted_tensor = requantize_op.inputs[0]
       # Reset the input of the requantize op to the float input
       requantize_op.inputs[0] = op.inputs[0]
+      # Migrate other operator users to output tensor of requantize op
+      for op_user in operators:
+        if deleted_tensor in op_user.inputs and op_user != requantize_op:
+          for idx, input_tensor in enumerate(op_user.inputs):
+            if input_tensor == deleted_tensor:
+              op_user.inputs[idx] = requantize_op.outputs[0]
       operators.remove(op)
 
   # Remove all the quant ops which connect to the output dequant op.

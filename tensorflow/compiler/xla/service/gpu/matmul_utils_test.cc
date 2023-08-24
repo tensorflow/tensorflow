@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/test.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/tsl/platform/status_matchers.h"
 
 namespace xla {
@@ -34,6 +35,100 @@ TEST(GetNonContractingDimsTest, Valid) {
   EXPECT_THAT(GetNonContractingDims(shape, /*batch_dims=*/{4},
                                     /*contracting_dims=*/{1, 5}),
               IsOkAndHolds(ElementsAre(0, 2, 3)));
+}
+
+using CanFoldTransposeOperandIntoDotTest = HloTestBase;
+
+TEST_F(CanFoldTransposeOperandIntoDotTest, ArgTransposeFoldGemm) {
+  const char* hlo_text = R"(
+HloModule ArgTransposeFoldGemm
+
+ENTRY AddDotsFunc {
+  x = f32[3,2] parameter(0)
+  y = f32[3,4] parameter(1)
+  x_transposed = f32[2,3] transpose(x), dimensions={1, 0}
+  ROOT dot_a = f32[2,4] dot(x_transposed, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  auto dot = module->entry_computation()->root_instruction();
+  EXPECT_THAT(CanFoldTransposeOperandIntoDot(*dot, 0), IsOkAndHolds(true));
+}
+
+TEST_F(CanFoldTransposeOperandIntoDotTest, BatchedArgRowColTransposeFoldGemm) {
+  const char* hlo_text = R"(
+HloModule BatchedArgRowColTransposeFoldGemm
+
+ENTRY AddDotsFunc {
+  x = f32[5,3,2] parameter(0)
+  y = f32[5,3,4] parameter(1)
+  x_transposed = f32[5,2,3] transpose(x), dimensions={0, 2, 1}
+  ROOT dot_a = f32[5,2,4] dot(x_transposed, y), lhs_contracting_dims={2}, rhs_contracting_dims={1}, lhs_batch_dims={0}, rhs_batch_dims={0}
+}
+
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  auto dot = module->entry_computation()->root_instruction();
+  EXPECT_THAT(CanFoldTransposeOperandIntoDot(*dot, 0), IsOkAndHolds(true));
+}
+
+TEST_F(CanFoldTransposeOperandIntoDotTest, BatchRowTransposeFoldGemm) {
+  const char* hlo_text = R"(
+HloModule BatchRowTransposeFoldCheck
+
+ENTRY AddDotsFunc {
+  x = f32[2,5,3] parameter(0)
+  y = f32[5,3,4] parameter(1)
+  x_transposed = f32[5,2,3] transpose(x), dimensions={1, 0, 2}
+  ROOT dot_a = f32[5,2,4] dot(x_transposed, y), lhs_contracting_dims={2}, rhs_contracting_dims={1}, lhs_batch_dims={0}, rhs_batch_dims={0}
+}
+
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  auto dot = module->entry_computation()->root_instruction();
+  EXPECT_THAT(CanFoldTransposeOperandIntoDot(*dot, 0), IsOkAndHolds(true));
+}
+
+TEST_F(CanFoldTransposeOperandIntoDotTest,
+       BatchFromMinorDimTransposeDoesntFold) {
+  const char* hlo_text = R"(
+HloModule BatchFromMinorDimTransposeDoesntFold
+
+ENTRY AddDotsFunc {
+  x = f32[3,2,5] parameter(0)
+  y = f32[5,3,4] parameter(1)
+  x_transposed = f32[5,2,3] transpose(x), dimensions={2, 1, 0}
+  ROOT dot_a = f32[5,2,4] dot(x_transposed, y), lhs_contracting_dims={2}, rhs_contracting_dims={1}, lhs_batch_dims={0}, rhs_batch_dims={0}
+}
+
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  auto dot = module->entry_computation()->root_instruction();
+  EXPECT_THAT(CanFoldTransposeOperandIntoDot(*dot, 0), IsOkAndHolds(false));
+}
+
+TEST_F(CanFoldTransposeOperandIntoDotTest,
+       TransposedNonContractingDimsDontFold) {
+  const char* hlo_text = R"(
+HloModule TransposedNonContractingDimsDontFold
+
+ENTRY AddDotsFunc {
+  x = f32[5,3,4]{2,1,0} parameter(1)
+  y = f32[5,2,6,3]{3,1,2,0} parameter(0)
+  y_transposed = f32[5,6,2,3]{3,2,1,0} transpose(y), dimensions={0, 2, 1, 3}
+  ROOT dot_a = f32[5,4,6,2]{3,2,1,0} dot(x, y_transposed), lhs_contracting_dims={1}, rhs_contracting_dims={3}, lhs_batch_dims={0}, rhs_batch_dims={0}
+}
+
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  auto dot = module->entry_computation()->root_instruction();
+  EXPECT_THAT(CanFoldTransposeOperandIntoDot(*dot, 1), IsOkAndHolds(false));
 }
 
 struct GetBatchRowColumnShapeTestParams {

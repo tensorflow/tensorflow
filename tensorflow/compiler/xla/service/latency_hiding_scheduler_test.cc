@@ -17,23 +17,21 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdlib>
 #include <functional>
 #include <iterator>
+#include <list>
 #include <memory>
-#include <numeric>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/async_collective_creator.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 
@@ -134,10 +132,9 @@ StatusOr<bool> RunScheduler(
     std::unique_ptr<LatencyEstimator> latency_estimator =
         std::make_unique<ApproximateLatencyEstimator>()) {
   AsyncCollectiveCreator::CollectiveCreatorConfig config{
-      /*convert_all_reduce=*/[](const HloInstruction*) { return true; },
-      /*convert_all_gather=*/[](const HloInstruction*) { return true; },
-      /*convert_collective_permute=*/
-      [](const HloInstruction*) { return true; }};
+      /*convert_all_reduce=*/HloPredicateTrue,
+      /*convert_all_gather=*/HloPredicateTrue,
+      /*convert_collective_permute=*/HloPredicateTrue};
   TF_ASSIGN_OR_RETURN(bool value,
                       AsyncCollectiveCreator(std::move(config)).Run(module));
   HloCostAnalysis::ShapeSizeFunction shape_size_bytes =
@@ -2524,6 +2521,67 @@ ENTRY entry {
             GetIndex(new_instruction_sequence, "cp1s"));
 }
 
+TEST_F(LatencyHidingSchedulerTest, ReleaseStartWhenLatencyDue) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[16,64,256]{2,1,0} parameter(0)
+  p1 = f32[128,2048,2048]{2,1,0} parameter(1)
+  p2 = f32[512,2048,2048]{2,1,0} parameter(2)
+  cp1s = (f32[512,2048,2048]{2,1,0}, f32[512,2048,2048]{2,1,0}, u32[], u32[]) collective-permute-start(p2), source_target_pairs={{1,0},{0,3},{3,2}}
+  cp1d = f32[512,2048,2048]{2,1,0} collective-permute-done(cp1s)
+  cp2s = (f32[128,2048,2048]{2,1,0}, f32[128,2048,2048]{2,1,0}, u32[], u32[]) collective-permute-start(p1), source_target_pairs={{1,0},{0,3},{3,2}}
+  cp2d = f32[128,2048,2048]{2,1,0} collective-permute-done(cp2s)
+  cp3s = (f32[128,2048,2048]{2,1,0}, f32[128,2048,2048]{2,1,0}, u32[], u32[]) collective-permute-start(cp2d), source_target_pairs={{1,0},{0,3},{3,2}}
+  cp3d = f32[128,2048,2048]{2,1,0} collective-permute-done(cp3s)
+  slice = f32[16,64,256]{2,1,0} slice(f32[512,2048,2048]{2,1,0} cp1d), slice={[0:16], [0:64], [0:256]}
+  c0 = f32[16,256,256]{2,1,0} convolution(p0, slice),
+    window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb  
+  c1 = f32[16,256,256]{2,1,0} convolution(p0, slice),
+    window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb  
+  ROOT tuple.2 = (f32[16,256,256]{2,1,0}, f32[16,256,256]{2,1,0}, f32[128,2048,2048]{2,1,0}, f32[128,2048,2048]{2,1,0}) tuple(c0, c1, cp2d, cp3d)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  HloSchedule& module_schedule = hlo_module->schedule();
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  auto sched_config = GetDefaultSchedConfig();
+  sched_config.aggressive_scheduling_policies = true;
+  sched_config.enable_release_start_policy = true;
+  EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config,
+                           std::make_unique<TestLatencyEstimator>())
+                  .ok());
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+
+  std::vector<HloInstruction*> new_instruction_sequence =
+      module_schedule.sequence(hlo_module->entry_computation()).instructions();
+  if (VLOG_IS_ON(1)) {
+    for (auto* new_i : new_instruction_sequence) {
+      VLOG(1) << new_i->ToString();
+    }
+  }
+
+  // Make sure that c0 and c1 are latency-hiding cp2 and cp3 respectively,
+  // instead of being scheduled only within the latency of one of cp2 or cp3.
+  // Note that the cost of c0 and c1 is larger than the latencies of cp2 and cp3
+  // so the best strategy is indeed to distribute them among both cp2 and cp3.
+  // When aggressive_scheduling_policies = true, this is achieved thanks to the
+  // "kScheduleStart" policy, in absence of which the "kAsyncDepth" prevails
+  // in scheduling both c0 and c1 within the latency of cp3.
+  EXPECT_LT(GetIndex(new_instruction_sequence, "cp2s"),
+            GetIndex(new_instruction_sequence, "c0"));
+  EXPECT_LT(GetIndex(new_instruction_sequence, "c0"),
+            GetIndex(new_instruction_sequence, "cp2d"));
+  EXPECT_LT(GetIndex(new_instruction_sequence, "cp2d"),
+            GetIndex(new_instruction_sequence, "cp3s"));
+  EXPECT_LT(GetIndex(new_instruction_sequence, "cp3s"),
+            GetIndex(new_instruction_sequence, "c1"));
+  EXPECT_LT(GetIndex(new_instruction_sequence, "c1"),
+            GetIndex(new_instruction_sequence, "cp3d"));
+}
+
 TEST_F(LatencyHidingSchedulerTest, AsyncTrackerTestForTargetDefinedResources) {
   // Extend AsyncTracker for a fake target with one target-defined resource
   class AsyncTrackerForMyTarget : public AsyncTracker {
@@ -2550,6 +2608,22 @@ TEST_F(LatencyHidingSchedulerTest, AsyncTrackerTestForTargetDefinedResources) {
           return "kTargetResource0";
         default:
           return "";
+      }
+    }
+
+    ResourceHazardType GetResourceHazardType(
+        int64_t resource_type) const override {
+      const int64_t first_target_resource = GetFirstTargetDefinedResource();
+      if (resource_type < first_target_resource) {
+        return AsyncTracker::GetResourceHazardType(resource_type);
+      }
+      CHECK_LE(resource_type,
+               first_target_resource + GetNumTargetDefinedResources());
+      switch (resource_type - first_target_resource) {
+        case static_cast<int64_t>(MyTargetResourceType::kTargetResource0):
+          return ResourceHazardType::kShareable;
+        default:
+          return ResourceHazardType::kUnshareable;
       }
     }
 
@@ -2581,11 +2655,17 @@ TEST_F(LatencyHidingSchedulerTest, AsyncTrackerTestForTargetDefinedResources) {
       SchedulerConfig(), target_resource0_overlap_limit);
   // Check the number of target-defined resources
   CHECK_EQ(async_tracker_for_my_target.GetNumTargetDefinedResources(), 1);
-  // Check the name of the target-defined resource
+  // Get the index of the target-defined resource
   const int64_t target_resource0_index =
       static_cast<int64_t>(ResourceType::kTargetDefinedResourcesBound) + 1;
+  // Check the name of the target-defined resource
   CHECK_EQ(async_tracker_for_my_target.GetResourceName(target_resource0_index),
            "kTargetResource0");
+  // Check the hazard type of the target-defined resource
+  CHECK_EQ(
+      static_cast<int64_t>(async_tracker_for_my_target.GetResourceHazardType(
+          target_resource0_index)),
+      static_cast<int64_t>(ResourceHazardType::kShareable));
   // Check the number of available resources (overlap limit) for the
   // target-defined resource
   CHECK_EQ(async_tracker_for_my_target.GetNumAvailableResources(
@@ -2593,4 +2673,205 @@ TEST_F(LatencyHidingSchedulerTest, AsyncTrackerTestForTargetDefinedResources) {
            target_resource0_overlap_limit);
 }
 
+TEST_F(LatencyHidingSchedulerTest, AddDeleteOccupierForSharedResource) {
+  std::vector<std::pair<HloEdge*, HloGraphNode::TimeCost>> occupiers;
+  std::function<bool(std::vector<double>)> check_eq = [&occupiers](
+                                                          std::vector<double>
+                                                              times) {
+    if (times.size() != occupiers.size()) {
+      return false;
+    }
+    int64_t i = 0;
+    for (auto it = occupiers.begin(); it != occupiers.end(); ++it) {
+      if (std::abs(times[i] - it->second) > 0.0001) {
+        VLOG(1)
+            << "PFT in occupier list does not match the given value (at index "
+            << i << "): " << it->second << " vs " << times[i];
+        return false;
+      }
+      i++;
+    }
+    return true;
+  };
+
+  //============================== Additions Only ==============================
+  HloEdge edge1(3, nullptr);
+  HloEdge edge2(3, nullptr);
+  HloEdge edge3(1, nullptr);
+
+  DefaultSchedulerCore::AddOccupierToResource(0, edge1, occupiers);
+  CHECK(check_eq({3}));
+  DefaultSchedulerCore::AddOccupierToResource(1, edge2, occupiers);
+  CHECK(check_eq({5, 6}));
+  DefaultSchedulerCore::AddOccupierToResource(1, edge3, occupiers);
+  CHECK(check_eq({4, 6, 7}));
+
+  occupiers.clear();
+  edge1.SetOriginalLatency(1);
+  edge2.SetOriginalLatency(2);
+  edge3.SetOriginalLatency(3);
+
+  DefaultSchedulerCore::AddOccupierToResource(0, edge1, occupiers);
+  CHECK(check_eq({1}));
+  DefaultSchedulerCore::AddOccupierToResource(0, edge2, occupiers);
+  CHECK(check_eq({2, 3}));
+  DefaultSchedulerCore::AddOccupierToResource(0, edge3, occupiers);
+  CHECK(check_eq({3, 5, 6}));
+
+  occupiers.clear();
+  DefaultSchedulerCore::AddOccupierToResource(0, edge1, occupiers);
+  CHECK(check_eq({1}));
+  DefaultSchedulerCore::AddOccupierToResource(0, edge3, occupiers);
+  CHECK(check_eq({2, 4}));
+  DefaultSchedulerCore::AddOccupierToResource(0, edge2, occupiers);
+  CHECK(check_eq({3, 5, 6}));
+
+  occupiers.clear();
+  DefaultSchedulerCore::AddOccupierToResource(0, edge2, occupiers);
+  CHECK(check_eq({2}));
+  DefaultSchedulerCore::AddOccupierToResource(0, edge1, occupiers);
+  CHECK(check_eq({2, 3}));
+  DefaultSchedulerCore::AddOccupierToResource(0, edge3, occupiers);
+  CHECK(check_eq({3, 5, 6}));
+
+  occupiers.clear();
+  DefaultSchedulerCore::AddOccupierToResource(0, edge2, occupiers);
+  CHECK(check_eq({2}));
+  DefaultSchedulerCore::AddOccupierToResource(0, edge3, occupiers);
+  CHECK(check_eq({4, 5}));
+  DefaultSchedulerCore::AddOccupierToResource(0, edge1, occupiers);
+  CHECK(check_eq({3, 5, 6}));
+
+  occupiers.clear();
+  DefaultSchedulerCore::AddOccupierToResource(0, edge3, occupiers);
+  CHECK(check_eq({3}));
+  DefaultSchedulerCore::AddOccupierToResource(0, edge1, occupiers);
+  CHECK(check_eq({2, 4}));
+  DefaultSchedulerCore::AddOccupierToResource(0, edge2, occupiers);
+  CHECK(check_eq({3, 5, 6}));
+
+  occupiers.clear();
+  DefaultSchedulerCore::AddOccupierToResource(0, edge3, occupiers);
+  CHECK(check_eq({3}));
+  DefaultSchedulerCore::AddOccupierToResource(0, edge2, occupiers);
+  CHECK(check_eq({4, 5}));
+  DefaultSchedulerCore::AddOccupierToResource(0, edge1, occupiers);
+  CHECK(check_eq({3, 5, 6}));
+
+  occupiers.clear();
+  DefaultSchedulerCore::AddOccupierToResource(0, edge1, occupiers);
+  CHECK(check_eq({1}));
+  DefaultSchedulerCore::AddOccupierToResource(1, edge2, occupiers);
+  CHECK(check_eq({1, 3}));
+  DefaultSchedulerCore::AddOccupierToResource(2, edge3, occupiers);
+  CHECK(check_eq({1, 4, 6}));
+
+  HloEdge edge0(0.5, nullptr);
+  DefaultSchedulerCore::AddOccupierToResource(2, edge0, occupiers);
+  CHECK(check_eq({1, 3.5, 4.5, 6.5}));
+
+  //========================== Additions & Deletions ===========================
+  occupiers.clear();
+  edge1.SetOriginalLatency(1);
+  edge2.SetOriginalLatency(2);
+  edge3.SetOriginalLatency(3);
+
+  DefaultSchedulerCore::AddOccupierToResource(0, edge1, occupiers);
+  DefaultSchedulerCore::AddOccupierToResource(0, edge2, occupiers);
+  DefaultSchedulerCore::AddOccupierToResource(0, edge3, occupiers);
+  CHECK(check_eq({3, 5, 6}));
+  auto res =
+      DefaultSchedulerCore::DeleteOccupierFromResource(0, edge0, occupiers);
+  CHECK(!res);
+
+  DefaultSchedulerCore::DeleteOccupierFromResource(0, edge1, occupiers);
+  CHECK(check_eq({4, 5}));
+
+  DefaultSchedulerCore::AddOccupierToResource(0, edge1, occupiers);
+  CHECK(check_eq({3, 5, 6}));
+  DefaultSchedulerCore::DeleteOccupierFromResource(0, edge2, occupiers);
+  CHECK(check_eq({2, 4}));
+
+  DefaultSchedulerCore::AddOccupierToResource(0, edge2, occupiers);
+  CHECK(check_eq({3, 5, 6}));
+  DefaultSchedulerCore::DeleteOccupierFromResource(0, edge3, occupiers);
+  CHECK(check_eq({2, 3}));
+
+  DefaultSchedulerCore::AddOccupierToResource(0, edge3, occupiers);
+  CHECK(check_eq({3, 5, 6}));
+
+  // Deletions at irregular current times
+  DefaultSchedulerCore::DeleteOccupierFromResource(1, edge1, occupiers);
+  CHECK(check_eq({4.3333333, 5.3333333}));
+
+  occupiers.clear();
+  DefaultSchedulerCore::AddOccupierToResource(0, edge1, occupiers);
+  DefaultSchedulerCore::AddOccupierToResource(0, edge2, occupiers);
+  DefaultSchedulerCore::AddOccupierToResource(0, edge3, occupiers);
+  DefaultSchedulerCore::DeleteOccupierFromResource(4, edge1, occupiers);
+  CHECK(check_eq({5, 6}));
+
+  occupiers.clear();
+  DefaultSchedulerCore::AddOccupierToResource(0, edge1, occupiers);
+  DefaultSchedulerCore::AddOccupierToResource(0, edge2, occupiers);
+  DefaultSchedulerCore::AddOccupierToResource(0, edge3, occupiers);
+  DefaultSchedulerCore::DeleteOccupierFromResource(4, edge2, occupiers);
+  CHECK(check_eq({3, 5.5}));
+
+  occupiers.clear();
+  DefaultSchedulerCore::AddOccupierToResource(0, edge1, occupiers);
+  DefaultSchedulerCore::AddOccupierToResource(0, edge2, occupiers);
+  DefaultSchedulerCore::AddOccupierToResource(0, edge3, occupiers);
+  DefaultSchedulerCore::DeleteOccupierFromResource(4, edge3, occupiers);
+  CHECK(check_eq({3, 4.5}));
+}
+
+TEST_F(LatencyHidingSchedulerTest, DepthPressureReduction) {
+  absl::string_view hlo_string = R"(
+    HloModule serial_collective_permute_test, is_scheduled=true
+    ENTRY after_optimizations_test {
+    %parameter.1 = bf16[8]{0} parameter(0)
+    %parameter.2 = bf16[8]{0} parameter(1)
+    %parameter.3 = bf16[8]{0} parameter(2)
+    %parameter.4 = bf16[8]{0} parameter(3)
+    %collective-permute.2 = bf16[8]{0} collective-permute(parameter.1), source_target_pairs={{0,1},{1,2},{2,3}}
+    %a = bf16[8]{0} add(collective-permute.2, parameter.2)
+    %b = bf16[8]{0} add(a, parameter.3)
+    %c = bf16[8]{0} add(b, parameter.4)
+    %d = bf16[8]{0} add(c, parameter.4)
+    %c1 = bf16[8]{0} copy(d)
+    %e = bf16[8]{0} add(d, parameter.3)
+    %c0 = bf16[8]{0} copy(e)
+    %f = bf16[8]{0} add(e, parameter.2)
+    %h = bf16[8]{0} add(c0, b)
+    %g = bf16[8]{0} add(c1, c)
+    %i = bf16[8]{0} add(f, a)
+    ROOT %t = (bf16[8]{0}, bf16[8]{0}, bf16[8]{0}, bf16[8]{0}) tuple(f, g, h, i)
+  }
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  HloSchedule& module_schedule = hlo_module->schedule();
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  HloComputation* entry_computation = hlo_module->entry_computation();
+  std::vector<HloInstruction*> original_instruction_sequence =
+      module_schedule.sequence(entry_computation).instructions();
+  auto sched_config = GetDefaultSchedConfig();
+  sched_config.memory_limit = 0;
+  sched_config.depth_based_memory_pressure_reduction = true;
+  EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config).ok());
+  std::vector<HloInstruction*> new_instruction_sequence =
+      module_schedule.sequence(entry_computation).instructions();
+
+  if (VLOG_IS_ON(1)) {
+    for (auto* new_i : new_instruction_sequence) {
+      VLOG(1) << new_i->ToString();
+    }
+  }
+
+  const HloInstruction* f = FindInstruction(hlo_module.get(), "f");
+  const HloInstruction* g = FindInstruction(hlo_module.get(), "g");
+  EXPECT_LT(PositionInVector(new_instruction_sequence, g),
+            PositionInVector(new_instruction_sequence, f));
+}
 }  // namespace xla

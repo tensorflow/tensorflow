@@ -27,54 +27,26 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_assert
-from tensorflow.python.ops import control_flow_case
 from tensorflow.python.ops import control_flow_util as util
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_control_flow_ops
-from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
-from tensorflow.python.ops import while_loop as while_loop_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import,undefined-variable
 from tensorflow.python.ops.gen_control_flow_ops import *
 # pylint: enable=wildcard-import
-from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
-from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
 from tensorflow.python.util import variable_utils
-from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
 
-# This is to avoid a circular dependency:
-# cond_v2 -> gradients_util -> control_flow_ops
-cond_v2 = LazyLoader("cond_v2", globals(),
-                     "tensorflow.python.ops.cond_v2")
-
-# def_function also uses cond
-def_function = LazyLoader(
-    "def_function", globals(),
-    "tensorflow.python.eager.def_function")
-
-# TODO(b/269483538): needed for references while refactors are in progress
-case = control_flow_case.case
-_case_helper = control_flow_case._case_helper  # pylint: disable=protected-access
-case_v2 = control_flow_case.case_v2
-_case_create_default_action = control_flow_case._case_create_default_action  # pylint: disable=protected-access
-_case_verify_and_canonicalize_args = control_flow_case._case_verify_and_canonicalize_args  # pylint: disable=protected-access
-_assert_at_most_n_true = control_flow_case._assert_at_most_n_true  # pylint: disable=protected-access
-Assert = control_flow_assert.Assert
-_summarize_eager = control_flow_assert._summarize_eager  # pylint: disable=protected-access
-while_loop = while_loop_ops.while_loop
-while_loop_v2 = while_loop_ops.while_loop_v2
 
 # We override the 'tuple' for a control flow op, so we keep python's
 # existing 'tuple' for later use in this module.
@@ -98,7 +70,7 @@ def _Identity(tensor, name=None):
   # TODO(b/246438937): Remove this when we expand ResourceVariables into
   # dt_resource tensors.
   tensor = variable_utils.convert_variables_to_tensors(tensor)
-  if isinstance(tensor, ops.Tensor):
+  if isinstance(tensor, tensor_lib.Tensor):
     if tensor.dtype._is_ref_dtype:  # pylint: disable=protected-access
       return gen_array_ops.ref_identity(tensor, name=name)
     else:
@@ -112,7 +84,7 @@ def _Identity(tensor, name=None):
 
 def _NextIteration(tensor, name=None):
   tensor = ops.internal_convert_to_tensor_or_composite(tensor, as_ref=True)
-  if isinstance(tensor, ops.Tensor):
+  if isinstance(tensor, tensor_lib.Tensor):
     if tensor.dtype._is_ref_dtype:  # pylint: disable=protected-access
       return ref_next_iteration(tensor, name=name)
     else:
@@ -155,7 +127,7 @@ def _Enter(tensor,
       than its corresponding shape in `shape_invariant`.
   """
   tensor = ops.internal_convert_to_tensor_or_composite(tensor, as_ref=True)
-  if isinstance(tensor, ops.Tensor):
+  if isinstance(tensor, tensor_lib.Tensor):
     if tensor.dtype._is_ref_dtype and use_ref:  # pylint: disable=protected-access
       result = gen_control_flow_ops.ref_enter(
           tensor, frame_name, is_constant, parallel_iterations, name=name)
@@ -190,7 +162,7 @@ def exit(tensor, name=None):  # pylint: disable=redefined-builtin
     The same tensor as `tensor`.
   """
   tensor = ops.internal_convert_to_tensor_or_composite(tensor, as_ref=True)
-  if isinstance(tensor, ops.Tensor):
+  if isinstance(tensor, tensor_lib.Tensor):
     if tensor.dtype._is_ref_dtype:  # pylint: disable=protected-access
       return gen_control_flow_ops.ref_exit(tensor, name)
     else:
@@ -225,7 +197,7 @@ def switch(data, pred, dtype=None, name=None):
     data = ops.internal_convert_to_tensor_or_composite(
         data, dtype=dtype, name="data", as_ref=True)
     pred = ops.convert_to_tensor(pred, name="pred")
-    if isinstance(data, ops.Tensor):
+    if isinstance(data, tensor_lib.Tensor):
       return gen_control_flow_ops.switch(data, pred, name=name)
     else:
       if not isinstance(data, composite_tensor.CompositeTensor):
@@ -277,7 +249,7 @@ def _SwitchRefOrTensor(data, pred, name="Switch"):
   # var and data may be pinned to different devices, so we want to ops
   # created within ops.colocate_with(data) to ignore the existing stack.
   with ops.colocate_with(data, ignore_existing=True):
-    if isinstance(data, ops.Tensor):
+    if isinstance(data, tensor_lib.Tensor):
       if data.dtype._is_ref_dtype:  # pylint: disable=protected-access
         return ref_switch(data, pred, name=name)
     return switch(data, pred, name=name)
@@ -315,7 +287,7 @@ def merge(inputs, name=None):
         ops.internal_convert_to_tensor_or_composite(inp, as_ref=True)
         for inp in inputs
     ]
-    if all(isinstance(v, ops.Tensor) for v in inputs):
+    if all(isinstance(v, tensor_lib.Tensor) for v in inputs):
       if all(v.dtype._is_ref_dtype for v in inputs):  # pylint: disable=protected-access
         return gen_control_flow_ops.ref_merge(inputs, name)
       else:
@@ -324,7 +296,7 @@ def merge(inputs, name=None):
       # If there is a mix of tensors and indexed slices, then convert the
       # tensors to indexed slices.
       if all(
-          isinstance(v, (indexed_slices.IndexedSlices, ops.Tensor))
+          isinstance(v, (indexed_slices.IndexedSlices, tensor_lib.Tensor))
           for v in inputs):
         inputs = math_ops._as_indexed_slices_list(inputs, optimize=False)
 
@@ -412,8 +384,8 @@ def _shape_invariant_to_type_spec(var, shape=None):
         "'shape' must be one of TypeSpec, TensorShape or None. "
         f"Received: {type(shape)}")
 
-  if isinstance(var, ops.Tensor):
-    return tensor_spec.TensorSpec(shape, var.dtype)
+  if isinstance(var, tensor_lib.Tensor):
+    return tensor_lib.TensorSpec(shape, var.dtype)
   else:
     try:
       return var._shape_invariant_to_type_spec(shape)  # pylint: disable=protected-access
@@ -436,7 +408,7 @@ def _EnforceShapeInvariant(merge_var, next_var):
     ValueError: If any tensor in `merge_var` has a more specific shape than
       its corresponding tensor in `next_var`.
   """
-  if isinstance(merge_var, ops.Tensor):
+  if isinstance(merge_var, tensor_lib.Tensor):
     m_shape = merge_var.get_shape()
     n_shape = next_var.get_shape()
     if not _ShapeLessThanOrEqual(n_shape, m_shape):
@@ -455,7 +427,7 @@ def _EnforceShapeInvariant(merge_var, next_var):
 
 def _AddNextAndBackEdge(m, v, enforce_shape_invariant=True):
   """Add NextIteration and back edge from v to m."""
-  if isinstance(m, ops.Tensor):
+  if isinstance(m, tensor_lib.Tensor):
     v = ops.convert_to_tensor(v)
     v = _NextIteration(v)
     if enforce_shape_invariant:
@@ -601,12 +573,12 @@ class ControlFlowContext(metaclass=abc.ABCMeta):
     last_context = self._context_stack.pop()
     graph._set_control_flow_context(last_context)
 
-  def EnterGradientColocation(self, op, gradient_uid):
+  def EnterGradientColocation(self, op: ops.Operation, gradient_uid):
     """Start building a gradient colocated with an op."""
     if self._outer_context:
       self._outer_context.EnterGradientColocation(op, gradient_uid)
 
-  def ExitGradientColocation(self, op, gradient_uid):
+  def ExitGradientColocation(self, op: ops.Operation, gradient_uid):
     """Start building a gradient colocated with an op."""
     if self._outer_context:
       self._outer_context.ExitGradientColocation(op, gradient_uid)
@@ -625,7 +597,7 @@ class ControlFlowContext(metaclass=abc.ABCMeta):
       return self._outer_context.GetWhileContext()
     return None
 
-  def _RemoveExternalControlEdges(self, op):
+  def _RemoveExternalControlEdges(self, op: ops.Operation):
     """Remove any external control dependency on this op."""
     while_ctxt = self.GetWhileContext()
     # A control input of `op` is internal if it is in the same while
@@ -648,7 +620,7 @@ class ControlFlowContext(metaclass=abc.ABCMeta):
 
   # pylint: enable=protected-access
 
-  def AddInnerOp(self, op):
+  def AddInnerOp(self, op: ops.Operation):
     """Notifies a scope about an operator added to an inner scope."""
     if self._outer_context:
       self._outer_context.AddInnerOp(op)
@@ -750,7 +722,7 @@ class CondContext(ControlFlowContext):
   @property
   def back_prop(self):
     if self.GetWhileContext():
-      self.GetWhileContext().back_prop
+      return self.GetWhileContext().back_prop
     return False
 
   def GetControlPivot(self):
@@ -833,10 +805,10 @@ class CondContext(ControlFlowContext):
       self._external_values[val.name] = result
     return result
 
-  def AddOp(self, op):
+  def AddOp(self, op: ops.Operation):
     self._AddOpInternal(op)
 
-  def _AddOpInternal(self, op):
+  def _AddOpInternal(self, op: ops.Operation):
     """Add `op` to the current context."""
     if not op.inputs:
       # If we're in a while loop, remove any control inputs from outside the
@@ -952,380 +924,8 @@ class CondContext(ControlFlowContext):
     return True
 
 
-def _UnpackIfSingleton(res):
-  if isinstance(res, (list, _basetuple)) and len(res) == 1:
-    return res[0]
-  else:
-    return res
-
-
-def _eager_cond_implementation(pred, true_fn, false_fn, strict, name):
-  """Special cases for `cond` when executing eagerly."""
-  pred = ops.convert_to_tensor(pred)
-  pred_constant_value = tensor_util.constant_value(pred)
-  if pred_constant_value is None:
-    # Eager tensors from a parallel device may not have a constant
-    # value. Running the cond op itself would work, but we don't have logic to
-    # build cond ops without wrapping in a function first.
-    if (not isinstance(true_fn, def_function.Function)
-        or not isinstance(false_fn, def_function.Function)):
-      raise TypeError("When running tf.cond on a parallel device, 'true_fn' "
-                      "and 'false_fn' must be decorated with `tf.function`.")
-    functions_run_eagerly = def_function.functions_run_eagerly()
-    if functions_run_eagerly:
-      # We need to use tf.function to deal with variable creation inside the
-      # cond, and skipping it because of run_functions_eagerly would just
-      # crash immediately.
-      logging.warning(
-          "It looks like tf.function behavior was disabled, perhaps using "
-          "tf.config.run_functions_eagerly. Parallelized tf.cond requires "
-          "tf.function to work. This primitive will override the disable.")
-    def_function.run_functions_eagerly(False)
-    try:
-      return cond_v2.cond_v2(pred, true_fn, false_fn, name)
-    finally:
-      if functions_run_eagerly is not None:
-        def_function.run_functions_eagerly(functions_run_eagerly)
-  else:
-    # For conditions which are eager tensors with a constant value (most of
-    # them), we only call the relevant branch function and execute it eagerly.
-    with ops.name_scope(name, "cond", [pred]):
-      if pred_constant_value:
-        result = true_fn()
-      else:
-        result = false_fn()
-      if not strict:
-        result = _UnpackIfSingleton(result)
-      return result
-
-
-# pylint: disable=redefined-outer-name
-# pylint: disable=g-doc-args
-@tf_export(v1=["cond"])
-@dispatch.add_dispatch_support
-@deprecation.deprecated_args(
-    None, "fn1/fn2 are deprecated in favor of the true_fn/false_fn arguments.",
-    "fn1", "fn2")
-def cond(pred,
-         true_fn=None,
-         false_fn=None,
-         strict=False,
-         name=None,
-         fn1=None,
-         fn2=None):
-  """Return `true_fn()` if the predicate `pred` is true else `false_fn()`.
-
-  `true_fn` and `false_fn` both return lists of output tensors. `true_fn` and
-  `false_fn` must have the same non-zero number and type of outputs.
-
-  **WARNING**: Any Tensors or Operations created outside of `true_fn` and
-  `false_fn` will be executed regardless of which branch is selected at runtime.
-
-  Although this behavior is consistent with the dataflow model of TensorFlow,
-  it has frequently surprised users who expected a lazier semantics.
-  Consider the following simple program:
-
-  ```python
-  z = tf.multiply(a, b)
-  result = tf.cond(x < y, lambda: tf.add(x, z), lambda: tf.square(y))
-  ```
-
-  If `x < y`, the `tf.add` operation will be executed and `tf.square`
-  operation will not be executed. Since `z` is needed for at least one
-  branch of the `cond`, the `tf.multiply` operation is always executed,
-  unconditionally.
-
-  Note that `cond` calls `true_fn` and `false_fn` *exactly once* (inside the
-  call to `cond`, and not at all during `Session.run()`). `cond`
-  stitches together the graph fragments created during the `true_fn` and
-  `false_fn` calls with some additional graph nodes to ensure that the right
-  branch gets executed depending on the value of `pred`.
-
-  `tf.cond` supports nested structures as implemented in
-  `tensorflow.python.util.nest`. Both `true_fn` and `false_fn` must return the
-  same (possibly nested) value structure of lists, tuples, and/or named tuples.
-  Singleton lists and tuples form the only exceptions to this: when returned by
-  `true_fn` and/or `false_fn`, they are implicitly unpacked to single values.
-  This behavior is disabled by passing `strict=True`.
-
-  Args:
-    pred: A scalar determining whether to return the result of `true_fn` or
-      `false_fn`.
-    true_fn: The callable to be performed if pred is true.
-    false_fn: The callable to be performed if pred is false.
-    strict: A boolean that enables/disables 'strict' mode; see above.
-    name: Optional name prefix for the returned tensors.
-
-  Returns:
-    Tensors returned by the call to either `true_fn` or `false_fn`. If the
-    callables return a singleton list, the element is extracted from the list.
-
-  Raises:
-    TypeError: if `true_fn` or `false_fn` is not callable.
-    ValueError: if `true_fn` and `false_fn` do not return the same number of
-      tensors, or return tensors of different types.
-
-  Example:
-
-  ```python
-  x = tf.constant(2)
-  y = tf.constant(5)
-  def f1(): return tf.multiply(x, 17)
-  def f2(): return tf.add(y, 23)
-  r = tf.cond(tf.less(x, y), f1, f2)
-  # r is set to f1().
-  # Operations in f2 (e.g., tf.add) are not executed.
-  ```
-
-  """
-  # We needed to make true_fn/false_fn keyword arguments for
-  # backwards-compatibility. This check exists so that we can convert back to
-  # having them be positional arguments.
-  # TODO(josh11b): Make `true_fn` and `false_fn` positional arguments after
-  # `fn1` and `fn2` are deleted.
-  if fn1 is not None:
-    if true_fn is not None:
-      raise TypeError(
-          "cond(): 'true_fn' and 'fn1' may not be set simultaneously.")
-    true_fn = fn1
-  elif true_fn is None:
-    raise TypeError("cond(): 'true_fn' argument required")
-  if fn2 is not None:
-    if false_fn is not None:
-      raise TypeError(
-          "cond(): 'false_fn' and 'fn2' may not be set simultaneously.")
-    false_fn = fn2
-  elif false_fn is None:
-    raise TypeError("cond(): 'false_fn' argument required")
-
-  if not callable(true_fn):
-    raise TypeError("'true_fn' must be callable.")
-  if not callable(false_fn):
-    raise TypeError("'false_fn' must be callable.")
-
-  if context.executing_eagerly():
-    return _eager_cond_implementation(pred, true_fn, false_fn, strict, name)
-
-  # Always enable control flow v2 if building a function, regardless of toggle.
-  if util.EnableControlFlowV2(ops.get_default_graph()):
-    return cond_v2.cond_v2(pred, true_fn, false_fn, name)
-
-  with ops.name_scope(name, "cond", [pred]):
-    # Add the Switch to the graph.
-    if isinstance(pred, bool):
-      raise TypeError("'pred' must not be a Python bool.")
-    p_2, p_1 = switch(pred, pred)
-    pivot_1 = array_ops.identity(p_1, name="switch_t")
-    pivot_2 = array_ops.identity(p_2, name="switch_f")
-    pred = array_ops.identity(pred, name="pred_id")
-    # Disable the fetching of tensors that are only on one branch of cond.
-    for tensor in [p_1, p_2, pivot_1, pivot_2, pred]:
-      tensor.op.graph.prevent_fetching(tensor.op)
-
-    # Build the graph for the true branch in a new context.
-    context_t = CondContext(pred, pivot_1, branch=1)
-    try:
-      context_t.Enter()
-      orig_res_t, res_t = context_t.BuildCondBranch(true_fn)
-      if orig_res_t is None:
-        raise ValueError("'true_fn' must have a return value.")
-      context_t.ExitResult(res_t)
-    finally:
-      context_t.Exit()
-
-    # Build the graph for the false branch in a new context.
-    context_f = CondContext(pred, pivot_2, branch=0)
-    try:
-      context_f.Enter()
-      orig_res_f, res_f = context_f.BuildCondBranch(false_fn)
-      if orig_res_f is None:
-        raise ValueError("'false_fn' must have a return value.")
-      context_f.ExitResult(res_f)
-    finally:
-      context_f.Exit()
-
-    if not strict:
-      orig_res_t = _UnpackIfSingleton(orig_res_t)
-      orig_res_f = _UnpackIfSingleton(orig_res_f)
-
-    # Check that the return values of the two branches have the same structure.
-    try:
-      nest.assert_same_structure(orig_res_t, orig_res_f, expand_composites=True)
-    except (TypeError, ValueError):
-      nest.map_structure(_cast_indexed_slice_indices, orig_res_t, orig_res_f)
-      nest.map_structure(_cast_indexed_slice_indices, res_t, res_f)
-      try:
-        nest.assert_same_structure(orig_res_t, orig_res_f,
-                                   expand_composites=True)
-      except TypeError as e:
-        raise TypeError(
-            f"Incompatible return types of 'true_fn' and 'false_fn': {e}")
-      except ValueError as e:
-        raise ValueError(
-            f"Incompatible return values of 'true_fn' and 'false_fn': {e}")
-
-    # Add the final merge to the graph.
-    if not res_t:
-      raise ValueError(
-          "'true_fn' and 'false_fn' must return at least one result.")
-
-    res_t_flat = nest.flatten(res_t, expand_composites=True)
-    res_f_flat = nest.flatten(res_f, expand_composites=True)
-
-    for (x, y) in zip(res_t_flat, res_f_flat):
-      assert isinstance(x, ops.Tensor) and isinstance(y, ops.Tensor)
-      if x.dtype.base_dtype != y.dtype.base_dtype:
-        raise ValueError(
-            "Outputs of 'true_fn' and 'false_fn' must have the same type(s). "
-            f"Received {x.dtype.name} from 'true_fn' "
-            f"and {y.dtype.name} from 'false_fn'.")
-
-    merges = [merge(pair)[0] for pair in zip(res_f_flat, res_t_flat)]
-    merges = nest.map_structure(
-        _convert_flow_to_tensorarray,
-        nest.flatten(orig_res_t, expand_composites=True),
-        merges)
-
-    # Only add non-nested conds to the collection. Any nested control flow will
-    # be encapsulated in the root context.
-    assert context_t.outer_context == context_f.outer_context
-    if context_t.outer_context is None:
-      ops.add_to_collection(ops.GraphKeys.COND_CONTEXT, context_t)
-      ops.add_to_collection(ops.GraphKeys.COND_CONTEXT, context_f)
-
-    merges = nest.pack_sequence_as(
-        structure=orig_res_t, flat_sequence=merges, expand_composites=True)
-
-    # Singleton lists and tuples are automatically unpacked if strict == False.
-    if not strict:
-      merges = _UnpackIfSingleton(merges)
-    return merges
-
-
-def _cast_indexed_slice_indices(a, b):
-  """Cast IndexedSlice.indices from int32 to int64 where necessary.
-
-  If `a` and `b` are both IndexedSlices, and their indices have different
-  dtypes, then cast both their dtypes to `int64` (modifies `a` and `b`
-  in-place).  Otherwise, does nothing.
-
-  Args:
-    a: A value, which may be an IndexedSlices.
-    b: A value, which may be an IndexedSlices.
-  """
-  if (isinstance(a, indexed_slices.IndexedSlices) and
-      isinstance(b, indexed_slices.IndexedSlices) and
-      a.indices.dtype != b.indices.dtype):
-    # pylint: disable=protected-access
-    a._indices = math_ops.cast(a.indices, dtypes.int64)
-    b._indices = math_ops.cast(b.indices, dtypes.int64)
-
-
 # pylint: enable=g-doc-args
 # pylint: enable=redefined-outer-name
-
-
-@tf_export("cond", v1=[])
-@dispatch.add_dispatch_support
-def cond_for_tf_v2(pred, true_fn=None, false_fn=None, name=None):
-  """Return `true_fn()` if the predicate `pred` is true else `false_fn()`.
-
-  Note: This op is automatically used in a `tf.function` to convert Python
-  if-statements when the predicate is a `tf.Tensor`, unless `autograph=False` is
-  explicitly specified in `tf.function` args. For example, the following are
-  equivalent:
-
-  >>> @tf.function
-  ... def fun1(x,y):
-  ...   if x > 0:  # AutoGraph converts if-statement to tf.cond().
-  ...     z = y+1
-  ...   else:
-  ...     z = y-1
-  ...   return z
-  >>> fun1(tf.constant(7), tf.constant(3)).numpy()
-  4
-
-  >>> @tf.function
-  ... def fun2(x,y):
-  ...   pred = x > 0
-  ...   true_fn =  lambda: y+1
-  ...   false_fn = lambda: y-1
-  ...   return tf.cond(pred, true_fn, false_fn)  # Use tf.cond() explicitly.
-  >>> fun1(tf.constant(7), tf.constant(3)).numpy()
-  4
-
-  For more information, see [tf.function and AutoGraph guide](
-  https://www.tensorflow.org/guide/function#autograph_transformations).
-
-  `true_fn` and `false_fn` both return lists of output tensors. `true_fn` and
-  `false_fn` must have the same non-zero number and type of outputs.
-
-  **WARNING**: Any Tensors or Operations created outside of `true_fn` and
-  `false_fn` will be executed regardless of which branch is selected at runtime.
-
-  Although this behavior is consistent with the dataflow model of TensorFlow,
-  it has frequently surprised users who expected a lazier semantics.
-  Consider the following simple program:
-
-  >>> x, y = tf.constant(2, dtype=tf.int32), tf.constant(4, dtype=tf.int32)
-  >>> z = tf.multiply(x, y)
-  >>> r = tf.cond(x < y, lambda: tf.add(x, z), lambda: tf.square(y))
-  >>> r.numpy()
-  10
-
-  If `x < y`, the `tf.add` operation will be executed and `tf.square`
-  operation will not be executed. Since `z` is needed for at least one
-  branch of the `cond`, the `tf.multiply` operation is always executed,
-  unconditionally.
-
-  Note that `cond` calls `true_fn` and `false_fn` *exactly once* (inside the
-  call to `cond`, and not at all during `Session.run()`). `cond`
-  stitches together the graph fragments created during the `true_fn` and
-  `false_fn` calls with some additional graph nodes to ensure that the right
-  branch gets executed depending on the value of `pred`.
-
-  `tf.cond` supports nested structures as implemented in
-  `tensorflow.python.util.nest`. Both `true_fn` and `false_fn` must return the
-  same (possibly nested) value structure of lists, tuples, and/or named tuples.
-  Singleton lists and tuples form the only exceptions to this: when returned by
-  `true_fn` and/or `false_fn`, they are implicitly unpacked to single values.
-
-  Note: It is illegal to "directly" use tensors created inside a cond branch
-  outside it, e.g. by storing a reference to a branch tensor in the python
-  state. If you need to use a tensor created in a branch function you should
-  return it as an output of the branch function and use the output from
-  `tf.cond` instead.
-
-  Args:
-    pred: A scalar determining whether to return the result of `true_fn` or
-      `false_fn`.
-    true_fn: The callable to be performed if pred is true.
-    false_fn: The callable to be performed if pred is false.
-    name: Optional name prefix for the returned tensors.
-
-  Returns:
-    Tensors returned by the call to either `true_fn` or `false_fn`. If the
-    callables return a singleton list, the element is extracted from the list.
-
-  Raises:
-    TypeError: if `true_fn` or `false_fn` is not callable.
-    ValueError: if `true_fn` and `false_fn` do not return the same number of
-      tensors, or return tensors of different types.
-
-  Example:
-
-  >>> x = tf.constant(2)
-  >>> y = tf.constant(5)
-  >>> def f1(): return tf.multiply(x, 7)
-  >>> def f2(): return tf.add(y, 3)
-  >>> r = tf.cond(tf.less(x, y), f1, f2)
-  >>> # r is set to f1().
-  >>> # Operations in f2 (e.g., tf.add) are not executed.
-  >>> r.numpy()
-  14
-
-  """
-  return cond(pred, true_fn=true_fn, false_fn=false_fn, strict=True, name=name)
 
 
 def _resource_safe_shape(t):
@@ -1629,7 +1229,7 @@ class WhileContext(ControlFlowContext):
         result = actual_val
     return result
 
-  def AddOp(self, op):
+  def AddOp(self, op: ops.Operation):
     """Add `op` to the current context."""
     # For a reduction op, if op is in a grad context and its input is from
     # its forward context, moving op to the forward context means we would
@@ -1654,7 +1254,8 @@ class WhileContext(ControlFlowContext):
             return
     self._AddOpInternal(op)
 
-  def _AddOpInternal(self, op):
+  #  pylint: disable=g-doc-args
+  def _AddOpInternal(self, op: ops.Operation):
     """Add `op` to the current context.
 
     We move any external control dependencies of the op to the loop pivot, to
@@ -1707,7 +1308,7 @@ class WhileContext(ControlFlowContext):
     if self._outer_context:
       self._outer_context.AddInnerOp(op)
 
-  def _MaybeAddControlDependency(self, op):
+  def _MaybeAddControlDependency(self, op: ops.Operation):
     """Add a control input to the op if it only depends on loop invariants."""
 
     def _IsOpFree(op):
@@ -1843,7 +1444,7 @@ class WhileContext(ControlFlowContext):
     self.Exit()
     return next_count
 
-  def AddBackpropAccumulator(self, op, grad):
+  def AddBackpropAccumulator(self, op: ops.Operation, grad):
     """Add an accumulation loop for every loop invariant.
 
     This is added to the backprop loop. It is used to accumulate partial
@@ -1925,7 +1526,7 @@ class WhileContext(ControlFlowContext):
     self.ExitResult([result_acc])
     return result_acc
 
-  def AddBackpropIndexedSlicesAccumulator(self, op, grad):
+  def AddBackpropIndexedSlicesAccumulator(self, op: ops.Operation, grad):
     """This is used for accumulating gradients that are IndexedSlices.
 
     This is essentially the equivalent of AddBackpropAccumulator but optimized
@@ -2032,7 +1633,7 @@ class WhileContext(ControlFlowContext):
     """Makes the values known to this context."""
     self._values = set()
     for x in values:
-      if isinstance(x, ops.Tensor):
+      if isinstance(x, tensor_lib.Tensor):
         self._values.add(x.name)
       else:
         raise TypeError("'values' must be a list of Tensors. "
@@ -2231,7 +1832,7 @@ class WhileContext(ControlFlowContext):
     graph = ops.get_default_graph()
     # pylint: disable=protected-access
     for e in enters:
-      if isinstance(e, ops.Tensor):
+      if isinstance(e, tensor_lib.Tensor):
         xs = [e]
       else:
         raise TypeError("'enters' must be a list of Tensors. "
@@ -2288,7 +1889,7 @@ def _AsTensorList(x, p):
     if isinstance(v, ops.Operation):
       v = with_dependencies([v], p)
     v = ops.convert_to_tensor_or_composite(v)
-    if isinstance(v, ops.Tensor):
+    if isinstance(v, tensor_lib.Tensor):
       l.append(array_ops.identity(v))
     else:
       l.append(
@@ -2550,7 +2151,7 @@ def tuple(tensors, name=None, control_inputs=None):  # pylint: disable=redefined
     ]
     if control_inputs:
       for c in control_inputs:
-        if isinstance(c, ops.Tensor):
+        if isinstance(c, tensor_lib.Tensor):
           c = c.op
         elif not isinstance(c, ops.Operation):
           raise TypeError(
@@ -2574,235 +2175,6 @@ def tuple(tensors, name=None, control_inputs=None):  # pylint: disable=redefined
       else:
         tpl.append(None)
     return tpl
-
-
-def _indexed_case_verify_and_canonicalize_args(
-    branch_fns, default, branch_index
-):
-  """Verifies input arguments for the case function.
-
-  Args:
-    branch_fns: Dict or list of pairs of an `int` and a callable which returns a
-      list of tensors.
-    default: Optional callable that returns a list of tensors.
-    branch_index: Optional int `Tensor`, which selects for the corresponding
-      pred_fn_pair.
-
-  Raises:
-    TypeError: If `branch_fns` is not a list/dictionary.
-    TypeError: If `branch_fns` is a list but does not contain 2-tuples or
-               callables.
-    TypeError: If `fns[i]` is not callable for any i, or `default` is not
-               callable.
-
-  Returns:
-    branch_fns: validated list of callables for each branch (default last).
-  """
-  if not isinstance(branch_index, ops.Tensor):
-    raise TypeError("'branch_index' must be a Tensor, got {}".format(
-        type(branch_index)))
-  if not branch_index.dtype.is_integer:
-    raise TypeError("'branch_index' must be an integer Tensor, got {}".format(
-        branch_index.dtype))
-
-  if not branch_fns:
-    raise ValueError("Must provide at least one item in 'branch_fns'")
-  if not isinstance(branch_fns, (list, _basetuple, dict)):
-    raise TypeError("'branch_fns' must be a list, tuple, or dict")
-
-  if isinstance(branch_fns, dict):
-    branch_fns = branch_fns.items()
-
-  if all(callable(fn) for fn in branch_fns):
-    branch_fns = list(enumerate(branch_fns))
-
-  for key_fn_pair in branch_fns:
-    if not isinstance(key_fn_pair, _basetuple) or len(key_fn_pair) != 2:
-      raise TypeError("Each entry in 'branch_fns' must be a 2-tuple. "
-                      f"Received {key_fn_pair}.")
-    key, branch_fn = key_fn_pair
-
-    if not isinstance(key, int):
-      raise TypeError("key must be a Python `int`, got {}".format(type(key)))
-
-    if not callable(branch_fn):
-      raise TypeError("fn for key {} must be callable.".format(key))
-
-  keys = [p[0] for p in branch_fns]
-  if min(keys) < 0 or max(keys) >= len(keys) or len(set(keys)) != len(keys):
-    raise ValueError(
-        "branch indices (keys) must form contiguous range of [0 to {}) but "
-        "found {{{}}}".format(len(keys), ",".join(map(str, sorted(keys)))))
-  actions = [p[1] for p in sorted(branch_fns)]
-  if default is not None:
-    actions.append(default)
-  return actions
-
-
-def _indexed_case_helper(branch_fns,
-                         default,
-                         branch_index,
-                         name,
-                         lower_using_switch_merge=None):
-  """Implementation of case that emits the n-way indexed Case op.
-
-  Args:
-    branch_fns: Dict or list of pairs of a boolean scalar tensor, and a
-      callable which returns a list of tensors.
-    default: Optional callable that returns a list of tensors.
-    branch_index: Optional int `Tensor`, which selects for the corresponding
-      pred_fn_pair.
-    name: A name for this operation (optional).
-    lower_using_switch_merge: Lower this op using switch merge ops (optional).
-
-  Returns:
-    The tensors returned by the pair whose key matched branch_index, or
-    those returned by `default` if none does.
-
-  Raises:
-    TypeError: If `branch_fns` is not a list/dictionary.
-    TypeError: If `branch_fns` is a list but does not contain 2-tuples or
-               callables.
-    TypeError: If `fns[i]` is not callable for any i, or `default` is not
-               callable.
-  """
-  branch_fns = _indexed_case_verify_and_canonicalize_args(
-      branch_fns, default, branch_index)
-  with ops.name_scope(name, "case", [branch_index]):
-    if context.executing_eagerly() and not hasattr(branch_index, "graph"):
-      branch_index = array_ops.where(
-          math_ops.less(branch_index, 0)
-          | math_ops.greater_equal(branch_index, len(branch_fns)),
-          len(branch_fns) - 1, branch_index)
-      return branch_fns[int(branch_index)]()
-    return cond_v2.indexed_case(
-        branch_index,
-        branch_fns,
-        lower_using_switch_merge=lower_using_switch_merge)
-
-
-@tf_export("switch_case")
-def switch_case(branch_index, branch_fns, default=None, name="switch_case"):
-  """Create a switch/case operation, i.e.
-
-  an integer-indexed conditional.
-
-  See also `tf.case`.
-
-  This op can be substantially more efficient than `tf.case` when exactly one
-  branch will be selected. `tf.switch_case` is more like a C++ switch/case
-  statement than `tf.case`, which is more like an if/elif/elif/else chain.
-
-  The `branch_fns` parameter is either a dict from `int` to callables, or list
-  of (`int`, callable) pairs, or simply a list of callables (in which case the
-  index is implicitly the key). The `branch_index` `Tensor` is used to select an
-  element in `branch_fns` with matching `int` key, falling back to `default`
-  if none match, or `max(keys)` if no `default` is provided. The keys must form
-  a contiguous set from `0` to `len(branch_fns) - 1`.
-
-  `tf.switch_case` supports nested structures as implemented in `tf.nest`. All
-  callables must return the same (possibly nested) value structure of lists,
-  tuples, and/or named tuples.
-
-  **Example:**
-
-  Pseudocode:
-
-  ```c++
-  switch (branch_index) {  // c-style switch
-    case 0: return 17;
-    case 1: return 31;
-    default: return -1;
-  }
-  ```
-  or
-  ```python
-  branches = {0: lambda: 17, 1: lambda: 31}
-  branches.get(branch_index, lambda: -1)()
-  ```
-
-  Expressions:
-
-  ```python
-  def f1(): return tf.constant(17)
-  def f2(): return tf.constant(31)
-  def f3(): return tf.constant(-1)
-  r = tf.switch_case(branch_index, branch_fns={0: f1, 1: f2}, default=f3)
-  # Equivalent: tf.switch_case(branch_index, branch_fns={0: f1, 1: f2, 2: f3})
-  ```
-
-  Args:
-    branch_index: An int Tensor specifying which of `branch_fns` should be
-      executed.
-    branch_fns: A `dict` mapping `int`s to callables, or a `list` of
-      (`int`, callable) pairs, or simply a list of callables (in which case the
-      index serves as the key). Each callable must return a matching structure
-      of tensors.
-    default: Optional callable that returns a structure of tensors.
-    name: A name for this operation (optional).
-
-  Returns:
-    The tensors returned by the callable identified by `branch_index`, or those
-    returned by `default` if no key matches and `default` was provided, or those
-    returned by the max-keyed `branch_fn` if no `default` is provided.
-
-  Raises:
-    TypeError: If `branch_fns` is not a list/dictionary.
-    TypeError: If `branch_fns` is a list but does not contain 2-tuples or
-               callables.
-    TypeError: If `fns[i]` is not callable for any i, or `default` is not
-               callable.
-  """
-  return _indexed_case_helper(branch_fns, default, branch_index, name)
-
-
-@tf_export("__internal__.execute_fn_for_device", v1=[])
-def execute_fn_for_device(device_branch_fns, default_fn, name="execute_fn"):
-  """Executes one of the provided callables based on the device placement.
-
-  This API is used when the implementations for high level function depend on
-  the underlying device placement. It takes a dictionary of device type to
-  callables. The device type includes "CPU", "GPU", "TPU", etc. When the type of
-  the device where to run this op matches the key in 'device_branch_fns',
-  the corresponding callable is executed, falling back to 'default_fn' if none
-  matches.
-
-  **Example:**
-  ```python
-  def f1(): return tf.constant(1)
-  def f2(): return tf.constant(2)
-  r = tf.execute_fn_for_device({"CPU": f1, "GPU": f2}, default_fn=f1)
-  ```
-  'r' is evaluated as 1 when it runs on CPU, 2 running on GPU, 1 running on
-  any other device types.
-
-
-  Args:
-    device_branch_fns: a dictionary of device types to the callables. Each
-      callable must return a matching structure of tensors.
-    default_fn: fallback callable when the underlying device does not match any
-      key in the 'device_branch_fns'.
-    name: A name for this operation (optional).
-
-  Returns:
-    The tensors returned by the callable identified by device type during
-    execution, or those returned by 'default_fn' if no key matches.
-  """
-  # Always execute the default fn for XLA to avoid complicated graph by case op.
-  # see more discussions in b/167276293.
-  is_in_xla = util.GraphOrParentsInXlaContext(ops.get_default_graph())
-  if is_in_xla:
-    return default_fn()
-  device_branch_fns_upper = {k.upper(): v for k, v in device_branch_fns.items()}
-  branch_fns = list(device_branch_fns_upper.values())
-  devices = list(device_branch_fns_upper.keys())
-  device_index = gen_functional_ops.device_index(device_names=devices)
-  return _indexed_case_helper(
-      branch_fns,
-      default_fn,
-      device_index,
-      name,
-      lower_using_switch_merge=False)
 
 
 class XLAControlFlowContext(ControlFlowContext):

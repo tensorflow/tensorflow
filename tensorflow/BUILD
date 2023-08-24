@@ -97,7 +97,6 @@ PACKAGE_STATIC_DEPS = [
     "@llvm_openmp//:__subpackages__",
     "@llvm_terminfo//:__subpackages__",
     "@llvm_zlib//:__subpackages__",
-    "@lmdb//:__subpackages__",
     "@local_config_cuda//:__subpackages__",
     "@local_config_git//:__subpackages__",
     "@local_config_nccl//:__subpackages__",
@@ -105,9 +104,10 @@ PACKAGE_STATIC_DEPS = [
     "@local_config_tensorrt//:__subpackages__",
     "@local_execution_config_platform//:__subpackages__",
     "@mkl_dnn_acl_compatible//:__subpackages__",
-    "@mkl_dnn_v1//:__subpackages__",
+    "@ml_dtypes//:__subpackages__",
     "@nccl_archive//:__subpackages__",
     "@nvtx_archive//:__subpackages__",
+    "@onednn//:__subpackages__",
     "@org_sqlite//:__subpackages__",
     "@platforms//:__subpackages__",
     "@snappy//:__subpackages__",
@@ -226,6 +226,14 @@ config_setting(
 config_setting(
     name = "no_default_logger",
     define_values = {"no_default_logger": "true"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "force_rtti",
+    define_values = {
+        "tf_force_rtti": "true",
+    },
     visibility = ["//visibility:public"],
 )
 
@@ -549,6 +557,12 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+config_setting(
+    name = "haswell",
+    values = {"cpu": "haswell"},
+    visibility = ["//visibility:public"],
+)
+
 # This condition takes precedence over :linux_x86_64
 config_setting(
     name = "linux_x86_64_no_sse",
@@ -556,6 +570,15 @@ config_setting(
         "cpu": "k8",
         "copt": "-mno-sse4.2",
     },
+    visibility = ["//visibility:public"],
+)
+
+# This condition takes precedence over :linux_x86_64
+# TODO(b/290533709): Remove this with PJRT build rule cleanup.
+config_setting(
+    name = "linux_x86_64_with_weightwatcher",
+    define_values = {"tensorflow_weightwatcher": "true"},
+    values = {"cpu": "k8"},
     visibility = ["//visibility:public"],
 )
 
@@ -1016,6 +1039,8 @@ package_group(
         "//learning/lib/ami/simple_ml/...",
         "//learning/pathways/...",
         "//learning/serving/contrib/tfrt/mlir/canonical_ops/...",
+        "//learning/serving/experimental/remote_predict/...",
+        "//perftools/accelerators/xprof/convert/...",
         "//perftools/accelerators/xprof/integration_tests/...",
         "//smartass/brain/configure/...",
         "//tensorflow/...",
@@ -1025,12 +1050,21 @@ package_group(
         "//third_party/cloud_tpu/inference_converter/...",
         "//third_party/py/cloud_ml_autoflow/...",
         "//third_party/py/envlogger/...",
+        "//third_party/py/gldm/...",
         "//third_party/py/keras/...",
+        "//third_party/py/tf_keras/...",
         "//third_party/yggdrasil_decision_forests/...",
+        "//waymo/ml/cn/...",
     ],
 )
 
-package_group(name = "ndarray_tensor_allow_list")
+package_group(
+    name = "ndarray_tensor_allow_list",
+    packages = [
+        "//third_party/py/courier/...",
+        "//third_party/py/tensorfn/...",
+    ],
+)
 
 # Packages that use private types symbols, until they are exported.
 # TODO(b/154650521) Remove.
@@ -1086,7 +1120,6 @@ cc_library(
     name = "grpc",
     visibility = ["//visibility:public"],
     deps = select({
-        ":linux_s390x": ["@com_github_grpc_grpc//:grpc_unsecure"],
         "//conditions:default": ["@com_github_grpc_grpc//:grpc"],
     }),
 )
@@ -1095,7 +1128,6 @@ cc_library(
     name = "grpc++",
     visibility = ["//visibility:public"],
     deps = select({
-        ":linux_s390x": ["@com_github_grpc_grpc//:grpc++_unsecure"],
         "//conditions:default": ["@com_github_grpc_grpc//:grpc++"],
     }),
 )
@@ -1144,6 +1176,9 @@ tf_cc_shared_library(
         ],
         "//conditions:default": [
             "-Wl,--version-script,$(location //tensorflow:tf_framework_version_script.lds)",
+            # copybara:uncomment_begin(google-only)
+            # "-Wl,--undefined-version",
+            # copybara:uncomment_end(google-only)
         ],
     }),
     linkstatic = 1,
@@ -1334,9 +1369,9 @@ tf_cc_shared_library(
         "//tensorflow/compiler/mlir/tensorflow:export_graphdef",
         "//tensorflow/compiler/mlir/tensorflow:mlir_import_options",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
-        "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
-        "//tensorflow/compiler/mlir/tensorflow:tf_saved_model_passes",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tf_dialect_passes",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tf_saved_model_passes",
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",
         "//tensorflow/compiler/xla/service:computation_placer",
         "//tensorflow/core",
@@ -1350,6 +1385,7 @@ tf_cc_shared_library(
         "//tensorflow/core/data/service:server_lib",
         "//tensorflow/core/debug",
         "//tensorflow/core/distributed_runtime:server_lib",
+        "//tensorflow/core/framework:full_type_util",
         "//tensorflow/core/function/runtime_client:runtime_client_cc",
         "//tensorflow/core/grappler/clusters:cluster",
         "//tensorflow/core/grappler/clusters:single_machine",
@@ -1442,7 +1478,6 @@ check_deps(
             "//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform",
             "//tensorflow/compiler/xla/stream_executor/cuda:cudnn_plugin",
             "//tensorflow/compiler/xla/stream_executor/cuda:cufft_plugin",
-            "//tensorflow/compiler/xla/stream_executor/cuda:curand_plugin",
             "//tensorflow/compiler/xla/stream_executor:cuda_platform",
         ],
     ),
@@ -1689,6 +1724,8 @@ py_library(
         "//tensorflow/lite/python:lite",
         "//tensorflow/lite/python/authoring",
         "//tensorflow/python:no_contrib",
+        "@pypi_keras_nightly//:pkg",
+        "@pypi_tb_nightly//:pkg",
     ],
 )
 # copybara:comment_end

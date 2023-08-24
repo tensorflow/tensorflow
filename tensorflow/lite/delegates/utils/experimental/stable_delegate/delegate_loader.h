@@ -17,17 +17,19 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/lite/experimental/acceleration/configuration/c/stable_delegate.h"
+#include "tensorflow/lite/acceleration/configuration/c/stable_delegate.h"
 
 namespace tflite {
 namespace delegates {
 namespace utils {
 
 const char kTfLiteStableDelegateSymbol[] = "TFL_TheStableDelegate";
+const char kTfLiteLibraryPathEnvironmentVariable[] =
+    "TFLITE_STABLE_DELEGATE_LIBRARY_PATH";
 
 // Loads the TFLite delegate shared library and returns the pointer to
 // TfLiteStableDelegate (defined in
-// tensorflow/lite/experimental/acceleration/configuration/c/stable_delegate.h).
+// tensorflow/lite/acceleration/configuration/c/stable_delegate.h).
 // The returned pointer could be null if the delegate shared library cannot be
 // opened or the delegate symbol cannot be found.
 const TfLiteStableDelegate* LoadDelegateFromSharedLibrary(

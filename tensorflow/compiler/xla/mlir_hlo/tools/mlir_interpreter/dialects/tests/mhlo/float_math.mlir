@@ -1,7 +1,6 @@
 // RUN: mlir-interpreter-runner %s -run-all | FileCheck %s
 
 func.func @atan2() -> tensor<1xf32> {
-  // Why would you ever do this?
   %c10 = mhlo.constant dense<10.0> : tensor<1xf32>
   %c1 = mhlo.constant dense<1.0> : tensor<1xf32>
   %ret = mhlo.atan2 %c10, %c1 : tensor<1xf32>

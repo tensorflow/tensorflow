@@ -1,6 +1,6 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "if_google", "if_oss", "tf_cc_binary", "tf_cc_test")
 load("//tensorflow/core/platform:build_config.bzl", "if_llvm_aarch64_available", "if_llvm_system_z_available")
 
 package(
@@ -15,7 +15,11 @@ cc_library(
     name = "tf_library_test_main",
     testonly = 1,
     visibility = ["//visibility:public"],
-    deps = ["//tensorflow/core:test_main"],
+    deps = if_oss([
+        "//tensorflow/core:test_main",
+    ]) + if_google([
+        "//tensorflow/tsl/platform/default/build_config:test_main",
+    ]),
 )
 
 filegroup(
@@ -354,5 +358,5 @@ test_suite(
 
 exports_files([
     "benchmark_main.template",  # used by tf_library(...,gen_benchmark=True)
-    "test.cc",  # used by tf_library(...,gen_test=True)
+    if_oss("test.cc", "test_google.cc"),  # used by tf_library(...,gen_test=True)
 ])

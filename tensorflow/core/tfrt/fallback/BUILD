@@ -24,11 +24,12 @@ package_group(
     name = "friends",
     packages = [
         # Authorized users go here.
-        "//tensorflow/compiler/mlir/tfrt/...",
+        "//tensorflow/compiler/mlir/...",
         "//tensorflow/core/...",
         # copybara:uncomment "//learning/brain/experimental/tfrt/...",
         # copybara:uncomment "//learning/brain/tfrt/...",
         # copybara:uncomment "//learning/brain/mobile/lite/delegates/tfmrt/...",
+        # copybara:uncomment "//learning/infra/mira/distributed/...",
     ],
 )
 
@@ -66,8 +67,8 @@ cc_library(
     hdrs = ["op_kernel_runner.h"],
     features = tf_features_nolayering_check_if_ios(),
     visibility = [
+        ":friends",
         # copybara:uncomment "//tensorflow/core/runtime_fallback:internal",
-        # copybara:uncomment "//tensorflow/core/tfrt/eager:__pkg__",
         "//tensorflow/core/tfrt/graph_executor:__subpackages__",
         "//tensorflow/lite/delegates/flex:__pkg__",
     ],
@@ -110,14 +111,22 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "device_with_custom_allocator",
+    hdrs = ["device_with_custom_allocator.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/tsl/framework:allocator",
+    ],
+)
+
 tf_cc_test(
     name = "cost_recorder_test",
     srcs = ["cost_recorder_test.cc"],
     deps = [
         ":cost_recorder",
+        ":op_cost_map_proto_cc",
         "//tensorflow/core:lib",
-        "//tensorflow/core/platform:status",
-        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
     ],
 )

@@ -16,8 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <deque>
 #include <functional>
+#include <iterator>
+#include <list>
 #include <memory>
 #include <numeric>
 #include <optional>
@@ -29,25 +32,42 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/function_ref.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_clone_context.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_domain_metadata.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding_metadata.h"
+#include "tensorflow/compiler/xla/iterator_util.h"
+#include "tensorflow/compiler/xla/layout.h"
+#include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/lib/gtl/iterator_range.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tensorflow/tsl/platform/protobuf.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 namespace {
@@ -265,24 +285,22 @@ HloAsyncInstruction::HloAsyncInstruction(
   AppendComputation(async_computation);
   CHECK(!async_computation->IsCustomCallComputation());
   CHECK(!async_computation->IsFusionComputation());
-  async_computation->AddAsyncInstruction(this);
+  async_computation->AddAsyncInstruction(*this);
   set_async_execution_thread(async_execution_thread);
+
+  // Drop 'async' from async-{start/update/done} to get the suffix.
+  absl::string_view suffix = HloOpcodeString(opcode).substr(5);
+  absl::string_view wrapped_name = HloOpcodeString(async_wrapped_opcode());
+  SetAndSanitizeName(absl::StrCat(wrapped_name, suffix));
 }
 
 HloAsyncInstruction::HloAsyncInstruction(
     HloOpcode opcode, const Shape& shape, HloInstruction* operand,
     HloComputation* async_computation, std::optional<int64_t> async_group_id,
     absl::string_view async_execution_thread)
-    : HloInstruction(opcode, shape),
-      async_group_id_(async_group_id),
-      async_execution_thread_(async_execution_thread) {
-  AppendOperand(operand);
-  AppendComputation(async_computation);
-  CHECK(!async_computation->IsCustomCallComputation());
-  CHECK(!async_computation->IsFusionComputation());
-  async_computation->AddAsyncInstruction(this);
-  set_async_execution_thread(async_execution_thread);
-}
+    : HloAsyncInstruction(opcode, shape, absl::MakeConstSpan(&operand, 1),
+                          async_computation, async_group_id,
+                          async_execution_thread) {}
 
 HloAsyncInstruction::~HloAsyncInstruction() {
   ClearAsyncComputationInstruction();
@@ -630,6 +648,41 @@ bool HloChannelInstruction::IdenticalSlowPath(
   }
   const auto& casted_other = static_cast<const HloChannelInstruction&>(other);
   return channel_id() == casted_other.channel_id();
+}
+
+HloTopKInstruction::HloTopKInstruction(const Shape& shape,
+                                       HloInstruction* input, int64_t k,
+                                       HloComputation* compare)
+    : HloInstruction(HloOpcode::kTopK, shape), k_(k) {
+  AppendOperand(input);
+  AppendComputation(compare);
+}
+
+HloInstructionProto HloTopKInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  proto.set_k(k_);
+  return proto;
+}
+
+void HloTopKInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& options) const {
+  printer.Next([this](Printer* printer) { AppendCat(printer, "k=", k_); });
+}
+
+std::unique_ptr<HloInstruction> HloTopKInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+    HloCloneContext* context) const {
+  return std::make_unique<HloTopKInstruction>(shape, new_operands[0], k(),
+                                              to_apply());
+}
+
+bool HloTopKInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
+        eq_computations) const {
+  const auto& casted_other = static_cast<const HloTopKInstruction&>(other);
+  return k() == casted_other.k() &&
+         eq_computations(to_apply(), casted_other.to_apply());
 }
 
 HloSendRecvInstruction::HloSendRecvInstruction(HloOpcode opcode,
@@ -1474,19 +1527,23 @@ std::unique_ptr<HloInstruction> HloSliceInstruction::CloneWithNewOperandsImpl(
 
 HloConstantInstruction::HloConstantInstruction(Literal literal)
     : HloInstruction(HloOpcode::kConstant, literal.shape()),
-      literal_(std::move(literal)) {}
+      literal_(new Literal(std::move(literal))) {}
 
 HloConstantInstruction::HloConstantInstruction(Literal literal,
                                                const Shape& shape)
     : HloInstruction(HloOpcode::kConstant, shape),
-      literal_(std::move(literal)) {}
+      literal_(new Literal(std::move(literal))) {}
+
+HloConstantInstruction::HloConstantInstruction(std::shared_ptr<Literal> literal,
+                                               const Shape& shape)
+    : HloInstruction(HloOpcode::kConstant, shape), literal_(literal) {}
 
 HloConstantInstruction::HloConstantInstruction(const Shape& shape)
     : HloInstruction(HloOpcode::kConstant, shape) {}
 
 HloInstructionProto HloConstantInstruction::ToProto() const {
   HloInstructionProto proto = HloInstruction::ToProto();
-  if (literal_.has_value()) {
+  if (literal_) {
     *proto.mutable_literal() = literal_->ToProto();
   }
   return proto;
@@ -1508,7 +1565,7 @@ void HloConstantInstruction::RelayoutConstant(const Layout& new_layout,
 
   if (!mutable_array_subshape->has_layout() ||
       !LayoutUtil::Equal(mutable_array_subshape->layout(), new_layout)) {
-    *literal_ = literal_->Relayout(new_layout, shape_index);
+    *mutable_literal() = literal_->Relayout(new_layout, shape_index);
     *mutable_array_subshape->mutable_layout() = new_layout;
   }
 }
@@ -1525,23 +1582,21 @@ std::unique_ptr<HloInstruction>
 HloConstantInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
-  if (!literal_.has_value()) {
+  if (!literal_) {
     return std::make_unique<HloConstantInstruction>(this->shape());
   }
-  CHECK(literal_.has_value());
   // Literal's shape may have no/different tiling info. Use this instruction's
   // shape instead.
   CHECK(Shape::Equal().MinorToMajorOnlyInLayout()(literal_->shape(),
                                                   this->shape()));
-  return std::make_unique<HloConstantInstruction>(literal_->Clone(),
-                                                  this->shape());
+  return std::make_unique<HloConstantInstruction>(literal_, this->shape());
 }
 
 void HloConstantInstruction::PrintOperandsWithCanonicalNameMap(
     Printer* printer, const HloPrintOptions& options,
     CanonicalNameMap* canonical_name_map) const {
   if (options.print_only_essential_constants()) {
-    if (!literal_.has_value()) {
+    if (!literal_) {
       printer->Append("{...}");
       return;
     }
@@ -1570,7 +1625,7 @@ void HloConstantInstruction::PrintOperandsWithCanonicalNameMap(
   }
 
   // For constants, show the actual value in place of an empty operand list.
-  if (literal_.has_value() &&
+  if (literal_ &&
       ((shape().IsArray() && ShapeUtil::ElementsIn(shape()) <= 10) ||
        options.print_large_constants())) {
     // Literal::ToString emits multidimensional arrays over multiple
@@ -1698,7 +1753,7 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
       clone = called_computation()->AddInstruction(
           instruction_to_append->Clone(/*suffix=*/""));
     }
-    const std::vector<HloInstruction*>& called_computation_parameters =
+    const auto& called_computation_parameters =
         called_computation()->parameter_instructions();
     for (int64_t operand_num = 0; operand_num < operand_count();
          ++operand_num) {
@@ -1721,7 +1776,7 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
     if (in_operand_list) {
       DetachFrom(instruction_to_append);
       // When the instruction_to_append does not have other users, we don't
-      // need to generate a multioutput instruction.
+      // need to generate a multi-output instruction.
       if (instruction_to_append->user_count() == 0) {
         add_output = false;
       }
@@ -1729,7 +1784,7 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
   }
 
   // Reread the parameters in the computation.
-  const std::vector<HloInstruction*>& called_computation_parameters =
+  const auto& called_computation_parameters =
       called_computation()->parameter_instructions();
 
   // Add each operand of the clone as an operand of the callable instruction.
@@ -1760,7 +1815,10 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
   }
 
   if (add_output) {
-    CHECK_GT(instruction_to_append->user_count(), 0);
+    int64_t user_count = instruction_to_append->user_count();
+    CHECK(user_count > 0 || instruction_to_append->IsRoot())
+        << "Unable to append instruction: " << instruction_to_append->ToString()
+        << ", which has " << user_count << " users.";
     // If this is already a multioutput instruction, expand the root tuple
     // by 1.
     HloInstruction* root = called_computation_root();
@@ -2114,7 +2172,7 @@ void HloFusionInstruction::MergeFusionInstructionIntoMultiOutput(
 }
 
 HloComputation* HloFusionInstruction::fused_instructions_computation() const {
-  CHECK(!called_computations().empty());
+  CHECK_EQ(called_computations().size(), 1);
   auto* fused_instructions_computation = called_computations().front();
   CHECK(fused_instructions_computation->IsFusionComputation())
       << "Computation " << fused_instructions_computation->name()
@@ -2132,19 +2190,19 @@ HloInstruction* HloFusionInstruction::fused_parameter(
       parameter_number);
 }
 
-const std::vector<HloInstruction*>& HloFusionInstruction::fused_parameters()
-    const {
+const HloInstruction::InstructionVector&
+HloFusionInstruction::fused_parameters() const {
   return fused_instructions_computation()->parameter_instructions();
 }
 
-const tsl::gtl::iterator_range<UnwrappingIterator<
+tsl::gtl::iterator_range<UnwrappingIterator<
     std::list<std::unique_ptr<HloInstruction>>::const_iterator>>
 HloFusionInstruction::fused_instructions() const {
   const HloComputation* subcomp = fused_instructions_computation();
   return subcomp->instructions();
 }
 
-const tsl::gtl::iterator_range<
+tsl::gtl::iterator_range<
     UnwrappingIterator<std::list<std::unique_ptr<HloInstruction>>::iterator>>
 HloFusionInstruction::fused_instructions() {
   return fused_instructions_computation()->instructions();
@@ -2190,8 +2248,11 @@ std::unique_ptr<HloInstruction> HloFusionInstruction::CloneWithNewOperandsImpl(
     HloCloneContext* context) const {
   auto new_fused_computation = GetOrCloneCalledComputations(context);
   CHECK_EQ(new_fused_computation.size(), 1);
-  return std::make_unique<HloFusionInstruction>(
+  auto new_fusion_instruction = std::make_unique<HloFusionInstruction>(
       shape, fusion_kind(), new_operands, new_fused_computation.front());
+  new_fusion_instruction->set_output_to_operand_aliasing(
+      output_to_operand_aliasing());
+  return new_fusion_instruction;
 }
 
 Status HloFusionInstruction::DeduplicateFusionOperands() {
@@ -2280,7 +2341,7 @@ std::unique_ptr<HloInstruction> HloRngInstruction::CloneWithNewOperandsImpl(
 
 HloParameterInstruction::HloParameterInstruction(int64_t parameter_number,
                                                  const Shape& shape,
-                                                 const std::string& name)
+                                                 absl::string_view name)
     : HloInstruction(HloOpcode::kParameter, shape),
       parameter_number_(parameter_number) {
   SetAndSanitizeName(name);
@@ -2537,10 +2598,10 @@ HloConvolutionInstruction::HloConvolutionInstruction(
 std::string HloConvolutionInstruction::ToCategory() const {
   std::string category = "convolution";
   if (window_util::HasBaseDilation(window())) {
-    category += " base-dilated";
+    absl::StrAppend(&category, " base-dilated");
   }
   if (window_util::HasWindowDilation(window())) {
-    category += " window-dilated";
+    absl::StrAppend(&category, " window-dilated");
   }
   return category;
 }
@@ -2726,7 +2787,7 @@ HloCustomCallInstruction::HloCustomCallInstruction(
     absl::string_view custom_call_target, std::string opaque,
     CustomCallApiVersion api_version)
     : HloCallableInstruction(HloOpcode::kCustomCall, shape, operands),
-      custom_call_target_(custom_call_target.begin(), custom_call_target.end()),
+      custom_call_target_(custom_call_target),
       feature_group_count_(1),
       batch_group_count_(1),
       layout_constrained_(false),
@@ -2742,7 +2803,7 @@ HloCustomCallInstruction::HloCustomCallInstruction(
     HloComputation* to_apply, absl::string_view custom_call_target,
     std::string opaque, CustomCallApiVersion api_version)
     : HloCallableInstruction(HloOpcode::kCustomCall, shape, operands, to_apply),
-      custom_call_target_(custom_call_target.begin(), custom_call_target.end()),
+      custom_call_target_(custom_call_target),
       feature_group_count_(1),
       batch_group_count_(1),
       layout_constrained_(false),
@@ -2761,7 +2822,7 @@ HloCustomCallInstruction::HloCustomCallInstruction(
     CustomCallApiVersion api_version)
     : HloCallableInstruction(HloOpcode::kCustomCall, shape, operands,
                              called_computations),
-      custom_call_target_(custom_call_target.begin(), custom_call_target.end()),
+      custom_call_target_(custom_call_target),
       feature_group_count_(1),
       batch_group_count_(1),
       layout_constrained_(false),
@@ -2781,7 +2842,7 @@ HloCustomCallInstruction::HloCustomCallInstruction(
     absl::Span<const Shape> operand_shapes_with_layout,
     CustomCallApiVersion api_version)
     : HloCallableInstruction(HloOpcode::kCustomCall, shape, operands),
-      custom_call_target_(custom_call_target.begin(), custom_call_target.end()),
+      custom_call_target_(custom_call_target),
       feature_group_count_(1),
       batch_group_count_(1),
       layout_constrained_(true),
@@ -2815,7 +2876,7 @@ HloInstructionProto HloCustomCallInstruction::ToProto() const {
     }
   }
   proto.set_custom_call_has_side_effect(custom_call_has_side_effect_);
-  if (literal_.has_value()) {
+  if (literal_) {
     *proto.mutable_literal() = literal_->ToProto();
   }
   for (const auto& pair : output_to_operand_aliasing()) {
@@ -2891,7 +2952,7 @@ void HloCustomCallInstruction::PrintExtraAttributesImpl(
       printer->Append("custom_call_has_side_effect=true");
     });
   }
-  if (literal_.has_value()) {
+  if (literal_) {
     printer.Next([this](Printer* printer) {
       printer->Append("literal=");
       literal_->PrintWithLayoutOneline(printer);

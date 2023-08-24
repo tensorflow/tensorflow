@@ -51,7 +51,6 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
-#include "tensorflow/core/grappler/graph_view.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/grappler_item_builder.h"
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer_registry.h"
@@ -227,7 +226,7 @@ Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
       uint64 hash = 0;
       Status s = HashNode(graph_def, *node_def, *lib_def, &hash);
       if (!s.ok()) {
-        VLOG(3) << "Failed to hash graph: " << s.ToString();
+        VLOG(3) << "Failed to hash graph: " << s;
         return;
       }
       for (const auto& pair : input_list) {
@@ -237,7 +236,7 @@ Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
         if (s.ok()) {
           hash = Hash64CombineUnordered(hash, tensor_hash);
         } else {
-          VLOG(3) << "Failed to hash tensor: " << s.ToString();
+          VLOG(3) << "Failed to hash tensor: " << s;
         }
       }
       string graph_hash =

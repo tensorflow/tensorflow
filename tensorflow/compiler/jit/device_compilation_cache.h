@@ -27,9 +27,37 @@ limitations under the License.
 #include "tensorflow/compiler/jit/device_compilation_cluster_signature.h"
 #include "tensorflow/compiler/jit/xla_compile_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
+#include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/platform/mutex.h"
 
 namespace tensorflow {
+namespace device_compilation_cache_internal {
+template <typename ExecutableType>
+int64_t ExecutableSize(const ExecutableType* executable) {
+  return 0;
+}
+
+template <>
+inline int64_t ExecutableSize<xla::LocalExecutable>(
+    const xla::LocalExecutable* executable) {
+  if (executable != nullptr && executable->executable() != nullptr) {
+    return executable->executable()->SizeOfGeneratedCodeInBytes();
+  }
+
+  return 0;
+}
+
+template <>
+inline int64_t ExecutableSize<xla::PjRtLoadedExecutable>(
+    const xla::PjRtLoadedExecutable* executable) {
+  if (executable != nullptr) {
+    return executable->SizeOfGeneratedCodeInBytes();
+  }
+
+  return 0;
+}
+}  // namespace device_compilation_cache_internal
 
 // Cache to store compiled HLO, executables and related metadata keyed by
 // `DeviceCompilationClusterSignature`. The cache owns the stored
@@ -97,11 +125,25 @@ class DeviceCompilationCache {
 
     std::string DebugString() const {
       mutex_lock lock(mu);
+
+      int64_t executable_size =
+          device_compilation_cache_internal::ExecutableSize<ExecutableType>(
+              executable.get());
+
+      int64_t hlo_module_size = 0;
+      if (compilation_result != nullptr &&
+          compilation_result->computation != nullptr) {
+        hlo_module_size =
+            compilation_result->computation->proto().ByteSizeLong();
+      }
+
       return absl::StrCat(
           "{compile_state: ", compile_state, ", request_count: ", request_count,
           ", compilation_status: ", compilation_status.ToString(),
           ", compilation_result?: ", compilation_result != nullptr,
-          ", executable?: ", executable != nullptr, "}");
+          ", hlo_module_size: ", hlo_module_size, " bytes",
+          ", executable?: ", executable != nullptr,
+          ", executable_size: ", executable_size, " bytes}");
     }
   };
 
@@ -190,6 +232,9 @@ void DeviceCompilationCache<ExecutableType>::Store(
       entry->executable = std::move(*executable);
     }
   }
+
+  VLOG(4) << "Added/updated cache entry: key=" << key.HumanString()
+          << ", entry=" << entry->DebugString();
 }
 
 template <typename ExecutableType>

@@ -29,6 +29,7 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import composite_tensor
+from tensorflow.python.framework import composite_tensor_gradient
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import dtypes
@@ -37,12 +38,14 @@ from tensorflow.python.framework import extension_type
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import memory_checker
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import cond as tf_cond
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import gradients_impl
@@ -53,13 +56,32 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import test
 from tensorflow.python.training import momentum
 from tensorflow.python.training import saver
 from tensorflow.python.training import training_util
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
+
+
+class CompositeVariableGradient(
+    composite_tensor_gradient.CompositeTensorGradient):
+  """Gradient protocol for CompositeVariable."""
+
+  def get_gradient_components(self, value):
+    return value._type_spec._to_components(value)
+
+  def replace_gradient_components(self, value, component_grads):
+    return value._type_spec._from_components(component_grads)
+
+
+class CompositeVariable(extension_type.ExtensionType):
+  v: resource_variable_ops.ResourceVariable
+
+  __composite_gradient__ = CompositeVariableGradient()
 
 
 def _eager_safe_var_handle_op(*args, **kwargs):
@@ -197,13 +219,19 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     with context.eager_mode():
       variable = resource_variable_ops.ResourceVariable(1.0, name="eager-init")
       self.assertAllEqual(variable.numpy(), 1.0)
-      self.assertAllEqual(variable.initialized_value().numpy(), 1.0)
+      self.assertAllEqual(variable.read_value().numpy(), 1.0)
 
   def testInitializeVariableUsingInitializedValue(self):
     var1 = resource_variable_ops.ResourceVariable(1.0, name="var1")
-    var2 = resource_variable_ops.ResourceVariable(var1.initialized_value(),
-                                                  name="var2")
-    self.assertAllEqual(var2.initialized_value(), 1.0)
+    var2 = resource_variable_ops.ResourceVariable(
+        tf_cond.cond(
+            variable_v1.is_variable_initialized(var1), var1.read_value,
+            lambda: var1.initial_value),
+        name="var2")
+    self.assertAllEqual(
+        tf_cond.cond(
+            variable_v1.is_variable_initialized(var2), var2.read_value,
+            lambda: var2.initial_value), 1.0)
 
   def testEagerBool(self):
     with context.eager_mode():
@@ -433,9 +461,9 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
         return x + v
       def false():
         return 2.0 * v
-      return i + 1, control_flow_ops.cond(i > 0, true, false)
+      return i + 1, tf_cond.cond(i > 0, true, false)
 
-    _, x = control_flow_ops.while_loop(cond, body, [0, 0.0])
+    _, x = while_loop.while_loop(cond, body, [0, 0.0])
     # Computing gradients does not produce an exception:
     g = gradients_impl.gradients(x, v)
     self.evaluate(variables.global_variables_initializer())
@@ -454,6 +482,18 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     grads = tape.gradient(l, v)
     self.evaluate(variables.global_variables_initializer())
     self.assertAllEqual(self.evaluate(grads.values), [[1., 1.], [1., 1.]])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testGradientCompositeVariable(self):
+    composite_variable = CompositeVariable(
+        resource_variable_ops.ResourceVariable([1., 2., 3.]))
+
+    self.evaluate(variables.global_variables_initializer())
+
+    with backprop.GradientTape() as tape:
+      result = tape.gradient(composite_variable, composite_variable.v)
+
+    self.assertAllEqual(result, [1., 1., 1.])
 
   @test_util.run_in_graph_and_eager_modes
   def testScatterSub(self):
@@ -511,7 +551,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     self.assertEqual(self.evaluate(read), [[2]])
 
   def testUseResource(self):
-    v = variables.VariableV1(1.0, use_resource=True)
+    v = variable_v1.VariableV1(1.0, use_resource=True)
     self.assertIsInstance(v, resource_variable_ops.ResourceVariable)
 
   def testEagerNoUseResource(self):
@@ -950,7 +990,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
         result = tape.gradient(out, v)
 
       self.assertAllEqual(out, 5.)
-      self.assertIsInstance(result, ops.Tensor)
+      self.assertIsInstance(result, tensor_lib.Tensor)
       self.assertAllEqual(result, 2.)
 
   def testToFromProtoCachedValue(self):
@@ -975,12 +1015,12 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     with ops.Graph().as_default(), self.cached_session():
       # v describes a VariableDef-based variable without an initial value.
       v = resource_variable_ops.ResourceVariable(variable_def=v_def)
-      self.assertEqual(3.0, self.evaluate(v.initialized_value()))
+      self.assertEqual(3.0, self.evaluate(v.initial_value))
 
-      # initialized_value should not rerun the initializer_op if the variable
+      # read_value should not rerun the initializer_op if the variable
       # has already been initialized elsewhere.
       self.evaluate(v.assign(1.0))
-      self.assertEqual(1.0, v.initialized_value().eval())
+      self.assertEqual(1.0, v.read_value().eval())
 
     v_def.ClearField("initial_value_name")
     with ops.Graph().as_default(), self.cached_session():
@@ -989,9 +1029,12 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
       v = resource_variable_ops.ResourceVariable(variable_def=v_def)
       # We should also be able to re-export the variable to a new meta graph.
       self.assertProtoEquals(v_def, v.to_proto())
-      # But attempts to use initialized_value will result in errors.
+      # But attempts to use read_value will result in errors.
       with self.assertRaises(ValueError):
-        self.evaluate(v.initialized_value())
+        self.evaluate(
+            tf_cond.cond(
+                variable_v1.is_variable_initialized(v), v.read_value,
+                lambda: v.initial_value))
 
   def testTrainableInProto(self):
     with ops.Graph().as_default():
@@ -1294,7 +1337,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
       return (i + 1, v.read_value())
 
     with self.assertRaisesRegex(ValueError, "initial_value"):
-      control_flow_ops.while_loop(cond, body, [0, 0])
+      while_loop.while_loop(cond, body, [0, 0])
 
   def testVariableEager(self):
     with context.eager_mode():
@@ -1763,7 +1806,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
   def testVariableInExtensionType(self):
     class MaskVariable(extension_type.ExtensionType):
       variable: resource_variable_ops.ResourceVariable
-      mask: ops.Tensor
+      mask: tensor_lib.Tensor
 
     v = resource_variable_ops.ResourceVariable([1., 2.])
     self.evaluate(v.initializer)

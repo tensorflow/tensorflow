@@ -33,8 +33,7 @@ TEST_F(HloProtoUtilTest, ParamsAndOutputShapeMissingModule) {
 
   auto status = EntryComputationParameterShapes(hlo_proto).status();
   ASSERT_FALSE(status.ok());
-  ASSERT_THAT(status.error_message(),
-              ::testing::HasSubstr("missing HloModuleProto"));
+  ASSERT_THAT(status.message(), ::testing::HasSubstr("missing HloModuleProto"));
 }
 
 TEST_F(HloProtoUtilTest, MissingProgramShape) {
@@ -44,8 +43,7 @@ TEST_F(HloProtoUtilTest, MissingProgramShape) {
 
   auto status = EntryComputationParameterShapes(hlo_proto).status();
   ASSERT_FALSE(status.ok());
-  ASSERT_THAT(status.error_message(),
-              ::testing::HasSubstr("missing program shape"));
+  ASSERT_THAT(status.message(), ::testing::HasSubstr("missing program shape"));
 }
 
 }  // namespace

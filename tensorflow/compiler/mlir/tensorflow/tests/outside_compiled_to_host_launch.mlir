@@ -48,7 +48,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-NEXT:       "tf.C"
     // CHECK-NOT:        _xla_outside_compilation
     // CHECK:            tf_device.return
-    // CHECK-NEXT:     device = "TPU_REPLICATED_HOST"
+    // CHECK-NEXT:     device = "TPU_REPLICATED_HOST_0"
     // CHECK: device_assignment =  [], num_cores_per_replica = 1 : i64, topology =  ""
     %0 = "tf.A"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
     tf_device.replicate([%0, %arg0] as %ri_0: tensor<?xi32>) {n = 2 : i32} {

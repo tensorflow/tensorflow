@@ -166,45 +166,5 @@ class CEvent : public internal::EventInterface {
   SP_Event event_handle_;
 };
 
-class CTimer : public internal::TimerInterface {
- public:
-  CTimer(SP_Device* device, SP_StreamExecutor* stream_executor,
-         SP_TimerFns* timer_fns)
-      : device_(device),
-        stream_executor_(stream_executor),
-        timer_handle_(nullptr),
-        timer_fns_(timer_fns) {}
-  ~CTimer() override { Destroy(); }
-
-  tsl::Status Create() {
-    tensorflow::TF_StatusPtr c_status(TF_NewStatus());
-    stream_executor_->create_timer(device_, &timer_handle_, c_status.get());
-    return tensorflow::StatusFromTF_Status(c_status.get());
-  }
-
-  void Destroy() {
-    if (timer_handle_ != nullptr) {
-      stream_executor_->destroy_timer(device_, timer_handle_);
-      timer_handle_ = nullptr;
-    }
-  }
-
-  SP_Timer Handle() { return timer_handle_; }
-
-  uint64 Microseconds() const override {
-    return timer_fns_->nanoseconds(timer_handle_) / 1000;
-  }
-
-  uint64 Nanoseconds() const override {
-    return timer_fns_->nanoseconds(timer_handle_);
-  }
-
- private:
-  SP_Device* device_;
-  SP_StreamExecutor* stream_executor_;
-  SP_Timer timer_handle_;
-  SP_TimerFns* timer_fns_;
-};
-
 }  // namespace stream_executor
 #endif  // TENSORFLOW_C_EXPERIMENTAL_STREAM_EXECUTOR_STREAM_EXECUTOR_INTERNAL_H_

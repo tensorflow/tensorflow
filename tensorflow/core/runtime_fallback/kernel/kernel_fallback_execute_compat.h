@@ -19,7 +19,6 @@ limitations under the License.
 #include <optional>
 #include <string>
 
-#include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/threadpool_interface.h"
 #include "tensorflow/core/platform/types.h"
@@ -41,30 +40,6 @@ namespace tensorflow {
 namespace tfd {
 
 ABSL_CONST_INIT extern const char kOpKernelRunnerCacheResourceName[];
-
-// Set up fallback context with common tensorflow states such as devices,
-// function library runtime. They will be forwarded to tensorflow::OpKernel as
-// in tensorflow::Executor. If `runner` is nullptr, internally it will use a
-// default runner that executes tasks in the caller thread.
-Status SetUpKernelFallbackCompatRequestContext(
-    tfrt::RequestContextBuilder* builder,
-    const tensorflow::DeviceMgr* device_manager,
-    const tensorflow::ProcessFunctionLibraryRuntime* pflr,
-    tfrt_stub::OpKernelRunnerTable* runner_table,
-    FallbackResourceArray* resource_array,
-    tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool = nullptr,
-    const absl::optional<SessionMetadata>& model_metadata = absl::nullopt,
-    std::function<void(std::function<void()>)>* runner = nullptr,
-    tfrt_stub::CostRecorder* cost_recorder = nullptr);
-
-// Runner_table can be nullptr. In that case, kernel_fallback will use
-// the default runner_table.
-Status SetUpKernelFallbackCompatRequestContext(
-    tfrt::RequestContextBuilder* builder,
-    tfrt_stub::OpKernelRunnerTable* runner_table,
-    tensorflow::EagerContext* eager_context,
-    tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool = nullptr,
-    const absl::optional<SessionMetadata>& model_metadata = absl::nullopt);
 
 // The CoreRuntime dispatch function to run a TF kernel in kernel fallback
 // compat mode.

@@ -179,11 +179,20 @@ class WeakrefLRUCache : public std::enable_shared_from_this<WeakrefLRUCache> {
     ++total_queries_;
 
     bool inserted = false;
+    {
+      // Because the gil can be released during cache insertion, this forces
+      // the lock order to be mu_ then gil so we must release the gil first.
+      pybind11::gil_scoped_release release;
+      // Acquire a mutex to avoid problems where the gil is released during
+      // cache insertion and then a second thread invalidates the cache order.
+      mu_.Lock();
+    }
     Key key{context, args, kwargs};
     auto entry = cache.GetOrCreateIfAbsent(key, [&inserted](const Key& key) {
       inserted = true;
       return std::make_shared<CacheEntry>();
     });
+    mu_.Unlock();
     if (!entry->completed.HasBeenNotified()) {
       if (inserted) {
         ++misses_;
@@ -232,6 +241,7 @@ class WeakrefLRUCache : public std::enable_shared_from_this<WeakrefLRUCache> {
       entries_;
   int64_t misses_ = 0;
   int64_t total_queries_ = 0;
+  absl::Mutex mu_;
 };
 
 namespace {

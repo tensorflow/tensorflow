@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/data/unbounded_thread_pool.h"
 
+#include <functional>
+#include <memory>
+#include <utility>
+
 #include "absl/memory/memory.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/lib/core/notification.h"

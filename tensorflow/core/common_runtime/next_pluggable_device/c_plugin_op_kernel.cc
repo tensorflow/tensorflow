@@ -121,7 +121,7 @@ void CPluginOpKernelConstruction::CtxFailure(const Status& status) {
 void CPluginOpKernelConstruction::CtxFailure(const char* file, int line,
                                              const Status& status) {
   TF_StatusPtr c_status_ptr(TF_NewStatus());
-  Set_TF_Status_from_Status(c_status_ptr.get(), status);
+  tsl::Set_TF_Status_from_Status(c_status_ptr.get(), status);
   if (line != kInvalidLineNumber) {
     LOG(WARNING) << "Plugin OP_REQUIRES failed at " << file << ": " << line
                  << ": " << status;
@@ -324,7 +324,7 @@ void CPluginOpKernelContext::CtxFailure(const Status& status) {
 void CPluginOpKernelContext::CtxFailure(const char* file, int line,
                                         const Status& status) {
   TF_StatusPtr c_status_ptr(TF_NewStatus());
-  Set_TF_Status_from_Status(c_status_ptr.get(), status);
+  tsl::Set_TF_Status_from_Status(c_status_ptr.get(), status);
   if (line != kInvalidLineNumber) {
     LOG(WARNING) << "Plugin OP_REQUIRES failed at " << file << ": " << line
                  << ": " << status;

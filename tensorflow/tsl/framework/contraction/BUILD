@@ -1,13 +1,15 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_portable")
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     features = [
         # Required since headers are not self-contained.
         "-parse_headers",
     ],
-    licenses = ["notice"],
 )
 
 config_setting(
@@ -16,10 +18,32 @@ config_setting(
     # kernels are generated at runtime and use avx/avx2/fma/avx512 based on cpu status registers
     # (https://en.wikipedia.org/wiki/CPUID). Default Eigen contraction kernel is
     # Eigen::internal::gebp_kernel (general block-panel kernel).
+    #
+    # NOTE: Prefer using the :onednn_contraction_kernel flag or the
+    # cc_binary_disable_onednn build rule.
     name = "no_mkldnn_contraction_kernel",
     define_values = {
         "tensorflow_mkldnn_contraction_kernel": "0",
     },
+)
+
+bzl_library(
+    name = "build_defs",
+    srcs = ["build_defs.bzl"],
+)
+
+# Add
+# `--//third_party/tensorflow/tsl/framework/contraction:disable_onednn_contraction_kernel=True`
+# or use the `cc_binary_disable_onednn` build rule to disable the oneDNN
+# library for tensor contractions (new name of the MKL-DNN library).
+bool_flag(
+    name = "disable_onednn_contraction_kernel",
+    build_setting_default = False,
+)
+
+config_setting(
+    name = "disable_onednn_contraction_kernel_config",
+    flag_values = {":disable_onednn_contraction_kernel": "True"},
 )
 
 # Depending on a build configuration this target provides custom kernel for Eigen
@@ -55,9 +79,10 @@ cc_library(
     # specialization there causing build breakages.  This must be added here
     # as "defines" so that the header is excluded in all dependent targets.
     # TODO(b/238649163): remove this once no longer necessary.
-    defines = ["GEMM_KERNEL_H"],
+    defines = ["EIGEN_USE_AVX512_GEMM_KERNELS=0"],
     deps = select({
         ":no_mkldnn_contraction_kernel": [":eigen_contraction_kernel_no_mkl"],
+        ":disable_onednn_contraction_kernel_config": [":eigen_contraction_kernel_no_mkl"],
         "//conditions:default": [":eigen_contraction_kernel_with_mkl"],
     }) + ["@com_google_absl//absl/base"],
 )
@@ -67,6 +92,7 @@ cc_library(
     srcs = ["eigen_contraction_kernel.cc"],
     hdrs = ["eigen_contraction_kernel.h"],
     defines = select({
+        ":disable_onednn_contraction_kernel_config": [],
         "//tensorflow/tsl:android_x86": [],
         "//tensorflow/tsl:arm_any": [
             "TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL",
@@ -82,11 +108,12 @@ cc_library(
         ],
     }),
     deps = [
-        "@com_google_absl//absl/base",
-        "//third_party/eigen3",
-        "//tensorflow/tsl/platform:dynamic_annotations",
         "//tensorflow/tsl/framework/fixedpoint",
+        "//tensorflow/tsl/platform:dynamic_annotations",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/base",
     ] + select({
+        ":disable_onednn_contraction_kernel_config": [],
         "//tensorflow/tsl:android_x86": [],
         "//tensorflow/tsl:arm_any": [],
         "//tensorflow/tsl:fuchsia_x86_64": [],
@@ -94,7 +121,7 @@ cc_library(
         "//tensorflow/tsl:linux_ppc64le": [],
         "//tensorflow/tsl:linux_s390x": [],
         "//tensorflow/tsl:macos_arm64": [],
-        "//conditions:default": ["@mkl_dnn_v1//:mkl_dnn"],
+        "//conditions:default": ["@onednn//:mkl_dnn"],
     }),
 )
 

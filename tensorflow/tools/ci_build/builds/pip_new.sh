@@ -185,8 +185,8 @@ update_test_filter_tags() {
   add_test_filter_tag -no_pip -nopip
   # MacOS filter tags
   if [[ ${OS_TYPE} == "macos" ]]; then
-    remove_test_filter_tag nomac no_mac
-    add_test_filter_tag -nomac -no_mac
+    remove_test_filter_tag nomac no_mac mac_excluded
+    add_test_filter_tag -nomac -no_mac -mac_excluded
   fi
   echo "Final test filter tags: ${TF_TEST_FILTER_TAGS}"
 }
@@ -530,6 +530,7 @@ run_test_with_bazel() {
 
   if [[ "${IS_OSS_SERIAL}" == "1" ]]; then
     remove_test_filter_tag -no_oss
+    remove_test_filter_tag -oss_excluded
     remove_test_filter_tag -oss_serial
     add_test_filter_tag oss_serial
   else

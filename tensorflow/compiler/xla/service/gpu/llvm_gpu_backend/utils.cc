@@ -15,13 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/utils.h"
 
+#include <memory>
+#include <string>
+
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/SourceMgr.h"
-#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/tsl/platform/logging.h"
 
 namespace {
@@ -40,9 +42,9 @@ namespace gpu {
 std::unique_ptr<llvm::Module> LoadIRModule(const std::string& filename,
                                            llvm::LLVMContext* llvm_context) {
   llvm::SMDiagnostic diagnostic_err;
-  std::unique_ptr<llvm::Module> module(
-      llvm::parseIRFile(llvm::StringRef(filename.data(), filename.size()),
-                        diagnostic_err, *llvm_context));
+  std::unique_ptr<llvm::Module> module =
+      llvm::getLazyIRFileModule(filename, diagnostic_err, *llvm_context,
+                                /*ShouldLazyLoadMetadata=*/true);
 
   if (module == nullptr) {
     DieWithSMDiagnosticError(&diagnostic_err);

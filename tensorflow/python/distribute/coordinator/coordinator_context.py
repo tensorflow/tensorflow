@@ -78,7 +78,7 @@ def maybe_get_remote_value(val):
     return val
 
 
-@tf_export("distribute.experimental.coordinator.get_current_worker_index",
+@tf_export("distribute.coordinator.experimental_get_current_worker_index",
            v1=[])
 def get_current_worker_index():
   """Returns the current worker index, when called within a worker closure.
@@ -94,15 +94,15 @@ def get_current_worker_index():
   Example (sharding data by worker):
 
   ```python
-  strategy = tf.distribute.experimental.ParameterServerStrategy(
+  strategy = tf.distribute.ParameterServerStrategy(
       cluster_resolver=...)
   coordinator = (
-      tf.distribute.experimental.coordinator.ClusterCoordinator(strategy))
+      tf.distribute.coordinator.ClusterCoordinator(strategy))
 
   def dataset_fn(context):
     dataset = tf.data.Dataset.range(10)
     worker_index = (
-        tf.distribute.experimental.coordinator.get_current_worker_index()
+        tf.distribute.coordinator.experimental_get_current_worker_index()
     )
     dataset = dataset.shard(
         num_shards=num_workers,

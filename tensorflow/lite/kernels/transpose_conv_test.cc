@@ -378,8 +378,8 @@ TEST_P(TransposeConvOpTest, SimpleTestQuantized) {
                                                 139, 141, 143, 145};
   QuantizedTransposeConvOpModel model(
       GetRegistration(), {1, 4, 4, 1},
-      {TensorType_UINT8, {1, 3, 3, 1}, -63.5, 64}, filter_data,
-      {TensorType_UINT8, {1, 4, 4, 1}, -63.5, 64},
+      {TensorType_UINT8, {1, 3, 3, 1}, -63, 64}, filter_data,
+      {TensorType_UINT8, {1, 4, 4, 1}, -63, 64},
       {TensorType_UINT8, {}, -508, 512}, Padding_SAME, 1, 1,
       ActivationFunctionType_NONE, GetTestType());
   model.SetInput({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
@@ -387,8 +387,8 @@ TEST_P(TransposeConvOpTest, SimpleTestQuantized) {
 
   EXPECT_THAT(
       model.GetDequantizedOutput(),
-      ElementsAreArray(ArrayFloatNear({28, 64, 84, 76, 100, 192, 236, 200, 208,
-                                       372, 416, 332, 264, 448, 484, 364},
+      ElementsAreArray(ArrayFloatNear({36, 72, 96, 84, 116, 216, 268, 220, 232,
+                                       412, 464, 360, 284, 480, 512, 388},
                                       1e-5)));
 
   // GetOutputShape() should always be same as model.SetOutputShape(...);
@@ -406,16 +406,16 @@ TEST_P(TransposeConvOpTest, SimpleTestWithFusedActivationQuantized) {
                                                 139, 141, 143, 145};
   QuantizedTransposeConvOpModel model(
       GetRegistration(), {1, 4, 4, 1},
-      {TensorType_UINT8, {1, 3, 3, 1}, -63.5, 64}, filter_data,
-      {TensorType_UINT8, {1, 4, 4, 1}, -63.5, 64},
+      {TensorType_UINT8, {1, 3, 3, 1}, -63, 64}, filter_data,
+      {TensorType_UINT8, {1, 4, 4, 1}, -63, 64},
       {TensorType_UINT8, {}, -508, 512}, Padding_SAME, 1, 1,
       ActivationFunctionType_RELU, GetTestType());
   model.SetInput({1, 2, -3, -4, 5, 6, -7, -8, 9, 10, -11, -12, 13, 14, 15, 16});
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetDequantizedOutput(),
-              ElementsAreArray(ArrayFloatNear({28, 24, 0, 0, 100, 72, 0, 0, 208,
-                                               188, 0, 0, 264, 292, 140, 0})));
+              ElementsAreArray(ArrayFloatNear({36, 24, 0, 0, 116, 76, 0, 0, 232,
+                                               212, 0, 0, 284, 316, 156, 0})));
 
   // GetOutputShape() should always be same as model.SetOutputShape(...);
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
@@ -429,8 +429,8 @@ TEST_P(TransposeConvOpTest, TwoFiltersTestQuantized) {
                                                 153, 155, 157, 159, 161, 163};
   QuantizedTransposeConvOpModel model(
       GetRegistration(), {1, 4, 4, 1},
-      {TensorType_UINT8, {1, 3, 3, 2}, -63.5, 64}, filter_data,
-      {TensorType_UINT8, {1, 4, 4, 2}, -63.5, 64},
+      {TensorType_UINT8, {1, 3, 3, 2}, -63, 64}, filter_data,
+      {TensorType_UINT8, {1, 4, 4, 2}, -63, 64},
       {TensorType_UINT8, {}, -4064, 4096}, Padding_SAME, 1, 1,
       ActivationFunctionType_NONE, GetTestType());
   model.SetInput({1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
@@ -440,8 +440,8 @@ TEST_P(TransposeConvOpTest, TwoFiltersTestQuantized) {
 
   EXPECT_THAT(model.GetDequantizedOutput(),
               ElementsAreArray(ArrayFloatNear(
-                  {192, 416, 576, 544, 672, 1344, 1696, 1440, 1504, 2720, 3072,
-                   2432, 1984, 3360, 3648, 2752},
+                  {224, 448, 608, 576, 736, 1440, 1792, 1504, 1600, 2880, 3232,
+                   2560, 2048, 3456, 3776, 2848},
                   1e-5)));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
 }
@@ -454,8 +454,8 @@ TEST_P(TransposeConvOpTest, PaddingValidTestQuantized) {
                                                 153, 155, 157, 159, 161, 163};
   QuantizedTransposeConvOpModel model(
       GetRegistration(), {1, 6, 6, 1},
-      {TensorType_UINT8, {1, 3, 3, 2}, -63.5, 64}, filter_data,
-      {TensorType_UINT8, {1, 4, 4, 2}, -63.5, 64},
+      {TensorType_UINT8, {1, 3, 3, 2}, -63, 64}, filter_data,
+      {TensorType_UINT8, {1, 4, 4, 2}, -63, 64},
       {TensorType_UINT8, {}, -4064, 4096}, Padding_VALID, 1, 1,
       ActivationFunctionType_NONE, GetTestType());
   model.SetInput({1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
@@ -465,10 +465,10 @@ TEST_P(TransposeConvOpTest, PaddingValidTestQuantized) {
 
   EXPECT_THAT(model.GetDequantizedOutput(),
               ElementsAreArray(ArrayFloatNear(
-                  {0,    32,   64,   96,   128,  96,   64,   192,  416,
-                   576,  544,  352,  224,  672,  1344, 1696, 1440, 864,
-                   608,  1504, 2720, 3072, 2432, 1440, 864,  1984, 3360,
-                   3648, 2752, 1536, 704,  1536, 2528, 2720, 2016, 1088},
+                  {0,    32,   64,   128,  128,  96,   64,   224,  448,
+                   608,  576,  352,  256,  736,  1440, 1792, 1504, 928,
+                   640,  1600, 2880, 3232, 2560, 1504, 896,  2048, 3456,
+                   3776, 2848, 1600, 704,  1568, 2592, 2784, 2048, 1120},
                   1e-5)));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 6, 6, 1}));
 }
@@ -496,7 +496,7 @@ TEST_P(TransposeConvOpTest, SimpleTestQuantizedPerChannelSingleChannel) {
       GetRegistration(), {1, 4, 4, 1},
       {TensorType_INT8, {1, 3, 3, 1}, 0, 0, 0, 0, true, {9.0 / 127}, {0}, 0},
       const_filter_data,
-      {TensorType_INT8, {1, 4, 4, 1}, 0, 0, 16.0 / 255, -128},
+      {TensorType_INT8, {1, 4, 4, 1}, 0, 0, 16.0 / 127, -128},
       {TensorType_INT8, {}, 0, 0, 2, -128}, Padding_SAME, 1, 1,
       ActivationFunctionType_NONE, GetTestType(),
       /* version */ 2);
@@ -508,8 +508,8 @@ TEST_P(TransposeConvOpTest, SimpleTestQuantizedPerChannelSingleChannel) {
 
   EXPECT_THAT(
       model.GetDequantizedOutput(),
-      ElementsAreArray(ArrayFloatNear({28, 62, 82, 76, 98, 192, 238, 198, 206,
-                                       372, 416, 330, 262, 446, 486, 366},
+      ElementsAreArray(ArrayFloatNear({30, 62, 84, 76, 100, 192, 238, 198, 206,
+                                       372, 416, 330, 262, 446, 484, 366},
                                       1e-5)));
 
   // GetOutputShape() should always be same as model.SetOutputShape(...);

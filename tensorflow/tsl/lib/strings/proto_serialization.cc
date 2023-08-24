@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/tsl/lib/strings/proto_serialization.h"
 
 #include <cstring>
+#include <memory>
 
 #include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"

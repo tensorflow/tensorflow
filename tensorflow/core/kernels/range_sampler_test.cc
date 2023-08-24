@@ -13,9 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/kernels/range_sampler.h"
+
 #include <vector>
 
-#include "tensorflow/core/kernels/range_sampler.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
@@ -171,7 +173,7 @@ TEST_F(RangeSamplerTest, FixedUnigramNoExistingFilename) {
   FixedUnigramSampler* test_sampler = new FixedUnigramSampler(9, 0.8, 0, 1, 0);
   Status s = test_sampler->SetDistributionSampler(env, fname);
   sampler_.reset(test_sampler);
-  EXPECT_TRUE(errors::IsNotFound(s)) << s;
+  EXPECT_TRUE(absl::IsNotFound(s)) << s;
 }
 TEST_F(RangeSamplerTest, FixedUnigramNoMatchingRangeWeights) {
   Env* env = Env::Default();
@@ -180,7 +182,7 @@ TEST_F(RangeSamplerTest, FixedUnigramNoMatchingRangeWeights) {
   FixedUnigramSampler* test_sampler = new FixedUnigramSampler(8, 0.8, 0, 1, 0);
   Status s = test_sampler->SetDistributionSampler(env, fname);
   sampler_.reset(test_sampler);
-  EXPECT_TRUE(errors::IsInvalidArgument(s)) << s;
+  EXPECT_TRUE(absl::IsInvalidArgument(s)) << s;
 }
 TEST_F(RangeSamplerTest, FixedUnigramChecksum) {
   Env* env = Env::Default();

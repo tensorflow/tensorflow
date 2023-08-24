@@ -15,9 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_PROFILER_INTERNAL_PYTHON_HOOKS_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_PROFILER_INTERNAL_PYTHON_HOOKS_H_
 
+#include <deque>
 #include <memory>
 #include <optional>
 #include <stack>
+#include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -130,7 +132,9 @@ class PythonHookContext {
   void operator=(const PythonHookContext&) = delete;
   void operator=(PythonHookContext&&) = delete;
 
-  absl::flat_hash_map<int64_t, PerThreadEvents> entries_;
+  // The thread id to entries map, Note: by convention the thread id is
+  // uint32_t to be consistent with cpu tracer when serialize to Xspace.
+  absl::flat_hash_map<uint32_t, PerThreadEvents> entries_;
   uint64_t start_timestamp_ns_;
   PythonHooksOptions options_;
   // In end to end mode, Python get uninitialized before Stop()/Finalize(), we

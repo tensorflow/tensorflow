@@ -110,30 +110,43 @@ class RemoteValueImpl(remote_value.RemoteValue):
     return nest.map_structure(
         lambda x: x.numpy() if hasattr(x, "numpy") else x, self.get())
 
+  def _copy_to_local(self):
+    def copy_tensor(composite_tensor_obj):
+      """Copy a remote tensor to local (coordinator)."""
+      if isinstance(composite_tensor_obj, input_lib.DistributedIterator):
+        # A DistributedIterator cannot be copied to local; users should not
+        # access that anyway.
+        return composite_tensor_obj
+
+      with ops.device("/job:%s" % context.get_server_def().job_name):
+        # Copying to local (the coordinator) with `tf.device`.
+        return array_ops.identity(composite_tensor_obj)
+
+    fetched_result = None
+    if self._values is not None:
+      # When `self._values` is `None`, it indicates the associated function
+      # does not have a return value.
+      fetched_result = nest.map_structure(copy_tensor, self._values)
+    return fetched_result
+
   def get(self):
     self._wait_and_maybe_error()
 
     with self._has_fetched_to_local_lock:
       if not self._has_fetched_to_local:
-
-        def copy_tensor(composite_tensor_obj):
-          """Copy a remote tensor to local (coordinator)."""
-          if isinstance(composite_tensor_obj, input_lib.DistributedIterator):
-            # A DistributedIterator cannot be copied to local; users should not
-            # access that anyway.
-            return composite_tensor_obj
-
-          with ops.device("/job:%s" % context.get_server_def().job_name):
-            # Copying to local (the coordinator) with `tf.device`.
-            return array_ops.identity(composite_tensor_obj)
-
-        if self._values is not None:
-          # When `self._values` is `None`, it indicates the associated function
-          # does not have a return value.
-          self._fetched_tensors = nest.map_structure(copy_tensor, self._values)
+        self._fetched_tensors = self._copy_to_local()
         self._has_fetched_to_local = True
 
     return self._fetched_tensors
+
+
+class RemoteVariable(RemoteValueImpl):
+  """A RemoteValue that represents a mutable per-worker variable."""
+
+  def get(self):
+    """Retrieve value with no caching to ensure we get the up-to-date value."""
+    self._wait_and_maybe_error()
+    return self._copy_to_local()
 
 
 @tf_export("distribute.experimental.coordinator.PerWorkerValues",
@@ -242,10 +255,9 @@ class PerWorkerDatasetFromDatasetFunction(object):
     per_worker_dataset = self._coordinator._create_per_worker_resources(
         _create_per_worker_dataset)
     # hack type_spec of RemoteValues
+    dataset_fn_output_type_spec = self._dataset_fn.structured_outputs._type_spec
     for dataset_remote_value in per_worker_dataset._values:
-      dataset_remote_value._type_spec = dataset_ops.DatasetSpec(
-          self._dataset_fn.structured_outputs.element_spec)
-
+      dataset_remote_value._type_spec = dataset_fn_output_type_spec
     return per_worker_dataset
 
   def __iter__(self):

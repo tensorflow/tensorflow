@@ -29,6 +29,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "Lion"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Nadam"
     mtype: "<type \'type\'>"
   }

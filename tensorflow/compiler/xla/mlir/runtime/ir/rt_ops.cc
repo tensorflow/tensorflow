@@ -29,8 +29,6 @@ namespace runtime {
 
 using namespace mlir;  // NOLINT
 
-using llvm::Optional;
-
 //===----------------------------------------------------------------------===//
 // ExportOp
 //===----------------------------------------------------------------------===//
@@ -60,7 +58,7 @@ LogicalResult ExportOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
   return success();
 }
 
-Optional<unsigned> ExportOp::ordinal() {
+std::optional<unsigned> ExportOp::ordinal() {
   if (auto ordinal = getOrdinal()) return ordinal->getLimitedValue();
   return std::nullopt;
 }
@@ -75,7 +73,6 @@ FunctionOpInterface ExportOp::exported(mlir::SymbolTable &sym_table) {
 //===----------------------------------------------------------------------===//
 
 void TraceOp::getSuccessorRegions(std::optional<unsigned> index,
-                                  ArrayRef<Attribute> operands,
                                   SmallVectorImpl<RegionSuccessor> &regions) {
   // If the predecessor is the TraceOp, branch into the body.
   if (!index) {

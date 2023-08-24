@@ -46,6 +46,7 @@ cc_test(
     deps = [
         ":verifier",
         "//tensorflow/core:framework_lite",
+        "//tensorflow/core/platform:resource_loader",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite:util",
@@ -65,9 +66,9 @@ cc_library(
     hdrs = ["verifier_internal.h"],
     compatible_with = get_compatible_with_portable(),
     visibility = verifier_internal_visibility_allowlist() + [
-        "//tensorflow/lite/tools:__subpackages__",
         "//tensorflow/lite/core/shims:__subpackages__",
         "//tensorflow/lite/java/src/main/native:__pkg__",
+        "//tensorflow/lite/tools:__subpackages__",
     ],
     deps = [
         "//tensorflow/lite/schema:schema_fbs",

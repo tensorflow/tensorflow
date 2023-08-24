@@ -16,9 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/copy_insertion.h"
 
 #include <algorithm>
-#include <cstddef>
 #include <optional>
-#include <sstream>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -26,7 +24,6 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
-#include "absl/types/any.h"
 #include "tensorflow/compiler/xla/frontend_attributes.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
@@ -37,15 +34,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_buffer.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
-#include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
-#include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace {
@@ -759,6 +752,32 @@ class ComputeRelativeLocation {
       VLOG(3) << "Setting interception due to parameter/root relation\n";
       return Relation(order, true);
     }
+
+    // If the modification is inside the while body, it will not intercept the
+    // def-use chain outside of the while body. For the following example, %add
+    // does not intercept the def-use chain of %while - %root
+    //
+    // body = {
+    //   ...
+    //   add = ...  // modify buffer1
+    // }
+    // %while = While (param, cond, body) // def buffer1
+    // %root = get-tuple-element(%while), index=1 // use buffer1
+
+    if (use->parent() == def->parent() &&
+        ComputeRuntimeOrdering(use, entry2.first) == Relation::kAfterEnd &&
+        def->opcode() == HloOpcode::kWhile &&
+        entry2.first->parent() == def->while_body()) {
+      return Relation(order, false);
+    }
+
+    if (use->parent() == def->parent() &&
+        ComputeRuntimeOrdering(def, entry2.first) == Relation::kBeforeStart &&
+        use->opcode() == HloOpcode::kWhile &&
+        entry2.first->parent() == use->while_body()) {
+      return Relation(order, false);
+    }
+
     if (Relation::UseImpliesInterception(order)) {
       auto order2 = ComputeRuntimeOrdering(entry2.first, def);
       if (Relation::DefinitionImpliesInterception(order2)) {
@@ -951,19 +970,34 @@ class ComputeRelativeLocation {
     if (!entry.second.is_definition) {
       // If the instruction only uses the value, it can intercept only if it
       // modifies the buffer in place.
-      return !HloDataflowAnalysis::GetInPlaceInputOutputPairs(instr).empty();
+      for (const auto& operand_and_output_index :
+           HloDataflowAnalysis::GetInPlaceInputOutputPairs(instr)) {
+        const HloOperandIndex& operand_index = operand_and_output_index.first;
+        if (region.contains(
+                instr->mutable_operand(operand_index.operand_number))) {
+          return true;
+        }
+      }
+      return false;
     }
     switch (instr->opcode()) {
       // If the copy instruction is used to connect two live range regions,
       // it does not overwrite the combined buffer with new values.
-      case HloOpcode::kCopy:
+      case HloOpcode::kCopy: {
         // Checking the copy simply copies from the other live range with no
         // layout conflicts.
-        if (region.contains(instr->mutable_operand(0)) &&
+        HloInstruction* operand = instr->mutable_operand(0);
+        if (operand->opcode() == HloOpcode::kGetTupleElement) {
+          // kGetTupleElement only creates an alias among HloValues and is not
+          // included in the live range region. We check its operand instead.
+          operand = operand->mutable_operand(0);
+        }
+        if (region.contains(operand) &&
             ShapeUtil::Equal(instr->shape(), instr->operand(0)->shape())) {
           return false;  // Cannot intercept.
         }
         return true;
+      }
       // The following operations merely create aliases among the HloValues.
       case HloOpcode::kParameter:
       case HloOpcode::kTuple:
@@ -1723,10 +1757,9 @@ class CopyRemover {
     std::string result = "{";
     auto VisitValueNode = [&](const ValueNode* node) {
       if (result == "{") {
-        result = node->value->ToShortString();
-      } else {
-        StrAppend(&result, ", ");
         StrAppend(&result, node->value->ToShortString());
+      } else {
+        StrAppend(&result, ", ", node->value->ToShortString());
       }
     };
     VisitValueNode(element);

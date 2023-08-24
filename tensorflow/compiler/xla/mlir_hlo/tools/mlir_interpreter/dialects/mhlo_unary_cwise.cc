@@ -23,19 +23,6 @@ namespace mlir {
 namespace interpreter {
 namespace {
 
-struct Clz : CwiseInt {
-  template <typename T>
-  static T apply(T a) {
-    if (!a) {
-      // Return something well-defined for zeroes.
-      return sizeof(T{}) * CHAR_BIT;
-    }
-    return __builtin_clzl(
-               static_cast<uint64_t>(static_cast<std::make_unsigned_t<T>>(a))) -
-           (sizeof(uint64_t) - sizeof(T{})) * CHAR_BIT;
-  }
-};
-
 struct Logistic : CwiseNonIntegral {
   template <typename T>
   static T apply(T a) {
@@ -55,21 +42,6 @@ struct Not : CwiseIntegral {
   template <typename T>
   static T apply(T a) {
     return ~a;
-  }
-};
-
-struct PopCount : CwiseInt {
-  template <typename T>
-  static T apply(T a) {
-    return __builtin_popcountl(
-        static_cast<uint64_t>(static_cast<std::make_unsigned_t<T>>(a)));
-  }
-};
-
-struct RSqrt : CwiseNonIntegral {
-  template <typename T>
-  static T apply(T a) {
-    return static_cast<T>(T{1} / std::sqrt(a));
   }
 };
 

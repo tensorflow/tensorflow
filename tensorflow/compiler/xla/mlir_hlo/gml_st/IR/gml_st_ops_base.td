@@ -27,23 +27,11 @@ def GmlSt_Dialect : Dialect {
     The GmlSt (Google ML Structured) dialect is intended to hold operations,
     types and transformations to assist structured code generation.
   }];
-
-  let dependentDialects = ["tensor::TensorDialect"];
-  let useDefaultTypePrinterParser = 1;
-  let useDefaultAttributePrinterParser = 1;
-  let hasConstantMaterializer = 1;
 }
 
 class GMLST_Op<string mnemonic, list<Trait> traits> :
     Op<GmlSt_Dialect, mnemonic, traits> {
   let hasVerifier = 1;
 }
-
-def IteratorTypeEnum : EnumAttr<GmlSt_Dialect, IteratorType, "iterator_type"> {
-  let assemblyFormat = "`<` $value `>`";
-}
-
-def IteratorTypeArrayAttr : TypedArrayAttrBase<IteratorTypeEnum,
-    "Iterator type should be an enum.">;
 
 #endif // GML_ST_OPS_BASE

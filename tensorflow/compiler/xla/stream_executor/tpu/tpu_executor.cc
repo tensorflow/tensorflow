@@ -16,19 +16,30 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor.h"
 
 #include <cstdint>
+#include <memory>
+#include <optional>
 #include <utility>
 
 #include "absl/cleanup/cleanup.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/compiler/xla/stream_executor/allocator_stats.h"
+#include "tensorflow/compiler/xla/stream_executor/device_description.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory.h"
+#include "tensorflow/compiler/xla/stream_executor/device_options.h"
+#include "tensorflow/compiler/xla/stream_executor/event.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_event.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_stream.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_timer.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_topology.h"
 #include "tensorflow/tsl/c/tsl_status.h"
-
-using stream_executor::DeviceMemoryBase;
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace stream_executor {
 namespace tpu {
@@ -115,23 +126,6 @@ Status TpuExecutor::DeallocateEvent(Event* event) {
   return tsl::OkStatus();
 }
 
-// AllocateTimer/DeallocateTimer have no specialization.
-bool TpuExecutor::AllocateTimer(Timer* timer) { return true; }
-
-void TpuExecutor::DeallocateTimer(Timer* timer) {}
-
-bool TpuExecutor::StartTimer(Stream* stream, ::stream_executor::Timer* timer) {
-  return ExecutorApiFn()->TpuExecutor_StartTimerFn(
-      executor_, get_stream(stream->implementation()),
-      timer_map_.at(timer->implementation()));
-}
-
-bool TpuExecutor::StopTimer(Stream* stream, ::stream_executor::Timer* timer) {
-  return ExecutorApiFn()->TpuExecutor_StopTimerFn(
-      executor_, get_stream(stream->implementation()),
-      timer_map_.at(timer->implementation()));
-}
-
 stream_executor::Event::Status TpuExecutor::PollForEventStatus(
     stream_executor::Event* event) {
   auto se_event = tpu_platform().LookupEvent(event->implementation());
@@ -159,20 +153,11 @@ Status TpuExecutor::WaitForEvent(Stream* stream,
   return status.status();
 }
 
-// Implementations for Timer, Stream, Event
+// Implementations for Stream, Event
 // We need to map these implementations to internal equivalents -- thus we
-// allocate the internal Timer, Stream and Event operations here, and map
+// allocate the internal Stream and Event operations here, and map
 // the implementations to the internal values. The "wrapper" interfaces are
 // responsible for deallocating the internal value when they are destroyed.
-
-// Called by Timer::Timer
-std::unique_ptr<::stream_executor::internal::TimerInterface>
-TpuExecutor::GetTimerImplementation() {
-  SE_Timer* tpu_timer = ExecutorApiFn()->TpuTimer_NewFn(executor_);
-  auto ptr = std::make_unique<tensorflow::TpuTimer>(tpu_timer);
-  timer_map_[ptr.get()] = tpu_timer;
-  return ptr;
-}
 
 // Called by Stream::Stream
 std::unique_ptr<::stream_executor::internal::StreamInterface>
@@ -350,7 +335,7 @@ TSL_Status* HostCallbackTrampoline(void* ctx) {
   HostCallbackContext* host_ctx = reinterpret_cast<HostCallbackContext*>(ctx);
   Status status = std::move(host_ctx->callback)();
   TSL_Status* c_status = ExecutorApiFn()->TpuStatus_CreateFn(
-      status.code(), status.error_message().c_str());
+      status.raw_code(), tsl::NullTerminatedMessage(status));
   delete host_ctx;
   return c_status;
 }

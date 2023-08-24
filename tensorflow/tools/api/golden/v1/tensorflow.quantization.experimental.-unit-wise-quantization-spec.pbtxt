@@ -1,0 +1,47 @@
+path: "tensorflow.quantization.experimental.UnitWiseQuantizationSpec"
+tf_proto {
+  descriptor {
+    name: "UnitWiseQuantizationSpec"
+    field {
+      name: "unit_type"
+      number: 1
+      label: LABEL_OPTIONAL
+      type: TYPE_ENUM
+      type_name: ".tensorflow.quantization.UnitWiseQuantizationSpec.UnitType"
+    }
+    field {
+      name: "func_name"
+      number: 2
+      label: LABEL_OPTIONAL
+      type: TYPE_STRING
+    }
+    field {
+      name: "unit_name"
+      number: 3
+      label: LABEL_OPTIONAL
+      type: TYPE_STRING
+    }
+    field {
+      name: "quantization_component_spec"
+      number: 4
+      label: LABEL_REPEATED
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.quantization.QuantizationComponentSpec"
+    }
+    enum_type {
+      name: "UnitType"
+      value {
+        name: "UNIT_UNSPECIFIED"
+        number: 0
+      }
+      value {
+        name: "UNIT_NODE"
+        number: 1
+      }
+      value {
+        name: "UNIT_OP"
+        number: 2
+      }
+    }
+  }
+}

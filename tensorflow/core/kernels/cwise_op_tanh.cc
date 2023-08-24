@@ -31,7 +31,7 @@ REGISTER(UnaryOp, GPU, "Tanh", functor::tanh, bfloat16)
 REGISTER6(SimpleBinaryOp, CPU, "TanhGrad", functor::tanh_grad, float,
           Eigen::half, bfloat16, double, complex64, complex128);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-REGISTER3(SimpleBinaryOp, GPU, "TanhGrad", functor::tanh_grad, float,
-          Eigen::half, double);
+REGISTER4(SimpleBinaryOp, GPU, "TanhGrad", functor::tanh_grad, float,
+          Eigen::half, bfloat16, double);
 #endif
 }  // namespace tensorflow

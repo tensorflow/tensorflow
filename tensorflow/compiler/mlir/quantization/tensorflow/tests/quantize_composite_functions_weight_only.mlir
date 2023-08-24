@@ -1,4 +1,5 @@
-// RUN: tf-quant-opt %s -split-input-file -quant-insert-quantized-functions='quantization-method=weight_only target-opset=XLA' -quant-quantize-composite-functions='quantization-method=weight_only target-opset=XLA' -symbol-dce | FileCheck %s
+// RUN: tf-quant-opt %s -split-input-file -quant-insert-quantized-functions='quantization-method=weight_only target-opset=XLA' -quant-quantize-composite-functions='quantization-method=weight_only target-opset=XLA' -symbol-dce | FileCheck --check-prefix=PerTensor %s
+// RUN: tf-quant-opt %s -split-input-file -quant-insert-quantized-functions='quantization-method=weight_only target-opset=XLA' -quant-quantize-composite-functions='quantization-method=weight_only target-opset=XLA enable-per-channel-quantization=true' -symbol-dce | FileCheck --check-prefix=PerChannel %s
 
 module {
   // TODO(b/260020937): Support transpose_a, transpose_b for matmul.
@@ -13,13 +14,21 @@ module {
   }
 }
 
-// CHECK-LABEL: func @matmul
-// CHECK-DAG: %[[q_w:.*]] = "tf.Const"() {value = dense<0> : tensor<12x2xi8>} : () -> tensor<12x2xi8>
-// CHECK-DAG: %[[scale:.*]] = "tf.Const"() {value = dense<3.93700805E-9> : tensor<f32>} : () -> tensor<f32>
-// CHECK-DAG: %[[zp:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
-// CHECK: %[[out:.*]] = "tf.PartitionedCall"(%arg0, %[[q_w]], %[[scale]], %[[zp]]) {config = "", config_proto = "", executor_type = "",
-// CHECK-SAME: f = @quantized_matmul_fn_0} : (tensor<2x12xf32>, tensor<12x2xi8>, tensor<f32>, tensor<i32>) -> tensor<*xf32>
-// CHECK: return %[[out]]
+// PerTensor-LABEL: func @matmul
+// PerTensor-DAG: %[[q_w:.*]] = "tf.Const"() {value = dense<0> : tensor<12x2xi8>} : () -> tensor<12x2xi8>
+// PerTensor-DAG: %[[scale:.*]] = "tf.Const"() {value = dense<3.93700805E-9> : tensor<f32>} : () -> tensor<f32>
+// PerTensor-DAG: %[[zp:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+// PerTensor: %[[out:.*]] = "tf.PartitionedCall"(%arg0, %[[q_w]], %[[scale]], %[[zp]]) {config = "", config_proto = "", executor_type = "",
+// PerTensor-SAME: f = @quantized_matmul_fn_0} : (tensor<2x12xf32>, tensor<12x2xi8>, tensor<f32>, tensor<i32>) -> tensor<*xf32>
+// PerTensor: return %[[out]]
+
+// PerChannel-LABEL: func @matmul
+// PerChannel-DAG: %[[q_w:.*]] = "tf.Const"() {value = dense<0> : tensor<12x2xi8>} : () -> tensor<12x2xi8>
+// PerChannel-DAG: %[[scale:.*]] = "tf.Const"() {value = dense<3.93700805E-9> : tensor<f32>} : () -> tensor<f32>
+// PerChannel-DAG: %[[zp:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+// PerChannel: %[[out:.*]] = "tf.PartitionedCall"(%arg0, %[[q_w]], %[[scale]], %[[zp]]) {config = "", config_proto = "", executor_type = "",
+// PerChannel-SAME: f = @quantized_matmul_fn_0} : (tensor<2x12xf32>, tensor<12x2xi8>, tensor<f32>, tensor<i32>) -> tensor<*xf32>
+// PerChannel: return %[[out]]
 
 // -----
 
@@ -41,15 +50,25 @@ module {
     return %conv : tensor<*xf32>
   }
 
-// CHECK-LABEL: func @conv
-// CHECK-DAG: %[[q_w:.*]] = "tf.Const"()
-// CHECK-DAG: %[[scale:.*]] = "tf.Const"()
-// CHECK-DAG: %[[zp:.*]] = "tf.Const"()
-// CHECK: %[[out_1:.*]] = "tf.PartitionedCall"(%arg0, %[[q_w]], %[[scale]], %[[zp]]) {config = "", config_proto = "", executor_type = "",
-// CHECK-SAME: f = @quantized_conv2d_fn_1} : (tensor<1x2x2x3xf32>, tensor<2x3x3x2xi8>, tensor<f32>, tensor<i32>) -> tensor<*xf32>
-// CHECK: %[[out_2:.*]] = "tf.PartitionedCall"(%arg0, %[[q_w]], %[[scale]], %[[zp]]) {config = "", config_proto = "", executor_type = "",
-// CHECK-SAME: f = @quantized_conv2d_fn_0} : (tensor<1x2x2x3xf32>, tensor<2x3x3x2xi8>, tensor<f32>, tensor<i32>) -> tensor<*xf32>
-// CHECK: return %[[out_1]], %[[out_2]]
+// PerTensor-LABEL: func @conv
+// PerTensor-DAG: %[[q_w:.*]] = "tf.Const"() {value = dense<{{[0-9]+}}> : tensor<2x3x3x2xi8>} : () -> tensor<2x3x3x2xi8>
+// PerTensor-DAG: %[[scale:.*]] = "tf.Const"() {value = dense<{{[0-9\.Ee\+\-]+}}> : tensor<f32>} : () -> tensor<f32>
+// PerTensor-DAG: %[[zp:.*]] = "tf.Const"() {value = dense<{{[0-9]+}}> : tensor<i32>} : () -> tensor<i32>
+// PerTensor: %[[out_1:.*]] = "tf.PartitionedCall"(%arg0, %[[q_w]], %[[scale]], %[[zp]]) {config = "", config_proto = "", executor_type = "",
+// PerTensor-SAME: f = @quantized_conv2d_fn_1} : (tensor<1x2x2x3xf32>, tensor<2x3x3x2xi8>, tensor<f32>, tensor<i32>) -> tensor<*xf32>
+// PerTensor: %[[out_2:.*]] = "tf.PartitionedCall"(%arg0, %[[q_w]], %[[scale]], %[[zp]]) {config = "", config_proto = "", executor_type = "",
+// PerTensor-SAME: f = @quantized_conv2d_fn_0} : (tensor<1x2x2x3xf32>, tensor<2x3x3x2xi8>, tensor<f32>, tensor<i32>) -> tensor<*xf32>
+// PerTensor: return %[[out_1]], %[[out_2]]
+
+// PerChannel-LABEL: func @conv
+// PerChannel-DAG: %[[q_w:.*]] = "tf.Const"() {value = dense<{{[0-9]+}}> : tensor<2x3x3x2xi8>} : () -> tensor<2x3x3x2xi8>
+// PerChannel-DAG: %[[scale:.*]] = "tf.Const"() {value = dense<{{[0-9\.Ee\+\-]+}}> : tensor<2xf32>} : () -> tensor<2xf32>
+// PerChannel-DAG: %[[zp:.*]] = "tf.Const"() {value = dense<{{[0-9]+}}> : tensor<2xi32>} : () -> tensor<2xi32>
+// PerChannel: %[[out_1:.*]] = "tf.PartitionedCall"(%arg0, %[[q_w]], %[[scale]], %[[zp]]) {config = "", config_proto = "", executor_type = "",
+// PerChannel-SAME: f = @quantized_conv2d_fn_1} : (tensor<1x2x2x3xf32>, tensor<2x3x3x2xi8>, tensor<2xf32>, tensor<2xi32>) -> tensor<*xf32>
+// PerChannel: %[[out_2:.*]] = "tf.PartitionedCall"(%arg0, %[[q_w]], %[[scale]], %[[zp]]) {config = "", config_proto = "", executor_type = "",
+// PerChannel-SAME: f = @quantized_conv2d_fn_0} : (tensor<1x2x2x3xf32>, tensor<2x3x3x2xi8>, tensor<2xf32>, tensor<2xi32>) -> tensor<*xf32>
+// PerChannel: return %[[out_1]], %[[out_2]]
 
 }
 
@@ -78,16 +97,31 @@ module {
     return %0 : tensor<*xf32>
   }
 
-// CHECK-LABEL: func @depthwise_conv
-// CHECK-DAG: %[[q_w1:.*]] = "tf.Const"() {value = dense<127> : tensor<2x3x3x1xi8>}
-// CHECK-DAG: %[[q_w2:.*]] = "tf.Const"() {value = dense<127> : tensor<2x3x3x2xi8>} : () -> tensor<2x3x3x2xi8>
-// CHECK-DAG: %[[scale:.*]] = "tf.Const"() {value = dense<0.0236220472> : tensor<f32>} : () -> tensor<f32>
-// CHECK-DAG: %[[zp:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
-// CHECK-DAG: %[[bias:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<3xf32>}
-// CHECK: %[[out_1:.*]] = "tf.PartitionedCall"(%arg0, %[[q_w1]], %[[scale]], %[[zp]]) {config = "", config_proto = "", executor_type = "",
-// CHECK-SAME: f = @quantized_depthwise_conv2d_fn_1} : (tensor<1x3x4x3xf32>, tensor<2x3x3x1xi8>, tensor<f32>, tensor<i32>) -> tensor<*xf32>
-// CHECK: %[[out_1_add:.*]]  = "tf.BiasAdd"(%[[out_1]], %[[bias]])
-// CHECK: %[[out_2:.*]] = "tf.PartitionedCall"(%arg0, %[[q_w2]], %[[scale]], %[[zp]]) {config = "", config_proto = "", executor_type = "",
-// CHECK-SAME: f = @quantized_depthwise_conv2d_fn_0} : (tensor<1x3x4x3xf32>, tensor<2x3x3x2xi8>, tensor<f32>, tensor<i32>) -> tensor<*xf32>
-// CHECK: return %[[out_1_add]], %[[out_2]]
+// PerTensor-LABEL: func @depthwise_conv
+// PerTensor-DAG: %[[q_w1:.*]] = "tf.Const"() {value = dense<127> : tensor<2x3x3x1xi8>}
+// PerTensor-DAG: %[[q_w2:.*]] = "tf.Const"() {value = dense<127> : tensor<2x3x3x2xi8>} : () -> tensor<2x3x3x2xi8>
+// PerTensor-DAG: %[[scale:.*]] = "tf.Const"() {value = dense<0.0236220472> : tensor<f32>} : () -> tensor<f32>
+// PerTensor-DAG: %[[zp:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+// PerTensor-DAG: %[[bias:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<3xf32>}
+// PerTensor: %[[out_1:.*]] = "tf.PartitionedCall"(%arg0, %[[q_w1]], %[[scale]], %[[zp]]) {config = "", config_proto = "", executor_type = "",
+// PerTensor-SAME: f = @quantized_depthwise_conv2d_fn_1} : (tensor<1x3x4x3xf32>, tensor<2x3x3x1xi8>, tensor<f32>, tensor<i32>) -> tensor<*xf32>
+// PerTensor: %[[out_1_add:.*]]  = "tf.BiasAdd"(%[[out_1]], %[[bias]])
+// PerTensor: %[[out_2:.*]] = "tf.PartitionedCall"(%arg0, %[[q_w2]], %[[scale]], %[[zp]]) {config = "", config_proto = "", executor_type = "",
+// PerTensor-SAME: f = @quantized_depthwise_conv2d_fn_0} : (tensor<1x3x4x3xf32>, tensor<2x3x3x2xi8>, tensor<f32>, tensor<i32>) -> tensor<*xf32>
+// PerTensor: return %[[out_1_add]], %[[out_2]]
+
+// PerChannel-LABEL: func @depthwise_conv
+// PerChannel-DAG: %[[bias1:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<3xf32>} : () -> tensor<3xf32>
+// PerChannel-DAG: %[[q_w1:.*]] = "tf.Const"() {value = dense<{{[0-9]+}}> : tensor<2x3x3x1xi8>} : () -> tensor<2x3x3x1xi8>
+// PerChannel-DAG: %[[q_w2:.*]] = "tf.Const"() {value = dense<{{[0-9]+}}> : tensor<2x3x3x2xi8>} : () -> tensor<2x3x3x2xi8>
+// PerChannel-DAG: %[[scale1:.*]] = "tf.Const"() {value = dense<{{[0-9\.Ee\+\-]+}}> : tensor<3xf32>} : () -> tensor<3xf32>
+// PerChannel-DAG: %[[scale2:.*]] = "tf.Const"() {value = dense<{{[0-9\.Ee\+\-]+}}> : tensor<6xf32>} : () -> tensor<6xf32>
+// PerChannel-DAG: %[[zp1:.*]] = "tf.Const"() {value = dense<{{[0-9]+}}> : tensor<3xi32>} : () -> tensor<3xi32>
+// PerChannel-DAG: %[[zp2:.*]] = "tf.Const"() {value = dense<{{[0-9]+}}> : tensor<6xi32>} : () -> tensor<6xi32>
+// PerChannel: %[[out_1:.*]] = "tf.PartitionedCall"(%arg0, %[[q_w1]], %[[scale1]], %[[zp1]]) {config = "", config_proto = "", executor_type = "",
+// PerChannel-SAME: f = @quantized_depthwise_conv2d_fn_1} : (tensor<1x3x4x3xf32>, tensor<2x3x3x1xi8>, tensor<3xf32>, tensor<3xi32>) -> tensor<*xf32>
+// PerChannel: %[[out_1_add:.*]]  = "tf.BiasAdd"(%[[out_1]], %[[bias1]])
+// PerChannel: %[[out_2:.*]] = "tf.PartitionedCall"(%arg0, %[[q_w2]], %[[scale2]], %[[zp2]]) {config = "", config_proto = "", executor_type = "",
+// PerChannel-SAME: f = @quantized_depthwise_conv2d_fn_0} : (tensor<1x3x4x3xf32>, tensor<2x3x3x2xi8>, tensor<6xf32>, tensor<6xi32>) -> tensor<*xf32>
+// PerChannel: return %[[out_1_add]], %[[out_2]]
 }

@@ -39,7 +39,9 @@ void MultiHostHloRunnerFlags::AppendFlags(std::vector<tsl::Flag>* flags) {
                       "Log the input and output to stderr.");
   flags->emplace_back("run_xla_backend_only",
                       &flag_values_.run_xla_backend_only,
-                      "Only call XLA's RunBackend to compile the module.");
+                      "Call only XLA's RunBackend during the compilation. "
+                      "This is used to run a post-optimization HLO module "
+                      "(dumped as 'xxx.after_optimizations.hlo.xxx'");
   flags->emplace_back("disable_all_hlo_passes",
                       &flag_values_.disable_all_hlo_passes,
                       "Disable HLO passes or not.");
@@ -65,6 +67,9 @@ void MultiHostHloRunnerFlags::AppendFlags(std::vector<tsl::Flag>* flags) {
                       &flag_values_.while_execution_count,
                       "If set to a positive number, flatten all while loops to "
                       "a certain number of iterations.");
+  flags->emplace_back(
+      "remove_infeed_outfeed", &flag_values_.remove_infeed_outfeed,
+      "If set, we will remove all infeed and outfeed operations.");
   flags->emplace_back("num_repeats", &flag_values_.num_repeats,
                       "Repeatedly execute the HLO for this many times.");
   flags->emplace_back("execution_options_path",
@@ -110,7 +115,7 @@ bool MultiHostHloRunnerFlags::CreateOptionsFromFlags(
       flag_values_.while_execution_count > 0
           ? std::make_optional(flag_values_.while_execution_count)
           : std::nullopt;
-  preproc_options->remove_infeed_outfeed = true;
+  preproc_options->remove_infeed_outfeed = flag_values_.remove_infeed_outfeed;
 
   *raw_compile_options = FunctionalHloRunner::RawCompileOptions();
   raw_compile_options->hlo_passes_mode =

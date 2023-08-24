@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "absl/container/btree_map.h"
@@ -29,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
+#include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/statusor.h"
 
@@ -42,6 +44,17 @@ enum class InputFormat {
   kSnapshotProtoBinary,  // HloSnapshot protobuf binary format. Can be dumped by
                          // TensorFlow by setting the environment variable
                          // xla_dump_hlo_snapshots.
+};
+
+// Interface for profiler plugins. If being set in RunningOptions, profiling
+// session will be created for the last run of the HLO module.
+class ProfilerInterface {
+ public:
+  virtual ~ProfilerInterface() = default;
+  // Creates profiling session while running HLO module.
+  virtual void CreateSession() = 0;
+  // Uploads profiling session data after finishing running HLO module.
+  virtual void UploadSession() = 0;
 };
 
 bool AbslParseFlag(absl::string_view text, InputFormat* input_format,
@@ -65,8 +78,8 @@ class FunctionalHloRunner {
   enum class LogOutputMode { kLogOutput, kNotLogOutput };
 
   enum class HloPassesMode {
-    // Only call the XLA compiler's RunBackend to compile the module. This is
-    // used to run a post-optimization HLO module (dumped as
+    // Call only XLA's RunBackend during the compilation. This is used to run a
+    // post-optimization HLO module (dumped as
     // 'xxx.after_optimizations.hlo.xxx').
     kRunXLABackendOnly,
     // Calls Compile (i.e., both RunHloPasses and RunBackend) to compile the
@@ -173,6 +186,7 @@ class FunctionalHloRunner {
     // This indicates whether we log the inputs and outputs to stderr.
     LogOutputMode log_input_output_mode = LogOutputMode::kNotLogOutput;
     const MultiSliceConfig* multi_slice_config = nullptr;
+    ProfilerInterface* profiler = nullptr;
 
     // Should we log the inputs and outputs to stderr?
     bool log_input_output() const {
@@ -210,7 +224,7 @@ class FunctionalHloRunner {
   //
   // This is the highest level API in this file.
   static Status LoadAndRunAndDump(
-      PjRtClient& client,
+      PjRtClient& client, const DebugOptions& debug_options,
       const xla::FunctionalHloRunner::PreprocessingOptions& preproc_options,
       const xla::FunctionalHloRunner::RawCompileOptions& raw_compile_options,
       const xla::FunctionalHloRunner::RunningOptions& running_options,
@@ -223,7 +237,8 @@ class FunctionalHloRunner {
   // The hlo file might be a HLO snapshot and thus contain arguments, otherwise
   // it is run with fake arguments.
   static StatusOr<PerDeviceLiteralVecType> LoadAndRun(
-      PjRtClient& client, const PreprocessingOptions& preproc_options,
+      PjRtClient& client, const DebugOptions& debug_options,
+      const PreprocessingOptions& preproc_options,
       const CompileOptions& compile_options,
       const RunningOptions& running_options,
       absl::Span<const std::string> hlo_files, InputFormat input_format,
@@ -236,18 +251,31 @@ class FunctionalHloRunner {
   // use the same argument literals. This is essential to run HLO modules with
   // large arguments (e.g., models with large weights).
   static StatusOr<PerDeviceLiteralVecType> LoadAndRun(
-      PjRtClient& client, const PreprocessingOptions& preproc_options,
+      PjRtClient& client, const DebugOptions& debug_options,
+      const PreprocessingOptions& preproc_options,
       const CompileOptions& compile_options,
       const RunningOptions& running_options,
       absl::Span<const std::string> hlo_files, InputFormat input_format,
       const LiteralVec& argument_literals,
       const PerDeviceIndexVecType& per_device_index_vec);
 
+  // Loads and compiles an HLO for debugging purposes.
+  //
+  // This function allows compiling multi-device HLOs on machines with fewer
+  // devices.
+  static Status LoadAndCompile(PjRtClient& client,
+                               const DebugOptions& debug_options,
+                               const PreprocessingOptions& preproc_options,
+                               const RawCompileOptions& raw_compile_options,
+                               std::string_view hlo_file,
+                               InputFormat input_format, int task_id = 0);
+
   // Compiles and runs the given HLO module with the given arguments for each
   // device. The given arguments is a map from device ID to a list of arguments.
   // If the arguments map is empty, the HLO module is run with fake arguments.
   static StatusOr<PerDeviceLiteralVecType> CompileAndRun(
-      PjRtClient& client, const PreprocessingOptions& preproc_options,
+      PjRtClient& client, const DebugOptions& debug_options,
+      const PreprocessingOptions& preproc_options,
       const CompileOptions& compile_options,
       const RunningOptions& running_options, HloModule* hlo_module,
       const PerDeviceLiteralVecType& arguments = {});
@@ -259,7 +287,8 @@ class FunctionalHloRunner {
   // devices may use the same argument literals. This is essential to run HLO
   // modules with large arguments (e.g., models with large weights).
   static StatusOr<PerDeviceLiteralVecType> CompileAndRun(
-      PjRtClient& client, const PreprocessingOptions& preproc_options,
+      PjRtClient& client, const DebugOptions& debug_options,
+      const PreprocessingOptions& preproc_options,
       const CompileOptions& compile_options,
       const RunningOptions& running_options, HloModule* hlo_module,
       const LiteralVec& argument_literals,
@@ -268,8 +297,19 @@ class FunctionalHloRunner {
   // Compiles the HLO module.
   static StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       PjRtClient& client, HloModule* hlo_module,
+      const DebugOptions& debug_options,
       const PreprocessingOptions& preproc_options,
       const CompileOptions& compile_options);
+
+  // Ahead-of-time compilation using the PjRtTopologyDescription that's passed
+  // instead of using the registered topology. This enables reproduction of
+  // compilation based on captured information.
+  static StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+      PjRtClient& client, HloModule* hlo_module,
+      const DebugOptions& debug_options,
+      const PreprocessingOptions& preproc_options,
+      const CompileOptions& compile_options,
+      const PjRtTopologyDescription& topology);
 
   // Runs the executable.
   static StatusOr<PerDeviceLiteralVecType> Run(
@@ -306,7 +346,8 @@ class FunctionalHloRunner {
   // This would ideally be private, but we need it for the implementation of
   // MultihostHloRunner.
   static Status PrepareHloModuleForCompilation(
-      HloModule* hlo_module, const PreprocessingOptions& preproc_options);
+      HloModule* hlo_module, const DebugOptions& debug_options,
+      const PreprocessingOptions& preproc_options);
   // This would ideally be private, but we need it for the implementation of
   // MultihostHloRunner.
   static CompileOptions CompleteCompileOptions(const HloModule& hlo_module,
@@ -390,6 +431,13 @@ bool AbslParseFlag(absl::string_view text,
                    std::string* error);
 std::string AbslUnparseFlag(
     FunctionalHloRunner::ModuleArgumentMode argument_mode);
+
+bool AbslParseFlag(absl::string_view text,
+                   FunctionalHloRunner::ModuleOutputMode* output_mode,
+                   std::string* error);
+std::string AbslUnparseFlag(FunctionalHloRunner::ModuleOutputMode output_mode);
+
+void AddShardingAnnotationsToSpmdPartitionedModule(HloModule* hlo_module);
 
 }  // namespace xla
 

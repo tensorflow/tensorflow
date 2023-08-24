@@ -444,3 +444,9 @@ def WhileOutlinePass : Pass<"tfl-while-loop-outline", "mlir::ModuleOp"> {
   let constructor = "CreateWhileOutlinePass()";
   let dependentDialects = ["TF::TensorFlowDialect"];
 }
+
+def LegalizeTensorListPass : Pass<"tfl-legalize-tensorlist", "mlir::ModuleOp"> {
+  let summary = "Legalize TensorFlow tensorlist ops to TensorFlow Lite custom.";
+  let constructor = "CreateLegalizeTensorListPass()";
+  let dependentDialects = ["TFL::TensorFlowLiteDialect"];
+}

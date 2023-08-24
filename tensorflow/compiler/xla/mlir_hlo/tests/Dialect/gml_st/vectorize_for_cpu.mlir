@@ -54,8 +54,8 @@ func.func @vectorize_static_matmul(%lhs: tensor<128x16xf32>,
   %c0 = arith.constant 0 : index
   %c128 = arith.constant 128 : index
   %c64 = arith.constant 64 : index
-  %0 = gml_st.parallel (%i, %j) = (%c0, %c0) to (%c128, %c64) step (%c8, %c4)
-    outs (%out_ = %fill: tensor<128x64xf32>) {
+  %0 = scf.forall (%i, %j) = (%c0, %c0) to (%c128, %c64) step (%c8, %c4)
+    shared_outs (%out_ = %fill) -> (tensor<128x64xf32>) {
     %2 = tensor.extract_slice %lhs[%i, 0] [8, 16] [1, 1] :
             tensor<128x16xf32> to tensor<8x16xf32>
     %4 = tensor.extract_slice %rhs[0, %j] [16, 4] [1, 1] :
@@ -73,10 +73,11 @@ func.func @vectorize_static_matmul(%lhs: tensor<128x16xf32>,
                           outs(%13 : tensor<8x4xf32>) -> tensor<8x4xf32>
       scf.yield %14 : tensor<8x4xf32>
     }
-    %5 = gml_st.tile [%i, %j] [8, 4] [1, 1] : !gml_st.tile<8x4>
-    gml_st.set_yield %7 into %out_[%5] :
-            tensor<8x4xf32> into tensor<128x64xf32>[!gml_st.tile<8x4>]
-  } : tensor<128x64xf32>
+    scf.forall.in_parallel {
+      tensor.parallel_insert_slice %7 into %out_[%i, %j] [8, 4] [1, 1]  :
+              tensor<8x4xf32> into tensor<128x64xf32>
+    }
+  }
   return %0 : tensor<128x64xf32>
 }
 // CHECK-LABEL: func @vectorize_static_matmul

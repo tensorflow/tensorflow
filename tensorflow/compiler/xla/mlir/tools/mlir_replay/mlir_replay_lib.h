@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_MLIR_TOOLS_MLIR_REPLAY_MLIR_REPLAY_LIB_H_
 
 #include <string>
+#include <vector>
 
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/tools/mlir_replay/public/execution_trace.pb.h"
@@ -31,7 +32,7 @@ namespace interpreter {
 tsl::StatusOr<SmallVector<InterpreterValue>> Run(
     MLIRContext& context, const std::string& mlir_ir,
     const xla::HloSnapshot& snapshot, ExecutionTrace* trace,
-    const std::string& entry);
+    const std::vector<std::string>& entry);
 
 }  // namespace interpreter
 }  // namespace mlir

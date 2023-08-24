@@ -33,7 +33,7 @@ namespace tools {
 namespace {
 
 static constexpr char kModelPath[] =
-    "third_party/tensorflow/lite/java/demo/app/src/main/assets/"
+    "../tflite_mobilenet_float/"
     "mobilenet_v1_1.0_224.tflite";
 
 using ::testing::IsNull;

@@ -42,7 +42,7 @@ CheckpointReader::CheckpointReader(const string& filename, TF_Status* status)
     v2_reader_.reset(
         new BundleReader(Env::Default(), filename /* prefix to a V2 ckpt */));
     if (!v2_reader_->status().ok()) {
-      Set_TF_Status_from_Status(status, v2_reader_->status());
+      tsl::Set_TF_Status_from_Status(status, v2_reader_->status());
       return;
     }
     auto result = BuildV2VarMaps();
@@ -51,7 +51,7 @@ CheckpointReader::CheckpointReader(const string& filename, TF_Status* status)
   } else {
     reader_.reset(new TensorSliceReader(filename));
     if (!reader_->status().ok()) {
-      Set_TF_Status_from_Status(status, reader_->status());
+      tsl::Set_TF_Status_from_Status(status, reader_->status());
       return;
     }
     var_to_shape_map_.reset(
@@ -102,7 +102,7 @@ void CheckpointReader::GetTensor(
     }
   }
   if (!status.ok()) {
-    Set_TF_Status_from_Status(out_status, status);
+    tsl::Set_TF_Status_from_Status(out_status, status);
   }
 }
 

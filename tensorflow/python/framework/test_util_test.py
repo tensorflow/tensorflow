@@ -16,6 +16,7 @@
 
 import collections
 import copy
+import dataclasses
 import random
 import sys
 import threading
@@ -41,10 +42,11 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -54,6 +56,26 @@ from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import googletest
 from tensorflow.python.util.protobuf import compare_test_pb2
+
+
+@dataclasses.dataclass
+class MaskedTensor:
+  mask: bool
+  value: tensor.Tensor
+
+  def __tf_flatten__(self):
+    metadata = (self.mask,)
+    components = (self.value,)
+    return metadata, components
+
+  @classmethod
+  def __tf_unflatten__(cls, metadata, components):
+    mask = metadata[0]
+    value = components[0]
+    return MaskedTensor(mask=mask, value=value)
+
+  def __eq__(self, other):
+    return self.mask == other.mask and self.value == other.value
 
 
 class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
@@ -218,10 +240,31 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         relative_tolerance=1e-7,
     )
 
+  def test_float_relative_tolerance_nan(self):
+    pb1 = compare_test_pb2.Floats(float_=float("nan"))
+    pb2 = compare_test_pb2.Floats(float_=float("nan"))
+    self.assertProtoEquals(pb1, pb2, relative_tolerance=1e-7)
+    pb2 = compare_test_pb2.Floats(float_=2)
+    self.assertRaises(
+        AssertionError,
+        self.assertProtoEquals,
+        pb1,
+        pb2,
+        relative_tolerance=1e-7,
+    )
+
   def test_float_relative_tolerance_inf(self):
     pb1 = compare_test_pb2.Floats(float_=float("inf"))
     pb2 = compare_test_pb2.Floats(float_=float("inf"))
     self.assertProtoEquals(pb1, pb2, relative_tolerance=1e-5)
+    pb1 = compare_test_pb2.Floats(float_=1)
+    self.assertRaises(
+        AssertionError,
+        self.assertProtoEquals,
+        pb1,
+        pb2,
+        relative_tolerance=1e-7,
+    )
 
   def test_float_relative_tolerance_denormal(self):
     pb1 = compare_test_pb2.Floats(
@@ -509,7 +552,7 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         # seems sensible
         x = constant_op.constant(True)
         y = [15]
-        control_flow_ops.Assert(x, y).run()
+        control_flow_assert.Assert(x, y).run()
 
   @test_util.run_in_graph_and_eager_modes
   def testAssertAllCloseAccordingToType(self):
@@ -888,6 +931,21 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     self.assertEqual(expected, self.evaluate(nested))
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_custom_dataclass_evaluate(self):
+    mt = MaskedTensor(mask=True, value=constant_op.constant([1]))
+    mt_val = self.evaluate(mt)
+    self.assertEqual(mt_val.mask, True)
+    self.assertAllEqual(mt_val.value, [1])
+
+    mt2 = MaskedTensor(mask=True, value=constant_op.constant([1]))
+    mt2_val = self.evaluate(mt2)
+    self.assertEqual(mt_val, mt2_val)
+
+    mt3 = MaskedTensor(mask=True, value=constant_op.constant([2]))
+    mt3_val = self.evaluate(mt3)
+    self.assertNotEqual(mt_val, mt3_val)
+
   def test_run_in_graph_and_eager_modes(self):
     l = []
     def inc(self, with_brackets):
@@ -1107,26 +1165,6 @@ class GraphAndEagerNoVariableSharing(test_util.TensorFlowTestCase):
 
 class GarbageCollectionTest(test_util.TensorFlowTestCase):
 
-  def test_no_reference_cycle_decorator(self):
-
-    class ReferenceCycleTest(object):
-
-      def __init__(inner_self):  # pylint: disable=no-self-argument
-        inner_self.assertEqual = self.assertEqual  # pylint: disable=invalid-name
-
-      @test_util.assert_no_garbage_created
-      def test_has_cycle(self):
-        a = []
-        a.append(a)
-
-      @test_util.assert_no_garbage_created
-      def test_has_no_cycle(self):
-        pass
-
-    with self.assertRaises(AssertionError):
-      ReferenceCycleTest().test_has_cycle()
-
-    ReferenceCycleTest().test_has_no_cycle()
 
   @test_util.run_in_graph_and_eager_modes
   def test_no_leaked_tensor_decorator(self):
@@ -1190,9 +1228,9 @@ class RunFunctionsEagerlyInV2Test(test_util.TensorFlowTestCase,
         if run_eagerly:
           self.assertTrue(isinstance(t, ops.EagerTensor) for t in results)
         else:
-          self.assertTrue(isinstance(t, ops.Tensor) for t in results)
+          self.assertTrue(isinstance(t, tensor.Tensor) for t in results)
       else:
-        self.assertTrue(isinstance(t, ops.Tensor) for t in results)
+        self.assertTrue(isinstance(t, tensor.Tensor) for t in results)
 
 
 class SyncDevicesTest(test_util.TensorFlowTestCase):

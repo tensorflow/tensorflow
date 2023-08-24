@@ -77,8 +77,6 @@ class ListDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64_t CardinalityInternal() const override { return num_elements_; }
-
   int64_t CardinalityInternal(CardinalityOptions options) const override {
     return num_elements_;
   }

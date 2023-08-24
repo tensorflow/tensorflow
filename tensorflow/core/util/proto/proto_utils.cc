@@ -75,14 +75,15 @@ Status ParseTextFormatFromString(absl::string_view input,
   // When checks are disabled, instead log the error and return an error status.
   if (output == nullptr) {
     LOG(ERROR) << "output must be non NULL";
-    return Status(error::INVALID_ARGUMENT, "output must be non NULL");
+    return Status(absl::StatusCode::kInvalidArgument,
+                  "output must be non NULL");
   }
   string err;
   StringErrorCollector err_collector(&err, /*one-indexing=*/true);
   protobuf::TextFormat::Parser parser;
   parser.RecordErrorsTo(&err_collector);
   if (!parser.ParseFromString(string(input), output)) {
-    return Status(error::INVALID_ARGUMENT, err);
+    return Status(absl::StatusCode::kInvalidArgument, err);
   }
   return OkStatus();
 }

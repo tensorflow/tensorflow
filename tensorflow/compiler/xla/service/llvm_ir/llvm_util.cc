@@ -16,36 +16,58 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <limits>
+#include <map>
 #include <memory>
 #include <string>
-#include <vector>
+#include <utility>
 
 #include "absl/base/casts.h"
-#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/IR/Attributes.h"
+#include "llvm/IR/CallingConv.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/GlobalVariable.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/InstrTypes.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/MDBuilder.h"
-#include "llvm/IR/Operator.h"
-#include "llvm/Support/CommandLine.h"
-#include "llvm/Target/TargetOptions.h"
-#include "llvm/TargetParser/Triple.h"
+#include "llvm/IR/Type.h"
+#include "llvm/Support/Alignment.h"
+#include "llvm/Support/Casting.h"
+#include "llvm/Support/CodeGen.h"
+#include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Utils/Cloning.h"
-#include "tensorflow/compiler/xla/debug_options_flags.h"
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
 #include "tensorflow/compiler/xla/service/dump.h"
+#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_type_conversion_util.h"
-#include "tensorflow/compiler/xla/service/name_uniquer.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/platform/byte_order.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/file_system.h"
 #include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
@@ -75,16 +97,6 @@ llvm::Module* ModuleFromIRBuilder(llvm::IRBuilder<>* b) {
 }
 
 }  // namespace
-
-std::unique_ptr<llvm::Module> DropConstantInitializers(
-    const llvm::Module& module) {
-  std::unique_ptr<llvm::Module> cloned_module = CloneModule(module);
-  for (llvm::GlobalVariable& global_var : cloned_module->globals()) {
-    global_var.setInitializer(nullptr);
-    global_var.setLinkage(llvm::GlobalValue::LinkageTypes::ExternalLinkage);
-  }
-  return cloned_module;
-}
 
 std::string DumpToString(const llvm::Module* module) {
   return DumpToStringTempl(module);
@@ -191,7 +203,10 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
       // used for storage.
       return llvm::Type::getInt16Ty(module->getContext());
     case F8E5M2:
+    case F8E5M2FNUZ:
     case F8E4M3FN:
+    case F8E4M3B11FNUZ:
+    case F8E4M3FNUZ:
       // Similarly as with BF16, we represent F8 as an int since there is no
       // LLVM F8 dtype.
       return llvm::Type::getInt8Ty(module->getContext());
@@ -616,7 +631,6 @@ static Status CreateAndWriteStringToFile(const std::string& directory_name,
 void DumpIrIfEnabled(const HloModule& hlo_module,
                      const llvm::Module& llvm_module, bool optimized,
                      absl::string_view filename_suffix) {
-  const auto& debug_opts = hlo_module.config().debug_options();
   if (!DumpingEnabledForHloModule(hlo_module)) {
     return;
   }
@@ -628,15 +642,6 @@ void DumpIrIfEnabled(const HloModule& hlo_module,
                    filename_suffix.empty() ? "" : ".", filename_suffix);
   DumpToFileInDirOrStdout(hlo_module, "", absl::StrCat(suffix, ".ll"),
                           DumpToString(&llvm_module));
-
-  // For some models the embedded constants can be huge, so also dump the module
-  // with the constants stripped to get IR that is easier to manipulate.  Skip
-  // this if we're dumping to stdout; there's no point in duplicating everything
-  // when writing to the terminal.
-  if (!DumpingToStdout(debug_opts)) {
-    DumpToFileInDir(hlo_module, "", absl::StrCat(suffix, "-noconst.ll"),
-                    DumpToString(DropConstantInitializers(llvm_module).get()));
-  }
 }
 
 llvm::Function* CreateCpuFunction(llvm::FunctionType* function_type,

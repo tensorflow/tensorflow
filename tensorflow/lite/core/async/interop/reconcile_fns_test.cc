@@ -36,7 +36,7 @@ void SetAttr(ContainerT* c, KeyT k, ValT v) {
 
 template <typename ValT, typename KeyT>
 ValT GetAttr(const ContainerT& c, KeyT k) {
-  return c.at(static_cast<uint32_t>(k)).Get<ValT>();
+  return *(c.at(static_cast<uint32_t>(k)).Get<ValT>());
 }
 
 TEST(ReconcileTest, NullCheck) {

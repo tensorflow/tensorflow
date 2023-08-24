@@ -18,6 +18,8 @@ limitations under the License.
 #include "tensorflow/compiler/xrt/xrt_device.h"
 
 #include <map>
+#include <memory>
+#include <string>
 
 #include "absl/container/node_hash_map.h"
 #include "tensorflow/compiler/jit/xla_device.h"

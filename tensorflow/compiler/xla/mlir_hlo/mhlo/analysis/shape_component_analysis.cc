@@ -740,7 +740,7 @@ void ShapeComponentAnalysis::compute(ShapeOrValueInfo requestedInfo) {
       .visit(requestedInfo);
 }
 
-Optional<ArrayRef<SymbolicExpr>>
+std::optional<ArrayRef<SymbolicExpr>>
 ShapeComponentAnalysis::ShapeComponentAnalysis::GetShapeInfo(Value value) {
   auto request = ShapeOrValueInfo::getShapeInfoOf(value);
   compute(request);
@@ -749,7 +749,7 @@ ShapeComponentAnalysis::ShapeComponentAnalysis::GetShapeInfo(Value value) {
   return llvm::ArrayRef(found->second);
 }
 
-Optional<ArrayRef<SymbolicExpr>>
+std::optional<ArrayRef<SymbolicExpr>>
 ShapeComponentAnalysis::ShapeComponentAnalysis::GetValueInfo(Value shape) {
   auto request = ShapeOrValueInfo::getValueInfoOf(shape);
   compute(request);

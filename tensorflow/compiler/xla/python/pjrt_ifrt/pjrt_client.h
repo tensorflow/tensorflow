@@ -58,6 +58,7 @@ class PjRtCompatibleClient
 class PjRtClient final
     : public llvm::RTTIExtends<PjRtClient, PjRtCompatibleClient> {
  public:
+  // Creates a `Client` with a `PjRtClient`.
   static std::unique_ptr<PjRtClient> Create(
       std::shared_ptr<xla::PjRtClient> pjrt_client);
 
@@ -137,19 +138,19 @@ class PjRtClient final
     return pjrt_client_->LookupDevice(device_id);
   }
 
-  StatusOr<ChannelHandle> CreateDeviceToHostChannelHandle() override {
+  StatusOr<Device*> LookupAddressableDevice(
+      int local_hardware_id) const override {
     DCHECK(this);
-    return pjrt_client_->CreateDeviceToHostChannelHandle();
-  }
-  StatusOr<ChannelHandle> CreateHostToDeviceChannelHandle() override {
-    DCHECK(this);
-    return pjrt_client_->CreateHostToDeviceChannelHandle();
+    return pjrt_client_->LookupAddressableDevice(local_hardware_id);
   }
 
   Compiler* GetDefaultCompiler() override {
     DCHECK(this);
     return &default_compiler_;
   }
+
+  StatusOr<std::shared_ptr<const xla::PjRtTopologyDescription>>
+  GetTopologyForDevices(absl::Span<Device* const> devices) const override;
 
   static char ID;  // NOLINT
 

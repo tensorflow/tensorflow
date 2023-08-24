@@ -60,7 +60,15 @@ extern void TSL_SetStatus(TSL_Status* s, TSL_Code code, const char* msg);
 // Record <key, value> as a payload in *s. The previous payload having the
 // same key (if any) is overwritten. Payload will not be added if the Status
 // is OK.
-void TSL_SetPayload(TSL_Status* s, const char* key, const char* value);
+extern void TSL_SetPayload(TSL_Status* s, const char* key, const char* value);
+
+// Iterates over the stored payloads and calls the `visitor(key, value)`
+// callable for each one. `key` and `value` is only usable during the callback.
+// `capture` will be passed to the callback without modification.
+typedef void (*TSL_PayloadVisitor)(const char* key, const char* value,
+                                   void* capture);
+extern void TSL_ForEachPayload(const TSL_Status* s, TSL_PayloadVisitor visitor,
+                               void* capture);
 
 // Convert from an I/O error code (e.g., errno) to a TSL_Status value.
 // Any previous information is lost. Prefer to use this instead of TSL_SetStatus

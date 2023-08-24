@@ -14,10 +14,10 @@
 # ==============================================================================
 """smart_cond and related utilities."""
 
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_case
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -54,8 +54,8 @@ def smart_cond(pred, true_fn=None, false_fn=None, name=None):
     else:
       return false_fn()
   else:
-    return control_flow_ops.cond(pred, true_fn=true_fn, false_fn=false_fn,
-                                 name=name)
+    return cond.cond(pred, true_fn=true_fn, false_fn=false_fn,
+                     name=name)
 
 
 def smart_constant_value(pred):
@@ -70,7 +70,7 @@ def smart_constant_value(pred):
   Raises:
     TypeError: If `pred` is not a Tensor or bool.
   """
-  if isinstance(pred, ops.Tensor):
+  if isinstance(pred, tensor.Tensor):
     pred_value = tensor_util.constant_value(pred)
     # TODO(skyewm): consider folding this into tensor_util.constant_value.
     # pylint: disable=protected-access

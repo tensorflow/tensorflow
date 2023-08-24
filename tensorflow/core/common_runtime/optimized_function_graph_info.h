@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <utility>
 
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/optimized_function_graph.pb.h"
@@ -43,6 +44,36 @@ struct OptimizedFunctionGraphInfo {
   DataTypeVector ret_types;
   // Number of return nodes.
   size_t num_return_nodes;
+  // Time (in microseconds) spent on running the graph optimization passes for
+  // this function.
+  uint64_t optimization_duration_usecs;
+  // Indicates the source environment where the optimization is created.
+  OptimizedFunctionGraph::OptimizationSource optimization_source;
+
+  ~OptimizedFunctionGraphInfo() = default;
+  OptimizedFunctionGraphInfo() : lib_def(OpRegistry::Global()) {}
+  OptimizedFunctionGraphInfo(
+      const std::string& name, std::unique_ptr<Graph>&& graph,
+      FunctionLibraryDefinition&& lib_def,
+      const std::unordered_map<string, string>& node_name_to_control_ret,
+      const DataTypeVector& ret_types, size_t num_return_nodes,
+      uint64_t optimization_duration_usecs,
+      OptimizedFunctionGraph::OptimizationSource optimization_source)
+      : name(name),
+        function_graph(std::move(graph)),
+        lib_def(std::move(lib_def)),
+        node_name_to_control_ret(node_name_to_control_ret),
+        ret_types(ret_types),
+        num_return_nodes(num_return_nodes),
+        optimization_duration_usecs(optimization_duration_usecs),
+        optimization_source(optimization_source) {}
+
+  OptimizedFunctionGraphInfo(OptimizedFunctionGraphInfo& info) = delete;
+  OptimizedFunctionGraphInfo& operator=(OptimizedFunctionGraphInfo& info) =
+      delete;
+  OptimizedFunctionGraphInfo(OptimizedFunctionGraphInfo&& info) = default;
+  OptimizedFunctionGraphInfo& operator=(OptimizedFunctionGraphInfo&& info) =
+      default;
 
   // Converts from the struct to OptimizedFunctionGraph proto.
   static OptimizedFunctionGraph ToProto(const OptimizedFunctionGraphInfo& info);

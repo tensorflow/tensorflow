@@ -52,6 +52,7 @@ GpuVendor GetGpuVendor(const std::string& gpu_description) {
 AdrenoGpu GetAdrenoGpuVersion(const std::string& gpu_description) {
   const std::map<std::string, AdrenoGpu> kMapping = {
       // Adreno 7xx series
+      {"740", AdrenoGpu::kAdreno740},
       {"730", AdrenoGpu::kAdreno730},
       // Adreno 6xx series
       {"685", AdrenoGpu::kAdreno685},
@@ -138,11 +139,20 @@ MaliGpu GetMaliGpuVersion(const std::string& gpu_description) {
 PowerVRGpu GetPowerVRGpuVersion(const std::string& gpu_description) {
   // Order must be preserved
   const std::vector<std::pair<std::string, PowerVRGpu>> kMapping = {
-      {"rogue", PowerVRGpu::kRogue},     {"axe", PowerVRGpu::kAXE},
-      {"axm", PowerVRGpu::kAXM},         {"axt", PowerVRGpu::kAXT},
-      {"bxe", PowerVRGpu::kBXE},         {"bxm", PowerVRGpu::kBXM},
-      {"bxs", PowerVRGpu::kBXS},         {"bxt", PowerVRGpu::kBXT},
-      {"cxt", PowerVRGpu::kCXT},         {"dxt", PowerVRGpu::kDXT},
+      {"rogue gm9", PowerVRGpu::kRogueGm9xxx},    // From OpenGL
+      {"powervr gm9", PowerVRGpu::kRogueGm9xxx},  /// From OpenCL
+      {"rogue ge8", PowerVRGpu::kRogueGe8xxx},    // From OpenGL
+      {"powervr ge8", PowerVRGpu::kRogueGe8xxx},  /// From OpenCL
+      {"rogue", PowerVRGpu::kRogue},
+      {"axe", PowerVRGpu::kAXE},
+      {"axm", PowerVRGpu::kAXM},
+      {"axt", PowerVRGpu::kAXT},
+      {"bxe", PowerVRGpu::kBXE},
+      {"bxm", PowerVRGpu::kBXM},
+      {"bxs", PowerVRGpu::kBXS},
+      {"bxt", PowerVRGpu::kBXT},
+      {"cxt", PowerVRGpu::kCXT},
+      {"dxt", PowerVRGpu::kDXT},
       {"powervr g", PowerVRGpu::kRogue},
   };
   for (const auto& v : kMapping) {
@@ -218,7 +228,13 @@ bool AdrenoInfo::IsAdreno6xx() const {
 }
 
 bool AdrenoInfo::IsAdreno7xx() const {
-  return adreno_gpu == AdrenoGpu::kAdreno730;
+  return adreno_gpu == AdrenoGpu::kAdreno730 ||
+         adreno_gpu == AdrenoGpu::kAdreno740;
+}
+
+bool AdrenoInfo::IsBetterThan(AdrenoGpu gpu) const {
+  // Smaller value is better (recent) version.
+  return (adreno_gpu <= gpu);
 }
 
 bool AdrenoInfo::IsAdreno6xxOrHigher() const {
@@ -284,6 +300,8 @@ int AdrenoInfo::GetComputeUnitsCount() const {
   // can provide not correct numbers.
   switch (adreno_gpu) {
     // Adreno 7xx series
+    case AdrenoGpu::kAdreno740:
+      return 6;
     case AdrenoGpu::kAdreno730:
       return 4;
     // Adreno 6xx series
@@ -575,7 +593,11 @@ int MaliInfo::GetApproximateComputeUnitsCount() const {
 PowerVRInfo::PowerVRInfo(const std::string& gpu_description)
     : gpu_version(GetPowerVRGpuVersion(gpu_description)) {}
 
-bool PowerVRInfo::IsRogue() const { return gpu_version == PowerVRGpu::kRogue; }
+bool PowerVRInfo::IsRogue() const {
+  return gpu_version == PowerVRGpu::kRogue ||
+         gpu_version == PowerVRGpu::kRogueGe8xxx ||
+         gpu_version == PowerVRGpu::kRogueGm9xxx;
+}
 
 bool PowerVRInfo::IsImgAxx() const {
   return gpu_version == PowerVRGpu::kAXE || gpu_version == PowerVRGpu::kAXM ||
@@ -591,6 +613,11 @@ bool PowerVRInfo::IsImgCxx() const { return gpu_version == PowerVRGpu::kCXT; }
 
 bool PowerVRInfo::IsImgDxx() const { return gpu_version == PowerVRGpu::kDXT; }
 
+bool PowerVRInfo::IsBetterThan(PowerVRGpu gpu) const {
+  // Smaller value is better (recent) version.
+  return (gpu_version <= gpu);
+}
+
 void GetGpuInfoFromDeviceDescription(const std::string& gpu_description,
                                      GpuApi gpu_api, GpuInfo* gpu_info) {
   gpu_info->gpu_api = gpu_api;
@@ -599,9 +626,11 @@ void GetGpuInfoFromDeviceDescription(const std::string& gpu_description,
   gpu_info->vendor = GetGpuVendor(lowered);
 
   // Because clvk is an OpenCL layer on top of vulkan, it does not react to CL
-  // optimisation as native CL implementation does. For the time being, let's
-  // manage it manually with explicit conditions in the code.
-  if (gpu_info->IsApiOpenCl() && gpu_info->opencl_info.IsCLVK()) {
+  // optimisation as native CL implementation does.
+  // AMD is particularly affected, thus let's manage it differently to get the
+  // best performances out of it.
+  if (gpu_info->IsApiOpenCl() && gpu_info->opencl_info.IsCLVK() &&
+      gpu_info->IsAMD()) {
     gpu_info->vendor = GpuVendor::kUnknown;
   }
 

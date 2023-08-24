@@ -418,6 +418,50 @@ class TypeSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertIsNone(v1.most_specific_common_supertype([v2]))
     self.assertIsNone(v2.most_specific_common_supertype([v1]))
 
+  def testTensorDecomposition(self):
+    value = TwoComposites(
+        ragged_factory_ops.constant([[1, 2], [3]], dtypes.int32),
+        ragged_factory_ops.constant([[5], [6, 7, 8]], dtypes.float32),
+    )
+    spec = type_spec.type_spec_from_value(value)
+
+    self.assertEqual(
+        spec._flatten(),
+        [
+            tensor_spec.TensorSpec(shape=(None,), dtype=dtypes.int32),
+            tensor_spec.TensorSpec(shape=(3,), dtype=dtypes.int64),
+            tensor_spec.TensorSpec(shape=(None,), dtype=dtypes.float32),
+            tensor_spec.TensorSpec(shape=(3,), dtype=dtypes.int64),
+        ],
+    )
+    self.assertEqual(
+        [trace_type.from_value(t) for t in spec._to_tensors(value)],
+        [
+            tensor_spec.TensorSpec(shape=(3,), dtype=dtypes.int32),
+            tensor_spec.TensorSpec(shape=(3,), dtype=dtypes.int64),
+            tensor_spec.TensorSpec(shape=(4,), dtype=dtypes.float32),
+            tensor_spec.TensorSpec(shape=(3,), dtype=dtypes.int64),
+        ],
+    )
+
+    flat_original = spec._to_tensors(value)
+    reconstructed = spec._from_tensors(iter(flat_original))
+    flat_reconstructed = spec._to_tensors(reconstructed)
+
+    for original, reconstructed in zip(flat_original, flat_reconstructed):
+      self.assertIs(original, reconstructed)
+
+  def testCastDoesntRecreateCompositeTensor(self):
+    value = TwoComposites(
+        ragged_factory_ops.constant([[1, 2], [3]], dtypes.int32),
+        ragged_factory_ops.constant([[5], [6, 7, 8]], dtypes.float32),
+    )
+    spec = type_spec.type_spec_from_value(value)
+
+    casted_value = spec._cast(value, trace_type.InternalCastContext())
+
+    self.assertIs(value, casted_value)
+
   @parameterized.named_parameters(
       ("SameValue",
        TwoTensorsSpec([5, 3], dtypes.int32, [None], dtypes.bool),

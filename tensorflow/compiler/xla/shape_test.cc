@@ -15,18 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/shape.h"
 
-#include <numeric>
-
 #include "absl/hash/hash_testing.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
-#include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/layout.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/compiler/xla/test_helpers.h"
-#include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/test_benchmark.h"
 

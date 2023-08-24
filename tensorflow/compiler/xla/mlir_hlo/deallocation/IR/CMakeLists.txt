@@ -17,6 +17,8 @@ mlir_tablegen(deallocation_ops.h.inc -gen-op-decls)
 mlir_tablegen(deallocation_ops.cc.inc -gen-op-defs)
 mlir_tablegen(deallocation_dialect.h.inc -gen-dialect-decls)
 mlir_tablegen(deallocation_dialect.cc.inc -gen-dialect-defs)
+mlir_tablegen(deallocation_typedefs.h.inc -gen-typedef-decls)
+mlir_tablegen(deallocation_typedefs.cc.inc -gen-typedef-defs)
 
 add_public_tablegen_target(MLIRdeallocation_opsIncGen)
 add_dependencies(mlir-headers MLIRdeallocation_opsIncGen)

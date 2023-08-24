@@ -45,7 +45,7 @@ StatusOr<OpKernelRunner*> OpKernelRunnerCache::GetOrCreate(
 
   auto it = map_.find(key);
   if (it != map_.end()) {
-    DCHECK_EQ(it->second->op_kernel()->name(), op_name);
+    DCHECK_EQ(it->second->op_kernel()->def().op(), op_name);
     return it->second.get();
   }
 

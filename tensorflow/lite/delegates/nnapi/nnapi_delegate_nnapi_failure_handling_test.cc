@@ -68,6 +68,7 @@ class AddSubOpsAcceleratedModel : public MultiOpModel {
     Init(input1, input2, input3, output, activation_type,
          allow_fp32_relax_to_fp16);
   }
+  ~AddSubOpsAcceleratedModel() { stateful_delegate_.reset(); }
 
   int input1() { return input1_; }
   int input2() { return input2_; }

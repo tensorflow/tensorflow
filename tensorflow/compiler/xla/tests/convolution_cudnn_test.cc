@@ -42,6 +42,16 @@ ENTRY TestComputation {
 }
 
 XLA_TEST_F(ConvolutionHloTest, TestCudnnConvInt8x32Bias) {
+  // cudnnConvolutionBiasActivationForward() for int8 is only supported on GPUs
+  // with compute capability 6.1 or later.
+  if (!backend()
+           .default_stream_executor()
+           ->GetDeviceDescription()
+           .cuda_compute_capability()
+           .IsAtLeast(6, 1)) {
+    return;
+  }
+
   // This convolution with the following add/relu ops should be transformed to
   // "cudnn-conv-bias-activation" and vectorized as INT8x32_CONFIG on GPUs.
   // In order to verify this with non-zero bias and without adding test-specific
@@ -71,11 +81,11 @@ XLA_TEST_F(ConvolutionHloTest, TestCudnnConvInt8x32BiasNonConst) {
   // second with vectorization enabled. The reference implementation
   // (Interpreter) does not support the fused conv-add-relu-clamp operation,
   // thus cannot be used.
-  if (!backend()
-           .default_stream_executor()
-           ->GetDeviceDescription()
-           .cuda_compute_capability()
-           .IsAtLeast(8)) {
+  if (backend()
+          .default_stream_executor()
+          ->GetDeviceDescription()
+          .cuda_compute_capability()
+          .major != 8) {
     return;
   }
   constexpr char kHloBase[] = R"(
@@ -101,11 +111,9 @@ ENTRY TestComputation {
   bitcast.36 = s8[4,48,48,2,32]{4,3,2,1,0} bitcast(input)
   transpose = s8[4,2,48,48,32]{4,3,2,1,0} transpose(bitcast.36), dimensions={0,3,1,2,4}
   filter = s8[64,3,3,64]{3,2,1,0} parameter(1)
-  bitcast.21 = s8[64,3,3,2,32]{4,3,2,1,0} bitcast(filter)
-  transpose.4 = s8[64,2,3,3,32]{4,3,2,1,0} transpose(bitcast.21), dimensions={0,3,1,2,4}
-  bitcast.24 = s8[8,4,2,2,3,3,8,4]{7,6,5,4,3,2,1,0} bitcast(transpose.4)
-  transpose.5 = s8[2,3,3,8,2,8,4,4]{7,6,5,4,3,2,1,0} transpose(bitcast.24), dimensions={3,4,5,0,2,6,1,7}
-  bitcast.28 = s8[64,2,3,3,32]{4,3,2,1,0} bitcast(transpose.5)
+  bitcast.19 = s8[8,4,2,3,3,2,8,4]{7,6,5,4,3,2,1,0} bitcast(filter)
+  transpose.3 = s8[2,3,3,8,2,8,4,4]{7,6,5,4,3,2,1,0} transpose(bitcast.19), dimensions={5,3,4,0,2,6,1,7}
+  bitcast.28 = s8[64,2,3,3,32]{4,3,2,1,0} bitcast(transpose.3)
   bias = s8[64]{0} parameter(2)
   convert.2 = f32[64]{0} convert(bias)
   bitcast.33 = f32[2,4,2,4]{3,2,1,0} bitcast(convert.2)
@@ -126,17 +134,54 @@ ENTRY TestComputation {
 
 class HloCompareModulesTest : public HloTestBase {
  public:
-  HloCompareModulesTest(std::string hlo_base, std::string hlo_test)
-      : hlo_base_(std::move(hlo_base)), hlo_test_(std::move(hlo_test)) {}
+  HloCompareModulesTest(std::string hlo_base, std::string hlo_test,
+                        bool run_hlo_passes)
+      : hlo_base_(std::move(hlo_base)),
+        hlo_test_(std::move(hlo_test)),
+        run_hlo_passes_(run_hlo_passes) {}
 
   void TestBody() override {
     EXPECT_TRUE(RunAndCompareTwoModules(hlo_base_, hlo_test_, ErrorSpec{0, 0},
-                                        /*run_hlo_passes=*/false));
+                                        run_hlo_passes_));
   }
 
  private:
   std::string hlo_base_, hlo_test_;
+  bool run_hlo_passes_;
 };
+
+XLA_TEST_F(ConvolutionHloTest, TestCudnnConvInt8x32Revectorize) {
+  // Compare re-vectorized custom call vs the default version.
+  constexpr char kHlo[] = R"(
+HloModule TestModule
+
+ENTRY TestComputation {
+  %input = s8[4,48,48,64] parameter(0)
+  %filter = s8[64,3,3,64] parameter(1)
+  %conv = (s8[4,48,48,64], u8[0]) custom-call(%input, %filter),
+        window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f,
+        custom_call_target="__cudnn$convForward",
+        backend_config="{\"activation_mode\":\"0\",\"conv_result_scale\":1,\"side_input_scale\":0}"
+  ROOT %gte = s8[4,48,48,64] get-tuple-element(%conv), index=0
+})";
+  constexpr char kHloVectorized[] = R"(
+HloModule TestModule
+
+ENTRY TestComputation {
+  %input = s8[4,48,48,64] parameter(0)
+  %input.1 = s8[4,48,48,16,4] reshape(%input)
+  %filter = s8[64,3,3,64] parameter(1)
+  %filter.1 = s8[64,3,3,16,4] reshape(%filter)
+  %conv = (s8[4,48,48,16,4], u8[0]) custom-call(%input.1, %filter.1),
+        window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f,
+        custom_call_target="__cudnn$convForward",
+        backend_config="{\"activation_mode\":\"0\",\"conv_result_scale\":1,\"side_input_scale\":0}"
+  %gte = s8[4,48,48,16,4] get-tuple-element(%conv), index=0
+  ROOT reshape.3 = s8[4,48,48,64] reshape(%gte)
+})";
+  HloCompareModulesTest(kHlo, kHloVectorized, /*run_hlo_passes=*/true)
+      .TestBody();
+}
 
 class ReorderFilterHloTest : public ::testing::TestWithParam<std::tuple<
                                  /*input_features=*/int64_t,
@@ -176,7 +221,8 @@ ENTRY TestComputation {
 })",
       shape);
 
-  HloCompareModulesTest(hloTranspose, hloCustomCall).TestBody();
+  HloCompareModulesTest(hloTranspose, hloCustomCall, /*run_hlo_passes=*/false)
+      .TestBody();
 }
 
 INSTANTIATE_TEST_SUITE_P(CudnnReorderSuite, ReorderFilterHloTest,
@@ -220,7 +266,8 @@ ENTRY TestComputation {
 })",
       bias_size);
 
-  HloCompareModulesTest(hloTranspose, hloCustomCall).TestBody();
+  HloCompareModulesTest(hloTranspose, hloCustomCall, /*run_hlo_passes=*/false)
+      .TestBody();
 }
 
 INSTANTIATE_TEST_SUITE_P(CudnnReorderSuite, ReorderFilterAndBiasHloTest,

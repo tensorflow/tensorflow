@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include "llvm/Support/CommandLine.h"
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Pass/PassOptions.h"  // from @llvm-project
 
@@ -29,7 +30,16 @@ struct TOSATFLLegalizationPipelineOptions
     : public PassPipelineOptions<TOSATFLLegalizationPipelineOptions> {
   ArrayRef<std::string> disabled_patterns;
   ArrayRef<std::string> enabled_patterns;
-  bool dequantize_tfl_softmax = false;
+
+  PassOptions::Option<bool> target_compilation_backend{
+      *this, "target-compilation-backend",
+      llvm::cl::desc("Whether targetting compilation backend"),
+      llvm::cl::init(false)};
+
+  PassOptions::Option<bool> dequantize_tfl_softmax{
+      *this, "dequantize-tfl-softmax",
+      llvm::cl::desc("Dequantize the TFLite softmax"), llvm::cl::init(false)};
+
   TOSATFLLegalizationPipelineOptions() {
     disabled_patterns = std::nullopt;
     enabled_patterns = std::nullopt;

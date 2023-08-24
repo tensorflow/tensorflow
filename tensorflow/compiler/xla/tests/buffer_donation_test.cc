@@ -86,8 +86,8 @@ class BufferDonationTest : public HloTestBase {
     ExecutableRunOptions run_options;
     run_options.set_stream(&stream);
     run_options.set_allocator(&memory_allocator);
-    ServiceExecutableRunOptions service_run_options(run_options,
-                                                    backend_->StreamBorrower());
+    ServiceExecutableRunOptions service_run_options(
+        run_options, backend_->StreamBorrowerWithPriority());
 
     std::vector<ExecutionInput> args;
     std::vector<ShapeTree<se::DeviceMemoryBase>> inputs_buffers;
@@ -130,10 +130,10 @@ class BufferDonationTest : public HloTestBase {
                                          /*hlo_execution_profile=*/nullptr);
     if (!expected_failure.empty()) {
       ASSERT_FALSE(output_status.ok());
-      ASSERT_TRUE(absl::StrContains(output_status.status().error_message(),
-                                    expected_failure))
+      ASSERT_TRUE(
+          absl::StrContains(output_status.status().message(), expected_failure))
           << "got: \n"
-          << output_status.status().error_message() << " \nvs want\n"
+          << output_status.status().message() << " \nvs want\n"
           << expected_failure;
       return;
     }

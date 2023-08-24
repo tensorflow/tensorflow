@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <atomic>
 #include <functional>
+#include <memory>
 #include <string>
 #include <utility>
 

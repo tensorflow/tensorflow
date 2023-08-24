@@ -186,8 +186,13 @@ uint8* Decode(const void* srcdata, int datasize,
         }
 
         if (color_index == gcb.TransparentColor) {
-          // Use the pixel from the previous frame. In other words, no need to
-          // update our canvas for this pixel.
+          // Use the pixel from the previous frame, or 0 if there was no
+          // previous frame.
+          if (k == 0) {
+            p_dst[j * channel + 0] = 0;
+            p_dst[j * channel + 1] = 0;
+            p_dst[j * channel + 2] = 0;
+          }
           continue;
         }
 

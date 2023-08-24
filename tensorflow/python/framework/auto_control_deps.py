@@ -274,7 +274,7 @@ class AutomaticControlDependencies(object):
     self._graph = g
     g._add_control_dependencies = True  # pylint: disable=protected-access
     g.experimental_acd_manager = self
-    self._n_operations = len(g.get_operations())
+    self._n_operations = g.num_operations()
     return self
 
   def _process_switch(self, switch_op, ops_which_must_run,

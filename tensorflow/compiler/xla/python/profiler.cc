@@ -16,10 +16,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/profiler.h"
 
 #include <memory>
+#include <string>
 
 #include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/pytypes.h"  // from @pybind11
 #include "tensorflow/compiler/xla/python/profiler/internal/traceme_wrapper.h"
+#include "tensorflow/compiler/xla/python/status_casters.h"
 #include "tensorflow/compiler/xla/python/types.h"
+#include "tensorflow/compiler/xla/python/xplane_to_profile_instructions.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/tsl/profiler/lib/profiler_session.h"
 #include "tensorflow/tsl/profiler/rpc/client/capture_profile.h"
@@ -71,12 +75,12 @@ void BuildProfilerSubmodule(py::module* m) {
       }))
       .def("stop_and_export",
            [](tsl::ProfilerSession* sess,
-              const std::string& tensorboard_dir) -> xla::Status {
+              const std::string& tensorboard_dir) -> void {
              tensorflow::profiler::XSpace xspace;
              // Disables the ProfilerSession
-             TF_RETURN_IF_ERROR(sess->CollectData(&xspace));
-             return tsl::profiler::ExportToTensorBoard(
-                 xspace, tensorboard_dir, /* also_export_trace_json= */ true);
+             xla::ThrowIfError(sess->CollectData(&xspace));
+             xla::ThrowIfError(tsl::profiler::ExportToTensorBoard(
+                 xspace, tensorboard_dir, /* also_export_trace_json= */ true));
            });
 
   py::class_<tensorflow::ProfileOptions> profile_options_class(
@@ -118,6 +122,16 @@ void BuildProfilerSubmodule(py::module* m) {
            })
       .def("set_metadata", &TraceMeWrapper::SetMetadata)
       .def_static("is_enabled", &TraceMeWrapper::IsEnabled);
+
+  profiler.def(
+      "get_profiled_instructions_proto",
+      [](py::str tensorboard_dir) -> pybind11::bytes {
+        tensorflow::profiler::ProfiledInstructionsProto profile_proto;
+        xla::ThrowIfError(xla::ConvertXplaneToProfiledInstructionsProto(
+            tensorboard_dir, &profile_proto));
+        return profile_proto.SerializeAsString();
+      },
+      py::arg("tensorboard_dir"));
 }
 
 }  // namespace xla

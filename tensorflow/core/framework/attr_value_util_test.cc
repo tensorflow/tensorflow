@@ -174,6 +174,14 @@ TEST(AttrValueUtil, SummarizeAttrValueElidesLongLists) {
       SummarizeAttrValue(attr_value));
 }
 
+TEST(AttrValueUtil, TensorByteSizeNumElementsOverflows) {
+  TensorProto proto;
+  proto.mutable_tensor_shape()->add_dim()->set_size(9223372036854775807L);
+  proto.mutable_tensor_shape()->add_dim()->set_size(2092026309338556617L);
+  proto.set_dtype(DT_INT32);
+  EXPECT_EQ(attr_value_util_internal::TensorByteSize(proto), -1);
+}
+
 TEST(AttrValueUtil, TensorByteSizeShouldNotOverflow) {
   {
     TensorProto proto;

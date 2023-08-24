@@ -34,13 +34,13 @@ filegroup(
     ] + [
         "math_utils.cc",
         "tensor_utils.cc",
+        "uniform_dequantize_op.cc",
         "uniform_quantize_op.cc",
         "uniform_quantized_add_op.cc",
-        "uniform_dequantize_op.cc",
-        "uniform_requantize_op.cc",
-        "uniform_quantized_dot_ops.cc",
-        "uniform_quantized_convolution_ops.cc",
         "uniform_quantized_clip_by_value_op.cc",
+        "uniform_quantized_convolution_ops.cc",
+        "uniform_quantized_dot_ops.cc",
+        "uniform_requantize_op.cc",
     ],
     visibility = ["//tensorflow:__subpackages__"],
 )
@@ -146,11 +146,12 @@ tf_cc_test(
     deps = [
         ":kernels",
         "//tensorflow/core:framework",
+        "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/platform:protobuf",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -196,6 +197,7 @@ tf_cc_test(
     deps = [
         ":tensor_utils",
         "//tensorflow/core/framework:tensor_testutil",
+        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
     ],
 )

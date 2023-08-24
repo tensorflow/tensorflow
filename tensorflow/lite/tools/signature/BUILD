@@ -1,3 +1,5 @@
+load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
+
 # Utilities for signature_defs in TFLite
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
@@ -23,14 +25,14 @@ cc_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
     ]) + [
-        "@com_google_protobuf//:protobuf",
-        "@com_google_absl//absl/memory",
-        "@flatbuffers",
         "//tensorflow/core:protos_all_cc_impl",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/memory",
+        "@com_google_protobuf//:protobuf",
+        "@flatbuffers",
     ],
 )
 
@@ -42,6 +44,7 @@ cc_test(
         "//tensorflow/lite:testdata/add.bin",
     ],
     tags = [
+        "no_oss",
         "tflite_not_portable",
     ],
     deps = [
@@ -69,12 +72,12 @@ pybind_extension(
         ":signature_def_util",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/core:framework",
-        "//tensorflow/python:pybind11_lib",
+        "//tensorflow/python/lib/core:pybind11_lib",
         "@pybind11",
     ],
 )
 
-py_library(
+py_strict_library(
     name = "signature_def_utils",
     srcs = ["signature_def_utils.py"],
     srcs_version = "PY3",
@@ -84,7 +87,7 @@ py_library(
     ],
 )
 
-py_test(
+py_strict_test(
     name = "signature_def_utils_test",
     srcs = ["signature_def_utils_test.py"],
     data = ["//tensorflow/lite:testdata/add.bin"],
@@ -92,6 +95,7 @@ py_test(
     srcs_version = "PY3",
     tags = [
         "no_mac",
+        "no_oss",
     ],
     visibility = ["//visibility:public"],
     deps = [

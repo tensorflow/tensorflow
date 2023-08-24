@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/lib/logdet.h"
 
+#include <limits>
+
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/client/lib/matrix.h"

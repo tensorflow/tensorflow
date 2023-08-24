@@ -42,9 +42,9 @@ func.func @reduce_window(%input: tensor<1xf32>, %window: tensor<32xf32>,
 }
 // CHECK-LABEL: @reduce_window
 
-// CHECK:       gml_st.parallel
+// CHECK:       scf.for
 // CHECK:         scf.for
 // CHECK:           arith.addf {{.*}} : f32
 // CHECK:           scf.yield %{{.*}} : f32
 // CHECK:         math.exp %{{.*}} : f32
-// CHECK:         gml_st.set_yield
+// CHECK:         tensor.parallel_insert_slice

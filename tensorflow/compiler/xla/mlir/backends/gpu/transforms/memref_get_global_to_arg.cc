@@ -86,7 +86,7 @@ class GetGlobalOpLowering : public OpRewritePattern<memref::GetGlobalOp> {
     auto func_mapping = cst_args_.find(op->getParentOfType<func::FuncOp>());
     if (func_mapping == cst_args_.end()) return failure();
 
-    // Check if the global operation correposponds to the LMHLO constant arg.
+    // Check if the global operation corresponds to the LMHLO constant arg.
     auto arg = func_mapping->second.find(op.getName());
     if (arg == func_mapping->second.end()) return failure();
 

@@ -19,19 +19,13 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import cond
+from tensorflow.python.ops import gen_control_flow_ops
 from tensorflow.python.ops import gen_logging_ops
 from tensorflow.python.ops import gen_math_ops
-from tensorflow.python.ops.gen_control_flow_ops import no_op
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import tf_should_use
-from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
-
-
-# TODO(b/269483538): needed for references while refactors are in progress
-control_flow_ops = LazyLoader(
-    "control_flow_ops", globals(),
-    "tensorflow.python.ops.control_flow_ops")
 
 
 def _summarize_eager(tensor, summarize=None):
@@ -126,8 +120,11 @@ def Assert(condition, data, summarize=None, name=None):
         return gen_logging_ops._assert(  # pylint: disable=protected-access
             condition, data, summarize, name="Assert")
 
-      guarded_assert = control_flow_ops.cond(
-          condition, no_op, true_assert, name="AssertGuard")
+      guarded_assert = cond.cond(
+          condition,
+          gen_control_flow_ops.no_op,
+          true_assert,
+          name="AssertGuard")
       if context.executing_eagerly():
         return
       return guarded_assert.op

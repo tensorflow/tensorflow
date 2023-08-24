@@ -24,6 +24,7 @@ limitations under the License.
 #include "mhlo/IR/register.h"
 #include "mhlo/transforms/passes.h"
 #include "mlir/InitAllDialects.h"
+#include "mlir/InitAllExtensions.h"
 #include "mlir/InitAllPasses.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 #include "stablehlo/dialect/Register.h"
@@ -53,15 +54,13 @@ int main(int argc, char** argv) {
   PassPipelineRegistration<> defaultGmlStCpuTilingPipeline(
       "default-gml-st-cpu-tiling-pipeline",
       "Tiles, fuses, vectorizes tileable ops for CPU with default parameters",
-      gml_st::addDefaultCPUTilingPipeline);
-
-  PassPipelineRegistration<> genericHostToLLVMPass(
-      "generic-host-to-llvm",
-      "Pipeline to lower common dialects resulting from HLO to LLVM",
-      hlo::createGenericHostToLLVMPipeline);
+      [](OpPassManager& pm) {
+        gml_st::addDefaultCPUTilingPipeline(pm, /*cpuName=*/"");
+      });
 
   DialectRegistry registry;
   registerAllDialects(registry);
+  registerAllExtensions(registry);
   mhlo::registerAllMhloDialects(registry);
   stablehlo::registerAllDialects(registry);
   registry.insert<deallocation::DeallocationDialect, lmhlo::LmhloDialect,

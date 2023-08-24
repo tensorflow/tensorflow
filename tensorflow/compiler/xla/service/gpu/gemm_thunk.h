@@ -32,7 +32,7 @@ class GemmThunk : public Thunk {
   GemmThunk(ThunkInfo thunk_info, GemmConfig config,
             const BufferAllocation::Slice& lhs_buffer,
             const BufferAllocation::Slice& rhs_buffer,
-            const BufferAllocation::Slice& output_buffer);
+            const BufferAllocation::Slice& output_buffer, bool deterministic);
 
   GemmThunk(const GemmThunk&) = delete;
   GemmThunk& operator=(const GemmThunk&) = delete;
@@ -44,6 +44,8 @@ class GemmThunk : public Thunk {
   const BufferAllocation::Slice lhs_buffer_;
   const BufferAllocation::Slice rhs_buffer_;
   const BufferAllocation::Slice output_buffer_;
+  // Whether to run deterministically.
+  const bool deterministic_;
 };
 
 }  // namespace gpu

@@ -29,7 +29,6 @@ xla_cc_test(
     srcs = ["hlo_constant_splitter_test.cc"],
     deps = [
         ":hlo_constant_splitter",
-        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/tests:hlo_test_base",

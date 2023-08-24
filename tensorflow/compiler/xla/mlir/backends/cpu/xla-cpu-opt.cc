@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "mlir/Dialect/Bufferization/Transforms/Passes.h"  // from @llvm-project
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/IR/Linalg.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
@@ -47,6 +48,7 @@ int main(int argc, char **argv) {
                   mlir::gml_st::GmlStDialect, mlir::thlo::THLODialect,
                   mlir::linalg::LinalgDialect, mlir::tensor::TensorDialect,
                   mlir::vector::VectorDialect, mlir::xla_cpu::XlaCpuDialect>();
+  mlir::func::registerAllExtensions(registry);
 
   xla::cpu::registerCpuTransformsPasses();
 

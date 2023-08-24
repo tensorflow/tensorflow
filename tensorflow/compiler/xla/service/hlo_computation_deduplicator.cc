@@ -99,7 +99,11 @@ StatusOr<bool> HloComputationDeduplicator::Run(
       unique_comps[std::move(comp_str)] = comp;
     }
   }
-  module->ReplaceComputations(replacement);
+  if (mark_fusion_duplications_) {
+    module->MarkFusionDuplications(replacement);
+  } else {
+    module->ReplaceComputations(replacement);
+  }
   return !replacement.empty();
 }
 }  // namespace xla

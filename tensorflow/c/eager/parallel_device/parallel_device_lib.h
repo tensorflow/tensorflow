@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/types/optional.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
 #include "tensorflow/c/eager/tfe_op_internal.h"
+#include "tensorflow/c/safe_ptr.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
@@ -35,19 +37,7 @@ limitations under the License.
 namespace tensorflow {
 namespace parallel_device {
 
-// Functor for making unique_ptrs slightly more ergonomic. Using
-// decltype(delete_fn) in the unique_ptr's second template argument requires
-// passing a function pointer to delete_fn when constructing the unique_ptr.
-class TensorHandleDeleter {
- public:
-  void operator()(TFE_TensorHandle* to_delete) const {
-    TFE_DeleteTensorHandle(to_delete);
-  }
-};
-
-// TODO(b/256016071): Replace this with `Safe_TFE_TensorHandlePtr` when
-// `Safe_TFE_TensorHandlePtr` is marked to be compatible on non-prod env.
-using TensorHandlePtr = std::unique_ptr<TFE_TensorHandle, TensorHandleDeleter>;
+using TensorHandlePtr = tensorflow::Safe_TFE_TensorHandlePtr;
 
 class ParallelTensor;
 class DeviceThread;
@@ -123,6 +113,13 @@ class ParallelDevice {
   // of value -1 is reserved for global rendezvous and should not be set here.
   void StartExecute(TFE_Context* context,
                     const std::vector<ParallelTensor*>& inputs,
+                    const char* operation_name, const TFE_OpAttrs* attributes,
+                    int expected_max_outputs,
+                    CancellationManager& cancellation_manager,
+                    std::optional<int64_t> step_id = std::nullopt) const;
+
+  void StartExecute(TFE_Context* context,
+                    const std::vector<std::vector<TFE_TensorHandle*>>& inputs,
                     const char* operation_name, const TFE_OpAttrs* attributes,
                     int expected_max_outputs,
                     CancellationManager& cancellation_manager,
@@ -206,6 +203,17 @@ class ParallelTensor {
   // component device.
   Status SummarizeValue(std::string& summary);
 
+  std::vector<TensorHandlePtr> release_tensors() { return std::move(tensors_); }
+
+  std::vector<TFE_TensorHandle*> tensors() const {
+    std::vector<TFE_TensorHandle*> result;
+    result.reserve(tensors_.size());
+    for (const TensorHandlePtr& tensor : tensors_) {
+      result.emplace_back(tensor.get());
+    }
+    return result;
+  }
+
  private:
   ParallelTensor(const ParallelDevice& device,
                  std::vector<TensorHandlePtr> tensors,
@@ -222,7 +230,7 @@ class ParallelTensor {
         dtype_(dtype) {}
 
   const ParallelDevice& device_;
-  const std::vector<TensorHandlePtr> tensors_;
+  std::vector<TensorHandlePtr> tensors_;
   // Parallel tensors are immutable but compute their shape lazily unless it is
   // provided on construction. The optional has a value if the lazy computation
   // has been completed or the shape was provided on construction.

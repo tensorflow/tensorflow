@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/tsl/concurrency/async_value.h"
 
+#include <atomic>
 #include <cstdlib>
 #include <functional>
 #include <utility>

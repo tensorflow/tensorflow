@@ -223,6 +223,9 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateUnfoldLargeSplatConstantPass();
 // order of operations with side effects frozen.
 std::unique_ptr<OperationPass<func::FuncOp>> CreatePinOpsWithSideEffectsPass();
 
+// Legalize TensorList Ops iff all of them are supported.
+std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTensorListPass();
+
 // Creates a pass that brings operations into the same order as graph_info.cc.
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreatePartitionedTopologicalSortPass();

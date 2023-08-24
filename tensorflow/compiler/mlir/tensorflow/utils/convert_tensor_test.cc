@@ -119,7 +119,7 @@ class ConvertTensorTest : public ::testing::Test {
     TF_ASSERT_OK(value_or.status());
     auto attr = value_or.value();
 
-    EXPECT_EQ(attr.getType().getElementType(), expected_ty);
+    EXPECT_EQ(attr.getShapedType().getElementType(), expected_ty);
 
     Tensor out;
     TF_ASSERT_OK(ConvertToTensor(attr, &out));
@@ -220,6 +220,42 @@ TEST(ConvertTensorProtoTest, NonSplatTensor) {
                 mlir::RankedTensorType::get({2, 2}, builder.getF32Type()),
                 {1.0f, 2.0f, 3.0f, 4.0f})),
             ResultOf(IsSplat, IsFalse())));
+}
+
+TEST(ConvertTypeToTensorSpecProtoTest, UnrankedTensorType) {
+  mlir::MLIRContext context;
+  mlir::Builder b(&context);
+
+  auto output_proto = ConvertTypeToTensorSpecProto(
+      mlir::UnrankedTensorType::get(b.getF32Type()));
+  TF_ASSERT_OK(output_proto.status());
+  EXPECT_EQ(output_proto->dtype(), DT_FLOAT);
+  EXPECT_TRUE(output_proto->shape().unknown_rank());
+}
+
+TEST(ConvertTypeToTensorSpecProtoTest, RankedTensorType) {
+  mlir::MLIRContext context;
+  mlir::Builder b(&context);
+
+  auto output_proto = ConvertTypeToTensorSpecProto(
+      mlir::RankedTensorType::get({1, 2, 3}, b.getF32Type()));
+  TF_ASSERT_OK(output_proto.status());
+  EXPECT_EQ(output_proto->dtype(), DT_FLOAT);
+  EXPECT_EQ(output_proto->shape().dim_size(), 3);
+  EXPECT_EQ(output_proto->shape().dim().at(0).size(), 1);
+  EXPECT_EQ(output_proto->shape().dim().at(1).size(), 2);
+  EXPECT_EQ(output_proto->shape().dim().at(2).size(), 3);
+}
+
+TEST(ConvertTypeToTensorSpecProtoTest, ScalarTensorType) {
+  mlir::MLIRContext context;
+  mlir::Builder b(&context);
+
+  auto output_proto = ConvertTypeToTensorSpecProto(b.getF32Type());
+  TF_ASSERT_OK(output_proto.status());
+  EXPECT_EQ(output_proto->dtype(), DT_FLOAT);
+  EXPECT_FALSE(output_proto->shape().unknown_rank());
+  EXPECT_EQ(output_proto->shape().dim_size(), 0);
 }
 
 }  // namespace

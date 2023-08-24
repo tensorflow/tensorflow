@@ -37,6 +37,9 @@ StatusOr<xla::PrimitiveType> ToPrimitiveType(DType dtype);
 // Converts `xla::PrimitiveType` into IFRT `DType`.
 StatusOr<DType> ToDType(xla::PrimitiveType primitive_type);
 
+// Creates IFRT `MemoryKind` from an XLA `PjRtBuffer`.
+MemoryKind MakeMemoryKindFromPjRtBuffer(PjRtBuffer* pjrt_buffer);
+
 // PjRt-compatible `Array` interface that wraps a list of `xla::PjRtBuffer`s.
 class PjRtCompatibleArray
     : public llvm::RTTIExtends<PjRtCompatibleArray, Array> {
@@ -66,9 +69,9 @@ class PjRtArray final
   static StatusOr<tsl::RCReference<PjRtArray>> Create(
       PjRtCompatibleClient* client, std::shared_ptr<PjRtBuffer> pjrt_buffer);
 
-  // Shorthand for a multi-shard array construction using OpaqueSharding.
+  // Shorthand for a multi-shard array construction using ConcreteSharding.
   // TODO(hyeontaek): Remove this once IFRT Sharding and JAX Sharding is unified
-  // so that OpaqueSharding can be replaced with a real Sharding.
+  // so that ConcreteSharding can be replaced with a real Sharding.
   static StatusOr<tsl::RCReference<PjRtArray>> Create(
       PjRtCompatibleClient* client, Shape shape, PjRtBuffers pjrt_buffers);
 
@@ -83,6 +86,9 @@ class PjRtArray final
     DCHECK(this);
     return absl::MakeSpan(pjrt_buffers_);
   }
+
+  StatusOr<tsl::RCReference<Array>> FullyReplicatedShard(
+      ArrayCopySemantics semantics) override;
 
   // Array implementation.
 
@@ -123,6 +129,9 @@ class PjRtArray final
       ArrayCopySemantics semantics) override;
 
   Future<Status> GetReadyFuture() const override;
+
+  std::shared_ptr<PjRtBuffer> GetPjRtBuffer(ArrayCopySemantics semantics,
+                                            int index) const;
 
   Future<Status> Delete() override;
   bool IsDeleted() const override;

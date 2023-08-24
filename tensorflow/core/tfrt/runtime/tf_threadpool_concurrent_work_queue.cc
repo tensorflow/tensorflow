@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/runtime/tf_threadpool_concurrent_work_queue.h"
 
+#include <memory>
 #include <optional>
 #include <utility>
 
@@ -48,15 +49,15 @@ void TfThreadPoolWorkQueue::AddTask(tfrt::TaskFunction work) {
   });
 }
 
-llvm::Optional<tfrt::TaskFunction> TfThreadPoolWorkQueue::AddBlockingTask(
+std::optional<tfrt::TaskFunction> TfThreadPoolWorkQueue::AddBlockingTask(
     tfrt::TaskFunction work, bool allow_queuing) {
   AddTask(std::move(work));
   return std::nullopt;
 }
 
 void TfThreadPoolWorkQueue::Quiesce() {
-  // TODO(b/186668821): implement this
-  CHECK(false);  // Crash OK
+  // We don't need Quiesce() in most cases. And for the rest cases, we can rely
+  // on the destructor the thread pools.
 }
 
 // From

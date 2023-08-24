@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_reachability.h"
 
+#include <memory>
 #include <queue>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"

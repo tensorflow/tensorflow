@@ -171,9 +171,8 @@ void InsertQuantizedFunctionsPass::runOnOperation() {
 
   StatusScopedDiagnosticHandler diagnostic_handler(context);
   if (failed(pm.run(*module_ref))) {
-    emitError(module.getLoc())
-        << "failed to apply the optimization: "
-        << diagnostic_handler.ConsumeStatus().error_message();
+    emitError(module.getLoc()) << "failed to apply the optimization: "
+                               << diagnostic_handler.ConsumeStatus().message();
     signalPassFailure();
     return;
   }

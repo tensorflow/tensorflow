@@ -43,6 +43,8 @@ class HloSnapshot;
 std::string TimestampFor(const HloModule& module);
 
 // Create the filename we will use to dump in DumpToFileInDir.
+std::string FilenameFor(int unique_id, absl::string_view module_name,
+                        absl::string_view prefix, absl::string_view suffix);
 std::string FilenameFor(const HloModule& module, absl::string_view prefix,
                         absl::string_view suffix);
 

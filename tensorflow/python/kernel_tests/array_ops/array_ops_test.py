@@ -32,11 +32,12 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import init_ops
@@ -47,6 +48,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged.ragged_tensor import RaggedTensor
 from tensorflow.python.platform import test as test_lib
@@ -88,7 +90,7 @@ class BatchMatrixTransposeTest(test_util.TensorFlowTestCase):
     expected_transposed = [[1, 4], [2, 5], [3, 6]]  # Shape (3, 2)
 
     @def_function.function(input_signature=[
-        tensor_spec.TensorSpec(shape=None, dtype=dtypes.int32)
+        tensor_lib.TensorSpec(shape=None, dtype=dtypes.int32)
     ])
     def transpose(matrix):
       self.assertIs(matrix.shape.ndims, None)
@@ -107,7 +109,7 @@ class BatchMatrixTransposeTest(test_util.TensorFlowTestCase):
     expected_transposed = [matrix_0_t, matrix_1_t]  # Shape (2, 3, 2)
 
     @def_function.function(input_signature=[
-        tensor_spec.TensorSpec(shape=None, dtype=dtypes.int32)
+        tensor_lib.TensorSpec(shape=None, dtype=dtypes.int32)
     ])
     def transpose(matrix):
       self.assertIs(matrix.shape.ndims, None)
@@ -242,8 +244,8 @@ class BooleanMaskTest(test_util.TensorFlowTestCase):
       return array_ops.boolean_mask(ph_tensor, ph_mask)
 
     f = func.get_concrete_function(
-        tensor_spec.TensorSpec(None, dtypes.int32),
-        tensor_spec.TensorSpec([None], dtypes.bool))
+        tensor_lib.TensorSpec(None, dtypes.int32),
+        tensor_lib.TensorSpec([None], dtypes.bool))
     arr = np.array([[1, 2], [3, 4]], np.int32)
     mask = np.array([False, True])
     masked_tensor = f(arr, mask)
@@ -258,8 +260,8 @@ class BooleanMaskTest(test_util.TensorFlowTestCase):
 
     with self.assertRaisesRegex(ValueError, "dimensions must be specified"):
       _ = func.get_concrete_function(
-          tensor_spec.TensorSpec([None, 2], dtypes.int32),
-          tensor_spec.TensorSpec(None, dtypes.bool))
+          tensor_lib.TensorSpec([None, 2], dtypes.int32),
+          tensor_lib.TensorSpec(None, dtypes.bool))
 
   def testMaskHasMoreDimsThanTensorRaises(self):
     mask = [[True, True], [False, False]]
@@ -312,7 +314,7 @@ class BooleanMaskTest(test_util.TensorFlowTestCase):
     @def_function.function(
         autograph=False,
         input_signature=[
-            tensor_spec.TensorSpec(shape=None, dtype=dtypes.int32)
+            tensor_lib.TensorSpec(shape=None, dtype=dtypes.int32)
         ])
     def f(axis):
       return array_ops.boolean_mask([1, 2, 3], [True, False, True], axis=axis)
@@ -593,10 +595,12 @@ class StridedSliceChecker(object):
       except NotImplementedError:
         return False
 
-    if isinstance(spec, bool) or \
-      (isinstance(spec, ops.Tensor) and spec.dtype == dtypes.bool) or \
-      (isinstance(spec, np.ndarray) and spec.dtype == bool) or \
-      (isinstance(spec, (list, tuple)) and casts_to_bool_nparray(spec)):
+    if (
+        isinstance(spec, bool)
+        or (isinstance(spec, tensor_lib.Tensor) and spec.dtype == dtypes.bool)
+        or (isinstance(spec, np.ndarray) and spec.dtype == bool)
+        or (isinstance(spec, (list, tuple)) and casts_to_bool_nparray(spec))
+    ):
       tensor = self.test.evaluate(op)
       np_spec = eval_if_tensor(spec)
       self.test.assertAllEqual(self.x_np[np_spec], tensor)
@@ -751,7 +755,7 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
         return inp[array_ops.newaxis, :, 0]
 
       f = func.get_concrete_function(
-          tensor_spec.TensorSpec([2, 2], dtypes.int16))
+          tensor_lib.TensorSpec([2, 2], dtypes.int16))
 
       # TODO(b/190416665): Allow the constant to be eagerly copied/created on
       # the GPU.
@@ -890,7 +894,15 @@ class StridedSliceShapeTest(test_util.TensorFlowTestCase):
         y = x[...]
         self.assertAllEqual(y.get_shape().ndims, None)
 
-      _ = f.get_concrete_function(tensor_spec.TensorSpec(None, dtypes.float32))
+      _ = f.get_concrete_function(tensor_lib.TensorSpec(None, dtypes.float32))
+
+  def testScalarInput(self):
+    c = constant_op.constant(3)
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        "Attempting to slice scalar input.",
+    ):
+      array_ops.strided_slice(c, [0], [1])
 
   def tensorShapeEqual(self, x, y):
     self.assertTrue(x is not None and y is not None or x is None and y is None)
@@ -906,7 +918,7 @@ class StridedSliceShapeTest(test_util.TensorFlowTestCase):
                               tensor_shape.TensorShape([2, None, 7]))
 
       _ = f1.get_concrete_function(
-          tensor_spec.TensorSpec((5, None, 7), dtypes.float32))
+          tensor_lib.TensorSpec((5, None, 7), dtypes.float32))
 
       @def_function.function
       def f2(x):
@@ -915,7 +927,7 @@ class StridedSliceShapeTest(test_util.TensorFlowTestCase):
                                                                        None]))
 
       _ = f2.get_concrete_function(
-          tensor_spec.TensorSpec((5, None, 7), dtypes.float32))
+          tensor_lib.TensorSpec((5, None, 7), dtypes.float32))
 
       @def_function.function
       def f3(x):
@@ -924,7 +936,7 @@ class StridedSliceShapeTest(test_util.TensorFlowTestCase):
                                                                        None]))
 
       _ = f3.get_concrete_function(
-          tensor_spec.TensorSpec((5, None, 7), dtypes.float32))
+          tensor_lib.TensorSpec((5, None, 7), dtypes.float32))
 
       @def_function.function
       def f4(x):
@@ -933,7 +945,7 @@ class StridedSliceShapeTest(test_util.TensorFlowTestCase):
                               tensor_shape.TensorShape([2, None, 2]))
 
       _ = f4.get_concrete_function(
-          tensor_spec.TensorSpec((5, None, 7), dtypes.float32))
+          tensor_lib.TensorSpec((5, None, 7), dtypes.float32))
 
       @def_function.function
       def f5(x):
@@ -942,7 +954,7 @@ class StridedSliceShapeTest(test_util.TensorFlowTestCase):
                               tensor_shape.TensorShape([2, None, 0]))
 
       _ = f5.get_concrete_function(
-          tensor_spec.TensorSpec((5, None, 7), dtypes.float32))
+          tensor_lib.TensorSpec((5, None, 7), dtypes.float32))
 
       @def_function.function
       def f6(x):
@@ -951,7 +963,7 @@ class StridedSliceShapeTest(test_util.TensorFlowTestCase):
                               tensor_shape.TensorShape([2, None, 1, 0]))
 
       _ = f6.get_concrete_function(
-          tensor_spec.TensorSpec((5, None, 7), dtypes.float32))
+          tensor_lib.TensorSpec((5, None, 7), dtypes.float32))
 
       @def_function.function
       def f7(x):
@@ -960,7 +972,7 @@ class StridedSliceShapeTest(test_util.TensorFlowTestCase):
                               tensor_shape.TensorShape([2, None, 1, 0]))
 
       _ = f7.get_concrete_function(
-          tensor_spec.TensorSpec((5, None, 7), dtypes.float32))
+          tensor_lib.TensorSpec((5, None, 7), dtypes.float32))
 
       @def_function.function
       def f8(x):
@@ -969,7 +981,7 @@ class StridedSliceShapeTest(test_util.TensorFlowTestCase):
                               tensor_shape.TensorShape([2, None, 1, 0]))
 
       _ = f8.get_concrete_function(
-          tensor_spec.TensorSpec((5, None, 7), dtypes.float32))
+          tensor_lib.TensorSpec((5, None, 7), dtypes.float32))
 
       @def_function.function
       def f9(x):
@@ -978,7 +990,7 @@ class StridedSliceShapeTest(test_util.TensorFlowTestCase):
                               tensor_shape.TensorShape([1, None, 1, 0]))
 
       _ = f9.get_concrete_function(
-          tensor_spec.TensorSpec((5, None, 7), dtypes.float32))
+          tensor_lib.TensorSpec((5, None, 7), dtypes.float32))
 
       @def_function.function
       def f10(x):
@@ -987,7 +999,7 @@ class StridedSliceShapeTest(test_util.TensorFlowTestCase):
                               tensor_shape.TensorShape([5, None, 1, 4]))
 
       _ = f10.get_concrete_function(
-          tensor_spec.TensorSpec((5, None, 7), dtypes.float32))
+          tensor_lib.TensorSpec((5, None, 7), dtypes.float32))
 
   def testTensorValuedIndexShape(self):
     with self.session():
@@ -998,8 +1010,8 @@ class StridedSliceShapeTest(test_util.TensorFlowTestCase):
         self.tensorShapeEqual(z.get_shape(), tensor_shape.TensorShape([3, 7]))
 
       _ = f1.get_concrete_function(
-          tensor_spec.TensorSpec((5, 3, 7)),
-          tensor_spec.TensorSpec((), dtypes.int32))
+          tensor_lib.TensorSpec((5, 3, 7)),
+          tensor_lib.TensorSpec((), dtypes.int32))
 
       @def_function.function
       def f2(x, y):
@@ -1007,8 +1019,8 @@ class StridedSliceShapeTest(test_util.TensorFlowTestCase):
         self.tensorShapeEqual(z.get_shape(), tensor_shape.TensorShape([3, 7]))
 
       _ = f2.get_concrete_function(
-          tensor_spec.TensorSpec((5, 3, 7)),
-          tensor_spec.TensorSpec((), dtypes.int32))
+          tensor_lib.TensorSpec((5, 3, 7)),
+          tensor_lib.TensorSpec((), dtypes.int32))
 
       @def_function.function
       def f3(x, y):
@@ -1016,8 +1028,8 @@ class StridedSliceShapeTest(test_util.TensorFlowTestCase):
         self.tensorShapeEqual(z.get_shape(), tensor_shape.TensorShape([2, 7]))
 
       _ = f3.get_concrete_function(
-          tensor_spec.TensorSpec((5, 3, 7)),
-          tensor_spec.TensorSpec((), dtypes.int32))
+          tensor_lib.TensorSpec((5, 3, 7)),
+          tensor_lib.TensorSpec((), dtypes.int32))
 
       @def_function.function
       def f4(x, y, s):
@@ -1026,9 +1038,9 @@ class StridedSliceShapeTest(test_util.TensorFlowTestCase):
                                                                        7]))
 
       _ = f4.get_concrete_function(
-          tensor_spec.TensorSpec((5, 3, 7)),
-          tensor_spec.TensorSpec((), dtypes.int32),
-          tensor_spec.TensorSpec((), dtypes.int32))
+          tensor_lib.TensorSpec((5, 3, 7)),
+          tensor_lib.TensorSpec((), dtypes.int32),
+          tensor_lib.TensorSpec((), dtypes.int32))
 
 
 class GradSliceChecker(object):
@@ -1066,7 +1078,7 @@ class GradSliceChecker(object):
     # compute analytic gradient for slice
     np_val_grad = (2 * self.varnp * self.varnp)
     np_sliceval_grad = np.zeros(self.var.get_shape())
-    if isinstance(spec, ops.Tensor):
+    if isinstance(spec, tensor_lib.Tensor):
       spec = self.test.evaluate(spec)
     np_sliceval_grad[spec] = np_val_grad[spec]
     # verify gradient
@@ -1240,6 +1252,7 @@ class StridedSliceAssignChecker(object):
     if self.tensor_type.is_complex:
       value -= 1j * value
 
+    config.set_soft_device_placement(True)
     with test_util.device(use_gpu=True):
       if self._use_resource:
         var = resource_variable_ops.ResourceVariable(self.x)
@@ -1333,7 +1346,7 @@ class SliceAssignTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     init_val = constant_op.constant([1, 2], dtype=dtypes.int32)
     too_small_val = constant_op.constant([3, 4], dtype=dtypes.int8)
     too_large_val = constant_op.constant([3, 4], dtype=dtypes.int64)
-    v = variables.VariableV1(init_val)
+    v = variable_v1.VariableV1(init_val)
     with self.assertRaises((ValueError, TypeError)):
       self.evaluate(v[:].assign(too_small_val))
     with self.assertRaises((ValueError, TypeError)):
@@ -1568,7 +1581,7 @@ class ConcatSliceResourceTest(test_util.TensorFlowTestCase):
   def testConcatSlice(self):
     r1 = test_ops.stub_resource_handle_op(container="a", shared_name="b")
     r2 = test_ops.stub_resource_handle_op(container="a", shared_name="c")
-    c = array_ops.stack([r1, r2])
+    c = array_ops_stack.stack([r1, r2])
     s = array_ops.strided_slice(c, [1], [2])
     self.evaluate(test_ops.resource_create_op(s))
     with self.assertRaises(errors.AlreadyExistsError):
@@ -1583,7 +1596,7 @@ class IdentityTest(test_util.TensorFlowTestCase):
 
       def _test(x, y, device):
         self.assertAllEqual(x.numpy(), y.numpy())
-        self.assertTrue(device in y.device.lower())
+        self.assertIn(device, y.device.lower())
 
       with test_util.force_gpu():
         a = constant_op.constant([[2], [3]], dtype=dtypes.float32)
@@ -1604,7 +1617,7 @@ class IdentityTest(test_util.TensorFlowTestCase):
     v = resource_variable_ops.ResourceVariable(1.0)
     self.evaluate(v.initializer)
     result = array_ops.identity(v)
-    self.assertIsInstance(result, ops.Tensor)
+    self.assertIsInstance(result, tensor_lib.Tensor)
     self.assertAllEqual(result, v)
 
 
@@ -2177,6 +2190,16 @@ class SortedSearchTest(test_util.TensorFlowTestCase):
 
     _ = g.get_concrete_function()
 
+  def testInvalidValuesLowerBound(self):
+    arg_0_tensor = random_ops.random_uniform([3, 3], dtype=dtypes.float32)
+    arg_0 = array_ops.identity(arg_0_tensor)
+    arg_1_tensor = random_ops.random_uniform([3], dtype=dtypes.float32)
+    arg_1 = array_ops.identity(arg_1_tensor)
+    arg_2 = dtypes.int32
+    arg_3 = False
+    with self.assertRaises(Exception):
+      gen_array_ops.lower_bound(arg_0, arg_1, arg_2, arg_3,)
+
 
 class BatchGatherNdTest(test_util.TensorFlowTestCase):
 
@@ -2366,8 +2389,8 @@ class BatchGatherNdTest(test_util.TensorFlowTestCase):
             params=params, indices=indices, batch_dims=batch_dims)  # pylint: disable=cell-var-from-loop
 
       f = func.get_concrete_function(
-          tensor_spec.TensorSpec(params_ph_shape, dtypes.float32),
-          tensor_spec.TensorSpec(indices_ph_shape, dtypes.int32))
+          tensor_lib.TensorSpec(params_ph_shape, dtypes.float32),
+          tensor_lib.TensorSpec(indices_ph_shape, dtypes.int32))
 
       params_val = np.ones(dtype=np.float32, shape=params_shape)
       indices_val = np.ones(dtype=np.int32, shape=indices_shape)
@@ -2398,7 +2421,7 @@ class RepeatTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     array = np.array(array)
 
     @def_function.function(
-        input_signature=[tensor_spec.TensorSpec(None, dtypes.int32)] * 2)
+        input_signature=[tensor_lib.TensorSpec(None, dtypes.int32)] * 2)
     def repeat_fn(array, repeats):
       return array_ops.repeat(array, repeats, axis)
 
@@ -2539,7 +2562,7 @@ class StopGradientTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       y = stop_gradient_f(x)
     self.assertIsNone(tape.gradient(y, x))
     # stop_gradient converts ResourceVariable to Tensor
-    self.assertIsInstance(y, ops.Tensor)
+    self.assertIsInstance(y, tensor_lib.Tensor)
     self.assertAllEqual(y, x)
 
 if __name__ == "__main__":

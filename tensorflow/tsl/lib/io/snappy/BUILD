@@ -39,6 +39,7 @@ cc_library(
         "//tensorflow/tsl/platform:platform_port",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:types",
+        "@com_google_absl//absl/status",
     ],
     alwayslink = True,
 )

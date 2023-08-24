@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/padding.h"
 
 #include <algorithm>
+#include <utility>
+#include <vector>
 
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/lib/math/math_util.h"

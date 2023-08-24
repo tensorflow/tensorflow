@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <array>
 #include <memory>
 #include <optional>
 #include <string>
@@ -454,25 +455,11 @@ LogicalResult LogApproximationBase<Op>::logMatchAndRewrite(
 
   // Polynomial coefficients.
   Value cst_cephes_sqrthf = bcast(f32Cst(builder, 0.707106781186547524f));
-  Value cst_cephes_log_p0 = bcast(f32Cst(builder, 7.0376836292E-2f));
-  Value cst_cephes_log_p1 = bcast(f32Cst(builder, -1.1514610310E-1f));
-  Value cst_cephes_log_p2 = bcast(f32Cst(builder, 1.1676998740E-1f));
-  Value cst_cephes_log_p3 = bcast(f32Cst(builder, -1.2420140846E-1f));
-  Value cst_cephes_log_p4 = bcast(f32Cst(builder, +1.4249322787E-1f));
-  Value cst_cephes_log_p5 = bcast(f32Cst(builder, -1.6668057665E-1f));
-  Value cst_cephes_log_p6 = bcast(f32Cst(builder, +2.0000714765E-1f));
-  Value cst_cephes_log_p7 = bcast(f32Cst(builder, -2.4999993993E-1f));
-  Value cst_cephes_log_p8 = bcast(f32Cst(builder, +3.3333331174E-1f));
-
-  Value x = op.getOperand();
 
   // Truncate input values to the minimum positive normal.
-  x = Max(builder, x, cst_min_norm_pos);
-
   // Extract significant in the range [0.5,1) and exponent.
-  std::pair<Value, Value> pair = Frexp(builder, x, /*isPositive=*/true);
-  x = pair.first;
-  Value e = pair.second;
+  auto [x, e] = Frexp(builder, Max(builder, op.getOperand(), cst_min_norm_pos),
+                      /*isPositive=*/true);
 
   // Shift the inputs from the range [0.5,1) to [sqrt(1/2), sqrt(2)) and shift
   // by -1.0. The values are then centered around 0, which improves the
@@ -494,27 +481,49 @@ LogicalResult LogApproximationBase<Op>::logMatchAndRewrite(
   Value x2 = builder.create<arith::MulFOp>(x, x);
   Value x3 = builder.create<arith::MulFOp>(x2, x);
 
+  Value cephes_log_p0 = bcast(f32Cst(builder, 7.0376836292E-2));
+  Value cephes_log_p1 = bcast(f32Cst(builder, -1.1514610310E-1));
+  Value cephes_log_p2 = bcast(f32Cst(builder, 1.1676998740E-1));
+  Value cephes_log_p3 = bcast(f32Cst(builder, -1.2420140846E-1));
+  Value cephes_log_p4 = bcast(f32Cst(builder, +1.4249322787E-1));
+  Value cephes_log_p5 = bcast(f32Cst(builder, -1.6668057665E-1));
+  Value cephes_log_p6 = bcast(f32Cst(builder, +2.0000714765E-1));
+  Value cephes_log_p7 = bcast(f32Cst(builder, -2.4999993993E-1));
+  Value cephes_log_p8 = bcast(f32Cst(builder, +3.3333331174E-1));
+  Value cephes_log_q1 = bcast(f32Cst(builder, -2.12194440e-4));
+  Value cephes_log_q2 = bcast(f32Cst(builder, 0.693359375));
+  Value half = bcast(f32Cst(builder, 0.5f));
+
   // Evaluate the polynomial approximant of degree 8 in three parts.
-  Value y0, y1, y2;
-  y0 = builder.create<math::FmaOp>(cst_cephes_log_p0, x, cst_cephes_log_p1);
-  y1 = builder.create<math::FmaOp>(cst_cephes_log_p3, x, cst_cephes_log_p4);
-  y2 = builder.create<math::FmaOp>(cst_cephes_log_p6, x, cst_cephes_log_p7);
-  y0 = builder.create<math::FmaOp>(y0, x, cst_cephes_log_p2);
-  y1 = builder.create<math::FmaOp>(y1, x, cst_cephes_log_p5);
-  y2 = builder.create<math::FmaOp>(y2, x, cst_cephes_log_p8);
-  y0 = builder.create<math::FmaOp>(y0, x3, y1);
-  y0 = builder.create<math::FmaOp>(y0, x3, y2);
-  y0 = builder.create<arith::MulFOp>(y0, x3);
+  Value y = builder.create<math::FmaOp>(x, cephes_log_p0, cephes_log_p1);
+  Value y1 = builder.create<math::FmaOp>(x, cephes_log_p3, cephes_log_p4);
+  Value y2 = builder.create<math::FmaOp>(x, cephes_log_p6, cephes_log_p7);
+  y = builder.create<math::FmaOp>(y, x, cephes_log_p2);
+  y1 = builder.create<math::FmaOp>(y1, x, cephes_log_p5);
+  y2 = builder.create<math::FmaOp>(y2, x, cephes_log_p8);
+  // y = y * x3 + y1
+  y = builder.create<math::FmaOp>(y, x3, y1);
+  // y = y * x3 + y2
+  y = builder.create<math::FmaOp>(y, x3, y2);
+  // y *= x3
+  y = builder.create<arith::MulFOp>(y, x3);
 
-  y0 = builder.create<math::FmaOp>(cst_neg_half, x2, y0);
-  x = builder.create<arith::AddFOp>(x, y0);
-
+  Value tmp1 = builder.create<arith::MulFOp>(cephes_log_q1, e);
+  Value tmp2 = builder.create<arith::MulFOp>(half, x2);
   if (base2) {
+    x = builder.create<arith::SubFOp>(x, tmp2);
     Value cst_log2e = bcast(f32Cst(builder, static_cast<float>(LOG2E_VALUE)));
     x = builder.create<math::FmaOp>(x, cst_log2e, e);
   } else {
-    Value cst_ln2 = bcast(f32Cst(builder, static_cast<float>(LN2_VALUE)));
-    x = builder.create<math::FmaOp>(e, cst_ln2, x);
+    // y += log_q1 * e
+    y = builder.create<arith::AddFOp>(y, tmp1);
+    // x -= 0.5 * x2
+    x = builder.create<arith::SubFOp>(x, tmp2);
+    Value tmp3 = builder.create<arith::MulFOp>(cephes_log_q2, e);
+    // x += y
+    x = builder.create<arith::AddFOp>(x, y);
+    // x += log_q2 * e
+    x = builder.create<arith::AddFOp>(x, tmp3);
   }
 
   Value invalid_mask = builder.create<arith::CmpFOp>(arith::CmpFPredicate::ULT,
@@ -585,18 +594,61 @@ LogicalResult Log1pApproximation::matchAndRewrite(
   //          ^^^^^^^^^^^^^^^^^^^^^^
   //             "log_large" below.
   Value cst_one = bcast(f32Cst(builder, 1.0f));
+  Value cst_negative_half = bcast(f32Cst(builder, -0.5f));
+
   Value x = op.getOperand();
-  Value u = builder.create<arith::AddFOp>(x, cst_one);
-  Value u_small =
-      builder.create<arith::CmpFOp>(arith::CmpFPredicate::OEQ, u, cst_one);
-  Value log_u = builder.create<math::LogOp>(u);
-  Value u_inf =
-      builder.create<arith::CmpFOp>(arith::CmpFPredicate::OEQ, u, log_u);
-  Value log_large = builder.create<arith::MulFOp>(
-      x, builder.create<arith::DivFOp>(
-             log_u, builder.create<arith::SubFOp>(u, cst_one)));
-  Value approximation = builder.create<arith::SelectOp>(
-      builder.create<arith::OrIOp>(u_small, u_inf), x, log_large);
+  Value for_large_x =
+      builder.create<math::LogOp>(builder.create<arith::AddFOp>(cst_one, x));
+
+  // When x is small, (defined to be less than sqrt(2) / 2), use a rational
+  // approximation. The approximation below is based on one from the Cephes
+  // Mathematical Library.
+  //
+  // sqrt(2) - 1.
+  const auto kAntilogarithmIsSmallThreshold = 0.41421356237309504880;
+
+  static const std::array<double, 7> kDenominatorCoeffs{
+      1.,
+      1.5062909083469192043167E1,
+      8.3047565967967209469434E1,
+      2.2176239823732856465394E2,
+      3.0909872225312059774938E2,
+      2.1642788614495947685003E2,
+      6.0118660497603843919306E1,
+  };
+
+  static const std::array<double, 7> kNumeratorCoeffs{
+      4.5270000862445199635215E-5, 4.9854102823193375972212E-1,
+      6.5787325942061044846969E0,  2.9911919328553073277375E1,
+      6.0949667980987787057556E1,  5.7112963590585538103336E1,
+      2.0039553499201281259648E1,
+  };
+
+  auto eval_polynomial = [&](const std::array<double, 7> &coefficients) {
+    auto poly = bcast(f32Cst(builder, 0.0));
+    for (double c : coefficients) {
+      poly = builder.create<math::FmaOp>(poly, x, bcast(f32Cst(builder, c)));
+    }
+    return poly;
+  };
+
+  auto x_squared = builder.create<arith::MulFOp>(x, x);
+  Value denominator = eval_polynomial(kDenominatorCoeffs);
+  Value numerator = eval_polynomial(kNumeratorCoeffs);
+  Value for_small_x = builder.create<arith::DivFOp>(numerator, denominator);
+  for_small_x = builder.create<arith::MulFOp>(
+      builder.create<arith::MulFOp>(x, x_squared), for_small_x);
+  for_small_x =
+      builder.create<math::FmaOp>(cst_negative_half, x_squared, for_small_x);
+  for_small_x = builder.create<arith::AddFOp>(x, for_small_x);
+
+  auto abs_x = builder.create<math::AbsFOp>(x);
+  auto x_is_small = builder.create<arith::CmpFOp>(
+      arith::CmpFPredicate::OLT, abs_x,
+      bcast(f32Cst(builder, kAntilogarithmIsSmallThreshold)));
+  Value approximation =
+      builder.create<arith::SelectOp>(x_is_small, for_small_x, for_large_x);
+
   rewriter.replaceOp(op, approximation);
   return mlir::success();
 }

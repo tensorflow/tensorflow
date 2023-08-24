@@ -19,26 +19,15 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import type_spec
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util as util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops import while_v2
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util import variable_utils
-from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
-
-
-# TODO(b/269483538): below lazy loads
-#   needed for references while refactors are in progress
-control_flow_ops = LazyLoader(
-    "control_flow_ops", globals(),
-    "tensorflow.python.ops.control_flow_ops")
-# This is to avoid circular dependencies:
-# while_v2 -> control_flow_ops
-# while_v2 -> gradients_util -> control_flow_ops
-while_v2 = LazyLoader("while_v2", globals(),
-                      "tensorflow.python.ops.while_v2")
 
 
 # @TODO(b/133606651) Replace "shape_invariants" with "loop_vars_signature".

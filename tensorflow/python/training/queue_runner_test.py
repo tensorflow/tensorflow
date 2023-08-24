@@ -25,6 +25,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import coordinator
@@ -42,7 +43,7 @@ class QueueRunnerTest(test.TestCase):
     with self.cached_session() as sess:
       # CountUpTo will raise OUT_OF_RANGE when it reaches the count.
       zero64 = constant_op.constant(0, dtype=dtypes.int64)
-      var = variables.VariableV1(zero64)
+      var = variable_v1.VariableV1(zero64)
       count_up_to = var.count_up_to(3)
       queue = data_flow_ops.FIFOQueue(10, dtypes.float32)
       self.evaluate(variables.global_variables_initializer())
@@ -62,9 +63,9 @@ class QueueRunnerTest(test.TestCase):
     with self.cached_session() as sess:
       # CountUpTo will raise OUT_OF_RANGE when it reaches the count.
       zero64 = constant_op.constant(0, dtype=dtypes.int64)
-      var0 = variables.VariableV1(zero64)
+      var0 = variable_v1.VariableV1(zero64)
       count_up_to_3 = var0.count_up_to(3)
-      var1 = variables.VariableV1(zero64)
+      var1 = variable_v1.VariableV1(zero64)
       count_up_to_30 = var1.count_up_to(30)
       queue = data_flow_ops.FIFOQueue(10, dtypes.float32)
       qr = queue_runner_impl.QueueRunner(queue, [count_up_to_3, count_up_to_30])
@@ -129,7 +130,7 @@ class QueueRunnerTest(test.TestCase):
     with self.cached_session() as sess:
       # CountUpTo will raise OUT_OF_RANGE when it reaches the count.
       zero64 = constant_op.constant(0, dtype=dtypes.int64)
-      var = variables.VariableV1(zero64)
+      var = variable_v1.VariableV1(zero64)
       count_up_to = var.count_up_to(3)
       queue = data_flow_ops.FIFOQueue(10, dtypes.float32)
       self.evaluate(variables.global_variables_initializer())
@@ -182,7 +183,7 @@ class QueueRunnerTest(test.TestCase):
     with self.cached_session() as sess:
       with session.Session() as other_sess:
         zero64 = constant_op.constant(0, dtype=dtypes.int64)
-        var = variables.VariableV1(zero64)
+        var = variable_v1.VariableV1(zero64)
         count_up_to = var.count_up_to(3)
         queue = data_flow_ops.FIFOQueue(10, dtypes.float32)
         self.evaluate(variables.global_variables_initializer())
@@ -197,7 +198,7 @@ class QueueRunnerTest(test.TestCase):
     with self.cached_session() as sess:
       # CountUpTo will raise OUT_OF_RANGE when it reaches the count.
       zero64 = constant_op.constant(0, dtype=dtypes.int64)
-      var = variables.VariableV1(zero64)
+      var = variable_v1.VariableV1(zero64)
       count_up_to = var.count_up_to(3)
       queue = data_flow_ops.FIFOQueue(10, dtypes.float32)
       self.evaluate(variables.global_variables_initializer())
@@ -213,7 +214,7 @@ class QueueRunnerTest(test.TestCase):
     with self.cached_session() as sess:
       # CountUpTo will raise OUT_OF_RANGE when it reaches the count.
       zero64 = constant_op.constant(0, dtype=dtypes.int64)
-      var = variables.VariableV1(zero64)
+      var = variable_v1.VariableV1(zero64)
       count_up_to = var.count_up_to(3)
       queue = data_flow_ops.FIFOQueue(10, dtypes.float32)
       self.evaluate(variables.global_variables_initializer())
@@ -248,7 +249,7 @@ class QueueRunnerTest(test.TestCase):
   def testStartQueueRunners(self):
     # CountUpTo will raise OUT_OF_RANGE when it reaches the count.
     zero64 = constant_op.constant(0, dtype=dtypes.int64)
-    var = variables.VariableV1(zero64)
+    var = variable_v1.VariableV1(zero64)
     count_up_to = var.count_up_to(3)
     queue = data_flow_ops.FIFOQueue(10, dtypes.float32)
     init_op = variables.global_variables_initializer()
@@ -265,7 +266,7 @@ class QueueRunnerTest(test.TestCase):
 
   def testStartQueueRunnersRaisesIfNotASession(self):
     zero64 = constant_op.constant(0, dtype=dtypes.int64)
-    var = variables.VariableV1(zero64)
+    var = variable_v1.VariableV1(zero64)
     count_up_to = var.count_up_to(3)
     queue = data_flow_ops.FIFOQueue(10, dtypes.float32)
     init_op = variables.global_variables_initializer()
@@ -278,7 +279,7 @@ class QueueRunnerTest(test.TestCase):
 
   def testStartQueueRunnersIgnoresMonitoredSession(self):
     zero64 = constant_op.constant(0, dtype=dtypes.int64)
-    var = variables.VariableV1(zero64)
+    var = variable_v1.VariableV1(zero64)
     count_up_to = var.count_up_to(3)
     queue = data_flow_ops.FIFOQueue(10, dtypes.float32)
     init_op = variables.global_variables_initializer()
@@ -295,7 +296,7 @@ class QueueRunnerTest(test.TestCase):
     graph = ops.Graph()
     with graph.as_default():
       zero64 = constant_op.constant(0, dtype=dtypes.int64)
-      var = variables.VariableV1(zero64)
+      var = variable_v1.VariableV1(zero64)
       count_up_to = var.count_up_to(3)
       queue = data_flow_ops.FIFOQueue(10, dtypes.float32)
       init_op = variables.global_variables_initializer()

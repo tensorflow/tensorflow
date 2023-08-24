@@ -15,6 +15,9 @@ limitations under the License.
 
 // XLA-specific dynamic stitch Op.
 
+#include <algorithm>
+#include <vector>
+
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"

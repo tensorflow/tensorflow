@@ -20,6 +20,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/cleanup/cleanup.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/compile_only_client.h"
@@ -141,7 +143,7 @@ void XRTCompileOp::Compute(OpKernelContext* ctx) {
   // If the RPC was cancelled before we registered the cancellation callback,
   // don't compile the TPU program.
   OP_REQUIRES(ctx, !already_cancelled,
-              errors::Cancelled("RPC cancelled, not compiling TPU program"));
+              absl::CancelledError("RPC cancelled, not compiling TPU program"));
 
   // We only want to abort the process if a cancellation actually occurs during
   // compilation; we must deregister the callback in the success case. It
@@ -164,14 +166,15 @@ void XRTCompileOp::Compute(OpKernelContext* ctx) {
   core::ScopedUnref mesh_state_unref(mesh_state);
 
   const Tensor& computation_input = ctx->input(0);
-  OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(computation_input.shape()),
-              errors::Internal("computation input should be a string scalar"));
+  OP_REQUIRES(
+      ctx, TensorShapeUtils::IsScalar(computation_input.shape()),
+      absl::InternalError("computation input should be a string scalar"));
 
   xrt::XLAComputation computation_proto;
   OP_REQUIRES(
       ctx,
       computation_proto.ParseFromString(computation_input.scalar<tstring>()()),
-      errors::InvalidArgument(
+      absl::InvalidArgumentError(
           "Unable to parse computation input to XLAComputation"));
 
   const xrt::XLAComputationConfig& config = computation_proto.config();
@@ -242,7 +245,7 @@ void XRTReleaseCompilationRefOp::Compute(OpKernelContext* ctx) {
   VLOG(1) << "XRTReleaseCompilationRefOp::Compute";
   auto timed = monitoring::MakeTimed(xrt_metrics::GetReleaseCompilationCell());
   ResourceMgr* rm = GetTPUConfigResourceMgr();
-  OP_REQUIRES(ctx, rm != nullptr, errors::Internal("No resource manager."));
+  OP_REQUIRES(ctx, rm != nullptr, absl::InternalError("No resource manager."));
 
   // Process-wide cache of Tpu executables.
   tpu::TpuCompilationCacheInterface* cache;

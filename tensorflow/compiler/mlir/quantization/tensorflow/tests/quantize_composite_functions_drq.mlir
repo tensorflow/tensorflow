@@ -23,7 +23,7 @@ module {
 // CHECK:  %0 = "tf.UniformQuantizedDotHybrid"(%arg0, %arg1, %arg2, %arg3)
 // CHECK-SAME: rhs_quantization_axis = -1 : i64
 // CHECK-SAME: rhs_quantization_max_val = 127 : i64
-// CHECK-SAME: rhs_quantization_min_val = -127 : i64
+// CHECK-SAME: rhs_quantization_min_val = -128 : i64
 
 }
 
@@ -66,7 +66,7 @@ module {
 // CHECK-SAME: rhs_dilation = [2, 2]
 // CHECK-SAME: rhs_quantization_axis = -1 : i64
 // CHECK-SAME: rhs_quantization_max_val = 127 : i64
-// CHECK-SAME: rhs_quantization_min_val = -127 : i64
+// CHECK-SAME: rhs_quantization_min_val = -128 : i64
 // CHECK-SAME: window_strides = [1, 2]
 // CHECK-SAME: (tensor<1x2x2x3xf32>, tensor<2x3x3x2x!tf_type.qint8>, tensor<f32>, tensor<i32>) -> tensor<*xf32>
 
@@ -126,7 +126,7 @@ module {
 // CHECK-SAME: rhs_dilation = [2, 2],
 // CHECK-SAME: rhs_quantization_axis = -1 : i64,
 // CHECK-SAME: rhs_quantization_max_val = 127 : i64,
-// CHECK-SAME: rhs_quantization_min_val = -127 : i64,
+// CHECK-SAME: rhs_quantization_min_val = -128 : i64,
 // CHECK-SAME: window_strides = [1, 2]
 // CHECK-SAME: (tensor<1x3x4x3xf32>, tensor<2x3x1x6x!tf_type.qint8>, tensor<f32>, tensor<i32>) -> tensor<*xf32>
 

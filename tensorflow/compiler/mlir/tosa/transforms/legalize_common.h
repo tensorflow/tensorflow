@@ -283,9 +283,9 @@ std::optional<Value> convertTFConv3DCommon(
 
 // Lowers Gather operator to a sequence of TOSA ops.
 std::optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
-                                     Value result_value, Value params_value,
-                                     Value indices_value, int32_t batch_dims,
-                                     int32_t axis);
+                                     Value params_value, Value indices_value,
+                                     int32_t batch_dims, int32_t axis,
+                                     bool tosaOnly = true);
 
 // Lowers GatherNd operator to a sequence of TOSA ops.
 std::optional<Value> convertGatherNdOp(PatternRewriter& rewriter, Operation* op,
@@ -301,6 +301,15 @@ std::optional<Value> convertOneHotOp(PatternRewriter& rewriter, Operation* op,
 // Lowers 32-bit floating sin operator to a sequence of TOSA ops.
 std::optional<Value> convertSinOp(PatternRewriter& rewriter, Operation* op,
                                   Value input, ShapedType output_type);
+
+// Lowers Sign operator to a sequence of TOSA ops.
+std::optional<Value> convertSignOp(PatternRewriter& rewriter, Operation* op,
+                                   Value input, RankedTensorType output_type);
+
+// Lowers BroadcastTo operator to a sequence of TOSA ops.
+std::optional<Value> convertBroadcastToOp(PatternRewriter& rewriter,
+                                          Operation* op, Value input,
+                                          Value shape);
 
 };  // namespace tosa
 };  // namespace mlir

@@ -69,6 +69,10 @@ class DynamicDimensionInference {
   HloInstruction* GetDynamicSize(HloInstruction* inst, const ShapeIndex& index,
                                  int64_t dim) const;
 
+  const HloInstruction* GetDynamicSize(const HloInstruction* inst,
+                                       const ShapeIndex& index,
+                                       int64_t dim) const;
+
   // Returns dynamic sizes of all dimensions of `inst`'s leaf node at `index`.
   // Static sizes are represented by nullptr.
   std::vector<HloInstruction*> GetDynamicSizes(HloInstruction* inst,

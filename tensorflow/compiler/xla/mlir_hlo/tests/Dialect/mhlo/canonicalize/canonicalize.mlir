@@ -687,6 +687,16 @@ func.func @broadcast_constant_fold_complex() -> tensor<1x64x224x224xcomplex<f32>
 // CHECK-NEXT: %[[CST:.*]] = mhlo.constant dense<(0.000000e+00,1.000000e+00)> : tensor<1x64x224x224xcomplex<f32>>
 // CHECK-NEXT: return %[[CST]] : tensor<1x64x224x224xcomplex<f32>>
 
+// CHECK-LABEL: func @broadcast_constant_fold_quantized_skipped
+func.func @broadcast_constant_fold_quantized_skipped() -> tensor<1x64x224x224x!quant.uniform<i8:f32, 1.000000e+00:3>> {
+  %cst = stablehlo.constant() {value = dense<2> : tensor<i8>} : ()  ->  tensor<!quant.uniform<i8:f32, 1.000000e+00:3>>
+  %b = "mhlo.broadcast"(%cst) {broadcast_sizes = dense<[1, 64, 224, 224]> : tensor<4xi64>} : (tensor<!quant.uniform<i8:f32, 1.000000e+00:3>>) -> tensor<1x64x224x224x!quant.uniform<i8:f32, 1.000000e+00:3>>
+  func.return %b : tensor<1x64x224x224x!quant.uniform<i8:f32, 1.000000e+00:3>>
+}
+// CHECK-NEXT: %[[CST:.*]] = stablehlo.constant() {value = dense<2> : tensor<i8>} : ()  ->  tensor<!quant.uniform<i8:f32, 1.000000e+00:3>>
+// CHECK-NEXT: %[[RES:.*]] = "mhlo.broadcast"(%[[CST:.*]]) {broadcast_sizes = dense<[1, 64, 224, 224]> : tensor<4xi64>} : (tensor<!quant.uniform<i8:f32, 1.000000e+00:3>>) -> tensor<1x64x224x224x!quant.uniform<i8:f32, 1.000000e+00:3>>
+// CHECK-NEXT: return %[[RES:.*]] : tensor<1x64x224x224x!quant.uniform<i8:f32, 1.000000e+00:3>>
+
 // CHECK-LABEL: func @broadcast_in_dim_identity
 func.func @broadcast_in_dim_identity(%arg0: tensor<2x3x4xf32>) -> tensor<2x3x4xf32> {
   // CHECK: return %arg0
@@ -715,6 +725,14 @@ func.func @broadcast_in_dim_equivalent_transpose(%arg0: tensor<2x2xf32>) -> tens
   %0 = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[1, 0]> : tensor<2xi64>} : (tensor<2x2xf32>) -> tensor<2x2xf32>
   func.return %0 : tensor<2x2xf32>
 }
+
+// CHECK-LABEL: func @broadcast_in_dim_constant_fold_quantized_skipped
+func.func @broadcast_in_dim_constant_fold_quantized_skipped(%arg0: tensor<1x2x!quant.uniform<i8:f32, 1.000000e+00:3>>) -> tensor<2x2x!quant.uniform<i8:f32, 1.000000e+00:3>> {
+  %b = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<1x2x!quant.uniform<i8:f32, 1.000000e+00:3>>) -> tensor<2x2x!quant.uniform<i8:f32, 1.000000e+00:3>>
+  func.return %b : tensor<2x2x!quant.uniform<i8:f32, 1.000000e+00:3>>
+}
+// CHECK-NEXT: %[[RES:.*]] = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<1x2x!quant.uniform<i8:f32, 1.000000e+00:3>>) -> tensor<2x2x!quant.uniform<i8:f32, 1.000000e+00:3>>
+// CHECK-NEXT: return %[[RES:.*]] : tensor<2x2x!quant.uniform<i8:f32, 1.000000e+00:3>>
 
 // CHECK-LABEL: func @broadcast_consecutive
 func.func @broadcast_consecutive(%arg0: tensor<2x3xf32>) -> tensor<2x3x4x5xf32> {

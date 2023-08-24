@@ -15,14 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_compiler.h"
 
-#include <functional>
 #include <memory>
 #include <optional>
 #include <utility>
 
-#include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
+#include "absl/status/status.h"
+#include "llvm/Support/Casting.h"
 #include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_executable.h"
+#include "tensorflow/compiler/xla/python/pjrt_ifrt/xla_compiler.h"
 #include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
@@ -31,20 +32,34 @@ namespace ifrt {
 char PjRtCompiler::ID = 0;
 
 StatusOr<std::unique_ptr<LoadedExecutable>> PjRtCompiler::Compile(
-    mlir::ModuleOp mlir_module, CompileOptions options) {
+    std::unique_ptr<Program> program, std::unique_ptr<CompileOptions> options) {
   DCHECK(this);
-  return PjRtLoadedExecutable::Create(client_, mlir_module, std::move(options));
+  const auto* xla_program = llvm::dyn_cast<XlaProgram>(program.get());
+  if (xla_program == nullptr) {
+    return absl::InvalidArgumentError("PjRtCompiler requires an XlaProgram");
+  }
+  TF_ASSIGN_OR_RETURN(auto xla_compile_options,
+                      GetXlaCompileOptions(std::move(options)));
+  return PjRtLoadedExecutable::Create(
+      client_, xla_program->mlir_module,
+      std::move(xla_compile_options->compile_options),
+      std::move(xla_compile_options->loaded_host_callbacks));
 }
 
 StatusOr<std::unique_ptr<LoadedExecutable>>
-PjRtCompiler::DeserializeLoadedExecutable(absl::string_view serialized,
-                                          CompileOptions options) {
+PjRtCompiler::DeserializeLoadedExecutable(
+    absl::string_view serialized,
+    std::unique_ptr<DeserializeExecutableOptions> options) {
   DCHECK(this);
-  TF_ASSIGN_OR_RETURN(auto pjrt_loaded_executble,
-                      client_->pjrt_client()->DeserializeExecutable(
-                          serialized, std::move(options)));
-  return PjRtLoadedExecutable::Create(client_,
-                                      std::move(pjrt_loaded_executble));
+  TF_ASSIGN_OR_RETURN(auto xla_deserialize_options,
+                      GetXlaDeserializeExecutableOptions(std::move(options)));
+  TF_ASSIGN_OR_RETURN(
+      auto pjrt_loaded_executble,
+      client_->pjrt_client()->DeserializeExecutable(
+          serialized, std::move(xla_deserialize_options->compile_options)));
+  return PjRtLoadedExecutable::Create(
+      client_, std::move(pjrt_loaded_executble),
+      std::move(xla_deserialize_options->loaded_host_callbacks));
 }
 
 }  // namespace ifrt

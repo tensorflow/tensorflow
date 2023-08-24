@@ -416,7 +416,7 @@ TEST_P(ParameterizedInvalidPredicateFuncTest, InvalidPredicateFunc) {
   EXPECT_EQ(
       iterator_->GetNext(iterator_ctx_.get(), &out_tensors, &end_of_sequence)
           .code(),
-      tensorflow::error::INVALID_ARGUMENT);
+      absl::StatusCode::kInvalidArgument);
   EXPECT_TRUE(out_tensors.empty());
 }
 

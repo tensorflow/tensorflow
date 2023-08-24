@@ -17,7 +17,7 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def LegalizeTF : Pass<"xla-legalize-tf", "mlir::func::FuncOp"> {
+def LegalizeTF : Pass<"xla-legalize-tf", "ModuleOp"> {
   let summary = "Legalize from TF dialect's or HLO dialect's control flow.";
 
   let description = [{
@@ -29,9 +29,6 @@ def LegalizeTF : Pass<"xla-legalize-tf", "mlir::func::FuncOp"> {
     used.
   }];
   let options = [
-    Option<"allow_partial_conversion_", "allow-partial-conversion", "bool",
-        /*default=*/"false",
-        "Allow operations that can't be legalized.">,
     Option<"legalize_chlo_", "legalize-chlo", "bool", /*default=*/"true",
         "Legalizes intermediate chlo ops to hlo">,
     Option<"use_tf2xla_fallback_", "use-tf2xla-fallback", "bool",
@@ -44,7 +41,7 @@ def LegalizeTF : Pass<"xla-legalize-tf", "mlir::func::FuncOp"> {
     Option<"prefer_tf2xla_", "prefer-tf2xla", "bool",
         /*default=*/"false",
         "Prioritize tf2xla fallback legalization over MLIR legalization "
-        "patterns">
+        "patterns">,
   ];
 
   let constructor = "mlir::mhlo::createLegalizeTFPass()";
@@ -54,38 +51,6 @@ def LegalizeTF : Pass<"xla-legalize-tf", "mlir::func::FuncOp"> {
                            "shape::ShapeDialect",
                            "func::FuncDialect",
                            "sparse_tensor::SparseTensorDialect"];
-}
-
-def LegalizeTFModulePass : Pass<"xla-fallback-legalize-tf-module-pass", "ModuleOp"> {
-  let summary = "Legalize whitelisted Ops using TF2XLA fallback for ops that "
-      "must also be able to create new functions.";
-
-  let description = [{
-    Legalizes whitelisted Ops from TF dialect to HLO dialect using TF2XLA
-    fallback for ops that must be allowed to create new functions.
-  }];
-  let options = [
-    Option<"device_type_", "device-type", "std::string",
-        /*default=*/"\"INVALID_DEVICE_TYPE\"",
-        "The device type used by TF2XLA fallback. Required.">,
-  ];
-
-  let constructor = "mlir::mhlo::createLegalizeTFModulePass()";
-  let dependentDialects = ["arith::ArithDialect, chlo::ChloDialect",
-                           "mhlo::MhloDialect",
-                           "shape::ShapeDialect", "func::FuncDialect", "sparse_tensor::SparseTensorDialect"];
-}
-
-def ConvertMHLOQuantToInt : Pass<"convert-mhlo-quant-to-int", "mlir::func::FuncOp"> {
-  let summary = "Convert from MHLO quantized ops to MHLO primitive ops.";
-
-  let description = [{
-    Convert from MHLO quantized ops with MHLO quant types to MHLO primitive ops
-    like int ops.
-  }];
-
-  let constructor = "mlir::mhlo::createConvertMHLOQuantToIntPass()";
-  let dependentDialects = ["chlo::ChloDialect", "mhlo::MhloDialect"];
 }
 
 def LegalizeTFNoFallback : Pass<"xla-legalize-tf-no-fallback", "mlir::func::FuncOp"> {
@@ -105,24 +70,6 @@ def LegalizeTFNoFallback : Pass<"xla-legalize-tf-no-fallback", "mlir::func::Func
   let dependentDialects = ["arith::ArithDialect", "chlo::ChloDialect",
                            "mhlo::MhloDialect",
                            "shape::ShapeDialect", "func::FuncDialect", "sparse_tensor::SparseTensorDialect"];
-}
-
-def LegalizeTfTypesPass : Pass<"xla-legalize-tf-types"> {
-  let summary = "Replace TensorFlow types with types that are legal in the MHLO dialect";
-
-  let description = [{
-    The TF dialect uses some TF types that are illegal in the MHLO dialect and
-    some generic types that are legal in MHLO. This pass legalizes TF types into
-    types that are legal in MHLO. Rewrites here should run before TF to MHLO op
-    legalizations are run.
-
-    Specifically, this pass replaces each quantized integer type with the
-    corresponding ordinary types. For example, `TF::Qint8Type` is replaced with
-    `i8` everywhere it occurs. Types that are replaced are `TF::Qint8Type`,
-    `TF::Qint16Type`, `TF::Qint32Type`, `TF::Quint8Type`, and `TF::Quint16Type`.
-  }];
-
-  let constructor = "::mlir::mhlo::CreateLegalizeTfTypesPass()";
 }
 
 def LegalizeTFCollective : Pass<"xla-legalize-tf-collective", "ModuleOp"> {

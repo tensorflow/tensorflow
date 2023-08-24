@@ -1,9 +1,9 @@
+load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 load("//tensorflow/tsl/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_py_proto_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["//tensorflow/compiler/xla:internal"],
     licenses = ["notice"],
 )
 
@@ -48,18 +48,19 @@ xla_py_proto_library(
     deps = ["//tensorflow/compiler/xla:xla_data_proto"],
 )
 
-py_library(
+py_strict_library(
     name = "runner",
     testonly = True,
     srcs = ["runner.py"],
     deps = [
         ":runner_proto_py",
-        "//tensorflow/compiler/xla/python:xla_client",
+        "//tensorflow/compiler/xla:xla_data_proto_py",
+        "//third_party/py/numpy",
     ],
 )
 
 # copybara:uncomment_begin(b/254857628)
-# py_test(
+# py_strict_test(
 #     name = "testlib_runner_test",
 #     size = "small",
 #     srcs = ["testlib_runner_test.py"],
@@ -68,8 +69,8 @@ py_library(
 #     srcs_version = "PY3",
 #     deps = [
 #         ":runner",
-#         "@absl_py//absl/testing:absltest",
 #         "//third_party/py/numpy",
+#         "@absl_py//absl/testing:absltest",
 #     ],
 # )
 #

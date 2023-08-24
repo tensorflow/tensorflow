@@ -57,10 +57,6 @@ std::ostream& operator<<(std::ostream& os, const TfrtCompileOptions& options) {
             << ", hoist_invariant_ops = " << options.hoist_invariant_ops
             << ", enable_while_parallel_iterations = "
             << options.enable_while_parallel_iterations
-            << ", auto_fusion_oplist = ["
-            << absl::StrJoin(options.auto_fusion_oplist, ",") << "]"
-            << ", auto_fusion_min_cluster_size = "
-            << options.auto_fusion_min_cluster_size
             << ", cost_threshold = " << options.cost_threshold
             << ", upper_cost_threshold = " << options.upper_cost_threshold
             << ", merge_inter_dependent_streams = "

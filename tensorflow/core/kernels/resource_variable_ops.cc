@@ -45,6 +45,7 @@ limitations under the License.
 //   (use_locking=false), we never copy even if the variable's
 //   reference count is >1.
 
+#include "tensorflow/core/framework/op_requires.h"
 #define EIGEN_USE_THREADS
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -145,7 +146,7 @@ void ReadVariableOp::Compute(OpKernelContext* ctx) {
                   "This could mean that the variable has been deleted. ",
                   "In TF1, it can also mean the variable is uninitialized. ",
                   "Debug info: container=", handle.container(),
-                  ", status error message=", status.error_message()));
+                  ", status error message=", status.message()));
 
   tf_shared_lock ml(*variable->mu());
   // We're acquiring a reference to the underlying buffer while
@@ -231,6 +232,7 @@ REGISTER_KERNEL_BUILDER(
 VarHandleOp::VarHandleOp(OpKernelConstruction* context) : OpKernel(context) {
   OP_REQUIRES_OK(context, context->GetAttr("container", &container_));
   OP_REQUIRES_OK(context, context->GetAttr("shared_name", &name_));
+  OP_REQUIRES_OK(context, context->GetAttr("debug_name", &debug_name_));
 
   OP_REQUIRES_OK(context, context->GetAttr("dtype", &dtype_and_shape_.dtype));
   OP_REQUIRES_OK(context, context->GetAttr("shape", &dtype_and_shape_.shape));
@@ -251,7 +253,7 @@ VarHandleOp::VarHandleOp(OpKernelConstruction* context) : OpKernel(context) {
 
 void VarHandleOp::Compute(OpKernelContext* ctx) {
   if (is_anonymous_) {
-    Var* resource = new Var(dtype_and_shape_.dtype);
+    Var* resource = new Var(dtype_and_shape_.dtype, debug_name_);
     ResourceMgr* mgr = ctx->resource_manager();
     ResourceHandle handle = ResourceHandle::MakeRefCountingHandle<Var>(
         resource, ctx->device()->name(),
@@ -367,7 +369,7 @@ void DisableCopyOnReadOp::Compute(OpKernelContext* ctx) {
                   "This could mean that the variable has been deleted. ",
                   "In TF1, it can also mean the variable is uninitialized. ",
                   "Debug info: container=", handle.container(),
-                  ", status error message=", status.error_message()));
+                  ", status error message=", status.message()));
   // If the variable is currently in copy-on-read mode, its refcount is 1
   if (variable->copy_on_read_mode.load()) {
     // Obtain an exclusive lock on the variable and change the access mode
@@ -595,6 +597,9 @@ class AssignUpdateVariableOp : public OpKernel {
     Tensor* var_tensor = variable->tensor();
     OP_REQUIRES_OK(context, ValidateAssignUpdateVariableOpShapes(
                                 var_tensor->shape(), value.shape()));
+    OP_REQUIRES(context, var_tensor->dtype() == value.dtype(),
+                errors::InvalidArgument(
+                    "DType of variable handle and value does not match."));
     OP_REQUIRES_OK(
         context, PrepareToUpdateVariable<Device, T>(
                      context, var_tensor, variable->copy_on_read_mode.load()));

@@ -20,6 +20,7 @@ limitations under the License.
 #include <algorithm>
 #include <memory>
 #include <set>
+#include <vector>
 
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
@@ -89,7 +90,7 @@ tensorflow::Status ReturnError(const std::vector<string>& pieces, int idx) {
     val = pieces[idx + 1];
   }
   return tensorflow::Status(
-      tensorflow::error::INVALID_ARGUMENT,
+      absl::StatusCode::kInvalidArgument,
       absl::StrCat("Invalid option '", pieces[idx], "' value: '", val, "'"));
 }
 
@@ -121,7 +122,7 @@ tensorflow::Status ParseCmdLine(const string& line, string* cmd,
   std::vector<string> cmds_str(kCmds, kCmds + sizeof(kCmds) / sizeof(*kCmds));
   if (std::find(cmds_str.begin(), cmds_str.end(), pieces[0]) ==
       cmds_str.end()) {
-    return tensorflow::Status(tensorflow::error::INVALID_ARGUMENT,
+    return tensorflow::Status(absl::StatusCode::kInvalidArgument,
                               "First string must be a valid command.");
   }
   *cmd = pieces[0];

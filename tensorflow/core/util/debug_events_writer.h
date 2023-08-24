@@ -16,7 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_DEBUG_EVENTS_WRITER_H_
 #define TENSORFLOW_CORE_UTIL_DEBUG_EVENTS_WRITER_H_
 
+#include <atomic>
 #include <deque>
+#include <memory>
+#include <unordered_map>
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/tensor.h"

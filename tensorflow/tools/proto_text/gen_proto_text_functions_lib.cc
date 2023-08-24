@@ -36,7 +36,7 @@ namespace {
 template <typename... Args>
 string StrCat(const Args&... args) {
   std::ostringstream s;
-  std::vector<int>{((s << args), 0)...};
+  std::vector<int> give_me_a_name{((s << args), 0)...};
   return s.str();
 }
 

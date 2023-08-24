@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/padding.h"
 
+#include <utility>
+
 #include "tensorflow/tsl/platform/test.h"
 
 namespace xla {

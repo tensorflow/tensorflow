@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/tsl/platform/types.h"
 
 namespace tensorflow {
 
@@ -89,9 +90,12 @@ class BatchFunctionKernel : public AsyncOpKernel {
   int32 batch_timeout_micros_;
   int32 max_enqueued_batches_;
   std::vector<int32> allowed_batch_sizes_;
+  int32 low_priority_max_batch_size_;
+  int32 low_priority_batch_timeout_micros_;
+  int32 low_priority_max_enqueued_batches_;
+  std::vector<int32> low_priority_allowed_batch_sizes_;
   NameAttrList func_;
   absl::optional<FunctionLibraryRuntime::Handle> fhandle_ TF_GUARDED_BY(mu_);
-  FunctionLibraryRuntime* flib_;
   bool enable_large_batch_splitting_;
   bool has_attribute_enable_large_batch_splitting_;
   bool enable_adaptive_batch_threads_ = false;
@@ -106,6 +110,7 @@ class BatchFunctionKernel : public AsyncOpKernel {
     int32 initial_in_flight_batches_limit = kInitialInflightBatches;
     int32 max_in_flight_batches_limit = kMaxInflightBatches;
     int32 batches_to_average_over = kBatchesToAverageOver;
+    int64 full_batch_scheduling_boost_micros = -1;
   };
   absl::optional<AdaptiveBatchSchedulerOptions>
       adaptive_batch_scheduler_options_ = absl::nullopt;

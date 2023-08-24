@@ -213,7 +213,7 @@ Status RecordReader::ReadRecord(uint64* offset, tstring* record) {
     last_read_failed_ = true;
     if (errors::IsOutOfRange(s)) {
       s = errors::DataLoss("truncated record at ", *offset, "' failed with ",
-                           s.error_message());
+                           s.message());
     }
     return s;
   }
@@ -244,7 +244,7 @@ Status RecordReader::SkipRecords(uint64* offset, int num_to_skip,
       last_read_failed_ = true;
       if (errors::IsOutOfRange(s)) {
         s = errors::DataLoss("truncated record at ", *offset, "' failed with ",
-                             s.error_message());
+                             s.message());
       }
       return s;
     }

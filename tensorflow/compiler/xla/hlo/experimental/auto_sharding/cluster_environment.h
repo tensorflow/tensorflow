@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
-#include <iostream>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <ostream>
@@ -59,9 +59,23 @@ class ClusterEnvironment {
     non_zero_mesh_dims_ =
         VectorGreaterThanOneElementIndices(device_mesh.dimensions());
     GenerateCachedReplicaGroups();
-    // TODO(yuemmawang) Find the largest dimension in original_device_mesh and
-    // create 1d mesh on that dimension.
-    device_mesh_1d_.Reshape({original_device_mesh.num_elements(), 1});
+
+    // Essentially, we want to create a 1D mesh here such that the resharding
+    // costs between the original mesh and this 1D mesh are the least. This
+    // essentially means we create a 1D shape which stretches along the largest
+    // dimension of the original mesh. This will not however for asymmetric
+    // values of alpha and beta, I think.
+    // TODO(pratikf) Fix this for asymmetric alpha and beta values.
+    auto original_device_mesh_shape = original_device_mesh.dimensions();
+    auto max_dim_iterator = std::max_element(original_device_mesh_shape.begin(),
+                                             original_device_mesh_shape.end());
+    size_t largest_dim_idx =
+        std::distance(original_device_mesh_shape.begin(), max_dim_iterator);
+
+    std::vector<int64_t> device_mesh_1d_shape(
+        original_device_mesh.num_dimensions(), 1);
+    device_mesh_1d_shape[largest_dim_idx] = original_device_mesh.num_elements();
+    device_mesh_1d_.Reshape(device_mesh_1d_shape);
   }
 
   size_t NumDevices() const { return total_devices_; }

@@ -147,7 +147,7 @@ class TestReportErrorToClusterOp : public OpKernel {
                            "initialized properly."));
       return;
     }
-    tensorflow::Status s(static_cast<tensorflow::error::Code>(error_code),
+    tensorflow::Status s(static_cast<absl::StatusCode>(error_code),
                          error_message);
     s.SetPayload(tsl::CoordinationErrorPayloadKey(),
                  absl::Cord("testing error payload"));

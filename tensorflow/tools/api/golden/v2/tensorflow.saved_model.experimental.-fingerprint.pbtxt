@@ -6,4 +6,12 @@ tf_class {
     name: "__init__"
     argspec: "args=[\'self\', \'saved_model_checksum\', \'graph_def_program_hash\', \'signature_def_hash\', \'saved_object_graph_hash\', \'checkpoint_hash\', \'version\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
   }
+  member_method {
+    name: "from_proto"
+    argspec: "args=[\'cls\', \'proto\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "singleprint"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
 }

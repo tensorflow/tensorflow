@@ -43,6 +43,7 @@ namespace {
 class SingleOpModelWithNNAPI : public SingleOpModel {
  public:
   SingleOpModelWithNNAPI() = default;
+  ~SingleOpModelWithNNAPI() { stateful_delegate_.reset(); }
   void Init(const NnApi* nnapi) {
     options_.disallow_nnapi_cpu = false;
     stateful_delegate_ =

@@ -148,7 +148,7 @@ tf_cc_test(
         "//tensorflow/core/kernels:ops_testutil",
         "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest_main",
-        "@flatbuffers//:public_headers_lib",
+        "@flatbuffers",
     ],
 )
 

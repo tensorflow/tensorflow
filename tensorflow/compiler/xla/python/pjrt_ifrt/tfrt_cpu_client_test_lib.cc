@@ -26,11 +26,11 @@ namespace {
 
 const bool kUnused =
     (test_util::RegisterClientFactory(
-         []() -> StatusOr<std::unique_ptr<Client>> {
+         []() -> StatusOr<std::shared_ptr<Client>> {
            TF_ASSIGN_OR_RETURN(auto pjrt_client,
                                xla::GetTfrtCpuClient(/*asynchronous=*/true,
                                                      /*cpu_device_count=*/2));
-           return StatusOr<std::unique_ptr<PjRtClient>>(
+           return std::shared_ptr<Client>(
                PjRtClient::Create(std::move(pjrt_client)));
          }),
      true);

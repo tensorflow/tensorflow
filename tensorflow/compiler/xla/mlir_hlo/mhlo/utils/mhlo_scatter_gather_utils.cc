@@ -82,12 +82,11 @@ makeOperandStartIndexPermutations(ArrayRef<int64_t> dimMap, int operandRank) {
   return {permutation, getInversePermutation(permutation)};
 }
 
-TypedValue<TensorType> insertDegenerateDimensions(
-    OpBuilder& b, Location loc, TypedValue<TensorType> tensor,
-    ArrayRef<int64_t> dimsToInsert) {
+Value insertDegenerateDimensions(OpBuilder& b, Location loc, Value tensor,
+                                 ArrayRef<int64_t> dimsToInsert) {
   assert(llvm::is_sorted(dimsToInsert) && "dimsToInsert must be sorted");
   if (dimsToInsert.empty()) return tensor;
-  TensorType type = tensor.getType();
+  TensorType type = tensor.getType().cast<TensorType>();
   SmallVector<int64_t> newShape{type.getShape()};
   for (int64_t dim : dimsToInsert) newShape.insert(newShape.begin() + dim, 1);
   auto newType = RankedTensorType::get(newShape, type.getElementType());
@@ -102,10 +101,10 @@ TypedValue<TensorType> insertDegenerateDimensions(
 // Checks if the indexVectorDim is equal to the rank of `indices`. In that
 // case add the trailing 1 dimension. If indexVectorDim is not the innermost
 // dimension, insert transpose to make it so.
-static TypedValue<TensorType> ensureIndexVectorDimPosition(
-    OpBuilder& b, Location loc, TypedValue<TensorType> indices,
-    int64_t indexVectorDim) {
-  int64_t indicesRank = indices.getType().getRank();
+static Value ensureIndexVectorDimPosition(OpBuilder& b, Location loc,
+                                          Value indices,
+                                          int64_t indexVectorDim) {
+  int64_t indicesRank = indices.getType().cast<TensorType>().getRank();
   if (indexVectorDim == indicesRank - 1) return indices;
   if (indexVectorDim == indicesRank)
     return insertDegenerateDimensions(b, loc, indices, {indicesRank});
@@ -118,12 +117,11 @@ static TypedValue<TensorType> ensureIndexVectorDimPosition(
       .getResult();
 }
 
-TypedValue<TensorType> canonicalizeStartIndices(OpBuilder& b, Location loc,
-                                                TypedValue<TensorType> indices,
-                                                int64_t indexVectorDim) {
+Value canonicalizeStartIndices(OpBuilder& b, Location loc, Value indices,
+                               int64_t indexVectorDim) {
   indices = ensureIndexVectorDimPosition(b, loc, indices, indexVectorDim);
 
-  int64_t indicesRank = indices.getType().getRank();
+  int64_t indicesRank = indices.getType().cast<TensorType>().getRank();
 
   if (indicesRank == 2) return indices;
   if (indicesRank == 1) return insertDegenerateDimensions(b, loc, indices, {0});

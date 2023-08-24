@@ -45,6 +45,10 @@ limitations under the License.
 // support the same syntax for these so it should not be a big deal if they
 // end up using our definitions instead.
 #undef LOG
+#undef LOG_EVERY_N
+#undef LOG_FIRST_N
+#undef LOG_EVERY_POW_2
+#undef LOG_EVERY_N_SEC
 #undef VLOG
 
 #undef CHECK
@@ -62,6 +66,16 @@ limitations under the License.
 #undef DCHECK_LE
 #undef DCHECK_GT
 #undef DCHECK_GE
+
+#undef QCHECK
+#undef QCHECK_EQ
+#undef QCHECK_NE
+#undef QCHECK_LT
+#undef QCHECK_LE
+#undef QCHECK_GT
+#undef QCHECK_GE
+
+#undef PCHECK
 
 namespace tsl {
 const int INFO = 0;            // base_logging::INFO;

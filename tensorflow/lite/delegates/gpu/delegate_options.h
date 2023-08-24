@@ -136,6 +136,13 @@ typedef struct {
   // Set to nullptr in TfLiteGpuDelegateOptionsV2Default(), which implies the
   // delegate will not try serialization.
   const char* model_token;
+
+#ifdef TFLITE_DEBUG_DELEGATE
+  // This sets the index of the first node that could be delegated.
+  int first_delegate_node_index;
+  // This sets the index of the last node that could be delegated.
+  int last_delegate_node_index;
+#endif
 } TfLiteGpuDelegateOptionsV2;
 
 // Populates TfLiteGpuDelegateOptionsV2 as follows:

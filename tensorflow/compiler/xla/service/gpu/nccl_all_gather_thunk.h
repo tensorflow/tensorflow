@@ -18,10 +18,8 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_collective_thunk.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -30,72 +28,31 @@ struct NcclAllGatherConfig {
   NcclCollectiveConfig config;
 };
 
-// Base class for thunk that performs a NCCL-based All-Gather among CUDA
-// GPU-based replicas.
-class NcclAllGatherThunkBase : public NcclCollectiveThunk {
- public:
-  NcclAllGatherThunkBase(Kind kind, ThunkInfo thunk_info,
-                         NcclAllGatherConfig config,
-                         std::vector<Buffer> buffers);
-
- protected:
-  Status RunAllGather(const ExecuteParams& params, se::Stream& stream,
-                      ncclComm_t comm);
-  const NcclCollectiveConfig& config() const override { return config_.config; }
-
- private:
-  const NcclAllGatherConfig config_;
-  const std::vector<Buffer> buffers_;
-};
-
-class NcclAllGatherThunk : public NcclAllGatherThunkBase {
- public:
-  NcclAllGatherThunk(ThunkInfo thunk_info, mlir::lmhlo::AllGatherOp op,
-                     std::vector<Buffer> buffers);
-
-  // Returns whether the given instruction can be lowered to a nccl all-gather
-  // call.
-  static bool CanImplement(mlir::lmhlo::AllGatherOp op);
-  static const char* GetName() { return "AllGather"; }
-  static bool IsDegenerate(mlir::lmhlo::AllGatherOp op, int64_t replica_count,
-                           int64_t partition_count);
-  static CollectiveOpGroupMode GetGroupMode(mlir::lmhlo::AllGatherOp op);
-  static constexpr bool IsAsync() { return false; }
-
- protected:
-  Status RunNcclCollective(const ExecuteParams& params,
-                           ncclComm_t comm) override;
-};
-
-class NcclAllGatherStartThunk : public NcclAllGatherThunkBase {
+// Thunk that performs a NCCL-based All-Gather among CUDA GPU-based replicas.
+class NcclAllGatherStartThunk : public NcclCollectiveThunk {
  public:
   NcclAllGatherStartThunk(ThunkInfo thunk_info,
                           mlir::lmhlo_gpu::AllGatherStartOp op,
                           std::vector<Buffer> buffers);
 
-  static const char* GetName() { return "AllGatherStart"; }
+  static const char* GetHloOpName() { return "all-gather-start"; }
 
-  static bool CanImplement(mlir::lmhlo_gpu::AllGatherStartOp op);
+  static Status CheckImplementable(mlir::lmhlo_gpu::AllGatherStartOp op,
+                                   int64_t replica_count,
+                                   int64_t partition_count);
   static bool IsDegenerate(mlir::lmhlo_gpu::AllGatherStartOp op,
                            int64_t replica_count, int64_t partition_count);
   static CollectiveOpGroupMode GetGroupMode(
       mlir::lmhlo_gpu::AllGatherStartOp op);
-  static constexpr bool IsAsync() { return true; }
-
-  AsyncExecutor& async_executor() { return async_; }
 
  protected:
-  Status RunNcclCollective(const ExecuteParams& params,
+  const NcclCollectiveConfig& config() const override { return config_.config; }
+  Status RunNcclCollective(const ExecuteParams& params, se::Stream& stream,
                            ncclComm_t comm) override;
 
  private:
-  AsyncExecutor async_;
-};
-
-class NcclAllGatherDoneThunk : public NcclCollectiveDoneThunk {
- public:
-  NcclAllGatherDoneThunk(ThunkInfo thunk_info,
-                         NcclCollectiveThunk::AsyncExecutor& async);
+  const NcclAllGatherConfig config_;
+  const std::vector<Buffer> buffers_;
 };
 
 Status RunAllGather(std::vector<DeviceBufferPair>& buffers, se::Stream& stream,

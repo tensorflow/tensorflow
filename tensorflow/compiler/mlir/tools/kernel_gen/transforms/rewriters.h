@@ -52,12 +52,14 @@ void populateExtraBufferizePatterns(
     bufferization::BufferizeTypeConverter *converter,
     RewritePatternSet *patterns);
 
-/// Populate patterns to rewrite TF operations to TF framework JIT invocations.
-void PopulateTFToJITInvocationPatterns(
-    MLIRContext *ctx, RewritePatternSet *patterns,
-    llvm::ArrayRef<int64_t> tile_sizes, llvm::ArrayRef<int64_t> unroll_factors,
-    int64_t max_supported_rank, bool enable_ftz, bool index_64bit,
-    bool cpu_codegen, bool jit_i64_indexed_for_large_tensors);
+/// Populate patterns to pack JIT invocations.
+void PopulatePackJitInvocationsPatterns(MLIRContext *ctx,
+                                        RewritePatternSet *patterns,
+                                        llvm::ArrayRef<int64_t> tile_sizes,
+                                        llvm::ArrayRef<int64_t> unroll_factors,
+                                        int64_t max_supported_rank,
+                                        bool enable_ftz, bool index_64bit,
+                                        bool cpu_codegen);
 
 }  // namespace transforms
 }  // namespace kernel_gen

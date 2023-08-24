@@ -35,6 +35,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/manipulate_model_attr.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -205,42 +206,6 @@ FailureOr<absl::flat_hash_map<std::string, func::FuncOp>> GetInitFuncOps(
   return init_func_ops;
 }
 
-// If `main_func_op` has the `tf.entry_function` attribute, adds a new input
-// name to the `inputs` field of the attribute. Otherwise, no attribute is
-// modified.
-void MaybeAddEntryFunctionInput(const StringRef input_name,
-                                func::FuncOp main_func_op) {
-  auto entry_func_attr =
-      main_func_op->getAttrOfType<DictionaryAttr>("tf.entry_function");
-  if (!entry_func_attr) return;
-
-  auto entry_func_attrs = SmallVector<NamedAttribute>(entry_func_attr.begin(),
-                                                      entry_func_attr.end());
-
-  MLIRContext* ctx = main_func_op.getContext();
-  for (auto& named_attr : entry_func_attrs) {
-    if (named_attr.getName() != "inputs") continue;
-
-    // Splits the "inputs" field to retrieve individual input names. Ignores
-    // empty strings.
-    SmallVector<StringRef> inputs_attrs{};
-    cast<StringAttr>(named_attr.getValue())
-        .strref()
-        .split(inputs_attrs, /*Separator=*/',', /*MaxSplit=*/-1,
-               /*KeepEmpty=*/false);
-
-    inputs_attrs.emplace_back(input_name);
-
-    const std::string new_inputs_attr_str =
-        llvm::join(std::move(inputs_attrs), /*Separator=*/",");
-
-    named_attr.setValue(StringAttr::get(ctx, new_inputs_attr_str));
-  }
-
-  main_func_op->setAttr("tf.entry_function",
-                        DictionaryAttr::get(ctx, entry_func_attrs));
-}
-
 // Creates new arguments to the main function that corresponds to the source
 // function's arguments. Returns the `IRMapping` that contains the
 // relationship.
@@ -265,7 +230,7 @@ IRMapping CloneSrcFuncArgumentsToMainFunc(func::FuncOp src_func_op,
     const std::string new_input_name =
         absl::StrCat(GetInitializerType(src_func_op), "_", src_arg_idx, ":0");
 
-    MaybeAddEntryFunctionInput(new_input_name, main_func_op);
+    AddEntryFunctionInput(new_input_name, main_func_op);
 
     // During cloning, let it know that the source function's argument
     // corresponds to the main function's newly created argument when cloning

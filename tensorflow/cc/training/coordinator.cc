@@ -39,7 +39,7 @@ Status Coordinator::RegisterRunner(std::unique_ptr<RunnerInterface> runner) {
   {
     mutex_lock l(mu_);
     if (should_stop_) {
-      return Status(error::FAILED_PRECONDITION,
+      return Status(absl::StatusCode::kFailedPrecondition,
                     "The coordinator has been stopped.");
     }
   }
@@ -61,7 +61,7 @@ bool Coordinator::AllRunnersStopped() {
 Status Coordinator::RequestStop() {
   mutex_lock l(mu_);
   if (should_stop_) {
-    return Status(error::FAILED_PRECONDITION,
+    return Status(absl::StatusCode::kFailedPrecondition,
                   "The Coordinator is not running.");
   }
   should_stop_ = true;
@@ -79,7 +79,7 @@ Status Coordinator::Join() {
   {
     mutex_lock l(mu_);
     if (!should_stop_) {
-      return Status(error::FAILED_PRECONDITION,
+      return Status(absl::StatusCode::kFailedPrecondition,
                     "Joining coordinator without requesting to stop.");
     }
   }

@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/protobuf/snapshot.pb.h"
 #include "tensorflow/core/protobuf/struct.pb.h"
+#include "tensorflow/tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -135,7 +136,7 @@ TEST_F(DispatcherClientTest, SnapshotAlreadyStarted) {
       dispatcher_client_->Snapshot(RangeDataset(10), directory, metadata));
   EXPECT_THAT(
       dispatcher_client_->Snapshot(RangeDataset(10), directory, metadata),
-      StatusIs(error::INVALID_ARGUMENT, HasSubstr("already started")));
+      StatusIs(error::ALREADY_EXISTS, HasSubstr("already started")));
 }
 
 TEST_F(DispatcherClientTest, GetDataServiceConfig) {
@@ -202,7 +203,8 @@ TEST_F(DispatcherClientTest, GetSnapshotSplit) {
       TF_ASSERT_OK(dispatcher_client_->GetSnapshotSplit(
           test_cluster_->WorkerAddress(0), snapshot_task.base_path(),
           snapshot_task.stream_index(),
-          /*source_index=*/0, split, local_split_index, end_of_splits));
+          /*source_index=*/0, /*repetition_index=*/0, split, local_split_index,
+          end_of_splits));
       EXPECT_EQ(local_split_index, i);
       EXPECT_FALSE(end_of_splits);
     }
@@ -230,7 +232,8 @@ TEST_F(DispatcherClientTest, GetSnapshotSplitMultipleStreams) {
       TF_ASSERT_OK(dispatcher_client_->GetSnapshotSplit(
           test_cluster_->WorkerAddress(i), snapshot_task.base_path(),
           snapshot_task.stream_index(),
-          /*source_index=*/0, split, local_split_index, end_of_splits));
+          /*source_index=*/0, /*repetition_index=*/0, split, local_split_index,
+          end_of_splits));
       EXPECT_EQ(local_split_index, 0);
       EXPECT_FALSE(end_of_splits);
     }

@@ -85,26 +85,26 @@ bool ReconcileGeneralAttributeKeys(TfLiteAttrMapType type,
   for (auto k : keys) {
     const auto l = lhs->find(k);
     const auto r = rhs->find(k);
-    if (l == lhs->end()) {
+    if (l == lhs->end() || l->second.GetPtr() == nullptr) {
       merged->insert_or_assign(k, r->second);
       continue;
     }
-    if (r == rhs->end()) {
+    if (r == rhs->end() || r->second.GetPtr() == nullptr) {
       merged->insert_or_assign(k, l->second);
       continue;
     }
     if (type == kTfLiteAttrMapTypeBuffer) {
       switch (static_cast<TfLiteBufferAttrKey>(k)) {
         case kTfLiteBufferAttrKeySize:
-          ReconcileSize(l->second.Get<size_t>(), r->second.Get<size_t>(),
+          ReconcileSize(*l->second.Get<size_t>(), *r->second.Get<size_t>(),
                         merged);
           break;
         case kTfLiteBufferAttrKeyAlignment:
-          ReconcileAlignment(l->second.Get<size_t>(), r->second.Get<size_t>(),
+          ReconcileAlignment(*l->second.Get<size_t>(), *r->second.Get<size_t>(),
                              merged);
           break;
         case kTfLiteBufferAttrKeyPadding:
-          ReconcilePadding(l->second.Get<size_t>(), r->second.Get<size_t>(),
+          ReconcilePadding(*l->second.Get<size_t>(), *r->second.Get<size_t>(),
                            merged);
           break;
         default:
@@ -144,24 +144,24 @@ bool CheckGeneralAttributeKeysCoverage(TfLiteAttrMapType type,
     bool has_conflict = false;
     const auto l = lhs->find(k);
     const auto r = rhs->find(k);
-    if (r == rhs->end()) {
+    if (r == rhs->end() || r->second.GetPtr() == nullptr) {
       continue;
-    } else if (l == lhs->end()) {
+    } else if (l == lhs->end() || l->second.GetPtr() == nullptr) {
       has_conflict = true;
     } else {
       if (type == kTfLiteAttrMapTypeBuffer) {
         switch (static_cast<TfLiteBufferAttrKey>(k)) {
           case kTfLiteBufferAttrKeySize:
             has_conflict |=
-                !CheckSize(l->second.Get<size_t>(), r->second.Get<size_t>());
+                !CheckSize(*l->second.Get<size_t>(), *r->second.Get<size_t>());
             break;
           case kTfLiteBufferAttrKeyAlignment:
-            has_conflict |= !CheckMultiples(l->second.Get<size_t>(),
-                                            r->second.Get<size_t>());
+            has_conflict |= !CheckMultiples(*l->second.Get<size_t>(),
+                                            *r->second.Get<size_t>());
             break;
           case kTfLiteBufferAttrKeyPadding:
             has_conflict |=
-                !CheckSize(l->second.Get<size_t>(), r->second.Get<size_t>());
+                !CheckSize(*l->second.Get<size_t>(), *r->second.Get<size_t>());
             break;
           default:
             // For other keys, check equality.

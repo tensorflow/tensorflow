@@ -79,8 +79,8 @@ struct SimplifyBroadcasts : public mlir::OpRewritePattern<shape::BroadcastOp> {
     for (const auto &sInfo : shapesInfo) rank = std::max(rank, sInfo.size());
 
     // Compute broadcast symbolically.
-    SmallVector<Optional<SymbolicBroadcastDimension>> symResult(rank,
-                                                                std::nullopt);
+    SmallVector<std::optional<SymbolicBroadcastDimension>> symResult(
+        rank, std::nullopt);
     for (const auto &sInfo : llvm::enumerate(shapesInfo)) {
       size_t dimOffset = rank - sInfo.value().size();
       for (const auto &symExpr : llvm::enumerate(sInfo.value())) {

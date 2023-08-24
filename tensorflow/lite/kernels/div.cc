@@ -36,6 +36,7 @@ limitations under the License.
 
 #include "xnnpack.h"  // from @XNNPACK
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
+#include "tensorflow/lite/minimal_logging.h"
 #endif  // TFLITE_KERNEL_USE_XNNPACK
 
 namespace tflite {
@@ -186,10 +187,13 @@ void EvalDiv(TfLiteContext* context, TfLiteNode* node, TfLiteDivParams* params,
             GetTensorData<float>(input2), GetTensorData<float>(output),
             output_min, output_max,
             /*flags=*/XNN_FLAG_YIELD_WORKERS, threadpool);
-        if (status != xnn_status_success) {
-          TF_LITE_KERNEL_LOG(context, "Failed to run xnn_run_divide_nd_f32");
+        if (status == xnn_status_success) {
+          return;
         }
-        return;
+        TFLITE_LOG(
+            TFLITE_LOG_INFO,
+            "Failed to run xnnpack xnn_run_divide_nd_f32. Error code: %d",
+            status);
       }
 #endif  // TFLITE_KERNEL_USE_XNNPACK
       if (data->requires_broadcast) {
@@ -299,20 +303,50 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace div
 
 TfLiteRegistration* Register_DIV_REF() {
-  static TfLiteRegistration r = {div::Init, div::Free, div::Prepare,
-                                 div::Eval<div::kReference>};
+  static TfLiteRegistration r = {
+      div::Init,
+      div::Free,
+      div::Prepare,
+      div::Eval<div::kReference>,
+      /*profiling_string=*/nullptr,
+      /*builtin_code=*/0,
+      /*custom_name=*/nullptr,
+      /*version=*/0,
+      /*registration_external=*/nullptr,
+      /*async_kernel=*/nullptr,
+      kTfLiteInplaceOpInput0Shared | kTfLiteInplaceOpInput1Shared};
   return &r;
 }
 
 TfLiteRegistration* Register_DIV_GENERIC_OPT() {
-  static TfLiteRegistration r = {div::Init, div::Free, div::Prepare,
-                                 div::Eval<div::kGenericOptimized>};
+  static TfLiteRegistration r = {
+      div::Init,
+      div::Free,
+      div::Prepare,
+      div::Eval<div::kGenericOptimized>,
+      /*profiling_string=*/nullptr,
+      /*builtin_code=*/0,
+      /*custom_name=*/nullptr,
+      /*version=*/0,
+      /*registration_external=*/nullptr,
+      /*async_kernel=*/nullptr,
+      kTfLiteInplaceOpInput0Shared | kTfLiteInplaceOpInput1Shared};
   return &r;
 }
 
 TfLiteRegistration* Register_DIV_NEON_OPT() {
-  static TfLiteRegistration r = {div::Init, div::Free, div::Prepare,
-                                 div::Eval<div::kNeonOptimized>};
+  static TfLiteRegistration r = {
+      div::Init,
+      div::Free,
+      div::Prepare,
+      div::Eval<div::kNeonOptimized>,
+      /*profiling_string=*/nullptr,
+      /*builtin_code=*/0,
+      /*custom_name=*/nullptr,
+      /*version=*/0,
+      /*registration_external=*/nullptr,
+      /*async_kernel=*/nullptr,
+      kTfLiteInplaceOpInput0Shared | kTfLiteInplaceOpInput1Shared};
   return &r;
 }
 

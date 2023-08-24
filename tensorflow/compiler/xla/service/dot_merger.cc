@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dot_merger.h"
 
 #include <functional>
+#include <set>
 #include <string>
+#include <utility>
 
 #include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/graphcycles/graphcycles.h"
@@ -25,53 +27,15 @@ limitations under the License.
 namespace xla {
 namespace {
 
-// Determines if this dot is canonical according to DotDecomposer's rules.  The
-// LHS and RHS must have
-//
-//  - batch dimensions at the beginning, followed by
-//  - one non-contracting dimension and one contracting dimension, in either
-//    order.
-//
-// (Note: DotDecomposer doesn't guarantee that the LHS contracting dim is the
-// last dim or the RHS contracting dim is the second-to-last.)
-bool IsCanonicalDot(HloInstruction* dot) {
-  if (dot->opcode() != HloOpcode::kDot) {
-    return false;
-  }
-
-  // Checks that the given list is a permutation of [0, 1, ..., n].
-  auto is_permutation_of_iota =
-      [](const tsl::protobuf::RepeatedField<int64_t>& vals) {
-        DimensionVector copy(vals.begin(), vals.end());
-        absl::c_sort(copy);
-        for (int i = 0; i < copy.size(); i++) {
-          if (copy[i] != i) {
-            return false;
-          }
-        }
-        return true;
-      };
-
-  const DotDimensionNumbers& dnums = dot->dot_dimension_numbers();
-  CHECK_EQ(dnums.lhs_batch_dimensions_size(),
-           dnums.rhs_batch_dimensions_size());
-  int64_t batch_size = dnums.lhs_batch_dimensions_size();
-  return is_permutation_of_iota(dnums.lhs_batch_dimensions()) &&
-         dnums.lhs_contracting_dimensions_size() == 1 &&
-         dot->operand(0)->shape().dimensions_size() == batch_size + 2 &&
-         is_permutation_of_iota(dnums.rhs_batch_dimensions()) &&
-         dnums.rhs_contracting_dimensions_size() == 1 &&
-         dot->operand(1)->shape().dimensions_size() == batch_size + 2;
-}
-
 // Tries to merge dot instructions a and b if they share an operand.  Example:
 //
 //   lhs = f32[200,100] parameter(0)
 //   rhs0 = f32[100,10] parameter(1)
 //   rhs1 = f32[100,50] parameter(2)
-//   dot0 = f32[200,10] dot(lhs, rhs0), lhs_contracting_dims={1},
-//   rhs_contracting_dims={0} dot1 = f32[200,50] dot(lhs, rhs1),
-//   lhs_contracting_dims={1}, rhs_contracting_dims={0}
+//   dot0 = f32[200,10] dot(lhs, rhs0),
+//     lhs_contracting_dims={1}, rhs_contracting_dims={0}
+//   dot1 = f32[200,50] dot(lhs, rhs1),
+//     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 //
 // can be merged to
 //
@@ -80,12 +44,18 @@ bool IsCanonicalDot(HloInstruction* dot) {
 //   dot1 = slice(dot)
 //
 // Preconditions:
-//  - `a` and `b` are canonical dots.
+//  - `a` and `b` are dots.
 //  - `a` does not transitively depend on the value of `b`, and `b` does not
 //    transitively depend on the value of `a`.
 //
 StatusOr<HloInstruction*> TryMergeSameOperand(HloInstruction* a,
                                               HloInstruction* b) {
+  if (a->shape().layout() != b->shape().layout()) {
+    VLOG(3) << "Can't merge dots because they have a different layout:\n"
+            << "\t" << a->ToString() << "\n"
+            << "\t" << b->ToString();
+    return nullptr;
+  }
   if (a->operand(0) != b->operand(0) && a->operand(1) != b->operand(1)) {
     VLOG(4) << "Can't merge dots because they don't share an operand.\n"
             << "\t" << a->ToString() << "\n"
@@ -153,25 +123,59 @@ StatusOr<HloInstruction*> TryMergeSameOperand(HloInstruction* a,
   HloInstruction* shared_op = a->mutable_operand(lhs_same ? 0 : 1);
   HloInstruction* diff_op_a = a->mutable_operand(lhs_same ? 1 : 0);
   HloInstruction* diff_op_b = b->mutable_operand(lhs_same ? 1 : 0);
+  if (diff_op_a->shape().layout() != diff_op_b->shape().layout()) {
+    VLOG(3) << "Can't merge dots because the different operands have a "
+               "different layout:\n"
+            << "\t" << diff_op_a->ToString() << "\n"
+            << "\t" << diff_op_b->ToString();
+    return nullptr;
+  }
 
   // Dimension along which we're going to concatenate diff_op_a and diff_op_b.
-  // This is the outer (i.e. non-contracing) dim.  Because the dot is canonical,
-  // we know that the dimensions are
-  //
-  //  [batch_dims ..., outer/contracting dim, contracting/outer dim].
-  //
+  // We only support the case where there is exactly one non-contracting
+  // dimension. We can find it by collecting all other dimensions in a set, and
+  // then picking the first dimension which is not in the set.
   CHECK_EQ(dnums.lhs_batch_dimensions_size(),
            dnums.rhs_batch_dimensions_size());
-  int64_t contracting_dim = (lhs_same ? dnums.rhs_contracting_dimensions()
-                                      : dnums.lhs_contracting_dimensions())[0];
-  int64_t outer_dim = contracting_dim == dnums.lhs_batch_dimensions_size()
-                          ? contracting_dim + 1
-                          : contracting_dim - 1;
+  std::set<int64_t> used_dims;
+  int64_t shared_op_num_non_contracting_dims =
+      shared_op->shape().rank() - dnums.lhs_batch_dimensions_size();
+  if (lhs_same) {
+    shared_op_num_non_contracting_dims -=
+        dnums.lhs_contracting_dimensions_size();
+    used_dims.insert(dnums.rhs_contracting_dimensions().begin(),
+                     dnums.rhs_contracting_dimensions().end());
+    used_dims.insert(dnums.rhs_batch_dimensions().begin(),
+                     dnums.rhs_batch_dimensions().end());
+  } else {
+    shared_op_num_non_contracting_dims -=
+        dnums.rhs_contracting_dimensions_size();
+    used_dims.insert(dnums.lhs_contracting_dimensions().begin(),
+                     dnums.lhs_contracting_dimensions().end());
+    used_dims.insert(dnums.lhs_batch_dimensions().begin(),
+                     dnums.lhs_batch_dimensions().end());
+  }
+  if (used_dims.size() + 1 != diff_op_a->shape().rank()) {
+    VLOG(3)
+        << "Can't merge dots because the different operands don't have exactly "
+           "one non-contracting dimension:\n"
+        << "\t" << a->ToString() << "\n"
+        << "\t" << b->ToString();
+    return nullptr;
+  }
+  int64_t outer_dim = 0;
+  for (auto used_dim : used_dims) {
+    if (used_dim != outer_dim) {
+      break;
+    }
+    ++outer_dim;
+  }
 
   TF_ASSIGN_OR_RETURN(
       Shape concat_shape,
       ShapeInference::InferConcatOpShape(
           {&diff_op_a->shape(), &diff_op_b->shape()}, outer_dim));
+  *concat_shape.mutable_layout() = diff_op_a->shape().layout();
   HloInstruction* concat_op =
       diff_op_a->AddInstruction(HloInstruction::CreateConcatenate(
           concat_shape, {diff_op_a, diff_op_b}, outer_dim));
@@ -183,6 +187,7 @@ StatusOr<HloInstruction*> TryMergeSameOperand(HloInstruction* a,
       ShapeInference::InferDotOpShape(
           dot_lhs->shape(), dot_rhs->shape(), dnums,
           /*preferred_element_type=*/a->shape().element_type()));
+  *new_dot_shape.mutable_layout() = a->shape().layout();
   HloInstruction* new_dot = a->AddInstruction(HloInstruction::CreateDot(
       new_dot_shape, dot_lhs, dot_rhs, dnums, a->precision_config()));
 
@@ -199,7 +204,8 @@ StatusOr<HloInstruction*> TryMergeSameOperand(HloInstruction* a,
                                 new_dot_shape.dimensions().end());
   DimensionVector strides(new_dot_shape.dimensions_size(), 1);
 
-  int64_t slice_dim = new_dot_shape.dimensions_size() - (lhs_same ? 1 : 2);
+  int64_t slice_dim = new_dot_shape.dimensions_size() -
+                      (lhs_same ? 1 : 1 + shared_op_num_non_contracting_dims);
   limit_indices[slice_dim] = a->shape().dimensions(slice_dim);
   // Important: We do RAUW, not ReplaceInstruction, because the old instruction
   // must live until the end of the pass.
@@ -237,7 +243,8 @@ StatusOr<bool> MergeDots(HloComputation* comp, int64_t max_size_to_merge) {
       equivalence_classes;
   for (HloInstruction* instr : comp->instructions()) {
     // Cowardly skip instructions with control dependencies.
-    if (!IsCanonicalDot(instr) || !instr->control_predecessors().empty() ||
+    if (instr->opcode() != HloOpcode::kDot ||
+        !instr->control_predecessors().empty() ||
         !instr->control_successors().empty()) {
       continue;
     }

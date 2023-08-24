@@ -44,22 +44,24 @@ from tensorflow.python.framework import function
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
+from tensorflow.python.ops import gen_control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import resources
 from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 import tensorflow.python.ops.gradients  # pylint: disable=unused-import
 from tensorflow.python.platform import googletest
 from tensorflow.python.util import compat
@@ -131,12 +133,15 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
         ops._NodeDef("FloatOutput", "myop"), ops.Graph(), [], [dtypes.float32]
     )
     t = op.outputs[0]
-    with self.assertRaisesRegex(TypeError, "Iterating.*not allowed in Graph"):
+    with self.assertRaisesRegex(
+        TypeError, "Iterating.*not allowed.*Graph mode"):
       next(iter(t))
-    with self.assertRaisesRegex(TypeError, "Iterating.*AutoGraph did convert"):
+    with self.assertRaisesRegex(
+        TypeError, "Iterating.*AutoGraph.*unsupported feature"):
       with ag_ctx.ControlStatusCtx(ag_ctx.Status.ENABLED):
         next(iter(t))
-    with self.assertRaisesRegex(TypeError, "Iterating.*AutoGraph is disabled"):
+    with self.assertRaisesRegex(
+        TypeError, "Iterating.*AutoGraph.*not be visible"):
       with ag_ctx.ControlStatusCtx(ag_ctx.Status.DISABLED):
         next(iter(t))
 
@@ -145,15 +150,15 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
         ops._NodeDef("FloatOutput", "myop"), ops.Graph(), [], [dtypes.bool]
     )
     t = op.outputs[0]
-    with self.assertRaisesRegex(TypeError,
-                                "Using.*as a.*bool.*not allowed in Graph"):
+    with self.assertRaisesRegex(
+        TypeError, "Using.*as a.*bool.*not allowed.*Graph mode"):
       bool(t)
-    with self.assertRaisesRegex(TypeError,
-                                "Using.*as a.*bool.*AutoGraph did convert"):
+    with self.assertRaisesRegex(
+        TypeError, "Using.*as a.*bool.*AutoGraph.*unsupported feature"):
       with ag_ctx.ControlStatusCtx(ag_ctx.Status.ENABLED):
         bool(t)
-    with self.assertRaisesRegex(TypeError,
-                                "Using.*as a.*bool.*AutoGraph is disabled"):
+    with self.assertRaisesRegex(
+        TypeError, "Using.*as a.*bool.*AutoGraph.*not be visible"):
       with ag_ctx.ControlStatusCtx(ag_ctx.Status.DISABLED):
         bool(t)
 
@@ -584,27 +589,27 @@ class IndexedSlicesSpecTest(test_util.TensorFlowTestCase,
 
   @parameterized.parameters([
       (indexed_slices.IndexedSlicesSpec(dtype=dtypes.string), (
-          tensor_spec.TensorSpec(None, dtypes.string),
-          tensor_spec.TensorSpec([None], dtypes.int64),
+          tensor_lib.TensorSpec(None, dtypes.string),
+          tensor_lib.TensorSpec([None], dtypes.int64),
       )),
       (indexed_slices.IndexedSlicesSpec(
           dtype=dtypes.string, dense_shape_dtype=dtypes.int32), (
-              tensor_spec.TensorSpec(None, dtypes.string),
-              tensor_spec.TensorSpec([None], dtypes.int64),
-              tensor_spec.TensorSpec([None], dtypes.int32),
+              tensor_lib.TensorSpec(None, dtypes.string),
+              tensor_lib.TensorSpec([None], dtypes.int64),
+              tensor_lib.TensorSpec([None], dtypes.int32),
           )),
       (indexed_slices.IndexedSlicesSpec(
           shape=[5, 10, 15], dense_shape_dtype=dtypes.int32), (
-              tensor_spec.TensorSpec([None, 10, 15], dtypes.float32),
-              tensor_spec.TensorSpec([None], dtypes.int64),
-              tensor_spec.TensorSpec([3], dtypes.int32),
+              tensor_lib.TensorSpec([None, 10, 15], dtypes.float32),
+              tensor_lib.TensorSpec([None], dtypes.int64),
+              tensor_lib.TensorSpec([3], dtypes.int32),
           )),
       (indexed_slices.IndexedSlicesSpec(
           shape=[5, 10, 15], dense_shape_dtype=dtypes.int32,
           indices_shape=[20]), (
-              tensor_spec.TensorSpec([20, 10, 15], dtypes.float32),
-              tensor_spec.TensorSpec([20], dtypes.int64),
-              tensor_spec.TensorSpec([3], dtypes.int32),
+              tensor_lib.TensorSpec([20, 10, 15], dtypes.float32),
+              tensor_lib.TensorSpec([20], dtypes.int64),
+              tensor_lib.TensorSpec([3], dtypes.int32),
           )),
   ])
   def testComponentSpecs(self, spec, expected):
@@ -683,7 +688,7 @@ class OperationTest(test_util.TensorFlowTestCase):
     op1 = ops.Operation.from_node_def(
         ops._NodeDef("None", "op1"), g, [], [dtypes.float32_ref, dtypes.float32]
     )
-    self.assertIn("testTraceback", op1.traceback[-1])
+    self.assertIn("testTraceback", op1.traceback[-2])
 
   @test_util.run_deprecated_v1
   def testNoInputs(self):
@@ -695,13 +700,13 @@ class OperationTest(test_util.TensorFlowTestCase):
     float_t, label_str_t = op.values()
     self.assertEqual(dtypes.float32, float_t.dtype)
     self.assertEqual(op, float_t.op)
-    self.assertEqual(0, float_t._value_index)
+    self.assertEqual(0, float_t.value_index)
     self.assertEqual(0, len(float_t.consumers()))
     self.assertEqual("myop", float_t._as_node_def_input())
 
     self.assertEqual(dtypes.string, label_str_t.dtype)
     self.assertEqual(op, label_str_t.op)
-    self.assertEqual(1, label_str_t._value_index)
+    self.assertEqual(1, label_str_t.value_index)
     self.assertEqual(0, len(label_str_t.consumers()))
     self.assertEqual("myop:1", label_str_t._as_node_def_input())
 
@@ -924,7 +929,7 @@ class OperationTest(test_util.TensorFlowTestCase):
   @test_util.run_deprecated_v1
   def testNoConvert(self):
     # Operation cannot be converted to Tensor.
-    op = control_flow_ops.no_op()
+    op = gen_control_flow_ops.no_op()
     with self.assertRaisesRegex(TypeError,
                                 "can't convert Operation '.+' to Tensor"):
       ops.convert_to_tensor(op)
@@ -1146,8 +1151,7 @@ class OperationTest(test_util.TensorFlowTestCase):
 
     @def_function.function
     def test():
-      output = control_flow_ops.while_loop(lambda x: x < 3, lambda x: x + 1,
-                                           [1])
+      output = while_loop.while_loop(lambda x: x < 3, lambda x: x + 1, [1])
       while_op = output.op
       self.assertEqual(while_op.type, "StatelessWhile")
       orig_num_inputs = len(while_op.inputs)
@@ -1336,7 +1340,7 @@ class CreateOpFromTFOperationTest(test_util.TensorFlowTestCase):
         self.assertLen(new_ops, 1)
         return x
 
-      control_flow_ops.cond(x < 10, true_fn, lambda: x)
+      cond.cond(x < 10, true_fn, lambda: x)
 
     op = g.get_operation_by_name("cond/myop")
     self.assertIsNotNone(op)
@@ -1366,7 +1370,7 @@ class CreateOpFromTFOperationTest(test_util.TensorFlowTestCase):
         self.assertLen(new_ops, 1)
         return i
 
-      control_flow_ops.while_loop(lambda i: i < 10, body, [0], name="myloop")
+      while_loop.while_loop(lambda i: i < 10, body, [0], name="myloop")
 
     op = g.get_operation_by_name("myloop/myop")
     self.assertIsNotNone(op)
@@ -1398,7 +1402,7 @@ class CreateOpFromTFOperationTest(test_util.TensorFlowTestCase):
           self.assertLen(new_ops, 1)
         return i
 
-      control_flow_ops.while_loop(lambda i: i < 10, body, [0], name="myloop")
+      while_loop.while_loop(lambda i: i < 10, body, [0], name="myloop")
 
     op = g.get_operation_by_name("myloop/myop")
     self.assertIsNotNone(op)
@@ -1422,7 +1426,7 @@ class CreateOpFromTFOperationTest(test_util.TensorFlowTestCase):
           self.assertLen(new_ops, 1)
         return i
 
-      control_flow_ops.while_loop(lambda i: i < 10, body, [0], name="myloop")
+      while_loop.while_loop(lambda i: i < 10, body, [0], name="myloop")
 
     op = g.get_operation_by_name("myloop/myop")
     self.assertIsNotNone(op)
@@ -1443,10 +1447,10 @@ class ApplyOpTest(test_util.TensorFlowTestCase):
         g,
         "Foo1", [t1, t2[1], t2[0]], [dtypes.float32, dtypes.int32],
         name="myop3")
-    self.assertTrue(isinstance(t1, ops.Tensor))
+    self.assertTrue(isinstance(t1, tensor_lib.Tensor))
     self.assertTrue(isinstance(t2, list))
     self.assertTrue(isinstance(t3, list))
-    self.assertTrue(isinstance(t3[0], ops.Tensor))
+    self.assertTrue(isinstance(t3[0], tensor_lib.Tensor))
     self.assertEqual("myop1", t1._as_node_def_input())
     self.assertEqual("myop2", t2[0]._as_node_def_input())
     self.assertEqual("myop2:1", t2[1]._as_node_def_input())
@@ -2329,8 +2333,8 @@ class ComparisonTest(test_util.TensorFlowTestCase):
     g = ops.Graph()
     t1 = _apply_op(g, "FloatOutput", [], [dtypes.float32], name="myop1")
     t2 = _apply_op(g, "FloatOutput", [], [dtypes.float32], name="myop2")
-    self.assertTrue(isinstance(t1, ops.Tensor))
-    self.assertTrue(isinstance(t2, ops.Tensor))
+    self.assertTrue(isinstance(t1, tensor_lib.Tensor))
+    self.assertTrue(isinstance(t2, tensor_lib.Tensor))
     self.assertTrue(t1 in [t1])
     self.assertTrue(t1 not in [t2])
 
@@ -3066,7 +3070,7 @@ class GraphTest(test_util.TensorFlowTestCase):
 class AttrScopeTest(test_util.TensorFlowTestCase):
 
   def _get_test_attrs(self):
-    x = control_flow_ops.no_op()
+    x = gen_control_flow_ops.no_op()
     try:
       a = compat.as_text(x.get_attr("_A"))
     except ValueError:
@@ -3619,7 +3623,7 @@ class CustomConvertToCompositeTensorTest(test_util.TensorFlowTestCase):
     self.assertIsInstance(y, _TupleTensor)
     self.assertLen(y, len(x))
     for x_, y_ in zip(x, y):
-      self.assertIsInstance(y_, ops.Tensor)
+      self.assertIsInstance(y_, tensor_lib.Tensor)
       self.assertTrue(tensor_util.is_tf_type(y_))
       self.assertAllEqual(x_, tensor_util.constant_value(y_))
 
@@ -3677,7 +3681,7 @@ class GraphDefInputShapesTest(test_util.TensorFlowTestCase):
     test_tensor_shape = [None, 1, 1, 1]
 
     @def_function.function(input_signature=[
-        tensor_spec.TensorSpec(shape=test_tensor_shape, dtype=dtypes.float32)
+        tensor_lib.TensorSpec(shape=test_tensor_shape, dtype=dtypes.float32)
     ])
     def f(x):
       return array_ops.identity(x, name="output")
@@ -3693,10 +3697,11 @@ class GraphDefInputShapesTest(test_util.TensorFlowTestCase):
     concrete_function = f.get_concrete_function()
     if pre_add_input_shapes:
       attr_value = attr_value_pb2.AttrValue(list=list_proto)
-      concrete_function = eager_function.ConcreteFunction(
+      concrete_function = eager_function.ConcreteFunction.from_func_graph(
           concrete_function.graph,
+          concrete_function.function_type,
           attrs={"_input_shapes": attr_value},
-          spec=concrete_function._pre_initialized_function_spec)
+      )
 
     test_graph = ops.Graph()
     with test_graph.as_default():

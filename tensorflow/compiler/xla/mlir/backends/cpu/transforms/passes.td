@@ -22,15 +22,15 @@ include "mlir/Pass/PassBase.td"
 // Auxiliary passes for lowering to XLA Cpu runtime.
 //===----------------------------------------------------------------------===//
 
-def ConvertLmhloToCpuRuntimePass :
-    Pass<"xla-lmhlo-to-cpu-runtime", "mlir::ModuleOp"> {
-  let summary = "Converts lmhlo operations to XLA Cpu runtime custom calls";
+def ConvertXlaCpuToCpuRuntimePass :
+    Pass<"xla-cpu-to-cpu-runtime", "mlir::ModuleOp"> {
+  let summary = "Converts xla_cpu operations to XLA Cpu runtime custom calls";
 
   let description = [{
-      Converts lmhlo dialect operations to XLA Cpu runtime custom calls.
+      Converts xla_cpu dialect operations to XLA Cpu runtime custom calls.
   }];
 
-  let constructor = "createConvertLmhloToCpuRuntimePass()";
+  let constructor = "createConvertXlaCpuToCpuRuntimePass()";
 }
 
 def LegalizeXlaAbiPass :
@@ -51,12 +51,12 @@ def LegalizeXlaAbiPass :
   let constructor = "createXlaAbiLegalizationPass()";
 }
 
-def LegalizeCollectiveOpsPass :
-   Pass<"xla-legalize-collective-ops", "mlir::func::FuncOp"> {
-  let summary = "Legalizes collective ops to AllToAll and regular ops.";
+def LegalizeLibraryOpsPass :
+   Pass<"xla-legalize-library-ops", "mlir::func::FuncOp"> {
+  let summary = "Legalizes ops that map to runtime library calls.";
 
   let description = [{
-      Lowers collective ops to xla_cpu ops.
+      Lowers ops that map to a runtime library to xla_cpu ops.
   }];
 
   let dependentDialects = [
@@ -64,7 +64,7 @@ def LegalizeCollectiveOpsPass :
     "mlir::xla_cpu::XlaCpuDialect"
   ];
 
-  let constructor = "createLegalizeCollectiveOpsPass()";
+  let constructor = "createLegalizeLibraryOpsPass()";
 }
 
 def LegalizeI1VectorTransferOpsPass :
@@ -109,23 +109,22 @@ def RemoveCopiesToOutParamsPass :
   let constructor = "createRemoveCopiesToOutParamsPass()";
 }
 
-def SparseCustomCallToPackPass :
+def SparseCustomCallRewritingPass :
     Pass<"xla-sparse-custom-call-to-pack", "mlir::func::FuncOp"> {
-  let summary = "Converts CustomCallOp to sparse_tensor_pack/unpack";
+  let summary = "Converts CustomCall operations to sparse operations";
 
   let description = [{
-      Converts CustomCallOp to sparse_tensor_pack/unpack to the corresponding
-      sparse_tensor::PackOp and sparse_tensor::UnpackOp.
-
-      The pass only converts CustomCallOp to a specific set of targets that take
-      or return MLIR sparse tensors.
+      Converts CustomCallOp operations to sparse operations
+      to avoid dropping sparsity information during the
+      HLO roundtrip.
   }];
 
   let dependentDialects = [
-      "mlir::sparse_tensor::SparseTensorDialect"
+      "mlir::sparse_tensor::SparseTensorDialect",
+      "mlir::chlo::ChloDialect",
   ];
 
-  let constructor = "createSparseCustomCallToPackUnpackOpPass()";
+  let constructor = "createSparseCustomCallRewritingPass()";
 }
 
 def RewriteReallocToAllocPass :

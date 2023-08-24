@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/kernels/while_op.h"
 
+#include <memory>
+#include <utility>
+#include <vector>
+
 #include "absl/strings/str_split.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/kernels/if_while_utils.h"
@@ -246,7 +250,7 @@ StatusOr<xla::XlaComputation> BuildWrappedBody(
 xla::XlaOp BuildWhile(XlaOpKernelContext* ctx,
                       const xla::XlaComputation& wrapped_cond,
                       const xla::XlaComputation& wrapped_body,
-                      const xla::XlaOp& initial_values,
+                      const xla::XlaOp initial_values,
                       const std::vector<int>& input_mapping,
                       const std::vector<bool>& compile_time_const_arg_indices,
                       int num_compile_time_const_args,
@@ -347,12 +351,12 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
   body_options.return_updated_values_for_all_resources = true;
   body_options.is_entry_computation = false;
   body_options.add_token_input_output = has_token_input_output_;
-  XlaCompiler::CompilationResult body;
+  auto body = std::make_unique<XlaCompiler::CompilationResult>();
   OP_REQUIRES_OK(ctx, compiler->CompileFunction(body_options, body_name_attr_,
-                                                arguments, &body));
+                                                arguments, body.get()));
   OP_REQUIRES_OK(
       ctx, ctx->xla_context()->RecordCollectiveInfoFromNestedCompilationResult(
-               body));
+               *body.get()));
 
   // We must use a static shape for parameters to an XLA compilation. However,
   // we may not know the shape of a resource if it is first
@@ -378,8 +382,8 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
             << has_uninitialized_tensor_lists;
     // Initializes any uninitialized resource with zero values of the
     // shape determined by the first compilation.
-    for (int i = 0; i < body.resource_updates.size(); ++i) {
-      const XlaCompiler::ResourceUpdate& update = body.resource_updates[i];
+    for (int i = 0; i < body->resource_updates.size(); ++i) {
+      const XlaCompiler::ResourceUpdate& update = body->resource_updates[i];
       XlaResource* resource;
       OP_REQUIRES_OK(ctx, ctx->GetResourceInput(update.input_index, &resource));
 
@@ -416,7 +420,7 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
     // Set the shape of any uninitialized TensorLists to the shape determined by
     // the first compilation. Note that, unlike resources, we do not initialize
     // the input list with zeros here, that is done later.
-    xla::Shape body_output_shape = body.xla_output_shape;
+    xla::Shape body_output_shape = body->xla_output_shape;
     OP_REQUIRES(ctx, body_output_shape.IsTuple(),
                 errors::FailedPrecondition(
                     "xla_output_shape of while body must be a tuple."));
@@ -431,9 +435,9 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
 
     // Recompile the body with the "correct" resource shapes.
     VLOG(1) << "Recompiling body with corrected resource shapes";
-    body = {};
+    *body = {};
     OP_REQUIRES_OK(ctx, compiler->CompileFunction(body_options, body_name_attr_,
-                                                  arguments, &body));
+                                                  arguments, body.get()));
   }
 
   VLOG(1) << "Compiling condition";
@@ -446,9 +450,9 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
   OP_REQUIRES_OK(ctx, compiler->CompileFunction(cond_options, cond_name_attr_,
                                                 arguments, &cond));
 
-  OP_REQUIRES(ctx, body.xla_input_shapes.size() == 1,
+  OP_REQUIRES(ctx, body->xla_input_shapes.size() == 1,
               errors::FailedPrecondition("Expected one input shape"));
-  xla::Shape body_input_shape = body.xla_input_shapes[0];
+  xla::Shape body_input_shape = body->xla_input_shapes[0];
   OP_REQUIRES(ctx, body_input_shape.IsTuple(),
               errors::FailedPrecondition("Expected tuple shape"));
   OP_REQUIRES(ctx, cond.xla_input_shapes.size() == 1,
@@ -458,7 +462,7 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
               errors::FailedPrecondition("Expected tuple shape"));
 
   VLOG(2) << "Body shape: " << xla::ShapeUtil::HumanString(body_input_shape)
-          << " -> " << xla::ShapeUtil::HumanString(body.xla_output_shape);
+          << " -> " << xla::ShapeUtil::HumanString(body->xla_output_shape);
   VLOG(2) << "Cond shape: " << xla::ShapeUtil::HumanString(cond_input_shape)
           << " -> " << xla::ShapeUtil::HumanString(cond.xla_output_shape);
 
@@ -473,7 +477,7 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
   // args (which are pruned from the body outputs in body_wapper) matches the
   // shape of the inputs.
   OP_REQUIRES_OK(ctx, VerifyBodyInputAndOutputShapeMatch(
-                          ctx, compile_time_const_arg_indices, body,
+                          ctx, compile_time_const_arg_indices, *body.get(),
                           has_token_input_output_));
 
   xla::Shape expected_cond_output_shape_without_side_effect =
@@ -494,10 +498,10 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
                   "(pred[], token[]), got: ",
                   xla::ShapeUtil::HumanString(cond.xla_output_shape)));
 
-  int num_inputs = body.input_mapping.size();
+  int num_inputs = body->input_mapping.size();
   std::vector<xla::XlaOp> inputs(num_inputs);
   for (int i = 0; i < num_inputs; ++i) {
-    int input_num = body.input_mapping[i];
+    int input_num = body->input_mapping[i];
     if (has_token_input_output_ && i == num_inputs - 1) {
       // Set token input for this "while" op.
       std::vector<xla::XlaOp> token_inputs;
@@ -577,14 +581,14 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
 
   // Remove compile time const args from the list of body outputs.
   StatusOr<xla::XlaComputation> body_result =
-      BuildWrappedBody(ctx, body, compile_time_const_arg_indices,
+      BuildWrappedBody(ctx, *body.get(), compile_time_const_arg_indices,
                        num_compile_time_const_args, has_token_input_output_);
   OP_REQUIRES_OK(ctx, body_result.status());
   xla::XlaComputation wrapped_body = std::move(body_result.value());
 
   // Builds the While op and pads its output with the compile time const args.
   xla::XlaOp while_result =
-      BuildWhile(ctx, wrapped_cond, wrapped_body, init, body.input_mapping,
+      BuildWhile(ctx, wrapped_cond, wrapped_body, init, body->input_mapping,
                  compile_time_const_arg_indices, num_compile_time_const_args,
                  has_token_input_output_);
 
@@ -617,8 +621,8 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
   }
 
   // Updates the values of any resource variables modified by the loop.
-  for (int i = 0; i < body.resource_updates.size(); ++i) {
-    const XlaCompiler::ResourceUpdate& update = body.resource_updates[i];
+  for (int i = 0; i < body->resource_updates.size(); ++i) {
+    const XlaCompiler::ResourceUpdate& update = body->resource_updates[i];
     XlaResource* resource;
     OP_REQUIRES_OK(ctx, ctx->GetResourceInput(update.input_index, &resource));
     if (update.modified) {

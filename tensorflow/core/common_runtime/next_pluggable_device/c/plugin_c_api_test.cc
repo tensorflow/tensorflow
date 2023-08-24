@@ -110,14 +110,14 @@ TEST_F(PluginEventTestFixture, TestInvokeCallback) {
                &tennis_goat](const tensorflow::Status& status) {
     result_avref.emplace(42);
     LOG(INFO) << "Invoking status callback. Tennis goat is: "
-              << status.error_message();
-    tennis_goat = status.error_message();
+              << status.message();
+    tennis_goat = status.message();
   };
 
   TFNPD_DeviceEvent* event =
       example_plugin::CreateDeviceEventAndSetAvailable(host_.get());
 
-  tensorflow::Status status(tensorflow::error::INTERNAL, "Federer");
+  tensorflow::Status status(absl::StatusCode::kInternal, "Federer");
 
   // CallbackParams stores the "done" callback function passed in by TF, and
   // status, which is "done"'s arg. We need to add another indirection since we

@@ -82,7 +82,10 @@ bool IsTfOpType(absl::string_view op_type) {
 }
 
 bool IsJaxOpType(absl::string_view op_type) {
-  static const LazyRE2 kJaxOpTypeRegEx = {"[a-z_][a-z0-9_]*"};
+  // Jax op type should start with lowercase character or underscore.
+  // If it contains '[]', it must end with ']' and whatever chars inside
+  // it are considered as a match.
+  static const LazyRE2 kJaxOpTypeRegEx = {"[a-z_][a-z0-9_]*(\\[.*\\])?"};
   return RE2::FullMatch(op_type, *kJaxOpTypeRegEx);
 }
 
@@ -122,10 +125,23 @@ TfOp ParseTfOpFullname(absl::string_view tf_op_fullname) {
     tf_op.type = kDatasetOp;
   } else if (IsTfOpType(parts[1]) && IsTfOpName(parts[0])) {
     tf_op = {Category::kTensorFlow, parts[0], parts[1]};
-  } else if (IsJaxOpType(parts[1])) {
-    tf_op = {Category::kJax, parts[0], parts[1]};
-  } else if (parts[1].empty()) {
-    tf_op = {Category::kTensorFlow, parts[0], DeriveOpType(parts[0])};
+  } else {
+    absl::string_view op_type =
+        parts[1].empty() ? DeriveOpType(parts[0]) : parts[1];
+    if (IsJaxOpType(op_type)) {
+      // JAX category introduces op_type with '[]' including unnecessary details
+      // to represent a group of ops.
+      // We need to striping the brackets and contents inside. Based on our
+      // analysis, all the op_type ends with a closing ']' if it contains
+      // brakets. It's safe to remove all the characters starting with the
+      // position of '['.
+      // Example:
+      //    "transpose[permutation=(0, 3, 1, 2)]"  =>  "transpose"
+      // See: go/xprof-jax-op-type
+      tf_op = {Category::kJax, parts[0], op_type.substr(0, op_type.find('['))};
+    } else if (parts[1].empty()) {
+      tf_op = {Category::kTensorFlow, parts[0], op_type};
+    }
   }
   return tf_op;
 }

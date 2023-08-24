@@ -18,7 +18,6 @@ from tensorflow.compiler.tests import xla_test
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import image_ops
@@ -54,13 +53,7 @@ class ImageOpsTest(xla_test.XLATestCase):
       x = array_ops.zeros((1, img_width // 2, img_width // 2, 1),
                           dtype=dtypes.float32)
       y = array_ops.zeros((1, img_width, img_width, 1), dtype=dtypes.float32)
-      if self.device == "CPU":
-        with self.assertRaisesRegex(
-            errors.UnimplementedError,
-            "ResizeBilinearGrad with align_corners=False"):
-          compiled_train(x, y)
-      else:
-        self.assertAllClose(train(x, y), compiled_train(x, y))
+      self.assertAllClose(train(x, y), compiled_train(x, y))
 
 
 if __name__ == "__main__":

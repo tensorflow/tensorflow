@@ -14,6 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 
+#include <memory>
+#include <string>
+#include <variant>
+#include <vector>
+
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_operation.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
@@ -477,10 +482,10 @@ bool EagerOperation::IsLocal() const {
 string VariantDeviceDebugString(VariantDevice device) {
   if (device == kVariantDeviceNull) {
     return "[]";
-  } else if (absl::holds_alternative<CustomDevice*>(device)) {
-    return absl::get<CustomDevice*>(device)->name();
+  } else if (std::holds_alternative<CustomDevice*>(device)) {
+    return std::get<CustomDevice*>(device)->name();
   } else {
-    return absl::get<Device*>(device)->DebugString();
+    return std::get<Device*>(device)->DebugString();
   }
 }
 const AbstractOpAttrs* EagerOperation::GetOpAttrs() const { return &attrs_; }

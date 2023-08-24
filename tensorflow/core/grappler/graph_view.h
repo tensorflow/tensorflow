@@ -18,9 +18,11 @@ limitations under the License.
 
 #include <unordered_map>
 #include <unordered_set>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/hash/hash.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -322,14 +324,14 @@ class GraphViewInternal {
     auto inserted = nodes_.emplace(node->name(), node);
     return inserted.second
                ? OkStatus()
-               : errors::InvalidArgument("Non unique node name detected: ",
-                                         node->name());
+               : absl::InvalidArgumentError(absl::StrCat(
+                     "Non unique node name detected: ", node->name()));
   }
 
   // TODO(ezhulenev): Remove this function.
   void AddUniqueNodeOrDie(NodeDefT* node) {
     Status st = AddUniqueNode(node);
-    CHECK(st.ok()) << st.error_message();
+    CHECK(st.ok()) << st.message();
   }
 
   // TODO(lyandy): Checks for self loops, Switch control dependencies, fanins

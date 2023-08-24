@@ -29,7 +29,7 @@ limitations under the License.
 #include "tensorflow/lite/core/async/testing/test_backend.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/interpreter.h"
-#include "tensorflow/lite/kernels/builtin_op_kernels.h"
+#include "tensorflow/lite/core/kernels/builtin_op_kernels.h"
 
 using ::testing::_;
 
@@ -153,6 +153,14 @@ TEST_F(AsyncSubgraphTest, BasicTest) {
   delete attrs;
 
   EXPECT_NE(handle, another_handle);
+}
+
+TEST_F(AsyncSubgraphTest, OutOfBoundTest) {
+  BuildAsyncSubgraph();
+  auto* attrs = new TfLiteAttributeMap(kTfLiteAttrMapTypeBuffer);
+  EXPECT_FALSE(subgraph_->ReconcileRestrictions(42, attrs, attrs, attrs));
+  EXPECT_EQ(kTfLiteError, subgraph_->SetAttributes(42, attrs));
+  delete attrs;
 }
 
 }  // namespace async

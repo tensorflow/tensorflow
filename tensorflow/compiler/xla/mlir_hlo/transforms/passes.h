@@ -48,10 +48,8 @@ using BufferizePatternsCallback = std::function<void(
 #define GEN_PASS_DECL_FINALBUFFERIZEPASS
 #define GEN_PASS_DECL_PROPAGATESTATICSHAPESTOKERNELPASS
 #define GEN_PASS_DECL_TILELOOPSPASS
+#define GEN_PASS_DECL_GENERICHOSTTOLLVMPASS
 #include "transforms/passes.h.inc"
-
-/// Creates a pass that reuses buffers which are already allocated.
-std::unique_ptr<OperationPass<func::FuncOp>> createBufferReusePass();
 
 /// Creates a pass that merges smaller buffer into bigger buffer to optimize
 /// memory consumption.
@@ -64,10 +62,6 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTestUserangePass();
 /// Creates a pass that prints the analysis results of ShapeComponentsAnalysis.
 std::unique_ptr<OperationPass<func::FuncOp>>
 createTestShapeComponentAnalysisPass();
-
-/// Creates a pass that removes redundant operations that implement a
-/// CopyOpInterface.
-std::unique_ptr<OperationPass<func::FuncOp>> createCopyRemovalPass();
 
 /// Creates a pass that computes the allocated memory.
 std::unique_ptr<OperationPass<func::FuncOp>> createMemoryCountPass();
@@ -112,10 +106,10 @@ void registerTestHloTransformDialectEraseSchedulePass();
 void registerTestHloTransformDialectInterpreterPass();
 
 namespace hlo {
-
-void createGenericHostToLLVMPipeline(OpPassManager& pm);
-
 std::unique_ptr<OperationPass<ModuleOp>> createOneShotBufferizePass();
+
+std::unique_ptr<OperationPass<ModuleOp>> createGenericHostToLLVMPass(
+    const GenericHostToLLVMPassOptions& options = {});
 
 std::unique_ptr<OperationPass<func::FuncOp>> createUnbufferizePass();
 std::unique_ptr<OperationPass<func::FuncOp>> createAllocToArgPass();

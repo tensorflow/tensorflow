@@ -117,12 +117,12 @@ class UpperBoundOp : public OpKernel {
                     values_t.shape().dims(), " for `values` argument")));
     // must have same batch dim_size for both
     OP_REQUIRES(ctx, sorted_inputs_t.dim_size(0) == values_t.dim_size(0),
-                Status(error::INVALID_ARGUMENT,
+                Status(absl::StatusCode::kInvalidArgument,
                        "Leading dim_size of both tensors must match."));
 
     // this is required because we do indexing in int32 on the GPU
     OP_REQUIRES(ctx, values_t.NumElements() < std::numeric_limits<int>::max(),
-                Status(error::INVALID_ARGUMENT,
+                Status(absl::StatusCode::kInvalidArgument,
                        "values tensor size must less than INT_MAX"));
 
     Tensor* output_t;
@@ -180,12 +180,12 @@ class LowerBoundOp : public OpKernel {
                     values_t.shape().dims(), " for `values` argument")));
     // must have same batch dim_size for both
     OP_REQUIRES(ctx, sorted_inputs_t.dim_size(0) == values_t.dim_size(0),
-                Status(error::INVALID_ARGUMENT,
+                Status(absl::StatusCode::kInvalidArgument,
                        "Leading dim_size of both tensors must match."));
 
     // this is required because we do indexing in int32 on the GPU
     OP_REQUIRES(ctx, values_t.NumElements() < std::numeric_limits<int>::max(),
-                Status(error::INVALID_ARGUMENT,
+                Status(absl::StatusCode::kInvalidArgument,
                        "values tensor size must less than INT_MAX"));
 
     Tensor* output_t;

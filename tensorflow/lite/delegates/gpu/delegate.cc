@@ -38,7 +38,7 @@ limitations under the License.
 #include "tensorflow/lite/builtin_ops.h"
 
 #if defined(__ANDROID__)
-#include "tensorflow/lite/core/async/backend_async_kernel_interface.h"
+#include "tensorflow/lite/async/backend_async_kernel_interface.h"
 #include "tensorflow/lite/core/async/c/task.h"
 #include "tensorflow/lite/core/async/interop/c/attribute_map.h"
 #include "tensorflow/lite/core/async/interop/c/constants.h"
@@ -52,6 +52,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/model_builder_helper.h"
 #include "tensorflow/lite/delegates/gpu/common/quantization_util.h"
 #include "tensorflow/lite/delegates/gpu/delegate_options.h"
+#include "tensorflow/lite/delegates/gpu/tflite_profile.h"
 #include "tensorflow/lite/delegates/serialization.h"
 
 #if defined(__ANDROID__)
@@ -171,7 +172,7 @@ class Delegate {
     delegate_.CopyFromBufferHandle = nullptr;
     delegate_.CopyToBufferHandle = nullptr;
     delegate_.FreeBufferHandle = nullptr;
-    delegate_.flags = kTfLiteDelegateFlagsNone;
+    delegate_.flags = kTfLiteDelegateFlagsPerOperatorProfiling;
     options_ = options ? *options : TfLiteGpuDelegateOptionsV2Default();
     if (options_.max_delegated_partitions <= 0) {
       options_.max_delegated_partitions = 1;
@@ -215,15 +216,6 @@ class Delegate {
   std::unique_ptr<TfLiteTelemetryGpuDelegateSettings> telemetry_settings_;
 
   bool async_;
-
-#if defined(__ANDROID__)
-  // TODO(b/245966018): While tflite async is in experimental stage, there's no
-  // clean way to deallocate a kernel via TfLiteRegistration::free. For now, we
-  // allow kernels to live until the Delegate is destroyed.
-  mutable absl::Mutex async_kernels_mutex_;
-  std::vector<std::unique_ptr<DelegateAsyncKernel>> async_kernels_
-      ABSL_GUARDED_BY(async_kernels_mutex_);
-#endif
 
   friend class DelegateKernelCore;
 #if defined(__ANDROID__)
@@ -351,14 +343,13 @@ absl::Status DelegateKernelCore::InitializeGraph(
   //
   // Similarly, TfLiteDelegateParams.output_tensors is an array of all output
   // tensors, and can contain static tensors with buggy conversion.
-  // GraphFloat32.outputs() is an array of runtime tensors that don't have a
-  // consumer (this is a bug in the assumption) and the order may not be the
-  // same as defined by TfLiteDelegateParams.output_tensors.  Again, these two
-  // sets are not the same, especially on a multi-partition delegation.  These
-  // are matched by inserting the tensors by the order defined by
-  // TfLiteDelegateParams.output_tensors.  Similarly, this logic is shared
-  // with ModelBuilder::PrecreateIOTensors() which is eventually called with
-  // BuildFinalModel() above.
+  // GraphFloat32.outputs() is an array of runtime tensors and the order may not
+  // be the same as defined by TfLiteDelegateParams.output_tensors.  Again,
+  // these two sets are not the same, especially on a multi-partition
+  // delegation.  These are matched by inserting the tensors by the order
+  // defined by TfLiteDelegateParams.output_tensors.  Similarly, this logic is
+  // shared with ModelBuilder::PrecreateIOTensors() which is eventually called
+  // with BuildFinalModel() above.
   //
   // The aforementioned matching in BuildFinalModel() is ported here to match
   // input/output_refs.
@@ -742,8 +733,9 @@ class DelegateAsyncKernel : public BackendAsyncKernelInterface {
       TfLiteIoType io_type) const override {
     return supported_synchronizations_;
   }
-  bool ReconcileRestrictions(TfLiteOpaqueContext* opaque_context,
-                             TfLiteOpaqueNode* opaque_node, int tensor_index,
+  bool ReconcileRestrictions(const TfLiteOpaqueContext* opaque_context,
+                             const TfLiteOpaqueNode* opaque_node,
+                             int tensor_index,
                              const TfLiteAttributeMap* user_provided_attributes,
                              TfLiteAttributeMap* merged,
                              TfLiteAttributeMap* conflict) const override;
@@ -844,7 +836,7 @@ absl::Status DelegateAsyncKernel::Init(TfLiteContext* context,
 
 namespace {
 
-bool ReconcileBufferRestrictions(TfLiteContext* context, int tensor_index,
+bool ReconcileBufferRestrictions(const TfLiteContext* context, int tensor_index,
                                  const BufferAttributes& user,
                                  BufferAttributes& merged,
                                  BufferAttributes& conflict) {
@@ -884,7 +876,7 @@ bool ReconcileBufferRestrictions(TfLiteContext* context, int tensor_index,
   return true;
 }
 
-bool ReconcileSyncRestrictions(TfLiteContext* context, int tensor_index,
+bool ReconcileSyncRestrictions(const TfLiteContext* context, int tensor_index,
                                const SyncAttributes& user,
                                SyncAttributes& merged,
                                SyncAttributes& conflict) {
@@ -900,13 +892,19 @@ bool ReconcileSyncRestrictions(TfLiteContext* context, int tensor_index,
 }  // namespace
 
 bool DelegateAsyncKernel::ReconcileRestrictions(
-    TfLiteOpaqueContext* opaque_context, TfLiteOpaqueNode* opaque_node,
-    int tensor_index, const TfLiteAttributeMap* user_provided_attributes,
+    const TfLiteOpaqueContext* opaque_context,
+    const TfLiteOpaqueNode* opaque_node, int tensor_index,
+    const TfLiteAttributeMap* user_provided_attributes,
     TfLiteAttributeMap* merged, TfLiteAttributeMap* conflict) const {
   TFLITE_ABORT_CHECK(opaque_context != nullptr, "");            // Crash OK
   TFLITE_ABORT_CHECK(user_provided_attributes != nullptr, "");  // Crash OK
   TFLITE_ABORT_CHECK(merged != nullptr, "");                    // Crash OK
-  auto* context = reinterpret_cast<TfLiteContext*>(opaque_context);
+
+  // The following cast is safe only because this code is part of the
+  // TF Lite runtime implementation.  Apps using TF Lite should not rely on
+  // TfLiteOpaqueContext and TfLiteContext being equivalent.
+  // TODO(b/272170534): Update to use opaque APIs.
+  const auto* context = reinterpret_cast<const TfLiteContext*>(opaque_context);
   if (TfLiteAttributeMapIsBufferAttributeMap(user_provided_attributes)) {
     if (!TfLiteAttributeMapIsBufferAttributeMap(merged)) {
       TFLITE_LOG_PROD(TFLITE_LOG_ERROR,
@@ -964,6 +962,10 @@ bool DelegateAsyncKernel::ReconcileRestrictions(
 TfLiteStatus DelegateAsyncKernel::SetAttributes(
     TfLiteOpaqueContext* opaque_context, TfLiteOpaqueNode* opaque_node,
     int tensor_index, const TfLiteAttributeMap* attrs) {
+  // The following cast is safe only because this code is part of the
+  // TF Lite runtime implementation.  Apps using TF Lite should not rely on
+  // TfLiteOpaqueContext and TfLiteContext being equivalent.
+  // TODO(b/272170534): Update to use opaque APIs.
   auto* context = reinterpret_cast<TfLiteContext*>(opaque_context);
   auto* node = reinterpret_cast<TfLiteNode*>(opaque_node);
   return SetAttributesImpl(context, node, tensor_index, attrs);
@@ -997,6 +999,10 @@ TfLiteStatus DelegateAsyncKernel::SetAttributesImpl(
 
 TfLiteStatus DelegateAsyncKernel::Prepare(TfLiteOpaqueContext* opaque_context,
                                           TfLiteOpaqueNode* opaque_node) {
+  // The following cast is safe only because this code is part of the
+  // TF Lite runtime implementation.  Apps using TF Lite should not rely on
+  // TfLiteOpaqueContext and TfLiteContext being equivalent.
+  // TODO(b/272170534): Update to use opaque APIs.
   auto* context = reinterpret_cast<TfLiteContext*>(opaque_context);
   auto* node = reinterpret_cast<TfLiteNode*>(opaque_node);
   return PrepareImpl(context, node);
@@ -1032,6 +1038,10 @@ TfLiteStatus DelegateAsyncKernel::RegisterBuffer(
     TfLiteOpaqueContext* opaque_context, TfLiteIoType io_type,
     const TfLiteBackendBuffer* buffer, const TfLiteAttributeMap* attrs,
     TfLiteBufferHandle handle) {
+  // The following cast is safe only because this code is part of the
+  // TF Lite runtime implementation.  Apps using TF Lite should not rely on
+  // TfLiteOpaqueContext and TfLiteContext being equivalent.
+  // TODO(b/272170534): Update to use opaque APIs.
   auto* context = reinterpret_cast<TfLiteContext*>(opaque_context);
   return RegisterBufferImpl(context, io_type, buffer, attrs, handle);
 }
@@ -1100,6 +1110,10 @@ TfLiteStatus DelegateAsyncKernel::RegisterBufferImpl(
 
 TfLiteStatus DelegateAsyncKernel::UnregisterBuffer(
     TfLiteOpaqueContext* opaque_context, TfLiteBufferHandle handle) {
+  // The following cast is safe only because this code is part of the
+  // TF Lite runtime implementation.  Apps using TF Lite should not rely on
+  // TfLiteOpaqueContext and TfLiteContext being equivalent.
+  // TODO(b/272170534): Update to use opaque APIs.
   auto* context = reinterpret_cast<TfLiteContext*>(opaque_context);
   return UnregisterBufferImpl(context, handle);
 }
@@ -1117,6 +1131,10 @@ TfLiteStatus DelegateAsyncKernel::UnregisterBufferImpl(
 TfLiteStatus DelegateAsyncKernel::Eval(TfLiteOpaqueContext* opaque_context,
                                        TfLiteOpaqueNode* opaque_node,
                                        TfLiteExecutionTask* task) {
+  // The following cast is safe only because this code is part of the
+  // TF Lite runtime implementation.  Apps using TF Lite should not rely on
+  // TfLiteOpaqueContext and TfLiteContext being equivalent.
+  // TODO(b/272170534): Update to use opaque APIs.
   auto* context = reinterpret_cast<TfLiteContext*>(opaque_context);
   auto* node = reinterpret_cast<TfLiteNode*>(opaque_node);
   return EvalImpl(context, node, task);
@@ -1405,16 +1423,11 @@ TfLiteRegistration CreateAsyncRegistration() {
                              std::string(status.message()).c_str());
           return nullptr;
         }
-        TfLiteAsyncKernel* tflite_async_kernel =
-            gpu_delegate_kernel.get()->kernel();
-        absl::MutexLock lock(&gpu_delegate->async_kernels_mutex_);
-        gpu_delegate->async_kernels_.emplace_back(
-            std::move(gpu_delegate_kernel));
-        return tflite_async_kernel;
+        return gpu_delegate_kernel.release();
       },
       // .free
       [](TfLiteContext*, void* buffer) -> void {
-        // Do nothing: See Delegate::async_kernels_.
+        delete reinterpret_cast<DelegateAsyncKernel*>(buffer);
       },
       // ,prepare
       [](TfLiteContext* context, TfLiteNode* node) -> TfLiteStatus {
@@ -1437,7 +1450,14 @@ TfLiteRegistration CreateAsyncRegistration() {
       0,                        // .builtin_code
       kRegistrationCustomName,  // .custom_name
       1,                        // .version
-  };
+      nullptr,                  // .registration_external
+      // .async_kernel
+      [](TfLiteContext*, TfLiteNode* node) -> TfLiteAsyncKernel* {
+        if (node->user_data) {
+          return static_cast<DelegateAsyncKernel*>(node->user_data)->kernel();
+        }
+        return nullptr;
+      }};
 }
 #endif  // defined(__ANDROID__)
 
@@ -1456,9 +1476,17 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
     excluded_ops.insert(kTfLiteBuiltinSplit);
     excluded_ops.insert(kTfLiteBuiltinSplitV);
   }
+#ifndef TFLITE_DEBUG_DELEGATE
   TfLiteIntArray* ops_to_replace =
       GetOpsToReplace(context, gpu_delegate->IsQuantOpsAllowed(),
                       gpu_delegate->MaxDelegatedPartitions(), &excluded_ops);
+#else
+  TfLiteIntArray* ops_to_replace =
+      GetOpsToReplace(context, gpu_delegate->IsQuantOpsAllowed(),
+                      gpu_delegate->MaxDelegatedPartitions(), &excluded_ops,
+                      gpu_delegate->options().first_delegate_node_index,
+                      gpu_delegate->options().last_delegate_node_index);
+#endif
   const auto status = context->ReplaceNodeSubsetsWithDelegateKernels(
       context, kRegistration, ops_to_replace, delegate);
   TFLITE_LOG_PROD(TFLITE_LOG_INFO, "Created %d GPU delegate kernels.",
@@ -1469,6 +1497,8 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
   telemetry::TelemetryReportDelegateSettings(
       context, "GpuDelegate::DelegatePrepare",
       telemetry::TelemetrySource::TFLITE_GPU, delegate_setting);
+
+  SetTfLiteProfiler(context->profiler);
   return status;
 }
 

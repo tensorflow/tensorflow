@@ -31,7 +31,7 @@ struct DynamicWindowDims {
   HloInstruction* output_size;
 };
 
-// This mirrors the logic in GetWindowedOutputSizeVerboseV2 but with HLOs as
+// This mirrors the logic in GetWindowedOutputSizeVerbose but with HLOs as
 // inputs and outputs.
 DynamicWindowDims GetWindowedOutputSize(HloInstruction* input_size,
                                         int64_t window_size,

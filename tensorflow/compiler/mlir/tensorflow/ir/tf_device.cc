@@ -147,7 +147,7 @@ LogicalResult ParallelExecuteOp::verify() {
   }
 
   int output_index = 0;
-  for (auto& region_and_index : llvm::enumerate(regions)) {
+  for (const auto& region_and_index : llvm::enumerate(regions)) {
     auto& region = region_and_index.value();
     auto* region_terminator = region.front().getTerminator();
 
@@ -289,7 +289,8 @@ ParseResult SetReplicateOpOperands(
 
   if (replicated_inputs.empty() && packed_inputs.empty()) return success();
 
-  for (auto replicated_input_and_idx : llvm::enumerate(replicated_inputs)) {
+  for (const auto& replicated_input_and_idx :
+       llvm::enumerate(replicated_inputs)) {
     const int32_t idx = replicated_input_and_idx.index();
     const auto& replicated_input = replicated_input_and_idx.value();
     // Check if replicated input matches `n`.
@@ -305,7 +306,7 @@ ParseResult SetReplicateOpOperands(
   }
 
   const int32_t num_replicated_block_args = replicated_inputs.size();
-  for (auto packed_input_and_idx : llvm::enumerate(packed_inputs)) {
+  for (const auto& packed_input_and_idx : llvm::enumerate(packed_inputs)) {
     const int32_t idx = packed_input_and_idx.index();
     const auto& packed_input = packed_input_and_idx.value();
 
@@ -321,7 +322,7 @@ ParseResult SetReplicateOpOperands(
 
 }  // namespace
 
-static constexpr char kOperandSegmentSizesAttr[] = "operand_segment_sizes";
+static constexpr char kOperandSegmentSizesAttr[] = "operandSegmentSizes";
 
 ParseResult ReplicateOp::parse(OpAsmParser& parser, OperationState& result) {
   llvm::SMLoc loc = parser.getCurrentLocation();
@@ -350,7 +351,7 @@ ParseResult ReplicateOp::parse(OpAsmParser& parser, OperationState& result) {
   }
   if (parser.parseRegion(body, packed_args)) return failure();
 
-  // Add derived `operand_segment_sizes` attribute based on parsed operands.
+  // Add derived `operandSegmentSizes` attribute based on parsed operands.
   if (!result.attributes.get(kOperandSegmentSizesAttr)) {
     int32_t num_replicated_inputs = replicated_inputs.size() * n;
     int32_t num_packed_inputs = packed_inputs.size();
@@ -409,7 +410,7 @@ void ReplicateOp::print(OpAsmPrinter& p) {
     p << ')';
   }
 
-  // Skip derived `operand_segment_sizes` attribute as custom print format of
+  // Skip derived `operandSegmentSizes` attribute as custom print format of
   // operands holds enough information to calculate these variadic operand list
   // lengths.
   p.printOptionalAttrDict(
@@ -460,12 +461,12 @@ void BuildReplicateOp(
     block.addArgument(packed_input.getType(), state->location);
   }
 
-  // Add derived `operand_segment_sizes` attribute.
+  // Add derived `operandSegmentSizes` attribute.
   int32_t num_replicated_inputs = replicated_inputs.size() * n;
   int32_t num_packed_inputs = packed_inputs.size();
-  auto operand_segment_sizes =
+  auto operandSegmentSizes =
       builder->getDenseI32ArrayAttr({num_replicated_inputs, num_packed_inputs});
-  state->addAttribute(kOperandSegmentSizesAttr, operand_segment_sizes);
+  state->addAttribute(kOperandSegmentSizesAttr, operandSegmentSizes);
 
   for (const auto& output_type : replica_output_types)
     state->addTypes(llvm::SmallVector<Type, 8>(n, output_type));
@@ -501,9 +502,9 @@ LogicalResult ReplicateOp::verify() {
 
   Block& block = op.getBody().front();
 
-  auto operand_segment_sizes = op.getOperandSegmentSizes();
-  const int32_t num_replicated_inputs = operand_segment_sizes[0];
-  const int32_t num_packed_inputs = operand_segment_sizes[1];
+  auto operandSegmentSizes = op.getOperandSegmentSizes();
+  const int32_t num_replicated_inputs = operandSegmentSizes[0];
+  const int32_t num_packed_inputs = operandSegmentSizes[1];
 
   if (num_replicated_inputs % n != 0)
     return op.emitOpError()
@@ -551,7 +552,7 @@ LogicalResult ReplicateOp::verify() {
            << " * " << terminator.getNumOperands() << ")";
 
   // Check replicated output types match return operand types.
-  for (auto operand_type_and_idx :
+  for (const auto& operand_type_and_idx :
        llvm::enumerate(terminator.getOperandTypes())) {
     Type operand_type = operand_type_and_idx.value();
     int32_t operand_idx = operand_type_and_idx.index();

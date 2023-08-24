@@ -108,23 +108,6 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(RepeatDatasetOp::kDatasetType);
   }
 
-  int64_t CardinalityInternal() const override {
-    int64_t n = input_->Cardinality();
-    if (count_ < 0) {
-      if (n == 0) {
-        return 0;
-      }
-      return kInfiniteCardinality;
-    }
-    if (count_ == 0) {
-      return 0;
-    }
-    if (n == kInfiniteCardinality || n == kUnknownCardinality) {
-      return n;
-    }
-    return count_ * n;
-  }
-
   int64_t CardinalityInternal(CardinalityOptions options) const override {
     int64_t n = input_->Cardinality(options);
     if (count_ < 0) {
@@ -251,9 +234,9 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
     Status SaveInternal(SerializationContext* ctx,
                         IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
-      TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kCurIteration), i_));
+      TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kCurIteration, i_));
       TF_RETURN_IF_ERROR(writer->WriteScalar(
-          full_name(kInputImplEmpty), static_cast<int64_t>(!input_impl_)));
+          prefix(), kInputImplEmpty, static_cast<int64_t>(!input_impl_)));
       if (input_impl_) {
         TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       }
@@ -263,10 +246,10 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
-      TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kCurIteration), &i_));
+      TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kCurIteration, &i_));
       int64_t input_empty;
       TF_RETURN_IF_ERROR(
-          reader->ReadScalar(full_name(kInputImplEmpty), &input_empty));
+          reader->ReadScalar(prefix(), kInputImplEmpty, &input_empty));
       if (static_cast<bool>(!input_empty)) {
         TF_RETURN_IF_ERROR(dataset()->input_->MakeIterator(
             ctx, this, nested_prefix(prefix(), i_), &input_impl_));
@@ -346,9 +329,9 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
     Status SaveInternal(SerializationContext* ctx,
                         IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
-      TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kCurIteration), i_));
+      TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kCurIteration, i_));
       TF_RETURN_IF_ERROR(writer->WriteScalar(
-          full_name(kInputImplEmpty), static_cast<int64_t>(!input_impl_)));
+          prefix(), kInputImplEmpty, static_cast<int64_t>(!input_impl_)));
       if (input_impl_) {
         TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       }
@@ -358,10 +341,10 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
-      TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kCurIteration), &i_));
+      TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kCurIteration, &i_));
       int64_t input_empty;
       TF_RETURN_IF_ERROR(
-          reader->ReadScalar(full_name(kInputImplEmpty), &input_empty));
+          reader->ReadScalar(prefix(), kInputImplEmpty, &input_empty));
       if (static_cast<bool>(input_empty)) {
         input_impl_.reset();
         first_call_ = true;

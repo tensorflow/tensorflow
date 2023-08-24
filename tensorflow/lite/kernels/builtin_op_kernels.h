@@ -24,7 +24,7 @@ namespace builtin {
 #define TFLITE_OP(NAME) \
     using ::tflite::ops::builtin::NAME;
 
-#include "tensorflow/lite/core/shims/builtin_ops_list.inc"
+#include "tensorflow/lite/kernels/builtin_ops_list.inc"
 
 #undef TFLITE_OP
 

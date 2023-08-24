@@ -27,9 +27,9 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
 #include "tensorflow/compiler/xla/service/test_compilation_environment.pb.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -145,7 +145,7 @@ TEST_F(HloModuleTest, CloneTest) {
   for (auto origin = post_order.begin(), copied = post_order_copied.begin();
        origin != post_order.end() && copied != post_order_copied.end();
        ++origin, ++copied) {
-    EXPECT_EQ((*origin)->name() + ".copy", (*copied)->name());
+    EXPECT_EQ(absl::StrCat((*origin)->name(), ".copy"), (*copied)->name());
   }
 }
 
@@ -184,9 +184,9 @@ TEST_F(HloModuleTest, CloneHasFusion) {
     if ((*origin)->name() == "Fused") {
       // Clone of the fused computation is handled when its fusion instruction
       // is cloned, which always use suffix ".clone".
-      EXPECT_EQ((*origin)->name() + ".clone", (*copied)->name());
+      EXPECT_EQ(absl::StrCat((*origin)->name(), ".clone"), (*copied)->name());
     } else {
-      EXPECT_EQ((*origin)->name() + ".copy", (*copied)->name());
+      EXPECT_EQ(absl::StrCat((*origin)->name(), ".copy"), (*copied)->name());
     }
   }
 }
@@ -890,6 +890,50 @@ TEST_F(HloModuleTest, HloModuleConfigToProto) {
   diff.set_message_field_comparison(
       google::protobuf::util::MessageDifferencer::EQUIVALENT);
   EXPECT_TRUE(diff.Compare(first_proto, second_proto));
+}
+
+TEST_F(HloModuleTest, HloModuleStackFrames) {
+  const std::string text = R"(
+HloModule a_module
+
+ENTRY main {
+  %c = s32[] constant(1)
+  ROOT %result = s32[] parameter(0)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(text));
+  EXPECT_TRUE(module->get_stack_frame(1).empty());
+
+  auto module_proto = module->ToProto();
+  auto index = module_proto.mutable_stack_frame_index();
+  index->add_file_names("main.py");
+  index->add_function_names("main");
+  auto location = index->add_file_locations();
+  location->set_file_name_id(1);
+  location->set_function_name_id(1);
+  location->set_line(10);
+  location->set_column(5);
+
+  auto frame = index->add_stack_frames();
+  frame->set_file_location_id(1);
+
+  module_proto.mutable_computations(0)
+      ->mutable_instructions(0)
+      ->mutable_metadata()
+      ->set_stack_frame_id(1);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module_with_stack_frames,
+      HloModule::CreateFromProto(module_proto, module->config()));
+
+  EXPECT_TRUE(module_with_stack_frames->get_stack_frame(0).empty());
+  EXPECT_TRUE(module_with_stack_frames->get_stack_frame(2).empty());
+
+  auto stack_frame = module_with_stack_frames->get_stack_frame(1);
+  EXPECT_EQ(stack_frame.file_name, index->file_names(0));
+  EXPECT_EQ(stack_frame.function_name, index->function_names(0));
+  EXPECT_EQ(stack_frame.line, location->line());
+  EXPECT_EQ(stack_frame.column, location->column());
 }
 
 }  // namespace

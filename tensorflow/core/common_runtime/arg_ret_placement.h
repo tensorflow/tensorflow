@@ -102,19 +102,19 @@ Status WeakSetAllocAttrsForRets(const gtl::InlinedVector<Node*, 4>& nodes,
 // does not have expected full_type information. If an error raised about bad
 // full time information causes a breakage, changing
 // `SingleDeviceSetAllocAttrsForArgs` to `WeakSingleDeviceSetAllocAttrsForArgs`
-// is a possible work around.
+// is a possible work around. The DataType specified by the "T" attr of input
+// nodes is used.
 Status SingleDeviceSetAllocAttrsForArgs(
     std::vector<std::pair<Node*, FunctionArgIndex>> arg_nodes,
-    const DataTypeVector& dtypes, bool ints_on_device,
-    std::vector<AllocatorAttributes>& alloc_attrs);
+    bool ints_on_device, std::vector<AllocatorAttributes>& alloc_attrs);
 
 // Set the contents of alloc_attrs for args (inputs to functions, "_Arg" ops)
 // for a single device based on dtype. Logging of warnings if an int32 arg does
-// not have expected full_type information can be enabled.
+// not have expected full_type information can be enabled. The DataType
+// specified by the "T" attr of input nodes is used.
 Status WeakSingleDeviceSetAllocAttrsForArgs(
     std::vector<std::pair<Node*, FunctionArgIndex>> arg_nodes,
-    const DataTypeVector& dtypes, bool ints_on_device,
-    std::vector<AllocatorAttributes>& alloc_attrs);
+    bool ints_on_device, std::vector<AllocatorAttributes>& alloc_attrs);
 
 // Set the contents of alloc_attrs for rets (outputs from functions, "_Retval"
 // ops) for a single device based on dtype. Raises an error if an int32 ret does
@@ -122,18 +122,20 @@ Status WeakSingleDeviceSetAllocAttrsForArgs(
 // the ret does not have expected full type information). If an error raised
 // about bad full time information causes a breakage, changing
 // `SingleDeviceSetAllocAttrsForRets` to `WeakSingleDeviceSetAllocAttrsForRets`
-// is a possible work around.
+// is a possible work around. The DataType specified by the "T" attr of input
+// nodes is used.
 Status SingleDeviceSetAllocAttrsForRets(
-    std::vector<std::pair<Node*, int>> ret_nodes, const DataTypeVector& dtypes,
-    bool ints_on_device, std::vector<AllocatorAttributes>& alloc_attrs);
+    std::vector<std::pair<Node*, int>> ret_nodes, bool ints_on_device,
+    std::vector<AllocatorAttributes>& alloc_attrs);
 
 // Set the contents of alloc_attrs for rets (outputs from functions, "_Retval"
 // ops) for a single device based on dtype. Logging of warnings if an int32 ret
 // does not have expected full_type information (i.e. if the source of the input
-// to the ret does not have expected full type information) can be enabled.
+// to the ret does not have expected full type information) can be enabled. The
+// DataType specified by the "T" attr of input nodes is used.
 Status WeakSingleDeviceSetAllocAttrsForRets(
-    std::vector<std::pair<Node*, int>> ret_nodes, const DataTypeVector& dtypes,
-    bool ints_on_device, std::vector<AllocatorAttributes>& alloc_attrs);
+    std::vector<std::pair<Node*, int>> ret_nodes, bool ints_on_device,
+    std::vector<AllocatorAttributes>& alloc_attrs);
 
 // Given a FullTypeId, return the corresponding MemoryTypes (i.e. return
 // HOST_MEMORY for TFT_SHAPE_TENSOR, DEVICE_MEMORY othersize).

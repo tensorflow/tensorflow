@@ -30,6 +30,8 @@ enum DataType: byte{
   UINT8 = 8,
   UINT16 = 9,
   UINT32 = 10,
+  UINT64 = 11,
+  INT64 = 12,
 }
 
 table Tensor {

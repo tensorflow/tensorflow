@@ -33,7 +33,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/platform.h"  // IWYU pragma: export
 #include "tensorflow/compiler/xla/stream_executor/stream.h"  // IWYU pragma: export
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"  // IWYU pragma: export
-#include "tensorflow/compiler/xla/stream_executor/timer.h"  // IWYU pragma: export
 
 namespace perftools {
 namespace gputools {

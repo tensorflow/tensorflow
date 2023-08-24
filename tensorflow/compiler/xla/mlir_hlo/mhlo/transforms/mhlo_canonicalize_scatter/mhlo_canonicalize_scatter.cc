@@ -192,7 +192,7 @@ struct CanonicalizeScatterPattern : public OpRewritePattern<ScatterOp> {
         makeOperandStartIndexPermutations(
             dimsAttrs.getScatterDimsToOperandDims(), operandRank);
 
-    TypedValue<TensorType> canonicalIndices =
+    Value canonicalIndices =
         canonicalizeStartIndices(rewriter, loc, scatterOp.getScatterIndices(),
                                  dimsAttrs.getIndexVectorDim());
 
@@ -204,7 +204,8 @@ struct CanonicalizeScatterPattern : public OpRewritePattern<ScatterOp> {
         dimsAttrs.getScatterDimsToOperandDims(),
         dimsAttrs.getUpdateWindowDims(), dimsAttrs.getInsertedWindowDims());
 
-    int64_t scatterIndicesVectorSize = canonicalIndices.getType().getDimSize(1);
+    int64_t scatterIndicesVectorSize =
+        canonicalIndices.getType().cast<TensorType>().getDimSize(1);
     auto canonicalDimsAttrs = ScatterDimensionNumbersAttr::get(
         rewriter.getContext(),
         /*updateWindowDims=*/

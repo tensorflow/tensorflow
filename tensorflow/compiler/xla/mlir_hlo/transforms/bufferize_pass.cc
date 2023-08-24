@@ -53,6 +53,7 @@ limitations under the License.
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/SCF/Transforms/BufferizableOpInterfaceImpl.h"
+#include "mlir/Dialect/SCF/Transforms/Patterns.h"
 #include "mlir/Dialect/SCF/Transforms/Transforms.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/Shape/Transforms/BufferizableOpInterfaceImpl.h"
@@ -84,6 +85,9 @@ namespace mlir {
 #include "transforms/passes.h.inc"
 
 namespace {
+
+// Label for functions created by fusion outlining.
+static constexpr char kFusionFunctionLabel[] = "fusion";
 
 /// A helper type converter class that automatically populates the relevant
 /// materializations and type conversions for bufferization.
@@ -172,7 +176,7 @@ struct ComputeOpAndFuncBufferizePass
     RewritePatternSet patterns(&getContext());
     auto& context = getContext();
     ConversionTarget target(context);
-    target.addLegalDialect<AffineDialect, arith::ArithDialect,
+    target.addLegalDialect<affine::AffineDialect, arith::ArithDialect,
                            complex::ComplexDialect, func::FuncDialect,
                            lmhlo::LmhloDialect, math::MathDialect,
                            memref::MemRefDialect, tensor::TensorDialect,
@@ -222,9 +226,9 @@ struct OneShotBufferizePass
     arith::registerBufferizableOpInterfaceExternalModels(registry);
     bufferization::func_ext::registerBufferizableOpInterfaceExternalModels(
         registry);
-    gml_st::registerBufferizableOpInterfaceExternalModels(registry);
     linalg::registerBufferizableOpInterfaceExternalModels(registry);
     mhlo::registerBufferizableOpInterfaceExternalModels(registry);
+    gml_st::registerBufferizableOpInterfaceExternalModels(registry);
     scf::registerBufferizableOpInterfaceExternalModels(registry);
     shape::registerBufferizableOpInterfaceExternalModels(registry);
     tensor::registerBufferizableOpInterfaceExternalModels(registry);
@@ -236,8 +240,19 @@ struct OneShotBufferizePass
     bufferization::OneShotBufferizationOptions opts;
     opts.allowReturnAllocs = true;
     opts.bufferizeFunctionBoundaries = true;
-    opts.functionBoundaryTypeConversion =
-        bufferization::LayoutMapOption::IdentityLayoutMap;
+    opts.functionArgTypeConverterFn =
+        [=](TensorType tensorType, Attribute memorySpace, func::FuncOp funcOp,
+            const bufferization::BufferizationOptions& options) {
+          // Functions created by fusion outlining should have fully dynamic
+          // layout. All other functions (for now only "main") gets static
+          // layout.
+          if (funcOp->hasAttr(kFusionFunctionLabel))
+            return bufferization::getMemRefTypeWithFullyDynamicLayout(
+                tensorType, memorySpace);
+          return bufferization::getMemRefTypeWithStaticIdentityLayout(
+              tensorType, memorySpace);
+        };
+    opts.inferFunctionResultLayout = false;
     opts.createDeallocs = false;
     opts.bufferAlignment = 64;
 
@@ -256,7 +271,7 @@ struct FinalBufferizePass
 
  public:
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<AffineDialect, bufferization::BufferizationDialect,
+    registry.insert<affine::AffineDialect, bufferization::BufferizationDialect,
                     linalg::LinalgDialect, memref::MemRefDialect,
                     scf::SCFDialect, shape::ShapeDialect, tensor::TensorDialect,
                     lmhlo::LmhloDialect, arith::ArithDialect, thlo::THLODialect,
@@ -310,7 +325,7 @@ struct FinalBufferizePass
         arith::ArithDialect, bufferization::BufferizationDialect,
         cf::ControlFlowDialect, complex::ComplexDialect, memref::MemRefDialect,
         func::FuncDialect, scf::SCFDialect, tensor::TensorDialect,
-        AffineDialect, shape::ShapeDialect, lmhlo::LmhloDialect,
+        affine::AffineDialect, shape::ShapeDialect, lmhlo::LmhloDialect,
         linalg::LinalgDialect, math::MathDialect, thlo::THLODialect,
         vector::VectorDialect>();
     target.addLegalOp<func::FuncOp, ModuleOp>();

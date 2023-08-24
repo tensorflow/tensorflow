@@ -38,3 +38,15 @@ func.func @scalar_vector() -> vector<4xi32> {
 // CHECK-LABEL: @scalar_vector
 // CHECK-NEXT: Results
 // CHECK-NEXT{LITERAL}: vector<4xi32>: [10, 20, 30, 40]
+
+func.func @tensor() -> tensor<4xi32> {
+  %a = arith.constant dense<[1, 2, 3, 4]> : tensor<4xi32>
+  %b = arith.constant dense<[10, 20, 30, 40]> : tensor<4xi32>
+  %c = arith.constant dense<[true, false, true, false]> : tensor<4xi1>
+  %r = arith.select %c, %a, %b : tensor<4xi1>, tensor<4xi32>
+  return %r : tensor<4xi32>
+}
+
+// CHECK-LABEL: @tensor
+// CHECK-NEXT: Results
+// CHECK-NEXT{LITERAL}: TensorOrMemref<4xi32>: [1, 20, 3, 40]

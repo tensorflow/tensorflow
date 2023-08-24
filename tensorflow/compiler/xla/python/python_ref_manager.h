@@ -18,6 +18,8 @@ limitations under the License.
 
 #include <atomic>
 #include <deque>
+#include <memory>
+#include <utility>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/inlined_vector.h"

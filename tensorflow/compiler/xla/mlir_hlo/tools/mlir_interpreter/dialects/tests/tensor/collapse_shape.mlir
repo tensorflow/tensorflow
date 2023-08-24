@@ -29,3 +29,14 @@ func.func @to_unit() -> tensor<i32> {
 // CHECK-LABEL: @to_unit
 // CHECK-NEXT: Results
 // CHECK-NEXT: 42
+
+func.func @dynamic() -> tensor<?xi32> {
+  %cst = arith.constant dense<42> : tensor<2x3xi32>
+  %cast = tensor.cast %cst : tensor<2x3xi32> to tensor<?x3xi32>
+  %collapse = tensor.collapse_shape %cast [[0, 1]] : tensor<?x3xi32> into tensor<?xi32>
+  return %collapse : tensor<?xi32>
+}
+
+// CHECK-LABEL: @dynamic
+// CHECK-NEXT: Results
+// CHECK-NEXT: [42, 42, 42, 42, 42, 42]

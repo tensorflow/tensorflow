@@ -19,6 +19,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/IRMapping.h"  // from @llvm-project
@@ -218,6 +219,11 @@ struct RewriteCustomCalls : OpRewritePattern<mhlo::CustomCallOp> {
                                 PatternRewriter& rewriter) const override {
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
     b.setInsertionPoint(op);
+
+    if (op.getCallTargetName().starts_with("sparse_tensor_")) {
+      // Skips special calling target for sparse tensors.
+      return failure();
+    }
 
     if (!op->hasAttr("operand_layouts") && !op->hasAttr("result_layouts") &&
         !llvm::any_of(op.getOperandTypes(), IsI1Tensor)) {

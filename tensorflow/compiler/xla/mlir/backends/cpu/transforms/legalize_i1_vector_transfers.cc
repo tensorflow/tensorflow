@@ -89,7 +89,7 @@ class I1TransferReadLowering : public OpRewritePattern<vector::TransferReadOp> {
         DenseElementsAttr::get(new_read.getType(), b.getI8IntegerAttr(0)));
     auto result =
         b.create<arith::CmpIOp>(arith::CmpIPredicate::ne, new_read, zero);
-    rewriter.replaceOp(op, {result});
+    rewriter.replaceOp(op, result);
     return success();
   };
 };

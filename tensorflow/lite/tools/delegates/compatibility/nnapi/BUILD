@@ -68,6 +68,7 @@ cc_test(
     data = [
         "//tensorflow/lite:testdata/add.bin",
     ],
+    tags = ["no_oss"],  #TODO(b/276295784): Re-enable when fixed.
     deps = [
         ":nnapi_delegate_compatibility_checker",
         "//tensorflow/core/platform:resource_loader",

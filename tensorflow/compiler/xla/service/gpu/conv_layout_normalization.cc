@@ -32,7 +32,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-StatusOr<HloInstruction*> UpdateLayoutForCudnnConvolution(
+StatusOr<std::optional<HloInstruction*>> UpdateLayoutForCudnnConvolution(
     HloCustomCallInstruction* hlo) {
   HloInstruction* lhs = hlo->mutable_operand(0);
   HloInstruction* rhs = hlo->mutable_operand(1);
@@ -60,7 +60,8 @@ StatusOr<HloInstruction*> UpdateLayoutForCudnnConvolution(
       gpu::GetCudnnConvKind(Cast<HloCustomCallInstruction>(hlo)));
   switch (conv_kind) {
     case gpu::CudnnConvKind::kForward:
-    case gpu::CudnnConvKind::kForwardActivation: {
+    case gpu::CudnnConvKind::kForwardActivation:
+    case gpu::CudnnConvKind::kForwardGraph: {
       input_shape = lhs->shape();
       filter_shape = rhs->shape();
       output_shape = conv_output_shape;
@@ -104,14 +105,17 @@ StatusOr<HloInstruction*> UpdateLayoutForCudnnConvolution(
 
   Shape normalized_shape;
   if (hlo->shape().IsTuple()) {
-    TF_RET_CHECK(hlo->shape().tuple_shapes_size() == 2);
-    TF_RET_CHECK(hlo->shape().tuple_shapes(1).rank() == 1)
-        << "Second element in a convolution tuple is expected to be an "
+    TF_RET_CHECK(hlo->shape().tuple_shapes().back().rank() == 1)
+        << "The last element in the tuple returned by a convolution Custom "
+           "Call is expected to be an "
            "allocator of rank one";
-    normalized_shape = ShapeUtil::MakeTupleShape(
-        {ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
-             hlo->shape().tuple_shapes(0)),
-         hlo->shape().tuple_shapes(1)});
+    std::vector<Shape> new_tuple_shape;
+    for (Shape tuple_shape : hlo->shape().tuple_shapes()) {
+      new_tuple_shape.emplace_back(
+          ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
+              tuple_shape));
+    }
+    normalized_shape = ShapeUtil::MakeTupleShape(new_tuple_shape);
   } else {
     normalized_shape =
         ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
@@ -121,6 +125,7 @@ StatusOr<HloInstruction*> UpdateLayoutForCudnnConvolution(
   // We need to restore degenerate dimensions, since those might be used in
   // either batch dimension, or contracting dimensions.
   std::vector<HloInstruction*> normalized_operands;
+  bool performed_normalization = false;
   for (int idx = 0; idx < hlo->operand_count(); idx++) {
     HloInstruction* op = hlo->mutable_operand(idx);
     const Shape& s = op->shape();
@@ -132,8 +137,17 @@ StatusOr<HloInstruction*> UpdateLayoutForCudnnConvolution(
       new_op = normalized_op;
     } else {
       new_op = MakeBitcastHlo(op, s_reordered);
+      performed_normalization = true;
     }
     normalized_operands.push_back(new_op);
+  }
+
+  // Avoid replacing the Custom Call with an identical copy.
+  if (!performed_normalization &&
+      ShapeUtil::Equal(normalized_shape, hlo->shape()) &&
+      ConvolutionDimensionNumbersToString(new_dim_numbers) ==
+          ConvolutionDimensionNumbersToString(dim_numbers)) {
+    return std::nullopt;
   }
 
   HloInstruction* normalized_conv = hlo->parent()->AddInstruction(
@@ -146,6 +160,7 @@ StatusOr<HloInstruction*> UpdateLayoutForCudnnConvolution(
   normalized_conv->set_feature_group_count(hlo->feature_group_count());
   normalized_conv->set_raw_backend_config_string(
       hlo->raw_backend_config_string());
+  *normalized_conv->mutable_precision_config() = hlo->precision_config();
   normalized_conv->parent()->parent()->SetAndUniquifyInstrName(normalized_conv,
                                                                hlo->name());
 
@@ -153,109 +168,20 @@ StatusOr<HloInstruction*> UpdateLayoutForCudnnConvolution(
   // tuples built this way.
   HloInstruction* bc_to_orig;
   if (normalized_conv->shape().IsTuple()) {
-    TF_ASSIGN_OR_RETURN(HloInstruction * normalized_out,
-                        MakeGetTupleElementHlo(normalized_conv, 0));
-    TF_ASSIGN_OR_RETURN(HloInstruction * allocator,
-                        MakeGetTupleElementHlo(normalized_conv, 1));
-    HloInstruction* orig_shape_out =
-        MakeBitcastHlo(normalized_out, hlo->shape().tuple_shapes(0));
-    bc_to_orig = MaybeMakeTuple({orig_shape_out, allocator});
+    std::vector<HloInstruction*> tuple_elements(
+        normalized_conv->shape().tuple_shapes_size());
+
+    for (int i = 0; i < normalized_conv->shape().tuple_shapes_size(); ++i) {
+      TF_ASSIGN_OR_RETURN(HloInstruction * normalized_out,
+                          MakeGetTupleElementHlo(normalized_conv, i));
+      tuple_elements[i] =
+          MakeBitcastHlo(normalized_out, hlo->shape().tuple_shapes(i));
+    }
+    bc_to_orig = MaybeMakeTuple(tuple_elements);
   } else {
     bc_to_orig = MakeBitcastHlo(normalized_conv, hlo->shape());
   }
   return bc_to_orig;
-}
-
-// Create an instruction sequence (reshape-transpose-reshape) that effectively
-// does the same thing as cudnnReorderFilterAndBias, but could also be constant
-// folded or fused.
-HloInstruction* CreateTransposeForCudnnFilterReordering(HloInstruction* hlo,
-                                                        const Shape& shape) {
-  // Filter shape is [O, I / 32, H, W, 32]
-  CHECK_EQ(shape.rank(), 5);
-  CHECK_EQ(shape.dimensions(0) % 32, 0);
-  CHECK_EQ(shape.dimensions(4), 32);
-
-  auto [O, I, H, W] = std::tuple(shape.dimensions(0), shape.dimensions(1),
-                                 shape.dimensions(2), shape.dimensions(3));
-  Shape shape_bitcast =
-      ShapeUtil::MakeShape(shape.element_type(), {O / 8, 4, 2, I, H, W, 8, 4});
-  Shape shape_transpose = ShapeUtil::MakeShape(
-      shape.element_type(), {I, H, W, O / 8, 2, 8, /*output*/ 4, /*input*/ 4});
-
-  // The permutation is reverse engineered from the cudnn v8.3 implementation
-  // (see go/xla-int8x32-cudnn-frontend)
-  HloInstruction* bitcast_1 =
-      hlo->AddInstruction(HloInstruction::CreateBitcast(shape_bitcast, hlo));
-  HloInstruction* transpose =
-      hlo->AddInstruction(HloInstruction::CreateTranspose(
-          shape_transpose, bitcast_1, {3, 4, 5, 0, 2, 6, 1, 7}));
-  HloInstruction* bitcast_2 =
-      hlo->AddInstruction(HloInstruction::CreateBitcast(shape, transpose));
-  return bitcast_2;
-}
-
-// Implement bias reordering, similar to the filter reordering.
-HloInstruction* CreateTransposeForCudnnBiasReordering(HloInstruction* hlo,
-                                                      const Shape& shape) {
-  CHECK_EQ(shape.rank(), 1);
-  CHECK_EQ(shape.dimensions(0), 32);
-
-  auto N = shape.dimensions(0);
-  Shape shape_bitcast =
-      ShapeUtil::MakeShape(shape.element_type(), {N / 32, 4, 2, 4});
-  Shape shape_transpose =
-      ShapeUtil::MakeShape(shape.element_type(), {N / 32, 2, 4, 4});
-
-  HloInstruction* bitcast_1 =
-      hlo->AddInstruction(HloInstruction::CreateBitcast(shape_bitcast, hlo));
-  HloInstruction* transpose =
-      hlo->AddInstruction(HloInstruction::CreateTranspose(
-          shape_transpose, bitcast_1, {0, 2, 1, 3}));
-  HloInstruction* bitcast_2 =
-      hlo->AddInstruction(HloInstruction::CreateBitcast(shape, transpose));
-  return bitcast_2;
-}
-
-// Normalize the layout of cuDNN int8x32 filter reordering custom call
-// (implemented by calling `cudnnReorderFilterAndBias`), which should be
-// followed by a convolution.
-// Both the input and the output shape for the filter operand must have the
-// NCHW_VECT_C layout.
-HloInstruction* UpdateLayoutForCudnnConvolutionReordering(
-    HloCustomCallInstruction* hlo) {
-  // The custom call may have either one (filter) or two (filter and bias)
-  // operands. The number of outputs matches the number of inputs.
-  Shape const* filter_shape;
-  Shape const* bias_shape;
-  std::tie(filter_shape, bias_shape) =
-      hlo->shape().IsTuple() ? std::make_tuple(&hlo->shape().tuple_shapes(0),
-                                               &hlo->shape().tuple_shapes(1))
-                             : std::make_tuple(&hlo->shape(), nullptr);
-
-  // Transpose the filter to match the expected layout (NCHW_VECT_C).
-  // This bias is 1D, so the shape doesn't need to be updated.
-  auto new_filter_shape =
-      ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
-          *filter_shape);
-  auto dimensions = LayoutUtil::MakeLayoutFromMajorToMinor(
-      filter_shape->layout().minor_to_major());
-  HloInstruction* transpose = hlo->AddInstruction(
-      HloInstruction::CreateTranspose(new_filter_shape, hlo->mutable_operand(0),
-                                      dimensions.minor_to_major()));
-
-  // Create a replacement custom-call with layout-normalized inputs.
-  HloInstruction* result;
-  if (bias_shape != nullptr) {
-    result = MaybeMakeTuple(
-        {CreateTransposeForCudnnFilterReordering(transpose, new_filter_shape),
-         CreateTransposeForCudnnBiasReordering(hlo->mutable_operand(1),
-                                               *bias_shape)});
-  } else {
-    result =
-        CreateTransposeForCudnnFilterReordering(transpose, new_filter_shape);
-  }
-  return MakeBitcastHlo(result, hlo->shape());
 }
 
 }  // namespace
@@ -263,14 +189,11 @@ HloInstruction* UpdateLayoutForCudnnConvolutionReordering(
 StatusOr<std::optional<HloInstruction*>> NormalizeLayoutForGpuCustomCalls(
     HloCustomCallInstruction* hlo) {
   if (IsCustomCallToDnnConvolution(*hlo)) {
-    TF_ASSIGN_OR_RETURN(HloInstruction * bc_to_orig,
+    TF_ASSIGN_OR_RETURN(std::optional<HloInstruction*> bc_to_orig,
                         UpdateLayoutForCudnnConvolution(hlo));
-    return std::make_optional(bc_to_orig);
+    return bc_to_orig;
   }
-  if (IsCudnnConvolutionReorder(*hlo)) {
-    return std::make_optional(UpdateLayoutForCudnnConvolutionReordering(hlo));
-  }
-  return {std::nullopt};
+  return std::nullopt;
 }
 
 }  // end namespace gpu

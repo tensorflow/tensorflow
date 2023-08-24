@@ -56,6 +56,10 @@ struct RegionEdge {
     return successorOpOrRegion.get<Region*>()->getArguments().drop_front(
         successorValueIndex);
   }
+
+  Value getSuccessorValue(unsigned predecessorIndex) const {
+    return getSuccessorValues()[predecessorIndex - predecessorOperandIndex];
+  }
 };
 
 // Returns predecessors of the given region. Includes nullopt if the region is
@@ -70,9 +74,6 @@ SmallVector<RegionEdge> getSuccessorRegions(RegionBranchOpInterface op,
 // removed and it still has uses.
 RegionBranchOpInterface moveRegionsToNewOpButKeepOldOp(
     RegionBranchOpInterface op);
-
-Type getUnrankedMemrefType(Type ty);
-Type getUnrankedMemrefType(Value v);
 
 namespace detail {
 // An arbitrary deterministic Value order.

@@ -1,8 +1,12 @@
 load("@bazel_skylib//lib:selects.bzl", "selects")
-load("//tensorflow/lite:special_rules.bzl", "tflite_extra_gles_deps")
+load("//tensorflow/lite:special_rules.bzl", "tflite_extra_gles_deps", "tflite_portable_test_suite")
 load("//tensorflow/lite/delegates/gpu:build_defs.bzl", "gpu_delegate_linkopts")
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_static_framework")
 load("@build_bazel_rules_apple//apple:macos.bzl", "macos_dylib")
+load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "tf_gpu_tests_tags",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -35,8 +39,6 @@ cc_library(
     hdrs = ["gl_delegate.h"],
     linkopts = gpu_delegate_linkopts(),
     deps = [
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/types:span",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/core/c:common",
@@ -52,19 +54,21 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/gl:command_queue",
         "//tensorflow/lite/delegates/gpu/gl:compiler",
         "//tensorflow/lite/delegates/gpu/gl:egl_environment",
-        "//tensorflow/lite/delegates/gpu/gl:request_gpu_info",
         "//tensorflow/lite/delegates/gpu/gl:gl_call",
+        "//tensorflow/lite/delegates/gpu/gl:request_gpu_info",
         "//tensorflow/lite/delegates/gpu/gl/converters:bhwc_to_phwc4",
         "//tensorflow/lite/delegates/gpu/gl/converters:phwc4_to_bhwc",
         "//tensorflow/lite/delegates/gpu/gl/kernels:registry",
         "//tensorflow/lite/delegates/gpu/gl/workgroups:best_effort_calculator",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/types:span",
     ] + select({
         "//conditions:default": [
             "//tensorflow/lite/delegates/gpu/gl:common_cc_fbs",
             "//tensorflow/lite/delegates/gpu/gl:metadata_cc_fbs",
             "//tensorflow/lite/delegates/gpu/gl:workgroups_cc_fbs",
-            "@flatbuffers",
             "//tensorflow/lite/schema:schema_fbs",
+            "@flatbuffers",
         ],
         ":tflite_gpu_binary_release": [],
     }) + tflite_extra_gles_deps(),
@@ -224,7 +228,12 @@ cc_library(
 
 cc_library(
     name = "delegate",
-    srcs = ["delegate.cc"],
+    srcs = [
+        # copybara:comment_begin(oss-only)
+        "android_version.cc",
+        # copybara:comment_end
+        "delegate.cc",
+    ],
     hdrs = ["delegate.h"],
     linkopts = gpu_delegate_linkopts(),
     deps = select({
@@ -235,15 +244,15 @@ cc_library(
     }) + [
         ":api",
         ":delegate_options",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/types:span",
+        ":tflite_profile",
+        "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite/async:backend_async_kernel_interface",
         "//tensorflow/lite/core/async/c:task",
         "//tensorflow/lite/core/async/interop/c:attribute_map",
         "//tensorflow/lite/core/async/interop/c:constants",
-        "//tensorflow/lite/core/async:backend_async_kernel_interface",
         "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/delegates:serialization",
         "//tensorflow/lite/delegates/gpu/cl:api",
         "//tensorflow/lite/delegates/gpu/cl:util",
         "//tensorflow/lite/delegates/gpu/common:model_builder",
@@ -253,12 +262,55 @@ cc_library(
         "//tensorflow/lite/delegates/utils:async_type_helpers",
         "//tensorflow/lite/delegates/utils:ret_macros",
         "//tensorflow/lite/delegates/utils:sync_fence",
-        "//tensorflow/lite/delegates:serialization",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/profiling/telemetry",
-        "//tensorflow/lite/profiling/telemetry/c:telemetry_setting_internal",
         "//tensorflow/lite/profiling/telemetry:telemetry_status",
-        "//tensorflow/lite:kernel_api",
-        "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite/profiling/telemetry/c:telemetry_setting_internal",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:span",
     ],
 )
+
+cc_library(
+    name = "tflite_profile",
+    srcs = ["tflite_profile.cc"],
+    hdrs = ["tflite_profile.h"],
+    deps = [
+        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/delegates/gpu/common/task:profiling_info",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+cc_library(
+    name = "async_buffers",
+    srcs = ["async_buffers.cc"],
+    hdrs = ["async_buffers.h"],
+    deps = [
+        ":api",
+        "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/gl:gl_errors",
+        "//third_party/GL:EGL_headers",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+cc_test(
+    name = "async_buffers_test",
+    srcs = ["async_buffers_test.cc"],
+    tags = tf_gpu_tests_tags() + [
+        "local",
+        "nobuilder",
+        "notap",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":async_buffers",
+        ":delegate",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+tflite_portable_test_suite()

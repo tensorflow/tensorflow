@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/comparators.h"
 
 #include <limits>
+#include <optional>
 #include <string>
 #include <vector>
 

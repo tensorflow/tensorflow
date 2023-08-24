@@ -79,7 +79,7 @@ class ReverseStringModulePass : public HloModulePass {
     for (HloComputation* computation :
          module->computations(execution_threads)) {
       HloInstruction* root = computation->root_instruction();
-      std::string name = root->name();
+      std::string name(root->name());
       std::reverse(name.begin(), name.end());
       root->SetAndSanitizeName(name);
       changed = true;
@@ -320,10 +320,9 @@ ENTRY main {
 
     Status status = pipeline.Run(module.get()).status();
     ASSERT_IS_NOT_OK(status);
-    EXPECT_THAT(status.error_message(),
+    EXPECT_THAT(status.message(),
                 ::testing::HasSubstr("Module has instruction named bar"));
-    EXPECT_THAT(status.error_message(),
-                ::testing::HasSubstr("Failed after foo2bar"));
+    EXPECT_THAT(status.message(), ::testing::HasSubstr("Failed after foo2bar"));
   }
 
   {
@@ -333,9 +332,9 @@ ENTRY main {
 
     Status status = pipeline.Run(module.get()).status();
     ASSERT_IS_NOT_OK(status);
-    EXPECT_THAT(status.error_message(),
+    EXPECT_THAT(status.message(),
                 ::testing::HasSubstr("Module has instruction named bar"));
-    EXPECT_THAT(status.error_message(),
+    EXPECT_THAT(status.message(),
                 ::testing::HasSubstr("Failed after pipeline-start"));
   }
 }
@@ -359,7 +358,7 @@ ENTRY main {
   Status status = pipeline.Run(module.get()).status();
   ASSERT_IS_NOT_OK(status);
   EXPECT_THAT(
-      status.error_message(),
+      status.message(),
       ::testing::HasSubstr("Module group pass cannot be run on a module"));
 }
 

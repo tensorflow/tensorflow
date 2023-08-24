@@ -164,7 +164,7 @@ void wrapOpsInFunction(std::vector<Operation*>& ops, int function_id,
   auto call = builder.create<mlir::func::CallOp>(
       ops[0]->getLoc(), func.getFunctionType().getResults(), func.getSymName(),
       inputs);
-  for (auto& v : llvm::enumerate(outputs)) {
+  for (const auto& v : llvm::enumerate(outputs)) {
     v.value().replaceUsesWithIf(call.getResult(v.index()), [=](OpOperand& o) {
       // Outside of what we're moving, results of our operations need to
       // be replaced by results from the function call.

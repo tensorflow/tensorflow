@@ -17,11 +17,36 @@ limitations under the License.
 
 #include <ostream>
 #include <string>
+#include <utility>
 
 #include "absl/strings/str_join.h"
+#include "tensorflow/compiler/xla/python/ifrt/types.pb.h"
+#include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
 namespace ifrt {
+
+StatusOr<Shape> Shape::FromProto(const ShapeProto& proto) {
+  Shape::Dimensions dims;
+  dims.reserve(proto.dims_size());
+  for (int64_t dim : proto.dims()) {
+    if (dim < 0) {
+      return InvalidArgument(
+          "Shape expects non-negative dimension sizes, but got %d", dim);
+    }
+    dims.push_back(dim);
+  }
+  return Shape(std::move(dims));
+}
+
+ShapeProto Shape::ToProto() const {
+  ShapeProto proto;
+  proto.mutable_dims()->Reserve(dims().size());
+  for (int64_t dim : dims()) {
+    proto.mutable_dims()->AddAlreadyReserved(dim);
+  }
+  return proto;
+}
 
 int64_t Shape::num_elements() const {
   int64_t count = 1;

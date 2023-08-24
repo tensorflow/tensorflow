@@ -16,12 +16,15 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <iterator>
 #include <limits>
 #include <memory>
 #include <numeric>
 #include <string>
+#include <vector>
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -187,27 +190,26 @@ quant::UniformQuantizedPerAxisType ResetAxisAndBroadcast(
 
 }  // namespace
 
-bool IsOpNotQuantizable(Operation* op) {
-  // If it is terminator or not quantizable or any ops form the mlir quant
-  // ops dialect, we shouldn't rewrite.
-  bool attr_enforced_quantizable =
+bool IsOpQuantizable(Operation* op) {
+  if (isa<func::ConstantOp, arith::ConstantOp, quantfork::StatisticsOp>(op)) {
+    // Constant ops do not have QuantizableResult attribute but they can deal
+    // with quantized tensors.
+    return true;
+  } else if (op->hasTrait<OpTrait::IsTerminator>() ||
+             isa<quantfork::QuantizeCastOp, quantfork::DequantizeCastOp>(op)) {
+    // Terminators, qcast and decast are not quantizable.
+    return false;
+  }
+
+  const bool attr_enforced_quantizable =
       op->hasAttrOfType<StringAttr>(kQuantTraitAttrName) &&
       op->getAttrOfType<StringAttr>(kQuantTraitAttrName).getValue().str() ==
           QuantTraitValues[QuantizationTrait::FullyQuantizable];
 
-  // Constant ops do not have QuantizableResult attribute but they can deal with
-  // quantized tensors.
-  if (llvm::isa<func::ConstantOp, arith::ConstantOp, quantfork::StatisticsOp>(
-          op))
-    return false;
-
-  bool prop_enforced_quantizable =
+  const bool trait_enforced_quantizable =
       op->hasTrait<OpTrait::quant::QuantizableResult>();
 
-  return op->hasTrait<OpTrait::IsTerminator>() ||
-         llvm::isa<quantfork::QuantizeCastOp, quantfork::DequantizeCastOp>(
-             op) ||
-         (!attr_enforced_quantizable && !prop_enforced_quantizable);
+  return attr_enforced_quantizable || trait_enforced_quantizable;
 }
 
 // Returns the quantized type for the

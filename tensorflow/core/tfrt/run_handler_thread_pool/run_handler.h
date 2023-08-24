@@ -16,8 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_RUN_HANDLER_THREAD_POOL_RUN_HANDLER_H_
 #define TENSORFLOW_CORE_TFRT_RUN_HANDLER_THREAD_POOL_RUN_HANDLER_H_
 
+#include <atomic>
 #include <cstddef>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/histogram/histogram.h"
@@ -426,8 +432,8 @@ class RunHandlerWorkQueue : public tensorflow::tfrt_stub::WorkQueueInterface {
 
   void AddTask(TaskFunction work) override;
 
-  Optional<TaskFunction> AddBlockingTask(TaskFunction work,
-                                         bool allow_queuing) override;
+  std::optional<TaskFunction> AddBlockingTask(TaskFunction work,
+                                              bool allow_queuing) override;
 
   void Await(
       llvm::ArrayRef<tfrt::RCReference<tfrt::AsyncValue>> values) override;

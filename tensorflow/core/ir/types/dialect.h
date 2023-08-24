@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_IR_TYPES_DIALECT_H_
 #define TENSORFLOW_CORE_IR_TYPES_DIALECT_H_
 
+#include <optional>
 #include <string>
 
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
@@ -293,10 +294,10 @@ Type DropRefAndSubTypes(Type ty);
 // the shape otherwise.
 class OperandShapeIterator final
     : public llvm::mapped_iterator<Operation::operand_iterator,
-                                   llvm::Optional<ArrayRef<int64_t>> (*)(
+                                   std::optional<ArrayRef<int64_t>> (*)(
                                        Value)> {
  public:
-  using reference = llvm::Optional<ArrayRef<int64_t>>;
+  using reference = std::optional<ArrayRef<int64_t>>;
 
   /// Initializes the operand shape iterator to the specified operand iterator.
   explicit OperandShapeIterator(Operation::operand_iterator it);
@@ -309,10 +310,10 @@ using OperandShapeRange = iterator_range<OperandShapeIterator>;
 // the shape otherwise.
 class ResultShapeIterator final
     : public llvm::mapped_iterator<Operation::result_iterator,
-                                   llvm::Optional<ArrayRef<int64_t>> (*)(
+                                   std::optional<ArrayRef<int64_t>> (*)(
                                        Value)> {
  public:
-  using reference = llvm::Optional<ArrayRef<int64_t>>;
+  using reference = std::optional<ArrayRef<int64_t>>;
 
   /// Initializes the result shape iterator to the specified result iterator.
   explicit ResultShapeIterator(Operation::result_iterator it);

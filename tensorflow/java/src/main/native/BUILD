@@ -69,15 +69,3 @@ genrule(
     outs = ["jni_md.h"],
     cmd = "cp -f $< $@",
 )
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)

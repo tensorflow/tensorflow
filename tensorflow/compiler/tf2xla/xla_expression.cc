@@ -229,6 +229,14 @@ StatusOr<TensorShape> XlaExpression::GetShape() const {
   }
 }
 
+StatusOr<xla::Shape> XlaExpression::GetXlaShape() const {
+  if (kind_ == Kind::kXlaOp) {
+    return handle().builder()->GetShape(handle());
+  }
+  TF_ASSIGN_OR_RETURN(TensorShape shape, GetShape());
+  return TensorShapeToXLAShape(dtype_, shape);
+}
+
 const XlaExpression* XlaExpression::CastExpressionFromTensor(
     const Tensor& tensor) {
   const XlaExpression* expression =

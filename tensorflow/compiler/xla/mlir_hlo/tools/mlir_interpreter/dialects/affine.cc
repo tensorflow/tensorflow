@@ -25,17 +25,19 @@ namespace mlir {
 namespace interpreter {
 namespace {
 
-llvm::SmallVector<int64_t> apply(InterpreterState&, AffineApplyOp op,
+llvm::SmallVector<int64_t> apply(InterpreterState&, affine::AffineApplyOp op,
                                  ArrayRef<int64_t> operands) {
   return evalAffineMap(op.getAffineMap(), operands);
 }
 
-int64_t min(InterpreterState&, AffineMinOp op, ArrayRef<int64_t> operands) {
+int64_t min(InterpreterState&, affine::AffineMinOp op,
+            ArrayRef<int64_t> operands) {
   auto results = evalAffineMap(op.getAffineMap(), operands);
   return *std::min_element(results.begin(), results.end());
 }
 
-int64_t max(InterpreterState&, AffineMaxOp op, ArrayRef<int64_t> operands) {
+int64_t max(InterpreterState&, affine::AffineMaxOp op,
+            ArrayRef<int64_t> operands) {
   auto results = evalAffineMap(op.getAffineMap(), operands);
   return *std::max_element(results.begin(), results.end());
 }

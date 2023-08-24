@@ -144,6 +144,19 @@ static flatbuffers::Offset<::stablehlo::flatbuf::Operator> CreateMaxOperator(
                                               outputs);
 }
 
+static flatbuffers::Offset<::stablehlo::flatbuf::Operator>
+CreateConvertOperator(mlir::stablehlo::ConvertOp& hlo_op,
+                      flatbuffers::FlatBufferBuilder* fbb,
+                      uint32_t opcode_index,
+                      const std::vector<int32_t>& operands,
+                      const std::vector<int32_t>& results) {
+  auto inputs = fbb->CreateVector(operands);
+  auto outputs = fbb->CreateVector(results);
+
+  return ::stablehlo::flatbuf::CreateOperator(*fbb, opcode_index, inputs,
+                                              outputs);
+}
+
 static flatbuffers::Offset<::stablehlo::flatbuf::Operator> CreateDotOperator(
     mlir::stablehlo::DotOp& hlo_op, flatbuffers::FlatBufferBuilder* fbb,
     uint32_t opcode_index, const std::vector<int32_t>& operands,
@@ -394,15 +407,29 @@ CreateFlatBufferOperator(mlir::Operation* op, uint32_t opcode_index,
   if (auto hlo_op = llvm::dyn_cast<mlir::stablehlo::ConcatenateOp>(op))
     return CreateConcatenateOperator(hlo_op, fbb, opcode_index, operands,
                                      results);
+  if (auto hlo_op = llvm::dyn_cast<mlir::stablehlo::ConvertOp>(op))
+    return CreateConvertOperator(hlo_op, fbb, opcode_index, operands, results);
   return std::nullopt;
 }
 
-// Set `isSigned` to false if the `type` is an 8-bit unsigned integer type.
-// Since tflite doesn't support unsigned for other types, returns error if
-// `isSigned` is set to false for other types.
 static StatusOr<::stablehlo::flatbuf::DataType> GetDataType(
     Type type, bool is_signed = true) {
-  return ::stablehlo::flatbuf::DataType_FLOAT32;
+  if (type.isF16()) return ::stablehlo::flatbuf::DataType_FLOAT16;
+  if (type.isF32()) return ::stablehlo::flatbuf::DataType_FLOAT32;
+  if (type.isF64()) return ::stablehlo::flatbuf::DataType_FLOAT64;
+  if (type.isSignlessInteger(8)) return ::stablehlo::flatbuf::DataType_INT8;
+  if (type.isSignlessInteger(16)) return ::stablehlo::flatbuf::DataType_INT16;
+  if (type.isSignlessInteger(32)) return ::stablehlo::flatbuf::DataType_INT32;
+  if (type.isSignlessInteger(64)) return ::stablehlo::flatbuf::DataType_INT64;
+  if (type.isUnsignedInteger(8)) return ::stablehlo::flatbuf::DataType_UINT8;
+  if (type.isUnsignedInteger(16)) return ::stablehlo::flatbuf::DataType_UINT16;
+  if (type.isUnsignedInteger(32)) return ::stablehlo::flatbuf::DataType_UINT32;
+  if (type.isUnsignedInteger(64)) return ::stablehlo::flatbuf::DataType_UINT64;
+  std::string type_str;
+  llvm::raw_string_ostream str_stream(type_str);
+  str_stream << type;
+  LOG(ERROR) << "unsupported datatype" << type_str;
+  return tensorflow::errors::InvalidArgument("unsupported datatype" + type_str);
 }
 
 std::optional<::stablehlo::flatbuf::OperatorCode> GetOpCode(
@@ -433,13 +460,15 @@ std::optional<::stablehlo::flatbuf::OperatorCode> GetOpCode(
     return ::stablehlo::flatbuf::OperatorCode_CLAMP;
   if (isa<mlir::stablehlo::ConcatenateOp>(op))
     return ::stablehlo::flatbuf::OperatorCode_CONCATENATE;
+  if (isa<mlir::stablehlo::ConvertOp>(op))
+    return ::stablehlo::flatbuf::OperatorCode_CONVERT;
 
   // For now we assume the incoming custom op is a resize_bilinear, it is
   // expected any other custom op will cause the program to error out
   if (isa<mlir::stablehlo::CustomCallOp>(op))
     return ::stablehlo::flatbuf::OperatorCode_RESIZE_BILINEAR;
 
-  op->emitError(Twine("unsupported op type"));
+  op->emitError(Twine("unsupported op type " + op->getName().getStringRef()));
   return std::nullopt;
 }
 
@@ -624,6 +653,8 @@ Translator::BuildTensor(Value value, const std::string& name,
   }
 
   Type element_type = type.getElementType();
+  auto status = GetDataType(element_type);
+  if (!status.ok()) return std::nullopt;
   ::stablehlo::flatbuf::DataType data_type = GetDataType(element_type).value();
 
   return ::stablehlo::flatbuf::CreateTensor(
@@ -728,7 +759,7 @@ Translator::BuildSubGraph(const std::string& name, Region* region, int index) {
   }
 
   bool failed_once = false;
-  for (auto& item : llvm::enumerate(bb)) {
+  for (const auto& item : llvm::enumerate(bb)) {
     Operation& inst = item.value();
     const int operation_index = item.index();
     if (inst.hasTrait<mlir::OpTrait::IsTerminator>()) break;

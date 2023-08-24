@@ -171,7 +171,7 @@ class Counter {
     if (registration_handle_) {
       status_ = OkStatus();
     } else {
-      status_ = Status(tensorflow::error::Code::ALREADY_EXISTS,
+      status_ = Status(absl::StatusCode::kAlreadyExists,
                        "Another metric with the same name already exists.");
     }
   }

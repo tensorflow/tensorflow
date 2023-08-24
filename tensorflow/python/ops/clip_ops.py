@@ -19,6 +19,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
@@ -122,8 +123,7 @@ def clip_by_value(t, clip_value_min, clip_value_max,
   #     t, clip_value_min, clip_value_max, name=name)
 
 
-# TODO(scottzhu): switch to use new implementation in 2 weeks.
-# @ops.RegisterGradient("ClipByValue")
+@ops.RegisterGradient("ClipByValue")
 def _clip_by_value_grad(op, grad):
   """Returns grad of clip_by_value."""
   x = op.inputs[0]
@@ -137,15 +137,14 @@ def _clip_by_value_grad(op, grad):
   zeros = array_ops.zeros(gradshape, gdtype)
   xymask = math_ops.less(x, y)
   xzmask = math_ops.greater(x, z)
-  rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
-  rx, rz = gen_array_ops.broadcast_gradient_args(sx, sz)
+  _, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
+  _, rz = gen_array_ops.broadcast_gradient_args(sx, sz)
   xgrad = array_ops.where(math_ops.logical_or(xymask, xzmask), zeros, grad)
   ygrad = array_ops.where(xymask, grad, zeros)
   zgrad = array_ops.where(xzmask, grad, zeros)
-  gx = array_ops.reshape(math_ops.reduce_sum(xgrad, rx), sx)
   gy = array_ops.reshape(math_ops.reduce_sum(ygrad, ry), sy)
   gz = array_ops.reshape(math_ops.reduce_sum(zgrad, rz), sz)
-  return (gx, gy, gz)
+  return xgrad, gy, gz
 
 
 @tf_export("clip_by_norm")
@@ -275,7 +274,8 @@ def global_norm(t_list, name=None):
         with ops.colocate_with(v):
           half_squared_norms.append(gen_nn_ops.l2_loss(v))
 
-    half_squared_norm = math_ops.reduce_sum(array_ops.stack(half_squared_norms))
+    half_squared_norm = math_ops.reduce_sum(
+        array_ops_stack.stack(half_squared_norms))
 
     norm = math_ops.sqrt(
         half_squared_norm *
