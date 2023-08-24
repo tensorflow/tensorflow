@@ -189,7 +189,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_collect_cost_model_stats(false);
   opts.set_xla_gpu_enable_split_k_autotuning(true);
 
-  opts.set_xla_gpu_single_wave_autotuning(false);
+  opts.set_xla_gpu_single_wave_autotuning(true);
   return opts;
 }
 
