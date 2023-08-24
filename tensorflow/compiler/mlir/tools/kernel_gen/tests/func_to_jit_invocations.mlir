@@ -1,10 +1,10 @@
 // RUN: kernel-gen-opt %s --split-input-file \
-// RUN:   --tf-to-jit-invocation="tile-sizes=1,2,3 unroll-factors=3,2,1 \
+// RUN:   --func-to-jit-invocation="tile-sizes=1,2,3 unroll-factors=3,2,1 \
 // RUN:       max-supported-rank=32 enable-ftz=false cpu-codegen=false" | \
 // RUN: FileCheck %s
 
 // RUN: kernel-gen-opt %s --split-input-file \
-// RUN:   --tf-to-jit-invocation="tile-sizes=1,2,3 unroll-factors=3,2,1 \
+// RUN:   --func-to-jit-invocation="tile-sizes=1,2,3 unroll-factors=3,2,1 \
 // RUN:       max-supported-rank=32 enable-ftz=false cpu-codegen=false \
 // RUN:       jit_i64_indexed_for_large_tensors=true" | \
 // RUN: FileCheck %s --check-prefix=CHECK-JFLT

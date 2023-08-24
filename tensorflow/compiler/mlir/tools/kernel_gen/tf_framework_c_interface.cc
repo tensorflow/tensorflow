@@ -191,7 +191,7 @@ llvm::Expected<std::unique_ptr<ExecutionEngine>> Compile(
   if (item.result_module().empty()) {
     // Otherwise, compile the module now.
     tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> status_or_module =
-        tensorflow::kernel_gen::GenerateKernelForTfCode(
+        tensorflow::kernel_gen::GenerateKernelForHloCode(
             context, code, architectures, tile_sizes, unroll_factors,
             max_supported_rank,
             /*print_ptx=*/false, /*print_llvmir=*/false, enable_ftz,

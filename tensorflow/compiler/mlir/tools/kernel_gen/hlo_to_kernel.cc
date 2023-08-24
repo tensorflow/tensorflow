@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//===- tf_to_kernel.cc ------------------------------------------*- C++ -*-===//
+//===- hlo_to_kernel.cc -----------------------------------------*- C++ -*-===//
 //
-// This file implements the entry point to compile a tf op to a kernel.
+// This file implements the entry point to compile a hlo op to a kernel.
 //
 //===----------------------------------------------------------------------===//
 #include <memory>
@@ -22,6 +22,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/CodeGen/CommandFlags.h"
@@ -92,7 +93,7 @@ StatusOr<std::string> EmitToBinary(llvm::StringRef host_triple,
   if (mlir::makeOptimizingTransformer(
           /*optLevel=*/2, /*sizeLevel=*/0,
           target_machine.get())(llvm_module.get())) {
-    return tensorflow::errors::Internal("Failed to run LLVM optimizer passess");
+    return absl::InternalError("Failed to run LLVM optimizer passess");
   }
 
   // Set up the output stream.
@@ -106,7 +107,7 @@ StatusOr<std::string> EmitToBinary(llvm::StringRef host_triple,
 
   if (target_machine->addPassesToEmitFile(codegen_passes, ostream, nullptr,
                                           llvm::CGFT_ObjectFile, false)) {
-    return tensorflow::errors::Internal("Failed add passes to emit file");
+    return absl::InternalError("Failed add passes to emit file");
   }
   codegen_passes.run(*llvm_module);
   return ostream.str().str();
@@ -120,9 +121,9 @@ Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
            bool print_ptx, bool print_llvmir, bool enable_ftz, bool index_64bit,
            bool jit_compile, bool jit_i64_indexed_for_large_tensors) {
   // Read TF code.
-  std::string tf_code;
+  std::string hlo_code;
   TF_RETURN_IF_ERROR(
-      ReadFileToString(Env::Default(), input_file.str(), &tf_code));
+      ReadFileToString(Env::Default(), input_file.str(), &hlo_code));
 
   // Compile.
   mlir::MLIRContext context;
@@ -131,11 +132,11 @@ Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
 
   TF_ASSIGN_OR_RETURN(
       mlir::OwningOpRef<mlir::ModuleOp> module,
-      GenerateKernelForTfCode(context, tf_code, architectures, tile_sizes,
-                              unroll_factors, max_supported_rank, print_ptx,
-                              print_llvmir, enable_ftz, index_64bit,
-                              jit_compile, jit_i64_indexed_for_large_tensors,
-                              /*apply_cl_options=*/true));
+      GenerateKernelForHloCode(context, hlo_code, architectures, tile_sizes,
+                               unroll_factors, max_supported_rank, print_ptx,
+                               print_llvmir, enable_ftz, index_64bit,
+                               jit_compile, jit_i64_indexed_for_large_tensors,
+                               /*apply_cl_options=*/true));
 
   // Get binary.
   TF_ASSIGN_OR_RETURN(std::string binary, EmitToBinary(host_triple, *module));

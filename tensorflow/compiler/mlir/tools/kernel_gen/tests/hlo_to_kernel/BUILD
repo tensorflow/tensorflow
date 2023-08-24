@@ -22,7 +22,7 @@ filegroup(
     name = "test_utilities",
     testonly = True,
     data = [
-        "//tensorflow/compiler/mlir/tools/kernel_gen:tf_to_kernel",
+        "//tensorflow/compiler/mlir/tools/kernel_gen:hlo_to_kernel",
         "@llvm-project//mlir:run_lit.sh",
     ],
 )

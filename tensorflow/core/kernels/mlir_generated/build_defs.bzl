@@ -208,7 +208,7 @@ _gen_kernel_bin_rule = rule(
         ),
         "_tool": attr.label(
             executable = True,
-            default = Label("//tensorflow/compiler/mlir/tools/kernel_gen:tf_to_kernel"),
+            default = Label("//tensorflow/compiler/mlir/tools/kernel_gen:hlo_to_kernel"),
             cfg = "exec",
         ),
         "_cc_toolchain": attr.label(default = "@bazel_tools//tools/cpp:current_cc_toolchain"),
@@ -387,7 +387,7 @@ def _gen_kernel_library(
             # We have to use a sh_test instead of build_test because it doesn't properly find the dependent targets.
             gpu_arch_option = "sm_70,compute_75" if cuda_gpu_architectures() else ",".join(rocm_gpu_architectures())
             test_args = [
-                "$(location //tensorflow/compiler/mlir/tools/kernel_gen:tf_to_kernel)",
+                "$(location //tensorflow/compiler/mlir/tools/kernel_gen:hlo_to_kernel)",
                 "$(location {op}_{name}_{platform}_{type}_{output_type}.mlir)".format(
                     op = op,
                     name = name,
@@ -422,7 +422,7 @@ def _gen_kernel_library(
                         type = type,
                         output_type = output_type,
                     ),
-                    "//tensorflow/compiler/mlir/tools/kernel_gen:tf_to_kernel",
+                    "//tensorflow/compiler/mlir/tools/kernel_gen:hlo_to_kernel",
                 ],
             )
 

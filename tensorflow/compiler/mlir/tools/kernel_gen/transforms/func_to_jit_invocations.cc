@@ -34,11 +34,10 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/rewriters.h"
 
 constexpr llvm::StringRef
     mlir::kernel_gen::tf_framework ::JITCompileFromStrOp::kJITEntryFunctionName;
@@ -225,20 +224,16 @@ void PackJITCompileOp(tf_framework::JITCompileOp op,
       rewriter.getBoolAttr(cpu_codegen));
 }
 
-#define GEN_PASS_DEF_TFTOJITINVOCATIONPASS
+#define GEN_PASS_DEF_FUNCTOJITINVOCATIONPASS
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
-struct TFToJITInvocationPass
-    : public impl::TFToJITInvocationPassBase<TFToJITInvocationPass> {
-  void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<mlir::kernel_gen::tf_framework::TFFrameworkDialect,
-                    scf::SCFDialect, shape::ShapeDialect>();
-  }
-  explicit TFToJITInvocationPass(llvm::ArrayRef<int64_t> tile_sizes,
-                                 llvm::ArrayRef<int64_t> unroll_factors,
-                                 int64_t max_supported_rank, bool enable_ftz,
-                                 bool index_64bit, bool cpu_codegen,
-                                 bool jit_i64_indexed_for_large_tensors) {
+struct FuncToJITInvocationPass
+    : public impl::FuncToJITInvocationPassBase<FuncToJITInvocationPass> {
+  explicit FuncToJITInvocationPass(llvm::ArrayRef<int64_t> tile_sizes,
+                                   llvm::ArrayRef<int64_t> unroll_factors,
+                                   int64_t max_supported_rank, bool enable_ftz,
+                                   bool index_64bit, bool cpu_codegen,
+                                   bool jit_i64_indexed_for_large_tensors) {
     tile_sizes_ = tile_sizes;
     unroll_factors_ = unroll_factors;
     max_supported_rank_ = max_supported_rank;
@@ -269,11 +264,11 @@ struct TFToJITInvocationPass
 
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>> CreateTFToJITInvocationPass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreateFuncToJITInvocationPass(
     llvm::ArrayRef<int64_t> tile_sizes, llvm::ArrayRef<int64_t> unroll_factors,
     int64_t max_supported_rank, bool enable_ftz, bool index_64bit,
     bool cpu_codegen, bool jit_i64_indexed_for_large_tensors) {
-  return std::make_unique<TFToJITInvocationPass>(
+  return std::make_unique<FuncToJITInvocationPass>(
       tile_sizes, unroll_factors, max_supported_rank, enable_ftz, index_64bit,
       cpu_codegen, jit_i64_indexed_for_large_tensors);
 }
