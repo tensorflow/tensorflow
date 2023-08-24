@@ -325,11 +325,11 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
 
   absl::flat_hash_map<int64_t, se::DeviceMemoryBase> globals;
   se::ModuleHandle module_handle;
-  // The CUDA driver isn't able to load empty PTX. It's okay if we skip loading
-  // in this case; if the module isn't loaded, all symbol lookups will fail,
-  // just as they should for an empty module.
+  // The CUDA driver isn't able to load a PTX and a binary which are both empty.
+  // It's okay if we skip loading in this case; if the module isn't loaded, all
+  // symbol lookups will fail, just as they should for an empty module.
   if (!(executor->platform()->id() == stream_executor::cuda::kCudaPlatformId &&
-        module_spec.cuda_ptx_in_memory() == nullptr)) {
+        binary().empty() && text().empty())) {
     TF_RETURN_IF_ERROR(executor->LoadModule(module_spec, &module_handle));
   }
 
