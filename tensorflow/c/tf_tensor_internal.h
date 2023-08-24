@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <memory>
 #include <string>
 #include <utility>
 
@@ -131,17 +130,6 @@ inline Tensor& TensorFromInterface(AbstractTensorInterface* tensor) {
 
 AbstractTensorInterface* TensorInterfaceFromTensor(const Tensor& src,
                                                    Status* status);
-
-namespace internal {
-
-struct TFTensorDeleter {
-  void operator()(TF_Tensor* tf_tensor) const { TF_DeleteTensor(tf_tensor); }
-};
-
-}  // namespace internal
-
-// Struct that wraps TF_Tensor to delete once out of scope.
-using TF_TensorPtr = std::unique_ptr<TF_Tensor, internal::TFTensorDeleter>;
 
 }  // namespace tensorflow
 

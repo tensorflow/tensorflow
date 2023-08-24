@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_C_TF_TENSOR_HELPER_H_
 #define TENSORFLOW_C_TF_TENSOR_HELPER_H_
 
+#include <memory>
+
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/platform/status.h"
 
@@ -28,6 +30,17 @@ Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
 TF_Tensor* TF_TensorFromTensor(const Tensor& src, Status* status);
 
 TF_Tensor* TF_TensorFromTensorShallow(const Tensor& src, Status* status);
+
+namespace internal {
+
+struct TFTensorDeleter {
+  void operator()(TF_Tensor* tf_tensor) const { TF_DeleteTensor(tf_tensor); }
+};
+
+}  // namespace internal
+
+// Struct that wraps TF_Tensor to delete once out of scope.
+using TF_TensorPtr = std::unique_ptr<TF_Tensor, internal::TFTensorDeleter>;
 
 }  // namespace tensorflow
 
