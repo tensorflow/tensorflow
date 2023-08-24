@@ -38,6 +38,10 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Bytecode/BytecodeWriter.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/MLProgram/IR/MLProgram.h"  // from @llvm-project
+#include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
@@ -957,6 +961,9 @@ PjRtCApiExecutable::GetHloModules() const {
     xla::HloProto hlo_proto;
     mlir::MLIRContext ctx;
     mlir::DialectRegistry registry;
+    registry.insert<mlir::arith::ArithDialect, mlir::func::FuncDialect,
+                    mlir::ml_program::MLProgramDialect,
+                    mlir::shape::ShapeDialect>();
     mlir::stablehlo::registerAllDialects(registry);
     mlir::mhlo::registerAllMhloDialects(registry);
     ctx.appendDialectRegistry(registry);
