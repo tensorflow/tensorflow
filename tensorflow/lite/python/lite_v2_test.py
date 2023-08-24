@@ -2805,6 +2805,31 @@ class FromKerasModelTest(lite_v2_test_util.ModelTest):
     self.assertLen(quant_params['scales'], expected_num_params)
     self.assertLen(quant_params['zero_points'], expected_num_params)
 
+  @parameterized.named_parameters(
+      ('EnableMlirVariableQuantizationNumState1', True, 1),
+      ('DisablMlirVariableQuantizationNumState1', False, 1),
+      ('EnableMlirVariableQuantizationNumState2', True, 2),
+      ('DisablMlirVariableQuantizationNumState2', False, 2),
+  )
+  def testVariableQuantizationInFloat16(
+      self, variable_quantization, number_of_states
+  ):
+    model, _ = self._createReadAssignModel(number_of_states)
+    converter = lite.TFLiteConverterV2.from_keras_model(model)
+    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    converter.target_spec.supported_types = [tf.float16]
+    converter._experimental_variable_quantization = variable_quantization
+
+    if variable_quantization:
+      with self.assertRaises(ValueError) as error:
+        converter.convert()
+      self.assertIn(
+          '`_experimental_variable_quantization` is only supported for full',
+          str(error.exception),
+      )
+    else:
+      converter.convert()
+
   @test_util.run_v2_only
   def testSequentialModel(self):
     """Test a simple sequential tf.Keras model."""
