@@ -935,18 +935,6 @@ config_setting(
     },
 )
 
-bool_flag(
-    name = "enable_tpu",
-    build_setting_default = True,
-)
-
-config_setting(
-    name = "tpu_enabled",
-    flag_values = {
-        ":enable_tpu": "True",
-    },
-)
-
 # If this flag is enabled, it sets RPATH on the xla_extension to values that are suitable for
 # finding NVIDIA's CUDA libraries when they are installed as pip packages.
 bool_flag(
@@ -1013,9 +1001,6 @@ cc_library(
     defines = select({
         ":gpu_enabled": ["XLA_PYTHON_ENABLE_GPU=1"],
         "//conditions:default": [],
-    }) + select({
-        ":tpu_enabled": ["XLA_PYTHON_ENABLE_TPU=1"],
-        "//conditions:default": [],
     }),
     features = ["-use_header_modules"],
     deps = [
@@ -1077,11 +1062,6 @@ cc_library(
     }) + select({
         ":link_gpu_plugin": [
             ":gpu_plugin_deps",
-        ],
-        "//conditions:default": [],
-    }) + select({
-        ":tpu_enabled": [
-            "//tensorflow/compiler/xla/pjrt:tpu_client",
         ],
         "//conditions:default": [],
     }),
