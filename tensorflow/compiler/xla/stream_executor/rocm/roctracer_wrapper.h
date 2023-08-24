@@ -47,17 +47,17 @@ namespace wrap {
 
 #define ROCTRACER_API_WRAPPER(API_NAME)                                       \
   template <typename... Args>                                                 \
-  auto API_NAME(Args... args)->decltype(::API_NAME(args...)) {                \
+  auto API_NAME(Args... args) -> decltype(::API_NAME(args...)) {              \
     using FuncPtrT = std::add_pointer<decltype(::API_NAME)>::type;            \
     static FuncPtrT loaded = []() -> FuncPtrT {                               \
       static const char* kName = #API_NAME;                                   \
       void* f;                                                                \
-      auto s = tsl::Env::Default()->GetSymbolFromLibrary(                     \
+      auto s = tsl::Env::Default() -> GetSymbolFromLibrary(                   \
           stream_executor::internal::CachedDsoLoader::GetRoctracerDsoHandle() \
-              .value(),                                                  \
+              .value(),                                                       \
           kName, &f);                                                         \
       CHECK(s.ok()) << "could not find " << kName                             \
-                    << " in roctracer DSO; dlerror: " << s.error_message();   \
+                    << " in roctracer DSO; dlerror: " << s.message();         \
       return reinterpret_cast<FuncPtrT>(f);                                   \
     }();                                                                      \
     return loaded(args...);                                                   \

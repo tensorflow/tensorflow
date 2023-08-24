@@ -18,8 +18,8 @@ limitations under the License.
 #include <cstring>
 #include <string>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/tsl/platform/threadpool.h"
 
 namespace xla {
 namespace {

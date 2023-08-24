@@ -14,6 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 
+#include <memory>
+#include <utility>
+#include <vector>
+
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/device_factory.h"
@@ -57,11 +61,12 @@ FallbackState::FallbackState(const SessionOptions &session_options,
             session_options.config.graph_options().optimizer_options(),
             /*thread_pool=*/nullptr, /*parent=*/nullptr,
             /*session_metadata=*/nullptr,
-            Rendezvous::Factory{
-                [](const int64, const DeviceMgr *device_mgr, Rendezvous **r) {
-                  *r = new IntraProcessRendezvous(device_mgr);
-                  return OkStatus();
-                }}) {
+            Rendezvous::Factory{[](const int64, const DeviceMgr *device_mgr,
+                                   tsl::core::RefCountPtr<Rendezvous> *r) {
+              *r = tsl::core::RefCountPtr<Rendezvous>(
+                  new IntraProcessRendezvous(device_mgr));
+              return OkStatus();
+            }}) {
   for (auto *d : device_manager_.ListDevices()) {
     device_set_.AddDevice(d);
   }

@@ -97,10 +97,10 @@ class ExecutionEngine {
     SymbolsBinding symbols_binding = nullptr;
 
     // Notify the llvm's global GDB notifications listener.
-    bool enable_gdb_listener = true;
+    bool enable_gdb_listener = false;
 
     // Notify the llvm's global Perf notifications listener.
-    bool enable_perf_listener = true;
+    bool enable_perf_listener = false;
 
     // Save compiled object file.
     bool save_compiled_obj_file = true;
@@ -166,6 +166,14 @@ class ExecutionEngine {
   llvm::JITEventListener *gdb_listener_ = nullptr;
   llvm::JITEventListener *perf_listener_ = nullptr;
 };
+
+// Emits an interface function ('exported_name') that wraps all arguments
+// of a function ('original_name') into a single pointer to a ptr**,
+// thereby exposing a trivial ABI. The original function is also inlined,
+// if possible.
+absl::Status ExportWithXlaRuntimeAbi(llvm::Module &module,
+                                     std::string_view original_name,
+                                     std::string_view exported_name);
 
 }  // namespace runtime
 }  // namespace xla

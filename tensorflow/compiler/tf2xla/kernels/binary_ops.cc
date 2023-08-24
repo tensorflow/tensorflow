@@ -15,6 +15,9 @@ limitations under the License.
 
 // Native XLA implementations of simple binary Ops
 
+#include <tuple>
+#include <vector>
+
 #include "tensorflow/compiler/tf2xla/kernels/cwise_ops.h"
 #include "tensorflow/compiler/tf2xla/lib/broadcast.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"

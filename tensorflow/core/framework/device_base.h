@@ -158,6 +158,8 @@ class DeviceBase {
     // Make sure all the defaults are NULL, so we can spot missing assignments.
     stream_executor::Stream* stream = nullptr;
     DeviceContext* default_context = nullptr;
+    DeviceContext* pjrt_context = nullptr;
+    bool use_pjrt_tensor_buffer = false;
     EventMgr* event_mgr = nullptr;
     int gpu_id = -1;
   };

@@ -47,10 +47,9 @@ TEST(ServerLibTest, NewServerNoFactoriesAccept) {
   Status s = NewServer(server_def, &server);
   ASSERT_NE(s, OkStatus());
   EXPECT_TRUE(absl::StrContains(
-      s.error_message(),
-      "No server factory registered for the given ServerDef"));
-  EXPECT_TRUE(absl::StrContains(s.error_message(),
-                                "The available server factories are: ["));
+      s.message(), "No server factory registered for the given ServerDef"));
+  EXPECT_TRUE(
+      absl::StrContains(s.message(), "The available server factories are: ["));
 }
 
 }  // namespace tensorflow

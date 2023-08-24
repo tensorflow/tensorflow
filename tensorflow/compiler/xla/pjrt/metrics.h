@@ -22,8 +22,7 @@ limitations under the License.
 
 namespace xla {
 
-void ReportExecutableEnqueueTime(const uint64_t running_time_usecs);
-
+void ReportExecutableEnqueueTime(uint64_t running_time_usecs);
 }
 
 #endif  // TENSORFLOW_COMPILER_XLA_PJRT_METRICS_H_

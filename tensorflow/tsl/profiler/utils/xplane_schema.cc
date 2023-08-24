@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/tsl/profiler/utils/xplane_schema.h"
 
+#include <atomic>
 #include <cstdint>
+#include <optional>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
@@ -32,9 +34,8 @@ namespace profiler {
 const absl::string_view kHostThreadsPlaneName = "/host:CPU";
 const absl::string_view kGpuPlanePrefix = "/device:GPU:";
 const absl::string_view kTpuPlanePrefix = "/device:TPU:";
-// Name prefix of XPlane that contains TPU non-core events such as HBM, ICI etc.
 const absl::string_view kTpuNonCorePlaneNamePrefix = "#Chip";
-const char kTpuPlaneRegex[] = {"/device:TPU:[0-9]*$"};
+const char kTpuPlaneRegex[] = {"/device:TPU:([0-9]*)$"};
 // TODO(b/195582092): change it to /device:custom once all literals are
 // migrated.
 const absl::string_view kCustomPlanePrefix = "/device:CUSTOM:";
@@ -56,6 +57,7 @@ const absl::string_view kXlaOpLineName = "XLA Ops";
 const absl::string_view kXlaAsyncOpLineName = "Async XLA Ops";
 const absl::string_view kKernelLaunchLineName = "Launch Stats";
 const absl::string_view kSourceLineName = "Source code";
+const absl::string_view kCounterEventsLineName = "_counters_";
 
 const absl::string_view kDeviceVendorNvidia = "Nvidia";
 const absl::string_view kDeviceVendorAMD = "AMD";
@@ -68,11 +70,16 @@ constexpr int kNumHostEventTypes =
 constexpr int kNumStatTypes =
     StatType::kLastStatType - StatType::kFirstStatType + 1;
 
+constexpr int kNumLineIdTypes =
+    LineIdType::kLastLineIdType - LineIdType::kFirstLineIdType + 1;
+
 using HostEventTypeMap = absl::flat_hash_map<absl::string_view, HostEventType>;
 using HostEventTypeStrMap =
     absl::flat_hash_map<HostEventType, absl::string_view>;
 using StatTypeMap = absl::flat_hash_map<absl::string_view, StatType>;
 using StatTypeStrMap = absl::flat_hash_map<StatType, absl::string_view>;
+using LineIdTypeMap = absl::flat_hash_map<absl::string_view, LineIdType>;
+using LineIdTypeStrMap = absl::flat_hash_map<LineIdType, absl::string_view>;
 
 const HostEventTypeMap& GetHostEventTypeMap() {
   static auto* host_event_type_map = new HostEventTypeMap({
@@ -240,6 +247,7 @@ const StatTypeMap& GetStatTypeMap() {
       {"step_name", kStepName},
       {"tf_op", kTfOp},
       {"hlo_op", kHloOp},
+      {"deduplicated_name", kDeduplicatedName},
       {"hlo_category", kHloCategory},
       {"hlo_module", kHloModule},
       {"program_id", kProgramId},
@@ -250,6 +258,7 @@ const StatTypeMap& GetStatTypeMap() {
       {"tracing_count", kTfFunctionTracingCount},
       {"flops", kFlops},
       {"bytes_accessed", kBytesAccessed},
+      {"memory_access_breakdown", kMemoryAccessBreakdown},
       {"source", kSourceInfo},
       {"model_name", kModelName},
       {"model_version", kModelVersion},
@@ -262,6 +271,7 @@ const StatTypeMap& GetStatTypeMap() {
       {"matrix_unit_utilization_percent", kMatrixUnitUtilizationPercent},
       // XLA metadata map related.
       {"Hlo Proto", kHloProto},
+      {"Model information", kModelInfo},
       // Device capability related.
       {"clock_rate", kDevCapClockRateKHz},
       {"core_count", kDevCapCoreCount},
@@ -284,7 +294,7 @@ const StatTypeMap& GetStatTypeMap() {
       {"theoretical_occupancy_pct", kTheoreticalOccupancyPct},
       {"occupancy_min_grid_size", kOccupancyMinGridSize},
       {"occupancy_suggested_block_size", kOccupancySuggestedBlockSize},
-      // Aggregrated Stat
+      // Aggregated Stat
       {"self_duration_ps", kSelfDurationPs},
       {"min_duration_ps", kMinDurationPs},
       {"total_profile_duration_ps", kTotalProfileDurationPs},
@@ -300,9 +310,27 @@ const StatTypeMap& GetStatTypeMap() {
       {"duration_us", kDuration},
       {"buffer_size", kBufferSize},
       {"transfers", kTransfers},
+      // Dcn message Stats
+      {"dcn_label", kDcnLabel},
+      {"dcn_source_slice_id", kDcnSourceSliceId},
+      {"dcn_source_per_slice_device_id", kDcnSourcePerSliceDeviceId},
+      {"dcn_destination_slice_id", kDcnDestinationSliceId},
+      {"dcn_destination_per_slice_device_id", kDcnDestinationPerSliceDeviceId},
+      {"dcn_chunk", kDcnChunk},
+      {"dcn_loop_index", kDcnLoopIndex},
   });
   DCHECK_EQ(stat_type_map->size(), kNumStatTypes);
   return *stat_type_map;
+}
+
+const LineIdTypeMap& GetLineIdTypeMap() {
+  static auto* line_id_type_map = new LineIdTypeMap({
+      {"UnknownLineIdType", kUnknownLineIdType},
+      {"DcnHostTraffic", kDcnHostTraffic},
+      {"DcnCollectiveTraffic", kDcnCollectiveTraffic},
+  });
+  DCHECK_EQ(line_id_type_map->size(), kNumLineIdTypes);
+  return *line_id_type_map;
 }
 
 const HostEventTypeStrMap& GetHostEventTypeStrMap() {
@@ -317,20 +345,26 @@ const StatTypeStrMap& GetStatTypeStrMap() {
   return *stat_type_str_map;
 }
 
+const LineIdTypeStrMap& GetLineIdTypeStrMap() {
+  static auto* line_id_type_str_map = new LineIdTypeStrMap(
+      gtl::ReverseMap<LineIdTypeStrMap>(GetLineIdTypeMap()));
+  return *line_id_type_str_map;
+}
+
 }  // namespace
 
 absl::string_view GetHostEventTypeStr(HostEventType event_type) {
   return GetHostEventTypeStrMap().at(event_type);
 }
 
-absl::optional<int64_t> FindHostEventType(absl::string_view event_name) {
+std::optional<int64_t> FindHostEventType(absl::string_view event_name) {
   if (auto event_type = gtl::FindOrNull(GetHostEventTypeMap(), event_name)) {
     return *event_type;
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 
-absl::optional<int64_t> FindTfOpEventType(absl::string_view event_name) {
+std::optional<int64_t> FindTfOpEventType(absl::string_view event_name) {
   // TF op names.
   Category category = ParseTfOpFullname(event_name).category;
   switch (category) {
@@ -339,7 +373,7 @@ absl::optional<int64_t> FindTfOpEventType(absl::string_view event_name) {
     case Category::kTfData:
       return HostEventType::kIterator;
     default:
-      return absl::nullopt;
+      return std::nullopt;
   }
 }
 
@@ -347,14 +381,18 @@ absl::string_view GetStatTypeStr(StatType stat_type) {
   return GetStatTypeStrMap().at(stat_type);
 }
 
-absl::optional<int64_t> FindStatType(absl::string_view stat_name) {
+std::optional<int64_t> FindStatType(absl::string_view stat_name) {
   if (auto stat_type = gtl::FindOrNull(GetStatTypeMap(), stat_name)) {
     return *stat_type;
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 
-bool IsInternalEvent(absl::optional<int64_t> event_type) {
+absl::string_view GetLineIdTypeStr(LineIdType line_id_type) {
+  return GetLineIdTypeStrMap().at(line_id_type);
+}
+
+bool IsInternalEvent(std::optional<int64_t> event_type) {
   // TODO(b/162102421): Introduce a prefix for internal event names.
   if (!event_type.has_value()) return false;
   switch (*event_type) {
@@ -377,7 +415,7 @@ bool IsInternalEvent(absl::optional<int64_t> event_type) {
   }
 }
 
-bool IsInternalStat(absl::optional<int64_t> stat_type) {
+bool IsInternalStat(std::optional<int64_t> stat_type) {
   // TODO(b/162102421): Introduce a prefix for internal stat names.
   if (!stat_type.has_value()) return false;
   switch (*stat_type) {
@@ -395,14 +433,6 @@ bool IsInternalStat(absl::optional<int64_t> stat_type) {
     default:
       return false;
   }
-}
-
-bool IsTensorCorePlaneName(absl::string_view plane_name) {
-  DCHECK(absl::StartsWith(plane_name, kTpuPlanePrefix) ||
-         absl::StartsWith(plane_name, kTpuNonCorePlaneNamePrefix))
-      << "unexpected plane name:" << plane_name;
-  return absl::StartsWith(plane_name, kTpuPlanePrefix) &&
-         RE2::FullMatch(plane_name, {kTpuPlaneRegex});
 }
 
 /*static*/ std::atomic<uint64_t> XFlow::next_flow_id_(0);

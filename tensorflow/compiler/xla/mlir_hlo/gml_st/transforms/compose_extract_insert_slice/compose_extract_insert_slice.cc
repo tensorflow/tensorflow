@@ -49,7 +49,7 @@ LogicalResult composeExtractOfExtractSlice(ExtractOp extractOp,
   SmallVector<OpFoldResult> consumerSizes(rank, rewriter.getIndexAttr(1));
   SmallVector<OpFoldResult> consumerStrides(rank, rewriter.getIndexAttr(1));
 
-  if (failed(mergeOffsetsSizesAndStrides(
+  if (failed(affine::mergeOffsetsSizesAndStrides(
           rewriter, loc, sliceOp.getMixedOffsets(), sliceOp.getMixedSizes(),
           sliceOp.getMixedStrides(), sliceOp.getDroppedDims(), consumerOffsets,
           consumerSizes, consumerStrides, combinedOffsets, combinedSizes,

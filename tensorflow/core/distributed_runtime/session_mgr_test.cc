@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/distributed_runtime/error_payloads.h"
 #include "tensorflow/core/distributed_runtime/rpc/rpc_rendezvous_mgr.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
@@ -50,9 +51,8 @@ class SessionMgrTest : public ::testing::Test {
       : mgr_(&env_, "/job:mnist/replica:0/task:0",
              std::unique_ptr<WorkerCacheInterface>(), factory_,
              /*coordination_handler=*/nullptr) {
-    device_mgr_ = std::make_unique<StaticDeviceMgr>(
+    device_mgr_ = std::make_unique<DynamicDeviceMgr>(
         FakeDevice::MakeCPU("/job:mnist/replica:0/task:0/device:fakecpu:0"));
-    env_.local_devices = device_mgr_->ListDevices();
     env_.device_mgr = device_mgr_.get();
   }
 
@@ -251,9 +251,8 @@ TEST_F(SessionMgrTest, UnknownSessionHandle) {
   std::string session_handle = "unknown_session_handle";
   std::shared_ptr<WorkerSession> session;
   Status s = mgr_.WorkerSessionForSession(session_handle, &session);
-  EXPECT_TRUE(errors::IsAborted(s));
-  EXPECT_TRUE(
-      absl::StrContains(s.error_message(), "Session handle is not found"));
+  EXPECT_TRUE(absl::IsAborted(s));
+  EXPECT_TRUE(absl::StrContains(s.message(), "Session handle is not found"));
   EXPECT_TRUE(s.GetPayload(kWorkerPossiblyRestarted).has_value());
 }
 

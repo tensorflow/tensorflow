@@ -24,6 +24,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
@@ -71,7 +72,7 @@ __all__ = [
 
 
 def _maybe_constant_value_string(t):
-  if not isinstance(t, ops.Tensor):
+  if not isinstance(t, tensor_lib.Tensor):
     return str(t)
   const_t = tensor_util.constant_value(t)
   if const_t is not None:
@@ -417,7 +418,7 @@ def _pretty_print(data_item, summarize):
   Returns:
     An appropriate string representation of data_item
   """
-  if isinstance(data_item, ops.Tensor):
+  if isinstance(data_item, tensor_lib.Tensor):
     arr = data_item.numpy()
     if np.isscalar(arr):
       # Tensor.numpy() returns a scalar for zero-dimensional tensors
@@ -526,7 +527,7 @@ def assert_proper_iterable(values):
       `Tensor`, `SparseTensor`, `np.array`, `tf.compat.bytes_or_text_types`.
   """
   unintentional_iterables = (
-      (ops.Tensor, sparse_tensor.SparseTensor, np.ndarray)
+      (tensor_lib.Tensor, sparse_tensor.SparseTensor, np.ndarray)
       + compat.bytes_or_text_types
   )
   if isinstance(values, unintentional_iterables):
@@ -1979,7 +1980,7 @@ def is_numeric_tensor(tensor):
   Returns `False` if `tensor` is of a non-numeric type or if `tensor` is not
   a `tf.Tensor` object.
   """
-  return isinstance(tensor, ops.Tensor) and tensor.dtype in NUMERIC_TYPES
+  return isinstance(tensor, tensor_lib.Tensor) and tensor.dtype in NUMERIC_TYPES
 
 
 @tf_export(

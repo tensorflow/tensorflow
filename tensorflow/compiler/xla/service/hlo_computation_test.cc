@@ -17,9 +17,11 @@ limitations under the License.
 
 #include <memory>
 #include <set>
+#include <string>
 #include <string_view>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -164,6 +166,40 @@ TEST_F(HloComputationTest, PostOrderDisconnectedInstructions) {
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_THAT(computation->MakeInstructionPostOrder(),
               UnorderedElementsAre(constant1, constant2, constant3, constant4));
+}
+
+TEST_F(HloComputationTest, PostOrderWithReshapeFirst) {
+  const std::string& hlo_string = R"(
+  HloModule test
+
+  ENTRY %entry {
+    parameter.0 = f32[3] parameter(0)
+    broadcast.0 = f32[1, 3] broadcast(f32[3] parameter.0), dimensions={1}
+    reshape.0 = f32[3, 1] reshape(f32[3] parameter.0)
+    ROOT tuple.0 = (f32[1, 3], f32[3, 1]) tuple(f32[1, 3] broadcast.0, f32[3, 1] reshape.0)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloComputation* entry_computation =
+      FindComputation(hlo_module.get(), "entry");
+
+  HloInstruction* parameter_0 =
+      FindInstruction(hlo_module.get(), "parameter.0");
+  HloInstruction* broadcast_0 =
+      FindInstruction(hlo_module.get(), "broadcast.0");
+  HloInstruction* reshape_0 = FindInstruction(hlo_module.get(), "reshape.0");
+  HloInstruction* tuple_0 = FindInstruction(hlo_module.get(), "tuple.0");
+
+  // Normal `MakeInstructionPostOrder()` have `broadcast_0` before `reshape_0`.
+  EXPECT_THAT(entry_computation->MakeInstructionPostOrder(),
+              ElementsAre(parameter_0, broadcast_0, reshape_0, tuple_0));
+
+  // `MakeInstructionPostOrderWithReshapeFirst()` have `reshape_0` before
+  // `broadcast_0`.
+  EXPECT_THAT(entry_computation->MakeInstructionPostOrderWithReshapeFirst(),
+              ElementsAre(parameter_0, reshape_0, broadcast_0, tuple_0));
 }
 
 TEST_F(HloComputationTest, PostOrderWithMultipleRoots) {
@@ -419,7 +455,7 @@ TEST_F(HloComputationTest, CycleDetection) {
       [](HloInstruction* instruction) { return OkStatus(); });
   auto visit_status = computation->Accept(&visitor);
   ASSERT_FALSE(visit_status.ok());
-  ASSERT_THAT(visit_status.error_message(),
+  ASSERT_THAT(visit_status.message(),
               ::testing::ContainsRegex("cycle is detecte"));
 }
 
@@ -507,6 +543,46 @@ TEST_F(HloComputationTest, CloneWithReplacements) {
   std::vector<const HloInstruction*> extra_parameters{param3.get()};
   auto clone =
       computation->CloneWithReplacements(&replacements, extra_parameters);
+  ASSERT_EQ(clone->num_parameters(), 4);
+  EXPECT_TRUE(
+      ShapeUtil::Equal(clone->parameter_instruction(0)->shape(), r0f32_));
+  EXPECT_TRUE(
+      ShapeUtil::Equal(clone->parameter_instruction(1)->shape(), r0f32_));
+  EXPECT_TRUE(
+      ShapeUtil::Equal(clone->parameter_instruction(2)->shape(), r0s32));
+  EXPECT_TRUE(
+      ShapeUtil::Equal(clone->parameter_instruction(3)->shape(), r0u32));
+}
+
+TEST_F(HloComputationTest, CloneInContext) {
+  HloComputation::Builder builder(TestName());
+  Shape r0s64 = ShapeUtil::MakeShape(S64, {});
+  Shape r0s32 = ShapeUtil::MakeShape(S32, {});
+  Shape r0u32 = ShapeUtil::MakeShape(U32, {});
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0f32_, "p.0.lhs"));
+  HloInstruction* param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, r0f32_, "p.0.rhs"));
+  HloInstruction* param2 =
+      builder.AddInstruction(HloInstruction::CreateParameter(2, r0s64, "p.1"));
+  HloInstruction* lt = builder.AddInstruction(
+      HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), param0,
+                                    param1, ComparisonDirection::kLt));
+  std::unique_ptr<VerifiedHloModule> module = CreateNewVerifiedModule();
+  const HloComputation& computation =
+      *module->AddEntryComputation(builder.Build(/*root_instruction=*/lt));
+  absl::flat_hash_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
+      replacements;
+  replacements.emplace(param2,
+                       HloInstruction::CreateParameter(2, r0s32, "p.1"));
+  std::unique_ptr<HloInstruction> param3 =
+      HloInstruction::CreateParameter(3, r0u32, "p.2");
+  std::vector<const HloInstruction*> extra_parameters = {param3.get()};
+  HloCloneContext clone_context(module.get());
+
+  std::unique_ptr<HloComputation> clone = computation.CloneInContext(
+      clone_context, &replacements, extra_parameters);
+
   ASSERT_EQ(clone->num_parameters(), 4);
   EXPECT_TRUE(
       ShapeUtil::Equal(clone->parameter_instruction(0)->shape(), r0f32_));

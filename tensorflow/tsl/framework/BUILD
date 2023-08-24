@@ -112,6 +112,7 @@ cc_library(
     deps = [
         ":numeric_types",
         ":type_traits",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
     ] + if_static(
@@ -172,6 +173,7 @@ cc_library(
         "//tensorflow/tsl/platform:types",
         "//tensorflow/tsl/profiler/lib:scoped_memory_debug_annotation",
         "//tensorflow/tsl/profiler/lib:traceme",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
     ],
@@ -252,6 +254,26 @@ cc_library(
         "//tensorflow/tsl/platform:mutex",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:types",
+    ],
+)
+
+cc_library(
+    name = "device_id_utils",
+    srcs = ["device_id_utils.cc"],
+    hdrs = [
+        "device_id_utils.h",
+    ],
+    deps = [
+        ":device_id_impl",
+        ":device_type",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:statusor",
+        "//tensorflow/tsl/platform:str_util",
+        "//tensorflow/tsl/util:device_name_utils",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -396,5 +418,21 @@ exports_files(
         "cancellation.h",
         "numeric_types.h",
         "type_traits.h",
+    ],
+)
+
+tsl_cc_test(
+    name = "device_id_utils_test",
+    srcs = [
+        "device_id_utils_test.cc",
+    ],
+    deps = [
+        ":device_id_impl",
+        ":device_id_utils",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:status_matchers",
+        "//tensorflow/tsl/platform:test_main",
+        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
+        "//tensorflow/tsl/util:device_name_utils",
     ],
 )

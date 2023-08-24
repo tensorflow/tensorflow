@@ -63,8 +63,8 @@ static Device* CreateDevice(const char* type, const char* name,
 }
 
 TEST(DynamicDeviceMgrTest, AddDeviceToMgr) {
-  std::unique_ptr<Device> d0(CreateDevice("CPU", "/device:CPU:0"));
-  std::unique_ptr<Device> d1(CreateDevice("CPU", "/device:CPU:1"));
+  std::unique_ptr<Device> d0(CreateDevice("CPU", "/device:CPU:1"));
+  std::unique_ptr<Device> d1(CreateDevice("CPU", "/device:CPU:0"));
 
   auto dm = std::make_unique<DynamicDeviceMgr>();
   EXPECT_EQ(dm->ListDevices().size(), 0);
@@ -74,6 +74,10 @@ TEST(DynamicDeviceMgrTest, AddDeviceToMgr) {
   added_devices.emplace_back(std::move(d1));
   TF_CHECK_OK(dm->AddDevices(std::move(added_devices)));
   EXPECT_EQ(dm->ListDevices().size(), 2);
+  // Checks that list is sorted by the device name order, not insertion order.
+  // Insertion order is flipped above.
+  EXPECT_EQ(dm->ListDevices()[0]->name(), "/device:CPU:0");
+  EXPECT_EQ(dm->ListDevices()[1]->name(), "/device:CPU:1");
 }
 
 TEST(DynamicDeviceMgrTest, RemoveDeviceFromMgr) {
@@ -156,8 +160,8 @@ TEST(DynamicDeviceMgrTest, AddRepeatedDeviceToMgr) {
   std::vector<std::unique_ptr<Device>> added_devices;
   added_devices.emplace_back(std::move(d1));
   Status s = dm->AddDevices(std::move(added_devices));
-  EXPECT_TRUE(absl::StrContains(s.error_message(),
-                                "name conflicts with an existing device"));
+  EXPECT_TRUE(
+      absl::StrContains(s.message(), "name conflicts with an existing device"));
 }
 
 TEST(DynamicDeviceMgrTest, RemoveNonExistingDeviceFromMgr) {
@@ -174,7 +178,7 @@ TEST(DynamicDeviceMgrTest, RemoveNonExistingDeviceFromMgr) {
 
   std::vector<Device*> removed_devices{d0_ptr, d1_ptr};
   Status s = dm->RemoveDevices(removed_devices);
-  EXPECT_TRUE(absl::StrContains(s.error_message(), "Unknown device"));
+  EXPECT_TRUE(absl::StrContains(s.message(), "Unknown device"));
   EXPECT_EQ(dm->ListDevices().size(), 1);  // d0 *not* removed.
 }
 
@@ -191,7 +195,7 @@ TEST(DynamicDeviceMgrTest, RemoveNonExistingDeviceByNameFromMgr) {
 
   std::vector<string> removed_devices{d0_name, d1_name};
   Status s = dm->RemoveDevicesByName(removed_devices);
-  EXPECT_TRUE(absl::StrContains(s.error_message(), "unknown device"));
+  EXPECT_TRUE(absl::StrContains(s.message(), "unknown device"));
   EXPECT_EQ(dm->ListDevices().size(), 1);  // d0 *not* removed
 }
 
@@ -227,7 +231,7 @@ TEST(DynamicDeviceMgrTest, HostCPU) {
 
   // Once we have a HostCPU() device, we can't remove it ...
   std::vector<Device*> removed{gpu_ptr, cpu0_ptr};
-  EXPECT_TRUE(absl::StrContains(dm->RemoveDevices(removed).error_message(),
+  EXPECT_TRUE(absl::StrContains(dm->RemoveDevices(removed).message(),
                                 "Can not remove HostCPU device"));
   EXPECT_EQ(dm->ListDevices().size(), 3);
   EXPECT_EQ(dm->HostCPU(), cpu0_ptr);

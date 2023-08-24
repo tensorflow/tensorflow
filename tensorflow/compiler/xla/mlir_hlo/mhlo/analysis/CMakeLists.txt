@@ -16,6 +16,9 @@ add_mlir_library(MhloTestAnalysis
   LINK_COMPONENTS
   Core
 
+  DEPENDS
+  LMHLOTransformsPassIncGen
+
   LINK_LIBS PUBLIC
   MLIRHLOAnalysis
   MLIRAnalysis

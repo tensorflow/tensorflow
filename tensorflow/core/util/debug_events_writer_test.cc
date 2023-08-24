@@ -15,16 +15,19 @@ limitations under the License.
 
 #include "tensorflow/core/util/debug_events_writer.h"
 
+#include <algorithm>
+#include <atomic>
+#include <memory>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/io/record_reader.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 
 namespace tensorflow {
 namespace tfdbg {

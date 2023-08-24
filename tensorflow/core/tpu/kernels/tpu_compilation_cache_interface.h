@@ -15,11 +15,16 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_CACHE_INTERFACE_H_
 #define TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_CACHE_INTERFACE_H_
 
+#include <functional>
+#include <map>
 #include <memory>
 #include <string>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
@@ -302,7 +307,7 @@ class TpuCompilationCacheInterface : public ResourceBase {
       ABSL_GUARDED_BY(mu_);
   // All the subgraph entries that can be looked up in the cache, indexed by
   // uid.
-  absl::node_hash_map<int64_t, CompiledSubgraph*> entries_by_uid_
+  absl::flat_hash_map<int64_t, CompiledSubgraph*> entries_by_uid_
       ABSL_GUARDED_BY(mu_);
   // All the protos that can be looked up in the cache, indexed by proto
   // key. The value of the map is a subgraph and the index of the proto compiled

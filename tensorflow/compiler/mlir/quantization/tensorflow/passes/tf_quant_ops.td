@@ -54,3 +54,17 @@ def TF_UniformQuantizedDotGeneralOp : TF_Op<"UniformQuantizedDotGeneral", [Pure]
   TF_DerivedOperandTypeAttr RhsT = TF_DerivedOperandTypeAttr<1>;
   TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
 }
+
+def TF_CustomAggregatorOp : TF_Op<"CustomAggregator", [Pure]> {
+  let summary = "Gathers min and max statistics of a given tensor.";
+
+  let arguments = (ins
+    TensorOf<[TF_Float32]>:$input,
+
+    StrAttr:$id
+  );
+
+  let results = (outs
+    TensorOf<[TF_Float32]>:$output
+  );
+}

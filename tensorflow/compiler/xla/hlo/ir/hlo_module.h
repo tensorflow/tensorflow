@@ -23,6 +23,7 @@ limitations under the License.
 #include <optional>
 #include <random>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -128,6 +129,10 @@ class HloModule {
 
   const std::string& name() const { return name_; }
   void set_name(std::string name) { name_ = std::move(name); }
+
+  // Move computations from the input module to this one, while ensuring that
+  // the names of instructions within the computations are unchanged.
+  void MoveComputationsFrom(HloModule* module, bool make_names_unique = false);
 
   // Returns a deep copy of this module including all computations.
   std::unique_ptr<HloModule> Clone(const std::string& suffix = "clone") const;
@@ -417,14 +422,11 @@ class HloModule {
     return input_output_alias_config_;
   }
 
-  // DynamicParameterBinding holds the list of bindings that indicates which
-  // parameter dimensions are dynamic and which parameters represent their
-  // runtime value.
-  DynamicParameterBinding& dynamic_parameter_binding() {
-    return dynamic_parameter_binding_;
-  }
-  const DynamicParameterBinding& dynamic_parameter_binding() const {
-    return dynamic_parameter_binding_;
+  // buffer_donor_config_ indicates the set of input buffer donors that are
+  // expected from the module.
+  HloBufferDonorConfig& buffer_donor_config() { return buffer_donor_config_; }
+  const HloBufferDonorConfig& buffer_donor_config() const {
+    return buffer_donor_config_;
   }
 
   // Returns an id that is unique to this module across all modules created over
@@ -584,6 +586,31 @@ class HloModule {
 
   CompilationEnvironments& comp_envs() const { return *comp_envs_; }
 
+  // Get 128-bit fingerprint of the module by printing it using the given print
+  // options.
+  std::string GetFingerprint128(const HloPrintOptions& options =
+                                    HloPrintOptions::ModuleFingerprint()) const;
+
+  // Describes a stack frame.
+  struct StackFrame {
+    std::string_view file_name;
+    std::string_view function_name;
+    int line = 0;
+    int column = 0;
+
+    // 1-based index of the parent frame.
+    // 0 value indicates that the current frame is the root.
+    int parent_frame_id = 0;
+
+    bool empty() const {
+      return line == 0 && column == 0 && file_name.empty() &&
+             function_name.empty();
+    }
+  };
+
+  // Getter for the specific stack frame. Argument is a 1-based index.
+  StackFrame get_stack_frame(int id) const;
+
  private:
   HloComputation* AddComputationInternal(
       std::unique_ptr<HloComputation> computation, bool is_entry,
@@ -621,8 +648,9 @@ class HloModule {
   // are expected from the module.
   HloInputOutputAliasConfig input_output_alias_config_;
 
-  // Bindings for dynamic parameter mapping.
-  DynamicParameterBinding dynamic_parameter_binding_;
+  // buffer_donor_config_ indicates the donor information of input buffers that
+  // are expected from the module.
+  HloBufferDonorConfig buffer_donor_config_;
 
   // The HLO shardings of the entry computation's parameters for
   // SPMD-partitioned programs.
@@ -669,6 +697,9 @@ class HloModule {
   // environment variables).
   std::unique_ptr<CompilationEnvironments> comp_envs_ =
       std::make_unique<CompilationEnvironments>();
+
+  // Stack frame indexes flat representation.
+  std::optional<StackFrameIndexProto> stack_frame_index_;
 };
 
 }  // namespace xla

@@ -24,23 +24,19 @@ limitations under the License.
 namespace xla {
 
 StatusOr<std::unique_ptr<DistributedRuntimeService>>
-GetDistributedRuntimeService(
-    std::string address, const DistributedRuntimeServiceImpl::Options& options,
-    bool use_coordination_service) {
+GetDistributedRuntimeService(std::string address,
+                             const CoordinationServiceImpl::Options& options) {
   auto credentials = ::grpc::InsecureServerCredentials();
-  return DistributedRuntimeService::Get(address, credentials, options,
-                                        use_coordination_service);
+  return DistributedRuntimeService::Get(address, credentials, options);
 }
 
 std::shared_ptr<DistributedRuntimeClient> GetDistributedRuntimeClient(
-    std::string address, const DistributedRuntimeClient::Options& options,
-    bool use_coordination_service) {
+    std::string address, const DistributedRuntimeClient::Options& options) {
   std::shared_ptr<::grpc::ChannelCredentials> creds =
       ::grpc::InsecureChannelCredentials();
   std::shared_ptr<::grpc::Channel> channel =
       ::grpc::CreateChannel(address, creds);
-  return GetDistributedRuntimeClient(channel, options,
-                                     use_coordination_service);
+  return GetDistributedRuntimeClient(channel, options);
 }
 
 }  // namespace xla

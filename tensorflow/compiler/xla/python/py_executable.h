@@ -27,11 +27,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_executable.h"
 #include "tensorflow/compiler/xla/python/py_array.h"
-#include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
 #include "tensorflow/compiler/xla/python/traceback.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/types.h"
 
 namespace xla {
 
@@ -116,8 +114,7 @@ class PyLoadedExecutable
       std::shared_ptr<PyClient> client,
       std::unique_ptr<ifrt::LoadedExecutable> ifrt_loaded_executable,
       std::shared_ptr<Traceback> traceback,
-      std::optional<std::string> fingerprint,
-      std::vector<pybind11::capsule> host_callbacks);
+      std::optional<std::string> fingerprint);
   ~PyLoadedExecutable();
 
   std::shared_ptr<PyClient> client() const { return client_; }
@@ -138,6 +135,13 @@ class PyLoadedExecutable
 
   StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const {
     return ifrt_loaded_executable_->GetCompiledMemoryStats();
+  }
+
+  StatusOr<absl::flat_hash_map<
+      std::string,
+      std::variant<std::string, int64_t, std::vector<int64_t>, float>>>
+  GetCostAnalysis() const {
+    return ifrt_loaded_executable_->GetCostAnalysis();
   }
 
   void Delete() {
@@ -162,6 +166,9 @@ class PyLoadedExecutable
                                             bool with_tokens);
 
   StatusOr<std::vector<std::shared_ptr<HloModule>>> HloModules() const;
+
+  StatusOr<std::vector<std::vector<absl::string_view>>> GetOutputMemoryKinds()
+      const;
 
   std::optional<std::vector<OpSharding>> GetParameterShardings() const;
 
@@ -211,9 +218,6 @@ class PyLoadedExecutable
   // same fingerprint. nullopt on platforms or executables where fingerprints
   // aren't implemented.
   std::optional<std::string> fingerprint_;
-
-  // The python callbacks implemented using send/recv support.
-  std::vector<pybind11::capsule> host_callbacks_;
 
   // The options to pass to `executable_.Execute`.
   ExecuteOptions options_;

@@ -32,6 +32,13 @@ extern "C" {
 // Enable XNNPACK acceleration for FULLY_CONNECTED operator with dynamic
 // weights.
 #define TFLITE_XNNPACK_DELEGATE_FLAG_DYNAMIC_FULLY_CONNECTED 0x00000008
+// Enable XNNPACK acceleration for VAR_HANDLE, READ_VARIABLE, and
+// ASSIGN_VARIABLE operators.
+#define TFLITE_XNNPACK_DELEGATE_FLAG_VARIABLE_OPERATORS 0x00000010
+// Enable transient indirection buffer to reduce memory usage in selected
+// operators. Indirection buffer initialization will take place on every
+// inference run, instead of only once during initialization of the operators.
+#define TFLITE_XNNPACK_DELEGATE_FLAG_TRANSIENT_INDIRECTION_BUFFER 0x00000020
 
 struct TfLiteXNNPackDelegateWeightsCache;
 
@@ -44,12 +51,14 @@ typedef struct {
   // - TFLITE_XNNPACK_DELEGATE_FLAG_QU8
   // - TFLITE_XNNPACK_DELEGATE_FLAG_FORCE_FP16
   // - TFLITE_XNNPACK_DELEGATE_FLAG_DYNAMIC_FULLY_CONNECTED
+  // - TFLITE_XNNPACK_DELEGATE_FLAG_VARIABLE_OPERATORS
+  // - TFLITE_XNNPACK_DELEGATE_FLAG_TRANSIENT_INDIRECTION_BUFFER
   uint32_t flags;
   // Cache for packed weights, can be shared between multiple instances of
   // delegates.
   struct TfLiteXNNPackDelegateWeightsCache* weights_cache;
-  // Whether READ_VARIABLE, ASSIGN_VARIABLE, and VARIABLE_HANDLE operations
-  // should be handled by XNNPACK.
+  // Deprecated. Use the flags bitfield with the
+  // TFLITE_XNNPACK_DELEGATE_FLAG_VARIABLE_OPERATORS mask.
   bool handle_variable_ops;
 } TfLiteXNNPackDelegateOptions;
 
@@ -77,6 +86,12 @@ TfLiteDelegate* TfLiteXNNPackDelegateCreateWithThreadpool(
 // WARNING: This API is experimental and subject to change.
 TFL_CAPI_EXPORT void* TfLiteXNNPackDelegateGetThreadPool(
     TfLiteDelegate* delegate);
+
+// Returns the flags used for an XNNPack delegate.
+// See documentation for TfLiteXNNPackDelegateOptions.flags.
+//
+// WARNING: This API is experimental and subject to change.
+TFL_CAPI_EXPORT int TfLiteXNNPackDelegateGetFlags(TfLiteDelegate* delegate);
 
 // Destroys a delegate created with `TfLiteXNNPackDelegateCreate` call.
 TFL_CAPI_EXPORT void TfLiteXNNPackDelegateDelete(TfLiteDelegate* delegate);

@@ -264,7 +264,7 @@ void PartitionedCallOp::RunFunction(FunctionLibraryRuntime::Handle handle,
              if (!status.ok()) {
                const string function_and_msg =
                    strings::StrCat(errors::FormatFunctionForError(func_name),
-                                   " ", status.error_message());
+                                   " ", status.message());
                ctx->SetStatus(
                    errors::CreateWithUpdatedMessage(status, function_and_msg));
              } else {

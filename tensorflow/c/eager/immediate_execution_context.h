@@ -191,13 +191,6 @@ class ImmediateExecutionContext : public AbstractContext {
   // to invoke MLIR compiler passes.
   virtual FunctionLibraryDefinition* FuncLibDef() = 0;
 
-  // When tensor transfer across functions/eager executions using send/recv ops
-  // are required, `reuse_rendezvous_for_functions_` can be set to true so that
-  // function executions and eager executions use the same rendezvous instance,
-  // instead of creating new instance per function calls.
-  virtual void SetReuseRendezvousForFunctions(
-      bool reuse_rendezvous_for_functions) = 0;
-
   // Resets the global rendezvous used for functions.
   virtual void ResetGlobalRendezvousForFunction() = 0;
 

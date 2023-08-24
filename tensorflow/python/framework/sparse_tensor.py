@@ -25,6 +25,7 @@ from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
@@ -38,8 +39,8 @@ from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util.tf_export import tf_export
 
 # pylint: disable=protected-access
-_eval_using_default_session = ops._eval_using_default_session
-_override_helper = ops._override_helper
+_eval_using_default_session = tensor._eval_using_default_session
+_override_helper = tensor._override_helper
 # pylint: enable=protected-access
 
 
@@ -151,7 +152,7 @@ class SparseTensor(internal.NativeObject, composite_tensor.CompositeTensor):
     # dense_shape.
     indices_shape.dims[1].assert_is_compatible_with(dense_shape_shape.dims[0])
 
-  def get_shape(self):
+  def get_shape(self) -> tensor_shape.TensorShape:
     """Get the `TensorShape` representing the shape of the dense tensor.
 
     Returns:
@@ -204,7 +205,7 @@ class SparseTensor(internal.NativeObject, composite_tensor.CompositeTensor):
     return SparseTensor(self._indices, new_values, self._dense_shape)
 
   @property
-  def op(self):
+  def op(self) -> ops.Operation:
     """The `Operation` that produces `values` as an output."""
     return self._values.op
 

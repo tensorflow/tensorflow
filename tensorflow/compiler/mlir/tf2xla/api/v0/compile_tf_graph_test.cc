@@ -37,7 +37,10 @@ using ::tensorflow::tpu::ShardingAndIndex;
 using ::tsl::monitoring::testing::Histogram;
 
 static constexpr char kCompilationTimeStreamzName[] =
-    "/tensorflow/core/tf2xla/v0/bridge_phase_2_compilation_time";
+    "/tensorflow/core/tf2xla/api/v0/phase2_compilation_time";
+
+static constexpr char kCompilationStatusStreamzName[] =
+    "/tensorflow/core/tf2xla/api/v0/phase2_compilation_status";
 
 MlirToHloArgs CreateTestMlirToHloArgs() {
   static constexpr char kMlirModuleStr[] = R"(
@@ -60,7 +63,10 @@ class CompileTFGraphTest : public ::testing::Test {
   tsl::Status CompileWithComputation(
       const std::variant<tpu::MlirToHloArgs, tpu::FunctionToHloArgs>
           computation) {
-    auto client = xla::ClientLibrary::GetOrCreateCompileOnlyClient().value();
+    se::Platform* platform =
+        se::MultiPlatformManager::PlatformWithName("Host").value();
+    auto client =
+        xla::ClientLibrary::GetOrCreateCompileOnlyClient(platform).value();
 
     std::vector<TensorShape> arg_shapes;
     bool use_tuple_args = true;
@@ -90,6 +96,7 @@ TEST_F(CompileTFGraphTest, RecordsStreamzForMlirFallback) {
 
 TEST_F(CompileTFGraphTest, RecordsStreamzForFunctionToHlo) {
   CellReader<Histogram> compilation_time(kCompilationTimeStreamzName);
+  CellReader<int64_t> compilation_status(kCompilationStatusStreamzName);
 
   FunctionDef empty_function =
       tensorflow::FunctionDefHelper::Create("empty", {}, {}, {}, {}, {});
@@ -114,6 +121,7 @@ TEST_F(CompileTFGraphTest, RecordsStreamzForFunctionToHlo) {
       compilation_time.Delta("graph_old_bridge_has_function_to_hlo");
 
   EXPECT_EQ(histogram.num(), 1);
+  EXPECT_EQ(compilation_status.Delta("kOldBridgeNoMlirSuccess"), 1);
 }
 
 }  // namespace

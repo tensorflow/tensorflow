@@ -22,14 +22,12 @@ within various embedded development environments.
 The most important files for using the TensorFlow Lite for Microcontrollers
 interpreter are located in the root of the project, accompanied by tests:
 
--   [`all_ops_resolver.h`](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/all_ops_resolver.h)
-    or
-    [`micro_mutable_op_resolver.h`](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/micro_mutable_op_resolver.h)
-    can be used to provide the operations used by the interpreter to run the
-    model. Since `all_ops_resolver.h` pulls in every available operation, it
-    uses a lot of memory. In production applications, you should use
-    `micro_mutable_op_resolver.h` to pull in only the operations your model
-    needs.
+```
+[`micro_mutable_op_resolver.h`](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/micro_mutable_op_resolver.h)
+can be used to provide the operations used by the interpreter to run the
+model.
+```
+
 -   [`micro_error_reporter.h`](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/tflite_bridge/micro_error_reporter.h)
     outputs debug information.
 -   [`micro_interpreter.h`](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/micro_interpreter.h)
@@ -40,7 +38,7 @@ walkthrough of typical usage.
 
 The build system provides for platform-specific implementations of certain
 files. These are located in a directory with the platform name, for example
-[`sparkfun_edge`](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/sparkfun_edge).
+[`cortex-m`](https://github.com/tensorflow/tflite-micro/tree/main/tensorflow/lite/micro/cortex_m_generic).
 
 Several other directories exist, including:
 
@@ -129,18 +127,19 @@ make -f tensorflow/lite/micro/tools/make/Makefile hello_world_bin
 ```
 
 By default, the project will be compiled for the host operating system. To
-specify a different target architecture, use `TARGET=`. The following example
-shows how to build the *Hello World* example for the SparkFun Edge:
+specify a different target architecture, use `TARGET=` and `TARGET_ARCH=`. The
+following example shows how to build the *Hello World* example for a generic
+cortex-m0:
 
 ```bash
-make -f tensorflow/lite/micro/tools/make/Makefile TARGET=sparkfun_edge hello_world_bin
+make -f tensorflow/lite/micro/tools/make/Makefile TARGET=cortex_m_generic TARGET_ARCH=cortex-m0 hello_world_bin
 ```
 
 When a target is specified, any available target-specific source files will be
 used in place of the original code. For example, the subdirectory
-`examples/hello_world/sparkfun_edge` contains SparkFun Edge implementations of
-the files `constants.cc` and `output_handler.cc`, which will be used when the
-target `sparkfun_edge` is specified.
+`examples/hello_world/cortex_m_generic` contains SparkFun Edge implementations
+of the files `constants.cc` and `output_handler.cc`, which will be used when the
+target `cortex_m_generic` is specified.
 
 You can find the project names in the project's Makefiles. For example,
 `examples/hello_world/Makefile.inc` specifies the binary names for the *Hello

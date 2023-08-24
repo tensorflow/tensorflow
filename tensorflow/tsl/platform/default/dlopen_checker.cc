@@ -28,15 +28,14 @@ Status TryDlopenCUDALibraries() {
   auto cublas_status = CachedLoader::GetCublasDsoHandle();
   auto cublaslt_status = CachedLoader::GetCublasLtDsoHandle();
   auto cufft_status = CachedLoader::GetCufftDsoHandle();
-  auto curand_status = CachedLoader::GetCurandDsoHandle();
   auto cusolver_status = CachedLoader::GetCusolverDsoHandle();
   auto cusparse_status = CachedLoader::GetCusparseDsoHandle();
   auto cudnn_status = CachedLoader::GetCudnnDsoHandle();
 
   if (!cudart_status.status().ok() || !cublas_status.status().ok() ||
-      !cufft_status.status().ok() || !curand_status.status().ok() ||
-      !cusolver_status.status().ok() || !cusparse_status.status().ok() ||
-      !cudnn_status.status().ok() || !cublaslt_status.status().ok()) {
+      !cufft_status.status().ok() || !cusolver_status.status().ok() ||
+      !cusparse_status.status().ok() || !cudnn_status.status().ok() ||
+      !cublaslt_status.status().ok()) {
     return Status(absl::StatusCode::kInternal,
                   absl::StrCat("Cannot dlopen all CUDA libraries."));
   } else {
@@ -49,8 +48,15 @@ Status TryDlopenROCmLibraries() {
   auto miopen_status = GetMiopenDsoHandle();
   auto rocfft_status = GetHipfftDsoHandle();
   auto rocrand_status = GetRocrandDsoHandle();
+#if TF_HIPBLASLT
+  auto hiplaslt_status = CachedLoader::GetHipblasLtDsoHandle();
+#endif
   if (!rocblas_status.status().ok() || !miopen_status.status().ok() ||
-      !rocfft_status.status().ok() || !rocrand_status.status().ok()) {
+      !rocfft_status.status().ok() || !rocrand_status.status().ok()
+#if TF_HIPBLASLT
+      || !hipblaslt_status.status().ok()
+#endif
+  ) {
     return Status(absl::StatusCode::kInternal,
                   absl::StrCat("Cannot dlopen all ROCm libraries."));
   } else {

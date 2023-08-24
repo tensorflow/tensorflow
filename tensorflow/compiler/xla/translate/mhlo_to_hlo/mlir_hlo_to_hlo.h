@@ -67,18 +67,6 @@ xla::Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
                                 std::vector<xla::XlaOp>& returns,
                                 MlirToHloConversionOptions options = {});
 
-// Converts a region to a computation. It returns a standalone module that
-// contains the converted region as the entry computation.
-xla::Status ConvertRegionToComputation(mlir::Region* region,
-                                       ::xla::XlaComputation* func,
-                                       MlirToHloConversionOptions options = {});
-
-// Creates XlaOp equivalent of a given MLIR operation using the operand info
-// from `value_lowering` map.
-std::optional<::xla::XlaOp> CreateXlaOperator(
-    mlir::Operation* op,
-    llvm::DenseMap<mlir::Value, ::xla::XlaOp>* value_lowering);
-
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_XLA_TRANSLATE_MHLO_TO_HLO_MLIR_HLO_TO_HLO_H_

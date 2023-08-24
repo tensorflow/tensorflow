@@ -89,7 +89,7 @@ class RedzoneAllocator : public ScratchAllocator {
   // Determines whether redzones around all allocated buffers are unmodified.
   //
   // Reinitializes redzones to the expected value, so that the same buffer
-  // could be reused for multiple checks.
+  // can be reused for multiple checks.
   //
   // Returns:
   //

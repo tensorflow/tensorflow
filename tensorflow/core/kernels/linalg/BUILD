@@ -222,7 +222,7 @@ tf_kernel_library(
         "//tensorflow/core/platform:stream_executor",
         "//third_party/eigen3",
     ] + if_cuda([
-        "//tensorflow/tsl/platform/default/build_config:cublas_plugin",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cublas_plugin",
         "//tensorflow/core/util:cuda_solvers",
     ]) + if_rocm([
         "@local_config_rocm//rocm:rocprim",

@@ -15,6 +15,7 @@ limitations under the License.
 
 // This file implements logic for lowering MHLO dialect to Standard dialect.
 
+#include <memory>
 #include <optional>
 #include <utility>
 

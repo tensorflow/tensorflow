@@ -15,33 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_PROTO_TO_FLATBUFFER_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_PROTO_TO_FLATBUFFER_H_
 
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/experimental/acceleration/configuration/configuration.pb.h"
-#include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
+// This header file is no longer experimental.
+// Please use the non-experimental file instead.
 
-namespace tflite {
+#include "tensorflow/lite/acceleration/configuration/proto_to_flatbuffer.h"  // IWYU pragma: export
 
-// Converts the provided TFLiteSettings from proto to flatbuffer format.
-// The returned TFLiteSettings pointer is only valid until either the
-// FlatBufferBuilder is modified or when the FlatBufferBuilder's lifetime ends.
-const TFLiteSettings* ConvertFromProto(
-    const proto::TFLiteSettings& proto_settings,
-    flatbuffers::FlatBufferBuilder* builder);
-
-// Converts the provided ComputeSettings from proto to flatbuffer format.
-// The returned ComputeSettings pointer is only valid until either the
-// FlatBufferBuilder is modified or when the FlatBufferBuilder's lifetime ends.
-const ComputeSettings* ConvertFromProto(
-    const proto::ComputeSettings& proto_settings,
-    flatbuffers::FlatBufferBuilder* builder);
-
-// Converts the provided MiniBenchmarkSettings from proto to flatbuffer format.
-// The returned MinibenchmarkSettings pointer is only valid until either the
-// FlatBufferBuilder is modified or when the FlatBufferBuilder's lifetime ends.
-const MinibenchmarkSettings* ConvertFromProto(
-    const proto::MinibenchmarkSettings& proto_settings,
-    flatbuffers::FlatBufferBuilder* builder);
-
-}  // namespace tflite
+// IWYU pragma: private, include "third_party/tensorflow/lite/acceleration/configuration/proto_to_flatbuffer.h"
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_PROTO_TO_FLATBUFFER_H_

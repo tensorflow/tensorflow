@@ -824,23 +824,23 @@ func.func @testDivWithSqrtDivisor(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf3
 // CHECK-LABEL: testRealDivWithSqrtDivisor
 func.func @testRealDivWithSqrtDivisor(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>) -> tensor<8x16xf32> {
   %0 = "tf.Sqrt"(%arg1) : (tensor<8x16xf32>) -> tensor<8x16xf32>
-  %1 = "tf.RealDiv"(%arg0, %0) : (tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<8x16xf32>
+  %1 = "tf.RealDiv"(%arg0, %0) {device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<8x16xf32>
   func.return %1: tensor<8x16xf32>
 
-// CHECK: %0 = "tf.Rsqrt"(%arg1) : (tensor<8x16xf32>) -> tensor<8x16xf32>
-// CHECK: %1 = "tf.Mul"(%arg0, %0) : (tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<8x16xf32>
+// CHECK: %0 = "tf.Rsqrt"(%arg1) {device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<8x16xf32>) -> tensor<8x16xf32>
+// CHECK: %1 = "tf.Mul"(%arg0, %0) {device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<8x16xf32>
 // CHECK: return %1
 }
 
 // CHECK-LABEL: testRealDivWithConstDivisor
 func.func @testRealDivWithConstDivisor(%arg0: tensor<8x2xf32>) -> tensor<8x2xf32> {
   %0 = "tf.Const"() {value = dense<[2.0, 4.0]> : tensor<2xf32>} : () -> tensor<2xf32>
-  %1 = "tf.RealDiv"(%arg0, %0) : (tensor<8x2xf32>, tensor<2xf32>) -> tensor<8x2xf32>
+  %1 = "tf.RealDiv"(%arg0, %0) {device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<8x2xf32>, tensor<2xf32>) -> tensor<8x2xf32>
   func.return %1: tensor<8x2xf32>
 
   // CHECK: %[[CONST:.*]] = "tf.Const"
   // CHECK-SAME: value = dense<[5.000000e-01, 2.500000e-01]
-  // CHECK: %[[MUL:.*]] = "tf.Mul"(%arg0, %[[CONST]])
+  // CHECK: %[[MUL:.*]] = "tf.Mul"(%arg0, %[[CONST]]) {device = "/job:localhost/replica:0/task:0/device:GPU:0"}
   // CHECK: return %[[MUL]]
 }
 
@@ -904,6 +904,26 @@ func.func @cancellableTranspose(%arg0: tensor<1x4x4x8xf32>) -> tensor<1x4x4x8xf3
 
   func.return %3 : tensor<1x4x4x8xf32>
   // CHECK: return %arg0
+}
+
+// CHECK-LABEL: @nonCancellableTransposeCrossRegion
+func.func @nonCancellableTransposeCrossRegion(%arg0: tensor<1x4x4x8xf32>) -> tensor<1x4x4x8xf32> {
+  %0 = "tf.Const"() {value = dense<[0, 3, 1, 2]> : tensor<4xi32>} : () -> tensor<4xi32>
+  %1 = "tf.Const"() {value = dense<[0, 2, 3, 1]> : tensor<4xi32>} : () -> tensor<4xi32>
+  %2 = "tf.Transpose"(%arg0, %0) : (tensor<1x4x4x8xf32>, tensor<4xi32>) -> tensor<1x8x4x4xf32>
+
+  %result = "tf_device.launch"() ({
+    %3 = "tf.Transpose"(%2, %1) : (tensor<1x8x4x4xf32>, tensor<4xi32>) -> tensor<1x4x4x8xf32>
+    tf_device.return %3: tensor<1x4x4x8xf32>
+  }) {device = "device"} : () -> tensor<1x4x4x8xf32>
+
+  func.return %result : tensor<1x4x4x8xf32>
+
+  // CHECK-DAG: %[[CONST1:.*]] = "tf.Const"() {value = dense<[0, 3, 1, 2]> : tensor<4xi32>}
+  // CHECK-DAG: %[[CONST2:.*]] = "tf.Const"() {value = dense<[0, 2, 3, 1]> : tensor<4xi32>}
+  // CHECK: %[[TRANS1:.*]] = "tf.Transpose"(%arg0, %[[CONST1]]) : (tensor<1x4x4x8xf32>, tensor<4xi32>) -> tensor<1x8x4x4xf32>
+  // CHECK: %[[TRANS2:.*]] = "tf.Transpose"(%[[TRANS1]], %[[CONST2]]) : (tensor<1x8x4x4xf32>, tensor<4xi32>) -> tensor<1x4x4x8xf32>
+  // CHECK: return %[[TRANS2]]
 }
 
 // CHECK-LABEL: @cancellableTransposeConst
@@ -1330,7 +1350,7 @@ func.func @testWhileRegionSimplePassThrough(%arg0 : tensor<*xf32>, %arg1 : tenso
       ^bb0(%carg0: tensor<*xf32>, %carg1: tensor<i32>):
       %zero = arith.constant dense<0> : tensor<i32>
       %ne = "tf.NotEqual"(%carg1, %zero) : (tensor<i32>, tensor<i32>) -> tensor<i1>
-      "tf.Yield"(%ne) : (tensor<i1>) -> ()
+      "tf.Yield"(%ne, %carg0, %carg1) : (tensor<i1>, tensor<*xf32>, tensor<i32>) -> ()
     },
     {
       // loop body
@@ -1409,7 +1429,7 @@ func.func @testWhileRegionMultiplePassThroughNonContiguous(%arg0 : tensor<*xf32>
       ^bb0(%carg0 : tensor<*xf32>, %carg1 : tensor<*xf32>, %carg2 : tensor<*xf32>, %carg3 : tensor<i32>):
       %zero = arith.constant dense<0> : tensor<i32>
       %ne = "tf.NotEqual"(%carg3, %zero) : (tensor<i32>, tensor<i32>) -> tensor<i1>
-      "tf.Yield"(%ne) : (tensor<i1>) -> ()
+      "tf.Yield"(%ne, %carg0, %carg1, %carg2, %carg3) : (tensor<i1>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<i32>) -> ()
     },
     {
       // loop body
@@ -1541,6 +1561,28 @@ func.func @testWhileRegionPassThroughExplicitCast(%arg0 : tensor<i32>, %arg1 : t
   ) { is_stateless = false } : (tensor<i32>, tensor<*xi32>) -> (tensor<i32>, tensor<i32>)
   // CHECK: return [[CAST1]]
   func.return %0#1 : tensor<i32>
+}
+
+// Pass through with forwarded operands in the condition block yield.
+// CHECK-LABEL: testWhileRegionPassThroughWithForwarded
+func.func @testWhileRegionPassThroughWithForwarded(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) -> tensor<*xf32> {
+  // CHECK: "tf.WhileRegion"(%arg1)
+  %0:2 = "tf.WhileRegion"(%arg0, %arg1) (
+    {
+      ^bb0(%carg0: tensor<*xf32>, %carg1: tensor<i32>):
+      %zero = arith.constant dense<0> : tensor<i32>
+      %ne = "tf.NotEqual"(%carg1, %zero) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+      "tf.Yield"(%ne, %carg0, %carg1) : (tensor<i1>, tensor<*xf32>, tensor<i32>) -> ()
+    },
+    {
+      ^bb0(%barg0: tensor<*xf32>, %barg1: tensor<i32>):
+      %one = arith.constant dense<1> : tensor<i32>
+      %sub = "tf.Sub"(%barg1, %one) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+      "tf.Yield"(%barg0, %sub) : (tensor<*xf32>, tensor<i32>) -> ()
+    }
+  ) { is_stateless = false } : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
+  // CHECK: return %arg0 : tensor<*xf32>
+  func.return %0#0 : tensor<*xf32>
 }
 
 // Check that output_shapes attribute is removed for tf.If
@@ -2064,7 +2106,7 @@ func.func @testXlaConvToV2(%lhs: tensor<8x4x16x16x16xf32>, %rhs: tensor<4x3x3x16
 
 // CHECK-LABEL: testXlaReduceToXlaVariadicReduceV2
 func.func @testXlaReduceToXlaVariadicReduceV2(%arg0: tensor<*xbf16>, %arg1: tensor<*xbf16>) -> tensor<*xbf16> {
-  // CHECK: "tf.XlaVariadicReduceV2"(%arg0, %arg1) {dimensions_to_reduce = [], operand_segment_sizes = array<i32: 1, 1>, reducer = @sum1} : (tensor<*xbf16>, tensor<*xbf16>) -> tensor<*xbf16>
+  // CHECK: "tf.XlaVariadicReduceV2"(%arg0, %arg1) {dimensions_to_reduce = [], operandSegmentSizes = array<i32: 1, 1>, reducer = @sum1} : (tensor<*xbf16>, tensor<*xbf16>) -> tensor<*xbf16>
   %0 = "tf.XlaReduce"(%arg0, %arg1) {dimensions_to_reduce = [], reducer = @sum1} : (tensor<*xbf16>, tensor<*xbf16>) -> tensor<*xbf16>
   func.return %0 : tensor<*xbf16>
 }
@@ -2076,7 +2118,7 @@ func.func private @sum1(%arg0: tensor<*xbf16>, %arg1: tensor<*xbf16>) -> tensor<
 
 // CHECK-LABEL: testXlaVariadicReduceToV2
 func.func @testXlaVariadicReduceToV2(%arg0: tensor<3x4xf32>, %arg1: tensor<f32>) -> tensor<?x?xf32> {
-  // CHECK:  "tf.XlaVariadicReduceV2"(%arg0, %arg1) {dimensions_to_reduce = [], operand_segment_sizes = array<i32: 1, 1>, reducer = @sum2} : (tensor<3x4xf32>, tensor<f32>) -> tensor<?x?xf32>
+  // CHECK:  "tf.XlaVariadicReduceV2"(%arg0, %arg1) {dimensions_to_reduce = [], operandSegmentSizes = array<i32: 1, 1>, reducer = @sum2} : (tensor<3x4xf32>, tensor<f32>) -> tensor<?x?xf32>
   %0 = "tf.XlaVariadicReduce"(%arg0, %arg1) {dimensions_to_reduce = [], reducer = @sum2} : (tensor<3x4xf32>, tensor<f32>) -> tensor<?x?xf32>
   func.return %0 : tensor<?x?xf32>
 }

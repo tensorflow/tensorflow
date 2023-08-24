@@ -38,7 +38,7 @@ limitations under the License.
 #include "tensorflow/lite/builtin_ops.h"
 
 #if defined(__ANDROID__)
-#include "tensorflow/lite/core/async/backend_async_kernel_interface.h"
+#include "tensorflow/lite/async/backend_async_kernel_interface.h"
 #include "tensorflow/lite/core/async/c/task.h"
 #include "tensorflow/lite/core/async/interop/c/attribute_map.h"
 #include "tensorflow/lite/core/async/interop/c/constants.h"
@@ -52,6 +52,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/model_builder_helper.h"
 #include "tensorflow/lite/delegates/gpu/common/quantization_util.h"
 #include "tensorflow/lite/delegates/gpu/delegate_options.h"
+#include "tensorflow/lite/delegates/gpu/tflite_profile.h"
 #include "tensorflow/lite/delegates/serialization.h"
 
 #if defined(__ANDROID__)
@@ -171,7 +172,7 @@ class Delegate {
     delegate_.CopyFromBufferHandle = nullptr;
     delegate_.CopyToBufferHandle = nullptr;
     delegate_.FreeBufferHandle = nullptr;
-    delegate_.flags = kTfLiteDelegateFlagsNone;
+    delegate_.flags = kTfLiteDelegateFlagsPerOperatorProfiling;
     options_ = options ? *options : TfLiteGpuDelegateOptionsV2Default();
     if (options_.max_delegated_partitions <= 0) {
       options_.max_delegated_partitions = 1;
@@ -342,14 +343,13 @@ absl::Status DelegateKernelCore::InitializeGraph(
   //
   // Similarly, TfLiteDelegateParams.output_tensors is an array of all output
   // tensors, and can contain static tensors with buggy conversion.
-  // GraphFloat32.outputs() is an array of runtime tensors that don't have a
-  // consumer (this is a bug in the assumption) and the order may not be the
-  // same as defined by TfLiteDelegateParams.output_tensors.  Again, these two
-  // sets are not the same, especially on a multi-partition delegation.  These
-  // are matched by inserting the tensors by the order defined by
-  // TfLiteDelegateParams.output_tensors.  Similarly, this logic is shared
-  // with ModelBuilder::PrecreateIOTensors() which is eventually called with
-  // BuildFinalModel() above.
+  // GraphFloat32.outputs() is an array of runtime tensors and the order may not
+  // be the same as defined by TfLiteDelegateParams.output_tensors.  Again,
+  // these two sets are not the same, especially on a multi-partition
+  // delegation.  These are matched by inserting the tensors by the order
+  // defined by TfLiteDelegateParams.output_tensors.  Similarly, this logic is
+  // shared with ModelBuilder::PrecreateIOTensors() which is eventually called
+  // with BuildFinalModel() above.
   //
   // The aforementioned matching in BuildFinalModel() is ported here to match
   // input/output_refs.
@@ -1497,6 +1497,8 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
   telemetry::TelemetryReportDelegateSettings(
       context, "GpuDelegate::DelegatePrepare",
       telemetry::TelemetrySource::TFLITE_GPU, delegate_setting);
+
+  SetTfLiteProfiler(context->profiler);
   return status;
 }
 

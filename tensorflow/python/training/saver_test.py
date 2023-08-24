@@ -1327,7 +1327,7 @@ class MaxToKeepTest(test.TestCase):
     with context.eager_mode():
       save_dir = self._get_test_dir("max_to_keep_eager")
 
-      v = variable_scope.variable(10.0, name="v")
+      v = variable_v1.VariableV1(10.0, name="v")
       save = saver_module.Saver({"v": v}, max_to_keep=2)
       self.evaluate(variables.global_variables_initializer())
       if not context.executing_eagerly():
@@ -1693,7 +1693,7 @@ class RecoverLastCheckpointsTest(test.TestCase):
     with context.eager_mode():
       save_dir = self._get_test_dir("recover_last_checkpoints")
 
-      v = variable_scope.variable(10.0, name="v")
+      v = variable_v1.VariableV1(10.0, name="v")
       save = saver_module.Saver({"v": v}, max_to_keep=10)
       self.evaluate(variables.global_variables_initializer())
       self.assertEqual([], save.last_checkpoints)
@@ -1748,7 +1748,7 @@ class KeepCheckpointEveryNHoursTest(test.TestCase):
     save_dir = self._get_test_dir("keep_checkpoint_every_n_hours")
 
     with self.cached_session() as sess:
-      v = variable_scope.variable([10.0], name="v")
+      v = variable_v1.VariableV1([10.0], name="v")
       # Run the initializer NOW to avoid the 0.5s overhead of the first Run()
       # call, which throws the test timing off in fastbuild mode.
       self.evaluate(variables.global_variables_initializer())

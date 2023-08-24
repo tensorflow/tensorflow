@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/local_rendezvous.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
@@ -65,6 +66,10 @@ class ExecutorTest : public ::testing::Test {
     // LocalRendezvous::AsyncRecv() might still executing after done_callback
     // returns. Wait until the local rc_owner_ releases.
     while (!rendez_->RefCountIsOne()) {
+      LOG(INFO) << "Waiting for rendezvous to release. Current refcount: "
+                << rendez_->RefCount();
+      absl::SleepFor(absl::Milliseconds(200));
+      LocalRendezvous::ReleaseAbortedRendezvous();
     }
     // There should always be exactly one Ref left on the Rendezvous
     // when the test completes.

@@ -30,7 +30,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -80,7 +80,7 @@ def convert_structure_to_signature(structure, arg_names=None,
 
   def encode_arg(arg, path):
     """A representation for this argument, for converting into signatures."""
-    if isinstance(arg, ops.Tensor):
+    if isinstance(arg, tensor_lib.Tensor):
       user_specified_name = None
       try:
         user_specified_name = compat.as_str(
@@ -93,8 +93,8 @@ def convert_structure_to_signature(structure, arg_names=None,
         # of the function argument.
         name = user_specified_name
       else:
-        name = tensor_spec.sanitize_spec_name("_".join(str(p) for p in path))
-      return tensor_spec.TensorSpec(arg.shape, arg.dtype, name)
+        name = tensor_lib.sanitize_spec_name("_".join(str(p) for p in path))
+      return tensor_lib.TensorSpec(arg.shape, arg.dtype, name)
     if isinstance(arg, resource_variable_ops.ResourceVariable):
       return trace_type.from_value(arg, signature_context)
     if isinstance(arg, composite_tensor.CompositeTensor):
@@ -107,7 +107,7 @@ def convert_structure_to_signature(structure, arg_names=None,
         str,
         type(None),
         dtypes.DType,
-        tensor_spec.TensorSpec,
+        tensor_lib.TensorSpec,
         type_spec.TypeSpec,
     )):
       return arg
@@ -923,8 +923,6 @@ def func_graph_from_py_func(name,
                             kwargs,
                             signature=None,
                             func_graph=None,
-                            autograph=False,
-                            autograph_options=None,
                             add_control_dependencies=True,
                             arg_names=None,
                             op_return_value=None,
@@ -947,10 +945,6 @@ def func_graph_from_py_func(name,
       inputs.
     func_graph: Optional. An instance of FuncGraph. If provided, we will use
       this graph else a new one is built and returned.
-    autograph: whether to use autograph to compile `python_func`.
-      See https://www.tensorflow.org/guide/autograph for more information.
-    autograph_options: additional knobs to control when `autograph=True`.
-      See https://www.tensorflow.org/guide/autograph for more information.
     add_control_dependencies: If True, automatically adds control dependencies
       to ensure program order matches execution order and stateful ops always
       execute.
@@ -980,7 +974,7 @@ def func_graph_from_py_func(name,
       `Tensor` or a `tf.experimental.ExtensionType`.
   """
   if op_return_value is not None:
-    assert isinstance(op_return_value, ops.Tensor), op_return_value
+    assert isinstance(op_return_value, tensor_lib.Tensor), op_return_value
   if func_graph is None:
     func_graph = FuncGraph(
         name, collections=collections, capture_by_value=capture_by_value)
@@ -1006,6 +1000,10 @@ def func_graph_from_py_func(name,
 
     input_trace_types = trace_type.from_value([func_args, func_kwargs])
     func_graph.inputs = input_trace_types._to_tensors([func_args, func_kwargs])  # pylint: disable=protected-access
+
+    # Reset variables watched while deconstructing inputs.
+    func_graph._watched_variables = object_identity.ObjectIdentityWeakSet()  # pylint: disable=protected-access
+
     for arg in func_graph.inputs:
       if arg.dtype == dtypes.resource:
         func_graph._resource_tensor_inputs.add(arg)  # pylint:disable=protected-access
@@ -1057,62 +1055,28 @@ def func_graph_from_py_func(name,
         x = deps_ctx.mark_as_return(x)
       return x
 
-    try:
-      if autograph:
-        from tensorflow.python import autograph  # pylint: disable=g-import-not-at-top
-        _, original_func = tf_decorator.unwrap(python_func)
+    _, original_func = tf_decorator.unwrap(python_func)
+    func_outputs = python_func(*func_args, **func_kwargs)
 
-        def autograph_handler(*args, **kwargs):
-          """Calls a converted version of original_func."""
-          # TODO(mdan): Push this block higher in tf.function's call stack.
-          try:
-            return autograph.converted_call(
-                original_func,
-                args,
-                kwargs,
-                options=autograph.ConversionOptions(
-                    recursive=True,
-                    optional_features=autograph_options,
-                    user_requested=True,
-                ))
-          except Exception as e:  # pylint:disable=broad-except
-            if hasattr(e, "ag_error_metadata"):
-              raise e.ag_error_metadata.to_exception(e)
-            else:
-              raise
+    # invariant: `func_outputs` contains only Tensors, CompositeTensors,
+    # TensorArrays and `None`s.
+    func_outputs = variable_utils.convert_variables_to_tensors(func_outputs)
+    func_outputs = nest.map_structure(
+        convert, func_outputs, expand_composites=True)
 
-        # Wrapping around a decorator allows checks like tf_inspect.getargspec
-        # to be accurate.
-        converted_func = tf_decorator.make_decorator(original_func,
-                                                     autograph_handler)
-        python_func = tf_decorator.rewrap(python_func, original_func,
-                                          converted_func)
-
-      else:
-        _, original_func = tf_decorator.unwrap(python_func)
-
-      func_outputs = python_func(*func_args, **func_kwargs)
-
-      # invariant: `func_outputs` contains only Tensors, CompositeTensors,
-      # TensorArrays and `None`s.
-      func_outputs = variable_utils.convert_variables_to_tensors(func_outputs)
-      func_outputs = nest.map_structure(
-          convert, func_outputs, expand_composites=True)
-
-      # flatten and unflatten func_args and func_kwargs to maintain parity
-      # from flattening which sorts by key
-      func_args = nest.pack_sequence_as(
-          func_args,
-          nest.flatten(func_args, expand_composites=True),
-          expand_composites=True)
-      func_kwargs = nest.pack_sequence_as(
-          func_kwargs,
-          nest.flatten(func_kwargs, expand_composites=True),
-          expand_composites=True)
-      check_func_mutation(func_args_before, func_kwargs_before, func_args,
-                          func_kwargs, original_func)
-    finally:
-      current_scope.set_use_resource(default_use_resource)
+    # flatten and unflatten func_args and func_kwargs to maintain parity
+    # from flattening which sorts by key
+    func_args = nest.pack_sequence_as(
+        func_args,
+        nest.flatten(func_args, expand_composites=True),
+        expand_composites=True)
+    func_kwargs = nest.pack_sequence_as(
+        func_kwargs,
+        nest.flatten(func_kwargs, expand_composites=True),
+        expand_composites=True)
+    check_func_mutation(func_args_before, func_kwargs_before, func_args,
+                        func_kwargs, original_func)
+    current_scope.set_use_resource(default_use_resource)
 
     inputs = []
     for arg in composite_tensor_utils.flatten_with_variables([func_args,
@@ -1127,7 +1091,7 @@ def func_graph_from_py_func(name,
         if resource_placeholder is None:
           continue
         inputs.append(resource_placeholder)
-      elif isinstance(arg, ops.Tensor):
+      elif isinstance(arg, tensor_lib.Tensor):
         inputs.append(arg)
     func_graph.inputs = (
         inputs + func_graph.internal_captures + nest.flatten(
@@ -1271,10 +1235,9 @@ def _create_placeholders(args, kwargs, arg_names=None):
   arg_trace_types = trace_type.from_value(tuple(args), signature_context)
   kwarg_trace_types = trace_type.from_value(kwargs, signature_context)
 
-  handledata_mapping = signature_context.get_handledata_mapping()
   placeholder_mapping = signature_context.get_placeholder_mapping()
   placeholder_context = trace_type.InternalPlaceholderContext(
-      ops.get_default_graph(), handledata_mapping, placeholder_mapping)
+      ops.get_default_graph(), placeholder_mapping)
 
   if arg_names is None:
     arg_names = [None] * len(arg_trace_types.components)

@@ -158,8 +158,8 @@ Status RunTfTrt(const MetaGraphDef& meta_graph_def,
                 const RewriterConfig& rewriter_config,
                 GraphDef* segmented_graph_def) {
   ConfigProto config_proto;
-  config_proto.mutable_graph_options()->mutable_rewrite_options()->CopyFrom(
-      rewriter_config);
+  *config_proto.mutable_graph_options()->mutable_rewrite_options() =
+      rewriter_config;
 
   VLOG(4) << "Setting up Grappler parameters\n" << config_proto.DebugString();
   std::unique_ptr<grappler::Cluster> cluster;
@@ -202,7 +202,7 @@ Status RunSession(Session* session, const std::vector<std::string>& input_names,
   std::vector<std::pair<std::string, tensorflow::Tensor>> input_pairs;
   std::vector<std::string> prefixed_output_names;
   auto prefixed_name = [](std::string prefix, std::string name) {
-    return prefix.size() > 0 ? absl::StrJoin({prefix, name}, "/") : name;
+    return !prefix.empty() ? absl::StrJoin({prefix, name}, "/") : name;
   };
   for (int i = 0; i < input_names.size(); i++) {
     input_pairs.push_back(
@@ -315,7 +315,7 @@ Status ReadSerializedEngine(
 // Saves the TRT engines as attributes of the TRTEngineOp nodes.
 Status ConvertToStaticEngine(const GraphDef graph_def,
                              GraphDef* static_graph_def, Session* session) {
-  static_graph_def->CopyFrom(graph_def);
+  *static_graph_def = graph_def;
   VLOG(1) << "Saving TRT engines as static engine";
   std::string op{"TRTEngineOp"};
   for (auto& node : *(static_graph_def->mutable_node())) {
@@ -397,7 +397,7 @@ StatusOr<GraphDef> ConvertAndBuild(
     const TfTrtConversionParams& conv_params) {
   TF_RETURN_IF_ERROR(ValidateConversionParams(conv_params, inputs.size()));
   MetaGraphDef meta_graph;
-  meta_graph.mutable_graph_def()->CopyFrom(frozen_graph_def);
+  *meta_graph.mutable_graph_def() = frozen_graph_def;
 
   RewriterConfig rewriter_config;
   TF_RETURN_IF_ERROR(
@@ -409,12 +409,12 @@ StatusOr<GraphDef> ConvertAndBuild(
 
   GraphDef output;
 
-  if (inputs.size() > 0 && conv_params.convert_to_static_engine) {
+  if (!inputs.empty() && conv_params.convert_to_static_engine) {
     // The TRTOptimization pass has inserted placeholder TRTEngineOps. Here we
     // trigger conversion by inferring the graph.
     std::unique_ptr<tensorflow::Session> session(
         tensorflow::NewSession(GetSessionConfg()));
-    if (!session.get()) {
+    if (!session) {
       return errors::Internal("Failed to create build session");
     }
 
@@ -424,7 +424,7 @@ StatusOr<GraphDef> ConvertAndBuild(
     TF_RETURN_IF_ERROR(
         ConvertToStaticEngine(segmented_graph_def, &output, session.get()));
   } else {
-    output.CopyFrom(segmented_graph_def);
+    output = segmented_graph_def;
   }
   VLOG(1) << "TF-TRT conversion finished";
   return output;
@@ -456,9 +456,9 @@ Status FreezeGraph(SavedModelBundle& bundle, MetaGraphDef* frozen_meta_graph) {
   TF_RETURN_IF_ERROR(
       FreezeSavedModel(bundle, &frozen_graph_def, &inputs, &outputs));
 
-  frozen_meta_graph->CopyFrom(bundle.meta_graph_def);
+  *frozen_meta_graph = bundle.meta_graph_def;
   GraphDef* gdef = frozen_meta_graph->mutable_graph_def();
-  gdef->CopyFrom(frozen_graph_def);
+  *gdef = frozen_graph_def;
 
   VLOG(2) << "Graph frozen";
   return OkStatus();
@@ -491,7 +491,7 @@ StatusOr<GraphDef> ConvertAndBuild(
 
   // Replace the graph_def with the inlined graph. Note that bundle->session
   // still has the original graph.
-  bundle->meta_graph_def.mutable_graph_def()->CopyFrom(inlined_graph_def);
+  *bundle->meta_graph_def.mutable_graph_def() = inlined_graph_def;
 
   // Freeze variables.
   MetaGraphDef frozen_meta_graph;

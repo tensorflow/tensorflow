@@ -49,7 +49,8 @@ struct FlatbufferExportOptions {
 // Returns true on successful exporting, false otherwise.
 bool MlirToFlatBufferTranslateFunction(mlir::ModuleOp module,
                                        const FlatbufferExportOptions& options,
-                                       std::string* serialized_flatbuffer);
+                                       std::string* serialized_flatbuffer,
+                                       bool serialize_stablehlo_ops = true);
 }  // namespace tflite
 
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_FLATBUFFER_EXPORT_H_

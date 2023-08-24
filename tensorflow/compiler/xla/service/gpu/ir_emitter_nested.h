@@ -16,8 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_IR_EMITTER_NESTED_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_IR_EMITTER_NESTED_H_
 
-#include "llvm/IR/Function.h"
-#include "tensorflow/compiler/xla/service/gpu/ir_emitter.h"
+#include "absl/types/span.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Value.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
+#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 
 namespace xla {
 namespace gpu {
@@ -36,55 +40,37 @@ namespace gpu {
 //   - N pointers to the buffers of each of the N parameters to the computation,
 //   - a pointer to the output buffer of the computation, and
 //   - a pointer to the top-level temp buffer.
+Status CallNestedComputation(llvm::IRBuilder<>* builder,
+                             IrEmitterContext& ir_emitter_context,
+                             const HloComputation& computation,
+                             absl::Span<llvm::Value* const> operands,
+                             llvm::Value* output);
+
+// Like CallNestedComputation, but parameters and results are scalars.
+StatusOr<std::vector<llvm::Value*>> CallNestedComputationWithScalars(
+    llvm::IRBuilder<>* builder, IrEmitterContext& ir_emitter_context,
+    const HloComputation& computation,
+    absl::Span<llvm::Value* const> parameter_scalars);
+
+// Like CallNestedComputationWithScalars, but parameters are scalar addresses.
+StatusOr<std::vector<llvm::Value*>> CallNestedComputationWithScalarAddrs(
+    llvm::IRBuilder<>* builder, IrEmitterContext& ir_emitter_context,
+    const HloComputation& computation,
+    absl::Span<llvm::Value* const> parameter_elements_addrs);
+
+// Emits an atomic operation that implements `nested_computation` in the
+// sequentially consistent memory model. `output_address` and `source_address`
+// are the arguments of the nested computation. For example,
+// atomicAdd(output_address, *source_address).
 //
-class IrEmitterNested : public IrEmitter {
- public:
-  // Constructs IrEmitterNested and emits code for global constants, and also
-  // populates related information to 'ir_emitter_context_' for large-constant
-  // initializations. Large constants don't get initializers in the generated
-  // code and so must be initialized by XLA. The value of these constants will
-  // be stored in 'content'. Constants with initializers in the generated code
-  // will have empty 'content'.
-  //
-  // The allocation index for these constants will always be -1 (i.e. doesn't
-  // correspond to any allocation).
-  static StatusOr<std::unique_ptr<IrEmitterNested>> Create(
-      const HloModuleConfig& hlo_module_config,
-      const HloComputation& nested_computation,
-      IrEmitterContext* ir_emitter_context);
-
-  IrEmitterNested(const IrEmitterNested&) = delete;
-  IrEmitterNested& operator=(const IrEmitterNested&) = delete;
-
-  // Overrides the default empty implementation. Binds the given instruction
-  // "parameter" with the parameter of the IR function.
-  Status HandleParameter(HloInstruction* parameter) override;
-
-  llvm::Function* GetEmittedFunction() const { return emitted_function_; }
-
-  // Generate the code for the computation passed in the constructor.
-  Status CodegenNestedComputation();
-
- protected:
-  Status EmitTargetElementLoop(
-      const HloInstruction& hlo,
-      const llvm_ir::ElementGenerator& body_emitter) override;
-
- private:
-  // Constructs an LLVM IR emitter for a nested HLO computation. `function` is
-  // the containing IR function this emitter produces IR to. See
-  // IrEmitter::IrEmitter for the meanings of other arguments.
-  IrEmitterNested(const HloModuleConfig& hlo_module_config,
-                  const HloComputation& nested_computation,
-                  IrEmitterContext* ir_emitter_context);
-
-  // Emits constants to generated LLVM IR, and also populates related
-  // information to 'ir_emitter_context_' for large-constant initializations.
-  Status EmitConstants(const HloComputation& computation);
-
-  const HloComputation& nested_computation_;
-  llvm::Function* emitted_function_;
-};
+// If the computation can be implemented using a single atomic operation, it
+// will, otherwise it will be emitted as a compare-and-swap and a loop.
+//
+// The computation must have exactly two parameters.
+Status EmitAtomicOperationForNestedComputation(
+    llvm::IRBuilder<>* builder, IrEmitterContext& ir_emitter_context,
+    const HloComputation& computation, llvm::Value* output_address,
+    llvm::Value* source_address, llvm::Type* element_type);
 
 }  // namespace gpu
 }  // namespace xla

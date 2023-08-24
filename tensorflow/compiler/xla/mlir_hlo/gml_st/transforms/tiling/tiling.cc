@@ -49,10 +49,10 @@ OpFoldResult computeTileSizeInDim(OpBuilder &builder, Location loc,
   AffineExpr d0, s0;
   bindDims(builder.getContext(), d0);
   bindSymbols(builder.getContext(), s0);
-  OpFoldResult residualTileSize =
-      makeComposedFoldedAffineApply(builder, loc, s0 - d0, {offset, dimSize});
+  OpFoldResult residualTileSize = affine::makeComposedFoldedAffineApply(
+      builder, loc, s0 - d0, {offset, dimSize});
 
-  return makeComposedFoldedAffineMin(
+  return affine::makeComposedFoldedAffineMin(
       builder, loc, AffineMap::getMultiDimIdentityMap(2, loc.getContext()),
       {residualTileSize, tileSize});
 }

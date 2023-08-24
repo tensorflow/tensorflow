@@ -161,23 +161,3 @@ if [[ "$TF_NIGHTLY" == 1 ]]; then
   exit 0
 fi
 
-# Running python tests on Windows needs pip package installed
-PIP_NAME=$(ls ${PY_TEST_DIR}/tensorflow*.whl)
-reinstall_tensorflow_pip ${PIP_NAME}
-
-# NUMBER_OF_PROCESSORS is predefined on Windows
-N_JOBS="${NUMBER_OF_PROCESSORS}"
-
-# Define no_tensorflow_py_deps=true so that every py_test has no deps anymore,
-# which will result testing system installed tensorflow
-bazel test --announce_rc --config=opt -k --test_output=errors \
-  --experimental_cc_shared_library \
-  ${EXTRA_TEST_FLAGS} \
-  --define=no_tensorflow_py_deps=true --test_lang_filters=py \
-  --test_tag_filters=-no_pip,-no_windows,-windows_excluded,-no_oss,-oss_excluded,-gpu,-tpu,-v1only \
-  --build_tag_filters=-no_pip,-no_windows,-windows_excluded,-no_oss,-oss_excluded,-gpu,-tpu --build_tests_only \
-  --test_size_filters=small,medium \
-  --jobs="${N_JOBS}" --test_timeout="300,450,1200,3600" \
-  --flaky_test_attempts=3 \
-  --output_filter=^$ \
-  ${TEST_TARGET}

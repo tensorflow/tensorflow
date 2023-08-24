@@ -54,6 +54,21 @@ REGISTER_OP("DebugIdentity")
     .SetAllowsUninitializedInput()
     .SetShapeFn(shape_inference::UnchangedShape);
 
+REGISTER_OP("DebugIdentityV3")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr("device_name: string = ''")
+    .Attr("tensor_name: string = ''")
+    .Attr("io_of_node: string = ''")
+    .Attr("is_input: bool = false")
+    .Attr("io_index: int = -1")
+    .SetIsStateful()
+    .Attr("debug_urls: list(string) = []")
+    .Attr("gated_grpc: bool = false")
+    .SetAllowsUninitializedInput()
+    .SetShapeFn(shape_inference::UnchangedShape);
+
 REGISTER_OP("DebugNanCount")
     .Input("input: T")
     .Output("output: int64")  // The debug signal (nan count) is int64

@@ -35,16 +35,14 @@ std::string PluginKindString(PluginKind plugin_kind) {
       return "DNN";
     case PluginKind::kFft:
       return "FFT";
-    case PluginKind::kRng:
-      return "RNG";
     case PluginKind::kInvalid:
     default:
       return "kInvalid";
   }
 }
 
-PluginRegistry::DefaultFactories::DefaultFactories() :
-    blas(kNullPlugin), dnn(kNullPlugin), fft(kNullPlugin), rng(kNullPlugin) { }
+PluginRegistry::DefaultFactories::DefaultFactories()
+    : blas(kNullPlugin), dnn(kNullPlugin), fft(kNullPlugin) {}
 
 static absl::Mutex& GetPluginRegistryMutex() {
   static absl::Mutex mu(absl::kConstInit);
@@ -61,11 +59,6 @@ PluginRegistry::PluginRegistry() {}
     instance_ = new PluginRegistry();
   }
   return instance_;
-}
-
-void PluginRegistry::MapPlatformKindToId(PlatformKind platform_kind,
-                                         Platform::Id platform_id) {
-  platform_id_by_kind_[platform_kind] = platform_id;
 }
 
 template <typename FACTORY_TYPE>
@@ -133,9 +126,6 @@ bool PluginRegistry::SetDefaultFactory(Platform::Id platform_id,
     case PluginKind::kFft:
       default_factories_[platform_id].fft = plugin_id;
       break;
-    case PluginKind::kRng:
-      default_factories_[platform_id].rng = plugin_id;
-      break;
     default:
       LOG(ERROR) << "Invalid plugin kind specified: "
                  << static_cast<int>(plugin_kind);
@@ -155,8 +145,6 @@ bool PluginRegistry::HasFactory(const PluginFactories& factories,
       return factories.dnn.find(plugin_id) != factories.dnn.end();
     case PluginKind::kFft:
       return factories.fft.find(plugin_id) != factories.fft.end();
-    case PluginKind::kRng:
-      return factories.rng.find(plugin_id) != factories.rng.end();
     default:
       LOG(ERROR) << "Invalid plugin kind specified: "
                  << PluginKindString(plugin_kind);
@@ -228,24 +216,10 @@ bool PluginRegistry::HasFactory(Platform::Id platform_id,
     }                                                                         \
     return GetFactoryInternal(plugin_id, factories_[platform_id].FACTORY_VAR, \
                               generic_factories_.FACTORY_VAR);                \
-  }                                                                           \
-                                                                              \
-  /* TODO(b/22689637): Also temporary WRT MultiPlatformManager */             \
-  template <>                                                                 \
-  tsl::StatusOr<PluginRegistry::FACTORY_TYPE> PluginRegistry::GetFactory(     \
-      PlatformKind platform_kind, PluginId plugin_id) {                       \
-    auto iter = platform_id_by_kind_.find(platform_kind);                     \
-    if (iter == platform_id_by_kind_.end()) {                                 \
-      return tsl::Status(absl::StatusCode::kFailedPrecondition,               \
-                         absl::StrFormat("Platform kind %d not registered.",  \
-                                         static_cast<int>(platform_kind)));   \
-    }                                                                         \
-    return GetFactory<PluginRegistry::FACTORY_TYPE>(iter->second, plugin_id); \
   }
 
 EMIT_PLUGIN_SPECIALIZATIONS(BlasFactory, blas, "BLAS");
 EMIT_PLUGIN_SPECIALIZATIONS(DnnFactory, dnn, "DNN");
 EMIT_PLUGIN_SPECIALIZATIONS(FftFactory, fft, "FFT");
-EMIT_PLUGIN_SPECIALIZATIONS(RngFactory, rng, "RNG");
 
 }  // namespace stream_executor

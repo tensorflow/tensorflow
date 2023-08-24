@@ -21,6 +21,8 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <queue>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -277,7 +279,7 @@ void OutfeedReceiverImpl::Shutdown() {
     shutdown_started_ = true;
   }
   for (int device_idx = 0; device_idx < devices_.size(); ++device_idx) {
-    CHECK(SendShutdownOutfeedHeader(device_idx).ok());
+    TF_CHECK_OK(SendShutdownOutfeedHeader(device_idx));
   }
   VLOG(2) << "Shutdown waiting for listening and callback threads to stop";
   absl::MutexLock lock(&mu_);
@@ -492,7 +494,7 @@ OutfeedReceiver::OutfeedReceiver(
                                                   executable_build_options);
 }
 
-OutfeedReceiver::~OutfeedReceiver() {}
+OutfeedReceiver::~OutfeedReceiver() = default;
 
 void OutfeedReceiver::Start() { p_impl_->Start(); }
 

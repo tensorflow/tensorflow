@@ -18,6 +18,11 @@ limitations under the License.
 #include <stdlib.h>
 #include <string.h>
 
+#include <functional>
+#include <memory>
+#include <utility>
+#include <vector>
+
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/logging.h"

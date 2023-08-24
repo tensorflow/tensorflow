@@ -32,8 +32,9 @@ bool IsSupportedConstant(const HloInstruction* instruction,
 // Return if this is one of the constant expressions that we consider for
 // duplication.
 bool IsSupportedConstantExpression(const HloInstruction* instruction) {
-  return instruction->opcode() == HloOpcode::kBroadcast ||
-         instruction->IsElementwise();
+  return !instruction->HasSideEffect() &&
+         (instruction->opcode() == HloOpcode::kBroadcast ||
+          instruction->IsElementwise());
 }
 
 // Perform duplication of a certain constant expression and replace the

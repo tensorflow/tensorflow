@@ -118,8 +118,8 @@ Status GetTensorArrayShape(const XlaResource* resource,
 
 // Like XlaBuilder::DynamicUpdateSlice, but adds 'update' to the
 // relevant slice of 'operand'.
-xla::XlaOp DynamicAddSlice(xla::XlaBuilder* builder, const xla::XlaOp& operand,
-                           const xla::XlaOp& update,
+xla::XlaOp DynamicAddSlice(xla::XlaBuilder* builder, const xla::XlaOp operand,
+                           const xla::XlaOp update,
                            absl::Span<const int64_t> update_dims,
                            absl::Span<const xla::XlaOp> start_indices,
                            DataType dtype) {

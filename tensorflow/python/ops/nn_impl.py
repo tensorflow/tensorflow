@@ -16,7 +16,7 @@
 
 import math
 
-from tensorflow.python.distribute import distribution_strategy_context as ds
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -437,7 +437,8 @@ def compute_average_loss(per_example_loss,
       first dimension of `losses`) * (number of replicas).
 
   Returns:
-    Scalar loss value.
+    Scalar loss value, obtained by summing the `per_example_loss` and dividing
+    by `global_batch_size`. If `global_batch_size` is zero, the result is zero.
   """  # pylint: disable=g-doc-exception
   per_example_loss = ops.convert_to_tensor(per_example_loss)
   input_dtype = per_example_loss.dtype
@@ -450,12 +451,13 @@ def compute_average_loss(per_example_loss,
     per_example_loss = math_ops.cast(per_example_loss, input_dtype)
 
     if global_batch_size is None:
-      if ds.has_strategy() and ds.in_cross_replica_context():
+      if (distribute_lib.has_strategy()
+          and distribute_lib.in_cross_replica_context()):
         raise RuntimeError(
             "You are calling `compute_average_loss` in cross replica context, "
             "while it was expected to be called in replica context.")
 
-      num_replicas = ds.get_strategy().num_replicas_in_sync
+      num_replicas = distribute_lib.get_strategy().num_replicas_in_sync
       per_replica_batch_size = array_ops.shape_v2(per_example_loss)[0]
       global_batch_size = per_replica_batch_size * num_replicas
 
@@ -464,11 +466,12 @@ def compute_average_loss(per_example_loss,
     check_ops.assert_integer_v2(
         global_batch_size,
         message="global_batch_size must be an integer.")
-    check_ops.assert_positive_v2(
-        global_batch_size, message="global_batch_size must be positive.")
+    check_ops.assert_non_negative_v2(
+        global_batch_size, message="global_batch_size must be non-negative.")
 
+    loss = math_ops.reduce_sum(per_example_loss)
     global_batch_size = math_ops.cast(global_batch_size, input_dtype)
-    return math_ops.reduce_sum(per_example_loss) / global_batch_size
+    return math_ops.div_no_nan(loss, global_batch_size)
 
 
 @tf_export("nn.scale_regularization_loss")
@@ -501,12 +504,13 @@ def scale_regularization_loss(regularization_loss):
   Returns:
     Scalar loss value.
   """  # pylint: disable=g-doc-exception
-  if ds.has_strategy() and ds.in_cross_replica_context():
+  if (distribute_lib.has_strategy()
+      and distribute_lib.in_cross_replica_context()):
     raise RuntimeError(
         "You are calling `scale_regularization_loss` in cross replica context, "
         "while it was expected to be called in replica context.")
 
-  num_replicas = ds.get_strategy().num_replicas_in_sync
+  num_replicas = distribute_lib.get_strategy().num_replicas_in_sync
   return math_ops.reduce_sum(regularization_loss) / num_replicas
 
 
@@ -1476,9 +1480,7 @@ def weighted_moments(x, axes, frequency_weights, name=None, keep_dims=None,
     sum_of_weights = math_ops.reduce_sum(
         broadcasted_weights, axes, name="sum_of_weights", keepdims=True)
 
-    divisor = math_ops.reciprocal(sum_of_weights, name="inv_weight_sum")
-
-    weighted_mean = math_ops.multiply(weighted_input_sum, divisor)
+    weighted_mean = math_ops.div_no_nan(weighted_input_sum, sum_of_weights)
 
     # Have the weighted mean; now on to variance:
     weighted_distsq = math_ops.reduce_sum(
@@ -1487,7 +1489,7 @@ def weighted_moments(x, axes, frequency_weights, name=None, keep_dims=None,
         name="weighted_distsq",
         keepdims=True)
 
-    weighted_variance = math_ops.multiply(weighted_distsq, divisor)
+    weighted_variance = math_ops.div_no_nan(weighted_distsq, sum_of_weights)
 
     if not keep_dims:
       weighted_mean = array_ops.squeeze(weighted_mean, axis=axes)

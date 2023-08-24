@@ -108,9 +108,8 @@ extern "C" void _mlir_ciface_tf_report_error(void* op_kernel_ctx,
     return;
   }
   auto* ctx = static_cast<tensorflow::OpKernelContext*>(op_kernel_ctx);
-  ctx->CtxFailureWithWarning(tensorflow::Status{
-      static_cast<absl::StatusCode>(ConvertAttrToEnumValue(symbol.value())),
-      msg});
+  ctx->CtxFailureWithWarning(
+      tensorflow::Status{ConvertAttrToEnumValue(symbol.value()), msg});
 }
 
 static void ReportError(void* op_kernel_ctx, ErrorCode error_code,
@@ -150,6 +149,15 @@ llvm::orc::SymbolMap TFFrameworkSymbolMap(llvm::orc::MangleAndInterner mangle) {
   return symbol_map;
 }
 
+void InitializeLlvmCompiler() {
+  static const bool initialized = ([] {
+    llvm::InitializeNativeTarget();
+    llvm::InitializeNativeTargetAsmPrinter();
+    return true;
+  })();
+  (void)initialized;
+}
+
 llvm::Expected<std::unique_ptr<ExecutionEngine>> Compile(
     const std::string code, llvm::SmallVectorImpl<std::string>& architectures,
     llvm::SmallVectorImpl<int64_t>& tile_sizes,
@@ -177,8 +185,8 @@ llvm::Expected<std::unique_ptr<ExecutionEngine>> Compile(
   }
 
   // Create the kernel.
-  mlir::OwningOpRef<mlir::ModuleOp> module;
   mlir::MLIRContext context;
+  mlir::OwningOpRef<mlir::ModuleOp> module;
 
   if (item.result_module().empty()) {
     // Otherwise, compile the module now.
@@ -191,7 +199,10 @@ llvm::Expected<std::unique_ptr<ExecutionEngine>> Compile(
             /*jit_compile=*/false,
             /*jit_i64_indexed_for_large_tensors=*/false,
             /*apply_cl_options=*/false);
-    if (!status_or_module.ok()) return nullptr;
+    if (!status_or_module.ok()) {
+      LOG(ERROR) << status_or_module.status();
+      return nullptr;
+    }
     module = std::move(status_or_module.value());
 
     if (!cache_dir.empty() && tenv->RecursivelyCreateDir(cache_dir).ok()) {
@@ -212,8 +223,7 @@ llvm::Expected<std::unique_ptr<ExecutionEngine>> Compile(
   }
 
   // Initialize LLVM targets.
-  llvm::InitializeNativeTarget();
-  llvm::InitializeNativeTargetAsmPrinter();
+  InitializeLlvmCompiler();
 
   // Create execution engine with an inner optimization pipeline.
   auto opt_pipeline = mlir::makeOptimizingTransformer(
@@ -222,7 +232,11 @@ llvm::Expected<std::unique_ptr<ExecutionEngine>> Compile(
   engine_options.transformer = opt_pipeline;
   llvm::Expected<std::unique_ptr<ExecutionEngine>> engine =
       mlir::ExecutionEngine::create(module.get(), engine_options);
-  if (!engine) return nullptr;
+  if (!engine) {
+    LOG(ERROR) << "Failed to create ExecutionEngine: "
+               << toString(engine.takeError());
+    return nullptr;
+  }
 
   // Finally, register the missing symbols.
   engine.get()->registerSymbols(TFFrameworkSymbolMap);

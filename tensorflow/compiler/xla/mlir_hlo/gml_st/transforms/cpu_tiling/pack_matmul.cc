@@ -93,7 +93,7 @@ Value unpack(Location loc, PatternRewriter &rewriter, Value source,
              ArrayRef<int64_t> innerTileSizes,
              ArrayRef<int64_t> outerDimsPerm) {
   SmallVector<OpFoldResult> resultDims =
-      tensor::createDimValues(rewriter, loc, resultShapeValue);
+      tensor::getMixedSizes(rewriter, loc, resultShapeValue);
   auto empty = rewriter.create<tensor::EmptyOp>(
       loc, resultDims,
       source.getType().cast<RankedTensorType>().getElementType());

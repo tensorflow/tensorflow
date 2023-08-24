@@ -14,7 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/captured_function.h"
 
+#include <functional>
+#include <map>
+#include <memory>
+#include <string>
+#include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "absl/time/clock.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -60,7 +66,7 @@ class SimpleStepStatsCollector : public StepStatsCollectorInterface {
     return new SimpleNodeExecStats(this);
   }
 
-  string ReportAllocsOnResourceExhausted(const string& err) override {
+  string ReportAllocsOnResourceExhausted(absl::string_view err) override {
     return "";
   }
 
@@ -177,7 +183,7 @@ Status CreateShortCircuitInfo(OpKernelConstruction* ctx,
   auto cleanup = gtl::MakeCleanup([ctx, fn_handle]() {
     Status s = ctx->function_library()->ReleaseHandle(fn_handle);
     if (!s.ok()) {
-      LOG(WARNING) << "Failed to release handle: " << s.error_message();
+      LOG(WARNING) << "Failed to release handle: " << s.message();
     }
   });
 
@@ -417,16 +423,6 @@ Status MakeIteratorFromInputElement(
       &nested_ctx, parent, iterator_prefix, out_iterator));
   ctx->MergeCheckpoint(nested_ctx.checkpoint());
   return OkStatus();
-}
-
-IteratorContext MakeNestedIteratorContext(IteratorContext* ctx) {
-  // Strip out any split providers so that they don't apply to sub-iterators.
-  if (ctx->split_providers().empty()) {
-    return *ctx;
-  }
-  IteratorContext::Params params(ctx);
-  params.split_providers.clear();
-  return IteratorContext(std::move(params));
 }
 
 /* static */

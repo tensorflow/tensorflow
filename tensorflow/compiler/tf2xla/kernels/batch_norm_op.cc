@@ -17,6 +17,7 @@ limitations under the License.
 #include <algorithm>
 #include <numeric>
 #include <string>
+#include <vector>
 
 #include "tensorflow/compiler/tf2xla/kernels/relu_op.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"

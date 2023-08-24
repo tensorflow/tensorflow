@@ -1,4 +1,4 @@
-load("//tensorflow:strict.default.bzl", "py_strict_test")
+load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 
 package(
@@ -8,7 +8,7 @@ package(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "free_vars_detect",
     srcs = [
         "free_vars_detect.py",
@@ -65,7 +65,7 @@ pytype_strict_library(
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/types",
+        "//tensorflow/python/types:core",
         "//tensorflow/python/util:object_identity",
     ],
 )
@@ -76,17 +76,25 @@ py_strict_test(
     python_version = "PY3",
     deps = [
         ":capture_container",
+        "//tensorflow/core/function/trace_type",
         "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/testing:parameterized",
     ],
 )
 
-py_library(
+py_strict_library(
     name = "restore_captures",
     srcs = ["restore_captures.py"],
     srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
+        "//tensorflow/core/function/polymorphism:function_type",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_util",
+        "//tensorflow/python/ops:handle_data_util",
+        "//tensorflow/python/ops:resource_variable_ops",
+        "//tensorflow/python/ops:variables",
         "//tensorflow/python/trackable:asset",
         "//tensorflow/python/trackable:resource",
     ],

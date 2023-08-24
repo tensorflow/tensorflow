@@ -108,6 +108,14 @@ std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
                                            const Shape& target_shape,
                                            const HloSharding& sharding);
 
+// Propagates sharding through reshape. It tries to find partial matches on
+// subsets of dimensions that could satisfy ReshapeSharding() constraints, then
+// combine them. It doesn't require all dimensions to satisfy the constraints
+// of ReshapeSharding().
+HloSharding PropagateShardingThroughReshape(const Shape& source_shape,
+                                            const Shape& target_shape,
+                                            const HloSharding& sharding);
+
 // Returns the HloSharding with the tile dimensions and tile assignment
 // reversed based on the specified dimension numbers. In case of a tile
 // maximal sharding returns the original sharding.
@@ -419,6 +427,17 @@ std::shared_ptr<const HloSharding> CreateTupleSharding(
 // exists a free (i.e., unsharded) dimension to move the sharding into.
 bool IsSortOperandShardingMovable(const HloInstruction* sort_operand,
                                   int64_t sort_dim);
+
+// Returns a set of parallel dimensions for Gather/Scatter instructions given
+// the parameters for the op.
+std::optional<GatherScatterParallelDims> GetGatherScatterBatchParallelDims(
+    const HloInstruction* indices, absl::Span<const int64_t> slice_sizes,
+    int64_t index_vector_dim, absl::Span<const int64_t> index_map,
+    const CallGraph& call_graph);
+
+// Returns the sharding of an output of an instruction. Some instructions have
+// special handling like Outfeed and this function takes care of those.
+std::optional<HloSharding> GetOutputSharding(const HloInstruction* instruction);
 
 }  // namespace hlo_sharding_util
 }  // namespace xla

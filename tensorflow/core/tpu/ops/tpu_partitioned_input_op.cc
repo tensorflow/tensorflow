@@ -15,10 +15,14 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
@@ -36,15 +40,15 @@ ShapeHandle _UpdatePartitionDim(InferenceContext* c, const ShapeHandle handle,
   return newoutput0;
 }
 
-StatusOr<ShapeHandle> _ComputeOutputShape(
+absl::StatusOr<ShapeHandle> _ComputeOutputShape(
     InferenceContext* c, const ShapeHandle handle,
     const std::vector<int>& partition_dims) {
   int rank = InferenceContext::Rank(handle);
   if (partition_dims.empty()) {
     return handle;  // no partitioning; input and output shapes same
   } else if (rank > partition_dims.size()) {
-    return errors::InvalidArgument("Need at least ", rank,
-                                   " partition dimensions.");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Need at least ", rank, " partition dimensions."));
   }
 
   ShapeHandle previous = handle;
@@ -71,7 +75,7 @@ REGISTER_OP("TPUPartitionedInput")
       TF_RETURN_IF_ERROR(c->GetAttr("partition_dim", &partition_dim));
 
       if (c->num_inputs() == 0) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             "Expected at least one input to TPUPartitionedInput.");
       }
 
@@ -91,8 +95,9 @@ REGISTER_OP("TPUPartitionedInput")
       // limitation: can only validate rank when it is known
       if ((rank != InferenceContext::kUnknownRank && partition_dim >= rank) ||
           (partition_dim < -1))
-        return errors::InvalidArgument("Cannot partition dim ", partition_dim,
-                                       " of rank ", rank, " tensor.");
+        return absl::InvalidArgumentError(
+            absl::StrCat("Cannot partition dim ", partition_dim, " of rank ",
+                         rank, " tensor."));
 
       for (int i = c->num_inputs() - 2; i >= 0; --i) {
         TF_RETURN_WITH_CONTEXT_IF_ERROR(c->Merge(c->input(i), cur, &cur),
@@ -116,14 +121,14 @@ REGISTER_OP("TPUPartitionedInput")
           if (shapes_and_types) {
             ShapeHandle shape_handle = shapes_and_types->at(0).shape;
             if (!c->FullyDefined(shape_handle)) {
-              return errors::InvalidArgument("Inputs must have static shape,",
-                                             "input[", i,
-                                             "] has unknown dimension.");
+              return absl::InvalidArgumentError(
+                  absl::StrCat("Inputs must have static shape,", "input[", i,
+                               "] has unknown dimension."));
             }
             if (i != c->num_inputs() - 1) {
               ShapeHandle tmp;
               if (!c->Merge(shape_handle, previous_shape_handle, &tmp).ok()) {
-                return errors::InvalidArgument(
+                return absl::InvalidArgumentError(
                     "Inputs must have the same shape.");
               }
             } else {
@@ -146,7 +151,7 @@ REGISTER_OP("TPUPartitionedInput")
         }
       }
 
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("TPUPartitionedInputV2")
@@ -175,10 +180,11 @@ REGISTER_OP("TPUPartitionedInputV2")
             (c->num_inputs() == num_inputs_expected))) {
         // we cannot validate the number of inputs for replicated, unpacked ops
         // since we cannot infer the number of partitions from partition_dims
-        return errors::InvalidArgument("Expected ", num_inputs_expected,
-                                       " inputs, got ", c->num_inputs(), ".");
+        return absl::InvalidArgumentError(
+            absl::StrCat("Expected ", num_inputs_expected, " inputs, got ",
+                         c->num_inputs(), "."));
       } else if (c->num_inputs() == 0) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             "Expected at least one input to TPUPartitionedInputV2.");
       }
 
@@ -192,15 +198,15 @@ REGISTER_OP("TPUPartitionedInputV2")
           if (shapes_and_types) {
             ShapeHandle shape_handle = shapes_and_types->at(0).shape;
             if (!c->FullyDefined(shape_handle)) {
-              return errors::InvalidArgument("Inputs must have static shape,",
-                                             "input[", i,
-                                             "] has unknown dimension.");
+              return absl::InvalidArgumentError(
+                  absl::StrCat("Inputs must have static shape,", "input[", i,
+                               "] has unknown dimension."));
             }
 
             if (i != c->num_inputs() - 1) {
               ShapeHandle tmp;
               if (!c->Merge(shape_handle, previous_shape_handle, &tmp).ok()) {
-                return errors::InvalidArgument(
+                return absl::InvalidArgumentError(
                     "Inputs must have the same shape.");
               }
             } else {
@@ -227,7 +233,7 @@ REGISTER_OP("TPUPartitionedInputV2")
 
       c->set_output(0, output_shape);
 
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 }  // namespace tensorflow

@@ -72,6 +72,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@make_saveable_from_iterator
 @@map_and_batch
 @@map_and_batch_with_legacy_function
+@@pad_to_cardinality
 @@parallel_interleave
 @@parse_example_dataset
 @@prefetch_to_device
@@ -124,6 +125,7 @@ from tensorflow.python.data.experimental.ops.iterator_ops import make_saveable_f
 from tensorflow.python.data.experimental.ops.lookup_ops import DatasetInitializer
 from tensorflow.python.data.experimental.ops.lookup_ops import index_table_from_dataset
 from tensorflow.python.data.experimental.ops.lookup_ops import table_from_dataset
+from tensorflow.python.data.experimental.ops.pad_to_cardinality import pad_to_cardinality
 from tensorflow.python.data.experimental.ops.parsing_ops import parse_example_dataset
 from tensorflow.python.data.experimental.ops.prefetching_ops import copy_to_device
 from tensorflow.python.data.experimental.ops.prefetching_ops import prefetch_to_device

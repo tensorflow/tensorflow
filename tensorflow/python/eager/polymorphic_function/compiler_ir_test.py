@@ -19,7 +19,7 @@ from tensorflow.python.eager.polymorphic_function import polymorphic_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
@@ -33,11 +33,11 @@ class CompilerIrTest(xla_test.XLATestCase):
 
   def _compareTwoMethodsCompilerIROutput(self, f, args, kwargs):
     flat_args = list(args) + list(kwargs.values())
-    if not all([isinstance(x, ops.Tensor) for x in flat_args]):
+    if not all([isinstance(x, tensor.Tensor) for x in flat_args]):
       self.skipTest('It only support args and kwargs are all tf.Tensor types.')
 
-    args_spec = nest.map_structure(tensor_spec.TensorSpec.from_tensor, args)
-    kwargs_spec = nest.map_structure(tensor_spec.TensorSpec.from_tensor, kwargs)
+    args_spec = nest.map_structure(tensor.TensorSpec.from_tensor, args)
+    kwargs_spec = nest.map_structure(tensor.TensorSpec.from_tensor, kwargs)
 
     hlo_1 = f.experimental_get_compiler_ir(*args, **kwargs)()
     hlo_2 = f.experimental_get_compiler_ir(*args_spec, **kwargs_spec)()
@@ -105,7 +105,7 @@ class CompilerIrTest(xla_test.XLATestCase):
       with self.assertRaisesRegex(
           ValueError, 'Only support static input shape but got'
       ):
-        args_spec = [tensor_spec.TensorSpec((None), dtype=dtypes.float32)]
+        args_spec = [tensor.TensorSpec((None), dtype=dtypes.float32)]
         concrete_fn = f.get_concrete_function(*args_spec)
         _ = compiler_ir.from_concrete_function(concrete_fn)(stage='hlo')
 
@@ -117,7 +117,7 @@ class CompilerIrTest(xla_test.XLATestCase):
         return x[x[0] : 0]
 
       args = [ops.convert_to_tensor([1, 2, 3, 4])]
-      args_spec = nest.map_structure(tensor_spec.TensorSpec.from_tensor, args)
+      args_spec = nest.map_structure(tensor.TensorSpec.from_tensor, args)
       concrete_fn = f2.get_concrete_function(*args_spec)
       if test_util.is_mlir_bridge_enabled():
         with self.assertRaisesRegex(
@@ -142,17 +142,17 @@ class CompilerIrTest(xla_test.XLATestCase):
       kwargs = {'b': a, 'a': b}
 
       kwargs_spec = nest.map_structure(
-          tensor_spec.TensorSpec.from_tensor, kwargs
+          tensor.TensorSpec.from_tensor, kwargs
       )
       concrete_fn = f4.get_concrete_function(**kwargs_spec)
       captured_inputs = concrete_fn.captured_inputs
       captured_spec = compiler_ir.make_handledata_tensor_specs(captured_inputs)
       self.assertEqual(len(captured_spec), 2)
       self.assertEqual(
-          captured_spec[0], tensor_spec.TensorSpec((2), dtype=dtypes.float32)
+          captured_spec[0], tensor.TensorSpec((2), dtype=dtypes.float32)
       )
       self.assertEqual(
-          captured_spec[1], tensor_spec.TensorSpec((1), dtype=dtypes.int32)
+          captured_spec[1], tensor.TensorSpec((1), dtype=dtypes.int32)
       )
 
   def test_capture_variable_1(self):
@@ -224,13 +224,13 @@ class CompilerIrTest(xla_test.XLATestCase):
         return (x * v3 + t4 + v2) * v3 + t5
 
       concrete_fn = fun_tf.get_concrete_function(
-          tensor_spec.TensorSpec((None,), dtype=dtypes.float32)
+          tensor.TensorSpec((None,), dtype=dtypes.float32)
       )
 
-      x = tensor_spec.TensorSpec((10,), dtype=dtypes.float32)
+      x = tensor.TensorSpec((10,), dtype=dtypes.float32)
       hlo_1 = compiler_ir.from_concrete_function(concrete_fn, [x])(stage='hlo')
       self.assertIn('f32[10]', hlo_1)
-      x = tensor_spec.TensorSpec((20,), dtype=dtypes.float32)
+      x = tensor.TensorSpec((20,), dtype=dtypes.float32)
       hlo_2 = compiler_ir.from_concrete_function(concrete_fn, [x])(stage='hlo')
       self.assertIn('f32[20]', hlo_2)
 

@@ -21,22 +21,26 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_HLO_IR_HLO_INSTRUCTION_H_
 #define TENSORFLOW_COMPILER_XLA_HLO_IR_HLO_INSTRUCTION_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <iosfwd>
 #include <list>
+#include <map>
 #include <memory>
 #include <optional>
 #include <ostream>
 #include <set>
 #include <string>
-#include <tuple>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/hash/hash.h"
+#include "absl/functional/function_ref.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -47,19 +51,21 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
 #include "tensorflow/compiler/xla/iterator_util.h"
+#include "tensorflow/compiler/xla/layout.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/mapped_ptr_container_sorter.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
-#include "tensorflow/compiler/xla/shape_tree.h"
-#include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/lib/gtl/iterator_range.h"
-#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tensorflow/tsl/platform/protobuf.h"
-#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 
@@ -103,7 +109,8 @@ class HloPrintOptions {
         print_ids_(true),
         canonicalize_computations_(false),
         print_extra_attributes_(true),
-        syntax_sugar_async_ops_(true) {}
+        syntax_sugar_async_ops_(true),
+        print_name_after_closing_brace_(false) {}
   // Static reference to a default construction HloPrintOptions, to avoid
   // constructing a new one each time default is needed.
   static const HloPrintOptions& Default() {
@@ -346,6 +353,11 @@ class HloPrintOptions {
     return *this;
   }
 
+  HloPrintOptions& set_print_name_after_closing_brace(bool value) {
+    print_name_after_closing_brace_ = value;
+    return *this;
+  }
+
   bool print_large_constants() const { return print_large_constants_; }
   bool print_only_essential_constants() const {
     return print_only_essential_constants_;
@@ -380,6 +392,9 @@ class HloPrintOptions {
   bool canonicalize_computations() const { return canonicalize_computations_; }
   int indent_amount() const { return indent_amount_; }
   int is_in_nested_computation() const { return is_in_nested_computation_; }
+  int print_name_after_closing_brace() const {
+    return print_name_after_closing_brace_;
+  }
 
  private:
   // The interval between the /*index=*/ annotated operands. 0 means never print
@@ -406,6 +421,7 @@ class HloPrintOptions {
   bool canonicalize_computations_;
   bool print_extra_attributes_;
   bool syntax_sugar_async_ops_;
+  bool print_name_after_closing_brace_;
 };
 
 // For canonical string output, we need to have a canonical way to rename
@@ -553,6 +569,12 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateIota(const Shape& shape,
                                                     int64_t iota_dimension);
 
+  // Creates a Top-K instruction.
+  static std::unique_ptr<HloInstruction> CreateTopK(const Shape& shape,
+                                                    HloInstruction* input,
+                                                    int64_t k,
+                                                    HloComputation* compare);
+
   // Creates a get tuple element instruction.
   static std::unique_ptr<HloInstruction> CreateGetTupleElement(
       const Shape& shape, HloInstruction* operand, int64_t index);
@@ -681,8 +703,8 @@ class HloInstruction {
   // precision, and exponent_bits and mantissa_bits describe the precision to
   // reduce it to.
   static std::unique_ptr<HloInstruction> CreateReducePrecision(
-      const Shape& shape, HloInstruction* operand, const int exponent_bits,
-      const int mantissa_bits);
+      const Shape& shape, HloInstruction* operand, int exponent_bits,
+      int mantissa_bits);
 
   // Creates an all-gather op, which concats the operands of all participants
   // along all_gather_dimension. The replica_groups, channel_id, and
@@ -1301,7 +1323,7 @@ class HloInstruction {
     return control_successors_;
   }
 
-  // Returns true if "other" performs the same computation as this instruction.
+  // Returns true if 'other' performs the same computation as this instruction.
   bool Identical(
       const HloInstruction& other,
       absl::FunctionRef<bool(const HloInstruction*, const HloInstruction*)>
@@ -1313,6 +1335,13 @@ class HloInstruction {
                              layout_sensitive, sharding_sensitive,
                              /*ignore_channel_id_values=*/false,
                              /*ignore_commutative_operand_order=*/false);
+  }
+  // Returns true if 'other' is the same kind of op as this instruction. For
+  // regular ops, it just checks whether the opcode is the same, for ops like
+  // e.g. kCompare, it also checks extra attributes.
+  bool SameOp(const HloInstruction& other) const {
+    return opcode() == other.opcode() &&
+           IdenticalSlowPath(other, std::equal_to<const HloComputation*>());
   }
 
   // Same as Identical() but ignores the order of commutative operands (e.g.
@@ -1414,7 +1443,11 @@ class HloInstruction {
   //
   // If a user is a fusion instruction, this function will remove any duplicated
   // operands of it which could be created due to this replacement.
-  Status ReplaceAllUsesWith(HloInstruction* new_producer);
+  //
+  // trigger is a string used in the error message if the new and the
+  // current instruction don't have a compatible shape.
+  Status ReplaceAllUsesWith(HloInstruction* new_producer,
+                            absl::string_view trigger = "");
 
   // Same as ReplaceAllUsesWith, but new_producer can have a different shape.
   Status ReplaceAllUsesWithDifferentShape(HloInstruction* new_producer);
@@ -1430,15 +1463,20 @@ class HloInstruction {
   // complete. If ignore_control_predecessors is true, instructions only
   // reachable via control dependencies will not be visited, and the postorder
   // will not take control dependencies into account. It is as if the control
-  // dependencies didn't exist in the graph at all.
+  // dependencies didn't exist in the graph at all. If cross_computation is
+  // true, DFS will go across the computation boundary (i.e., from an
+  // instruction to the root instruction of a computation it calls).
   template <typename HloInstructionPtr>
   Status Accept(DfsHloVisitorBase<HloInstructionPtr>* visitor,
                 bool call_finish_visit = true,
-                bool ignore_control_predecessors = false);
+                bool ignore_control_predecessors = false,
+                bool cross_computation = false);
   Status Accept(ConstDfsHloVisitor* visitor, bool call_finish_visit = true,
-                bool ignore_control_predecessors = false) const {
+                bool ignore_control_predecessors = false,
+                bool cross_computation = false) const {
     return const_cast<HloInstruction*>(this)->Accept(
-        visitor, call_finish_visit, ignore_control_predecessors);
+        visitor, call_finish_visit, ignore_control_predecessors,
+        cross_computation);
   }
 
   // Same as Accept() above, but the order of operand and control predecessor
@@ -1453,6 +1491,9 @@ class HloInstruction {
   // Visit this instruction and only this instruction with the given visitor.
   template <typename HloInstructionPtr>
   Status Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor);
+  Status Visit(ConstDfsHloVisitor* visitor) const {
+    return const_cast<HloInstruction*>(this)->Visit(visitor);
+  }
 
   // Returns the first non-GetTupleElement ancestor instruction of 'hlo'.
   // If the first non-GTE ancestor is tuple-shaped, populates 'index' with the
@@ -1799,6 +1840,8 @@ class HloInstruction {
     return OkStatus();
   }
 
+  bool preserve_layout() const { return metadata_.preserve_layout(); }
+
   bool has_backend_config() const { return !backend_config_.empty(); }
 
   void clear_backend_config() { backend_config_.clear(); }
@@ -1819,6 +1862,33 @@ class HloInstruction {
   const FrontendAttributes& frontend_attributes() const {
     return frontend_attributes_;
   }
+
+  void add_single_statistic(Statistic statistic) {
+    *statistics_viz_.add_statistics() = std::move(statistic);
+  }
+
+  void set_stat_index_to_visualize(int64_t index) {
+    statistics_viz_.set_stat_index_to_visualize(index);
+  }
+
+  // Whether this specific instruction has statistics
+  bool has_statistics() const { return !statistics_viz_.statistics().empty(); }
+
+  // Whether any instruction within the same HLO module as this has statistics
+  bool module_has_statistics() const {
+    return statistics_viz_.stat_index_to_visualize() == -1;
+  }
+
+  const Statistic& statistic_to_visualize() const {
+    return statistics_viz_.statistics().at(
+        statistics_viz_.stat_index_to_visualize());
+  }
+
+  void set_statistics_viz(StatisticsViz statistics_viz) {
+    statistics_viz_ = std::move(statistics_viz);
+  }
+
+  const StatisticsViz& statistics_viz() const { return statistics_viz_; }
 
   // Getter/setter for raw JSON-encoded backend config.  Prefer the
   // functions above that deal in proto Messages where possible.
@@ -1882,6 +1952,9 @@ class HloInstruction {
   }
   void set_metadata_deduplicated_name(std::string deduplicated_name) {
     metadata_.set_deduplicated_name(std::move(deduplicated_name));
+  }
+  void set_metadata_preserve_layout(bool preserve_layout) {
+    metadata_.set_preserve_layout(preserve_layout);
   }
   const OpMetadata& metadata() const { return metadata_; }
 
@@ -2000,11 +2073,11 @@ class HloInstruction {
   HloInstruction* fused_expression_root() const;
 
   // Delegates to HloFusionInstruction::fused_instructions.
-  const tsl::gtl::iterator_range<UnwrappingIterator<
+  tsl::gtl::iterator_range<UnwrappingIterator<
       std::list<std::unique_ptr<HloInstruction>>::const_iterator>>
   fused_instructions() const;
 
-  const tsl::gtl::iterator_range<
+  tsl::gtl::iterator_range<
       UnwrappingIterator<std::list<std::unique_ptr<HloInstruction>>::iterator>>
   fused_instructions();
 
@@ -2015,11 +2088,11 @@ class HloInstruction {
   HloInstruction* fused_parameter(int64_t parameter_number) const;
 
   // Delegates to HloFusionInstruction::fused_parameters.
-  const std::vector<HloInstruction*>& fused_parameters() const;
+  const InstructionVector& fused_parameters() const;
 
   // Returns true if this instruction is a fusion instruction that generates
   // multiple outputs.
-  const bool IsMultiOutputFusion() const;
+  bool IsMultiOutputFusion() const;
 
   // Delegates to HloFusionInstruction::fusion_kind.
   FusionKind fusion_kind() const;
@@ -2416,6 +2489,10 @@ class HloInstruction {
   //    z' = const(20), frontend_attributes={?}
   FrontendAttributes frontend_attributes_;
 
+  // Used to render an HLO graph when tracking the propagation desired values
+  // through it.
+  StatisticsViz statistics_viz_;
+
   // String identifier for instruction.
   std::string name_;
 
@@ -2436,8 +2513,9 @@ class HloInstruction {
 };
 
 // Explicit instantiations in hlo_instruction.cc.
-extern template Status HloInstruction::Accept(DfsHloVisitor*, bool, bool);
-extern template Status HloInstruction::Accept(ConstDfsHloVisitor*, bool, bool);
+extern template Status HloInstruction::Accept(DfsHloVisitor*, bool, bool, bool);
+extern template Status HloInstruction::Accept(ConstDfsHloVisitor*, bool, bool,
+                                              bool);
 extern template Status HloInstruction::Visit(DfsHloVisitor* visitor);
 extern template Status HloInstruction::Visit(ConstDfsHloVisitor* visitor);
 
@@ -2450,6 +2528,7 @@ StatusOr<HloInstruction::FusionKind> StringToFusionKind(
 std::string PaddingConfigToString(const PaddingConfig& padding);
 std::string FrontendAttributesToString(
     const FrontendAttributes& frontend_attributes);
+std::string StatisticsVizToString(const StatisticsViz& statistics_viz);
 std::string RandomAlgorithmToString(const RandomAlgorithm& algorithm);
 std::string RandomDistributionToString(const RandomDistribution& distribution);
 std::string PrecisionToString(const PrecisionConfig::Precision& precision);

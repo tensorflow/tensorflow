@@ -28,9 +28,10 @@ TEST(FunctionOptimizationPassRegistry, NoPassSet) {
       std::unique_ptr<FunctionOptimizationPass>());
   DeviceSet device_set;
   ConfigProto config_proto;
+  FunctionOptimizationPass::FunctionOptions function_options;
   Status status = FunctionOptimizationPassRegistry::Global().Run(
       "test_func", device_set, config_proto,
-      /*xla_compile_device_type=*/"",
+      /*function_options=*/function_options,
       /*graph=*/nullptr,
       /*flib_def=*/nullptr,
       /*control_ret_node_names=*/nullptr, /*control_rets_updated=*/nullptr);

@@ -30,6 +30,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
@@ -805,7 +806,7 @@ def _get_structured_grad_output(outputs, grads, body_grad_graph):
           dense_shape=outputs[outputs_idx + 2]))
       outputs_idx += 3
     else:
-      assert isinstance(output, ops.Tensor)
+      assert isinstance(output, tensor_lib.Tensor)
       result.append(outputs[outputs_idx])
       outputs_idx += 1
 

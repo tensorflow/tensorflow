@@ -52,10 +52,14 @@ TEST_F(GpuNoAliasTest, Concat) {
   // - After optimizations we have "concatenate(x, y, x)".
   // - We only pass the same parameters once, so the kernel will have these
   // parameters: (x, y, output), and all of them will be noalias.
-  CompileAndVerifyIr(
-      std::move(hlo_module),
-      R"(CHECK: define void @{{[a-zA-Z0-9_]+}}(ptr noalias align 16 dereferenceable(16) %arg0, ptr noalias align 16 dereferenceable(16) %arg1, ptr noalias align 128 dereferenceable(48) %arg2))",
-      /*match_optimized_ir=*/false);
+  auto expected_ir = is_built_with_rocm_ ? R"(
+CHECK: define amdgpu_kernel void @{{[a-zA-Z0-9_]+}}(ptr noalias align 16 dereferenceable(16) %arg0, ptr noalias align 16 dereferenceable(16) %arg1, ptr noalias align 128 dereferenceable(48) %arg2) #0
+  )"
+                                         : R"(
+CHECK: define void @{{[a-zA-Z0-9_]+}}(ptr noalias align 16 dereferenceable(16) %arg0, ptr noalias align 16 dereferenceable(16) %arg1, ptr noalias align 128 dereferenceable(48) %arg2)
+  )";
+  CompileAndVerifyIr(std::move(hlo_module), expected_ir,
+                     /*match_optimized_ir=*/false);
 }
 
 }  // namespace gpu

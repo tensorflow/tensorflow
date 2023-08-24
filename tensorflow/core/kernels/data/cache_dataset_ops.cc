@@ -235,7 +235,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
     Status SaveInternal(SerializationContext* ctx,
                         IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
-      TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kMode), mode_));
+      TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kMode, mode_));
       return SaveInput(ctx, writer, iterator_);
     }
     Status RestoreInternal(IteratorContext* ctx,
@@ -243,7 +243,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
       mutex_lock l(mu_);
       {
         int64_t temp;
-        TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kMode), &temp));
+        TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kMode, &temp));
         mode_ = static_cast<Mode>(temp);
       }
       if (mode_ == Mode::write &&
@@ -376,11 +376,11 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
                           IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(
-            writer->WriteScalar(full_name(kCurIndex), cur_index_));
+            writer->WriteScalar(prefix(), kCurIndex, cur_index_));
 
         if (iteration_completed_) {
           TF_RETURN_IF_ERROR(
-              writer->WriteScalar(full_name(kIterationCompleted), ""));
+              writer->WriteScalar(prefix(), kIterationCompleted, ""));
           return OkStatus();
         }
 
@@ -404,7 +404,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
           lockfile_created_ = false;
         }
         TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
-        TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kShardId), shard_id_));
+        TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kShardId, shard_id_));
         return OkStatus();
       }
 
@@ -415,14 +415,14 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
         // TODO(b/78048575): Update this when saving size_t tensors directly
         // is supported.
         {
-          TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kCurIndex), &temp));
+          TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kCurIndex, &temp));
           cur_index_ = static_cast<size_t>(temp);
           if (cur_index_ != temp) {
             return errors::Internal("Invalid value for cur_index ", temp);
           }
         }
 
-        if (reader->Contains(full_name(kIterationCompleted))) {
+        if (reader->Contains(prefix(), kIterationCompleted)) {
           iteration_completed_ = true;
           return OkStatus();
         }
@@ -432,7 +432,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
         // TODO(b/78048575): Update this when saving size_t tensors directly
         // is supported.
         {
-          TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kShardId), &temp));
+          TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kShardId, &temp));
           shard_id_ = static_cast<size_t>(temp);
           if (shard_id_ != temp) {
             return errors::Internal("Invalid value for shard_id ", temp);
@@ -606,7 +606,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
                           IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(
-            writer->WriteScalar(full_name(kCurIndex), cur_index_));
+            writer->WriteScalar(prefix(), kCurIndex, cur_index_));
         return OkStatus();
       }
 
@@ -619,7 +619,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
           // is supported.
           int64_t temp;
           TF_RETURN_IF_ERROR(
-              iterator_state_reader->ReadScalar(full_name(kCurIndex), &temp));
+              iterator_state_reader->ReadScalar(prefix(), kCurIndex, &temp));
           cur_index_ = static_cast<size_t>(temp);
           if (cur_index_ != temp) {
             return errors::Internal("Invalid value for cur_index ", temp);
@@ -820,7 +820,7 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
                         IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       if (cache_->IsCompleted()) {
-        TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kCacheCompleted), ""));
+        TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kCacheCompleted, ""));
         TF_RETURN_IF_ERROR(
             WriteElementsToCheckpoint(writer, prefix(), cache_->data()));
       }
@@ -832,7 +832,7 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
       mutex_lock l(mu_);
       iterator_.reset();
       cache_->Reset();
-      if (reader->Contains(full_name(kCacheCompleted))) {
+      if (reader->Contains(prefix(), kCacheCompleted)) {
         std::vector<std::vector<Tensor>> temp_cache;
         TF_RETURN_IF_ERROR(
             ReadElementsFromCheckpoint(ctx, reader, prefix(), &temp_cache));
@@ -904,7 +904,7 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
-        if (!reader->Contains(full_name(kCacheCompleted))) {
+        if (!reader->Contains(prefix(), kCacheCompleted)) {
           TF_RETURN_IF_ERROR(
               ReadElementsFromCheckpoint(ctx, reader, prefix(), &temp_cache_));
         }
@@ -965,7 +965,7 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
       Status SaveInternal(SerializationContext* ctx,
                           IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kIndex), index_));
+        TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kIndex, index_));
         return OkStatus();
       }
 
@@ -976,8 +976,8 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
           // kIndex will not be set if we are restoring from a checkpoint
           // written by a MemoryWriterIterator that has completed its cache.
           int64_t temp = cache_->size();
-          if (reader->Contains(full_name(kIndex))) {
-            TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kIndex), &temp));
+          if (reader->Contains(prefix(), kIndex)) {
+            TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kIndex, &temp));
           }
           index_ = static_cast<size_t>(temp);
         }

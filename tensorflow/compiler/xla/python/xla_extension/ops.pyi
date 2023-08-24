@@ -18,7 +18,6 @@ from typing import Any, List, Optional, Sequence, Tuple, overload
 
 from tensorflow.compiler.xla.python import xla_extension
 
-ChannelHandle = xla_extension.ChannelHandle
 FftType = xla_extension.FftType
 XlaBuilder = xla_extension.XlaBuilder
 XlaComputation = xla_extension.XlaComputation
@@ -28,6 +27,7 @@ PrimitiveType = xla_extension.PrimitiveType
 Shape = xla_extension.Shape
 ShapeIndex = xla_extension.ShapeIndex
 
+_ChannelHandle = Any
 _ConvDimensionNumbers = Any
 _DotDimensionNumbers = Any
 _Layout = Any
@@ -66,14 +66,14 @@ def AllGather(
     all_gather_dimension: int,
     shard_count: int,
     replica_groups: Sequence[_ReplicaGroup] = ...,
-    channel_id: Optional[ChannelHandle] = ...,
+    channel_id: Optional[_ChannelHandle] = ...,
     shape_with_layout: Optional[_Layout] = ...,
     use_global_device_ids: Optional[bool] = ...) -> XlaOp: ...
 def AllReduce(
     operand: XlaOp,
     computation: XlaComputation,
     replica_groups: Sequence[_ReplicaGroup] = ...,
-    channel_id: Optional[ChannelHandle] = ...,
+    channel_id: Optional[_ChannelHandle] = ...,
     shape_with_layout: Optional[_Layout] = ...) -> XlaOp: ...
 def ApproxTopK(
     builder: XlaBuilder,
@@ -108,7 +108,7 @@ def ReduceScatter(
     scatter_dimension: int,
     shard_count: int,
     replica_groups: Sequence[_ReplicaGroup] = ...,
-    channel_id: Optional[ChannelHandle] = ...,
+    channel_id: Optional[_ChannelHandle] = ...,
     layout: Optional[_Layout] = ...,
     use_global_device_ids: Optional[bool] = ...) -> XlaOp: ...
 def AllToAll(
@@ -118,7 +118,7 @@ def AllToAll(
     split_count: int,
     replica_groups: Sequence[_ReplicaGroup] = ...,
     layout: Optional[_Layout] = ...,
-    channel_id: Optional[ChannelHandle] = ...) -> XlaOp: ...
+    channel_id: Optional[_ChannelHandle] = ...) -> XlaOp: ...
 def BitcastConvertType(operand: XlaOp,
                        new_element_type: PrimitiveType) -> XlaOp: ...
 def Broadcast(operand: XlaOp, sizes: Sequence[int]) -> XlaOp: ...
@@ -134,7 +134,7 @@ def Collapse(operand: XlaOp, dimensions: Sequence[int]) -> XlaOp: ...
 def CollectivePermute(
     operand: XlaOp,
     source_target_pairs: Sequence[Tuple[int, int]],
-    channel_id: Optional[ChannelHandle] = ...) -> XlaOp: ...
+    channel_id: Optional[_ChannelHandle] = ...) -> XlaOp: ...
 def ConcatInDim(builder: XlaBuilder,
                 operands: Sequence[XlaOp],
                 dimension: int) -> XlaOp: ...

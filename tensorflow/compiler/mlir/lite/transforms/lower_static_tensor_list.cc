@@ -632,7 +632,7 @@ struct ConvertTensorListInitOp : public TensorListOpConverterBase<OpT> {
     // as specified by element_dtype.
     RankedTensorType zero_type =
         tensorflow::GetTypeFromTFTensorShape({}, element_dtype);
-    Attribute zero_attr = rewriter.getZeroAttr(zero_type);
+    auto zero_attr = rewriter.getZeroAttr(zero_type);
     auto zero = rewriter.create<arith::ConstantOp>(loc, zero_type, zero_attr);
 
     rewriter.replaceOpWithNewOp<TF::FillOp>(op, result_type, list_shape, zero);

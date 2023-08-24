@@ -16,6 +16,7 @@ limitations under the License.
 // This file implements logic for lowering HLO/LHLO dialect to Linalg dialect.
 
 #include <algorithm>
+#include <memory>
 #include <numeric>
 #include <string>
 #include <utility>

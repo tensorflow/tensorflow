@@ -61,6 +61,7 @@
 # //tensorflow/tensorflow.bzl) will include the necessary symbols in binary
 # build targets.
 
+# Placeholder: load py_proto_library
 load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
@@ -286,6 +287,8 @@ cc_library(
     deps = [
         ":lib_internal",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/types:optional",
@@ -433,6 +436,7 @@ tf_cuda_library(
     deps = [
         ":framework_internal",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/functional:any_invocable",
     ],
 )
 
@@ -615,6 +619,7 @@ cc_library(
         "//tensorflow/core/kernels:stateless_random_gamma_op",
         "//tensorflow/core/kernels:stateless_random_ops",
         "//tensorflow/core/kernels:stateless_shuffle",
+        "//tensorflow/core/kernels:stochastic_cast_op",
         "//tensorflow/core/kernels:string",
         "//tensorflow/core/kernels:summary_kernels",
         "//tensorflow/core/kernels:sync_ops",
@@ -629,6 +634,7 @@ cc_library(
         "//tensorflow/core/kernels/mkl:mkl_dequantize_op",
         "//tensorflow/core/kernels/mkl:mkl_conv_op",
         "//tensorflow/core/kernels/mkl:mkl_fused_batch_norm_op",
+        "//tensorflow/core/kernels/mkl:mkl_fused_instance_norm_op",
         "//tensorflow/core/kernels/mkl:mkl_layer_norm_op",
         "//tensorflow/core/kernels/mkl:mkl_pooling_ops",
         "//tensorflow/core/kernels/mkl:mkl_qmatmul_op",
@@ -959,6 +965,7 @@ filegroup(
         "stateful_random_ops_op_lib",
         "stateless_random_ops_op_lib",
         "stateless_random_ops_v2_op_lib",
+        "stochastic_cast_op_op_lib",
         "string_ops_op_lib",
         "summary_ops_op_lib",
         "sync_ops_op_lib",
@@ -1001,6 +1008,7 @@ filegroup(
 cc_library(
     name = "portable_tensorflow_lib_lite",
     srcs = if_mobile([":mobile_srcs"]),
+    hdrs = if_mobile(["//tensorflow/core/config:flags_headers_filegroup"]),
     copts = tf_copts(android_optimization_level_override = None) + tf_opts_nortti_if_lite_protos() + if_ios(["-Os"]),
     defines = ["SUPPORT_SELECTIVE_REGISTRATION"] + select({
                   "//tensorflow:chromiumos": ["IS_MOBILE_PLATFORM"],
@@ -1050,6 +1058,7 @@ cc_library(
 #         "@com_google_absl//absl/algorithm:container",
 #         "@com_google_absl//absl/base",
 #         "@com_google_absl//absl/meta:type_traits",
+#         "@com_google_absl//absl/status:statusor",
 #         "@com_google_absl//absl/strings",
 #         "@com_google_absl//absl/types:optional",
 #         "//tensorflow/core:mobile_additional_lib_deps",
@@ -1057,6 +1066,7 @@ cc_library(
 #         "//tensorflow/core/util:managed_stack_trace",
 #         "//tensorflow/core/util:stats_calculator_portable",
 #         "//tensorflow/tsl/framework/fixedpoint",
+#         "//tensorflow/tsl/platform:logging",
 #     ] + tf_portable_proto_lib() + tf_portable_deps_no_runtime(),
 #     alwayslink = 1,
 # )
@@ -1069,7 +1079,9 @@ cc_library(
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -1255,7 +1267,9 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/meta:type_traits",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@ml_dtypes//:float8",
     ] + if_static([":lib_internal_impl"]),
 )
 
@@ -1282,6 +1296,7 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/meta:type_traits",
         "@com_google_absl//absl/strings",
+        "@ml_dtypes//:float8",
     ],
 )
 
@@ -1290,18 +1305,7 @@ cc_library(
     srcs = [
         ":lib_internal_private_headers",
         "//tensorflow/core/platform:legacy_lib_internal_srcs",
-    ] + glob(
-        [
-            "lib/**/*.cc",
-        ],
-        exclude = [
-            "**/*test*",
-            "framework/variant.cc",
-            "lib/gif/**/*",
-            "lib/jpeg/**/*",
-            "lib/png/**/*",
-        ],
-    ),
+    ],
     hdrs = [":lib_internal_public_headers"],
     copts = tf_copts(),
     deps = tf_additional_lib_deps() + [
@@ -1441,6 +1445,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_protobuf//:protobuf",
         "@double_conversion//:double-conversion",
+        "@ml_dtypes//:float8",
         "@snappy",
         "@zlib",
     ] + select({
@@ -1451,11 +1456,12 @@ cc_library(
     [
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc_impl",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc_impl",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:calibration_statistics_proto_cc_impl",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc_impl",
         "//tensorflow/core/protobuf:autotuning_proto_cc_impl",
         "//tensorflow/core/protobuf:conv_autotuning_proto_cc_impl",
         "//tensorflow/core:protos_all_cc_impl",
-        "//tensorflow/tsl/protobuf:autotuning_proto_cc_impl",
+        "//tensorflow/compiler/xla:autotuning_proto_cc_impl",
         "//tensorflow/tsl/profiler/protobuf:profiler_options_proto_cc_impl",
         "//tensorflow/tsl/protobuf:protos_all_cc_impl",
         "//tensorflow/compiler/xla:xla_proto_cc_impl",
@@ -1463,6 +1469,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_proto_cc_impl",
         "//tensorflow/compiler/xla/service:memory_space_assignment_proto_cc_impl",
         "//tensorflow/compiler/xla/service/gpu:backend_configs_cc_impl",
+        "//tensorflow/compiler/xla/service/gpu:hlo_op_profile_proto_cc_impl",
     ] + tf_protos_grappler_impl() + tf_monitoring_framework_deps(),
     # Alwayslink causes a cc_binary to "always link" in the
     # srcs for a given cc_library, even if they are unreferenced, see:
@@ -1687,6 +1694,7 @@ tf_cuda_library(
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
@@ -1961,6 +1969,7 @@ tf_cc_test_mkl(
         "//tensorflow/core/kernels/mkl:mkl_conv_op",
         "//tensorflow/core/kernels/mkl:mkl_dequantize_op",
         "//tensorflow/core/kernels/mkl:mkl_fused_batch_norm_op",
+        "//tensorflow/core/kernels/mkl:mkl_fused_instance_norm_op",
         "//tensorflow/core/kernels/mkl:mkl_matmul_op",
         "//tensorflow/core/kernels/mkl:mkl_pooling_ops",
         "//tensorflow/core/kernels/mkl:mkl_qmatmul_op",
@@ -2005,6 +2014,7 @@ transitive_hdrs(
 )
 
 # copybara:uncomment_begin(google-only)
+# # TODO(b/287346201): Look into replacing usages of this target.
 # py_proto_library(
 #     name = "protos_all_py_pb2",
 #     has_services = 0,
@@ -2032,6 +2042,7 @@ transitive_hdrs(
 #     deps = [
 #         "//tensorflow/core/example:example_parser_configuration_go_proto",
 #         "//tensorflow/core/example:example_protos_go_proto",
+#         "//tensorflow/core/framework:graph_debug_info_go_proto",
 #         "//tensorflow/core/protobuf:for_core_protos_go_proto",
 #         "//tensorflow/core/util:event_go_proto",
 #         "//tensorflow/core/util:memmapped_file_system_go_proto",

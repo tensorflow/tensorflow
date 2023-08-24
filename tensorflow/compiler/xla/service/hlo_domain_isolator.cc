@@ -21,10 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding_metadata.h"
-#include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_remover.h"
-#include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
-#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
@@ -111,7 +108,7 @@ StatusOr<bool> HloDomainIsolator::UpdateDomains(HloInstruction* instruction) {
   TF_ASSIGN_OR_RETURN(const int64_t added_domains,
                       AddExitDomains(instruction, &creator));
   changed |= (removed_domains > 0 || added_domains > 0);
-  // Update the instruction ifself if it's a domain.
+  // Update the instruction itself if it's a domain.
   if (instruction->opcode() == HloOpcode::kDomain) {
     for (HloInstruction* operand : instruction->operands()) {
       TF_ASSIGN_OR_RETURN(const int64_t removed_domains,

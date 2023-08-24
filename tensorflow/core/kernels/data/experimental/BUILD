@@ -226,6 +226,7 @@ tf_kernel_library(
         "//tensorflow/core/data:captured_function",
         "//tensorflow/core/data:dataset_utils",
         "//tensorflow/core/data:name_utils",
+        "//tensorflow/core/data:utils",
         "//tensorflow/core/data/service:common",
         "//tensorflow/core/data/service:common_proto_cc",
         "//tensorflow/core/data/service:dispatcher_proto_cc",
@@ -422,15 +423,10 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/data:captured_function",
-        "//tensorflow/core/data:dataset_utils",
-        "//tensorflow/core/data:hash_utils",
         "//tensorflow/core/data:name_utils",
-        "//tensorflow/core/data:root_dataset",
         "//tensorflow/core/data:snapshot_utils",
         "//tensorflow/core/data:utils",
-        "//tensorflow/core/data/service/snapshot:snapshot_reader",
         "//tensorflow/core/framework:op_requires",
-        "//tensorflow/core/kernels/data:iterator_ops",
     ],
 )
 
@@ -871,9 +867,16 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/data:dataset_utils",
+        "//tensorflow/core/framework:dataset_options_proto_cc",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:mutex",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:strcat",
+        "//tensorflow/tsl/platform:thread_annotations",
     ],
 )
 
@@ -961,6 +964,7 @@ tf_kernel_library(
         ":to_tf_record_op",
         ":unbatch_dataset_op",
         ":unique_dataset_op",
+        "//tensorflow/core/data/service/snapshot:snapshot_chunk_dataset_op",
     ] + select({
         "//tensorflow:fuchsia": [],
         "//conditions:default": [":lmdb_dataset_op"],

@@ -32,6 +32,7 @@ cc_library(
     visibility = set_external_visibility([
         "//tensorflow/tsl/profiler:internal",
         "//tensorflow/tsl/profiler:xla_profiler_backends",
+        "//tensorflow/compiler/xla/python:__pkg__",
     ]),
     deps = ["@com_google_absl//absl/strings"],
 )

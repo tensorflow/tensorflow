@@ -17,7 +17,10 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdlib>
+#include <functional>
 #include <iterator>
+#include <list>
 #include <memory>
 #include <string>
 #include <utility>
@@ -2670,4 +2673,205 @@ TEST_F(LatencyHidingSchedulerTest, AsyncTrackerTestForTargetDefinedResources) {
            target_resource0_overlap_limit);
 }
 
+TEST_F(LatencyHidingSchedulerTest, AddDeleteOccupierForSharedResource) {
+  std::vector<std::pair<HloEdge*, HloGraphNode::TimeCost>> occupiers;
+  std::function<bool(std::vector<double>)> check_eq = [&occupiers](
+                                                          std::vector<double>
+                                                              times) {
+    if (times.size() != occupiers.size()) {
+      return false;
+    }
+    int64_t i = 0;
+    for (auto it = occupiers.begin(); it != occupiers.end(); ++it) {
+      if (std::abs(times[i] - it->second) > 0.0001) {
+        VLOG(1)
+            << "PFT in occupier list does not match the given value (at index "
+            << i << "): " << it->second << " vs " << times[i];
+        return false;
+      }
+      i++;
+    }
+    return true;
+  };
+
+  //============================== Additions Only ==============================
+  HloEdge edge1(3, nullptr);
+  HloEdge edge2(3, nullptr);
+  HloEdge edge3(1, nullptr);
+
+  DefaultSchedulerCore::AddOccupierToResource(0, edge1, occupiers);
+  CHECK(check_eq({3}));
+  DefaultSchedulerCore::AddOccupierToResource(1, edge2, occupiers);
+  CHECK(check_eq({5, 6}));
+  DefaultSchedulerCore::AddOccupierToResource(1, edge3, occupiers);
+  CHECK(check_eq({4, 6, 7}));
+
+  occupiers.clear();
+  edge1.SetOriginalLatency(1);
+  edge2.SetOriginalLatency(2);
+  edge3.SetOriginalLatency(3);
+
+  DefaultSchedulerCore::AddOccupierToResource(0, edge1, occupiers);
+  CHECK(check_eq({1}));
+  DefaultSchedulerCore::AddOccupierToResource(0, edge2, occupiers);
+  CHECK(check_eq({2, 3}));
+  DefaultSchedulerCore::AddOccupierToResource(0, edge3, occupiers);
+  CHECK(check_eq({3, 5, 6}));
+
+  occupiers.clear();
+  DefaultSchedulerCore::AddOccupierToResource(0, edge1, occupiers);
+  CHECK(check_eq({1}));
+  DefaultSchedulerCore::AddOccupierToResource(0, edge3, occupiers);
+  CHECK(check_eq({2, 4}));
+  DefaultSchedulerCore::AddOccupierToResource(0, edge2, occupiers);
+  CHECK(check_eq({3, 5, 6}));
+
+  occupiers.clear();
+  DefaultSchedulerCore::AddOccupierToResource(0, edge2, occupiers);
+  CHECK(check_eq({2}));
+  DefaultSchedulerCore::AddOccupierToResource(0, edge1, occupiers);
+  CHECK(check_eq({2, 3}));
+  DefaultSchedulerCore::AddOccupierToResource(0, edge3, occupiers);
+  CHECK(check_eq({3, 5, 6}));
+
+  occupiers.clear();
+  DefaultSchedulerCore::AddOccupierToResource(0, edge2, occupiers);
+  CHECK(check_eq({2}));
+  DefaultSchedulerCore::AddOccupierToResource(0, edge3, occupiers);
+  CHECK(check_eq({4, 5}));
+  DefaultSchedulerCore::AddOccupierToResource(0, edge1, occupiers);
+  CHECK(check_eq({3, 5, 6}));
+
+  occupiers.clear();
+  DefaultSchedulerCore::AddOccupierToResource(0, edge3, occupiers);
+  CHECK(check_eq({3}));
+  DefaultSchedulerCore::AddOccupierToResource(0, edge1, occupiers);
+  CHECK(check_eq({2, 4}));
+  DefaultSchedulerCore::AddOccupierToResource(0, edge2, occupiers);
+  CHECK(check_eq({3, 5, 6}));
+
+  occupiers.clear();
+  DefaultSchedulerCore::AddOccupierToResource(0, edge3, occupiers);
+  CHECK(check_eq({3}));
+  DefaultSchedulerCore::AddOccupierToResource(0, edge2, occupiers);
+  CHECK(check_eq({4, 5}));
+  DefaultSchedulerCore::AddOccupierToResource(0, edge1, occupiers);
+  CHECK(check_eq({3, 5, 6}));
+
+  occupiers.clear();
+  DefaultSchedulerCore::AddOccupierToResource(0, edge1, occupiers);
+  CHECK(check_eq({1}));
+  DefaultSchedulerCore::AddOccupierToResource(1, edge2, occupiers);
+  CHECK(check_eq({1, 3}));
+  DefaultSchedulerCore::AddOccupierToResource(2, edge3, occupiers);
+  CHECK(check_eq({1, 4, 6}));
+
+  HloEdge edge0(0.5, nullptr);
+  DefaultSchedulerCore::AddOccupierToResource(2, edge0, occupiers);
+  CHECK(check_eq({1, 3.5, 4.5, 6.5}));
+
+  //========================== Additions & Deletions ===========================
+  occupiers.clear();
+  edge1.SetOriginalLatency(1);
+  edge2.SetOriginalLatency(2);
+  edge3.SetOriginalLatency(3);
+
+  DefaultSchedulerCore::AddOccupierToResource(0, edge1, occupiers);
+  DefaultSchedulerCore::AddOccupierToResource(0, edge2, occupiers);
+  DefaultSchedulerCore::AddOccupierToResource(0, edge3, occupiers);
+  CHECK(check_eq({3, 5, 6}));
+  auto res =
+      DefaultSchedulerCore::DeleteOccupierFromResource(0, edge0, occupiers);
+  CHECK(!res);
+
+  DefaultSchedulerCore::DeleteOccupierFromResource(0, edge1, occupiers);
+  CHECK(check_eq({4, 5}));
+
+  DefaultSchedulerCore::AddOccupierToResource(0, edge1, occupiers);
+  CHECK(check_eq({3, 5, 6}));
+  DefaultSchedulerCore::DeleteOccupierFromResource(0, edge2, occupiers);
+  CHECK(check_eq({2, 4}));
+
+  DefaultSchedulerCore::AddOccupierToResource(0, edge2, occupiers);
+  CHECK(check_eq({3, 5, 6}));
+  DefaultSchedulerCore::DeleteOccupierFromResource(0, edge3, occupiers);
+  CHECK(check_eq({2, 3}));
+
+  DefaultSchedulerCore::AddOccupierToResource(0, edge3, occupiers);
+  CHECK(check_eq({3, 5, 6}));
+
+  // Deletions at irregular current times
+  DefaultSchedulerCore::DeleteOccupierFromResource(1, edge1, occupiers);
+  CHECK(check_eq({4.3333333, 5.3333333}));
+
+  occupiers.clear();
+  DefaultSchedulerCore::AddOccupierToResource(0, edge1, occupiers);
+  DefaultSchedulerCore::AddOccupierToResource(0, edge2, occupiers);
+  DefaultSchedulerCore::AddOccupierToResource(0, edge3, occupiers);
+  DefaultSchedulerCore::DeleteOccupierFromResource(4, edge1, occupiers);
+  CHECK(check_eq({5, 6}));
+
+  occupiers.clear();
+  DefaultSchedulerCore::AddOccupierToResource(0, edge1, occupiers);
+  DefaultSchedulerCore::AddOccupierToResource(0, edge2, occupiers);
+  DefaultSchedulerCore::AddOccupierToResource(0, edge3, occupiers);
+  DefaultSchedulerCore::DeleteOccupierFromResource(4, edge2, occupiers);
+  CHECK(check_eq({3, 5.5}));
+
+  occupiers.clear();
+  DefaultSchedulerCore::AddOccupierToResource(0, edge1, occupiers);
+  DefaultSchedulerCore::AddOccupierToResource(0, edge2, occupiers);
+  DefaultSchedulerCore::AddOccupierToResource(0, edge3, occupiers);
+  DefaultSchedulerCore::DeleteOccupierFromResource(4, edge3, occupiers);
+  CHECK(check_eq({3, 4.5}));
+}
+
+TEST_F(LatencyHidingSchedulerTest, DepthPressureReduction) {
+  absl::string_view hlo_string = R"(
+    HloModule serial_collective_permute_test, is_scheduled=true
+    ENTRY after_optimizations_test {
+    %parameter.1 = bf16[8]{0} parameter(0)
+    %parameter.2 = bf16[8]{0} parameter(1)
+    %parameter.3 = bf16[8]{0} parameter(2)
+    %parameter.4 = bf16[8]{0} parameter(3)
+    %collective-permute.2 = bf16[8]{0} collective-permute(parameter.1), source_target_pairs={{0,1},{1,2},{2,3}}
+    %a = bf16[8]{0} add(collective-permute.2, parameter.2)
+    %b = bf16[8]{0} add(a, parameter.3)
+    %c = bf16[8]{0} add(b, parameter.4)
+    %d = bf16[8]{0} add(c, parameter.4)
+    %c1 = bf16[8]{0} copy(d)
+    %e = bf16[8]{0} add(d, parameter.3)
+    %c0 = bf16[8]{0} copy(e)
+    %f = bf16[8]{0} add(e, parameter.2)
+    %h = bf16[8]{0} add(c0, b)
+    %g = bf16[8]{0} add(c1, c)
+    %i = bf16[8]{0} add(f, a)
+    ROOT %t = (bf16[8]{0}, bf16[8]{0}, bf16[8]{0}, bf16[8]{0}) tuple(f, g, h, i)
+  }
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  HloSchedule& module_schedule = hlo_module->schedule();
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  HloComputation* entry_computation = hlo_module->entry_computation();
+  std::vector<HloInstruction*> original_instruction_sequence =
+      module_schedule.sequence(entry_computation).instructions();
+  auto sched_config = GetDefaultSchedConfig();
+  sched_config.memory_limit = 0;
+  sched_config.depth_based_memory_pressure_reduction = true;
+  EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config).ok());
+  std::vector<HloInstruction*> new_instruction_sequence =
+      module_schedule.sequence(entry_computation).instructions();
+
+  if (VLOG_IS_ON(1)) {
+    for (auto* new_i : new_instruction_sequence) {
+      VLOG(1) << new_i->ToString();
+    }
+  }
+
+  const HloInstruction* f = FindInstruction(hlo_module.get(), "f");
+  const HloInstruction* g = FindInstruction(hlo_module.get(), "g");
+  EXPECT_LT(PositionInVector(new_instruction_sequence, g),
+            PositionInVector(new_instruction_sequence, f));
+}
 }  // namespace xla

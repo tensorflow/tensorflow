@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -53,7 +54,7 @@ Status MlirToXlaComputation(mlir::ModuleOp module,
     if (failed(pm.run(module))) {
       VLOG(1) << "MHLO->HLO lowering passes failed.";
       module->dump();
-      return FromAbslStatus(diagnostic_handler.ConsumeStatus());
+      return diagnostic_handler.ConsumeStatus();
     }
 
     VLOG(5) << "MHLO module after lowering, before HLO import ";
@@ -74,6 +75,9 @@ Status MlirToXlaComputation(mlir::ModuleOp module,
 StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseMlirModuleString(
     absl::string_view mlir_module_str, mlir::MLIRContext& context) {
   mlir::OwningOpRef<mlir::ModuleOp> module;
+  mlir::DialectRegistry registry;
+  mlir::func::registerAllExtensions(registry);
+  context.appendDialectRegistry(registry);
   context.loadDialect<mlir::func::FuncDialect>();
   context.loadDialect<mlir::mhlo::MhloDialect>();
   context.loadDialect<mlir::chlo::ChloDialect>();
@@ -84,12 +88,12 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseMlirModuleString(
       llvm::StringRef(mlir_module_str.data(), mlir_module_str.size()),
       &context);
   if (!module) {
-    return FromAbslStatus(diagnostic_handler.ConsumeStatus());
+    return diagnostic_handler.ConsumeStatus();
   }
   if (failed(module->verifyInvariants())) {
     VLOG(1) << "MLIR verification failed.";
     module->dump();
-    return FromAbslStatus(diagnostic_handler.ConsumeStatus());
+    return diagnostic_handler.ConsumeStatus();
   }
   return std::move(module);
 }

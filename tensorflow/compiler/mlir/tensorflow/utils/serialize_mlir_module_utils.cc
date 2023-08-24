@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 
+#include <string>
+#include <utility>
+
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project

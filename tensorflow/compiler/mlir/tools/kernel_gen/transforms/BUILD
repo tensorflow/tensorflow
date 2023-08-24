@@ -7,7 +7,7 @@ load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
 )
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -19,7 +19,7 @@ cc_library(
     name = "utils",
     srcs = ["utils.cc"],
     hdrs = ["utils.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -31,7 +31,7 @@ cc_library(
     name = "tf_framework_legalize_to_llvm",
     srcs = ["tf_framework_legalize_to_llvm.cc"],
     hdrs = ["rewriters.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":utils",
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
@@ -47,7 +47,7 @@ cc_library(
     name = "bufferize",
     srcs = ["bufferize.cc"],
     hdrs = ["rewriters.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
         "@llvm-project//mlir:ArithDialect",
@@ -66,7 +66,7 @@ cc_library(
     name = "embed_tf_framework",
     srcs = ["embed_tf_framework.cc"],
     hdrs = ["rewriters.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
         "@llvm-project//mlir:ControlFlowDialect",
@@ -79,7 +79,7 @@ cc_library(
 
 gentbl_cc_library(
     name = "kernel_gen_passes_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [(
         [
             "-gen-pass-decls",
@@ -106,12 +106,12 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
         "//tensorflow/compiler/xla:debug_options_flags",
+        "//tensorflow/compiler/xla:xla_proto_cc",
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/xla/mlir_hlo:gml_st",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
         "//tensorflow/compiler/xla/mlir_hlo:mhlo_passes",
         "//tensorflow/compiler/xla/mlir_hlo:type_conversion",
-        "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service/gpu:gpu_asm_opts_util",
         "//tensorflow/compiler/xla/service/gpu:target_constants",
         "//tensorflow/compiler/xla/service/gpu/llvm_gpu_backend",
@@ -187,7 +187,7 @@ cc_library(
         "tf_to_jit_invocations.cc",
     ],
     hdrs = ["passes.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":bufferize",  # buildcleaner: keep
         ":embed_tf_framework",  # buildcleaner: keep

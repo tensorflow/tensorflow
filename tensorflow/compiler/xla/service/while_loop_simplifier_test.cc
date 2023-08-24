@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/while_loop_simplifier.h"
 
+#include <string>
+
+#include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
@@ -24,6 +27,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
+#include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
@@ -948,6 +953,63 @@ TEST_F(WhileLoopSimplifierTest, LoopWithUnusedNonPassthroughElementSimplified) {
   EXPECT_TRUE(HloDCE().Run(m.get()).ok());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               AllOf(op::While(), op::Shape("(s32[], s32[])")));
+}
+
+// Check that we can remove unused loop params even if the loop contains
+// sends/recvs.
+TEST_F(WhileLoopSimplifierTest, RemoveUnusedParamsDespiteSendRecv) {
+  const std::string hlo_string = R"(
+  HloModule RemoveUnusedParamsDespiteSendRecv
+  RemoveUnusedParamsDespiteSendRecv.body {
+    loop_var = (s32[], s32[], s32[]) parameter(0)
+    get-tuple-element.1 = s32[] get-tuple-element((s32[], s32[],
+      s32[]) loop_var), index=0
+    get-tuple-element.2 = s32[] get-tuple-element((s32[], s32[],
+      s32[]) loop_var), index=1
+    constant.1 = s32[] constant(1)
+    token.1 = token[] after-all()
+    send.1 = (s32[], u32[], token[]) send(constant.1, token.1), channel_id=42, is_host_transfer=true
+    send-done.1 = token[] send-done(send.1), channel_id=42, is_host_transfer=true
+    recv.1 = (s32[], u32[], token[]) recv(send-done.1), channel_id=43, is_host_transfer=true
+    add = s32[] add(s32[] get-tuple-element.2, s32[] constant.1)
+    recv-done.1 = (s32[], token[]) recv-done(recv.1), channel_id=43, is_host_transfer=true
+    get-tuple-element.3 = s32[] get-tuple-element((s32[], s32[], s32[])
+      loop_var), index=2
+    ROOT tuple = (s32[], s32[], s32[]) tuple(s32[] get-tuple-element.1,
+      s32[] add, s32[] get-tuple-element.3)
+  }
+  RemoveUnusedParamsDespiteSendRecv.loop_condition {
+    constant.2 = s32[] constant(0)
+    param0 = (s32[], s32[], s32[]) parameter(0)
+    get-tuple-element = s32[] get-tuple-element((s32[], s32[], s32[]) param0),
+      index=2
+    ROOT equal-to = pred[] compare(s32[] constant.2, s32[] get-tuple-element), direction=EQ
+  }
+  ENTRY RemoveUnusedParamsDespiteSendRecv {
+    x = s32[] parameter(0)
+    constant.3 = s32[] constant(0)
+    y = s32[] parameter(1)
+    tuple.1 = (s32[], s32[], s32[]) tuple(s32[] x, s32[] constant.3,
+      s32[] y)
+    ROOT while = (s32[], s32[], s32[]) while((s32[], s32[], s32[]) tuple.1),
+      condition=RemoveUnusedParamsDespiteSendRecv.loop_condition,
+      body=RemoveUnusedParamsDespiteSendRecv.body
+  }
+  )";
+
+  auto m = ParseAndReturnVerifiedModule(hlo_string).value();
+  ASSERT_TRUE(WhileLoopSimplifier().Run(m.get()).value());
+  HloInstruction* new_while = FindFirstWhile(m.get());
+  Shape new_while_shape = ParseShape("(s32[], s32[])").value();
+  EXPECT_TRUE(ShapeUtil::Equal(new_while->shape(), new_while_shape));
+  EXPECT_TRUE(ShapeUtil::Equal(
+      new_while->while_body()->root_instruction()->shape(), new_while_shape));
+  EXPECT_TRUE(ShapeUtil::Equal(
+      new_while->while_body()->parameter_instruction(0)->shape(),
+      new_while_shape));
+  EXPECT_TRUE(ShapeUtil::Equal(
+      new_while->while_condition()->parameter_instruction(0)->shape(),
+      new_while_shape));
 }
 
 }  // namespace

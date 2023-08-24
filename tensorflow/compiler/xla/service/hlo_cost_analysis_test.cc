@@ -1341,6 +1341,16 @@ TEST_F(HloCostAnalysisTest, MultioutputScatter) {
   EXPECT_EQ(analysis.output_bytes_accessed(*root), 2 * sizeof(float) * 2 * 3);
 }
 
+TEST_F(HloCostAnalysisTest, GetShapeSizeIgnoreUnsupportedShape) {
+  // Build a sparse array shape.
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  *shape.mutable_layout() =
+      LayoutUtil::MakeLayout({1, 0}, {DIM_DENSE, DIM_COMPRESSED});
+  HloCostAnalysis analysis(ShapeSize);
+  EXPECT_TRUE(LayoutUtil::IsSparseArray(shape));
+  EXPECT_EQ(0, analysis.GetShapeSize(shape));
+}
+
 TEST_F(FusionCostAnalysis, Broadcast) {
   absl::string_view hlo_string = R"(
 HloModule m
@@ -1634,6 +1644,5 @@ TEST(HloCostAnalysisProperties, SetValues) {
   p["bar"] += 101;
   EXPECT_EQ(101, p["bar"]);
 }
-
 }  // namespace
 }  // namespace xla

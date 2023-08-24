@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <optional>
+#include <vector>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"

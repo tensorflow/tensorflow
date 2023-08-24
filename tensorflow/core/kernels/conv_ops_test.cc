@@ -330,6 +330,11 @@ TEST_F(FusedResizePadConvOpTest, NoResizeIdentityComparativeHalf) {
                                               1, "SAME", DT_HALF);
 }
 
+TEST_F(FusedResizePadConvOpTest, NoResizeIdentityComparativeBFloat16) {
+  CompareFusedPadOnlyAndSeparate<bfloat16>(10, 10, 1, 0, 0, 1, 1, "REFLECT", 1,
+                                           "SAME", DT_BFLOAT16);
+}
+
 TEST_F(FusedResizePadConvOpTest, NoResizeIdentityComparativeFloat) {
   CompareFusedPadOnlyAndSeparate<float>(10, 10, 1, 0, 0, 1, 1, "REFLECT", 1,
                                         "SAME", DT_FLOAT);
@@ -805,13 +810,13 @@ class FusedConv2DOpTest : public OpsTestBase {
       Padding padding_type;
       ASSERT_TRUE(GetPaddingFromString(padding, &padding_type).ok());
       int64_t oh, oh_padding;
-      ASSERT_TRUE(
-          GetWindowedOutputSize(h, kh, stride, padding_type, &oh, &oh_padding)
-              .ok());
+      ASSERT_TRUE(GetWindowedOutputSize(h, kh, /*dilation_rate=*/1, stride,
+                                        padding_type, &oh, &oh_padding)
+                      .ok());
       int64_t ow, ow_padding;
-      ASSERT_TRUE(
-          GetWindowedOutputSize(w, kw, stride, padding_type, &ow, &ow_padding)
-              .ok());
+      ASSERT_TRUE(GetWindowedOutputSize(w, kw, /*dilation_rate=*/1, stride,
+                                        padding_type, &ow, &ow_padding)
+                      .ok());
       TensorShape shape;
       TF_EXPECT_OK(
           ShapeFromFormatWithStatus(FORMAT_NCHW_VECT_C, n, oh, ow, oc, &shape));

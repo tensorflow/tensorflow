@@ -23,7 +23,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import random_ops
@@ -35,7 +35,7 @@ from tensorflow.python.training import saver as saver_lib
 
 
 def initialized_value(var):
-  return control_flow_ops.cond(
+  return cond.cond(
       variable_v1.is_variable_initialized(var), var.read_value,
       lambda: var.initial_value)
 

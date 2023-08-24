@@ -6,12 +6,12 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     features = [
         # Required since headers are not self-contained.
         "-parse_headers",
     ],
-    licenses = ["notice"],
 )
 
 cc_library(
@@ -24,7 +24,7 @@ cc_library(
     # specialization there causing build breakages.  This must be added here
     # as "defines" so that the header is excluded in all dependent targets.
     # TODO(b/238649163): remove this once no longer necessary.
-    defines = ["GEMM_KERNEL_H"],
+    defines = ["EIGEN_USE_AVX512_GEMM_KERNELS=0"],
     deps = [
         "//tensorflow/tsl/framework/convolution:eigen_convolution_helpers",
     ],
@@ -97,7 +97,7 @@ exports_files(
 )
 
 tsl_cc_test(
-    name = "spatial_convolutions_test",
+    name = "eigen_spatial_convolutions_test",
     size = "small",
     srcs = [
         "eigen_spatial_convolutions_test.cc",

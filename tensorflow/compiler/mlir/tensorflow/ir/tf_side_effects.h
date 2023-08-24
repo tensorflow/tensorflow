@@ -104,8 +104,21 @@ struct NcclAllReduceOrdering
   StringRef getName() final { return "NcclAllReduceOrdering"; }
 };
 
+struct GlobalIterId : public ::mlir::SideEffects::Resource::Base<GlobalIterId> {
+  StringRef getName() final { return "GlobalIterId"; }
+};
+
 struct XlaLaunch : public ::mlir::SideEffects::Resource::Base<XlaLaunch> {
   StringRef getName() final { return "XlaLaunch"; }
+};
+
+struct WriteTrainingPredictions
+    : public ::mlir::SideEffects::Resource::Base<WriteTrainingPredictions> {
+  StringRef getName() final { return "WriteTrainingPredictions"; }
+};
+
+struct _XlaRun : public ::mlir::SideEffects::Resource::Base<_XlaRun> {
+  StringRef getName() final { return "_XlaRun"; }
 };
 
 // Returns true iff resource type with given ID is only self-dependent, i.e.,

@@ -21,6 +21,7 @@ import numpy as np
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.platform import test
@@ -35,7 +36,7 @@ class BarrierTest(test.TestCase):
           shapes=((1, 2, 3), (8,)),
           shared_name="B",
           name="B")
-    self.assertTrue(isinstance(b.barrier_ref, ops.Tensor))
+    self.assertTrue(isinstance(b.barrier_ref, tensor.Tensor))
     self.assertProtoEquals("""
       name:'B' op:'Barrier'
       attr {

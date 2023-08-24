@@ -17,8 +17,8 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/profiler/utils/derived_timeline.h"
-#include "tensorflow/core/profiler/utils/group_events.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
+#include "tensorflow/tsl/profiler/utils/group_events.h"
 #include "tensorflow/tsl/profiler/utils/preprocess_xplane.h"
 #include "tensorflow/tsl/profiler/utils/xplane_utils.h"
 
@@ -43,13 +43,13 @@ void PreprocessSingleHostXSpace(XSpace* space, bool step_grouping,
       }
     }
 
-    EventForest event_forest;
+    tsl::profiler::EventForest event_forest;
     if (isTpu) {
       // group TPU events
       GroupTpuEventsOSS(space, device_traces, &event_forest);
     } else {
       // group GPU events
-      GroupTfEvents(space, &event_forest);
+      tsl::profiler::GroupTfEvents(space, &event_forest);
     }
 
     if (derived_timeline) {

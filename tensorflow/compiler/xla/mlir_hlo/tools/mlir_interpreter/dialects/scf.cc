@@ -56,7 +56,10 @@ llvm::SmallVector<InterpreterValue> scfFor(InterpreterState& state,
 
   auto& region = op->getRegion(0);
   for (; lb < ub; lb += step) {
-    SmallVector<InterpreterValue> inputs{{lb}};
+    SmallVector<InterpreterValue> inputs;
+    dispatchScalarType(op.getLowerBound().getType(), [&](auto dummy) {
+      inputs.push_back(InterpreterValue{static_cast<decltype(dummy)>(lb)});
+    });
     llvm::copy(results, std::back_inserter(inputs));
     results = interpret(state, region, inputs);
     if (state.hasFailure()) break;

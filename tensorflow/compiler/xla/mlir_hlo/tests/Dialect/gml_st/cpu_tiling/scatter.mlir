@@ -1,5 +1,4 @@
-// RUN: mlir-hlo-opt %s --split-input-file \
-// RUN: --gml-st-cpu-tiling-pipeline=enable-fusion-clusters=false | \
+// RUN: mlir-hlo-opt %s --split-input-file --gml-st-cpu-tiling-pipeline | \
 // RUN: FileCheck %s
 
 func.func @scatter_fusion(%indices: tensor<?x2xindex>,

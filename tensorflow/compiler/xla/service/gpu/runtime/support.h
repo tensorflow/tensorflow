@@ -16,8 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_RUNTIME_SUPPORT_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_RUNTIME_SUPPORT_H_
 
+#include <string>
+#include <string_view>
 #include <utility>
 
+#include "absl/strings/str_cat.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/custom_call_encoding.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
@@ -49,7 +52,7 @@ inline constexpr runtime::CustomCall::RuntimeChecks checks =  // NOLINT
 
 template <typename T>
 absl::StatusOr<T> ToAbsl(StatusOr<T> status_or) {
-  if (!status_or.ok()) return ToAbslStatus(status_or.status());
+  if (!status_or.ok()) return status_or.status();
   return std::move(status_or).value();
 }
 
@@ -96,10 +99,20 @@ inline StatusOr<GemmConfig> GetGemmConfig(
     const runtime::StridedMemrefView& out, int64_t algorithm, double alpha_real,
     double alpha_imag, double beta, absl::Span<const int64_t> lhs_batch,
     absl::Span<const int64_t> lhs_contract, absl::Span<const int64_t> rhs_batch,
-    absl::Span<const int64_t> rhs_contract, int64_t compute_precision) {
+    absl::Span<const int64_t> rhs_contract, int64_t compute_precision,
+    const std::optional<runtime::StridedMemrefView> c = std::nullopt,
+    const std::optional<runtime::StridedMemrefView>& bias = std::nullopt) {
+  Shape c_shape = ToShape(c.value_or(out));
+  Shape bias_shape;
+  Shape* bias_shape_ptr = nullptr;
+  if (bias) {
+    bias_shape = ToShape(*bias);
+    bias_shape_ptr = &bias_shape;
+  }
   return GemmConfig::For(ToShape(lhs), lhs_batch, lhs_contract, ToShape(rhs),
-                         rhs_batch, rhs_contract, ToShape(out), alpha_real,
-                         alpha_imag, beta, algorithm, compute_precision);
+                         rhs_batch, rhs_contract, c_shape, bias_shape_ptr,
+                         ToShape(out), alpha_real, alpha_imag, beta, algorithm,
+                         compute_precision);
 }
 
 // adds Dot Dimension Attribute encodings for calls to Gemm and cuBLASLt
@@ -116,14 +129,17 @@ inline void PopulateDotDimsAttrEncoding(
           .Add("rhs_contract", &DotDimsAttr::getRhsContractingDimensions));
 }
 
-class CapturingCudaGraph {
- public:
-  explicit CapturingCudaGraph(bool capturing) : capturing_(capturing) {}
-  bool capturing() { return capturing_; }
+// Appends to `diagnostic_engine` a handler that appends all emitted errors to
+// the `diagnostic` string. If `append_annotation_stack` is true, it will append
+// current profiler annotation stack to the diagnostic message (annotation used
+// in Xprof).
+void AppendDiagnosticToString(runtime::DiagnosticEngine& diagnostic_engine,
+                              std::string* diagnostic,
+                              bool append_annotation_stack = false);
 
- private:
-  bool capturing_ = false;
-};
+// Sets the current tracing scope that will be added to all emitted diagnostics.
+void SetCurrentTracingScope(std::string_view scope);
+void ResetCurrentTracingScope();
 
 }  // namespace gpu
 }  // namespace xla

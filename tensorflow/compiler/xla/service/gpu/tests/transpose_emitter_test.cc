@@ -272,5 +272,31 @@ ENTRY entry {
   EXPECT_TRUE(RunAndCompareNoHloPasses(hlo, ErrorSpec{1e-3}));
 }
 
+TEST_F(TransposeEmitterTest, InconsistentTransposes) {
+  const char* hlo = R"(
+HloModule module
+
+fusion {
+  p0 = f32[32, 64] parameter(0)
+  p1 = f32[64, 32] parameter(1)
+  t0 = f32[64, 32] transpose(p0), dimensions={1,0}
+  t1 = f32[32, 64] transpose(p1), dimensions={1,0}
+  ROOT tuple = (f32[64, 32], f32[32, 64]) tuple(t0, t1)
+}
+
+ENTRY module {
+  p0 = f32[32, 64] parameter(0)
+  p1 = f32[64, 32] parameter(1)
+  ROOT fusion = (f32[64, 32], f32[32, 64]) fusion(p0, p1), kind=kLoop, calls=fusion
+}
+  )";
+  CompileAndVerifyIr(hlo, MakePlatformSpecificLlvm(R"(
+// CHECK-NOT: call void BARRIER()
+  )"),
+                     /*match_optimized_ir=*/true,
+                     /*run_optimization_passes=*/false);
+  EXPECT_TRUE(RunAndCompareNoHloPasses(hlo, ErrorSpec{1e-3}));
+}
+
 }  // namespace
 }  // namespace xla

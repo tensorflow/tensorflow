@@ -15,6 +15,11 @@ limitations under the License.
 
 #include <memory>
 
+// Must be included first
+// clang-format off
+#include "tensorflow/tsl/python/lib/core/numpy.h" //NOLINT
+// clang-format on
+
 #include "Python.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
@@ -159,6 +164,13 @@ TFE_InputTensorHandles InputTFE_InputTensorHandles(
                   i, " is type: ", elem->ob_type->tp_name)
                   .c_str());
         }
+      } else if (tensorflow::swig::IsTensorProtocol(elem) &&
+                 tensorflow::swig::IsCoreTypeValue(elem)) {
+        // For WeakTensors, fetch the underlying Tensors.
+        // This is placed after the branches `IsEagerTensorSlow` and
+        // `EagerTensor_CheckExact` to ensure those paths are quick.
+        elem = PyObject_CallMethod(elem, "__tf_tensor__", nullptr);
+        (input_tensor_handles)[i] = EagerTensor_Handle(elem);
       } else if (tensorflow::swig::IsTensor(elem)) {
         // If it isnt an EagerTensor, but is still a Tensor, it must be a graph
         // tensor.
@@ -515,7 +527,7 @@ static py::bytes TFE_GetCompilerIr(py::handle& ctx,
 
   if (!hlo_str.ok()) {
     ThrowValueError(absl::StrFormat("Failed getting HLO text: '%s'",
-                                    hlo_str.status().error_message())
+                                    hlo_str.status().message())
                         .c_str());
   }
   return py::bytes(*hlo_str);
@@ -621,6 +633,9 @@ class EagerContextThreadLocalDataWrapper {
 // are only assigning this to functions that return opaque types.
 
 PYBIND11_MODULE(_pywrap_tfe, m) {
+  // Numpy initialization code for array functions.
+  tsl::ImportNumpy();
+
   py::class_<TFE_Executor> TFE_Executor_class(m, "TFE_Executor");
   py::class_<TFE_ContextOptions> TFE_ContextOptions_class(m,
                                                           "TFE_ContextOptions");
@@ -818,6 +833,14 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
               tensorflow::make_safe(TF_NewStatus());
           TFE_ContextGetFunctionDef(tensorflow::InputTFE_Context(ctx),
                                     function_name, &buf, status.get());
+          tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+        });
+  m.def("TFE_ContextGetGraphDebugInfo",
+        [](py::handle& ctx, const char* function_name, TF_Buffer& buf) {
+          tensorflow::Safe_TF_StatusPtr status =
+              tensorflow::make_safe(TF_NewStatus());
+          TFE_ContextGetGraphDebugInfo(tensorflow::InputTFE_Context(ctx),
+                                       function_name, &buf, status.get());
           tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
         });
   m.def("TFE_ContextRemoveFunction", [](py::handle& ctx, const char* name) {
@@ -1118,7 +1141,9 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
         [](const py::handle& context, const py::handle& handles) {
           return tensorflow::TFE_Py_PackEagerTensors_wrapper(context, handles);
         });
-  m.def("TFE_Py_SetEagerTensorProfiler", &TFE_Py_SetEagerTensorProfiler);
+  m.def("TFE_Py_SetEagerTensorProfiler", [](const py::handle& o) {
+    return tensorflow::PyoOrThrow(TFE_Py_SetEagerTensorProfiler(o.ptr()));
+  });
   m.def("TFE_Py_RegisterJVPFunction", [](const py::handle& o) {
     return tensorflow::PyoOrThrow(TFE_Py_RegisterJVPFunction(o.ptr()));
   });

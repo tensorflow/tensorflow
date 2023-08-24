@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <cctype>
+#include <iterator>
+#include <memory>
 #include <utility>
 
 #include "mhlo/IR/hlo_ops.h"

@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_query.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_query.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/platform/errors.h"
 
@@ -203,8 +203,7 @@ StatusOr<bool> ConvertAsyncCollectivesToSync::RunOnComputation(
     return false;
   }
 
-  TF_RETURN_IF_ERROR(
-      ReplaceAsyncInstructionsWithSync(computation, async_pairs));
+  TF_RETURN_IF_ERROR(ConvertAsyncInstructionsToSync(computation, async_pairs));
   return true;
 }
 

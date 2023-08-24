@@ -379,6 +379,7 @@ class AutoMixedPrecisionListsMkl : public AutoMixedPrecisionLists {
                                      "DepthwiseConv2dNativeBackpropFilter",
                                      "DepthwiseConv2dNativeBackpropInput",
                                      "MatMul",
+                                     "FusedPadConv2D",
                                      "BatchMatMul",
                                      "BatchMatMulV2",
                                      "Einsum"};

@@ -18,7 +18,9 @@ limitations under the License.
 #define TENSORFLOW_TSL_PROFILER_RPC_CLIENT_CAPTURE_PROFILE_H_
 
 #include <string>
+#include <variant>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/profiler/protobuf/profiler_options.pb.h"
 #include "tensorflow/tsl/profiler/protobuf/profiler_service.pb.h"
@@ -44,6 +46,14 @@ Status Monitor(const std::string& service_addr, int duration_ms,
 Status CaptureRemoteTrace(const std::string& logdir, int num_tracing_attempts,
                           tensorflow::RemoteProfilerSessionManagerOptions& opts,
                           bool is_cloud_tpu_session);
+
+// Generates RemoteProfilerSessionManagerOptions from inputs and calls
+// CaptureRemoteTrace.
+Status CaptureRemoteTrace(
+    const char* service_addr, const char* logdir, const char* worker_list,
+    bool include_dataset_ops, int duration_ms, int num_tracing_attempts,
+    const absl::flat_hash_map<std::string, std::variant<int, std::string>>&
+        options);
 
 }  // namespace profiler
 }  // namespace tsl

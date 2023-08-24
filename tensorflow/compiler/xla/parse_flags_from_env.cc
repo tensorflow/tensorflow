@@ -207,25 +207,9 @@ bool ParseFlagsFromEnvAndDieIfUnknown(absl::string_view envvar,
     // Skip the first argv, which is the fake argv[0].
     auto unknown_flags = absl::MakeSpan(env_argv->argv);
     unknown_flags.remove_prefix(1);
-
-    // Some flags are set on XLA_FLAGS, others on TF_XLA_FLAGS.  If we find an
-    // unrecognized flag, suggest the alternative.
-    std::string alternate_envvar;
-    if (envvar == "TF_XLA_FLAGS") {
-      alternate_envvar = "XLA_FLAGS";
-    } else if (envvar == "XLA_FLAGS") {
-      alternate_envvar = "TF_XLA_FLAGS";
-    }
-    std::string did_you_mean;
-    if (!alternate_envvar.empty()) {
-      did_you_mean = absl::StrFormat(
-          "\nPerhaps you meant to specify these on the %s envvar?",
-          alternate_envvar);
-    }
-
     LOG(QFATAL) << "Unknown flag" << (unknown_flags.size() > 1 ? "s" : "")
-                << " in " << envvar << ": " << absl::StrJoin(unknown_flags, " ")
-                << did_you_mean;
+                << " in " << envvar << ": "
+                << absl::StrJoin(unknown_flags, " ");
     return false;
   }
   return result;

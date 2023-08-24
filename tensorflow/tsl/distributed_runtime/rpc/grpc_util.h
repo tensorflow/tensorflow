@@ -103,16 +103,16 @@ inline ::grpc::Status ToGrpcStatus(const Status& s) {
   if (s.ok()) {
     return ::grpc::Status::OK;
   } else {
-    if (s.error_message().size() > 3072 /* 3k bytes */) {
+    if (s.message().size() > 3072 /* 3k bytes */) {
       // TODO(b/62947679): Remove truncation once the gRPC issue is resolved.
-      string scratch =
-          strings::Printf("%.3072s ... [truncated]", s.error_message().c_str());
+      string scratch = strings::Printf("%.3072s ... [truncated]",
+                                       tsl::NullTerminatedMessage(s));
       LOG(ERROR) << "Truncated error message: " << s;
       return ::grpc::Status(static_cast<::grpc::StatusCode>(s.code()), scratch,
                             SerializePayloads(s));
     }
     return ::grpc::Status(static_cast<::grpc::StatusCode>(s.code()),
-                          s.error_message(), SerializePayloads(s));
+                          std::string(s.message()), SerializePayloads(s));
   }
 }
 

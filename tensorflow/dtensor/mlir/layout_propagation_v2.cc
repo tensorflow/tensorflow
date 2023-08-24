@@ -14,10 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <deque>
 #include <iterator>
+#include <memory>
 #include <optional>
 #include <queue>
+#include <set>
 #include <string>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/types/optional.h"
@@ -39,6 +43,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
+#include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
@@ -52,6 +57,7 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dialect.h"
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dtensor_attributes.h"
 #include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
+#include "tensorflow/dtensor/mlir/dtensor_send_recv.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/op_utils.h"
@@ -72,10 +78,7 @@ constexpr int kLayoutPropagationMaxStages = 3;
 
 bool IsProducerResourceOpWithEmptyLayout(const mlir::Value& producer_value,
                                          const Layout& producer) {
-  return (
-      producer.IsEmpty() &&
-      llvm::isa<mlir::TF::ResourceType>(
-          producer_value.getType().cast<mlir::TensorType>().getElementType()));
+  return (producer.IsEmpty() && IsResourceType(producer_value));
 }
 
 bool AllOpResultsHaveLayouts(
@@ -297,12 +300,15 @@ StatusOr<Layout> MergeLayouts(
     }
   }
   FilterkAnySpecs(proposed_specs);
-  return Layout::GetLayout(proposed_specs, mesh);
+  // Parted layout is propagated from producer side to consumer side, so when
+  // merging the layout with producer layout, take the producer layout type into
+  // account.
+  return Layout::GetLayout(producer->type(), proposed_specs, mesh);
 }
 
 mlir::LogicalResult InsertLayoutsForDTensorLayout(
     mlir::ModuleOp& module,
-    llvm::DenseMap<mlir::Value, absl::optional<Layout>>& producer_request,
+    llvm::DenseMap<mlir::Value, std::optional<Layout>>& producer_request,
     llvm::DenseSet<mlir::Value>& is_updated,
     llvm::DenseSet<mlir::Value>& is_locked) {
   return mlir::failure(
@@ -330,7 +336,7 @@ mlir::LogicalResult InsertInitialLayoutsFromComputeLayout(
     mlir::ModuleOp module,
     const llvm::DenseMap<mlir::Value, std::vector<mlir::OpOperand*>>& consumers,
     const llvm::DenseMap<mlir::OpOperand*, std::vector<mlir::Value>>& producers,
-    llvm::DenseMap<mlir::Value, absl::optional<Layout>>& producer_request,
+    llvm::DenseMap<mlir::Value, std::optional<Layout>>& producer_request,
     llvm::DenseMap<mlir::Value, mlir::DenseMap<mlir::OpOperand*, Layout>>&
         consumer_requests,
     llvm::DenseSet<mlir::Value>& is_updated) {
@@ -367,7 +373,7 @@ mlir::LogicalResult InsertInitialLayoutsFromComputeLayout(
             /*output_layouts=*/llvm::DenseMap<int, Layout>());
     if (!forward_result.ok()) {
       op->emitOpError() << "ComputeLayoutForward error: "
-                        << forward_result.status().error_message();
+                        << forward_result.status().message();
       return mlir::WalkResult::interrupt();
     }
     StatusOr<llvm::DenseMap<int, Layout>> backward_result =
@@ -376,7 +382,7 @@ mlir::LogicalResult InsertInitialLayoutsFromComputeLayout(
             /*output_layouts=*/llvm::DenseMap<int, Layout>());
     if (!backward_result.ok()) {
       op->emitOpError() << "ComputeLayoutBackward error: "
-                        << backward_result.status().error_message();
+                        << backward_result.status().message();
       return mlir::WalkResult::interrupt();
     }
 
@@ -421,7 +427,7 @@ mlir::LogicalResult InsertInitialLayouts(
     const llvm::DenseMap<mlir::OpOperand*, std::vector<mlir::Value>>& producers,
     llvm::DenseMap<mlir::Value, mlir::DenseMap<mlir::OpOperand*, Layout>>&
         consumer_request,
-    llvm::DenseMap<mlir::Value, absl::optional<Layout>>& producer_request,
+    llvm::DenseMap<mlir::Value, std::optional<Layout>>& producer_request,
     llvm::DenseSet<mlir::Value>& is_updated,
     llvm::DenseSet<mlir::Value>& is_locked) {
   std::queue<mlir::Operation*> operations;
@@ -439,7 +445,7 @@ mlir::LogicalResult InsertInitialLayouts(
 mlir::LogicalResult MergeAndGetUpdatedLayouts(
     const llvm::DenseSet<mlir::Value>& is_locked,
     llvm::DenseSet<mlir::Value>& is_updated,
-    llvm::DenseMap<mlir::Value, absl::optional<Layout>>& producer_request,
+    llvm::DenseMap<mlir::Value, std::optional<Layout>>& producer_request,
     llvm::DenseMap<mlir::Value, mlir::DenseMap<mlir::OpOperand*, Layout>>&
         consumer_requests,
     llvm::DenseMap<mlir::Value, Layout>& merged_layouts) {
@@ -461,8 +467,7 @@ mlir::LogicalResult MergeAndGetUpdatedLayouts(
     auto merged =
         MergeLayouts(value, producer_layout, consumer_requests[value]);
     if (!merged.ok())
-      return value.getDefiningOp()->emitOpError()
-             << merged.status().error_message();
+      return value.getDefiningOp()->emitOpError() << merged.status().message();
 
     auto current_layout = merged_layouts.find(value);
     if (current_layout == merged_layouts.end() ||
@@ -477,55 +482,21 @@ mlir::LogicalResult MergeAndGetUpdatedLayouts(
 }
 
 // Finds the most sharded merged layout given `layouts`.
-mlir::LogicalResult GetMostShardedLayout(llvm::ArrayRef<Layout> layouts,
-                                         mlir::Location location,
-                                         absl::optional<Layout>* out) {
+mlir::LogicalResult GetMostShardedLayoutHelper(llvm::ArrayRef<Layout> layouts,
+                                               mlir::Location location,
+                                               std::optional<Layout>* out) {
   // If there are no layouts to merge, leave the output empty.
-  if (layouts.empty()) return mlir::success();
-
-  absl::optional<Layout> layout;
-  std::map<std::string, std::set<int>> layout_map;
-  for (const Layout& layout : layouts) {
-    for (int i = 0; i < layout.rank(); ++i) {
-      const std::string& mesh_dim = layout.dim(i).sharding_spec();
-      if (mesh_dim == Layout::kUnshardedDim) continue;
-
-      layout_map[mesh_dim].insert(i);
-    }
+  if (layouts.empty()) {
+    return mlir::success();
   }
-
-  for (auto& it : layout_map)
-    if (it.second.size() > 1) it.second.clear();
-
-  std::map<int, std::set<std::string>> dim_to_layout_map;
-  for (const auto& it : layout_map) {
-    assert(it.second.size() <= 1);
-    if (it.second.empty()) continue;
-
-    const int tensor_dim_index = *it.second.begin();
-    dim_to_layout_map[tensor_dim_index].insert(it.first);
-  }
-
-  for (auto& it : dim_to_layout_map)
-    if (it.second.size() > 1) it.second.clear();
-
-  std::vector<std::string> merged_spec;
-  assert(!layouts.empty());
-  for (int i = 0; i < layouts[0].rank(); ++i) {
-    const auto it = dim_to_layout_map.find(i);
-    if (it != dim_to_layout_map.end() && !it->second.empty()) {
-      assert(it->second.size() == 1);
-      merged_spec.emplace_back(*it->second.begin());
-    } else {
-      merged_spec.emplace_back(Layout::kUnshardedDim);
-    }
-  }
-  const auto new_layout = Layout::GetLayout(merged_spec, layouts[0].mesh());
+  // FIXME(feyu): This shall use a reference, not copying the layout.
+  std::vector<Layout> layouts_vector = {layouts.begin(), layouts.end()};
+  const auto new_layout = GetMostShardedLayout(layouts_vector);
   if (!new_layout.ok()) {
     return mlir::emitError(
         location, llvm::formatv("error in layout propagation while merging "
                                 "producer layouts. {0}",
-                                new_layout.status().error_message()));
+                                new_layout.status().message()));
   }
   out->emplace(*new_layout);
   return mlir::success();
@@ -546,10 +517,10 @@ mlir::LogicalResult GetMostShardedLayout(llvm::ArrayRef<Layout> layouts,
 mlir::LogicalResult MergeProducerLayouts(
     const llvm::DenseMap<mlir::Value, Layout>& merged_layouts,
     const std::vector<mlir::Value>& producer_values, mlir::Location location,
-    absl::optional<Layout>* layout_out) {
+    std::optional<Layout>* layout_out) {
   // If there is a single producer for mlir::Value, then return the layout
   // from the producer.
-  absl::optional<Layout> layout;
+  std::optional<Layout> layout;
   if (producer_values.size() == 1) {
     const auto it = merged_layouts.find(producer_values[0]);
     if (it != merged_layouts.end()) *layout_out = it->second;
@@ -565,7 +536,8 @@ mlir::LogicalResult MergeProducerLayouts(
     candidate_layouts.emplace_back(it->second);
   }
 
-  if (mlir::failed(GetMostShardedLayout(candidate_layouts, location, &layout)))
+  if (mlir::failed(
+          GetMostShardedLayoutHelper(candidate_layouts, location, &layout)))
     return mlir::failure();
 
   if (layout) *layout_out = *layout;
@@ -579,7 +551,7 @@ mlir::LogicalResult UpdateLayoutsForOp(
     mlir::Operation* op,
     const llvm::DenseMap<mlir::OpOperand*, std::vector<mlir::Value>>& producers,
     const llvm::DenseMap<mlir::Value, Layout>& merged_layouts,
-    llvm::DenseMap<mlir::Value, absl::optional<Layout>>& producer_request,
+    llvm::DenseMap<mlir::Value, std::optional<Layout>>& producer_request,
     llvm::DenseMap<mlir::Value, mlir::DenseMap<mlir::OpOperand*, Layout>>&
         consumer_requests,
     llvm::DenseSet<mlir::Value>& is_updated) {
@@ -601,7 +573,7 @@ mlir::LogicalResult UpdateLayoutsForOp(
     if (producer_values == producers.end())
       return op->emitError() << "Unable to find producer for operand " << i;
 
-    absl::optional<Layout> layout;
+    std::optional<Layout> layout;
     if (mlir::failed(MergeProducerLayouts(merged_layouts,
                                           producer_values->getSecond(),
                                           op->getLoc(), &layout)))
@@ -619,14 +591,14 @@ mlir::LogicalResult UpdateLayoutsForOp(
       expander->ComputeLayoutForward(op, input_layouts, output_layouts);
   if (!forward_result.ok()) {
     return op->emitOpError() << "ComputeLayoutForward error: "
-                             << forward_result.status().error_message();
+                             << forward_result.status().message();
   }
   const auto new_output_layouts = *forward_result;
   auto backward_result =
       expander->ComputeLayoutBackward(op, input_layouts, output_layouts);
   if (!backward_result.ok()) {
     return op->emitOpError() << "ComputeLayoutBackward error: "
-                             << backward_result.status().error_message();
+                             << backward_result.status().message();
   }
   const auto new_input_layouts = *backward_result;
 
@@ -680,7 +652,8 @@ mlir::LogicalResult UpdateLayoutsForOp(
             return op->emitOpError()
                    << "Rank for input " << i << " layout is "
                    << input_layout->second.rank() << " but actual rank is "
-                   << ValueRank(value);
+                   << ValueRank(value) << " input layout is "
+                   << input_layout->second.ToString();
 
           // If there was a layout returned and either no previous request or
           // the request changed, insert and mark as updated.
@@ -712,9 +685,11 @@ mlir::LogicalResult UpdateLayoutsForOp(
     const auto& result = op->getOpResult(i);
     if (producer_request[result] != output_layout->second) {
       if (output_layout->second.rank() != ValueRank(result))
-        return op->emitOpError() << "Rank for output " << i << " layout is "
-                                 << output_layout->second.rank()
-                                 << " but actual rank is " << ValueRank(result);
+        return op->emitOpError()
+               << "Rank for output " << i << " layout is "
+               << output_layout->second.rank() << " but actual rank is "
+               << ValueRank(result) << " output layout is "
+               << output_layout->second.ToString();
       producer_request[result] = output_layout->second;
 
       is_updated.insert(result);
@@ -737,6 +712,8 @@ mlir::LogicalResult InsertDTensorLayoutOps(
     int num_users = std::distance(users.begin(), users.end());
     if (num_users == 1 && mlir::isa<mlir::TF::DTensorLayout>(*users.begin()))
       continue;
+    auto layout_attr = mlir::dtensor::LayoutAttr::get(builder.getContext(),
+                                                      merged_layout.second);
     builder.setInsertionPointAfterValue(merged_layout.first);
     // Handles resource and variant as the real shape is embedded in the
     // resource type elements.
@@ -744,9 +721,7 @@ mlir::LogicalResult InsertDTensorLayoutOps(
 
     if (auto type = value_type.dyn_cast<mlir::TensorType>()) {
       auto layout_op = builder.create<mlir::TF::DTensorLayout>(
-          merged_layout.first.getLoc(), merged_layout.first,
-          mlir::dtensor::LayoutAttr::get(builder.getContext(),
-                                         merged_layout.second),
+          merged_layout.first.getLoc(), merged_layout.first, layout_attr,
           mlir::TF::ShapeAttr::get(builder.getContext(), type));
       llvm::SmallPtrSet<mlir::Operation*, 4> exception{layout_op};
       merged_layout.first.replaceAllUsesExcept(layout_op.getOutput(),
@@ -754,9 +729,67 @@ mlir::LogicalResult InsertDTensorLayoutOps(
     } else {
       mlir::emitError(merged_layout.first.getLoc())
           << "value type is not TensorType as expected.";
+      return mlir::failure();
     }
   }
+  return mlir::success();
+}
 
+mlir::LogicalResult UpdateDTensorSendRecvOps(mlir::ModuleOp module,
+                                             mlir::OpBuilder& builder) {
+  llvm::SmallVector<mlir::TF::DTensorSend, 4> send_ops;
+  llvm::SmallVector<mlir::TF::DTensorRecv, 4> recv_ops;
+  module.walk([&](mlir::Operation* op) {
+    if (auto send_op = llvm::dyn_cast<mlir::TF::DTensorSend>(op))
+      send_ops.emplace_back(send_op);
+    if (auto recv_op = llvm::dyn_cast<mlir::TF::DTensorRecv>(op))
+      recv_ops.emplace_back(recv_op);
+  });
+
+  for (auto send_op : send_ops) {
+    absl::StatusOr<Layout> layout =
+        ExtractRequiredLayoutFromOperand(send_op->getOperand(0));
+    if (!layout.ok()) {
+      send_op->emitOpError()
+          << "Cannot add source layout to DTensorRecv for DTensorSend: "
+          << layout.status().message();
+      return mlir::failure();
+    }
+    absl::StatusOr<mlir::Operation*> recv_op =
+        GetCorrespondingDTensorSendRecvOp<mlir::TF::DTensorSend>(module,
+                                                                 send_op);
+    if (!recv_op.ok()) {
+      send_op->emitOpError()
+          << "Cannot add source layout to DTensorRecv for DTensorSend: "
+          << recv_op.status().message();
+      return mlir::failure();
+    }
+    auto layout_attr =
+        mlir::dtensor::LayoutAttr::get(builder.getContext(), *layout);
+    recv_op.value()->setAttr(kSourceLayoutAttr, layout_attr);
+  }
+
+  for (auto recv_op : recv_ops) {
+    absl::StatusOr<Layout> layout = ExtractRequiredSingleLayoutFromOp(recv_op);
+    if (!layout.ok()) {
+      recv_op->emitOpError()
+          << "Cannot add source layout to DTensorRecv for DTensorSend: "
+          << layout.status().message();
+      return mlir::failure();
+    }
+    absl::StatusOr<mlir::Operation*> send_op =
+        GetCorrespondingDTensorSendRecvOp<mlir::TF::DTensorRecv>(module,
+                                                                 recv_op);
+    if (!send_op.ok()) {
+      recv_op->emitOpError()
+          << "Cannot add target layout to DTensorSend for DTensorRecv: "
+          << send_op.status().message();
+      return mlir::failure();
+    }
+    auto layout_attr =
+        mlir::dtensor::LayoutAttr::get(builder.getContext(), *layout);
+    send_op.value()->setAttr(kTargetLayoutAttr, layout_attr);
+  }
   return mlir::success();
 }
 
@@ -1021,7 +1054,8 @@ class LayoutPrinter : public mlir::OpAsmPrinter {
 
 // Log the current set of layouts to a file marked by the hash of the input
 // module and the stage.
-void LogLayoutsAndOps(const int stage, const uint64_t module_hash,
+void LogLayoutsAndOps(const int stage, const int steps,
+                      const uint64_t module_hash,
                       const llvm::DenseMap<mlir::Value, Layout>& merged_layouts,
                       mlir::ModuleOp& module) {
   if (module->hasAttr(kDoNotLog) || ((ClientId() != 0) && !LogOnAllTasks()))
@@ -1033,13 +1067,18 @@ void LogLayoutsAndOps(const int stage, const uint64_t module_hash,
   auto* env = tensorflow::Env::Default();
   auto status = env->RecursivelyCreateDir(prefix);
   if (!status.ok()) {
-    LOG(WARNING) << "cannot create directory '" + prefix +
-                        "': " + status.error_message();
+    LOG(WARNING) << "cannot create directory '" << prefix
+                 << "': " << status.message();
     return;
   }
 
   absl::StrAppend(&prefix, "/layout_propagation_v2_module_", module_hash,
                   "_stage_", stage, "_");
+  if (steps >= 0) {
+    absl::StrAppend(&prefix, steps, "_");
+  } else {
+    absl::StrAppend(&prefix, "end_");
+  }
   if (!tensorflow::Env::Default()->CreateUniqueFileName(&prefix, ".mlir")) {
     LOG(WARNING) << "cannot create unique filename, won't dump MLIR module.";
     return;
@@ -1048,8 +1087,7 @@ void LogLayoutsAndOps(const int stage, const uint64_t module_hash,
   std::unique_ptr<WritableFile> file_writer;
   status = env->NewWritableFile(prefix, &file_writer);
   if (!status.ok()) {
-    LOG(WARNING) << "cannot open file '" + prefix +
-                        "': " + status.error_message();
+    LOG(WARNING) << "cannot open file '" << prefix << "': " << status.message();
     return;
   }
 
@@ -1063,8 +1101,8 @@ void LogLayoutsAndOps(const int stage, const uint64_t module_hash,
 
   status = file_writer->Append(txt_module);
   if (!status.ok()) {
-    LOG(WARNING) << "error writing to file '" + prefix +
-                        "': " + status.error_message();
+    LOG(WARNING) << "error writing to file '" << prefix
+                 << "': " << status.message();
     return;
   }
   (void)file_writer->Close();
@@ -1107,9 +1145,9 @@ mlir::LogicalResult InsertDTensorLayoutForIfRegionOp(
       std::set<Layout> layouts_set{layouts.begin(), layouts.end()};
       if (layouts_set.size() == 1) continue;
 
-      absl::optional<Layout> merged_layout;
-      if (mlir::failed(
-              GetMostShardedLayout(layouts, if_op.getLoc(), &merged_layout)))
+      std::optional<Layout> merged_layout;
+      if (mlir::failed(GetMostShardedLayoutHelper(layouts, if_op.getLoc(),
+                                                  &merged_layout)))
         return mlir::failure();
       assert(merged_layout);
 
@@ -1241,31 +1279,6 @@ mlir::LogicalResult InsertRelayoutForWhileLoops(
   return mlir::success();
 }
 
-// For all constants with multiple usages, clone the constants so that each
-// constant operation has at most 1 usage.
-void DuplicateConstants(mlir::ModuleOp module) {
-  llvm::SmallVector<mlir::TF::ConstOp, 4> const_ops;
-  module.walk(
-      [&](mlir::TF::ConstOp const_op) { const_ops.emplace_back(const_op); });
-
-  for (mlir::TF::ConstOp const_op : const_ops) {
-    mlir::OpBuilder builder(const_op);
-    auto uses = const_op->getUses();
-    if (uses.empty()) return;
-
-    llvm::SmallDenseMap<mlir::Operation*, mlir::OpOperand*> const_use_map;
-    mlir::OpOperand& first_use = *uses.begin();
-    for (mlir::OpOperand& use : uses) {
-      if (&use == &first_use) continue;
-
-      mlir::Operation* new_const = builder.clone(*const_op);
-      const_use_map.try_emplace(new_const, &use);
-    }
-
-    for (const auto& it : const_use_map) it.second->set(it.first->getResult(0));
-  }
-}
-
 // Find the root(s) values of "current_value" within the cycle, and put it
 // into "roots".
 void FindRoot(
@@ -1360,13 +1373,13 @@ void FindRootsAndEmitError(
 Status RunOneIteration(
     llvm::DenseSet<mlir::Value>& is_locked,
     llvm::DenseSet<mlir::Value>& is_updated,
-    llvm::DenseMap<mlir::Value, absl::optional<Layout>>& producer_request,
+    llvm::DenseMap<mlir::Value, std::optional<Layout>>& producer_request,
     llvm::DenseMap<mlir::Value, mlir::DenseMap<mlir::OpOperand*, Layout>>&
         consumer_requests,
     llvm::DenseMap<mlir::OpOperand*, std::vector<mlir::Value>>& producers,
     llvm::DenseMap<mlir::Value, std::vector<mlir::OpOperand*>>& consumers,
     llvm::DenseMap<mlir::Value, Layout>& merged_layouts, mlir::ModuleOp& module,
-    const uint64_t module_hash, int* stage) {
+    const uint64_t module_hash, int stage, int* steps) {
   if (is_updated.empty()) return OkStatus();
   // Merge any possibly updated layouts.
   if (mlir::failed(
@@ -1381,7 +1394,7 @@ Status RunOneIteration(
   is_updated.clear();
 
   if (VLOG_IS_ON(2)) {
-    LogLayoutsAndOps(*stage, module_hash, merged_layouts, module);
+    LogLayoutsAndOps(stage, *steps, module_hash, merged_layouts, module);
   }
 
   for (auto* op : operations_needing_update) {
@@ -1390,7 +1403,7 @@ Status RunOneIteration(
                                         is_updated)))
       return errors::Internal("UpdateLayoutsForOp failed to update layouts.");
   }
-  ++(*stage);
+  ++(*steps);
   return OkStatus();
 }
 
@@ -1456,7 +1469,7 @@ struct DLayoutPropagationPassV2
     llvm::DenseMap<mlir::OpOperand*, std::vector<mlir::Value>> producers;
     // For each mlir::Value this is what the producer would like to have the
     // layout be.
-    llvm::DenseMap<mlir::Value, absl::optional<Layout>> producer_request;
+    llvm::DenseMap<mlir::Value, std::optional<Layout>> producer_request;
     // For each mlir::Value this is what the consumers would like to have the
     // layout be. Note the map is in 'parallel' to the consumers map above.
     llvm::DenseMap<mlir::Value, mlir::DenseMap<mlir::OpOperand*, Layout>>
@@ -1499,17 +1512,20 @@ struct DLayoutPropagationPassV2
       int steps = 0;
       // Step 1. Run the layout propagation v2 until convergence or max steps.
       while (!is_updated.empty() && steps < LayoutPropagationMaxSteps()) {
-        Status status = RunOneIteration(
-            is_locked, is_updated, producer_request, consumer_requests,
-            producers, consumers, merged_layouts, module, module_hash, &steps);
+        Status status =
+            RunOneIteration(is_locked, is_updated, producer_request,
+                            consumer_requests, producers, consumers,
+                            merged_layouts, module, module_hash, stage, &steps);
         if (!status.ok()) {
           module.emitOpError() << "Failure running iteration.";
           return signalPassFailure();
         }
       }
-      if (VLOG_IS_ON(2)) {
-        LOG(INFO) << "Failed to converge in stage " << stage;
-      }
+
+      if (is_updated.empty()) break;
+
+      VLOG(2) << "Failed to converge in stage " << stage;
+
       // Step 2. If we are here, then we failed to converge, and likely
       // there is an oscillation of layouts. Detect all the edges that are
       // changing layouts.
@@ -1521,7 +1537,7 @@ struct DLayoutPropagationPassV2
       while (changed.size() > previous_change_size) {
         if (!RunOneIteration(is_locked, is_updated, producer_request,
                              consumer_requests, producers, consumers,
-                             merged_layouts, module, module_hash, &steps)
+                             merged_layouts, module, module_hash, stage, &steps)
                  .ok()) {
           module.emitOpError() << "Failure running iteration.";
           return signalPassFailure();
@@ -1535,6 +1551,7 @@ struct DLayoutPropagationPassV2
         previous_change_size = changed.size();
       }
 
+      VLOG(4) << "Size of changed:" << changed.size();
       // Step 3. Layouts that haven't changed means they're not part of the
       // cyclic problem, so freeze them.
       for (const auto& value_and_layout : merged_layouts) {
@@ -1543,6 +1560,7 @@ struct DLayoutPropagationPassV2
           is_locked.insert(value);
         }
       }
+      VLOG(4) << "Size of locked:" << is_locked.size();
       // Step 4. Any information corresponding to the changed layouts
       // should be disinfected, we do this by clearing all information
       // regarding them.
@@ -1560,6 +1578,7 @@ struct DLayoutPropagationPassV2
                                  operations_needing_update);
       is_updated.clear();
 
+      VLOG(4) << "Size of need update:" << operations_needing_update.size();
       for (auto* op : operations_needing_update) {
         if (mlir::failed(UpdateLayoutsForOp(op, producers, merged_layouts,
                                             producer_request, consumer_requests,
@@ -1580,7 +1599,7 @@ struct DLayoutPropagationPassV2
       return signalPassFailure();
 
     if (VLOG_IS_ON(2)) {
-      LogLayoutsAndOps(stage, module_hash, merged_layouts, module);
+      LogLayoutsAndOps(stage, -1, module_hash, merged_layouts, module);
     }
 
     if (!AllOpResultsHaveLayouts(&module, tf_dialect, merged_layouts))
@@ -1604,6 +1623,9 @@ struct DLayoutPropagationPassV2
 
     if (mlir::failed(
             InsertDTensorLayoutForIfRegionOp(if_ops, builder.getContext())))
+      return signalPassFailure();
+
+    if (mlir::failed(UpdateDTensorSendRecvOps(module, builder)))
       return signalPassFailure();
   };
 };

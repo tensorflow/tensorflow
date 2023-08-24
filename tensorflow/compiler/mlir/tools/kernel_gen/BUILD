@@ -4,6 +4,7 @@ load(
 )
 load(
     "//tensorflow:tensorflow.bzl",
+    "check_deps",
     "tf_cc_binary",
 )
 load(
@@ -16,7 +17,6 @@ load(
 )
 load(
     "//tensorflow/core/platform:build_config.bzl",
-    "if_llvm_aarch64_available",
     "if_llvm_system_z_available",
     "tf_proto_library",
 )
@@ -45,7 +45,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
-        "//tensorflow/compiler/mlir/tf2xla:xla_legalize_tf_no_fallback",
+        "//tensorflow/compiler/mlir/tf2xla/transforms:xla_legalize_tf_no_fallback",
         "//tensorflow/compiler/mlir/tools/kernel_gen/transforms:bufferize",
         "//tensorflow/compiler/mlir/tools/kernel_gen/transforms:gpu_passes",  # fixdeps: keep
         "//tensorflow/compiler/mlir/tools/kernel_gen/transforms:passes",
@@ -61,6 +61,7 @@ cc_library(
         "@llvm-project//mlir:ArithTransforms",
         "@llvm-project//mlir:BufferizationTransforms",
         "@llvm-project//mlir:BuiltinToLLVMIRTranslation",
+        "@llvm-project//mlir:ComplexDialect",
         "@llvm-project//mlir:ComplexToStandard",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FuncToLLVM",
@@ -89,6 +90,12 @@ cc_library(
     ],
 )
 
+check_deps(
+    name = "tf_to_kernel_check_deps",
+    disallowed_deps = ["//tensorflow/compiler/xla:literal"],
+    deps = [":tf_to_kernel"],
+)
+
 tf_cc_binary(
     name = "tf_to_kernel",
     srcs = ["tf_to_kernel.cc"],
@@ -102,6 +109,7 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:AArch64CodeGen",  # fixdeps: keep
         "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
         "@llvm-project//llvm:Analysis",
         "@llvm-project//llvm:CodeGen",
@@ -119,8 +127,6 @@ tf_cc_binary(
         "@llvm-project//mlir:ToLLVMIRTranslation",
     ] + if_llvm_system_z_available([
         "@llvm-project//llvm:SystemZCodeGen",  # fixdeps: keep
-    ]) + if_llvm_aarch64_available([
-        "@llvm-project//llvm:AArch64CodeGen",  # fixdeps: keep
     ]),
 )
 

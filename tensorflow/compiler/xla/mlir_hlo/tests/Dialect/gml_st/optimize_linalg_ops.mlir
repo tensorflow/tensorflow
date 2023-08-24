@@ -45,6 +45,29 @@ func.func @map_dense_constant_operand(%arg: tensor<32xf32>) -> tensor<32xf32> {
 
 // -----
 
+func.func @map_dense_constant_operand_complex(%arg: tensor<32xcomplex<f64>>)
+    -> tensor<32xcomplex<f64>> {
+  %c0 = arith.constant dense<(1.0000e+00,0.0000e+00)> : tensor<32xcomplex<f64>>
+  %init = tensor.empty() : tensor<32xcomplex<f64>>
+
+  %res = linalg.map { complex.add }
+           ins(%arg, %c0: tensor<32xcomplex<f64>>, tensor<32xcomplex<f64>>)
+           outs(%init: tensor<32xcomplex<f64>>)
+  func.return %res : tensor<32xcomplex<f64>>
+}
+
+// CHECK-LABEL:  @map_dense_constant_operand_complex
+// CHECK-SAME:       (%[[ARG:.*]]: tensor<32xcomplex<f64>>)
+// CHECK-DAG:      %[[CST:.*]] = complex.constant
+// CHECK-DAG:      %[[INIT:.*]] = tensor.empty
+// CHECK:          linalg.map
+// CHECK-SAME:       ins(%[[ARG]]
+// CHECK-SAME:       outs(%[[INIT]]
+// CHECK-NEXT:       (%[[BBARG:.*]]: complex<f64>)
+// CHECK-NEXT:         complex.add %[[BBARG]], %[[CST]]
+
+// -----
+
 func.func @map_fill_operand(%arg: tensor<32xf32>) -> tensor<32xf32> {
   %c0 = arith.constant 0.0 : f32
   %init = tensor.empty() : tensor<32xf32>
@@ -134,4 +157,27 @@ func.func @broadcast_of_single_element_tensor(%arg: tensor<f32>)
 // CHECK-DAG:      %[[EXTRACT:.*]] = tensor.extract %[[ARG]]
 // CHECK:          linalg.fill
 // CHECK-SAME:       ins(%[[EXTRACT]]
+// CHECK-SAME:       outs(%[[INIT]]
+
+// -----
+
+func.func @slice_of_map(%arg: tensor<32xf32>) -> tensor<8xf32> {
+  %c0 = arith.constant dense<0.0> : tensor<32xf32>
+  %init = tensor.empty() : tensor<32xf32>
+
+  %map = linalg.map { arith.maxf }
+           ins(%arg, %c0: tensor<32xf32>, tensor<32xf32>)
+           outs(%init: tensor<32xf32>)
+  %slice = tensor.extract_slice %map[0] [8] [1]
+   : tensor<32xf32> to tensor<8xf32>
+  func.return %slice : tensor<8xf32>
+}
+// CHECK-LABEL:  @slice_of_map
+// CHECK-SAME:       (%[[ARG:.*]]: tensor<32xf32>)
+
+// CHECK-DAG:      %[[CST:.*]] = arith.constant 0.0
+// CHECK-DAG:      %[[SLICE:.*]] = tensor.extract_slice %[[ARG]][0] [8] [1]
+// CHECK-DAG:      %[[INIT:.*]] = tensor.empty
+// CHECK:          linalg.map
+// CHECK-SAME:       ins(%[[SLICE]]
 // CHECK-SAME:       outs(%[[INIT]]

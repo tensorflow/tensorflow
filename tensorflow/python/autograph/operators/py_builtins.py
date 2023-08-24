@@ -413,7 +413,7 @@ def _py_enumerate(s, start=0):
   return enumerate(s, start)
 
 
-def zip_(*iterables):
+def zip_(*iterables, strict=False):
   zip_fn = _py_zip
   # If the overridden function is not the same across all iterables, use _py_zip
   for x in iterables:
@@ -422,11 +422,15 @@ def zip_(*iterables):
       zip_fn = _py_zip
       break
     zip_fn = zip_override
-  return zip_fn(*iterables)
+  return zip_fn(*iterables, strict=strict)
 
 
-def _py_zip(*iterables):
-  return zip(*iterables)
+def _py_zip(*iterables, strict=False):
+  if strict:
+    return zip(*iterables, strict=True)
+  else:
+    # Python < 3.10 doesn't have `strict` kwarg.
+    return zip(*iterables)
 
 
 def map_(fn, *iterables):

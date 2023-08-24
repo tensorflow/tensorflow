@@ -510,7 +510,7 @@ int64_t BFCAllocator::LargestFreeChunk() {
 
 double BFCAllocator::GetFragmentation() {
   int64_t bytes_available = *stats_.pool_bytes - stats_.bytes_in_use;
-  DCHECK_GT(bytes_available, 0);
+  DCHECK_GE(bytes_available, 0);
   return static_cast<double>(bytes_available - LargestFreeChunk()) /
          bytes_available;
 }

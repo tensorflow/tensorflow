@@ -84,7 +84,7 @@ class FuseMhloMulAndConvolutionPattern : public OpRewritePattern<mhlo::MulOp> {
     // Only fuses multiplier if all dimensions other than the out channel
     // dimension are equal to 1.
     if (!TFL::IsDimensionsDegenerateExceptLastOne(
-            mul_value.getType().getShape())) {
+            mul_value.getShapedType().getShape())) {
       return rewriter.notifyMatchFailure(mul_op, [&](::mlir::Diagnostic &diag) {
         diag << "entities 'mul_value' failed to satisfy constraint: "
                 "unsupported dimensions";
@@ -100,7 +100,7 @@ class FuseMhloMulAndConvolutionPattern : public OpRewritePattern<mhlo::MulOp> {
     broadcast_dims =
         broadcast_op ? broadcast_op.getBroadcastDimensions() : nullptr;
     if (broadcast_dims == nullptr) {
-      const auto filter_rank = filter_value.getType().getRank();
+      const auto filter_rank = filter_value.getShapedType().getRank();
       auto dimsType = RankedTensorType::get({1}, rewriter.getIntegerType(64));
       broadcast_dims = DenseIntElementsAttr::get(dimsType, {filter_rank - 1});
     }

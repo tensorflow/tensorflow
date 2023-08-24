@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -35,87 +36,35 @@ xla::XlaOp Zeros(xla::XlaBuilder* builder, const xla::Shape& shape) {
 
 xla::XlaOp FloatLiteral(xla::XlaBuilder* builder, xla::PrimitiveType type,
                         double value) {
-  switch (type) {
-    case xla::F16:
-      return xla::ConstantR0<xla::half>(builder, static_cast<xla::half>(value));
-      break;
-    case xla::BF16:
-      return xla::ConstantR0<bfloat16>(builder, static_cast<bfloat16>(value));
-      break;
-    case xla::F32:
-      return xla::ConstantR0<float>(builder, static_cast<float>(value));
-      break;
-    case xla::F64:
-      return xla::ConstantR0<double>(builder, value);
-      break;
-    case xla::C64:
-      return xla::ConstantR0<xla::complex64>(builder, value);
-      break;
-    case xla::C128:
-      return xla::ConstantR0<xla::complex128>(builder, value);
-      break;
-    default:
-      LOG(FATAL) << "unhandled element type " << type;
-  }
+  return xla::primitive_util::PrimitiveTypeSwitch<xla::XlaOp>(
+      [&](auto primitive_type_constant) -> xla::XlaOp {
+        if constexpr (xla::primitive_util::IsFloatingPointType(
+                          primitive_type_constant) ||
+                      xla::primitive_util::IsComplexType(
+                          primitive_type_constant)) {
+          using NativeT =
+              xla::primitive_util::NativeTypeOf<primitive_type_constant>;
+          return xla::ConstantR0<NativeT>(builder, static_cast<NativeT>(value));
+        }
+        LOG(FATAL) << "unhandled element type " << type;
+      },
+      type);
 }
 
 xla::XlaOp IntegerLiteral(xla::XlaBuilder* builder, xla::PrimitiveType type,
                           int64_t value) {
-  xla::Literal literal;
-  switch (type) {
-    case xla::U8:
-      literal = xla::LiteralUtil::CreateR0<uint8_t>(value);
-      break;
-    case xla::U16:
-      literal = xla::LiteralUtil::CreateR0<uint16_t>(value);
-      break;
-    case xla::U32:
-      literal = xla::LiteralUtil::CreateR0<uint32_t>(value);
-      break;
-    case xla::U64:
-      literal = xla::LiteralUtil::CreateR0<uint64_t>(value);
-      break;
-    case xla::S8:
-      literal = xla::LiteralUtil::CreateR0<int8_t>(value);
-      break;
-    case xla::S16:
-      literal = xla::LiteralUtil::CreateR0<int16_t>(value);
-      break;
-    case xla::S32:
-      literal = xla::LiteralUtil::CreateR0<int32_t>(value);
-      break;
-    case xla::S64:
-      literal = xla::LiteralUtil::CreateR0<int64_t>(value);
-      break;
-    case xla::F32:
-      literal = xla::LiteralUtil::CreateR0<float>(value);
-      break;
-    case xla::F64:
-      literal = xla::LiteralUtil::CreateR0<double>(value);
-      break;
-    case xla::C64:
-      literal = xla::LiteralUtil::CreateR0<xla::complex64>(value);
-      break;
-    case xla::C128:
-      literal = xla::LiteralUtil::CreateR0<xla::complex128>(value);
-      break;
-    case xla::PRED:
-      LOG(FATAL) << "pred element type is not integral";
-    case xla::BF16:
-      literal = xla::LiteralUtil::CreateR0<xla::bfloat16>(
-          static_cast<xla::bfloat16>(value));
-      break;
-    case xla::F16:
-      literal =
-          xla::LiteralUtil::CreateR0<xla::half>(static_cast<xla::half>(value));
-      break;
-    case xla::TUPLE:
-      LOG(FATAL) << "tuple element type is not integral";
-    case xla::OPAQUE_TYPE:
-      LOG(FATAL) << "opaque element type is not integral";
-    default:
-      LOG(FATAL) << "unhandled element type " << type;
-  }
+  xla::Literal literal = xla::primitive_util::PrimitiveTypeSwitch<xla::Literal>(
+      [&](auto primitive_type_constant) -> xla::Literal {
+        if constexpr (xla::primitive_util::IsArrayType(
+                          primitive_type_constant)) {
+          using NativeT =
+              xla::primitive_util::NativeTypeOf<primitive_type_constant>;
+          return xla::LiteralUtil::CreateR0<NativeT>(
+              static_cast<NativeT>(value));
+        }
+        LOG(FATAL) << "unhandled element type " << type;
+      },
+      type);
   return xla::ConstantLiteral(builder, literal);
 }
 

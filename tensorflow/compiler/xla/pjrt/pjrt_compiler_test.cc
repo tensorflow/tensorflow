@@ -16,9 +16,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/pjrt_compiler.h"
 
 #include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/status/statusor.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 
@@ -34,6 +37,13 @@ TEST(PjRtCompilerTest, CompilerNotRegistered) {
       return "not_registered";
     }
     absl::string_view platform_version() const override { return "test"; }
+    std::vector<std::unique_ptr<const PjRtDeviceDescription>>
+    DeviceDescriptions() const override {
+      LOG(FATAL) << "Unused";
+    }
+    absl::StatusOr<std::string> Serialize() const override {
+      return "test_topo";
+    }
   };
   PjRtTestTopology topology;
 
@@ -50,6 +60,13 @@ TEST(PjRtCompilerTest, CompilerRegistered) {
     PjRtPlatformId platform_id() const override { return 0; }
     absl::string_view platform_name() const override { return "registered"; }
     absl::string_view platform_version() const override { return "test"; }
+    std::vector<std::unique_ptr<const PjRtDeviceDescription>>
+    DeviceDescriptions() const override {
+      LOG(FATAL) << "Unused";
+    }
+    absl::StatusOr<std::string> Serialize() const override {
+      return "test_topo";
+    }
   };
   PjRtTestTopology topology;
 

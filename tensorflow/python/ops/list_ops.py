@@ -21,6 +21,7 @@ from tensorflow.core.framework import full_type_pb2
 from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
@@ -383,7 +384,7 @@ def _build_element_shape(shape):
   Returns:
     A None-free shape that can be converted to a tensor.
   """
-  if isinstance(shape, ops.Tensor):
+  if isinstance(shape, tensor_lib.Tensor):
     return shape
   if isinstance(shape, tensor_shape.TensorShape):
     # `TensorShape.as_list` requires rank to be known.
@@ -398,7 +399,7 @@ def _build_element_shape(shape):
   def convert(val):
     if val is None:
       return -1
-    if isinstance(val, ops.Tensor):
+    if isinstance(val, tensor_lib.Tensor):
       return val
     if isinstance(val, tensor_shape.Dimension):
       return val.value if val.value is not None else -1

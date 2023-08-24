@@ -17,13 +17,14 @@ limitations under the License.
 
 #include <algorithm>
 #include <functional>
+#include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/memory/memory.h"
-#include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
@@ -114,6 +115,17 @@ Status Iterator::Restore(const std::vector<Tensor>& saved_iterator) {
   return iterator_->Restore(ctx_.get(), &reader);
 }
 
+std::optional<double> Iterator::GetProcessingTimeNsec() const {
+  if (ctx_->model() == nullptr) return std::nullopt;
+
+  double processing_time_nsec =
+      ctx_->model()->ComputeSnapshotProcessingTimeNsec();
+  if (processing_time_nsec > 0)
+    return processing_time_nsec;
+  else
+    return std::nullopt;
+}
+
 Status Dataset::FromGraph(Params params, const GraphDef& graph_def,
                           std::unique_ptr<Dataset>* result) {
   Graph graph(OpRegistry::Global());
@@ -132,11 +144,12 @@ Status Dataset::FromGraph(Params params, const GraphDef& graph_def,
       TF_GRAPH_DEF_VERSION, flib_def.get(), OptimizerOptions{},
       /*thread_pool=*/nullptr, /*parent=*/nullptr,
       /*session_metadata=*/nullptr,
-      Rendezvous::Factory{
-          [](const int64_t, const DeviceMgr* device_mgr, Rendezvous** r) {
-            *r = new IntraProcessRendezvous(device_mgr);
-            return OkStatus();
-          }});
+      Rendezvous::Factory{[](const int64_t, const DeviceMgr* device_mgr,
+                             tsl::core::RefCountPtr<Rendezvous>* r) {
+        *r = tsl::core::RefCountPtr<Rendezvous>(
+            new IntraProcessRendezvous(device_mgr));
+        return OkStatus();
+      }});
 
   string fetch_node = "";
   for (const auto& node : graph_def.node()) {
@@ -193,6 +206,8 @@ Status Dataset::MakeIterator(
             std::back_inserter(params.split_providers));
   params.thread_factory = unbounded_thread_pool_.get_thread_factory();
   params.thread_pool = &unbounded_thread_pool_;
+  params.model = std::make_shared<model::Model>();
+  params.run_mode = RunMode::STANDALONE;
   ctx = std::make_unique<IteratorContext>(std::move(params));
   SerializationContext::Params serialization_params(&op_ctx);
   auto serialization_ctx =

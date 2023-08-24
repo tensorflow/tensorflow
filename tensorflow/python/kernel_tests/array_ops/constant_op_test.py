@@ -26,6 +26,7 @@ from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -296,7 +297,7 @@ class AsTensorTest(test.TestCase):
   def testAsTensorForNonTensorInput(self):
     with ops.Graph().as_default():
       x = ops.convert_to_tensor(10.0)
-    self.assertTrue(isinstance(x, ops.Tensor))
+    self.assertTrue(isinstance(x, tensor.Tensor))
 
   def testAsTensorForShapeInput(self):
     with self.cached_session():
@@ -381,7 +382,7 @@ class IdentityOpTest(test.TestCase):
     with ops.Graph().as_default():
       x = constant_op.constant(2.0, shape=[6], name="input")
       id_op = array_ops.identity(x, name="id")
-    self.assertTrue(isinstance(id_op.op.inputs[0], ops.Tensor))
+    self.assertTrue(isinstance(id_op.op.inputs[0], tensor.Tensor))
     self.assertProtoEquals("name: 'id' op: 'Identity' input: 'input' "
                            "attr { key: 'T' value { type: DT_FLOAT } }",
                            id_op.op.node_def)

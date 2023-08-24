@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/tsl/platform/mutex.h"
 
 #include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/platform/threadpool.h"
 
 namespace tsl {
 namespace {
@@ -81,6 +82,60 @@ TEST_F(MutexTest, SharedMutexLockTest) {
   }
   // Unlocked: we can get a normal lock.
   EXPECT_TRUE(test_try_lock());
+}
+
+TEST(ConditionVariableTest, WaitWithPredicate) {
+  constexpr int kNumThreads = 4;
+  mutex mu;
+  condition_variable cv;
+  bool ready = false;
+  int count = 0;
+
+  // Add tasks to threads that wait on the `ready` flag.
+  tsl::thread::ThreadPool pool(Env::Default(),
+                               "condition_variable_test_wait_with_predicate",
+                               kNumThreads);
+  for (int i = 0; i < kNumThreads; ++i) {
+    pool.Schedule([&mu, &cv, &ready, &count]() {
+      mutex_lock lock(mu);
+      cv.wait(lock, [&ready] { return ready; });
+      ++count;
+      cv.notify_one();
+    });
+  }
+
+  // Verify threads are still waiting.
+  {
+    mutex_lock lock(mu);
+    EXPECT_EQ(count, 0);
+  }
+
+  // Start worker threads.
+  {
+    mutex_lock lock(mu);
+    ready = true;
+    cv.notify_all();
+  }
+
+  // Wait for workers to complete.
+  {
+    mutex_lock lock(mu);
+    // NOLINTNEXTLINE: MSVC requires kNumThreads to be captured.
+    cv.wait(lock, [&count, kNumThreads] { return count == kNumThreads; });
+    EXPECT_EQ(count, kNumThreads);
+  }
+}
+
+TEST(ConditionVariableTest, WaitWithTruePredicateDoesntBlock) {
+  mutex mu;
+  mutex_lock lock(mu);
+  condition_variable cv;
+
+  // CV doesn't wait if predicate is true.
+  cv.wait(lock, [] { return true; });
+
+  // Verify the lock is still locked.
+  EXPECT_TRUE(static_cast<bool>(lock));
 }
 
 }  // namespace

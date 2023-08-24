@@ -1,7 +1,8 @@
 # Description:
 #   Common functionality for TensorFlow tooling
 
-load("//tensorflow:tensorflow.bzl", "VERSION_MAJOR", "py_test")
+load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
+load("//tensorflow:tensorflow.bzl", "VERSION_MAJOR")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -12,17 +13,14 @@ package(
     licenses = ["notice"],
 )
 
-py_library(
+py_strict_library(
     name = "public_api",
     srcs = ["public_api.py"],
     srcs_version = "PY3",
-    deps = [
-        "//tensorflow/python/util:tf_decorator",
-        "@six_archive//:six",
-    ],
+    deps = ["//tensorflow/python/util:tf_decorator"],
 )
 
-py_test(
+py_strict_test(
     name = "public_api_test",
     srcs = ["public_api_test.py"],
     data = select({
@@ -34,21 +32,18 @@ py_test(
     srcs_version = "PY3",
     deps = [
         ":public_api",
-        "//tensorflow/python:platform_test",
+        "//tensorflow/python/platform:test",
     ],
 )
 
-py_library(
+py_strict_library(
     name = "traverse",
     srcs = ["traverse.py"],
     srcs_version = "PY3",
-    deps = [
-        "//tensorflow/python/util:tf_decorator",
-        "@six_archive//:six",
-    ],
+    deps = ["//tensorflow/python/util:tf_decorator"],
 )
 
-py_test(
+py_strict_test(
     name = "traverse_test",
     srcs = ["traverse_test.py"],
     data = select({
@@ -66,7 +61,7 @@ py_test(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "test_module1",
     srcs = ["test_module1.py"],
     srcs_version = "PY3",
@@ -75,7 +70,7 @@ py_library(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "test_module2",
     srcs = ["test_module2.py"],
     srcs_version = "PY3",

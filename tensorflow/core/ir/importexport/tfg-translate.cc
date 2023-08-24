@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <utility>
+
 #include "mlir/IR/AsmState.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
@@ -35,7 +37,7 @@ TranslateToMLIRRegistration graphdef_to_mlir(
       tensorflow::Status status = tensorflow::LoadProtoFromBuffer(
           {proto_txt.data(), proto_txt.size()}, &graphdef);
       if (!status.ok()) {
-        LOG(ERROR) << status.error_message();
+        LOG(ERROR) << status.message();
         return OwningOpRef<mlir::ModuleOp>{};
       }
       auto errorOrModule = tfg::ImportGraphDef(context, debug_info, graphdef);

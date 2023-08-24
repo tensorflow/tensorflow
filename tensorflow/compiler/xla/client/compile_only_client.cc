@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/compile_only_client.h"
 
 #include <memory>
+#include <vector>
 
 #include "llvm/ADT/Twine.h"
 #include "llvm/TargetParser/Triple.h"

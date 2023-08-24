@@ -162,11 +162,12 @@ cc_library(
         ":collected_metrics",
         ":collection_registry",
         ":metric_def",
+        ":test_utils",
         ":types",
-        "//tensorflow/tsl/lib/monitoring:test_utils",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
 )

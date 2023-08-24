@@ -61,7 +61,7 @@ InterpreterValue getTupleElement(InterpreterState&, mhlo::GetTupleElementOp get,
 
 InterpreterValue bitcastConvert(InterpreterState&, mhlo::BitcastConvertOp op,
                                 const InterpreterValue& in) {
-  ShapedType ty = op->getResultTypes()[0];
+  ShapedType ty = cast<ShapedType>(op->getResultTypes()[0]);
   auto result = dispatchScalarType(ty, [&](auto dummy) -> InterpreterValue {
     TensorOrMemref<decltype(dummy)> result;
     result.view = {};
@@ -759,7 +759,7 @@ InterpreterValue dotGeneralImpl(InterpreterValue& lhs, InterpreterValue& rhs,
 // TODO(jreiffers): Unify this with DotGeneral.
 InterpreterValue dot(InterpreterState& state, mhlo::DotOp op,
                      const InterpreterValue& lhs, const InterpreterValue& rhs) {
-  ShapedType ty = op->getResultTypes()[0];
+  ShapedType ty = cast<ShapedType>(op->getResultTypes()[0]);
   auto result = lhs.typedAlike(ty.getShape());
 
   if (lhs.view().rank() == 1 && rhs.view().rank() == 1) {

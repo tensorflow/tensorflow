@@ -390,7 +390,7 @@ tf_module {
   }
   member_method {
     name: "experimental_enable_numpy_behavior"
-    argspec: "args=[\'prefer_float32\'], varargs=None, keywords=None, defaults=[\'False\'], "
+    argspec: "args=[\'prefer_float32\', \'dtype_conversion_mode\'], varargs=None, keywords=None, defaults=[\'False\', \'legacy\'], "
   }
   member_method {
     name: "expm1"

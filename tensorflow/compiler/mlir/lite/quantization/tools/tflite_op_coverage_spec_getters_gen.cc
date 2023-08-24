@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include <list>
+#include <map>
 #include <string>
+#include <vector>
 
 #include "absl/strings/match.h"
 #include "absl/strings/str_replace.h"

@@ -16,7 +16,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/framework/types.h"
-// #include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/platform/status_matchers.h"
 
 namespace tensorflow {
@@ -28,10 +27,9 @@ using ::tsl::testing::StatusIs;
 TEST(CreatePjRtClientTest, GetNotExistPjRtClientNotImplemented) {
   EXPECT_THAT(
       GetOrCreatePjRtClient(DEVICE_CPU),
-      StatusIs(error::UNIMPLEMENTED,
-               HasSubstr("The PJRT client for CPU is not created explicitly "
-                         "before its first use and creating this PJRT client "
-                         "on the first use is not implemented.")));
+      StatusIs(error::NOT_FOUND,
+               HasSubstr(absl::StrCat("The PJRT client factory of `",
+                                      DEVICE_CPU, "` is not registered"))));
 }
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM

@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/data/snapshot_utils.h"
 
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "tensorflow/core/data/service/test_util.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"

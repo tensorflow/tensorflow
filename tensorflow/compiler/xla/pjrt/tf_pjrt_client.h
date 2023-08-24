@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 
@@ -129,6 +130,10 @@ class TfPjRtExecutable : public PjRtLoadedExecutable {
       const override {
     return wrapped_->GetHloModules();
   }
+  StatusOr<std::vector<std::vector<absl::string_view>>> GetOutputMemoryKinds()
+      const override {
+    return wrapped_->GetOutputMemoryKinds();
+  }
   using PjRtLoadedExecutable::Execute;
   StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
       absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
@@ -158,6 +163,10 @@ class TfPjRtExecutable : public PjRtLoadedExecutable {
     return wrapped_->SerializeExecutable();
   }
 
+  StatusOr<struct CompileOptions> GetCompileOptions() const override {
+    return wrapped_->GetCompileOptions();
+  }
+
  private:
   TfPjRtClient* client_;
   std::unique_ptr<PjRtLoadedExecutable> wrapped_;
@@ -170,6 +179,7 @@ class TfPjRtClient : public PjRtClient {
   static std::unique_ptr<TfPjRtClient> CreateTfPjRtClient(
       std::unique_ptr<PjRtClient> wrapped);
   explicit TfPjRtClient(std::unique_ptr<PjRtClient> wrapped);
+  ~TfPjRtClient() override;
   int process_index() const override { return wrapped_->process_index(); }
   int device_count() const override { return wrapped_->device_count(); }
   int addressable_device_count() const override {
@@ -186,7 +196,14 @@ class TfPjRtClient : public PjRtClient {
   }
   StatusOr<PjRtDevice*> LookupAddressableDevice(
       int local_hardware_id) const override {
+    if (wrapped_ == nullptr) {
+      return tsl::errors::Internal(
+          "Wrapped PJRT client in TfPjRtClient is already destoryed.");
+    }
     return wrapped_->LookupAddressableDevice(local_hardware_id);
+  }
+  absl::Span<PjRtMemorySpace* const> memory_spaces() const override {
+    return wrapped_->memory_spaces();
   }
   PjRtPlatformId platform_id() const override {
     return wrapped_->platform_id();

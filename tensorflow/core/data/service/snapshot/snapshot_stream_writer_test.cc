@@ -17,6 +17,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -90,6 +91,8 @@ class ElementOrErrorIterator : public TaskIterator {
   }
 
   int64_t Cardinality() const override { return elements_.size(); }
+
+  std::optional<double> GetProcessingTimeNsec() const override { return 1.0e7; }
 
  private:
   const std::vector<StatusOr<T>> elements_;

@@ -448,7 +448,7 @@ LogicalResult scalarizeGatherOp(thlo::GatherOp gatherOp,
 
   TypedValue<ShapedType> operand = gatherOp.getOperand();
   auto operandSizes = getValueOrCreateConstantIndexOp(
-      b, loc, tensor::createDimValues(b, loc, operand));
+      b, loc, tensor::getMixedSizes(b, loc, operand));
   Value zero = b.create<arith::ConstantIndexOp>(0);
   Value one = b.create<arith::ConstantIndexOp>(1);
 

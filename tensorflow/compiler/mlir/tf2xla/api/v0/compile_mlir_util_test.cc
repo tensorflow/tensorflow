@@ -22,6 +22,8 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/raw_ostream.h"
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
@@ -50,12 +52,13 @@ TEST(LegalizeMlirTest, LegalizesModule) {
 
   std::vector<tensorflow::TensorShape> arg_shapes;
   XlaCompilationResult compilation_result;
-  Status status = CompileSerializedMlirToXlaHlo(
+  auto status = CompileSerializedMlirToXlaHlo(
       kMlirModuleStr, arg_shapes, /*device_type=*/"XLA_TPU_JIT",
       /*use_tuple_args=*/true, /*enable_op_fallback=*/false,
       /*shape_determination_fns=*/{}, &compilation_result);
 
   EXPECT_TRUE(status.ok());
+  EXPECT_THAT(status.value(), HasSubstr("mhlo.const"));
 }
 
 TEST(LegalizeMlirTest, FailsLegalizesModule) {
@@ -71,14 +74,13 @@ TEST(LegalizeMlirTest, FailsLegalizesModule) {
 
   std::vector<tensorflow::TensorShape> arg_shapes;
   XlaCompilationResult compilation_result;
-  Status status = CompileSerializedMlirToXlaHlo(
+  auto status = CompileSerializedMlirToXlaHlo(
       failed_legalization, arg_shapes, /*device_type=*/"XLA_TPU_JIT",
       /*use_tuple_args=*/true, /*enable_op_fallback=*/false,
       /*shape_determination_fns=*/{}, &compilation_result);
 
   EXPECT_FALSE(status.ok());
-  // Once for LegalizeTF and once for LegalizeTFModule
-  EXPECT_EQ(count.Delta("tf.DoesntExist", "Unknown"), 2);
+  EXPECT_EQ(count.Delta("tf.DoesntExist", "Unknown"), 1);
 }
 
 TEST(CompileMlirUtil, CreatesPipeline) {
@@ -95,10 +97,7 @@ TEST(CompileMlirUtil, CreatesPipeline) {
 TEST(CompileMlirUtil, HasLegalizationPass) {
   OpPassManager pass_manager;
   llvm::StringRef device_type = "XLA_CPU_JIT";
-  absl::string_view kLegalizeTfPass =
-      "xla-legalize-tf{allow-partial-conversion=false device-type=XLA_CPU_JIT "
-      "legalize-chlo=true prefer-tf2xla=true use-tf2xla-fallback=true "
-      "use-tf2xla-hlo-importer=false})";
+  absl::string_view kLegalizeTfPass = "xla-legalize-tf";
 
   CreateConvertMlirToXlaHloPipeline(pass_manager, device_type,
                                     /*enable_op_fallback=*/true,
@@ -109,6 +108,41 @@ TEST(CompileMlirUtil, HasLegalizationPass) {
   pass_manager.printAsTextualPipeline(raw_stream);
 
   EXPECT_THAT(pass_description, HasSubstr(kLegalizeTfPass));
+}
+
+TEST(CompileMlirUtil, DoesNotHaveLegalizationPass) {
+  OpPassManager pass_manager;
+  llvm::StringRef device_type = "XLA_CPU_JIT";
+  absl::string_view kLegalizeTfPass = "xla-legalize-tf";
+
+  CreateConvertMlirToXlaHloPipeline(pass_manager, device_type,
+                                    /*enable_op_fallback=*/false,
+                                    /*custom_legalization_passes*/ {},
+                                    /*lower_to_xla_hlo=*/false);
+
+  std::string pass_description;
+  llvm::raw_string_ostream raw_stream(pass_description);
+  pass_manager.printAsTextualPipeline(raw_stream);
+
+  EXPECT_THAT(pass_description, Not(HasSubstr(kLegalizeTfPass)));
+}
+
+TEST(CompileMlirUtil, DoesNotLowerWhenTold) {
+  mlir::DialectRegistry mlir_registry;
+  RegisterAllTensorFlowDialects(mlir_registry);
+
+  std::vector<tensorflow::TensorShape> arg_shapes;
+  XlaCompilationResult compilation_result;
+  auto status = CompileSerializedMlirToXlaHlo(
+      kMlirModuleStr, arg_shapes, /*device_type=*/"XLA_TPU_JIT",
+      /*use_tuple_args=*/true, /*enable_op_fallback=*/false,
+      /*shape_determination_fns=*/{}, &compilation_result,
+      /*custom_legalization_passes=*/{},
+      /*module_name=*/"",
+      /*lower_to_xla_hlo=*/false);
+
+  EXPECT_TRUE(status.ok());
+  EXPECT_THAT(status.value(), HasSubstr("tf.Const"));
 }
 
 TEST(CompileMlirUtil, CanonicalizationIsExplicitDuringInlining) {
@@ -139,7 +173,7 @@ TEST(LegalizeMlirTest, LegalizesModuleWithDynamicShape) {
 
   std::vector<tensorflow::TensorShape> arg_shapes = {{1}};
   XlaCompilationResult compilation_result;
-  Status status = CompileSerializedMlirToXlaHlo(
+  auto status = CompileSerializedMlirToXlaHlo(
       legalization, arg_shapes, /*device_type=*/"XLA_TPU_JIT",
       /*use_tuple_args=*/true, /*enable_op_fallback=*/false,
       /*shape_determination_fns=*/{}, &compilation_result);

@@ -35,42 +35,21 @@ limitations under the License.
 #include <optional>
 #include <stdexcept>
 #include <string>
-#include <thread>  // NOLINT
 #include <tuple>
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
-#include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
 #include "pybind11/cast.h"  // from @pybind11
-#include "pybind11/numpy.h"  // from @pybind11
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
-#include "tensorflow/compiler/xla/pjrt/lru_cache.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
-#include "tensorflow/compiler/xla/python/exceptions.h"
-#include "tensorflow/compiler/xla/python/ifrt/array.h"
-#include "tensorflow/compiler/xla/python/ifrt/client.h"
-#include "tensorflow/compiler/xla/python/ifrt/sharding.h"
-#include "tensorflow/compiler/xla/python/py_array.h"
-#include "tensorflow/compiler/xla/python/py_buffer.h"
-#include "tensorflow/compiler/xla/python/py_executable.h"
 #include "tensorflow/compiler/xla/python/py_values.h"
-#include "tensorflow/compiler/xla/python/python_ref_manager.h"
-#include "tensorflow/compiler/xla/python/python_utils.h"
 #include "tensorflow/compiler/xla/python/pytree.h"
 #include "tensorflow/compiler/xla/python/status_casters.h"
 #include "tensorflow/compiler/xla/python/types.h"
-#include "tensorflow/compiler/xla/python/util.h"
-#include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/profiler/lib/traceme.h"
 
@@ -242,18 +221,21 @@ xla::Status ParseArguments(absl::Span<PyObject* const> positional_args,
                            py::handle kwnames,
                            absl::Span<int const> static_argnums,
                            absl::Span<py::str const> static_argnames,
+                           xla::PyTreeRegistry* pytree_registry,
                            ParsedArgumentsAsBuffers& arguments) {
   tsl::profiler::TraceMe traceme("ParseArguments");
 
   arguments.flat_dynamic_args.reserve(positional_args.size() +
                                       keyword_args.size());
   if (static_argnums.empty()) {
-    arguments.signature.dynamic_arg_treedefs.resize(positional_args.size());
+    arguments.signature.dynamic_arg_treedefs.reserve(positional_args.size());
 
     // Positional arguments.
     for (int i = 0; i < positional_args.size(); ++i) {
-      xla::PyTreeDef& pytree_def = arguments.signature.dynamic_arg_treedefs[i];
-      pytree_def.FlattenInto(positional_args[i], arguments.flat_dynamic_args);
+      arguments.signature.dynamic_arg_treedefs.emplace_back(pytree_registry);
+      xla::PyTreeDef& pytree_def =
+          arguments.signature.dynamic_arg_treedefs.back();
+      pytree_def.Flatten(positional_args[i], arguments.flat_dynamic_args);
     }
   } else {
     arguments.signature.dynamic_arg_treedefs.reserve(positional_args.size());
@@ -262,10 +244,10 @@ xla::Status ParseArguments(absl::Span<PyObject* const> positional_args,
     for (int i = 0; i < positional_args.size(); ++i) {
       if (std::find(static_argnums.begin(), static_argnums.end(), i) ==
           static_argnums.end()) {
-        arguments.signature.dynamic_arg_treedefs.emplace_back();
+        arguments.signature.dynamic_arg_treedefs.emplace_back(pytree_registry);
         xla::PyTreeDef& pytree_def =
             arguments.signature.dynamic_arg_treedefs.back();
-        pytree_def.FlattenInto(positional_args[i], arguments.flat_dynamic_args);
+        pytree_def.Flatten(positional_args[i], arguments.flat_dynamic_args);
       } else {
         arguments.signature.static_args.emplace_back(
             py::reinterpret_borrow<py::object>(positional_args[i]));
@@ -312,10 +294,10 @@ xla::Status ParseArguments(absl::Span<PyObject* const> positional_args,
       } else {
         arguments.signature.dynamic_arg_names.push_back(
             py::reinterpret_steal<py::object>(kwargs[i].first));
-        arguments.signature.dynamic_arg_treedefs.emplace_back();
+        arguments.signature.dynamic_arg_treedefs.emplace_back(pytree_registry);
         xla::PyTreeDef& pytree_def =
             arguments.signature.dynamic_arg_treedefs.back();
-        pytree_def.FlattenInto(kwargs[i].second, arguments.flat_dynamic_args);
+        pytree_def.Flatten(kwargs[i].second, arguments.flat_dynamic_args);
       }
     }
   }
@@ -346,7 +328,7 @@ void BuildJaxjitSubmodule(py::module& m) {
 
   // TODO(yashkatariya, phawkins): Remove after 3 months from March 20, 2023.
   struct CompiledFunction {};
-  py::class_<CompiledFunction>(m, "CompiledFunction");
+  py::class_<CompiledFunction> give_me_a_name(m, "CompiledFunction");
 
   py::class_<xla::PyArgSignature> arg_signature(jitlib, "PyArgSignature");
   arg_signature

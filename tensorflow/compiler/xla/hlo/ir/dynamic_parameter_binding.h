@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <functional>
 #include <optional>
+#include <ostream>
 #include <string>
 #include <utility>
 
@@ -99,11 +100,6 @@ class DynamicParameterBinding {
 
   // Iterate through each binding.
   Status ForEachBinding(BindingFn fn) const;
-
-  DynamicParameterBindingProto ToProto() const;
-
-  static StatusOr<DynamicParameterBinding> CreateFromProto(
-      const DynamicParameterBindingProto& proto);
 
   std::string ToString() const;
 

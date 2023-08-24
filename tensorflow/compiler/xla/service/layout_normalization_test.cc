@@ -255,6 +255,26 @@ ENTRY main {
 )");
 }
 
+TEST_F(LayoutNormalizationTest, BroadcastUnsortedDimensions) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  a = f32[2,3]{1,0} parameter(0)
+  b = f32[3,4,2]{2,1,0} broadcast(a), dimensions={2,0}
+  ROOT out = abs(b)
+}
+)";
+
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: [[a_0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
+// CHECK: [[bitcast_1:%[^ ]+]] = f32[2,3]{1,0} bitcast([[a_0]])
+// CHECK: [[broadcast_2:%[^ ]+]] = f32[3,4,2]{2,1,0} broadcast([[bitcast_1]]), dimensions={2,0}
+// CHECK: [[abs_3:%[^ ]+]] = f32[3,4,2]{2,1,0} abs([[broadcast_2]])
+// CHECK: ROOT [[bitcast_3_4:%[^ ]+]] = f32[3,4,2]{2,1,0} bitcast([[abs_3]])
+)");
+}
+
 TEST_F(LayoutNormalizationTest, BroadcastCustomOutputLayoutWithDegenerate) {
   const char* hlo = R"(
 HloModule module
@@ -535,6 +555,31 @@ ENTRY main {
   )");
 }
 
+TEST_F(LayoutNormalizationTest, ConstantAvoidRevisitOfUser) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  c = f32[5,4]{0,1} constant({...})
+  s = f32[5,4]{0,1} sine(c)
+  t = f32[5,4]{0,1} tanh(s)
+  ROOT o = f32[5,4]{0,1} add(s, t)
+}
+)";
+  // If we allowed visiting the normalized user 's' of the constant, we would
+  // run into a CHECK failure, because the constant was normalized in-place and
+  // therefore would not be revisited.
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: [[constant_2:%[^ ]+]] = f32[4,5]{1,0} constant({...})
+// CHECK-NEXT: [[sine:%[^ ]+]] = f32[4,5]{1,0} sine([[constant_2]])
+// CHECK-NEXT: [[bitcast_1:%[^ ]+]] = f32[5,4]{0,1} bitcast([[sine]])
+// CHECK-NEXT: [[bitcast_2:%[^ ]+]] = f32[4,5]{1,0} bitcast([[bitcast_1]])
+// CHECK-NEXT: [[tanh:%[^ ]+]] = f32[4,5]{1,0} tanh([[bitcast_2]])
+// CHECK-NEXT: [[add_3:%[^ ]+]] = f32[4,5]{1,0} add([[bitcast_2]], [[tanh]])
+// CHECK-NEXT: ROOT [[bitcast_3_4:%[^ ]+]] = f32[5,4]{0,1} bitcast([[add_3]])
+  )");
+}
+
 TEST_F(LayoutNormalizationTest, Slice) {
   const char* hlo = R"(
 HloModule module
@@ -656,6 +701,36 @@ ENTRY main {
 
   CheckLayoutNormalization(hlo, R"(
 // CHECK: f32[32,64,1]{2,1,0} clamp({{.*}}, {{.*}}, {{.*}}), metadata={op_name="test"}
+)");
+}
+
+TEST_F(LayoutNormalizationTest, BitcastConvertToBiggerType) {
+  const char* hlo = R"(
+HloModule m
+
+ENTRY main {
+  p0 = u32[4,2]{0,1} parameter(0)
+  ROOT out = u64[4]{0} bitcast-convert(u32[4,2]{0,1} p0), metadata={op_name="test"}
+}
+)";
+
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: bitcast-convert({{.*}}), metadata={op_name="test"}
+)");
+}
+
+TEST_F(LayoutNormalizationTest, BitcastConvertToSmallerType) {
+  const char* hlo = R"(
+HloModule m
+
+ENTRY main {
+  p0 = u64[4]{0} parameter(0)
+  ROOT out = u32[4,2]{0,1} bitcast-convert(u64[4]{0} p0), metadata={op_name="test"}
+}
+)";
+
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: bitcast-convert({{.*}}), metadata={op_name="test"}
 )");
 }
 

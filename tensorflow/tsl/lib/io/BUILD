@@ -61,6 +61,7 @@ cc_library(
         ":inputstream_interface",
         ":random_inputstream",
         "//tensorflow/tsl/platform:env",
+        "@com_google_absl//absl/status",
     ],
     alwayslink = True,
 )
@@ -252,6 +253,21 @@ cc_library(
         "//tensorflow/tsl/platform:cord",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:status",
+    ],
+)
+
+tsl_cc_test(
+    name = "buffered_file_test",
+    size = "small",
+    srcs = ["buffered_file_test.cc"],
+    deps = [
+        ":buffered_file",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:env_impl",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_benchmark",
+        "//tensorflow/tsl/platform:test_main",
     ],
 )
 

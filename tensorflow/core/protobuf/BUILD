@@ -32,7 +32,6 @@ COMMON_PROTO_SRCS = [
     "debug.proto",
     "device_filters.proto",
     "device_properties.proto",
-    "graph_debug_info.proto",
     "queue_runner.proto",
     "rewriter_config.proto",
     "tensor_bundle.proto",
@@ -53,7 +52,6 @@ COMMON_PROTO_SRCS = [
     for proto_name in [
         "config",
         "device_properties",
-        "graph_debug_info",
         "meta_graph",
         "saved_model",
         "tensorflow_server",
@@ -64,8 +62,8 @@ tf_proto_library(
     name = "autotuning_proto",
     srcs = ["autotuning.proto"],
     make_default_target_header_only = True,
-    protodeps = ["//tensorflow/tsl/protobuf:autotuning_proto"],
-    exports = ["//tensorflow/tsl/protobuf:autotuning_proto"],
+    protodeps = ["//tensorflow/compiler/xla:autotuning_proto"],
+    exports = ["//tensorflow/compiler/xla:autotuning_proto"],
 )
 
 tf_proto_library(

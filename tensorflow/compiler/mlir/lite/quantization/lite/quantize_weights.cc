@@ -147,7 +147,7 @@ TfLiteStatus QuantizeWeights(
   tensorflow::AddDynamicRangeQuantizationPasses(quant_specs, pm);
 
   if (failed(pm.run(module.get()))) {
-    absl::string_view err = statusHandler.ConsumeStatus().error_message();
+    absl::string_view err = statusHandler.ConsumeStatus().message();
     error_reporter->Report("Failed to quantize: %s", err);
     return kTfLiteError;
   }

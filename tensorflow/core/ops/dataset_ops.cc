@@ -849,6 +849,29 @@ REGISTER_OP("TFRecordDataset")
       return shape_inference::ScalarShape(c);
     });
 
+REGISTER_OP("TFRecordDatasetV2")
+    .Input("filenames: string")
+    .Input("compression_type: string")
+    .Input("buffer_size: int64")
+    .Input("byte_offsets: int64")
+    .Attr("metadata: string = ''")
+    .Output("handle: variant")
+    .SetDoNotOptimize()  // TODO(b/123753214): See comment in dataset_ops.cc.
+    .SetTypeConstructor(full_type::UnaryTensorContainer(TFT_DATASET,
+                                                        TFT_STRING))
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused;
+      // `filenames` must be a scalar or a vector.
+      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(0), 1, &unused));
+      // `compression_type` could only be a scalar.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      // `buffer_size` could only be a scalar.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      // `byte_offsets` must be a scalar or a vector.
+      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(3), 1, &unused));
+      return shape_inference::ScalarShape(c);
+    });
+
 REGISTER_OP("Iterator")
     .Output("handle: resource")
     .Attr("shared_name: string")

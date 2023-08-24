@@ -521,6 +521,66 @@ TEST_F(InstructionFusionTest,
   EXPECT_THAT(root, op::Fusion(op::Parameter(), op::Slice()));
 }
 
+TEST_F(InstructionFusionTest,
+       DynamicUpdateSliceShouldNotFuseWithDynamicUpdateSlice) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule test_module
+
+  ENTRY Test {
+    parameter = f32[8] parameter(0)
+    slice = f32[5] slice(parameter), slice={[0:5]}
+    one = f32[] constant(1)
+    broadcast = f32[5] broadcast(one), dimensions={}
+    add = f32[5] add(slice, broadcast)
+    three = s32[] constant(3)
+    update = f32[6] parameter(1)
+    two = s32[] constant(2)
+    dynamic-update-slice = f32[8] dynamic-update-slice(parameter, update, two)
+    ROOT dynamic-update-slice.1 = f32[8] dynamic-update-slice(dynamic-update-slice, add, three)
+  })")
+                    .value();
+  EXPECT_TRUE(
+      InstructionFusion(InstructionFusion::IsExpensive, /*may_duplicate=*/false)
+          .Run(module.get())
+          .value())
+      << module->ToString();
+  // Verify that we don't fuse both dynamic-update-slice ops together, as they
+  // have different index values.
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Fusion(op::Fusion(), op::Parameter()));
+  EXPECT_THAT(root->fused_expression_root(), op::DynamicUpdateSlice());
+  EXPECT_THAT(root->operand(0)->fused_expression_root(),
+              op::DynamicUpdateSlice());
+}
+
+TEST_F(InstructionFusionTest, DynamicUpdateSliceShouldFuseWithElementwise) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule test_module
+
+  ENTRY Test {
+    parameter = f32[8] parameter(0)
+    slice = f32[5] slice(parameter), slice={[0:5]}
+    one = f32[] constant(1)
+    broadcast = f32[5] broadcast(one), dimensions={}
+    add = f32[5] add(slice, broadcast)
+    three = s32[] constant(3)
+    parameter.1 = f32[1,8] parameter(1)
+    bitcast = f32[8] bitcast(parameter.1)
+    neg = f32[8] negate(bitcast)
+    ROOT dynamic-update-slice.1 = f32[8] dynamic-update-slice(neg, add, three)
+  })")
+                    .value();
+  EXPECT_TRUE(
+      InstructionFusion(InstructionFusion::IsExpensive, /*may_duplicate=*/false)
+          .Run(module.get())
+          .value())
+      << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Fusion(op::Parameter(), op::Parameter()));
+  EXPECT_THAT(root->fused_expression_root(),
+              op::DynamicUpdateSlice(op::Negate(), op::Add(), op::Constant()));
+}
+
 TEST_F(InstructionFusionTest, InPlaceOpShouldFuseWithSliceSameIndex) {
   auto module = ParseAndReturnVerifiedModule(R"(
   HloModule test_module
@@ -696,21 +756,70 @@ TEST_F(FusionDecisionTest, NotFusionPossibleDisjunction) {
   FusionDecision a = {};
   FusionDecision b = "not possible";
   EXPECT_TRUE(!a || !b);
-  EXPECT_EQ((!(!a || !b)).Explain(), "not possible");
 
   a = "not possible";
   b = {};
   EXPECT_TRUE(!a || !b);
-  EXPECT_EQ((!(!a || !b)).Explain(), "not possible");
 
   a = "impossible";
   b = "very impossible";
   EXPECT_TRUE(!a || !b);
-  EXPECT_EQ((!(!a || !b)).Explain(), "impossible");
 
   a = {};
   b = {};
   EXPECT_FALSE(!a || !b);
+}
+
+TEST_F(FusionDecisionTest, AllExecutesAllChecks) {
+  bool first_called = false;
+  bool second_called = false;
+  auto result = FusionDecision::All(std::tuple{
+      [&]() -> FusionDecision {
+        first_called = true;
+        return {};
+      },
+      [&]() -> FusionDecision {
+        second_called = true;
+        return {};
+      },
+  });
+
+  EXPECT_TRUE(result.CanFuse());
+  EXPECT_TRUE(first_called);
+  EXPECT_TRUE(second_called);
+}
+
+TEST_F(FusionDecisionTest, AllShortCircuits) {
+  bool second_called = false;
+  auto result = FusionDecision::All(std::tuple{
+      [&]() -> FusionDecision { return "failure"; },
+      [&]() -> FusionDecision {
+        second_called = true;
+        return {};
+      },
+  });
+
+  EXPECT_EQ(result.Explain(), "failure");
+  EXPECT_FALSE(second_called);
+}
+
+TEST_F(FusionDecisionTest, AllForwardsArgs) {
+  int64_t sum = 0;
+  auto result = FusionDecision::All(
+      std::tuple{
+          [&](int64_t value1, int64_t value2) -> FusionDecision {
+            sum += value1;
+            return {};
+          },
+          [&](int64_t value1, int64_t value2) -> FusionDecision {
+            sum += value2;
+            return {};
+          },
+      },
+      42, 9000);
+
+  EXPECT_TRUE(result.CanFuse());
+  EXPECT_EQ(sum, 9042);
 }
 
 }  // namespace xla

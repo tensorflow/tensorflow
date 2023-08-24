@@ -115,8 +115,9 @@ func.func @simple_gather(%operand : tensor<3x3xf32>,
 }
 
 // CHECK-LABEL: @simple_gather
-//   CHECK-DAG: %[[CAST:.*]] = arith.index_cast {{.*}} : tensor<3x2xi64> to tensor<3x2xindex>
-//   CHECK-DAG: %[[INIT:.*]] = tensor.empty() : tensor<3x1x1xf32>
+//   CHECK:     %[[INIT:.*]] = tensor.empty() : tensor<3x1x1xf32>
+//   CHECK:     %[[CAST_INIT:.*]] = tensor.empty() : tensor<3x2xindex>
+//   CHECK:     %[[CAST:.*]] = linalg.map { arith.index_cast }
 //       CHECK: %[[GATHER:.*]] = thlo.gather
 //  CHECK-SAME:   ins(%{{.*}} : tensor<3x3xf32>, %[[CAST]] : tensor<3x2xindex>)
 //  CHECK-SAME:   outs(%[[INIT]] : tensor<3x1x1xf32>)
@@ -139,7 +140,8 @@ func.func @simple_gather_unsigned(
 // CHECK-LABEL: @simple_gather_unsigned
 //   CHECK-DAG: %[[CAST:.*]] = builtin.unrealized_conversion_cast {{.*}} : tensor<3x3xui32> to tensor<3x3xi32>
 //   CHECK-DAG: %[[INIT:.*]] = tensor.empty() : tensor<3x1x1xi32>
-//   CHECK-DAG: %[[INDEX_CAST:.*]] = arith.index_castui {{.*}} to tensor<3x2xindex>
+//   CHECK:     %[[INDEX_CAST_INIT:.*]] = tensor.empty() : tensor<3x2xindex>
+//   CHECK:     %[[INDEX_CAST:.*]] = linalg.map { arith.index_castui }
 //       CHECK: %[[GATHER:.*]] = thlo.gather
 //  CHECK-SAME:   ins(%[[CAST]] : tensor<3x3xi32>, %[[INDEX_CAST]] : tensor<3x2xindex>)
 //  CHECK-SAME:   outs(%[[INIT]] : tensor<3x1x1xi32>)
@@ -226,7 +228,8 @@ func.func @simple_scatter(%dst: tensor<3x3xf32>, %indices: tensor<2x2xi32>,
 // CHECK-LABEL: @simple_scatter
 // CHECK-SAME: (%[[DST:.*]]: tensor<3x3xf32>, %[[INDICES:.*]]: tensor<2x2xi32>,
 // CHECK-SAME:  %[[UPDATE:.*]]: tensor<2x1x3xf32>)
-//      CHECK:   %[[CAST:.*]] = arith.index_cast %[[INDICES]] {{.*}} to tensor<2x2xindex>
+//      CHECK:   %[[CAST_INIT:.*]] = tensor.empty() : tensor<2x2xindex>
+//      CHECK:   %[[CAST:.*]] = linalg.map { arith.index_cast }
 //      CHECK:   thlo.scatter 
 // CHECK-SAME:     ins(%[[CAST]] : tensor<2x2xindex>,
 // CHECK-SAME:        %[[UPDATE]] : tensor<2x1x3xf32>)

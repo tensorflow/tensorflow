@@ -72,6 +72,8 @@ StatusOr<ncclDataType_t> ToNcclDataType(PrimitiveType element_type,
                                         Thunk::Kind reduction_op) {
   switch (element_type) {
     case S8:
+    case F8E5M2:
+    case F8E4M3FN:
       return ncclInt8;
     case PRED:
     case U8:
@@ -105,7 +107,7 @@ StatusOr<ncclDataType_t> ToNcclDataType(PrimitiveType element_type,
       // For collectives that just move data around, we can use ncclFloat16 for
       // 16-bit integer data types.
       return ncclFloat16;
-#if defined(__CUDA_BF16_TYPES_EXIST__)
+#if defined(__CUDA_BF16_TYPES_EXIST__) || TENSORFLOW_USE_ROCM
     case BF16:
       return ncclBfloat16;
 #endif
@@ -152,6 +154,9 @@ std::shared_ptr<StatusOr<NcclClique::Lock>> AcquireNcclClique(
     size_t num_local_participants) {
   static auto& cliques = *new ThreadSafeMap<NcclCliqueKey, NcclClique>;
 
+  VLOG(2) << "AcquireNcclClique Rendezvous key (clique_key:"
+          << clique_key.ToString() << ", run" << run_id.ToString() << ", op"
+          << op_id.value() << ")";
   auto rendezvous_key = std::make_tuple(run_id, op_id, std::move(clique_key));
 
   int64_t terminate_timeout = xla::GetDebugOptionsFromFlags()
@@ -235,10 +240,11 @@ StatusOr<const NcclUniqueIdCallback*> GetNcclUniqueIdCallback(
 StatusOr<NcclComm::Lock> AcquireNcclComm(
     RunId run_id, OpId op_id, std::vector<GlobalDeviceId> participants,
     size_t num_local_participants,
-    const NcclUniqueIdCallback& unique_id_callback, int rank) {
+    const NcclUniqueIdCallback& unique_id_callback, int rank,
+    int64_t stream_id) {
   // Ensure that this group of threads have exclusive access to the clique to
   // prevent threads from different groups locking communicators in the clique.
-  NcclCliqueKey clique_key(std::move(participants));
+  NcclCliqueKey clique_key(std::move(participants), stream_id);
   std::shared_ptr<StatusOr<NcclClique::Lock>> clique = AcquireNcclClique(
       run_id, op_id, clique_key, unique_id_callback, num_local_participants);
 

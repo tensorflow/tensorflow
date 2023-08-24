@@ -276,6 +276,12 @@ tsl::StatusOr<InterpreterValue> LiteralToValue(const xla::Literal& literal) {
         return tsl::errors::Unimplemented("F8E5M2 not implemented");
       case xla::F8E4M3FN:
         return tsl::errors::Unimplemented("F8E4M3FN not implemented");
+      case xla::F8E4M3B11FNUZ:
+        return tsl::errors::Unimplemented("F8E4M3B11FNUZ not implemented");
+      case xla::F8E5M2FNUZ:
+        return tsl::errors::Unimplemented("F8E5M2FNUZ not implemented");
+      case xla::F8E4M3FNUZ:
+        return tsl::errors::Unimplemented("F8E4M3FNUZ not implemented");
       case xla::C64:
         return {{ArrayLiteralToTensor<std::complex<float>>(literal)}};
       case xla::C128:
@@ -294,6 +300,17 @@ tsl::StatusOr<InterpreterValue> LiteralToValue(
   TF_ASSIGN_OR_RETURN(auto deserialized,
                       xla::Literal::CreateFromProto(literal));
   return LiteralToValue(deserialized);
+}
+
+tsl::StatusOr<InterpreterValue> LiteralToValue(const xla::LiteralProto& literal,
+                                               mlir::Type type) {
+  TF_ASSIGN_OR_RETURN(auto result, LiteralToValue(literal));
+  return {dispatchScalarType(type, [&](auto dummy) -> InterpreterValue {
+    TensorOrMemref<decltype(dummy)> cast;
+    cast.view = result.view();
+    cast.buffer = result.buffer();
+    return {cast};
+  })};
 }
 
 TracedValue ValueToTracedValue(const InterpreterValue& value) {

@@ -169,7 +169,6 @@ add_subdirectory(stablehlo)
 add_subdirectory(tests)
 add_subdirectory(thlo)
 add_subdirectory(tools)
-add_subdirectory(tosa)
 add_subdirectory(transforms)
 add_subdirectory(utils)
 

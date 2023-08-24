@@ -18,7 +18,10 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/pjrt/tf_pjrt_client.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/tfrt/common/pjrt_client_factory_options.h"
+#include "tensorflow/core/tfrt/common/pjrt_client_factory_registry.h"
 
 namespace tensorflow {
 
@@ -32,6 +35,28 @@ StatusOr<xla::PjRtClient*> PjRtState::GetPjRtClient(
   }
   return errors::NotFound("PjRt client not found for device type ",
                           device_type);
+}
+
+StatusOr<xla::PjRtClient*> PjRtState::GetOrCreatePjRtClient(
+    const DeviceType& device_type) {
+  absl::MutexLock lock(&mu_);
+  if (auto it = clients_.find(device_type); it != clients_.end()) {
+    return it->second.get();
+  }
+  std::unique_ptr<xla::PjRtClient> pjrt_client;
+  // TODO(b/260799193): use XlaPlatformInfo to pass device-specific options.
+  // This info should be set in the plugin init for next pluggable device.
+
+  // TODO(b/280111106): make PjrtClientFactoryOptions an input of
+  // GetOrCreatePjRtClient.
+  xla::PjrtClientFactoryOptions options = xla::PjrtClientFactoryOptions();
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtClient> client,
+                      xla::PjrtClientFactoryRegistry::Get().GetPjrtClient(
+                          device_type, options));
+  pjrt_client = xla::TfPjRtClient::CreateTfPjRtClient(std::move(client));
+
+  clients_[device_type] = std::move(pjrt_client);
+  return clients_[device_type].get();
 }
 
 Status PjRtState::SetPjRtClient(const DeviceType& device_type,

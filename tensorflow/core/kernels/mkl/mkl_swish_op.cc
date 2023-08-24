@@ -68,4 +68,4 @@ TF_CALL_bfloat16(REGISTER_SWISH_MKL_SUPPORTED_KERNELS_TYPES);
 
 }  // namespace tensorflow
 
-#endif
+#endif  // INTEL_MKL

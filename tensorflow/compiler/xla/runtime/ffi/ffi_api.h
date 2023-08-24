@@ -78,7 +78,7 @@ inline void CheckStructSize(std::string_view struct_name, size_t expected_size,
                             args->struct_size)
 
 //===----------------------------------------------------------------------===//
-// Span is non-owning view into contiguous values ot type `T`.
+// Span is non-owning view into contiguous values of type `T`.
 //===----------------------------------------------------------------------===//
 
 // TODO(ezhulenev): Replace with `std::span` when C++20 is available.
@@ -99,6 +99,15 @@ class Span {
  private:
   T* data_;
   size_t size_;
+};
+
+// A type for representing shaped tensors.
+// TODO(ecg): expand API to be compatible with `std::mdspan`, and eventually
+// (when C++23 is available) replace with `std::mdspan`.
+template <typename T>
+struct MdSpan {
+  Span<const int64_t> shape;
+  Span<const T> data;
 };
 
 //===----------------------------------------------------------------------===//
@@ -336,6 +345,37 @@ enum class PrimitiveType : uint8_t {
   F64 = 12,
 };
 
+constexpr int ByteWidth(PrimitiveType type) {
+  switch (type) {
+    case PrimitiveType::PRED:
+      return 1;
+
+    case PrimitiveType::S8:
+    case PrimitiveType::U8:
+      return 1;
+
+    case PrimitiveType::S16:
+    case PrimitiveType::U16:
+    case PrimitiveType::F16:
+    case PrimitiveType::BF16:
+      return 2;
+
+    case PrimitiveType::S32:
+    case PrimitiveType::U32:
+    case PrimitiveType::F32:
+      return 4;
+
+    case PrimitiveType::S64:
+    case PrimitiveType::U64:
+    case PrimitiveType::F64:
+      return 8;
+
+    case PrimitiveType::PRIMITIVE_TYPE_INVALID:
+      assert(false && "Unsupported type");
+      return 0;
+  }
+}
+
 constexpr std::string_view PrimitiveTypeToString(PrimitiveType type) {
   switch (type) {
     case PrimitiveType::PRIMITIVE_TYPE_INVALID:
@@ -389,6 +429,17 @@ struct BufferArg {
   Span<const int64_t> sizes;
 };
 
+// A flat view into the buffer argument with an identity (row major) layout.
+// If the memref shape and strides are not required, it is cheaper to pass the
+// flat buffer argument.
+struct FlatBufferArg {
+  std::string ToString() const;
+
+  PrimitiveType dtype;
+  void* data;
+  int64_t size_in_bytes;
+};
+
 // A type tag to represent dictionary attributes that can be decoded into
 // structs using aggregate attribute decoding.
 struct Dictionary {};
@@ -411,6 +462,11 @@ bool Ffi::Isa(const XLA_FFI_Api* api, XLA_FFI_TypeId type_id) {
   ISA(Span<const double>, DoubleArray);
   ISA(Span<const int32_t>, Int32Array);
   ISA(Span<const int64_t>, Int64Array);
+
+  ISA(MdSpan<float>, FloatTensor);
+  ISA(MdSpan<double>, DoubleTensor);
+  ISA(MdSpan<int32_t>, Int32Tensor);
+  ISA(MdSpan<int64_t>, Int64Tensor);
 
   ISA(StridedBufferArg, StridedBufferArg);
   ISA(BufferArg, BufferArg);
@@ -451,6 +507,13 @@ inline std::string BufferArg::ToString() const {
   return ss.str();
 }
 
+inline std::string FlatBufferArg::ToString() const {
+  std::stringstream ss;
+  ss << "Buffer: dtype=" << PrimitiveTypeToString(dtype);
+  ss << " size=" << size_in_bytes;
+  return ss.str();
+}
+
 //===----------------------------------------------------------------------===//
 // FFI binding describes the function signature expected by the FFI handler
 // using its variadic template parameter.
@@ -478,12 +541,26 @@ struct StateTag {};
 template <typename T>
 struct StreamTag {};
 
+// Type tag to distinguish an argument tied to an "ApiPriv" argument
+// to `Ffi::Binding`. This is necessary to obtain `XLA_FFI_Api.priv`
+// from the foreign function. For example:
+//
+// static ffi::FfiStatus FooFfi(MyStruct* bar, ffi::BufferArg input) { ... }
+//
+// XLA_FFI_DEFINE_FUNCTION(
+//     FFI_Foo, FooFfi, ffi::Ffi::Binding()
+//     .ApriPriv<MyStruct*>
+//     .Arg<ffi::BufferArg>);
+template <typename T>
+struct ApiPrivTag {};
+
 // A template for checking if type is a wrapped attribute or user data.
 // clang-format off
-template <typename>   struct IsWrapped               : std::false_type {};
-template <typename T> struct IsWrapped<AttrTag<T>>   : std::true_type {};
-template <typename T> struct IsWrapped<StateTag<T>>  : std::true_type {};
-template <typename T> struct IsWrapped<StreamTag<T>> : std::true_type {};
+template <typename>   struct IsWrapped                : std::false_type {};
+template <typename T> struct IsWrapped<AttrTag<T>>    : std::true_type {};
+template <typename T> struct IsWrapped<StateTag<T>>   : std::true_type {};
+template <typename T> struct IsWrapped<StreamTag<T>>  : std::true_type {};
+template <typename T> struct IsWrapped<ApiPrivTag<T>> : std::true_type {};
 // clang-format on
 
 }  // namespace internal
@@ -512,6 +589,12 @@ class FfiBinding {
     static_assert(std::is_pointer_v<T>,
                   "T must be a pointer type, e.g. for GPU platform it must be "
                   "se::gpu::GpuStreamHandle");
+    return {std::move(*this)};
+  }
+
+  template <typename T>
+  FfiBinding<Ts..., internal::ApiPrivTag<T>> ApiPriv() && {
+    static_assert(std::is_pointer_v<T>, "T must be a pointer type");
     return {std::move(*this)};
   }
 
@@ -658,7 +741,7 @@ namespace internal {
 
 // When decoding input data we need to keep track of how many arguments,
 // attributes, and returns we decoded so far to index into the correct data
-// strucuture.
+// structure.
 struct DecodingOffsets {
   int64_t args = 0;
   int64_t attrs = 0;
@@ -740,6 +823,18 @@ struct Decode<StreamTag<T>> {
   }
 };
 
+template <typename T>
+struct Decode<ApiPrivTag<T>> {
+  static std::optional<T> call(const XLA_FFI_Api* api,
+                               XLA_FFI_ExecutionContext* ctx,
+                               DecodingOffsets& offsets, internal::DecodedArgs,
+                               const std::vector<std::string>& attrs_names,
+                               const std::vector<size_t>& attrs_idx,
+                               internal::DecodedAttrs attrs) {
+    return reinterpret_cast<T>(api->priv);
+  }
+};
+
 }  // namespace internal
 
 //===----------------------------------------------------------------------===//
@@ -755,10 +850,11 @@ namespace internal {
 
 // A helper template to extract the type of the handler argument.
 // clang-format off
-template <typename T> struct FnArgType               { using Type = T;  };
-template <typename T> struct FnArgType<AttrTag<T>>   { using Type = T;  };
-template <typename T> struct FnArgType<StateTag<T>>  { using Type = T*; };
-template <typename T> struct FnArgType<StreamTag<T>> { using Type = T;  };
+template <typename T> struct FnArgType                { using Type = T;  };
+template <typename T> struct FnArgType<AttrTag<T>>    { using Type = T;  };
+template <typename T> struct FnArgType<StateTag<T>>   { using Type = T*; };
+template <typename T> struct FnArgType<StreamTag<T>>  { using Type = T;  };
+template <typename T> struct FnArgType<ApiPrivTag<T>> { using Type = T;  };
 // clang-format on
 
 // A template for counting regular arguments in the Ts pack.
@@ -857,8 +953,16 @@ class FfiHandler : public Ffi {
     // Check if all arguments, attributes and results were decoded;
     bool all_decoded = (std::get<Is>(fn_args).has_value() && ...);
     if (!all_decoded) {
-      return ToError(
-          api, FfiStatus::InvalidArgument("Failed to decode all FFI operands"));
+      std::array<bool, kSize> decoded = {std::get<Is>(fn_args).has_value()...};
+      std::string err = "Failed to decode all FFI operands (bad operands at: ";
+      for (size_t cnt = 0, idx = 0; idx < kSize; ++idx) {
+        if (!decoded[idx]) {
+          if (cnt++) err.append(", ");
+          err.append(std::to_string(idx));
+        }
+      }
+      err.append(")");
+      return ToError(api, FfiStatus::InvalidArgument(err));
     }
 
     // Custom call returns `FfiStatus`, we can call it directly.
@@ -962,6 +1066,31 @@ struct FfiArgDecoding<BufferArg> {
   }
 };
 
+template <>
+struct FfiArgDecoding<FlatBufferArg> {
+  using EncodedMemref = internal::EncodedMemref;
+
+  static std::optional<FlatBufferArg> Decode(const XLA_FFI_Api* api,
+                                             XLA_FFI_TypeId type_id,
+                                             void* value) {
+    if (!Ffi::Isa<BufferArg>(api, type_id)) {
+      return std::nullopt;
+    }
+
+    auto* encoded = reinterpret_cast<EncodedMemref*>(value);
+    XLA_FFI_ANNOTATE_MEMORY_IS_INITIALIZED(encoded, sizeof(EncodedMemref));
+    XLA_FFI_ANNOTATE_MEMORY_IS_INITIALIZED(
+        encoded, sizeof(EncodedMemref) + encoded->rank * sizeof(int64_t));
+
+    auto dtype = static_cast<PrimitiveType>(encoded->dtype);
+    int64_t size_in_bytes = ByteWidth(dtype);
+    for (int d = 0; d < encoded->rank; ++d) {
+      size_in_bytes *= encoded->dims[d];
+    }
+    return FlatBufferArg{dtype, encoded->data, size_in_bytes};
+  }
+};
+
 //===----------------------------------------------------------------------===//
 // XLA FFI attributes decoding.
 //===----------------------------------------------------------------------===//
@@ -988,6 +1117,9 @@ XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(int64_t);
 
 #undef XLA_FFI_REGISTER_SCALAR_ATTR_DECODING
 
+// Both EncodedArray and 1-D EncodedDenseElements can be decoded as a Span.
+// Pointers to both EncodedArray and 1-D EncodedDenseElements can be
+// dereferenced as a pointer to EncodedArray.
 #define XLA_FFI_REGISTER_ARRAY_ATTR_DECODING(T)                            \
   template <>                                                              \
   struct FfiAttrDecoding<Span<const T>> {                                  \
@@ -995,7 +1127,7 @@ XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(int64_t);
                                                std::string_view name,      \
                                                XLA_FFI_TypeId type_id,     \
                                                void* value) {              \
-      if (!Ffi::Isa<Span<const T>>(api, type_id)) {                        \
+      if (!Ffi::Isa<Span<const T>, MdSpan<T>>(api, type_id)) {             \
         return std::nullopt;                                               \
       }                                                                    \
                                                                            \

@@ -38,6 +38,7 @@ class SingleOpModelWithNNAPI : public SingleOpModel {
         std::make_unique<StatefulNnApiDelegate>(nnapi, options_);
     this->SetDelegate(stateful_delegate_.get());
   }
+  ~SingleOpModelWithNNAPI() { stateful_delegate_.reset(); }
 
   StatefulNnApiDelegate* GetDelegate() { return stateful_delegate_.get(); }
 

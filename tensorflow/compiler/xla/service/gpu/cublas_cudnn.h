@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
@@ -43,6 +44,29 @@ enum class CudnnConvKind {
   kBackwardFilter,     // input  + output => filter
   kForwardActivation,  // activation(conv(input, filter) + broadcast(bias) +
                        // (optionally) side_input) => output
+  kForwardGraph,       // pointwise(...pointwise(conv(input, filter))...)
+                       // => output
+};
+
+enum class CudnnfMHAKind {
+  kBmmBmm,
+  kScaleBiasMaskSoftmax,
+  kScaleBiasMaskSoftmaxDropout,
+  kScaleMaskSoftmax,
+  kScaleMaskSoftmaxDropout,
+  kSoftmaxDropout,
+  kSoftmax,
+  kScaleBiasSoftmax,
+  kScaleBiasSoftmaxDropout,
+  kBackwardBmmBmm,
+  kBackwardScaleBiasMaskSoftmax,
+  kBackwardScaleBiasMaskSoftmaxDropout,
+  kBackwardScaleMaskSoftmax,
+  kBackwardScaleMaskSoftmaxDropout,
+  kBackwardSoftmaxDropout,
+  kBackwardSoftmax,
+  kBackwardScaleBiasSoftmax,
+  kBackwardScaleBiasSoftmaxDropout,
 };
 
 StatusOr<CudnnConvKind> GetCudnnConvKind(const HloCustomCallInstruction* instr);
@@ -108,6 +132,7 @@ extern const absl::string_view kCudnnConvForwardCallTarget;
 extern const absl::string_view kCudnnConvBackwardInputCallTarget;
 extern const absl::string_view kCudnnConvBackwardFilterCallTarget;
 extern const absl::string_view kCudnnConvBiasActivationForwardCallTarget;
+extern const absl::string_view kCudnnConvForwardGraphCallTarget;
 
 // cuDNN specific convolution helper (emitted together with a int8x32
 // convolution, if reordering is required).
@@ -126,6 +151,54 @@ bool IsCustomCallToDnnConvolution(const HloInstruction& hlo);
 // reordering helper (required for int8x32 convolutions).
 bool IsCudnnConvolutionReorder(const HloInstruction& hlo);
 
+// The fused_mha_rewriter phase where each of the MHA signatures are pattern
+// matched and rewritten into a custom-call with specific custom-call target.
+// The custom-call target specifies the MHA signature. For example,  BMM1 - Bias
+// - Scale - Mask - Softmax - BMM2 pattern can have the target as
+// cudnn$fmhaBiasScaleMaskSoftmax.
+// The fMHA signatures currently supported by cudnn are:
+// 1.BMM1 - BMM2
+// 2. BMM1 - Scale - Bias - Mask - Softmax - BMM2
+// 3. BMM1 - Scale - Bias - Mask - Softmax - Dropout - BMM2
+// 4. BMM1 - Scale - Mask - Softmax - BMM2
+// 5. BMM1 - Scale - Mask - Softmax - Dropout - BMM2
+// 6. BMM1 - Softmax - Dropout - BMM2
+// 7. BMM1 - Softmax - BMM2
+// 8. BMM1 - scale - Bias - Softmax - BMM2
+// Forward calls
+extern const absl::string_view kCudnnfMHABmmBmmCallTarget;
+extern const absl::string_view kCudnnfMHASoftmaxCallTarget;
+extern const absl::string_view kCudnnfMHAScaleBiasMaskSoftmaxCallTarget;
+extern const absl::string_view kCudnnfMHAScaleBiasMaskSoftmaxDropoutCallTarget;
+extern const absl::string_view kCudnnfMHAScaleMaskSoftmaxCallTarget;
+extern const absl::string_view kCudnnfMHAScaleMaskSoftmaxDropoutCallTarget;
+extern const absl::string_view kCudnnfMHASoftmaxDropoutCallTarget;
+extern const absl::string_view kCudnnfMHAScaleBiasSoftmaxDropoutCallTarget;
+extern const absl::string_view kCudnnfMHAScaleBiasSoftmaxCallTarget;
+// Backward calls
+extern const absl::string_view kCudnnfMHABmmBmmBackwardCallTarget;
+extern const absl::string_view kCudnnfMHASoftmaxBackwardCallTarget;
+extern const absl::string_view kCudnnfMHAScaleBiasMaskSoftmaxBackwardCallTarget;
+extern const absl::string_view
+    kCudnnfMHAScaleBiasMaskSoftmaxDropoutBackwardCallTarget;
+extern const absl::string_view kCudnnfMHAScaleMaskSoftmaxBackwardCallTarget;
+extern const absl::string_view
+    kCudnnfMHAScaleMaskSoftmaxDropoutBackwardCallTarget;
+extern const absl::string_view kCudnnfMHASoftmaxDropoutBackwardCallTarget;
+extern const absl::string_view
+    kCudnnfMHAScaleBiasSoftmaxDropoutBackwardCallTarget;
+extern const absl::string_view kCudnnfMHAScaleBiasSoftmaxBackwardCallTarget;
+
+bool IsFwdCustomCallTofMHA(const HloInstruction& hlo);
+bool IsBwdCustomCallTofMHA(const HloInstruction& hlo);
+bool IsCustomCallTofMHA(const HloInstruction& hlo);
+
+StatusOr<CudnnfMHAKind> GetCudnnfMHAKind(const HloCustomCallInstruction* instr);
+
+std::string CudnnfMHAKindToString(CudnnfMHAKind kind);
+Status SetFMHAInstructionName(HloModule* module, HloInstruction* fmha);
+
+bool MHACallHasDropout(absl::string_view fmha_call_name);
 }  // namespace gpu
 }  // namespace xla
 

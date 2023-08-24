@@ -19,9 +19,9 @@ limitations under the License.
 #include <complex>
 #include <istream>
 #include <limits>
-#include <optional>
 #include <ostream>
 #include <string>
+#include <type_traits>
 
 #include "absl/strings/str_format.h"
 #include "third_party/eigen3/Eigen/Core"
@@ -34,51 +34,66 @@ using ::Eigen::half;      // NOLINT(misc-unused-using-decls)
 using complex64 = std::complex<float>;
 using complex128 = std::complex<double>;
 
+template <class T>
+struct is_complex : std::false_type {};
+template <class T>
+struct is_complex<std::complex<T>> : std::true_type {};
+
+template <typename T>
+inline constexpr bool is_complex_v = is_complex<T>::value;
+
+template <typename T>
+constexpr bool is_specialized_floating_point_v =
+    std::numeric_limits<T>::is_specialized &&
+    !std::numeric_limits<T>::is_integer;
+
+// LINT.IfChange
 template <typename UnderlyingTy>
 struct i4 {
  private:
   UnderlyingTy v : 4;
 
  public:
-  i4() : v(0) {}
-  explicit i4(UnderlyingTy val) : v(val & 0x0F) {}
+  constexpr i4() : v(0) {}
+  constexpr explicit i4(UnderlyingTy val) : v(val & 0x0F) {}
   template <typename T>
-  explicit i4(T t) : i4(static_cast<UnderlyingTy>(t)) {}
-  i4(const i4& other) = default;
+  constexpr explicit i4(T t) : i4(static_cast<UnderlyingTy>(t)) {}
+  constexpr i4(const i4& other) = default;
 
-  template <typename T, typename = std::enable_if_t<std::is_arithmetic_v<T>>>
-  explicit operator T() const {
-    return static_cast<T>(v);
-  }
   // NOLINTNEXTLINE(google-explicit-constructor)
-  operator std::optional<int64_t>() const { return static_cast<int64_t>(v); }
-  explicit operator complex64() const { return complex64(v); }
-  explicit operator complex128() const { return complex128(v); }
+  constexpr operator UnderlyingTy() const {
+    return static_cast<UnderlyingTy>(v);
+  }
 
-  i4 operator+(const i4& other) const { return i4((v + other.v)); }
-  i4 operator-(const i4& other) const { return i4((v - other.v)); }
-  i4 operator*(const i4& other) const { return i4((v * other.v)); }
-  i4 operator/(const i4& other) const { return i4((v / other.v)); }
+  template <typename T>
+  i4 operator>>(const T amount) const {
+    return i4(v >> amount);
+  }
+  template <typename T>
+  i4 operator<<(const T amount) const {
+    return i4(v << amount);
+  }
 
-  i4 operator>>(const int amount) const { return i4((v >> amount)); }
-  i4 operator<<(const int amount) const { return i4((v << amount)); }
+  constexpr bool operator==(const i4 other) const { return v == other.v; }
+  constexpr bool operator!=(const i4 other) const { return v != other.v; }
+  constexpr bool operator<(const i4 other) const { return v < other.v; }
+  constexpr bool operator>(const i4 other) const { return v > other.v; }
+  constexpr bool operator<=(const i4 other) const { return v <= other.v; }
+  constexpr bool operator>=(const i4 other) const { return v >= other.v; }
 
-  bool operator==(const i4& other) const { return v == other.v; }
-  bool operator!=(const i4& other) const { return v != other.v; }
-  bool operator<(const i4& other) const { return v < other.v; }
-  bool operator>(const i4& other) const { return v > other.v; }
-  bool operator<=(const i4& other) const { return v <= other.v; }
-  bool operator>=(const i4& other) const { return v >= other.v; }
-
-  bool operator==(const int64_t other) const { return v == other; }
-  bool operator!=(const int64_t other) const { return v != other; }
-  bool operator<(const int64_t other) const { return v < other; }
-  bool operator>(const int64_t other) const { return v > other; }
-  bool operator<=(const int64_t other) const { return v <= other; }
-  bool operator>=(const int64_t other) const { return v >= other; }
-
-  i4& operator++() {
+  constexpr i4 operator-() const { return i4(-v); }
+  constexpr i4 operator~() const { return i4(~v); }
+  constexpr i4 operator++(int) {
+    i4 tmp(*this);
     v = (v + 1) & 0x0F;
+    return tmp;
+  }
+  constexpr i4& operator++() {
+    v = (v + 1) & 0x0F;
+    return *this;
+  }
+  constexpr i4& operator+=(const i4 other) {
+    v = (v + other.v) & 0x0F;
     return *this;
   }
 
@@ -104,6 +119,8 @@ struct i4 {
 
 using u4 = i4<uint8_t>;
 using s4 = i4<int8_t>;
+// LINT.ThenChange(//tensorflow/compiler/xla/literal.cc)
+
 }  // namespace xla
 
 // Alias namespace ::stream_executor as ::xla::se.
@@ -137,12 +154,12 @@ class numeric_limits_int4t {
   static constexpr int max_exponent10 = 0;
   static constexpr bool tinyness_before = false;
 
-  static Int4T epsilon() { return Int4T(0); }
-  static Int4T round_error() { return Int4T(0); }
-  static Int4T infinity() { return Int4T(0); }
-  static Int4T quiet_NaN() { return Int4T(0); }
-  static Int4T signaling_NaN() { return Int4T(0); }
-  static Int4T denorm_min() { return Int4T(0); }
+  static constexpr Int4T epsilon() { return Int4T(0); }
+  static constexpr Int4T round_error() { return Int4T(0); }
+  static constexpr Int4T infinity() { return Int4T(0); }
+  static constexpr Int4T quiet_NaN() { return Int4T(0); }
+  static constexpr Int4T signaling_NaN() { return Int4T(0); }
+  static constexpr Int4T denorm_min() { return Int4T(0); }
 };
 
 template <>
@@ -154,9 +171,9 @@ class numeric_limits<xla::u4> : public numeric_limits_int4t<xla::u4> {
   static constexpr bool is_modulo = true;
   static constexpr bool traps = numeric_limits<uint8_t>::traps;
 
-  static xla::u4(min)() { return xla::u4(0); }
-  static xla::u4 lowest() { return xla::u4(0); }
-  static xla::u4(max)() { return xla::u4(15); }
+  static constexpr xla::u4(min)() { return xla::u4(0); }
+  static constexpr xla::u4 lowest() { return xla::u4(0); }
+  static constexpr xla::u4(max)() { return xla::u4(15); }
 };
 
 template <>
@@ -168,11 +185,43 @@ class numeric_limits<xla::s4> : public numeric_limits_int4t<xla::s4> {
   static constexpr bool is_modulo = false;
   static constexpr bool traps = numeric_limits<int8_t>::traps;
 
-  static xla::s4(min)() { return xla::s4(-8); }
-  static xla::s4 lowest() { return xla::s4(-8); }
-  static xla::s4(max)() { return xla::s4(7); }
+  static constexpr xla::s4(min)() { return xla::s4(-8); }
+  static constexpr xla::s4 lowest() { return xla::s4(-8); }
+  static constexpr xla::s4(max)() { return xla::s4(7); }
 };
 // NOLINTEND
 }  // namespace std
+
+namespace xla {
+
+// std::make_signed_t is “behavior undefined” for custom types, so provide a
+// general util to make signed/unsigned for both primitive and custom types.
+template <typename T>
+struct make_specialized_unsigned {
+  using type = std::make_unsigned_t<T>;
+};
+
+template <typename UnderlyingTy>
+struct make_specialized_unsigned<xla::i4<UnderlyingTy>> {
+  using type = xla::i4<std::make_unsigned_t<UnderlyingTy>>;
+};
+
+template <typename T>
+using make_specialized_unsigned_t = typename make_specialized_unsigned<T>::type;
+
+template <typename T>
+struct make_specialized_signed {
+  using type = std::make_signed_t<T>;
+};
+
+template <typename UnderlyingTy>
+struct make_specialized_signed<xla::i4<UnderlyingTy>> {
+  using type = xla::i4<std::make_signed_t<UnderlyingTy>>;
+};
+
+template <typename T>
+using make_specialized_signed_t = typename make_specialized_signed<T>::type;
+
+}  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_TYPES_H_

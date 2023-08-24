@@ -17,9 +17,12 @@ limitations under the License.
 #define TENSORFLOW_CORE_DATA_SNAPSHOT_UTILS_H_
 
 #include <cstdint>
+#include <deque>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/core/framework/dataset.h"
@@ -75,7 +78,7 @@ std::string ShardDirectory(const std::string& run_directory, int64_t shard_id);
 
 // Returns the checkpoint file name for the given directory and checkpoint ID.
 std::string GetCheckpointFileName(const std::string& shard_directory,
-                                  const uint64 checkpoint_id);
+                                  uint64 checkpoint_id);
 
 // This is a interface class that exposes snapshot writing functionality.
 class Writer {
@@ -96,7 +99,7 @@ class Writer {
   // be invalid after this call.
   virtual Status Close() = 0;
 
-  virtual ~Writer() {}
+  virtual ~Writer() = default;
 
  protected:
   virtual Status Initialize(tensorflow::Env* env) = 0;
@@ -221,8 +224,7 @@ class Reader {
                                   const string& compression_type, int version,
                                   const DataTypeVector& dtypes,
                                   const std::vector<PartialTensorShape>& shapes,
-                                  const int64_t start_index,
-                                  DatasetBase** output);
+                                  int64_t start_index, DatasetBase** output);
 
   // Returns a nested dataset for the given datasets.
   static void MakeNestedDataset(const std::vector<DatasetBase*>& datasets,
@@ -235,7 +237,7 @@ class Reader {
   // times then discarding the results.
   virtual Status SkipRecords(int64_t num_records);
 
-  virtual ~Reader() {}
+  virtual ~Reader() = default;
 
  protected:
   virtual Status Initialize(Env* env) = 0;
@@ -319,11 +321,11 @@ class CustomReader : public Reader {
   static constexpr const char* const kSeparator = "::";
 
   CustomReader(const std::string& filename, const string& compression_type,
-               const int version, const DataTypeVector& dtypes);
+               int version, const DataTypeVector& dtypes);
 
   Status ReadTensors(std::vector<Tensor>* read_tensors) override;
 
-  ~CustomReader() override {}
+  ~CustomReader() override = default;
 
  protected:
   Status Initialize(Env* env) override;
@@ -384,8 +386,7 @@ Status DumpDatasetGraph(Env* env, const std::string& path, uint64 hash,
 
 Status DetermineOpState(const std::string& mode_string, bool file_exists,
                         const experimental::SnapshotMetadataRecord* metadata,
-                        const uint64 pending_snapshot_expiry_seconds,
-                        Mode* mode);
+                        uint64 pending_snapshot_expiry_seconds, Mode* mode);
 
 // Represents a dataset element or EOF.
 struct ElementOrEOF {

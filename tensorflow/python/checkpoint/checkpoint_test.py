@@ -1160,6 +1160,29 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     for file in proc.open_files():
       self.assertNotIn(save_path, file[0])
 
+  def testLookupCache(self):
+    """Ensure that Checkpoint.restore passes cached dependencies to lookup."""
+    root = autotrackable.AutoTrackable()
+    root.v1 = variables_lib.Variable(1)
+    root.v2 = variables_lib.Variable(2)
+    root.v3 = variables_lib.Variable(3)
+
+    ckpt = trackable_utils.Checkpoint(model=root)
+    save_path = ckpt.save(os.path.join(self.get_temp_dir(), "ckpt"))
+
+    called_with_cache = []
+
+    class LookupOverride(autotrackable.AutoTrackable):
+      def _lookup_dependency(self, name, cached_dependencies=None):
+        if cached_dependencies is not None:
+          called_with_cache.append(name)
+        return super()._lookup_dependency(name, cached_dependencies)
+
+    root2 = LookupOverride()
+    ckpt2 = trackable_utils.Checkpoint(model=root2)
+    ckpt2.restore(save_path)
+    self.assertCountEqual(called_with_cache, ["v1", "v2", "v3"])
+
 
 class SerializeToTensorTest(test.TestCase):
 

@@ -39,6 +39,15 @@ StatusOr<std::unique_ptr<HloModule>> HloProtoToModule(
                       HloModule::CreateFromProto(proto.hlo_module(), config));
   return std::move(module);
 }
+template <class T>
+std::vector<T*> MakePointerVector(absl::Span<T> input_vec) {
+  std::vector<T*> output_pointers;
+  output_pointers.reserve(input_vec.size());
+  for (auto& input : input_vec) {
+    output_pointers.push_back(&input);
+  }
+  return output_pointers;
+}
 
 }  // namespace
 
@@ -88,13 +97,24 @@ StatusOr<Literal> HloRunnerInterface::Execute(
     std::unique_ptr<HloModule> module, absl::Span<const Literal> arguments,
     bool run_hlo_passes, ExecutionProfile* profile) {
   // Construct a vector of plain pointers for the arguments.
-  std::vector<const Literal*> argument_pointers;
-  argument_pointers.reserve(arguments.size());
-  for (const auto& argument : arguments) {
-    argument_pointers.push_back(&argument);
-  }
+  auto argument_pointers = MakePointerVector<const Literal>(arguments);
   return Execute(
       /*module=*/std::move(module),
+      /*arguments=*/argument_pointers,
+      /*run_hlo_passes=*/run_hlo_passes,
+      /*profile=*/profile);
+}
+
+StatusOr<Literal> HloRunnerInterface::ExecuteWithBufferAssignment(
+    std::unique_ptr<HloModule> module,
+    const BufferAssignmentProto* buffer_assignment_proto,
+    absl::Span<const Literal> arguments, bool run_hlo_passes,
+    ExecutionProfile* profile) {
+  // Construct a vector of plain pointers for the arguments.
+  auto argument_pointers = MakePointerVector<const Literal>(arguments);
+  return ExecuteWithBufferAssignment(
+      /*module=*/std::move(module),
+      /*buffer_assignment_proto=*/buffer_assignment_proto,
       /*arguments=*/argument_pointers,
       /*run_hlo_passes=*/run_hlo_passes,
       /*profile=*/profile);
@@ -104,11 +124,7 @@ StatusOr<Literal> HloRunnerInterface::ExecuteWithExecutable(
     Executable* executable, absl::Span<const Literal> arguments,
     ExecutionProfile* profile) {
   // Construct a vector of plain pointers for the arguments.
-  std::vector<const Literal*> argument_pointers;
-  argument_pointers.reserve(arguments.size());
-  for (const auto& argument : arguments) {
-    argument_pointers.push_back(&argument);
-  }
+  auto argument_pointers = MakePointerVector<const Literal>(arguments);
   return ExecuteWithExecutable(executable, argument_pointers, profile);
 }
 

@@ -40,7 +40,7 @@ void UpdateOpCostInTfrtMlir(mlir::ModuleOp op,
     // Set the cost attr with a new value.
     const int64_t op_key = op_key_attr.getInt();
     op->setAttr(kCostAttrName, builder.getI64IntegerAttr(
-                                   cost_recorder.GetCostNanosecond(op_key)));
+                                   cost_recorder.GetCost(op_key)));
   });
 }
 

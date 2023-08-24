@@ -17,12 +17,13 @@
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute.coordinator import cluster_coordinator
-from tensorflow.python.distribute.coordinator import fault_tolerance_test
+from tensorflow.python.distribute.coordinator import fault_tolerance_test_base
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 
 
-class BaseCoordinationServiceTest(fault_tolerance_test.BaseFaultToleranceTest):
+class BaseCoordinationServiceTest(
+    fault_tolerance_test_base.BaseFaultToleranceTest):
   """Modify some tests to have stronger checks."""
 
   def setUp(self, num_workers, num_ps):

@@ -55,32 +55,32 @@ namespace wrap {
 
 #else
 
-#define STREAM_EXECUTOR_ROCFFT_WRAP(__name)                              \
-  struct DynLoadShim__##__name {                                         \
-    static const char *kName;                                            \
-    using FuncPtrT = std::add_pointer<decltype(::__name)>::type;         \
-    static void *GetDsoHandle() {                                        \
-      auto s = internal::CachedDsoLoader::GetHipfftDsoHandle();          \
-      return s.value();                                                  \
-    }                                                                    \
-    static FuncPtrT LoadOrDie() {                                        \
-      void *f;                                                           \
-      auto s = tsl::Env::Default()->GetSymbolFromLibrary(GetDsoHandle(), \
-                                                         kName, &f);     \
-      CHECK(s.ok()) << "could not find " << kName                        \
-                    << " in rocfft DSO; dlerror: " << s.error_message(); \
-      return reinterpret_cast<FuncPtrT>(f);                              \
-    }                                                                    \
-    static FuncPtrT DynLoad() {                                          \
-      static FuncPtrT f = LoadOrDie();                                   \
-      return f;                                                          \
-    }                                                                    \
-    template <typename... Args>                                          \
-    hipfftResult operator()(GpuExecutor *parent, Args... args) {         \
-      gpu::ScopedActivateExecutorContext sac{parent};                    \
-      return DynLoad()(args...);                                         \
-    }                                                                    \
-  } __name;                                                              \
+#define STREAM_EXECUTOR_ROCFFT_WRAP(__name)                        \
+  struct DynLoadShim__##__name {                                   \
+    static const char *kName;                                      \
+    using FuncPtrT = std::add_pointer<decltype(::__name)>::type;   \
+    static void *GetDsoHandle() {                                  \
+      auto s = internal::CachedDsoLoader::GetHipfftDsoHandle();    \
+      return s.value();                                            \
+    }                                                              \
+    static FuncPtrT LoadOrDie() {                                  \
+      void *f;                                                     \
+      auto s = tsl::Env::Default()                                 \
+          -> GetSymbolFromLibrary(GetDsoHandle(), kName, &f);      \
+      CHECK(s.ok()) << "could not find " << kName                  \
+                    << " in rocfft DSO; dlerror: " << s.message(); \
+      return reinterpret_cast<FuncPtrT>(f);                        \
+    }                                                              \
+    static FuncPtrT DynLoad() {                                    \
+      static FuncPtrT f = LoadOrDie();                             \
+      return f;                                                    \
+    }                                                              \
+    template <typename... Args>                                    \
+    hipfftResult operator()(GpuExecutor *parent, Args... args) {   \
+      gpu::ScopedActivateExecutorContext sac{parent};              \
+      return DynLoad()(args...);                                   \
+    }                                                              \
+  } __name;                                                        \
   const char *DynLoadShim__##__name::kName = #__name;
 
 #endif
@@ -380,8 +380,7 @@ std::unique_ptr<fft::Plan> ROCMFft::Create1dPlan(Stream *stream, uint64_t num_x,
   // TODO(yangzihao): In the future, send error msg back to TensorFlow
   // so it can fail gracefully,
   if (!status.ok()) {
-    LOG(FATAL) << "failed to initialize hipfft 1d plan: "
-               << status.error_message();
+    LOG(FATAL) << "failed to initialize hipfft 1d plan: " << status.message();
   }
   return std::move(fft_plan_ptr);
 }
@@ -396,7 +395,7 @@ std::unique_ptr<fft::Plan> ROCMFft::Create1dPlanWithScratchAllocator(
   if (!status.ok()) {
     LOG(FATAL)
         << "failed to initialize hipfft 1d plan with customized allocator: "
-        << status.error_message();
+        << status.message();
   }
   return std::move(fft_plan_ptr);
 }
@@ -410,8 +409,7 @@ std::unique_ptr<fft::Plan> ROCMFft::Create2dPlan(Stream *stream, uint64_t num_x,
       fft_plan_ptr->Initialize(parent_, stream, 1, elem_count, type,
                                /*scratch_allocator=*/nullptr);
   if (!status.ok()) {
-    LOG(FATAL) << "failed to initialize hipfft 2d plan: "
-               << status.error_message();
+    LOG(FATAL) << "failed to initialize hipfft 2d plan: " << status.message();
   }
   return std::move(fft_plan_ptr);
 }
@@ -426,7 +424,7 @@ std::unique_ptr<fft::Plan> ROCMFft::Create2dPlanWithScratchAllocator(
   if (!status.ok()) {
     LOG(FATAL)
         << "failed to initialize hipfft 2d plan with customized allocator: "
-        << status.error_message();
+        << status.message();
   }
   return std::move(fft_plan_ptr);
 }
@@ -441,8 +439,7 @@ std::unique_ptr<fft::Plan> ROCMFft::Create3dPlan(Stream *stream, uint64_t num_x,
       fft_plan_ptr->Initialize(parent_, stream, 3, elem_count, type,
                                /*scratch_allocator=*/nullptr);
   if (!status.ok()) {
-    LOG(FATAL) << "failed to initialize hipfft 3d plan: "
-               << status.error_message();
+    LOG(FATAL) << "failed to initialize hipfft 3d plan: " << status.message();
   }
   return std::move(fft_plan_ptr);
 }
@@ -457,7 +454,7 @@ std::unique_ptr<fft::Plan> ROCMFft::Create3dPlanWithScratchAllocator(
   if (!status.ok()) {
     LOG(FATAL)
         << "failed to initialize hipfft 3d plan with customized allocator: "
-        << status.error_message();
+        << status.message();
   }
   return std::move(fft_plan_ptr);
 }
@@ -474,7 +471,7 @@ std::unique_ptr<fft::Plan> ROCMFft::CreateBatchedPlan(
       batch_count, /*scratch_allocator=*/nullptr);
   if (!status.ok()) {
     LOG(FATAL) << "failed to initialize batched hipfft plan: "
-               << status.error_message();
+               << status.message();
   }
 
   return std::move(fft_plan_ptr);
@@ -493,7 +490,7 @@ std::unique_ptr<fft::Plan> ROCMFft::CreateBatchedPlanWithScratchAllocator(
   if (!status.ok()) {
     LOG(FATAL) << "failed to initialize batched hipfft plan with customized "
                   "allocator: "
-               << status.error_message();
+               << status.message();
   }
   return std::move(fft_plan_ptr);
 }
@@ -505,7 +502,7 @@ void ROCMFft::UpdatePlanWithScratchAllocator(
       rocm_fft_plan->UpdateScratchAllocator(stream, scratch_allocator);
   if (!status.ok()) {
     LOG(FATAL) << "failed to update custom allocator for hipfft plan: "
-               << status.error_message();
+               << status.message();
   }
 }
 
@@ -637,8 +634,7 @@ void initialize_rocfft() {
               return new gpu::ROCMFft(rocm_executor);
             });
     if (!status.ok()) {
-      LOG(ERROR) << "Unable to register rocFFT factory: "
-                 << status.error_message();
+      LOG(ERROR) << "Unable to register rocFFT factory: " << status.message();
     }
 
     PluginRegistry::Instance()->SetDefaultFactory(

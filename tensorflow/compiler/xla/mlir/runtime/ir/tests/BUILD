@@ -1,10 +1,11 @@
-load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
+load("//tensorflow/compiler/xla:glob_lit_test.bzl", "glob_lit_tests")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 load("//tensorflow/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
 
 glob_lit_tests(
+    name = "all_tests",
     data = [":test_utilities"],
     driver = "//tensorflow/compiler/xla:run_lit.sh",
     test_file_exts = ["mlir"],

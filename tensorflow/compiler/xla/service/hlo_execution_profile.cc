@@ -154,6 +154,8 @@ uint64_t HloExecutionProfile::GetCyclesTakenBy(size_t index) const {
 
 HloExecutionProfileData HloExecutionProfile::ToProto() const {
   HloExecutionProfileData hlo_execution_profile_data;
+  hlo_execution_profile_data.mutable_profile_counters()->Reserve(
+      profile_counters_.size());
   for (const auto& counter : profile_counters_) {
     hlo_execution_profile_data.add_profile_counters(counter);
   }

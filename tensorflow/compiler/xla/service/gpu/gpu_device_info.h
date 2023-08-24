@@ -32,6 +32,7 @@ struct GpuDeviceInfo {
   int threads_per_block_limit;
   int threads_per_warp;
   int shared_memory_per_block;
+  int shared_memory_per_block_optin;
   int shared_memory_per_core;
   int threads_per_core_limit;
   int core_count;
@@ -49,6 +50,7 @@ struct GpuDeviceInfo {
     proto.set_threads_per_block_limit(threads_per_block_limit);
     proto.set_threads_per_warp(threads_per_warp);
     proto.set_shared_memory_per_block(shared_memory_per_block);
+    proto.set_shared_memory_per_block_optin(shared_memory_per_block_optin);
     proto.set_shared_memory_per_core(shared_memory_per_core);
     proto.set_threads_per_core_limit(threads_per_core_limit);
     proto.set_core_count(core_count);
@@ -68,6 +70,7 @@ struct GpuDeviceInfo {
     threads_per_block_limit = proto.threads_per_block_limit();
     threads_per_warp = proto.threads_per_warp();
     shared_memory_per_block = proto.shared_memory_per_block();
+    shared_memory_per_block_optin = proto.shared_memory_per_block_optin();
     shared_memory_per_core = proto.shared_memory_per_core();
     threads_per_core_limit = proto.threads_per_core_limit();
     core_count = proto.core_count();

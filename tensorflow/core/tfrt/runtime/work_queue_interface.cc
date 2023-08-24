@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 
 #include "tfrt/host_context/execution_context.h"  // from @tf_runtime

@@ -73,8 +73,16 @@ class ArenaPlanner : public MemoryPlanner {
   std::intptr_t BasePointer(TfLiteAllocationType type);
 
  private:
-  // Identify tensors which may share memory.
-  void IdentifySharedTensors();
+  // Check whether the input tensor's memory may be shared the output tensor.
+  // tensor_changed: true if the output tensor modifies the tensor data. For
+  // example, `Reshape` doesn't modify data but Add does.
+  bool InputTensorCanBeShared(const TfLiteTensor& input,
+                              const TfLiteTensor& output, int input_id,
+                              int output_id, bool tensor_changed);
+
+  // Identify tensors which can share memory with another.
+  void IdentifyInPlaceTensors();
+
   // Make sure all the arenas have reserved enough memory to store all their
   // tensors.
   TfLiteStatus Commit(bool* arena_reallocated);
@@ -153,6 +161,9 @@ class ArenaPlanner : public MemoryPlanner {
   // data with another tensor.
   // NOLINTNEXTLINE - absl::flat_hash_map increases binary size by 106kB.
   std::unordered_map<int32_t, int32_t> actual_tensor_id_;
+
+  // Store number of references to each tensor.
+  std::vector<int> refcounts_;
 };
 
 }  // namespace tflite

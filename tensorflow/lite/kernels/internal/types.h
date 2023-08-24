@@ -1008,6 +1008,7 @@ struct StridedSliceParams {
   uint16_t end_mask;
   uint16_t new_axis_mask;
   uint16_t shrink_axis_mask;
+  bool offset;
 };
 
 struct TanhParams {

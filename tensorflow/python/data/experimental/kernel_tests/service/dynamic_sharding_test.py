@@ -50,6 +50,18 @@ class DynamicShardingTest(data_service_test_base.TestBase,
         ds, list(range(num_elements)), assert_items_equal=True)
 
   @combinations.generate(test_base.default_test_combinations())
+  def testNoJobName(self):
+    cluster = data_service_test_base.TestCluster(num_workers=2)
+    num_elements = 100
+    ds = dataset_ops.Dataset.range(num_elements)
+    ds = self.make_distributed_dataset(
+        ds,
+        cluster,
+        processing_mode=data_service_ops.ShardingPolicy.DYNAMIC)
+    self.assertDatasetProduces(
+        ds, list(range(num_elements)), assert_items_equal=True)
+
+  @combinations.generate(test_base.default_test_combinations())
   def testTensorSlices(self):
     cluster = data_service_test_base.TestCluster(num_workers=2)
     vals = [5, 1, 2, 4]

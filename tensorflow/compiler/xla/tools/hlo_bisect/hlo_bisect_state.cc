@@ -41,8 +41,9 @@ namespace {
 // instructions in the front and the rest are in post order.
 std::vector<HloInstruction*> GetModifiedInstructionPostOrder(
     HloComputation* computation) {
-  std::vector<HloInstruction*> instructions =
-      computation->parameter_instructions();
+  std::vector<HloInstruction*> instructions(
+      computation->parameter_instructions().begin(),
+      computation->parameter_instructions().end());
   absl::c_copy_if(computation->MakeInstructionPostOrder(),
                   std::back_inserter(instructions),
                   [&](const HloInstruction* instr) {

@@ -35,7 +35,7 @@ inline ::grpc::Status ToGrpcStatus(const Status& s) {
     return ::grpc::Status::OK;
   } else {
     return ::grpc::Status(static_cast<::grpc::StatusCode>(s.code()),
-                          s.error_message());
+                          std::string(s.message()));
   }
 }
 

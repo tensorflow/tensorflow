@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_NCCL_COLLECTIVE_THUNK_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_NCCL_COLLECTIVE_THUNK_H_
 
+#include <memory>
 #include <optional>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "absl/functional/function_ref.h"
@@ -96,7 +96,7 @@ NcclCollectiveConfig GetNcclCollectiveConfigForMlir(
 // Thunk base class for NCCL collective operations.
 class NcclCollectiveThunk : public Thunk {
  public:
-  using Thunk::Thunk;
+  NcclCollectiveThunk(Kind kind, ThunkInfo thunk_info, bool is_sync);
 
   struct Buffer {
     int64_t element_count;
@@ -113,7 +113,8 @@ class NcclCollectiveThunk : public Thunk {
     Status Execute(
         absl::FunctionRef<Status(const ExecuteParams&, se::Stream&, ncclComm_t)>
             fn,
-        const ExecuteParams& params, ncclComm_t comm);
+        const ExecuteParams& params, ncclComm_t comm,
+        AsyncStreamKind stream_kind);
     // Blocks the compute stream until async communication is complete.
     Status Await(const ExecuteParams& params);
 
@@ -135,17 +136,27 @@ class NcclCollectiveThunk : public Thunk {
   // Logging support.
   static std::string GetDeviceString(const NcclExecuteParams& params);
 
+  AsyncExecutor* async_executor() { return async_.get(); }
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
  protected:
   virtual Status RunNcclCollective(const ExecuteParams& params,
-                                   ncclComm_t comm) = 0;
+                                   se::Stream& stream, ncclComm_t comm) = 0;
   virtual const NcclCollectiveConfig& config() const = 0;
+  virtual AsyncStreamKind GetAsyncStreamKind() const {
+    return kAsyncStreamCollective;
+  }
 
  private:
+  bool IsAsync() const { return async_ != nullptr; }
+  int64_t GetStreamId() const {
+    return xla::gpu::GetStreamId(IsAsync(), GetAsyncStreamKind());
+  }
+
 #if XLA_ENABLE_XCCL
   bool first_call_to_execute_ = true;
 #endif  // XLA_ENABLE_XCCL
+  std::unique_ptr<AsyncExecutor> async_;  // null if not async.
 };
 
 class NcclCollectiveDoneThunk : public Thunk {
@@ -174,7 +185,7 @@ Status AddOpDescription(Status status, OpT op, int64_t replica_count,
           "%s\n"
           "%s with replica_count: %d, partition_count: %d, group_mode: %s, "
           "operand_count: %d\n%s",
-          status.error_message(), NcclThunkType::GetHloOpName(), replica_count,
+          status.message(), NcclThunkType::GetHloOpName(), replica_count,
           partition_count, CollectiveOpGroupModeToString(group_mode),
           op->getNumOperands() / 2, llvm_ir::DumpToString(op.getOperation())));
 }
@@ -184,7 +195,7 @@ Status AddOpDescription(Status status, OpT op, int64_t replica_count,
 StatusOr<NcclComm::Lock> LockNcclComm(
     const NcclExecuteParams& params,
     const std::vector<ReplicaGroup>& replica_groups,
-    CollectiveOpGroupMode group_mode, int64_t op_id);
+    CollectiveOpGroupMode group_mode, int64_t op_id, int64_t stream_id);
 #endif  // XLA_ENABLE_XCCL
 
 struct DeviceBufferPair {

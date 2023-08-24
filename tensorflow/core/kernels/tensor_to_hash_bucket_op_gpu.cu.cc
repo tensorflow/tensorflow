@@ -65,8 +65,9 @@ __device__ __forceinline__ int IntegerToString(T val, char* buf) {
 }
 
 template <typename T>
-__global__ void ComputeHashes(const T* __restrict__ vals, int vals_size,
-                              int64 num_buckets, int64* __restrict__ hashes) {
+__global__ __launch_bounds__(1024) void ComputeHashes(
+    const T* __restrict__ vals, int vals_size, int64 num_buckets,
+    int64* __restrict__ hashes) {
   extern __shared__ char s[];
 
   GPU_1D_KERNEL_LOOP(tid, vals_size) {

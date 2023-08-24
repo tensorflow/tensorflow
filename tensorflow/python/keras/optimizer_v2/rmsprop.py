@@ -18,6 +18,7 @@
 import numpy as np
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.keras import backend_config
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
@@ -26,10 +27,8 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.training import gen_training_ops
-from tensorflow.python.util.tf_export import keras_export
 
 
-@keras_export("keras.optimizers.RMSprop")
 class RMSprop(optimizer_v2.OptimizerV2):
   r"""Optimizer that implements the RMSprop algorithm.
 
@@ -139,7 +138,8 @@ class RMSprop(optimizer_v2.OptimizerV2):
     self._set_hyper("rho", rho)
 
     self._momentum = False
-    if isinstance(momentum, ops.Tensor) or callable(momentum) or momentum > 0:
+    if isinstance(
+        momentum, tensor.Tensor) or callable(momentum) or momentum > 0:
       self._momentum = True
     if isinstance(momentum, (int, float)) and (momentum < 0 or momentum > 1):
       raise ValueError("`momentum` must be between [0, 1].")

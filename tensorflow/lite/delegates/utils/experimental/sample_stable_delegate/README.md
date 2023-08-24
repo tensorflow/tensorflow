@@ -2,31 +2,33 @@
 
 ## Description
 
-An example delegate for stable delegate testing that supports addition and
-subtraction operations only.
+An example delegate for stable delegate testing that supports only a few
+operations: addition, subtraction, multiplication, equality check, and while
+loops.
 
-The sample stable delegate implementation uses the stable delegate API,
-which is based around `TfLiteOpaqueDelegate`. `TfLiteOpaqueDelegate` is
-an opaque version of `TfLiteDelegate`; which allows delegation of nodes to
-alternative backends. This is an abstract type that is intended to have the same
-role as `TfLiteDelegate` from
+The sample stable delegate implementation uses the stable delegate API, which is
+based around `TfLiteOpaqueDelegate`. `TfLiteOpaqueDelegate` is an opaque version
+of `TfLiteDelegate`; which allows delegation of nodes to alternative backends.
+This is an abstract type that is intended to have the same role as
+`TfLiteDelegate` from
 [common.h](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/c/common.h),
 but without exposing the implementation details of how delegates are
 implemented.
 
-`TfLiteOpaqueDelegate`s can be loaded dynamically
-(see `sample_stable_delegate_external_test.cc`) and then be supplied to the
-TFLite runtime, in the same way as statically linked delegates can.
+`TfLiteOpaqueDelegate`s can be loaded dynamically (see
+`sample_stable_delegate_external_test.cc`) and then be supplied to the TFLite
+runtime, in the same way as statically linked delegates can.
 
 Note however that open-source TF Lite does not (yet) provide a binary stable
-interface between delegates and the TF Lite runtime itself.  Therefore any
-opaque delegate that is loaded dynamically into TF Lite *must* have been built
-against the same version (and commit) that the TF Lite runtime itself has been
-built at. Any other configuration can lead to undefined behavior.
+interface between delegates and the TF Lite runtime itself. Therefore any opaque
+delegate that is loaded dynamically into TF Lite *must* have been built against
+the same version (and commit) that the TF Lite runtime itself has been built at.
+Any other configuration can lead to undefined behavior.
 
 ## Delegate implementation
 
-The sample stable delegate uses two supporting interfaces [SimpleOpaqueDelegateInterface and SimpleOpaqueDelegateKernelInterface](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/utils/simple_opaque_delegate.h).
+The sample stable delegate uses two supporting interfaces
+[SimpleOpaqueDelegateInterface and SimpleOpaqueDelegateKernelInterface](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/utils/simple_opaque_delegate.h).
 These APIs make it easier to implement an opaque TF Lite delegate, though their
 usage is entirely optional.
 
@@ -37,11 +39,13 @@ deletion.
 
 ## Testing
 
-See [sample_stable_delegate_test.cc](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/utils/experimental/sample_stable_delegate/sample_stable_delegate_test.cc)
+See
+[sample_stable_delegate_test.cc](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/utils/experimental/sample_stable_delegate/sample_stable_delegate_test.cc)
 for a standalone test driver that links the sample stable delegate statically
 and runs inference on a TF Lite model.
 
-See [sample_stable_delegate_external_test.cc](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/utils/experimental/sample_stable_delegate/sample_stable_delegate_external_test.cc)
+See
+[sample_stable_delegate_external_test.cc](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/utils/experimental/sample_stable_delegate/sample_stable_delegate_external_test.cc)
 for a standalone test driver that loads the sample stable delegate dynamically
 and runs inference on a TF Lite model.
 
@@ -81,19 +85,45 @@ adb shell 'echo "{
 "> /data/local/tmp/stable_delegate_settings.json'
 ```
 
+We create a configuration file for the delegate test suite to verify that the
+models in the specified test cases have been delegated:
+
+```bash
+adb shell 'echo "
+  # The sample stable delegate supports static-sized addition and subtraction operations.
+  FloatSubOpModel.NoActivation
+  FloatSubOpModel.VariousInputShapes
+  FloatAddOpModel.NoActivation
+  FloatAddOpModel.VariousInputShapes
+"> /data/local/tmp/stable_delegate_acceleration_test_config.json'
+```
+
 Then, we build the test suite itself:
 
 ```bash
-bazel build -c opt --config=android_arm64 //tensorflow/lite/kernels:combined_all_kernel_tests
+bazel build -c opt --config=android_arm64 //tensorflow/lite/delegates/utils/experimental/stable_delegate:stable_delegate_test_suite
 
-adb push "$(bazel info -c opt --config=android_arm64 bazel-bin)"/tensorflow/lite/kernels/combined_all_kernel_tests /data/local/tmp
+adb push "$(bazel info -c opt --config=android_arm64 bazel-bin)"/tensorflow/lite/delegates/utils/experimental/stable_delegate/stable_delegate_test_suite /data/local/tmp
 ```
 
 Now, we can execute the test suite with providing the settings file:
 
 ```bash
-adb shell "/data/local/tmp/combined_all_kernel_tests \
-  --stable_delegate_settings_file=/data/local/tmp/stable_delegate_settings.json"
+adb shell "/data/local/tmp/stable_delegate_test_suite \
+  --stable_delegate_settings_file=/data/local/tmp/stable_delegate_settings.json \
+  --acceleration_test_config_path=/data/local/tmp/stable_delegate_acceleration_test_config.json"
+```
+
+You can also specify `gunit_filter` to only run a subset of tests. This can be
+used to skip non release-blocking test cases (e.g. fp16 precision issues) which
+are subject to Android ML team's approval. For example, the following command
+would skip TestA, TestB and TestC.
+
+```bash
+adb shell "/data/local/tmp/stable_delegate_test_suite \
+  --stable_delegate_settings_file=/data/local/tmp/stable_delegate_settings.json \
+  --acceleration_test_config_path=/data/local/tmp/stable_delegate_acceleration_test_config.json \
+  --gunit_filter=-TestA:TestB:TestC"
 ```
 
 The test suite will show the following output in console after all tests are
@@ -109,7 +139,8 @@ passed:
 
 #### Delegate Performance Benchmark app
 
-The [Delegate Performance Benchmark app](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/README.md)
+The
+[Delegate Performance Benchmark app](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/README.md)
 is the recommended tool to test the latency and accuracy of a stable delegate.
 
 #### TF Lite Benchmark Tool
@@ -127,8 +158,8 @@ provided TF Lite model file.
 
 ##### A) Run on a regular linux host
 
-The following instructions show how to run the
-tool on regular desktop linux machine.
+The following instructions show how to run the tool on regular desktop linux
+machine.
 
 First, we build the sample stable delegate shared library file,
 `libtensorflowlite_sample_stable_delegate.so`, which we will later load
@@ -157,9 +188,9 @@ Then, we build the `benchmark_model` tool itself:
 bazel build -c opt //tensorflow/lite/tools/benchmark:benchmark_model
 ```
 
-Now, we can execute the benchmark tool.  We provide the settings file together
-with a TF Lite file that contains ADD operations.  We do this because the sample
-stable delegate only support ADD and SUB:
+Now, we can execute the benchmark tool. We provide the settings file together
+with a TF Lite file that contains ADD operations. We do this because the sample
+stable delegate only support ADD, SUB, MUL, EQUAL, and WHILE:
 
 ```bash
 $(bazel info -c opt bazel-bin)/tensorflow/lite/tools/benchmark/benchmark_model \
@@ -208,11 +239,22 @@ adb push "$(bazel info -c opt --config=android_arm64 bazel-bin)"/tensorflow/lite
 
 Now, we can execute the benchmark tool. We provide the settings file together
 with a TF Lite file that contains ADD operations. We do this because the sample
-stable delegate only support ADD and SUB:
+stable delegate only support ADD, SUB, MUL, EQUAL, and WHILE:
 
 ```bash
 adb push tensorflow/lite/testdata/add.bin /data/local/tmp/add.bin
 adb shell "/data/local/tmp/benchmark_model \
   --stable_delegate_settings_file=/data/local/tmp/stable_delegate_settings.json \
   --graph=/data/local/tmp/add.bin"
+```
+
+## Sample app
+
+To show how to use the sample stable delegate, we have included a sample app
+that uses it.  You can build and run the sample app as follows:
+
+```
+bazel run -c opt \
+    //tensorflow/lite/delegates/utils/experimental/sample_stable_delegate:sample_app_using_stable_delegate \
+    tensorflow/lite/testdata/add.tflite
 ```

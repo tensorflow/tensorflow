@@ -336,11 +336,14 @@ static std::optional<std::string> DumpToFileInDirImpl(
   return file_path;
 }
 
+static absl::Mutex stdout_dump_mutex(absl::kConstInit);
+
 static std::optional<std::string> DumpToFileInDirOrStdoutImpl(
     string_view filename, string_view contents,
     const CanonicalDebugOptions& opts) {
   // Dump to stdout if that's called for.
   if (opts.dumping_to_stdout()) {
+    absl::MutexLock lock(&stdout_dump_mutex);
     std::cout << "*** Begin " << filename << " ***\n"
               << contents << "\n*** End " << filename << " ***" << std::endl;
     return std::nullopt;
@@ -355,6 +358,7 @@ static std::optional<std::string> DumpToFileInDirOrStdoutImpl(
     const CanonicalDebugOptions& opts) {
   // Dump to stdout if that's called for.
   if (opts.dumping_to_stdout()) {
+    absl::MutexLock lock(&stdout_dump_mutex);
     std::cout << "*** Begin " << filename << " ***\n";
     while (auto next_producer = data_producer.Next()) {
       std::cout << next_producer();
@@ -396,6 +400,7 @@ static std::vector<std::string> DumpHloModuleImpl(
     print_options.set_print_operand_index_annotation_interval(5);
     print_options.set_print_backend_config(true);
     print_options.set_print_metadata(opts.dump_hlo_metadata);
+    print_options.set_print_name_after_closing_brace(true);
     file_paths.push_back(DumpToFileInDirOrStdoutImpl(
         StrCat(filename, ".txt"), module.ToString(print_options), opts));
     if (buffer_assn) {
@@ -560,8 +565,8 @@ std::string TimestampFor(const HloModule& module) {
   return std::to_string(timestamp_emplace.first->second);
 }
 
-static std::string FilenameFor(int unique_id, string_view module_name,
-                               string_view prefix, string_view suffix) {
+std::string FilenameFor(int unique_id, string_view module_name,
+                        string_view prefix, string_view suffix) {
   std::string filename;
   if (!prefix.empty()) {
     absl::StrAppend(&filename, prefix, ".");

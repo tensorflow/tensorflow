@@ -35,6 +35,7 @@ cc_library(
         "//tensorflow/c:tf_status_headers",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c:tf_tensor_internal",
+        "//tensorflow/compiler/jit:pjrt_base_device",
         "//tensorflow/compiler/jit:pjrt_device_context",
         "//tensorflow/compiler/tf2xla:layout_util",
         "//tensorflow/core:core_cpu_lib",
@@ -46,6 +47,7 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/profiler/lib:connected_traceme",
         "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/tfrt/common:async_value_tensor",
         "//tensorflow/core/tfrt/common:pjrt_state",
         "@com_google_absl//absl/flags:flag",
     ],
@@ -57,10 +59,10 @@ cc_library(
     hdrs = ["next_pluggable_device_api.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/c:tf_status_helper",
         "//tensorflow/core/common_runtime/next_pluggable_device/c:plugin_c_api_hdrs",
+        "//tensorflow/tsl/c:tsl_status_internal",
         "//tensorflow/tsl/platform:errors",
-        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:statusor",
     ],
 )
 
@@ -77,12 +79,29 @@ cc_library(
         ":next_pluggable_device",
         ":next_pluggable_device_api",
         ":pjrt_compile_on_demand_op",
+        ":utils",
         "//tensorflow/c:tf_status_headers",
         "//tensorflow/c:tf_status_helper",
+        "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/xla/stream_executor/tpu:c_api_conversions",
         "//tensorflow/core:framework",
         "//tensorflow/core/common_runtime/next_pluggable_device/c:plugin_c_api_hdrs",
+        "//tensorflow/tsl/framework:device_id_utils",
         "//tensorflow/tsl/platform:errors",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "next_pluggable_device_factory_hdrs",
+    hdrs = ["next_pluggable_device_factory.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":next_pluggable_device_api",
+        "//tensorflow/c:tf_status_headers",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/common_runtime:device_factory",
+        "//tensorflow/core/common_runtime/next_pluggable_device/c:plugin_c_api_hdrs",
     ],
 )
 
@@ -96,19 +115,14 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":next_pluggable_device",
-        ":next_pluggable_device_api",
-        ":utils",
-        "//tensorflow/c:tf_status_helper",
         "//tensorflow/compiler/jit:device_compiler_client",
         "//tensorflow/compiler/jit:variable_info",
         "//tensorflow/compiler/jit:variable_info_util",
         "//tensorflow/compiler/jit:xla_device",
+        "//tensorflow/compiler/jit:xla_device_no_jit_rewrite_registration",
         "//tensorflow/compiler/jit:xla_launch_util",
-        "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
-        "//tensorflow/compiler/xla/stream_executor/tpu:c_api_conversions",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/tfrt/common:create_pjrt_client_util",
@@ -177,6 +191,23 @@ config_setting(
 )
 
 cc_library(
+    name = "flags",
+    srcs = ["flags.cc"],
+    hdrs = ["flags.h"],
+    defines = select({
+        "//tensorflow/core/common_runtime/next_pluggable_device:tf_npd_use_c_api_enabled": [
+            "DEFAULT_TF_NEXT_PLUGGABLE_DEVICE_USE_C_API=true",
+        ],
+        "//conditions:default": [
+            "DEFAULT_TF_NEXT_PLUGGABLE_DEVICE_USE_C_API=false",
+        ],
+    }),
+    visibility = ["//visibility:public"],
+    deps = ["@com_google_absl//absl/flags:flag"],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "c_plugin_op_kernel",
     srcs = ["c_plugin_op_kernel.cc"],
     hdrs = ["c_plugin_op_kernel.h"],
@@ -210,22 +241,16 @@ cc_library(
 cc_library(
     name = "plugin_op_kernel_helper",
     hdrs = ["plugin_op_kernel_helper.h"],
-    defines = select({
-        "tf_npd_use_c_api_enabled": ["TF_NEXT_PLUGGABLE_DEVICE_USE_C_API"],
-        "//conditions:default": [],
-    }),
     visibility = ["//visibility:public"],
     deps = [
+        ":c_plugin_op_kernel",
+        ":direct_plugin_op_kernel",
         ":loose_headers",
         ":plugin_op_kernel",
         "//tensorflow/c:kernels_hdrs",
         "//tensorflow/c:tf_status_helper",
-    ] + select({
-        "tf_npd_use_c_api_enabled": [":c_plugin_op_kernel"],
-        "//conditions:default": [
-            ":direct_plugin_op_kernel",
-        ],
-    }),
+        "//tensorflow/core/common_runtime/next_pluggable_device:flags",
+    ],
 )
 
 # For a more maintainable build this target should not exist and the headers
@@ -247,7 +272,10 @@ cc_library(
     name = "plugin_coordination_service_agent",
     hdrs = ["plugin_coordination_service_agent.h"],
     visibility = ["//visibility:public"],
-    deps = ["//tensorflow/core/platform:statusor"],
+    deps = [
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
+    ],
 )
 
 cc_library(
@@ -265,6 +293,7 @@ cc_library(
     name = "c_plugin_coordination_service_agent",
     srcs = ["c_plugin_coordination_service_agent.cc"],
     hdrs = ["c_plugin_coordination_service_agent.h"],
+    defines = ["TF_CAPI_WEAK"],
     visibility = ["//visibility:public"],
     deps = [
         ":plugin_coordination_service_agent",
@@ -280,23 +309,15 @@ cc_library(
 cc_library(
     name = "plugin_coordination_service_agent_helper",
     hdrs = ["plugin_coordination_service_agent_helper.h"],
-    defines = select({
-        "tf_npd_use_c_api_enabled": ["TF_NEXT_PLUGGABLE_DEVICE_USE_C_API"],
-        "//conditions:default": [],
-    }),
     visibility = ["//visibility:public"],
     deps = [
+        ":c_plugin_coordination_service_agent",
+        ":direct_plugin_coordination_service_agent",
         ":plugin_coordination_service_agent",
         "//tensorflow/c:kernels_hdrs",
         "//tensorflow/c:tf_status_helper",
-    ] + select({
-        "tf_npd_use_c_api_enabled": [
-            ":c_plugin_coordination_service_agent",
-        ],
-        "//conditions:default": [
-            ":direct_plugin_coordination_service_agent",
-        ],
-    }),
+        "//tensorflow/core/common_runtime/next_pluggable_device:flags",
+    ],
 )
 
 cc_library(
@@ -324,6 +345,7 @@ cc_library(
     name = "c_plugin_variable",
     srcs = ["c_plugin_variable.cc"],
     hdrs = ["c_plugin_variable.h"],
+    defines = ["TF_CAPI_WEAK"],
     visibility = ["//visibility:public"],
     deps = [
         ":plugin_variable",

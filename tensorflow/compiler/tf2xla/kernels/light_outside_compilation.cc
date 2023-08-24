@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_cudamalloc_allocator.h"
+#include "tensorflow/tsl/lib/strings/proto_serialization.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_executor.h"
@@ -75,7 +76,12 @@ static StatusOr<TfCallbackData> CallbackDataFromProto(const char* opaque,
 }
 
 static StatusOr<std::string> SerializeCallbackData(const TfCallbackData& data) {
-  return data.SerializeAsString();
+  std::string serialized_data;
+  if (!tsl::SerializeToStringDeterministic(data, &serialized_data)) {
+    return absl::InternalError(
+        "Failed in serializing TfCallbackData to string");
+  }
+  return serialized_data;
 }
 
 Status LightOutsideCompilationOp::CompileToCustomCallCallingTfKernel(
@@ -281,7 +287,8 @@ int GetOutputBufferId(int output_num, const TfCallbackData& callback_data) {
 
 int64_t BufferSize(const TfCallbackData::BufferDescription& descr) {
   TensorShape shape;
-  CHECK(TensorShape::BuildTensorShape(descr.shape(), &shape).ok());  // Crash OK
+  TF_CHECK_OK(
+      TensorShape::BuildTensorShape(descr.shape(), &shape));  // Crash OK
   return shape.num_elements() * DataTypeSize(descr.type());
 }
 
@@ -521,8 +528,8 @@ void GenericTfCallback(void* stream_handle, void** buffers, const char* opaque,
                        int opaque_len, XlaCustomCallStatus* status) {
   Status s = CallTfKernel(stream_handle, buffers, opaque, opaque_len);
   if (!s.ok()) {
-    XlaCustomCallStatusSetFailure(status, s.error_message().c_str(),
-                                  s.error_message().size());
+    auto msg = s.message();
+    XlaCustomCallStatusSetFailure(status, msg.data(), msg.size());
   }
 }
 

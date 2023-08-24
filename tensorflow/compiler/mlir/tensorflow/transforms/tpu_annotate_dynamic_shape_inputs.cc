@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
@@ -119,15 +120,33 @@ void TPUAnnotateDynamicShapeInputsPass::runOnOperation() {
   });
 
   // Remove the annotated op after since it is just a placeholder.
+  DenseSet<tf_device::LaunchOp> launch_ops;
   getOperation().walk([&](Operation* op) {
     if (llvm::isa<TF::TPUAnnotateTensorsWithDynamicShapeOp>(op)) {
       for (auto result : llvm::zip(op->getOperands(), op->getResults())) {
         std::get<1>(result).replaceAllUsesWith(std::get<0>(result));
       }
+      launch_ops.insert(op->getParentOfType<tf_device::LaunchOp>());
       op->erase();
     }
     return WalkResult::advance();
   });
+
+  for (auto launch_op : launch_ops) {
+    Block& block = launch_op.GetBody();
+    if (&block.front() == &block.back()) {
+      // The tf_device.launch is empty (except for the return).
+      // Remove the whole tf_device.launch, since later passes will make it send
+      // the arguments back and forth between the devices.
+      Operation* return_op = &block.back();
+      assert(llvm::isa<tf_device::ReturnOp>(return_op));
+      for (auto [inner, outer] :
+           llvm::zip(return_op->getOperands(), launch_op->getResults())) {
+        outer.replaceAllUsesWith(inner);
+      }
+      launch_op->erase();
+    }
+  }
 }
 
 }  // namespace

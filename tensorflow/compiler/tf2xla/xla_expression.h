@@ -137,6 +137,7 @@ class XlaExpression {
   // The shape of a resource is the shape of a resource handle (i.e., a scalar),
   // not the shape of the resource's value.
   StatusOr<TensorShape> GetShape() const;
+  StatusOr<xla::Shape> GetXlaShape() const;
 
   // Retrieves an XlaExpression that was allocated by a previous Op.
   static const XlaExpression* CastExpressionFromTensor(const Tensor& tensor);

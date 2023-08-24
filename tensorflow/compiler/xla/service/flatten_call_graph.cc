@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 
+#include <memory>
+
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
@@ -155,7 +157,8 @@ StatusOr<bool> FlattenCallGraph::Run(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(3, "Before flatten call graph:\n" + module->ToString());
 
-  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
+  std::unique_ptr<CallGraph> call_graph =
+      CallGraph::Build(module, execution_threads);
   TF_RETURN_IF_ERROR(call_graph->VisitNodes(FlattenNode));
 
   XLA_VLOG_LINES(3, "After flatten call graph:\n" + module->ToString());

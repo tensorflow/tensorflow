@@ -150,26 +150,6 @@ LogicalResult fusionPattern(OpTy op, PatternRewriter& rewriter) {
   return success();
 }
 
-// Duplicates the op so each copy has only one use as init parameter.
-template <typename OpTy>
-LogicalResult duplicateInitOps(OpTy op, PatternRewriter& rewriter) {
-  // Nothing to do, because the op has 0 or 1 users.
-  if (std::distance(op->user_begin(), op->user_end()) <= 1) return failure();
-
-  bool modified = false;
-  for (auto& use : llvm::make_early_inc_range(op->getUses())) {
-    Operation* ownerOp = use.getOwner();
-
-    auto dstStyleOp = dyn_cast<DestinationStyleOpInterface>(ownerOp);
-    if (!dstStyleOp || !dstStyleOp.isDpsInit(&use)) continue;
-
-    auto newOp = cast<OpTy>(rewriter.clone(*op));
-    use.set(newOp->getResult(0));
-    modified = true;
-  }
-  return success(modified);
-}
-
 // Add attributes with tile sizes for parallel and reduction dimensions.
 // Attribute is empty if there is nothing to tile across respective dimensions.
 struct ComputeTileSizesPattern : public OpRewritePattern<gml_st::FusionOp> {
@@ -221,9 +201,7 @@ struct FusionPlanningForCpuPass
     // Cleanup passes to prepare ops for better clustering.
     {
       RewritePatternSet patterns(ctx);
-      // Duplicate linalg.fill and tensor.empty that used as init parameters.
-      patterns.add(duplicateInitOps<linalg::FillOp>);
-      patterns.add(duplicateInitOps<tensor::EmptyOp>);
+      populateDuplicateInitOpsPatterns(patterns);
 
       if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
         return signalPassFailure();

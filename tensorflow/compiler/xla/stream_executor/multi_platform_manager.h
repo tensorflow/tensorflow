@@ -53,13 +53,12 @@ limitations under the License.
 //  - Platform name lookup is case-insensitive. "OpenCL" or "opencl" (or even
 //    ("OpEnCl") would work correctly in the above example.
 //
-// And similarly, for standard interfaces (BLAS, RNG, etc.) you can add
+// And similarly, for standard interfaces (BLAS, etc.) you can add
 // dependencies on support libraries, e.g.:
 //
 //    //third_party/tensorflow/compiler/xla/stream_executor/cuda:pluton_blas_plugin
 //    //third_party/tensorflow/compiler/xla/stream_executor/cuda:cudnn_plugin
 //    //third_party/tensorflow/compiler/xla/stream_executor/cuda:cublas_plugin
-//    //third_party/tensorflow/compiler/xla/stream_executor/cuda:curand_plugin
 
 #ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_MULTI_PLATFORM_MANAGER_H_
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_MULTI_PLATFORM_MANAGER_H_

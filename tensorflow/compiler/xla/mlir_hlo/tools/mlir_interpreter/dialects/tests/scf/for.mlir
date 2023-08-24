@@ -46,5 +46,37 @@ func.func @iter_arg() -> index {
 }
 
 // CHECK-LABEL: @iter_arg
-// CHECK: Results
+// CHECK-NEXT: Results
 // CHECK-NEXT{LITERAL}: i64: 7
+
+func.func @int32() -> memref<4xi32> {
+  %c0 = arith.constant 0 : i32
+  %c1 = arith.constant 1 : i32
+  %c4 = arith.constant 4 : i32
+  %alloc = memref.alloc() : memref<4xi32>
+  scf.for %i = %c0 to %c4 step %c1 : i32 {
+    %index = arith.index_cast %i : i32 to index
+    memref.store %i, %alloc[%index]: memref<4xi32>
+  }
+  return %alloc : memref<4xi32>
+}
+
+// CHECK-LABEL: int32
+// CHECK-NEXT: Results
+// CHECK-NEXT{LITERAL}: <4xi32>: [0, 1, 2, 3]
+
+func.func @int16() -> memref<4xi16> {
+  %c0 = arith.constant 0 : i16
+  %c1 = arith.constant 1 : i16
+  %c4 = arith.constant 4 : i16
+  %alloc = memref.alloc() : memref<4xi16>
+  scf.for %i = %c0 to %c4 step %c1 : i16 {
+    %index = arith.index_cast %i : i16 to index
+    memref.store %i, %alloc[%index]: memref<4xi16>
+  }
+  return %alloc : memref<4xi16>
+}
+
+// CHECK-LABEL: int16
+// CHECK-NEXT: Results
+// CHECK-NEXT{LITERAL}: <4xi16>: [0, 1, 2, 3]

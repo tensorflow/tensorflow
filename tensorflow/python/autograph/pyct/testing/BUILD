@@ -45,7 +45,7 @@ py_strict_test(
     ],
     deps = [
         ":codegen",
-        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
     ],
 )

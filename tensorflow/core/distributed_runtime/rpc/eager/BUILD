@@ -40,6 +40,7 @@ cc_library(
         "//tensorflow/core/platform:error_payloads",
         "//tensorflow/core/protobuf:eager_service_proto_cc",
         "//tensorflow/core/protobuf:for_core_protos_cc",
+        "//tensorflow/tsl/distributed_runtime:call_options",
     ] + tf_grpc_cc_dependencies(),
 )
 

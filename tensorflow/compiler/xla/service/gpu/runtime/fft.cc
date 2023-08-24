@@ -101,19 +101,16 @@ static absl::Status FftImpl(const ServiceExecutableRunOptions* run_options,
     }
   }
 
-  absl::StatusOr<std::unique_ptr<FftPlanCache>*> fft_plan_cache =
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<FftPlanCache> * fft_plan_cache,
       state.GetOrCreate([]() -> absl::StatusOr<std::unique_ptr<FftPlanCache>> {
         return std::make_unique<FftPlanCache>();
-      });
-  if (!fft_plan_cache.ok()) return fft_plan_cache.status();
+      }));
 
-  auto st =
-      RunFft(GetDeviceAddress(input), ToShape(input), GetDeviceAddress(output),
-             ToShape(output), fft_type, fft_length, executor->device_ordinal(),
-             (*fft_plan_cache)->get(), stream, run_options->allocator());
-  if (!st.ok()) return ToAbslStatus(st);
-
-  return absl::OkStatus();
+  return RunFft(GetDeviceAddress(input), ToShape(input),
+                GetDeviceAddress(output), ToShape(output), fft_type, fft_length,
+                executor->device_ordinal(), fft_plan_cache->get(), stream,
+                run_options->allocator());
 }
 
 XLA_RUNTIME_DEFINE_CUSTOM_CALL(

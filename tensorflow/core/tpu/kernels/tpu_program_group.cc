@@ -14,6 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tpu/kernels/tpu_program_group.h"
 
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module_group.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/proto_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
@@ -152,7 +156,7 @@ void TpuProgramGroup::UnloadAndDestroyPrograms() {
         tpu_program, status.c_status);
     auto s = status.status();
     if (!s.ok()) {
-      LOG(ERROR) << "TpuProgramGroup::UnloadPrograms(): " << s.ToString();
+      LOG(ERROR) << "TpuProgramGroup::UnloadPrograms(): " << s;
     }
   }
   tpu_programs_.clear();

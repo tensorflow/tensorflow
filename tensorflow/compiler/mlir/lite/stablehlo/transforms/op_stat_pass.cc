@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/op_stat_pass.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -24,16 +25,22 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/TypeSwitch.h"
+#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_util.h"
 
 namespace mlir {
 namespace odml {
 
-// Define a pass class for print the summary of non-converted ops similar to
+// Defines a pass class for print the summary of non-converted ops similar to
 // mlir::PrintOpStatsPass, but this pass will show the simpler information.
 namespace {
 class PrintOpStatsPass : public PassWrapper<PrintOpStatsPass, OperationPass<>> {
@@ -46,14 +53,19 @@ class PrintOpStatsPass : public PassWrapper<PrintOpStatsPass, OperationPass<>> {
   // Prints the resultant operation statistics pos_t iterating over the module.
   void runOnOperation() override;
 
-  // Print summary of op stats.
-  void printSummary();
+  // Prints summary of op stats.
+  void PrintSummary();
+
+  // Keeps track of dtype counts per op.
+  void CountOp(DenseMap<StringRef, llvm::StringMap<int64_t>> &op_count_map,
+               StringRef op_name, StringRef dtype);
 
  private:
   llvm::StringMap<int64_t> op_with_dialect_count_;
+  DenseMap<StringRef, llvm::StringMap<int64_t>> op_dtype_count_;
   llvm::StringMap<int64_t> dialect_count_;
-  llvm::StringMap<llvm::StringRef> dialect_name_of_;
-  llvm::StringMap<llvm::StringRef> op_name_of_;
+  llvm::StringMap<StringRef> dialect_name_of_;
+  llvm::StringMap<StringRef> op_name_of_;
   std::vector<std::string> accepted_dialects_;
   std::vector<std::string> optional_accepted_dialects_;
   raw_ostream *os_;
@@ -70,20 +82,62 @@ void PrintOpStatsPass::runOnOperation() {
   total_ops_ = 0;
 
   getOperation()->walk([&](Operation *op) {
-    // `op_with_dialect_name` has the form of "dialect.op_name"
     auto op_with_dialect_name = op->getName().getStringRef();
     auto op_name = op->getName().stripDialect();
     auto dialect_name = op->getDialect()->getNamespace();
+
+    if (op->getNumResults() > 0) {
+      if (auto shaped_type =
+              op->getResult(0).getType().dyn_cast_or_null<ShapedType>()) {
+        auto result = shaped_type.getElementType();
+        std::string dtype;
+
+        TypeSwitch<Type>(result)
+            .Case<IntegerType>([&](Type) {
+              dtype = absl::StrCat("i", result.getIntOrFloatBitWidth());
+            })
+            .Case<FloatType>([&](Type) {
+              dtype = absl::StrCat("f", result.getIntOrFloatBitWidth());
+            })
+            .Case<UniformQuantizedType>([&](Type) {
+              auto uniform_quantized_dtype =
+                  result.dyn_cast_or_null<UniformQuantizedType>()
+                      .getStorageType();
+              dtype = absl::StrCat(
+                  "uq_", uniform_quantized_dtype.getIntOrFloatBitWidth());
+            })
+            .Case<quant::UniformQuantizedPerAxisType>([&](Type) {
+              auto uniform_quantized_dtype =
+                  result.dyn_cast_or_null<quant::UniformQuantizedPerAxisType>()
+                      .getStorageType();
+              dtype = absl::StrCat(
+                  "uq_", uniform_quantized_dtype.getIntOrFloatBitWidth());
+            })
+            .Default([&](Type) { LOG(ERROR) << "Unsupported data type."; });
+        CountOp(op_dtype_count_, op_with_dialect_name, dtype);
+      }
+    }
     ++op_with_dialect_count_[op_with_dialect_name];
     ++dialect_count_[dialect_name];
     dialect_name_of_[op_with_dialect_name] = dialect_name;
     op_name_of_[op_with_dialect_name] = op_name;
     ++total_ops_;
   });
-  printSummary();
+  PrintSummary();
 }
 
-void PrintOpStatsPass::printSummary() {
+void PrintOpStatsPass::CountOp(
+    DenseMap<StringRef, llvm::StringMap<int64_t>> &op_count_map,
+    StringRef op_name, StringRef dtype) {
+  auto &op_counts = op_count_map[op_name];
+  if (auto it = op_counts.find(dtype); it != op_counts.end()) {
+    it->second++;
+  } else {
+    op_counts[dtype] = 1;
+  }
+}
+
+void PrintOpStatsPass::PrintSummary() {
   *os_ << "Summary on the non-converted ops:\n";
   *os_ << "---------------------------------\n";
   SmallVector<StringRef, 64> sorted_op(op_with_dialect_count_.keys());
@@ -133,9 +187,21 @@ void PrintOpStatsPass::printSummary() {
   for (const auto &op_with_dialect_name : sorted_op) {
     if (!IsAcceptedOp(dialect_name_of_[op_with_dialect_name],
                       op_name_of_[op_with_dialect_name], accepted_dialects_)) {
-      *os_ << absl::StrFormat("- %s: %4d occurrences \n", op_with_dialect_name,
+      *os_ << absl::StrFormat("- %s: %4d occurrences", op_with_dialect_name,
                               op_with_dialect_count_[op_with_dialect_name]);
     }
+
+    auto op_count_map = op_dtype_count_[op_with_dialect_name];
+    if (!op_count_map.empty()) {
+      std::string delim;
+      *os_ << "  (";
+      for (const auto &[dtype, cnt] : op_count_map) {
+        *os_ << delim << absl::StrFormat("%s: %d", dtype, cnt);
+        delim = ", ";
+      }
+      *os_ << ")";
+    }
+    *os_ << "\n";
   }
 }
 

@@ -272,7 +272,7 @@ TfLiteStatus Interpreter::SetTensorParametersReadWrite(
 }
 
 TfLiteStatus Interpreter::SetTensorParametersReadOnly(
-    int tensor_index, TfLiteType type, const char* name, const size_t rank,
+    int tensor_index, TfLiteType type, const char* name, size_t rank,
     const int* dims, TfLiteQuantizationParams quantization, const char* buffer,
     size_t bytes, const Allocation* allocation) {
   TfLiteQuantization new_quantization = GetQuantizationFromLegacy(quantization);
@@ -282,9 +282,9 @@ TfLiteStatus Interpreter::SetTensorParametersReadOnly(
 }
 
 TfLiteStatus Interpreter::SetTensorParametersReadWrite(
-    int tensor_index, TfLiteType type, const char* name, const size_t rank,
+    int tensor_index, TfLiteType type, const char* name, size_t rank,
     const int* dims, TfLiteQuantizationParams quantization, bool is_variable,
-    const size_t rank_dims_signature, const int* dims_signature) {
+    size_t rank_dims_signature, const int* dims_signature) {
   TfLiteQuantization new_quantization = GetQuantizationFromLegacy(quantization);
   return primary_subgraph().SetTensorParametersReadWrite(
       tensor_index, type, name, rank, dims, new_quantization, is_variable,

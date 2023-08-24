@@ -24,8 +24,8 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework.type_utils import fulltypes_for_flat_tensors
 from tensorflow.python.ops import array_ops
@@ -158,7 +158,7 @@ class SparseTensorShapeTest(test_util.TensorFlowTestCase):
     sp = sparse_tensor.SparseTensor(indices, values, dense_shape)
 
     self.assertIsInstance(sp.shape, tensor_shape.TensorShape)
-    self.assertIsInstance(sp.dense_shape, ops.Tensor)
+    self.assertIsInstance(sp.dense_shape, tensor_lib.Tensor)
     self.assertEqual(sp.shape.as_list(), [5, 5])
 
   def test_unknown_shape(self):
@@ -172,7 +172,7 @@ class SparseTensorShapeTest(test_util.TensorFlowTestCase):
       return sp
 
     my_func.get_concrete_function(
-        dense_shape=tensor_spec.TensorSpec(
+        dense_shape=tensor_lib.TensorSpec(
             dtype=dtypes.int64, shape=[2,]))
 
   def test_partial_shape(self):
@@ -188,7 +188,7 @@ class SparseTensorShapeTest(test_util.TensorFlowTestCase):
       return sp
 
     my_func.get_concrete_function(
-        x=tensor_spec.TensorSpec(dtype=dtypes.int64, shape=[]))
+        x=tensor_lib.TensorSpec(dtype=dtypes.int64, shape=[]))
 
   def test_neg_shape(self):
     indices = [[0, 2]]
@@ -211,7 +211,7 @@ class SparseTensorShapeTest(test_util.TensorFlowTestCase):
       return sp
 
     my_func.get_concrete_function(
-        x=tensor_spec.TensorSpec(dtype=dtypes.int64, shape=[None, None]))
+        x=tensor_lib.TensorSpec(dtype=dtypes.int64, shape=[None, None]))
 
   def test_unknown_rank(self):
 
@@ -224,7 +224,7 @@ class SparseTensorShapeTest(test_util.TensorFlowTestCase):
       return sp
 
     my_func.get_concrete_function(
-        dense_shape=tensor_spec.TensorSpec(dtype=dtypes.int64, shape=[None]))
+        dense_shape=tensor_lib.TensorSpec(dtype=dtypes.int64, shape=[None]))
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -266,14 +266,14 @@ class SparseTensorSpecTest(test_util.TensorFlowTestCase,
 
   @parameterized.parameters([
       (sparse_tensor.SparseTensorSpec(dtype=dtypes.string), [
-          tensor_spec.TensorSpec([None, None], dtypes.int64),
-          tensor_spec.TensorSpec([None], dtypes.string),
-          tensor_spec.TensorSpec([None], dtypes.int64)
+          tensor_lib.TensorSpec([None, None], dtypes.int64),
+          tensor_lib.TensorSpec([None], dtypes.string),
+          tensor_lib.TensorSpec([None], dtypes.int64)
       ]),
       (sparse_tensor.SparseTensorSpec(shape=[5, None, None]), [
-          tensor_spec.TensorSpec([None, 3], dtypes.int64),
-          tensor_spec.TensorSpec([None], dtypes.float32),
-          tensor_spec.TensorSpec([3], dtypes.int64)
+          tensor_lib.TensorSpec([None, 3], dtypes.int64),
+          tensor_lib.TensorSpec([None], dtypes.float32),
+          tensor_lib.TensorSpec([3], dtypes.int64)
       ]),
   ])
   def testComponentSpecs(self, st_spec, expected):
@@ -331,7 +331,7 @@ class SparseTensorSpecTest(test_util.TensorFlowTestCase,
   ])
   def testFlatTensorSpecs(self, st_spec):
     self.assertEqual(st_spec._flat_tensor_specs,
-                     [tensor_spec.TensorSpec(None, dtypes.variant)])
+                     [tensor_lib.TensorSpec(None, dtypes.variant)])
 
   @parameterized.parameters([
       dtypes.float32,

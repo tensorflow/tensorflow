@@ -18,6 +18,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_LAYOUT_UTIL_H_
 #define TENSORFLOW_COMPILER_XLA_LAYOUT_UTIL_H_
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
@@ -28,12 +29,16 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace xla {
 
 // Namespaced collection of (static) Layout utilities.
 class LayoutUtil {
  public:
+  LayoutUtil(const LayoutUtil&) = delete;
+  LayoutUtil& operator=(const LayoutUtil&) = delete;
+
   // Creates a layout with the given minor-to-major dimension order. (This is a
   // convenience function for protobuf construction.)
   static Layout MakeLayout(
@@ -44,7 +49,7 @@ class LayoutUtil {
       absl::Span<const Tile> tiles = {},
       PrimitiveType index_primitive_type = PRIMITIVE_TYPE_INVALID,
       PrimitiveType pointer_primitive_type = PRIMITIVE_TYPE_INVALID,
-      int64_t memory_space = 0,
+      int64_t element_size_in_bits = 0, int64_t memory_space = 0,
       std::optional<Shape> physical_shape = std::nullopt,
       int64_t dynamic_shape_metadata_prefix_bytes = 0);
 
@@ -159,6 +164,10 @@ class LayoutUtil {
 
   // Returns whether all Shapes within the given ProgramShape have layouts.
   static bool HasLayout(const ProgramShape& program_shape);
+
+  // Returns whether any subshapes of the shape have custom (!= 0)
+  // element_size_in_bits.
+  static bool HasCustomElementSizeInBits(const Shape& shape);
 
   // Returns whether lhs and rhs are identical.
   static bool Equal(const Layout& lhs, const Layout& rhs);
@@ -276,10 +285,6 @@ class LayoutUtil {
   static bool ByteStridesIsMajorToMinor(absl::Span<const int64_t> byte_strides,
                                         absl::Span<const int64_t> dims,
                                         PrimitiveType element_type);
-
- private:
-  LayoutUtil(const LayoutUtil&) = delete;
-  LayoutUtil& operator=(const LayoutUtil&) = delete;
 };
 
 }  // namespace xla

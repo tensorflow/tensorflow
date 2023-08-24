@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "mlir/Dialect/Utils/StaticValueUtils.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/tools/mlir_bisect/bisect_lib.h"
@@ -34,89 +35,99 @@ constexpr int64_t kMaxWhileIterations = 1;
 // condition is executed, but its result is ignored.
 // For ease of implementation, this generates scf.execute_region ops. These are
 // subsequently canonicalized away.
-llvm::SmallVector<OwningOpRef<ModuleOp>> InlineScfWhile(BisectState&,
-                                                        scf::WhileOp whileOp) {
-  llvm::SmallVector<OwningOpRef<ModuleOp>> result;
+llvm::SmallVector<std::function<OwningOpRef<ModuleOp>()>> InlineScfWhile(
+    BisectState&, scf::WhileOp while_op) {
+  llvm::SmallVector<std::function<OwningOpRef<ModuleOp>()>> result;
   for (int64_t num_executions = 0; num_executions <= kMaxWhileIterations;
        ++num_executions) {
     using ::mlir::scf::ExecuteRegionOp;
 
-    auto [module, op] = CloneModuleFor(whileOp);
-    OpBuilder b(op);
-    llvm::SmallVector<scf::ExecuteRegionOp> regions;
+    result.push_back([while_op, num_executions]() -> OwningOpRef<ModuleOp> {
+      auto [module, op] = CloneModuleFor(while_op);
+      OpBuilder b(op);
+      llvm::SmallVector<scf::ExecuteRegionOp> regions;
 
-    auto wrap_region_in_execute = [&, loc = op.getLoc()](mlir::Region& region) {
-      regions
-          .emplace_back(b.create<ExecuteRegionOp>(
-              loc,
-              region.getBlocks().front().getTerminator()->getOperandTypes(),
-              mlir::ValueRange{}))
-          .getRegion()
-          .takeBody(region);
-    };
+      auto wrap_region_in_execute = [&,
+                                     loc = op.getLoc()](mlir::Region& region) {
+        regions
+            .emplace_back(b.create<ExecuteRegionOp>(
+                loc,
+                region.getBlocks().front().getTerminator()->getOperandTypes(),
+                mlir::ValueRange{}))
+            .getRegion()
+            .takeBody(region);
+      };
 
-    wrap_region_in_execute(op.getBefore());
-    // Replace the condition terminator with a yield terminator.
-    {
-      auto& before_block = regions[0].getRegion().getBlocks().front();
-      OpBuilder before_builder(before_block.getTerminator());
-      IRRewriter before_rewriter(before_builder);
-      before_rewriter.replaceOpWithNewOp<scf::YieldOp>(
-          before_block.getTerminator(),
-          before_block.getTerminator()->getOperands());
-    }
+      wrap_region_in_execute(op.getBefore());
+      // Replace the condition terminator with a yield terminator.
+      {
+        auto& before_block = regions[0].getRegion().getBlocks().front();
+        OpBuilder before_builder(before_block.getTerminator());
+        IRRewriter before_rewriter(before_builder);
+        before_rewriter.replaceOpWithNewOp<scf::YieldOp>(
+            before_block.getTerminator(),
+            before_block.getTerminator()->getOperands());
+      }
 
-    // Clone the execute region ops the requested number of times.
-    if (num_executions > 0) {
-      wrap_region_in_execute(op.getAfter());
-      for (int64_t i = 0; i < num_executions - 1; ++i) {
+      // Clone the execute region ops the requested number of times.
+      if (num_executions > 0) {
+        wrap_region_in_execute(op.getAfter());
+        for (int64_t i = 0; i < num_executions - 1; ++i) {
+          b.insert(regions.emplace_back(regions[0].clone()));
+          b.insert(regions.emplace_back(regions[1].clone()));
+        }
         b.insert(regions.emplace_back(regions[0].clone()));
-        b.insert(regions.emplace_back(regions[1].clone()));
       }
-      b.insert(regions.emplace_back(regions[0].clone()));
-    }
 
-    // Rewire region arguments and erase them.
-    for (int64_t i = 0; i < regions.size(); ++i) {
-      auto args = i == 0 ? ValueRange{op.getOperands()}
-                         : ValueRange{regions[i - 1].getResults()};
-      bool is_after_region = (i & 1) == 1;
-      auto& region = regions[i].getRegion();
-      for (int64_t arg = static_cast<int64_t>(region.getNumArguments()) - 1;
-           arg >= 0; --arg) {
-        region.getArgument(arg).replaceAllUsesWith(
-            args[is_after_region ? arg + 1 : arg]);
-        region.eraseArgument(arg);
+      // Rewire region arguments and erase them.
+      for (int64_t i = 0; i < regions.size(); ++i) {
+        auto args = i == 0 ? ValueRange{op.getOperands()}
+                           : ValueRange{regions[i - 1].getResults()};
+        bool is_after_region = (i & 1) == 1;
+        auto& region = regions[i].getRegion();
+        for (int64_t arg = static_cast<int64_t>(region.getNumArguments()) - 1;
+             arg >= 0; --arg) {
+          region.getArgument(arg).replaceAllUsesWith(
+              args[is_after_region ? arg + 1 : arg]);
+          region.eraseArgument(arg);
+        }
       }
-    }
-    op->replaceAllUsesWith(regions.back().getResults().drop_front(1));
-    op->erase();
-    result.push_back(std::move(module));
+      op->replaceAllUsesWith(regions.back().getResults().drop_front(1));
+      op->erase();
+      return std::move(module);
+    });
   }
   return result;
 }
 
-SmallVector<OwningOpRef<ModuleOp>> ReduceScfForallBounds(
+SmallVector<std::function<OwningOpRef<ModuleOp>()>> ReduceScfForallBounds(
     BisectState&, scf::ForallOp forall_op) {
-  SmallVector<OwningOpRef<ModuleOp>> result;
-  SmallVector<OpFoldResult> newUpperBound{forall_op.getMixedUpperBound()};
+  SmallVector<OpFoldResult> new_upper_bound{forall_op.getMixedUpperBound()};
   OpBuilder b(forall_op);
-  for (auto& ub : newUpperBound) {
-    auto constantOr = mlir::getConstantIntValue(ub);
-    if (!constantOr.has_value()) continue;
-
-    ub = b.getIndexAttr(*constantOr - 1);
+  bool any_replaced = false;
+  for (auto& ub : new_upper_bound) {
+    auto constant_or = mlir::getConstantIntValue(ub);
+    if (!constant_or.has_value()) {
+      continue;
+    }
+    any_replaced = true;
+    ub = b.getIndexAttr(*constant_or - 1);
   }
-  auto [module, op] = CloneModuleFor(forall_op);
-  b.setInsertionPoint(op);
-  SmallVector<Value> dynamicUpperBound;
-  SmallVector<int64_t> staticUpperBound;
-  dispatchIndexOpFoldResults(newUpperBound, dynamicUpperBound,
-                             staticUpperBound);
-  op.getDynamicUpperBoundMutable().assign(dynamicUpperBound);
-  op.setStaticUpperBound(staticUpperBound);
-
-  result.push_back(std::move(module));
+  SmallVector<std::function<OwningOpRef<ModuleOp>()>> result;
+  if (!any_replaced) {
+    return result;
+  }
+  result.push_back([=]() -> OwningOpRef<ModuleOp> {
+    auto [module, op] = CloneModuleFor(forall_op);
+    OpBuilder b(op);
+    SmallVector<Value> dynamic_upper_bound;
+    SmallVector<int64_t> static_upper_bound;
+    dispatchIndexOpFoldResults(new_upper_bound, dynamic_upper_bound,
+                               static_upper_bound);
+    op.getDynamicUpperBoundMutable().assign(dynamic_upper_bound);
+    op.setStaticUpperBound(static_upper_bound);
+    return std::move(module);
+  });
   return result;
 }
 

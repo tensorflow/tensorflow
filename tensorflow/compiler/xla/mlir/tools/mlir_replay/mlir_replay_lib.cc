@@ -48,10 +48,10 @@ namespace interpreter {
 namespace {
 
 tsl::StatusOr<SmallVector<InterpreterValue>> LoadArgs(
-    const xla::HloSnapshot& snapshot) {
+    const xla::HloSnapshot& snapshot, TypeRange types) {
   SmallVector<InterpreterValue> result;
-  for (const auto& arg : snapshot.arguments()) {
-    TF_ASSIGN_OR_RETURN(auto converted, LiteralToValue(arg));
+  for (const auto& [arg, type] : llvm::zip(snapshot.arguments(), types)) {
+    TF_ASSIGN_OR_RETURN(auto converted, LiteralToValue(arg, type));
     result.push_back(std::move(converted));
   }
   return result;
@@ -199,7 +199,8 @@ tsl::StatusOr<SmallVector<InterpreterValue>> Run(
   }
 
   auto args_to_buffers = extractXlaBufferAssignment(main);
-  TF_ASSIGN_OR_RETURN(auto args, LoadArgs(snapshot));
+  TF_ASSIGN_OR_RETURN(auto args,
+                      LoadArgs(snapshot, main.getBody().getArgumentTypes()));
   auto out_args =
       main.getBody().getBlocks().front().getArguments().drop_front(args.size());
 

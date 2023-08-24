@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <optional>
 #include <string>
+#include <utility>
 
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -42,7 +43,7 @@ inline constexpr absl::string_view kDeviceAssignmentAttr = "device_assignment";
 
 // A TPU device for execution alongside its associated host CPU device.
 struct TPUDeviceAndHost {
-  TPUDeviceAndHost() {}
+  TPUDeviceAndHost() = default;
   TPUDeviceAndHost(llvm::StringRef device, llvm::StringRef host)
       : device(device), host(host) {}
 
@@ -252,6 +253,10 @@ bool HasModelParallelism(mlir::tf_device::ClusterOp cluster);
 // Returns true if the devices list contain any TPU devices
 bool HasTPUDevice(const mlir::TF::RuntimeDevices& devices);
 
+// Returns the host device used for outside compilation in generic pipeline.
+mlir::LogicalResult GetHostDeviceOutsideCompilationInGenericPipeline(
+    mlir::TF::RuntimeDevices devices, std::string* host_device);
+
 // Parses XLA compilation and execution devices from a tf_device.cluster and
 // returns the host device for the head and tail computations. For TPU device,
 // if the computation is replicated, GetDeviceAliasForHostOfLogicalCore(0) is
@@ -270,6 +275,15 @@ bool IsTPUReplicatedCore(llvm::StringRef device);
 // There are other TF types that are not XLA types which will be removed by
 // successive passes in TF/XLA bridge phase 2.
 bool TypeValidForXLA(const mlir::Type& type);
+
+// Returns the map from core to the host that is associated with the
+// core. If `cluster` is not replicated then the core is a physical core index
+// and the host is a physical host name. If `cluster` is replicated then the
+// core with index `i` is a logical core (`TPU_REPLICATED_CORE_i`), and the host
+// is the associated virtual device name (`TPU_REPLICATED_HOST_i`).
+mlir::LogicalResult GetDeviceToHostMap(
+    mlir::tf_device::ClusterOp cluster,
+    llvm::SmallVector<std::string, 8>& core_to_host);
 
 }  // namespace tensorflow
 

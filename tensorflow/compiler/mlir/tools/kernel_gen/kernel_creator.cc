@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/Transforms/Passes.h"  // from @llvm-project
+#include "mlir/Dialect/Complex/IR/Complex.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/Transforms/OptimizeForNVVM.h"  // from @llvm-project
@@ -409,8 +410,10 @@ Status LowerHostSideToFinalForm(mlir::ModuleOp module, bool apply_cl_options) {
 StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> SetupContextAndParseModule(
     mlir::MLIRContext& context, llvm::StringRef tf_code) {
   mlir::DialectRegistry registry;
+  // TODO(herhut): Remove.
   mlir::RegisterAllTensorFlowDialects(registry);
   registry.insert<mlir::chlo::ChloDialect, mlir::mhlo::MhloDialect>();
+  registry.insert<mlir::complex::ComplexDialect>();
   mlir::registerBuiltinDialectTranslation(registry);
   mlir::registerGPUDialectTranslation(registry);
   mlir::registerLLVMDialectTranslation(registry);

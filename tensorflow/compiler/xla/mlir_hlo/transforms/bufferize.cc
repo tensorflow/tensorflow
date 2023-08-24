@@ -56,7 +56,7 @@ struct BufferizeConstantOp : public OpConversionPattern<arith::ConstantOp> {
       if (complex::ConstantOp::isBuildableWith(attr, type))
         return rewriter.create<complex::ConstantOp>(loc, type,
                                                     attr.cast<ArrayAttr>());
-      return rewriter.create<arith::ConstantOp>(loc, attr);
+      return rewriter.create<arith::ConstantOp>(loc, cast<TypedAttr>(attr));
     };
 
     if (resultRank == 0) {

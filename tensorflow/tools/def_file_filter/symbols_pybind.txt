@@ -21,6 +21,8 @@ tensorflow::swig::RegisterPyObject
 tensorflow::swig::RegisterType
 tensorflow::swig::IsEagerTensorSlow
 tensorflow::swig::GetRegisteredPyObject
+tensorflow::swig::IsTensorProtocol
+tensorflow::swig::IsCoreTypeValue
 
 [//tensorflow/python/util:cpp_nest] # nest
 tensorflow::FlattenDictItems
@@ -31,6 +33,9 @@ tensorflow::IsBuiltWithROCm
 tensorflow::IsBuiltWithNvcc
 tensorflow::GpuSupportsHalfMatMulAndConv
 tensorflow::IsMklEnabled
+
+[//tensorflow/compiler/tf2xla:tf2xla_opset] # tf2xla_opset
+tensorflow::GetRegisteredXlaOpsForDevice
 
 [//tensorflow/compiler/xla/stream_executor:stream_executor_pimpl] # stat_summarizer
 stream_executor::StreamExecutor::EnablePeerAccessTo
@@ -49,22 +54,16 @@ tensorflow::tfprof::SerializeToString
 [//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool] # graph_analyze
 tensorflow::grappler::graph_analyzer::GraphAnalyzerTool
 
-[//tensorflow/tsl/python/lib/core:bfloat16_lib] # bfloat16
-tsl::RegisterNumpyBfloat16
-tsl::Bfloat16Dtype
-tsl::Bfloat16NumpyType
-tsl::Float8_E4M3B11Dtype
-
-[//tensorflow/tsl/python/lib/core:float8_lib] # float8_e4m3fn, float8_e5m2
-tsl::RegisterNumpyFloat8e4m3fn
-tsl::Float8e4m3fnDtype
-tsl::Float8e4m3fnNumpyType
-tsl::RegisterNumpyFloat8e5m2
-tsl::Float8e5m2Dtype
-tsl::Float8e5m2NumpyType
-
-[//tensorflow/tsl/python/lib/core:custom_casts_lib]
-tsl::RegisterCustomCasts
+[//tensorflow/tsl/python/lib/core:ml_dtypes_lib] # bfloat16, float8
+tsl::ml_dtypes::RegisterTypes
+tsl::ml_dtypes::GetBfloat16Dtype
+tsl::ml_dtypes::GetFloat8E4m3b11fnuzDtype
+tsl::ml_dtypes::GetFloat8E4m3fnDtype
+tsl::ml_dtypes::GetFloat8E5m2Dtype
+tsl::ml_dtypes::GetBfloat16TypeNum
+tsl::ml_dtypes::GetFloat8E4m3b11fnuzTypeNum
+tsl::ml_dtypes::GetFloat8E4m3fnTypeNum
+tsl::ml_dtypes::GetFloat8E5m2TypeNum
 
 [//tensorflow/python:py_func_lib] # py_func
 tensorflow::InitializePyTrampoline
@@ -249,6 +248,7 @@ tensorflow::ExperimentalConvertSavedModelV1ToMlirLite
 tensorflow::ExperimentalConvertSavedModelV1ToMlir
 tensorflow::ExperimentalConvertSavedModelToMlir
 tensorflow::ExperimentalWriteBytecode
+tensorflow::ExperimentalTFLiteToTosaBytecode
 tensorflow::ImportGraphDef
 tensorflow::ImportFunction
 
@@ -550,13 +550,10 @@ tensorflow::DataTypeToPyObject
 tensorflow::Safe_PyObjectPtr
 
 [//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model_cc] # quantization
-tensorflow::quantization::QuantizeQATModel
-tensorflow::quantization::QuantizePTQModelPreCalibration
-tensorflow::quantization::QuantizePTQModelPostCalibration
-tensorflow::quantization::ClearCollectedInformationFromCalibrator
-tensorflow::quantization::ClearDataFromCalibrator
-tensorflow::quantization::GetMinFromCalibrator
-tensorflow::quantization::GetMaxFromCalibrator
+tensorflow::quantization::QuantizeQatModel
+tensorflow::quantization::QuantizePtqModelPreCalibration
+tensorflow::quantization::QuantizePtqModelPostCalibration
+tensorflow::quantization::QuantizePtqDynamicRange
 
 [//tensorflow/dtensor/cc:dtensor_device_cc] # DTensor
 tensorflow::dtensor::AllocateDTensorDevice
@@ -575,9 +572,10 @@ tensorflow::dtensor::FetchLayout
 tensorflow::dtensor::IsDTensor
 tensorflow::dtensor::SparsePack
 tensorflow::dtensor::IsSparseDTensor
-tensorflow::dtensor::GetFunctionCacheStats
+tensorflow::dtensor::GetStats
 tensorflow::dtensor::SetIteratorElementLayouts
 
 [//tensorflow/dtensor/cc:tensor_layout] # DTensor
 tensorflow::dtensor::Mesh
 tensorflow::dtensor::Layout
+tensorflow::dtensor::Layout::LayoutType

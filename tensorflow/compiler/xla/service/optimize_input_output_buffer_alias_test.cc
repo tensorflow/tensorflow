@@ -15,13 +15,25 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/optimize_input_output_buffer_alias.h"
 
+#include <algorithm>
+#include <cstdint>
 #include <memory>
+#include <vector>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_input_output_alias_config.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
+#include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
@@ -35,24 +47,31 @@ class OptimizeInputOutputBufferAliasTest : public HloTestBase {
     r2f32_ = ShapeUtil::MakeShape(F32, {4, 5});
     r3f32_ = ShapeUtil::MakeShape(F32, {4, 5, 6});
     r4f32_ = ShapeUtil::MakeShape(F32, {4, 5, 6, 7});
-
-    optimize_pass_ = std::make_unique<OptimizeInputOutputBufferAlias>();
+  }
+  void CreatePassAndBufferDonorConfig(
+      bool registered_donor_buffer_only = false) {
+    optimize_pass_ = std::make_unique<OptimizeInputOutputBufferAlias>(
+        registered_donor_buffer_only);
+    buffer_donor_config_ = HloBufferDonorConfig();
   }
 
   // Returns the number of output indices that aliases with the input.
   int64_t AliasCount() {
     int64_t count = 0;
 
-    config_.ForEachAlias(
+    alias_config_.ForEachAlias(
         [&](const ShapeIndex&, const HloInputOutputAliasConfig::Alias&) {
           count++;
         });
     return count;
   }
 
-  bool BuildAliasConfig(const Shape& input_shape, const Shape& output_shape) {
-    config_ = HloInputOutputAliasConfig(output_shape);
-    auto changed = optimize_pass_->Build(input_shape, output_shape, &config_);
+  bool BuildAliasConfig(const std::vector<Shape>& input_shapes,
+                        const Shape& output_shape) {
+    alias_config_ = HloInputOutputAliasConfig(output_shape);
+
+    auto changed = optimize_pass_->Build(input_shapes, output_shape,
+                                         &alias_config_, &buffer_donor_config_);
     TF_CHECK_OK(changed.status());
 
     return changed.value();
@@ -60,7 +79,8 @@ class OptimizeInputOutputBufferAliasTest : public HloTestBase {
 
   std::unique_ptr<OptimizeInputOutputBufferAlias> optimize_pass_;
 
-  HloInputOutputAliasConfig config_;
+  HloInputOutputAliasConfig alias_config_;
+  HloBufferDonorConfig buffer_donor_config_;
 
   Shape r1f32_;
   Shape r2f32_;
@@ -70,7 +90,8 @@ class OptimizeInputOutputBufferAliasTest : public HloTestBase {
 
 // All shapes are different, so no aliasing is available.
 TEST_F(OptimizeInputOutputBufferAliasTest, AllDifferentBufferSizes) {
-  Shape input = ShapeUtil::MakeTupleShape({r1f32_, r2f32_});
+  CreatePassAndBufferDonorConfig(false);
+  std::vector<Shape> input = {ShapeUtil::MakeTupleShape({r1f32_, r2f32_})};
   Shape output = ShapeUtil::MakeTupleShape({r3f32_, r4f32_});
   bool changed = BuildAliasConfig(input, output);
   EXPECT_FALSE(changed);
@@ -79,51 +100,60 @@ TEST_F(OptimizeInputOutputBufferAliasTest, AllDifferentBufferSizes) {
 
 // Input and output shapes are equal, so buffers can alias at the same index.
 TEST_F(OptimizeInputOutputBufferAliasTest, OrderedNonNestedTuple) {
-  Shape input = ShapeUtil::MakeTupleShape({r1f32_, r2f32_, r3f32_, r4f32_});
+  CreatePassAndBufferDonorConfig(false);
+  std::vector<Shape> input = {
+      ShapeUtil::MakeTupleShape({r1f32_, r2f32_, r3f32_, r4f32_})};
   Shape output = ShapeUtil::MakeTupleShape({r1f32_, r2f32_, r3f32_, r4f32_});
   bool changed = BuildAliasConfig(input, output);
   EXPECT_TRUE(changed);
   EXPECT_EQ(AliasCount(), 4);
 
-  EXPECT_EQ(config_.GetAliasedOutput(0, {0}), ShapeIndex{0});
-  EXPECT_EQ(config_.GetAliasedOutput(0, {1}), ShapeIndex{1});
-  EXPECT_EQ(config_.GetAliasedOutput(0, {2}), ShapeIndex{2});
-  EXPECT_EQ(config_.GetAliasedOutput(0, {3}), ShapeIndex{3});
+  EXPECT_EQ(alias_config_.GetAliasedOutput(0, {0}), ShapeIndex{0});
+  EXPECT_EQ(alias_config_.GetAliasedOutput(0, {1}), ShapeIndex{1});
+  EXPECT_EQ(alias_config_.GetAliasedOutput(0, {2}), ShapeIndex{2});
+  EXPECT_EQ(alias_config_.GetAliasedOutput(0, {3}), ShapeIndex{3});
 }
 
 // Only a subset of the tuple element shapes match between the input and the
 // output.
 TEST_F(OptimizeInputOutputBufferAliasTest, PartialReuseNonNestedTuple) {
-  Shape input = ShapeUtil::MakeTupleShape({r1f32_, r1f32_, r2f32_, r2f32_});
+  CreatePassAndBufferDonorConfig(false);
+  std::vector<Shape> input = {
+      ShapeUtil::MakeTupleShape({r1f32_, r1f32_, r2f32_, r2f32_})};
   Shape output = ShapeUtil::MakeTupleShape({r1f32_, r2f32_, r3f32_, r4f32_});
   bool changed = BuildAliasConfig(input, output);
   EXPECT_TRUE(changed);
 
   EXPECT_EQ(AliasCount(), 2);
 
-  EXPECT_EQ(config_.GetAliasedOutput(0, {0}), ShapeIndex{0});
-  EXPECT_EQ(config_.GetAliasedOutput(0, {2}), ShapeIndex{1});
+  EXPECT_TRUE(alias_config_.OutputHasAlias(ShapeIndex{0}));
+  EXPECT_TRUE(alias_config_.OutputHasAlias(ShapeIndex{1}));
+  EXPECT_FALSE(alias_config_.OutputHasAlias(ShapeIndex{2}));
+  EXPECT_FALSE(alias_config_.OutputHasAlias(ShapeIndex{3}));
 }
 
 // The output shape is reverse of the input shape, but we can still reuse all
 // the buffers.
 TEST_F(OptimizeInputOutputBufferAliasTest, UnorderedNonNestedTuple) {
-  Shape input = ShapeUtil::MakeTupleShape({r1f32_, r2f32_, r3f32_, r4f32_});
+  CreatePassAndBufferDonorConfig(false);
+  std::vector<Shape> input = {
+      ShapeUtil::MakeTupleShape({r1f32_, r2f32_, r3f32_, r4f32_})};
   Shape output = ShapeUtil::MakeTupleShape({r4f32_, r3f32_, r2f32_, r1f32_});
   bool changed = BuildAliasConfig(input, output);
   EXPECT_TRUE(changed);
 
   EXPECT_EQ(AliasCount(), 4);
 
-  EXPECT_EQ(config_.GetAliasedOutput(0, {0}), ShapeIndex{3});
-  EXPECT_EQ(config_.GetAliasedOutput(0, {1}), ShapeIndex{2});
-  EXPECT_EQ(config_.GetAliasedOutput(0, {2}), ShapeIndex{1});
-  EXPECT_EQ(config_.GetAliasedOutput(0, {3}), ShapeIndex{0});
+  EXPECT_EQ(alias_config_.GetAliasedOutput(0, {0}), ShapeIndex{3});
+  EXPECT_EQ(alias_config_.GetAliasedOutput(0, {1}), ShapeIndex{2});
+  EXPECT_EQ(alias_config_.GetAliasedOutput(0, {2}), ShapeIndex{1});
+  EXPECT_EQ(alias_config_.GetAliasedOutput(0, {3}), ShapeIndex{0});
 }
 
 TEST_F(OptimizeInputOutputBufferAliasTest, UnorderedNestedTuple) {
-  Shape input = ShapeUtil::MakeTupleShape(
-      {ShapeUtil::MakeTupleShape({r1f32_}), r2f32_, r3f32_, r4f32_});
+  CreatePassAndBufferDonorConfig(false);
+  std::vector<Shape> input = {ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeTupleShape({r1f32_}), r2f32_, r3f32_, r4f32_})};
   Shape output = ShapeUtil::MakeTupleShape(
       {r1f32_, ShapeUtil::MakeTupleShape({r3f32_, r2f32_}), r2f32_});
   bool changed = BuildAliasConfig(input, output);
@@ -131,9 +161,286 @@ TEST_F(OptimizeInputOutputBufferAliasTest, UnorderedNestedTuple) {
 
   EXPECT_EQ(AliasCount(), 3);
 
-  EXPECT_EQ(config_.GetAliasedOutput(0, {0, 0}), ShapeIndex{0});
-  EXPECT_EQ(config_.GetAliasedOutput(0, {1}), ShapeIndex({1, 1}));
-  EXPECT_EQ(config_.GetAliasedOutput(0, {2}), ShapeIndex({1, 0}));
+  EXPECT_EQ(alias_config_.GetAliasedOutput(0, {0, 0}), ShapeIndex{0});
+  EXPECT_EQ(alias_config_.GetAliasedOutput(0, {1}), ShapeIndex({1, 1}));
+  EXPECT_EQ(alias_config_.GetAliasedOutput(0, {2}), ShapeIndex({1, 0}));
+  EXPECT_FALSE(alias_config_.ParameterHasAlias(0, {0, 3}));
 }
 
+TEST_F(OptimizeInputOutputBufferAliasTest, MultipleParameters) {
+  CreatePassAndBufferDonorConfig(false);
+  std::vector<Shape> input = {{r1f32_, r2f32_, r3f32_, r4f32_}};
+  Shape output = ShapeUtil::MakeTupleShape({r4f32_, r3f32_, r2f32_, r1f32_});
+  bool changed = BuildAliasConfig(input, output);
+  EXPECT_TRUE(changed);
+
+  EXPECT_EQ(AliasCount(), 4);
+
+  EXPECT_EQ(alias_config_.GetAliasedOutput(0, {}), ShapeIndex{3});
+  EXPECT_EQ(alias_config_.GetAliasedOutput(1, {}), ShapeIndex{2});
+  EXPECT_EQ(alias_config_.GetAliasedOutput(2, {}), ShapeIndex{1});
+  EXPECT_EQ(alias_config_.GetAliasedOutput(3, {}), ShapeIndex{0});
+}
+
+TEST_F(OptimizeInputOutputBufferAliasTest, BufferDonorOnly) {
+  CreatePassAndBufferDonorConfig(true);
+  std::vector<Shape> input = {ShapeUtil::MakeTupleShape({r1f32_, r2f32_})};
+  Shape output = ShapeUtil::MakeTupleShape({r2f32_, r1f32_});
+
+  TF_CHECK_OK(buffer_donor_config_.AddBufferDonor(0, {0}));
+  EXPECT_TRUE(buffer_donor_config_.ParameterIsBufferDonor(0, {0}));
+
+  bool changed = BuildAliasConfig(input, output);
+  EXPECT_TRUE(changed);
+
+  EXPECT_EQ(AliasCount(), 1);
+
+  EXPECT_FALSE(buffer_donor_config_.ParameterIsBufferDonor(0, {0}));
+  EXPECT_EQ(alias_config_.GetAliasedOutput(0, {0}), ShapeIndex{1});
+  EXPECT_FALSE(alias_config_.GetAliasedOutput(0, {1}));
+}
+
+class OptimizeInputOutputBufferAliasHloModuleTest : public HloTestBase {};
+
+TEST_F(OptimizeInputOutputBufferAliasHloModuleTest, NoChange) {
+  absl::string_view module_str = R"(
+    HloModule TEST
+
+    ENTRY main {
+      a = f32[5] parameter(0)
+      b = f32[7] parameter(1)
+      ROOT root = (f32[5], f32[7]) tuple(%a, %b)
+    }
+    )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
+
+  bool registered_buffer_donor_only_ = true;
+  OptimizeInputOutputBufferAlias pass(registered_buffer_donor_only_);
+  TF_ASSERT_OK_AND_ASSIGN(bool chanaged, pass.Run(module.get(), {}));
+  EXPECT_FALSE(chanaged);
+}
+
+TEST_F(OptimizeInputOutputBufferAliasHloModuleTest, AllInputsAreBufferDonors) {
+  absl::string_view module_str = R"(
+    HloModule TEST
+
+    ENTRY main {
+      a = f32[5] parameter(0)
+      b = f32[7] parameter(1)
+      ROOT root = (f32[5], f32[7]) tuple(%a, %b)
+    }
+    )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
+
+  bool registered_buffer_donor_only_ = false;
+  OptimizeInputOutputBufferAlias pass(registered_buffer_donor_only_);
+  TF_ASSERT_OK_AND_ASSIGN(bool chanaged, pass.Run(module.get(), {}));
+  EXPECT_TRUE(chanaged);
+
+  const auto& alias_config = module->input_output_alias_config();
+  EXPECT_EQ(alias_config.GetAliasedOutput(0, {}), ShapeIndex{0});
+  EXPECT_EQ(alias_config.GetAliasedOutput(1, {}), ShapeIndex{1});
+  EXPECT_FALSE(module->entry_computation()
+                   ->root_instruction()
+                   ->HasControlDependencies());
+}
+
+TEST_F(OptimizeInputOutputBufferAliasHloModuleTest, OneBufferDonor) {
+  absl::string_view module_str = R"(
+    HloModule TEST, buffer_donor={ (0, {}) }
+
+    ENTRY main {
+      a = f32[5] parameter(0)
+      b = f32[7] parameter(1)
+      ROOT root = (f32[5], f32[7]) tuple(%a, %b)
+    }
+    )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
+
+  bool registered_buffer_donor_only_ = true;
+  OptimizeInputOutputBufferAlias pass(registered_buffer_donor_only_);
+  TF_ASSERT_OK_AND_ASSIGN(bool chanaged, pass.Run(module.get(), {}));
+  EXPECT_TRUE(chanaged);
+
+  const auto& alias_config = module->input_output_alias_config();
+  EXPECT_EQ(alias_config.GetAliasedOutput(0, {}), ShapeIndex{0});
+  EXPECT_FALSE(alias_config.ParameterHasAlias(1, {}));
+
+  const auto& buffer_donor_config = module->buffer_donor_config();
+  EXPECT_FALSE(buffer_donor_config.ParameterIsBufferDonor(0, {}));
+  EXPECT_FALSE(buffer_donor_config.ParameterIsBufferDonor(1, {}));
+
+  EXPECT_FALSE(module->entry_computation()
+                   ->root_instruction()
+                   ->HasControlDependencies());
+}
+
+TEST_F(OptimizeInputOutputBufferAliasHloModuleTest, AddControlDependency) {
+  absl::string_view module_str = R"(
+    HloModule TEST, buffer_donor={ (0, {}), (1, {}) }
+
+    ENTRY main {
+      a = f32[5] parameter(0)
+      b = f32[5] parameter(1)
+      c = f32[5] add(a, b)
+      d = f32[5] subtract(a, b)
+      e = f32[5] multiply(a, b)
+      ROOT root = (f32[5], f32[5], f32[5]) tuple(c, d, e)
+    }
+    )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
+
+  bool registered_buffer_donor_only_ = true;
+  OptimizeInputOutputBufferAlias pass(registered_buffer_donor_only_);
+  TF_ASSERT_OK_AND_ASSIGN(bool chanaged, pass.Run(module.get(), {}));
+  EXPECT_TRUE(chanaged);
+
+  const auto& alias_config = module->input_output_alias_config();
+  EXPECT_EQ(alias_config.GetAliasedOutput(0, {}), ShapeIndex{0});
+  EXPECT_EQ(alias_config.GetAliasedOutput(1, {}), ShapeIndex{1});
+
+  const auto& buffer_donor_config = module->buffer_donor_config();
+  EXPECT_FALSE(buffer_donor_config.ParameterIsBufferDonor(0, {}));
+  EXPECT_FALSE(buffer_donor_config.ParameterIsBufferDonor(1, {}));
+
+  HloInstruction* instr_add =
+      HloTestBase::FindInstruction(module.get(), HloOpcode::kAdd);
+  HloInstruction* instr_sub =
+      HloTestBase::FindInstruction(module.get(), HloOpcode::kSubtract);
+  HloInstruction* instr_mul =
+      HloTestBase::FindInstruction(module.get(), HloOpcode::kMultiply);
+
+  EXPECT_EQ(instr_sub->control_predecessors().size(), 0);
+  EXPECT_EQ(instr_mul->control_predecessors().size(), 0);
+
+  const auto& instr_add_control_predecessors =
+      instr_add->control_predecessors();
+  EXPECT_EQ(instr_add_control_predecessors.size(), 2);
+  EXPECT_NE(std::find(instr_add_control_predecessors.begin(),
+                      instr_add_control_predecessors.end(), instr_sub),
+            instr_add_control_predecessors.end());
+  EXPECT_NE(std::find(instr_add_control_predecessors.begin(),
+                      instr_add_control_predecessors.end(), instr_mul),
+            instr_add_control_predecessors.end());
+}
+
+TEST_F(OptimizeInputOutputBufferAliasHloModuleTest, MustAliasFirst) {
+  absl::string_view module_str = R"(
+    HloModule TEST, input_output_alias={ {0}: (0, {}, may-alias), {1}: (1, {}, must-alias)}
+
+    ENTRY main {
+      a = f32[5] parameter(0)
+      b = f32[5] parameter(1)
+      c = f32[5] add(a, b)
+      d = f32[5] subtract(a, b)
+      e = f32[5] multiply(a, b)
+      ROOT root = (f32[5], f32[5], f32[5]) tuple(c, d, e)
+    }
+    )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
+
+  bool registered_buffer_donor_only_ = true;
+  OptimizeInputOutputBufferAlias pass(registered_buffer_donor_only_);
+  TF_ASSERT_OK_AND_ASSIGN(bool chanaged, pass.Run(module.get(), {}));
+  EXPECT_TRUE(chanaged);
+
+  const auto& alias_config = module->input_output_alias_config();
+  EXPECT_EQ(alias_config.GetAliasedOutput(0, {}), ShapeIndex{0});
+  EXPECT_EQ(alias_config.GetAliasedOutput(1, {}), ShapeIndex{1});
+
+  const auto& buffer_donor_config = module->buffer_donor_config();
+  EXPECT_FALSE(buffer_donor_config.ParameterIsBufferDonor(0, {}));
+  EXPECT_FALSE(buffer_donor_config.ParameterIsBufferDonor(1, {}));
+
+  HloInstruction* instr_add =
+      HloTestBase::FindInstruction(module.get(), HloOpcode::kAdd);
+  HloInstruction* instr_sub =
+      HloTestBase::FindInstruction(module.get(), HloOpcode::kSubtract);
+  HloInstruction* instr_mul =
+      HloTestBase::FindInstruction(module.get(), HloOpcode::kMultiply);
+
+  EXPECT_EQ(instr_add->control_predecessors().size(), 0);
+  EXPECT_EQ(instr_mul->control_predecessors().size(), 0);
+
+  const auto& instr_sub_control_predecessors =
+      instr_sub->control_predecessors();
+  EXPECT_EQ(instr_sub_control_predecessors.size(), 2);
+  EXPECT_NE(std::find(instr_sub_control_predecessors.begin(),
+                      instr_sub_control_predecessors.end(), instr_add),
+            instr_sub_control_predecessors.end());
+  EXPECT_NE(std::find(instr_sub_control_predecessors.begin(),
+                      instr_sub_control_predecessors.end(), instr_mul),
+            instr_sub_control_predecessors.end());
+}
+
+TEST_F(OptimizeInputOutputBufferAliasHloModuleTest, NoChangeForTupleInput) {
+  absl::string_view module_str = R"(
+    HloModule test, input_output_alias={ {0}: (0, {0}, must-alias), {1}: (0, {1}, must-alias)}
+
+    ENTRY add {
+      x = (f32[3], f32[3]) parameter(0)
+      left = get-tuple-element(x), index=0
+      right = get-tuple-element(x), index=1
+
+      add_x = f32[3] add(left, left)
+      add_y = f32[3] add(right, right)
+      ROOT result = (f32[3], f32[3]) tuple(add_x, add_y)
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
+
+  bool registered_buffer_donor_only_ = true;
+  OptimizeInputOutputBufferAlias pass(registered_buffer_donor_only_);
+  TF_ASSERT_OK_AND_ASSIGN(bool chanaged, pass.Run(module.get(), {}));
+  EXPECT_FALSE(chanaged);
+
+  module->entry_computation()->ForEachInstructionPostOrder(
+      [&](HloInstruction* instr) {
+        EXPECT_FALSE(instr->HasControlDependencies());
+      });
+}
+
+TEST_F(OptimizeInputOutputBufferAliasHloModuleTest, SimpleWhileInstruction) {
+  absl::string_view module_str = R"(
+    HloModule TEST
+
+    while.body {
+      loop_var = s32[] parameter(0)
+      constant.1 = s32[] constant(1)
+      ROOT add = s32[] add(loop_var, constant.1)
+    }
+    while.condition {
+      loop_var = s32[] parameter(0)
+      constant.100 = s32[] constant(100)
+      ROOT less-than = pred[] compare(loop_var, constant.100), direction=LT
+    }
+    ENTRY while.loop {
+      p0 = s32[] parameter(0)
+      ROOT result = s32[] while(s32[] p0),
+        condition=while.condition, body=while.body
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
+
+  bool registered_buffer_donor_only_ = false;
+  OptimizeInputOutputBufferAlias pass(registered_buffer_donor_only_);
+  TF_ASSERT_OK_AND_ASSIGN(bool chanaged, pass.Run(module.get(), {}));
+  EXPECT_TRUE(chanaged);
+
+  const auto& alias_config = module->input_output_alias_config();
+  EXPECT_EQ(alias_config.GetAliasedOutput(0, {}), ShapeIndex{});
+  EXPECT_FALSE(module->entry_computation()
+                   ->parameter_instruction(0)
+                   ->HasControlDependencies());
+  EXPECT_FALSE(module->entry_computation()
+                   ->root_instruction()
+                   ->HasControlDependencies());
+}
 }  // namespace xla

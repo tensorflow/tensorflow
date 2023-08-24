@@ -51,7 +51,7 @@ v2_compat.enable_v2_behavior()
 
 DEFAULT_TOL = 1e-5
 
-_DEFAULT_GPU_MEMORY_LIMIT = 200  # MB
+_DEFAULT_GPU_MEMORY_LIMIT = 1024  # 1G
 
 
 def get_use_xla_spmd(device_type):
@@ -167,15 +167,15 @@ class DTensorBaseTest(tf_test.TestCase, parameterized.TestCase):
 
   def tearDown(self):
     # Make sure all async ops finish.
-    context.async_wait()
+    try:
+      context.async_wait()
+    finally:
+      # TODO(hthu): Remove the reset once we fixed the CopyToMesh with
+      # DefaultMesh placement issue.
+      reset_dtensor()
 
-    # TODO(hthu): Remove the reset once we fixed the CopyToMesh with
-    # DefaultMesh placement issue.
-    reset_dtensor()
-
-    self._backend_configurator.tearDown()
-
-    super().tearDown()
+      self._backend_configurator.tearDown()
+      super().tearDown()
 
   @staticmethod
   def configTestMesh(  # pylint: disable=invalid-name

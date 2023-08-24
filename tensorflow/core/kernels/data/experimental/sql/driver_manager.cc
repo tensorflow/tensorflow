@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/experimental/sql/driver_manager.h"
+
+#include <memory>
+
 #include "tensorflow/core/kernels/data/experimental/sql/sqlite_query_connection.h"
 
 namespace tensorflow {
@@ -23,7 +26,7 @@ namespace sql {
 std::unique_ptr<QueryConnection> DriverManager::CreateQueryConnection(
     const string& driver_name) {
   if (driver_name == "sqlite") {
-    return std::unique_ptr<SqliteQueryConnection>(new SqliteQueryConnection());
+    return std::make_unique<SqliteQueryConnection>();
   } else {  // TODO(b/64276826, b/64276995) Add support for other db types.
             // Change to registry pattern.
     return nullptr;

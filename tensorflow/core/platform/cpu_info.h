@@ -25,6 +25,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace port {
+using tsl::port::Aarch64CPU;
 using tsl::port::ADX;
 using tsl::port::AES;
 using tsl::port::AMX_BF16;
@@ -80,6 +81,7 @@ using tsl::port::SSE3;
 using tsl::port::SSE4_1;
 using tsl::port::SSE4_2;
 using tsl::port::SSSE3;
+using tsl::port::TestAarch64CPU;
 using tsl::port::TestCPUFeature;
 
 }  // namespace port

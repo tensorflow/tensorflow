@@ -13,7 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Library of types used for type annotation."""
-from typing import Generic, TypeVar
 from tensorflow.python.framework import dtypes as _dtypes
 
 
@@ -49,9 +48,3 @@ QUInt8 = _create_dtype_wrapper("QUInt8", _dtypes.quint8)
 Resource = _create_dtype_wrapper("Resource", _dtypes.resource)
 String = _create_dtype_wrapper("String", _dtypes.string)
 Variant = _create_dtype_wrapper("Variant", _dtypes.variant)
-
-T = TypeVar("T", bound=DTypeAnnotation)
-
-
-class TensorFuzzingAnnotation(Generic[T]):
-  pass

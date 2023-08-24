@@ -39,17 +39,17 @@ InterpreterValue own(InterpreterState&, deallocation::OwnOp,
   return alloc;
 }
 
-void freeAlloc(InterpreterState& state, deallocation::FreeOp,
+void freeAlloc(InterpreterState& state, deallocation::FreeOp op,
                const InterpreterValue& alloc) {
   if (auto* stats = state.getOptions().stats) {
     stats->heapSize -= alloc.buffer()->getByteSize();
     ++stats->numDeallocations;
   }
-  alloc.buffer()->deallocate();
+  alloc.buffer()->deallocate(op);
 }
 
 SmallVector<InterpreterValue> retain(InterpreterState& state,
-                                     deallocation::RetainOp,
+                                     deallocation::RetainOp op,
                                      ArrayRef<InterpreterValue> values,
                                      ArrayRef<InterpreterValue> owned) {
   SmallVector<InterpreterValue> result(values.size(), null(state, {}));
@@ -71,7 +71,7 @@ SmallVector<InterpreterValue> retain(InterpreterState& state,
         stats->heapSize -= owned[i].buffer()->getByteSize();
         ++stats->numDeallocations;
       }
-      owned[i].buffer()->deallocate();
+      owned[i].buffer()->deallocate(op);
     }
   }
   return result;

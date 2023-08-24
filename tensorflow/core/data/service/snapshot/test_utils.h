@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/snapshot/file_utils.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
@@ -55,7 +56,7 @@ tsl::StatusOr<std::vector<T>> ReadSnapshot(const std::string& base_path,
     while (true) {
       std::vector<Tensor> tensors;
       Status status = tfrecord_reader.ReadTensors(&tensors);
-      if (errors::IsOutOfRange(status)) {
+      if (absl::IsOutOfRange(status)) {
         break;
       }
       TF_RETURN_IF_ERROR(status);
@@ -73,7 +74,8 @@ class PartialSnapshotWriter {
   static tsl::StatusOr<PartialSnapshotWriter> Create(
       const DatasetDef& dataset, const std::string& snapshot_path,
       int64_t stream_index, const std::string& compression,
-      int64_t max_chunk_size_bytes = 1);
+      int64_t max_chunk_size_bytes = 1,
+      absl::Duration checkpoint_interval = absl::Microseconds(1));
   virtual ~PartialSnapshotWriter() = default;
   PartialSnapshotWriter(const PartialSnapshotWriter&) = delete;
   PartialSnapshotWriter& operator=(const PartialSnapshotWriter&) = delete;
@@ -96,7 +98,8 @@ class PartialSnapshotWriter {
   PartialSnapshotWriter(const DatasetDef& dataset,
                         const std::string& snapshot_path, int64_t stream_index,
                         const std::string& compression,
-                        int64_t max_chunk_size_bytes);
+                        int64_t max_chunk_size_bytes,
+                        absl::Duration checkpoint_interval);
 
   tsl::Status Initialize();
 
@@ -105,6 +108,7 @@ class PartialSnapshotWriter {
   const int64_t stream_index_;
   const std::string compression_;
   const int64_t max_chunk_size_bytes_;
+  const absl::Duration checkpoint_interval_;
 
   std::string tmp_snapshot_path_;
 };

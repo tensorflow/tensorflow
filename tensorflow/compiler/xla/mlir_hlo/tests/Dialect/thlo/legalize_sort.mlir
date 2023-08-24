@@ -101,26 +101,19 @@ func.func @sort(%input1: memref<?x?xf32>, %input2: memref<?x?xi32>,
 // CHECK:             }
 // COM:               // Merge subarrays of each input together until the final
 // COM:               // sorted array is computed.
-// CHECK:             %[[MERGE_RESULTS:.*]]:6 = scf.while
+// CHECK:             %[[MERGE_RESULTS:.*]]:2 = scf.while
 // CHECK-SAME:            (%[[SUBARRAY_SIZE:[A-Za-z0-9]*]] = %[[C16]],
-// CHECK-SAME:             %[[PARITY_:[A-Za-z0-9]*]] = %[[CFALSE]],
-// CHECK-SAME:             %[[READ_BUF1:[A-Za-z0-9]*]] = %[[SUBVIEW_INIT1]],
-// CHECK-SAME:             %[[READ_BUF2:[A-Za-z0-9]*]] = %[[SUBVIEW_INIT2]],
-// CHECK-SAME:             %[[WRITE_BUF1:[A-Za-z0-9]*]] = %[[SUBVIEW_SCRATCH1]],
-// CHECK-SAME:             %[[WRITE_BUF2:[A-Za-z0-9]*]] = %[[SUBVIEW_SCRATCH2]])
+// CHECK-SAME:             %[[PARITY_:[A-Za-z0-9]*]] = %[[CFALSE]])
 // CHECK:               %[[ARE_ALL_SUBARRAYS_MERGED:.*]] = arith.cmpi slt, %[[SUBARRAY_SIZE]], %[[SORT_DIM]]
-// CHECK:               scf.condition(%[[ARE_ALL_SUBARRAYS_MERGED]]) %[[SUBARRAY_SIZE]], %[[PARITY_]], %[[READ_BUF1]], %[[READ_BUF2]], %[[WRITE_BUF1]], %[[WRITE_BUF2]]
+// CHECK:               scf.condition(%[[ARE_ALL_SUBARRAYS_MERGED]]) %[[SUBARRAY_SIZE]], %[[PARITY_]]
 // CHECK:             } do {
 // CHECK:             ^bb0(%[[SUBARRAY_SIZE_:[A-Za-z0-9]*]]: index,
-// CHECK-SAME:             %[[PARITY__:[A-Za-z0-9]*]]: i1,
-// CHECK-SAME:             %[[READ_BUF1_:[A-Za-z0-9]*]]: memref<?xf32, strided<[?], offset: ?>>,
-// CHECK-SAME:             %[[READ_BUF2_:[A-Za-z0-9]*]]: memref<?xi32, strided<[?], offset: ?>>,
-// CHECK-SAME:             %[[WRITE_BUF1_:[A-Za-z0-9]*]]: memref<?xf32, strided<[?], offset: ?>>,
-// CHECK-SAME:             %[[WRITE_BUF2_:[A-Za-z0-9]*]]: memref<?xi32, strided<[?], offset: ?>>):
+// CHECK-SAME:             %[[PARITY__:[A-Za-z0-9]*]]: i1):
 // CHECK:               %[[DOUBLE_SUBARRAY_SIZE:.*]] = arith.addi %[[SUBARRAY_SIZE_]], %[[SUBARRAY_SIZE_]]
 // COM:                 // Merge all successive pairs of subarrays of maximum
 // COM:                 // size SUBARRAY_SIZE.
-// CHECK:               scf.for
+// CHECK:               scf.if %[[PARITY_]] {
+// CHECK:                scf.for
 // CHECK-SAME:              %[[DOUBLE_SUBARRAY_START:.*]] = %[[C0]] to %[[SORT_DIM]]
 // CHECK-SAME:              step %[[DOUBLE_SUBARRAY_SIZE]] {
 // CHECK:                 %[[SUBARRAY1_UPPER_BOUND:.*]] = arith.addi %[[DOUBLE_SUBARRAY_START]], %[[SUBARRAY_SIZE_]]
@@ -140,15 +133,15 @@ func.func @sort(%input1: memref<?x?xf32>, %input2: memref<?x?xi32>,
 // CHECK:                 ^bb0(%[[OUTPUT_INDEX_:[A-Za-z0-9]*]]: index,
 // CHECK-SAME:                 %[[SUBARRAY1_INDEX_:[A-Za-z0-9]*]]: index,
 // CHECK-SAME:                 %[[SUBARRAY2_INDEX_:[A-Za-z0-9]*]]: index):
-// CHECK:                   %[[RHS_ELEM1:.*]] = memref.load %[[READ_BUF1_]][%[[SUBARRAY1_INDEX_]]]
-// CHECK:                   %[[RHS_ELEM2:.*]] = memref.load %[[READ_BUF2_]][%[[SUBARRAY1_INDEX_]]]
-// CHECK:                   %[[LHS_ELEM1:.*]] = memref.load %[[READ_BUF1_]][%[[SUBARRAY2_INDEX_]]]
-// CHECK:                   %[[LHS_ELEM2:.*]] = memref.load %[[READ_BUF2_]][%[[SUBARRAY2_INDEX_]]]
+// CHECK:                   %[[RHS_ELEM1:.*]] = memref.load %[[SUBVIEW_INIT1]][%[[SUBARRAY1_INDEX_]]]
+// CHECK:                   %[[RHS_ELEM2:.*]] = memref.load %[[SUBVIEW_INIT2]][%[[SUBARRAY1_INDEX_]]]
+// CHECK:                   %[[LHS_ELEM1:.*]] = memref.load %[[SUBVIEW_INIT1]][%[[SUBARRAY2_INDEX_]]]
+// CHECK:                   %[[LHS_ELEM2:.*]] = memref.load %[[SUBVIEW_INIT2]][%[[SUBARRAY2_INDEX_]]]
 // CHECK:                   %[[COMPARATOR_RESULT:.*]] = arith.cmpf ogt, %[[LHS_ELEM1]], %[[RHS_ELEM1]] : f32
 // CHECK:                   %[[LEFT_ELEM1:.*]] = arith.select %[[COMPARATOR_RESULT]], %[[LHS_ELEM1]], %[[RHS_ELEM1]] : f32
 // CHECK:                   %[[LEFT_ELEM2:.*]] = arith.select %[[COMPARATOR_RESULT]], %[[LHS_ELEM2]], %[[RHS_ELEM2]] : i32
-// CHECK:                   memref.store %[[LEFT_ELEM1]], %[[WRITE_BUF1_]][%[[OUTPUT_INDEX_]]]
-// CHECK:                   memref.store %[[LEFT_ELEM2]], %[[WRITE_BUF2_]][%[[OUTPUT_INDEX_]]]
+// CHECK:                   memref.store %[[LEFT_ELEM1]], %[[SUBVIEW_SCRATCH1]][%[[OUTPUT_INDEX_]]]
+// CHECK:                   memref.store %[[LEFT_ELEM2]], %[[SUBVIEW_SCRATCH2]][%[[OUTPUT_INDEX_]]]
 // CHECK:                   %[[SUBARRAY1_INDEX__PLUS_1:.*]] = arith.addi %[[SUBARRAY1_INDEX_]], %[[C1]]
 // CHECK:                   %[[NEW_SUBARRAY1_INDEX:.*]] = arith.select %[[COMPARATOR_RESULT]], %[[SUBARRAY1_INDEX_]], %[[SUBARRAY1_INDEX__PLUS_1]]
 // CHECK:                   %[[SUBARRAY2_INDEX__PLUS_1:.*]] = arith.addi %[[SUBARRAY2_INDEX_]], %[[C1]]
@@ -169,14 +162,17 @@ func.func @sort(%input1: memref<?x?xf32>, %input2: memref<?x?xi32>,
 // CHECK-SAME:                step %[[C1]] {
 // CHECK:                   %[[UNPROCESSED_ELEM_INDEX:.*]] = arith.addi %[[INDEX_TO_UNPROCESSED_ELEMS]], %[[I_]]
 // CHECK:                   %[[OUTPUT_INDEX__:.*]] = arith.addi %[[POST_MERGE_INDICES]]#0, %[[I_]]
-// CHECK:                   %[[UNPROCESSED_ELEM1:.*]] = memref.load %[[READ_BUF1_]][%[[UNPROCESSED_ELEM_INDEX]]]
-// CHECK:                   %[[UNPROCESSED_ELEM2:.*]] = memref.load %[[READ_BUF2_]][%[[UNPROCESSED_ELEM_INDEX]]]
-// CHECK:                   memref.store %[[UNPROCESSED_ELEM1]], %[[WRITE_BUF1_]][%[[OUTPUT_INDEX__]]]
-// CHECK:                   memref.store %[[UNPROCESSED_ELEM2]], %[[WRITE_BUF2_]][%[[OUTPUT_INDEX__]]]
+// CHECK:                   %[[UNPROCESSED_ELEM1:.*]] = memref.load %[[SUBVIEW_INIT1]][%[[UNPROCESSED_ELEM_INDEX]]]
+// CHECK:                   %[[UNPROCESSED_ELEM2:.*]] = memref.load %[[SUBVIEW_INIT2]][%[[UNPROCESSED_ELEM_INDEX]]]
+// CHECK:                   memref.store %[[UNPROCESSED_ELEM1]], %[[SUBVIEW_SCRATCH1]][%[[OUTPUT_INDEX__]]]
+// CHECK:                   memref.store %[[UNPROCESSED_ELEM2]], %[[SUBVIEW_SCRATCH2]][%[[OUTPUT_INDEX__]]]
 // CHECK:                 }
+// CHECK:                }
+// COM:                   // Else block as above, but with read and write buffers
+// COM:                   // swapped.
 // CHECK:               }
 // CHECK:               %[[NEW_PARITY:.*]] = arith.subi %[[CTRUE]], %[[PARITY__]] : i1
-// CHECK:               scf.yield %[[DOUBLE_SUBARRAY_SIZE]], %[[NEW_PARITY]], %[[WRITE_BUF1_]], %[[WRITE_BUF2_]], %[[READ_BUF1_]], %[[READ_BUF2_]]
+// CHECK:               scf.yield %[[DOUBLE_SUBARRAY_SIZE]], %[[NEW_PARITY]]
 // CHECK:             }
 // CHECK:             scf.yield %[[MERGE_RESULTS]]#1 : i1
 // CHECK:           }
@@ -184,5 +180,24 @@ func.func @sort(%input1: memref<?x?xf32>, %input2: memref<?x?xi32>,
 // CHECK:             memref.copy %[[SCRATCH1]], %[[INIT1]]
 // CHECK:             memref.copy %[[SCRATCH2]], %[[INIT2]]
 // CHECK:           }
+// CHECK:           memref.dealloc %[[SCRATCH1]]
+// CHECK:           memref.dealloc %[[SCRATCH2]]
 // CHECK:           return
 // CHECK:         }
+
+// -----
+
+// CHECK-LABEL: @sort_strided
+func.func @sort_strided(%input: memref<47x1xf32, strided<[7, 1], offset: ?>>,
+                        %init: memref<47x1xf32, strided<[1, 7], offset: ?>>) {
+  thlo.sort
+    ins(%input : memref<47x1xf32, strided<[7, 1], offset: ?>>)
+    outs(%init : memref<47x1xf32, strided<[1, 7], offset: ?>>)
+    dimension = 0
+    is_stable = true
+    (%lhs: f32, %rhs: f32) {
+      %gt = arith.cmpf ogt, %lhs, %rhs: f32
+      thlo.yield %gt : i1
+    }
+  func.return
+}

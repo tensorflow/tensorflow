@@ -32,6 +32,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "worker_max_concurrent_snapshots"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "worker_timeout_ms"
     mtype: "<type \'property\'>"
   }

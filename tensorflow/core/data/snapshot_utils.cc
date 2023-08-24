@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/data/name_utils.h"
@@ -478,12 +479,12 @@ class Reader::Dataset : public DatasetBase {
                            bool* end_of_sequence) override {
       *end_of_sequence = false;
       Status s = reader_->ReadTensors(out_tensors);
-      if (!errors::IsOutOfRange(s)) {
+      if (!absl::IsOutOfRange(s)) {
         start_index_++;
         return s;
       }
       Status status = AdvanceToNextFile(ctx->env());
-      if (errors::IsNotFound(status)) {
+      if (absl::IsNotFound(status)) {
         *end_of_sequence = true;
         return OkStatus();
       }
@@ -768,7 +769,7 @@ StatusOr<std::vector<Tensor>> TFRecordReaderImpl::GetTensors() {
   std::vector<Tensor> tensors;
   while (true) {
     StatusOr<Tensor> tensor = GetNext();
-    if (errors::IsOutOfRange(tensor.status())) {
+    if (absl::IsOutOfRange(tensor.status())) {
       return tensors;
     }
     TF_RETURN_IF_ERROR(tensor.status());

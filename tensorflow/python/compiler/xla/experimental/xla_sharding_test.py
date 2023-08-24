@@ -22,7 +22,7 @@ from tensorflow.compiler.xla import xla_data_pb2
 from tensorflow.python.compiler.xla.experimental import xla_sharding
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 
@@ -90,7 +90,7 @@ class XlaShardingTest(test_util.TensorFlowTestCase):
     def tile_helper(tensor):
       self.assertIsNone(xla_sharding.get_tensor_sharding(tensor))
       tiled_tensor = xla_sharding.tile(tensor, np.array([2, 1, 6]))
-      self.assertIsInstance(tiled_tensor, ops.Tensor)
+      self.assertIsInstance(tiled_tensor, tensor_lib.Tensor)
       tiled_sharding = xla_sharding.get_tensor_sharding(tiled_tensor)
       tile_shape = xla_sharding.get_sharding_tile_shape(tiled_sharding)
       # This is the shape of the tile assignment [2, 1, 6]
@@ -108,7 +108,7 @@ class XlaShardingTest(test_util.TensorFlowTestCase):
     def split_helper(tensor):
       self.assertIsNone(xla_sharding.get_tensor_sharding(tensor))
       split_tensor = xla_sharding.split(tensor, 2, 3)
-      self.assertIsInstance(split_tensor, ops.Tensor)
+      self.assertIsInstance(split_tensor, tensor_lib.Tensor)
       split_sharding = xla_sharding.get_tensor_sharding(split_tensor)
       split_shape = xla_sharding.get_sharding_tile_shape(split_sharding)
       expected_shape = [1, 1, 3]

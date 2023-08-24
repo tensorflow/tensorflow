@@ -39,14 +39,12 @@ cc_library(
 )
 
 cc_library(
-    name = "cord",
-    hdrs = ["cord.h"],
-    tags = [
-        "manual",
-        "no_oss",
-        "nobuilder",
+    name = "criticality",
+    hdrs = ["//tensorflow/tsl/platform:criticality.h"],
+    textual_hdrs = ["criticality.h"],
+    deps = [
+        "//tensorflow/tsl/platform",
     ],
-    deps = ["@com_google_absl//absl/strings:cord"],
 )
 
 cc_library(
@@ -159,6 +157,8 @@ cc_library(
         "//tensorflow/tsl/platform:types",
         "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
         "//third_party/eigen3",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
     ],
@@ -194,6 +194,21 @@ cc_library(
         "nobuilder",
     ],
     deps = ["//tensorflow/tsl/platform:types"],
+)
+
+cc_library(
+    name = "error_logging",
+    srcs = ["error_logging.cc"],
+    hdrs = ["//tensorflow/tsl/platform:error_logging.h"],
+    tags = [
+        "manual",
+        "no_oss",
+        "nobuilder",
+    ],
+    deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 cc_library(
@@ -252,7 +267,6 @@ cc_library(
 filegroup(
     name = "xla_cpu_runtime_srcs",
     srcs = [
-        "cord.h",
         "dynamic_annotations.h",
         "integral_types.h",
     ] + if_not_windows(["env_time.cc"]),
@@ -453,28 +467,6 @@ cc_library(
 )
 
 cc_library(
-    name = "test",
-    testonly = True,
-    srcs = ["test.cc"],
-    hdrs = ["//tensorflow/tsl/platform:test.h"],
-    tags = [
-        "manual",
-        "no_oss",
-        "nobuilder",
-    ],
-    deps = [
-        "//tensorflow/tsl/platform",
-        "//tensorflow/tsl/platform:logging",
-        "//tensorflow/tsl/platform:macros",
-        "//tensorflow/tsl/platform:net",
-        "//tensorflow/tsl/platform:path",
-        "//tensorflow/tsl/platform:strcat",
-        "//tensorflow/tsl/platform:types",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-cc_library(
     name = "tracing",
     srcs = [
         "tracing.cc",
@@ -556,12 +548,21 @@ cc_library(
     ],
     textual_hdrs = ["status.h"],
     visibility = set_external_visibility(["//tensorflow:__subpackages__"]),
+)
+
+cc_library(
+    name = "statusor",
+    tags = [
+        "manual",
+        "no_oss",
+        "nobuilder",
+    ],
+    textual_hdrs = ["statusor.h"],
+    visibility = set_external_visibility(["//tensorflow:__subpackages__"]),
     deps = [
-        "//tensorflow/tsl/platform:types",
-        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
+        "//tensorflow/tsl/platform:macros",
+        "//tensorflow/tsl/platform:status",
+        "@com_google_absl//absl/status:statusor",
     ],
 )
 
@@ -596,6 +597,7 @@ filegroup(
         "posix_file_system.h",
         "stacktrace.h",
         "status.h",
+        "statusor.h",
         "tracing_impl.h",
         "//tensorflow/tsl/platform/profile_utils:cpu_utils.h",
         "//tensorflow/tsl/platform/profile_utils:i_cpu_utils_helper.h",
@@ -610,7 +612,7 @@ filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
         "casts.h",
-        "cord.h",
+        "error_logging.cc",
         "mutex.h",
         "mutex_data.h",
         "notification.h",

@@ -142,6 +142,7 @@ cc_library(
     srcs = [
         "jchuff.h",
         "jconfig.h",
+        "jconfigint.h",
         "jdct.h",
         "jerror.h",
         "jinclude.h",

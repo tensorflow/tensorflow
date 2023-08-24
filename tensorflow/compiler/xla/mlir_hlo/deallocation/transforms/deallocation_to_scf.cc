@@ -38,11 +38,10 @@ namespace {
 LogicalResult rewriteRetain(RetainOp op, PatternRewriter& rewriter) {
   assert(!op.getAllocs().empty() && "run canonicalization first");
 
-  // `dealloc` happens to lower to free, which accepts null pointers. We still
-  // guard it with if, because this behavior is not documented and it makes
-  // downstream passes simpler (because they can assume we never deallocate
-  // null).
-
+  if (op.getRetained().size() != 1 && op.getAllocs().size() != 1) {
+    return rewriter.notifyMatchFailure(
+        op, "this retain needs to be lowered to a library call");
+  }
   // Note: The generated code has size O(|`allocs`| * |`retains`|). If there are
   // cases where this gets too big, we should lower it to a library call
   // instead.

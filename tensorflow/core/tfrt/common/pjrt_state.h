@@ -34,6 +34,8 @@ class PjRtState : public ResourceBase {
  public:
   static PjRtState* Create();
   StatusOr<xla::PjRtClient*> GetPjRtClient(const DeviceType& device_type);
+  StatusOr<xla::PjRtClient*> GetOrCreatePjRtClient(
+      const DeviceType& device_type);
   Status SetPjRtClient(const DeviceType& device_type,
                        std::unique_ptr<xla::PjRtClient> client);
   // Moves PJRT client to `unused_`. The PJRT client moved to `unused_` will not

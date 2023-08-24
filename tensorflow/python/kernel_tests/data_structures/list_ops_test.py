@@ -23,7 +23,6 @@ from tensorflow.python.client import session
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -479,6 +478,28 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         l, [0, 1, 2], element_dtype=dtypes.float32, element_shape=[])
     self.assertEqual(t.shape.as_list(), [3])
     self.assertAllEqual(self.evaluate(t), np.zeros((3,)))
+
+  def testGatherWithInvalidIndicesFails(self):
+    l = list_ops.tensor_list_reserve(
+        element_dtype=dtypes.float32, element_shape=None, num_elements=3
+    )
+
+    # Should raise an error when the input index is negative.
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "Trying to gather element -1 in a list with 3 elements.",
+    ):
+      t = list_ops.tensor_list_gather(l, [-1], element_dtype=dtypes.float32)
+      self.evaluate(t)
+
+    # Should raise an error when the input index is larger than the number of
+    # elements in the list.
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "Trying to gather element 3 in a list with 3 elements.",
+    ):
+      t = list_ops.tensor_list_gather(l, [3], element_dtype=dtypes.float32)
+      self.evaluate(t)
 
   def testScatterOutputListSize(self):
     c0 = constant_op.constant([1.0, 2.0])
@@ -1762,7 +1783,7 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     # generated from map_fn.
     self.skipTest("b/150742232")
 
-    @function.defun_with_attributes(attributes={"_noinline": True})
+    @def_function.function(experimental_attributes={"_noinline": True})
     def generator(c):
       return list_ops.tensor_list_from_tensor(c, element_shape=[])
 

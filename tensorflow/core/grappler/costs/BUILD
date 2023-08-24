@@ -1,3 +1,4 @@
+# Placeholder: load py_proto_library
 load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
@@ -287,6 +288,7 @@ cc_library(
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/clusters:utils",
         "//tensorflow/core/grappler/utils:transitive_fanin",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
     ],
@@ -345,7 +347,12 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler/clusters:utils",
         "//tensorflow/core/util:overflow",
+        "//tensorflow/tsl/platform:statusor",
         "//third_party/eigen3",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
     ] + tf_protos_grappler(),
 )
@@ -353,7 +360,10 @@ cc_library(
 tf_cc_test(
     name = "op_level_cost_estimator_test",
     srcs = ["op_level_cost_estimator_test.cc"],
-    tags = ["no_oss"],  # b/163222310
+    tags = [
+        "no_oss",
+        "not_run:arm",
+    ],
     deps = [
         ":op_level_cost_estimator",
         "//tensorflow/core:framework",

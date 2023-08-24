@@ -103,7 +103,6 @@ void* LoadSymbolFromSharedLibrary(const std::string& delegate_path,
     dlclose(delegate_lib_handle);
     return nullptr;
   }
-  TFLITE_LOG(INFO) << "Found symbol: " << delegate_symbol;
   return symbol_pointer;
 }
 

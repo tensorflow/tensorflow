@@ -18,6 +18,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XRT_XRT_TPU_DEVICE_H_
 #define TENSORFLOW_COMPILER_XRT_XRT_TPU_DEVICE_H_
 
+#include <memory>
+
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_node_context.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -33,8 +35,8 @@ class XRTTpuDeviceAccessor {
 
   class ScopedRef {
    public:
-    ScopedRef() {}
-    ~ScopedRef() {}
+    ScopedRef() = default;
+    ~ScopedRef() = default;
 
     ScopedRef(const ScopedRef&) = delete;
     ScopedRef& operator=(const ScopedRef&) = delete;

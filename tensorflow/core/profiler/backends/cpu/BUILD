@@ -160,7 +160,6 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla/backends/profiler/cpu:metadata_utils",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
-        "//tensorflow/core/profiler/convert:xla_op_utils",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler/utils:xplane_builder",
         "//tensorflow/core/profiler/utils:xplane_schema",

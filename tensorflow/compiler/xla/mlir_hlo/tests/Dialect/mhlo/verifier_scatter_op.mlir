@@ -481,6 +481,7 @@ func.func @invalid_scatter_return_type(%input_tensor: tensor<200x100x300xf32>,
     %scatter_indices: tensor<10x2xi32>, %updates: tensor<10x300xf32>) ->
       tensor<200x100xf32> {
 
+  // expected-error @+2 {{'mhlo.scatter' op failed to infer returned types}}
   // expected-error @+1 {{inferred type(s) 'tensor<200x100x300xf32>' are incompatible with return type(s) of operation 'tensor<200x100xf32>'}}
   %0 = "mhlo.scatter" (%input_tensor, %scatter_indices, %updates) ({
   ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>):

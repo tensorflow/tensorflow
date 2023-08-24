@@ -51,21 +51,6 @@ SmallVector<RegionEdge> getSuccessorRegions(RegionBranchOpInterface op,
     }
   }
 
-  // TODO(frgossen): Fix this in the `RegionBranchOpInterface`.
-  // RegionBranchOpInterface believes for ops are always executed at least once.
-  if (llvm::isa<scf::ForOp>(op) && !index) {
-    assert(llvm::none_of(edges,
-                         [](auto& edge) {
-                           return edge.successorRegionIndex == std::nullopt;
-                         }) &&
-           "this was fixed, please remove this if");
-    auto& edge = edges.emplace_back();
-    edge.successorRegionIndex = edge.predecessorRegionIndex = std::nullopt;
-    edge.successorOpOrRegion = edge.predecessorOp = op;
-    edge.successorValueIndex = 0;
-    edge.predecessorOperandIndex = 3;
-  }
-
   return edges;
 }
 
@@ -105,6 +90,11 @@ RegionBranchOpInterface moveRegionsToNewOpButKeepOldOp(
         op.getLoc(),
         TypeRange{op->getRegion(0).front().getTerminator()->getOperands()},
         op->getOperands()[0], op->getNumRegions() > 1);
+  } else if (llvm::isa<scf::ParallelOp>(op)) {
+    auto parallel = llvm::cast<scf::ParallelOp>(op);
+    newOp = b.create<scf::ParallelOp>(
+        op.getLoc(), parallel.getLowerBound(), parallel.getUpperBound(),
+        parallel.getStep(), parallel.getInitVals());
   } else {
     llvm_unreachable("unsupported");
   }

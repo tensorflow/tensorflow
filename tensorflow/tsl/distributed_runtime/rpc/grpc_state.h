@@ -17,10 +17,12 @@ limitations under the License.
 #define TENSORFLOW_TSL_DISTRIBUTED_RUNTIME_RPC_GRPC_STATE_H_
 
 #include <queue>
+#include <string>
 #include <utility>
 
 #include "grpcpp/generic/generic_stub.h"
 #include "grpcpp/grpcpp.h"
+#include "absl/status/status.h"
 #include "tensorflow/tsl/distributed_runtime/call_options.h"
 #include "tensorflow/tsl/distributed_runtime/rpc/grpc_client_cq_tag.h"
 #include "tensorflow/tsl/distributed_runtime/rpc/grpc_util.h"
@@ -172,7 +174,7 @@ class RPCState : public GrpcClientCQTag {
             << context_->debug_error_string();
     // Retry if we have any attempts left
     if (++num_retries_ <= max_retries_ &&
-        (errors::IsUnavailable(s) || errors::IsUnknown(s))) {
+        (absl::IsUnavailable(s) || absl::IsUnknown(s))) {
       response_buf_.Clear();
       VLOG(1) << "Retrying call for " << method_ << "Retry: " << num_retries_
               << " of " << max_retries_;
@@ -183,11 +185,12 @@ class RPCState : public GrpcClientCQTag {
                                         [this]() { StartCall(); });
     } else {
       // Attach additional GRPC error information if any to the final status
-      string error_msg = s.error_message();
+      string error_msg = std::string(s.message());
       strings::StrAppend(&error_msg, "\nAdditional GRPC error information");
       if (target_) {
         strings::StrAppend(&error_msg, " from remote target ", *target_);
       }
+      strings::StrAppend(&error_msg, " while calling ", method_);
       strings::StrAppend(&error_msg, ":\n:", context_->debug_error_string());
       s = errors::CreateWithUpdatedMessage(s, error_msg);
       // Always treat gRPC cancellation as a derived error. This ensures that

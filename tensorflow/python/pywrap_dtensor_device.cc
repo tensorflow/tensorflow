@@ -39,7 +39,7 @@ using tensorflow::dtensor::ExperimentalClearDefaultMesh;
 using tensorflow::dtensor::ExperimentalSetDefaultLayout;
 using tensorflow::dtensor::ExperimentalSetDefaultMesh;
 using tensorflow::dtensor::FetchLayout;
-using tensorflow::dtensor::GetFunctionCacheStats;
+using tensorflow::dtensor::GetStats;
 using tensorflow::dtensor::IsDTensor;
 using tensorflow::dtensor::IsSparseDTensor;
 using tensorflow::dtensor::Layout;
@@ -65,6 +65,15 @@ void CallDelete_DeviceInfo(PyObject* capsule) {
   destructor(PyCapsule_GetPointer(capsule, "TFE_CustomDevice_DeviceInfo"));
 }
 
+bool CheckResourceVariable(PyObject* item) {
+  if (tensorflow::swig::IsResourceVariable(item)) {
+    tensorflow::Safe_PyObjectPtr handle(
+        PyObject_GetAttrString(item, "_handle"));
+    return EagerTensor_CheckExact(handle.get());
+  }
+
+  return false;
+}
 // Supports 2 cases:
 //  i) input is an EagerTensor.
 //  ii) input is an arbitrary python list/tuple.
@@ -76,6 +85,11 @@ void ConvertToTensor(TFE_Context* ctx, PyObject* input,
     // caller will use it through output_handle.
     Py_INCREF(input);
     output_handle->reset(input);
+    return;
+  }
+  if (CheckResourceVariable(input)) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "Variable input is not supported.");
     return;
   }
   TFE_TensorHandle* handle =
@@ -354,11 +368,11 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
     }
     return is_sparse;
   });
-  m.def("GetFunctionCacheStats", [](const py::handle& context,
-                                    const py::capsule& device_info) {
+  m.def("GetStats", [](const py::handle& context,
+                       const py::capsule& device_info) {
     std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
         TF_NewStatus(), TF_DeleteStatus);
-    return GetFunctionCacheStats(
+    return GetStats(
         static_cast<TFE_Context*>(PyCapsule_GetPointer(context.ptr(), nullptr)),
         device_info, status.get());
   });
@@ -381,11 +395,13 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
               tensor_handle, element_layouts, device_info, status.get());
         });
   py::class_<Mesh>(m, "Mesh")
+      .def(py::init([](Mesh& mesh) { return mesh; }), py::arg("mesh"),
+           "Create a copy of a mesh.")
       .def(py::init(&Mesh::CreateMesh))
       .def(py::init([](absl::string_view single_device) {
              auto mesh = Mesh::GetSingleDeviceMesh(single_device);
              if (!mesh.ok()) {
-               throw py::value_error(mesh.status().error_message());
+               throw py::value_error(std::string(mesh.status().message()));
              }
              return *mesh;
            }),
@@ -393,7 +409,7 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
       .def(py::init([](const tensorflow::dtensor::MeshProto& proto) {
              auto mesh = Mesh::ParseFromProto(proto);
              if (!mesh.ok()) {
-               throw py::value_error(mesh.status().error_message());
+               throw py::value_error(std::string(mesh.status().message()));
              }
              return *mesh;
            }),
@@ -401,7 +417,7 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
       .def(py::init([](std::string_view mesh_str) {
              auto mesh = Mesh::FromString(mesh_str);
              if (!mesh.ok()) {
-               throw py::value_error(mesh.status().error_message());
+               throw py::value_error(std::string(mesh.status().message()));
              }
              return *mesh;
            }),
@@ -423,13 +439,15 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
           [](const Mesh& mesh, std::string_view name) {
             auto dim_size = mesh.dim_size(name);
             if (!dim_size.ok()) {
-              throw py::value_error(dim_size.status().error_message());
+              throw py::value_error(std::string(dim_size.status().message()));
             }
             return *dim_size;
           },
           py::arg("dim_name"), "Returns the size of mesh dimension.")
       .def("device_type", &Mesh::device_type,
            "Returns the device_type of a Mesh.")
+      .def("host_mesh", &Mesh::host_mesh,
+           "Returns a host mesh corresponding to this mesh.")
       .def("num_local_devices", &Mesh::num_local_devices,
            "Returns the number of local devices.")
       .def("min_global_device_id", &Mesh::min_global_device_id,
@@ -455,7 +473,7 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
           [](const Mesh& mesh) {
             auto mesh_proto = mesh.ToProto();
             if (!mesh_proto.ok()) {
-              throw py::value_error(mesh_proto.status().error_message());
+              throw py::value_error(std::string(mesh_proto.status().message()));
             }
             return *mesh_proto;
           },
@@ -463,24 +481,33 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
       .def("device_location", [](const Mesh& mesh, int device_id) {
         auto location = mesh.device_location(device_id);
         if (!location.ok()) {
-          throw py::value_error(location.status().error_message());
+          throw py::value_error(std::string(location.status().message()));
         }
         return std::vector<int64_t>(location->begin(), location->end());
       });
+
+  py::enum_<Layout::LayoutType>(m, "LayoutType")
+      .value("STATIC", Layout::LayoutType::kStatic)
+      .value("PARTED", Layout::LayoutType::kParted)
+      .value("SINGLE_DEVICE", Layout::LayoutType::kSingleDevice);
+
   py::class_<Layout>(m, "Layout")
-      .def(py::init([](const std::vector<std::string>& sharding_specs,
+      .def(py::init([](Layout& layout) { return layout; }), py::arg("layout"),
+           "Create a copy of a layout.")
+      .def(py::init([](Layout::LayoutType type,
+                       const std::vector<std::string>& sharding_specs,
                        const Mesh& mesh) {
-             auto layout = Layout::GetLayout(sharding_specs, mesh);
+             auto layout = Layout::GetLayout(type, sharding_specs, mesh);
              if (!layout.ok()) {
-               throw py::value_error(layout.status().error_message());
+               throw py::value_error(std::string(layout.status().message()));
              }
              return *layout;
            }),
-           py::arg("sharding_specs"), py::arg("mesh"))
+           py::arg("type"), py::arg("sharding_specs"), py::arg("mesh"))
       .def(py::init([](const tensorflow::dtensor::LayoutProto& proto) {
              auto layout = Layout::FromProto(proto);
              if (!layout.ok()) {
-               throw py::value_error(layout.status().error_message());
+               throw py::value_error(std::string(layout.status().message()));
              }
              return *layout;
            }),
@@ -488,7 +515,7 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
       .def(py::init([](std::string_view layout_str) {
              auto layout = Layout::FromString(layout_str);
              if (!layout.ok()) {
-               throw py::value_error(layout.status().error_message());
+               throw py::value_error(std::string(layout.status().message()));
              }
              return *layout;
            }),
@@ -501,7 +528,7 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
       .def(py::init([](const Mesh& mesh) {
              auto layout = Layout::GetSingleDeviceLayout(mesh);
              if (!layout.ok()) {
-               throw py::value_error(layout.status().error_message());
+               throw py::value_error(std::string(layout.status().message()));
              }
              return *layout;
            }),
@@ -512,12 +539,15 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
           [](const Layout& layout) {
             auto layout_proto = layout.ToProto();
             if (!layout_proto.ok()) {
-              throw py::value_error(layout_proto.status().error_message());
+              throw py::value_error(
+                  std::string(layout_proto.status().message()));
             }
             return *layout_proto;
           },
           "Returns the LayoutProto protobuf message.")
       .def("to_string", &Layout::ToString)
+      .def("to_parted", &Layout::ToParted)
+      .def_property_readonly("type", &Layout::type)
       .def_property_readonly("sharding_specs", &Layout::sharding_spec_strs)
       .def_property_readonly("rank", &Layout::rank)
       .def_property_readonly("mesh", &Layout::mesh)

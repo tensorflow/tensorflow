@@ -15,13 +15,17 @@ limitations under the License.
 #include "tensorflow/core/data/service/client/utils.h"
 
 #include <cstdint>
+#include <optional>
 #include <string>
 
+#include "absl/status/status.h"
 #include "absl/strings/substitute.h"
 #include "absl/time/time.h"
+#include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/dispatcher_client.h"
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
@@ -57,6 +61,41 @@ StatusOr<DataServiceMetadata> GetDataServiceMetadata(
   }
   TF_RETURN_IF_ERROR(status);
   return metadata;
+}
+
+StatusOr<bool> CompressionDisabledAtRuntime(
+    const std::string& dataset_id, const std::string& address,
+    const std::string& protocol,
+    const std::optional<std::string>& trainer_compression_info) {
+  DataServiceDispatcherClient client(address, protocol);
+  DisableCompressionAtRuntimeRequest request;
+  DisableCompressionAtRuntimeResponse response;
+  absl::Time deadline =
+      absl::FromUnixMicros(EnvTime::NowMicros()) + kGetMetadataRetryTimeout;
+
+  request.set_dataset_id(dataset_id);
+  if (trainer_compression_info.has_value()) {
+    request.set_trainer_compression_info(*trainer_compression_info);
+  } else {
+    request.set_trainer_is_ineligible(true);
+  }
+
+  while (absl::FromUnixMicros(EnvTime::NowMicros()) < deadline) {
+    TF_RETURN_IF_ERROR(grpc_util::Retry(
+        [&]() { return client.DisableCompressionAtRuntime(request, response); },
+        absl::Substitute(
+            "Get compression disabled at runtime with dispatcher at $0.",
+            address),
+        absl::ToUnixMicros(deadline)));
+    if (response.not_enough_information()) {
+      Env::Default()->SleepForMicroseconds(
+          absl::ToInt64Microseconds(absl::Minutes(1)));
+      continue;
+    }
+    return response.compression_disabled_at_runtime();
+  }
+  return absl::DeadlineExceededError(
+      "The dispatcher did not make a runtime compression disabling decision.");
 }
 
 StatusOr<DataServiceConfig> GetDataServiceConfig(const std::string& address,

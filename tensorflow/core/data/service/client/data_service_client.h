@@ -49,6 +49,11 @@ class DataServiceContext {
                                               std::function<void()> fn) = 0;
   virtual void RecordBufferEnqueue(const std::vector<Tensor>& element) = 0;
   virtual void RecordBufferDequeue(const std::vector<Tensor>& element) = 0;
+  // Returns the time in nanoseconds a tf.data input pipeline can take to
+  // produce an element such that the downstream processor wait time is 0.
+  // Returns 0 if there are not sufficient recorded iterator gap times to
+  // produce a good estimate, or the tf.data Model instance is null.
+  virtual double GetTargetProcessingTimeNsec() const = 0;
 };
 
 using DataServiceContextFactory =
@@ -98,6 +103,9 @@ class DataServiceClient {
     bool in_use TF_GUARDED_BY(&DataServiceClient::mu_) = false;
     // Indicates whether the worker has returned end_of_sequence for the task.
     bool end_of_sequence TF_GUARDED_BY(&DataServiceClient::mu_) = false;
+    // Number of retries. The more it is retried, the longer it should wait
+    // before the next retry.
+    int64_t num_retries = 0;
   };
 
   struct Result {
@@ -140,6 +148,11 @@ class DataServiceClient {
       const TaskInfo& task_info);
   StatusOr<std::unique_ptr<DataServiceWorkerClient>> CreateWorkerClient(
       const std::string& protocol, const TaskInfo& task_info);
+  StatusOr<std::unique_ptr<DataServiceWorkerClient>> CreateGrpcWorkerClient(
+      const TaskInfo& task_info);
+  StatusOr<std::unique_ptr<DataServiceWorkerClient>>
+  CreateAlternativeWorkerClientWithGrpcFallback(
+      const DataTransferServerInfo& transfer_server, const TaskInfo& task_info);
   void Heartbeat();
   void UpdateTasks(const ClientHeartbeatResponse& resp);
   bool ShouldReadFromTask(const TaskInfo& task) const;

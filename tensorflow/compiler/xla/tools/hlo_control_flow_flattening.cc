@@ -317,9 +317,13 @@ Status HloControlFlowFlattening::RemoveOutfeed(
   // operands aren't DCE'd.
   HloInstruction* custom_call =
       computation->AddInstruction(HloInstruction::CreateCustomCall(
-          outfeed_hlo->shape(), outfeed_hlo->operands(), "NopReturnToken"));
+          outfeed_hlo->shape(), outfeed_hlo->operands(),
+          kNopReturnTokenCustomCallTarget));
   Cast<HloCustomCallInstruction>(custom_call)
       ->set_custom_call_has_side_effect(true);
+  // For SPMD graphs, partitioner requires that side-effecting custom calls have
+  // a sharding that is non-replicated.
+  custom_call->set_sharding(HloSharding::Manual());
   TF_RETURN_IF_ERROR(computation->ReplaceInstruction(outfeed_hlo, custom_call));
   custom_call->SetAndSanitizeName(outfeed_hlo->name());
 
@@ -350,7 +354,8 @@ Status HloControlFlowFlattening::RemoveSendDone(
 
   HloInstruction* custom_call_send_done =
       computation->AddInstruction(HloInstruction::CreateCustomCall(
-          send_done->shape(), send_done->operands(), "NopReturnToken"));
+          send_done->shape(), send_done->operands(),
+          kNopReturnTokenCustomCallTarget));
   std::string original_send_done_name(send_done->name());
   Cast<HloCustomCallInstruction>(custom_call_send_done)
       ->set_custom_call_has_side_effect(true);

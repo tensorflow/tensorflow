@@ -933,7 +933,7 @@ def constant_value(tensor, partial=False):  # pylint: disable=invalid-name
     or None if it cannot be calculated.
 
   Raises:
-    TypeError: if tensor is not an ops.Tensor.
+    TypeError: if tensor is not an tensor.Tensor.
   """
   if isinstance(tensor, core.Value):
     try:

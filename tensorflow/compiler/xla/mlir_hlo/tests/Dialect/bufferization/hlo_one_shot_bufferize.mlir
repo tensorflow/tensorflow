@@ -84,3 +84,36 @@ func.func @user(%pred : i1, %arg0 : tensor<1x2x3xf32>,
 // CHECK:   %[[VAL_1:.*]] = call @ite_select(%[[ARG0_4]], %[[VAL_0]], %[[ARG3]])
 // CHECK:   %[[VAL_2:.*]] = call @may_reuse(%[[ARG0_4]], %[[VAL_1]])
 // CHECK:   return %[[VAL_2]]
+
+func.func @user_fusion_0(%arg : tensor<?xf32>, %init : tensor<?xf32>)
+    -> tensor<?xf32> attributes {fusion} {
+  %0 = linalg.map { math.absf } ins(%arg : tensor<?xf32>) outs(%init : tensor<?xf32>)
+  func.return %0 : tensor<?xf32>
+}
+
+// CHECK-LABEL: @user_fusion_0
+// CHECK-SAME:    %[[ARG:[0-9a-zA-Z]*]]: memref<?xf32, strided<[?], offset: ?>>
+// CHECK-SAME:    %[[INIT:.*]]: memref<?xf32, strided<[?], offset: ?>>
+// CHECK:       linalg.map
+// CHECK-SAME:    ins(%[[ARG]]
+// CHECK-SAME:    outs(%[[INIT]]
+
+func.func @user_dynamic(%arg : tensor<?xf32>, %init : tensor<?xf32>)
+    -> tensor<?xf32> {
+  %0 = func.call @user_fusion_0(%arg, %init)
+      : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
+  func.return %0 : tensor<?xf32>
+}
+
+// CHECK-LABEL: @user_dynamic(
+// CHECK-SAME:    %[[ARG:.*]]: memref<?xf32>, %[[INIT:.*]]: memref<?xf32>)
+// CHECK:         %[[ARG_CAST:.*]] = memref.cast %[[ARG]]
+// CHECK-SAME:      : memref<?xf32> to memref<?xf32, strided<[?], offset: ?>>
+// CHECK:         %[[INIT_CAST:.*]] = memref.cast %[[INIT]]
+// CHECK-SAME:      : memref<?xf32> to memref<?xf32, strided<[?], offset: ?>>
+// CHECK:         %[[RES:.*]] = call @user_fusion_0(%[[ARG_CAST]], %[[INIT_CAST]])
+// CHECK:         %[[C0:.*]] = arith.constant 0 : index
+// CHECK:         %[[DIM:.*]] = memref.dim %[[RES]], %[[C0]]
+// CHECK:         %[[ALLOC:.*]] = memref.alloc(%[[DIM]]) : memref<?xf32>
+// CHECK:         memref.copy %[[RES]], %[[ALLOC]]
+// CHECK:         return %[[ALLOC]] : memref<?xf32>

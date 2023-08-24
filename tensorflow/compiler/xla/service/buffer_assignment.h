@@ -379,6 +379,10 @@ class BufferAssignment {
   // Returns whether the given buffer has been assigned an allocation.
   bool HasAllocation(const HloValue& value) const;
 
+  // Returns whether the given (logical) buffer with the id has been assigned an
+  // allocation.
+  bool HasAllocation(HloValue::Id value_id) const;
+
   bool HasAllocation(const HloBuffer& buffer) const;
 
   // Returns the allocation that a particular LogicalBuffer has been assigned
@@ -470,7 +474,13 @@ class BufferAssignment {
   // every buffer associated with each allocation.
   std::string ToVerboseString() const;
   std::string BufferInfoString() const;
+
+  // Convert BufferAssignment to or from a proto.
   BufferAssignmentProto ToProto() const;
+  static StatusOr<std::unique_ptr<BufferAssignment>> FromProto(
+      const BufferAssignmentProto& proto, const HloModule* module,
+      BufferValue::SizeFunction buffer_size,
+      HloDataflowAnalysis::CanShareBuffer can_share_buffer);
 
   // Statistics for the assignment.  Values initialized to -1 are not always
   // collected; fragmentation is only collected for instructions that have a
@@ -629,7 +639,9 @@ class BufferAssigner {
       HloDataflowAnalysis::CanShareBuffer can_share_buffer = nullptr,
       std::unique_ptr<memory_space_assignment::PresetAssignments>
           preset_assignments = {},
-      const PrivateStacks& private_stacks = {});
+      const PrivateStacks& private_stacks = {},
+      GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
+          heap_buffer_interval_compare = nullptr);
 
  private:
   BufferAssigner(bool allocate_buffers_for_constants, Colorer colorer,
@@ -648,7 +660,9 @@ class BufferAssigner {
       BufferValue::SizeFunction buffer_size,
       LogicalBuffer::AlignmentFunction color_alignment,
       HloDataflowAnalysis::CanShareBuffer can_share_buffer,
-      const PrivateStacks& private_stacks);
+      const PrivateStacks& private_stacks,
+      GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
+          heap_buffer_interval_compare);
 
   // Assigns buffers to the instructions in the given computations. "assignment"
   // is modified to reflect the new buffer assignments. If is_thread_local is
@@ -691,7 +705,9 @@ class BufferAssigner {
                                 absl::flat_hash_set<const HloValue*>>&
           buffers_to_assign_sequentially,
       bool run_whole_module_heap_simulation, BufferAssignment* assignment,
-      const PrivateStacks& private_stacks);
+      const PrivateStacks& private_stacks,
+      GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
+          heap_buffer_interval_compare);
 
   // Uses the results of the heap simulator to create a single allocation, with
   // LogicalBuffers packed to specific offsets.

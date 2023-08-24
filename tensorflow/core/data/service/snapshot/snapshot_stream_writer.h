@@ -15,13 +15,17 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_SNAPSHOT_SNAPSHOT_STREAM_WRITER_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_SNAPSHOT_SNAPSHOT_STREAM_WRITER_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/substitute.h"
+#include "absl/time/time.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/service/task_runner.h"
@@ -36,6 +40,9 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+
+constexpr int64_t kDefaultMaxChunkSizeBytes = 2 * (size_t{1} << 30);  // 2GB
+constexpr absl::Duration kDefaultCheckpointInterval = absl::Minutes(20);
 
 struct SnapshotWriterParams {
   // The directory path of the snapshot. See the comment on SnapshotStreamWriter
@@ -54,6 +61,9 @@ struct SnapshotWriterParams {
 
   // The maximum number of bytes in each chunk.
   int64_t max_chunk_size_bytes = kDefaultMaxChunkSizeBytes;
+
+  // How often should checkpoints be written.
+  absl::Duration checkpoint_interval = kDefaultCheckpointInterval;
 
   // If true, keep temporary files (e.g., checkpoints) after completing the
   // snapshot. Used only for unit testing.
@@ -81,25 +91,21 @@ struct SnapshotWriterParams {
         "SnapshotWriterParams { base_path: $0, stream: $1, compression: $2 }",
         snapshot_path, stream_index, compression);
   }
-
- private:
-  static constexpr int64_t kDefaultMaxChunkSizeBytes =
-      2 * (size_t{1} << 30);  // 2GB
 };
 
 // Responsible for writing one snapshot stream, which is organized as following:
 //
 // - snapshot
-//   - LEASE
 //   - DONE
+//   - ERROR
 //   - snapshot.metadata
 //   - dataset_def.proto
 //   - chunks
 //     - chunk_<stream_index>_<chunk_index>_<num_elements>
 //   - streams
 //     - stream_0
-//       - LEASE
 //       - DONE
+//       - ERROR
 //       - splits
 //         - split_<local_split_index>_<global_split_index>
 //       - uncommitted chunks
@@ -154,8 +160,12 @@ class SnapshotStreamWriter {
   // Writes the next chunk.
   Status WriteChunk();
 
-  // Commits the current chunk.
-  Status CommitChunk();
+  // Whether the current chunks should be committed. This writer performs one
+  // commit every ~20 minutes.
+  bool ShouldCommit() const;
+
+  // Commits the chunks since the last commit.
+  Status Commit();
 
   // Returns the path of the current chunk.
   std::string GetChunkFilePath() const;
@@ -173,9 +183,6 @@ class SnapshotStreamWriter {
   Status FinalizeStream(Status status);
   Status WriteDoneFile();
   Status WriteErrorFile(const Status& status);
-
-  // Returns true if the writer should write an iterator checkpoint.
-  bool ShouldSave() const;
 
   // Saves an iterator checkpoint.
   Status Save();
@@ -218,6 +225,12 @@ class SnapshotStreamWriter {
   int64_t chunk_size_bytes_ = 0;
   // Number of elements in current chunk.
   int64_t chunk_num_elements_ = 0;
+  // Index of the last committed chunk.
+  int64_t last_committed_chunk_ = 0;
+  // Timestamp when the last chunks are committed.
+  absl::Time last_commit_time_ = absl::Now();
+  // Sizes of the chunks since the last commit.
+  absl::flat_hash_map<std::string, int64_t> chunk_file_to_num_elements_;
 
   // True if the dataset is exhausted.
   bool end_of_sequence_ = false;

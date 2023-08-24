@@ -110,8 +110,7 @@ RuntimeFallbackExecutor::RuntimeFallbackExecutor(int64_t num_threads)
   // Initialize fallback kernels state with a custom intra-op thread pool.
   auto status = tensorflow::tfd::SetUpKernelFallbackCompatRequestContext(
       &builder, /*runner_table=*/nullptr, eager_context, intra_op_.get());
-  CHECK(status.ok()) << "Failed to setup request context: "
-                     << status.error_message();
+  CHECK(status.ok()) << "Failed to setup request context: " << status.message();
 
   auto req_ctx = std::move(builder).build();
   if (auto err = req_ctx.takeError())

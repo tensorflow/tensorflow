@@ -18,8 +18,10 @@ set -x
 
 source tensorflow/tools/ci_build/release/common.sh
 
-install_ubuntu_16_python_pip_deps python3.9
-pip3.9 install --user --upgrade --ignore-installed cloud-tpu-client
+# For some lagacy reasons, it is hard to change the name of the test to
+# `tpu_py3_10_full` though we are using python 3.10.
+install_ubuntu_16_python_pip_deps python3.10
+pip3.10 install --user --upgrade --ignore-installed cloud-tpu-client
 install_bazelisk
 
 test_patterns=(//tensorflow/... -//tensorflow/compiler/... -//tensorflow/lite/...)
@@ -27,7 +29,7 @@ tag_filters="tpu,-tpu_pod,-no_tpu,-notpu,-no_oss,-oss_excluded,-no_oss_py37"
 
 bazel_args=(
   --config=release_cpu_linux \
-  --repo_env=PYTHON_BIN_PATH="$(which python3.9)" \
+  --repo_env=PYTHON_BIN_PATH="$(which python3.10)" \
   --build_tag_filters="${tag_filters}" \
   --test_sharding_strategy=disabled \
   --test_tag_filters="${tag_filters}" \

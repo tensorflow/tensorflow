@@ -54,6 +54,7 @@ MATCHER(QuantizedNear, "") {
 class SingleOpModelWithNNAPI : public SingleOpModel {
  public:
   SingleOpModelWithNNAPI() { options_.disallow_nnapi_cpu = false; }
+  ~SingleOpModelWithNNAPI() { stateful_delegate_.reset(); }
 
   explicit SingleOpModelWithNNAPI(
       const StatefulNnApiDelegate::Options& options) {
@@ -1710,6 +1711,15 @@ TEST(Elementwise, Sin) {
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.ExtractVector<float>(m.output()),
               ElementsAreArray(ArrayFloatNear({0, 0, 0, 0.84147})));
+  EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
+}
+
+TEST(Elementwise, Cos) {
+  ElementwiseOpFloatModel m(BuiltinOperator_COS, {1, 1, 4, 1});
+  m.PopulateTensor<float>(m.input(), {0, 3.1415926, -3.1415926, 1});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.ExtractVector<float>(m.output()),
+              ElementsAreArray(ArrayFloatNear({1.0, -1, -1, 0.54030})));
   EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
 }
 

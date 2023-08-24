@@ -14,8 +14,9 @@
 # ==============================================================================
 """Tests for `tf.data.Dataset.from_tensors()."""
 import collections
-from absl.testing import parameterized
+import dataclasses
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
@@ -43,6 +44,22 @@ try:
   import attr  # pylint:disable=g-import-not-at-top
 except ImportError:
   attr = None
+
+
+@dataclasses.dataclass
+class MaskedTensor:
+  mask: bool
+  value: np.ndarray
+
+  def __tf_flatten__(self):
+    metadata = (self.mask,)
+    components = (self.value,)
+    return metadata, components
+
+  def __tf_unflatten__(self, metadata, components):
+    mask = metadata[0]
+    value = components[0]
+    return MaskedTensor(mask=mask, value=value)
 
 
 class FromTensorsTest(test_base.DatasetTestBase, parameterized.TestCase):
@@ -150,6 +167,12 @@ class FromTensorsTest(test_base.DatasetTestBase, parameterized.TestCase):
     element = Foo(x=1, y=2)
     dataset = dataset_ops.Dataset.from_tensors(element)
     self.assertDatasetProduces(dataset, expected_output=[element])
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testFromTensorsDataclass(self):
+    mt = MaskedTensor(mask=True, value=np.array([1]))
+    dataset = dataset_ops.Dataset.from_tensors(mt)
+    self.assertDatasetProduces(dataset, expected_output=[mt])
 
   @combinations.generate(test_base.default_test_combinations())
   def testFromTensorsMixedRagged(self):

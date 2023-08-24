@@ -45,7 +45,6 @@ TEST_F(GpuUnrollingTest, UnrollDefaultTimes) {
   // The default unrolling factor is 4.
   HloModuleConfig config;
   auto debug_options = GetDebugOptionsFromFlags();
-  debug_options.set_xla_gpu_enable_mlir_lowering(false);
   config.set_debug_options(debug_options);
   auto hlo_module = ParseAndReturnVerifiedModule(kAddModule, config).value();
 
@@ -77,7 +76,6 @@ TEST_F(GpuUnrollingTest, UnrollDefaultTimes) {
 TEST_F(GpuUnrollingTest, UnrollUnfusedAdd) {
   HloModuleConfig config;
   auto debug_options = HloTestBase::GetDebugOptionsForTest();
-  debug_options.set_xla_gpu_enable_mlir_lowering(false);
   config.set_debug_options(debug_options);
 
   const char *const kUnfusedAddModule = R"(
@@ -92,7 +90,7 @@ TEST_F(GpuUnrollingTest, UnrollUnfusedAdd) {
 
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
-; CHECK-LABEL: @add
+; CHECK-LABEL: @wrapped_add
 ; CHECK: load float
 ; CHECK: load float
 ; CHECK: fadd

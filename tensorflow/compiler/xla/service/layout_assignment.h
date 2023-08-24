@@ -317,6 +317,15 @@ class LayoutAssignment : public HloModulePass {
   // rank as the output to have the same layout as the output.
   static bool InstructionCanChangeLayout(const HloInstruction* instruction);
 
+  const LayoutConstraints& computation_constraints(
+      const HloComputation* computation) const {
+    return *FindOrDie(computation_layouts_, computation);
+  }
+
+  LayoutConstraints& mutable_computation_constraints(
+      const HloComputation* computation) {
+    return *FindOrDie(computation_layouts_, computation);
+  }
   LayoutConstraints* mutable_computation_constraints(
       HloComputation* computation) {
     auto it = computation_layouts_.find(computation);
@@ -416,6 +425,12 @@ class LayoutAssignment : public HloModulePass {
   // Controls when all operands of user must have the same layout as the output.
   virtual bool OutputLayoutAlwaysPropagateToOperands(
       const HloInstruction* user);
+  // Whether to propagate the reduction layout to the operand by preserving the
+  // same relative order of the dimensions that are kept, and making the
+  // reduction dims the most minor dimensions.
+  virtual bool PropagateReductionLayoutToOperand(const HloInstruction* user) {
+    return false;
+  }
 
  protected:
   // These methods, invoked by PropagateConstraints, propagate a layout
@@ -478,10 +493,6 @@ class LayoutAssignment : public HloModulePass {
                                       LayoutConstraints* constraints,
                                       int64_t priority,
                                       const HloInstruction* user = nullptr);
-
-  // Propagates the memory space defined in the entry computation to the called
-  // computations.
-  virtual Status PropagateMemorySpace(HloModule* module);
 
   // Chooses a layout of operand `operand_no` of `instruction` that minimizes
   // the cost of `instruction`. `output_layout` is the layout of `instruction`.
@@ -657,6 +668,8 @@ class LayoutAssignment : public HloModulePass {
   std::unique_ptr<CallGraph> call_graph_;
 
   std::string ToString(const LayoutConstraints& constraints) const;
+
+  int64_t current_priority() const { return current_priority_; }
 
  private:
   // Map containing the layouts of all computations assigned so

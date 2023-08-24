@@ -269,7 +269,7 @@ def : EqualityPat<TF_NotEqualOp, CHLO_ComparisonDirectionValue<"NE">>;
 //===----------------------------------------------------------------------===//
 
 def OneElementAttrPred
-  : CPred<"$_self.cast<ElementsAttr>().getType().getNumElements() == 1">;
+  : CPred<"$_self.cast<ElementsAttr>().getShapedType().getNumElements() == 1">;
 
 def OneElementAttr
   : ElementsAttrBase<And<[ElementsAttr.predicate, OneElementAttrPred]>,
@@ -389,11 +389,14 @@ foreach src = [TF_PreventGradientOp, TF_CheckNumericsOp] in
 // MatMul op patterns.
 //===----------------------------------------------------------------------===//
 
+def GetPrecisionConfig: NativeCodeCall<
+  "GetPrecisionConfig(&$_builder)">;
+
 def : Pat<(TF_MatMulOp $a, $b, $transpose_a, $transpose_b),
           (MHLO_DotOp
           (TF_TransposeOp $a, (TF_ConstOp (Get2DTransposePerm $transpose_a))),
           (TF_TransposeOp $b, (TF_ConstOp (Get2DTransposePerm $transpose_b))),
-          /*precision_config=*/(NullArrayAttr))>;
+          /*precision_config=*/(GetPrecisionConfig))>;
 
 //===----------------------------------------------------------------------===//
 // Lower `tf.ZerosLike`
@@ -614,7 +617,7 @@ def : Pat<(TF_TransposeOp:$res $arg, (ConstantLikeMatcher ElementsAttr:$permutat
 // Lowering these ops with static shape to mhlo.reshape
 foreach TfOp = [TF_ExpandDimsOp, TF_ReshapeOp, TF_SqueezeOp, ] in {
   def : Pat<(TfOp:$res MHLO_Tensor:$arg, $ignored),
-            (MHLO_ReshapeOp $arg), [(AnyStaticShapeTensor $res)],
+            (MHLO_ReshapeOp $arg), [(AnyStaticShapeTensor $res)], [],
             (addBenefit 2)>;
 }
 

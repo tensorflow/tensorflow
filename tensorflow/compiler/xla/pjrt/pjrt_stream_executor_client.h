@@ -60,18 +60,59 @@ limitations under the License.
 
 namespace xla {
 
+class PjRtStreamExecutorDeviceDescription : public PjRtDeviceDescription {
+ public:
+  explicit PjRtStreamExecutorDeviceDescription(int id, std::string device_kind,
+                                               int process_index = 0)
+      : id_(id),
+        process_index_(process_index),
+        device_kind_(std::move(device_kind)) {}
+
+  int id() const override { return id_; }
+
+  int process_index() const override { return process_index_; }
+
+  absl::string_view device_kind() const override { return device_kind_; }
+
+  absl::string_view ToString() const override { return to_string_; }
+
+  absl::string_view DebugString() const override { return debug_string_; }
+
+  const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
+      const override {
+    return attributes_;
+  }
+
+  void SetAttributes(
+      absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes) {
+    attributes_ = std::move(attributes);
+  }
+
+  void SetDebugString(std::string debug_string) {
+    debug_string_ = std::move(debug_string);
+  }
+
+  void SetToString(std::string to_string) { to_string_ = std::move(to_string); }
+
+ private:
+  const int id_;
+  const int process_index_;
+  const std::string device_kind_;
+  std::string debug_string_ = "<unknown SE device>";
+  std::string to_string_ = "<unknown SE device>";
+  absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes_;
+};
+
 class PjRtStreamExecutorDevice : public PjRtDevice {
  public:
   explicit PjRtStreamExecutorDevice(
       int id, std::unique_ptr<LocalDeviceState> local_device_state,
       std::string device_kind, int process_index = 0)
-      : id_(id),
+      : description_(id, std::move(device_kind), process_index),
         device_ordinal_(
             local_device_state ? local_device_state->device_ordinal() : -1),
-        local_device_state_(std::move(local_device_state)),
-        process_index_(process_index),
-        device_kind_(std::move(device_kind)) {}
-  ~PjRtStreamExecutorDevice() override {}
+        local_device_state_(std::move(local_device_state)) {}
+  ~PjRtStreamExecutorDevice() override = default;
 
   // Must set client exactly once.
   void SetClient(PjRtClient* client) {
@@ -79,11 +120,14 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
     client_ = client;
     // We have to define debug_string_ and to_string_ here, because
     // platform_name() requires client_ to be set.
-    debug_string_ = absl::StrCat(platform_name(), ":", id());
-    to_string_ = absl::StrCat(platform_name(), "(id=", id(), ")");
+    description().SetDebugString(absl::StrCat(platform_name(), ":", id()));
+    description().SetToString(absl::StrCat(platform_name(), "(id=", id(), ")"));
   }
 
-  int process_index() const override { return process_index_; }
+  PjRtStreamExecutorDeviceDescription& description() { return description_; }
+  const PjRtStreamExecutorDeviceDescription& description() const override {
+    return description_;
+  }
 
   // Return `platform_id` from client.
   PjRtPlatformId platform_id() const;
@@ -92,8 +136,6 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
   absl::string_view platform_name() const;
 
   PjRtClient* client() const override { return client_; }
-
-  int id() const override { return id_; }
 
   bool IsAddressable() const override { return device_ordinal_ != -1; }
 
@@ -111,37 +153,23 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
   // is not local to this host.
   StatusOr<LocalDeviceState*> GetLocalDeviceState() const;
 
-  absl::string_view device_kind() const override { return device_kind_; }
-
-  absl::string_view ToString() const override;
-
-  absl::string_view DebugString() const override;
-
   Status TransferToInfeed(const LiteralSlice& literal) override;
 
   Status TransferFromOutfeed(MutableBorrowingLiteral literal) override;
+
+  absl::Span<PjRtMemorySpace* const> memory_spaces() const override;
+
+  StatusOr<PjRtMemorySpace*> default_memory_space() const override;
 
   std::unique_ptr<ScopedAsyncTrackingEvent> CreateAsyncTrackingEvent(
       absl::string_view description) const override {
     return nullptr;
   }
 
-  const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
-      const override {
-    return attributes_;
-  }
-
- protected:
-  absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes_;
-
  private:
-  const int id_;
+  PjRtStreamExecutorDeviceDescription description_;
   const int device_ordinal_;  // -1 means not local.
   const std::unique_ptr<LocalDeviceState> local_device_state_;
-  const int process_index_;
-  const std::string device_kind_;
-  std::string debug_string_;
-  std::string to_string_;
   PjRtClient* client_ = nullptr;
 };
 
@@ -180,6 +208,8 @@ class PjRtStreamExecutorClient : public PjRtClient {
   StatusOr<PjRtDevice*> LookupAddressableDevice(
       int local_hardware_id) const override;
 
+  absl::Span<PjRtMemorySpace* const> memory_spaces() const override;
+
   PjRtPlatformId platform_id() const override { return platform_id_; }
   absl::string_view platform_name() const override { return platform_name_; }
   absl::string_view platform_version() const override { return "<unknown>"; }
@@ -213,6 +243,10 @@ class PjRtStreamExecutorClient : public PjRtClient {
       absl::string_view serialized,
       std::optional<CompileOptions> options) override;
 
+  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> LoadSerializedExecutable(
+      absl::string_view serialized, std::optional<CompileOptions> options,
+      const LoadOptions& load_options) override;
+
   StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis()
       const override;
 
@@ -225,6 +259,9 @@ class PjRtStreamExecutorClient : public PjRtClient {
   StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
       const Shape& shape, PjRtDevice* device,
       std::shared_ptr<BufferSequencingEvent> definition_event);
+
+  StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
+      Status error, const Shape& shape, PjRtDevice* device) override;
 
   StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
   CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
@@ -699,6 +736,7 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
                      std::shared_ptr<BufferSequencingEvent>>>
   CopyToDeviceHelper(PjRtDevice* dst_device, LocalDeviceState* dst_local_device,
                      LocalDeviceState* transfer_local_device,
+                     LocalDeviceState* src_local_device,
                      se::Stream* transfer_stream,
                      std::shared_ptr<TrackedDeviceBuffer> src_device_buffer);
 
@@ -778,6 +816,9 @@ class PjRtStreamExecutorExecutable : public PjRtLoadedExecutable {
 
   // Return an HloModule per partition.
   StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
+      const override;
+
+  StatusOr<std::vector<std::vector<absl::string_view>>> GetOutputMemoryKinds()
       const override;
 
   using PjRtLoadedExecutable::Execute;

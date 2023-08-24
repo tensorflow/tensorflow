@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
-#include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
+#include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator_runner_options.h"
@@ -49,9 +49,9 @@ std::string GenerateRandomString() {
       "abcdefghijklmnopqrstuvwxyz";
   const int size = 10;
   std::string result;
-  result.reserve(size);
+  result.resize(size);
   for (int i = 0; i < size; ++i) {
-    result.data()[i] = charset[rand() % (sizeof(charset) - 1)];
+    result[i] = charset[rand() % (sizeof(charset) - 1)];
   }
 
   return result;
@@ -88,6 +88,8 @@ std::vector<FlatBufferBuilder> BlockingValidatorRunner::TriggerValidation(
   // Create a unique storage_path.
   std::string storage_path =
       absl::StrCat(storage_path_base_, ".", GenerateRandomString());
+  TFLITE_LOG_PROD(TFLITE_LOG_INFO, "Validation storage path: %s",
+                  storage_path.c_str());
   std::vector<flatbuffers::FlatBufferBuilder> to_be_run;
   std::vector<TFLiteSettingsT> for_settings_obj;
   for_settings_obj.reserve(for_settings.size());

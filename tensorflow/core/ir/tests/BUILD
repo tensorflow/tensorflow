@@ -1,10 +1,10 @@
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 load("//tensorflow:tensorflow.bzl", "tf_native_cc_binary")
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_compatible_with = get_compatible_with_cloud(),
+    default_compatible_with = get_compatible_with_portable(),
     default_visibility = [":__subpackages__"],
     licenses = ["notice"],  # Apache 2.0
 )
@@ -38,6 +38,7 @@ filegroup(
 )
 
 glob_lit_tests(
+    name = "all_tests",
     data = [":test_utilities"],
     driver = "@llvm-project//mlir:run_lit.sh",
     exclude = [],

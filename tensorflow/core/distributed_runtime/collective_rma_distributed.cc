@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/base_collective_executor.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -277,7 +278,7 @@ void CollectiveRemoteAccessDistributed::CheckPeerHealth(
               break;
             }
           }
-        } else if (errors::IsNotFound(s)) {
+        } else if (absl::IsNotFound(s)) {
           // Skip validating device incarnation if we don't know what the
           // incarnation should be. The device attribute is cached after the
           // first collective.

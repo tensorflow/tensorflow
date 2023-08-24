@@ -50,14 +50,15 @@ using ::tensorflow::tpu::GuaranteedConsts;
 using ::tensorflow::tpu::MlirToHloArgs;
 using ::tensorflow::tpu::ShardingAndIndex;
 
-auto* mlir_second_phase_count = tensorflow::monitoring::Counter<1>::New(
-    "/tensorflow/core/tf2xla/v0/mlir_second_phase_count" /* metric name */,
-    "Counts the number of graphs that were analyzed prior deciding whether "
-    "the MLIR or the old bridge will be used" /* metric description */,
-    "status" /* metric label */);
+auto* phase2_bridge_compilation_status =
+    tensorflow::monitoring::Counter<1>::New(
+        "/tensorflow/core/tf2xla/api/v0/"
+        "phase2_compilation_status", /*metric_name*/
+        "Tracks the compilation status of the non-mlir bridge",
+        /* metric description */ "status" /* metric label */);
 
 auto* phase2_bridge_compilation_time = tsl::monitoring::Sampler<1>::New(
-    {"/tensorflow/core/tf2xla/v0/bridge_phase_2_compilation_time",
+    {"/tensorflow/core/tf2xla/api/v0/phase2_compilation_time",
      "The wall-clock time spent on executing graphs in milliseconds.",
      "configuration"},
     // Power of 1.5 with bucket count 45 (> 23 hours)
@@ -173,7 +174,7 @@ tsl::Status CompileTensorflowGraphToHlo(
   bool has_mlir = computation.index() == 0;
 
   std::string mlir_string = has_mlir ? "has_mlir" : "has_function_to_hlo";
-  const std::string kMlirBridgeFallback =
+  const std::string kBridgePhase2Config =
       absl::StrCat("graph_old_bridge_", mlir_string);
   CompilationTimer timer;
 
@@ -186,12 +187,14 @@ tsl::Status CompileTensorflowGraphToHlo(
         *function_computation.function, metadata, client, arg_core_mapping,
         per_core_arg_shapes, use_tuple_args, compilation_result);
     if (comp_status.ok()) {
-      mlir_second_phase_count->GetCell(kOldBridgeNoMlirSuccess)->IncrementBy(1);
+      phase2_bridge_compilation_status->GetCell(kOldBridgeNoMlirSuccess)
+          ->IncrementBy(1);
     } else {
-      mlir_second_phase_count->GetCell(kOldBridgeNoMlirFailure)->IncrementBy(1);
+      phase2_bridge_compilation_status->GetCell(kOldBridgeNoMlirFailure)
+          ->IncrementBy(1);
     }
 
-    phase2_bridge_compilation_time->GetCell(kMlirBridgeFallback)
+    phase2_bridge_compilation_time->GetCell(kBridgePhase2Config)
         ->Add(timer.ElapsedCyclesInMilliseconds());
     return comp_status;
   }
@@ -242,7 +245,7 @@ tsl::Status CompileTensorflowGraphToHlo(
       consts, func, metadata, client, arg_core_mapping, per_core_arg_shapes,
       use_tuple_args, compilation_result));
 
-  phase2_bridge_compilation_time->GetCell(kMlirBridgeFallback)
+  phase2_bridge_compilation_time->GetCell(kBridgePhase2Config)
       ->Add(timer.ElapsedCyclesInMilliseconds());
 
   return PopulateInputOutputAliasing(main_fn, compilation_result,

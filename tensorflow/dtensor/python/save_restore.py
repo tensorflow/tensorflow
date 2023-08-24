@@ -25,6 +25,7 @@ from tensorflow.dtensor.python import mesh_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.util.tf_export import tf_export
@@ -33,10 +34,10 @@ from tensorflow.python.util.tf_export import tf_export
 @tf_export('experimental.dtensor.sharded_save', v1=[])
 def sharded_save(
     mesh: layout_lib.Mesh,
-    file_prefix: Union[str, ops.Tensor],
-    tensor_names: Union[List[str], ops.Tensor],
-    shape_and_slices: Union[List[str], ops.Tensor],
-    tensors: List[Union[ops.Tensor, tf_variables.Variable]],
+    file_prefix: Union[str, tensor_lib.Tensor],
+    tensor_names: Union[List[str], tensor_lib.Tensor],
+    shape_and_slices: Union[List[str], tensor_lib.Tensor],
+    tensors: List[Union[tensor_lib.Tensor, tf_variables.Variable]],
 ):
   """Saves given named tensor slices in a sharded, multi-client safe fashion.
 
@@ -100,7 +101,8 @@ def enable_save_as_bf16(variables: List[tf_variables.Variable]):
 def name_based_restore(
     mesh: layout_lib.Mesh,
     checkpoint_prefix: str,
-    name_tensor_dict: Dict[str, Union[ops.Tensor, tf_variables.Variable]],
+    name_tensor_dict: Dict[
+        str, Union[tensor_lib.Tensor, tf_variables.Variable]],
 ):
   """Restores from checkpoint_prefix to name based DTensors.
 
@@ -163,17 +165,21 @@ def name_based_restore(
         shape_and_slices=shape_and_slices,
         input_shapes=input_shapes,
         input_layouts=input_layouts,
-        dtypes=[tensor.dtype for tensor in ordered_name_tensor_dict.values()])
+        dtypes=[tensor.dtype for tensor in ordered_name_tensor_dict.values()],
+    )
 
   return collections.OrderedDict(
-      zip(ordered_name_tensor_dict.keys(), restored_cpu_tensors))
+      zip(ordered_name_tensor_dict.keys(), restored_cpu_tensors)
+  )
 
 
 @tf_export('experimental.dtensor.name_based_save', v1=[])
-def name_based_save(mesh: layout_lib.Mesh, checkpoint_prefix: Union[str,
-                                                                    ops.Tensor],
-                    name_tensor_dict: Dict[str, Union[ops.Tensor,
-                                                      tf_variables.Variable]]):
+def name_based_save(
+    mesh: layout_lib.Mesh,
+    checkpoint_prefix: Union[str, tensor_lib.Tensor],
+    name_tensor_dict: Dict[
+        str, Union[tensor_lib.Tensor, tf_variables.Variable]],
+):
   """Saves name based Tensor into a Checkpoint.
 
   The function prepares the input dictionary to the format of a `sharded_save`,

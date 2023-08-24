@@ -12,8 +12,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
 #include "tensorflow/core/tpu/tpu_compile.h"
 
+#include <map>
+#include <memory>
+#include <optional>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
+#include "absl/types/span.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/shape_inference.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
@@ -23,11 +33,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
-#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
-#include "tensorflow/core/tpu/kernels/tpu_util.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 
 namespace tensorflow {
@@ -284,8 +292,8 @@ Status BuildComputationArgumentDescriptions(
         arg.kind = XlaCompiler::Argument::kConstant;
         guaranteed_constants_size =
             guaranteed_constants.index() == 0
-                ? absl::get<0>(guaranteed_constants).size()
-                : absl::get<1>(guaranteed_constants)->size();
+                ? std::get<0>(guaranteed_constants).size()
+                : std::get<1>(guaranteed_constants)->size();
         TF_RET_CHECK(constant_count < guaranteed_constants_size)
             << "More constant args in TPUCompileMetadataProto than constant "
                "tensors.";
@@ -294,13 +302,13 @@ Status BuildComputationArgumentDescriptions(
           // const>`.
           Tensor tensor;
           CHECK(tensor.FromProto(
-              *absl::get<0>(guaranteed_constants)[constant_count++]))
+              *std::get<0>(guaranteed_constants)[constant_count++]))
               << "Failed to deserialize invalid `TensorProto` into `Tensor`.";
           arg.constant_value = tensor;
         } else {
           // `guaranteed_constants` is of type `const OpInputList* const`.
           arg.constant_value =
-              (*absl::get<1>(guaranteed_constants))[constant_count++];
+              (*std::get<1>(guaranteed_constants))[constant_count++];
         }
         break;
       case tpu::TPUCompileMetadataProto::Arg::INVALID:
@@ -464,7 +472,7 @@ Status GetShardingInfo(
     TF_ASSIGN_OR_RETURN(auto arg_sharding,
                         xla::HloSharding::FromProto(proto_arg.sharding()));
     auto layout_preference = shape_determination_fns.layout_preference_fn(
-        arg_shapes[i], proto_arg.dtype(), absl::nullopt);
+        arg_shapes[i], proto_arg.dtype(), std::nullopt);
     TF_ASSIGN_OR_RETURN(auto xla_arg_shape,
                         shape_determination_fns.shape_representation_fn(
                             arg_shapes[i], proto_arg.dtype(),

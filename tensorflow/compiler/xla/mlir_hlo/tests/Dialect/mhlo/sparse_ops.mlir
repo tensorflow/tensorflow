@@ -6,15 +6,15 @@
 // output types), dense or sparse ops are semantically equivalent.
 
 #SV = #sparse_tensor.encoding<{
-  dimLevelType = ["compressed"]
+  lvlTypes = ["compressed"]
 }>
 
 #CSR = #sparse_tensor.encoding<{
-  dimLevelType = ["dense", "compressed"]
+  lvlTypes = ["dense", "compressed"]
 }>
 
 #DCSR = #sparse_tensor.encoding<{
-  dimLevelType = ["compressed", "compressed"]
+  lvlTypes = ["compressed", "compressed"]
 }>
 
 //

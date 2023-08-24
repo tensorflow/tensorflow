@@ -27,6 +27,16 @@ def SplitAllocTensorsPass :
   let dependentDialects = ["::mlir::bufferization::BufferizationDialect"];
 }
 
+def AnnotateDeallocationPass :
+    Pass<"hlo-deallocation-annotation", "mlir::ModuleOp"> {
+  let summary = "Annotate ops with deallocation debug information.";
+  let description = [{
+    Adds attributes to annotate ops with debug information about the
+    deallocation analysis.
+  }];
+  let constructor = "::mlir::deallocation::createDeallocationAnnotationPass()";
+}
+
 def DeallocatePass : Pass<"hlo-deallocate", "mlir::ModuleOp"> {
   let summary = "Deallocate buffers by inserting `deallocation.retain` ops.";
   let description = [{
@@ -87,7 +97,10 @@ def ConvertDeallocationOpsToLLVMPass
     : Pass<"hlo-convert-deallocation-ops-to-llvm", "mlir::func::FuncOp"> {
   let summary = "Convert `deallocation` ops to LLVM";
   let constructor = "::mlir::deallocation::createConvertDeallocationOpsToLLVM()";
-  let dependentDialects = ["mlir::LLVM::LLVMDialect"];
+  let dependentDialects = [
+    "::mlir::LLVM::LLVMDialect",
+    "::mlir::memref::MemRefDialect",
+  ];
 }
 
 def DeallocationToScfPass : Pass<"hlo-deallocation-to-scf",

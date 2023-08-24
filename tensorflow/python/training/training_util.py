@@ -17,7 +17,8 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_io
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.framework import tensor
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
@@ -333,7 +334,7 @@ def assert_global_step(global_step_tensor):
     global_step_tensor: `Tensor` to test.
   """
   if not (isinstance(global_step_tensor, variables.Variable) or
-          isinstance(global_step_tensor, ops.Tensor) or
+          isinstance(global_step_tensor, tensor.Tensor) or
           resource_variable_ops.is_resource_variable(global_step_tensor)):
     raise TypeError('Existing "global_step" must be a Variable or Tensor: %s.' %
                     global_step_tensor)
@@ -396,7 +397,7 @@ def _get_or_create_global_step_read(graph=None):
       # this run. This is needed for example Estimator makes all model_fn build
       # under global_step_read_tensor dependency.
       if isinstance(global_step_tensor, variables.Variable):
-        global_step_value = control_flow_ops.cond(
+        global_step_value = cond.cond(
             variable_v1.is_variable_initialized(global_step_tensor),
             global_step_tensor.read_value,
             lambda: global_step_tensor.initial_value)

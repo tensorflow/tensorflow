@@ -36,18 +36,18 @@ class FuzzIdentity : public FuzzSession<Tensor> {
   void FuzzImpl(const Tensor& input_tensor) final {
     Status s = RunInputsWithStatus({{"input", input_tensor}});
     if (!s.ok()) {
-      LOG(ERROR) << "Execution failed: " << s.error_message();
+      LOG(ERROR) << "Execution failed: " << s.message();
     }
   }
 };
 
 // Setup up fuzzing test.
 FUZZ_TEST_F(FuzzIdentity, Fuzz)
-    .WithDomains(fuzzing::AnyValidTensor(fuzzing::AnyValidTensorShape(
-                                             /*max_rank=*/5,
-                                             /*dim_lower_bound=*/0,
-                                             /*dim_upper_bound=*/10),
-                                         fuzztest::Just(DT_INT32)));
+    .WithDomains(fuzzing::AnyValidNumericTensor(fuzzing::AnyValidTensorShape(
+                                                    /*max_rank=*/5,
+                                                    /*dim_lower_bound=*/0,
+                                                    /*dim_upper_bound=*/10),
+                                                fuzztest::Just(DT_INT32)));
 
 }  // end namespace fuzzing
 }  // end namespace tensorflow

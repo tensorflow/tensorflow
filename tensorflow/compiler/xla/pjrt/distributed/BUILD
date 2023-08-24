@@ -44,6 +44,7 @@ cc_library(
         ":key_value_store",
         ":protocol",
         ":protocol_cc_grpc_proto",
+        ":topology_util",
         ":util",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",
@@ -66,13 +67,11 @@ cc_library(
 )
 
 xla_cc_test(
-    name = "service_test",
-    srcs = ["service_test.cc"],
+    name = "topology_util_test",
+    srcs = ["topology_util_test.cc"],
     deps = [
         ":protocol_proto_cc",
-        ":service",
-        "//tensorflow/compiler/xla/service:cpu_plugin",
-        "//tensorflow/compiler/xla/service:gpu_plugin",
+        ":topology_util",
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
@@ -126,6 +125,18 @@ cc_library(
         ":service",
         "//tensorflow/compiler/xla:statusor",
     ] + tsl_grpc_cc_dependencies(),
+)
+
+cc_library(
+    name = "topology_util",
+    srcs = ["topology_util.cc"],
+    hdrs = ["topology_util.h"],
+    deps = [
+        ":protocol_proto_cc",
+        "//tensorflow/tsl/platform:logging",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/types:span",
+    ],
 )
 
 xla_cc_test(

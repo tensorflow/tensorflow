@@ -272,7 +272,7 @@ XLA_TEST_F(CustomCallTest, ReportsFailure) {
 
   auto status = Execute(std::move(module), {}).status();
   EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
-  EXPECT_THAT(status.error_message(), ::testing::HasSubstr("Failed: 42.0"));
+  EXPECT_THAT(status.message(), ::testing::HasSubstr("Failed: 42.0"));
 }
 
 XLA_TEST_F(CustomCallTest, ReportsFirstFailure) {
@@ -296,7 +296,7 @@ XLA_TEST_F(CustomCallTest, ReportsFirstFailure) {
 
   auto status = Execute(std::move(module), {}).status();
   EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
-  EXPECT_THAT(status.error_message(), ::testing::HasSubstr("Failed: 1.0"));
+  EXPECT_THAT(status.message(), ::testing::HasSubstr("Failed: 1.0"));
 }
 
 XLA_TEST_F(CustomCallTest, TransitiveCustomCallReportsFirstFailure) {
@@ -319,7 +319,7 @@ XLA_TEST_F(CustomCallTest, TransitiveCustomCallReportsFirstFailure) {
 
   auto status = Execute(std::move(module), {}).status();
   EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
-  EXPECT_THAT(status.error_message(), HasSubstr("Failed: 1.0"));
+  EXPECT_THAT(status.message(), HasSubstr("Failed: 1.0"));
 }
 
 XLA_TEST_F(CustomCallTest, FillStatusMsgWithBackendConfigStr) {
@@ -342,7 +342,7 @@ XLA_TEST_F(CustomCallTest, FillStatusMsgWithBackendConfigStr) {
 
   auto status = Execute(std::move(module), {}).status();
   EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               HasSubstr("Fail with raw backend config str: foo"));
 }
 

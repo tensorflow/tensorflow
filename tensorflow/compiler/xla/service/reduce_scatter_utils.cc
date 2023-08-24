@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <functional>
 #include <optional>
+#include <utility>
+#include <vector>
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
@@ -139,15 +141,20 @@ bool IsPerIdOffsets(absl::Span<const HloInstruction*> offsets,
 // Returns if `offset` == shard_size * id.
 bool IsPerIdOffset(const HloInstruction* offset, int64_t shard_size,
                    const MapIdToTableOffset& map_id, int64_t group_size,
-                   const HloAllReduceInstruction* ar) {
+                   const HloAllReduceInstruction* ar,
+                   bool true_scalar_for_offset_computation) {
   const bool iota_group =
       ar->replica_groups().empty() ||
       (ar->IsCrossModuleAllReduce() && !ar->use_global_device_ids());
 
   if (offset->opcode() == HloOpcode::kMultiply) {
     // Check if it's constant * IsPerIdOffset(..., shard_size / constant, ...)
-    if (offset->shape().rank() != 0) {
+    if (!ShapeUtil::IsEffectiveScalar(offset->shape())) {
       VLOG(2) << "Offset is not a scalar " << offset->ToString();
+      return false;
+    }
+    if (true_scalar_for_offset_computation && offset->shape().rank() != 0) {
+      VLOG(2) << "Offset is not a true scalar " << offset->ToString();
       return false;
     }
     int64_t const_operand = -1;
@@ -166,7 +173,8 @@ bool IsPerIdOffset(const HloInstruction* offset, int64_t shard_size,
       return false;
     }
     return IsPerIdOffset(offset->operand(1 - const_operand),
-                         shard_size / *multiplier, map_id, group_size, ar);
+                         shard_size / *multiplier, map_id, group_size, ar,
+                         true_scalar_for_offset_computation);
   }
   if (shard_size == 1 && iota_group) {
     bool id_mapping_is_identity = true;
@@ -184,16 +192,16 @@ bool IsPerIdOffset(const HloInstruction* offset, int64_t shard_size,
   if (offset->opcode() == HloOpcode::kBitcast ||
       offset->opcode() == HloOpcode::kReshape ||
       offset->opcode() == HloOpcode::kCopy) {
-    return IsPerIdOffset(offset->operand(0), shard_size, map_id, group_size,
-                         ar);
+    return IsPerIdOffset(offset->operand(0), shard_size, map_id, group_size, ar,
+                         true_scalar_for_offset_computation);
   }
 
   if (offset->opcode() == HloOpcode::kConvert &&
       offset->operand(0)->shape().IsInteger() &&
       primitive_util::BitWidth(offset->operand(0)->shape().element_type()) <=
           primitive_util::BitWidth(offset->shape().element_type())) {
-    return IsPerIdOffset(offset->operand(0), shard_size, map_id, group_size,
-                         ar);
+    return IsPerIdOffset(offset->operand(0), shard_size, map_id, group_size, ar,
+                         true_scalar_for_offset_computation);
   }
 
   if (offset->opcode() == HloOpcode::kClamp) {
@@ -205,8 +213,8 @@ bool IsPerIdOffset(const HloInstruction* offset, int64_t shard_size,
               << offset->ToString();
       return false;
     }
-    return IsPerIdOffset(offset->operand(1), shard_size, map_id, group_size,
-                         ar);
+    return IsPerIdOffset(offset->operand(1), shard_size, map_id, group_size, ar,
+                         true_scalar_for_offset_computation);
   }
 
   const int64_t num_groups = iota_group ? 1 : ar->replica_groups().size();
@@ -263,20 +271,9 @@ bool IsPerIdOffset(const HloInstruction* offset, int64_t shard_size,
 std::optional<ReduceScatterSpec> MatchReduceScatter(
     const HloAllReduceInstruction* ar, int64_t num_partitions,
     int64_t num_replicas, bool allow_multiple_split_dims,
-    bool allow_intervening_reshape, int64_t min_rank) {
-  HloPredicate match_partition_id = HloPredicateIsOp<HloOpcode::kPartitionId>;
-  HloPredicate match_replica_id = HloPredicateIsOp<HloOpcode::kReplicaId>;
-  return MatchReduceScatter(ar, num_partitions, num_replicas,
-                            allow_multiple_split_dims,
-                            allow_intervening_reshape, min_rank,
-                            match_partition_id, match_replica_id);
-}
-
-std::optional<ReduceScatterSpec> MatchReduceScatter(
-    const HloAllReduceInstruction* ar, int64_t num_partitions,
-    int64_t num_replicas, bool allow_multiple_split_dims,
     bool allow_intervening_reshape, int64_t min_rank,
-    HloPredicate match_partition_id, HloPredicate match_replica_id) {
+    HloPredicate match_partition_id, HloPredicate match_replica_id,
+    bool true_scalar_for_offset_computation) {
   if (!ar->shape().IsArray() || ar->constrain_layout() ||
       (ar->IsCrossModuleAllReduce() &&
        !ar->GetModule()->config().use_spmd_partitioning())) {
@@ -480,8 +477,8 @@ std::optional<ReduceScatterSpec> MatchReduceScatter(
   } else {
     if (!IsPerIdOffset(user->operand(spec.split_dim + 1),
                        user->dynamic_slice_sizes()[spec.split_dim], map_id,
-                       group_size, ar)) {
-      VLOG(2) << "IsPerIdOffsets() failed " << ar->ToString();
+                       group_size, ar, true_scalar_for_offset_computation)) {
+      VLOG(2) << "IsPerIdOffset() failed " << ar->ToString();
       return std::nullopt;
     }
   }

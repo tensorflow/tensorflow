@@ -15,6 +15,7 @@ limitations under the License.
 
 // This file implements a set of sparse MHLO rewriting rules.
 
+#include <memory>
 #include <utility>
 
 #include "mhlo/IR/hlo_ops.h"

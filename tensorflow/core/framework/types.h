@@ -73,7 +73,6 @@ struct DeviceName<Eigen::GpuDevice> {
 };
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-
 typedef gtl::InlinedVector<MemoryType, 4> MemoryTypeVector;
 typedef gtl::ArraySlice<MemoryType> MemoryTypeSlice;
 
@@ -468,6 +467,9 @@ constexpr DataTypeSet kDataTypeIsFloating =
 inline bool DataTypeIsFloating(DataType dt) {
   return kDataTypeIsFloating.Contains(dt);
 }
+
+// Returns true iff 'dt' is a numeric type.
+inline bool DataTypeIsNumeric(DataType dt) { return kNumberTypes.Contains(dt); }
 
 // Returns true iff 'dt' is a complex type.
 constexpr DataTypeSet kDataTypeIsComplex =

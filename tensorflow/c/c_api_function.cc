@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/platform/base64.h"
 #include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/util/debug_data_dumper.h"
 
 using tensorflow::errors::InvalidArgument;
 
@@ -216,6 +217,10 @@ TF_Function* TF_GraphToFunctionWithControlOutputs(
   if (TF_GetCode(status) != TF_OK) {
     return nullptr;
   }
+
+  // Dump the op creation stacktraces for debugging purpose.
+  DEBUG_DATA_DUMPER()->DumpOpCreationStackTraces(
+      fn_name, kDebugGroupOpStacktrace, "initial", &fn_body->graph);
 
   tensorflow::StackTracesMap stack_traces;
   for (const Node* n : fn_body->graph.nodes()) {

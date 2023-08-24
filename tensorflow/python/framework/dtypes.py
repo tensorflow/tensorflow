@@ -15,6 +15,7 @@
 """Library of dtypes (Tensor element types)."""
 import abc
 import builtins
+import dataclasses
 from typing import Type, Sequence, Optional
 
 import numpy as np
@@ -25,23 +26,30 @@ from tensorflow.core.framework import types_pb2
 # pylint: disable=invalid-import-order,g-bad-import-order
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 from tensorflow.python.framework import _dtypes
+from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.types import doc_typealias
-from tensorflow.python.lib.core import _pywrap_custom_casts
-from tensorflow.python.lib.core import _pywrap_float8
 from tensorflow.python.util.tf_export import tf_export
 from tensorflow.python.types import trace
 from tensorflow.core.function import trace_type
 from tensorflow.tools.docs import doc_controls
-from tensorflow.tsl.python.lib.core import pywrap_bfloat16
+from tensorflow.tsl.python.lib.core import pywrap_ml_dtypes
 
-_np_bfloat16 = pywrap_bfloat16.bfloat16_type()
-_np_float8_e4m3fn = _pywrap_float8.TF_float8_e4m3fn_type()
-_np_float8_e5m2 = _pywrap_float8.TF_float8_e5m2_type()
-_pywrap_custom_casts.TF_register_custom_casts()
+_np_bfloat16 = pywrap_ml_dtypes.bfloat16()
+_np_float8_e4m3fn = pywrap_ml_dtypes.float8_e4m3fn()
+_np_float8_e5m2 = pywrap_ml_dtypes.float8_e5m2()
 
 
 class DTypeMeta(type(_dtypes.DType), abc.ABCMeta):
   pass
+
+
+@dataclasses.dataclass(frozen=True)
+class HandleData:
+  """Holds resource/variant tensor specific data."""
+  shape_inference: Optional[
+      cpp_shape_inference_pb2.CppShapeInferenceResult.HandleData
+  ] = None
+  alias_id: Optional[int] = None
 
 
 @tf_export("dtypes.DType", "DType")
@@ -64,7 +72,17 @@ class DType(
 
   See `tf.dtypes` for a complete list of `DType`'s defined.
   """
-  __slots__ = ()
+  __slots__ = ["_handle_data"]
+
+  def __init__(self, type_enum, handle_data=None):
+    super().__init__(type_enum)
+
+    # Resource and Variant dtypes have additional handle data information that
+    # is necessary for manipulating those Tensors.
+    if handle_data is not None and not isinstance(handle_data, HandleData):
+      raise TypeError("handle_data must be of the type HandleData")
+
+    self._handle_data = handle_data
 
   @property
   def _is_ref_dtype(self):
@@ -81,7 +99,13 @@ class DType(
 
   @property
   def base_dtype(self):
-    """Returns a non-reference `DType` based on this `DType`."""
+    """Returns a non-reference `DType` based on this `DType` (for TF1).
+
+    Programs written for TensorFlow 2.x do not need this attribute.
+    It exists only for compatibility with TensorFlow 1.x, which used
+    reference `DType`s in the implementation of `tf.compat.v1.Variable`.
+    In TensorFlow 2.x, `tf.Variable` is implemented without reference types.
+    """
     if self._is_ref_dtype:
       return _INTERN_TABLE[self._type_enum - 100]
     else:
@@ -184,13 +208,15 @@ class DType(
     return min, max
 
   def is_compatible_with(self, other):
-    """Returns True if the `other` DType will be converted to this DType.
+    """Returns True if the `other` DType will be converted to this DType (TF1).
 
-    The conversion rules are as follows:
+    Programs written for TensorFlow 2.x do not need this function.
+    Instead, they can do equality comparison on `DType` objects directly:
+    `tf.as_dtype(this) == tf.as_dtype(other)`.
 
-    ```python
-    DType(T)       .is_compatible_with(DType(T))        == True
-    ```
+    This function exists only for compatibility with TensorFlow 1.x, where it
+    additionally allows conversion from a reference type (used by
+    `tf.compat.v1.Variable`) to its base type.
 
     Args:
       other: A `DType` (or object that may be converted to a `DType`).
@@ -803,7 +829,10 @@ def as_dtype(type_value):
     TypeError: If `type_value` cannot be converted to a `DType`.
   """
   if isinstance(type_value, DType):
-    return _INTERN_TABLE[type_value.as_datatype_enum]
+    if type_value._handle_data is None:  # pylint:disable=protected-access
+      return _INTERN_TABLE[type_value.as_datatype_enum]
+    else:
+      return type_value
 
   if isinstance(type_value, np.dtype):
     try:

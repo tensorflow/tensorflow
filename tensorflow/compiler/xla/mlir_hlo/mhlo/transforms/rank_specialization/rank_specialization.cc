@@ -14,6 +14,10 @@ limitations under the License.
 
 ==============================================================================*/
 
+#include <algorithm>
+#include <memory>
+#include <string>
+#include <tuple>
 #include <utility>
 
 #include "llvm/ADT/EquivalenceClasses.h"
@@ -30,9 +34,9 @@ limitations under the License.
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Block.h"
-#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"

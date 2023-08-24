@@ -17,6 +17,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/errors.h"
@@ -42,22 +43,22 @@ TEST(TensorUtilsTest, QuantizationAxisAndShapeValid) {
                                              /*zero_points_shape=*/{},
                                              /*quantization_axis=*/-1));
 
-  EXPECT_TRUE(errors::IsInvalidArgument(
+  EXPECT_TRUE(absl::IsInvalidArgument(
       QuantizationAxisAndShapeValid(/*data_shape=*/{2, 3, 4},
                                     /*scales_shape=*/{3},
                                     /*zero_points_shape=*/{2},
                                     /*quantization_axis=*/1)));
-  EXPECT_TRUE(errors::IsInvalidArgument(
+  EXPECT_TRUE(absl::IsInvalidArgument(
       QuantizationAxisAndShapeValid(/*data_shape=*/{2, 3, 4},
                                     /*scales_shape=*/{3},
                                     /*zero_points_shape=*/{3},
                                     /*quantization_axis=*/3)));
-  EXPECT_TRUE(errors::IsInvalidArgument(
+  EXPECT_TRUE(absl::IsInvalidArgument(
       QuantizationAxisAndShapeValid(/*data_shape=*/{2, 3, 4},
                                     /*scales_shape=*/{3},
                                     /*zero_points_shape=*/{3},
                                     /*quantization_axis=*/-1)));
-  EXPECT_TRUE(errors::IsInvalidArgument(
+  EXPECT_TRUE(absl::IsInvalidArgument(
       QuantizationAxisAndShapeValid(/*data_shape=*/{2, 3, 4},
                                     /*scales_shape=*/{5},
                                     /*zero_points_shape=*/{5},
