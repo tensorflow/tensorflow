@@ -4617,10 +4617,11 @@ ENTRY test {
 
 class ParameterizedFp8GemmRewriteTest : public ParameterizedGemmRewriteTest {
  protected:
-  void CheckFp8IfOnHopper(absl::string_view hlo_text,
-                          ErrorSpec error_spec = ErrorSpec{1e-2, 1e-2}) {
-    if (!GetCudaComputeCapability().IsAtLeast(
-            se::CudaComputeCapability::HOPPER)) {
+  // Check the HLO runs and has an FP8 cuBLAS LT custom call on supported
+  // architectures (Ada, Hopper, and later).
+  void CheckFp8IfSupported(absl::string_view hlo_text,
+                           ErrorSpec error_spec = ErrorSpec{1e-2, 1e-2}) {
+    if (!GetCudaComputeCapability().IsAtLeast(8, 9)) {
       return;
     }
     EXPECT_TRUE(RunAndCompare(hlo_text, error_spec));
@@ -4637,14 +4638,14 @@ class ParameterizedFp8GemmRewriteTest : public ParameterizedGemmRewriteTest {
   }
 };
 
-TEST_P(ParameterizedFp8GemmRewriteTest, DoNotRewriteToF8OnPreHopper) {
-  if (GetCudaComputeCapability().IsAtLeast(se::CudaComputeCapability::HOPPER)) {
-    GTEST_SKIP() << "Test requires a pre-Hopper GPU.";
+TEST_P(ParameterizedFp8GemmRewriteTest, DoNotRewriteToF8OnPreAda) {
+  if (GetCudaComputeCapability().IsAtLeast(8, 9)) {
+    GTEST_SKIP() << "Test requires a pre-Ada GPU.";
   }
   const char* hlo_text = R"(
     HloModule test
 
-    ENTRY PreHopperTest {
+    ENTRY PreAdaTest {
       x = f8e4m3fn[16,32] parameter(0)
       y = f8e4m3fn[32,16] parameter(1)
       ROOT out = f8e4m3fn[16,16] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
@@ -4655,7 +4656,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, DoNotRewriteToF8OnPreHopper) {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-2, 1e-2}));
   MatchOptimizedHlo(hlo_text,
                     R"(
-; CHECK-LABEL: ENTRY %PreHopperTest (x: f8e4m3fn[16,32], y: f8e4m3fn[32,16]) -> f8e4m3fn[16,16] {
+; CHECK-LABEL: ENTRY %PreAdaTest (x: f8e4m3fn[16,32], y: f8e4m3fn[32,16]) -> f8e4m3fn[16,16] {
 ; CHECK:    {{.*}} = f16[16,16]{1,0} custom-call({{.*}}, {{.*}})
 ; CHECK-DAG:  custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>"
           )");
@@ -4721,7 +4722,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, UnscaledABUnscaledDF8) {
 
 )";
 
-  CheckFp8IfOnHopper(hlo_text);
+  CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(hlo_text,
                             GemmRewriter(se::CudaComputeCapability{
                                 se::CudaComputeCapability::HOPPER, 0}),
@@ -4774,7 +4775,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF8) {
 
 )";
 
-  CheckFp8IfOnHopper(hlo_text);
+  CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(hlo_text,
                             GemmRewriter(se::CudaComputeCapability{
                                 se::CudaComputeCapability::HOPPER, 0}),
@@ -4829,7 +4830,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDPaddedF8) {
 
 )";
 
-  CheckFp8IfOnHopper(hlo_text);
+  CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(hlo_text,
                             GemmRewriter(se::CudaComputeCapability{
                                 se::CudaComputeCapability::HOPPER, 0}),
@@ -4930,7 +4931,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDUnaryOpsF8) {
           }
 
 )";
-  CheckFp8IfOnHopper(hlo_text);
+  CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(hlo_text,
                             GemmRewriter(se::CudaComputeCapability{
                                 se::CudaComputeCapability::HOPPER, 0}),
@@ -4992,7 +4993,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, BatchedScaledABUnscaledDF8) {
 
 )";
 
-  CheckFp8IfOnHopper(hlo_text);
+  CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(hlo_text,
                             GemmRewriter(se::CudaComputeCapability{
                                 se::CudaComputeCapability::HOPPER, 0}),
@@ -5050,7 +5051,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABAlphaDF8) {
 
 )";
 
-  CheckFp8IfOnHopper(hlo_text);
+  CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(hlo_text,
                             GemmRewriter(se::CudaComputeCapability{
                                 se::CudaComputeCapability::HOPPER, 0}),
@@ -5109,7 +5110,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDReluActivationF8) {
 
 )";
 
-  CheckFp8IfOnHopper(hlo_text);
+  CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(hlo_text,
                             GemmRewriter(se::CudaComputeCapability{
                                 se::CudaComputeCapability::HOPPER, 0}),
@@ -5165,7 +5166,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, InvScaledABUnscaledDF8) {
 
 )";
 
-  CheckFp8IfOnHopper(hlo_text);
+  CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(hlo_text,
                             GemmRewriter(se::CudaComputeCapability{
                                 se::CudaComputeCapability::HOPPER, 0}),
@@ -5199,7 +5200,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDMatrixBiasF8) {
 
 )";
 
-  CheckFp8IfOnHopper(hlo_text);
+  CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(hlo_text,
                             GemmRewriter(se::CudaComputeCapability{
                                 se::CudaComputeCapability::HOPPER, 0}),
@@ -5258,7 +5259,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDMatrixBiasPaddedF8) {
 
 )";
 
-  CheckFp8IfOnHopper(hlo_text);
+  CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(hlo_text,
                             GemmRewriter(se::CudaComputeCapability{
                                 se::CudaComputeCapability::HOPPER, 0}),
@@ -5331,7 +5332,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDF8) {
 
 )";
 
-  CheckFp8IfOnHopper(hlo_text);
+  CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(hlo_text,
                             GemmRewriter(se::CudaComputeCapability{
                                 se::CudaComputeCapability::HOPPER, 0}),
@@ -5398,7 +5399,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABInvScaledDF8) {
 
 )";
 
-  CheckFp8IfOnHopper(hlo_text);
+  CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(hlo_text,
                             GemmRewriter(se::CudaComputeCapability{
                                 se::CudaComputeCapability::HOPPER, 0}),
@@ -5444,7 +5445,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDReluActivationF8) {
           }
 )";
 
-  CheckFp8IfOnHopper(hlo_text);
+  CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(hlo_text,
                             GemmRewriter(se::CudaComputeCapability{
                                 se::CudaComputeCapability::HOPPER, 0}),
@@ -5513,7 +5514,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDMatrixBiasF8) {
 
 )";
 
-  CheckFp8IfOnHopper(hlo_text, ErrorSpec{0.1, 0.1});
+  CheckFp8IfSupported(hlo_text, ErrorSpec{0.1, 0.1});
   RunAndFilecheckHloRewrite(hlo_text,
                             GemmRewriter(se::CudaComputeCapability{
                                 se::CudaComputeCapability::HOPPER, 0}),
@@ -5583,7 +5584,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDVectorBiasF8) {
 
 )";
 
-  CheckFp8IfOnHopper(hlo_text, ErrorSpec{0.1, 0.1});
+  CheckFp8IfSupported(hlo_text, ErrorSpec{0.1, 0.1});
   RunAndFilecheckHloRewrite(hlo_text,
                             GemmRewriter(se::CudaComputeCapability{
                                 se::CudaComputeCapability::HOPPER, 0}),
@@ -5651,7 +5652,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF32VectorBiasF8) {
 
 )";
 
-  CheckFp8IfOnHopper(hlo_text);
+  CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(hlo_text,
                             GemmRewriter(se::CudaComputeCapability{
                                 se::CudaComputeCapability::HOPPER, 0}),
@@ -5714,7 +5715,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
           }
 )";
 
-  CheckFp8IfOnHopper(hlo_text, ErrorSpec{2e-3, 0.});
+  CheckFp8IfSupported(hlo_text, ErrorSpec{2e-3, 0.});
   RunAndFilecheckHloRewrite(hlo_text,
                             GemmRewriter(se::CudaComputeCapability{
                                 se::CudaComputeCapability::HOPPER, 0}),
@@ -6284,7 +6285,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
           }
 
 )";
-  CheckFp8IfOnHopper(hlo_text, ErrorSpec{2e-3, 0.});
+  CheckFp8IfSupported(hlo_text, ErrorSpec{2e-3, 0.});
   RunAndFilecheckHloRewrite(hlo_text,
                             GemmRewriter(se::CudaComputeCapability{
                                 se::CudaComputeCapability::HOPPER, 0}),
@@ -6364,7 +6365,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDWithDAmaxF8) {
 
 )";
 
-  CheckFp8IfOnHopper(hlo_text);
+  CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(hlo_text,
                             GemmRewriter(se::CudaComputeCapability{
                                 se::CudaComputeCapability::HOPPER, 0}),
@@ -6444,7 +6445,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
 
 )";
 
-  CheckFp8IfOnHopper(hlo_text);
+  CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(hlo_text,
                             GemmRewriter(se::CudaComputeCapability{
                                 se::CudaComputeCapability::HOPPER, 0}),
@@ -6527,7 +6528,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
 
 )";
 
-  CheckFp8IfOnHopper(hlo_text);
+  CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(hlo_text,
                             GemmRewriter(se::CudaComputeCapability{
                                 se::CudaComputeCapability::HOPPER, 0}),
@@ -6620,7 +6621,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF8Parameterized) {
     replacements["<<Blayout>>"] = std::get<5>(combination);
     replacements["<<Olayout>>"] = std::get<6>(combination);
     const auto hlo_text = absl::StrReplaceAll(hlo_template, replacements);
-    CheckFp8IfOnHopper(hlo_text);
+    CheckFp8IfSupported(hlo_text);
 
     RunAndFilecheckHloRewrite(hlo_text,
                               GemmRewriter(se::CudaComputeCapability{
@@ -6689,7 +6690,7 @@ ENTRY f {
     replacements["<<Olayout>>"] = std::get<6>(combination);
 
     const auto hlo_text = absl::StrReplaceAll(hlo_template, replacements);
-    CheckFp8IfOnHopper(hlo_text);
+    CheckFp8IfSupported(hlo_text);
 
     RunAndFilecheckHloRewrite(hlo_text,
                               GemmRewriter(se::CudaComputeCapability{
@@ -6723,7 +6724,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF8TF32E5M2) {
 
 )";
 
-  CheckFp8IfOnHopper(hlo_text);
+  CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(hlo_text,
                             GemmRewriter(se::CudaComputeCapability{
                                 se::CudaComputeCapability::HOPPER, 0}),
