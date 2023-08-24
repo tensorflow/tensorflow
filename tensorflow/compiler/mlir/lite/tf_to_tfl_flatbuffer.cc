@@ -46,6 +46,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/stablehlo/serializer/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/op_stat_pass.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_tfl_pass.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_util.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/transforms.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
@@ -274,7 +275,8 @@ Status ConvertTFExecutorToStablehloFlatbuffer(
   mlir::odml::AddTFToStablehloPasses(pass_manager, /*skip_resize*/ true,
                                      /*smuggle_disallowed_ops*/ true);
   // Print out a detailed report of non-converted stats.
-  pass_manager.addPass(mlir::odml::createPrintOpStatsPass());
+  pass_manager.addPass(mlir::odml::createPrintOpStatsPass(
+      mlir::odml::GetAcceptedStableHLODialects()));
   mlir::odml::AddStablehloOptimizationPasses(pass_manager);
   if (toco_flags.has_quantization_options()) {
     stablehlo::quantization::AddQuantizationPasses(
@@ -408,6 +410,14 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
   }
 
   if (failed(GraphContainsStatefulPartitionedOp(module))) {
+    return statusHandler.ConsumeStatus();
+  }
+
+  pass_manager.clear();
+  // Print out a detailed report of ops that are not converted to TFL ops.
+  pass_manager.addPass(mlir::odml::createPrintOpStatsPass(
+      mlir::odml::GetAcceptedTFLiteDialects()));
+  if (failed(pass_manager.run(module))) {
     return statusHandler.ConsumeStatus();
   }
 

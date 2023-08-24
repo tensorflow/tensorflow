@@ -505,6 +505,7 @@ tf_cc_binary(
         ":check_accepted_ops_pass",
         ":op_stat_pass",
         ":stablehlo_tfl",
+        ":stablehlo_util",
         ":transforms",
         "//tensorflow/cc/saved_model:loader",
         "//tensorflow/compiler/mlir:init_mlir",
