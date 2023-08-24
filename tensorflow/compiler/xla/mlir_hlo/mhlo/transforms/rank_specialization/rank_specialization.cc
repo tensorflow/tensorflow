@@ -28,6 +28,7 @@ limitations under the License.
 #include "mhlo/transforms/passes.h"
 #include "mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -927,8 +928,9 @@ struct RankSpecializationToSCFPass
   }
 
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<mhlo::MhloDialect, chlo::ChloDialect, func::FuncDialect,
-                    shape::ShapeDialect, scf::SCFDialect>();
+    registry
+        .insert<mhlo::MhloDialect, chlo::ChloDialect, func::FuncDialect,
+                shape::ShapeDialect, scf::SCFDialect, cf::ControlFlowDialect>();
   }
 
   void runOnOperation() override {
