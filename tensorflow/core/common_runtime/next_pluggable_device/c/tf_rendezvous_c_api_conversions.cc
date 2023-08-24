@@ -97,6 +97,7 @@ RendezvousInterface::Args FromC(const TF_RendezvousArgsStruct& c_args) {
 void Destroy(TF_RendezvousArgsStruct* c_args) {
   Destroy(c_args->device_context);
   delete c_args->device_context;
+  c_args->device_context = nullptr;
 }
 
 TF_RendezvousParsedKey ToC(const RendezvousInterface::ParsedKey& key) {
@@ -116,7 +117,10 @@ RendezvousInterface::ParsedKey FromC(const TF_RendezvousParsedKey& c_key) {
   return key;
 }
 
-void Destroy(TF_RendezvousParsedKey* c_key) { delete[] c_key->full_key; }
+void Destroy(TF_RendezvousParsedKey* c_key) {
+  delete[] c_key->full_key;
+  c_key->full_key = nullptr;
+}
 
 namespace {
 
@@ -198,6 +202,7 @@ void Destroy(TF_RendezvousDoneCallbackImpl* c_on_done) {
         static_cast<std::function<void(TF_RendezvousDoneCallback_Params*)>*>(
             c_on_done->context);
     delete runner;
+    c_on_done->context = nullptr;
   }
 }
 
@@ -215,9 +220,13 @@ SendParamDeleter MakeSendParamDeleter() {
     Destroy(key);
     Destroy(args);
     delete params->key;
+    params->key = nullptr;
     delete params->args;
+    params->args = nullptr;
     TF_DeleteTensor(params->tensor);
+    params->tensor = nullptr;
     TF_DeleteStatus(params->status);
+    params->status = nullptr;
     delete params;
   };
 }
@@ -244,10 +253,15 @@ struct RecvParamDeleter {
     TF_RendezvousArgsStruct* args =
         const_cast<TF_RendezvousArgsStruct*>(params->args);
     Destroy(key);
-    Destroy(args);
-    Destroy(&params->on_done);
     delete params->key;
+    params->key = nullptr;
+
+    Destroy(args);
     delete params->args;
+    params->args = nullptr;
+
+    Destroy(&params->on_done);
+
     delete params;
   }
 };
@@ -268,7 +282,11 @@ DoneCallbackParamDeleter MakeDoneCallbackParamDeleter() {
     // delete params->recver_args;
     TF_Status* status = const_cast<TF_Status*>(params->status);
     TF_DeleteStatus(status);
+    params->status = nullptr;
+
     TF_DeleteTensor(const_cast<TF_Tensor*>(params->tensor));
+    params->tensor = nullptr;
+
     delete params;
   };
 }

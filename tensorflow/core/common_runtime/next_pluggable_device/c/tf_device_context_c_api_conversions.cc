@@ -92,6 +92,7 @@ void Destroy(TF_StatusCallback* callback) {
   if (callback->context != nullptr) {
     auto func = static_cast<tsl::StatusCallback*>(callback->context);
     delete func;
+    callback->context = nullptr;
   }
 }
 
@@ -100,9 +101,14 @@ void Destroy(TF_DeviceContext_CopyCPUTensorToDevice_Params* params) {
     return;
   }
   TF_DeleteTensor(params->cpu_tensor);
+  params->cpu_tensor = nullptr;
+
   TF_DeleteTensor(params->device_tensor);
+  params->device_tensor = nullptr;
+
   Destroy(params->done);
   delete params->done;
+  params->done = nullptr;
 }
 
 void Destroy(TF_DeviceContext_CopyDeviceTensorToCPU_Params* params) {
@@ -110,10 +116,17 @@ void Destroy(TF_DeviceContext_CopyDeviceTensorToCPU_Params* params) {
     return;
   }
   TF_DeleteTensor(params->device_tensor);
+  params->device_tensor = nullptr;
+
   delete[] params->tensor_name;
+  params->tensor_name = nullptr;
+
   TF_DeleteTensor(params->cpu_tensor);
+  params->cpu_tensor = nullptr;
+
   Destroy(params->done);
   delete params->done;
+  params->done = nullptr;
 }
 
 void Destroy(TF_DeviceContext_CopyTensorInSameDevice_Params* params) {
@@ -121,9 +134,14 @@ void Destroy(TF_DeviceContext_CopyTensorInSameDevice_Params* params) {
     return;
   }
   TF_DeleteTensor(params->input_tensor);
+  params->input_tensor = nullptr;
+
   TF_DeleteTensor(params->output_tensor);
+  params->output_tensor = nullptr;
+
   Destroy(params->done);
   delete params->done;
+  params->done = nullptr;
 }
 
 class TfCThunkDeviceContext final : public DeviceContext {
@@ -245,12 +263,11 @@ void CpuToDeviceThunk(void* context,
   tsl::StatusCallback done = [params, device_tensor,
                               cpu_tensor](absl::Status status) {
     delete cpu_tensor;
-    absl::Status tensor_status;
     // TODO: find a way to convert device tensor.
     // params->device_tensor = TF_TensorFromTensor(*device_tensor,
     //                                             &tensor_status);
     delete device_tensor;
-    FromC(params->done)(tensor_status);
+    FromC(params->done)(status);
   };
   CopyTF_TensorToTensor(params->cpu_tensor, cpu_tensor);
   bool sync_dst_compute = params->sync_dst_compute;
