@@ -14,10 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include <utility>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_utils.h"
@@ -38,8 +41,6 @@ namespace gpu {
 namespace {
 using tfrt_stub::FallbackTensor;
 
-constexpr char kGpuDeviceName[] = "/device:GPU:0";
-
 // Transfers `tensor` from `src_device` to `dst_device`.
 tfrt::AsyncValueRef<FallbackTensor> TransferTensor(
     const tfrt::ExecutionContext& exec_ctx, const FallbackTensor& tensor,
@@ -51,7 +52,8 @@ tfrt::AsyncValueRef<FallbackTensor> TransferTensor(
 
 struct Devices {
   Device* cpu_device = nullptr;
-  Device* gpu_device = nullptr;
+  // A map from Device ID to the Device, which should contain IDs [0, num_gpus).
+  absl::flat_hash_map<int, Device*> gpu_devices;
 };
 
 // Gets CPU and GPU devices from the fallback state. Currently, we only consider
@@ -69,12 +71,30 @@ Status GetDevices(const tfrt::ExecutionContext& exec_ctx, Devices* devices) {
     return absl::InternalError(
         "Fallback request state must have a valid host cpu device.");
   }
-  TF_RETURN_IF_ERROR(fallback_request_state->device_manager().LookupDevice(
-      kGpuDeviceName, &devices->gpu_device));
+  for (Device* device :
+       fallback_request_state->device_manager().ListDevices()) {
+    if (device->device_type() == DEVICE_GPU) {
+      if (!devices->gpu_devices.try_emplace(device->parsed_name().id, device)
+               .second) {
+        return absl::InternalError(absl::StrCat(
+            "A device with the same device ID already exists when adding ",
+            device->name()));
+      }
+    }
+  }
+  if (devices->gpu_devices.empty()) {
+    return absl::InternalError("No GPU device is found.");
+  }
+  for (const auto& [id, device] : devices->gpu_devices) {
+    if (id >= devices->gpu_devices.size()) {
+      return absl::InternalError("Device IDs are not consecutive.");
+    }
+  }
   return OkStatus();
 }
 
 // Kernel for transferring `tensor` from host to device.
+// This only supports a single GPU device.
 tfrt::AsyncValueRef<tfrt_stub::FallbackTensor> TransferToDevice(
     const tfrt_stub::FallbackTensor& tensor,
     const tfrt::ExecutionContext& exec_ctx) {
@@ -84,10 +104,11 @@ tfrt::AsyncValueRef<tfrt_stub::FallbackTensor> TransferToDevice(
     return tfrt::MakeErrorAsyncValueRef(absl::InternalError(status.message()));
   }
   return TransferTensor(exec_ctx, tensor, devices.cpu_device,
-                        devices.gpu_device);
+                        devices.gpu_devices.at(0));
 }
 
 // Kernel for transferring `tensor` from device to host.
+// This only supports a single GPU device.
 tfrt::AsyncValueRef<tfrt_stub::FallbackTensor> TransferFromDevice(
     const tfrt_stub::FallbackTensor& tensor,
     const tfrt::ExecutionContext& exec_ctx) {
@@ -96,12 +117,13 @@ tfrt::AsyncValueRef<tfrt_stub::FallbackTensor> TransferFromDevice(
   if (!status.ok()) {
     return tfrt::MakeErrorAsyncValueRef(absl::InternalError(status.message()));
   }
-  return TransferTensor(exec_ctx, tensor, devices.gpu_device,
+  return TransferTensor(exec_ctx, tensor, devices.gpu_devices.at(0),
                         devices.cpu_device);
 }
 
 // Kernel for transferring `variable` from host to device. If it has been
 // transferred, the variable will be returned from the variable cache.
+// This only supports a single GPU device.
 tfrt::AsyncValueRef<tfrt_stub::FallbackTensor> MaybeTransferVariable(
     const tfrt_stub::FallbackTensor& variable,
     const tfrt::ExecutionContext& exec_ctx) {
@@ -124,7 +146,7 @@ tfrt::AsyncValueRef<tfrt_stub::FallbackTensor> MaybeTransferVariable(
     return tfrt::MakeErrorAsyncValueRef(absl::InternalError(status.message()));
   }
   auto device_variable = TransferTensor(exec_ctx, variable, devices.cpu_device,
-                                        devices.gpu_device);
+                                        devices.gpu_devices.at(0));
   if (device_variable.IsError()) return device_variable;
 
   vars_table->AddOrUpdateDeviceVariable(variable, kCopyIndex,
