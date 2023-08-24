@@ -241,6 +241,29 @@ diff --ruN a/stablehlo/stablehlo/dialect/CMakeLists.txt b/stablehlo/stablehlo/di
  )
  
  add_mlir_dialect_library(StablehloRegister
+diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.h b/stablehlo/stablehlo/dialect/ChloOps.h
+--- stablehlo/stablehlo/dialect/ChloOps.h
++++ stablehlo/stablehlo/dialect/ChloOps.h
+@@ -19,6 +19,7 @@
+ 
+ #include "llvm/ADT/APFloat.h"
+ #include "llvm/ADT/StringRef.h"
++#include "mlir/Bytecode/BytecodeOpInterface.h"
+ #include "mlir/Dialect/Quant/QuantTypes.h"
+ #include "mlir/IR/Attributes.h"
+ #include "mlir/IR/Builders.h"
+diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.td b/stablehlo/stablehlo/dialect/ChloOps.td
+--- stablehlo/stablehlo/dialect/ChloOps.td
++++ stablehlo/stablehlo/dialect/ChloOps.td
+@@ -53,6 +53,8 @@
+     and provide conversion patterns to fully materialize into lower level
+     dialects.
+   }];
++
++  let usePropertiesForAttributes = 0;
+ }
+ 
+ class CHLO_Op<string mnemonic, list<Trait> traits> :
 diff --ruN a/stablehlo/stablehlo/dialect/ExperimentalOps.cpp b/stablehlo/stablehlo/dialect/ExperimentalOps.cpp
 --- stablehlo/stablehlo/dialect/ExperimentalOps.cpp
 +++ stablehlo/stablehlo/dialect/ExperimentalOps.cpp
@@ -980,6 +1003,62 @@ diff --ruN a/stablehlo/stablehlo/dialect/ExperimentalOps.h b/stablehlo/stablehlo
 +}  // namespace mlir
 +
 +#endif  // STABLEHLO_DIALECT_EXPERIMENTAL_OPS_H
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/dialect/StablehloOps.td
+--- stablehlo/stablehlo/dialect/StablehloOps.td
++++ stablehlo/stablehlo/dialect/StablehloOps.td
+@@ -37,6 +37,7 @@
+ 
+   let useDefaultAttributePrinterParser = 0;
+   let useDefaultTypePrinterParser = 0;
++  let usePropertiesForAttributes = 0;
+ }
+ 
+ class StableHLO_Op<string mnemonic, list<Trait> traits> :
+diff --ruN a/stablehlo/stablehlo/dialect/VhloDialect.td b/stablehlo/stablehlo/dialect/VhloDialect.td
+--- stablehlo/stablehlo/dialect/VhloDialect.td
++++ stablehlo/stablehlo/dialect/VhloDialect.td
+@@ -36,6 +36,7 @@
+ 
+   let useDefaultAttributePrinterParser = 0;
+   let useDefaultTypePrinterParser = 0;
++  let usePropertiesForAttributes = 0;
+ }
+ 
+ #endif
+diff --ruN a/stablehlo/stablehlo/reference/InterpreterOps.td b/stablehlo/stablehlo/reference/InterpreterOps.td
+--- stablehlo/stablehlo/reference/InterpreterOps.td
++++ stablehlo/stablehlo/reference/InterpreterOps.td
+@@ -30,6 +30,8 @@
+     Dialect to implement interpreter-specific functionality, outside of the
+     StableHLO spec.
+   }];
++
++  let usePropertiesForAttributes = 0;
+ }
+ 
+ def Interpreter_ArrayOfStrArrayAttr : TypedArrayAttrBase<StrArrayAttr,
+diff --ruN a/stablehlo/stablehlo/tests/CheckOps.h b/stablehlo/stablehlo/tests/CheckOps.h
+--- stablehlo/stablehlo/tests/CheckOps.h
++++ stablehlo/stablehlo/tests/CheckOps.h
+@@ -16,6 +16,7 @@
+ #ifndef STABLEHLO_DIALECT_CHECKOPS_H_
+ #define STABLEHLO_DIALECT_CHECKOPS_H_
+ 
++#include "mlir/Bytecode/BytecodeOpInterface.h"
+ #include "mlir/Dialect/Quant/QuantTypes.h"
+ #include "mlir/IR/BuiltinAttributes.h"
+ #include "mlir/IR/BuiltinTypes.h"
+diff --ruN a/stablehlo/stablehlo/tests/CheckOps.td b/stablehlo/stablehlo/tests/CheckOps.td
+--- stablehlo/stablehlo/tests/CheckOps.td
++++ stablehlo/stablehlo/tests/CheckOps.td
+@@ -32,6 +32,7 @@
+ 
+   let useDefaultAttributePrinterParser = 0;
+   let useDefaultTypePrinterParser = 0;
++  let usePropertiesForAttributes = 0;
+ }
+ 
+ //===----------------------------------------------------------------------===//
 diff --ruN a/stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir b/stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir
 --- stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir
 +++ stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir
