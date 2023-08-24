@@ -62,6 +62,7 @@ limitations under the License.
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -1431,8 +1432,8 @@ StatusOr<LaunchDimensions> TritonWrapper(
   mlir_context.loadDialect<mt::TritonDialect>();
   mlir::OpBuilder b(&mlir_context);
   auto loc = mlir::NameLoc::get(b.getStringAttr(hlo_computation->name()));
-  auto triton_module = mlir::ModuleOp::create(loc);
-  b.setInsertionPointToEnd(triton_module.getBody());
+  mlir::OwningOpRef<mlir::ModuleOp> triton_module = mlir::ModuleOp::create(loc);
+  b.setInsertionPointToEnd(triton_module->getBody());
 
   VLOG(3) << hlo_computation->ToString(HloPrintOptions::ShortParsable());
   VLOG(2) << config.ShortDebugString();
@@ -1469,8 +1470,8 @@ StatusOr<LaunchDimensions> TritonWrapper(
                                 device_info.shared_memory_per_block_optin));
 
   b.create<mt::ReturnOp>(loc);
-  VLOG(6) << llvm_ir::DumpToString(triton_module);
-  CHECK(mlir::succeeded(mlir::verify(triton_module)));
+  VLOG(6) << llvm_ir::DumpToString(*triton_module);
+  CHECK(mlir::succeeded(mlir::verify(*triton_module)));
 
   // Compile Triton kernel to LLVM.
   mlir::PassManager pm(&mlir_context);
@@ -1518,7 +1519,7 @@ StatusOr<LaunchDimensions> TritonWrapper(
   // llvm::Linker::linkModules() segfaults if we don't strip locations.
   pm.addPass(mlir::createStripDebugInfoPass());
 
-  bool succeeded = mlir::succeeded(pm.run(triton_module));
+  bool succeeded = mlir::succeeded(pm.run(*triton_module));
 
   if (log_stream.has_value()) {
     log_stream->flush();
@@ -1529,7 +1530,8 @@ StatusOr<LaunchDimensions> TritonWrapper(
   }
 
   const int shared_mem_bytes =
-      triton_module->getAttrOfType<mlir::IntegerAttr>("triton_gpu.shared")
+      (*triton_module)
+          ->getAttrOfType<mlir::IntegerAttr>("triton_gpu.shared")
           .getInt();
   VLOG(2) << "Shared memory usage: " << shared_mem_bytes << " B";
   if (shared_mem_bytes > device_info.shared_memory_per_block_optin) {
@@ -1539,7 +1541,7 @@ StatusOr<LaunchDimensions> TritonWrapper(
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<llvm::Module> ll_triton_module,
                       TranslateLLVMToLLVMIR(&llvm_module->getContext(),
-                                            triton_module, libdevice_path));
+                                            *triton_module, libdevice_path));
   LogAndVerify(ll_triton_module.get());
 
   // Integrate LLVM matmul kernel into XLA's LLVM module.
