@@ -1568,6 +1568,8 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
     gpu_executable->set_ir_module_string(ir_module_string_before_opt);
   }
 
+  IncrementCompiledProgramsCount();
+
   // Dump computation proto state and buffer assignment for
   // CompiledMemoryAnalysis.
   auto hlo_proto = std::make_unique<HloProto>();

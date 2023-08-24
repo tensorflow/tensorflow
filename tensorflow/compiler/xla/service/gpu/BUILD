@@ -2571,7 +2571,7 @@ cc_library(
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/profiler/lib:traceme",
-    ]),
+    ]) + ["//tensorflow/tsl/lib/monitoring:counter"],
 )
 
 xla_cc_test(
@@ -2580,6 +2580,7 @@ xla_cc_test(
     tags = tf_cuda_tests_tags(),
     deps = [
         ":horizontal_loop_fusion",
+        ":metrics",
         "//tensorflow/compiler/xla:autotune_results_proto_cc",
         "//tensorflow/compiler/xla/hlo/utils:hlo_matchers",
         "//tensorflow/compiler/xla/service:gpu_plugin",
@@ -3930,6 +3931,7 @@ cc_library(
     srcs = ["metrics.cc"],
     hdrs = ["metrics.h"],
     deps = [
+        "//tensorflow/tsl/lib/monitoring:counter",
         "//tensorflow/tsl/lib/monitoring:sampler",
     ],
 )
