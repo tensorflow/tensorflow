@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/onednn_memory_util.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/tsl/platform/cpu_info.h"
 
 namespace xla {
 namespace cpu {
@@ -42,6 +43,20 @@ Status ValidateDotDimensionNumbers(const DotDimensionNumbers& dim_numbers) {
   TF_RET_CHECK(
       absl::c_equal(batch_dim_numbers, dim_numbers.rhs_batch_dimensions()));
   return OkStatus();
+}
+
+bool IsSupportedType(xla::PrimitiveType dtype) {
+  using namespace tsl::port;
+  switch (dtype) {
+    case F32:
+      return true;
+    case BF16:
+      return TestCPUFeature(CPUFeature::AVX512_BF16) ||
+             TestCPUFeature(CPUFeature::AMX_BF16);
+    default:
+      return false;
+  }
+  return false;
 }
 
 }  // namespace
@@ -67,9 +82,7 @@ class OneDnnRewriterVisitor : public DfsHloRewriteVisitor {
     // is over only 1 dimension (a.k.a. K dimension in matrix-multiplication
     // parlance). We also restrict that batch dimensions of the operands
     // matches.
-    if (auto dtype = dot_instr->shape().element_type();
-        !(dtype == F32 || dtype == BF16))
-      return OkStatus();
+    if (!IsSupportedType(dot_instr->shape().element_type())) return OkStatus();
     auto dot_dim_numbers = dot_instr->dot_dimension_numbers();
     TF_RETURN_IF_ERROR(ValidateDotDimensionNumbers(dot_dim_numbers));
     const Shape& lhs_shape = dot_instr->operand(0)->shape();
