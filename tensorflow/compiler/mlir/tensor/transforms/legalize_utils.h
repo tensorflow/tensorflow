@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSOR_TRANSFORMS_LEGALIZE_UTILS_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSOR_TRANSFORMS_LEGALIZE_UTILS_H_
 
-#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 
 
 namespace mlir {
@@ -26,14 +26,14 @@ namespace tensor {
 // op to cast it to a ranked tensor with the given number of dimensions. If the
 // given tensor is already ranked, the same tensor is returned. The given value
 // is expected to be of type tensor.
-Value castUnrankedTensor(OpBuilder& builder, Location loc, Value tensor,
+Value castUnrankedTensor(ImplicitLocOpBuilder& builder, Value tensor,
                          int rank);
 
-// Process argument 'shape' to eliminate a possible occurrence of -1. If
-// found, it is replaced with the total size of the 'input' tensor divided by
+// Process argument 'shape' to eliminate a possible occurrence of a placeholder.
+// If found, it is replaced with the total size of the 'input' tensor divided by
 // all remaining components of 'shape'.
-Value substituteShapeWildcard(OpBuilder& builder, Location loc, Value input,
-                              Value shape);
+Value substituteShapePlaceholder(ImplicitLocOpBuilder& builder, Value input,
+                                 Value shape);
 
 }  // namespace tensor
 }  // namespace mlir

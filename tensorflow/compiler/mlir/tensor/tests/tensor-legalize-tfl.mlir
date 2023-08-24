@@ -15,12 +15,12 @@ func.func @test_reshape_constant(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
 
 // -----
 
-// CHECK-LABEL: test_reshape_constant_with_wildcard
+// CHECK-LABEL: test_reshape_constant_with_placeholder
 // CHECK-SAME: %[[INPUT:.*]]: tensor<13x21x3xf32>
 // CHECK: %[[SHAPE:.*]] = arith.constant dense<[1, 819]> : tensor<2xi32>
 // CHECK: %[[RESULT:.*]] = tensor.reshape %[[INPUT]](%[[SHAPE]]) : (tensor<13x21x3xf32>, tensor<2xi32>) -> tensor<*xf32>
 // CHECK: return %[[RESULT]] : tensor<*xf32>
-func.func @test_reshape_constant_with_wildcard(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
+func.func @test_reshape_constant_with_placeholder(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
   %cst = arith.constant dense<[1, -1]> : tensor<2xi32>
   %0 = "tfl.reshape"(%arg0, %cst) : (tensor<13x21x3xf32>, tensor<2xi32>) -> tensor<*xf32>
   func.return %0 : tensor<*xf32>
@@ -52,9 +52,9 @@ func.func @test_reshape_constant_with_wildcard(%arg0: tensor<13x21x3xf32>) -> te
 // CHECK:   %[[INPUT_SIZE_I32:.*]] = arith.index_cast %[[INPUT_SIZE]] : index to i32
 // CHECK:   %[[SHAPE_PRODUCT_ABS:.*]] = math.absi %[[SHAPE_PRODUCT]] : i32
 // CHECK:   %[[WILCARD_SUBSTITUTION:.*]] = arith.divsi %[[INPUT_SIZE_I32]], %[[SHAPE_PRODUCT_ABS]] : i32
-// CHECK:   %[[WILDCARD_SUBSTITUTION_SPLAT:.*]] = tensor.splat %[[WILCARD_SUBSTITUTION]] : tensor<2xi32>
-// CHECK:   %[[WILDCARD_MASK:.*]] = arith.cmpi eq, %[[SHAPE]], %[[CONST_MINUS_1_SPLAT]] : tensor<2xi32>
-// CHECK:   %[[SHAPE_RESOLVED_TEMP:.*]] = arith.select %[[WILDCARD_MASK]], %[[WILDCARD_SUBSTITUTION_SPLAT]], %[[SHAPE]] : tensor<2xi1>, tensor<2xi32>
+// CHECK:   %[[PLACEHOLDER_SUBSTITUTION_SPLAT:.*]] = tensor.splat %[[WILCARD_SUBSTITUTION]] : tensor<2xi32>
+// CHECK:   %[[PLACEHOLDER_MASK:.*]] = arith.cmpi eq, %[[SHAPE]], %[[CONST_MINUS_1_SPLAT]] : tensor<2xi32>
+// CHECK:   %[[SHAPE_RESOLVED_TEMP:.*]] = arith.select %[[PLACEHOLDER_MASK]], %[[PLACEHOLDER_SUBSTITUTION_SPLAT]], %[[SHAPE]] : tensor<2xi1>, tensor<2xi32>
 // CHECK:   scf.yield %[[SHAPE_RESOLVED_TEMP]] : tensor<2xi32>
 // CHECK: } else {
 // CHECK:   scf.yield %[[SHAPE]] : tensor<2xi32>
@@ -94,14 +94,14 @@ func.func @test_reshape_variable(%arg0: tensor<?xf32>, %arg1: tensor<2xi32>) -> 
 // CHECK:   %[[INPUT_SIZE_I32:.*]] = arith.index_cast %[[INPUT_SIZE]] : index to i32
 // CHECK:   %[[SHAPE_PRODUCT_ABS:.*]] = math.absi %[[SHAPE_PRODUCT]] : i32
 // CHECK:   %[[SHAPE_SIZE:.*]] = tensor.dim %[[SHAPE_CAST]], %[[CONST_0]] : tensor<?xi32>
-// CHECK:   %[[WILDCARD_SUBSTITUTION:.*]] = arith.divsi %[[INPUT_SIZE_I32]], %[[SHAPE_PRODUCT_ABS]] : i32
-// CHECK:   %[[WILDCARD_SUBSTITUTION_TENSOR:.*]] = tensor.from_elements %[[WILDCARD_SUBSTITUTION]] : tensor<i32>
-// CHECK:   %[[WILDCARD_SUBSTITUTION_EMPTY:.*]] = tensor.empty(%[[SHAPE_SIZE]]) : tensor<?xi32>
-// CHECK:   %[[WILDCARD_SUBSTITUTION_SPLAT:.*]] = linalg.broadcast ins(%[[WILDCARD_SUBSTITUTION_TENSOR]] : tensor<i32>) outs(%[[WILDCARD_SUBSTITUTION_EMPTY]] : tensor<?xi32>) dimensions = [0]
+// CHECK:   %[[PLACEHOLDER_SUBSTITUTION:.*]] = arith.divsi %[[INPUT_SIZE_I32]], %[[SHAPE_PRODUCT_ABS]] : i32
+// CHECK:   %[[PLACEHOLDER_SUBSTITUTION_TENSOR:.*]] = tensor.from_elements %[[PLACEHOLDER_SUBSTITUTION]] : tensor<i32>
+// CHECK:   %[[PLACEHOLDER_SUBSTITUTION_EMPTY:.*]] = tensor.empty(%[[SHAPE_SIZE]]) : tensor<?xi32>
+// CHECK:   %[[PLACEHOLDER_SUBSTITUTION_SPLAT:.*]] = linalg.broadcast ins(%[[PLACEHOLDER_SUBSTITUTION_TENSOR]] : tensor<i32>) outs(%[[PLACEHOLDER_SUBSTITUTION_EMPTY]] : tensor<?xi32>) dimensions = [0]
 // CHECK:   %[[MINUS_1_EMPTY:.*]] = tensor.empty(%[[SHAPE_SIZE]]) : tensor<?xi32>
 // CHECK:   %[[MINUS_1_SPLAT:.*]] = linalg.broadcast ins(%[[CONST_MINUS_1]] : tensor<i32>) outs(%[[MINUS_1_EMPTY]] : tensor<?xi32>) dimensions = [0]
 // CHECK:   %[[SHAPE_MASK:.*]] = arith.cmpi eq, %[[SHAPE_CAST]], %[[MINUS_1_SPLAT]] : tensor<?xi32>
-// CHECK:   %[[RESOLVED_SHAPE_TEMP:.*]] = arith.select %[[SHAPE_MASK]], %[[WILDCARD_SUBSTITUTION_SPLAT]], %[[SHAPE_CAST]] : tensor<?xi1>, tensor<?xi32>
+// CHECK:   %[[RESOLVED_SHAPE_TEMP:.*]] = arith.select %[[SHAPE_MASK]], %[[PLACEHOLDER_SUBSTITUTION_SPLAT]], %[[SHAPE_CAST]] : tensor<?xi1>, tensor<?xi32>
 // CHECK:   scf.yield %[[RESOLVED_SHAPE_TEMP]] : tensor<?xi32>
 // CHECK: } else {
 // CHECK:   scf.yield %[[SHAPE_CAST]] : tensor<?xi32>

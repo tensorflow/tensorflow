@@ -58,10 +58,11 @@ LogicalResult ConvertTFLReshapeOp::matchAndRewrite(
   Type result_type = tfl_reshape_op.getResult().getType();
 
   // If shape is unranked, cast it to a 1D tensor
-  shape = castUnrankedTensor(rewriter, op->getLoc(), shape, 1);
+  auto builder = ImplicitLocOpBuilder(op->getLoc(), rewriter);
+  shape = castUnrankedTensor(builder, shape, 1);
 
   // Substitute a possible value set to -1 in the target shape
-  shape = substituteShapeWildcard(rewriter, op->getLoc(), input, shape);
+  shape = substituteShapePlaceholder(builder, input, shape);
 
   // Translate op
   rewriter.replaceOpWithNewOp<tensor::ReshapeOp>(tfl_reshape_op, result_type,
