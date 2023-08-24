@@ -3515,11 +3515,14 @@ void WhileRegionOp::getSuccessorRegions(
   } else if (index && *index == 1) {
     // 'body' branches back to 'cond'.
     regions.push_back(
-        RegionSuccessor(&getCond(), getBody().front().getArguments()));
+        RegionSuccessor(&getCond(), getCond().front().getArguments()));
   } else if (!index) {
-    // The parent branches to 'cond'.
+    // The parent branches to 'cond'. It is also considered to branch to `body`
+    // in case the terminator of `cond` doesn't forward the arguments of `cond`.
     regions.push_back(
-        RegionSuccessor(&getCond(), getBody().front().getArguments()));
+        RegionSuccessor(&getCond(), getCond().front().getArguments()));
+    regions.push_back(
+        RegionSuccessor(&getBody(), getBody().front().getArguments()));
   }
 }
 
