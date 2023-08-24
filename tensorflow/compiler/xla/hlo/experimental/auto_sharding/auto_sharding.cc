@@ -2707,7 +2707,31 @@ void SetHloShardingPostProcessing(
       }
     } else if (inst->opcode() == HloOpcode::kOutfeed) {
       // Outfeed operand shardings are handled in downstream passes and so we
-      // ignore outfeed ops here.
+      // ignore outfeed ops here. However, we need to ensure that outfeed ops
+      // which have user shardings have their shardings restored at the end. If
+      // not, this can lead to errors downstream in the spmd_partitioner pass.
+      auto preserved_sharding_iter = preserve_shardings->find(inst->name());
+      if (preserved_sharding_iter != preserve_shardings->end()) {
+        const auto& preserved_sharding = preserved_sharding_iter->second;
+        if (preserved_sharding.size() > 1) {
+          std::vector<Shape> tuple_elements_shape(
+              inst->operand(0)->shape().tuple_shapes().begin(),
+              inst->operand(0)->shape().tuple_shapes().end());
+          tuple_elements_shape.push_back(inst->operand(1)->shape());
+          Shape output_tuple_sharding_shape =
+              ShapeUtil::MakeTupleShape(tuple_elements_shape);
+          ShapeTree<HloSharding> output_tuple_sharding(
+              output_tuple_sharding_shape, Undefined());
+          size_t i = 0;
+          for (auto& leaf : output_tuple_sharding.leaves()) {
+            leaf.second = preserved_sharding.at(i++);
+          }
+          inst->set_sharding(HloSharding::Tuple(output_tuple_sharding));
+        } else {
+          inst->set_sharding(preserved_sharding.at(0));
+        }
+      }
+
       continue;
     } else {
       if (inst->shape().IsTuple()) {
@@ -3011,6 +3035,14 @@ absl::flat_hash_map<std::string, std::vector<HloSharding>> SaveUserShardings(
     auto inst = module->entry_computation()->root_instruction();
     SaveShardingForInstruction(preserve_shardings, inst);
   }
+  for (const auto computation : module->computations()) {
+    for (const auto inst : computation->instructions()) {
+      if (inst->opcode() == HloOpcode::kOutfeed) {
+        SaveShardingForInstruction(preserve_shardings, inst);
+      }
+    }
+  }
+
   if (VLOG_IS_ON(1)) {
     LOG(INFO) << "User shardings that need to be kept (printing only the 1st "
                  "elemenet of tuples): ";
@@ -3138,30 +3170,30 @@ void RecoverShardingsFromPartialMesh(
   const std::vector<HloInstruction*>& instructions = sequence.instructions();
 
   for (HloInstruction* ins : instructions) {
-    if (preserve_shardings.find(ins->name()) != preserve_shardings.end()) {
-      if (ins->shape().IsTuple()) {
-        ShapeTree<HloSharding> output_tuple_sharding(ins->shape(), Undefined());
-        size_t i = 0;
-        for (auto& leaf : output_tuple_sharding.leaves()) {
-          leaf.second = preserve_shardings.at(ins->name()).at(i++);
+    auto preserved_sharding_iter = preserve_shardings.find(ins->name());
+    if (preserved_sharding_iter != preserve_shardings.end()) {
+      const auto& preserved_sharding = preserved_sharding_iter->second;
+
+      if (ins->shape().IsTuple() || (ins->opcode() == HloOpcode::kOutfeed &&
+                                     preserved_sharding.size() > 1)) {
+        Shape output_tuple_sharding_shape = ins->shape();
+        if (ins->opcode() == HloOpcode::kOutfeed) {
+          std::vector<Shape> tuple_elements_shape(
+              ins->operand(0)->shape().tuple_shapes().begin(),
+              ins->operand(0)->shape().tuple_shapes().end());
+          tuple_elements_shape.push_back(ins->operand(1)->shape());
+          output_tuple_sharding_shape =
+              ShapeUtil::MakeTupleShape(tuple_elements_shape);
         }
-        ins->set_sharding(HloSharding::Tuple(output_tuple_sharding));
-      } else if (ins->opcode() == HloOpcode::kOutfeed &&
-                 ins->sharding().IsTuple()) {
-        std::vector<Shape> tuple_elements_shape(
-            ins->operand(0)->shape().tuple_shapes().begin(),
-            ins->operand(0)->shape().tuple_shapes().end());
-        tuple_elements_shape.push_back(ins->operand(1)->shape());
-        Shape sharding_shape = ShapeUtil::MakeTupleShape(tuple_elements_shape);
-        ShapeTree<HloSharding> output_tuple_sharding(sharding_shape,
-                                                     Undefined());
+        ShapeTree<HloSharding> output_tuple_sharding(
+            output_tuple_sharding_shape, Undefined());
         size_t i = 0;
         for (auto& leaf : output_tuple_sharding.leaves()) {
-          leaf.second = preserve_shardings.at(ins->name()).at(i++);
+          leaf.second = preserved_sharding.at(i++);
         }
         ins->set_sharding(HloSharding::Tuple(output_tuple_sharding));
       } else {
-        ins->set_sharding(preserve_shardings.at(ins->name()).at(0));
+        ins->set_sharding(preserved_sharding.at(0));
       }
     }
   }

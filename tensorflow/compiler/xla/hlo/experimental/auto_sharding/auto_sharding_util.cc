@@ -986,7 +986,6 @@ bool IsDivisible(const HloInstruction* ins, const Array<int64_t>& device_mesh,
   return true;
 }
 
-
 // Set sharding, and apply transpose if necessary.
 void SetSharding(HloInstruction* to_split, const HloSharding& output_spec,
                  const HloInstruction* ref_inst,
@@ -1015,8 +1014,6 @@ bool IsAlwaysReplicated(const HloInstruction* inst) {
   }
   return false;
 }
-
-
 
 // Try to reduce the boundary set to its common ancestor
 void TryReduceWithCommonAncestor(StableHashSet<HloInstruction*>& replicated_set,
@@ -1490,6 +1487,11 @@ void FixMixedMeshShapeResharding(HloInstruction* inst, int operand_num,
                                  const Array<int64_t>& device_mesh,
                                  ReshardingCache* resharding_cache) {
   HloInstruction* operand = inst->mutable_operand(operand_num);
+  if (operand->opcode() == HloOpcode::kOutfeed) {
+    return;
+  }
+
+  CHECK(operand->has_sharding()) << inst->name() << " " << operand->name();
   if (operand->sharding() == dst_sharding) {
     return;
   }
