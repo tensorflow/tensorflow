@@ -203,7 +203,7 @@ template <typename T>
 inline void AddBroadcast(const T* broadcast_data, const T* input_data,
                          T* output_data, size_t size, T activation_min,
                          T activation_max) {
-  for (int c = 0; c < size; ++c) {
+  for (size_t c = 0; c < size; ++c) {
     output_data[c] = ActivationFunctionWithMinMax<T>(
         broadcast_data[0] + input_data[c], activation_min, activation_max);
   }
@@ -213,7 +213,7 @@ template <typename T>
 inline void AddElementwise(const T* input1_data, const T* input2_data,
                            T* output_data, size_t size, T activation_min,
                            T activation_max) {
-  for (int c = 0; c < size; ++c) {
+  for (size_t c = 0; c < size; ++c) {
     output_data[c] = ActivationFunctionWithMinMax<T>(
         input1_data[c] + input2_data[c], activation_min, activation_max);
   }
@@ -227,7 +227,7 @@ inline void BroadcastAddRecursiveDimensions(
     T activation_min, T activation_max, const T* input1_data,
     const T* input2_data, T* output_data) {
   if (dimension > 0) {
-    for (int c = 0; c < compressed_output_shape[dimension]; ++c) {
+    for (size_t c = 0; c < compressed_output_shape[dimension]; ++c) {
       size_t input1_offset_c = *input1_offset_p;
       size_t input2_offset_c = *input2_offset_p;
       BroadcastAddRecursiveDimensions(
@@ -412,7 +412,7 @@ inline void BroadcastAddRecursiveDimensions(
     size_t* compressed_input1_stride, size_t* compressed_input2_stride,
     size_t* compressed_output_shape, const T* input1_data, const T* input2_data,
     T* output_data) {
-  for (int c = 0; c < compressed_output_shape[dimension]; ++c) {
+  for (size_t c = 0; c < compressed_output_shape[dimension]; ++c) {
     if (dimension > 0) {
       size_t input1_offset_c = *input1_offset_p;
       size_t input2_offset_c = *input2_offset_p;
