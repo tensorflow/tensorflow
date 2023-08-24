@@ -1334,6 +1334,8 @@ cc_library(
         "//tensorflow/lite/tools/optimize:quantize_weights",
         "//tensorflow/lite/tools/optimize:reduced_precision_support",
         "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",

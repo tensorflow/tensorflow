@@ -323,7 +323,10 @@ int main(int argc, char **argv) {
   auto status = tensorflow::ConvertTFExecutorToTFLOrFlatbuffer(
       module.value().get(), output_mlir, toco_flags, pass_config, tags,
       /*saved_model_dir=*/"", session, &result, serialize_stablehlo_ops);
-  if (!status.ok()) return kTrFailure;
+  if (!status.ok()) {
+    llvm::errs() << status.message() << '\n';
+    return kTrFailure;
+  }
 
   std::string error_msg;
   auto output = mlir::openOutputFile(output_file_name, &error_msg);

@@ -23,6 +23,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
@@ -296,7 +298,12 @@ Status ConvertTFExecutorToStablehloFlatbuffer(
   options.op_or_arg_name_mapper = &op_or_arg_name_mapper;
   options.metadata[tflite::kModelUseStablehloTensorKey] = "true";
   if (!tflite::MlirToFlatBufferTranslateFunction(module, options, result)) {
-    return statusHandler.ConsumeStatus();
+    auto s = statusHandler.ConsumeStatus();
+    std::string message = "Could not translate MLIR to FlatBuffer.";
+    if (!s.ok()) {
+      absl::StrAppend(&message, " ", s.ToString());
+    }
+    return absl::UnknownError(message);
   }
 
   return OkStatus();
@@ -425,7 +432,12 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
   }
   if (!tflite::MlirToFlatBufferTranslateFunction(
           module, options, &translated_result, serialize_stablehlo_ops)) {
-    return statusHandler.ConsumeStatus();
+    auto s = statusHandler.ConsumeStatus();
+    std::string message = "Could not translate MLIR to FlatBuffer.";
+    if (!s.ok()) {
+      absl::StrAppend(&message, " ", s.ToString());
+    }
+    return absl::UnknownError(message);
   }
 
   // TODO(b/176267167): Quantize flex fallback in the MLIR pipeline
