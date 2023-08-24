@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/compiler/jit/variable_info_util.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_c_api_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_initializer_framework_helper.h"  // NOLINT(unused-includes): required for tensorflow::tpu::LoadTpuLibraryAndInitializeTpuStructFns
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_resource.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/status.h"
@@ -247,17 +246,6 @@ void TF_CoordinationServiceDeleteKeyValue(const char* key, int64_t key_size,
 void TF_CreateAndSetPjRtCApiClient(const char* device_type, TF_Status* status,
                                    PJRT_NamedValue* create_options,
                                    int num_options) {
-#if !defined(PLATFORM_GOOGLE)
-  if (absl::AsciiStrToLower(device_type) == "tpu") {
-    // TODO(b/261484192): handle device specific initialization.
-    tsl::Status tpu_status =
-        tensorflow::tpu::LoadTpuLibraryAndInitializeTpuStructFns();
-    if (!tpu_status.ok()) {
-      tensorflow::Set_TF_Status_from_Status(status, tpu_status);
-      return;
-    }
-  }
-#endif  // PLATFORM_GOOGLE
   tsl::StatusOr<std::unique_ptr<xla::PjRtClient>> pjrt_client =
       xla::GetCApiClient(device_type, pjrt::ConvertFromPjRtNamedValueList(
                                           create_options, num_options));
