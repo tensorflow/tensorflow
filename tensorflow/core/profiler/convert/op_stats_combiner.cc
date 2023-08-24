@@ -102,6 +102,7 @@ void CombineRunEnvironment(const RunEnvironment& src, RunEnvironment* dst) {
     *(dst->add_host_dependent_job_info()) = job_info;
   }
   dst->set_host_trace_level(src.host_trace_level());
+  dst->set_is_training(src.is_training());
 }
 
 // Combines the src PerfEnv into the dst PerfEnv.

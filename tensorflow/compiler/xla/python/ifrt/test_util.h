@@ -39,13 +39,13 @@ namespace test_util {
 
 // Registers an IFRT client factory function. Must be called only once.
 void RegisterClientFactory(
-    std::function<StatusOr<std::unique_ptr<Client>>()> factory);
+    std::function<StatusOr<std::shared_ptr<Client>>()> factory);
 
 // Returns true iff an IFRT client factory function has been registered.
 bool IsClientFactoryRegistered();
 
 // Gets a new IFRT client using the registered client factory.
-StatusOr<std::unique_ptr<Client>> GetClient();
+StatusOr<std::shared_ptr<Client>> GetClient();
 
 // Set a default test filter if user doesn't provide one using --gtest_filter.
 void SetTestFilterIfNotUserSpecified(absl::string_view custom_filter);
@@ -79,6 +79,11 @@ void AssertPerShardData(
                 testing::ElementsAreArray(expected_per_shard_data[i]));
   }
 }
+
+// Helper function that makes `DeviceList` containing devices at given
+// indexes (not ids) within `client.devices()`.
+absl::StatusOr<DeviceList> GetDevices(Client* client,
+                                      absl::Span<const int> device_indices);
 
 }  // namespace test_util
 }  // namespace ifrt

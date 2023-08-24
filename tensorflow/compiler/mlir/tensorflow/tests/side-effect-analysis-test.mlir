@@ -1939,7 +1939,7 @@ func.func @device_ordinal_placeholder_side_effect_free(
     %island = tf_executor.island {
         // expected-remark@above {{ID: 3}}
         // expected-remark@above {{Successors: {4}}}
-        "tf._TPUDeviceOrdinalPlaceholder"() : () -> tensor<i64>
+        "tf._TPUDeviceOrdinalPlaceholder"() {logical_core = 0} : () -> tensor<i64>
         // expected-remark@above {{ID: 0}}
         "tf._UnknownSideEffectingOp_"() : () -> ()
         // expected-remark@above {{ID: 1}}
@@ -2817,4 +2817,97 @@ func.func @func(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.resource> {
   func.return %arg0 : tensor<!tf_type.resource>
   // expected-remark@above {{ID: 0}}
   // expected-remark@above {{Sinks: {}}}
+}
+
+// -----
+
+func.func @add(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
+  // expected-remark@above {{ID: 2}}
+  %sum = "tf.Add"(%arg0, %arg1) : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+  // expected-remark@above {{ID: 0}}
+  func.return %sum : tensor<1xf32>
+  // expected-remark@above {{ID: 1}}
+  // expected-remark@above {{Sinks: {}}}
+}
+
+// CHECK-LABEL: func @call_pure_function
+func.func @call_pure_function(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.resource> {
+  // expected-remark@above {{ID: 5}}
+  %one = "tf.Const"() { value = dense<1.0> : tensor<1xf32> } : () -> tensor<1xf32>
+  // expected-remark@above {{ID: 0}}
+  %r1 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf_type.resource>) -> tensor<1xf32>
+  // expected-remark@above {{ID: 1}}
+  %two = "tf.StatefulPartitionedCall"(%one, %one) {config="", config_proto="", executor_type="", f=@add} : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+  // expected-remark@above {{ID: 2}}
+  %r2 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf_type.resource>) -> tensor<1xf32>
+  // expected-remark@above {{ID: 3}}
+  func.return %arg0 : tensor<!tf_type.resource>
+  // expected-remark@above {{ID: 4}}
+  // expected-remark@above {{Sinks: {1,3}}}
+}
+
+// -----
+
+// Tests that we create a dependency between ops with `TF__XlaRunSideEffect`.
+func.func @tpu_execute_effect(
+  // expected-remark@above {{ID: 7}}
+  %arg0: tensor<!tf_type.string>,
+  %arg1: tensor<!tf_type.string>) {
+  tf_executor.graph {
+    // expected-remark@above {{ID: 5}}
+    %island = tf_executor.island {
+        // expected-remark@above {{ID: 3}}
+        // expected-remark@above {{Successors: {4}}}
+        "tf._XlaRun"(%arg0, %arg0) : (tensor<!tf_type.string>, tensor<!tf_type.string>) -> ()
+        // expected-remark@above {{ID: 0}}
+        // expected-remark@above {{Successors: {1}}}
+        "tf._XlaRun"(%arg1, %arg1) : (tensor<!tf_type.string>, tensor<!tf_type.string>) -> ()
+        // expected-remark@above {{ID: 1}}
+        // expected-remark@above {{Predecessors: {0}}}
+        // expected-remark@above {{Successors: {2}}}
+        tf_executor.yield
+        // expected-remark@above {{ID: 2}}
+        // expected-remark@above {{Predecessors: {1}}}
+    }
+    tf_executor.fetch %island : !tf_executor.control
+    // expected-remark@above {{ID: 4}}
+    // expected-remark@above {{Predecessors: {3}}}
+  }
+  func.return
+  // expected-remark@above {{ID: 6}}
+  // expected-remark@above {{Sinks: {5}}}
+}
+
+// -----
+
+// Tests that we don't create dependencies between any two `RandomUniform` ops.
+func.func @random_uniform_ordering_effect() -> (tensor<3xf32>) {
+  // expected-remark@above {{ID: 9}}
+  %graph = tf_executor.graph {
+    // expected-remark@above {{ID: 7}}
+    %island:2 = tf_executor.island {
+      // expected-remark@above {{ID: 5}}
+      // expected-remark@above {{Successors: {6}}}
+      %0 = arith.constant dense<[3]> : tensor<1xi32>
+      // expected-remark@above {{ID: 0}}
+      %1 = "tf.RandomUniform"(%0) {device = "", seed = 3 : i64, seed2 = 5 : i64} : (tensor<1xi32>) -> tensor<3xf32>
+      // expected-remark@above {{ID: 1}}
+      // expected-remark@above {{Successors: {4}}}
+      %2 = "tf.RandomUniform"(%0) {device = "", seed = 3 : i64, seed2 = 5 : i64} : (tensor<1xi32>) -> tensor<3xf32>
+      // expected-remark@above {{ID: 2}}
+      // expected-remark@above {{Successors: {4}}}
+      %3 = "tf.RandomUniform"(%0) {device = "CPU:0", seed = 3 : i64, seed2 = 5 : i64} : (tensor<1xi32>) -> tensor<3xf32>
+      // expected-remark@above {{ID: 3}}
+      // expected-remark@above {{Successors: {4}}}
+      tf_executor.yield %3: tensor<3xf32>
+      // expected-remark@above {{ID: 4}}
+      // expected-remark@above {{Predecessors: {1,2,3}}}
+    }
+    tf_executor.fetch %island#0 : tensor<3xf32>
+    // expected-remark@above {{ID: 6}}
+    // expected-remark@above {{Predecessors: {5}}}
+  }
+  func.return %graph : tensor<3xf32>
+  // expected-remark@above {{ID: 8}}
+  // expected-remark@above {{Sinks: {7}}}
 }

@@ -4,7 +4,7 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/tsl/platform:build_config_root.bzl", "if_static")
 
 package(
@@ -15,7 +15,7 @@ package(
 
 gentbl_cc_library(
     name = "legalize_tf_patterns_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             ["-gen-rewriters"],
@@ -35,7 +35,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "xla_legalize_tf_passes_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             [
@@ -54,7 +54,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "tf_xla_passes_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             [
@@ -241,7 +241,6 @@ cc_library(
         "infeed_ops_xla_adjust_layout.cc",
         "legalize_tf_collective.cc",
         "legalize_tf_communication.cc",
-        "legalize_tf_types.cc",
         "tf_xla_passes.h.inc",
         "tfxla_device_specific_transforms.cc",
         "verify_tfxla_legalization.cc",
@@ -260,6 +259,7 @@ cc_library(
         ":xla_legalize_tf_no_fallback",
         ":xla_legalize_tf_passes_inc_gen",
         ":xla_legalize_tf_with_tf2xla",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:bridge_passes",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:lower_tf_lib",
         "//tensorflow/compiler/mlir/tensorflow:mangling_util",
@@ -496,7 +496,7 @@ cc_library(
     srcs = ["legalization_op_config.cc"],
     hdrs = ["legalization_op_config.h"],
     visibility = [
-        "//tensorflow/compiler/mlir/tensorflow:__pkg__",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:__pkg__",
     ],
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",

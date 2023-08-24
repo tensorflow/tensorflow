@@ -203,7 +203,8 @@ class TFAllocOpConverter : public ConvertToLLVMCallOpPattern<TFAllocOp> {
     }
 
     // Compute strides and populate descriptor `size` and `stride` fields.
-    Value stride_carried = createIndexConstant(rewriter, loc, 1);
+    Value stride_carried =
+        createIndexAttrConstant(rewriter, loc, getIndexType(), 1);
     for (int pos = sizes.size() - 1; pos >= 0; --pos) {
       Value size = sizes[pos];
       memref_desc.setSize(rewriter, loc, pos, size);
@@ -475,11 +476,12 @@ class NullMemRefOpConverter : public ConvertOpToLLVMPattern<NullMemRefOp> {
     LLVM::LLVMPointerType llvm_ptr_type =
         LLVM::LLVMPointerType::get(ctx, address_space);
 
-    Value zero = createIndexConstant(rewriter, loc, 0);
+    Value zero = createIndexAttrConstant(rewriter, loc, getIndexType(), 0);
     if (auto result_type = null_memref_op.getType().dyn_cast<MemRefType>()) {
       // Set all dynamic sizes to 1 and compute fake strides.
-      SmallVector<Value, 4> dyn_sizes(result_type.getNumDynamicDims(),
-                                      createIndexConstant(rewriter, loc, 1));
+      SmallVector<Value, 4> dyn_sizes(
+          result_type.getNumDynamicDims(),
+          createIndexAttrConstant(rewriter, loc, getIndexType(), 1));
       SmallVector<Value, 4> sizes, strides;
       Value sizeBytes;
       getMemRefDescriptorSizes(loc, result_type, dyn_sizes, rewriter, sizes,
@@ -553,7 +555,7 @@ class IsValidMemRefOpConverter
     int64_t rank = op.getArg().getType().cast<MemRefType>().getRank();
     Value is_empty_shape = rewriter.create<LLVM::ConstantOp>(
         loc, rewriter.getI1Type(), rewriter.getBoolAttr(false));
-    Value zero = createIndexConstant(rewriter, loc, 0);
+    Value zero = createIndexAttrConstant(rewriter, loc, getIndexType(), 0);
     for (int i = 0; i < rank; ++i) {
       Value size = desc.size(rewriter, loc, i);
       Value is_zero_size = rewriter.create<LLVM::ICmpOp>(

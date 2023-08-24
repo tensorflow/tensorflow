@@ -15,6 +15,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla/python/ifrt/ir",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],

@@ -82,11 +82,11 @@ Status AssertReplicated(mlir::Value operand) {
 absl::flat_hash_set<std::string> ReducedMeshDimensions(
     const dtensor::Layout& input, const dtensor::Layout& output) {
   absl::flat_hash_set<std::string> mesh_dims;
-  for (const auto& dim : input.sharding_specs()) {
-    mesh_dims.insert(dim.sharding_spec());
+  for (const auto& dim : input.sharding_spec_strs()) {
+    mesh_dims.insert(dim);
   }
-  for (const auto& dim : output.sharding_specs()) {
-    mesh_dims.erase(dim.sharding_spec());
+  for (const auto& dim : output.sharding_spec_strs()) {
+    mesh_dims.erase(dim);
   }
   return mesh_dims;
 }

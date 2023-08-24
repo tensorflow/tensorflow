@@ -18,22 +18,17 @@ limitations under the License.
 
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
-#include "absl/types/span.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
-#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/gpu/elemental_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_to_ir_bindings.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_builder_mixin.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/loop_emitter.h"
-#include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -92,8 +87,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // Constructs an IrEmitter with the given IrEmitter context.
   // ir_emitter_context is owned by the caller and should outlive the IrEmitter
   // object.
-  explicit IrEmitter(const HloModuleConfig& hlo_module_config,
-                     IrEmitterContext* ir_emitter_context, bool is_nested);
+  explicit IrEmitter(IrEmitterContext* ir_emitter_context, bool is_nested);
 
   // Helper for calling HloToIrBindings::GetIrArray.
   //
@@ -117,43 +111,13 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   std::vector<llvm_ir::IrArray> ConstructIrArrayForOutputs(
       const HloInstruction& hlo);
 
-  // Emit a singlethreaded or multithreaded loop that computes every element in
-  // the result of the given HLO instruction. This produces a series of nested
-  // loops (e.g. one for each dimension of the `hlo`'s shape). The body of the
-  // inner-most loop is provided by the body_emitter function.
+  // Emit a single-threaded or multi-threaded loop that computes every element
+  // in the result of the given HLO instruction. This produces a series of
+  // nested loops (e.g. one for each dimension of the `hlo`'s shape). The body
+  // of the inner-most loop is provided by the body_emitter function.
   virtual Status EmitTargetElementLoop(
       const HloInstruction& hlo,
       const llvm_ir::ElementGenerator& body_emitter) = 0;
-
-  // Emits a call in IR to the given nested computation with the given operands
-  // and output. If no IR function has been previously emitted for the
-  // computation, also emits such a function.
-  Status EmitCallToNestedComputation(const HloComputation& nested_computation,
-                                     absl::Span<llvm::Value* const> operands,
-                                     llvm::Value* output);
-
-  // Emits an atomic operation that implements `nested_computation` in the
-  // sequentially consistent memory model. `output_address` and `source_address`
-  // are the arguments of the nested computation. For example,
-  // atomicAdd(output_address, *source_address).
-  Status EmitAtomicOperationForNestedComputation(
-      const HloComputation& nested_computation, llvm::Value* output_address,
-      llvm::Value* source_address, llvm::Type* element_type);
-
-  GpuElementalIrEmitter::NestedComputer GetNestedComputer() {
-    return [&](const HloComputation& computation,
-               absl::Span<llvm::Value* const> parameter_elements) {
-      return ComputeNestedElement(computation, parameter_elements);
-    };
-  }
-
-  StatusOr<std::vector<llvm::Value*>> ComputeNestedElement(
-      const HloComputation& computation,
-      absl::Span<llvm::Value* const> parameter_elements);
-
-  StatusOr<std::vector<llvm::Value*>> ComputeNestedElementFromAddrs(
-      const HloComputation& computation,
-      absl::Span<llvm::Value* const> parameter_elements_addrs);
 
   IrEmitterContext* ir_emitter_context_;
   llvm::Module* module_;
@@ -165,9 +129,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // Mapping from HLO to its underlying LLVM value.
   HloToIrBindings bindings_;
 
-  // Hlo configuration data used during code generation.
-  const HloModuleConfig& hlo_module_config_;
-
   // Bind all argument IrArrays of `fusion` to `fused_emitter`.
   void BindFusionArguments(const HloInstruction* fusion,
                            FusedIrEmitter* fused_emitter);
@@ -177,23 +138,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
                                const char* sync_scope_id);
 
  private:
-  // A helper method for EmitAtomicOperationForNestedComputation. Certain
-  // computations, such as floating-point addition and integer maximization, can
-  // be simply implemented using an LLVM atomic instruction. If "computation" is
-  // one of this kind, emits code to do that and returns true; otherwise,
-  // returns false.
-  bool MaybeEmitDirectAtomicOperation(const HloComputation& computation,
-                                      llvm::Value* output_address,
-                                      llvm::Value* source_address);
-
-  // A helper method for EmitAtomicOperationForNestedComputation. It implements
-  // binary atomic operations using atomicCAS with special handling to support
-  // small data types.
-  Status EmitAtomicOperationUsingCAS(const HloComputation& computation,
-                                     llvm::Value* output_address,
-                                     llvm::Value* source_address,
-                                     llvm::Type* element_type);
-
   // A helper method for HandleSort(). It adds the inner comparison loop where
   // we compare elements pointed to by 'keys_index' and 'compare_keys_index'.
   void EmitCompareLoop(int64_t dimension_to_sort,
@@ -201,27 +145,8 @@ class IrEmitter : public DfsHloVisitorWithDefault,
                        const llvm_ir::IrArray::Index& compare_keys_index,
                        const llvm_ir::IrArray& keys_array);
 
-  // Emits an atomic operation that implements `nested_computation` in the
-  // sequentially consistent memory model. `output_address` and `source_address`
-  // are the arguments of the nested computation. For example,
-  // atomicAdd(output_address, *source_address).
-  StatusOr<llvm::Function*> EmitAtomicFunctionForNestedComputation(
-      const HloComputation& nested_computation, llvm::Type* element_ir_type);
-
   // A convenience method to determine whether or not IR is emitted for AMDGPU.
   bool IsEmittingForAMDGPU() const;
-
-  // Emits atomic add operation for AMD GPU.
-  void EmitAMDGPUAtomicAdd(llvm::Value* output_address, llvm::Value* source);
-
-  // A convenience method to determine the proper sync scope for an atomic op.
-  llvm::SyncScope::ID DetermineSyncScope() const;
-
-  // Map nested computations to emitted IR functions. This serves as a cache so
-  // that IrEmitter does not emit multiple functions for the same
-  // HloComputation.
-  absl::flat_hash_map<const HloComputation*, llvm::Function*>
-      computation_to_ir_function_;
 };
 
 }  // namespace gpu

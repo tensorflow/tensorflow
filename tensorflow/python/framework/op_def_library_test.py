@@ -25,8 +25,8 @@ from tensorflow.python.framework import function
 from tensorflow.python.framework import op_def_library
 from tensorflow.python.framework import op_def_library_pybind
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
 from tensorflow.python.util import compat
@@ -417,7 +417,7 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
   def testAttrFuncWithFuncWithAttrs(self):
     with ops.Graph().as_default():
       @def_function.function(
-          input_signature=(tensor_spec.TensorSpec(None, dtypes.float32),),
+          input_signature=(tensor.TensorSpec(None, dtypes.float32),),
           autograph=False,
           experimental_attributes={"_implements": 15})
       def fn(x):
@@ -1334,7 +1334,7 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
         self.assertIsInstance(a, list)
         self.assertEqual(n_a, len(a))
         self.assertTrue(all(x.dtype == dtypes.int32 for x in a))
-        self.assertIsInstance(b, ops.Tensor)
+        self.assertIsInstance(b, tensor.Tensor)
         self.assertEqual(dtypes.float32, b.dtype)
 
   def testStructuredOutputMultipleLists(self):

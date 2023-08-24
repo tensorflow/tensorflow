@@ -280,21 +280,6 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
     log_device_placement_ = enable;
   }
 
-  // When tensor transfer across functions/eager executions using send/recv ops
-  // are required, `reuse_rendezvous_for_functions_` can be set to true so that
-  // function executions and eager executions use the same rendezvous instance,
-  // instead of creating new instance per function calls.
-  void SetReuseRendezvousForFunctions(
-      bool reuse_rendezvous_for_functions) override {
-    reuse_rendezvous_for_functions_ = reuse_rendezvous_for_functions;
-  }
-  bool GetReuseRendezvousForFunctions() const {
-    return reuse_rendezvous_for_functions_;
-  }
-  mutex* reuse_rendezvous_for_functions_mu() {
-    return &reuse_rendezvous_for_functions_mu_;
-  }
-
   bool AllowSoftPlacement() const { return allow_soft_placement_; }
   void SetAllowSoftPlacement(bool enable) override {
     allow_soft_placement_ = enable;
@@ -321,21 +306,24 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   // returns OK.
   Status GetGlobalRendezvousForFunctionLocalRendezvousStatus();
 
-  // Returns a factory which maps from step_id to rendezvous. This closure
-  // respects the value of `SetReuseRendezvousForFunctions` at the time the
-  // closure was created, which allows the setting to be toggled around async op
-  // launches.
+  // Returns a factory which maps from step_id to rendezvous.
+  //
+  // When tensor transfer across functions/eager executions using send/recv ops
+  // are required, `reuse_rendezvous_for_functions` can be set to true so that
+  // function executions and eager executions use the same rendezvous instance,
+  // instead of creating new instance per function calls.
   //
   // The caller of the returned function owns a reference to the resulting
   // Rendezvous.
-  Rendezvous::Factory RendezvousFactory() {
+  Rendezvous::Factory RendezvousFactory(
+      bool reuse_rendezvous_for_functions = false) {
     // There is an implicit assumption that the global_rendezvous_for_functions_
     // is always an IntraProcessRendezvous to match the behaviour of the
     // EagerContext's rendezvous.
     // Ref: tensorflow/c/eager/c_api.cc;l=143;rcl=396387348
     // If a cross process kernel needs a rendezvous a new InterProcessRendezvous
     // should be created.
-    if (reuse_rendezvous_for_functions_ && rendezvous_creator_ == nullptr &&
+    if (reuse_rendezvous_for_functions && rendezvous_creator_ == nullptr &&
 #if !defined(IS_MOBILE_PLATFORM)
         worker_env_ == nullptr &&
 #endif
@@ -806,7 +794,6 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   // Keeps alive the global rendezvous object.
   core::RefCountPtr<Rendezvous> global_rendezvous_for_functions_
       TF_GUARDED_BY(global_rendezvous_mu_);
-  mutex reuse_rendezvous_for_functions_mu_;
 
   Env* const env_;
 

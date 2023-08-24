@@ -84,6 +84,7 @@ cc_library(
         "//tensorflow/c/experimental/stream_executor",
         "//tensorflow/c/experimental/stream_executor:stream_executor_internal",
         "//tensorflow/compiler/jit:flags_headers",
+        "//tensorflow/compiler/jit:pjrt_device_context",
         "//tensorflow/compiler/jit:xla_device_no_jit_rewrite_registration",
         "//tensorflow/compiler/xla/pjrt:pjrt_api",
         "//tensorflow/compiler/xla/stream_executor:device_mem_allocator",

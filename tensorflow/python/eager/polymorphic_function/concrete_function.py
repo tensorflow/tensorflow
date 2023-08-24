@@ -36,8 +36,8 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import default_gradient
@@ -168,7 +168,7 @@ class _DelayedRewriteGradientFunctions(object):
     signature = []
     for t in trainable_outputs:
       signature.append(
-          tensor_spec.TensorSpec(*default_gradient.shape_and_dtype(t)))
+          tensor_lib.TensorSpec(*default_gradient.shape_and_dtype(t)))
 
     def _backprop_function(*grad_ys):
       with ops.device(None):
@@ -1177,7 +1177,7 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
 
     for i, arg in enumerate(args):
       if not isinstance(
-          arg, (ops.Tensor, resource_variable_ops.BaseResourceVariable)):
+          arg, (tensor_lib.Tensor, resource_variable_ops.BaseResourceVariable)):
         raise TypeError(f"{self._flat_signature_summary()}: expected argument "
                         f"#{i}(zero-based) to be a Tensor; "
                         f"got {type(arg).__name__} ({arg}).")
@@ -1391,7 +1391,7 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
     concrete_fn.replace_capture_with_deferred_capture(
         bool_captured_tensor,
         bool_closure,
-        spec=tensor_spec.TensorSpec(shape=(), dtype=dtypes.bool))
+        spec=tensor_lib.TensorSpec(shape=(), dtype=dtypes.bool))
 
     print(concrete_fn())  # tf.Tensor([5.], shape=(1,), dtype=float32)
     ```
@@ -1651,7 +1651,7 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
 
     def pretty_print_spec(spec):
       """Returns a string describing the spec for a single argument."""
-      if isinstance(spec, tensor_spec.TensorSpec):
+      if isinstance(spec, tensor_lib.TensorSpec):
         return "{} Tensor, shape={}".format(spec.dtype.name, spec.shape)
       elif nest.is_nested(spec):
         pieces = nest.flatten(spec, expand_composites=False)
@@ -1762,7 +1762,7 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
     return []
 
 
-_pywrap_utils.RegisterType("Tensor", ops.Tensor)
+_pywrap_utils.RegisterType("Tensor", tensor_lib.Tensor)
 _pywrap_utils.RegisterType("EagerTensor", ops.EagerTensor)
 _pywrap_utils.RegisterType("IndexedSlices", indexed_slices.IndexedSlices)
 

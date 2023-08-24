@@ -200,8 +200,10 @@ class Scope {
 
   /// If status() is ok, convert the Graph object stored in this scope
   /// to a GraphDef proto and return an ok Status. Otherwise, return the error
-  /// status as is without performing GraphDef conversion.
-  Status ToGraphDef(GraphDef* gdef) const;
+  /// status as is without performing GraphDef conversion. If
+  /// `include_debug_info` is true, populate the `debug_info` field of the
+  /// GraphDef from stack traces in this Graph.
+  Status ToGraphDef(GraphDef* gdef, bool include_debug_info = false) const;
 
   // START_SKIP_DOXYGEN
 

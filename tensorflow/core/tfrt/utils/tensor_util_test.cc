@@ -22,7 +22,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "llvm/ADT/SmallVector.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_tensor.h"
-#include "tfrt/cpp_tests/test_util.h""  // from @tf_runtime
+#include "tfrt/cpp_tests/test_util.h"  // from @tf_runtime
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 #include "tfrt/host_context/host_allocator.h"  // from @tf_runtime
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime

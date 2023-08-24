@@ -191,7 +191,7 @@ __global__ __launch_bounds__(1024) void BlockReduceKernel(
   // elements: -----------------
   // grid:     |====|====|====|====|====|
   const int num_elements_to_reduce =
-      max(min(num_elems - bid * blockDim.x, num_threads), 0);
+      max(min(static_cast<int>(num_elems - bid * blockDim.x), num_threads), 0);
 
   sum = BlockReduce(temp_storage).Reduce(sum, op, num_elements_to_reduce);
 
@@ -389,7 +389,7 @@ __global__ __launch_bounds__(1024) void ColumnReduceKernel(
     //  -         =
     //            =
     const int numRowsThisBlock =
-        min(static_cast<int>(blockDim.y), num_rows - blockIdx.y * blockDim.y);
+        min(blockDim.y, num_rows - blockIdx.y * blockDim.y);
 
     for (int row = 1; row < numRowsThisBlock; ++row) {
       value_type t = partial_sums[threadIdx.x * (TF_RED_WARPSIZE + 1) + row];

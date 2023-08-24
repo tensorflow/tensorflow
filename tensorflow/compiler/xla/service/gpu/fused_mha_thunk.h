@@ -49,7 +49,8 @@ class FusedMHAThunk : public Thunk {
                 BufferAllocation::Slice output_slice,
                 BufferAllocation::Slice scratch_slice,
                 BufferAllocation::Slice mask_slice, /* may be null */
-                BufferAllocation::Slice bias_slice /* may be null */);
+                BufferAllocation::Slice bias_slice /* may be null */,
+                BufferAllocation::Slice activation_slice /* may be null */);
 
   FusedMHAThunk(const FusedMHAThunk&) = delete;
   FusedMHAThunk& operator=(const FusedMHAThunk&) = delete;
@@ -64,6 +65,7 @@ class FusedMHAThunk : public Thunk {
   BufferAllocation::Slice scratch_buffer_;
   BufferAllocation::Slice mask_buffer_;
   BufferAllocation::Slice bias_buffer_;
+  BufferAllocation::Slice activation_buffer_;
 
   FusedMultiHeadedAttentionRunner& GetOrCreateRunner(
       const stream_executor::Stream* stream);
@@ -73,6 +75,53 @@ class FusedMHAThunk : public Thunk {
   absl::Mutex mu_;
   absl::flat_hash_map<const stream_executor::Stream*,
                       std::unique_ptr<FusedMultiHeadedAttentionRunner>>
+      runner_cache_ ABSL_GUARDED_BY(mu_);
+};
+
+class FusedMHABackwardThunk : public Thunk {
+ public:
+  // Constructs a thunk for launching a DNN FMHA backward.
+  FusedMHABackwardThunk(ThunkInfo thunk_info, GpufMHABackwardConfig config,
+                        BufferAllocation::Slice bmm1_grad_gemm1_rhs_slice,
+                        BufferAllocation::Slice bmm1_grad_gemm2_rhs_slice,
+                        BufferAllocation::Slice bmm2_grad_gemm1_lhs_slice,
+                        BufferAllocation::Slice bmm2_grad_gemm2_rhs_slice,
+                        BufferAllocation::Slice d_output_slice,
+                        BufferAllocation::Slice scratch_slice,
+                        BufferAllocation::Slice d_bmm1_lhs_slice,
+                        BufferAllocation::Slice d_bmm1_rhs_slice,
+                        BufferAllocation::Slice d_bmm2_rhs_slice,
+                        BufferAllocation::Slice d_S_slice,
+                        BufferAllocation::Slice mask_slice,
+                        BufferAllocation::Slice d_bias_slice);
+
+  FusedMHABackwardThunk(const FusedMHABackwardThunk&) = delete;
+  FusedMHABackwardThunk& operator=(const FusedMHABackwardThunk&) = delete;
+
+  Status ExecuteOnStream(const ExecuteParams& params) override;
+
+ private:
+  BufferAllocation::Slice bmm1_grad_gemm1_rhs_buffer_;
+  BufferAllocation::Slice bmm1_grad_gemm2_rhs_buffer_;
+  BufferAllocation::Slice bmm2_grad_gemm1_lhs_buffer_;
+  BufferAllocation::Slice bmm2_grad_gemm2_rhs_buffer_;
+  BufferAllocation::Slice d_output_buffer_;
+  BufferAllocation::Slice scratch_buffer_;
+  BufferAllocation::Slice d_bmm1_lhs_buffer_;
+  BufferAllocation::Slice d_bmm1_rhs_buffer_;
+  BufferAllocation::Slice d_bmm2_rhs_buffer_;
+  BufferAllocation::Slice d_s_buffer_;
+  BufferAllocation::Slice mask_buffer_;
+  BufferAllocation::Slice d_bias_buffer_;
+
+  FusedMultiHeadedAttentionBackwardRunner& GetOrCreateRunner(
+      const stream_executor::Stream* stream);
+
+  // FusedMHA backward config
+  const GpufMHABackwardConfig config_;
+  absl::Mutex mu_;
+  absl::flat_hash_map<const stream_executor::Stream*,
+                      std::unique_ptr<FusedMultiHeadedAttentionBackwardRunner>>
       runner_cache_ ABSL_GUARDED_BY(mu_);
 };
 }  // namespace gpu

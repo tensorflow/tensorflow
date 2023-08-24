@@ -23,8 +23,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/profiler/internal/traceme_wrapper.h"
 #include "tensorflow/compiler/xla/python/status_casters.h"
 #include "tensorflow/compiler/xla/python/types.h"
+#include "tensorflow/compiler/xla/python/xplane_to_profile_instructions.h"
 #include "tensorflow/compiler/xla/status.h"
-#include "tensorflow/tsl/profiler/convert/xplane_to_profile_instructions.h"
 #include "tensorflow/tsl/profiler/lib/profiler_session.h"
 #include "tensorflow/tsl/profiler/rpc/client/capture_profile.h"
 #include "tensorflow/tsl/profiler/rpc/profiler_server.h"
@@ -127,9 +127,8 @@ void BuildProfilerSubmodule(py::module* m) {
       "get_profiled_instructions_proto",
       [](py::str tensorboard_dir) -> pybind11::bytes {
         tensorflow::profiler::ProfiledInstructionsProto profile_proto;
-        xla::ThrowIfError(
-            tsl::profiler::ConvertXplaneToProfiledInstructionsProto(
-                tensorboard_dir, &profile_proto));
+        xla::ThrowIfError(xla::ConvertXplaneToProfiledInstructionsProto(
+            tensorboard_dir, &profile_proto));
         return profile_proto.SerializeAsString();
       },
       py::arg("tensorboard_dir"));

@@ -140,10 +140,12 @@ struct ShardedBufferAdapter<ExecuteShardedArg> {
     CHECK(!ifrt_arrays.empty());
     // Use a dummy shape.
     // TODO(hyeontaek): Find a way to compute a correct shape.
+    // TODO(yashkatariya): Plumb sharding or memory_kind here.
     auto ifrt_array =
         ifrt_arrays.front()->client()->AssembleArrayFromSingleDeviceArrays(
             ifrt_arrays.front()->shape(),
-            ifrt::OpaqueSharding::Create(ifrt::DeviceList(std::move(devices))),
+            ifrt::OpaqueSharding::Create(ifrt::DeviceList(std::move(devices)),
+                                         ifrt::MemoryKind()),
             absl::MakeSpan(ifrt_arrays), ifrt::ArrayCopySemantics::kReuseInput);
     TF_CHECK_OK(ifrt_array.status());
     return *ifrt_array;
@@ -352,6 +354,11 @@ StatusOr<PyExecuteResults> PyLoadedExecutable::ExecuteSharded(
 StatusOr<std::vector<std::shared_ptr<HloModule>>>
 PyLoadedExecutable::HloModules() const {
   return ifrt_loaded_executable_->GetHloModules();
+}
+
+StatusOr<std::vector<std::vector<absl::string_view>>>
+PyLoadedExecutable::GetOutputMemoryKinds() const {
+  return ifrt_loaded_executable_->GetOutputMemoryKinds();
 }
 
 std::optional<std::vector<OpSharding>>

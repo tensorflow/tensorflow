@@ -117,8 +117,6 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   pass_config.guarantee_all_funcs_one_use =
       toco_flags.guarantee_all_funcs_one_use();
   pass_config.enable_stablehlo_conversion = toco_flags.convert_to_stablehlo();
-  pass_config.enable_hlo_to_tf_conversion =
-      toco_flags.enable_hlo_to_tf_conversion();
 
   return internal::ConvertMLIRToTFLiteFlatBuffer(
       model_flags, toco_flags, std::move(module), pass_config,

@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #if !defined(PLATFORM_GOOGLE)
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_initializer_helper.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_initializer_framework_helper.h"
 #include "tensorflow/core/platform/status.h"
 #endif
 

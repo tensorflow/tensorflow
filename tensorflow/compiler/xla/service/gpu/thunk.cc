@@ -20,16 +20,19 @@ limitations under the License.
 #include <ostream>
 #include <string>
 
+#include "absl/strings/str_format.h"
+#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/location_exporter.h"
+
 namespace xla {
 namespace gpu {
 
 Thunk::ExecuteParams::ExecuteParams(
     const ServiceExecutableRunOptions& run_options,
     const BufferAllocations& buffer_allocations, se::Stream* stream,
-    se::Stream* async_comms_stream)
+    absl::Span<se::Stream* const> async_streams)
     : buffer_allocations(&buffer_allocations),
       stream(stream),
-      async_comms_stream(async_comms_stream),
+      async_comms_streams(async_streams.begin(), async_streams.end()),
       nccl_params(run_options, stream->parent()) {}
 
 /*static*/ absl::string_view Thunk::KindToString(Thunk::Kind kind) {
@@ -116,6 +119,13 @@ bool IsReductionCollective(Thunk::Kind kind) {
   return kind == Thunk::kNcclAllReduce || kind == Thunk::kNcclAllReduceStart ||
          kind == Thunk::kNcclReduceScatter ||
          kind == Thunk::kNcclReduceScatterStart;
+}
+
+Thunk::ThunkInfo Thunk::ThunkInfo::WithProfileAnnotation(mlir::Operation* op) {
+  ThunkInfo thunk_info(op);
+  thunk_info.profile_annotation = absl::StrFormat(
+      "Thunk:#hlo_op=%s#", mlir::mhlo::GetDebugNameFromLocation(op->getLoc()));
+  return thunk_info;
 }
 
 }  // namespace gpu

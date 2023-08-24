@@ -1,3 +1,4 @@
+# Placeholder: load py_proto_library
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 
@@ -263,6 +264,7 @@ pytype_strict_library(
         "//tensorflow/python/framework:func_graph",
         "//tensorflow/python/framework:function",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/lib/io:lib",
         "//tensorflow/python/ops:array_ops",
@@ -781,6 +783,7 @@ pytype_strict_library(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:sparse_tensor",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
@@ -827,6 +830,7 @@ pytype_strict_library(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:sparse_tensor",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:array_ops_stack",
         "//tensorflow/python/ops:embedding_ops",
@@ -876,6 +880,7 @@ pytype_strict_library(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:sparse_tensor",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:embedding_ops",
         "//tensorflow/python/ops:math_ops",
@@ -911,7 +916,6 @@ tpu_py_strict_test(
     disable_experimental = True,
     disable_mlir_bridge = False,
     python_version = "PY3",
-    tags = ["no_oss"],
     deps = [
         ":functional",
         ":tpu_py",
@@ -926,7 +930,7 @@ tpu_py_strict_test(
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/lib/io:lib",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:cond",

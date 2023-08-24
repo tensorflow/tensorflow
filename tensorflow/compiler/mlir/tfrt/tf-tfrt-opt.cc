@@ -27,14 +27,12 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback.h"
 #include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback_async.h"
 #include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback_sync.h"
-#include "tensorflow/compiler/mlir/tfrt/jit/opdefs/tf_jitrt_ops.h"
-#include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
-#include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_test_passes.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/gpu_passes.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/passes.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/gml_st/IR/gml_st_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/gml_st/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tfrt/init_tfrt_dialects.h"  // from @tf_runtime
 
@@ -46,9 +44,6 @@ int main(int argc, char **argv) {
 
   mlir::registerTensorFlowPasses();
 
-  // Register passes for TF->JitRt compilation.
-  registerTfJitRtPasses();
-  registerTfJitRtTestPasses();
   mlir::gml_st::registerGmlStPasses();
 
   tensorflow::mlrt_compiler::RegisterMlrtPasses();
@@ -60,7 +55,6 @@ int main(int argc, char **argv) {
   registry.insert<mlir::shape::ShapeDialect>();
   registry.insert<mlir::mhlo::MhloDialect>();
   registry.insert<mlir::TFL::TensorFlowLiteDialect>();
-  registry.insert<mlir::tf_jitrt::JitRuntimeDialect>();
   registry.insert<tfrt::fallback::FallbackDialect>();
   registry.insert<tfrt::fallback_async::FallbackAsyncDialect>();
   registry.insert<tfrt::fallback_sync::FallbackSyncDialect>();

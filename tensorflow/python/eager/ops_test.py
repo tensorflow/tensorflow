@@ -29,6 +29,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.layers import core
@@ -191,8 +192,8 @@ class OpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertAllEqual((a >= b), np.greater_equal(v1, v2))
 
       # TODO(b/120678848): Remove the else branch once we enable
-      # ops.Tensor._USE_EQUALITY by default.
-      if ops.Tensor._USE_EQUALITY:
+      # tensor.Tensor._USE_EQUALITY by default.
+      if tensor.Tensor._USE_EQUALITY:
         self.assertAllEqual((a == b), np.equal(v1, v2))
         self.assertAllEqual((a != b), np.not_equal(v1, v2))
       else:

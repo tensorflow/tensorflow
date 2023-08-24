@@ -122,6 +122,14 @@ Status ParseDeviceAssignmentCompileOptions(
           "CompileOptions requests portable executable but "
           "ExecutableBuildOptions includes a device assignment");
     }
+    if (build_options->num_replicas() != 1 ||
+        build_options->num_partitions() != 1) {
+      return InvalidArgument(
+          "CompileOptions requests portable executable but "
+          "ExecutableBuildOptions includes num_replicas %d  and num_partitions "
+          "%d.",
+          build_options->num_replicas(), build_options->num_partitions());
+    }
     *num_replicas = 1;
     *num_partitions = 1;
   } else {

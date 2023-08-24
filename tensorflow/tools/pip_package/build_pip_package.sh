@@ -37,7 +37,7 @@ function cp_external() {
 
   pushd .
   cd "$src_dir"
-  for f in `find . ! -type d ! -name '*.py' ! -path '*local_config_cuda*' ! -path '*local_config_tensorrt*' ! -path '*local_config_syslibs*' ! -path '*org_tensorflow*' ! -path '*llvm-project/llvm/*'`; do
+  for f in `find . ! -type d ! -name '*.py' ! -path '*local_config_cuda*' ! -path '*local_config_tensorrt*' ! -path '*pypi*' ! -path '*python_x86_64*' ! -path '*python_aarch64*' ! -path '*local_config_syslibs*' ! -path '*org_tensorflow*' ! -path '*llvm-project/llvm/*'`; do
     mkdir -p "${dest_dir}/$(dirname ${f})"
     cp "${f}" "${dest_dir}/$(dirname ${f})/"
   done
@@ -45,6 +45,22 @@ function cp_external() {
 
   mkdir -p "${dest_dir}/local_config_cuda/cuda/cuda/"
   cp "${src_dir}/local_config_cuda/cuda/cuda/cuda_config.h" "${dest_dir}/local_config_cuda/cuda/cuda/"
+}
+
+function cp_local_config_python() {
+  local src_dir=$1
+  local dest_dir=$2
+  pushd .
+  cd "$src_dir"
+  mkdir -p "${dest_dir}/local_config_python/numpy_include/"
+  cp -r "pypi_numpy/site-packages/numpy/core/include/numpy" "${dest_dir}/local_config_python/numpy_include/"
+  mkdir -p "${dest_dir}/local_config_python/python_include/"
+  if is_windows; then
+    cp -r python_*/include/* "${dest_dir}/local_config_python/python_include/"
+  else
+    cp -r python_*/include/python*/* "${dest_dir}/local_config_python/python_include/"
+  fi
+  popd
 }
 
 function copy_xla_aot_runtime_sources() {
@@ -158,6 +174,9 @@ function prepare_src() {
     cp_external \
       bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles \
       "${EXTERNAL_INCLUDES}/"
+    cp_local_config_python \
+      bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles \
+      "${EXTERNAL_INCLUDES}/"
     copy_xla_aot_runtime_sources \
       bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles/org_tensorflow \
       "${XLA_AOT_RUNTIME_SOURCES}/"
@@ -201,9 +220,15 @@ function prepare_src() {
       cp_external \
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/external \
         "${EXTERNAL_INCLUDES}"
+      cp_local_config_python \
+        bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/external \
+        "${EXTERNAL_INCLUDES}"
     else
       # New-style runfiles structure (--nolegacy_external_runfiles).
       cp_external \
+        bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles \
+        "${EXTERNAL_INCLUDES}"
+      cp_local_config_python \
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles \
         "${EXTERNAL_INCLUDES}"
     fi
@@ -290,12 +315,21 @@ function build_wheel() {
   if [[ -e tools/python_bin_path.sh ]]; then
     source tools/python_bin_path.sh
   fi
-
+  if is_windows; then
+	  PY_DIR=$(find ./bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles/ -maxdepth 1 -type d -name "python_*")
+	  FULL_DIR="$(real_path "$PY_DIR")/python"
+	  export PYTHONPATH="$PYTHONPATH:$PWD/bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles/pypi_wheel/site-packages/"
+  else
+	  PY_DIR=$(find ./bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/ -maxdepth 1 -type d -name "python_*")
+	  FULL_DIR="$(real_path "$PY_DIR")/bin/python3"
+	  export PYTHONPATH="$PYTHONPATH:$PWD/bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/pypi_wheel/site-packages/"
+  fi
+  
   pushd ${TMPDIR} > /dev/null
 
   rm -f MANIFEST
   echo $(date) : "=== Building wheel"
-  "${PYTHON_BIN_PATH:-python}" setup.py bdist_wheel ${PKG_NAME_FLAG} >/dev/null
+  $FULL_DIR setup.py bdist_wheel ${PKG_NAME_FLAG} >/dev/null
   mkdir -p ${DEST}
   cp dist/* ${DEST}
   popd > /dev/null
@@ -316,6 +350,7 @@ function usage() {
   echo "  Options:"
   echo "    --project_name <name> set project name to name"
   echo "    --cpu                 build tensorflow_cpu"
+  echo "    --tpu                 build tensorflow_tpu"
   echo "    --gpudirect           build tensorflow_gpudirect"
   echo "    --rocm                build tensorflow_rocm"
   echo "    --nightly_flag        build tensorflow nightly"
@@ -327,6 +362,7 @@ function main() {
   PKG_NAME_FLAG=""
   PROJECT_NAME=""
   CPU_BUILD=0
+  TPU_BUILD=0
   GPUDIRECT_BUILD=0
   ROCM_BUILD=0
   NIGHTLY_BUILD=0
@@ -341,6 +377,8 @@ function main() {
       NIGHTLY_BUILD=1
     elif [[ "$1" == "--cpu" ]]; then
       CPU_BUILD=1
+    elif [[ "$1" == "--tpu" ]]; then
+      TPU_BUILD=1
     elif [[ "$1" == "--gpudirect" ]]; then
       GPUDIRECT_BUILD=1
     elif [[ "$1" == "--rocm" ]]; then
@@ -368,8 +406,8 @@ function main() {
     fi
   done
 
-  if [[ $(( CPU_BUILD + GPUDIRECT_BUILD + ROCM_BUILD )) -gt "1" ]]; then
-    echo "Only one of [--cpu, --gpudirect, --rocm] may be provided."
+  if [[ $(( TPU_BUILD + CPU_BUILD + GPUDIRECT_BUILD + ROCM_BUILD )) -gt "1" ]]; then
+    echo "Only one of [--tpu, --cpu, --gpudirect, --rocm] may be provided."
     usage
     exit 1
   fi
@@ -400,6 +438,8 @@ function main() {
     PKG_NAME_FLAG="--project_name tf_nightly_rocm"
   elif [[ ${NIGHTLY_BUILD} == "1" && ${CPU_BUILD} == "1" ]]; then
     PKG_NAME_FLAG="--project_name tf_nightly_cpu"
+  elif [[ ${NIGHTLY_BUILD} == "1" && ${TPU_BUILD} == "1" ]]; then
+    PKG_NAME_FLAG="--project_name tf_nightly_tpu"
   elif [[ ${NIGHTLY_BUILD} == "1" ]]; then
     PKG_NAME_FLAG="--project_name tf_nightly"
   elif [[ ${GPUDIRECT_BUILD} == "1" ]]; then
@@ -408,6 +448,8 @@ function main() {
     PKG_NAME_FLAG="--project_name tensorflow_rocm"
   elif [[ ${CPU_BUILD} == "1" ]]; then
     PKG_NAME_FLAG="--project_name tensorflow_cpu"
+  elif [[ ${TPU_BUILD} == "1" ]]; then
+    PKG_NAME_FLAG="--project_name tensorflow_tpu"
   fi
 
   build_wheel "$SRCDIR" "$DSTDIR" "$PKG_NAME_FLAG"

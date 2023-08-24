@@ -4,7 +4,6 @@ def if_cuda(if_true, if_false = []):
 
     Returns a select statement which evaluates to if_true if we're building
     with CUDA enabled.  Otherwise, the select statement evaluates to if_false.
-
     """
     return select({
         "@local_config_cuda//:is_cuda_enabled": if_true,
@@ -16,12 +15,20 @@ def if_cuda_clang(if_true, if_false = []):
 
     Returns a select statement which evaluates to if_true if we're building
     with cuda-clang.  Otherwise, the select statement evaluates to if_false.
-
    """
    return select({
        "@local_config_cuda//cuda:using_clang": if_true,
        "//conditions:default": if_false
    })
+
+def if_cuda_exec(if_true, if_false = []):
+    """Synonym for if_cuda.
+
+    Selects if_true both in target and in exec configurations. In principle,
+    if_cuda would only need to select if_true in a target configuration, but
+    not in an exec configuration, but this is not currently implemented.
+    """
+    return if_cuda(if_true, if_false)
 
 def cuda_compiler(if_cuda_clang, if_nvcc, neither = []):
     """Shorthand for select()'ing on wheteher we're building with cuda-clang or nvcc.

@@ -179,21 +179,6 @@ StatusOr<PrimitiveType> DLDataTypeToPrimitiveType(DLDataType type) {
   }
 }
 
-// Returns the strides for `shape`.
-std::vector<int64_t> StridesForShape(const Shape& shape) {
-  std::vector<int64_t> strides;
-  CHECK(shape.IsArray());
-  CHECK(shape.has_layout());
-
-  strides.resize(shape.dimensions_size());
-  int64_t stride = 1;
-  for (int i : shape.layout().minor_to_major()) {
-    strides.at(i) = stride;
-    stride *= shape.dimensions(i);
-  }
-  return strides;
-}
-
 StatusOr<std::vector<int64_t>> StridesToLayout(
     absl::Span<int64_t const> dims, absl::Span<int64_t const> strides) {
   CHECK_EQ(dims.size(), strides.size());
@@ -291,12 +276,12 @@ StatusOr<py::capsule> BufferToDLPackManagedTensor(py::handle py_buffer,
         "BufferToDLPackManagedTensor called on deleted array.");
   }
   PjRtBuffer* pjrt_buffer = IfrtHelpers::pjrt_buffer(ifrt_array);
-  if (pjrt_buffer->on_device_shape().IsTuple()) {
+  if (pjrt_buffer->IsTuple()) {
     return Unimplemented(
         "BufferToDLPackManagedTensor is not implemented for tuple "
         "buffers.");
   }
-  if (pjrt_buffer->on_device_shape().is_dynamic()) {
+  if (pjrt_buffer->has_dynamic_dimensions()) {
     return Unimplemented("DynamicShape is not implemented in DLPack.");
   }
 
@@ -334,15 +319,15 @@ StatusOr<py::capsule> BufferToDLPackManagedTensor(py::handle py_buffer,
   pack->tensor.deleter = DLPackTensorDeleter;
   TF_ASSIGN_OR_RETURN(dt.device, DLDeviceForDevice(*pjrt_buffer->device()));
   dt.device.device_id = pjrt_buffer->device()->local_hardware_id();
-  dt.ndim = pjrt_buffer->on_device_shape().dimensions_size();
-  TF_ASSIGN_OR_RETURN(
-      dt.dtype,
-      PrimitiveTypeToDLDataType(pjrt_buffer->on_device_shape().element_type()));
+  dt.ndim = pjrt_buffer->dimensions().size();
+  TF_ASSIGN_OR_RETURN(dt.dtype,
+                      PrimitiveTypeToDLDataType(pjrt_buffer->element_type()));
 
-  pack->shape =
-      std::vector<int64_t>(pjrt_buffer->on_device_shape().dimensions().begin(),
-                           pjrt_buffer->on_device_shape().dimensions().end());
-  pack->strides = StridesForShape(pjrt_buffer->on_device_shape());
+  pack->shape = std::vector<int64_t>(pjrt_buffer->dimensions().begin(),
+                                     pjrt_buffer->dimensions().end());
+  pack->strides =
+      StridesForShape(pjrt_buffer->element_type(), pjrt_buffer->dimensions(),
+                      pjrt_buffer->layout());
   dt.shape = reinterpret_cast<std::int64_t*>(pack->shape.data());
   dt.strides = reinterpret_cast<std::int64_t*>(pack->strides.data());
   dt.byte_offset = 0;

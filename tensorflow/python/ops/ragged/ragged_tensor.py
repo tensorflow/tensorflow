@@ -29,9 +29,9 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.framework import type_spec_registry
@@ -700,13 +700,13 @@ class RaggedTensor(composite_tensor.CompositeTensor,
     if not isinstance(validate, bool):
       raise TypeError(f"Argument `validate` must have type bool. "
                       f"Received {validate}.")
-    if isinstance(nested_value_rowids, ops.Tensor):
+    if isinstance(nested_value_rowids, tensor_lib.Tensor):
       raise TypeError(f"Argument `nested_value_rowids` must be a list of "
                       f"Tensors. Received {nested_value_rowids}.")
     if nested_nrows is None:
       nested_nrows = [None] * len(nested_value_rowids)
     else:
-      if isinstance(nested_nrows, ops.Tensor):
+      if isinstance(nested_nrows, tensor_lib.Tensor):
         raise TypeError(f"Argument `nested_nrows` must be a list of "
                         f"Tensors. Received {nested_nrows}.")
       if len(nested_nrows) != len(nested_value_rowids):
@@ -757,7 +757,7 @@ class RaggedTensor(composite_tensor.CompositeTensor,
     if not isinstance(validate, bool):
       raise TypeError(f"Argument `validate` must have type bool. "
                       f"Received {validate}.")
-    if isinstance(nested_row_splits, ops.Tensor):
+    if isinstance(nested_row_splits, tensor_lib.Tensor):
       raise TypeError(f"Argument `nested_row_splits` must be a list of "
                       f"Tensors. Received {nested_row_splits}.")
     with ops.name_scope(name, "RaggedFromNestedRowSplits",
@@ -799,7 +799,7 @@ class RaggedTensor(composite_tensor.CompositeTensor,
     if not isinstance(validate, bool):
       raise TypeError(f"Argument `validate` must have type bool. "
                       f"Received {validate}.")
-    if isinstance(nested_row_lengths, ops.Tensor):
+    if isinstance(nested_row_lengths, tensor_lib.Tensor):
       raise TypeError(f"Argument `nested_row_lengths` must be a list of "
                       f"Tensors. Received {nested_row_lengths}.")
     with ops.name_scope(name, "RaggedFromNestedRowlengths",
@@ -843,7 +843,7 @@ class RaggedTensor(composite_tensor.CompositeTensor,
     if isinstance(nested_row_partitions, RowPartition):
       raise TypeError(f"Argument `nested_row_partitions` must be a list of "
                       f"RowPartitions. Received {nested_row_partitions}.")
-    if isinstance(nested_row_partitions, ops.Tensor):
+    if isinstance(nested_row_partitions, tensor_lib.Tensor):
       raise TypeError(f"Argument `nested_row_partitions` must be a list of "
                       f"RowPartitions. Received {nested_row_partitions}.")
     with ops.name_scope(name, "RaggedFromNestedRowPartitions",
@@ -1834,8 +1834,8 @@ class RaggedTensor(composite_tensor.CompositeTensor,
         default_value = array_ops.zeros((), self.dtype)
 
       if (isinstance(shape, (list, tuple)) and
-          any(isinstance(v, ops.Tensor) for v in shape) and
-          all(isinstance(v, (int, ops.Tensor)) for v in shape)):
+          any(isinstance(v, tensor_lib.Tensor) for v in shape) and
+          all(isinstance(v, (int, tensor_lib.Tensor)) for v in shape)):
         shape = array_ops_stack.stack(shape)
 
       shape_tensor = _shape_as_tensor(shape, row_partition_tensors[0].dtype)
@@ -1844,11 +1844,14 @@ class RaggedTensor(composite_tensor.CompositeTensor,
           values=self.flat_values,
           default_value=default_value,
           row_partition_types=row_partition_types,
-          row_partition_tensors=row_partition_tensors)
+          row_partition_tensors=row_partition_tensors,
+      )
 
       ragged_shape = self.shape
 
-      if ragged_shape.rank is not None and not isinstance(shape, ops.Tensor):
+      if ragged_shape.rank is not None and not isinstance(
+          shape, tensor_lib.Tensor
+      ):
         # Merged self.shape and shape, favoring the second one as it takes
         # into account potential padding added to the output.
         shape = tensor_shape.as_shape(shape)
@@ -2406,7 +2409,7 @@ class RaggedTensorSpec(type_spec.BatchableTypeSpec):
 
   @property
   def value_type(self):
-    return RaggedTensor if self._ragged_rank > 0 else ops.Tensor
+    return RaggedTensor if self._ragged_rank > 0 else tensor_lib.Tensor
 
   def __init__(self,
                shape=None,
@@ -2462,8 +2465,9 @@ class RaggedTensorSpec(type_spec.BatchableTypeSpec):
     # RaggedTensor with ragged_rank 0 can be compatible with raw flat_values.
     if self._ragged_rank == 0:
       if self._flat_values_spec is None:
-        if isinstance(spec_or_value, (ops.Tensor, tensor_spec.TensorSpec)):
-          return tensor_spec.TensorSpec(
+        if isinstance(
+            spec_or_value, (tensor_lib.Tensor, tensor_lib.TensorSpec)):
+          return tensor_lib.TensorSpec(
               self._shape, self._dtype).is_compatible_with(spec_or_value)
       elif not isinstance(spec_or_value, (RaggedTensor, RaggedTensorSpec)):
         return self._flat_values_spec.is_compatible_with(spec_or_value)
@@ -2483,20 +2487,20 @@ class RaggedTensorSpec(type_spec.BatchableTypeSpec):
       if self._flat_values_spec is not None:
         return [self._flat_values_spec]
       else:
-        return [tensor_spec.TensorSpec(self._shape, self._dtype)]
+        return [tensor_lib.TensorSpec(self._shape, self._dtype)]
 
     flat_values_spec = self._flat_values_spec
     if flat_values_spec is None:
       flat_values_shape = tensor_shape.TensorShape([None]).concatenate(
           self._shape[self._ragged_rank + 1:])
-      flat_values_spec = tensor_spec.TensorSpec(flat_values_shape, self._dtype)
+      flat_values_spec = tensor_lib.TensorSpec(flat_values_shape, self._dtype)
     outer_dim = tensor_shape.dimension_at_index(self._shape, 0)
     outer_splits_shape = [None if outer_dim is None else outer_dim + 1]
-    inner_splits_spec = tensor_spec.TensorSpec([None], self._row_splits_dtype)
+    inner_splits_spec = tensor_lib.TensorSpec([None], self._row_splits_dtype)
 
     specs = ([
         flat_values_spec,
-        tensor_spec.TensorSpec(outer_splits_shape, self._row_splits_dtype)
+        tensor_lib.TensorSpec(outer_splits_shape, self._row_splits_dtype)
     ] + [inner_splits_spec for _ in range(self._ragged_rank - 1)])
     return specs
 
@@ -2528,7 +2532,7 @@ class RaggedTensorSpec(type_spec.BatchableTypeSpec):
         if self.flat_values_spec is not None and hasattr(result.flat_values,
                                                          "set_shape"):
           result.flat_values.set_shape(self.flat_values_spec.shape)
-      elif isinstance(result, ops.Tensor):
+      elif isinstance(result, tensor_lib.Tensor):
         result.set_shape(self._shape)
     return result
 
@@ -2541,7 +2545,7 @@ class RaggedTensorSpec(type_spec.BatchableTypeSpec):
     # `[]` (scalar), but a `RaggedTensorSpec` can also represent a batch of
     # boxed `RaggedTensor` objects with shape `(...)` (and batches of batches,
     # etc.), so the flat shape must be unknown.
-    return [tensor_spec.TensorSpec(None, dtypes.variant)]
+    return [tensor_lib.TensorSpec(None, dtypes.variant)]
 
   def _to_tensor_list(self, value):
     # TODO(edloper): Update gen_ragged_conversion_ops that convert to and
@@ -2635,7 +2639,7 @@ class RaggedTensorSpec(type_spec.BatchableTypeSpec):
   @classmethod
   def from_value(cls, value):
     if (isinstance(value, ragged_tensor_value.RaggedTensorValue) or
-        isinstance(value.flat_values, ops.Tensor)):
+        isinstance(value.flat_values, tensor_lib.Tensor)):
       return cls(
           shape=value.shape,
           dtype=value.values.dtype,
@@ -3016,7 +3020,7 @@ def _shape_as_tensor(shape, dtype):
   if dtype != dtypes.int64 and dtype != dtypes.int32:
     raise ValueError(f"Expected int64 or int32 for dtype: got {dtype}.")
 
-  if isinstance(shape, ops.Tensor):
+  if isinstance(shape, tensor_lib.Tensor):
     if shape.dtype != dtypes.int64 and shape.dtype != dtypes.int32:
       return math_ops.cast(shape, dtype)
     return shape
@@ -3049,7 +3053,7 @@ def _get_optional_partition_dtype(values):
   return None
 
 
-_SUPPORTED_RAGGED_VALUE_TYPES = (ops.Tensor, RaggedTensor)
+_SUPPORTED_RAGGED_VALUE_TYPES = (tensor_lib.Tensor, RaggedTensor)
 
 
 # TODO(edloper): Consider whether we should change the registry to be on

@@ -85,14 +85,6 @@ Status GetWindowedOutputSize(int64_t input_size, int64_t filter_size,
 // excess padding (caused by an odd padding size value) is added to the
 // 'padding_after' dimension.
 Status GetWindowedOutputSizeVerbose(int64_t input_size, int64_t filter_size,
-                                    int64_t stride, Padding padding_type,
-                                    int64_t* output_size,
-                                    int64_t* padding_before,
-                                    int64_t* padding_after);
-
-// The V2 version computes the same outputs with arbitrary dilation_rate. For
-// detailed equations, refer to the comments for GetWindowedOutputSize().
-Status GetWindowedOutputSizeVerboseV2(int64_t input_size, int64_t filter_size,
                                       int64_t dilation_rate, int64_t stride,
                                       Padding padding_type,
                                       int64_t* output_size,

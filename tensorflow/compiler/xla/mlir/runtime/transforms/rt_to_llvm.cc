@@ -337,8 +337,9 @@ static FailureOr<EncodedArguments> EncodeArguments(
   // Start the lifetime of the encoded arguments pointers.
   b.create<LLVM::LifetimeStartOp>(b.getI64IntegerAttr(-1), alloca);
 
-  // Store constructed arguments pointers array into the alloca.
-  b.create<LLVM::StoreOp>(arr, alloca.getRes());
+  // Store constructed arguments pointers array into the alloca. Use volatile
+  // store to suppress expensive LLVM optimizations.
+  b.create<LLVM::StoreOp>(arr, alloca, /*alignment=*/0, /*isVolatile=*/true);
 
   // Alloca that encodes the custom call arguments.
   arguments.encoded = alloca;
@@ -431,8 +432,9 @@ static FailureOr<EncodedResults> EncodeResults(
   // Start the lifetime of the encoded results pointers allocation.
   b.create<LLVM::LifetimeStartOp>(b.getI64IntegerAttr(-1), alloca);
 
-  // Store constructed results pointers array on the stack
-  b.create<LLVM::StoreOp>(arr, alloca);
+  // Store constructed results pointers array on the stack. Use volatile
+  // store to suppress expensive LLVM optimizations.
+  b.create<LLVM::StoreOp>(arr, alloca, /*alignment=*/0, /*isVolatile=*/true);
 
   // Alloca that encodes the custom call returns.
   results.encoded = alloca;

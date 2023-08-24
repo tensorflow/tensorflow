@@ -973,6 +973,22 @@ TEST(ShapeUtilTest, PermuteDynamicDimensions) {
   } while (std::next_permutation(permutation.begin(), permutation.end()));
 }
 
+TEST(ShapeUtilTest, PrependMajorDimension) {
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 20, 30});
+  EXPECT_EQ(ShapeUtil::PrependMajorDimension(40, shape),
+            ShapeUtil::MakeShape(F32, {40, 10, 20, 30}));
+
+  shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 20, 30}, {0, 2, 1});
+  EXPECT_EQ(
+      ShapeUtil::PrependMajorDimension(40, shape),
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {40, 10, 20, 30}, {1, 3, 2, 0}));
+
+  shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 20, 30}, {2, 1, 0});
+  EXPECT_EQ(
+      ShapeUtil::PrependMajorDimension(40, shape),
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {40, 10, 20, 30}, {3, 2, 1, 0}));
+}
+
 TEST(ShapeUtilTest, AppendMinorDimension) {
   Shape shape = ShapeUtil::MakeShape(F32, {10, 20, 30});
   ShapeUtil::AppendMinorDimension(40, &shape);

@@ -100,9 +100,12 @@ bool IsOpSupported(mlir::Operation* op) {
           llvm::dyn_cast_or_null<TF::TensorListFromTensorOp>(op)) {
     element_type = from_tensor.getElementDtype();
   }
+  if (auto get_item = llvm::dyn_cast_or_null<TF::TensorListGetItemOp>(op)) {
+    element_type = get_item.getElementDtype();
+  }
 
   if (!element_type.has_value()) return false;
-  // TODO(@lukeboyer) add support for all types handled in the
+  // TODO(b/288302706) add support for all types handled in the
   // `lower_static_tensor_list` pass.
   return element_type->isF32() || element_type->isInteger(64) ||
          element_type->isInteger(32) || element_type->isInteger(1);

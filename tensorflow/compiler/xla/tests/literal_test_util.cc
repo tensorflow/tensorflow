@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/literal_comparison.h"
+#include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/path.h"
 #include "tensorflow/tsl/platform/test.h"
 

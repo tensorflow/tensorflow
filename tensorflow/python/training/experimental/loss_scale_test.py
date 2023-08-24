@@ -22,6 +22,7 @@ from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
@@ -86,7 +87,7 @@ class FixedLossScaleTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def test_call_type(self):
     scalar = loss_scale_module.FixedLossScale(123)
-    self.assertIsInstance(scalar(), ops.Tensor)
+    self.assertIsInstance(scalar(), tensor_lib.Tensor)
 
   @test_util.run_in_graph_and_eager_modes
   def test_repr(self):
@@ -301,7 +302,7 @@ class DynamicLossScaleTest(test.TestCase, parameterized.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def test_call_type(self):
     scalar = loss_scale_module.DynamicLossScale()
-    self.assertIsInstance(scalar(), ops.Tensor)
+    self.assertIsInstance(scalar(), tensor_lib.Tensor)
 
   @parameterized.named_parameters(*TESTCASES)
   @test_util.run_in_graph_and_eager_modes

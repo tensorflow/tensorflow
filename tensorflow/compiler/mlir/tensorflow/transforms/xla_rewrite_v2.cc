@@ -319,15 +319,12 @@ mlir::LogicalResult Rewrite(tf_device::ClusterFuncOp cluster_func,
 
   // Fetch compilation device
   std::string compilation_device;
+  if (failed(GetClusterFuncDevice(cluster_func, compilation_device)))
+    return failure();
+
   if (!old_parallel_execute) {
-    if (failed(GetClusterFuncDevice(cluster_func, compilation_device)))
-      return failure();
     old_parallel_execute =
         mlir::TF::BuildParallelExecuteOp(cluster_func, &builder);
-  } else {
-    if (failed(GetCompilationDeviceFromParallelExecuteOp(old_parallel_execute,
-                                                         compilation_device)))
-      return failure();
   }
 
   // Build compile op _XlaCompile

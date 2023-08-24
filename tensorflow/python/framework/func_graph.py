@@ -30,7 +30,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -80,7 +80,7 @@ def convert_structure_to_signature(structure, arg_names=None,
 
   def encode_arg(arg, path):
     """A representation for this argument, for converting into signatures."""
-    if isinstance(arg, ops.Tensor):
+    if isinstance(arg, tensor_lib.Tensor):
       user_specified_name = None
       try:
         user_specified_name = compat.as_str(
@@ -93,8 +93,8 @@ def convert_structure_to_signature(structure, arg_names=None,
         # of the function argument.
         name = user_specified_name
       else:
-        name = tensor_spec.sanitize_spec_name("_".join(str(p) for p in path))
-      return tensor_spec.TensorSpec(arg.shape, arg.dtype, name)
+        name = tensor_lib.sanitize_spec_name("_".join(str(p) for p in path))
+      return tensor_lib.TensorSpec(arg.shape, arg.dtype, name)
     if isinstance(arg, resource_variable_ops.ResourceVariable):
       return trace_type.from_value(arg, signature_context)
     if isinstance(arg, composite_tensor.CompositeTensor):
@@ -107,7 +107,7 @@ def convert_structure_to_signature(structure, arg_names=None,
         str,
         type(None),
         dtypes.DType,
-        tensor_spec.TensorSpec,
+        tensor_lib.TensorSpec,
         type_spec.TypeSpec,
     )):
       return arg
@@ -974,7 +974,7 @@ def func_graph_from_py_func(name,
       `Tensor` or a `tf.experimental.ExtensionType`.
   """
   if op_return_value is not None:
-    assert isinstance(op_return_value, ops.Tensor), op_return_value
+    assert isinstance(op_return_value, tensor_lib.Tensor), op_return_value
   if func_graph is None:
     func_graph = FuncGraph(
         name, collections=collections, capture_by_value=capture_by_value)
@@ -1091,7 +1091,7 @@ def func_graph_from_py_func(name,
         if resource_placeholder is None:
           continue
         inputs.append(resource_placeholder)
-      elif isinstance(arg, ops.Tensor):
+      elif isinstance(arg, tensor_lib.Tensor):
         inputs.append(arg)
     func_graph.inputs = (
         inputs + func_graph.internal_captures + nest.flatten(

@@ -27,7 +27,9 @@ from .xla_extension import ArrayImpl as ArrayImpl
 from .xla_extension import Client as Client
 from .xla_extension import CompileOptions as CompileOptions
 from .xla_extension import Device as Device
+from .xla_extension import Memory as Memory
 from .xla_extension import DeviceAssignment as DeviceAssignment
+from .xla_extension import DeviceList as DeviceList
 from .xla_extension import DeviceTopology as DeviceTopology
 from .xla_extension import DistributedRuntimeClient as DistributedRuntimeClient
 from .xla_extension import LoadedExecutable as LoadedExecutable
@@ -101,6 +103,10 @@ def make_tfrt_tpu_c_api_client(options: Optional[_NameValueMapping] = None) -> C
 
 
 def make_tfrt_tpu_c_api_device_topology(topology_name: Optional[str] = None, **kwargs) -> DeviceTopology:
+  ...
+
+
+def get_topology_for_devices(devices: List[Device]) -> DeviceTopology:
   ...
 
 
@@ -222,6 +228,9 @@ def weakref_lru_cache(cache_context_fn: Callable, call: Callable, maxsize=...):
 def copy_array_to_devices_with_sharding(self: ArrayImpl, devices: List[Device], sharding: Any) -> ArrayImpl: ...
 
 def batched_device_put(aval: Any, sharding: Any, shards: Sequence[Any], devices: List[Device]) -> ArrayImpl: ...
+
+def canonicalize_memory_kind(
+    memory_kind: Optional[str], device: Device) -> Optional[str]: ...
 
 def array_result_handler(
                aval: Any,

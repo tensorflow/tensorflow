@@ -128,6 +128,12 @@ DTensorMlirPassRunner::ImportGraphToMlir(
       mlir::IntegerAttr::get(mlir::IntegerType::get(&context_, /*width=*/64),
                              group_size));
 
+  int topo_dist = dtensor::AllReduceCombineOptimizationTopologicalDistance();
+  module->setAttr(
+      dtensor::kAllReduceTopologicalDistance,
+      mlir::IntegerAttr::get(mlir::IntegerType::get(&context_, /*width=*/64),
+                             topo_dist));
+
   if (dtensor::EnableMultiDeviceMode()) {
     module->setAttr(dtensor::kEnableMultiDeviceMode,
                     mlir::BoolAttr::get(&context_, true));

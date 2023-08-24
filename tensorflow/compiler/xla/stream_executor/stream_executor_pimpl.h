@@ -377,6 +377,17 @@ class StreamExecutor {
       const NumericOptions& numeric_options,
       std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_exec_plans);
 
+  tsl::Status GetGraphConvolveRunners(
+      dnn::ConvolutionKind kind, dnn::DataType input_type,
+      dnn::DataType output_type, Stream* stream,
+      const dnn::BatchDescriptor& input_descriptor,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const dnn::BatchDescriptor& output_descriptor,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      bool use_fallback, const NumericOptions& numeric_options,
+      std::vector<std::unique_ptr<const dnn::GraphConvRunner>>* out_exec_plans,
+      std::string serialized_graph);
+
   tsl::Status GetFusedConvolveRunners(
       bool use_cudnn_frontend, dnn::ConvolutionKind kind,
       dnn::DataType input_type, dnn::DataType bias_type,

@@ -259,17 +259,27 @@ class HloEdge {
  public:
   // Nullptr is not a valid value for 'target'.
   HloEdge(LatencyEstimator::TimeCost latency, HloGraphNode* target)
-      : latency_(latency), target_(target) {}
+      : latency_(latency), original_latency_(latency), target_(target) {}
   LatencyEstimator::TimeCost Latency() const { return latency_; }
+  LatencyEstimator::TimeCost OriginalLatency() const {
+    return original_latency_;
+  }
   void SetLatency(LatencyEstimator::TimeCost latency) { latency_ = latency; }
+  void SetOriginalLatency(LatencyEstimator::TimeCost original_latency) {
+    original_latency_ = original_latency;
+  }
   const HloGraphNode& Target() const { return *target_; }
   HloGraphNode& Target() { return *target_; }
   std::string ToString() const;
 
  private:
   // Latency between the two nodes connected by this edge. The other end of the
-  // edge is the owner of the HloEdge object.
+  // edge is the owner of the HloEdge object. This latency can get updated due
+  // to various scheduling optimizations.
   LatencyEstimator::TimeCost latency_;
+  // Original latency is the initial latency value (typically computed by a
+  // latency estimator).
+  LatencyEstimator::TimeCost original_latency_;
   // Target node of this edge.
   HloGraphNode* target_;
 };

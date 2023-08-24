@@ -23,6 +23,7 @@ limitations under the License.
 #include <optional>
 #include <random>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -131,7 +132,7 @@ class HloModule {
 
   // Move computations from the input module to this one, while ensuring that
   // the names of instructions within the computations are unchanged.
-  void MoveComputationsFrom(HloModule* module);
+  void MoveComputationsFrom(HloModule* module, bool make_names_unique = false);
 
   // Returns a deep copy of this module including all computations.
   std::unique_ptr<HloModule> Clone(const std::string& suffix = "clone") const;
@@ -421,6 +422,13 @@ class HloModule {
     return input_output_alias_config_;
   }
 
+  // buffer_donor_config_ indicates the set of input buffer donors that are
+  // expected from the module.
+  HloBufferDonorConfig& buffer_donor_config() { return buffer_donor_config_; }
+  const HloBufferDonorConfig& buffer_donor_config() const {
+    return buffer_donor_config_;
+  }
+
   // DynamicParameterBinding holds the list of bindings that indicates which
   // parameter dimensions are dynamic and which parameters represent their
   // runtime value.
@@ -593,6 +601,26 @@ class HloModule {
   std::string GetFingerprint128(const HloPrintOptions& options =
                                     HloPrintOptions::ModuleFingerprint()) const;
 
+  // Describes a stack frame.
+  struct StackFrame {
+    std::string_view file_name;
+    std::string_view function_name;
+    int line = 0;
+    int column = 0;
+
+    // 1-based index of the parent frame.
+    // 0 value indicates that the current frame is the root.
+    int parent_frame_id = 0;
+
+    bool empty() const {
+      return line == 0 && column == 0 && file_name.empty() &&
+             function_name.empty();
+    }
+  };
+
+  // Getter for the specific stack frame. Argument is a 1-based index.
+  StackFrame get_stack_frame(int id) const;
+
  private:
   HloComputation* AddComputationInternal(
       std::unique_ptr<HloComputation> computation, bool is_entry,
@@ -629,6 +657,10 @@ class HloModule {
   // alias_config indicates the alias information of input/output buffers that
   // are expected from the module.
   HloInputOutputAliasConfig input_output_alias_config_;
+
+  // buffer_donor_config_ indicates the donor information of input buffers that
+  // are expected from the module.
+  HloBufferDonorConfig buffer_donor_config_;
 
   // Bindings for dynamic parameter mapping.
   DynamicParameterBinding dynamic_parameter_binding_;
@@ -678,6 +710,9 @@ class HloModule {
   // environment variables).
   std::unique_ptr<CompilationEnvironments> comp_envs_ =
       std::make_unique<CompilationEnvironments>();
+
+  // Stack frame indexes flat representation.
+  std::optional<StackFrameIndexProto> stack_frame_index_;
 };
 
 }  // namespace xla

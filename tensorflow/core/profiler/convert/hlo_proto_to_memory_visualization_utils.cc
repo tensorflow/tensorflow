@@ -295,13 +295,8 @@ class HloProtoBufferWrapper {
       for (const auto& assigned : buffer_allocation.assigned()) {
         const auto id = assigned.logical_buffer_id();
         const auto* logical_buffer = id_to_logical_buffer_proto.at(id);
-        const auto& instruction_name =
-            logical_buffer->defined_at().instruction_name();
         const auto* instruction =
-            instruction_name.empty()
-                ? unique_id_to_hlo.at(
-                      logical_buffer->defined_at().instruction_id())
-                : name_to_hlo.at(instruction_name);
+            unique_id_to_hlo.at(logical_buffer->defined_at().instruction_id());
         id_to_logical_buffer_[id] = std::make_unique<LogicalBufferStruct>(
             *logical_buffer, *buffer_allocation_s, *instruction,
             assigned.offset());
@@ -466,13 +461,16 @@ void Convert(const BufferAllocationProto& proto,
 }
 
 void NoteSpecialAllocations(const HloProtoBufferWrapper& wrapper,
-                            int64_t small_buffer_size,
+                            int64_t memory_color, int64_t small_buffer_size,
                             PreprocessResult* result) {
   int64_t entry_parameters_bytes = 0;
   int64_t non_reusable_bytes = 0;
   int64_t maybe_live_out_bytes = 0;
-  for (const BufferAllocationProto& buffer_allocation :
-       wrapper.GetHloProto().buffer_assignment().buffer_allocations()) {
+  int64_t total_buffer_allocation_bytes = 0;
+  int64_t indefinite_buffer_allocation_bytes = 0;
+  for (const auto* buffer_allocation_struct :
+       wrapper.GetBufferAllocations(memory_color)) {
+    const auto& buffer_allocation = buffer_allocation_struct->proto();
     if (buffer_allocation.is_entry_computation_parameter()) {
       entry_parameters_bytes += buffer_allocation.size();
     }
@@ -487,13 +485,21 @@ void NoteSpecialAllocations(const HloProtoBufferWrapper& wrapper,
       }
       maybe_live_out_bytes += buffer_allocation.size();
     }
-    Convert(buffer_allocation, wrapper, result->add_indefinite_lifetimes());
+    if (buffer_allocation_struct->IsIndefinite()) {
+      indefinite_buffer_allocation_bytes += buffer_allocation.size();
+      Convert(buffer_allocation, wrapper, result->add_indefinite_lifetimes());
+    }
+    total_buffer_allocation_bytes += buffer_allocation.size();
   }
 
   result->set_entry_computation_parameters_mib(
       BytesToMiB(entry_parameters_bytes));
   result->set_non_reusable_mib(BytesToMiB(non_reusable_bytes));
   result->set_maybe_live_out_mib(BytesToMiB(maybe_live_out_bytes));
+  result->set_total_buffer_allocation_mib(
+      BytesToMiB(total_buffer_allocation_bytes));
+  result->set_indefinite_buffer_allocation_mib(
+      BytesToMiB(indefinite_buffer_allocation_bytes));
 }
 
 // Memory usage statistics collected from heap simulator trace.
@@ -832,7 +838,7 @@ void ConvertAllocationTimeline(const HloProtoBufferWrapper& wrapper,
       "orange",
       "orangered",
       "orchid",
-      "palegoldenrod"
+      "palegoldenrod",
       "palegreen",
       "paleturquoise",
       "palevioletred",
@@ -1020,7 +1026,8 @@ void GeneratePreprocessResult(const HloProtoBufferWrapper& wrapper,
                        logical_buffer->span->second);
   }
 
-  NoteSpecialAllocations(wrapper, peak_snapshot.small_buffer_size, result);
+  NoteSpecialAllocations(wrapper, memory_color, peak_snapshot.small_buffer_size,
+                         result);
 
   ConvertAllocationTimeline(wrapper, simulator_stats, memory_color, result);
 }

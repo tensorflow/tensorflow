@@ -132,7 +132,6 @@ ENTRY %constant_pred_array () -> pred[2,3] {
 
 )"
 },
-
 // s32 constant
 {
 "ConstantS32",
@@ -140,6 +139,17 @@ R"(HloModule constant_s32_module, entry_computation_layout={()->s32[]}
 
 ENTRY %constant_s32 () -> s32[] {
   ROOT %constant = s32[] constant(-42)
+}
+
+)"
+},
+// s32 constant with statistics
+{
+"ConstantS32WithStatistics",
+R"(HloModule constant_s32_module, entry_computation_layout={()->s32[]}
+
+ENTRY %constant_s32 () -> s32[] {
+  ROOT %constant = s32[] constant(-42), statistics={visualizing_index=1,stat-1=33,stat-2=44}
 }
 
 )"
@@ -1373,6 +1383,18 @@ R"(HloModule test, entry_computation_layout={(f32[100]{0})->u32[100]{0}}
 ENTRY %test (p: f32[100]) -> u32[100] {
   %p = f32[100]{0} parameter(0)
   ROOT %root = u32[100]{0} bitcast-convert(f32[100]{0} %p), metadata={op_type="a" op_name="b" source_file="c" source_line=1 profile_type={1} deduplicated_name="d"}
+}
+
+)"
+},
+
+{
+"MetadataPreserveLayout",
+R"(HloModule test, entry_computation_layout={(f32[100]{0})->u32[100]{0}}
+
+ENTRY %test (p: f32[100]) -> u32[100] {
+  %p = f32[100]{0} parameter(0)
+  ROOT %root = u32[100]{0} bitcast-convert(f32[100]{0} %p), metadata={op_type="a" op_name="b" source_file="c" source_line=1 profile_type={1} deduplicated_name="d" preserve_layout=true}
 }
 
 )"
@@ -3387,6 +3409,58 @@ ENTRY entry {
                   "expects integer");
 }
 
+TEST_F(HloParserTest, SimpleBufferDonor) {
+  const std::string original = R"(
+HloModule Module, buffer_donor={ (0, {0}), (0, {1}) }
+
+ENTRY entry {
+  %p = (f32[], f32[]) parameter(0)
+  %p0 = f32[] get-tuple-element((f32[], f32[]) %p), index=0
+  %p1 = f32[] get-tuple-element((f32[], f32[]) %p), index=1
+  ROOT %out = (f32[], f32[]) tuple(%p0, %p1)
+}
+  )";
+  auto module = ParseAndReturnVerifiedModule(original);
+  TF_ASSERT_OK(module.status());
+  std::unique_ptr<HloModule> parsed_module = std::move(module).value();
+  EXPECT_TRUE(
+      parsed_module->buffer_donor_config().ParameterIsBufferDonor(0, {0}));
+  EXPECT_TRUE(
+      parsed_module->buffer_donor_config().ParameterIsBufferDonor(0, {1}));
+  EXPECT_FALSE(
+      parsed_module->buffer_donor_config().ParameterIsBufferDonor(0, {}));
+}
+
+TEST_F(HloParserTest, BufferDonorShapeIndexNotNumerical) {
+  const std::string original = R"(
+HloModule Module, buffer_donor={ (0, {0, a}), (0, {1}) }
+
+ENTRY entry {
+  %p = (f32[], f32[]) parameter(0)
+  %p0 = f32[] get-tuple-element((f32[], f32[]) %p), index=0
+  %p1 = f32[] get-tuple-element((f32[], f32[]) %p), index=1
+  ROOT %out = (f32[], f32[]) tuple(%p0, %p1)
+}
+  )";
+  ExpectHasSubstr(ParseAndReturnUnverifiedModule(original).status().message(),
+                  "expects integer");
+}
+
+TEST_F(HloParserTest, BufferDonorWrongFormatAlphaParam) {
+  const std::string original = R"(
+HloModule Module, buffer_donor={ (zero, {0}), (0, {1}) }
+
+ENTRY entry {
+  %p = (f32[], f32[]) parameter(0)
+  %p0 = f32[] get-tuple-element((f32[], f32[]) %p), index=0
+  %p1 = f32[] get-tuple-element((f32[], f32[]) %p), index=1
+  ROOT %out = (f32[], f32[]) tuple(%p0, %p1)
+}
+  )";
+  ExpectHasSubstr(ParseAndReturnUnverifiedModule(original).status().message(),
+                  "expects integer");
+}
+
 TEST_F(HloParserTest, MultipleRoots) {
   const std::string original = R"(HloModule multiple_roots:
 ENTRY consts {
@@ -4148,6 +4222,20 @@ TEST_F(HloParserTest, NegativeParameterNumber) {
               HasSubstr("parameter number must be >= 0"));
 }
 
+TEST_F(HloParserTest, DuplicateParameterNumberIsDetected) {
+  const std::string kHloString = R"(
+  ENTRY e {
+    a = s8[] parameter(0)
+    b = s8[] parameter(0)
+    ROOT a = s8[] add(a, b)
+  }
+  )";
+  auto result = ParseAndReturnUnverifiedModule(kHloString);
+  ASSERT_FALSE(result.status().ok());
+  EXPECT_THAT(result.status().message(),
+              HasSubstr("Duplicate parameter number 0"));
+}
+
 TEST_F(HloParserTest, WrongNumberOfParameterLeafBuffersInReplication) {
   const std::string hlo_string =
       "par0 = (f32[3,5], f32[]) parameter(0), "
@@ -4475,6 +4563,15 @@ test {
   EXPECT_EQ(
       module->entry_computation()->ComputeProgramShape().result().layout(),
       Layout({1, 0, 2, 3}));
+}
+
+TEST_F(HloParserTest, ParseComputationNameClosingBrace) {
+  const std::string original = R"(
+test {
+  ROOT root =  f32[1,64,10,128]{1,0,2,3} parameter(0)
+} // test
+)";
+  EXPECT_TRUE(ParseAndReturnUnverifiedModule(original).ok());
 }
 
 TEST_F(HloParserTest, ParseSingleEntryComputation) {

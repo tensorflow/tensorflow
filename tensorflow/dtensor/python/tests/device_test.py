@@ -79,10 +79,12 @@ class DTensorDeviceTest(test_util.DTensorBaseTest, parameterized.TestCase):
     # There isn't a great way to test whether something actually executed
     # synchronously; this test just exercises the option.
     device = dtensor_device.DTensorDevice([], is_async=is_async)
-    a = device.copy_to_mesh(
-        constant_op.constant([1.0]), Layout.replicated(self.mesh, rank=1)
-    )
-    b = array_ops.identity(a)
+    with device._experimental_default_mesh(self.mesh):
+      with ops.device_v2(device.name):
+        a = api.copy_to_mesh(
+            constant_op.constant([1.0]), Layout.replicated(self.mesh, rank=1)
+        )
+        b = array_ops.identity(a)
     self.assertEqual([1.], b.numpy())
 
   def testBasicTypeBasedDispatch(self):
@@ -195,7 +197,7 @@ class DTensorDeviceTest(test_util.DTensorBaseTest, parameterized.TestCase):
     self.skipForDeviceType(
         ["GPU", "TPU"], "Variable implicit copy is only allowed for CPU mesh.")
 
-    variable = d_variable.DVariable(array_ops.ones(shape=shape, dtype=dtype))
+    variable = variables.Variable(array_ops.ones(shape=shape, dtype=dtype))
     new_value = array_ops.zeros(shape=shape, dtype=dtype)
 
     @polymorphic_function.function
@@ -559,8 +561,8 @@ class DTensorPackUnpackOnOneDMeshTest(test_util.DTensorBaseTest):
     ):
       api._dtensor_device().pack(
           [
-              d_variable.DVariable(array_ops.ones([2, 3])),
-              d_variable.DVariable(array_ops.ones([2, 3])),
+              variables.Variable(array_ops.ones([2, 3])),
+              variables.Variable(array_ops.ones([2, 3])),
           ],
           Layout.replicated(self.mesh, rank=2),
       )

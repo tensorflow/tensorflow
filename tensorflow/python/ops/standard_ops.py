@@ -78,8 +78,17 @@ from tensorflow.python.ops.numerics import *
 from tensorflow.python.ops.parsing_ops import *
 from tensorflow.python.ops.partitioned_variables import *
 from tensorflow.python.ops.proto_ops import *
+from tensorflow.python.ops.ragged import ragged_batch_gather_ops
+from tensorflow.python.ops.ragged import ragged_batch_gather_with_default_op
+from tensorflow.python.ops.ragged import ragged_bincount_ops
+from tensorflow.python.ops.ragged import ragged_check_ops
+from tensorflow.python.ops.ragged import ragged_conversion_ops
 from tensorflow.python.ops.ragged import ragged_dispatch as _ragged_dispatch
+from tensorflow.python.ops.ragged import ragged_embedding_ops
+from tensorflow.python.ops.ragged import ragged_image_ops
 from tensorflow.python.ops.ragged import ragged_operators as _ragged_operators
+from tensorflow.python.ops.ragged import ragged_squeeze_op
+from tensorflow.python.ops.ragged import ragged_string_ops
 from tensorflow.python.ops.random_ops import *
 from tensorflow.python.ops.script_ops import py_func
 from tensorflow.python.ops.session_ops import *

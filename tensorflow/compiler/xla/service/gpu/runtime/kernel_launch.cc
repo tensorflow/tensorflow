@@ -31,9 +31,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/stream_executor/kernel.h"
 
-#if GOOGLE_CUDA
-#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_graph.h"
-#endif  // #if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_graph.h"
+#endif  // #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace xla {
 namespace gpu {
@@ -59,8 +59,8 @@ static absl::Status LaunchImpl(
     State<std::unique_ptr<se::KernelBase>> device_kernel,
     int32_t shared_memory_bytes, int32_t grid_size_x, int32_t grid_size_y,
     int32_t grid_size_z, int32_t block_size_x, int32_t block_size_y,
-    int32_t block_size_z, CustomCall::RemainingArgs args,
-    std::string_view name) {
+    int32_t block_size_z, CustomCall::RemainingArgs args, std::string_view name,
+    int64_t stream_id) {
   se::Stream* stream = run_options->stream();
   se::StreamExecutor* executor = stream->parent();
 
@@ -79,7 +79,7 @@ static absl::Status LaunchImpl(
       }));
   assert((*kernel)->name() == name && "unexpected loaded kernel");
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   TF_ASSIGN_OR_RETURN(bool is_capturing, se::gpu::IsStreamCapturing(stream));
 #else
   bool is_capturing = false;
@@ -88,10 +88,10 @@ static absl::Status LaunchImpl(
   if (is_capturing) {
     if (region_status->IsInConcurrentRegion()) {
       VLOG(3) << "Launching " << (*kernel)->name()
-              << "in a concurrent region during CUDA graph capture";
+              << "in a concurrent region during GPU graph capture";
     } else {
       VLOG(3) << "Launching " << (*kernel)->name()
-              << "during CUDA graph capture";
+              << "during GPU graph capture";
     }
   } else {
     VLOG(3) << "Launching " << (*kernel)->name();
@@ -117,10 +117,13 @@ static absl::Status LaunchImpl(
   // Always add temporary buffer as the last kernel argument.
   buffer_args.back() = *temp_buffer;
 
-  // If we are capturing a concurrent region in a CUDA graph, then use the
+  // If we are capturing a concurrent region in a GPU graph, then use the
   // stream provided by ConcurrentRegionStatus to execute the kernel.
   se::Stream* execution_stream = stream;
-  if (region_status->IsInConcurrentRegion()) {
+  if (stream_id != 0) {
+    DCHECK(region_status->IsInConcurrentRegion());
+    TF_ASSIGN_OR_RETURN(execution_stream, region_status->GetStream(stream_id));
+  } else if (region_status->IsInConcurrentRegion()) {
     execution_stream = region_status->GetNextStream();
   }
 
@@ -148,7 +151,8 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
         .Arg<int32_t>()   // block_size_y
         .Arg<int32_t>()   // block_size_x
         .RemainingArgs()  // args
-        .Attr<std::string_view>("kernel"));
+        .Attr<std::string_view>("kernel")
+        .Attr<int64_t>("stream"));
 
 void RegisterKernelLaunchCustomCalls(
     runtime::DirectCustomCallRegistry& registry) {

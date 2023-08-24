@@ -24,6 +24,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
@@ -706,7 +707,7 @@ class TextFileInitializer(TableInitializerBase):
       ValueError: when the filename is empty, or when the table key and value
       data types do not match the expected data types.
     """
-    if not isinstance(filename, ops.Tensor) and not filename:
+    if not isinstance(filename, tensor_lib.Tensor) and not filename:
       raise ValueError("`filename` argument required for tf.lookup.TextFileInitializer")
 
     self._filename_arg = filename
@@ -1499,7 +1500,7 @@ def index_table_from_file(vocabulary_file=None,
         num_oov_buckets)
   if vocab_size is not None and vocab_size < 1:
     vocab_file_value = vocabulary_file
-    if isinstance(vocabulary_file, ops.Tensor):
+    if isinstance(vocabulary_file, tensor_lib.Tensor):
       vocab_file_value = tensor_util.constant_value(vocabulary_file) or "?"
     raise ValueError("`vocab_size` must be greater than 0, got %d for "
                      "vocabulary_file: %s." % (vocab_size, vocab_file_value))

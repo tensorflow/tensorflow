@@ -22,11 +22,13 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/kernels/batching_util/adaptive_shared_batch_scheduler.h"
 #include "tensorflow/core/kernels/batching_util/batch_resource_base.h"
+#include "tensorflow/core/kernels/batching_util/warmup.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/errors.h"
@@ -35,7 +37,6 @@ limitations under the License.
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
 #include "tfrt/host_context/resource_context.h"  // from @tf_runtime
-#include "util/task/status_macros.h"
 
 namespace tensorflow {
 namespace tfrt_stub {
@@ -59,6 +60,9 @@ class BatchFunctionFallbackKernelBase : public AsyncOpKernel {
   void SetAdaptiveBatchSchedulerOptions(OpKernelConstruction* c,
                                         int32_t num_batch_threads);
 
+  static void RecordBatchParamNumBatchThreads(int64_t num_batch_threads,
+                                              absl::string_view model_name);
+  static absl::string_view GetModelName(OpKernelContext* ctx);
   static int32 NumBatchThreadsFromEnvironmentWithDefault(
       int default_num_batch_threads);
   static thread::ThreadPool* GetOrCreateBatchThreadsPool();
@@ -72,6 +76,10 @@ class BatchFunctionFallbackKernelBase : public AsyncOpKernel {
   int32_t batch_timeout_micros_;
   int32_t max_enqueued_batches_;
   std::vector<int32_t> allowed_batch_sizes_;
+  int32 low_priority_max_batch_size_;
+  int32 low_priority_batch_timeout_micros_;
+  int32 low_priority_max_enqueued_batches_;
+  std::vector<int32> low_priority_allowed_batch_sizes_;
   bool enable_large_batch_splitting_;
   bool disable_padding_;
 
@@ -116,6 +124,7 @@ class BatchFunctionFallbackKernel : public BatchFunctionFallbackKernelBase {
 template <typename BatchResourceType>
 void BatchFunctionFallbackKernel<BatchResourceType>::ComputeAsync(
     OpKernelContext* c, DoneCallback done) {
+  RecordBatchParamNumBatchThreads(num_batch_threads_, GetModelName(c));
   OP_REQUIRES_VALUE(tfrt::ResourceContext * client_graph_resource_context, c,
                     BatchResourceType::GetClientGraphResourceContext(c));
   OP_REQUIRES_ASYNC(
@@ -220,9 +229,18 @@ void BatchFunctionFallbackKernel<BatchResourceType>::ComputeAsync(
           "Provided BEF function doesn't match with BatchResource. Expected:",
           expected_name, " Received:", received_name)),
       done);
-  Status status = (*br)->get()->RegisterInput(
-      random::New64(), c, batcher_queue_,
-      [c]() { return BatchResourceType::CreateBatchTask(c); }, done);
+  const uint64_t guid = random::New64();
+  auto create_batch_task_fn = [c]() {
+    return BatchResourceType::CreateBatchTask(c);
+  };
+  Status status;
+  if (serving::ShouldWarmupAllBatchSizes(c)) {
+    status = (*br)->get()->RegisterWarmupInputs(guid, c, batcher_queue_,
+                                                create_batch_task_fn, done);
+  } else {
+    status = (*br)->get()->RegisterInput(guid, c, batcher_queue_,
+                                         create_batch_task_fn, done);
+  }
   OP_REQUIRES_OK_ASYNC(c, status, done);
   // Assume br calls done, so nothing to do here.
 }

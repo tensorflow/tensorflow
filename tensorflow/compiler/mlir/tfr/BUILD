@@ -4,7 +4,7 @@ load(
     "tf_cc_binary",
     "tf_cc_test",
 )
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud", "tf_py_strict_test", "tf_python_pybind_extension")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "tf_py_strict_test", "tf_python_pybind_extension")
 load("//tensorflow/compiler/mlir/tfr:build_defs.bzl", "gen_op_libraries")
 load(
     "@llvm-project//mlir:tblgen.bzl",
@@ -37,7 +37,7 @@ td_library(
     srcs = [
         "ir/tfr_ops.td",
     ],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantizationOpsTdFiles",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
@@ -52,7 +52,7 @@ td_library(
 
 gentbl_cc_library(
     name = "tfr_ops_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             ["-gen-op-decls"],
@@ -72,7 +72,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "tfr_decompose_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             ["-gen-rewriters"],

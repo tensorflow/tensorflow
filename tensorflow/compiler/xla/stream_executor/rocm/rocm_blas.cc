@@ -105,11 +105,24 @@ bool ROCMBlas::Init() {
     return false;
   }
 
+#if TF_HIPBLASLT
+  if (!blas_lt_.Init().ok()) {
+    LOG(ERROR) << "Failed to initialize hipblasLt";
+    return false;
+  }
+#endif
   return true;
 }
 
 ROCMBlas::ROCMBlas(gpu::GpuExecutor *parent)
-    : parent_(CHECK_NOTNULL(parent)), blas_(nullptr) {}
+    : parent_(CHECK_NOTNULL(parent)),
+      blas_(nullptr)
+#if TF_HIPBLASLT
+      ,
+      blas_lt_(parent)
+#endif
+{
+}
 
 ROCMBlas::~ROCMBlas() {
   if (blas_ != nullptr) {

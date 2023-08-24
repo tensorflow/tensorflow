@@ -155,7 +155,7 @@ TEST(PjRtCApiHelperTest, ConvertToCLayoutFromLayoutNoTiles) {
   xla::Layout layout(minor_to_major);
 
   TF_ASSERT_OK_AND_ASSIGN(BufferMemoryLayoutData layout_data,
-                          ConvertToBufferMemoryLayoutData(&layout));
+                          ConvertToBufferMemoryLayoutData(layout));
 
   EXPECT_EQ(layout_data.c_layout.type,
             PJRT_Buffer_MemoryLayout_Type::PJRT_Buffer_MemoryLayout_Type_Tiled);
@@ -175,7 +175,7 @@ TEST(PjRtCApiHelperTest, ConvertToCLayoutFromLayoutWithTiles) {
   layout.mutable_tiles()->push_back(xla::Tile(tile_dims_2));
 
   TF_ASSERT_OK_AND_ASSIGN(BufferMemoryLayoutData layout_data,
-                          ConvertToBufferMemoryLayoutData(&layout));
+                          ConvertToBufferMemoryLayoutData(layout));
 
   EXPECT_EQ(layout_data.c_layout.type,
             PJRT_Buffer_MemoryLayout_Type::PJRT_Buffer_MemoryLayout_Type_Tiled);

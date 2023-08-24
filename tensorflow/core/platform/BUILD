@@ -7,6 +7,8 @@
 #
 #   The libraries in this package are not allowed to have ANY dependencies
 #   to any TensorFlow code outside this package.
+
+load("//tensorflow:py.default.bzl", "py_test")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
@@ -180,9 +182,9 @@ cc_library(
     hdrs = ["cord.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        ":platform",
+        "//tensorflow/tsl/platform:cord",
         "@com_google_absl//absl/strings:cord",
-    ] + tf_platform_deps("cord"),
+    ],
 )
 
 cc_library(
@@ -1259,7 +1261,7 @@ tf_cc_test(
 
 tf_cc_test(
     name = "fake_python_env_test",
-    size = "small",
+    size = "medium",
     srcs = ["fake_python_env_test.cc"],
     args = [
         "/some/path/to/pythontest.runfiles/org_tensorflow/stuff/to/run.py",

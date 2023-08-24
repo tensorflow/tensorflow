@@ -433,6 +433,8 @@ class LiteSessionWrapper : public Session {
     return wrapped_->ReleaseCallable(handle);
   }
 
+  Status Finalize() override { return wrapped_->Finalize(); }
+
  private:
   const std::unique_ptr<Session> wrapped_;
 };

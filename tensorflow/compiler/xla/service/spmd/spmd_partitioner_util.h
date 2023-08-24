@@ -555,8 +555,7 @@ HloInstruction* SliceDataFromWindowReshard(
 // parameters.
 std::optional<PartitionedHlo::WindowedInputShardReturnValue> ReshardDataForPad(
     HloInstruction* pad_value, PaddingConfig pc, PartitionedHlo to_reshard,
-    const Shape& target_shape, const HloSharding& target_sharding,
-    SpmdBuilder* b);
+    const HloSharding& target_sharding, SpmdBuilder* b);
 
 // Performs padding of data based on the windowed sharding passed as input.
 HloInstruction* PadDataFromWindowReshard(

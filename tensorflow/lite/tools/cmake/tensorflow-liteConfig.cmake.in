@@ -17,7 +17,7 @@ include(CMakeFindDependencyMacro)
 
 find_dependency(absl)
 find_dependency(Eigen3)
-find_dependency(Flatbuffers)
+find_dependency(FlatBuffers)
 find_dependency(NEON_2_SSE)
 find_dependency(cpuinfo)
 find_dependency(ruy)

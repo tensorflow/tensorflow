@@ -24,13 +24,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
-#include "tensorflow/compiler/xla/client/lib/testing.h"
-#include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/error_spec.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_comparison.h"
-#include "tensorflow/compiler/xla/service/hlo_runner.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/tools/hlo_control_flow_flattening.h"
@@ -39,7 +37,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tools/run_hlo_module.pb.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/path.h"
 #include "tensorflow/tsl/platform/status.h"
 
@@ -88,10 +85,11 @@ void OnMiscompare(const LiteralSlice& expected, const LiteralSlice& actual,
   WriteLiteralToTempFile(mismatches, "mismatches");
 }
 
-StatusOr<Literal> ExecuteWithRunner(std::unique_ptr<HloModule> module,
-                                    absl::Span<const Literal> args,
-                                    HloRunnerInterface* runner,
-                                    bool run_hlo_passes) {
+StatusOr<Literal> ExecuteWithRunner(
+    std::unique_ptr<HloModule> module,
+    const BufferAssignmentProto* buffer_assignment_proto,
+    absl::Span<const Literal> args, HloRunnerInterface* runner,
+    bool run_hlo_passes) {
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       VerifyHloModule(module.get(), /*layout_sensitive=*/false,
                       /*allow_mixed_precision=*/true),
@@ -102,7 +100,11 @@ StatusOr<Literal> ExecuteWithRunner(std::unique_ptr<HloModule> module,
   const auto start = std::chrono::high_resolution_clock::now();
   ExecutionProfile profile;
   auto result_status =
-      runner->Execute(std::move(module), args, run_hlo_passes, &profile);
+      (buffer_assignment_proto == nullptr)
+          ? runner->Execute(std::move(module), args, run_hlo_passes, &profile)
+          : runner->ExecuteWithBufferAssignment(std::move(module),
+                                                buffer_assignment_proto, args,
+                                                run_hlo_passes, &profile);
   const auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> diff = end - start;
   std::cerr << "... compiled and ran in " << diff.count() << "s.\n";
@@ -119,9 +121,10 @@ StatusOr<Literal> ExecuteWithRunner(std::unique_ptr<HloModule> module,
 }  // namespace
 
 Status RunAndCompare(
-    std::unique_ptr<HloModule> test_module, HloRunnerInterface* test_runner,
-    HloRunnerInterface* reference_runner, std::minstd_rand0* engine,
-    const RunHloModuleOptions& options,
+    std::unique_ptr<HloModule> test_module,
+    const BufferAssignmentProto* buffer_assignment_proto,
+    HloRunnerInterface* test_runner, HloRunnerInterface* reference_runner,
+    std::minstd_rand0* engine, const RunHloModuleOptions& options,
     xla::RunHloModuleIterationLiterals* iteration_literals_proto,
     std::function<Status(const HloModule&, HloRunnerInterface*, HloModule*)>
         reference_module_modifier_hook,
@@ -193,8 +196,8 @@ Status RunAndCompare(
 
   TF_ASSIGN_OR_RETURN(
       auto test_result,
-      ExecuteWithRunner(std::move(test_module), args, test_runner,
-                        options.run_test_hlo_passes));
+      ExecuteWithRunner(std::move(test_module), buffer_assignment_proto, args,
+                        test_runner, options.run_test_hlo_passes));
   if (options.print_literals) {
     std::cout << "\n** Result with test runner " << test_runner->Name()
               << " **\n"
@@ -212,8 +215,9 @@ Status RunAndCompare(
 
   TF_ASSIGN_OR_RETURN(
       auto reference_result,
-      ExecuteWithRunner(std::move(reference_module), args, reference_runner,
-                        options.run_reference_hlo_passes));
+      ExecuteWithRunner(std::move(reference_module),
+                        /*buffer_assignment_proto=*/nullptr, args,
+                        reference_runner, options.run_reference_hlo_passes));
 
   if (options.print_literals) {
     std::cout << "\n** Result with reference runner "
@@ -240,11 +244,31 @@ Status RunAndCompare(
     xla::RunHloModuleIterationLiterals* iteration_literals_proto,
     std::function<Status(const HloModule&, HloRunnerInterface*, HloModule*)>
         reference_module_modifier_hook,
-    std::function<void(HloModuleConfig*)> config_modifier_hook) {
+    std::function<void(HloModuleConfig*)> config_modifier_hook,
+    std::function<Status(const RunHloModuleOptions& options, HloModule& module)>
+        compilation_env_modifier_hook) {
+  BufferAssignmentProto buffer_assignment_proto;
   TF_ASSIGN_OR_RETURN(
       auto test_module,
       LoadModuleFromFile(hlo_filename, hlo_module_loader_details::Config(),
-                         options.input_format, config_modifier_hook));
+                         options.input_format, config_modifier_hook,
+                         options.use_buffer_assignment_from_proto
+                             ? &buffer_assignment_proto
+                             : nullptr));
+  HloVerifier verifier(
+      HloVerifierOpts{}.WithLayoutSensitive(false).WithAllowMixedPrecision(
+          true));
+  TF_RETURN_IF_ERROR(verifier.Run(test_module.get()).status());
+  if (compilation_env_modifier_hook) {
+    TF_CHECK_OK(compilation_env_modifier_hook(options, *test_module))
+        << "Could not adjust the compilation environment for user provided "
+           "hlo module.";
+  }
+
+  if (options.print_literals) {
+    std::cout << "\n** Buffer assignment proto **\n"
+              << buffer_assignment_proto.DebugString() << "\n";
+  }
   std::unique_ptr<RunHloModuleIterationLiterals> iteration_literals_proto_local;
   if (iteration_literals_proto == nullptr) {
     // User did not explicitly give input
@@ -262,8 +286,11 @@ Status RunAndCompare(
           << "Ignoring input data from snapshot and using fake data instead.";
     }
   }
-  return RunAndCompare(std::move(test_module), test_runner, reference_runner,
-                       engine, options, iteration_literals_proto,
-                       reference_module_modifier_hook, config_modifier_hook);
+  return RunAndCompare(
+      std::move(test_module),
+      options.use_buffer_assignment_from_proto ? &buffer_assignment_proto
+                                               : nullptr,
+      test_runner, reference_runner, engine, options, iteration_literals_proto,
+      reference_module_modifier_hook, config_modifier_hook);
 }
 }  // namespace xla

@@ -31,6 +31,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
@@ -97,7 +98,9 @@ class ParseExampleTest(test.TestCase):
     serialized = kwargs["serialized"]
     batch_size = (
         self.evaluate(serialized).size
-        if isinstance(serialized, ops.Tensor) else np.asarray(serialized).size)
+        if isinstance(serialized, tensor_lib.Tensor)
+        else np.asarray(serialized).size
+    )
     for k, f in kwargs["features"].items():
       if isinstance(f, parsing_ops.FixedLenFeature) and f.shape is not None:
         self.assertEqual(tuple(out[k].shape.as_list()), (batch_size,) + f.shape)

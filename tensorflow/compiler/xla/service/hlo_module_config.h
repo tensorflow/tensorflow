@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -361,6 +362,11 @@ class HloModuleConfig {
   absl::string_view fdo_profile() const { return fdo_profile_; }
   std::string* mutable_fdo_profile() { return &fdo_profile_; }
 
+  int64_t device_memory_size() const { return device_memory_size_; }
+  void set_device_memory_size(int64_t device_memory_size) {
+    device_memory_size_ = device_memory_size;
+  }
+
  private:
   // If you add new members, be sure to update compilation_cache_key and the
   // HloModuleConfigProto.
@@ -473,6 +479,8 @@ class HloModuleConfig {
   // the only way to feed FDO data into the compiler and individual backends
   // may choose to get FDO data by other means.
   std::string fdo_profile_;
+
+  int64_t device_memory_size_ = 0;
   // LINT.ThenChange(//tensorflow/compiler/xla/xla.proto)
 };
 

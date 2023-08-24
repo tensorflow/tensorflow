@@ -1,12 +1,13 @@
-// RUN:   hlo_to_llvm_ir %s | FileCheck %s
+// RUN:   hlo_to_llvm_ir %s | FileCheck --check-prefixes=CHECK,CHECK-%{PTX} %{IR_SUBST} %s
 // This tests that we do not increase the grid launch size when
 // few_waves is enabled.
 
 // CHECK-LABEL: entry:
-// CHECK-DAG:   call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range ![[ctaid_range:[0-9]+]]
-// CHECK-DAG:   call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range ![[tid_range:[0-9]+]]
-// CHECK-DAG:   ![[ctaid_range]] = !{i32 0, i32 2}
-// CHECK-DAG:   ![[tid_range]] = !{i32 0, i32 1024}
+// CHECK:   call i32 [[CTAIDX]](), !range ![[ctaid_range:[0-9]+]]
+// CHECK:   call i32 [[TIDX]](), !range ![[tid_range:[0-9]+]]
+// CHECK:   ![[ctaid_range]] = !{i32 0, i32 2}
+// CHECK:   ![[tid_range]] = !{i32 0, i32 1024}
+
 
 HloModule Test
 
@@ -20,10 +21,11 @@ ENTRY main {
 // This tests that we cap grid launch code when few_waves is enabled.
 
 // CHECK-LABEL: entry:
-// CHECK-DAG:   call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range ![[ctaid_range:[0-9]+]]
-// CHECK-DAG:   call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range ![[tid_range:[0-9]+]]
-// CHECK-DAG:   ![[ctaid_range]] = !{i32 0, i32 1008}
-// CHECK-DAG:   ![[tid_range]] = !{i32 0, i32 128}
+// CHECK:   call i32 [[CTAIDX]](), !range ![[ctaid_range:[0-9]+]]
+// CHECK:   call i32 [[TIDX]](), !range ![[tid_range:[0-9]+]]
+// CHECK-PTX:   ![[ctaid_range]] = !{i32 0, i32 1008}
+// CHECK-GCN:   ![[ctaid_range]] = !{i32 0, i32 1664}
+// CHECK:   ![[tid_range]] = !{i32 0, i32 128}
 
 HloModule Test
 
@@ -38,10 +40,14 @@ ENTRY main {
 // and scalar broadcast are present.
 
 // CHECK-LABEL: entry:
-// CHECK-DAG:   call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range ![[ctaid_range:[0-9]+]]
-// CHECK-DAG:   call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range ![[tid_range:[0-9]+]]
-// CHECK-DAG:   ![[ctaid_range]] = !{i32 0, i32 1008}
-// CHECK-DAG:   ![[tid_range]] = !{i32 0, i32 128}
+// CHECK-PTX:   call i32 [[CTAIDX]](), !range ![[ctaid_range:[0-9]+]]
+// CHECK-PTX:   call i32 [[TIDX]](), !range ![[tid_range:[0-9]+]]
+// CHECK-PTX:   ![[ctaid_range]] = !{i32 0, i32 1008}
+// CHECK-PTX:   ![[tid_range]] = !{i32 0, i32 128}
+// CHECK-GCN:   call i32 @llvm.amdgcn.workgroup.id.x(), !range ![[ctaid_range:[0-9]+]]
+// CHECK-GCN:   call i32 @llvm.amdgcn.workitem.id.x(), !range ![[tid_range:[0-9]+]]
+// CHECK-GCN:   ![[ctaid_range]] = !{i32 0, i32 1664}
+// CHECK-GCN:   ![[tid_range]] = !{i32 0, i32 128}
 
 HloModule ScalarBroadcast
 
@@ -65,10 +71,11 @@ ENTRY main {
 // motivated few_waves implementation.
 
 // CHECK-LABEL: entry:
-// CHECK-DAG:   call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range ![[ctaid_range:[0-9]+]]
-// CHECK-DAG:   call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range ![[tid_range:[0-9]+]]
-// CHECK-DAG:   ![[ctaid_range]] = !{i32 0, i32 1008}
-// CHECK-DAG:   ![[tid_range]] = !{i32 0, i32 128}
+// CHECK:   call i32 [[CTAIDX]](), !range ![[ctaid_range:[0-9]+]]
+// CHECK:   call i32 [[TIDX]](), !range ![[tid_range:[0-9]+]]
+// CHECK-PTX:   ![[ctaid_range]] = !{i32 0, i32 1008}
+// CHECK-GCN:   ![[ctaid_range]] = !{i32 0, i32 1664}
+// CHECK:   ![[tid_range]] = !{i32 0, i32 128}
 
 HloModule Test
 

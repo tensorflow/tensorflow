@@ -77,6 +77,11 @@ std::string mlir::GetMlirOpNameFromOpCode(
   }
 
   llvm::StringRef op_name(tflite::EnumNameBuiltinOperator(builtin_code));
+
+  // If the Op name contains stablehlo
+  if (op_name.startswith("STABLEHLO_")) {
+    return llvm::Twine("stablehlo.", op_name.drop_front(10).lower()).str();
+  }
   return llvm::Twine("tfl.", op_name.lower()).str();
 }
 

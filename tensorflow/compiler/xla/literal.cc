@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstring>
 #include <functional>
 #include <limits>
@@ -1781,6 +1782,12 @@ void LiteralBase::Piece::CopyElementsWithDynamicBound(
   if (ShapeUtil::IsZeroElementArray(dest_shape)) {
     return;
   }
+  if (dest_shape.rank() == 1) {
+    // Fast path for rank 1 arrays.
+    int64_t count = std::min(GetDynamicSize(0), src.GetDynamicSize(0));
+    std::copy_n(src.data<NativeT>().begin(), count, data<NativeT>().begin());
+    return;
+  }
   std::vector<int64_t> index(dest_shape.rank());
   do {
     bool out_of_bound = false;
@@ -1932,6 +1939,30 @@ bool Literal::Piece::IsAll(const Literal& scalar) const {
                                        scalar.GetFirstElement<NativeT>());
         }
         return false;
+      },
+      subshape().element_type());
+}
+
+int64_t Literal::Piece::CountAll(const Literal& scalar) const {
+  CHECK(ShapeUtil::IsScalar(scalar.shape())) << scalar.shape().ToString();
+  if (!subshape().IsArray()) {
+    return 0;
+  }
+
+  CHECK(LayoutUtil::IsDenseArray(subshape()))
+      << __func__ << " is only supported for dense arrays: " << subshape();
+  CHECK_EQ(subshape().element_type(), scalar.shape().element_type());
+  return primitive_util::PrimitiveTypeSwitch<int64_t>(
+      [&](auto primitive_type_constant) -> int64_t {
+        if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
+          using NativeT = NativeTypeOf<primitive_type_constant>;
+          return absl::c_count_if(
+              this->data<NativeT>(), [&](NativeT elem) -> bool {
+                return EqualIncludingNan(elem,
+                                         scalar.GetFirstElement<NativeT>());
+              });
+        }
+        return 0;
       },
       subshape().element_type());
 }

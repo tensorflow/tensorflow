@@ -25,7 +25,6 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "testing/base/public/unique-test-directory.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
@@ -41,12 +40,15 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_testutil.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/platform/path.h"
 #include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace tensorflow {
 namespace tfrt_stub {
@@ -128,7 +130,13 @@ TEST(NodeIoDumpRewriterTest, OnGraph) {
   auto output = ops::Identity(scope.WithOpName("output"), add);
   TF_ASSERT_OK(scope.ToGraph(graph.get()));
   // Insert dump ops.
-  const std::string dump_dir = ::testing::UniqueTestDirectory();
+  Env* env = Env::Default();
+  const string dump_dir =
+      ::tsl::io::JoinPath(::tsl::testing::TmpDir(), "OnGraph");
+  if (!env->FileExists(dump_dir).ok()) {
+    ASSERT_TRUE(env->RecursivelyCreateDir(dump_dir).ok());
+  }
+
   TF_ASSERT_OK(InsertDumpOps(*graph, {"add"}, dump_dir));
   // Check the inserted dump ops.
   auto* node = FindNode(graph.get(), "add");
@@ -147,7 +155,13 @@ TEST(NodeIoDumpRewriterTest, OnSavedModelV1) {
   TF_ASSERT_OK(ReadMetaGraphDefFromSavedModel(saved_model_dir, {"serve"},
                                               &meta_graph_def));
   // Insert dump ops.
-  const std::string dump_dir = ::testing::UniqueTestDirectory();
+  Env* env = Env::Default();
+  const string dump_dir =
+      ::tsl::io::JoinPath(::tsl::testing::TmpDir(), "OnSavedModelV1");
+  if (!env->FileExists(dump_dir).ok()) {
+    ASSERT_TRUE(env->RecursivelyCreateDir(dump_dir).ok());
+  }
+
   TF_ASSERT_OK(InsertDumpOps(meta_graph_def, {"Add"}, dump_dir));
   // Load and run saved model.
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
@@ -182,7 +196,13 @@ TEST(NodeIoDumpRewriterTest, OnSavedModelV2) {
   TF_ASSERT_OK(ReadMetaGraphDefFromSavedModel(saved_model_dir, {"serve"},
                                               &meta_graph_def));
   // Insert dump ops.
-  const std::string dump_dir = ::testing::UniqueTestDirectory();
+  Env* env = Env::Default();
+  const string dump_dir =
+      ::tsl::io::JoinPath(::tsl::testing::TmpDir(), "OnSavedModelV2");
+  if (!env->FileExists(dump_dir).ok()) {
+    ASSERT_TRUE(env->RecursivelyCreateDir(dump_dir).ok());
+  }
+
   TF_ASSERT_OK(InsertDumpOps(meta_graph_def, {"result"}, dump_dir));
   // Load and run saved model.
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);

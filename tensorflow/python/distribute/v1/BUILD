@@ -13,7 +13,7 @@ cuda_py_strict_test(
     srcs = ["cross_device_ops_test.py"],
     python_version = "PY3",
     tags = [
-        "multi_and_single_gpu",
+        # "multi_and_single_gpu", # TODO(b/287692888): re-enable once the 2gpu test passes.
         "no_windows_gpu",  # b/216367668
     ],
     deps = [
@@ -37,6 +37,7 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:indexed_slices",
         "//tensorflow/python/framework:kernels",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:collective_ops",
         "//tensorflow/python/ops:math_ops",

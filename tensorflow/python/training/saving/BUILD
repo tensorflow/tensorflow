@@ -51,6 +51,7 @@ py_strict_library(
         "//tensorflow/python/framework:device",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:control_flow_ops_gen",

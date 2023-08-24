@@ -14,8 +14,8 @@ module attributes {gpu.container_module} {
   }
 
 
-  // CHECK: func @xla.gpu.cuda.graph.capture
-  func.func @xla.gpu.cuda.graph.capture(%arg0: memref<72xi8>, %arg1: memref<72xi8>, %arg2: memref<328xi8>, %arg3: memref<72xi8>, %arg4: memref<72xi8>, %arg5: memref<72xi8>, %arg6: memref<72xi8>, %arg7: memref<72xi8>, %arg8: memref<72xi8>, %arg9: memref<72xi8>) {
+  // CHECK: func @xla.gpu.graph.capture
+  func.func @xla.gpu.graph.capture(%arg0: memref<72xi8>, %arg1: memref<72xi8>, %arg2: memref<328xi8>, %arg3: memref<72xi8>, %arg4: memref<72xi8>, %arg5: memref<72xi8>, %arg6: memref<72xi8>, %arg7: memref<72xi8>, %arg8: memref<72xi8>, %arg9: memref<72xi8>) {
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index
     %view = memref.view %arg0[%c0][] : memref<72xi8> to memref<3x3xi64>
@@ -46,8 +46,8 @@ module attributes {gpu.container_module} {
   }
 
 
-  // CHECK: func @xla.gpu.cuda.graph.capture
-  func.func @xla.gpu.cuda.graph.capture(%arg0: memref<72xi8>, %arg1: memref<72xi8>, %arg2: memref<328xi8>, %arg3: memref<72xi8>, %arg4: memref<72xi8>, %arg5: memref<72xi8>, %arg6: memref<72xi8>, %arg7: memref<72xi8>, %arg8: memref<72xi8>, %arg9: memref<72xi8>) {
+  // CHECK: func @xla.gpu.graph.capture
+  func.func @xla.gpu.graph.capture(%arg0: memref<72xi8>, %arg1: memref<72xi8>, %arg2: memref<328xi8>, %arg3: memref<72xi8>, %arg4: memref<72xi8>, %arg5: memref<72xi8>, %arg6: memref<72xi8>, %arg7: memref<72xi8>, %arg8: memref<72xi8>, %arg9: memref<72xi8>) {
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index
     %view = memref.view %arg0[%c0][] : memref<72xi8> to memref<3x3xi64>
@@ -76,8 +76,8 @@ module attributes {gpu.container_module} {
   }
 
 
-  // CHECK: func @xla.gpu.cuda.graph.capture
-  func.func @xla.gpu.cuda.graph.capture(%arg0: memref<72xi8>, %arg1: memref<72xi8>, %arg2: memref<328xi8>, %arg3: memref<72xi8>, %arg4: memref<72xi8>, %arg5: memref<72xi8>, %arg6: memref<72xi8>, %arg7: memref<72xi8>, %arg8: memref<72xi8>, %arg9: memref<72xi8>) {
+  // CHECK: func @xla.gpu.graph.capture
+  func.func @xla.gpu.graph.capture(%arg0: memref<72xi8>, %arg1: memref<72xi8>, %arg2: memref<328xi8>, %arg3: memref<72xi8>, %arg4: memref<72xi8>, %arg5: memref<72xi8>, %arg6: memref<72xi8>, %arg7: memref<72xi8>, %arg8: memref<72xi8>, %arg9: memref<72xi8>) {
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index
     %view = memref.view %arg0[%c0][] : memref<72xi8> to memref<3x3xi64>
@@ -106,8 +106,8 @@ module attributes {gpu.container_module} {
   }
 
 
-  // CHECK: func @xla.gpu.cuda.graph.capture
-  func.func @xla.gpu.cuda.graph.capture(%arg0: memref<72xi8>, %arg1: memref<72xi8>, %arg2: memref<328xi8>, %arg3: memref<72xi8>, %arg4: memref<72xi8>, %arg5: memref<72xi8>, %arg6: memref<72xi8>, %arg7: memref<72xi8>, %arg8: memref<72xi8>, %arg9: memref<72xi8>) {
+  // CHECK: func @xla.gpu.graph.capture
+  func.func @xla.gpu.graph.capture(%arg0: memref<72xi8>, %arg1: memref<72xi8>, %arg2: memref<328xi8>, %arg3: memref<72xi8>, %arg4: memref<72xi8>, %arg5: memref<72xi8>, %arg6: memref<72xi8>, %arg7: memref<72xi8>, %arg8: memref<72xi8>, %arg9: memref<72xi8>) {
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index
     %view = memref.view %arg0[%c0][] : memref<72xi8> to memref<3x3xi1>
@@ -136,8 +136,8 @@ module attributes {gpu.container_module} {
   }
 
 
-  // CHECK: func @xla.gpu.cuda.graph.capture
-  func.func @xla.gpu.cuda.graph.capture(%arg0: memref<144xi8>) {
+  // CHECK: func @xla.gpu.graph.capture
+  func.func @xla.gpu.graph.capture(%arg0: memref<144xi8>) {
     %c0 = arith.constant 0 : index
     %c72 = arith.constant 72 : index
     %c1 = arith.constant 1 : index
@@ -168,8 +168,8 @@ module attributes {gpu.container_module} {
   }
 
 
-  // CHECK: func @xla.gpu.cuda.graph.capture
-  func.func @xla.gpu.cuda.graph.capture(%arg0: memref<144xi8>) {
+  // CHECK: func @xla.gpu.graph.capture
+  func.func @xla.gpu.graph.capture(%arg0: memref<144xi8>) {
     %c0 = arith.constant 0 : index
     %c36 = arith.constant 36 : index
     %c1 = arith.constant 1 : index
@@ -198,8 +198,8 @@ module attributes {gpu.container_module} {
   }
 
 
-  // CHECK: func @xla.gpu.cuda.graph.capture
-  func.func @xla.gpu.cuda.graph.capture(%arg0: memref<144xi8> {lmhlo.constant_name = "cst0"}) {
+  // CHECK: func @xla.gpu.graph.capture
+  func.func @xla.gpu.graph.capture(%arg0: memref<144xi8> {lmhlo.constant_name = "cst0"}) {
     %c0 = arith.constant 0 : index
     %c36 = arith.constant 36 : index
     %c1 = arith.constant 1 : index
@@ -225,8 +225,8 @@ module attributes {gpu.container_module} {
 
 module attributes {gpu.container_module} {
 
-  // CHECK: func @xla.gpu.cuda.graph.capture
-  func.func @xla.gpu.cuda.graph.capture(%arg0: memref<16xi8>,
+  // CHECK: func @xla.gpu.graph.capture
+  func.func @xla.gpu.graph.capture(%arg0: memref<16xi8>,
                    %arg1: memref<16xi8>,
                    %arg2: memref<16xi8>,
                    %arg3: memref<16xi8>) {
@@ -261,8 +261,8 @@ module attributes {gpu.container_module} {
     gpu.func @fn0(%arg0: memref<16xi8> {lmhlo.written} ) kernel { gpu.return }
   }
 
-  // CHECK: func @xla.gpu.cuda.graph.capture
-  func.func @xla.gpu.cuda.graph.capture(%arg0: memref<16xi8>,
+  // CHECK: func @xla.gpu.graph.capture
+  func.func @xla.gpu.graph.capture(%arg0: memref<16xi8>,
                    %arg1: memref<16xi8>,
                    %arg2: memref<16xi8>) {
     %c0 = arith.constant 0 : index
@@ -290,8 +290,8 @@ module attributes {gpu.container_module} {
 
 module attributes {gpu.container_module} {
 
-  // CHECK: func @xla.gpu.cuda.graph.capture
-  func.func @xla.gpu.cuda.graph.capture(%arg0: memref<16xi8>,
+  // CHECK: func @xla.gpu.graph.capture
+  func.func @xla.gpu.graph.capture(%arg0: memref<16xi8>,
                    %arg1: memref<16xi8>,
                    %arg2: memref<16xi8>) {
     %c0 = arith.constant 0 : index
@@ -325,8 +325,8 @@ module attributes {gpu.container_module} {
   }
 
 
-  // CHECK: func @xla.gpu.cuda.graph.capture
-  func.func @xla.gpu.cuda.graph.capture(%arg0: memref<72xi8>, %arg1: memref<72xi8>, %arg2: memref<328xi8>, %arg3: memref<72xi8>, %arg4: memref<72xi8>, %arg5: memref<72xi8>, %arg6: memref<72xi8>, %arg7: memref<72xi8>, %arg8: memref<72xi8>, %arg9: memref<72xi8>) {
+  // CHECK: func @xla.gpu.graph.capture
+  func.func @xla.gpu.graph.capture(%arg0: memref<72xi8>, %arg1: memref<72xi8>, %arg2: memref<328xi8>, %arg3: memref<72xi8>, %arg4: memref<72xi8>, %arg5: memref<72xi8>, %arg6: memref<72xi8>, %arg7: memref<72xi8>, %arg8: memref<72xi8>, %arg9: memref<72xi8>) {
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index
     %view = memref.view %arg0[%c0][] : memref<72xi8> to memref<3x3xi64>

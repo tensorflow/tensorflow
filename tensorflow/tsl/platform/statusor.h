@@ -72,11 +72,21 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/macros.h"
+#include "tensorflow/tsl/platform/platform.h"
 #include "tensorflow/tsl/platform/status.h"
+
+// Include appropriate platform-dependent `TF_ASSIGN_OR_RETURN`.
+#if defined(PLATFORM_GOOGLE)
+#include "tensorflow/tsl/platform/google/statusor.h"  // IWYU pragma: export
+#else
+#include "tensorflow/tsl/platform/default/statusor.h"  // IWYU pragma: export
+#endif
 
 namespace tsl {
 
 using absl::StatusOr;
+
+}  // namespace tsl
 
 #define TF_ASSERT_OK_AND_ASSIGN(lhs, rexpr)                             \
   TF_ASSERT_OK_AND_ASSIGN_IMPL(                                         \
@@ -90,18 +100,5 @@ using absl::StatusOr;
 
 #define TF_STATUS_MACROS_CONCAT_NAME(x, y) TF_STATUS_MACROS_CONCAT_IMPL(x, y)
 #define TF_STATUS_MACROS_CONCAT_IMPL(x, y) x##y
-
-#define TF_ASSIGN_OR_RETURN(lhs, rexpr) \
-  TF_ASSIGN_OR_RETURN_IMPL(             \
-      TF_STATUS_MACROS_CONCAT_NAME(_status_or_value, __COUNTER__), lhs, rexpr)
-
-#define TF_ASSIGN_OR_RETURN_IMPL(statusor, lhs, rexpr) \
-  auto statusor = (rexpr);                             \
-  if (TF_PREDICT_FALSE(!statusor.ok())) {              \
-    return statusor.status();                          \
-  }                                                    \
-  lhs = std::move(statusor).value()
-
-}  // namespace tsl
 
 #endif  // TENSORFLOW_TSL_PLATFORM_STATUSOR_H_

@@ -1,3 +1,4 @@
+# Placeholder: load py_proto_library
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test")
 load("//tensorflow/core/platform:distribute.bzl", "distribute_py_strict_test")
@@ -297,6 +298,7 @@ py_strict_library(
         "//tensorflow/python/framework:indexed_slices",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:sparse_tensor",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/layers:layers_util",
         "//tensorflow/python/ops:array_ops",
@@ -347,6 +349,7 @@ py_strict_library(
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/ops:cond",
         "//tensorflow/python/ops:control_flow_ops",
         "//tensorflow/python/ops:init_ops",
@@ -379,6 +382,7 @@ py_strict_library(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:indexed_slices",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:control_flow_ops",
         "//tensorflow/python/ops:gradients",
@@ -532,6 +536,7 @@ py_strict_library(
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/framework:indexed_slices",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:control_flow_ops",
         "//tensorflow/python/ops:data_flow_ops",
@@ -1080,6 +1085,7 @@ py_strict_library(
         "//tensorflow/python/framework",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/ops:cond",
         "//tensorflow/python/ops:init_ops",
         "//tensorflow/python/ops:resource_variable_ops",
@@ -1687,6 +1693,7 @@ tf_py_strict_test(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:control_flow_assert",

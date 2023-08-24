@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
 
 // The following provides an API for implementing host callbacks on top of
 // PjRT's send/recv interface (see xla::SendCallback and xla::RecvCallback).
@@ -40,18 +41,25 @@ class ThreadSafePjRtChunkQueue {
   // Push a PjRtChunk into the queue.
   void Push(PjRtChunk chunk) {
     absl::MutexLock lock(&mu_);
-    queue_.push_back(std::move(chunk));
+    if (promises_.empty()) {
+      queue_.push_back(std::move(chunk));
+      return;
+    }
+    auto pop_promise = promises_.front();
+    pop_promise.Set(std::move(chunk));
+    promises_.pop_front();
   }
 
-  // Pop a PjRtChunk from the queue. This method blocks if the queue is empty.
-  PjRtChunk Pop() {
+  // Pop a PjRtChunk future from the queue.
+  PjRtFuture<PjRtChunk> Pop() {
     absl::MutexLock lock(&mu_);
-    auto cond = [this]() {
-      mu_.AssertHeld();
-      return !queue_.empty();
-    };
-    mu_.Await(absl::Condition(&cond));
-    auto chunk = std::move(queue_.front());
+    if (queue_.empty()) {
+      auto promise = PjRtFuture<PjRtChunk>::CreatePromise();
+      promises_.push_back(promise);
+      return PjRtFuture<PjRtChunk>(std::move(promise));
+    }
+
+    auto chunk = PjRtFuture<PjRtChunk>(std::move(queue_.front()));
     queue_.pop_front();
     return chunk;
   }
@@ -59,6 +67,8 @@ class ThreadSafePjRtChunkQueue {
  private:
   absl::Mutex mu_;
   std::deque<PjRtChunk> queue_ ABSL_GUARDED_BY(mu_);
+  // Contains unfulfilled pop promises.
+  std::deque<PjRtFuture<PjRtChunk>::Promise> promises_ ABSL_GUARDED_BY(mu_);
 };
 
 struct HostCallbackArgInfo {
@@ -108,7 +118,7 @@ class HostCallbackContext {
                 PjRtChunk data);
 
   void Receive(int res_num, const PjRtTransferMetadata& metadata,
-               CopyToDeviceStream& stream);
+               std::unique_ptr<CopyToDeviceStream> stream);
 
   const HostCallback& host_callback() const { return host_callback_; }
 

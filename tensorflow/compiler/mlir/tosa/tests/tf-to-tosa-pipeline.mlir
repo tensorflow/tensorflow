@@ -1,5 +1,5 @@
-// RUN: tf-opt --tf-to-tosa-pipeline  --verify-each %s | FileCheck %s
-// RUN: tf-opt --tf-tfl-to-tosa-pipeline  --verify-each %s | FileCheck %s
+// RUN: tf-opt --tf-to-tosa-pipeline --split-input-file --verify-each %s | FileCheck %s
+// RUN: tf-opt --tf-tfl-to-tosa-pipeline --split-input-file --verify-each %s | FileCheck %s
 
 // Operations for testing tf-to-tosa-pipeline
 // TODO: These tests are fairly minimal. Expand the checks to be more robust.
@@ -1070,4 +1070,68 @@ func.func @mirrorpad_reflect(%arg0: tensor<13x21x3xf32>) -> tensor<14x22x4xf32> 
   %0 = "tf.MirrorPad"(%arg0, %cst) {device = "", mode = "REFLECT"} : (tensor<13x21x3xf32>, tensor<3x2xi32>) -> tensor<14x22x4xf32>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<14x22x4xf32>) -> tensor<14x22x4xf32>
   return %0 : tensor<14x22x4xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_broadcast_to_f32
+// CHECK: %[[VAL_0:.*]] = "tosa.const"() <{value = dense<0.000000e+00> : tensor<3x3x13x7xf32>}
+// CHECK: %[[VAL_1:.*]] = "tosa.reshape"(%arg0) <{new_shape = array<i64: 1, 1, 13, 1>}> : (tensor<13x1xf32>)
+// CHECK: %[[VAL_2:.*]] = "tosa.add"(%[[VAL_1]], %[[VAL_0]]) : (tensor<1x1x13x1xf32>, tensor<3x3x13x7xf32>) -> tensor<3x3x13x7xf32>
+// CHECK: return %[[VAL_2]] : tensor<3x3x13x7xf32>
+func.func @test_broadcast_to_f32(%arg0: tensor<13x1xf32>) -> (tensor<3x3x13x7xf32>) {
+  %shape = "tf.Const"() {value = dense<[3, 3, 1, 7]> : tensor<4xi32>}  : () -> tensor<4xi32>
+  %1 = "tf.BroadcastTo"(%arg0, %shape) : (tensor<13x1xf32>, tensor<4xi32>) -> tensor<3x3x13x7xf32>
+  return %1 : tensor<3x3x13x7xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_broadcast_to_i32
+// CHECK: %[[VAL_0:.*]] = "tosa.const"() <{value = dense<0> : tensor<7x7x13x3xi32>}
+// CHECK: %[[VAL_1:.*]] = "tosa.reshape"(%arg0) <{new_shape = array<i64: 1, 1, 13, 1>}> : (tensor<13x1xi32>
+// CHECK: %[[VAL_2:.*]] = "tosa.add"(%[[VAL_1]], %[[VAL_0]]) : (tensor<1x1x13x1xi32>, tensor<7x7x13x3xi32>) -> tensor<7x7x13x3xi32>
+// CHECK: return %[[VAL_2]] : tensor<7x7x13x3xi32>
+func.func @test_broadcast_to_i32(%arg0: tensor<13x1xi32>) -> (tensor<3x3x13x3xi32>) {
+  %shape = "tf.Const"() {value = dense<[7, 7, 13, 3]> : tensor<4xi32>}  : () -> tensor<4xi32>
+  %1 = "tf.BroadcastTo"(%arg0, %shape) : (tensor<13x1xi32>, tensor<4xi32>) -> tensor<3x3x13x3xi32>
+  return %1 : tensor<3x3x13x3xi32>
+}
+
+// -----
+
+// CHECK-LABEL: test_broadcast_to_i1
+// CHECK: %[[VAL_0:.*]] = "tosa.const"() <{value = dense<false> : tensor<7x7x13x7xi1>}
+// CHECK: %[[VAL_1:.*]] = "tosa.reshape"(%arg0) <{new_shape = array<i64: 1, 1, 13, 1>}> : (tensor<13x1xi1>
+// CHECK: %[[VAL_2:.*]] = "tosa.logical_or"(%[[VAL_1]], %[[VAL_0]]) : (tensor<1x1x13x1xi1>, tensor<7x7x13x7xi1>) -> tensor<7x7x13x7xi1>
+// CHECK: return %[[VAL_2]] : tensor<7x7x13x7xi1>
+func.func @test_broadcast_to_i1(%arg0: tensor<13x1xi1>) -> (tensor<7x7x13x7xi1>) {
+  %shape = "tf.Const"() {value = dense<[7, 7, 13, 7]> : tensor<4xi32>}  : () -> tensor<4xi32>
+  %1 = "tf.BroadcastTo"(%arg0, %shape) : (tensor<13x1xi1>, tensor<4xi32>) -> tensor<7x7x13x7xi1>
+  return %1 : tensor<7x7x13x7xi1>
+}
+
+// -----
+
+// CHECK-LABEL: test_broadcast_to_i16
+// CHECK: %[[VAL_0:.*]] = "tosa.const"() <{value = dense<0> : tensor<7x7x13x3xi16>}
+// CHECK: %[[VAL_1:.*]] = "tosa.reshape"(%arg0) <{new_shape = array<i64: 1, 1, 13, 1>}
+// CHECK: %[[VAL_3:.*]] = "tosa.add"(%[[VAL_1]], %[[VAL_0]]) : (tensor<1x1x13x1xi16>, tensor<7x7x13x3xi16>) -> tensor<7x7x13x3xi16>
+// CHECK: return %[[VAL_3]] : tensor<7x7x13x3xi16>
+func.func @test_broadcast_to_i16(%arg0: tensor<13x1xi16>) -> (tensor<7x7x13x3xi16>) {
+  %shape = "tf.Const"() {value = dense<[7, 7, 1, 3]> : tensor<4xi32>}  : () -> tensor<4xi32>
+  %1 = "tf.BroadcastTo"(%arg0, %shape) : (tensor<13x1xi16>, tensor<4xi32>) -> tensor<7x7x13x3xi16>
+  return %1 : tensor<7x7x13x3xi16>
+}
+
+// -----
+
+// CHECK-LABEL: test_broadcast_to_smaller_rank
+// CHECK: %[[VAL_0:.*]] = "tosa.const"() <{value = dense<[13, 7]> : tensor<2xi32>}
+// CHECK: %[[VAL_1:.*]] = "tf.BroadcastTo"(%arg0, %[[VAL_0]]) : (tensor<2x3x13x1xi32>, tensor<2xi32>) -> tensor<13x7xi32>
+// CHECK: return %[[VAL_1]] : tensor<13x7xi32>
+func.func @test_broadcast_to_smaller_rank(%arg0: tensor<2x3x13x1xi32>) -> (tensor<13x7xi32>) {
+  %s =  "tf.Const"() {value = dense<[13, 7]> : tensor<2xi32>}  : () -> tensor<2xi32>
+  %1 = "tf.BroadcastTo"(%arg0, %s) : (tensor<2x3x13x1xi32>, tensor<2xi32>) -> tensor<13x7xi32>
+  return %1 : tensor<13x7xi32>
 }

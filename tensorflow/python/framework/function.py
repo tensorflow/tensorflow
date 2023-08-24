@@ -29,6 +29,7 @@ from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_to_function_def
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope as vs
@@ -706,7 +707,7 @@ class _OverloadedFunction(object):
     args = list(args)
     for (i, x) in enumerate(args):
       x = ops.convert_to_tensor(x)
-      if not isinstance(x, ops.Tensor):
+      if not isinstance(x, tensor_lib.Tensor):
         raise ValueError(f"Expected a Tensor but got {x} with type {type(x)}.")
       input_types.append(x.dtype)
       args[i] = x

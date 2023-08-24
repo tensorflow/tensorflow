@@ -6,7 +6,6 @@ package(
     default_visibility = [
         "//tensorflow:__pkg__",
         "//tensorflow/compiler/mlir/lite:__subpackages__",
-        "//tensorflow/lite/python:__subpackages__",
         "//tensorflow/lite/toco/python:__subpackages__",
     ],
     licenses = ["notice"],

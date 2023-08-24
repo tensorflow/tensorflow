@@ -91,6 +91,9 @@ std::string HloModuleConfig::compilation_cache_key() const {
   if (!fdo_profile().empty()) {
     StrAppend(&key, "::fdo_profile=", absl::BytesToHexString(fdo_profile()));
   }
+  if (device_memory_size() != 0) {
+    StrAppend(&key, "::device_memory_size=", device_memory_size());
+  }
   return key;
 }
 
@@ -311,6 +314,7 @@ StatusOr<HloModuleConfigProto> HloModuleConfig::ToProto() const {
   proto.set_matrix_unit_operand_precision(matrix_unit_operand_precision_);
   proto.set_allow_separate_sharding_programs(allow_separate_sharding_programs_);
   proto.set_fdo_profile(fdo_profile_);
+  proto.set_device_memory_size(device_memory_size_);
   return proto;
 }
 
@@ -376,6 +380,7 @@ StatusOr<std::unique_ptr<HloModuleConfig>> HloModuleConfig::CreateFromProto(
   config->allow_separate_sharding_programs_ =
       proto.allow_separate_sharding_programs();
   config->fdo_profile_ = proto.fdo_profile();
+  config->device_memory_size_ = proto.device_memory_size();
   return std::move(config);
 }
 

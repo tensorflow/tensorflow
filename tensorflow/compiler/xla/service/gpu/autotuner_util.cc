@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 
 namespace xla {
@@ -257,6 +258,21 @@ AutotunerUtil::ExtractComputationIntoNewModule(
   new_hlo_module->AddEntryComputationWithLayouts(
       computation.CloneInContext(clone_context));
   return new_hlo_module;
+}
+
+/*static*/ StatusOr<se::RedzoneAllocator> AutotunerUtil::CreateRedzoneAllocator(
+    const AutotuneConfig& config, const DebugOptions& opts,
+    se::Stream* force_stream) {
+  se::Stream* stream = force_stream;
+  if (stream == nullptr) {
+    TF_ASSIGN_OR_RETURN(stream, config.GetStream());
+  }
+  return se::RedzoneAllocator(
+      stream, config.GetAllocator(), PtxOptsFromDebugOptions(opts),
+      /*memory_limit=*/std::numeric_limits<int64_t>::max(),
+      /*redzone_size=*/config.should_check_correctness()
+          ? opts.xla_gpu_redzone_padding_bytes()
+          : 0);
 }
 
 }  // namespace gpu

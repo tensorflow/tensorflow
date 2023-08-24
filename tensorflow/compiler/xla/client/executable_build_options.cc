@@ -169,6 +169,7 @@ StatusOr<ExecutableBuildOptionsProto> ExecutableBuildOptions::ToProto() const {
     }
   }
   *output.mutable_fdo_profile() = fdo_profile();
+  output.set_device_memory_size(device_memory_size());
   return output;
 }
 
@@ -206,6 +207,7 @@ StatusOr<ExecutableBuildOptions> ExecutableBuildOptionsFromProto(
   output.set_allow_spmd_sharding_propagation_to_output(
       input.allow_spmd_sharding_propagation_to_output());
   *output.mutable_fdo_profile() = input.fdo_profile();
+  output.set_device_memory_size(input.device_memory_size());
   return output;
 }
 
@@ -254,6 +256,7 @@ ExecutionOptions CreateExecutionOptions(
       build_options.alias_passthrough_params());
   execution_options.set_fdo_profile(build_options.fdo_profile().data(),
                                     build_options.fdo_profile().size());
+  execution_options.set_device_memory_size(build_options.device_memory_size());
   return execution_options;
 }
 

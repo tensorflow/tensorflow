@@ -75,7 +75,8 @@ Status TPUReshardVariablesOpKernel::DoWork(OpKernelContext* context) {
   TF_RETURN_IF_ERROR(reshard_util::CheckIsValidKey(*new_format_key));
 
   TF_RET_CHECK(context->input_dtype(num_vars_ + 1) == DT_RESOURCE);
-  const ResourceHandle& handle = HandleFromInput(context, num_vars_ + 1);
+  ResourceHandle handle;
+  TF_RETURN_IF_ERROR(HandleFromInput(context, num_vars_ + 1, &handle));
   core::RefCountPtr<Var> format_state_var;
   TF_RETURN_IF_ERROR(LookupOrCreateResource<Var>(
       context, handle, &format_state_var, [new_format_key](Var** ptr) {
@@ -173,7 +174,8 @@ Status TPUReshardVariablesOpKernel::DoTpuExecute(
   std::vector<VariableInfo> variables;
   for (int i = 0; i < num_vars_; ++i) {
     TF_RET_CHECK(context->input_dtype(i) == DT_RESOURCE);
-    const ResourceHandle& handle = HandleFromInput(context, i);
+    ResourceHandle handle;
+    TF_RETURN_IF_ERROR(HandleFromInput(context, i, &handle));
     Var* variable;
     TF_RETURN_IF_ERROR(LookupResource(context, handle, &variable));
     variables.push_back(VariableInfo(i, handle.name(), variable));

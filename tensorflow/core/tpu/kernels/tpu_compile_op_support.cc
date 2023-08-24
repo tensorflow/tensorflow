@@ -317,7 +317,7 @@ Status ComputeOutputShapesForEachCore(
 Status CreateHloModules(
     const TPUCompileMetadataProto& metadata,
     const tensorflow::XlaCompiler::CompilationResult& compilation_result,
-    const absl::optional<xla::DeviceAssignment>& device_assignment,
+    const std::optional<xla::DeviceAssignment>& device_assignment,
     std::vector<std::unique_ptr<xla::HloModule>>* hlo_modules) {
   TF_RET_CHECK(
       compilation_result.computation->proto().has_host_program_shape());
@@ -345,7 +345,7 @@ Status CreateHloModules(
 }
 
 StatusOr<TpuCompilationRequestProto> CreateTpuCompilationRequest(
-    const absl::variant<MlirToHloArgs, FunctionToHloArgs>& computation,
+    const std::variant<MlirToHloArgs, FunctionToHloArgs>& computation,
     const TPUCompileMetadataProto& metadata,
     const std::vector<TensorShape>& arg_shapes) {
   VLOG(1) << "CreateTpuCompilationRequest.";

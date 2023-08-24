@@ -587,8 +587,9 @@ void AddGenericEventUponApiExit(CuptiTraceCollector *collector,
   collector->AddEvent(std::move(event));
 }
 
+template <bool cupti_has_channel_id, typename CuptiActivityKernel>
 void AddKernelActivityEvent(CuptiTraceCollector *collector,
-                            const CuptiActivityKernelTy *kernel) {
+                            const CuptiActivityKernel *kernel) {
   CuptiTracerEvent event{};
   event.type = CuptiTracerEventType::Kernel;
   event.source = CuptiTracerEventSource::Activity;
@@ -612,10 +613,10 @@ void AddKernelActivityEvent(CuptiTraceCollector *collector,
   event.kernel_info.grid_x = kernel->gridX;
   event.kernel_info.grid_y = kernel->gridY;
   event.kernel_info.grid_z = kernel->gridZ;
-#if TF_CUPTI_HAS_CHANNEL_ID
-  event.kernel_info.channel_id = kernel->channelID;
-  event.kernel_info.channel_type = kernel->channelType;
-#endif
+  if constexpr (cupti_has_channel_id) {
+    event.kernel_info.channel_id = kernel->channelID;
+    event.kernel_info.channel_type = kernel->channelType;
+  }
   collector->AddEvent(std::move(event));
 }
 
@@ -1985,8 +1986,12 @@ Status CuptiTracer::ProcessActivityBuffer(CUcontext context, uint32_t stream_id,
       switch (record->kind) {
         case CUPTI_ACTIVITY_KIND_KERNEL:  // sequential
         case CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL:
-          AddKernelActivityEvent(
+          AddKernelActivityEvent<TF_CUPTI_HAS_CHANNEL_ID>(
               collector_, reinterpret_cast<CuptiActivityKernelTy *>(record));
+          break;
+        case CUPTI_ACTIVITY_KIND_CDP_KERNEL:
+          AddKernelActivityEvent<false>(
+              collector_, reinterpret_cast<CUpti_ActivityCdpKernel *>(record));
           break;
         case CUPTI_ACTIVITY_KIND_MEMCPY:
           AddMemcpyActivityEvent(

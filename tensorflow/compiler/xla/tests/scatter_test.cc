@@ -639,6 +639,38 @@ ENTRY main {
   RunTest(hlo_text, &operand, &scatter_indices, &updates);
 }
 
+XLA_TEST_F(ScatterTest, U8Index) {
+  const std::string hlo_text = R"(
+HloModule BatchDynamicSlice
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  ROOT rhs = s32[] parameter(1)
+}
+
+ENTRY main {
+  operand = s32[129,3]{1,0} parameter(0)
+  indices = u8[6,2]{1,0} parameter(1)
+  updates = s32[6,1,1]{2,1,0} parameter(2)
+  ROOT scatter = s32[129,3]{1,0} scatter(operand, indices, updates),
+      to_apply=update_s32,
+      update_window_dims={1,2},
+      inserted_window_dims={},
+      scatter_dims_to_operand_dims={0,1},
+      index_vector_dim=1
+}
+)";
+  Literal operand =
+      LiteralUtil::CreateRandomLiteral<S32>(ShapeUtil::MakeShape(S32, {129, 3}),
+                                            /*mean=*/500, /*stddev=*/100)
+          .value();
+  Literal scatter_indices = LiteralUtil::CreateR2<uint8_t>(
+      {{2, 7}, {2, 1}, {1, 1}, {5, 1}, {0x80, 1}, {1, 2}});
+  Literal updates = LiteralUtil::CreateR3<int32_t>(
+      {{{10}}, {{20}}, {{30}}, {{40}}, {{50}}, {{60}}});
+  RunTest(hlo_text, &operand, &scatter_indices, &updates);
+}
+
 XLA_TEST_F(ScatterTest, NegativeIndex) {
   const std::string hlo_text = R"(
 HloModule BatchDynamicSlice
@@ -858,6 +890,70 @@ ENTRY main {
   Literal updates1 = LiteralUtil::CreateR2<float>({{-11, 11}, {-41, 41}});
   RunTest(hlo_text,
           {&operand0, &operand1, &scatter_indices, &updates0, &updates1});
+}
+
+XLA_TEST_F(ScatterTest, TensorFlowScatter_Max_F32) {
+  const std::string hlo_text = R"(
+HloModule TensorFlowScatter_Max_F32
+
+max_f32 (lhs: f32[], rhs: f32[]) -> f32[] {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT max = f32[] maximum(f32[] lhs, f32[] rhs)
+}
+
+ENTRY main {
+  operand = f32[3,3] parameter(0)
+  indices = s32[2] parameter(1)
+  updates = f32[2,3] parameter(2)
+  ROOT scatter = f32[3,3] scatter(operand, indices, updates),
+      to_apply=max_f32,
+      update_window_dims={1},
+      inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0},
+      index_vector_dim=1
+}
+)";
+  Literal operand = LiteralUtil::CreateR2<float>(
+      {{1.1, 2.2, 3.3}, {4.4, 5.5, 6.6}, {7.7, 8.8, 9.9}});
+  Literal scatter_indices = LiteralUtil::CreateR1<int32_t>({2, 1});
+  Literal updates =
+      LiteralUtil::CreateR2<float>({{0.4, 1.1, 0.7}, {2.3, 3.1, 1.6}});
+  RunTest(hlo_text, &operand, &scatter_indices, &updates);
+}
+
+XLA_TEST_F(ScatterTest,
+           DISABLED_ON_CPU(TensorFlowScatter_Max_F32_Negative_NaN)) {
+  const std::string hlo_text = R"(
+HloModule TensorFlowScatter_Max_F32_Negative_NaN
+
+max_f32 (lhs: f32[], rhs: f32[]) -> f32[] {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT max = f32[] maximum(f32[] lhs, f32[] rhs)
+}
+
+ENTRY main {
+  indices = s32[2] parameter(0)
+  constant_with_nans = f32[3] constant({-nan, 2.5, nan})
+  operand = f32[3,3] broadcast(constant_with_nans), dimensions={1}
+  updates = f32[2,3] constant({{4.6, -nan, 1}, {2.3, 3.1, 1.6}})
+  scatter = f32[3,3] scatter(operand, indices, updates),
+      to_apply=max_f32,
+      update_window_dims={1},
+      inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0},
+      index_vector_dim=1
+  scatter_as_int = s32[3,3] bitcast-convert(scatter)
+  constant_7fffffff = s32[3] constant({2147483647, 2147483647, 2147483647})
+  broadcast_7fffffff = s32[3,3] broadcast(constant_7fffffff), dimensions={1}
+  canonical_nan = s32[3,3] and(scatter_as_int, broadcast_7fffffff)
+  ROOT result = f32[3,3] bitcast-convert(canonical_nan)
+}
+)";
+
+  Literal scatter_indices = LiteralUtil::CreateR1<int32_t>({2, 1});
+  RunTest(hlo_text, {&scatter_indices});
 }
 
 }  // namespace

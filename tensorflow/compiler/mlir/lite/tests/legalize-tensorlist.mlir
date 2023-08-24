@@ -64,12 +64,22 @@ func.func @listSetItem(%arg0: tensor<!tf_type.variant<tensor<*xi32>>>, %arg1: te
 
 // -----
 
+// CHECK-LABEL: listGetItem
+func.func @listGetItem(%arg0: tensor<!tf_type.variant<tensor<*xi32>>>, %arg1: tensor<i32>, %arg2: tensor<2xi32>) -> tensor<2xi32> {
+  %0 = "tf.TensorListGetItem"(%arg0, %arg1, %arg2) : (tensor<!tf_type.variant<tensor<*xi32>>>, tensor<i32>, tensor<2xi32>) -> tensor<2xi32>
+  // CHECK: %0 = "tfl.custom"(%arg0, %arg1, %arg2) {custom_code = "TensorListGetItem", custom_option = #tfl<const_bytes : "0x">} : (tensor<!tf_type.variant<tensor<*xi32>>>, tensor<i32>, tensor<2xi32>) -> tensor<2xi32>
+  func.return %0 : tensor<2xi32>
+}
+
+// -----
+
 // CHECK-LABEL: listFromTensor
 func.func @listFromTensor(%tensor: tensor<3xi32>, %shape : tensor<?xi32>) -> tensor<!tf_type.variant<tensor<i32>>> {
   %0 = "tf.TensorListFromTensor"(%tensor, %shape) : (tensor<3xi32>, tensor<?xi32>) -> tensor<!tf_type.variant<tensor<i32>>>
   func.return %0 :  tensor<!tf_type.variant<tensor<i32>>>
   // CHECK: %0 = "tfl.custom"(%arg0, %arg1) {custom_code = "TensorListFromTensor", custom_option = #tfl<const_bytes : "0x">} : (tensor<3xi32>, tensor<?xi32>) -> tensor<!tf_type.variant<tensor<i32>>>
 }
+
 // -----
 
 // CHECK-LABEL: typeNotSupportedNotLegalized

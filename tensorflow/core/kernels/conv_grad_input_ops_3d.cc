@@ -16,7 +16,10 @@ limitations under the License.
 #define USE_EIGEN_TENSOR
 #define EIGEN_USE_THREADS
 
+#include <algorithm>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/numeric_op.h"
@@ -360,24 +363,27 @@ class Conv3DCustomBackpropInputOp : public OpKernel {
     int64_t top_pad_rows, bottom_pad_rows;
     int64_t left_pad_cols, right_pad_cols;
 
-    OP_REQUIRES_OK(context, GetWindowedOutputSizeVerbose(
-                                dims.spatial_dims[0].input_size,
-                                dims.spatial_dims[0].filter_size,
-                                dims.spatial_dims[0].stride, padding_,
-                                &dims.spatial_dims[0].output_size,
-                                &top_pad_planes, &bottom_pad_planes));
-    OP_REQUIRES_OK(context, GetWindowedOutputSizeVerbose(
-                                dims.spatial_dims[1].input_size,
-                                dims.spatial_dims[1].filter_size,
-                                dims.spatial_dims[1].stride, padding_,
-                                &dims.spatial_dims[1].output_size,
-                                &top_pad_rows, &bottom_pad_rows));
-    OP_REQUIRES_OK(context, GetWindowedOutputSizeVerbose(
-                                dims.spatial_dims[2].input_size,
-                                dims.spatial_dims[2].filter_size,
-                                dims.spatial_dims[2].stride, padding_,
-                                &dims.spatial_dims[2].output_size,
-                                &left_pad_cols, &right_pad_cols));
+    OP_REQUIRES_OK(
+        context,
+        GetWindowedOutputSizeVerbose(
+            dims.spatial_dims[0].input_size, dims.spatial_dims[0].filter_size,
+            /*dilation_rate=*/1, dims.spatial_dims[0].stride, padding_,
+            &dims.spatial_dims[0].output_size, &top_pad_planes,
+            &bottom_pad_planes));
+    OP_REQUIRES_OK(
+        context,
+        GetWindowedOutputSizeVerbose(
+            dims.spatial_dims[1].input_size, dims.spatial_dims[1].filter_size,
+            /*dilation_rate=*/1, dims.spatial_dims[1].stride, padding_,
+            &dims.spatial_dims[1].output_size, &top_pad_rows,
+            &bottom_pad_rows));
+    OP_REQUIRES_OK(
+        context,
+        GetWindowedOutputSizeVerbose(
+            dims.spatial_dims[2].input_size, dims.spatial_dims[2].filter_size,
+            /*dilation_rate=*/1, dims.spatial_dims[2].stride, padding_,
+            &dims.spatial_dims[2].output_size, &left_pad_cols,
+            &right_pad_cols));
 
     // TODO(ezhulenev): Extract work size and shard estimation to shared
     // functions in conv_grad_ops, and update 2d convolution backprop.

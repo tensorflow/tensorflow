@@ -16,8 +16,12 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "tensorflow/core/tfrt/graph_executor/config.pb.h"
 #include "tensorflow/core/tfrt/graph_executor/test_config.pb.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/platform/status_matchers.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace tfrt_stub {
@@ -31,13 +35,13 @@ TEST(ConfigTest, Basic) {
 
   RuntimeConfig runtime_config;
 
-  ASSERT_OK(runtime_config.Add(expected_test_config2));
-  ASSERT_OK(runtime_config.Add(expected_test_config1));
+  TF_ASSERT_OK(runtime_config.Add(expected_test_config2));
+  TF_ASSERT_OK(runtime_config.Add(expected_test_config1));
 
   auto test_config1 = runtime_config.Get<TestConfig1>();
-  ASSERT_OK(test_config1);
+  TF_ASSERT_OK(test_config1.status());
   auto test_config2 = runtime_config.Get<TestConfig2>();
-  ASSERT_OK(test_config2);
+  TF_ASSERT_OK(test_config2.status());
 
   EXPECT_EQ(test_config1->tag(), "test config1");
   EXPECT_EQ(test_config2->tag(), "test config2");
@@ -53,13 +57,13 @@ TEST(ConfigTest, Load) {
   runtime_config_proto.add_config()->PackFrom(expected_test_config1);
   runtime_config_proto.add_config()->PackFrom(expected_test_config2);
 
-  ASSERT_OK_AND_ASSIGN(auto runtime_config,
-                       RuntimeConfig::CreateFromProto(runtime_config_proto));
+  TF_ASSERT_OK_AND_ASSIGN(RuntimeConfig runtime_config,
+                          RuntimeConfig::CreateFromProto(runtime_config_proto));
 
   auto test_config1 = runtime_config.Get<TestConfig1>();
-  ASSERT_OK(test_config1);
+  TF_ASSERT_OK(test_config1.status());
   auto test_config2 = runtime_config.Get<TestConfig2>();
-  ASSERT_OK(test_config2);
+  TF_ASSERT_OK(test_config2.status());
 
   EXPECT_EQ(test_config1->tag(), "test config1");
   EXPECT_EQ(test_config2->tag(), "test config2");
@@ -72,11 +76,11 @@ TEST(ConfigTest, NotFound) {
   RuntimeConfigProto runtime_config_proto;
   runtime_config_proto.add_config()->PackFrom(expected_test_config1);
 
-  ASSERT_OK_AND_ASSIGN(auto runtime_config,
-                       RuntimeConfig::CreateFromProto(runtime_config_proto));
+  TF_ASSERT_OK_AND_ASSIGN(RuntimeConfig runtime_config,
+                          RuntimeConfig::CreateFromProto(runtime_config_proto));
 
   EXPECT_THAT(runtime_config.Get<TestConfig2>(),
-              ::testing::status::StatusIs(absl::StatusCode::kNotFound));
+              ::tsl::testing::StatusIs(absl::StatusCode::kNotFound));
 }
 
 TEST(ConfigTest, Duplicate) {
@@ -85,9 +89,9 @@ TEST(ConfigTest, Duplicate) {
 
   RuntimeConfig runtime_config;
 
-  ASSERT_OK(runtime_config.Add(expected_test_config1));
+  TF_ASSERT_OK(runtime_config.Add(expected_test_config1));
   EXPECT_THAT(runtime_config.Add(expected_test_config1),
-              ::testing::status::StatusIs(absl::StatusCode::kAlreadyExists));
+              ::tsl::testing::StatusIs(absl::StatusCode::kAlreadyExists));
 }
 
 }  // namespace

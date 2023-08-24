@@ -2315,6 +2315,7 @@ XLA_UNOP_PATTERN(AllReduceDone)
 XLA_UNOP_PATTERN(CollectivePermute)
 XLA_UNOP_PATTERN(CollectivePermuteStart)
 XLA_UNOP_PATTERN(CollectivePermuteDone)
+XLA_UNOP_PATTERN(Domain)
 XLA_UNOP_PATTERN(Exp)
 XLA_UNOP_PATTERN(Fft)
 XLA_UNOP_PATTERN(Floor)
@@ -2341,6 +2342,7 @@ XLA_UNOP_PATTERN(Sqrt)
 XLA_UNOP_PATTERN(Tan)
 XLA_UNOP_PATTERN(Tanh)
 XLA_UNOP_PATTERN(Transpose)
+XLA_UNOP_PATTERN(AllGather)
 #undef XLA_UNOP_PATTERN
 
 // Helpers for binary instructions.

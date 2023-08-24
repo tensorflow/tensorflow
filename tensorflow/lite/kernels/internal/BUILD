@@ -3,6 +3,7 @@ load("//tensorflow:tensorflow.bzl", "transitive_hdrs")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_extra_arm_config_settings", "tflite_portable_test_suite_combined")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -428,6 +429,14 @@ cc_library(
             "optimized/4bit/neon_fully_connected_aarch64_sdot.cc",
             "optimized/4bit/neon_fully_connected_impl.h",
         ],
+        # copybara:uncomment_begin(google-only)
+        # "//tools/cc_target_os:toyota-sa8155-aarch64-oe-linux": [
+        # "optimized/4bit/neon_fully_connected.cc",
+        # "optimized/4bit/neon_fully_connected_aarch64_nosdot.cc",
+        # "optimized/4bit/neon_fully_connected_aarch64_sdot.cc",
+        # "optimized/4bit/neon_fully_connected_impl.h",
+        # ],
+        # copybara:uncomment_end
         "//tensorflow:android_arm": [
             "optimized/4bit/neon_fully_connected.cc",
             "optimized/4bit/neon_fully_connected_arm32.cc",
@@ -450,6 +459,11 @@ cc_library(
         "//tensorflow:android_arm64": [
             "optimized/4bit/neon_fully_connected.h",
         ],
+        # copybara:uncomment_begin(google-only)
+        # "//tools/cc_target_os:toyota-sa8155-aarch64-oe-linux": [
+        # "optimized/4bit/neon_fully_connected.h",
+        # ],
+        # copybara:uncomment_end
         "//tensorflow:android_arm": [
             "optimized/4bit/neon_fully_connected.h",
         ],
@@ -460,6 +474,11 @@ cc_library(
         "//tensorflow:android_arm64": [
             "-march=armv8.2-a+dotprod",
         ],
+        # copybara:uncomment_begin(google-only)
+        # "//tools/cc_target_os:toyota-sa8155-aarch64-oe-linux": [
+        # "-march=armv8.2-a+dotprod",
+        # ],
+        # copybara:uncomment_end
         "//tensorflow:android_arm": [],
         "//conditions:default": [],
     }) + NEON_FLAGS_IF_APPLICABLE,
@@ -468,6 +487,11 @@ cc_library(
         "//tensorflow:android_arm64": [
             "FC_4BIT_NEON",
         ],
+        # copybara:uncomment_begin(google-only)
+        # "//tools/cc_target_os:toyota-sa8155-aarch64-oe-linux": [
+        # "FC_4BIT_NEON",
+        # ],
+        # copybara:uncomment_end
         "//tensorflow:android_arm": [
             "FC_4BIT_NEON",
         ],
@@ -851,6 +875,20 @@ cc_library(
         ":types",
         "//tensorflow/lite/core:macros",
         "//tensorflow/lite/core/c:common",
+    ],
+)
+
+cc_library_with_tflite(
+    name = "opaque_tensor_ctypes",
+    srcs = ["opaque_tensor_ctypes.cc"],
+    hdrs = ["opaque_tensor_ctypes.h"],
+    copts = tflite_copts(),
+    tflite_deps = [
+        "//tensorflow/lite/c:c_api_experimental_without_op_resolver",
+    ],
+    deps = [
+        ":types",
+        "//tensorflow/lite/core:macros",
     ],
 )
 

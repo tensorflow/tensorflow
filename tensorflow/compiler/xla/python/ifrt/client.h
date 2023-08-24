@@ -134,6 +134,10 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   // only ahead-of-time compilation.
   virtual Compiler* GetDefaultCompiler() = 0;
 
+  // Returns a topology description for that covers the provided devices.
+  virtual StatusOr<std::shared_ptr<const xla::PjRtTopologyDescription>>
+  GetTopologyForDevices(absl::Span<Device* const> devices) const = 0;
+
   static char ID;  // NOLINT
 };
 

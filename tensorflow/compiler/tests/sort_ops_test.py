@@ -23,7 +23,7 @@ from tensorflow.compiler.tests import xla_test
 from tensorflow.compiler.tf2xla.python import xla
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -48,7 +48,7 @@ class XlaSortOpTest(xla_test.XLATestCase, parameterized.TestCase):
         ]
         feeds = {placeholders[i]: args[i] for i in range(0, len(args))}
         output = op(*placeholders)
-        if isinstance(output, ops.Tensor):
+        if isinstance(output, tensor.Tensor):
           output = [output]
 
       results = session.run(output, feeds)

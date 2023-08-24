@@ -23,6 +23,7 @@ load(
     "//tensorflow/tsl/mkl:build_defs.bzl",
     "if_enable_mkl",
     "if_mkl",
+    "onednn_v3_define",
 )
 load(
     "//third_party/mkl_dnn:build_defs.bzl",
@@ -253,6 +254,7 @@ def tsl_copts(
         # optimizations for Intel builds using oneDNN if configured
         if_enable_mkl(["-DENABLE_MKL"]) +
         if_mkldnn_openmp(["-DENABLE_ONEDNN_OPENMP"]) +
+        onednn_v3_define() +
         if_mkldnn_aarch64_acl(["-DDNNL_AARCH64_USE_ACL=1"]) +
         if_mkldnn_aarch64_acl_openmp(["-DENABLE_ONEDNN_OPENMP"]) +
         if_enable_acl(["-DXLA_CPU_USE_ACL=1", "-fexceptions"]) +

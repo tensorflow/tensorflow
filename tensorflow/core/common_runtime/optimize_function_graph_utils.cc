@@ -19,6 +19,7 @@ limitations under the License.
 #include <iterator>
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -26,21 +27,25 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "tensorflow/core/common_runtime/composite_device.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/function_body.h"
 #include "tensorflow/core/common_runtime/function_def_utils.h"
 #include "tensorflow/core/common_runtime/function_optimization_registry.h"
 #include "tensorflow/core/common_runtime/function_utils.h"
+#include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/optimized_function_graph_info.h"
 #include "tensorflow/core/common_runtime/partitioning_utils.h"
 #include "tensorflow/core/common_runtime/placer.h"
 #include "tensorflow/core/common_runtime/replicate_per_replica_nodes.h"
+#include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/optimized_function_graph.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_node_util.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/util/debug_data_dumper.h"
 #include "tensorflow/core/util/dump_graph.h"
 #include "tensorflow/tsl/platform/env.h"
@@ -740,7 +745,8 @@ PreprocessAndPartitionGraph(
     OptimizedFunctionGraphInfo& input_optimized_graph,
     const FunctionLibraryRuntime::InstantiateOptions& options,
     const DeviceSet& dev_set, const FunctionLibraryDefinition* input_lib_def,
-    const std::vector<CompositeDevice*>& composite_devices, Env* env) {
+    const std::vector<CompositeDevice*>& composite_devices, Device* cpu_device,
+    Env* env) {
   std::unique_ptr<Graph>& graph = input_optimized_graph.function_graph;
 
   // Expand the nodes assigned to a CompositeDevice before graph partition to
@@ -783,12 +789,26 @@ PreprocessAndPartitionGraph(
 
   // Doing post-partitioning passes.
   GraphOptimizationPassOptions optimization_options;
+  SessionOptions session_options;
+  session_options.env = env;
+  session_options.config = options.config_proto;
+  optimization_options.session_options = &session_options;
   optimization_options.flib_def = &(input_optimized_graph.lib_def);
   optimization_options.is_function_graph = true;
   optimization_options.graph = nullptr;
   optimization_options.device_set = nullptr;
   optimization_options.partition_graphs = device_name_to_subgraphs.get();
   optimization_options.debug_filename_prefix = function_name;
+
+  // As not all devices might set number of threads for intra op
+  // parallelisation we restrict this only to local device which does.
+  if (cpu_device && std::is_same<decltype(cpu_device), LocalDevice>::value &&
+      cpu_device->tensorflow_cpu_worker_threads() != nullptr) {
+    // Forward to the optimisation pass number of intra threads that are used to
+    // parallelise operations.
+    session_options.config.set_intra_op_parallelism_threads(
+        cpu_device->tensorflow_cpu_worker_threads()->num_threads);
+  }
 
   // Normally POST_PARTITIONING passes are run by distributed workers.
   // Distributed workers are currently not supported in this code path, so we

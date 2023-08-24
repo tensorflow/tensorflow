@@ -29,6 +29,7 @@ xla_cc_test(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/python/ifrt",
+        "//tensorflow/compiler/xla/python/ifrt:sharding_test_util",
         "//tensorflow/compiler/xla/python/ifrt/ir",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:status_matchers",

@@ -125,3 +125,13 @@ func.func @uniform_quantized_convolution(%arg0: tensor<?x?x?x?xf32>, %arg1: tens
     -> tensor<?x?x?x?x!quant.uniform<i32:f32, 1.000000e+00:5>>
   return
 }
+
+// -----
+
+// CHECK-LABEL: func @uniform_quantize_dot_hybrid
+func.func @uniform_quantize_dot_hybrid(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) {
+  // CHECK-NOT: chlo
+  %0 = mhlo.uniform_quantize %arg1 : (tensor<?x?xf32>) -> tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>
+  %1 = "mhlo.dot" (%arg0, %0): (tensor<?x?xf32>, tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>) -> tensor<?x?xf32>
+  return
+}

@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -223,15 +224,8 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateTensorListOpsDecompositionPass();
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateTensorArrayOpsDecompositionPass();
 
-// Create a pass that legalize HLO to TF dialect.
-std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeHloToTfPass();
-
 // Create a pass that legalize TFG to TF dialect.
 std::unique_ptr<Pass> CreateLegalizeTFGToTFEPass();
-
-// Addds the HLO to TF rewrite patterns to the specified pattern list.
-void PopulateLegalizeHloToTfPatterns(RewritePatternSet* patterns,
-                                     MLIRContext* context);
 
 // Matches sequence of ops to TensorFlow fused kernels. This pass should not be
 // generally used beyond exporting to runtimes that supports these ops. In the
@@ -527,7 +521,8 @@ CreateTPUPartitionedOpConversionPass();
 
 // Creates a pass that forms clusters from operations of the same
 // `_replication_info` attribute.
-std::unique_ptr<OperationPass<ModuleOp>> CreateTPUClusterFormationPass();
+std::unique_ptr<OperationPass<ModuleOp>> CreateTPUClusterFormationPass(
+    bool strict_clusters = false);
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPUValidateInputsPass();
 

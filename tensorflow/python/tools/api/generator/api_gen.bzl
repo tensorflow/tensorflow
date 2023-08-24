@@ -3,6 +3,7 @@
 load("//tensorflow:tensorflow.bzl", "if_oss")
 load("//tensorflow:tensorflow.default.bzl", "if_indexing_source_code")
 load("//tensorflow/python/tools/api/generator:api_init_files.bzl", "TENSORFLOW_API_INIT_FILES")
+load("//tensorflow:py.default.bzl", "py_binary")
 
 TENSORFLOW_API_GEN_PACKAGES = [
     "tensorflow.python",
@@ -118,7 +119,7 @@ def gen_api_init_files(
 
     primary_package = packages[0]
     api_gen_binary_target = ("create_" + primary_package + "_api_%s") % name
-    native.py_binary(
+    py_binary(
         name = api_gen_binary_target,
         srcs = ["//tensorflow/python/tools/api/generator:create_python_api.py"],
         main = "//tensorflow/python/tools/api/generator:create_python_api.py",

@@ -152,11 +152,16 @@ class StepDetails {
 
   const std::vector<StepMarker>& Markers() const { return markers_; }
   const std::vector<EventTypeSpan>& Events() const { return events_; }
+
   const absl::flat_hash_map<uint32, AllReduceDbResult>& Collectives() const {
     return collectives_;
   }
   const std::vector<DeviceMemoryTransfer>& DeviceMemoryTransfers() const {
     return device_memory_transfers_;
+  }
+
+  absl::flat_hash_map<uint32, OpMetricsDb>& PerCoreOpMetricsDb() {
+    return per_core_op_metrics_db_;
   }
   // Returns the step time.
   tsl::profiler::Timespan StepTime() const;
@@ -191,6 +196,10 @@ class StepDetails {
   // Returns a string that prints the content of this object.
   std::string DebugString() const;
 
+  void SetPerCoreOpMetricsDb(OpMetricsDb db, uint32 core_id) {
+    per_core_op_metrics_db_[core_id] = db;
+  }
+
  private:
   // Accumulates the device memory transfers from another step to this step.
   void AggregateDeviceMemoryTransfers(
@@ -211,6 +220,8 @@ class StepDetails {
   // durations.
   std::vector<DeviceMemoryTransfer> device_memory_transfers_;
   std::string step_name_;
+
+  absl::flat_hash_map<uint32, OpMetricsDb> per_core_op_metrics_db_;
 };
 
 // Map from step_id to the events happened in that step.

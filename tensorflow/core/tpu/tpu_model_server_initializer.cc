@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api_dlsym_set_fn.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_initializer_helper.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_initializer_framework_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"

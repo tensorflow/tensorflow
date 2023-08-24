@@ -83,6 +83,12 @@ def LegalizeControlFlowPass : Pass<"mhlo-legalize-control-flow", "func::FuncOp">
   let dependentDialects = ["scf::SCFDialect", "tensor::TensorDialect"];
 }
 
+def LegalizeDotGeneralToDotPass : Pass<"mhlo-legalize-dot-general-to-dot", "func::FuncOp"> {
+  let summary = "Legalizes dot_general ops to dot ops.";
+  let constructor = "createLegalizeDotGeneralToDotPass()";
+  let dependentDialects = ["mhlo::MhloDialect"];
+}
+
 def LegalizeEinsumToDotGeneralPass : Pass<"mhlo-legalize-einsum-to-dot-general", "func::FuncOp"> {
   let summary = "Legalizes einsum ops to dot_general ops.";
   let constructor = "createLegalizeEinsumToDotGeneralPass()";
@@ -91,6 +97,11 @@ def LegalizeEinsumToDotGeneralPass : Pass<"mhlo-legalize-einsum-to-dot-general",
 def LegalizeGatherToTorchIndexSelectPass : Pass<"mhlo-legalize-gather-to-torch-index-select", "func::FuncOp"> {
   let summary = "Legalizes gathers to a torch index select.";
   let constructor = "createLegalizeGatherToTorchIndexSelectPass()";
+}
+
+def LegalizeTorchIndexSelectToGatherPass : Pass<"mhlo-legalize-torch-index-select-to-gather", "func::FuncOp"> {
+  let summary = "Legalizes torch index select to a gather.";
+  let constructor = "createLegalizeTorchIndexSelectToGatherPass()";
 }
 
 

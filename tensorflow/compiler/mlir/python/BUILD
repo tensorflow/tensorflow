@@ -15,6 +15,7 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:bridge_passes",
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//llvm:Support",

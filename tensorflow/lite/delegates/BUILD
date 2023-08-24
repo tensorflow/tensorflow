@@ -160,7 +160,10 @@ cc_test(
     name = "opaque_delegate_test",
     size = "small",
     srcs = ["opaque_delegate_test.cc"],
-    data = ["//tensorflow/lite:testdata/add.bin"],
+    data = [
+        "//tensorflow/lite:testdata/add.bin",
+        "//tensorflow/lite:testdata/test_custom_node_with_init_data.bin",
+    ],
     defines = [
         "TFLITE_USE_OPAQUE_DELEGATE",
     ],
@@ -180,7 +183,10 @@ cc_test(
     name = "opaque_delegate_strip_error_strings_test",
     size = "small",
     srcs = ["opaque_delegate_test.cc"],
-    data = ["//tensorflow/lite:testdata/add.bin"],
+    data = [
+        "//tensorflow/lite:testdata/add.bin",
+        "//tensorflow/lite:testdata/test_custom_node_with_init_data.bin",
+    ],
     defines = [
         "TFLITE_USE_OPAQUE_DELEGATE",
         "TF_LITE_STRIP_ERROR_STRINGS",

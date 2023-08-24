@@ -61,4 +61,8 @@ const char kXlaQuantizationNumBucketsValueAttr[] =
 
 const char kXlaTableId[] = "_xla_table_id";
 
+const char kXlaBufferPlacementAttr[] = "_xla_buffer_placement";
+
+const char kXlaBufferPlacementParam[] = "arg";
+
 }  // namespace xla

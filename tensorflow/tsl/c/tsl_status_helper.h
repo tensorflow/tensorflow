@@ -22,22 +22,10 @@ limitations under the License.
 #include "tensorflow/tsl/platform/status.h"
 
 namespace tsl {
-// Set the attribute of "tsl_status" from the attributes of "status".
-void Set_TSL_Status_from_Status(TSL_Status* TSL_status,
-                                const tsl::Status& status);
 
-// Returns a "status" from "tsl_status".
-Status StatusFromTSL_Status(const TSL_Status* tsl_status);
+TSL_Code TSLCodeFromStatusCode(absl::StatusCode code);
 
-namespace internal {
-struct TSL_StatusDeleter {
-  void operator()(TSL_Status* tsl_status) const {
-    TSL_DeleteStatus(tsl_status);
-  }
-};
-}  // namespace internal
-
-using TSL_StatusPtr = std::unique_ptr<TSL_Status, internal::TSL_StatusDeleter>;
+absl::StatusCode StatusCodeFromTSLCode(TSL_Code code);
 
 }  // namespace tsl
 

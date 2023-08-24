@@ -44,9 +44,9 @@ from tensorflow.python.framework import function
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
@@ -589,27 +589,27 @@ class IndexedSlicesSpecTest(test_util.TensorFlowTestCase,
 
   @parameterized.parameters([
       (indexed_slices.IndexedSlicesSpec(dtype=dtypes.string), (
-          tensor_spec.TensorSpec(None, dtypes.string),
-          tensor_spec.TensorSpec([None], dtypes.int64),
+          tensor_lib.TensorSpec(None, dtypes.string),
+          tensor_lib.TensorSpec([None], dtypes.int64),
       )),
       (indexed_slices.IndexedSlicesSpec(
           dtype=dtypes.string, dense_shape_dtype=dtypes.int32), (
-              tensor_spec.TensorSpec(None, dtypes.string),
-              tensor_spec.TensorSpec([None], dtypes.int64),
-              tensor_spec.TensorSpec([None], dtypes.int32),
+              tensor_lib.TensorSpec(None, dtypes.string),
+              tensor_lib.TensorSpec([None], dtypes.int64),
+              tensor_lib.TensorSpec([None], dtypes.int32),
           )),
       (indexed_slices.IndexedSlicesSpec(
           shape=[5, 10, 15], dense_shape_dtype=dtypes.int32), (
-              tensor_spec.TensorSpec([None, 10, 15], dtypes.float32),
-              tensor_spec.TensorSpec([None], dtypes.int64),
-              tensor_spec.TensorSpec([3], dtypes.int32),
+              tensor_lib.TensorSpec([None, 10, 15], dtypes.float32),
+              tensor_lib.TensorSpec([None], dtypes.int64),
+              tensor_lib.TensorSpec([3], dtypes.int32),
           )),
       (indexed_slices.IndexedSlicesSpec(
           shape=[5, 10, 15], dense_shape_dtype=dtypes.int32,
           indices_shape=[20]), (
-              tensor_spec.TensorSpec([20, 10, 15], dtypes.float32),
-              tensor_spec.TensorSpec([20], dtypes.int64),
-              tensor_spec.TensorSpec([3], dtypes.int32),
+              tensor_lib.TensorSpec([20, 10, 15], dtypes.float32),
+              tensor_lib.TensorSpec([20], dtypes.int64),
+              tensor_lib.TensorSpec([3], dtypes.int32),
           )),
   ])
   def testComponentSpecs(self, spec, expected):
@@ -1447,10 +1447,10 @@ class ApplyOpTest(test_util.TensorFlowTestCase):
         g,
         "Foo1", [t1, t2[1], t2[0]], [dtypes.float32, dtypes.int32],
         name="myop3")
-    self.assertTrue(isinstance(t1, ops.Tensor))
+    self.assertTrue(isinstance(t1, tensor_lib.Tensor))
     self.assertTrue(isinstance(t2, list))
     self.assertTrue(isinstance(t3, list))
-    self.assertTrue(isinstance(t3[0], ops.Tensor))
+    self.assertTrue(isinstance(t3[0], tensor_lib.Tensor))
     self.assertEqual("myop1", t1._as_node_def_input())
     self.assertEqual("myop2", t2[0]._as_node_def_input())
     self.assertEqual("myop2:1", t2[1]._as_node_def_input())
@@ -2333,8 +2333,8 @@ class ComparisonTest(test_util.TensorFlowTestCase):
     g = ops.Graph()
     t1 = _apply_op(g, "FloatOutput", [], [dtypes.float32], name="myop1")
     t2 = _apply_op(g, "FloatOutput", [], [dtypes.float32], name="myop2")
-    self.assertTrue(isinstance(t1, ops.Tensor))
-    self.assertTrue(isinstance(t2, ops.Tensor))
+    self.assertTrue(isinstance(t1, tensor_lib.Tensor))
+    self.assertTrue(isinstance(t2, tensor_lib.Tensor))
     self.assertTrue(t1 in [t1])
     self.assertTrue(t1 not in [t2])
 
@@ -3623,7 +3623,7 @@ class CustomConvertToCompositeTensorTest(test_util.TensorFlowTestCase):
     self.assertIsInstance(y, _TupleTensor)
     self.assertLen(y, len(x))
     for x_, y_ in zip(x, y):
-      self.assertIsInstance(y_, ops.Tensor)
+      self.assertIsInstance(y_, tensor_lib.Tensor)
       self.assertTrue(tensor_util.is_tf_type(y_))
       self.assertAllEqual(x_, tensor_util.constant_value(y_))
 
@@ -3681,7 +3681,7 @@ class GraphDefInputShapesTest(test_util.TensorFlowTestCase):
     test_tensor_shape = [None, 1, 1, 1]
 
     @def_function.function(input_signature=[
-        tensor_spec.TensorSpec(shape=test_tensor_shape, dtype=dtypes.float32)
+        tensor_lib.TensorSpec(shape=test_tensor_shape, dtype=dtypes.float32)
     ])
     def f(x):
       return array_ops.identity(x, name="output")

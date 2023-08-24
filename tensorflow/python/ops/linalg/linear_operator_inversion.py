@@ -19,7 +19,7 @@ from tensorflow.python.ops.linalg import linear_operator
 from tensorflow.python.ops.linalg import linear_operator_util
 from tensorflow.python.util.tf_export import tf_export
 
-__all__ = []
+__all__ = ["LinearOperatorInversion"]
 
 
 @tf_export("linalg.LinearOperatorInversion")

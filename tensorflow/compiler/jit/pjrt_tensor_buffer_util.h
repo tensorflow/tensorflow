@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/compiler/jit/pjrt_tensor_buffer.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -32,6 +33,22 @@ namespace tensorflow {
 Tensor MakeTensorFromPjRtStreamExecutorBuffer(
     DataType dtype, const TensorShape& shape,
     std::unique_ptr<xla::PjRtBuffer> pjrt_buffer);
+
+// For TensorFlow internal use only.
+class PjRtTensorBufferUtil {
+ public:
+  // Takes the device memory pointer from the PjRtBuffer and create a
+  // PjRtTensorBuffer. The PjRtTensorBuffer holds the pointer to the device
+  // memory. It also owns the PjRtBuffer. If output_tensor is using
+  // se::DeviceMemoryBase and the buffer is the same, update the
+  // output_tensor->buf_ so that the same device memory will not be double-free.
+  // Otherwise a new Tensor will be created with the PjRtTensorBuffer.
+  //
+  // TODO(b/289001822): Create a unit test to cover this function.
+  static void UpdateOrMakeTensorWithPjRtStreamExecutorBuffer(
+      DataType dtype, const TensorShape& shape,
+      std::unique_ptr<xla::PjRtBuffer> pjrt_buffer, Tensor* output_tensor);
+};
 
 }  // namespace tensorflow
 

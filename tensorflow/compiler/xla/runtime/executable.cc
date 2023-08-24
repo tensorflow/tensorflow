@@ -470,6 +470,11 @@ bool Executable::IsAsync(unsigned ordinal) const {
   return functions_[ordinal].results_memory_layout.has_async_results;
 }
 
+std::string_view Executable::function_name(unsigned ordinal) const {
+  assert(ordinal < functions_.size() && "function ordinal out of bounds");
+  return functions_[ordinal].name;
+}
+
 unsigned Executable::num_results(unsigned ordinal) const {
   assert(ordinal < functions_.size() && "function ordinal out of bounds");
   return functions_[ordinal].runtime_signature.num_results();

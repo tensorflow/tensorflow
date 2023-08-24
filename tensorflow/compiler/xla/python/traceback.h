@@ -100,6 +100,12 @@ H AbslHashValue(H h, const Traceback& traceback) {
   return h;
 }
 
+// pybind11-index-annotation BEGIN
+// refs {
+//   module_path: "tensorflow/compiler/xla/python/xla.cc"
+//   module_arg {}
+// }
+// pybind11-index-annotation END
 void BuildTracebackSubmodule(pybind11::module& m);
 
 }  // namespace xla

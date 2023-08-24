@@ -52,7 +52,7 @@ using RedzoneCheckStatus = RedzoneAllocator::RedzoneCheckStatus;
 
 RedzoneAllocator::RedzoneAllocator(Stream* stream,
                                    DeviceMemoryAllocator* memory_allocator,
-                                   GpuAsmOpts ptx_compilation_opts,
+                                   GpuAsmOpts gpu_compilation_opts,
                                    int64_t memory_limit, int64_t redzone_size,
                                    uint8_t redzone_pattern)
     : device_ordinal_(stream->parent()->device_ordinal()),
@@ -63,7 +63,7 @@ RedzoneAllocator::RedzoneAllocator(Stream* stream,
           static_cast<int64_t>(tsl::Allocator::kAllocatorAlignment))),
       redzone_pattern_(redzone_pattern),
       memory_allocator_(memory_allocator),
-      gpu_compilation_opts_(ptx_compilation_opts) {}
+      gpu_compilation_opts_(gpu_compilation_opts) {}
 
 tsl::StatusOr<DeviceMemory<uint8_t>> RedzoneAllocator::AllocateBytes(
     int64_t byte_size) {
@@ -223,6 +223,10 @@ static tsl::Status RunRedzoneChecker(
     const ComparisonKernelT& comparison_kernel) {
   StreamExecutor* executor = stream->parent();
 
+  if (redzone.size() == 0) {
+    return tsl::OkStatus();
+  }
+
   int64_t num_elements = redzone.size();
   int64_t threads_per_block = std::min(
       executor->GetDeviceDescription().threads_per_block_limit(), num_elements);
@@ -315,7 +319,7 @@ tsl::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones() const {
   } else {
     static absl::once_flag ptxas_not_found_logged;
     absl::call_once(ptxas_not_found_logged, [&]() {
-      LOG(WARNING) << compiled_ptx_or.status().ToString()
+      LOG(WARNING) << compiled_ptx_or.status()
                    << "\nRelying on driver to perform ptx compilation. "
                    << "\nModify $PATH to customize ptxas location."
                    << "\nThis message will be only logged once.";

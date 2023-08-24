@@ -251,30 +251,27 @@ func.func @replica_id_attr_added(%arg0: tensor<!tf_type.string>, %arg1: tensor<!
 
 
 // Tests tf._TPUDeviceOrdinalPlaceholder ops are replaced with explicit device
-// ordinal constant values based on the first TPU core device id.
+// ordinal constant values given by logical_core.
 // CHECK-LABEL: func @device_ordinals
 func.func @device_ordinals() {
   tf_executor.graph {
-    %0:3 = tf_executor.island {
-      %1:2 = tf_device.replicate {n = 2 : i32, devices = {TPU_REPLICATED_CORE_0 = ["/job:worker/replica:0/task:0/device:TPU:1", "/job:worker/replica:0/task:0/device:TPU:2"]}} {
-        %2 = "tf._TPUDeviceOrdinalPlaceholder"() : () -> tensor<i64>
-        tf_device.return %2 : tensor<i64>
+    %0:1 = tf_executor.island {
+      tf_device.replicate {n = 2 : i32, devices = {TPU_REPLICATED_CORE_0 = ["/job:worker/replica:0/task:0/device:TPU:1", "/job:worker/replica:0/task:0/device:TPU:2"], TPU_REPLICATED_CORE_1 = ["/job:worker/replica:0/task:0/device:TPU:3", "/job:worker/replica:0/task:0/device:TPU:4"]}} {
+        %1 = "tf._TPUDeviceOrdinalPlaceholder"() {logical_core = 0} : () -> tensor<i64>
+        %2 = "tf._TPUDeviceOrdinalPlaceholder"() {logical_core = 1} : () -> tensor<i64>
+        tf_device.return
       }
-      tf_executor.yield %1#0, %1#1 : tensor<i64>, tensor<i64>
+      tf_executor.yield
     }
     tf_executor.fetch
   }
   func.return
 }
 
-// CHECK:      tf_executor.island
-// CHECK:      [[CONST_0:%.+]] = "tf.Const"
-// CHECK-SAME: _parallel_execution_ids = "r0:0", value = dense<1> : tensor<i64>
-// CHECK:      tf_executor.yield [[CONST_0]]
-// CHECK:      tf_executor.island
-// CHECK:      [[CONST_1:%.+]] = "tf.Const"
-// CHECK-SAME: _parallel_execution_ids = "r0:1", value = dense<2> : tensor<i64>
-// CHECK:      tf_executor.yield [[CONST_1]]
+// CHECK: tf_executor.island wraps "tf.Const"() {_parallel_execution_ids = "r0:0", value = dense<1> : tensor<i64>}
+// CHECK: tf_executor.island wraps "tf.Const"() {_parallel_execution_ids = "r0:0", value = dense<3> : tensor<i64>}
+// CHECK: tf_executor.island wraps "tf.Const"() {_parallel_execution_ids = "r0:1", value = dense<2> : tensor<i64>}
+// CHECK: tf_executor.island wraps "tf.Const"() {_parallel_execution_ids = "r0:1", value = dense<4> : tensor<i64>}
 
 // -----
 // Tests parallel_execute nested inside replicate
@@ -360,7 +357,27 @@ func.func @missing_device_ordinals() {
     %0:3 = tf_executor.island {
       %1:2 = tf_device.replicate {n = 2 : i32, devices = {TPU_REPLICATED_CORE_1 = ["/job:worker/replica:0/task:0/device:TPU:1", "/job:worker/replica:0/task:0/device:TPU:2"]}} {
         // expected-error@below {{requires device ordinal from device TPU_REPLICATED_CORE_0 to be present in 'tf.device.replicate' op}}
-        %2 = "tf._TPUDeviceOrdinalPlaceholder"() : () -> tensor<i64>
+        %2 = "tf._TPUDeviceOrdinalPlaceholder"() {logical_core = 0} : () -> tensor<i64>
+        tf_device.return %2 : tensor<i64>
+      }
+      tf_executor.yield %1#0, %1#1 : tensor<i64>, tensor<i64>
+    }
+    tf_executor.fetch
+  }
+  func.return
+}
+
+// -----
+
+// Tests tf._TPUDeviceOrdinalPlaceholder cannot be updated when device ordinal
+// is missing.
+
+func.func @missing_devices() {
+  tf_executor.graph {
+    %0:3 = tf_executor.island {
+      %1:2 = tf_device.replicate {n = 2 : i32} {
+        // expected-error@below {{devices attribute is not present}}
+        %2 = "tf._TPUDeviceOrdinalPlaceholder"() {logical_core = 0} : () -> tensor<i64>
         tf_device.return %2 : tensor<i64>
       }
       tf_executor.yield %1#0, %1#1 : tensor<i64>, tensor<i64>

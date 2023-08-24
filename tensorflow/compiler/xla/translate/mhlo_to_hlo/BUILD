@@ -1,7 +1,7 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_binary", "cc_library")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
-load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 
 package(
@@ -47,8 +47,20 @@ cc_library(
     srcs = ["location_exporter.cc"],
     hdrs = ["location_exporter.h"],
     deps = [
+        ":stack_frame_index_builder",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
+    name = "stack_frame_index_builder",
+    srcs = ["stack_frame_index_builder.cc"],
+    hdrs = ["stack_frame_index_builder.h"],
+    deps = [
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@llvm-project//mlir:IR",
     ],
 )
@@ -65,6 +77,7 @@ cc_library(
         ":layout_util",
         ":location_exporter",
         ":operator_writer_inc",
+        ":stack_frame_index_builder",
         ":type_to_shape",
         "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:literal",
@@ -84,6 +97,7 @@ cc_library(
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/xla/mlir_hlo:mhlo_passes",
         "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/compiler/xla/service/gpu:backend_configs_cc",
         "//tensorflow/tsl/platform:float8",
         "//tensorflow/tsl/platform:statusor",
@@ -115,14 +129,13 @@ cc_binary(
     deps = [
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:TableGen",
-        "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TableGen",
     ],
 )
 
 gentbl_cc_library(
     name = "operator_writer_inc",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [([], "operator_writers.inc")],
     tblgen = ":operator_writer_gen",
     td_file = "//tensorflow/compiler/xla/mlir_hlo:mhlo/IR/hlo_ops.td",

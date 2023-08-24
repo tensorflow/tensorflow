@@ -78,6 +78,10 @@ struct ToDataType<int32_t> {
   static constexpr DataType value = DataType::kInt32;
 };
 template <>
+struct ToDataType<int64_t> {
+  static constexpr DataType value = DataType::kInt64;
+};
+template <>
 struct ToDataType<std::complex<float>> {
   static constexpr DataType value = DataType::kComplexFloat;
 };

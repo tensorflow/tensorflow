@@ -50,6 +50,9 @@ std::string OpMetadataToString(const OpMetadata& metadata) {
                                   absl::CEscape(metadata.deduplicated_name()),
                                   "\""));
   }
+  if (metadata.preserve_layout()) {
+    result.push_back(absl::StrCat("preserve_layout=true"));
+  }
   return absl::StrJoin(result, " ");
 }
 

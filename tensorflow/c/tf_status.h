@@ -66,6 +66,14 @@ TF_CAPI_EXPORT extern void TF_SetStatus(TF_Status* s, TF_Code code,
 TF_CAPI_EXPORT void TF_SetPayload(TF_Status* s, const char* key,
                                   const char* value);
 
+// Iterates over the stored payloads and calls the `visitor(key, value)`
+// callable for each one. `key` and `value` is only usable during the callback.
+// `capture` will be passed to the callback without modification.
+#define TF_PayloadVisitor TSL_PayloadVisitor
+TF_CAPI_EXPORT extern void TF_ForEachPayload(const TF_Status* s,
+                                             TF_PayloadVisitor visitor,
+                                             void* capture);
+
 // Convert from an I/O error code (e.g., errno) to a TF_Status value.
 // Any previous information is lost. Prefer to use this instead of TF_SetStatus
 // when the error comes from I/O operations.

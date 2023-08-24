@@ -443,6 +443,11 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   // Removes degenerate dimension from dot.
   StatusOr<bool> RemoveDegenerateDimensionFromDot(HloInstruction* dot);
 
+  // Moves the transpose to the broadcast if possible. Can also be called with a
+  // bitcast transpose.
+  Status SimplifyTransposeOfBroadcast(HloInstruction* transpose,
+                                      absl::Span<const int64_t> dimensions);
+
   // Converts to primitive type if the input hlo is not that type, otherwise
   // returns the original hlo.
   HloInstruction* AsType(HloInstruction* hlo,

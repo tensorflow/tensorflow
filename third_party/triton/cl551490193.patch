@@ -1,0 +1,55 @@
+==== triton/include/triton/Analysis/Alias.h#1 - /google/src/cloud/gflegar/mlir_b2b7efb96d21ffdf69eceb7baf47be9ed4e01bfc_1690457946/triton/include/triton/Analysis/Alias.h ====
+# action=edit type=text
+--- triton/include/triton/Analysis/Alias.h	2023-02-07 02:46:13.000000000 -0800
++++ triton/include/triton/Analysis/Alias.h	2023-07-27 05:05:18.000000000 -0700
+@@ -63,11 +63,11 @@
+ // Shared Memory Alias Analysis
+ //===----------------------------------------------------------------------===//
+ class SharedMemoryAliasAnalysis
+-    : public dataflow::SparseDataFlowAnalysis<dataflow::Lattice<AliasInfo>> {
++    : public dataflow::SparseForwardDataFlowAnalysis<dataflow::Lattice<AliasInfo>> {
+ public:
+-  using dataflow::SparseDataFlowAnalysis<
+-      dataflow::Lattice<AliasInfo>>::SparseDataFlowAnalysis;
+-  using dataflow::SparseDataFlowAnalysis<
++  using dataflow::SparseForwardDataFlowAnalysis<
++      dataflow::Lattice<AliasInfo>>::SparseForwardDataFlowAnalysis;
++  using dataflow::SparseForwardDataFlowAnalysis<
+       dataflow::Lattice<AliasInfo>>::getLatticeElement;
+ 
+   /// XXX(Keren): Compatible interface with MLIR AliasAnalysis for future use.
+==== triton/include/triton/Analysis/AxisInfo.h#4 - /google/src/cloud/gflegar/mlir_b2b7efb96d21ffdf69eceb7baf47be9ed4e01bfc_1690457946/triton/include/triton/Analysis/AxisInfo.h ====
+# action=edit type=text
+--- triton/include/triton/Analysis/AxisInfo.h	2023-05-26 16:07:06.000000000 -0700
++++ triton/include/triton/Analysis/AxisInfo.h	2023-07-27 05:05:18.000000000 -0700
+@@ -272,7 +272,7 @@
+ };
+ 
+ class AxisInfoAnalysis
+-    : public dataflow::SparseDataFlowAnalysis<dataflow::Lattice<AxisInfo>> {
++    : public dataflow::SparseForwardDataFlowAnalysis<dataflow::Lattice<AxisInfo>> {
+ private:
+   AxisInfoVisitorList visitors;
+ 
+@@ -284,7 +284,7 @@
+ 
+ public:
+   AxisInfoAnalysis(DataFlowSolver &solver);
+-  using dataflow::SparseDataFlowAnalysis<
++  using dataflow::SparseForwardDataFlowAnalysis<
+       dataflow::Lattice<AxisInfo>>::getLatticeElement;
+   using FuncAxisInfoMapT = DenseMap<FunctionOpInterface, AxisInfo>;
+ 
+==== triton/lib/Analysis/AxisInfo.cpp#12 - /google/src/cloud/gflegar/mlir_b2b7efb96d21ffdf69eceb7baf47be9ed4e01bfc_1690457946/triton/lib/Analysis/AxisInfo.cpp ====
+# action=edit type=text
+--- triton/lib/Analysis/AxisInfo.cpp	2023-07-12 12:22:54.000000000 -0700
++++ triton/lib/Analysis/AxisInfo.cpp	2023-07-27 05:05:19.000000000 -0700
+@@ -827,7 +827,7 @@
+ //===----------------------------------------------------------------------===//
+ 
+ AxisInfoAnalysis::AxisInfoAnalysis(DataFlowSolver &solver)
+-    : dataflow::SparseDataFlowAnalysis<dataflow::Lattice<AxisInfo>>(solver) {
++    : dataflow::SparseForwardDataFlowAnalysis<dataflow::Lattice<AxisInfo>>(solver) {
+   // UnrealizedConversionCast:
+   // This is needed by TritonGPUToLLVM, to get AxisInfo when the graph is
+   // in the process of a PartialConversion, where UnrealizedConversionCast

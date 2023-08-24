@@ -226,7 +226,7 @@ TEST_F(LocalizerValidationRegressionTest, NnapiSl) {
 }
 #endif  // ENABLE_NNAPI_SL_TEST
 
-TEST_F(LocalizerValidationRegressionTest, Gpu) {
+TEST_F(LocalizerValidationRegressionTest, GpuAny) {
   AndroidInfo android_info;
   auto status = RequestAndroidInfo(&android_info);
   ASSERT_TRUE(status.ok());
@@ -237,7 +237,47 @@ TEST_F(LocalizerValidationRegressionTest, Gpu) {
   fbb_.Finish(CreateComputeSettings(fbb_, ExecutionPreference_ANY,
                                     CreateTFLiteSettings(fbb_, Delegate_GPU)));
 #ifdef __ANDROID__
-  CheckValidation("GPU");
+  CheckValidation("GPUANY");
+#endif  // __ANDROID__
+}
+
+TEST_F(LocalizerValidationRegressionTest, GpuOpenGL) {
+  AndroidInfo android_info;
+  auto status = RequestAndroidInfo(&android_info);
+  ASSERT_TRUE(status.ok());
+  if (android_info.is_emulator) {
+    std::cerr << "Skipping GPU on emulator\n";
+    return;
+  }
+  fbb_.Finish(CreateComputeSettings(
+      fbb_, ExecutionPreference_ANY,
+      CreateTFLiteSettings(
+          fbb_, Delegate_GPU, 0,
+          CreateGPUSettings(fbb_, /* allow_precision_loss */ false,
+                            /* allow_quantized_inference */ true,
+                            GPUBackend_OPENGL))));
+#ifdef __ANDROID__
+  CheckValidation("GPUOPENGL");
+#endif  // __ANDROID__
+}
+
+TEST_F(LocalizerValidationRegressionTest, GpuOpenCL) {
+  AndroidInfo android_info;
+  auto status = RequestAndroidInfo(&android_info);
+  ASSERT_TRUE(status.ok());
+  if (android_info.is_emulator) {
+    std::cerr << "Skipping GPU on emulator\n";
+    return;
+  }
+  fbb_.Finish(CreateComputeSettings(
+      fbb_, ExecutionPreference_ANY,
+      CreateTFLiteSettings(
+          fbb_, Delegate_GPU, 0,
+          CreateGPUSettings(fbb_, /* allow_precision_loss */ false,
+                            /* allow_quantized_inference */ true,
+                            GPUBackend_OPENCL))));
+#ifdef __ANDROID__
+  CheckValidation("GPUOPENCL");
 #endif  // __ANDROID__
 }
 

@@ -17,7 +17,7 @@
 import numpy as _np  # Avoids becoming a part of public Tensorflow API.
 
 from tensorflow.compiler.xla import xla_data_pb2
-from tensorflow.compiler.xla.python_api import types
+from tensorflow.compiler.xla.python_api import types_
 from tensorflow.compiler.xla.python_api import xla_shape
 
 
@@ -29,7 +29,7 @@ def ConvertLiteralToNumpyArray(literal):
         ConvertLiteralToNumpyArray(subliteral)
         for subliteral in literal.tuple_literals)
 
-  type_record = types.MAP_XLA_TYPE_TO_RECORD[element_type]
+  type_record = types_.MAP_XLA_TYPE_TO_RECORD[element_type]
   if not literal.shape.dimensions:
     return _np.array(
         getattr(literal, type_record.literal_field_name)[0],
@@ -59,7 +59,7 @@ def ConvertLiteralToNumpyArray(literal):
 
 def _ConvertNumpyArrayToLiteral(ndarray):
   """Converts a Numpy array to a XLA literal."""
-  type_record = types.MAP_DTYPE_TO_RECORD[str(ndarray.dtype)]
+  type_record = types_.MAP_DTYPE_TO_RECORD[str(ndarray.dtype)]
   literal = xla_data_pb2.LiteralProto()
   literal.shape.CopyFrom(xla_shape.CreateShapeFromNumpy(ndarray).message)
 

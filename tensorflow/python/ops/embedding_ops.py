@@ -576,7 +576,7 @@ def embedding_lookup_sparse_v2(
   Since row 1 and 2 of `sp_ids` only have one value each, they simply select the
   corresponding row from `params` as the output row. Row 1 has value `3` so
   it selects the `params` elements `[7, 8]` and row 2 has the value 2 so it
-  selects the the `params` elements `[5, 6]`.
+  selects the `params` elements `[5, 6]`.
 
   If `sparse_weights` is specified, it must have the same shape as `sp_ids`.
   `sparse_weights` is used to assign a weight to each slice of `params`. For

@@ -111,6 +111,9 @@ class PresetAssignments {
   // Get debugging information.
   std::string buffer_info_str() const { return buffer_info_str_; }
   std::string allocation_info_str() const { return allocation_info_str_; }
+  std::string instruction_schedule_str() const {
+    return instruction_schedule_str_;
+  }
 
  private:
   std::vector<std::pair<HloPosition, HeapSimulator::Chunk>> chunks_;
@@ -119,6 +122,7 @@ class PresetAssignments {
   std::vector<std::pair<int64_t, AssignmentInformation>> assignment_info_;
   std::string buffer_info_str_;
   std::string allocation_info_str_;
+  std::string instruction_schedule_str_;
 };
 
 // A wrapper class around HloCostAnalysis with additional knowledge about the
@@ -673,7 +677,7 @@ class MemorySpaceAssignment {
       CHECK(chunk_.has_value());
       return *chunk_;
     }
-    Chunk* mutable_chunk() { return &*chunk_; }
+    virtual void ReplaceOffset(int64_t offset);
     void set_start_time(int64_t start_time) { start_time_ = start_time; }
     int64_t start_time() const { return start_time_; }
     int64_t end_time() const { return end_time_; }
@@ -914,6 +918,8 @@ class MemorySpaceAssignment {
     // SlicedCopyAllocation, this is when all copies have ended.
     int64_t earliest_available_time() const override;
 
+    void ReplaceOffset(int64_t offset) override;
+
     const std::vector<SliceDetail>& sorted_slice_details() const;
     std::vector<SliceDetail>& mutable_sorted_slice_details();
     HloInstruction* concat() const { return concat_; }
@@ -931,6 +937,7 @@ class MemorySpaceAssignment {
     Status CreateBitcastConcat(const Shape& shape,
                                absl::Span<HloInstruction* const> slices);
 
+    Shape original_shape_to_slice_;
     const Allocation& prev_allocation_;
     // REQUIRES:
     // - sorted_segments_[i].copy_start_after_time <=
@@ -1487,6 +1494,12 @@ struct Options {
   //     example is a tensor may be prefetched, used, and then evicted. In that
   //     case copy_bytes would be twice the size of the tensor.
   float inefficient_use_to_copy_ratio = 0.0;
+
+  // This is mostly used for testing, it allows a test case to inject its own
+  // logic for AlternateMemoryBestFitHeap::GetInefficientAllocationSites.
+  std::function<std::vector<std::variant<HloPosition, HloUse>>(
+      absl::Span<HloPosition>)>
+      get_inefficient_allocation_sites_fn = nullptr;
 
   // The window size used to calculate the pipeline overhead when HLO accesses
   // the default memory, in MiB.
@@ -2387,12 +2400,15 @@ class AlternateMemoryBestFitHeap
                              bool add_to_pending = true);
   void AddRequiredAssignment(const HloInstruction* instruction,
                              ShapeIndex index, MemorySpace memory_space,
-                             AliasedOffset* offset = nullptr);
+                             AliasedOffset* offset = nullptr,
+                             bool add_to_pending = true);
   void AddRequiredAssignment(const HloPosition& position,
                              MemorySpace memory_space,
-                             AliasedOffset* offset = nullptr);
+                             AliasedOffset* offset = nullptr,
+                             bool add_to_pending = true);
   void AddRequiredAssignment(const HloUse& use, MemorySpace memory_space,
-                             AliasedOffset* offset = nullptr);
+                             AliasedOffset* offset = nullptr,
+                             bool add_to_pending = true);
 
   // Adds input and outputs as required assignments.
   void AddInputAndOutputRequiredAssignments();
@@ -2429,6 +2445,10 @@ class AlternateMemoryBestFitHeap
   // Since the allocations are recorded to the AllocationSequence, we don't
   // maintain result_ in GlobalDecreasingSizeBestFitHeap. Override AddToChunkMap
   // to avoid unnecessarily adding the chunk to the chunk map.
+  //
+  // Sliced prefetching requires that we override this method because we
+  // associate more than one chunk with a buffer (i.e., 1 chunk per slice),
+  // which would cause the original implementation of this method to CHECK fail.
   void AddToChunkMap(const HloValue* buffer, Chunk chunk) override {}
 
   // Returns true if the addition of num_additional_copies asynchronous copies
@@ -2594,6 +2614,7 @@ class AlternateMemoryBestFitHeap
   // Debug strings.
   std::string buffer_info_str_;
   std::string allocation_info_str_;
+  std::string instruction_schedule_str_;
 };
 }  // namespace memory_space_assignment
 }  // namespace xla

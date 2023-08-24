@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/mkl_util.h"
-#ifdef DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
 #include "tensorflow/core/platform/mutex.h"
 #endif
 
@@ -100,7 +100,7 @@ class MklEltwiseFwdActivationPrimitive : public MklPrimitive {
   //   src_data:  input data buffer of src
   //   dst_data:  output data buffer of dst
   void Execute(const T* src_data, T* dst_data, OpKernelContext* op_context) {
-#ifdef DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
     mutex_lock lock(primitive_execution_mu_);
 #endif
     context_.src_mem->set_data_handle(
@@ -202,7 +202,7 @@ class MklEltwiseFwdActivationPrimitive : public MklPrimitive {
 
   struct EltwiseFwdActivationContext context_;
 
-#ifdef DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
   mutex primitive_execution_mu_;
 #endif
 };

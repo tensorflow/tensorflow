@@ -15,13 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/call_graph.h"
 
+#include <vector>
+
+#include <gtest/gtest.h>
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
-#include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -137,8 +138,8 @@ TEST_F(CallGraphTest, UnreachableComputation) {
 }
 
 TEST_F(CallGraphTest, ParallelComputation) {
-  // Test a call graph of a module with an entry computation which calls another
-  // computation in a parallel context via kMap.
+  // Test a call graph of a module with an entry computation which calls
+  // another computation in a parallel context via kMap.
   auto module = CreateNewVerifiedModule();
   HloComputation* map_computation =
       module->AddEmbeddedComputation(MakeScalarComputation());
@@ -170,8 +171,8 @@ TEST_F(CallGraphTest, ParallelComputation) {
 }
 
 TEST_F(CallGraphTest, SequentialComputations) {
-  // Test a call graph of a module with an entry computation which calls another
-  // computation in a sequential context via kCall.
+  // Test a call graph of a module with an entry computation which calls
+  // another computation in a sequential context via kCall.
   auto module = CreateNewVerifiedModule();
   HloComputation* called_computation =
       module->AddEmbeddedComputation(MakeScalarComputation());
@@ -181,8 +182,8 @@ TEST_F(CallGraphTest, SequentialComputations) {
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
   EXPECT_EQ(2, call_graph->nodes().size());
 
-  // The called computation is only called from one other computation, but there
-  // are multiple callsites.
+  // The called computation is only called from one other computation, but
+  // there are multiple callsites.
   EXPECT_FALSE(call_graph->IsFlattened());
 
   const CallGraphNode& entry_node = call_graph->GetNode(entry_computation);
@@ -205,8 +206,8 @@ TEST_F(CallGraphTest, SequentialComputations) {
 }
 
 TEST_F(CallGraphTest, ContextBothComputations) {
-  // Test a call graph of a module with an entry computation which calls another
-  // computation in both a parallel and sequential context.
+  // Test a call graph of a module with an entry computation which calls
+  // another computation in both a parallel and sequential context.
   auto module = CreateNewVerifiedModule();
   HloComputation* subcomputation =
       module->AddEmbeddedComputation(MakeScalarComputation());
@@ -502,6 +503,151 @@ TEST_F(CallGraphTest, ComplexGraphNearestAncestors) {
             std::make_pair(a_while, a_while));
 }
 
+TEST_F(CallGraphTest, NearestCommonAncestorInstructions) {
+  const std::string& hlo_string = R"(
+  HloModule module
+    ENTRY computation {
+      p.0 = f32[10] parameter(0)
+      p.1 = f32[10] parameter(1)
+      add.0 = f32[10] add(p.0, p.1)
+      p.2 = f32[10] parameter(2)
+      mul.0 = f32[10] multiply(p.1, p.2)
+      sub.0 = f32[10] subtract(add.0, mul.0)
+      add.1 = f32[10] add(add.0, p.2)
+      ROOT add.2 = f32[10] add(sub.0, add.1)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  namespace op = testing::opcode_matchers;
+  auto p0 = FindInstruction(hlo_module.get(), "p.0");
+  EXPECT_THAT(p0, op::Parameter());
+  auto p1 = FindInstruction(hlo_module.get(), "p.1");
+  EXPECT_THAT(p1, op::Parameter());
+  auto p2 = FindInstruction(hlo_module.get(), "p.2");
+  EXPECT_THAT(p2, op::Parameter());
+  auto add0 = FindInstruction(hlo_module.get(), "add.0");
+  EXPECT_THAT(add0, op::Add());
+  auto mul0 = FindInstruction(hlo_module.get(), "mul.0");
+  EXPECT_THAT(mul0, op::Multiply());
+  auto sub0 = FindInstruction(hlo_module.get(), "sub.0");
+  EXPECT_THAT(sub0, op::Subtract());
+  auto add1 = FindInstruction(hlo_module.get(), "add.1");
+  EXPECT_THAT(add1, op::Add());
+  auto add2 = FindInstruction(hlo_module.get(), "add.2");
+  EXPECT_THAT(add2, op::Add());
+
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(hlo_module.get());
+  EXPECT_EQ(1, call_graph->nodes().size());
+
+  EXPECT_EQ(call_graph->NearestCommonAncestorInstructions(
+                std::vector<const HloInstruction*>({p0, p0})),
+            absl::flat_hash_set<const HloInstruction*>({p0}));
+
+  EXPECT_EQ(call_graph->NearestCommonAncestorInstructions(
+                std::vector<const HloInstruction*>({p0, p1})),
+            absl::flat_hash_set<const HloInstruction*>({add0}));
+
+  EXPECT_EQ(call_graph->NearestCommonAncestorInstructions(
+                std::vector<const HloInstruction*>({p0, p1, p2})),
+            absl::flat_hash_set<const HloInstruction*>({sub0, add1}));
+
+  EXPECT_EQ(call_graph->NearestCommonAncestorInstructions(
+                std::vector<const HloInstruction*>({p0, add1})),
+            absl::flat_hash_set<const HloInstruction*>({add1}));
+
+  EXPECT_EQ(call_graph->NearestCommonAncestorInstructions(
+                std::vector<const HloInstruction*>({p0, p1, add0})),
+            absl::flat_hash_set<const HloInstruction*>({add0}));
+
+  EXPECT_EQ(call_graph->NearestCommonAncestorInstructions(
+                std::vector<const HloInstruction*>({p0, p2})),
+            absl::flat_hash_set<const HloInstruction*>({sub0, add1}));
+
+  EXPECT_EQ(call_graph->NearestCommonAncestorInstructions(
+                std::vector<const HloInstruction*>({p0, add2})),
+            absl::flat_hash_set<const HloInstruction*>({add2}));
+
+  EXPECT_EQ(call_graph->NearestCommonAncestorInstructions(
+                std::vector<const HloInstruction*>({p2, mul0, sub0})),
+            absl::flat_hash_set<const HloInstruction*>({sub0}));
+}
+
+TEST_F(CallGraphTest, NearestCommonAncestorComputations) {
+  // Test NearestCommonAncestors on a call graph of a module with
+  // several computation called in various contexts. The call graph looks
+  // like:
+  //
+  //      entry
+  //      /  |
+  //     a   |
+  //   / | \ |
+  //  b  |  cond
+  //   \ |
+  //    c
+  //
+  // Calls are made via kCall, kWhile, and kMap instructions.
+  auto module = CreateNewVerifiedModule();
+  HloComputation* cond_computation =
+      module->AddEmbeddedComputation(MakeConditionComputation());
+  HloComputation* c_computation =
+      module->AddEmbeddedComputation(MakeScalarComputation());
+  HloComputation* b_computation = module->AddEmbeddedComputation(
+      MakeMappingComputation(c_computation, /*callsites=*/1));
+
+  HloComputation* a_computation;
+  {
+    HloComputation::Builder builder(TestName() + ".a");
+    HloInstruction* param0 = builder.AddInstruction(
+        HloInstruction::CreateParameter(0, kScalarShape, "param0"));
+    HloInstruction* a_call = builder.AddInstruction(
+        HloInstruction::CreateCall(kScalarShape, {param0}, c_computation));
+    builder.AddInstruction(HloInstruction::CreateWhile(
+        kScalarShape, cond_computation, b_computation, a_call));
+    a_computation = module->AddEmbeddedComputation(builder.Build());
+  }
+
+  HloComputation* entry_computation;
+  {
+    HloComputation::Builder builder(TestName() + ".entry");
+    HloInstruction* param0 = builder.AddInstruction(
+        HloInstruction::CreateParameter(0, kScalarShape, "param0"));
+    builder.AddInstruction(HloInstruction::CreateWhile(
+        kScalarShape, cond_computation, a_computation, param0));
+    entry_computation = module->AddEntryComputation(builder.Build());
+  }
+
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
+  EXPECT_EQ(5, call_graph->nodes().size());
+
+  EXPECT_EQ(
+      call_graph->NearestCommonAncestorComputations(
+          std::vector<const HloComputation*>({a_computation, a_computation})),
+      absl::flat_hash_set<const HloComputation*>({a_computation}));
+
+  EXPECT_EQ(
+      call_graph->NearestCommonAncestorComputations(
+          std::vector<const HloComputation*>({b_computation, c_computation})),
+      absl::flat_hash_set<const HloComputation*>({b_computation}));
+
+  EXPECT_EQ(call_graph->NearestCommonAncestorComputations(
+                std::vector<const HloComputation*>(
+                    {a_computation, b_computation, c_computation})),
+            absl::flat_hash_set<const HloComputation*>({a_computation}));
+
+  EXPECT_EQ(call_graph->NearestCommonAncestorComputations(
+                std::vector<const HloComputation*>(
+                    {c_computation, cond_computation})),
+            absl::flat_hash_set<const HloComputation*>({a_computation}));
+
+  EXPECT_EQ(call_graph->NearestCommonAncestorComputations(
+                std::vector<const HloComputation*>(
+                    {b_computation, cond_computation})),
+            absl::flat_hash_set<const HloComputation*>({a_computation}));
+}
+
 TEST_F(CallGraphTest, VisitSingletonComputation) {
   // Test the call graph visitor with a call graph with a single node.
   auto module = CreateNewVerifiedModule();
@@ -569,9 +715,9 @@ TEST_F(CallGraphTest, VisitWithError) {
 }
 
 TEST_F(CallGraphTest, ExecutionThread) {
-  // Create a module with two computations with different execution_threads and
-  // ensure call graphs with non-empty execution threads ignore the computations
-  // that are not in execution_threads.
+  // Create a module with two computations with different execution_threads
+  // and ensure call graphs with non-empty execution threads ignore the
+  // computations that are not in execution_threads.
   HloComputation::Builder builder(TestName());
   constexpr char kParallelThreadName[] = "parallel_thread";
   // Create a call instruction containing a single binary operation.

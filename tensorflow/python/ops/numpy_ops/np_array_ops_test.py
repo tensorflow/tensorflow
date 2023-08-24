@@ -547,6 +547,11 @@ class ArrayCreationTest(test.TestCase):
                                     [10, 3])
     self.assertAllEqual(expected, a)
 
+  def testVander(self):
+    tf_res = np_array_ops.vander([-1.0, 1.0], N=0, increasing=False)
+    np_res = np.vander(np.array([-1.0, 1.0]), N=0)
+    self.assertAllEqual(tf_res, np_res)
+
 
 class ArrayMethodsTest(test.TestCase):
 
@@ -1319,6 +1324,6 @@ class StringArrayTest(test.TestCase, parameterized.TestCase):
 
 if __name__ == '__main__':
   ops.enable_eager_execution()
-  ops.enable_numpy_style_type_promotion()
+  ops.set_dtype_conversion_mode('legacy')
   np_math_ops.enable_numpy_methods_on_tensor()
   test.main()

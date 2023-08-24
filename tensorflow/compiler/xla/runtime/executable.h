@@ -162,6 +162,10 @@ class Executable {
   bool IsAsync(unsigned ordinal) const;
   bool IsAsync() const { return IsAsync(0); }
 
+  // Returns the name of the exported function with the given ordinal.
+  std::string_view function_name(unsigned ordinal) const;
+  std::string_view function_name() const { return function_name(0); }
+
   // Returns the number of results of the exported function with given ordinal.
   unsigned num_results(unsigned ordinal) const;
   unsigned num_results() const { return num_results(0); }

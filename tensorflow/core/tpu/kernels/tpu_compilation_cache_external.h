@@ -16,29 +16,11 @@ limitations under the License.
 #define TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_CACHE_EXTERNAL_H_
 
 #include <functional>
-#include <memory>
-#include <unordered_map>
-#include <vector>
 
-#include "absl/container/node_hash_map.h"
-#include "absl/strings/string_view.h"
-#include "absl/synchronization/mutex.h"
-#include "absl/types/span.h"
-#include "tensorflow/compiler/xla/service/hlo.pb.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
-#include "tensorflow/core/framework/resource_mgr.h"
-#include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/platform/refcount.h"
-#include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
+#include "absl/base/thread_annotations.h"
 #include "tensorflow/core/tpu/kernels/compiled_subgraph.h"
-#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_common.pb.h"
-#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_entry.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_interface.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_key.h"
-#include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
-#include "tensorflow/core/tpu/kernels/tpu_mesh_state_interface.h"
-#include "tensorflow/core/tpu/kernels/tpu_op_consts.h"
-#include "tensorflow/core/tpu/kernels/tpu_program_group.h"
 
 namespace tensorflow {
 namespace tpu {

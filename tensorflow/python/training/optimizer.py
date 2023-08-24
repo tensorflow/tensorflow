@@ -26,6 +26,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients
@@ -115,7 +116,7 @@ class _RefVariableProcessor(_OptimizableVariable):
     return self._v._ref()  # pylint: disable=protected-access
 
   def update_op(self, optimizer, g):
-    if isinstance(g, ops.Tensor):
+    if isinstance(g, tensor.Tensor):
       update_op = optimizer._apply_dense(g, self._v)  # pylint: disable=protected-access
       if self._v.constraint is not None:
         with ops.control_dependencies([update_op]):
@@ -197,7 +198,7 @@ class _TensorProcessor(_OptimizableVariable):
 def _get_processor(v):
   """The processor of v."""
   if context.executing_eagerly():
-    if isinstance(v, ops.Tensor):
+    if isinstance(v, tensor.Tensor):
       return _TensorProcessor(v)
     else:
       return _DenseResourceVariableProcessor(v)
@@ -208,7 +209,7 @@ def _get_processor(v):
     return _DenseResourceVariableProcessor(v)
   if isinstance(v, variables.Variable):
     return _RefVariableProcessor(v)
-  if isinstance(v, ops.Tensor):
+  if isinstance(v, tensor.Tensor):
     return _TensorProcessor(v)
   raise NotImplementedError("Trying to optimize unsupported type ", v)
 
@@ -690,7 +691,7 @@ class Optimizer(
           raise TypeError(
               "Gradient must be convertible to a Tensor"
               " or IndexedSlices, or None: %s" % g)
-        if not isinstance(g, (ops.Tensor, indexed_slices.IndexedSlices)):
+        if not isinstance(g, (tensor.Tensor, indexed_slices.IndexedSlices)):
           raise TypeError(
               "Gradient must be a Tensor, IndexedSlices, or None: %s" % g)
       p = _get_processor(v)
@@ -739,7 +740,7 @@ class Optimizer(
               apply_updates = state_ops.assign_add(global_step, 1, name=name)
 
       if not context.executing_eagerly():
-        if isinstance(apply_updates, ops.Tensor):
+        if isinstance(apply_updates, tensor.Tensor):
           apply_updates = apply_updates.op
         train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
         if apply_updates not in train_op:
@@ -791,7 +792,7 @@ class Optimizer(
       except TypeError:
         raise TypeError("Gradient must be convertible to a Tensor"
                         " or IndexedSlices, or None: %s" % g)
-      if not isinstance(g, (ops.Tensor, indexed_slices.IndexedSlices)):
+      if not isinstance(g, (tensor.Tensor, indexed_slices.IndexedSlices)):
         raise TypeError(
             "Gradient must be a Tensor, IndexedSlices, or None: %s" % g)
       p = _get_processor(v)
@@ -834,7 +835,7 @@ class Optimizer(
               kwargs={"name": name})
 
       if not context.executing_eagerly():
-        if isinstance(apply_updates, ops.Tensor):
+        if isinstance(apply_updates, tensor.Tensor):
           apply_updates = apply_updates.op
         train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
         if apply_updates not in train_op:

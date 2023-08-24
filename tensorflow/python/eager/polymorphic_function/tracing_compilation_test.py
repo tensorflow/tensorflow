@@ -34,7 +34,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.layers import convolutional
@@ -204,6 +204,7 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
     self.assertTrue(unknown_dim[0])
     self.assertLen(function_cache, 4)
 
+  @test_util.run_v2_only
   def testGraphEagerIsolation(self):
     def f_py():
       self.v = variables.Variable(1.0)
@@ -217,9 +218,10 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
     with ops.Graph().as_default():
       self.assertEqual(f().shape, ())
 
+  @test_util.run_v2_only
   def testCompilationNumpyArraysConvertedToTensors(self):
     def f(x):
-      self.assertIsInstance(x, ops.Tensor)
+      self.assertIsInstance(x, tensor_lib.Tensor)
       return x
 
     x = random_ops.random_uniform([2, 2]).numpy()
@@ -263,6 +265,7 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
     # We should not have triggered any re-tracing of the python function.
     self.assertLen(function_cache, 2)
 
+  @test_util.run_v2_only
   def testNumpyDtypeInputSupported(self):
     @compiled_fn
     def f(x, dtype):
@@ -273,10 +276,11 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(f(1, numpy.int32).numpy(), numpy.int32(1))
     self.assertEqual(f(2, numpy.int32).numpy(), numpy.int32(2))
 
+  @test_util.run_v2_only
   def testCompilationNumpyArraysConvertedToTensorsInKwargs(self):
     def f(**kwargs):
       x = kwargs.pop('x')
-      self.assertIsInstance(x, ops.Tensor)
+      self.assertIsInstance(x, tensor_lib.Tensor)
       return x
 
     x = random_ops.random_uniform([2, 2]).numpy()
@@ -297,6 +301,7 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(1.0, defined(x=array_ops.ones([])).numpy())
     self.assertEqual(0.0, defined(x=array_ops.zeros([])).numpy())
 
+  @test_util.run_v2_only
   def testFuncListAttr(self):
     @compiled_fn
     def test_function(val):
@@ -392,6 +397,9 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
     context.context().function_call_options = None
     model(constant_op.constant(2.0))
 
+  # TODO(b/286583977): We add the run_v2_only here to shield from the automatic
+  # both modes since we use the other decorator already to invoke them.
+  @test_util.run_v2_only
   @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testLayerInCompilation(self):
     conv = convolutional.Conv2D(
@@ -552,6 +560,7 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
     defined(1, baz=3, bar=2)
     self.assertLen(function_cache, 3)
 
+  @test_util.run_v2_only
   def testFunctoolsPartialUnwrappedCorrectly(self):
     def full_function(a, b, c=3):
       return a, b, c
@@ -571,7 +580,7 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
       return a
 
     function_cache = function_cache_lib.FunctionCache()
-    signature = [tensor_spec.TensorSpec(shape=(2,), dtype=dtypes.float32)]
+    signature = [tensor_lib.TensorSpec(shape=(2,), dtype=dtypes.float32)]
     defined = compiled_fn(
         foo, input_signature=signature, function_cache=function_cache
     )
@@ -583,7 +592,7 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(
         a,
         defined.get_concrete_function(
-            tensor_spec.TensorSpec((2,), dtype=dtypes.float32)
+            tensor_lib.TensorSpec((2,), dtype=dtypes.float32)
         )(a),
     )
     self.assertLen(function_cache, 1)
@@ -592,7 +601,7 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(a._shape_tuple(), (2, None))
       return a
 
-    signature = [tensor_spec.TensorSpec((2, None), dtypes.float32)]
+    signature = [tensor_lib.TensorSpec((2, None), dtypes.float32)]
     defined = compiled_fn(bar, input_signature=signature)
     a = array_ops.ones([2, 1])
     out = defined(a)
@@ -620,7 +629,7 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
     self.assertLen(function_cache, 2)
 
   def testInputSignatureWithCompatibleInputs(self):
-    rank2_spec = tensor_spec.TensorSpec(
+    rank2_spec = tensor_lib.TensorSpec(
         shape=(None, None), dtype=dtypes.float32
     )
 
@@ -638,6 +647,7 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
     with self.assertRaises(TypeError):
       func([['wrong dtype']])
 
+  @test_util.run_v2_only
   def testNestedInputSignatures(self):
     def expected_foo(a, b):
       return [a, b]
@@ -646,8 +656,8 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
 
     @compiled_fn(
         input_signature=[
-            [tensor_spec.TensorSpec((2, None), dtypes.float32)] * 2,
-            tensor_spec.TensorSpec((1,), dtypes.float32),
+            [tensor_lib.TensorSpec((2, None), dtypes.float32)] * 2,
+            tensor_lib.TensorSpec((1,), dtypes.float32),
         ],
         function_cache=function_cache,
     )
@@ -690,15 +700,16 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(out[0][1], b)
     self.assertAllEqual(out[1], c)
 
+  @test_util.run_v2_only
   def testNestedInputSignaturesWithDict(self):
     def expected_bar(a):
       return a
 
     @compiled_fn(
         input_signature=[{
-            'a': tensor_spec.TensorSpec((2, None), dtypes.float32),
-            'b': tensor_spec.TensorSpec((2, None), dtypes.float32),
-            'c': tensor_spec.TensorSpec((1,), dtypes.float32),
+            'a': tensor_lib.TensorSpec((2, None), dtypes.float32),
+            'b': tensor_lib.TensorSpec((2, None), dtypes.float32),
+            'c': tensor_lib.TensorSpec((1,), dtypes.float32),
         }]
     )
     def bar(a):
@@ -733,7 +744,7 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
       del b
 
     # Signatures must be either lists or tuples on their outermost levels.
-    signature = {'t1': tensor_spec.TensorSpec([], dtypes.float32)}
+    signature = {'t1': tensor_lib.TensorSpec([], dtypes.float32)}
     with self.assertRaisesRegex(
         TypeError, 'input_signature must be either a tuple or a list.*'
     ):
@@ -744,8 +755,8 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
       return [a, b]
 
     signature = [
-        [tensor_spec.TensorSpec((1,), dtypes.float32)] * 2,
-        [tensor_spec.TensorSpec((1,), dtypes.float32)] * 2,
+        [tensor_lib.TensorSpec((1,), dtypes.float32)] * 2,
+        [tensor_lib.TensorSpec((1,), dtypes.float32)] * 2,
     ]
     defined = compiled_fn(foo, input_signature=signature)
     a = array_ops.ones([1])
@@ -757,10 +768,11 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
       defined([a], [a, a, a])
     defined([a, a], [a, a])
 
+  @test_util.run_v2_only
   def testUnderspecifiedInputSignature(self):
     @compiled_fn(
         input_signature=[
-            tensor_spec.TensorSpec([], dtypes.float32),
+            tensor_lib.TensorSpec([], dtypes.float32),
         ]
     )
     def foo(a, training=True):
@@ -775,13 +787,14 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllEqual(x.numpy(), foo(x).numpy())
 
+  @test_util.run_v2_only
   def testInputSignatureWithPartialFunction(self):
     def full_function(a, b, c=3.0):
       return a, b, c
 
     partial = functools.partial(full_function, 1, c=4)
     a, b, c = partial(2.0)
-    signature = [tensor_spec.TensorSpec([], dtypes.float32)]
+    signature = [tensor_lib.TensorSpec([], dtypes.float32)]
     defined = compiled_fn(partial, input_signature=signature)
     x = constant_op.constant(2.0)
     func_a, func_b, func_c = defined(x)
@@ -789,13 +802,14 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(func_b.numpy(), b)
     self.assertEqual(func_c.numpy(), c)
 
+  @test_util.run_v2_only
   def testInputSignatureWithKeywordPositionalArgs(self):
     function_cache = function_cache_lib.FunctionCache()
 
     @compiled_fn(
         input_signature=[
-            tensor_spec.TensorSpec([], dtypes.float32),
-            tensor_spec.TensorSpec([], dtypes.int64),
+            tensor_lib.TensorSpec([], dtypes.float32),
+            tensor_lib.TensorSpec([], dtypes.int64),
         ],
         function_cache=function_cache,
     )
@@ -825,6 +839,7 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(out1.numpy(), 1.0)
     self.assertEqual(out2.numpy(), 2)
 
+  @test_util.run_v2_only
   def testInputSignatureWithKeywordArgs(self):
     def foo(a, b, **kwargs):
       del kwargs
@@ -833,8 +848,8 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
     x = compiled_fn(
         foo,
         input_signature=[
-            tensor_spec.TensorSpec([], dtypes.float32),
-            tensor_spec.TensorSpec([], dtypes.int32),
+            tensor_lib.TensorSpec([], dtypes.float32),
+            tensor_lib.TensorSpec([], dtypes.int32),
         ],
     ).get_concrete_function()
     result = x(constant_op.constant(5.0), constant_op.constant(5))
@@ -881,17 +896,18 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
     with self.assertRaises(ValueError):
       defined(rt5)
 
+  @test_util.run_v2_only
   def testInputSignatureWithKeywordOnlyArgs(self):
     def f(a, b, c=3, *, d=4):
-      self.assertIsInstance(a, ops.Tensor)
-      self.assertIsInstance(b, ops.Tensor)
+      self.assertIsInstance(a, tensor_lib.Tensor)
+      self.assertIsInstance(b, tensor_lib.Tensor)
       self.assertIsInstance(c, int)
-      self.assertIsInstance(d, (int, ops.Tensor))
+      self.assertIsInstance(d, (int, tensor_lib.Tensor))
       return a + b + c + d
 
     signature = [
-        tensor_spec.TensorSpec(shape=[], dtype=dtypes.int32),
-        tensor_spec.TensorSpec(shape=[], dtype=dtypes.int32),
+        tensor_lib.TensorSpec(shape=[], dtype=dtypes.int32),
+        tensor_lib.TensorSpec(shape=[], dtype=dtypes.int32),
     ]
     defined = compiled_fn(f, input_signature=signature)
     self.assertEqual(defined(1, 2).numpy(), 10)
@@ -919,8 +935,8 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
 
   def testInputSignatureWithKeywordOnlyArgsNoDefaults(self):
     signature = [
-        tensor_spec.TensorSpec(shape=[], dtype=dtypes.int32),
-        tensor_spec.TensorSpec(shape=[], dtype=dtypes.int32),
+        tensor_lib.TensorSpec(shape=[], dtype=dtypes.int32),
+        tensor_lib.TensorSpec(shape=[], dtype=dtypes.int32),
     ]
 
     def test_func(a, *, b):
@@ -1078,6 +1094,7 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
               functions[i].cached_definition.signature.name,
           )
 
+  @test_util.run_v2_only
   def testRegisterConcreteFunction(self):
     @compiled_fn(
         name='py_add', function_cache=function_cache_lib.FunctionCache()
@@ -1087,8 +1104,8 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
 
     py_add(array_ops.ones([]), array_ops.ones([]))
     add = py_add.get_concrete_function(
-        tensor_spec.TensorSpec(None, dtypes.float32),
-        tensor_spec.TensorSpec(None, dtypes.float32),
+        tensor_lib.TensorSpec(None, dtypes.float32),
+        tensor_lib.TensorSpec(None, dtypes.float32),
     )
 
     @compiled_fn(
@@ -1099,8 +1116,8 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
 
     py_composite(array_ops.ones([]), array_ops.ones([]))
     composite = py_composite.get_concrete_function(
-        tensor_spec.TensorSpec(None, dtypes.float32),
-        tensor_spec.TensorSpec(None, dtypes.float32),
+        tensor_lib.TensorSpec(None, dtypes.float32),
+        tensor_lib.TensorSpec(None, dtypes.float32),
     )
 
     with context.graph_mode(), self.cached_session():
@@ -1171,8 +1188,8 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
     defun_matmul = compiled_fn(
         matmul,
         input_signature=[
-            tensor_spec.TensorSpec(shape=(2, 2), dtype=dtypes.float32),
-            tensor_spec.TensorSpec(shape=(2, 2), dtype=dtypes.float32),
+            tensor_lib.TensorSpec(shape=(2, 2), dtype=dtypes.float32),
+            tensor_lib.TensorSpec(shape=(2, 2), dtype=dtypes.float32),
         ],
         function_cache=function_cache_lib.FunctionCache(),
     )
@@ -1219,6 +1236,7 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
         # pylint: disable=protected-access
         self.assertLen(graph._functions, 3)
 
+  @test_util.run_v2_only
   def testCallingFunctionWithDifferentVariables(self):
     @compiled_fn
     def foo(v):
@@ -1283,6 +1301,7 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
           ),
       ),
   ])
+  @test_util.run_v2_only
   def testSwapImplementationWithGrapplerPlugin(
       self, cpu_decorator, gpu_decorator
   ):
@@ -1431,7 +1450,7 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
       return t
 
     z = array_ops.zeros([2, 2])
-    z_spec = tensor_spec.TensorSpec.from_tensor(z)
+    z_spec = tensor_lib.TensorSpec.from_tensor(z)
     self.assertIs(
         defined.get_concrete_function(z_spec), defined.get_concrete_function(z)
     )
@@ -1539,6 +1558,7 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
     defined(z, y, y)
     self.assertLen(function_cache, 3)
 
+  @test_util.run_v2_only
   def testDeepcopyVariableNoRetracing(self):
     function_cache = function_cache_lib.FunctionCache()
 
@@ -1557,6 +1577,7 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
     self.assertLen(function_cache, 1)
 
   @test_util.disable_tfrt('b/173429686')
+  @test_util.run_v2_only
   def testExecutorType(self):
     @compiled_fn
     def add_five(x):
@@ -1595,7 +1616,7 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
       return array_ops.shape(x)
 
     @compiled_fn(
-        input_signature=[tensor_spec.TensorSpec([None, None], dtypes.float32)]
+        input_signature=[tensor_lib.TensorSpec([None, None], dtypes.float32)]
     )
     def calls_func(x):
       return func(x)
@@ -1983,6 +2004,7 @@ class MultiDeviceCompilationTest(test.TestCase, parameterized.TestCase):
 class CompilationArgumentNamingTest(test.TestCase, parameterized.TestCase):
   """Tests for recognizable export signatures from concrete functions."""
 
+  @test_util.run_v2_only
   def testBasic(self):
     @compiled_fn
     def fn(a, b):
@@ -1992,8 +2014,8 @@ class CompilationArgumentNamingTest(test.TestCase, parameterized.TestCase):
     fn(array_ops.ones([]), array_ops.ones([]))
 
     fn_op = fn.get_concrete_function(
-        tensor_spec.TensorSpec(shape=(None,), dtype=dtypes.float32),
-        tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32),
+        tensor_lib.TensorSpec(shape=(None,), dtype=dtypes.float32),
+        tensor_lib.TensorSpec(shape=(), dtype=dtypes.float32),
     )
     self.assertEqual(['a', 'b'], [inp.op.name for inp in fn_op.inputs])
     self.assertEqual(
@@ -2018,7 +2040,7 @@ class CompilationArgumentNamingTest(test.TestCase, parameterized.TestCase):
     fn(array_ops.ones([]), array_ops.ones([]))
 
     fn_op = fn.get_concrete_function(
-        tensor_spec.TensorSpec(shape=(None,), dtype=dtypes.float32),
+        tensor_lib.TensorSpec(shape=(None,), dtype=dtypes.float32),
         variables.Variable(1.0),
     )
     self.assertEqual(['a', 'b'], [inp.op.name for inp in fn_op.inputs])
@@ -2038,8 +2060,8 @@ class CompilationArgumentNamingTest(test.TestCase, parameterized.TestCase):
     fn(array_ops.ones([]))
 
     fn_op = fn.get_concrete_function(
-        x=tensor_spec.TensorSpec(shape=(None,), dtype=dtypes.float32),
-        y=tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32),
+        x=tensor_lib.TensorSpec(shape=(None,), dtype=dtypes.float32),
+        y=tensor_lib.TensorSpec(shape=(), dtype=dtypes.float32),
     )
     self.assertEqual(['x', 'y'], [inp.op.name for inp in fn_op.inputs])
     self.assertEqual(
@@ -2052,14 +2074,14 @@ class CompilationArgumentNamingTest(test.TestCase, parameterized.TestCase):
 
     fn_op2 = fn.get_concrete_function(
         z=(
-            tensor_spec.TensorSpec(
+            tensor_lib.TensorSpec(
                 shape=(None,), dtype=dtypes.float32, name='z_first'
             ),
-            tensor_spec.TensorSpec(
+            tensor_lib.TensorSpec(
                 shape=(), dtype=dtypes.float32, name='z_second'
             ),
         ),
-        y=tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32, name='custom'),
+        y=tensor_lib.TensorSpec(shape=(), dtype=dtypes.float32, name='custom'),
         x=4.0,
     )
     self.assertEqual(
@@ -2072,14 +2094,14 @@ class CompilationArgumentNamingTest(test.TestCase, parameterized.TestCase):
     )
 
     fn_op3 = fn.get_concrete_function(
-        tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32, name='custom'),
+        tensor_lib.TensorSpec(shape=(), dtype=dtypes.float32, name='custom'),
         z=(
-            tensor_spec.TensorSpec(
+            tensor_lib.TensorSpec(
                 shape=(None,), dtype=dtypes.float32, name='z1'
             ),
-            tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32, name='z2'),
+            tensor_lib.TensorSpec(shape=(), dtype=dtypes.float32, name='z2'),
         ),
-        y=tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32),
+        y=tensor_lib.TensorSpec(shape=(), dtype=dtypes.float32),
     )
     self.assertEqual(
         ['custom', 'z1', 'z2', 'y'], [inp.op.name for inp in fn_op3.inputs]
@@ -2098,7 +2120,7 @@ class CompilationArgumentNamingTest(test.TestCase, parameterized.TestCase):
     has_method = HasMethod()
     compiled_method = compiled_fn(has_method.method)
     class_op = compiled_method.get_concrete_function(
-        tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32)
+        tensor_lib.TensorSpec(shape=(), dtype=dtypes.float32)
     )
     self.assertEqual(['x'], [inp.op.name for inp in class_op.inputs])
     self.assertEqual(
@@ -2107,7 +2129,7 @@ class CompilationArgumentNamingTest(test.TestCase, parameterized.TestCase):
     )
 
     method_op = compiled_method.get_concrete_function(
-        tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32)
+        tensor_lib.TensorSpec(shape=(), dtype=dtypes.float32)
     )
     self.assertEqual(['x'], [inp.op.name for inp in method_op.inputs])
     self.assertEqual(
@@ -2119,7 +2141,7 @@ class CompilationArgumentNamingTest(test.TestCase, parameterized.TestCase):
     # should always retrace?
     self.skipTest('Not working')
     method_op = has_method.method.get_concrete_function(
-        tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32, name='y')
+        tensor_lib.TensorSpec(shape=(), dtype=dtypes.float32, name='y')
     )
     self.assertEqual(['y'], [inp.op.name for inp in method_op.inputs])
     self.assertEqual(
@@ -2138,7 +2160,7 @@ class CompilationArgumentNamingTest(test.TestCase, parameterized.TestCase):
     compiled_method = compiled_fn(
         has_method.method,
         input_signature=(
-            tensor_spec.TensorSpec(shape=None, dtype=dtypes.float64, name='y'),
+            tensor_lib.TensorSpec(shape=None, dtype=dtypes.float64, name='y'),
         ),
     )
 
@@ -2163,14 +2185,14 @@ class CompilationArgumentNamingTest(test.TestCase, parameterized.TestCase):
     # Call the function to make def_function happy
     variadic_fn(array_ops.ones([]), array_ops.ones([]))
     variadic_op = variadic_fn.get_concrete_function(
-        tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32),
-        tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32, name='y'),
-        tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32),
-        tensor_spec.TensorSpec(
+        tensor_lib.TensorSpec(shape=(), dtype=dtypes.float32),
+        tensor_lib.TensorSpec(shape=None, dtype=dtypes.float32, name='y'),
+        tensor_lib.TensorSpec(shape=(), dtype=dtypes.float32),
+        tensor_lib.TensorSpec(
             shape=(), dtype=dtypes.float32, name='second_variadic'
         ),
-        z=tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32),
-        zz=tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32, name='cust'),
+        z=tensor_lib.TensorSpec(shape=(), dtype=dtypes.float32),
+        zz=tensor_lib.TensorSpec(shape=(), dtype=dtypes.float32, name='cust'),
     )
     self.assertEqual(
         ['x', 'y', 'args_1', 'second_variadic', 'z', 'cust'],
@@ -2184,10 +2206,10 @@ class CompilationArgumentNamingTest(test.TestCase, parameterized.TestCase):
   def testVariadicInputSignature(self):
     @compiled_fn(
         input_signature=(
-            tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32),
-            tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32, name='y'),
-            tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32),
-            tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32, name='z'),
+            tensor_lib.TensorSpec(shape=None, dtype=dtypes.float32),
+            tensor_lib.TensorSpec(shape=None, dtype=dtypes.float32, name='y'),
+            tensor_lib.TensorSpec(shape=(), dtype=dtypes.float32),
+            tensor_lib.TensorSpec(shape=(), dtype=dtypes.float32, name='z'),
         ),
         name='variadic_fn',
     )

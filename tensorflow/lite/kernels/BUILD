@@ -505,6 +505,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
+        ":op_macros",
         "//tensorflow/lite:array",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite/core/c:common",
@@ -578,6 +579,20 @@ cc_library(
     deps = [
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels/internal:types",
+    ],
+)
+
+cc_library(
+    name = "control_flow_common",
+    srcs = [],
+    hdrs = ["control_flow_common.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
+    deps = [
+        ":kernel_util",
+        "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite/core:subgraph",
+        "//tensorflow/lite/core/c:common",
     ],
 )
 
@@ -713,6 +728,7 @@ BUILTIN_KERNEL_DEPS = [
     ":lstm_shared",
     ":op_macros",
     ":padding",
+    ":control_flow_common",
     "//third_party/eigen3",
     "@flatbuffers",
     "//tensorflow/lite:framework_stable",
@@ -828,7 +844,11 @@ pybind_extension(
         "variable_ops_wrapper.cc",
     ],
     additional_exported_symbols = ["VariableOpsRegisterer"],
+    enable_stub_generation = True,
     link_in_framework = True,
+    pytype_srcs = [
+        "pywrap_variable_ops.pyi",
+    ],
     deps = [
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite:mutable_op_resolver",
@@ -2611,6 +2631,9 @@ cc_test(
         ":test_main",
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite/core:framework_stable",
+        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
+        "//tensorflow/lite/kernels/internal:tensor",
+        "//tensorflow/lite/profiling:memory_info",
         "@com_google_googletest//:gtest",
     ],
 )

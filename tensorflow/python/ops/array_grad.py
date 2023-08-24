@@ -22,6 +22,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices as indexed_slices_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
@@ -91,7 +92,7 @@ def _ConcatGradHelper(op, grad, start_value_index, end_value_index, dim_index):
     for x in inputs:
       input_shape = array_ops.shape(x)
       if not isinstance(input_shape,
-                        ops.Tensor) or input_shape.op.type != "Const":
+                        tensor.Tensor) or input_shape.op.type != "Const":
         fully_known = False
         break
       sizes.append(input_shape)
@@ -109,7 +110,7 @@ def _ConcatGradHelper(op, grad, start_value_index, end_value_index, dim_index):
   input_values = op.inputs[start_value_index:end_value_index]
 
   out_grads = []
-  if isinstance(grad, ops.Tensor):
+  if isinstance(grad, tensor.Tensor):
     if context.executing_eagerly() or isinstance(concat_dim, ops.EagerTensor):
       # Using mod here for convenience since concat_dim is already verified
       # in concat implementation to be within the allowed [-rank, rank) range.
@@ -1206,7 +1207,7 @@ def _BroadcastToGrad(op, grad):
   input_value = op.inputs[0]
   broadcast_shape = op.inputs[1]
   shape_dtype = dtypes.int32
-  if isinstance(broadcast_shape, ops.Tensor):
+  if isinstance(broadcast_shape, tensor.Tensor):
     shape_dtype = broadcast_shape.dtype
 
   input_value_shape = array_ops.shape(input_value, out_type=shape_dtype)

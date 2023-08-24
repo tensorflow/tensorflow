@@ -21,6 +21,8 @@ tensorflow::swig::RegisterPyObject
 tensorflow::swig::RegisterType
 tensorflow::swig::IsEagerTensorSlow
 tensorflow::swig::GetRegisteredPyObject
+tensorflow::swig::IsTensorProtocol
+tensorflow::swig::IsCoreTypeValue
 
 [//tensorflow/python/util:cpp_nest] # nest
 tensorflow::FlattenDictItems
@@ -579,3 +581,4 @@ tensorflow::dtensor::SetIteratorElementLayouts
 [//tensorflow/dtensor/cc:tensor_layout] # DTensor
 tensorflow::dtensor::Mesh
 tensorflow::dtensor::Layout
+tensorflow::dtensor::Layout::LayoutType

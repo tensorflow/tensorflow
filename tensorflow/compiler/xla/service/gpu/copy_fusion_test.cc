@@ -43,6 +43,32 @@ const char kModulePrefix[] = R"(
       ROOT mul.1 = f32[] multiply(scalar_lhs.1, scalar_rhs.1)
     })";
 
+TEST_F(CopyFusionTest, CopyFusionTransposeOfBroadcastedConstantTwoCopies) {
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    fused_computation {
+      two = f32[] constant(2.0)
+      broadcast = f32[16,32]{1,0} broadcast(two), dimensions={}
+      s.1 = f32[16,32]{1,0} sqrt(broadcast)
+      ROOT c.1 = f32[32,16]{1,0} transpose(s.1), dimensions={1,0}
+    }
+
+    ENTRY main {
+      fusion = f32[32,16]{1,0} fusion(), kind=kInput, calls=fused_computation
+      copy.1 = f32[32,16]{1,0} copy(fusion)
+      copy.2 = f32[32,16]{1,0} copy(fusion)
+      ROOT t = (f32[32,16]{1,0}, f32[32,16]{1,0}) tuple(copy.2, copy.1)
+    })"))
+                    .value();
+  ASSERT_TRUE(cf_.Run(module.get()).value());
+  SCOPED_TRACE(module->ToString());
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Tuple(op::GetTupleElement(), op::GetTupleElement()));
+  const HloInstruction* fusion =
+      module->entry_computation()->root_instruction()->operand(0)->operand(0);
+  EXPECT_THAT(fusion->fused_expression_root(),
+              op::Tuple(op::Transpose(), op::Copy(), op::Copy()));
+}
+
 TEST_F(CopyFusionTest, CopyFusionTransposeTwoCopies) {
   auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_computation {
@@ -59,14 +85,7 @@ TEST_F(CopyFusionTest, CopyFusionTransposeTwoCopies) {
       ROOT t = (f32[32,16]{1,0}, f32[32,16]{1,0}) tuple(copy.2, copy.1)
     })"))
                     .value();
-  ASSERT_TRUE(cf_.Run(module.get()).value());
-  SCOPED_TRACE(module->ToString());
-  const HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Tuple(op::GetTupleElement(), op::GetTupleElement()));
-  const HloInstruction* fusion =
-      module->entry_computation()->root_instruction()->operand(0)->operand(0);
-  EXPECT_THAT(fusion->fused_expression_root(),
-              op::Tuple(op::Transpose(), op::Copy(), op::Copy()));
+  ASSERT_FALSE(cf_.Run(module.get()).value());
 }
 
 TEST_F(CopyFusionTest, CopyFusionNegateAndTwoCopies) {
@@ -119,17 +138,16 @@ TEST_F(CopyFusionTest, CopyFusionShouldNotRunWithReduce) {
 TEST_F(CopyFusionTest, CopyFusionShouldRunWithUncopiedReduce) {
   auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_computation {
-      p1 = f32[128,512,28,28]{3,2,1,0} parameter(1)
-      mul = f32[128,512,28,28]{3,2,1,0} multiply(p1, p1)
-      const = f32[] parameter(0)
+      two = f32[] constant(2.0)
+      broadcast = f32[128,512,28,28]{3,2,1,0} broadcast(two)
+      mul = f32[128,512,28,28]{3,2,1,0} multiply(broadcast, broadcast)
+      const = f32[] constant(0.0)
       reduce = f32[512]{0} reduce(mul, const), dimensions={0,2,3}, to_apply=scalar_add_computation
       ROOT tuple = (f32[128,512,28,28]{3,2,1,0}, f32[512]{0}) tuple(mul, reduce)
     }
 
     ENTRY entry {
-      p0 = f32[] parameter(0)
-      p1 = f32[128,512,28,28]{3,2,1,0} parameter(1)
-      fusion = (f32[128,512,28,28]{3,2,1,0}, f32[512]) fusion(p0, p1), kind=kInput, calls=fused_computation
+      fusion = (f32[128,512,28,28]{3,2,1,0}, f32[512]) fusion(), kind=kInput, calls=fused_computation
       gte = f32[128,512,28,28]{3,2,1,0} get-tuple-element(fusion), index=0
       gte.2 = f32[512]{0} get-tuple-element(fusion), index=1
       copy.1 = f32[128,512,28,28]{3,2,1,0} copy(gte)
@@ -144,6 +162,24 @@ TEST_F(CopyFusionTest, CopyFusionShouldRunWithUncopiedReduce) {
       module->entry_computation()->root_instruction()->operand(0)->operand(0);
   EXPECT_THAT(fusion->fused_expression_root(),
               op::Tuple(op::Multiply(), op::Reduce(), op::Copy()));
+}
+
+TEST_F(CopyFusionTest, CopyFusionShouldNotFuseForSliceMultioutputFusion) {
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    fused_computation {
+      p1 = f32[128,512,28,28]{3,2,1,0} parameter(0)
+      mul = f32[128,512,28,28]{3,2,1,0} multiply(p1, p1)
+      slice1 = f32[128,100,28,28]{3,2,1,0} slice(mul), slice={[0:128],[0:100],[0:28],[0:28]}
+      slice2 = f32[128,200,28,28]{3,2,1,0} slice(mul), slice={[0:128],[50:250],[0:28],[0:28]}
+      ROOT tuple = (f32[128,100,28,28]{3,2,1,0}, f32[128,200,28,28]{3,2,1,0}) tuple(slice1, slice2)
+    }
+
+    ENTRY entry {
+      p1 = f32[128,512,28,28]{3,2,1,0} parameter(0)
+      ROOT fusion = (f32[128,100,28,28]{3,2,1,0}, f32[128,200,28,28]{3,2,1,0}) fusion(p1), kind=kInput, calls=fused_computation
+    })"))
+                    .value();
+  ASSERT_FALSE(cf_.Run(module.get()).value());
 }
 
 TEST_F(CopyFusionTest, CopyFusionShouldNotRunWithScatter) {
@@ -232,8 +268,10 @@ TEST_F(CopyFusionTest, CopyFusionShouldNotRunWithDynamicUpdateSliceInplace) {
 TEST_F(CopyFusionTest, CopyFusionWithDynamicUpdateSliceNotInplace) {
   auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_computation {
-      p.0 = f16[50,96,1024]{2,1,0} parameter(0)
-      p.1 = f16[1,96,1024]{2,1,0} parameter(1)
+      one = f32[] constant(1.0)
+      zero = f32[] constant(0.0)
+      p.0 = f16[50,96,1024]{2,1,0} broadcast(one), dimensions={}
+      p.1 = f16[1,96,1024]{2,1,0} broadcast(zero), dimensions={}
       c.0 = s32[3]{0} constant({0, 0, 0})
       dynamic-update-slice = f16[50,96,1024]{2,1,0} dynamic-update-slice(p.0, p.1, c.0)
       neg = f16[50,96,1024]{2,1,0} negate(dynamic-update-slice)
@@ -241,9 +279,7 @@ TEST_F(CopyFusionTest, CopyFusionWithDynamicUpdateSliceNotInplace) {
     }
 
     ENTRY entry {
-      p0 = f16[50,96,1024]{2,1,0} parameter(0)
-      p1 = f16[1,96,1024]{2,1,0} parameter(1)
-      fusion = (f16[50,96,1024]{2,1,0}, f16[50,96,1024]{2,1,0}) fusion(p0, p1), kind=kInput, calls=fused_computation
+      fusion = (f16[50,96,1024]{2,1,0}, f16[50,96,1024]{2,1,0}) fusion(), kind=kInput, calls=fused_computation
       gte.0 = f16[50,96,1024]{2,1,0} get-tuple-element(fusion), index=0
       gte.1 = f16[50,96,1024]{2,1,0} get-tuple-element(fusion), index=1
       bitcast = f16[1,50,96,1024]{3,2,1,0} bitcast(gte.0)
@@ -264,14 +300,14 @@ TEST_F(CopyFusionTest, CopyFusionWithDynamicUpdateSliceNotInplace) {
 TEST_F(CopyFusionTest, CopyFusionTransposeAndThreeCopies) {
   auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_computation {
-      param_0.1 = f32[16,32]{1,0} parameter(0)
+      two = f32[] constant(2.0)
+      param_0.1 = f32[16,32]{1,0} broadcast(two), dimensions={}
       s.1 = f32[16,32]{1,0} sqrt(param_0.1)
       ROOT c.1 = f32[32,16]{1,0} transpose(s.1), dimensions={1,0}
     }
 
     ENTRY entry {
-      p = f32[16,32]{1,0} parameter(0)
-      fusion = f32[32,16]{1,0} fusion(p), kind=kInput, calls=fused_computation
+      fusion = f32[32,16]{1,0} fusion(), kind=kInput, calls=fused_computation
       copy.1 = f32[32,16]{1,0} copy(fusion)
       copy.2 = f32[32,16]{1,0} copy(fusion)
       copy.3 = f32[32,16]{1,0} copy(fusion)

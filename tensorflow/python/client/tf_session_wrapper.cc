@@ -1618,12 +1618,10 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
   // Note: users should prefer using tf.cast or equivalent, and only when
   // it's infeasible to set the type via OpDef's type constructor and
   // inference function.
-  m.def("SetFullType", [](PyGraph* graph, TF_Operation* op,
-                          const std::string& serialized_full_type) {
-    tensorflow::FullTypeDef proto;
-    proto.ParseFromString(serialized_full_type);
-    tensorflow::SetFullType(graph->tf_graph(), op, proto);
-  });
+  m.def("SetFullType",
+        [](PyGraph* graph, TF_Operation* op, const TF_Buffer* full_type_proto) {
+          tensorflow::SetFullType(graph->tf_graph(), op, full_type_proto);
+        });
 
   m.def(
       "TF_LoadLibrary",

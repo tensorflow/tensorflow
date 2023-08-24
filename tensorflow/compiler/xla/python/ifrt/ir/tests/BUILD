@@ -1,4 +1,4 @@
-load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
+load("//tensorflow/compiler/xla:glob_lit_test.bzl", "glob_lit_tests")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
 
 package(

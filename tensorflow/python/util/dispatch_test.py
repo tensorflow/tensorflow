@@ -23,6 +23,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import extension_type
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -105,13 +106,13 @@ class TensorTracer(object):
   @classmethod
   def _overload_all_operators(cls):  # pylint: disable=invalid-name
     """Register overloads for all operators."""
-    for operator in ops.Tensor.OVERLOADABLE_OPERATORS:
+    for operator in tensor_lib.Tensor.OVERLOADABLE_OPERATORS:
       cls._overload_operator(operator)
 
   @classmethod
   def _overload_operator(cls, operator):  # pylint: disable=invalid-name
-    """Overload an operator with the same overloading as `ops.Tensor`."""
-    tensor_oper = getattr(ops.Tensor, operator)
+    """Overload an operator with the same overloading as `tensor_lib.Tensor`."""
+    tensor_oper = getattr(tensor_lib.Tensor, operator)
 
     # Compatibility with Python 2:
     # Python 2 unbound methods have type checks for the first arg,
@@ -459,13 +460,13 @@ class DispatchTest(test_util.TensorFlowTestCase):
 
 class MaskedTensor(extension_type.ExtensionType):
   """Simple ExtensionType for testing v2 dispatch."""
-  values: ops.Tensor
-  mask: ops.Tensor
+  values: tensor_lib.Tensor
+  mask: tensor_lib.Tensor
 
 
 class SillyTensor(extension_type.ExtensionType):
   """Simple ExtensionType for testing v2 dispatch."""
-  value: ops.Tensor
+  value: tensor_lib.Tensor
   how_silly: float
 
 
@@ -565,7 +566,7 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
       dispatch.unregister_dispatch_for(masked_concat)
 
   def testDispatchForUnion(self):
-    MaybeMasked = typing.Union[MaskedTensor, ops.Tensor]
+    MaybeMasked = typing.Union[MaskedTensor, tensor_lib.Tensor]
 
     @dispatch.dispatch_for_api(math_ops.add, {
         "x": MaybeMasked,
@@ -936,7 +937,8 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
     self.assertIn(array_ops.concat, dispatch_apis)
 
   def testTypeBasedDispatchTargetsFor(self):
-    MaskedTensorList = typing.List[typing.Union[MaskedTensor, ops.Tensor]]
+    MaskedTensorList = typing.List[
+        typing.Union[MaskedTensor, tensor_lib.Tensor]]
     try:
 
       @dispatch.dispatch_for_api(math_ops.add)

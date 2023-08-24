@@ -233,17 +233,21 @@ void BuildMlirSubmodule(py::module& m) {
                   py::arg("mlir_module"));
   mlir_module.def(
       "refine_polymorphic_shapes",
-      [](std::string mlir_module) -> py::bytes {
+      [](std::string mlir_module, bool enable_shape_assertions,
+         bool validate_static_shapes) -> py::bytes {
         std::string buffer;
         llvm::raw_string_ostream os(buffer);
-        xla::ThrowIfError(RefinePolymorphicShapes(mlir_module, os));
+        xla::ThrowIfError(RefinePolymorphicShapes(
+            mlir_module, os, enable_shape_assertions, validate_static_shapes));
         return py::bytes(buffer);
       },
-      py::arg("mlir_module"),
+      py::arg("mlir_module"), py::arg("enable_shape_assertions") = true,
+      py::arg("validate_static_shapes") = true,
       R"(Refines the dynamic shapes for a module.
         The "main" function must have static shapes and all the
         intermediate dynamic shapes depend only on the input static
-        shapes.
+        shapes. Optionally, also validates that the resulting module has
+        only static shapes.
       )");
 }
 

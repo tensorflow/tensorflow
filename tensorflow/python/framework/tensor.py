@@ -270,7 +270,7 @@ class Tensor(internal.NativeObject, core_tf_types.Symbol):
     return self._name
 
   @property
-  def shape(self):
+  def shape(self) -> tensor_shape.TensorShape:
     """Returns a `tf.TensorShape` that represents the shape of this tensor.
 
     >>> t = tf.constant([1,2,3,4,5])
@@ -357,7 +357,7 @@ class Tensor(internal.NativeObject, core_tf_types.Symbol):
         backward_function=lambda x: [x],
         forward_function=lambda x: [x])
 
-  def get_shape(self):
+  def get_shape(self) -> tensor_shape.TensorShape:
     """Returns a `tf.TensorShape` that represents the shape of this tensor.
 
     In eager execution the shape is always fully-known.
@@ -925,7 +925,7 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
   >>> tf.TensorSpec.from_tensor(t)
   TensorSpec(shape=(2, 3), dtype=tf.int32, name=None)
 
-  Contains metadata for describing the the nature of `tf.Tensor` objects
+  Contains metadata for describing the nature of `tf.Tensor` objects
   accepted or returned by some TensorFlow APIs.
 
   For example, it can be used to constrain the type of inputs accepted by

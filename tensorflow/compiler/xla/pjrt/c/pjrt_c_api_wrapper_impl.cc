@@ -19,34 +19,51 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <functional>
-#include <iostream>
 #include <memory>
 #include <optional>
-#include <ostream>
 #include <string>
 #include <utility>
 #include <variant>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/layout.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_helpers.h"
+#include "tensorflow/compiler/xla/pjrt/compile_options.pb.h"
 #include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_common.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_compiler.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_device_description.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
+#include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla.pb.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/framework/allocator.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace pjrt {
 
@@ -60,6 +77,15 @@ static PJRT_Device* GetCDevice(const PJRT_Client* client,
   auto c_device_map = client->c_device_from_cpp_device;
   auto iter = c_device_map.find(device);
   CHECK(iter != c_device_map.end());
+  return iter->second;
+}
+
+// Returns C memory from wrapped C++ memory.
+static PJRT_Memory* GetCMemory(const PJRT_Client* client,
+                               const xla::PjRtMemorySpace* memory) {
+  auto c_memory_map = client->c_memory_from_cpp_memory;
+  auto iter = c_memory_map.find(memory);
+  CHECK(iter != c_memory_map.end());
   return iter->second;
 }
 
@@ -111,6 +137,39 @@ static xla::Status PopulateExecutableCostAnalysisIfNeeded(
       ++i;
     }
     executable->cost_analysis_ran = true;
+  }
+  return xla::OkStatus();
+}
+
+static xla::Status PopulateExecutableOutputMemoryKindsIfNeeded(
+    PJRT_Executable* executable) {
+  absl::MutexLock lock(&executable->memory_kind_mutex);
+  if (!executable->memory_kind_ran) {
+    TF_ASSIGN_OR_RETURN(
+        std::vector<std::vector<absl::string_view>> output_memories,
+        executable->get()->GetOutputMemoryKinds());
+    if (output_memories.empty()) {
+      return xla::InvalidArgument(
+          "Can't get output memory kinds, the list is empty for executable %s.",
+          executable->get()->name());
+    }
+    if (output_memories.size() != 1) {
+      return xla::Unimplemented(
+          "MPMD execution not supported by PJRT C API (in "
+          "function PJRT_Executable_GetOutputMemoryKinds).");
+    }
+
+    std::vector<absl::string_view>& inner_output_memories = output_memories[0];
+    std::vector<const char*>& memory_kinds = executable->memory_kinds;
+    std::vector<size_t>& memory_kind_sizes = executable->memory_kind_sizes;
+    memory_kinds.reserve(inner_output_memories.size());
+    memory_kind_sizes.reserve(inner_output_memories.size());
+    for (absl::string_view memory : inner_output_memories) {
+      memory_kinds.push_back(memory.data());
+      memory_kind_sizes.push_back(memory.size());
+    }
+
+    executable->memory_kind_ran = true;
   }
   return xla::OkStatus();
 }
@@ -210,6 +269,23 @@ PJRT_Error* PJRT_Error_GetCode(PJRT_Error_GetCode_Args* args) {
   return nullptr;
 }
 
+// ---------------------------------- Plugin -----------------------------------
+
+PJRT_Error* PJRT_Plugin_Attributes(PJRT_Plugin_Attributes_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Plugin_Attributes_Args", PJRT_Plugin_Attributes_Args_STRUCT_SIZE,
+      args->struct_size));
+  args->num_attributes = 0;
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Plugin_Initialize_NoOp(PJRT_Plugin_Initialize_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Plugin_Initialize_Args", PJRT_Plugin_Initialize_Args_STRUCT_SIZE,
+      args->struct_size));
+  return nullptr;
+}
+
 // ---------------------------------- Client -----------------------------------
 
 PJRT_Error* PJRT_Client_Destroy(PJRT_Client_Destroy_Args* args) {
@@ -287,6 +363,16 @@ PJRT_Error* PJRT_Client_LookupAddressableDevice(
       xla::PjRtDevice * addressable_device,
       args->client->client->LookupAddressableDevice(args->local_hardware_id));
   args->addressable_device = GetCDevice(args->client, addressable_device);
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Client_AddressableMemories(
+    PJRT_Client_AddressableMemories_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Client_AddressableMemories_Args",
+      PJRT_Client_AddressableMemories_Args_STRUCT_SIZE, args->struct_size));
+  args->num_addressable_memories = args->client->addressable_memories.size();
+  args->addressable_memories = args->client->addressable_memories.data();
   return nullptr;
 }
 
@@ -471,7 +557,7 @@ PJRT_Error* PJRT_Client_BufferFromHostBuffer(
           PJRT_Buffer_MemoryLayout_Type_Strides: {
         PJRT_RETURN_IF_ERROR(absl::InvalidArgumentError(absl::StrCat(
             "PJRT_Buffer_MemoryLayout_Type_Strides in device_layout is not "
-            "supported in  PJRT_Client_BufferFromHostBuffer for platform '%s'",
+            "supported in  PJRT_Client_BufferFromHostBuffer for platform ",
             args->client->client->platform_name())));
         break;
       }
@@ -614,6 +700,26 @@ PJRT_Error* PJRT_Device_LocalHardwareId(
   return nullptr;
 }
 
+PJRT_Error* PJRT_Device_AddressableMemories(
+    PJRT_Device_AddressableMemories_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Device_AddressableMemories_Args",
+      PJRT_Device_AddressableMemories_Args_STRUCT_SIZE, args->struct_size));
+  args->memories = args->device->addressable_memories.data();
+  args->num_memories = args->device->addressable_memories.size();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Device_DefaultMemory(PJRT_Device_DefaultMemory_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Device_DefaultMemory_Args",
+      PJRT_Device_DefaultMemory_Args_STRUCT_SIZE, args->struct_size));
+  PJRT_ASSIGN_OR_RETURN(xla::PjRtMemorySpace * memory_space,
+                        args->device->device->default_memory_space());
+  args->memory = GetCMemory(args->device->client, memory_space);
+  return nullptr;
+}
+
 PJRT_Error* PJRT_Device_MemoryStats(PJRT_Device_MemoryStats_Args* args) {
   PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
       "PJRT_Device_MemoryStats_Args", PJRT_Device_MemoryStats_Args_STRUCT_SIZE,
@@ -659,6 +765,57 @@ PJRT_Error* PJRT_Device_MemoryStats(PJRT_Device_MemoryStats_Args* args) {
     args->peak_pool_bytes = *stats.peak_pool_bytes;
   }
 
+  return nullptr;
+}
+
+// ------------------------------- Memory --------------------------------------
+
+PJRT_Error* PJRT_Memory_Id(PJRT_Memory_Id_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes("PJRT_Memory_Id_Args",
+                                                PJRT_Memory_Id_Args_STRUCT_SIZE,
+                                                args->struct_size));
+
+  args->id = args->memory->memory_space->id();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Memory_Kind(PJRT_Memory_Kind_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Memory_Kind_Args", PJRT_Memory_Kind_Args_STRUCT_SIZE,
+      args->struct_size));
+  args->memory_kind = args->memory->memory_space->memory_space_kind().data();
+  args->memory_kind_size =
+      args->memory->memory_space->memory_space_kind().size();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Memory_DebugString(PJRT_Memory_DebugString_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Memory_DebugString_Args", PJRT_Memory_DebugString_Args_STRUCT_SIZE,
+      args->struct_size));
+
+  args->debug_string = args->memory->memory_space->DebugString().data();
+  args->debug_string_size = args->memory->memory_space->DebugString().size();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Memory_ToString(PJRT_Memory_ToString_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Memory_ToString_Args", PJRT_Memory_ToString_Args_STRUCT_SIZE,
+      args->struct_size));
+
+  args->to_string = args->memory->memory_space->ToString().data();
+  args->to_string_size = args->memory->memory_space->ToString().size();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Memory_AddressableByDevices(
+    PJRT_Memory_AddressableByDevices_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Memory_AddressableByDevices_Args",
+      PJRT_Memory_AddressableByDevices_Args_STRUCT_SIZE, args->struct_size));
+  args->devices = args->memory->devices.data();
+  args->num_devices = args->memory->devices.size();
   return nullptr;
 }
 
@@ -845,6 +1002,19 @@ PJRT_Error* PJRT_Executable_GetCostAnalysis(
   return nullptr;
 }
 
+PJRT_Error* PJRT_Executable_OutputMemoryKinds(
+    PJRT_Executable_OutputMemoryKinds_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Executable_OutputMemoryKinds_Args",
+      PJRT_Executable_OutputMemoryKinds_Args_STRUCT_SIZE, args->struct_size));
+  PJRT_RETURN_IF_ERROR(
+      PopulateExecutableOutputMemoryKindsIfNeeded(args->executable));
+  args->num_outputs = args->executable->memory_kinds.size();
+  args->memory_kinds = args->executable->memory_kinds.data();
+  args->memory_kind_sizes = args->executable->memory_kind_sizes.data();
+  return nullptr;
+}
+
 PJRT_Error* PJRT_LoadedExecutable_Delete(
     PJRT_LoadedExecutable_Delete_Args* args) {
   PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
@@ -918,8 +1088,11 @@ static xla::RecvCallback CRecvCallbackToCpp(
       [user_arg = c_callback.user_arg, callback = c_callback.recv_callback](
           const xla::PjRtTransferMetadata& unused_metadata,
           std::unique_ptr<xla::CopyToDeviceStream> stream) {
-        PJRT_CopyToDeviceStream c_stream{std::move(stream)};
-        callback(&c_stream, user_arg);
+        auto c_stream = std::make_unique<PJRT_CopyToDeviceStream>();
+        c_stream->stream = std::move(stream);
+        // The callback takes the ownership of the stream and will be
+        // responsible for calling its deleter.
+        callback(c_stream.release(), user_arg);
       }};
 }
 
@@ -1274,13 +1447,56 @@ PJRT_Error* PJRT_Buffer_UnpaddedDimensions(
 
   std::optional<std::vector<int64_t>>& unpadded_dims =
       args->buffer->unpadded_dims;
-  if (!unpadded_dims.has_value()) {
-    PJRT_ASSIGN_OR_RETURN(std::vector<int64_t> dims,
-                          args->buffer->buffer->logical_dimensions());
-    unpadded_dims.emplace(std::move(dims));
+  {
+    absl::MutexLock lock(&args->buffer->mu);
+    if (!unpadded_dims.has_value()) {
+      PJRT_ASSIGN_OR_RETURN(std::vector<int64_t> dims,
+                            args->buffer->buffer->logical_dimensions());
+      unpadded_dims.emplace(std::move(dims));
+    }
   }
   args->unpadded_dims = unpadded_dims->data();
   args->num_dims = unpadded_dims->size();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Buffer_DynamicDimensionIndices(
+    PJRT_Buffer_DynamicDimensionIndices_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Buffer_DynamicDimensionIndices_Args",
+      PJRT_Buffer_DynamicDimensionIndices_Args_STRUCT_SIZE, args->struct_size));
+  absl::Span<const bool> is_dyn_dim =
+      args->buffer->buffer->is_dynamic_dimension();
+  std::vector<size_t>& dyn_dim_indices =
+      args->buffer->dynamic_dim_indices.emplace();
+  for (int i = 0; i < is_dyn_dim.size(); ++i) {
+    if (is_dyn_dim[i]) {
+      dyn_dim_indices.push_back(i);
+    }
+  }
+  args->dynamic_dim_indices = dyn_dim_indices.data();
+  args->num_dynamic_dims = dyn_dim_indices.size();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Buffer_GetMemoryLayout(
+    PJRT_Buffer_GetMemoryLayout_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Buffer_GetMemoryLayout_Args",
+      PJRT_Buffer_GetMemoryLayout_Args_STRUCT_SIZE, args->struct_size));
+
+  std::optional<BufferMemoryLayoutData>& layout_data =
+      args->buffer->layout_data;
+  {
+    absl::MutexLock lock(&args->buffer->mu);
+    if (!layout_data.has_value()) {
+      PJRT_ASSIGN_OR_RETURN(
+          BufferMemoryLayoutData data,
+          ConvertToBufferMemoryLayoutData(args->buffer->buffer->layout()));
+      layout_data.emplace(std::move(data));
+    }
+  }
+  args->layout = layout_data->c_layout;
   return nullptr;
 }
 
@@ -1347,8 +1563,24 @@ PJRT_Error* PJRT_Buffer_ToHostBuffer(PJRT_Buffer_ToHostBuffer_Args* args) {
   } else {
     device_shape = args->src->buffer->on_device_shape();
   }
-  const xla::Shape& host_shape =
-      xla::ShapeUtil::DeviceShapeToHostShape(device_shape);
+  xla::Shape host_shape = xla::ShapeUtil::DeviceShapeToHostShape(device_shape);
+  if (args->host_layout != nullptr) {
+    if (args->host_layout->type ==
+        PJRT_Buffer_MemoryLayout_Type::PJRT_Buffer_MemoryLayout_Type_Strides) {
+      PJRT_RETURN_IF_ERROR(absl::InvalidArgumentError(
+          absl::StrCat("PJRT_Buffer_ToHostBuffer does not support host_layout "
+                       "with strides for platform ",
+                       args->src->buffer->client()->platform_name())));
+    }
+    if (args->host_layout->tiled.num_tiles > 0) {
+      PJRT_RETURN_IF_ERROR(absl::InvalidArgumentError(
+          absl::StrCat("PJRT_Buffer_ToHostBuffer does not support host_layout "
+                       "with tiled dimension for platform ",
+                       args->src->buffer->client()->platform_name())));
+    }
+    PJRT_ASSIGN_OR_RETURN(*host_shape.mutable_layout(),
+                          ConvertToLayout(args->host_layout->tiled));
+  }
 
   size_t host_buffer_size = xla::ShapeUtil::ByteSizeOfElements(host_shape);
 
@@ -1406,7 +1638,61 @@ PJRT_Error* PJRT_Buffer_UnsafePointer(PJRT_Buffer_UnsafePointer_Args* args) {
   return nullptr;
 }
 
+PJRT_Error* PJRT_Buffer_IncreaseExternalReferenceCount(
+    PJRT_Buffer_IncreaseExternalReferenceCount_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Buffer_IncreaseExternalReferenceCount_Args",
+      PJRT_Buffer_IncreaseExternalReferenceCount_Args_STRUCT_SIZE,
+      args->struct_size));
+  PJRT_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::PjRtBuffer::ExternalReference> external_reference,
+      args->buffer->buffer->AcquireExternalReference());
+  args->buffer->external_references.push_back(std::move(external_reference));
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Buffer_DecreaseExternalReferenceCount(
+    PJRT_Buffer_DecreaseExternalReferenceCount_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Buffer_DecreaseExternalReferenceCount_Args",
+      PJRT_Buffer_DecreaseExternalReferenceCount_Args_STRUCT_SIZE,
+      args->struct_size));
+
+  if (!args->buffer->external_references.empty()) {
+    args->buffer->external_references.pop_back();
+    return nullptr;
+  }
+  xla::Status status = xla::InvalidArgument(
+      "Attempting to decrease reference on a buffer with zero reference "
+      "count.");
+  PJRT_Error* error = new PJRT_Error{std::move(status)};
+  return error;
+}
+
+PJRT_Error* PJRT_Buffer_OpaqueDeviceMemoryDataPointer(
+    PJRT_Buffer_OpaqueDeviceMemoryDataPointer_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Buffer_OpaqueDeviceMemoryDataPointer_Args",
+      PJRT_Buffer_OpaqueDeviceMemoryDataPointer_Args_STRUCT_SIZE,
+      args->struct_size));
+  PJRT_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::PjRtBuffer::ExternalReference> external_reference,
+      args->buffer->buffer->AcquireExternalReference());
+  args->device_memory_ptr = external_reference->OpaqueDeviceMemoryDataPointer();
+  return nullptr;
+}
+
 // ---------------------------- CopyToDeviceStream -----------------------------
+
+PJRT_Error* PJRT_CopyToDeviceStream_Destroy(
+    PJRT_CopyToDeviceStream_Destroy_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_CopyToDeviceStream_Destroy",
+      PJRT_CopyToDeviceStream_Destroy_Args_STRUCT_SIZE, args->struct_size));
+
+  delete args->stream;
+  return nullptr;
+}
 
 PJRT_Error* PJRT_CopyToDeviceStream_AddChunk(
     PJRT_CopyToDeviceStream_AddChunk_Args* args) {
@@ -1635,9 +1921,7 @@ static void PopulatePjrtDeviceDescriptionAttributes(
   }
 }
 
-PJRT_Client* CreateWrapperClient(std::unique_ptr<xla::PjRtClient> cpp_client) {
-  PJRT_Client* c_client = new PJRT_Client{std::move(cpp_client)};
-
+static void PopulatePjrtClientDevices(PJRT_Client* c_client) {
   absl::Span<xla::PjRtDevice* const> cpp_devices = c_client->client->devices();
   const size_t num_devices = cpp_devices.size();
   c_client->owned_devices.reserve(num_devices);
@@ -1649,6 +1933,7 @@ PJRT_Client* CreateWrapperClient(std::unique_ptr<xla::PjRtClient> cpp_client) {
     c_client->owned_devices.push_back(
         PJRT_Device{device, {&device->description()}});
     PJRT_Device* c_device = &c_client->owned_devices.back();
+    c_device->client = c_client;
     PopulatePjrtDeviceDescriptionAttributes(&c_device->description);
     c_client->devices.push_back(c_device);
     if (device->IsAddressable()) {
@@ -1658,6 +1943,56 @@ PJRT_Client* CreateWrapperClient(std::unique_ptr<xla::PjRtClient> cpp_client) {
   }
   CHECK_EQ(c_client->addressable_devices.size(),
            c_client->client->addressable_device_count());
+}
+
+static void PopulatePjrtClientMemories(PJRT_Client* c_client) {
+  absl::Span<xla::PjRtMemorySpace* const> memory_spaces =
+      c_client->client->memory_spaces();
+  // TODO(yueshengys): After global memories are supported, `owned_memories`
+  // should eventually contain all memories not just addressable ones.
+  c_client->owned_memories.reserve(memory_spaces.size());
+  c_client->addressable_memories.reserve(memory_spaces.size());
+  for (xla::PjRtMemorySpace* memory_space : memory_spaces) {
+    c_client->owned_memories.push_back(PJRT_Memory{memory_space});
+    PJRT_Memory* c_memory = &c_client->owned_memories.back();
+    c_memory->client = c_client;
+    c_client->addressable_memories.push_back(c_memory);
+    c_client->c_memory_from_cpp_memory[memory_space] = c_memory;
+  }
+}
+
+static void AttachDevicesAndMemories(PJRT_Client* c_client) {
+  for (PJRT_Device* c_device : c_client->devices) {
+    // TODO(yueshengys): Remove this when global memories are supported.
+    if (!c_device->device->IsAddressable()) {
+      continue;
+    }
+    absl::Span<xla::PjRtMemorySpace* const> cpp_memories =
+        c_device->device->memory_spaces();
+    c_device->addressable_memories.reserve(cpp_memories.size());
+    for (xla::PjRtMemorySpace* memory_space : cpp_memories) {
+      c_device->addressable_memories.push_back(
+          GetCMemory(c_client, memory_space));
+    }
+  }
+
+  // TODO(yueshengys): Expand this to all memories when supported, not just
+  // addressable ones.
+  for (PJRT_Memory* c_memory : c_client->addressable_memories) {
+    absl::Span<xla::PjRtDevice* const> cpp_devices =
+        c_memory->memory_space->devices();
+    c_memory->devices.reserve(cpp_devices.size());
+    for (xla::PjRtDevice* cpp_device : cpp_devices) {
+      c_memory->devices.push_back(GetCDevice(c_client, cpp_device));
+    }
+  }
+}
+
+PJRT_Client* CreateWrapperClient(std::unique_ptr<xla::PjRtClient> cpp_client) {
+  PJRT_Client* c_client = new PJRT_Client{std::move(cpp_client)};
+  PopulatePjrtClientDevices(c_client);
+  PopulatePjrtClientMemories(c_client);
+  AttachDevicesAndMemories(c_client);
   return c_client;
 }
 

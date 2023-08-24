@@ -587,10 +587,10 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   optimized_graph_info->function_graph->mutable_flib_def()
       ->set_default_registry(&(optimized_graph_info->lib_def));
 
-  TF_ASSIGN_OR_RETURN(
-      auto subgraphs,
-      PreprocessAndPartitionGraph(function_name, *optimized_graph_info, options,
-                                  *dev_set, lib_def_, composite_devices, env_));
+  TF_ASSIGN_OR_RETURN(auto subgraphs, PreprocessAndPartitionGraph(
+                                          function_name, *optimized_graph_info,
+                                          options, *dev_set, lib_def_,
+                                          composite_devices, cpu_device, env_));
   const uint64 optimization_end_time_usecs = Env::Default()->NowMicros();
   const uint64 graph_optimization_duration =
       optimization_end_time_usecs - optimization_start_time_usecs;

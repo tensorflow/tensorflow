@@ -1,4 +1,5 @@
-load("//tensorflow:pytype.default.bzl", "pytype_library")
+load("//tensorflow:strict.default.bzl", "py_strict_test")
+load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow/tsl:tsl.default.bzl", "tsl_pybind_extension")
 
 package(
@@ -36,7 +37,7 @@ tsl_pybind_extension(
     ],
 )
 
-pytype_library(
+pytype_strict_library(
     name = "stablehlo",
     srcs = ["stablehlo.py"],
     srcs_version = "PY3",
@@ -46,7 +47,7 @@ pytype_library(
     ],
 )
 
-py_test(
+py_strict_test(
     name = "stablehlo_test",
     srcs = ["stablehlo_test.py"],
     python_version = "PY3",

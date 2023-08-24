@@ -55,18 +55,18 @@ SmallVector<int64_t> replaceDynamicVals(ArrayRef<int64_t> staticVals,
 
 OffsetsSizesStrides extractOffsetsSizesStrides(
     ArrayRef<InterpreterValue> args, OffsetSizeAndStrideOpInterface op) {
-  auto offsets = replaceDynamicVals(op.static_offsets(), args);
-  auto sizes = replaceDynamicVals(op.static_sizes(), args);
-  auto strides = replaceDynamicVals(op.static_strides(), args);
+  auto offsets = replaceDynamicVals(op.getStaticOffsets(), args);
+  auto sizes = replaceDynamicVals(op.getStaticSizes(), args);
+  auto strides = replaceDynamicVals(op.getStaticStrides(), args);
   return {offsets, sizes, strides};
 }
 
 OffsetsSizesStrides extractOffsetsSizesStrides(
     ArrayRef<int64_t> dynamicOffsets, ArrayRef<int64_t> dynamicSizes,
     ArrayRef<int64_t> dynamicStrides, OffsetSizeAndStrideOpInterface op) {
-  auto offsets = replaceDynamicVals(op.static_offsets(), dynamicOffsets);
-  auto sizes = replaceDynamicVals(op.static_sizes(), dynamicSizes);
-  auto strides = replaceDynamicVals(op.static_strides(), dynamicStrides);
+  auto offsets = replaceDynamicVals(op.getStaticOffsets(), dynamicOffsets);
+  auto sizes = replaceDynamicVals(op.getStaticSizes(), dynamicSizes);
+  auto strides = replaceDynamicVals(op.getStaticStrides(), dynamicStrides);
   return {offsets, sizes, strides};
 }
 

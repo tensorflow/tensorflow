@@ -367,6 +367,7 @@ struct FftPlanInfo {
   uint64_t output_distance = 0;
   se::fft::Type type = se::fft::Type::kInvalid;
   int batch = 0;
+  int device_id = 0;
 
   FftPlanInfo() = default;
 
@@ -375,7 +376,7 @@ struct FftPlanInfo {
     return H::combine(std::move(h), key.rank, key.shape, key.input_embed,
                       key.input_stride, key.input_distance, key.output_embed,
                       key.output_stride, key.output_distance, key.type,
-                      key.batch);
+                      key.batch, key.device_id);
   }
 
   friend inline bool operator==(const FftPlanInfo& lhs,
@@ -387,7 +388,7 @@ struct FftPlanInfo {
            lhs.output_embed == rhs.output_embed &&
            lhs.output_stride == rhs.output_stride &&
            lhs.output_distance == rhs.output_distance && lhs.type == rhs.type &&
-           lhs.batch == rhs.batch;
+           lhs.batch == rhs.batch && lhs.device_id == rhs.device_id;
   }
 
   // Create a key to be used for caching plans.
@@ -396,7 +397,7 @@ struct FftPlanInfo {
                             uint64_t input_distance,
                             const uint64_t* output_embed,
                             uint64_t output_stride, uint64_t output_distance,
-                            se::fft::Type type, int batch) {
+                            se::fft::Type type, int batch, int device_id) {
     FftPlanInfo info;
     info.rank = rank;
     info.shape.reserve(rank);
@@ -421,6 +422,7 @@ struct FftPlanInfo {
     }
     info.type = type;
     info.batch = batch;
+    info.device_id = device_id;
     return info;
   }
 };
@@ -584,7 +586,7 @@ class FFTGPUBase : public FFTBase {
   void DoFFT(OpKernelContext* ctx, const Tensor& in, uint64* fft_shape,
              Tensor* out) override {
     auto* stream = ctx->op_device_context()->stream();
-    OP_REQUIRES(ctx, stream, errors::Internal("No GPU stream available."));
+    OP_REQUIRES(ctx, stream, absl::InternalError("No GPU stream available."));
 
     const TensorShape& input_shape = in.shape();
     const TensorShape& output_shape = out->shape();
@@ -629,10 +631,14 @@ class FFTGPUBase : public FFTBase {
     // Plan cache singleton with safe no-destructor initialization.
     static FftPlanCache* plan_cache = new FftPlanCache(kFftPlanCacheCapacity);
 
+    // CUDA cufft plans are device-specific, so grab the GPU device ID.
+    int device_id = ctx->device()->tensorflow_accelerator_device_info()->gpu_id;
+
     // Look for plan in cache.
-    FftPlanInfo plan_info = FftPlanInfo::Create(
-        fft_rank, fft_shape, input_embed, input_stride, input_distance,
-        output_embed, output_stride, output_distance, kFftType, batch_size);
+    FftPlanInfo plan_info =
+        FftPlanInfo::Create(fft_rank, fft_shape, input_embed, input_stride,
+                            input_distance, output_embed, output_stride,
+                            output_distance, kFftType, batch_size, device_id);
     std::unique_ptr<se::fft::Plan> plan = nullptr;
     {
       auto plan_or = plan_cache->Extract(plan_info);

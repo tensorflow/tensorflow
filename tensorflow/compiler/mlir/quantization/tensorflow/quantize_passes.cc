@@ -16,32 +16,13 @@ limitations under the License.
 
 #include <optional>
 
-#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "absl/strings/string_view.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
-#include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
-#include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
-#include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_freeze_variables.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/mlir_import_options.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
-#include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
 namespace quantization {
@@ -60,12 +41,13 @@ void AddQuantizeQatPasses(
     std::optional<const absl::string_view> mlir_dump_file_prefix) {
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreateConvertFakeQuantToQdqPass());
-  // TODO(b/260031290): Set unfold_batchmatmul = false for ODML support
   if (quantization_options.op_set() == OpSet::UNIFORM_QUANTIZED) {
     pm.addNestedPass<mlir::func::FuncOp>(
         mlir::TF::CreateUnrollBatchMatMulPassPass());
   }
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::quant::CreateConvertTfXlaOpToTfOpPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreatePrepareLiftingPass(quantization_options.op_set()));
 
@@ -103,13 +85,14 @@ void AddQuantizeQatPasses(
 void AddQuantizePtqDynamicRangePasses(
     mlir::PassManager &pm, const QuantizationOptions &quantization_options,
     std::optional<const absl::string_view> mlir_dump_file_prefix) {
-  // TODO(b/260031290): Set unfold_batchmatmul = false for ODML support
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::TF::CreateUnrollBatchMatMulPassPass());
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
   if (quantization_options.experimental_enable_tpu_model_support()) {
     AddConvertTpuToCpuModelPasses(pm);
   }
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::quant::CreateConvertTfXlaOpToTfOpPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreatePrepareLiftingPass(quantization_options.op_set()));
   pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsDRQPass(
@@ -145,7 +128,6 @@ void AddQuantizePtqDynamicRangePasses(
 
 void AddQuantizePtqPreCalibrationPasses(
     mlir::PassManager &pm, const QuantizationOptions &quantization_options) {
-  // TODO(b/260031290): Set unfold_batchmatmul = false for ODML support
   if (quantization_options.op_set() == OpSet::UNIFORM_QUANTIZED) {
     pm.addNestedPass<mlir::func::FuncOp>(
         mlir::TF::CreateUnrollBatchMatMulPassPass());
@@ -154,6 +136,8 @@ void AddQuantizePtqPreCalibrationPasses(
   if (quantization_options.experimental_enable_tpu_model_support()) {
     AddConvertTpuToCpuModelPasses(pm);
   }
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::quant::CreateConvertTfXlaOpToTfOpPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreatePrepareLiftingPass(quantization_options.op_set()));
   pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsPass(

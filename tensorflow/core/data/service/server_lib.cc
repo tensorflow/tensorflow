@@ -201,14 +201,14 @@ void WorkerGrpcDataServer::MaybeStartAlternativeDataTransferServer(
     return;
   }
   LOG(INFO) << "Data transfer server started at 0.0.0.0:"
-            << transfer_server_->get_port() << " for protocol "
+            << transfer_server_->Port() << " for protocol "
             << config_.data_transfer_protocol() << " for worker "
             << config_.worker_address();
   DataTransferServerInfo alternative_transfer_server;
   alternative_transfer_server.set_protocol(config_.data_transfer_protocol());
   alternative_transfer_server.set_address(
       str_util::StringReplace(config_.data_transfer_address(), kPortPlaceholder,
-                              absl::StrCat(transfer_server_->get_port()),
+                              absl::StrCat(transfer_server_->Port()),
                               /*replace_all=*/false));
   StatusOr<std::string> compatibility_info =
       transfer_server_->GetCompatibilityInfo();

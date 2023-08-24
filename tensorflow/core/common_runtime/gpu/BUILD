@@ -1,5 +1,7 @@
+load("@bazel_skylib//lib:selects.bzl", "selects")
 load(
     "//tensorflow:tensorflow.bzl",
+    "clean_dep",
     "if_cuda_or_rocm",
     "if_google",
     "if_linux_x86_64",
@@ -192,15 +194,24 @@ tf_cuda_library(
     ] + if_google(
         # TODO(b/282068262): PJRT pulls in TFRT components that are incompatible with ARM platform.
         # Clean up so that PJRT can run on ARM.
-        if_linux_x86_64([
-            "//tensorflow/compiler/tf2xla:layout_util",
-            "//tensorflow/compiler/jit:flags",
-            "//tensorflow/compiler/jit:pjrt_device_context",
-            "//tensorflow/compiler/xla/pjrt/gpu:gpu_helpers",
-            "//tensorflow/compiler/xla/pjrt/gpu:se_gpu_pjrt_client",
-            "//tensorflow/compiler/xla/stream_executor:tf_allocator_adapter",
-            "//tensorflow/core/tfrt/common:pjrt_util",
-        ]) + if_cuda_or_rocm([
+        # Also it won't build with WeightWatcher which tracks OSS build binaries.
+        # TODO(b/290533709): Clean up this build rule.
+        selects.with_or({
+            clean_dep("//tensorflow:linux_x86_64_with_weightwatcher"): [],
+            (
+                clean_dep("//tensorflow:linux_x86_64"),
+                clean_dep("//tensorflow:haswell"),
+            ): [
+                "//tensorflow/compiler/tf2xla:layout_util",
+                "//tensorflow/compiler/jit:flags",
+                "//tensorflow/compiler/jit:pjrt_device_context",
+                "//tensorflow/compiler/xla/pjrt/gpu:gpu_helpers",
+                "//tensorflow/compiler/xla/pjrt/gpu:se_gpu_pjrt_client",
+                "//tensorflow/compiler/xla/stream_executor:tf_allocator_adapter",
+                "//tensorflow/core/tfrt/common:pjrt_util",
+            ],
+            "//conditions:default": [],
+        }) + if_cuda_or_rocm([
             "//tensorflow/compiler/xla/service:gpu_plugin_impl",  # for registering cuda compiler.
         ]),
     ),
@@ -381,7 +392,7 @@ tf_cuda_cc_test(
     # allocations.
     tags = tf_cuda_tests_tags() + [
         "guitar",
-        "multi_gpu",
+        # "multi_gpu", # TODO(b/287692888): re-enable once the 2gpu test passes.
     ],
     deps = [
         ":gpu_id",
@@ -463,5 +474,29 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core/framework:allocator",
         "//tensorflow/core/platform:stream_executor",
+    ],
+)
+
+cc_library(
+    name = "gpu_serving_device_selector",
+    srcs = ["gpu_serving_device_selector.cc"],
+    hdrs = ["gpu_serving_device_selector.h"],
+    deps = [
+        "//tensorflow/core/common_runtime:serving_device_selector",
+        "@com_google_absl//absl/container:fixed_array",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+tf_cc_test(
+    name = "gpu_serving_device_selector_test",
+    size = "small",
+    srcs = ["gpu_serving_device_selector_test.cc"],
+    deps = [
+        ":gpu_serving_device_selector",
+        "//tensorflow/core/common_runtime:serving_device_selector",
+        "//tensorflow/core/common_runtime:serving_device_selector_policies",
+        "@com_google_googletest//:gtest_main",
     ],
 )

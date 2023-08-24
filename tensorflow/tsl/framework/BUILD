@@ -430,6 +430,7 @@ tsl_cc_test(
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:status_matchers",
         "//tensorflow/tsl/platform:test_main",
+        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
         "//tensorflow/tsl/util:device_name_utils",
     ],
 )

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
@@ -43,6 +44,8 @@ enum class CudnnConvKind {
   kBackwardFilter,     // input  + output => filter
   kForwardActivation,  // activation(conv(input, filter) + broadcast(bias) +
                        // (optionally) side_input) => output
+  kForwardGraph,       // pointwise(...pointwise(conv(input, filter))...)
+                       // => output
 };
 
 enum class CudnnfMHAKind {
@@ -55,6 +58,15 @@ enum class CudnnfMHAKind {
   kSoftmax,
   kScaleBiasSoftmax,
   kScaleBiasSoftmaxDropout,
+  kBackwardBmmBmm,
+  kBackwardScaleBiasMaskSoftmax,
+  kBackwardScaleBiasMaskSoftmaxDropout,
+  kBackwardScaleMaskSoftmax,
+  kBackwardScaleMaskSoftmaxDropout,
+  kBackwardSoftmaxDropout,
+  kBackwardSoftmax,
+  kBackwardScaleBiasSoftmax,
+  kBackwardScaleBiasSoftmaxDropout,
 };
 
 StatusOr<CudnnConvKind> GetCudnnConvKind(const HloCustomCallInstruction* instr);
@@ -120,6 +132,7 @@ extern const absl::string_view kCudnnConvForwardCallTarget;
 extern const absl::string_view kCudnnConvBackwardInputCallTarget;
 extern const absl::string_view kCudnnConvBackwardFilterCallTarget;
 extern const absl::string_view kCudnnConvBiasActivationForwardCallTarget;
+extern const absl::string_view kCudnnConvForwardGraphCallTarget;
 
 // cuDNN specific convolution helper (emitted together with a int8x32
 // convolution, if reordering is required).
@@ -152,6 +165,7 @@ bool IsCudnnConvolutionReorder(const HloInstruction& hlo);
 // 6. BMM1 - Softmax - Dropout - BMM2
 // 7. BMM1 - Softmax - BMM2
 // 8. BMM1 - scale - Bias - Softmax - BMM2
+// Forward calls
 extern const absl::string_view kCudnnfMHABmmBmmCallTarget;
 extern const absl::string_view kCudnnfMHASoftmaxCallTarget;
 extern const absl::string_view kCudnnfMHAScaleBiasMaskSoftmaxCallTarget;
@@ -161,13 +175,30 @@ extern const absl::string_view kCudnnfMHAScaleMaskSoftmaxDropoutCallTarget;
 extern const absl::string_view kCudnnfMHASoftmaxDropoutCallTarget;
 extern const absl::string_view kCudnnfMHAScaleBiasSoftmaxDropoutCallTarget;
 extern const absl::string_view kCudnnfMHAScaleBiasSoftmaxCallTarget;
+// Backward calls
+extern const absl::string_view kCudnnfMHABmmBmmBackwardCallTarget;
+extern const absl::string_view kCudnnfMHASoftmaxBackwardCallTarget;
+extern const absl::string_view kCudnnfMHAScaleBiasMaskSoftmaxBackwardCallTarget;
+extern const absl::string_view
+    kCudnnfMHAScaleBiasMaskSoftmaxDropoutBackwardCallTarget;
+extern const absl::string_view kCudnnfMHAScaleMaskSoftmaxBackwardCallTarget;
+extern const absl::string_view
+    kCudnnfMHAScaleMaskSoftmaxDropoutBackwardCallTarget;
+extern const absl::string_view kCudnnfMHASoftmaxDropoutBackwardCallTarget;
+extern const absl::string_view
+    kCudnnfMHAScaleBiasSoftmaxDropoutBackwardCallTarget;
+extern const absl::string_view kCudnnfMHAScaleBiasSoftmaxBackwardCallTarget;
 
+bool IsFwdCustomCallTofMHA(const HloInstruction& hlo);
+bool IsBwdCustomCallTofMHA(const HloInstruction& hlo);
 bool IsCustomCallTofMHA(const HloInstruction& hlo);
 
 StatusOr<CudnnfMHAKind> GetCudnnfMHAKind(const HloCustomCallInstruction* instr);
 
 std::string CudnnfMHAKindToString(CudnnfMHAKind kind);
+Status SetFMHAInstructionName(HloModule* module, HloInstruction* fmha);
 
+bool MHACallHasDropout(absl::string_view fmha_call_name);
 }  // namespace gpu
 }  // namespace xla
 

@@ -72,6 +72,20 @@ bool AllOperandsAreParametersOrConstants(const HloInstruction& instruction) {
   return true;
 }
 
+bool AllOperandsAreParametersOrConstantsWithSingleUser(
+    const HloInstruction& instruction) {
+  for (const auto& operand : instruction.operands()) {
+    if (operand->opcode() != HloOpcode::kParameter &&
+        operand->opcode() != HloOpcode::kConstant) {
+      return false;
+    }
+    if (operand->user_count() > 1) {
+      return false;
+    }
+  }
+  return true;
+}
+
 bool AllOperandsAreParameters(const HloInstruction& instruction) {
   for (const auto& operand : instruction.operands()) {
     if (operand->opcode() != HloOpcode::kParameter) {

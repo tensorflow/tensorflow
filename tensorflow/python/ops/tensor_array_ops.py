@@ -28,8 +28,8 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.framework import type_spec_registry
@@ -103,7 +103,7 @@ class _GraphTensorArray:
       raise ValueError(
           "Cannot provide both `handle` and `tensor_array_name` arguments at "
           "the same time.")
-    if handle is not None and not isinstance(handle, ops.Tensor):
+    if handle is not None and not isinstance(handle, tensor_lib.Tensor):
       raise TypeError(
           f"Expected `handle` to be a Tensor, but got `{handle}` of type "
           f"`{type(handle)}` instead.")
@@ -452,21 +452,26 @@ class _GraphTensorArrayV2:
     self._dynamic_size = dynamic_size
     self._size = size
 
-    if (flow is not None and
-        (not isinstance(flow, ops.Tensor) or flow.dtype != dtypes.variant)):
+    if flow is not None and (
+        not isinstance(flow, tensor_lib.Tensor) or flow.dtype != dtypes.variant
+    ):
       raise TypeError(
-          f"Expected `flow` to be a variant tensor, but received `{flow.dtype}` "
-          f"instead.")
+          f"Expected `flow` to be a variant tensor, but received `{flow.dtype}`"
+          " instead."
+      )
     if flow is None and size is None:
-      raise ValueError("Argument `size` must be provided if argument `flow` "
-                       "is not provided.")
+      raise ValueError(
+          "Argument `size` must be provided if argument `flow` is not provided."
+      )
     if flow is not None and size is not None:
-      raise ValueError("Cannot provide both `flow` and `size` arguments "
-                       "at the same time.")
+      raise ValueError(
+          "Cannot provide both `flow` and `size` arguments at the same time."
+      )
     if flow is not None and element_shape is not None:
       raise ValueError(
           "Cannot provide both `flow` and `element_shape` arguments"
-          "at the same time.")
+          "at the same time."
+      )
 
     self._dtype = dtypes.as_dtype(dtype).base_dtype
 
@@ -1434,7 +1439,7 @@ class TensorArraySpec(type_spec.TypeSpec):
 
   @property
   def _component_specs(self):
-    return [tensor_spec.TensorSpec([], dtypes.variant)]
+    return [tensor_lib.TensorSpec([], dtypes.variant)]
 
   def _to_components(self, value):
     if not isinstance(value, TensorArray):
@@ -1510,7 +1515,7 @@ class TensorArrayTraceType(trace.TraceType):
     return self._value
 
   def _flatten(self):
-    return [tensor_spec.TensorSpec([], dtypes.variant)]
+    return [tensor_lib.TensorSpec([], dtypes.variant)]
 
   def _from_tensors(self, tensors):
     return next(tensors)

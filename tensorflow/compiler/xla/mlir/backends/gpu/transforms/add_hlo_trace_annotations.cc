@@ -64,7 +64,7 @@ void AddHloTraceAnnotationsPass::runOnOperation() {
     // TODO(b/275240695): Report the graph content once the Xprof team provides
     // an API.
     if (absl::StrContains(call.getCalleeAttr().getValue(),
-                          "xla.gpu.cuda.graph.launch")) {
+                          "xla.gpu.graph.launch")) {
       auto capture = call->getAttr("capture").cast<FlatSymbolRefAttr>();
       std::string op_name = "cuda_graph/" + capture.getValue().str();
       auto annotation = HloTraceAttr::get(ctx, std::move(op_name));

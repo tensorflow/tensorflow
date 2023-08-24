@@ -190,7 +190,7 @@ def TF_XlaHostComputeResource : TF_ResourceBase<"XlaHostCompute">;
 def TF_WriteTrainingPredictionsResource : TF_ResourceBase<"WriteTrainingPredictions">;
 def TF_CollectiveReduceOrderingResource : TF_ResourceBase<"CollectiveReduceOrdering">;
 def TF_NcclAllReduceOrderingResource : TF_ResourceBase<"NcclAllReduceOrdering">;
-
+def TF__XlaRunResource : TF_ResourceBase<"_XlaRun">;
 // Fake resource, see `TF_MustExecute` below.
 def TF_MustExecuteResource : TF_ResourceBase<"MustExecute">;
 

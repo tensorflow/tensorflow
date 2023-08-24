@@ -35,7 +35,7 @@ class CpuCallback {
     xla::PrimitiveType type;               // XLA type
     pybind11::dtype dtype;                 // NumPy type, for array types.
     absl::InlinedVector<int64_t, 4> dims;  // Dimensions, for array types.
-    std::vector<ssize_t> strides;          // Byte strides, for array types.
+    std::vector<int64_t> strides;          // Byte strides, for array types.
     size_t size_in_bytes;                  // Size of the array in bytes.
   };
   struct Result {

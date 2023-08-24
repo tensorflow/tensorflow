@@ -61,6 +61,7 @@
 # //tensorflow/tensorflow.bzl) will include the necessary symbols in binary
 # build targets.
 
+# Placeholder: load py_proto_library
 load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
@@ -1304,18 +1305,7 @@ cc_library(
     srcs = [
         ":lib_internal_private_headers",
         "//tensorflow/core/platform:legacy_lib_internal_srcs",
-    ] + glob(
-        [
-            "lib/**/*.cc",
-        ],
-        exclude = [
-            "**/*test*",
-            "framework/variant.cc",
-            "lib/gif/**/*",
-            "lib/jpeg/**/*",
-            "lib/png/**/*",
-        ],
-    ),
+    ],
     hdrs = [":lib_internal_public_headers"],
     copts = tf_copts(),
     deps = tf_additional_lib_deps() + [
@@ -1478,6 +1468,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_proto_cc_impl",
         "//tensorflow/compiler/xla/service:memory_space_assignment_proto_cc_impl",
         "//tensorflow/compiler/xla/service/gpu:backend_configs_cc_impl",
+        "//tensorflow/compiler/xla/service/gpu:hlo_op_profile_proto_cc_impl",
     ] + tf_protos_grappler_impl() + tf_monitoring_framework_deps(),
     # Alwayslink causes a cc_binary to "always link" in the
     # srcs for a given cc_library, even if they are unreferenced, see:

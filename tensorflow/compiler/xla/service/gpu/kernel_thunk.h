@@ -22,10 +22,12 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
+#include "tensorflow/compiler/xla/service/gpu/kernel_arguments.h"
 #include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
@@ -45,14 +47,14 @@ class KernelThunk : public Thunk {
  public:
   // Constructs a thunk for the given kernel.
   //
-  // KernelThunk takes args as BufferAllocation::Slice's. Each slice directly
-  // corresponds to an argument or output of the computation. Also, the values
-  // must correspond to each arg directly, not to their base allocation (e.g.
-  // they can be the result of an mlir::memref::ViewOp).
-  KernelThunk(ThunkInfo thunk_info, std::vector<BufferAllocation::Slice> args,
-              std::vector<bool> written, const std::string& kernel_name,
-              const LaunchDimensions& launch_dimensions,
-              std::vector<mlir::Value> values);
+  // KernelThunk takes args as `BufferAllocation::Slice`s (wrapped in
+  // `KernelArgument`s). Each slice directly corresponds to an argument or
+  // output of the computation. Also, the values must correspond to each arg
+  // directly, not to their base allocation (e.g. they can be the result of an
+  // `mlir::memref::ViewOp`).
+  KernelThunk(mlir::Operation* op, std::string kernel_name,
+              absl::Span<const KernelArgument> kernel_arguments,
+              LaunchDimensions launch_dimensions);
   KernelThunk(const KernelThunk&) = delete;
   KernelThunk& operator=(const KernelThunk&) = delete;
   ~KernelThunk() override = default;
@@ -83,10 +85,10 @@ class KernelThunk : public Thunk {
 
  private:
   // Buffer slices passed to the kernel as arguments.
-  const std::vector<BufferAllocation::Slice> args_;
+  std::vector<BufferAllocation::Slice> args_;
 
   // args_[i] is written iff (written_[i] == true).
-  const std::vector<bool> written_;
+  std::vector<bool> written_;
 
   // Entry kernel name for the computation.
   const std::string kernel_name_;

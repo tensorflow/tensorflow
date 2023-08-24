@@ -17,6 +17,7 @@
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
@@ -263,8 +264,9 @@ def _ragged_getitem_inner_dimensions(rt_input, key_list):
     if nsplits.value is not None:
       nsplits = nsplits.value
     else:
-      nsplits = array_ops.shape(inner_rt.row_splits,
-                                out_type=inner_rt.row_splits.dtype)[0]
+      nsplits = array_ops.shape(
+          inner_rt.row_splits, out_type=inner_rt.row_splits.dtype
+      )[0]
     return ragged_tensor.RaggedTensor.from_uniform_row_length(
         inner_rt, 1, nrows=nsplits - 1, validate=False)
 
@@ -278,8 +280,10 @@ def _ragged_getitem_inner_dimensions(rt_input, key_list):
       return rt_input.with_values(
           _ragged_getitem_inner_dimensions(rt_input.values, key_list[1:]))
     else:
-      if not (isinstance(column_key.start, (ops.Tensor, int, type(None))) and
-              isinstance(column_key.stop, (ops.Tensor, int, type(None)))):
+      if not (
+          isinstance(column_key.start, (tensor_lib.Tensor, int, type(None)))
+          and isinstance(column_key.stop, (tensor_lib.Tensor, int, type(None)))
+      ):
         raise TypeError("slice offsets must be integers or None")
 
       # Nontrivial slice: use ragged_gather to extract the indicated slice as
@@ -393,7 +397,7 @@ def _expand_ellipsis(key_list, num_remaining_dims):
 
 def _tensors_in_key_list(key_list):
   """Generates all Tensors in the given slice spec."""
-  if isinstance(key_list, ops.Tensor):
+  if isinstance(key_list, tensor_lib.Tensor):
     yield key_list
   if isinstance(key_list, (list, tuple)):
     for v in key_list:
@@ -461,7 +465,7 @@ def _build_ragged_tensor_from_value_ranges(starts, limits, step, values):
 def _if_ge_zero(value, true_fn, false_fn):
   """Returns `true_fn() if value >= 0 else false_fn()`."""
   # If `value` is statically known, then don't use a control flow op.
-  if isinstance(value, ops.Tensor):
+  if isinstance(value, tensor_lib.Tensor):
     const_value = tensor_util.constant_value(value)
     if const_value is None:
       return cond.cond(value >= 0, true_fn, false_fn)

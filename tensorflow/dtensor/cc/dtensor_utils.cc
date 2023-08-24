@@ -158,6 +158,24 @@ int AllReduceCombineOptimizationGroupSize() {
   return 0;
 }
 
+int AllReduceCombineOptimizationTopologicalDistance() {
+  int64_t topo_dist;
+  absl::Status status = tsl::ReadInt64FromEnvVar(
+      "DTENSOR_ALLREDUCE_COMBINE_OPTIMIZATION_TOPOLOGICAL_DISTANCE",
+      /*default_val=*/0, &topo_dist);
+  if (!status.ok()) {
+    LOG(WARNING) << "Invalid DTENSOR_ALLREDUCE_COMBINE_OPTIMIZATION_TOPOLOGICAL"
+                    "_DISTANCE, using the default value 0.";
+    return 0;
+  } else if (topo_dist < 0) {
+    LOG(WARNING) << "Invalid DTENSOR_ALLREDUCE_COMBINE_OPTIMIZATION_TOPOLOGICAL"
+                    "_DISTANCE, value must be a positive integer, using the "
+                    "default value 0.";
+    return 0;
+  }
+  return topo_dist;
+}
+
 bool EnableMultiDeviceMode() {
   bool multi_device_mode;
   absl::Status status = tsl::ReadBoolFromEnvVar(

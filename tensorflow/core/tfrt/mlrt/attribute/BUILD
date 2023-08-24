@@ -41,6 +41,7 @@ tf_cc_test(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/mlir/tfrt/translate/mlrt:mlir_to_bytecode",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/tsl/platform:status_matchers",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
     ],

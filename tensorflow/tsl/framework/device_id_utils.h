@@ -56,6 +56,11 @@ StatusOr<size_t> GetNumberTfDevicesAndConfigurePlatformDeviceId(
     absl::string_view device_type, absl::string_view visible_device_list,
     int visible_device_count);
 
+StatusOr<int> GetPlatformDeviceIdFromDeviceParsedName(
+    const DeviceNameUtils::ParsedName& device_name,
+    const DeviceType& device_type);
+
+// TODO(b/293324740): support virtual devices.
 // Returns the corresponding PlatformDeviceId if it is found. Otherwise returns
 // the id in device_name.
 StatusOr<int> GetDeviceIdFromDeviceParsedName(

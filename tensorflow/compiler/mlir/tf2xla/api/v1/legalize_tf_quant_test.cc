@@ -25,8 +25,6 @@ namespace tensorflow {
 namespace tf2xla {
 namespace v1 {
 
-using testing::HasSubstr;
-
 TEST(LegalizeTFQuantTest, LegalizesModuleWithTFUniformQuantization) {
   constexpr char legalization[] = R"(
   module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {

@@ -248,8 +248,6 @@ tf_cc_test(
         ":context",
         ":context_distributed_manager",
         ":core",
-        ":eager_operation",
-        ":execute",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",

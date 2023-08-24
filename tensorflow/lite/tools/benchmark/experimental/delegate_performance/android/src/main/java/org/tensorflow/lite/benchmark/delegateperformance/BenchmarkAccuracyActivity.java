@@ -41,14 +41,10 @@ public class BenchmarkAccuracyActivity extends Activity {
     Intent intent = getIntent();
     Bundle bundle = intent.getExtras();
     String[] tfliteSettingsJsonFiles = bundle.getStringArray(TFLITE_SETTINGS_FILES_INTENT_KEY_0);
-    BenchmarkAccuracyImpl impl =
-        new BenchmarkAccuracyImpl(getApplicationContext(), tfliteSettingsJsonFiles);
-
-    if (impl.initialize()) {
-      impl.benchmark();
-    } else {
-      Log.e(TAG, "Failed to initialize the accuracy benchmarking.");
+    if (!new BenchmarkAccuracyImpl().benchmark(getApplicationContext(), tfliteSettingsJsonFiles)) {
+      Log.i(TAG, "Accuracy benchmark failed.");
     }
+
     finish();
   }
 }

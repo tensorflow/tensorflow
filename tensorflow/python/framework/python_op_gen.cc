@@ -1161,7 +1161,7 @@ string GenPythonOp::Code() {
     param_names_.push_back(param_and_default.first);
   }
 
-  std::unordered_map<string, string> type_annotations;
+  std::unordered_map<string, string> type_annotations = GetTypeAnnotations();
 
   string parameters;
   // Param can be an input or an attr
@@ -1245,6 +1245,41 @@ string GenPythonOp::Code() {
   }
 
   return prelude_ + result_;
+}
+
+std::unordered_map<string, string> GenPythonOp::GetTypeAnnotations() {
+  std::unordered_map<string, string> type_annotations;
+  // Map attrs to TypeVars
+  for (const auto& attr : op_def_.attr()) {
+    if (attr.type() == "type") {
+      const string type_var_name =
+          AvoidPythonReserved("TV_" + op_def_.name() + "_" + attr.name());
+      type_annotations[attr.name()] = type_var_name;
+    } else if (attr.type() == "bool" || attr.type() == "float" ||
+               attr.type() == "int" || attr.type() == "bytes") {
+      type_annotations[attr.name()] = attr.type();
+    } else if (attr.type() == "string") {
+      type_annotations[attr.name()] = "str";
+    }
+  }
+
+  // Map input Tensors to their types
+  for (const auto& arg : op_def_.input_arg()) {
+    // TODO(rahulkamat): Add type annotations to args that accept a sequence of
+    // Tensors
+    if (!arg.type_list_attr().empty()) continue;
+    type_annotations[arg.name()] = GetArgAnnotation(arg, type_annotations);
+  }
+
+  // TODO(rahulkamat): Add type annotations to handle return types of a sequence
+  // of Tensors. Map output Tensor to its type
+  if (op_def_.output_arg_size() == 1) {
+    const auto& arg = op_def_.output_arg(0);
+    if (arg.number_attr().empty() && arg.type_list_attr().empty())
+      type_annotations[arg.name()] = GetArgAnnotation(arg, type_annotations);
+  }
+
+  return type_annotations;
 }
 
 // Generate TypeVars using attrs
@@ -1634,6 +1669,7 @@ bool GenPythonOp::AddEagerFastPathAndGraphCode(
     const string& parameters, const std::vector<string>& output_sizes,
     const string& eager_not_allowed_error,
     const std::unordered_map<string, string>& type_annotations) {
+  GenerateTypeVars(type_annotations);
   if (api_def_.visibility() == ApiDef::VISIBLE) {
     strings::StrAppend(&result_, "@_dispatch.add_fallback_dispatch_list\n");
     strings::StrAppend(&result_, "@_dispatch.add_type_based_api_dispatcher\n");
@@ -1646,6 +1682,7 @@ bool GenPythonOp::AddEagerFastPathAndGraphCode(
     def_offset_start_ = result_.length() + 4;
   }
   AddDefLine(function_name_, parameters);
+  AddReturnTypeAnnotation(type_annotations);
   AddDocStringDescription();
   AddDocStringArgs();
   AddDocStringInputs();
@@ -1686,6 +1723,7 @@ bool GenPythonOp::AddEagerFallbackCode(
   AddDefLine(
       strings::StrCat(function_name_, kEagerFallbackSuffix),
       strings::StrCat(parameters, parameters.empty() ? "" : ", ", "ctx"));
+  AddReturnTypeAnnotation(type_annotations);
   if (!eager_not_allowed_error.empty()) {
     strings::StrAppend(&result_, "  ", eager_not_allowed_error);
     return true;
@@ -2004,7 +2042,7 @@ from tensorflow.python.util.deprecation import deprecated_endpoints
 from tensorflow.python.util import dispatch as _dispatch
 from tensorflow.python.util.tf_export import tf_export
 
-from typing import TypeVar
+from typing import TypeVar, List
 )");
   for (const auto& op_def : ops.op()) {
     const auto* api_def = api_defs.GetApiDef(op_def.name());
@@ -2087,6 +2125,30 @@ string GetPythonWrappers(const char* op_list_buf, size_t op_list_len) {
 
   ApiDefMap api_def_map(ops);
   return GetPythonOpsImpl(ops, api_def_map, OpRegOffsets(), {}, {});
+}
+
+string GetSingleTensorArgAnnotation(
+    const OpDef::ArgDef& arg,
+    const std::unordered_map<string, string>& type_annotations) {
+  if (!arg.type_attr().empty()) {
+    // Get the correct TypeVar if arg maps to an attr
+    return "_atypes.TensorFuzzingAnnotation[" +
+           type_annotations.at(arg.type_attr()) + "]";
+  } else {
+    // Get the dtype of the Tensor
+    const string py_dtype = DataTypeToPython(arg.type(), "_dtypes.");
+    return "_atypes.TensorFuzzingAnnotation[" + dtype_type.at(py_dtype) + "]";
+  }
+}
+
+string GetArgAnnotation(
+    const OpDef::ArgDef& arg,
+    const std::unordered_map<string, string>& type_annotations) {
+  if (!arg.number_attr().empty()) {
+    return strings::StrCat(
+        "List[", GetSingleTensorArgAnnotation(arg, type_annotations), "]");
+  }
+  return GetSingleTensorArgAnnotation(arg, type_annotations);
 }
 
 }  // namespace tensorflow

@@ -16,6 +16,8 @@
 # Description:
 #   Contains the Keras Mixed Precision API (TensorFlow version).
 
+load("//tensorflow:py.default.bzl", "py_library")
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [

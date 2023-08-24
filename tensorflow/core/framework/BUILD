@@ -1,3 +1,4 @@
+# Placeholder: load py_proto_library
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",
@@ -35,6 +36,7 @@ package(
         # copybara:uncomment "//learning/brain/tfrt/aot:__subpackages__",
         # copybara:uncomment "//platforms/xla/megascale/tensorflow:__subpackages__",
         # copybara:uncomment "//learning/brain/experimental/tfrt/native_lowering/graph_executor:__subpackages__",
+        "//tensorflow/cc/saved_model:__subpackages__",
     ],
     licenses = ["notice"],
 )
@@ -118,6 +120,7 @@ exports_files(
         "api_def.proto",
         "attr_value.proto",
         "cost_graph.proto",
+        "cpp_shape_inference.proto",
         "dataset_metadata.proto",
         "dataset_options.proto",
         "device_attributes.proto",
@@ -541,6 +544,22 @@ cc_library(
 )
 
 cc_library(
+    name = "tensor_matcher",
+    testonly = True,
+    srcs = ["tensor_matcher.cc"],
+    hdrs = ["tensor_matcher.h"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:portable_gif_internal",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
     name = "shape_inference_testutil",
     testonly = 1,
     srcs = ["shape_inference_testutil.cc"],
@@ -799,6 +818,7 @@ tf_cuda_library(
     ],
     visibility = [
         "//tensorflow:__pkg__",
+        "//tensorflow/cc/saved_model:__subpackages__",
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/runtime_fallback:__subpackages__",
         "//tensorflow/core/tfrt:__subpackages__",
@@ -1304,6 +1324,7 @@ tf_cc_tests(
         "resource_op_kernel_test.cc",
         "shape_inference_test.cc",
         "shape_inference_testutil_test.cc",
+        "tensor_matcher_test.cc",
         "tensor_shape_test.cc",
         "tensor_slice_test.cc",
         "tensor_test.cc",
@@ -1324,6 +1345,7 @@ tf_cc_tests(
     ],
     deps = [
         ":op_kernel_test_base",
+        ":tensor_matcher",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/cc:function_ops",
@@ -1699,6 +1721,18 @@ tf_proto_library(
 )
 
 tf_proto_library(
+    name = "cpp_shape_inference_proto",
+    srcs = ["cpp_shape_inference.proto"],
+    cc_api_version = 2,
+    make_default_target_header_only = True,
+    protodeps = [
+        ":full_type_proto",
+        ":tensor_shape_proto",
+        ":types_proto",
+    ],
+)
+
+tf_proto_library(
     name = "variable_proto",
     srcs = ["variable.proto"],
     cc_api_version = 2,
@@ -1836,6 +1870,7 @@ tf_proto_library(
     protodeps = [
         ":allocation_description_proto",
         ":api_def_proto",
+        ":cpp_shape_inference_proto",
         ":attr_value_proto",
         ":cost_graph_proto",
         ":dataset_proto",
@@ -1892,5 +1927,16 @@ tf_cc_fuzz_test(
         "//tensorflow/security/fuzzing/cc/core/framework:tensor_domains",
         "//tensorflow/security/fuzzing/cc/core/framework:tensor_shape_domains",
         "//tensorflow/tsl/lib/core:status_test_util",
+    ],
+)
+
+tf_cc_test(
+    name = "metrics_test",
+    srcs = ["metrics_test.cc"],
+    tags = ["no_oss"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core/lib/monitoring:cell_reader",
+        "@com_google_googletest//:gtest_main",
     ],
 )

@@ -141,6 +141,7 @@ func.func @conv_fused(%input : memref<1x17x9x9xf16>, %filter : memref<3x3x17x32x
     dim_numbers = [b, f, 0, 1]x[0, 1, i, o]->[b, f, 0, 1],
     window = {stride = [1, 1], pad = [[1, 1], [1, 1]], lhs_dilate = [1, 1], rhs_dilate = [1, 1]}
     { activation_mode = #lmhlo_gpu<activation Relu>,
+      leakyrelu_alpha = 0.0 : f64,
       backend_config = #lmhlo_gpu.convolution_backend_config<
         algorithm = 0,
         tensor_ops_enabled = true,

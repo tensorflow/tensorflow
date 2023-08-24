@@ -16,16 +16,25 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_TPU_PLATFORM_H_
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_TPU_PLATFORM_H_
 
+#include <cstdint>
+#include <map>
 #include <memory>
+#include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/stream_executor/executor_cache.h"
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
+#include "tensorflow/compiler/xla/stream_executor/plugin.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_c_api.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_c_api.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
-#include "tensorflow/tsl/platform/types.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_topology.h"
+#include "tensorflow/compiler/xla/stream_executor/trace_listener.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace tpu {

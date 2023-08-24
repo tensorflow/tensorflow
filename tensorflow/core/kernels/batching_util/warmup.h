@@ -16,15 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_BATCHING_UTIL_WARMUP_H_
 #define TENSORFLOW_CORE_KERNELS_BATCHING_UTIL_WARMUP_H_
 
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 
-#include "absl/container/flat_hash_set.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/hash/hash.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
-#include "tensorflow/core/kernels/batching_util/warmup.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/tsl/platform/logging.h"
 
@@ -51,6 +52,13 @@ class WarmupStateRegistry {
     friend bool operator==(const Key& x, const Key& y) {
       return x.name == y.name && x.version == y.version;
     }
+  };
+  // Data stored per key.
+  struct PerModelData {
+    // If true, supported batch ops will execute the model on dummy batches
+    // for all `allowed_batch_sizes` of that batch op. This removes the
+    // need to issue separate warmup requests for each batch size.
+    bool warmup_all_batch_sizes = false;
   };
 
   // RAII handle for registered models.
@@ -95,10 +103,11 @@ class WarmupStateRegistry {
   // Registers the given model to be in a warm-up state and associates the given
   // metadata with the model. Returns an RAII handle that unregisters the model
   // at its destruction.
-  absl::StatusOr<Handle> Register(const Key& model_key);
+  absl::StatusOr<Handle> Register(const Key& model_key,
+                                  std::unique_ptr<PerModelData> per_model_data);
 
-  // Return true if the model is in a warm-up state.
-  bool Lookup(const Key& model_key);
+  // Return model data. A nullptr indicates the key was not present.
+  const PerModelData* Lookup(const Key& model_key);
 
  private:
   friend class Handle;
@@ -106,11 +115,16 @@ class WarmupStateRegistry {
   void Unregister(const Key& model_key);
 
   absl::Mutex mu_;
-  // Mapping from model names/versions to executables.
-  absl::flat_hash_set<Key> states_ ABSL_GUARDED_BY(&mu_);
+  // Map of model names/versions to miscellaneous data.
+  absl::flat_hash_map<Key, std::unique_ptr<PerModelData>> states_
+      ABSL_GUARDED_BY(&mu_);
 };
 
 WarmupStateRegistry& GetGlobalWarmupStateRegistry();
+
+// Utility function that returns whether or not to warmup all batch sizes,
+// based on the state of WarmupStateRegistry.
+bool ShouldWarmupAllBatchSizes(const OpKernelContext* c);
 
 }  // namespace serving
 }  // namespace tensorflow

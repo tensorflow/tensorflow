@@ -93,6 +93,17 @@ class FakeEagerClient : public EagerClient {
   CLIENT_METHOD(CloseContext);
 #undef CLIENT_METHOD
 
+#define CLIENT_METHOD_WITH_TIMEOUT(method)                            \
+  void method##Async(const method##Request* request,                  \
+                     method##Response* response, StatusCallback done, \
+                     int64_t init_timeout_in_ms) override {           \
+    done(impl_->method(request, response));                           \
+  }
+
+  CLIENT_METHOD_WITH_TIMEOUT(CreateContext);
+
+#undef CLIENT_METHOD_WITH_TIMEOUT
+
   void EnqueueAsync(CallOptions* call_opts, const EnqueueRequest* request,
                     EnqueueResponse* response, StatusCallback done) override {
     done(impl_->Enqueue(call_opts, request, response));

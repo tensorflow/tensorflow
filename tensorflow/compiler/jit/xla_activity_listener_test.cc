@@ -114,8 +114,8 @@ TEST_F(XlaActivityListenerTest, Test) {
   std::vector<std::pair<string, Tensor>> inputs_2x2 = {{"A", tensor_2x2}};
 
   std::vector<Tensor> outputs;
-  TF_ASSERT_OK(session->Run(inputs_2x2, output_names, /*target_node_names=*/{},
-                            &outputs));
+  TF_ASSERT_OK(session->Run(inputs_2x2, output_names,
+                            /*target_tensor_names=*/{}, &outputs));
 
   XlaAutoClusteringActivity expected_auto_clustering_activity;
   protobuf::TextFormat::ParseFromString(
@@ -176,7 +176,7 @@ summary {
   outputs.clear();
   for (int i = 0; i < 3; i++) {
     TF_ASSERT_OK(session->Run(inputs_3x3, output_names,
-                              /*target_node_names=*/{}, &outputs));
+                              /*target_tensor_names=*/{}, &outputs));
   }
 
   EXPECT_EQ(listener()->jit_compilation_activity().cluster_name(), "cluster_0");

@@ -7147,7 +7147,7 @@ func ConvGroups(value int64) ConvAttr {
 	}
 }
 
-// Computes a N-D convolution given (N+2)-D `input` and `filter` tensors.
+// Computes a N-D convolution given (N+1+batch_dims)-D `input` and (N+2)-D `filter` tensors.
 //
 // General function for computing a N-D convolution. It is required that
 // `1 <= N <= 3`.
@@ -7173,7 +7173,7 @@ func ConvGroups(value int64) ConvAttr {
 //
 //	padding: The type of padding algorithm to use.
 //
-// Returns A 4-D tensor. The dimension order is determined by the value of
+// Returns A (N+1+batch_dims)-D tensor. The dimension order is determined by the value of
 // `channels_last_format`, see below for details.
 func Conv(scope *Scope, input tf.Output, filter tf.Output, strides []int64, padding string, optional ...ConvAttr) (output tf.Output) {
 	if scope.Err() != nil {

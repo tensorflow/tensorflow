@@ -48,6 +48,14 @@ def if_rocm_is_configured(x):
       return select({"//conditions:default": x})
     return select({"//conditions:default": []})
 
+def rocm_hipblaslt():
+    return %{rocm_is_configured} and %{rocm_hipblaslt}
+
+def if_rocm_hipblaslt(x):
+    if %{rocm_is_configured} and (%{rocm_hipblaslt} == "True"):
+      return select({"//conditions:default": x})
+    return select({"//conditions:default": []})
+
 def rocm_library(copts = [], **kwargs):
     """Wrapper over cc_library which adds default ROCm options."""
     native.cc_library(copts = rocm_default_copts() + copts, **kwargs)

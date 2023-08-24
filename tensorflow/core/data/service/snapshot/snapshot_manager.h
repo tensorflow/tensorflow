@@ -163,8 +163,11 @@ class SnapshotManager {
   tsl::Status Resume();
   tsl::Status ReadOnDiskMetadata();
   tsl::Status ReadOnDiskStreams();
+  tsl::StatusOr<std::string> OwnerWorkerAddress(
+      const std::string& stream_directory) const;
   tsl::Status ReadOnDiskStream(
-      int64_t stream_index, absl::flat_hash_set<int64_t>& global_split_indices);
+      int64_t stream_index, const std::string& worker_address,
+      absl::flat_hash_set<int64_t>& global_split_indices);
   tsl::Status ReadOnDiskSource(
       int64_t stream_index, int64_t source_index,
       absl::flat_hash_set<int64_t>& global_split_indices);

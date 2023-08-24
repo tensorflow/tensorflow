@@ -123,6 +123,7 @@ cc_library(
         ":async_handle",
         ":context",
         ":execute",
+        ":future",
         ":value",
         "//tensorflow/tsl/profiler/lib:traceme",
         "@com_google_absl//absl/status",
@@ -152,7 +153,11 @@ tf_cc_test(
         ":execute",
         ":future",
         ":interpreter_testutil",
+        "//tensorflow/core/platform:test_benchmark",
         "//tensorflow/core/tfrt/mlrt/bytecode:executable",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:status_matchers",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@tf_runtime//:hostcontext",
@@ -183,6 +188,7 @@ tf_cc_test(
     srcs = ["future_test.cc"],
     deps = [
         ":future",
+        "//tensorflow/tsl/platform:status_matchers",
         "@com_google_googletest//:gtest_main",
     ],
 )

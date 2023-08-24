@@ -892,6 +892,50 @@ TEST_F(HloModuleTest, HloModuleConfigToProto) {
   EXPECT_TRUE(diff.Compare(first_proto, second_proto));
 }
 
+TEST_F(HloModuleTest, HloModuleStackFrames) {
+  const std::string text = R"(
+HloModule a_module
+
+ENTRY main {
+  %c = s32[] constant(1)
+  ROOT %result = s32[] parameter(0)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(text));
+  EXPECT_TRUE(module->get_stack_frame(1).empty());
+
+  auto module_proto = module->ToProto();
+  auto index = module_proto.mutable_stack_frame_index();
+  index->add_file_names("main.py");
+  index->add_function_names("main");
+  auto location = index->add_file_locations();
+  location->set_file_name_id(1);
+  location->set_function_name_id(1);
+  location->set_line(10);
+  location->set_column(5);
+
+  auto frame = index->add_stack_frames();
+  frame->set_file_location_id(1);
+
+  module_proto.mutable_computations(0)
+      ->mutable_instructions(0)
+      ->mutable_metadata()
+      ->set_stack_frame_id(1);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module_with_stack_frames,
+      HloModule::CreateFromProto(module_proto, module->config()));
+
+  EXPECT_TRUE(module_with_stack_frames->get_stack_frame(0).empty());
+  EXPECT_TRUE(module_with_stack_frames->get_stack_frame(2).empty());
+
+  auto stack_frame = module_with_stack_frames->get_stack_frame(1);
+  EXPECT_EQ(stack_frame.file_name, index->file_names(0));
+  EXPECT_EQ(stack_frame.function_name, index->function_names(0));
+  EXPECT_EQ(stack_frame.line, location->line());
+  EXPECT_EQ(stack_frame.column, location->column());
+}
+
 }  // namespace
 
 }  // namespace xla

@@ -93,7 +93,8 @@ class AsyncHostToDeviceTransferManager
       }
       // Initialize a definition event for each async buffer. The definition
       // event will block the buffer usage until the transfer is done.
-      definition_events.push_back(std::make_shared<BufferSequencingEvent>());
+      definition_events.push_back(
+          std::make_shared<BufferSequencingEvent>(client->thread_pool()));
       TF_ASSIGN_OR_RETURN(auto buffer,
                           client->CreateUninitializedBuffer(
                               shape, device, definition_events.back()));
@@ -320,39 +321,18 @@ class AsyncHostToDeviceTransferManager
   }
 
   void SetBufferError(int buffer_index, Status error) override {
-    // We don't have a good way to "poison" StreamExecutor buffers to make
-    // errors propagate, so for now we just kill the process if the transfers
-    // are never going to complete.
-    LOG(FATAL)
-        << "Killing process because of failed AsyncTransfer to PjRt buffers: "
-        << error;
-  }
-  void AddTransferMetadata(const TransferMetadata& meta) override {}
-
-  void CleanUp(int buffer_index, EventPool::Handle event, se::Stream* stream,
-               bool is_last_transfer, absl::AnyInvocable<void() &&> on_done) {
     {
       absl::MutexLock l(&mu_);
-
-      CHECK_GT(transfers_in_flight_, 0);
-      --transfers_in_flight_;
-      if (is_last_transfer) {
-        // Drop our reference to the TrackedDeviceBuffer for this buffer.
-        CHECK(buffer_ptrs_[buffer_index]);
-        buffer_ptrs_[buffer_index] = nullptr;
-        CHECK_GT(remaining_buffer_count_, 0);
-        --remaining_buffer_count_;
-        definition_events_[buffer_index]->SetSequencingEvent(std::move(event),
-                                                             stream);
-        if (remaining_buffer_count_ == 0) {
-          VLOG(3) << "TransferLiteralToBuffer for all buffers is done.";
-        }
-      }
+      // For a given buffer_index, SetBufferError can't be called twice, or
+      // called after the last transfer has been enqueued.
+      CHECK(!definition_events_[buffer_index]->IsDefined());
+      definition_events_[buffer_index]->SetDefinedStatus(error);
     }
-
-    // Call on_done after finishing all housekeeping and releasing the lock.
-    std::move(on_done)();
+    VLOG(1) << "SetBufferError sets the " << buffer_index
+            << "th buffer error: " << error;
   }
+
+  void AddTransferMetadata(const TransferMetadata& meta) override {}
 
  private:
   absl::Mutex mu_;
@@ -381,6 +361,31 @@ class AsyncHostToDeviceTransferManager
   int transfers_in_flight_ ABSL_GUARDED_BY(mu_);
 
   PjRtStreamExecutorDevice* device_;  // not owned.
+
+  void CleanUp(int buffer_index, EventPool::Handle event, se::Stream* stream,
+               bool is_last_transfer, absl::AnyInvocable<void() &&> on_done) {
+    {
+      absl::MutexLock l(&mu_);
+
+      CHECK_GT(transfers_in_flight_, 0);
+      --transfers_in_flight_;
+      if (is_last_transfer) {
+        // Drop our reference to the TrackedDeviceBuffer for this buffer.
+        CHECK(buffer_ptrs_[buffer_index]);
+        buffer_ptrs_[buffer_index] = nullptr;
+        CHECK_GT(remaining_buffer_count_, 0);
+        --remaining_buffer_count_;
+        definition_events_[buffer_index]->SetSequencingEvent(std::move(event),
+                                                             stream);
+        if (remaining_buffer_count_ == 0) {
+          VLOG(1) << "TransferLiteralToBuffer for all buffers is done.";
+        }
+      }
+    }
+
+    // Call on_done after finishing all housekeeping and releasing the lock.
+    std::move(on_done)();
+  }
 };
 
 absl::string_view StreamExecutorGpuClient::platform_version() const {
@@ -472,7 +477,8 @@ PjRtFuture<absl::Status> StreamExecutorGpuClient::CopyRawSubBufferToHost(
     stream->ThenMemcpy(dst, *sub_buffer, transfer_size);
   }
 
-  auto usage_event = std::make_shared<BufferSequencingEvent>();
+  auto usage_event =
+      std::make_shared<BufferSequencingEvent>(this->thread_pool());
   local_device->event_pool().ThenRecordEvent(stream.get(), event_or.value());
   usage_event->SetSequencingEvent(std::move(event_or).value(), stream.get());
   // This usage hold will prevent device_buffer from being deleted before

@@ -294,6 +294,15 @@ class FunctionalHloRunner {
       const PreprocessingOptions& preproc_options,
       const CompileOptions& compile_options);
 
+  // Ahead-of-time compilation using the PjRtTopologyDescription that's passed
+  // instead of using the registered topology. This enables reproduction of
+  // compilation based on captured information.
+  static StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+      PjRtClient& client, HloModule* hlo_module,
+      const PreprocessingOptions& preproc_options,
+      const CompileOptions& compile_options,
+      const PjRtTopologyDescription& topology);
+
   // Runs the executable.
   static StatusOr<PerDeviceLiteralVecType> Run(
       PjRtClient& client, PjRtLoadedExecutable* executable,

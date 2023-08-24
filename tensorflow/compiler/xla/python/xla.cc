@@ -27,6 +27,7 @@ limitations under the License.
 // clang-format off
 // Must be included first
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
 #include "tensorflow/tsl/python/lib/core/numpy.h"  //NOLINT
 // clang-format on
@@ -57,7 +58,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_client.h"
 #ifdef XLA_PYTHON_ENABLE_TPU
 #include "tensorflow/compiler/xla/pjrt/tpu_client.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_initializer_helper.h"  // NOLINT(unused-includes): required for tensorflow::tpu::FindAndLoadTpuLibrary
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_initializer_framework_helper.h"  // NOLINT(unused-includes): required for tensorflow::tpu::LoadTpuLibraryAndInitializeTpuStructFns
 #endif  // XLA_PYTHON_ENABLE_TPU
 #include "tensorflow/compiler/xla/pjrt/pjrt_api.h"
 #include "tensorflow/compiler/xla/python/custom_call_sharding.h"
@@ -73,6 +74,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/py_array.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/py_compile_only_client.h"
+#include "tensorflow/compiler/xla/python/py_device_list.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/pytree.h"
@@ -225,6 +227,31 @@ PYBIND11_MODULE(xla_extension, m) {
              }
              return ValueOrThrow(LiteralToPython(std::move(literal)));
            })
+      .def(
+          "memory",
+          [](const ClientAndPtr<PjRtDevice>& device, const std::string& kind) {
+            return jax::GetMemory(device, kind);
+          },
+          py::arg("kind"))
+      // Returns the default memory of a device.
+      .def("default_memory",
+           [](const ClientAndPtr<PjRtDevice>& device) {
+             auto* memory_space =
+                 xla::ValueOrThrow(device->default_memory_space());
+             return WrapWithClient(device.client(), memory_space);
+           })
+      // Returns all the memories that a device can address.
+      .def("addressable_memories",
+           [](const ClientAndPtr<PjRtDevice>& device) {
+             std::vector<ClientAndPtr<PjRtMemorySpace>> memory_spaces;
+             auto span = device->memory_spaces();
+             memory_spaces.reserve(span.size());
+             for (auto* memory_space : span) {
+               memory_spaces.push_back(
+                   WrapWithClient(device.client(), memory_space));
+             }
+             return memory_spaces;
+           })
       .def("live_buffers",
            [](const ClientAndPtr<PjRtDevice>& device) {
              PythonDeprecationWarning(
@@ -309,6 +336,34 @@ PYBIND11_MODULE(xla_extension, m) {
   device.attr("__getattr__") =
       py::reinterpret_steal<py::object>(PyDescr_NewMethod(
           reinterpret_cast<PyTypeObject*>(device.ptr()), &get_attr_method));
+
+  py::class_<PjRtMemorySpace, ClientAndPtr<PjRtMemorySpace>> memory_space(
+      m, "Memory");
+  memory_space
+      .def_property_readonly(
+          "process_index",
+          [](const ClientAndPtr<PjRtMemorySpace>& memory_space) {
+            return memory_space.client()->process_index();
+          })
+      .def_property_readonly(
+          "platform",
+          [](const ClientAndPtr<PjRtMemorySpace>& memory_space) {
+            return memory_space.client()->platform_name();
+          })
+      .def_property_readonly("kind", &PjRtMemorySpace::memory_space_kind)
+      .def("__str__", &PjRtMemorySpace::DebugString)
+      .def("__repr__", &PjRtMemorySpace::ToString)
+      // Returns the devices this `Memory` is attached to.
+      .def("attached_devices",
+           [](const ClientAndPtr<PjRtMemorySpace>& memory_space) {
+             std::vector<ClientAndPtr<PjRtDevice>> devices;
+             auto span = memory_space->devices();
+             devices.reserve(span.size());
+             for (PjRtDevice* device : span) {
+               devices.push_back(WrapWithClient(memory_space.client(), device));
+             }
+             return devices;
+           });
 
   // Local XLA client methods.
 
@@ -471,19 +526,6 @@ PYBIND11_MODULE(xla_extension, m) {
       py::arg("platform_name") = std::nullopt);
 #endif  // XLA_PYTHON_ENABLE_GPU
 
-#ifdef XLA_PYTHON_ENABLE_TPU
-  m.def(
-      "get_tpu_client",
-      [](int max_inflight_computations) -> std::shared_ptr<PyClient> {
-        py::gil_scoped_release gil_release;
-        std::shared_ptr<PjRtClient> client =
-            xla::ValueOrThrow(GetTpuClient(max_inflight_computations));
-        return std::make_shared<PyClient>(
-            ifrt::PjRtClient::Create(std::move(client)));
-      },
-      py::arg("max_inflight_computations") = 32);
-#endif  // XLA_PYTHON_ENABLE_TPU
-
   m.def(
       "get_c_api_client",
       [](std::string platform_name,
@@ -492,14 +534,13 @@ PYBIND11_MODULE(xla_extension, m) {
           -> std::shared_ptr<PyClient> {
         py::gil_scoped_release gil_release;
 #ifdef XLA_PYTHON_ENABLE_TPU
-    // TODO(b/262050449): use a common plugin discovery mechanism, rather than
-    // having TPU-specific code here.
-#if !defined(PLATFORM_GOOGLE) || defined(LIBTPU_STATIC)
+#if !defined(PLATFORM_GOOGLE)
         if (absl::AsciiStrToLower(platform_name) == "tpu") {
           // TODO(b/261484192): handle device specific initialization.
-          tensorflow::tpu::FindAndLoadTpuLibrary().IgnoreError();
+          xla::ThrowIfError(
+              tensorflow::tpu::LoadTpuLibraryAndInitializeTpuStructFns());
         }
-#endif
+#endif  // PLATFORM_GOOGLE
 #endif  // XLA_PYTHON_ENABLE_TPU
         PjRtClient::KeyValueGetCallback kv_get = nullptr;
         PjRtClient::KeyValuePutCallback kv_put = nullptr;
@@ -532,8 +573,29 @@ PYBIND11_MODULE(xla_extension, m) {
           return xla::ValueOrThrow(
               GetCApiTopology(platform_name, topology_name, options));
         });
+  m.def("get_topology_for_devices",
+        [](std::vector<ClientAndPtr<PjRtDevice>> devices_and_clients) {
+          if (devices_and_clients.empty()) {
+            throw py::value_error(
+                "get_topology_for_devices requires >= 1 devices.");
+          }
+          auto client = devices_and_clients[0].client();
+          std::vector<PjRtDevice*> devices;
+          devices.reserve(devices_and_clients.size());
+          for (const ClientAndPtr<PjRtDevice>& device : devices_and_clients) {
+            if (device.get_client() != client.get()) {
+              throw py::value_error(
+                  "devices passed to get_topology_for_devices come from "
+                  "different clients.");
+            }
+            devices.push_back(device.get());
+          }
+          return xla::ValueOrThrow(client->ifrt_client()->GetTopologyForDevices(
+              absl::MakeSpan(devices)));
+        });
 
   TF_CHECK_OK(PyArray::RegisterTypes(m));
+  jax::RegisterDeviceList(m);
   jax::RegisterSharding(m);
 
   py::class_<CompiledMemoryStats>(m, "CompiledMemoryStats")
@@ -607,6 +669,8 @@ PYBIND11_MODULE(xla_extension, m) {
            py::arg("arguments"), py::arg("with_tokens") = false)
       .def("hlo_modules",
            xla::ValueOrThrowWrapper(&PyLoadedExecutable::HloModules))
+      .def("get_output_memory_kinds",
+           xla::ValueOrThrowWrapper(&PyLoadedExecutable::GetOutputMemoryKinds))
       .def("get_output_shardings", &PyLoadedExecutable::GetOutputShardings)
       .def("get_parameter_shardings",
            &PyLoadedExecutable::GetParameterShardings)
@@ -784,13 +848,13 @@ PYBIND11_MODULE(xla_extension, m) {
 
   m.def(
       "get_distributed_runtime_service",
-      [](std::string address, int num_nodes, bool use_coordination_service,
+      [](std::string address, int num_nodes,
          std::optional<int> heartbeat_interval,
          std::optional<int> max_missing_heartbeats,
          std::optional<int> enumerate_devices_timeout,
          std::optional<int> shutdown_timeout)
           -> std::unique_ptr<DistributedRuntimeService> {
-        DistributedRuntimeServiceImpl::Options options;
+        CoordinationServiceImpl::Options options;
         options.num_nodes = num_nodes;
         if (heartbeat_interval.has_value()) {
           options.heartbeat_interval = absl::Seconds(*heartbeat_interval);
@@ -806,12 +870,10 @@ PYBIND11_MODULE(xla_extension, m) {
           options.shutdown_timeout = absl::Seconds(*shutdown_timeout);
         }
         std::unique_ptr<DistributedRuntimeService> service =
-            xla::ValueOrThrow(GetDistributedRuntimeService(
-                address, options, use_coordination_service));
+            xla::ValueOrThrow(GetDistributedRuntimeService(address, options));
         return service;
       },
-      py::arg("address"), py::arg("num_nodes"),
-      py::arg("use_coordination_service"), py::kw_only(),
+      py::arg("address"), py::arg("num_nodes"), py::kw_only(),
       py::arg("heartbeat_interval") = std::nullopt,
       py::arg("max_missing_heartbeats") = std::nullopt,
       py::arg("enumerate_devices_timeout") = std::nullopt,
@@ -819,9 +881,8 @@ PYBIND11_MODULE(xla_extension, m) {
 
   m.def(
       "get_distributed_runtime_client",
-      [](std::string address, int node_id, bool use_coordination_service,
-         std::optional<int> rpc_timeout, std::optional<int> init_timeout,
-         std::optional<int> shutdown_timeout,
+      [](std::string address, int node_id, std::optional<int> rpc_timeout,
+         std::optional<int> init_timeout, std::optional<int> shutdown_timeout,
          std::optional<int> heartbeat_interval,
          std::optional<int> max_missing_heartbeats,
          std::optional<std::function<void(xla::Status,
@@ -853,11 +914,9 @@ PYBIND11_MODULE(xla_extension, m) {
         if (shutdown_on_destruction.has_value()) {
           options.shutdown_on_destruction = *shutdown_on_destruction;
         }
-        return GetDistributedRuntimeClient(address, options,
-                                           use_coordination_service);
+        return GetDistributedRuntimeClient(address, options);
       },
-      py::arg("address"), py::arg("node_id"),
-      py::arg("use_coordination_service"), py::kw_only(),
+      py::arg("address"), py::arg("node_id"), py::kw_only(),
       py::arg("rpc_timeout") = std::nullopt,
       py::arg("init_timeout") = std::nullopt,
       py::arg("shutdown_timeout") = std::nullopt,
@@ -896,6 +955,8 @@ PYBIND11_MODULE(xla_extension, m) {
   py::class_<PjRtExecutable, std::shared_ptr<PjRtExecutable>>(m, "Executable")
       .def("hlo_modules",
            xla::ValueOrThrowWrapper(&PjRtExecutable::GetHloModules))
+      .def("get_output_memory_kinds",
+           xla::ValueOrThrowWrapper(&PjRtExecutable::GetOutputMemoryKinds))
       .def("get_output_shardings", &PjRtExecutable::GetOutputShardings)
       .def("get_parameter_shardings", &PjRtExecutable::GetParameterShardings)
       .def("get_compiled_memory_stats",
@@ -911,7 +972,8 @@ PYBIND11_MODULE(xla_extension, m) {
   m.def("is_tsan", IsTsan);
   m.def("is_sanitized", IsSanitized);
 
-  m.attr("batched_device_put") = py::cpp_function(
+  m.def(
+      "batched_device_put",
       [](py::object aval, py::object sharding, std::vector<py::object> xs,
          std::vector<ClientAndPtr<PjRtDevice>> dst_devices, bool committed,
          bool force_copy,
@@ -925,6 +987,10 @@ PYBIND11_MODULE(xla_extension, m) {
       py::arg("committed") = true, py::arg("force_copy") = false,
       py::arg("host_buffer_semantics") =
           PjRtClient::HostBufferSemantics::kZeroCopy);
+  m.def("canonicalize_memory_kind",
+        [](py::object memory_kind, py::object device) -> py::object {
+          return jax::CanonicalizeMemoryKind(memory_kind, device);
+        });
 }  // NOLINT(readability/fn_size)
 
 }  // namespace xla

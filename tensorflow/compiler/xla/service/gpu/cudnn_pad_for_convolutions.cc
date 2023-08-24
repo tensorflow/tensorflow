@@ -211,6 +211,7 @@ static StatusOr<bool> TryResolvePaddedShapesForTensorCore(
     switch (kind) {
       case CudnnConvKind::kForward:
       case CudnnConvKind::kForwardActivation:
+      case CudnnConvKind::kForwardGraph:
         return std::make_tuple(&new_lhs_shape, &new_rhs_shape,
                                &new_result_shape);
       case CudnnConvKind::kBackwardInput:

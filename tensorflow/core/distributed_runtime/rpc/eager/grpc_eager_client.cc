@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/core_platform_payloads.pb.h"
 #include "tensorflow/core/protobuf/eager_service.pb.h"
 #include "tensorflow/core/util/env_var.h"
+#include "tensorflow/tsl/distributed_runtime/call_options.h"
 
 namespace tensorflow {
 namespace eager {
@@ -147,6 +148,26 @@ class GrpcEagerClient : public EagerClient {
   CLIENT_METHOD(KeepAlive);
 
 #undef CLIENT_METHOD
+
+#define CLIENT_METHOD_WITH_TIMEOUT(method)                                   \
+  void method##Async(const method##Request* request,                         \
+                     method##Response* response, StatusCallback done,        \
+                     int64_t init_timeout_in_ms) override {                  \
+    StatusCallback done_wrapped = callback_wrapper(std::move(done));         \
+    CallOptions* call_ops = nullptr;                                         \
+    if (init_timeout_in_ms > 0) {                                            \
+      call_ops = new CallOptions;                                            \
+      call_ops->SetTimeout(init_timeout_in_ms);                              \
+    }                                                                        \
+    new RPCState<protobuf::Message>(                                         \
+        &stub_, cq_, "/tensorflow.eager.EagerService/" #method, *request,    \
+        response, std::move(done_wrapped), call_ops, /*threadpool=*/nullptr, \
+        /*max_retries=*/0, /*fail_fast=*/true, &target_);                    \
+  }
+
+  CLIENT_METHOD_WITH_TIMEOUT(CreateContext);
+
+#undef CLIENT_METHOD_WITH_TIMEOUT
 
 #define CLIENT_CANCELABLE_METHOD(method)                                      \
   void method##Async(CallOptions* call_opts, const method##Request* request,  \

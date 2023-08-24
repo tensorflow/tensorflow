@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
@@ -40,6 +41,12 @@ class CustomCallShardingHelper {
   // Returns if the instruction passed as parameter is a supported custom-call
   // for which the functions of this class are implemented.
   virtual bool IsCustomCallShardable(const HloInstruction* instruction) const;
+  // Returns the list of instructions in sub-computations that must be sharded
+  // in the same way as `instruction`.
+  virtual std::vector<HloInstruction*> GetRelatedInstructions(
+      HloInstruction* instruction) const {
+    return {};
+  }
   virtual ~CustomCallShardingHelper() = default;
 };
 

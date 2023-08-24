@@ -2534,7 +2534,6 @@ def MHLO_DotGeneralOp: MHLO_ShapedInterfaceOp<"dot_general", [Pure]> {
   );
 
   let results = (outs MHLO_Tensor);
-  let hasCanonicalizer = 1;
   // DotGeneral op required custom exporter to pass the preferred element type
   // to Xla builder.
   let hasCustomHLOConverter = 1;

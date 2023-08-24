@@ -23,7 +23,7 @@ import six
 from tensorflow.core.function import trace_type
 from tensorflow.core.function.polymorphism import function_type as function_type_lib
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.util import nest
@@ -165,7 +165,7 @@ def to_input_signature(function_type):
           trace_type.InternalPlaceholderContext(unnest_only=True)
       )
       if any(
-          not isinstance(arg, tensor_spec.TensorSpec)
+          not isinstance(arg, tensor.TensorSpec)
           for arg in nest.flatten([constraint], expand_composites=True)
       ):
         # input_signature only supports contiguous TensorSpec composites
@@ -465,13 +465,13 @@ def _validate_signature(signature):
     )
 
   if any(
-      not isinstance(arg, tensor_spec.TensorSpec)
+      not isinstance(arg, tensor.TensorSpec)
       for arg in nest.flatten(signature, expand_composites=True)
   ):
     bad_args = [
         arg
         for arg in nest.flatten(signature, expand_composites=True)
-        if not isinstance(arg, tensor_spec.TensorSpec)
+        if not isinstance(arg, tensor.TensorSpec)
     ]
     raise TypeError(
         "input_signature must be a possibly nested sequence of "
@@ -483,7 +483,7 @@ def _validate_signature(signature):
 def _to_tensor_or_tensor_spec(x):
   return (
       x
-      if isinstance(x, (ops.Tensor, tensor_spec.TensorSpec))
+      if isinstance(x, (tensor.Tensor, tensor.TensorSpec))
       else ops.convert_to_tensor(x)
   )
 
@@ -502,7 +502,7 @@ def _get_variable_specs(args):
       continue
     if isinstance(arg, resource_variable_ops.VariableSpec):
       variable_specs.append(arg)
-    elif not isinstance(arg, tensor_spec.TensorSpec):
+    elif not isinstance(arg, tensor.TensorSpec):
       # arg is a CompositeTensor spec.
       variable_specs.extend(_get_variable_specs(arg._component_specs))  # pylint: disable=protected-access
   return variable_specs

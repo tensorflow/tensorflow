@@ -66,8 +66,23 @@ bool EnableReplicatedSpmdAsDefault(const std::string& op_name);
 // Returns whether to use all-to-all collective for relayout when possible.
 bool EnableAllToAllForRelayout();
 
-// Returns the maximum number of AllReduce ops to merge into a group.
+// Returns the maximum number of AllReduce ops to merge into a group. This value
+// determines the AllReduce grouping in dtensor_allreduce_combine_optimization.
+// The input value should be in range of [0, INT_MAX]. It is advised to pick
+// a value based on knowledge of the total number of AllReduces. When the value
+// is too big, the behaviour will act as aggressive grouping. When the value is
+// too small, the behaviour will act as having no extended grouping.
 int AllReduceCombineOptimizationGroupSize();
+
+// Returns the maximum topological distance between two AllReduce ops to merge
+// into a single AllReduce. This value is used to determine AllReduce grouping
+// in dtensor_allreduce_combine_optimization. The input value should be in range
+// of [0, INT_MAX]. However, it is advised to select a value based on knowledge
+// of the compute graph, such as the minimum distance between two model layers.
+// When the input value is too big, the behaviour will act as aggressive group-
+// ing. When the input value is too small, the behaviour will act as having no
+// extended grouping.
+int AllReduceCombineOptimizationTopologicalDistance();
 
 // Returns whether to perform multi-device expansion.
 bool EnableMultiDeviceMode();

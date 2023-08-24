@@ -942,12 +942,19 @@ def _dynamic_range_quantize(
         _DYNAMIC_RANGE_DEFAULT_MIN_NUM_ELEMENTS_FOR_WEIGHTS,
     )
 
+  loader = saved_model_loader.SavedModelLoader(saved_model_path)
+
+  function_aliases = loader.get_meta_graph_def_from_tags(
+      tags
+  ).meta_info_def.function_aliases
+
   # Apply post-training dynamic range quantization to the model.
   exported_model_serialized = pywrap_quantize_model.quantize_ptq_dynamic_range(
       saved_model_path,
       list(signature_keys),
       set(tags),
       quantization_options.SerializeToString(),
+      dict(function_aliases),
   )
 
   exported_model = exported_model_pb2.ExportedModel.FromString(
@@ -1010,7 +1017,7 @@ def _populate_quantization_options_default_values(
   Populates unspecified or unset fields of QuantizationOptions with the default
   values.
 
-  * If `op_set` is unspecified, it defaults to `OpSet.TF`.
+  * If `op_set` is unspecified, it defaults to `OpSet.XLA`.
   * If `freeze_all_variables` is not set, it defaults to `True`.
   * Check if configurations are set correctly:
     - Per-channel quantization is supported for Uniform Quantized opset only.

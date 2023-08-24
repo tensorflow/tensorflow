@@ -24,7 +24,6 @@ limitations under the License.
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h"
 #include "mlir/Conversion/LLVMCommon/ConversionTarget.h"
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"
-#include "mlir/Conversion/LinalgToLLVM/LinalgToLLVM.h"
 #include "mlir/Conversion/MathToLLVM/MathToLLVM.h"
 #include "mlir/Conversion/MathToLibm/MathToLibm.h"
 #include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"
@@ -37,6 +36,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/LLVMIR/NVVMDialect.h"
 #include "mlir/Dialect/Math/IR/Math.h"      // IWYU pragma: keep
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // IWYU pragma: keep
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
@@ -106,7 +106,6 @@ class GenericHostToLLVMPass
     cf::populateControlFlowToLLVMConversionPatterns(typeConverter, patterns);
     populateSCFToControlFlowConversionPatterns(patterns);
     populateComplexToLLVMConversionPatterns(typeConverter, patterns);
-    populateLinalgToLLVMConversionPatterns(typeConverter, patterns);
     populateMathToLibmConversionPatterns(patterns);
     deallocation::populateDeallocationToLLVMConversionPatterns(typeConverter,
                                                                patterns);
@@ -122,7 +121,8 @@ class GenericHostToLLVMPass
     }
 
     //  Setup target.
-    target.addLegalDialect<LLVM::LLVMDialect, gpu::GPUDialect>();
+    target.addLegalDialect<LLVM::LLVMDialect, gpu::GPUDialect,
+                           NVVM::NVVMDialect>();
     target.addIllegalDialect<arith::ArithDialect, func::FuncDialect,
                              complex::ComplexDialect, math::MathDialect>();
     // Mark modules as legal.

@@ -19,15 +19,21 @@ limitations under the License.
 #include <vector>
 
 #include <gmock/gmock.h>
-#include <gtest/gtest.h>
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "tensorflow/core/tfrt/mlrt/bytecode/executable.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/attribute_span.h"
 #include "tensorflow/tsl/platform/resource_loader.h"
+#include "tensorflow/tsl/platform/status_matchers.h"
 
 namespace mlrt {
 namespace {
+
+using ::testing::ElementsAreArray;
+using ::testing::FloatEq;
+using ::testing::IsEmpty;
+using ::tsl::testing::IsOkAndHolds;
+using ::tsl::testing::StatusIs;
 
 TEST(MlirToByteCodeTest, Basic) {
   constexpr char kBasicMlir[] =
@@ -47,9 +53,9 @@ TEST(MlirToByteCodeTest, Basic) {
   bc::Executable executable(buffer.data());
 
   auto kernel_names = executable.kernel_names();
-  EXPECT_THAT(kernel_names, ::testing::ElementsAreArray({"test_mlbc.add.i32",
-                                                         "test_mlbc.sub.i32",
-                                                         "call", "return"}));
+  EXPECT_THAT(kernel_names,
+              ElementsAreArray({"test_mlbc.add.i32", "test_mlbc.sub.i32",
+                                "call", "return"}));
 
   auto functions = executable.functions();
   ASSERT_GE(functions.size(), 1);
@@ -57,36 +63,34 @@ TEST(MlirToByteCodeTest, Basic) {
   auto function = functions[0];
   EXPECT_EQ(function.name().str(), "add_i32_10");
   EXPECT_EQ(function.num_regs(), 5);
-  EXPECT_THAT(function.input_regs(), ::testing::ElementsAreArray({0}));
-  EXPECT_THAT(function.output_regs(), ::testing::ElementsAreArray({0, 2, 2}));
+  EXPECT_THAT(function.input_regs(), ElementsAreArray({0}));
+  EXPECT_THAT(function.output_regs(), ElementsAreArray({0, 2, 2}));
   EXPECT_THAT(function.output_last_uses(),
-              ::testing::ElementsAreArray({true, false, true}));
+              ElementsAreArray({true, false, true}));
 
   auto kernels = function.kernels();
   ASSERT_EQ(kernels.size(), 11);
 
   EXPECT_EQ(kernels[0].code(), 0);
-  EXPECT_THAT(kernels[0].arguments(), ::testing::ElementsAreArray({0, 0}));
-  EXPECT_THAT(kernels[0].results(), ::testing::ElementsAreArray({1}));
-  EXPECT_THAT(kernels[0].last_uses(), ::testing::ElementsAreArray({0, 0}));
+  EXPECT_THAT(kernels[0].arguments(), ElementsAreArray({0, 0}));
+  EXPECT_THAT(kernels[0].results(), ElementsAreArray({1}));
+  EXPECT_THAT(kernels[0].last_uses(), ElementsAreArray({0, 0}));
 
   for (int i = 1; i < 9; i++) {
     EXPECT_EQ(kernels[i].code(), i % 2);
-    EXPECT_THAT(kernels[i].arguments(),
-                ::testing::ElementsAreArray({(i - 1) % 2 + 1, 0}));
-    EXPECT_THAT(kernels[i].results(), ::testing::ElementsAreArray({i % 2 + 1}));
-    EXPECT_THAT(kernels[i].last_uses(), ::testing::ElementsAreArray({1, 0}));
+    EXPECT_THAT(kernels[i].arguments(), ElementsAreArray({(i - 1) % 2 + 1, 0}));
+    EXPECT_THAT(kernels[i].results(), ElementsAreArray({i % 2 + 1}));
+    EXPECT_THAT(kernels[i].last_uses(), ElementsAreArray({1, 0}));
   }
 
   EXPECT_EQ(kernels[9].code(), 2);
-  EXPECT_THAT(kernels[9].arguments(), ::testing::ElementsAreArray({1}));
-  EXPECT_THAT(kernels[9].last_uses(), ::testing::ElementsAreArray({true}));
-  EXPECT_THAT(kernels[9].results(), ::testing::ElementsAreArray({2, 3, 4}));
+  EXPECT_THAT(kernels[9].arguments(), ElementsAreArray({1}));
+  EXPECT_THAT(kernels[9].last_uses(), ElementsAreArray({true}));
+  EXPECT_THAT(kernels[9].results(), ElementsAreArray({2, 3, 4}));
 
   EXPECT_EQ(kernels[10].code(), 3);
-  EXPECT_THAT(kernels[10].arguments(), ::testing::ElementsAreArray({0, 2, 2}));
-  EXPECT_THAT(kernels[10].last_uses(),
-              ::testing::ElementsAreArray({true, false, true}));
+  EXPECT_THAT(kernels[10].arguments(), ElementsAreArray({0, 2, 2}));
+  EXPECT_THAT(kernels[10].last_uses(), ElementsAreArray({true, false, true}));
   EXPECT_TRUE(kernels[10].results().empty());
 }
 
@@ -130,52 +134,46 @@ TEST(MlirToByteCodeTest, BasicAttributes) {
   EXPECT_EQ(*attr_iter, "ts");
   ++attr_iter;
 
-  EXPECT_THAT(DecodeAttribute<int32_t>(*attr_iter),
-              ::testing::status::IsOkAndHolds(100));
+  EXPECT_THAT(DecodeAttribute<int32_t>(*attr_iter), IsOkAndHolds(100));
   ++attr_iter;
 
-  EXPECT_THAT(DecodeAttribute<int64_t>(*attr_iter),
-              ::testing::status::IsOkAndHolds(200));
+  EXPECT_THAT(DecodeAttribute<int64_t>(*attr_iter), IsOkAndHolds(200));
   ++attr_iter;
 
-  EXPECT_THAT(DecodeAttribute<float>(*attr_iter),
-              ::testing::status::IsOkAndHolds(::testing::FloatEq(3.0)));
+  EXPECT_THAT(DecodeAttribute<float>(*attr_iter), IsOkAndHolds(FloatEq(3.0)));
   ++attr_iter;
 
-  EXPECT_THAT(DecodeAttribute<uint8_t>(*attr_iter),
-              ::testing::status::IsOkAndHolds(0));
+  EXPECT_THAT(DecodeAttribute<uint8_t>(*attr_iter), IsOkAndHolds(0));
   ++attr_iter;
 
   bc::Vector<int64_t> list_of_i64((*attr_iter).data());
-  EXPECT_THAT(list_of_i64, ::testing::ElementsAreArray({0, 1, 2, 3, 4}));
+  EXPECT_THAT(list_of_i64, ElementsAreArray({0, 1, 2, 3, 4}));
   ++attr_iter;
 
   bc::Vector<int32_t> list_of_i32((*attr_iter).data());
-  EXPECT_THAT(list_of_i32, ::testing::ElementsAreArray({0, 1, 2, 3}));
+  EXPECT_THAT(list_of_i32, ElementsAreArray({0, 1, 2, 3}));
   ++attr_iter;
 
   bc::Vector<bc::String> list_of_str((*attr_iter).data());
-  EXPECT_THAT(list_of_str,
-              ::testing::ElementsAreArray({"string 0", "string 1"}));
+  EXPECT_THAT(list_of_str, ElementsAreArray({"string 0", "string 1"}));
   ++attr_iter;
 
-  EXPECT_THAT(DecodeAttribute<uint32_t>(*attr_iter),
-              ::testing::status::IsOkAndHolds(1));
+  EXPECT_THAT(DecodeAttribute<uint32_t>(*attr_iter), IsOkAndHolds(1));
   EXPECT_EQ(executable.functions()[1].name().Get(), "callee");
   ++attr_iter;
 
   bc::Vector<int32_t> list_of_symbol_ref((*attr_iter).data());
   EXPECT_EQ(executable.functions()[2].name().Get(), "callee0");
   EXPECT_EQ(executable.functions()[3].name().Get(), "callee1");
-  EXPECT_THAT(list_of_symbol_ref, ::testing::ElementsAreArray({2, 3}));
+  EXPECT_THAT(list_of_symbol_ref, ElementsAreArray({2, 3}));
   ++attr_iter;
 
   bc::Vector<int32_t> dense_array_of_i32((*attr_iter).data());
-  EXPECT_THAT(dense_array_of_i32, ::testing::ElementsAreArray({0, 1, 2}));
+  EXPECT_THAT(dense_array_of_i32, ElementsAreArray({0, 1, 2}));
   ++attr_iter;
 
   bc::Vector<int64_t> dense_array_of_i64((*attr_iter).data());
-  EXPECT_THAT(dense_array_of_i64, ::testing::ElementsAreArray({0, 1, 2}));
+  EXPECT_THAT(dense_array_of_i64, ElementsAreArray({0, 1, 2}));
   ++attr_iter;
 
   bc::Vector<int32_t> empty_dense_array((*attr_iter).data());
@@ -202,42 +200,41 @@ TEST(MlirToByteCodeTest, BasicAttributes) {
   EXPECT_EQ(attribute_span(kernel_iter).GetAs<int64_t>(0), 200);
   ++kernel_iter;
 
-  EXPECT_THAT(attribute_span(kernel_iter).GetAs<float>(0),
-              ::testing::FloatEq(3.0));
+  EXPECT_THAT(attribute_span(kernel_iter).GetAs<float>(0), FloatEq(3.0));
   ++kernel_iter;
 
   EXPECT_EQ(attribute_span(kernel_iter).GetAs<uint8_t>(0), false);
   ++kernel_iter;
 
   EXPECT_THAT(attribute_span(kernel_iter).GetAs<bc::Vector<int64_t>>(0),
-              ::testing::ElementsAreArray({0, 1, 2, 3, 4}));
+              ElementsAreArray({0, 1, 2, 3, 4}));
   ++kernel_iter;
 
   EXPECT_THAT(attribute_span(kernel_iter).GetAs<bc::Vector<int32_t>>(0),
-              ::testing::ElementsAreArray({0, 1, 2, 3}));
+              ElementsAreArray({0, 1, 2, 3}));
   ++kernel_iter;
 
   EXPECT_THAT(attribute_span(kernel_iter).GetAs<bc::Vector<bc::String>>(0),
-              ::testing::ElementsAreArray({"string 0", "string 1"}));
+              ElementsAreArray({"string 0", "string 1"}));
   ++kernel_iter;
 
   EXPECT_EQ(attribute_span(kernel_iter).GetAs<uint32_t>(0), 1);
   ++kernel_iter;
 
   EXPECT_THAT(attribute_span(kernel_iter).GetAs<bc::Vector<int32_t>>(0),
-              ::testing::ElementsAreArray({2, 3}));
+              ElementsAreArray({2, 3}));
   ++kernel_iter;
 
   EXPECT_THAT(attribute_span(kernel_iter).GetAs<bc::Vector<int32_t>>(0),
-              ::testing::ElementsAreArray({0, 1, 2}));
+              ElementsAreArray({0, 1, 2}));
   ++kernel_iter;
 
   EXPECT_THAT(attribute_span(kernel_iter).GetAs<bc::Vector<int64_t>>(0),
-              ::testing::ElementsAreArray({0, 1, 2}));
+              ElementsAreArray({0, 1, 2}));
   ++kernel_iter;
 
   EXPECT_THAT(attribute_span(kernel_iter).GetAs<bc::Vector<int32_t>>(0),
-              ::testing::IsEmpty());
+              IsEmpty());
 }
 
 TEST(MlirToByteCodeTest, UnsupportedAttributes) {
@@ -255,9 +252,8 @@ TEST(MlirToByteCodeTest, UnsupportedAttributes) {
 
   AttributeEncoderRegistry attribute_encoder_registry;
   EXPECT_THAT(EmitExecutable(attribute_encoder_registry, mlir_module.get()),
-              ::testing::status::CanonicalStatusIs(
-                  absl::StatusCode::kInvalidArgument,
-                  "Try to encode unsupported attribute: unit"));
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       "Try to encode unsupported attribute: unit"));
 }
 
 class CustomDense {
@@ -356,8 +352,8 @@ TEST(MlirToByteCodeTest, CustomDense) {
     bc::String attr_data = attributes[i];
 
     CustomDense custom_dense(attr_data.data());
-    EXPECT_THAT(custom_dense.shape(), ::testing::ElementsAreArray({1}));
-    EXPECT_THAT(custom_dense.data(), ::testing::ElementsAreArray({i}));
+    EXPECT_THAT(custom_dense.shape(), ElementsAreArray({1}));
+    EXPECT_THAT(custom_dense.data(), ElementsAreArray({i}));
   }
 }
 

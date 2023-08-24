@@ -389,6 +389,7 @@ TEST_F(TestDelegate, TestCopyFromBufferInvoke) {
 }
 
 TEST_F(TestDelegate, TestCopyFromBuffer) {
+  interpreter_->Invoke();
   delegate_ = std::unique_ptr<SimpleDelegate>(new SimpleDelegate({0, 1, 2}));
   TfLiteDelegate* delegate = delegate_->get_tf_lite_delegate();
   interpreter_->ModifyGraphWithDelegate(delegate);
@@ -445,6 +446,9 @@ struct OpaqueTestDelegate {
     delegate_state->delegate_prepared = true;
 
     TfLiteRegistration registration{};
+    registration.registration_external = TfLiteRegistrationExternalCreate(
+        kTfLiteBuiltinDelegate, "OpaqueTestDelegate delegate kernel", 1);
+
     registration.prepare = [](TfLiteContext* context,
                               TfLiteNode* node) -> TfLiteStatus {
       return kTfLiteOk;

@@ -101,6 +101,24 @@ class FusionDecision {
     return *this;
   }
 
+  // Executes the given fusibility checks in order, until one fails. Returns the
+  // result of the first failure (or a `FusionDecision` with `CanFuse() == true`
+  // if none did).
+  // Usage:
+  //   FusionDecision result = FusionDecision::All(std::tuple{FnOne, FnTwo},
+  //                                               arg1, arg2)
+  template <typename... Checks, typename... Args>
+  static FusionDecision All(const std::tuple<Checks...>& checks,
+                            const Args&... args) {
+    FusionDecision result = {};
+    std::apply(
+        [&](auto&&... fns) {
+          ((result = result ? fns(args...) : result), ...);
+        },
+        checks);
+    return result;
+  }
+
   // Appends to explanation, or turns the decision negative.
   FusionDecision operator<<(absl::string_view explanation) const {
     return {absl::StrCat(explanation_.value_or(""), explanation)};
@@ -295,6 +313,20 @@ class InstructionFusion : public HloModulePass {
   // Used to determine if an HLO is expensive. Expensive operations will not be
   // duplicated.
   std::function<bool(const HloInstruction& instruction)> is_expensive_;
+
+  // Dumps the state of computation before fusion.
+  void DumpPreFusionState(HloComputation* computation, HloInstruction* consumer,
+                          HloInstruction* producer, bool is_mof = false);
+
+  // Dumps the state of computation and the reason why the fusion was not
+  // performed.
+  void DumpNotFusingState(HloComputation* computation, HloInstruction* consumer,
+                          HloInstruction* producer, FusionDecision decision);
+
+  // Dumps the state of computation after fusion happened.
+  void DumpStateAfterFusion(HloComputation* computation,
+                            HloInstruction* fusion_instruction,
+                            const std::string& producer_name);
 
   // Returns whether we may duplicate an instruction if we want to fuse it.
   bool may_duplicate_;

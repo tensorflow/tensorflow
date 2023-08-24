@@ -144,13 +144,13 @@ struct LaunchConv2DBackpropInputOpImpl {
     int64_t expected_out_rows, expected_out_cols;
     // The function is guaranteed to succeed because we checked the output and
     // padding was valid earlier.
-    TF_CHECK_OK(GetWindowedOutputSizeVerboseV2(
+    TF_CHECK_OK(GetWindowedOutputSizeVerbose(
         dims.spatial_dims[0].input_size, dims.spatial_dims[0].filter_size,
         row_dilation, row_stride, padding, &expected_out_rows, &padding_top,
         &padding_bottom));
     DCHECK_EQ(dims.spatial_dims[0].output_size, expected_out_rows);
 
-    TF_CHECK_OK(GetWindowedOutputSizeVerboseV2(
+    TF_CHECK_OK(GetWindowedOutputSizeVerbose(
         dims.spatial_dims[1].input_size, dims.spatial_dims[1].filter_size,
         col_dilation, col_stride, padding, &expected_out_cols, &padding_left,
         &padding_right));
@@ -525,13 +525,13 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
         context,
         GetWindowedOutputSizeVerbose(
             dims.spatial_dims[0].input_size, dims.spatial_dims[0].filter_size,
-            dims.spatial_dims[0].stride, padding_,
+            /*dilation_rate=*/1, dims.spatial_dims[0].stride, padding_,
             &dims.spatial_dims[0].output_size, &pad_top, &pad_bottom));
     OP_REQUIRES_OK(
         context,
         GetWindowedOutputSizeVerbose(
             dims.spatial_dims[1].input_size, dims.spatial_dims[1].filter_size,
-            dims.spatial_dims[1].stride, padding_,
+            /*dilation_rate=*/1, dims.spatial_dims[1].stride, padding_,
             &dims.spatial_dims[1].output_size, &pad_left, &pad_right));
 
     // The total dimension size of each kernel.

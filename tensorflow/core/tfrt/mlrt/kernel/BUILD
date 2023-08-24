@@ -1,6 +1,6 @@
 load(
     "//tensorflow:tensorflow.bzl",
-    "tf_cc_test",
+    "tf_cc_shared_test",
 )
 
 package(
@@ -37,10 +37,10 @@ cc_library(
         "//tensorflow/core/tfrt/utils",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/profiler/lib:traceme",
-        "//third_party/protobuf",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
+        "@com_google_protobuf//:protobuf_headers",
         "@tf_runtime//:async_value",
         "@tf_runtime//:hostcontext",
     ],
@@ -63,6 +63,7 @@ cc_library(
         "//tensorflow/core/tfrt/utils:fallback_tensor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
+        "@com_google_protobuf//:protobuf_headers",
         "@tf_runtime//:async_value",
         "@tf_runtime//:hostcontext",
     ],
@@ -74,6 +75,7 @@ cc_library(
     hdrs = ["kernel_runner_utils.h"],
     deps = [
         ":context",
+        "//tensorflow/core:framework",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_compat_request_state",
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_utils",
@@ -97,13 +99,15 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+tf_cc_shared_test(
     name = "kernel_test",
     srcs = ["kernel_test.cc"],
+    tags = ["no_oss"],
     deps = [
         ":batch_kernel",
         ":context",
         ":kernel",
+        "//tensorflow/core:framework",
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/kernels:math",
         "//tensorflow/core/ops:math_ops_op_lib",
@@ -113,6 +117,8 @@ tf_cc_test(
         "//tensorflow/core/tfrt/mlrt/interpreter:execute",
         "//tensorflow/core/tfrt/mlrt/interpreter:future",
         "//tensorflow/core/tfrt/mlrt/interpreter:interpreter_testutil",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:status_matchers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",

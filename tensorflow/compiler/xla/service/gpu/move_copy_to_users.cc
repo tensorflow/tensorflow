@@ -15,15 +15,20 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/move_copy_to_users.h"
 
-#include <algorithm>
-#include <memory>
-#include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/layout.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -79,6 +84,18 @@ class MoveCopyToUsersVisitor : public DfsHloRewriteVisitor {
       HloInstruction* later_copy =
           MakeCopyHlo(earlier_reduce_window, hlo->shape());
       TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, later_copy));
+    }
+    return OkStatus();
+  }
+
+  Status HandleReduce(HloInstruction* hlo) override {
+    HloInstruction* operand = hlo->mutable_operand(0);
+    // Reductions can handle transposes, e.g. via column reduction.
+    if (operand->opcode() == HloOpcode::kCopy && !hlo->shape().IsTuple()) {
+      HloInstruction* new_reduce = hlo->AddInstruction(
+          hlo->CloneWithNewOperands(hlo->shape(), {operand->mutable_operand(0),
+                                                   hlo->mutable_operand(1)}));
+      TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, new_reduce));
     }
     return OkStatus();
   }

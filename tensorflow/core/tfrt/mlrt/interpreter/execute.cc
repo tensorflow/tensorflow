@@ -20,6 +20,44 @@ limitations under the License.
 #include "tensorflow/tsl/profiler/lib/traceme.h"
 
 namespace mlrt {
+namespace {
+
+struct CurrentExecutionInfo {
+  // The ExecutionContext for the current thread.
+  ExecutionContext* current_context = nullptr;
+  // The next ExecutionContext that is ready for execution if `current_context`
+  // is exiting.
+  ExecutionContext* ready_context = nullptr;
+};
+
+// Get the ExecutionContext used in the current thread. This provides a
+// side-channel for code which cannot access ExecutionContext explicitly.
+CurrentExecutionInfo& GetCurrentExecutionInfo() {
+  static thread_local CurrentExecutionInfo current_execution_info;
+  return current_execution_info;
+}
+
+// Resume the execution in `ready_context`.
+void Resume(ExecutionContext& ready_context) {
+  auto& current_execution_info = GetCurrentExecutionInfo();
+  auto* current_context = current_execution_info.current_context;
+  if ((current_context != nullptr) &&
+      (current_execution_info.ready_context == nullptr) &&
+      (current_context->state() == ExecutionContext::State::kReturn) &&
+      (current_context->function_stack_size() == 1)) {
+    // If the current execution is exiting, we can schedule one of the ready
+    // contexts immediately.
+    current_execution_info.ready_context = &ready_context;
+  } else {
+    // Otherwise, we need to resume ready contexts through the thread pool.
+    auto* work_queue = ready_context.work_queue();
+    DCHECK(work_queue);
+    work_queue->AddTask([&ready_context]() { Execute(ready_context); });
+  }
+}
+
+}  // namespace
+
 namespace execute_internal {
 
 void UnwindOnError(ExecutionContext& context, int64_t pc);
@@ -27,8 +65,18 @@ void UnwindOnError(ExecutionContext& context, int64_t pc);
 }
 
 // The single-threaded execution of the kernels.
-void Execute(ExecutionContext& context) {
-  for (;;) {
+void Execute(ExecutionContext& ctx) {
+  auto& current_execution_info = GetCurrentExecutionInfo();
+  current_execution_info.ready_context = &ctx;
+
+  for (; current_execution_info.ready_context;) {
+    // Set up the current execution info so that kernel that calls Resume() can
+    // access it.
+    current_execution_info.current_context =
+        current_execution_info.ready_context;
+    current_execution_info.ready_context = nullptr;
+    auto& context = *current_execution_info.current_context;
+
     DCHECK(!context.function_stack_.empty());
 
     int function_stack_index = context.function_stack_.size() - 1;
@@ -61,15 +109,21 @@ void Execute(ExecutionContext& context) {
     current_function = &context.function_stack_[function_stack_index];
     current_function->pc_ = pc;
 
+    // The current execution is pasued, and we need to reset the per-thread
+    // context pointer.
+    current_execution_info.current_context = nullptr;
+
     // The state transition if a kernel set the execution state other than
     // kRunning.
     switch (context.state_) {
       case ExecutionContext::State::kReady: {
+        DCHECK(current_execution_info.ready_context == nullptr);
         context.state_ = ExecutionContext::State::kRunning;
         if (current_function->kernel_context().reenter) {
           // Rewind PC to comeback to the kernel that calls a function.
           current_function->pc_--;
         }
+        current_execution_info.ready_context = &context;
         break;
       }
       case ExecutionContext::State::kRunning:
@@ -82,22 +136,22 @@ void Execute(ExecutionContext& context) {
           if (context.exit_handler_) {
             std::move(context.exit_handler_)();
           }
-          return;
+          break;
         }
+        DCHECK(current_execution_info.ready_context == nullptr);
         context.state_ = ExecutionContext::State::kRunning;
+        current_execution_info.ready_context = &context;
         break;
       }
       case ExecutionContext::State::kSuspended: {
+        DCHECK(current_execution_info.ready_context == nullptr);
         tsl::profiler::TraceMe trace_me("Execute::Suspend");
         DCHECK(context.suspend_handler_);
-        std::move(context.suspend_handler_)([&context]() {
-          auto* work_queue = context.work_queue();
-          DCHECK(work_queue);
-          work_queue->AddTask([&context]() { Execute(context); });
-        });
+        std::move(context.suspend_handler_)([&context]() { Resume(context); });
         return;
       }
       case ExecutionContext::State::kError: {
+        DCHECK(current_execution_info.ready_context == nullptr);
         tsl::profiler::TraceMe trace_me("Execute::Error");
         // Upon an error, we unwind the function stack by calling HandleError()
         // on each register.

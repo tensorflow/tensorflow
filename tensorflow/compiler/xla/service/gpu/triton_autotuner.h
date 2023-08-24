@@ -15,7 +15,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_TRITON_AUTOTUNER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_TRITON_AUTOTUNER_H_
 
-#include <memory>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
@@ -39,8 +38,6 @@ class TritonAutotuner : public HloModulePass {
 
   absl::string_view name() const override { return "triton-autotuner"; }
 
-  static void ClearCompilationCache();
-
   using HloPassInterface::Run;
   StatusOr<bool> Run(
       HloModule* module,
@@ -52,9 +49,9 @@ class TritonAutotuner : public HloModulePass {
 };
 
 // TODO(b/266210099): have a way to generate/load these dynamically.
-// Returns a list of possible tilings for a gemm performed in Triton.
+// Returns a list of possible tilings for a GEMM performed in Triton.
 std::vector<AutotuneResult::TritonGemmKey> GetPossibleMatmulAutotuneConfigs(
-    se::CudaComputeCapability compute_capability,
+    const HloInstruction& instr, se::CudaComputeCapability compute_capability,
     bool exhaustive_tiling_search = false);
 
 }  // namespace gpu

@@ -234,6 +234,23 @@ def PromiseFutureOp: TensorflowMlrt_Op<"promise_future", []> {
   let assemblyFormat = "operands attr-dict";
 }
 
+def PromiseReturnOp: TensorflowMlrt_Op<"promise_return", [Terminator]> {
+  let summary = "Set a tensor in a promise and return from a function with no output";
+
+  let description = [{
+    Set a tensor in a promise and return from a function with no output.
+
+    $promise: A value of type !mlrt.promise. The underlying value must be a tensorflow tensor.
+    $tensor: A tensorflow tensor.
+  }];
+
+  let arguments = (ins
+    MlrtPromiseType:$promise,
+    TFTensorType:$tensor
+  );
+
+  let assemblyFormat = "operands attr-dict";
+}
 
 def AllocateFuturesOp: TensorflowMlrt_Op<"allocate_futures", [AttrSizedResultSegments]> {
   let summary = "Allocate futures and promsies for tensorflow tensors";
@@ -268,6 +285,21 @@ def TensorToIntOp : TensorflowMlrt_Op<"tensor_to_int32", [Pure]> {
 
   let arguments = (ins TFTensorType:$src);
   let results = (outs I32:$result);
+  let assemblyFormat = "operands attr-dict";
+}
+
+def BoolToTensorOp : TensorflowMlrt_Op<"bool_to_tensor", [Pure]> {
+  let summary = "Cast a boolean to a tensor.";
+  let description = [{
+    Cast a boolean to a tensor.
+
+    Example:
+      %one = tf_mlrt.bool_to_tensor %src_bool
+  }];
+
+  let arguments = (ins I1: $src);
+  let results = (outs TFTensorType:$result);
+
   let assemblyFormat = "operands attr-dict";
 }
 
@@ -374,5 +406,25 @@ def MapFnOp : TensorflowMlrt_Op<"map_fn", [AttrSizedOperandSegments, Pure]> {
   let assemblyFormat = "`(`$max_iterations`,` $tensor_list_or_flow_in`,` $invariant_args `)` attr-dict `:` functional-type(operands, results)";
 }
 
+def AsyncWhileOp : TensorflowMlrt_Op<"async_while", [Pure]> {
+  let summary = "Asynchronously execution of while op for tf_mlrt";
+  let description = [{
+    cond: The boolean to control whether the first iteration should be executed.
+    arguments: the last $immutable_size elements are invariants between iterations.
+    results: a list of futures.
+    body_fn: its input are [predicate_promise, arg0_future, arg0_promise, arg1_future, arg1_promise, ..., invariant_args] and has no returned results.
+  }];
+
+  let arguments = (ins TFTensorType:$cond,
+                       Variadic<TFTensorType>:$arguments,
+                       FlatSymbolRefAttr:$body_fn,
+                       I32Attr:$invariant_size);
+
+  let results = (outs Variadic<MlrtFutureType>);
+
+  let assemblyFormat = [{
+    $body_fn `(` $cond `,` $arguments `)` attr-dict `:` `(` type($cond) `,` type($arguments) `)` `->` `(` type(results) `)`
+  }];
+}
 
 #endif

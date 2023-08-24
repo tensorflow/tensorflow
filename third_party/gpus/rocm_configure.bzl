@@ -299,7 +299,8 @@ def _rocm_lib_paths(repository_ctx, lib, basedir):
 
 def _batch_files_exist(repository_ctx, libs_paths, bash_bin):
     all_paths = []
-    for _, lib_paths in libs_paths:
+    for row in libs_paths:
+        lib_paths = row[1]
         for lib_path in lib_paths:
             all_paths.append(lib_path)
     return files_exist(repository_ctx, all_paths, bash_bin)
@@ -309,7 +310,10 @@ def _select_rocm_lib_paths(repository_ctx, libs_paths, bash_bin):
 
     libs = {}
     i = 0
-    for name, lib_paths in libs_paths:
+    for row in libs_paths:
+        name = row[0]
+        lib_paths = row[1]
+        optional = (len(row) > 2 and row[2] == True)
         selected_path = None
         for path in lib_paths:
             if test_results[i] and selected_path == None:
@@ -317,7 +321,11 @@ def _select_rocm_lib_paths(repository_ctx, libs_paths, bash_bin):
                 selected_path = path
             i = i + 1
         if selected_path == None:
-            auto_configure_fail("Cannot find rocm library %s" % name)
+            if optional:
+                libs[name] = None
+                continue
+            else:
+                auto_configure_fail("Cannot find rocm library %s" % name)
 
         libs[name] = struct(file_name = selected_path.basename, path = realpath(repository_ctx, selected_path, bash_bin))
 
@@ -351,6 +359,10 @@ def _find_libs(repository_ctx, rocm_config, hipfft_or_rocfft, miopen_path, rccl_
     if int(rocm_config.rocm_version_number) >= 40500:
         libs_paths.append(("hipsolver", _rocm_lib_paths(repository_ctx, "hipsolver", rocm_config.rocm_toolkit_path)))
         libs_paths.append(("hipblas", _rocm_lib_paths(repository_ctx, "hipblas", rocm_config.rocm_toolkit_path)))
+
+    # hipblaslt may be absent even in versions of ROCm where it exists
+    # (it is not installed by default in some containers). Autodetect.
+    libs_paths.append(("hipblaslt", _rocm_lib_paths(repository_ctx, "hipblaslt", rocm_config.rocm_toolkit_path), True))
     return _select_rocm_lib_paths(repository_ctx, libs_paths, bash_bin)
 
 def _exec_find_rocm_config(repository_ctx, script_path):
@@ -461,6 +473,7 @@ def _create_dummy_repository(repository_ctx):
             "%{rocm_extra_copts}": "[]",
             "%{rocm_gpu_architectures}": "[]",
             "%{rocm_version_number}": "0",
+            "%{rocm_hipblaslt}": "False",
         },
     )
     _tpl(
@@ -479,6 +492,7 @@ def _create_dummy_repository(repository_ctx):
             "%{roctracer_lib}": _lib_name("roctracer64"),
             "%{rocsolver_lib}": _lib_name("rocsolver"),
             "%{hipsolver_lib}": _lib_name("hipsolver"),
+            "%{hipblaslt_lib}": _lib_name("hipblaslt"),
             "%{copy_rules}": "",
             "%{rocm_headers}": "",
         },
@@ -495,6 +509,7 @@ def _create_dummy_repository(repository_ctx):
         "rocm:rocm_config.h",
         {
             "%{rocm_toolkit_path}": _DEFAULT_ROCM_TOOLKIT_PATH,
+            "%{hipblaslt_flag}": "0",
         },
         "rocm/rocm/rocm_config.h",
     )
@@ -611,8 +626,9 @@ def _create_local_rocm_repository(repository_ctx):
     rocm_lib_srcs = []
     rocm_lib_outs = []
     for lib in rocm_libs.values():
-        rocm_lib_srcs.append(lib.path)
-        rocm_lib_outs.append("rocm/lib/" + lib.file_name)
+        if lib:
+            rocm_lib_srcs.append(lib.path)
+            rocm_lib_outs.append("rocm/lib/" + lib.file_name)
     copy_rules.append(make_copy_files_rule(
         repository_ctx,
         name = "rocm-lib",
@@ -634,6 +650,8 @@ def _create_local_rocm_repository(repository_ctx):
         ],
     ))
 
+    have_hipblaslt = "1" if rocm_libs["hipblaslt"] != None else "0"
+
     # Set up BUILD file for rocm/
     repository_ctx.template(
         "rocm/build_defs.bzl",
@@ -646,6 +664,7 @@ def _create_local_rocm_repository(repository_ctx):
             ),
             "%{rocm_gpu_architectures}": str(rocm_config.amdgpu_targets),
             "%{rocm_version_number}": str(rocm_version_number),
+            "%{rocm_hipblaslt}": "True" if rocm_libs["hipblaslt"] != None else "False",
         },
     )
 
@@ -665,6 +684,9 @@ def _create_local_rocm_repository(repository_ctx):
                             hiprand_include +
                             rocrand_include),
     }
+    if rocm_libs["hipblaslt"] != None:
+        repository_dict["%{hipblaslt_lib}"] = rocm_libs["hipblaslt"].file_name
+
     if rocm_version_number >= 40500:
         repository_dict["%{hipsolver_lib}"] = rocm_libs["hipsolver"].file_name
         repository_dict["%{hipblas_lib}"] = rocm_libs["hipblas"].file_name
@@ -753,6 +775,7 @@ def _create_local_rocm_repository(repository_ctx):
             "%{rocm_version_number}": rocm_config.rocm_version_number,
             "%{miopen_version_number}": rocm_config.miopen_version_number,
             "%{hipruntime_version_number}": rocm_config.hipruntime_version_number,
+            "%{hipblaslt_flag}": have_hipblaslt,
         },
     )
 

@@ -94,19 +94,25 @@ static std::string GetOpTypeFromLoc(Location loc) {
   return llvm::join(loc_op_types.begin(), loc_op_types.end(), ";");
 }
 
-xla::OpMetadata CreateOpMetadataFromLocation(mlir::Operation* op) {
+xla::OpMetadata CreateOpMetadataFromLocation(
+    mlir::Operation* op, mlir::StackFrameIndexBuilder* frame_index_builder) {
   xla::OpMetadata metadata;
   mlir::Location loc = op->getLoc();
-  if (loc.isa<mlir::UnknownLoc>()) return metadata;
+  if (isa<mlir::UnknownLoc>(loc)) return metadata;
 
   std::string name = GetNameFromLocImpl(loc);
   metadata.set_op_name(name);
   std::string op_type = GetOpTypeFromLoc(loc);
   metadata.set_op_type(op_type);
 
-  if (auto name_loc = op->getLoc().dyn_cast<mlir::NameLoc>()) {
+  if (auto name_loc = dyn_cast<mlir::NameLoc>(op->getLoc())) {
     loc = name_loc.getChildLoc();
-    if (loc.isa<mlir::UnknownLoc>()) return metadata;
+    if (isa<mlir::UnknownLoc>(loc)) return metadata;
+
+    if (frame_index_builder != nullptr) {
+      int frameId = frame_index_builder->AddCallStackAndGetFirstFrameId(loc);
+      metadata.set_stack_frame_id(frameId);
+    }
   }
 
   if (auto file_line_col_loc = loc.dyn_cast<mlir::FileLineColLoc>()) {

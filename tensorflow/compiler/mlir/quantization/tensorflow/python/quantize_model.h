@@ -55,7 +55,8 @@ absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
     absl::string_view saved_model_path,
     const std::vector<std::string>& signature_keys,
     const std::unordered_set<std::string>& tags,
-    const QuantizationOptions& quantization_options);
+    const QuantizationOptions& quantization_options,
+    const absl::flat_hash_map<std::string, std::string>& function_aliases);
 
 absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
     absl::string_view saved_model_path,

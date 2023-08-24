@@ -18,6 +18,7 @@ import numpy as np
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import cond
 from tensorflow.python.ops import gen_array_ops
@@ -62,7 +63,7 @@ def _RegularizedGramianCholesky(matrix, l2_regularizer, first_kind):
 
   gramian = math_ops.matmul(
       matrix, matrix, adjoint_a=first_kind, adjoint_b=not first_kind)
-  if isinstance(l2_regularizer, ops.Tensor) or l2_regularizer != 0:
+  if isinstance(l2_regularizer, tensor_lib.Tensor) or l2_regularizer != 0:
     matrix_shape = array_ops.shape(matrix)
     batch_shape = matrix_shape[:-2]
     if first_kind:

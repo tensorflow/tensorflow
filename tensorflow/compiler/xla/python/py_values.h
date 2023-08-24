@@ -26,6 +26,7 @@ limitations under the License.
 #include "pybind11/numpy.h"  // from @pybind11
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/python/ifrt/memory.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
 
 namespace xla {
@@ -60,7 +61,8 @@ struct DevicePutOptions {
 };
 StatusOr<DevicePutResult> DevicePut(pybind11::handle arg, ifrt::Client* client,
                                     ifrt::Device* to_device,
-                                    const DevicePutOptions& options);
+                                    const DevicePutOptions& options,
+                                    ifrt::MemoryKind to_memory_kind);
 
 // Returns `true` if `arg` is a JAX float0 array.
 bool IsFloat0(pybind11::array arg);

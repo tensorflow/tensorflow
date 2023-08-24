@@ -19,6 +19,7 @@ See the [constants guide](https://tensorflow.org/api_guides/python/constant_op).
 
 # Must be separate from array_ops to avoid a cyclic dependency.
 
+from typing import Union
 import numpy as np
 from tensorflow.core.framework import types_pb2
 from tensorflow.core.protobuf import struct_pb2
@@ -26,6 +27,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -65,7 +67,7 @@ def _eager_identity(tensor, ctx):
   return result
 
 
-def convert_to_eager_tensor(value, ctx, dtype=None):
+def convert_to_eager_tensor(value, ctx, dtype=None) -> ops._EagerTensorBase:
   """Converts the given `value` to an `EagerTensor`.
 
   Note that this function could return cached copies of created constants for
@@ -103,7 +105,8 @@ def convert_to_eager_tensor(value, ctx, dtype=None):
 
 @tf_export(v1=["constant"])
 def constant_v1(
-    value, dtype=None, shape=None, name="Const", verify_shape=False):
+    value, dtype=None, shape=None, name="Const", verify_shape=False
+) -> Union[ops.Operation, ops._EagerTensorBase]:
   """Creates a constant tensor.
 
   The resulting tensor is populated with values of type `dtype`, as
@@ -167,7 +170,9 @@ def constant_v1(
 
 
 @tf_export("constant", v1=[])
-def constant(value, dtype=None, shape=None, name="Const"):
+def constant(
+    value, dtype=None, shape=None, name="Const"
+) -> Union[ops.Operation, ops._EagerTensorBase]:
   """Creates a constant tensor from a tensor-like object.
 
   Note: All eager `tf.Tensor` values are immutable (in contrast to
@@ -268,7 +273,8 @@ def constant(value, dtype=None, shape=None, name="Const"):
 
 
 def _constant_impl(
-    value, dtype, shape, name, verify_shape, allow_broadcast):
+    value, dtype, shape, name, verify_shape, allow_broadcast
+) -> Union[ops.Operation, ops._EagerTensorBase]:
   """Implementation of constant."""
   ctx = context.context()
   if ctx.executing_eagerly():
@@ -283,7 +289,9 @@ def _constant_impl(
   return const_tensor
 
 
-def _constant_eager_impl(ctx, value, dtype, shape, verify_shape):
+def _constant_eager_impl(
+    ctx, value, dtype, shape, verify_shape
+) -> ops._EagerTensorBase:
   """Creates a constant on the current device."""
   t = convert_to_eager_tensor(value, ctx, dtype)
   if shape is None:
@@ -314,7 +322,7 @@ def _constant_eager_impl(ctx, value, dtype, shape, verify_shape):
 
 
 def is_constant(tensor_or_op):
-  if isinstance(tensor_or_op, ops.Tensor):
+  if isinstance(tensor_or_op, tensor_lib.Tensor):
     op = tensor_or_op.op
   else:
     op = tensor_or_op
@@ -400,7 +408,7 @@ class _ConstantTensorCodec:
   """Codec for Tensor."""
 
   def can_encode(self, pyobj):
-    return isinstance(pyobj, ops.Tensor)
+    return isinstance(pyobj, tensor_lib.Tensor)
 
   def do_encode(self, tensor_value, encode_fn):
     """Returns an encoded `TensorProto` for the given `tf.Tensor`."""

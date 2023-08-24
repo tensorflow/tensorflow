@@ -3367,3 +3367,24 @@ tf_cc_fuzz_test(
         "//tensorflow/core/ops",
     ],
 )
+
+cc_library(
+    name = "serving_device_selector",
+    srcs = ["serving_device_selector.cc"],
+    hdrs = ["serving_device_selector.h"],
+    copts = tf_copts(),
+    deps = [
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "serving_device_selector_policies",
+    srcs = ["serving_device_selector_policies.cc"],
+    hdrs = ["serving_device_selector_policies.h"],
+    copts = tf_copts(),
+    deps = [
+        ":serving_device_selector",
+    ],
+)

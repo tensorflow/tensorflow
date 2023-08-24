@@ -205,7 +205,7 @@ class SparseTensor(internal.NativeObject, composite_tensor.CompositeTensor):
     return SparseTensor(self._indices, new_values, self._dense_shape)
 
   @property
-  def op(self):
+  def op(self) -> ops.Operation:
     """The `Operation` that produces `values` as an output."""
     return self._values.op
 

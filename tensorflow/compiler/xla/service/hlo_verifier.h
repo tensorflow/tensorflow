@@ -246,6 +246,10 @@ class ShapeVerifier : public DfsHloVisitor {
   Status CheckShape(const HloInstruction* instruction,
                     const StatusOr<Shape>& inferred_shape_status);
 
+  static Status CheckParameterCount(const HloInstruction* calling_instruction,
+                                    const HloComputation* computation,
+                                    int expected);
+
   // Check a unary (binary, etc) instruction's shape against the inferred shape.
   Status CheckUnaryShape(const HloInstruction* instruction);
   Status CheckBinaryShape(const HloInstruction* instruction);

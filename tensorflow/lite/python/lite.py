@@ -73,7 +73,6 @@ from tensorflow.lite.python.util import trace_model_call as _trace_model_call
 from tensorflow.lite.tools import flatbuffer_utils
 from tensorflow.lite.tools.optimize.debugging.python.debugger import QuantizationDebugger  # pylint: disable=unused-import
 from tensorflow.lite.tools.optimize.debugging.python.debugger import QuantizationDebugOptions  # pylint: disable=unused-import
-from tensorflow.python import saved_model as _saved_model
 from tensorflow.python.client import session as _session
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function as _def_function
@@ -88,6 +87,7 @@ from tensorflow.python.framework.importer import import_graph_def as _import_gra
 from tensorflow.python.platform import gfile
 from tensorflow.python.saved_model import loader_impl as _loader_impl
 from tensorflow.python.saved_model import save_options as _save_options
+from tensorflow.python.saved_model import saved_model as _saved_model
 from tensorflow.python.saved_model import signature_constants as _signature_constants
 from tensorflow.python.saved_model import tag_constants as _tag_constants
 from tensorflow.python.saved_model.load import load as _load
@@ -635,7 +635,6 @@ class TFLiteConverterBase:
     self._experimental_enable_dynamic_update_slice = False
     self._experimental_preserve_assert_op = False
     self._experimental_guarantee_all_funcs_one_use = False
-    self._experimental_enable_hlo_to_tf_conversion = False
 
     # When the value is true, the MLIR quantantizer triggers dynamic range
     # quantization in MLIR instead of the old quantizer. Used only if
@@ -655,7 +654,11 @@ class TFLiteConverterBase:
     self.mlir_dump_dir = None
     self.mlir_dump_pass_regex = None
     self.mlir_dump_func_regex = None
-    self.mlir_enable_timing = False
+    self.mlir_enable_timing = None
+    self.mlir_print_ir_before = None
+    self.mlir_print_ir_after = None
+    self.mlir_print_ir_module_scope = None
+    self.mlir_elide_elementsattrs_if_larger = None
 
   def _grappler_config(self, optimizers=None):
     """Creates a tf.compat.v1.ConfigProto for configuring Grappler.
@@ -786,13 +789,16 @@ class TFLiteConverterBase:
         "allow_all_select_tf_ops": self._experimental_allow_all_select_tf_ops,
         "disable_fuse_mul_and_fc": self._experimental_disable_fuse_mul_and_fc,
         "quantization_options": self._experimental_quantization_options,
-        "enable_hlo_to_tf_conversion": (
-            self._experimental_enable_hlo_to_tf_conversion
-        ),
         "mlir_dump_dir": self.mlir_dump_dir,
         "mlir_dump_pass_regex": self.mlir_dump_pass_regex,
         "mlir_dump_func_regex": self.mlir_dump_func_regex,
         "mlir_enable_timing": self.mlir_enable_timing,
+        "mlir_print_ir_before": self.mlir_print_ir_before,
+        "mlir_print_ir_after": self.mlir_print_ir_after,
+        "mlir_print_ir_module_scope": self.mlir_print_ir_module_scope,
+        "mlir_elide_elementsattrs_if_larger": (
+            self.mlir_elide_elementsattrs_if_larger
+        ),
         "use_buffer_offset": self._experimental_use_buffer_offset,
     }
 
@@ -2121,6 +2127,11 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
     return TFLiteKerasModelConverterV2(model)
 
   @classmethod
+  @_deprecation.deprecated(
+      None,
+      "Use `jax2tf.convert` and (`lite.TFLiteConverter.from_saved_model`"
+      " or `lite.TFLiteConverter.from_concrete_functions`) instead.",
+  )
   def experimental_from_jax(cls, serving_funcs, inputs):
     # Experimental API, subject to changes.
     # TODO(b/197690428): Currently only support single function.

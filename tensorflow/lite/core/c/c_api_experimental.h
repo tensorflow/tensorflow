@@ -101,6 +101,7 @@ TFL_CAPI_EXPORT void TfLiteInterpreterOptionsAddCustomOp(
 /// The `TfLiteInterpreterOptionsSetOpResolverExternal` function provides an
 /// alternative method for registering builtin ops and/or custom ops, by
 /// providing operator resolver callbacks.  Unlike using
+/// `TfLiteInterpreterOptionsAddRegistrationExternal`,
 /// `TfLiteInterpreterOptionsAddBuiltinOp` and/or
 /// `TfLiteInterpreterOptionsAddAddCustomOp`, these let you register all the
 /// operators in a single call.
@@ -124,6 +125,34 @@ void TfLiteInterpreterOptionsSetOpResolverExternal(
     const TfLiteRegistrationExternal* (*find_custom_op)(void* user_data,
                                                         const char* custom_op,
                                                         int version),
+    void* op_resolver_user_data);
+
+/// \private
+/// Registers callbacks for resolving builtin or custom operators.
+///
+/// This combines the effects of TfLiteInterpreterOptionsSetOpResolverExternal
+/// and TfLiteInterpreterOptionsSetOpResolver.  The callbacks that return
+/// TfLiteRegistrationExternal will be called first, but if they return a
+/// TfLiteRegistrationExternal object that has no methods set, then
+/// the callbacks that return a TfLiteRegistration will be called to get
+/// the methods.
+///
+/// WARNING: This function is experimental and subject to change.
+///
+/// WARNING: This function is not an official part of the API,
+/// and should not be used by apps.  It is intended for use only from
+/// TF Lite itself.
+void TfLiteInterpreterOptionsSetOpResolverExternalWithFallback(
+    TfLiteInterpreterOptions* options,
+    const TfLiteRegistrationExternal* (*find_builtin_op_external)(
+        void* user_data, int op, int version),
+    const TfLiteRegistrationExternal* (*find_custom_op_external)(
+        void* user_data, const char* custom_op, int version),
+    const TfLiteRegistration* (*find_builtin_op)(void* user_data,
+                                                 TfLiteBuiltinOperator op,
+                                                 int version),
+    const TfLiteRegistration* (*find_custom_op)(void* user_data, const char* op,
+                                                int version),
     void* op_resolver_user_data);
 
 /// Registers callbacks for resolving builtin or custom operators.

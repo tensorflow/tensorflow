@@ -1,6 +1,6 @@
 load(
     "//tensorflow:tensorflow.default.bzl",
-    "get_compatible_with_cloud",
+    "get_compatible_with_portable",
 )
 load(
     "//tensorflow:tensorflow.bzl",
@@ -21,7 +21,7 @@ cc_library(
     name = "save_variables",
     srcs = ["save_variables.cc"],
     hdrs = ["save_variables.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/core:framework",
@@ -68,7 +68,7 @@ cc_library(
     name = "const_op_size",
     srcs = ["const_op_size.cc"],
     hdrs = ["const_op_size.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_remaining_ops",
@@ -97,7 +97,7 @@ cc_library(
     name = "convert_asset_args",
     srcs = ["convert_asset_args.cc"],
     hdrs = ["convert_asset_args.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:import_model",
@@ -128,7 +128,7 @@ tf_cc_test(
 cc_library(
     name = "status_macro",
     hdrs = ["status_macro.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/tsl/platform:macros",
         "@com_google_absl//absl/status",
@@ -150,7 +150,7 @@ cc_library(
     name = "run_passes",
     srcs = ["run_passes.cc"],
     hdrs = ["run_passes.h"],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/compiler/mlir/quantization/tensorflow/debugging:mlir_dump",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
@@ -170,7 +170,7 @@ cc_library(
     hdrs = [
         "constant_fold.h",
     ],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/compiler/mlir/quantization/tensorflow/utils:lift_as_function_call_utils",
         "//tensorflow/compiler/mlir/tensorflow",

@@ -339,19 +339,6 @@ StatusOr<std::unique_ptr<se::KernelBase>> CreateKernel(
   return std::move(kernel_base);
 }
 
-template <int n>
-static std::unique_ptr<se::KernelArgsArrayBase> MakeKernelArgs(
-    absl::Span<const se::DeviceMemoryBase> args, uint32_t shared_mem_bytes) {
-  auto kernel_args = std::make_unique<se::KernelArgsArray<n>>();
-  for (const se::DeviceMemoryBase& buf : args) {
-    kernel_args->add_device_memory_argument(buf);
-  }
-  if (shared_mem_bytes > 0) {
-    kernel_args->add_shared_bytes(shared_mem_bytes);
-  }
-  return kernel_args;
-}
-
 Status ExecuteKernelOnStream(const se::KernelBase& kernel,
                              absl::Span<const se::DeviceMemoryBase> args,
                              const LaunchDimensions& dims, se::Stream* stream) {
@@ -364,11 +351,11 @@ Status ExecuteKernelOnStream(const se::KernelBase& kernel,
   // specializations for smaller sizes. 64 arguments are likely to fit in a
   // 4KiB page.
   if (args.size() <= 64) {
-    kernel_args = MakeKernelArgs<64>(args, shared_mem_bytes);
+    kernel_args = se::MakeKernelArgs<64>(args, shared_mem_bytes);
   } else if (args.size() <= 256) {
-    kernel_args = MakeKernelArgs<256>(args, shared_mem_bytes);
+    kernel_args = se::MakeKernelArgs<256>(args, shared_mem_bytes);
   } else {
-    kernel_args = MakeKernelArgs<kKernelArgsLimit>(args, shared_mem_bytes);
+    kernel_args = se::MakeKernelArgs<kKernelArgsLimit>(args, shared_mem_bytes);
   }
 
   LaunchDimensions::Dim3D thread_counts = dims.thread_counts_per_block();
@@ -485,6 +472,8 @@ StatusOr<se::dnn::ConvolutionKind> GetDNNConvKindFromCudnnConvKind(
       return se::dnn::FORWARD;
     case CudnnConvKind::kForwardActivation:
       return se::dnn::FORWARD_BIAS_ACTIVATION;
+    case CudnnConvKind::kForwardGraph:
+      return se::dnn::FORWARD_GRAPH;
     default:
       break;
   }
@@ -496,15 +485,26 @@ StatusOr<se::dnn::FusedMHAKind> GetDNNFusedMHAKindFromCudnnfMHAKind(
   switch (kind) {
     case CudnnfMHAKind::kScaleBiasMaskSoftmaxDropout:
     case CudnnfMHAKind::kScaleMaskSoftmaxDropout:
-    case CudnnfMHAKind::kSoftmaxDropout:
     case CudnnfMHAKind::kBmmBmm:
     case CudnnfMHAKind::kScaleBiasMaskSoftmax:
     case CudnnfMHAKind::kScaleMaskSoftmax:
     case CudnnfMHAKind::kScaleBiasSoftmax:
     case CudnnfMHAKind::kScaleBiasSoftmaxDropout:
       return se::dnn::FusedMHAKind::BMM1_OUTPUT_INPUT_TYPE;
+    case CudnnfMHAKind::kSoftmaxDropout:
     case CudnnfMHAKind::kSoftmax:
       return se::dnn::FusedMHAKind::BMM1_OUTPUT_FLOAT;
+    // backward
+    case CudnnfMHAKind::kBackwardScaleBiasMaskSoftmaxDropout:
+    case CudnnfMHAKind::kBackwardScaleMaskSoftmaxDropout:
+    case CudnnfMHAKind::kBackwardBmmBmm:
+    case CudnnfMHAKind::kBackwardScaleBiasMaskSoftmax:
+    case CudnnfMHAKind::kBackwardScaleMaskSoftmax:
+    case CudnnfMHAKind::kBackwardScaleBiasSoftmax:
+    case CudnnfMHAKind::kBackwardScaleBiasSoftmaxDropout:
+    case CudnnfMHAKind::kBackwardSoftmaxDropout:
+    case CudnnfMHAKind::kBackwardSoftmax:
+      return se::dnn::FusedMHAKind::BMM1_OUTPUT_INPUT_TYPE;
   }
   return InternalError("Unexpected fMHA kind");
 }
@@ -524,6 +524,10 @@ StatusOr<se::dnn::DataType> GetDNNDataTypeFromPrimitiveType(
       return se::dnn::ToDataType<int32_t>::value;
     case BF16:
       return se::dnn::ToDataType<Eigen::bfloat16>::value;
+    case F8E4M3FN:
+      return se::dnn::ToDataType<tsl::float8_e4m3fn>::value;
+    case F8E5M2:
+      return se::dnn::ToDataType<tsl::float8_e5m2>::value;
     default:
       break;
   }

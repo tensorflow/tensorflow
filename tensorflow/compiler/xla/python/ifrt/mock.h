@@ -29,6 +29,7 @@ limitations under the License.
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/pjrt/pjrt_device_description.h"
+#include "tensorflow/compiler/xla/python/ifrt/array.h"
 #include "tensorflow/compiler/xla/python/ifrt/client.h"
 #include "tensorflow/compiler/xla/python/ifrt/compiler.h"
 #include "tensorflow/compiler/xla/python/ifrt/dtype.h"
@@ -45,6 +46,10 @@ namespace ifrt {
 
 class MockArray final : public llvm::RTTIExtends<MockArray, Array> {
  public:
+  MockArray() = default;
+  explicit MockArray(tsl::RCReference<xla::ifrt::Array> delegated);
+
+  // LINT.IfChange
   MOCK_METHOD(Client*, client, (), (const, final));
   MOCK_METHOD(Future<Status>, GetReadyFuture, (), (const, final));
   MOCK_METHOD(Future<Status>, Delete, (), (final));
@@ -70,14 +75,24 @@ class MockArray final : public llvm::RTTIExtends<MockArray, Array> {
               (std::shared_ptr<const Sharding> new_sharding,
                ArrayCopySemantics semantics),
               (final));
+  // LINT.ThenChange(mock.cc:MockArrayDelegation)
+
+  tsl::RCReference<xla::ifrt::Array> delegated() const { return delegated_; }
 
   static char ID;  // NOLINT
+
+ private:
+  const tsl::RCReference<xla::ifrt::Array> delegated_;
 };
 
 // client.h
 
 class MockClient final : public llvm::RTTIExtends<MockClient, Client> {
  public:
+  MockClient() = default;
+  explicit MockClient(std::unique_ptr<xla::ifrt::Client> delegated);
+
+  // LINT.IfChange
   MOCK_METHOD(StatusOr<tsl::RCReference<Array>>, MakeArrayFromHostBuffer,
               (const void* data, DType dtype, Shape shape,
                std::optional<absl::Span<const int64_t>> byte_strides,
@@ -96,8 +111,8 @@ class MockClient final : public llvm::RTTIExtends<MockClient, Client> {
   MOCK_METHOD(absl::string_view, runtime_type, (), (const, final));
   MOCK_METHOD(absl::string_view, platform_name, (), (const, final));
   MOCK_METHOD(absl::string_view, platform_version, (), (const, final));
-  MOCK_METHOD(PlatformId, platform_id, (), (const, final));
   MOCK_METHOD(int, device_count, (), (const, final));
+  MOCK_METHOD(PlatformId, platform_id, (), (const, final));
   MOCK_METHOD(int, addressable_device_count, (), (const, final));
   MOCK_METHOD(absl::Span<Device* const>, devices, (), (const, final));
   MOCK_METHOD(absl::Span<Device* const>, addressable_devices, (),
@@ -107,8 +122,18 @@ class MockClient final : public llvm::RTTIExtends<MockClient, Client> {
               (int num_replicas, int num_partitions), (const, final));
   MOCK_METHOD(StatusOr<Device*>, LookupDevice, (int device_id), (const, final));
   MOCK_METHOD(Compiler*, GetDefaultCompiler, (), (final));
+  MOCK_METHOD(
+      absl::StatusOr<std::shared_ptr<const xla::PjRtTopologyDescription>>,
+      GetTopologyForDevices, (absl::Span<xla::ifrt::Device* const> devices),
+      (const, final));
+  // LINT.ThenChange(mock.cc:MockClientDelegation)
+
+  xla::ifrt::Client* delegated() const { return delegated_.get(); }
 
   static char ID;  // NOLINT
+
+ private:
+  const std::unique_ptr<xla::ifrt::Client> delegated_;
 };
 
 // compiler.h
@@ -132,6 +157,10 @@ class MockCompiler final : public llvm::RTTIExtends<MockCompiler, Compiler> {
 
 class MockDevice final : public Device {
  public:
+  MockDevice() = default;
+  explicit MockDevice(Device* delegated);
+
+  // LINT.IfChange
   MOCK_METHOD(xla::PjRtClient*, client, (), (const, final));
   MOCK_METHOD(bool, IsAddressable, (), (const, final));
   MOCK_METHOD(const xla::PjRtDeviceDescription&, description, (),
@@ -151,10 +180,18 @@ class MockDevice final : public Device {
   MOCK_METHOD(Status, TransferToInfeed, (const LiteralSlice& literal), (final));
   MOCK_METHOD(Status, TransferFromOutfeed, (MutableBorrowingLiteral literal),
               (final));
+  MOCK_METHOD(StatusOr<xla::PjRtMemorySpace*>, default_memory_space, (),
+              (const, final));
   MOCK_METHOD(StatusOr<tsl::AllocatorStats>, GetAllocatorStats, (),
               (const, final));
   MOCK_METHOD(absl::Span<xla::PjRtMemorySpace* const>, memory_spaces, (),
               (const, final));
+  // LINT.ThenChange(mock.cc:MockDeviceDelegation)
+
+  Device* delegated() const { return delegated_; }
+
+ private:
+  Device* const delegated_ = nullptr;
 };
 
 // executable.h
@@ -198,6 +235,8 @@ class MockLoadedExecutable final
               (const, final));
   MOCK_METHOD(std::optional<std::vector<OpSharding>>, GetOutputShardings, (),
               (const, final));
+  MOCK_METHOD(absl::StatusOr<std::vector<std::vector<absl::string_view>>>,
+              GetOutputMemoryKinds, (), (const, final));
   MOCK_METHOD(StatusOr<std::vector<std::shared_ptr<HloModule>>>, GetHloModules,
               (), (const, final));
   MOCK_METHOD((StatusOr<absl::flat_hash_map<std::string,

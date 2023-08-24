@@ -240,6 +240,7 @@ cc_library(
     }) + [
         ":api",
         ":delegate_options",
+        ":tflite_profile",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/core/async:backend_async_kernel_interface",
@@ -265,5 +266,16 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "tflite_profile",
+    srcs = ["tflite_profile.cc"],
+    hdrs = ["tflite_profile.h"],
+    deps = [
+        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/delegates/gpu/common/task:profiling_info",
+        "@com_google_absl//absl/time",
     ],
 )

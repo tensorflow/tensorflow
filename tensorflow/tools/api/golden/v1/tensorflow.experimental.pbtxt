@@ -69,6 +69,10 @@ tf_module {
     argspec: "args=[\'x_type\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "enable_strict_mode"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "function_executor_type"
     argspec: "args=[\'executor_type\'], varargs=None, keywords=None, defaults=None"
   }

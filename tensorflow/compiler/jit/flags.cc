@@ -157,6 +157,14 @@ void AppendMarkForCompilationPassFlagsInternal(std::vector<Flag>* flag_list) {
            &mark_for_compilation_flags->tf_xla_persistent_cache_directory,
            "If non-empty, JIT-compiled executables are saved to and loaded "
            "from the specified file system directory path. Empty by default."),
+      Flag("tf_xla_persistent_cache_device_types",
+           &mark_for_compilation_flags->tf_xla_persistent_cache_device_types,
+           "If non-empty, the persistent cache will only be used for the "
+           "specified devices (comma separated). Each device type should be "
+           "able to be converted to `DeviceType`."),
+      Flag("tf_xla_persistent_cache_read_only",
+           &mark_for_compilation_flags->tf_xla_persistent_cache_read_only,
+           "If true, the persistent cache will be read-only."),
       Flag("tf_xla_disable_strict_signature_checks",
            &mark_for_compilation_flags->tf_xla_disable_strict_signature_checks,
            "If true, entires loaded into the XLA compile cache will not have "
@@ -195,6 +203,7 @@ void AllocateAndParseFlags() {
   build_ops_flags->tf_xla_check_cluster_output_numerics = false;
   build_ops_flags->tf_xla_disable_constant_folding = false;
   build_ops_flags->tf_xla_disable_full_embedding_pipelining = false;
+  build_ops_flags->tf_xla_embedding_parallel_iterations = 0;
 
   mark_for_compilation_flags = new MarkForCompilationPassFlags;
   mark_for_compilation_flags->xla_auto_jit_flag.optimization_level_single_gpu =
@@ -213,6 +222,8 @@ void AllocateAndParseFlags() {
       ->tf_xla_disable_resource_variable_safety_checks_for_debugging = false;
   mark_for_compilation_flags->tf_xla_deterministic_cluster_names = false;
   mark_for_compilation_flags->tf_xla_persistent_cache_directory = "";
+  mark_for_compilation_flags->tf_xla_persistent_cache_device_types = "";
+  mark_for_compilation_flags->tf_xla_persistent_cache_read_only = false;
   mark_for_compilation_flags->tf_xla_disable_strict_signature_checks = false;
   mark_for_compilation_flags->tf_xla_persistent_cache_prefix =
       "xla_compile_cache";
@@ -243,6 +254,7 @@ void AllocateAndParseFlags() {
   bool enable_mlir_bridge_is_explicit = false;
   bool enable_mlir_merge_control_flow_pass = true;
   bool enable_mlir_convert_control_to_data_outputs_pass = false;
+  bool enable_mlir_strict_clusters = false;
   // Dump graphs in TFG dialect.
   bool use_tfg_graph_dumper = false;
   bool enable_mlir_generic_outside_compilation = false;
@@ -270,6 +282,11 @@ void AllocateAndParseFlags() {
             &build_ops_flags->tf_xla_disable_full_embedding_pipelining,
             "If true then disables full embedding pipelining and instead use "
             "strict SparseCore / TensorCore sequencing."),
+       Flag("tf_xla_embedding_parallel_iterations",
+            &build_ops_flags->tf_xla_embedding_parallel_iterations,
+            "If >0 then use this many parallel iterations in "
+            "embedding_pipelining and embedding_sequency. By default, use the "
+            "parallel_iterations on the original model WhileOp."),
 
        Flag("tf_xla_compile_on_demand", &device_flags->tf_xla_compile_on_demand,
             "Switch a device into 'on-demand' mode, where instead of "
@@ -329,6 +346,8 @@ void AllocateAndParseFlags() {
             &enable_mlir_convert_control_to_data_outputs_pass,
             "Enables `tf-executor-convert-control-to-data-outputs` pass for "
             "MLIR-Based TensorFlow Compiler Bridge."),
+       Flag("tf_mlir_enable_strict_clusters", &enable_mlir_strict_clusters,
+            "Do not allow clusters that have cyclic control dependencies."),
        Flag("tf_dump_graphs_in_tfg", &use_tfg_graph_dumper,
             "When tf_dump_graphs_in_tfg is true, graphs after transformations "
             "are dumped in MLIR TFG dialect and not in GraphDef"),
@@ -355,6 +374,7 @@ void AllocateAndParseFlags() {
       enable_mlir_merge_control_flow_pass;
   mlir_flags->tf_mlir_enable_convert_control_to_data_outputs_pass =
       enable_mlir_convert_control_to_data_outputs_pass;
+  mlir_flags->tf_mlir_enable_strict_clusters = enable_mlir_strict_clusters;
   mlir_flags->tf_mlir_enable_generic_outside_compilation =
       enable_mlir_generic_outside_compilation;
 

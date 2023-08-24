@@ -16,6 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_NCCL_UTILS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_NCCL_UTILS_H_
 
+#if TENSORFLOW_USE_ROCM
+#define __HIP_DISABLE_CPP_FUNCTIONS__
+#endif
+
 #include <memory>
 #include <utility>
 #include <vector>
@@ -30,6 +34,7 @@ limitations under the License.
 
 // Common place for all collective thunks to include nccl/rccl headers.
 #if TENSORFLOW_USE_ROCM
+#include "rocm/rocm_config.h"
 #if (TF_ROCM_VERSION >= 50200)
 #include "rocm/include/rccl/rccl.h"
 #else

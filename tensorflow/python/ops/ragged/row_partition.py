@@ -26,9 +26,9 @@ from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.framework import type_spec_registry
@@ -161,7 +161,7 @@ class RowPartition(composite_tensor.CompositeTensor):
                        "RowPartition.from_row_lengths())")
 
     # Validate the arguments.
-    if not isinstance(row_splits, ops.Tensor):
+    if not isinstance(row_splits, tensor_lib.Tensor):
       raise TypeError("Row-partitioning argument must be a Tensor, got %r" %
                       row_splits)
     if row_splits.dtype not in (dtypes.int32, dtypes.int64):
@@ -177,7 +177,7 @@ class RowPartition(composite_tensor.CompositeTensor):
     # lengths or rowids, and we later want those lengths/rowids back.
     for tensor in [row_lengths, value_rowids, nrows, uniform_row_length, nvals]:
       if tensor is not None:
-        if not isinstance(tensor, ops.Tensor):
+        if not isinstance(tensor, tensor_lib.Tensor):
           raise TypeError("Cached value must be a Tensor or None.")
         elif tensor.dtype != row_splits.dtype:
           raise ValueError(f"Inconsistent dtype for encoding tensors: "
@@ -355,7 +355,7 @@ class RowPartition(composite_tensor.CompositeTensor):
       raise TypeError("validate must have type bool")
     if isinstance(row_splits, (list, tuple)) and not row_splits:
       raise ValueError("row_splits tensor may not be empty.")
-    if isinstance(row_splits, tensor_spec.TensorSpec):
+    if isinstance(row_splits, tensor_lib.TensorSpec):
       return cls(row_splits=row_splits, internal=_row_partition_factory_key)
 
     with ops.name_scope(None, "RowPartitionFromRowSplits", [row_splits]):
@@ -1317,7 +1317,7 @@ class RowPartitionSpec(type_spec.TypeSpec):
   def _component_specs(self):
     row_splits_shape = tensor_shape.TensorShape(
         [tensor_shape.dimension_at_index(self._nrows, 0) + 1])
-    return tensor_spec.TensorSpec(row_splits_shape, self._dtype)
+    return tensor_lib.TensorSpec(row_splits_shape, self._dtype)
 
   def _to_components(self, value):
     return value.row_splits()
@@ -1451,7 +1451,7 @@ _row_partition_factory_key = object()  # unique private object
 
 
 def _get_dtype_or_none(value):
-  if isinstance(value, ops.Tensor):
+  if isinstance(value, tensor_lib.Tensor):
     return value.dtype
   return None
 
@@ -1462,7 +1462,7 @@ def _get_target_dtype(values, dtype=None, dtype_hint=None):
     return dtype
 
   for value in values:
-    if isinstance(value, ops.Tensor):
+    if isinstance(value, tensor_lib.Tensor):
       return value.dtype
 
   for value in values:

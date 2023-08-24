@@ -13,6 +13,7 @@ load(
     "//tensorflow/compiler/xla/stream_executor:build_defs.bzl",
     "if_gpu_is_configured",
 )
+load("//tensorflow/tsl:tsl.bzl", "tsl_copts")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -114,6 +115,7 @@ cc_library(
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:path",
         "//tensorflow/tsl/platform:test",
@@ -2018,14 +2020,14 @@ xla_test(
 )
 
 xla_test(
-    name = "data_parallel_collective_optimizer_execution_test",
-    srcs = ["data_parallel_collective_optimizer_execution_test.cc"],
+    name = "collective_pipeliner_execution_test",
+    srcs = ["collective_pipeliner_execution_test.cc"],
     deps = [
         ":hlo_test_base",
         ":xla_internal_test_main",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
-        "//tensorflow/compiler/xla/service:data_parallel_collective_optimizer",
+        "//tensorflow/compiler/xla/service:collective_pipeliner",
         "//tensorflow/compiler/xla/service:hlo_dce",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
@@ -2293,7 +2295,7 @@ xla_cc_test(
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
         "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
         "//tensorflow/compiler/xla/stream_executor",
-        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:test_main",
     ]),
 )
@@ -2775,5 +2777,24 @@ xla_cc_test(
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/hlo/ir:tile_assignment",
         "@com_google_absl//absl/hash",
+    ],
+)
+
+xla_test(
+    name = "onednn_matmul_test",
+    srcs = ["onednn_matmul_test.cc"],
+    backends = [
+        "cpu",
+    ],
+    copts = tsl_copts(),
+    deps = [
+        ":hlo_test_base",
+        ":test_macros_header",
+        ":xla_internal_test_main",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/tsl/platform:platform_port",
     ],
 )

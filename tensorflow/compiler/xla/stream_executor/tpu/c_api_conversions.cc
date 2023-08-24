@@ -16,18 +16,127 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <utility>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/layout.h"
+#include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/service/computation_layout.h"
+#include "tensorflow/compiler/xla/service/computation_placer.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
+#include "tensorflow/compiler/xla/service/hlo_module_config.h"
+#include "tensorflow/compiler/xla/service/maybe_owning_device_memory.h"
+#include "tensorflow/compiler/xla/service/shaped_buffer.h"
+#include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/shape_layout.h"
+#include "tensorflow/compiler/xla/shape_tree.h"
+#include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_defn.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_defn.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/xla/stream_executor/tpu/proto_helper.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_c_api.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
+#include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla.pb.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace ApiConverter {
+
+// Helper functions for copying data to possibly-inlined C arrays.
+
+// 'Src' and 'Dst' are allowed to be different types to make this usable with
+// memory-identical types, e.g. int64_t and int64_t. This should not be used
+// with types that require a static_cast.
+template <typename Src, typename Dst, typename DstList>
+static void CreateVectorBase(const absl::Span<Src> src, DstList* dst) {
+  dst->size = src.size();
+  if (dst->size > TPU_C_API_MAX_INLINED) {
+    dst->heap = new Dst[dst->size];
+    std::copy(src.begin(), src.end(), dst->heap);
+  } else {
+    std::copy(src.begin(), src.end(), dst->inlined);
+  }
+}
+
+void CreateVector(const absl::Span<const int> src, IntList* dst) {
+  return CreateVectorBase<const int, int, IntList>(src, dst);
+}
+
+void CreateVector(const absl::Span<const int64_t> src, Int64List* dst) {
+  return CreateVectorBase<const int64_t, int64_t, Int64List>(src, dst);
+}
+
+void CreateVector(const absl::Span<const float> src, FloatList* dst) {
+  return CreateVectorBase<const float, float, FloatList>(src, dst);
+}
+
+void CreateVector(const absl::Span<const bool> src, BoolList* dst) {
+  return CreateVectorBase<const bool, bool, BoolList>(src, dst);
+}
+
+void CreateVector(const absl::Span<const xla::DimLevelType> src, IntList* dst) {
+  CreateVectorBase<const xla::DimLevelType, int, IntList>(src, dst);
+}
+
+static void CreateVector(const absl::Span<const bool> src, IntList* dst) {
+  CreateVectorBase<const bool, int, IntList>(src, dst);
+}
+
+static void CreateVector(const absl::Span<const xla::Tile> src, TileList* dst) {
+  dst->size = src.size();
+  XLA_Tile* c_tiles;
+  if (dst->size > TPU_C_API_MAX_INLINED) {
+    dst->heap = new XLA_Tile[dst->size];
+    c_tiles = dst->heap;
+  } else {
+    c_tiles = dst->inlined;
+  }
+  for (int i = 0; i < dst->size; ++i) {
+    ToC(src[i], &c_tiles[i]);
+  }
+}
+
+// Helper functions for creating a view of possibly-inlined C arrays.
+
+// 'Src' and 'Dst' are allowed to be different types to make this usable with
+// memory-identical types, e.g. int64_t and int64_t. This should not be used
+// with types that require a static_cast.
+template <typename Dst, typename Src, typename SrcList>
+static absl::Span<const Dst> MakeSpanBase(const SrcList& src_list) {
+  static_assert(sizeof(Src) == sizeof(Dst), "Mismatched types");
+  const Src* src = src_list.size > TPU_C_API_MAX_INLINED ? src_list.heap
+                                                         : &src_list.inlined[0];
+  return absl::Span<const Dst>(reinterpret_cast<const Dst*>(src),
+                               src_list.size);
+}
+
+absl::Span<const int> MakeSpan(const IntList& src_list) {
+  return MakeSpanBase<int, int, IntList>(src_list);
+}
+
+absl::Span<const int64_t> MakeSpan(const Int64List& src_list) {
+  return MakeSpanBase<int64_t, int64_t, Int64List>(src_list);
+}
+
+absl::Span<const float> MakeSpan(const FloatList& src_list) {
+  return MakeSpanBase<float, float, FloatList>(src_list);
+}
+
+absl::Span<const bool> MakeSpan(const BoolList& src_list) {
+  return MakeSpanBase<bool, bool, BoolList>(src_list);
+}
 
 xla::ShapedBuffer FromC(XLA_ShapedBuffer* c_buffer) {
   xla::Shape xla_on_device_shape =
@@ -152,85 +261,6 @@ stream_executor::DeviceMemoryBase FromC(const SE_DeviceMemoryBase& se_base) {
   stream_executor::DeviceMemoryBase base(se_base.opaque, se_base.size);
   base.SetPayload(se_base.payload);
   return base;
-}
-
-// Helper functions for copying data to possibly-inlined C arrays.
-
-// 'Src' and 'Dst' are allowed to be different types to make this usable with
-// memory-identical types, e.g. int64_t and int64_t. This should not be used
-// with types that require a static_cast.
-template <typename Src, typename Dst, typename DstList>
-static void CreateVectorBase(const absl::Span<Src> src, DstList* dst) {
-  dst->size = src.size();
-  if (dst->size > TPU_C_API_MAX_INLINED) {
-    dst->heap = new Dst[dst->size];
-    std::copy(src.begin(), src.end(), dst->heap);
-  } else {
-    std::copy(src.begin(), src.end(), dst->inlined);
-  }
-}
-
-void CreateVector(const absl::Span<const int> src, IntList* dst) {
-  return CreateVectorBase<const int, int, IntList>(src, dst);
-}
-void CreateVector(const absl::Span<const int64_t> src, Int64List* dst) {
-  return CreateVectorBase<const int64_t, int64_t, Int64List>(src, dst);
-}
-void CreateVector(const absl::Span<const float> src, FloatList* dst) {
-  return CreateVectorBase<const float, float, FloatList>(src, dst);
-}
-void CreateVector(const absl::Span<const bool> src, BoolList* dst) {
-  return CreateVectorBase<const bool, bool, BoolList>(src, dst);
-}
-static void CreateVector(const absl::Span<const xla::DimLevelType> src,
-                         IntList* dst) {
-  CreateVectorBase<const xla::DimLevelType, int, IntList>(src, dst);
-}
-static void CreateVector(const absl::Span<const bool> src, IntList* dst) {
-  CreateVectorBase<const bool, int, IntList>(src, dst);
-}
-
-static void CreateVector(const absl::Span<const xla::Tile> src, TileList* dst) {
-  dst->size = src.size();
-  XLA_Tile* c_tiles;
-  if (dst->size > TPU_C_API_MAX_INLINED) {
-    dst->heap = new XLA_Tile[dst->size];
-    c_tiles = dst->heap;
-  } else {
-    c_tiles = dst->inlined;
-  }
-  for (int i = 0; i < dst->size; ++i) {
-    ToC(src[i], &c_tiles[i]);
-  }
-}
-
-// Helper functions for creating a view of possibly-inlined C arrays.
-
-// 'Src' and 'Dst' are allowed to be different types to make this usable with
-// memory-identical types, e.g. int64_t and int64_t. This should not be used
-// with types that require a static_cast.
-template <typename Dst, typename Src, typename SrcList>
-static absl::Span<const Dst> MakeSpanBase(const SrcList& src_list) {
-  static_assert(sizeof(Src) == sizeof(Dst), "Mismatched types");
-  const Src* src = src_list.size > TPU_C_API_MAX_INLINED ? src_list.heap
-                                                         : &src_list.inlined[0];
-  return absl::Span<const Dst>(reinterpret_cast<const Dst*>(src),
-                               src_list.size);
-}
-
-absl::Span<const int> MakeSpan(const IntList& src_list) {
-  return MakeSpanBase<int, int, IntList>(src_list);
-}
-
-absl::Span<const int64_t> MakeSpan(const Int64List& src_list) {
-  return MakeSpanBase<int64_t, int64_t, Int64List>(src_list);
-}
-
-absl::Span<const float> MakeSpan(const FloatList& src_list) {
-  return MakeSpanBase<float, float, FloatList>(src_list);
-}
-absl::Span<const bool> MakeSpan(const BoolList& src_list) {
-  return MakeSpanBase<bool, bool, BoolList>(src_list);
 }
 
 void ToC(const xla::Shape& xla_shape, XLA_Shape* c_shape) {

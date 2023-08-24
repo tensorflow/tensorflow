@@ -20,7 +20,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/time/time.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_cost_analysis.h"
 
 namespace xla {
@@ -32,11 +31,14 @@ class GpuPerformanceModel {
     absl::Duration time_unfused;
     absl::Duration time_fused;
   };
-  static struct RunTimes EstimateRunTimes(
+  static RunTimes EstimateRunTimes(
       const HloInstruction* producer, const GpuHloCostAnalysis* cost_analysis,
-      const GpuDeviceInfo& gpu_device_info,
       std::optional<se::CudaComputeCapability> cc = std::nullopt,
       std::vector<HloInstruction*> fused_users = {}, bool multi_output = false);
+
+  // Writes estimated execution time to FusionBackendConfig.reification_cost.
+  static void RecordEstimatedRunTime(HloInstruction* instruction,
+                                     const GpuHloCostAnalysis* cost_analysis);
 };
 
 }  // namespace gpu

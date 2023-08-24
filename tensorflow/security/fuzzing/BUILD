@@ -2,6 +2,7 @@
 # Since we use OSSFuzz, gather all fuzzers into a single place.
 # This way, we can use tooling to determine the status of the fuzzing efforts.
 
+load("//tensorflow:py.default.bzl", "py_library")
 load(
     "//tensorflow/security/fuzzing:tf_fuzzing.bzl",
     "tf_py_fuzz_target",

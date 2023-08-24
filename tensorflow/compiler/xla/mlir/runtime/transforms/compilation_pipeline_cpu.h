@@ -34,11 +34,9 @@ struct CpuPipelineOptions {
   // Accelerate sparse computations with CUDA threading.
   // This is an experimental feature, so off by default.
   int32_t xla_cpu_sparse_cuda_threads = 0;
-#ifdef MLIR_GPU_TO_CUBIN_PASS_ENABLE
   std::string cuda_triplet = "nvptx64-nvidia-cuda";
   std::string cuda_arch = "sm_80";
   std::string cuda_features = "+ptx71";
-#endif
 
   // Enables math approximations that emit AVX2 intrinsics.
 #ifdef __AVX2__

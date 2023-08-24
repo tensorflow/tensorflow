@@ -132,7 +132,10 @@ cc_library(
     srcs = ["profiler_lock.cc"],
     hdrs = ["profiler_lock.h"],
     copts = tf_profiler_copts(),
-    visibility = set_external_visibility(["//tensorflow/tsl/profiler:internal"]),
+    visibility = set_external_visibility([
+        "//tensorflow/tsl/profiler:internal",
+        "//tensorflow/tsl/profiler:xla_internal",
+    ]),
     deps = [
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:macros",

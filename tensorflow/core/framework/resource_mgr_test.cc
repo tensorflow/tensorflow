@@ -16,10 +16,12 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_mgr.h"
 
 #include <memory>
+#include <vector>
 
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/resource_handle.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -369,6 +371,63 @@ TEST(ResourceHandleTest, CRUD) {
     core::RefCountPtr<StubResource> unused;
     EXPECT_FALSE(LookupResource(&ctx, p, &unused).ok());
   }
+}
+
+TEST(ResourceHandleTest, ResourceFromValidIntInput) {
+  ResourceMgr resource_mgr("");
+  OpKernelContext::Params params;
+  params.resource_manager = &resource_mgr;
+  StubDevice device("device_name");
+  params.device = &device;
+  OpKernelContext ctx(&params, 1);
+
+  ResourceHandleProto proto;
+  proto.set_device("cpu:0");
+  proto.set_container("test_container");
+  proto.set_name("test_var");
+  auto handle = std::make_unique<ResourceHandle>(proto);
+  auto expected_summary =
+      "ResourceHandle(name=\"test_var\", device=\"cpu:0\", "
+      "container=\"test_container\", type=\"\", dtype and shapes : \"[  ]\")";
+  EXPECT_EQ(handle->SummarizeValue(), expected_summary);
+
+  Tensor arg0(DT_RESOURCE, TensorShape({2}));
+  arg0.flat<ResourceHandle>()(0) = *handle;
+  std::vector<tensorflow::TensorValue> inputs{TensorValue(new Tensor(arg0))};
+  params.inputs = inputs;
+
+  ResourceHandle get_int_handle;
+  TF_ASSERT_OK(HandleFromInput(&ctx, 0, &get_int_handle));
+  EXPECT_EQ(get_int_handle.SummarizeValue(), expected_summary);
+  delete inputs.at(0).tensor;
+}
+
+TEST(ResourceHandleTest, ResourceFromInvalidIntInput) {
+  ResourceMgr resource_mgr("");
+  OpKernelContext::Params params;
+  params.resource_manager = &resource_mgr;
+  StubDevice device("device_name");
+  params.device = &device;
+  OpKernelContext ctx(&params, 0);
+
+  ResourceHandle get_int_handle;
+  EXPECT_FALSE(HandleFromInput(&ctx, 0, &get_int_handle).ok());
+}
+
+TEST(ResourceHandleTest, ResourceFromIntInputWithoutResource) {
+  ResourceMgr resource_mgr("");
+  OpKernelContext::Params params;
+  params.resource_manager = &resource_mgr;
+  StubDevice device("device_name");
+  params.device = &device;
+  OpKernelContext ctx(&params, 1);
+
+  std::vector<tensorflow::TensorValue> inputs{TensorValue(new Tensor())};
+  params.inputs = inputs;
+
+  ResourceHandle get_int_handle;
+  EXPECT_FALSE(HandleFromInput(&ctx, 0, &get_int_handle).ok());
+  delete inputs.at(0).tensor;
 }
 
 TEST(ResourceHandleTest, LookupDeleteGenericResource) {

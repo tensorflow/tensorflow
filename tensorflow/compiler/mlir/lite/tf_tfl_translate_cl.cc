@@ -124,7 +124,7 @@ opt<bool> unfold_batchmatmul(
     "unfold_batchmatmul",
     llvm::cl::desc(
         "Whether to unfold TF BatchMatMul to a set of TFL FullyConnected ops."),
-    llvm::cl::init(true));
+    llvm::cl::init(false));
 
 // NOLINTNEXTLINE
 opt<bool> unfold_large_splat_constant(

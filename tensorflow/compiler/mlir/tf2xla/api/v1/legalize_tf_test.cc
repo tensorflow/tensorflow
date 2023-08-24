@@ -15,15 +15,18 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tf2xla/api/v1/legalize_tf.h"
 
+#include <cstdint>
 #include <memory>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/compiler/mlir/tf2xla/api/v1/device_type.pb.h"
+#include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 #include "tensorflow/tsl/lib/monitoring/test_utils.h"
@@ -44,6 +47,12 @@ static constexpr char kCompilationTimeStreamzName[] =
     "/tensorflow/core/tf2xla/api/v1/phase2_compilation_time";
 static constexpr char kCompilationStatusStreamzName[] =
     "/tensorflow/core/tf2xla/api/v1/phase2_compilation_status";
+static const char kMlirWithFallbackModeSuccess[] =
+    "kMlirWithFallbackModeSuccess";
+static const char kMlirWithFallbackModeFailure[] =
+    "kMlirWithFallbackModeFailure";
+static const char kOldBridgeWithFallbackModeFailure[] =
+    "kOldBridgeWithFallbackModeFailure";
 
 static constexpr char kMlirModuleStr[] = R"(
   module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
@@ -52,11 +61,20 @@ static constexpr char kMlirModuleStr[] = R"(
   }
 })";
 
+static constexpr char kBadMlirModuleStr[] = R"(
+  module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
+  func.func @main() -> () {
+    %0 = tf.Unknown() -> ()
+    func.return %0
+  }
+})";
+
 tsl::StatusOr<XlaCompiler::CompilationResult> CompileMlirModule(
+    const char* mlir_module_str,
     ConfigProto::Experimental::MlirBridgeRollout rollout_state) {
   MlirToHloArgs mlir_to_hlo_args;
   mlir_to_hlo_args.rollout_state = rollout_state;
-  mlir_to_hlo_args.mlir_module = kMlirModuleStr;
+  mlir_to_hlo_args.mlir_module = mlir_module_str;
 
   se::Platform* platform =
       se::MultiPlatformManager::PlatformWithName("Host").value();
@@ -83,11 +101,38 @@ TEST(LegalizeTFTest, RecordsStreamzForMlirOpFallback) {
   TF_ASSERT_OK_AND_ASSIGN(
       XlaCompiler::CompilationResult result,
       CompileMlirModule(
+          kMlirModuleStr,
           ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_UNSPECIFIED));
 
   Histogram histogram =
       compilation_time.Delta("mlir_bridge_op_fallback_enabled");
   EXPECT_EQ(histogram.num(), 1);
+}
+
+TEST(LegalizeTFTest, RecordsStreamzForSuccessfulLegalizeWithMlirBridge) {
+  CellReader<int64_t> compilation_status(kCompilationStatusStreamzName);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      XlaCompiler::CompilationResult result,
+      CompileMlirModule(
+          kMlirModuleStr,
+          ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_UNSPECIFIED));
+
+  // May have been filtered so check for lack of failure instead of success.
+  EXPECT_EQ(compilation_status.Delta(kMlirWithFallbackModeFailure), 0);
+}
+
+TEST(LegalizeTFTest, RecordsStreamzForFailedLegalizeWithMlirBridge) {
+  CellReader<int64_t> compilation_status(kCompilationStatusStreamzName);
+
+  auto result = CompileMlirModule(
+      kBadMlirModuleStr,
+      ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_UNSPECIFIED);
+
+  EXPECT_FALSE(result.ok());
+  EXPECT_EQ(compilation_status.Delta(kMlirWithFallbackModeSuccess), 0);
+  EXPECT_EQ(compilation_status.Delta(kMlirWithFallbackModeFailure), 1);
+  EXPECT_EQ(compilation_status.Delta(kOldBridgeWithFallbackModeFailure), 1);
 }
 
 TEST(LegalizeTFTest, RecordsStreamzForNoMlirFallback) {

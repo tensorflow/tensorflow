@@ -60,7 +60,6 @@ PjRtFuture<Status> PjRtBuffer::CopyRawToHostFuture(
   return PjRtFuture<Status>(std::move(promise));
 }
 
-MultiSliceConfig::~MultiSliceConfig() = default;
 
 std::string CompiledMemoryStats::DebugString() const {
   return absl::Substitute(

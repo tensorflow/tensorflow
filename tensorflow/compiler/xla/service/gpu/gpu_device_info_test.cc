@@ -125,7 +125,7 @@ TEST(DeviceInfoTest, DeviceInfoIsCorrect) {
             /*l2_cache_size=*/8 * 1024 * 1024,
             /*clock_rate_ghz=*/::testing::Ge(1.5),
             /*device_memory_size=*/33'806'090'240));
-  } else if (name == "AMD Instinct M100") {
+  } else if (name == "AMD Instinct MI50/MI60") {
     EXPECT_THAT(
         dev_info,
         ::testing::FieldsAre(

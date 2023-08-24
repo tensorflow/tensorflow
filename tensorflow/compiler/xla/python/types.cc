@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/python/exceptions.h"
+#include "tensorflow/compiler/xla/python/ifrt/dtype.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -39,12 +40,12 @@ namespace {
 struct CustomDtypes {
   py::dtype bfloat16;
   py::dtype float8_e4m3fn;
-  std::optional<py::dtype> float8_e4m3b11fnuz;
+  py::dtype float8_e4m3b11fnuz;
   py::dtype float8_e4m3fnuz;
   py::dtype float8_e5m2;
   py::dtype float8_e5m2fnuz;
-  std::optional<py::dtype> int4;
-  std::optional<py::dtype> uint4;
+  py::dtype int4;
+  py::dtype uint4;
 };
 
 const CustomDtypes& GetCustomDtypes() {
@@ -55,20 +56,14 @@ const CustomDtypes& GetCustomDtypes() {
     dtypes->float8_e4m3fn =
         py::dtype::from_args(ml_dtypes.attr("float8_e4m3fn"));
     dtypes->float8_e5m2 = py::dtype::from_args(ml_dtypes.attr("float8_e5m2"));
-    if (py::hasattr(ml_dtypes, "float8_e4m3b11fnuz")) {
-      dtypes->float8_e4m3b11fnuz =
-          py::dtype::from_args(ml_dtypes.attr("float8_e4m3b11fnuz"));
-    }
+    dtypes->float8_e4m3b11fnuz =
+        py::dtype::from_args(ml_dtypes.attr("float8_e4m3b11fnuz"));
     dtypes->float8_e4m3fnuz =
         py::dtype::from_args(ml_dtypes.attr("float8_e4m3fnuz"));
     dtypes->float8_e5m2fnuz =
         py::dtype::from_args(ml_dtypes.attr("float8_e5m2fnuz"));
-    if (py::hasattr(ml_dtypes, "int4")) {
-      dtypes->int4 = py::dtype::from_args(ml_dtypes.attr("int4"));
-    }
-    if (py::hasattr(ml_dtypes, "uint4")) {
-      dtypes->uint4 = py::dtype::from_args(ml_dtypes.attr("uint4"));
-    }
+    dtypes->int4 = py::dtype::from_args(ml_dtypes.attr("int4"));
+    dtypes->uint4 = py::dtype::from_args(ml_dtypes.attr("uint4"));
     return dtypes;
   }();
   return custom_dtypes;
@@ -118,18 +113,12 @@ xla::StatusOr<PrimitiveType> DtypeToPrimitiveType(const py::dtype& np_type) {
         new absl::flat_hash_map<py::dtype, PrimitiveType, DtypeHash, DtypeEq>();
     map->emplace(custom_dtypes.bfloat16, BF16);
     map->emplace(custom_dtypes.float8_e4m3fn, F8E4M3FN);
-    if (custom_dtypes.float8_e4m3b11fnuz) {
-      map->emplace(*custom_dtypes.float8_e4m3b11fnuz, F8E4M3B11FNUZ);
-    }
+    map->emplace(custom_dtypes.float8_e4m3b11fnuz, F8E4M3B11FNUZ);
     map->emplace(custom_dtypes.float8_e4m3fnuz, F8E4M3FNUZ);
     map->emplace(custom_dtypes.float8_e5m2, F8E5M2);
     map->emplace(custom_dtypes.float8_e5m2fnuz, F8E5M2FNUZ);
-    if (custom_dtypes.int4) {
-      map->emplace(*custom_dtypes.int4, S4);
-    }
-    if (custom_dtypes.uint4) {
-      map->emplace(*custom_dtypes.uint4, U4);
-    }
+    map->emplace(custom_dtypes.int4, S4);
+    map->emplace(custom_dtypes.uint4, U4);
     return map;
   }();
 
@@ -148,10 +137,7 @@ xla::StatusOr<py::dtype> PrimitiveTypeToDtype(PrimitiveType type) {
     case PRED:
       return py::dtype::of<bool>();
     case S4:
-      if (custom_dtypes.int4) {
-        return *custom_dtypes.int4;
-      }
-      return InvalidArgument("ml_dtypes.int4 not found");
+      return custom_dtypes.int4;
     case S8:
       return py::dtype::of<int8_t>();
     case S16:
@@ -161,10 +147,7 @@ xla::StatusOr<py::dtype> PrimitiveTypeToDtype(PrimitiveType type) {
     case S64:
       return py::dtype::of<int64_t>();
     case U4:
-      if (custom_dtypes.uint4) {
-        return *custom_dtypes.uint4;
-      }
-      return InvalidArgument("ml_dtypes.uint4 not found");
+      return custom_dtypes.uint4;
     case U8:
       return py::dtype::of<uint8_t>();
     case U16:
@@ -176,10 +159,7 @@ xla::StatusOr<py::dtype> PrimitiveTypeToDtype(PrimitiveType type) {
     case F8E4M3FN:
       return custom_dtypes.float8_e4m3fn;
     case F8E4M3B11FNUZ:
-      if (custom_dtypes.float8_e4m3b11fnuz) {
-        return *custom_dtypes.float8_e4m3b11fnuz;
-      }
-      return InvalidArgument("ml_dtypes.float8_e4m3b11fnuz not found");
+      return custom_dtypes.float8_e4m3b11fnuz;
     case F8E4M3FNUZ:
       return custom_dtypes.float8_e4m3fnuz;
     case F8E5M2:
@@ -204,32 +184,87 @@ xla::StatusOr<py::dtype> PrimitiveTypeToDtype(PrimitiveType type) {
   }
 }
 
+StatusOr<pybind11::dtype> IfrtDtypeToDtype(ifrt::DType dtype) {
+  const CustomDtypes& custom_dtypes = GetCustomDtypes();
+  switch (dtype.kind()) {
+    case ifrt::DType::kPred:
+      return py::dtype::of<bool>();
+    case ifrt::DType::kS4:
+      return custom_dtypes.int4;
+    case ifrt::DType::kS8:
+      return py::dtype::of<int8_t>();
+    case ifrt::DType::kS16:
+      return py::dtype::of<int16_t>();
+    case ifrt::DType::kS32:
+      return py::dtype::of<int32_t>();
+    case ifrt::DType::kS64:
+      return py::dtype::of<int64_t>();
+    case ifrt::DType::kU4:
+      return custom_dtypes.uint4;
+    case ifrt::DType::kU8:
+      return py::dtype::of<uint8_t>();
+    case ifrt::DType::kU16:
+      return py::dtype::of<uint16_t>();
+    case ifrt::DType::kU32:
+      return py::dtype::of<uint32_t>();
+    case ifrt::DType::kU64:
+      return py::dtype::of<uint64_t>();
+    case ifrt::DType::kF16:
+      return py::dtype("e");  // PEP 3118 code for "float16"
+    case ifrt::DType::kF32:
+      return py::dtype::of<float>();
+    case ifrt::DType::kF64:
+      return py::dtype::of<double>();
+    case ifrt::DType::kBF16:
+      return custom_dtypes.bfloat16;
+    case ifrt::DType::kC64:
+      return py::dtype::of<std::complex<float>>();
+    case ifrt::DType::kC128:
+      return py::dtype::of<std::complex<double>>();
+    case ifrt::DType::kF8E4M3FN:
+      return custom_dtypes.float8_e4m3fn;
+    case ifrt::DType::kF8E4M3B11FNUZ:
+      return custom_dtypes.float8_e4m3b11fnuz;
+    case ifrt::DType::kF8E4M3FNUZ:
+      return custom_dtypes.float8_e4m3fnuz;
+    case ifrt::DType::kF8E5M2:
+      return custom_dtypes.float8_e5m2;
+    case ifrt::DType::kF8E5M2FNUZ:
+      return custom_dtypes.float8_e5m2fnuz;
+    case ifrt::DType::kString:
+      // PEP 3118 code for "pointer to Python Object". We use Python objects
+      // instead of 'U' (Unicode string) or 'V' (raw data) because the latter
+      // two are fixed length, and thus, require encoding the maximum length as
+      // part of dtype. Using 'O' allows us to represent variable-length bytes
+      // and is also consistent with TensorFlow's tensor -> ndarray conversion
+      // logic (see `TF_DataType_to_PyArray_TYPE`).
+      return py::dtype("O");
+    default:
+      return Unimplemented("Unimplemented primitive type %s",
+                           dtype.DebugString());
+  }
+}
+
 const NumpyScalarTypes& GetNumpyScalarTypes() {
   static const NumpyScalarTypes* singleton = []() {
     NumpyScalarTypes* dtypes = new NumpyScalarTypes();
     py::module numpy = py::module::import("numpy");
     py::module ml_dtypes = py::module::import("ml_dtypes");
     dtypes->np_bool = py::object(numpy.attr("bool_"));
-    if (py::hasattr(ml_dtypes, "int4")) {
-      dtypes->np_int4 = py::object(ml_dtypes.attr("int4"));
-    }
+    dtypes->np_int4 = py::object(ml_dtypes.attr("int4"));
     dtypes->np_int8 = py::object(numpy.attr("int8"));
     dtypes->np_int16 = py::object(numpy.attr("int16"));
     dtypes->np_int32 = py::object(numpy.attr("int32"));
     dtypes->np_int64 = py::object(numpy.attr("int64"));
-    if (py::hasattr(ml_dtypes, "uint4")) {
-      dtypes->np_uint4 = py::object(ml_dtypes.attr("uint4"));
-    }
+    dtypes->np_uint4 = py::object(ml_dtypes.attr("uint4"));
     dtypes->np_uint8 = py::object(numpy.attr("uint8"));
     dtypes->np_uint16 = py::object(numpy.attr("uint16"));
     dtypes->np_uint32 = py::object(numpy.attr("uint32"));
     dtypes->np_uint64 = py::object(numpy.attr("uint64"));
     dtypes->np_bfloat16 = py::object(ml_dtypes.attr("bfloat16"));
     dtypes->np_float8_e4m3fn = py::object(ml_dtypes.attr("float8_e4m3fn"));
-    if (py::hasattr(ml_dtypes, "float8_e4m3b11fnuz")) {
-      dtypes->np_float8_e4m3b11fnuz =
-          py::object(ml_dtypes.attr("float8_e4m3b11fnuz"));
-    }
+    dtypes->np_float8_e4m3b11fnuz =
+        py::object(ml_dtypes.attr("float8_e4m3b11fnuz"));
     dtypes->np_float8_e5m2 = py::object(ml_dtypes.attr("float8_e5m2"));
     dtypes->np_float8_e4m3fnuz = py::object(ml_dtypes.attr("float8_e4m3fnuz"));
     dtypes->np_float8_e5m2fnuz = py::object(ml_dtypes.attr("float8_e5m2fnuz"));
@@ -342,32 +377,41 @@ PrimitiveType Squash64BitTypes(PrimitiveType type) {
 }
 
 // Returns the strides for `shape`.
-std::vector<ssize_t> ByteStridesForShape(const Shape& shape) {
-  std::vector<ssize_t> strides;
+std::vector<int64_t> ByteStridesForShape(const Shape& shape) {
+  std::vector<int64_t> strides;
   CHECK(shape.IsArray());
   CHECK(shape.has_layout());
+  return ByteStridesForShape(shape.element_type(), shape.dimensions(),
+                             shape.layout());
+}
 
-  strides.resize(shape.dimensions_size());
-  ssize_t stride = ShapeUtil::ByteSizeOfPrimitiveType(shape.element_type());
-  for (int i : shape.layout().minor_to_major()) {
-    strides.at(i) = stride;
-    stride *= shape.dimensions(i);
+static std::vector<int64_t> StridesForShapeHelper(
+    PrimitiveType element_type, absl::Span<const int64_t> dimensions,
+    const xla::Layout& layout, int64_t innermost_stride_size) {
+  CHECK_EQ(dimensions.size(), layout.minor_to_major().size());
+  std::vector<int64_t> strides;
+  strides.resize(dimensions.size());
+  int64_t stride = innermost_stride_size;
+  for (int i : layout.minor_to_major()) {
+    strides[i] = stride;
+    stride *= dimensions[i];
   }
   return strides;
 }
 
-std::vector<int64_t> ByteStridesForShapeInt64(const Shape& shape) {
-  std::vector<int64_t> strides;
-  CHECK(shape.IsArray());
-  CHECK(shape.has_layout());
+std::vector<int64_t> ByteStridesForShape(PrimitiveType element_type,
+                                         absl::Span<const int64_t> dimensions,
+                                         const xla::Layout& layout) {
+  return StridesForShapeHelper(
+      element_type, dimensions, layout,
+      ShapeUtil::ByteSizeOfPrimitiveType(element_type));
+}
 
-  strides.resize(shape.dimensions_size());
-  int64_t stride = ShapeUtil::ByteSizeOfPrimitiveType(shape.element_type());
-  for (int i : shape.layout().minor_to_major()) {
-    strides.at(i) = stride;
-    stride *= shape.dimensions(i);
-  }
-  return strides;
+std::vector<int64_t> StridesForShape(PrimitiveType element_type,
+                                     absl::Span<const int64_t> dimensions,
+                                     const xla::Layout& layout) {
+  return StridesForShapeHelper(element_type, dimensions, layout,
+                               /*innermost_stride_size=*/1);
 }
 
 StatusOr<py::object> LiteralToPython(std::shared_ptr<xla::Literal> literal) {

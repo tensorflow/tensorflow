@@ -74,13 +74,25 @@ filegroup(
         "runtime_single_threaded_conv2d.cc",
         "runtime_single_threaded_conv3d.cc",
         "runtime_single_threaded_fft.cc",
-        "runtime_single_threaded_matmul.cc",
+        "runtime_single_threaded_matmul_c128.cc",
+        "runtime_single_threaded_matmul_c64.cc",
+        "runtime_single_threaded_matmul_common.h",
+        "runtime_single_threaded_matmul_f16.cc",
+        "runtime_single_threaded_matmul_f32.cc",
+        "runtime_single_threaded_matmul_f64.cc",
+        "runtime_single_threaded_matmul_s32.cc",
         "runtime_topk.cc",
         # Multi-threaded support.
         "runtime_conv2d.cc",
         "runtime_conv3d.cc",
         "runtime_fft.cc",
-        "runtime_matmul.cc",
+        "runtime_matmul_c128.cc",
+        "runtime_matmul_c64.cc",
+        "runtime_matmul_common.h",
+        "runtime_matmul_f16.cc",
+        "runtime_matmul_f32.cc",
+        "runtime_matmul_f64.cc",
+        "runtime_matmul_s32.cc",
         "runtime_fork_join.cc",
     ],
     visibility = [":friends"],
@@ -183,9 +195,10 @@ cc_library(
 )
 
 cc_library(
-    name = "cpu_compiler",
+    name = "cpu_compiler_pure",
     srcs = ["cpu_compiler.cc"],
     hdrs = ["cpu_compiler.h"],
+    copts = tsl_copts(),
     deps = [
         ":buffer_info_util",
         ":compiler_functor",
@@ -200,6 +213,7 @@ cc_library(
         ":hlo_xla_runtime_pipeline",
         ":ir_emission_utils",
         ":ir_emitter",
+        ":onednn_rewriter",
         ":parallel_task_assignment",
         ":simple_orc_jit",
         ":target_machine_features",
@@ -365,6 +379,30 @@ cc_library(
     }) + if_llvm_system_z_available([
         "@llvm-project//llvm:SystemZCodeGen",  # fixdeps: keep
     ]),
+)
+
+cc_library(
+    # The old target name will still be used so that dependencies won't break.
+    # In the future, dependencies should be cleaned up and relinked to the above
+    # target if registration is not necesary.
+    name = "cpu_compiler",
+    srcs = ["cpu_compiler_registerer.cc"],
+    hdrs = ["cpu_compiler.h"],
+    deps = [
+        "cpu_compiler_pure",
+        ":executable_proto_cc",
+        ":target_machine_features",
+        "//tensorflow/compiler/xla:cpu_function_runtime",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:compiler",
+        "//tensorflow/compiler/xla/service:executable",
+        "//tensorflow/compiler/xla/service:llvm_compiler",
+        "//tensorflow/compiler/xla/stream_executor",
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_pimpl",  # fixdeps: keep
+        "//tensorflow/compiler/xla/stream_executor/host:host_platform_id",
+        "@llvm-project//llvm:Target",
+    ],
     alwayslink = True,  # Contains compiler registration
 )
 
@@ -410,15 +448,16 @@ cc_library(
         "@llvm-project//mlir:BufferizationToMemRef",
         "@llvm-project//mlir:BufferizationTransforms",
         "@llvm-project//mlir:ComplexToStandard",
-        "@llvm-project//mlir:ConversionPasses",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FuncTransforms",
         "@llvm-project//mlir:GPUDialect",
+        "@llvm-project//mlir:GPUToNVVMTransforms",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:MemRefTransforms",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:ReconcileUnrealizedCasts",
+        "@llvm-project//mlir:SCFToControlFlow",
         "@llvm-project//mlir:SCFTransforms",
         "@llvm-project//mlir:ShapeToStandard",
         "@llvm-project//mlir:ShapeTransforms",
@@ -426,6 +465,7 @@ cc_library(
         "@llvm-project//mlir:TensorToLinalg",
         "@llvm-project//mlir:TensorTransforms",
         "@llvm-project//mlir:Transforms",
+        "@llvm-project//mlir:VectorToLLVM",
         "@llvm-project//mlir:VectorToSCF",
         "@llvm-project//mlir:VectorTransforms",
     ],
@@ -440,10 +480,11 @@ cc_library(
         "windows_compatibility.h",
     ],
     hdrs = ["simple_orc_jit.h"],
-    copts = if_enable_acl(["-DXLA_CPU_USE_ACL=1"]),
+    copts = if_enable_acl(["-DXLA_CPU_USE_ACL=1"]) + tsl_copts(),
     deps = [
         ":compiler_functor",
         ":cpu_runtime",
+        ":onednn_matmul",
         ":orc_jit_memory_mapper",
         ":runtime_conv2d",
         ":runtime_conv2d_acl",
@@ -571,6 +612,7 @@ cc_library(
         "elemental_ir_emitter.h",
         "ir_emitter.h",
     ],
+    copts = tsl_copts(),
     deps = [
         ":backend_config_proto_cc",
         ":cpu_options",
@@ -578,6 +620,7 @@ cc_library(
         ":dot_op_emitter",
         ":ir_emission_utils",
         ":ir_function",
+        ":onednn_memory_util",
         ":parallel_loop_emitter",
         ":target_machine_features",
         "//tensorflow/compiler/xla:shape_util",
@@ -944,7 +987,15 @@ cc_library(
 
 cc_library(
     name = "runtime_matmul",
-    srcs = ["runtime_matmul.cc"],
+    srcs = [
+        "runtime_matmul_c128.cc",
+        "runtime_matmul_c64.cc",
+        "runtime_matmul_common.h",
+        "runtime_matmul_f16.cc",
+        "runtime_matmul_f32.cc",
+        "runtime_matmul_f64.cc",
+        "runtime_matmul_s32.cc",
+    ],
     hdrs = ["runtime_matmul.h"],
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
@@ -1066,7 +1117,15 @@ cc_library(
 
 cc_library(
     name = "runtime_single_threaded_matmul_impl",
-    srcs = ["runtime_single_threaded_matmul.cc"],
+    srcs = [
+        "runtime_single_threaded_matmul_c128.cc",
+        "runtime_single_threaded_matmul_c64.cc",
+        "runtime_single_threaded_matmul_common.h",
+        "runtime_single_threaded_matmul_f16.cc",
+        "runtime_single_threaded_matmul_f32.cc",
+        "runtime_single_threaded_matmul_f64.cc",
+        "runtime_single_threaded_matmul_s32.cc",
+    ],
     hdrs = ["runtime_single_threaded_matmul.h"],
     compatible_with = get_compatible_with_portable(),
     copts = runtime_copts(),
@@ -1520,4 +1579,73 @@ tf_proto_library(
     name = "backend_config_proto",
     srcs = ["backend_config.proto"],
     cc_api_version = 2,
+)
+
+cc_library(
+    name = "onednn_memory_util",
+    srcs = ["onednn_memory_util.cc"],
+    hdrs = ["onednn_memory_util.h"],
+    copts = runtime_copts() + tsl_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":runtime_lightweight_check",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service/llvm_ir:ir_array",
+        "//tensorflow/compiler/xla/service/llvm_ir:ir_builder_mixin",
+        "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:logging",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:dynamic_annotations",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:TargetParser",
+        "@llvm-project//mlir:IR",
+    ] + mkl_deps(),
+)
+
+cc_library(
+    name = "onednn_matmul",
+    srcs = ["onednn_matmul.cc"],
+    hdrs = [
+        "onednn_matmul.h",
+        "//tensorflow/tsl/util:onednn_util_hdrs",
+    ],
+    copts = runtime_copts() + tsl_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":backend_config_proto_cc",
+        ":onednn_memory_util",
+        ":runtime_lightweight_check",
+        "//tensorflow/compiler/xla:executable_run_options",
+        "//tensorflow/tsl/platform:blocking_counter",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:platform_port",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:dynamic_annotations",
+    ] + mkl_deps(),
+)
+
+cc_library(
+    name = "onednn_rewriter",
+    srcs = ["onednn_rewriter.cc"],
+    hdrs = ["onednn_rewriter.h"],
+    copts = tsl_copts(),
+    deps = [
+        ":backend_config_proto_cc",
+        ":onednn_memory_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:hlo_creation_utils",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/service:pattern_matcher",
+    ] + mkl_deps(),
 )

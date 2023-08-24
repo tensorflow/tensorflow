@@ -17,19 +17,19 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/compiler/jit/xla_launch_util.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/tensor_reference.h"
-#include "tensorflow/core/platform/mem.h"
 
 namespace tensorflow {
 
@@ -40,7 +40,7 @@ XlaDeviceAllocator::XlaDeviceAllocator(
 
 XlaDeviceAllocator::~XlaDeviceAllocator() = default;
 
-string XlaDeviceAllocator::Name() { return "xla"; }
+std::string XlaDeviceAllocator::Name() { return "xla"; }
 
 void* XlaDeviceAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {
   // We always return an empty XlaTensor object, encoded as an opaque tagged

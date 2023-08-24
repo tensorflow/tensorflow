@@ -1,5 +1,6 @@
 # Tensorflow util package
 
+load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "tf_py_strict_test", "tf_python_pybind_extension")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")  # @unused
@@ -253,7 +254,8 @@ tf_py_strict_test(
         ":tf_inspect",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:strict_mode",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
@@ -275,6 +277,7 @@ tf_py_strict_test(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:extension_type",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
@@ -302,7 +305,7 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+pytype_strict_library(
     name = "tf_export",
     srcs = ["tf_export.py"],
     compatible_with = get_compatible_with_portable(),
@@ -364,8 +367,6 @@ py_strict_library(
     ],
 )
 
-# Note: this is a heavyweight library specialized for TensorFlow graphs. Do not use for
-# other purposes.
 py_strict_library(
     name = "tf_stack",
     srcs = ["tf_stack.py"],
@@ -374,6 +375,7 @@ py_strict_library(
     visibility = ["//visibility:public"],
     deps = [
         ":_tf_stack",
+        "//tensorflow/core:protos_all_py",
         "@six_archive//:six",
     ],
 )
@@ -398,6 +400,8 @@ tf_python_pybind_extension(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@pybind11",
+        "@pybind11_abseil//pybind11_abseil:absl_casters",
+        "@pybind11_abseil//pybind11_abseil:status_casters",
     ] + if_static([
         ":stack_trace",
     ]),
@@ -513,7 +517,9 @@ tf_py_strict_test(
     srcs = ["nest_test.py"],
     main = "nest_test.py",
     python_version = "PY3",
-    deps = [":nest_test_main_lib"],
+    deps = [
+        ":nest_test_main_lib",
+    ],
 )
 
 py_strict_library(
@@ -523,8 +529,11 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         ":nest",
+        ":nest_util",
         "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
@@ -641,6 +650,7 @@ py_strict_library(
     deps = [
         ":decorator_utils",
         ":is_in_graph_mode",
+        "//tensorflow/python/framework:strict_mode",
         "//tensorflow/python/platform:tf_logging",
         # global_test_configuration is added here because all major tests depend on this
         # library. It isn't possible to add these test dependencies via tensorflow.bzl's
@@ -1110,6 +1120,7 @@ tf_py_strict_test(
         "//tensorflow/python/framework:composite_tensor",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:variables",
@@ -1144,5 +1155,14 @@ tf_python_pybind_extension(
         "@pybind11",
         "@pybind11_abseil//pybind11_abseil:absl_casters",
         "@pybind11_abseil//pybind11_abseil:status_casters",
+    ],
+)
+
+py_strict_library(
+    name = "tf_decorator_export",
+    srcs = ["tf_decorator_export.py"],
+    deps = [
+        ":tf_decorator",
+        ":tf_export",
     ],
 )

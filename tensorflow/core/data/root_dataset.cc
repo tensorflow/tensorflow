@@ -156,16 +156,6 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
  public:
   explicit Iterator(const Params& params)
       : DatasetIterator<RootDataset>(params) {
-    if (dataset()->params_.autotune) {
-      model_ = std::make_shared<model::Model>();
-      auto experiments = GetExperiments();
-      if (experiments.contains("stage_based_autotune_v2")) {
-        model_->AddExperiment("stage_based_autotune_v2");
-      }
-      if (experiments.contains("autotune_buffer_optimization")) {
-        model_->AddExperiment("autotune_buffer_optimization");
-      }
-    }
     if (dataset()->params_.max_intra_op_parallelism >= 0) {
       max_intra_op_parallelism_ =
           value_or_default(dataset()->params_.max_intra_op_parallelism, 0,
@@ -187,6 +177,17 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
   bool SymbolicCheckpointCompatible() const override { return true; }
 
   Status Initialize(IteratorContext* ctx) override {
+    if (dataset()->params_.autotune) {
+      model_ = ctx->model() != nullptr ? ctx->model()
+                                       : std::make_shared<model::Model>();
+      absl::flat_hash_set<string> experiments = GetExperiments();
+      if (experiments.contains("stage_based_autotune_v2")) {
+        model_->AddExperiment("stage_based_autotune_v2");
+      }
+      if (experiments.contains("autotune_buffer_optimization")) {
+        model_->AddExperiment("autotune_buffer_optimization");
+      }
+    }
     IteratorContext iter_ctx(CreateParams(ctx));
     TF_RETURN_IF_ERROR(dataset()->input_->MakeIterator(&iter_ctx, this,
                                                        prefix(), &input_impl_));

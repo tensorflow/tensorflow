@@ -44,7 +44,8 @@ Status RunFusedMHABmmBmm(GpufMHAParams params, se::Stream *stream,
                          DeviceMemory<ElementType> rhs_bmm1_buffer,
                          DeviceMemory<ElementType> rhs_bmm2_buffer,
                          DeviceMemory<OutputType> output_buffer,
-                         DeviceMemoryBase scratch_memory) {
+                         DeviceMemoryBase scratch_memory,
+                         DeviceMemoryBase activation_output) {
   se::dnn::LazyOpRunner<se::dnn::FusedMHASoftmaxOp> *lazy_runner =
       options.runner_cache->AsFusedMHASoftmaxRunner();
   std::optional<se::dnn::LazyOpRunner<se::dnn::FusedMHASoftmaxOp>> local_runner;
@@ -55,10 +56,14 @@ Status RunFusedMHABmmBmm(GpufMHAParams params, se::Stream *stream,
   TF_ASSIGN_OR_RETURN(se::dnn::FusedMHAKind kind,
                       GetDNNFusedMHAKindFromCudnnfMHAKind(params.config->kind));
   std::optional<double> dropout_rate;
-  if (params.config->dropout_rate) dropout_rate = *params.config->dropout_rate;
+  if (params.config->dropout_rate) {
+    dropout_rate = *params.config->dropout_rate;
+  }
 
   std::optional<int64_t> seed;
-  if (params.config->seed) seed = *params.config->seed;
+  if (params.config->seed) {
+    seed = *params.config->seed;
+  }
 
   se::dnn::FusedMHASoftmaxOp::Config config{
       kind,
@@ -67,14 +72,14 @@ Status RunFusedMHABmmBmm(GpufMHAParams params, se::Stream *stream,
       params.config->rhs_bmm2,
       params.config->intermediate_lhs_bmm2,
       params.config->output,
+      params.config->activation,
       dropout_rate,
       seed};
   TF_ASSIGN_OR_RETURN(auto *runner,
                       lazy_runner->GetOrCreateRunner(config, stream));
   return (*runner)(stream, options.profile_result, scratch_memory,
                    lhs_bmm1_buffer, rhs_bmm1_buffer, rhs_bmm2_buffer,
-                   output_buffer);
-  return OkStatus();
+                   output_buffer, activation_output);
 }
 
 template <typename ElementType, typename OutputType>
@@ -85,7 +90,8 @@ Status RunFusedMHAScaleMaskSoftmax(GpufMHAParams params, se::Stream *stream,
                                    DeviceMemory<ElementType> rhs_bmm2_buffer,
                                    DeviceMemory<OutputType> output_buffer,
                                    DeviceMemory<ElementType> mask_buffer,
-                                   DeviceMemoryBase scratch_memory) {
+                                   DeviceMemoryBase scratch_memory,
+                                   DeviceMemoryBase activation_output) {
   se::dnn::LazyOpRunner<se::dnn::FusedMHAScaleMaskSoftmaxOp> *lazy_runner =
       options.runner_cache->AsFusedMHAMaskRunner();
   std::optional<se::dnn::LazyOpRunner<se::dnn::FusedMHAScaleMaskSoftmaxOp>>
@@ -97,13 +103,19 @@ Status RunFusedMHAScaleMaskSoftmax(GpufMHAParams params, se::Stream *stream,
   TF_ASSIGN_OR_RETURN(se::dnn::FusedMHAKind kind,
                       GetDNNFusedMHAKindFromCudnnfMHAKind(params.config->kind));
   std::optional<double> dropout_rate;
-  if (params.config->dropout_rate) dropout_rate = *params.config->dropout_rate;
+  if (params.config->dropout_rate) {
+    dropout_rate = *params.config->dropout_rate;
+  }
 
   double scale = 1.0;
-  if (params.config->fmha_scale) scale = *params.config->fmha_scale;
+  if (params.config->fmha_scale) {
+    scale = *params.config->fmha_scale;
+  }
 
   std::optional<int64_t> seed;
-  if (params.config->seed) seed = *params.config->seed;
+  if (params.config->seed) {
+    seed = *params.config->seed;
+  }
 
   se::dnn::FusedMHAScaleMaskSoftmaxOp::Config config{
       kind,
@@ -114,14 +126,14 @@ Status RunFusedMHAScaleMaskSoftmax(GpufMHAParams params, se::Stream *stream,
       params.config->intermediate_lhs_bmm2,
       params.config->output,
       *params.config->mask,
+      params.config->activation,
       dropout_rate,
       seed};
   TF_ASSIGN_OR_RETURN(auto *runner,
                       lazy_runner->GetOrCreateRunner(config, stream));
   return (*runner)(stream, options.profile_result, scratch_memory,
                    lhs_bmm1_buffer, rhs_bmm1_buffer, mask_buffer,
-                   rhs_bmm2_buffer, output_buffer);
-  return OkStatus();
+                   rhs_bmm2_buffer, output_buffer, activation_output);
 }
 
 template <typename ElementType, typename BiasType, typename OutputType>
@@ -132,7 +144,7 @@ Status RunFusedMHAScaleBiasMaskSoftmax(
     DeviceMemory<ElementType> rhs_bmm2_buffer,
     DeviceMemory<OutputType> output_buffer,
     DeviceMemory<ElementType> mask_buffer, DeviceMemory<BiasType> bias_buffer,
-    DeviceMemoryBase scratch_memory) {
+    DeviceMemoryBase scratch_memory, DeviceMemoryBase activation_output) {
   se::dnn::LazyOpRunner<se::dnn::FusedMHAScaleBiasMaskSoftmaxOp> *lazy_runner =
       options.runner_cache->AsFusedMHABiasMaskRunner();
   std::optional<se::dnn::LazyOpRunner<se::dnn::FusedMHAScaleBiasMaskSoftmaxOp>>
@@ -144,13 +156,19 @@ Status RunFusedMHAScaleBiasMaskSoftmax(
   TF_ASSIGN_OR_RETURN(se::dnn::FusedMHAKind kind,
                       GetDNNFusedMHAKindFromCudnnfMHAKind(params.config->kind));
   std::optional<double> dropout_rate;
-  if (params.config->dropout_rate) dropout_rate = *params.config->dropout_rate;
+  if (params.config->dropout_rate) {
+    dropout_rate = *params.config->dropout_rate;
+  }
 
   double scale = 1.0;
-  if (params.config->fmha_scale) scale = *params.config->fmha_scale;
+  if (params.config->fmha_scale) {
+    scale = *params.config->fmha_scale;
+  }
 
   std::optional<int64_t> seed;
-  if (params.config->seed) seed = *params.config->seed;
+  if (params.config->seed) {
+    seed = *params.config->seed;
+  }
 
   se::dnn::FusedMHAScaleBiasMaskSoftmaxOp::Config config{
       kind,
@@ -162,13 +180,14 @@ Status RunFusedMHAScaleBiasMaskSoftmax(
       params.config->output,
       *params.config->bias,
       *params.config->mask,
+      params.config->activation,
       dropout_rate,
       seed};
   TF_ASSIGN_OR_RETURN(auto *runner,
                       lazy_runner->GetOrCreateRunner(config, stream));
   return (*runner)(stream, options.profile_result, scratch_memory,
                    lhs_bmm1_buffer, rhs_bmm1_buffer, mask_buffer, bias_buffer,
-                   rhs_bmm2_buffer, output_buffer);
+                   rhs_bmm2_buffer, output_buffer, activation_output);
 }
 
 template <typename ElementType, typename BiasType, typename OutputType>
@@ -179,7 +198,8 @@ Status RunFusedMHAScaleBiasSoftmax(GpufMHAParams params, se::Stream *stream,
                                    DeviceMemory<ElementType> rhs_bmm2_buffer,
                                    DeviceMemory<OutputType> output_buffer,
                                    DeviceMemory<BiasType> bias_buffer,
-                                   DeviceMemoryBase scratch_memory) {
+                                   DeviceMemoryBase scratch_memory,
+                                   DeviceMemoryBase activation_output) {
   se::dnn::LazyOpRunner<se::dnn::FusedMHAScaleBiasSoftmaxOp> *lazy_runner =
       options.runner_cache->AsFusedMHABiasRunner();
   std::optional<se::dnn::LazyOpRunner<se::dnn::FusedMHAScaleBiasSoftmaxOp>>
@@ -191,13 +211,19 @@ Status RunFusedMHAScaleBiasSoftmax(GpufMHAParams params, se::Stream *stream,
   TF_ASSIGN_OR_RETURN(se::dnn::FusedMHAKind kind,
                       GetDNNFusedMHAKindFromCudnnfMHAKind(params.config->kind));
   std::optional<double> dropout_rate;
-  if (params.config->dropout_rate) dropout_rate = *params.config->dropout_rate;
+  if (params.config->dropout_rate) {
+    dropout_rate = *params.config->dropout_rate;
+  }
 
   double scale = 1.0;
-  if (params.config->fmha_scale) scale = *params.config->fmha_scale;
+  if (params.config->fmha_scale) {
+    scale = *params.config->fmha_scale;
+  }
 
   std::optional<int64_t> seed;
-  if (params.config->seed) seed = *params.config->seed;
+  if (params.config->seed) {
+    seed = *params.config->seed;
+  }
 
   se::dnn::FusedMHAScaleBiasSoftmaxOp::Config config{
       kind,
@@ -208,13 +234,14 @@ Status RunFusedMHAScaleBiasSoftmax(GpufMHAParams params, se::Stream *stream,
       params.config->intermediate_lhs_bmm2,
       params.config->output,
       *params.config->bias,
+      params.config->activation,
       dropout_rate,
       seed};
   TF_ASSIGN_OR_RETURN(auto *runner,
                       lazy_runner->GetOrCreateRunner(config, stream));
   return (*runner)(stream, options.profile_result, scratch_memory,
                    lhs_bmm1_buffer, rhs_bmm1_buffer, bias_buffer,
-                   rhs_bmm2_buffer, output_buffer);
+                   rhs_bmm2_buffer, output_buffer, activation_output);
 }
 
 template <typename ElementType, typename BiasType, typename OutputType>
@@ -225,7 +252,10 @@ Status RunGpuFMHAImpl(const GpufMHAParams &params, se::Stream *stream,
   auto rhs_bmm1_buffer = se::DeviceMemory<ElementType>(params.rhs_bmm1_buffer);
   auto rhs_bmm2_buffer = se::DeviceMemory<ElementType>(params.rhs_bmm2_buffer);
   auto output_buffer = se::DeviceMemory<OutputType>(params.output_buffer);
-
+  auto activation_buffer =
+      params.activation_buffer.is_null()
+          ? se::DeviceMemoryBase()
+          : se::DeviceMemory<OutputType>(params.activation_buffer);
   se::dnn::AlgorithmDesc algorithm = params.config->algorithm;
   if (options.runner_cache) {
     algorithm = options.runner_cache->ToAlgorithmDesc();
@@ -238,7 +268,7 @@ Status RunGpuFMHAImpl(const GpufMHAParams &params, se::Stream *stream,
     case CudnnfMHAKind::kSoftmax:
       run_status = RunFusedMHABmmBmm<ElementType, OutputType>(
           params, stream, options, lhs_bmm1_buffer, rhs_bmm1_buffer,
-          rhs_bmm2_buffer, output_buffer, scratch_memory);
+          rhs_bmm2_buffer, output_buffer, scratch_memory, activation_buffer);
       break;
 
     case CudnnfMHAKind::kScaleMaskSoftmax:
@@ -247,7 +277,8 @@ Status RunGpuFMHAImpl(const GpufMHAParams &params, se::Stream *stream,
       run_status = RunFusedMHAScaleMaskSoftmax<ElementType, OutputType>(
           params, stream, options, lhs_bmm1_buffer, rhs_bmm1_buffer,
           rhs_bmm2_buffer, output_buffer,
-          se::DeviceMemory<ElementType>(*params.mask_buffer), scratch_memory);
+          se::DeviceMemory<ElementType>(*params.mask_buffer), scratch_memory,
+          activation_buffer);
       break;
 
     case CudnnfMHAKind::kScaleBiasMaskSoftmax:
@@ -259,7 +290,8 @@ Status RunGpuFMHAImpl(const GpufMHAParams &params, se::Stream *stream,
               params, stream, options, lhs_bmm1_buffer, rhs_bmm1_buffer,
               rhs_bmm2_buffer, output_buffer,
               se::DeviceMemory<ElementType>(*params.mask_buffer),
-              se::DeviceMemory<BiasType>(*params.bias_buffer), scratch_memory);
+              se::DeviceMemory<BiasType>(*params.bias_buffer), scratch_memory,
+              activation_buffer);
       break;
     case CudnnfMHAKind::kScaleBiasSoftmax:
     case CudnnfMHAKind::kScaleBiasSoftmaxDropout:
@@ -268,7 +300,8 @@ Status RunGpuFMHAImpl(const GpufMHAParams &params, se::Stream *stream,
           RunFusedMHAScaleBiasSoftmax<ElementType, BiasType, OutputType>(
               params, stream, options, lhs_bmm1_buffer, rhs_bmm1_buffer,
               rhs_bmm2_buffer, output_buffer,
-              se::DeviceMemory<BiasType>(*params.bias_buffer), scratch_memory);
+              se::DeviceMemory<BiasType>(*params.bias_buffer), scratch_memory,
+              activation_buffer);
       break;
 
     default:
@@ -393,6 +426,210 @@ void AssignSeed(GpufMHAConfig &config,
   }
 }
 
+template <typename ElementType, typename OutputType>
+Status RunFusedMHABmmBmmBackward(
+    GpufMHABackwardParams params, se::Stream *stream,
+    RunFusedMHABackwardOptions options,
+    DeviceMemory<ElementType> bmm1_grad_gemm1_rhs_buffer,
+    DeviceMemory<ElementType> bmm1_grad_gemm2_rhs_buffer,
+    DeviceMemory<ElementType> bmm2_grad_gemm1_lhs_buffer,
+    DeviceMemory<ElementType> bmm2_grad_gemm2_rhs_buffer,
+    DeviceMemory<ElementType> d_output_buffer,
+    DeviceMemory<OutputType> d_bmm1_lhs_buffer,
+    DeviceMemory<OutputType> d_bmm1_rhs_buffer,
+    DeviceMemory<OutputType> d_bmm2_rhs_buffer,
+    DeviceMemory<OutputType> d_S_buffer, DeviceMemoryBase d_bias_buffer,
+    DeviceMemoryBase scratch_memory) {
+  se::dnn::LazyOpRunner<se::dnn::FusedMHASoftmaxBackwardOp> *lazy_runner =
+      options.runner_cache->AsFusedMHASoftmaxBackwardRunner();
+  std::optional<se::dnn::LazyOpRunner<se::dnn::FusedMHASoftmaxBackwardOp>>
+      local_runner;
+  if (!lazy_runner) {
+    local_runner.emplace(params.config->algorithm);
+    lazy_runner = &*local_runner;
+  }
+  // FMHA TODO: add GetDNNFusedMHAKindFromCudnnfMHAKind here
+  TF_ASSIGN_OR_RETURN(se::dnn::FusedMHAKind kind,
+                      GetDNNFusedMHAKindFromCudnnfMHAKind(params.config->kind));
+  std::optional<double> dropout_rate;
+  if (params.config->dropout_rate) {
+    dropout_rate = *params.config->dropout_rate;
+  }
+
+  double scale = 1.0;
+  if (params.config->fmha_scale) {
+    scale = *params.config->fmha_scale;
+  }
+
+  std::optional<int64_t> seed;
+  if (params.config->seed) {
+    seed = *params.config->seed;
+  }
+
+  se::dnn::FusedMHASoftmaxBackwardOp::Config config{
+      kind,
+      scale,
+      params.config->bmm1_grad_gemm1_rhs,
+      params.config->bmm1_grad_gemm2_rhs,
+      params.config->bmm2_grad_gemm1_lhs,
+      params.config->bmm2_grad_gemm2_rhs,
+      params.config->d_output,
+      params.config->d_bmm1_lhs,
+      params.config->d_bmm1_rhs,
+      params.config->d_bmm2_rhs,
+      params.config->d_s,
+      params.config->d_bias,
+      dropout_rate,
+      seed};
+  TF_ASSIGN_OR_RETURN(auto *runner,
+                      lazy_runner->GetOrCreateRunner(config, stream));
+  return (*runner)(stream, options.profile_result, scratch_memory,
+                   bmm1_grad_gemm1_rhs_buffer, bmm1_grad_gemm2_rhs_buffer,
+                   bmm2_grad_gemm1_lhs_buffer, bmm2_grad_gemm2_rhs_buffer,
+                   d_output_buffer, d_bmm1_lhs_buffer, d_bmm1_rhs_buffer,
+                   d_bmm2_rhs_buffer, d_S_buffer, d_bias_buffer);
+}
+
+template <typename ElementType, typename OutputType>
+Status RunFusedMHAScaleMaskSoftmaxBackward(
+    GpufMHABackwardParams params, se::Stream *stream,
+    RunFusedMHABackwardOptions options,
+    DeviceMemory<ElementType> bmm1_grad_gemm1_rhs_buffer,
+    DeviceMemory<ElementType> bmm1_grad_gemm2_rhs_buffer,
+    DeviceMemory<ElementType> bmm2_grad_gemm1_lhs_buffer,
+    DeviceMemory<ElementType> bmm2_grad_gemm2_rhs_buffer,
+    DeviceMemory<ElementType> d_output_buffer,
+    DeviceMemory<OutputType> d_bmm1_lhs_buffer,
+    DeviceMemory<OutputType> d_bmm1_rhs_buffer,
+    DeviceMemory<OutputType> d_bmm2_rhs_buffer,
+    DeviceMemory<OutputType> d_S_buffer, DeviceMemory<ElementType> mask_buffer,
+    DeviceMemoryBase d_bias_buffer, DeviceMemoryBase scratch_memory) {
+  se::dnn::LazyOpRunner<se::dnn::FusedMHAScaleMaskSoftmaxBackwardOp>
+      *lazy_runner = options.runner_cache->AsFusedMHAMaskBackwardRunner();
+  std::optional<
+      se::dnn::LazyOpRunner<se::dnn::FusedMHAScaleMaskSoftmaxBackwardOp>>
+      local_runner;
+  if (!lazy_runner) {
+    local_runner.emplace(params.config->algorithm);
+    lazy_runner = &*local_runner;
+  }
+  TF_ASSIGN_OR_RETURN(se::dnn::FusedMHAKind kind,
+                      GetDNNFusedMHAKindFromCudnnfMHAKind(params.config->kind));
+  std::optional<double> dropout_rate;
+  if (params.config->dropout_rate) {
+    dropout_rate = *params.config->dropout_rate;
+  }
+
+  double scale = 1.0;
+  if (params.config->fmha_scale) {
+    scale = *params.config->fmha_scale;
+  }
+
+  std::optional<int64_t> seed;
+  if (params.config->seed) {
+    seed = *params.config->seed;
+  }
+
+  se::dnn::FusedMHAScaleMaskSoftmaxBackwardOp::Config config{
+      kind,
+      scale,
+      params.config->bmm1_grad_gemm1_rhs,
+      params.config->bmm1_grad_gemm2_rhs,
+      params.config->bmm2_grad_gemm1_lhs,
+      params.config->bmm2_grad_gemm2_rhs,
+      params.config->d_output,
+      params.config->d_bmm1_lhs,
+      params.config->d_bmm1_rhs,
+      params.config->d_bmm2_rhs,
+      params.config->d_s,
+      *params.config->mask,
+      params.config->d_bias,
+      dropout_rate,
+      seed};
+  TF_ASSIGN_OR_RETURN(auto *runner,
+                      lazy_runner->GetOrCreateRunner(config, stream));
+  return (*runner)(stream, options.profile_result, scratch_memory,
+                   bmm1_grad_gemm1_rhs_buffer, bmm1_grad_gemm2_rhs_buffer,
+                   bmm2_grad_gemm1_lhs_buffer, bmm2_grad_gemm2_rhs_buffer,
+                   d_output_buffer, d_bmm1_lhs_buffer, d_bmm1_rhs_buffer,
+                   d_bmm2_rhs_buffer, d_S_buffer, mask_buffer, d_bias_buffer);
+}
+
+template <typename ElementType, typename BiasType, typename OutputType>
+Status RunGpuFMHABackwardImpl(const GpufMHABackwardParams &params,
+                              se::Stream *stream,
+                              se::DeviceMemoryBase scratch_memory,
+                              RunFusedMHABackwardOptions options) {
+  auto bmm1_grad_gemm1_rhs_buffer =
+      se::DeviceMemory<ElementType>(params.bmm1_grad_gemm1_rhs_buffer);
+  auto bmm1_grad_gemm2_rhs_buffer =
+      se::DeviceMemory<ElementType>(params.bmm1_grad_gemm2_rhs_buffer);
+  auto bmm2_grad_gemm1_lhs_buffer =
+      se::DeviceMemory<ElementType>(params.bmm2_grad_gemm1_lhs_buffer);
+  auto bmm2_grad_gemm2_rhs_buffer =
+      se::DeviceMemory<ElementType>(params.bmm2_grad_gemm2_rhs_buffer);
+  auto d_output_buffer = se::DeviceMemory<ElementType>(params.d_output_buffer);
+  auto d_bmm1_lhs_buffer =
+      se::DeviceMemory<OutputType>(params.d_bmm1_lhs_buffer);
+  auto d_bmm1_rhs_buffer =
+      se::DeviceMemory<OutputType>(params.d_bmm1_rhs_buffer);
+  auto d_bmm2_rhs_buffer =
+      se::DeviceMemory<OutputType>(params.d_bmm2_rhs_buffer);
+  auto d_S_buffer = se::DeviceMemory<OutputType>(params.d_s_buffer);
+
+  auto d_bias_buffer = params.d_bias_buffer.is_null()
+                           ? se::DeviceMemoryBase()
+                           : se::DeviceMemory<OutputType>(params.d_bias_buffer);
+
+  se::dnn::AlgorithmDesc algorithm = params.config->algorithm;
+  if (options.runner_cache) {
+    algorithm = options.runner_cache->ToAlgorithmDesc();
+  }
+
+  Status run_status = OkStatus();
+  switch (params.config->kind) {
+    case CudnnfMHAKind::kBackwardBmmBmm:
+    case CudnnfMHAKind::kBackwardSoftmaxDropout:
+    case CudnnfMHAKind::kBackwardSoftmax:
+    case CudnnfMHAKind::kBackwardScaleBiasSoftmax:
+    case CudnnfMHAKind::kBackwardScaleBiasSoftmaxDropout:
+      run_status = RunFusedMHABmmBmmBackward<ElementType, OutputType>(
+          params, stream, options, bmm1_grad_gemm1_rhs_buffer,
+          bmm1_grad_gemm2_rhs_buffer, bmm2_grad_gemm1_lhs_buffer,
+          bmm2_grad_gemm2_rhs_buffer, d_output_buffer, d_bmm1_lhs_buffer,
+          d_bmm1_rhs_buffer, d_bmm2_rhs_buffer, d_S_buffer, d_bias_buffer,
+          scratch_memory);
+      break;
+
+    case CudnnfMHAKind::kBackwardScaleMaskSoftmax:
+    case CudnnfMHAKind::kBackwardScaleMaskSoftmaxDropout:
+    case CudnnfMHAKind::kBackwardScaleBiasMaskSoftmax:
+    case CudnnfMHAKind::kBackwardScaleBiasMaskSoftmaxDropout:
+      TF_RET_CHECK(params.mask_buffer.has_value());
+      run_status = RunFusedMHAScaleMaskSoftmaxBackward<ElementType, OutputType>(
+          params, stream, options, bmm1_grad_gemm1_rhs_buffer,
+          bmm1_grad_gemm2_rhs_buffer, bmm2_grad_gemm1_lhs_buffer,
+          bmm2_grad_gemm2_rhs_buffer, d_output_buffer, d_bmm1_lhs_buffer,
+          d_bmm1_rhs_buffer, d_bmm2_rhs_buffer, d_S_buffer,
+          se::DeviceMemory<ElementType>(*params.mask_buffer), d_bias_buffer,
+          scratch_memory);
+      break;
+    default:
+      return InternalError("Invalid cuDNN fMHA kind");
+  }
+
+  if (run_status != OkStatus()) {
+    return run_status;
+  }
+
+  if (!stream->ok()) {
+    return InternalError("Unable to launch FMHA with type %s and algorithm %s",
+                         CudnnfMHAKindToString(params.config->kind),
+                         algorithm.ToString());
+  }
+
+  return run_status;
+}
 }  // namespace
 
 /*static*/ StatusOr<GpufMHAConfig> GpufMHAConfig::For(
@@ -402,7 +639,7 @@ void AssignSeed(GpufMHAConfig &config,
   const Shape &rhs_bmm1_shape = desc.rhs_bmm1_shape;
   const Shape &rhs_bmm2_shape = desc.rhs_bmm2_shape;
   const Shape &intermediate_lhs_bmm2_shape = desc.intermediate_lhs_bmm2_shape;
-  const Shape &output_shape = desc.output_shape;
+  const Shape &output_shape = desc.output_shapes[0];
 
   // Get DNN dtype from primtive types
   TF_ASSIGN_OR_RETURN(
@@ -452,6 +689,18 @@ void AssignSeed(GpufMHAConfig &config,
   config.output = TensorDescriptor::For(output_type, output_shape.dimensions(),
                                         output_shape.layout().minor_to_major());
 
+  if (desc.output_shapes.size() > 1) {
+    const Shape &activation_shape = desc.output_shapes.back();
+    // Generally, activation should have same type as output, but set it
+    // explicityly just to be safe.
+    TF_ASSIGN_OR_RETURN(
+        DataType activation_type,
+        GetDNNDataTypeFromPrimitiveType(activation_shape.element_type()));
+    config.activation =
+        TensorDescriptor::For(activation_type, activation_shape.dimensions(),
+                              activation_shape.layout().minor_to_major());
+  }
+
   config.kind = desc.kind;
   const CudnnfMHABackendConfig &backend_config = desc.backend_config;
   config.algorithm = se::dnn::AlgorithmDesc(backend_config.algorithm());
@@ -464,17 +713,198 @@ void AssignSeed(GpufMHAConfig &config,
   return config;
 }
 
+/*static*/ StatusOr<GpufMHABackwardConfig> GpufMHABackwardConfig::For(
+    const GpufMHABackwardDescriptor &desc) {
+  // Get shapes from desc.
+
+  const Shape &bmm1_grad_gemm1_rhs_shape = desc.bmm1_grad_gemm1_rhs_shape;
+  const Shape &bmm1_grad_gemm2_rhs_shape = desc.bmm1_grad_gemm2_rhs_shape;
+  const Shape &bmm2_grad_gemm1_lhs_shape = desc.bmm2_grad_gemm1_lhs_shape;
+  const Shape &bmm2_grad_gemm2_rhs_shape = desc.bmm2_grad_gemm2_rhs_shape;
+  const Shape &d_output_shape = desc.d_output_shape;
+  const Shape &d_bmm1_lhs_shape = desc.d_bmm1_lhs_shape;
+  const Shape &d_bmm1_rhs_shape = desc.d_bmm1_rhs_shape;
+  const Shape &d_bmm2_rhs_shape = desc.d_bmm2_rhs_shape;
+
+  // Get DNN dtype from primtive types
+  TF_ASSIGN_OR_RETURN(DataType bmm1_grad_gemm1_rhs_type,
+                      GetDNNDataTypeFromPrimitiveType(
+                          bmm1_grad_gemm1_rhs_shape.element_type()));
+
+  TF_ASSIGN_OR_RETURN(DataType bmm1_grad_gemm2_rhs_type,
+                      GetDNNDataTypeFromPrimitiveType(
+                          bmm1_grad_gemm2_rhs_shape.element_type()));
+
+  TF_ASSIGN_OR_RETURN(DataType bmm2_grad_gemm1_lhs_type,
+                      GetDNNDataTypeFromPrimitiveType(
+                          bmm2_grad_gemm1_lhs_shape.element_type()));
+
+  TF_ASSIGN_OR_RETURN(DataType bmm2_grad_gemm2_rhs_type,
+                      GetDNNDataTypeFromPrimitiveType(
+                          bmm2_grad_gemm2_rhs_shape.element_type()));
+
+  TF_ASSIGN_OR_RETURN(
+      DataType d_output_type,
+      GetDNNDataTypeFromPrimitiveType(d_output_shape.element_type()));
+
+  TF_ASSIGN_OR_RETURN(
+      DataType d_bmm1_lhs_type,
+      GetDNNDataTypeFromPrimitiveType(d_bmm1_lhs_shape.element_type()));
+
+  TF_ASSIGN_OR_RETURN(
+      DataType d_bmm1_rhs_type,
+      GetDNNDataTypeFromPrimitiveType(d_bmm1_rhs_shape.element_type()));
+
+  TF_ASSIGN_OR_RETURN(
+      DataType d_bmm2_rhs_type,
+      GetDNNDataTypeFromPrimitiveType(d_bmm2_rhs_shape.element_type()));
+
+  GpufMHABackwardConfig config;
+  config.input_type = bmm1_grad_gemm1_rhs_shape.element_type();
+  config.output_type = d_bmm1_lhs_shape.element_type();
+
+  // Get MatmulTensorDescriptors for lhs of BMM1 grad GEMM 1
+  config.bmm1_grad_gemm1_rhs = MatmulTensorDescriptor::For(
+      bmm1_grad_gemm1_rhs_type, bmm1_grad_gemm1_rhs_shape.dimensions(),
+      desc.bmm1_grad_gemm1_rhs_shape.layout().minor_to_major(),
+      desc.bmm1_grad_gemm1_dnums.rhs_batch_dimensions(),
+      desc.bmm1_grad_gemm1_dnums.rhs_contracting_dimensions());
+
+  // Get MatmulTensorDescriptors for rhs of BMM1 grad GEMM 2
+  config.bmm1_grad_gemm2_rhs = MatmulTensorDescriptor::For(
+      bmm1_grad_gemm2_rhs_type, bmm1_grad_gemm2_rhs_shape.dimensions(),
+      desc.bmm1_grad_gemm2_rhs_shape.layout().minor_to_major(),
+      desc.bmm1_grad_gemm2_dnums.rhs_batch_dimensions(),
+      desc.bmm1_grad_gemm2_dnums.rhs_contracting_dimensions());
+
+  // Get MatmulTensorDescriptors for BMM2 grad GEMM 1
+  config.bmm2_grad_gemm1_lhs = MatmulTensorDescriptor::For(
+      bmm2_grad_gemm1_lhs_type, bmm2_grad_gemm1_lhs_shape.dimensions(),
+      desc.bmm2_grad_gemm1_lhs_shape.layout().minor_to_major(),
+      desc.bmm2_grad_gemm1_dnums.lhs_batch_dimensions(),
+      desc.bmm2_grad_gemm1_dnums.lhs_contracting_dimensions());
+
+  config.d_output = MatmulTensorDescriptor::For(
+      d_output_type, d_output_shape.dimensions(),
+      desc.d_output_shape.layout().minor_to_major(),
+      desc.bmm2_grad_gemm1_dnums.rhs_batch_dimensions(),
+      desc.bmm2_grad_gemm1_dnums.rhs_contracting_dimensions());
+
+  // Get MatmulTensorDescriptors for BMM2 grad GEMM 2
+  config.bmm2_grad_gemm2_rhs = MatmulTensorDescriptor::For(
+      bmm2_grad_gemm2_rhs_type, bmm2_grad_gemm2_rhs_shape.dimensions(),
+      desc.bmm2_grad_gemm2_rhs_shape.layout().minor_to_major(),
+      desc.bmm2_grad_gemm2_dnums.rhs_batch_dimensions(),
+      desc.bmm2_grad_gemm2_dnums
+          .rhs_contracting_dimensions());  // FMHA TODO: transpose here?
+
+  config.d_bmm1_lhs =
+      TensorDescriptor::For(d_bmm1_lhs_type, d_bmm1_lhs_shape.dimensions(),
+                            d_bmm1_lhs_shape.layout().minor_to_major());
+  config.d_bmm1_rhs =
+      TensorDescriptor::For(d_bmm1_rhs_type, d_bmm1_rhs_shape.dimensions(),
+                            d_bmm1_rhs_shape.layout().minor_to_major());
+  config.d_bmm2_rhs =
+      TensorDescriptor::For(d_bmm2_rhs_type, d_bmm2_rhs_shape.dimensions(),
+                            d_bmm2_rhs_shape.layout().minor_to_major());
+  config.d_s = TensorDescriptor::For(
+      bmm2_grad_gemm1_lhs_type, bmm2_grad_gemm1_lhs_shape.dimensions(),
+      bmm2_grad_gemm1_lhs_shape.layout().minor_to_major());
+
+  if (desc.d_bias_shape) {
+    const Shape &d_bias_shape = *desc.d_bias_shape;
+
+    // Get DNN dtype from primtive types
+    TF_ASSIGN_OR_RETURN(DataType d_bias_type, GetDNNDataTypeFromPrimitiveType(
+                                                  d_bias_shape.element_type()));
+    config.d_bias =
+        TensorDescriptor::For(d_bias_type, d_bias_shape.dimensions(),
+                              d_bias_shape.layout().minor_to_major());
+  }
+
+  config.kind = desc.kind;
+  const CudnnfMHABackendConfig &backend_config = desc.backend_config;
+  config.algorithm = se::dnn::AlgorithmDesc(backend_config.algorithm());
+  auto check_and_assign_mask = [&]() -> Status {
+    if (desc.mask_shape) {
+      const Shape &mask_shape = *desc.mask_shape;
+
+      TF_ASSIGN_OR_RETURN(DataType mask_type, GetDNNDataTypeFromPrimitiveType(
+                                                  mask_shape.element_type()));
+      config.mask = TensorDescriptor::For(mask_type, mask_shape.dimensions(),
+                                          mask_shape.layout().minor_to_major());
+      return OkStatus();
+    } else {
+      return InternalError(
+          "GpufMHADescriptor should have non-nul mask shape but found null "
+          "mask shape");
+    }
+  };
+
+  auto assign_scale = [&]() {
+    config.fmha_scale.emplace(backend_config.fmha_scale());
+  };
+
+  auto assign_dropout_rate = [&]() {
+    config.dropout_rate.emplace(backend_config.dropout_rate());
+  };
+
+  auto assign_seed = [&]() { config.seed.emplace(backend_config.seed()); };
+
+  switch (config.kind) {
+    case CudnnfMHAKind::kBackwardScaleBiasMaskSoftmax:
+      TF_RETURN_IF_ERROR(check_and_assign_mask());
+      assign_scale();
+      break;
+    case CudnnfMHAKind::kBackwardScaleBiasMaskSoftmaxDropout:
+      TF_RETURN_IF_ERROR(check_and_assign_mask());
+      assign_scale();
+      assign_dropout_rate();
+      assign_seed();
+      break;
+    case CudnnfMHAKind::kBackwardScaleMaskSoftmax:
+      TF_RETURN_IF_ERROR(check_and_assign_mask());
+      assign_scale();
+      break;
+    case CudnnfMHAKind::kBackwardScaleMaskSoftmaxDropout:
+      TF_RETURN_IF_ERROR(check_and_assign_mask());
+      assign_scale();
+      assign_dropout_rate();
+      assign_seed();
+      break;
+    case CudnnfMHAKind::kBackwardBmmBmm:
+    case CudnnfMHAKind::kBackwardSoftmax:
+      break;
+    case CudnnfMHAKind::kBackwardSoftmaxDropout:
+      assign_dropout_rate();
+      assign_seed();
+      break;
+    case CudnnfMHAKind::kBackwardScaleBiasSoftmaxDropout:
+      assign_scale();
+      assign_dropout_rate();
+      assign_seed();
+      break;
+    case CudnnfMHAKind::kBackwardScaleBiasSoftmax:
+      assign_scale();
+      break;
+    default:
+      return InternalError("Unknown backward fmha kind");
+  }
+  return config;
+}
+
 /*static*/ StatusOr<GpufMHAParams> GpufMHAParams::For(
     const GpufMHAConfig &config, se::DeviceMemoryBase lhs_bmm1_buffer,
     se::DeviceMemoryBase rhs_bmm1_buffer, se::DeviceMemoryBase rhs_bmm2_buffer,
     se::DeviceMemoryBase output_buffer, se::DeviceMemoryBase mask_buffer,
-    se::DeviceMemoryBase bias_buffer) {
+    se::DeviceMemoryBase bias_buffer, se::DeviceMemoryBase activation_buffer) {
   GpufMHAParams params;
   params.config = &config;
   params.lhs_bmm1_buffer = lhs_bmm1_buffer;
   params.rhs_bmm1_buffer = rhs_bmm1_buffer;
   params.rhs_bmm2_buffer = rhs_bmm2_buffer;
   params.output_buffer = output_buffer;
+  params.activation_buffer = activation_buffer;
 
   auto assign_mask_buffer = [&]() {
     params.mask_buffer.emplace();
@@ -509,6 +939,59 @@ void AssignSeed(GpufMHAConfig &config,
     case CudnnfMHAKind::kScaleBiasSoftmaxDropout:
       TF_RET_CHECK(!bias_buffer.is_null());
       assign_bias_buffer();
+      break;
+    default:
+      return InternalError("Unknown forward CudnnfMHAKind");
+  }
+  return params;
+}
+
+/*static*/ StatusOr<GpufMHABackwardParams> GpufMHABackwardParams::For(
+    const GpufMHABackwardConfig &config,
+    se::DeviceMemoryBase bmm1_grad_gemm1_rhs_buffer,
+    se::DeviceMemoryBase bmm1_grad_gemm2_rhs_buffer,
+    se::DeviceMemoryBase bmm2_grad_gemm1_lhs_buffer,
+    se::DeviceMemoryBase bmm2_grad_gemm2_rhs_buffer,
+    se::DeviceMemoryBase d_output_buffer,
+    se::DeviceMemoryBase d_bmm1_lhs_buffer,
+    se::DeviceMemoryBase d_bmm1_rhs_buffer,
+    se::DeviceMemoryBase d_bmm2_rhs_buffer, se::DeviceMemoryBase d_s_buffer,
+    se::DeviceMemoryBase mask_buffer, se::DeviceMemoryBase d_bias_buffer) {
+  GpufMHABackwardParams params;
+  params.config = &config;
+  params.bmm1_grad_gemm1_rhs_buffer = bmm1_grad_gemm1_rhs_buffer;
+  params.bmm1_grad_gemm2_rhs_buffer = bmm1_grad_gemm2_rhs_buffer;
+  params.bmm2_grad_gemm1_lhs_buffer = bmm2_grad_gemm1_lhs_buffer;
+  params.bmm2_grad_gemm2_rhs_buffer = bmm2_grad_gemm2_rhs_buffer;
+  params.d_output_buffer = d_output_buffer;
+  params.d_bmm1_lhs_buffer = d_bmm1_lhs_buffer;
+  params.d_bmm1_rhs_buffer = d_bmm1_rhs_buffer;
+  params.d_bmm2_rhs_buffer = d_bmm2_rhs_buffer;
+  params.d_s_buffer = d_s_buffer;
+  params.d_bias_buffer = d_bias_buffer;
+
+  auto assign_mask_buffer = [&]() {
+    params.mask_buffer.emplace();
+    se::DeviceMemoryBase &mask = *params.mask_buffer;
+    mask = mask_buffer;
+  };
+
+  switch (config.kind) {
+    case CudnnfMHAKind::kBackwardBmmBmm:
+    case CudnnfMHAKind::kBackwardSoftmaxDropout:
+    case CudnnfMHAKind::kBackwardSoftmax:
+    case CudnnfMHAKind::kBackwardScaleBiasSoftmax:
+    case CudnnfMHAKind::kBackwardScaleBiasSoftmaxDropout:
+      break;
+    case CudnnfMHAKind::kBackwardScaleMaskSoftmax:
+    case CudnnfMHAKind::kBackwardScaleMaskSoftmaxDropout:
+    case CudnnfMHAKind::kBackwardScaleBiasMaskSoftmax:
+    case CudnnfMHAKind::kBackwardScaleBiasMaskSoftmaxDropout:
+      TF_RET_CHECK(!mask_buffer.is_null());
+      assign_mask_buffer();
+      break;
+    default:
+      return InternalError("Unknown backward CudnnfMHAKind");
   }
   return params;
 }
@@ -518,12 +1001,13 @@ Status RunGpuFMHA(
     se::DeviceMemoryBase rhs_bmm1_buffer, se::DeviceMemoryBase rhs_bmm2_buffer,
     se::DeviceMemoryBase output_buffer, se::DeviceMemoryBase scratch_buffer,
     se::DeviceMemoryBase mask_buffer, se::DeviceMemoryBase bias_buffer,
-    se::Stream *stream, RunFusedMHAOptions options) {
+    se::DeviceMemoryBase activation_buffer, se::Stream *stream,
+    RunFusedMHAOptions options) {
   TF_ASSIGN_OR_RETURN(
       GpufMHAParams params,
       GpufMHAParams::For(fmha_config, lhs_bmm1_buffer, rhs_bmm1_buffer,
                          rhs_bmm2_buffer, output_buffer, mask_buffer,
-                         bias_buffer));
+                         bias_buffer, activation_buffer));
   PrimitiveType input_primitive_type = fmha_config.input_type;
   switch (input_primitive_type) {
     case F16:
@@ -535,6 +1019,40 @@ Status RunGpuFMHA(
     default:
       return absl::UnimplementedError(absl::StrFormat(
           "Unimplemented fused MHA with %s", ToString(fmha_config)));
+  }
+  return OkStatus();
+}
+
+Status RunGpuFMHABackward(
+    const GpufMHABackwardConfig &fmha_config,
+    se::DeviceMemoryBase bmm1_grad_gemm1_rhs_buffer,
+    se::DeviceMemoryBase bmm1_grad_gemm2_rhs_buffer,
+    se::DeviceMemoryBase bmm2_grad_gemm1_lhs_buffer,
+    se::DeviceMemoryBase bmm2_grad_gemm2_rhs_buffer,
+    se::DeviceMemoryBase d_output_buffer, se::DeviceMemoryBase scratch_buffer,
+    se::DeviceMemoryBase d_bmm1_lhs_buffer,
+    se::DeviceMemoryBase d_bmm1_rhs_buffer,
+    se::DeviceMemoryBase d_bmm2_rhs_buffer, se::DeviceMemoryBase d_S_buffer,
+    se::DeviceMemoryBase mask_buffer, se::DeviceMemoryBase d_bias_buffer,
+    se::Stream *stream, RunFusedMHABackwardOptions options) {
+  TF_ASSIGN_OR_RETURN(
+      GpufMHABackwardParams params,
+      GpufMHABackwardParams::For(
+          fmha_config, bmm1_grad_gemm1_rhs_buffer, bmm1_grad_gemm2_rhs_buffer,
+          bmm2_grad_gemm1_lhs_buffer, bmm2_grad_gemm2_rhs_buffer,
+          d_output_buffer, d_bmm1_lhs_buffer, d_bmm1_rhs_buffer,
+          d_bmm2_rhs_buffer, d_S_buffer, mask_buffer, d_bias_buffer));
+  PrimitiveType input_primitive_type = fmha_config.input_type;
+  switch (input_primitive_type) {
+    case F16:
+      return RunGpuFMHABackwardImpl<Eigen::half, Eigen::half, Eigen::half>(
+          params, stream, scratch_buffer, options);
+    case BF16:
+      return RunGpuFMHABackwardImpl<Eigen::bfloat16, Eigen::bfloat16,
+                                    Eigen::bfloat16>(params, stream,
+                                                     scratch_buffer, options);
+    default:
+      return Unimplemented("Unimplemented fused MHA backward");
   }
   return OkStatus();
 }

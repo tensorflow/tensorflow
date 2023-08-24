@@ -37,7 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executable.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executable_interface.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_interface.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_initializer_helper.h"  // NOLINT(unused-includes): required for tensorflow::tpu::FindAndLoadTpuLibrary
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_initializer_framework_helper.h"  // NOLINT(unused-includes): required for tensorflow::tpu::FindAndLoadTpuLibrary
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_stream.h"
 #include "tensorflow/compiler/xla/util.h"

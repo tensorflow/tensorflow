@@ -15,7 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_MLRT_INTERPRETER_BUILTIN_KERNELS_H_
 #define TENSORFLOW_CORE_TFRT_MLRT_INTERPRETER_BUILTIN_KERNELS_H_
 
+#include <type_traits>
+
 #include "tensorflow/core/tfrt/mlrt/interpreter/context.h"
+#include "tensorflow/core/tfrt/mlrt/interpreter/future.h"
+#include "tensorflow/tsl/profiler/lib/traceme.h"
 
 namespace mlrt {
 
@@ -24,6 +28,43 @@ void ReturnOp(KernelFrame& frame);
 
 void AsyncOp(KernelFrame& frame);
 void AwaitHandleOp(KernelFrame& frame);
+
+// The base class for the PromiseReturnOp.
+template <typename Derived>
+class PromiseReturnOpBase : public KernelFrame {
+ public:
+  using KernelFrame::KernelFrame;
+
+  Promise& promise() const {
+    return static_cast<const Derived*>(this)->promise();
+  }
+
+  decltype(auto) value() const {
+    return static_cast<const Derived*>(this)->value();
+  }
+
+  bool value_last_use() const {
+    return static_cast<const Derived*>(this)->value_last_use();
+  }
+
+  void Invoke() {
+    tsl::profiler::TraceMe trace_me(Derived::kName);
+
+    // Set the execution context to kReturn state so that the callbacks in the
+    // futures, which may invoke Resume(), knows we are exiting.
+    execution_context().Return({});
+    auto& p = promise();
+
+    using ValueType = std::decay_t<decltype(value())>;
+
+    decltype(auto) value = this->value();
+    if (value_last_use()) {
+      std::move(p).template Set<ValueType>(std::move(value));
+    } else {
+      std::move(p).template Set<ValueType>(value);
+    }
+  }
+};
 
 void RegisterBuiltinKernels(KernelRegistry& registry);
 

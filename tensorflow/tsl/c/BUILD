@@ -58,9 +58,7 @@ tsl_gpu_library(
         "tsl_status.h",
         "tsl_status_internal.h",
     ],
-    visibility = [
-        "//tensorflow/c:__subpackages__",
-    ],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/tsl/platform:status",
     ],
@@ -107,18 +105,6 @@ tsl_gpu_library(
         ":tsl_status_internal",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:status",
-    ],
-)
-
-tsl_cc_test(
-    name = "tsl_status_helper_test",
-    srcs = ["tsl_status_helper_test.cc"],
-    deps = [
-        ":tsl_status_helper",
-        "//tensorflow/tsl/platform:errors",
-        "//tensorflow/tsl/platform:status",
-        "//tensorflow/tsl/platform:test",
-        "//tensorflow/tsl/platform:test_main",
     ],
 )
 
