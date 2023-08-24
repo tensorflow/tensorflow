@@ -4,7 +4,7 @@
 
 #SV  = #sparse_tensor.encoding<{ lvlTypes = [ "compressed" ] }>
 #CSR = #sparse_tensor.encoding<{ lvlTypes = [ "compressed", "compressed" ] }>
-#COO = #sparse_tensor.encoding<{ lvlTypes = [ "compressed-nu", "singleton-nu", "singleton" ] }>
+#COO = #sparse_tensor.encoding<{ lvlTypes = [ "compressed_nu", "singleton_nu", "singleton" ] }>
 
 //
 // Vector-vector gendot.
