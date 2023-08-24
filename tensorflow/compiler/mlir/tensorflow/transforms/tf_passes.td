@@ -1455,6 +1455,14 @@ def FunctionalControlFlowToRegionsPass : Pass<"tf-functional-control-flow-to-reg
   }];
 
   let constructor = "TF::CreateTFFunctionalControlFlowToRegions()";
+
+  let options = [
+    Option<"allow_passthrough_args_", "allow-passthrough-args", "bool",
+           /*default=*/"false",
+           "Allows to switch on passthrough args for control flow logic. This "
+           "allows the pass to create blocks that better match MLIR interfaces, "
+           "but might break assumptions in existing passes.">
+  ];
 }
 
 def RegionControlFlowToFunctionalPass : Pass<"tf-region-control-flow-to-functional", "ModuleOp"> {
@@ -1944,42 +1952,6 @@ def LowerQuantizedPass : Pass<"tf-lower-quantized", "mlir::func::FuncOp"> {
   }];
 
   let constructor = "TF::CreateLowerQuantizedPass()";
-}
-
-def OutsideCompiledToHostLaunchPass : Pass<"tf-outside-compiled-to-host-launch", "ModuleOp"> {
-  let summary = "Wraps each op with the _xla_outside_compiled attribute in a separate tf_device.launch on replicated host device.";
-
-  let description = [{
-    This pass wraps ops with the same `_xla_outside_compilation`
-    attribute value in a tf_device.launch op with host device assignment.
-
-    A simple example:
-
-    ```mlir
-      "tf_device.cluster"() ( {
-        "tf.A"()
-        "tf.B"() {_xla_outside_compilation = "cluster1"}
-        "tf.C"()
-        tf_device.return
-      }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []}
-    ```
-
-    Would become the following ops (unimportant attribute, type are omitted):
-
-    ```mlir
-      "tf_device.cluster"() ( {
-        "tf.A"()
-        "tf_device.launch"() {
-          "tf.B"() {_xla_outside_compilation = "cluster1"}
-          tf_device.return
-        } {device = "TPU_REPLICATED_HOST_0"} : () -> ()
-        "tf.C"()
-        tf_device.return
-      }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []}
-    ```
-  }];
-
-  let constructor = "TFTPU::CreateOutsideCompiledToHostLaunchPass()";
 }
 
 def TPUHostComputationExpansionPass : Pass<"tf-tpu-host-computation-expansion", "mlir::func::FuncOp"> {
@@ -2813,4 +2785,14 @@ def XlaCallModuleSerializationPass
   ];
 
   let constructor = "TF::CreateXlaCallModuleSerializationPass()";
+}
+
+def ColocateTPUCopyWithDynamicShapePass : Pass<"tf-colocate-tpu-copy-with-dynamic-shape", "ModuleOp"> {
+  let summary = "Adjusts the device annotation of TPUCopyWithDynamicShape ops";
+  let description = [{
+    Adjusts the device annotation of TPUCopyWithDynamicShape ops such
+    that it matches that of the subsequent TPUExecute{,AndUpdateVariables}
+    op.
+  }];
+  let constructor = "TFTPU::CreateColocateTPUCopyWithDynamicShapePass()";
 }

@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <algorithm>
 #include <string>
 
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibrator_singleton.h"
@@ -42,6 +41,7 @@ class CustomAggregatorOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     // Grab the input tensor
     const Tensor& input_tensor = context->input(0);
+
     auto input_flat = input_tensor.flat<float>();
 
     const int N = input_flat.size();
@@ -51,12 +51,7 @@ class CustomAggregatorOp : public OpKernel {
       return;
     }
 
-    const float* data = input_flat.data();
-    auto minmax = std::minmax_element(data, data + input_flat.size());
-
-    // Report the min/max values.
-    calibrator::CalibratorSingleton::ReportMinMax(id_, *minmax.first,
-                                                  *minmax.second);
+    calibrator::CalibratorSingleton::Report(id_, input_tensor);
 
     // Use the same input for the output.
     context->set_output(0, input_tensor);

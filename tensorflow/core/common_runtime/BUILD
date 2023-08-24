@@ -661,6 +661,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/activity_watcher",
+        "//tensorflow/core/platform:error_logging",
         "//tensorflow/core/profiler/lib:annotated_traceme",
         "//tensorflow/core/profiler/lib:connected_traceme",
         "//tensorflow/core/profiler/lib:scoped_annotation",
@@ -2118,8 +2119,10 @@ cc_library(
     hdrs = ["request_cost.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
     ],
 )
@@ -3193,9 +3196,8 @@ tf_cc_test(
     srcs = ["request_cost_test.cc"],
     deps = [
         ":request_cost",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
         "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -3365,5 +3367,26 @@ tf_cc_fuzz_test(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:tensorflow",
         "//tensorflow/core/ops",
+    ],
+)
+
+cc_library(
+    name = "serving_device_selector",
+    srcs = ["serving_device_selector.cc"],
+    hdrs = ["serving_device_selector.h"],
+    copts = tf_copts(),
+    deps = [
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "serving_device_selector_policies",
+    srcs = ["serving_device_selector_policies.cc"],
+    hdrs = ["serving_device_selector_policies.h"],
+    copts = tf_copts(),
+    deps = [
+        ":serving_device_selector",
     ],
 )

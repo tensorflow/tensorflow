@@ -1,4 +1,4 @@
-load("//tensorflow:strict.default.bzl", "py_strict_test")
+load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 
 package(
@@ -8,7 +8,7 @@ package(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "free_vars_detect",
     srcs = [
         "free_vars_detect.py",
@@ -82,12 +82,19 @@ py_strict_test(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "restore_captures",
     srcs = ["restore_captures.py"],
     srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
+        "//tensorflow/core/function/polymorphism:function_type",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_util",
+        "//tensorflow/python/ops:handle_data_util",
+        "//tensorflow/python/ops:resource_variable_ops",
+        "//tensorflow/python/ops:variables",
         "//tensorflow/python/trackable:asset",
         "//tensorflow/python/trackable:resource",
     ],

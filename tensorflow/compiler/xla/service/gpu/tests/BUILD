@@ -123,6 +123,7 @@ xla_cc_test(
 xla_cc_test(
     name = "gemm_rewrite_test",
     srcs = if_cuda_is_configured(["gemm_rewrite_test.cc"]),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     tags = tf_cuda_tests_tags() + [
         "no_rocm",
     ],
@@ -141,7 +142,10 @@ xla_cc_test(
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:test_main",
         "@com_google_absl//absl/strings",
-    ],
+        "@com_google_googletest//:gtest",
+    ] + if_cuda_is_configured([
+        "@local_config_cuda//cuda:cuda_headers",
+    ]),
 )
 
 xla_cc_test(
@@ -560,13 +564,9 @@ xla_cc_test(
     tags = tf_cuda_tests_tags(),
     deps = [
         ":gpu_codegen_test",
-        "//tensorflow/compiler/xla/service:hlo_module_config",
-        "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service/gpu:gpu_device_info_for_tests",
         "//tensorflow/compiler/xla/service/gpu:gpu_fusible",
         "//tensorflow/compiler/xla/service/gpu:instruction_fusion",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
     ],
 )
@@ -730,6 +730,7 @@ xla_cc_binary(
         "//tensorflow/compiler/xla/stream_executor:dnn",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_impl",
         "//tensorflow/compiler/xla/stream_executor/host:host_platform",
+        "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/compiler/xla/tools:hlo_module_loader",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:platform_port",
@@ -861,18 +862,23 @@ xla_cc_test(
     srcs = ["gpu_fused_mha_test.cc"],
     tags = tf_cuda_tests_tags(),
     deps = [
+        ":gpu_codegen_test",
         "//tensorflow/compiler/xla:array4d",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:reference_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service/gpu:cublas_cudnn",
+        "//tensorflow/compiler/xla/stream_executor:device_description",
+        "//tensorflow/compiler/xla/stream_executor:dnn",
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_pimpl",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
@@ -883,5 +889,6 @@ xla_cc_test(
         "//tensorflow/tsl/platform:test",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_googletest//:gtest",
     ],
 )

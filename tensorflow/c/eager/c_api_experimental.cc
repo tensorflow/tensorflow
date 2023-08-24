@@ -559,6 +559,11 @@ bool TFE_CancellationManagerIsCancelled(
   return tensorflow::unwrap(cancellation_manager)->IsCancelled();
 }
 
+bool TFE_CancellationManagerIsCancelling(
+    TFE_CancellationManager* cancellation_manager) {
+  return tensorflow::unwrap(cancellation_manager)->IsCancelling();
+}
+
 TFE_CancellationToken TFE_CancellationManagerGetToken(
     TFE_CancellationManager* cancellation_manager) {
   return tensorflow::unwrap(cancellation_manager)->get_cancellation_token();

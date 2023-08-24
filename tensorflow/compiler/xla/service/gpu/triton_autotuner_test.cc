@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/autotuning.pb.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
@@ -32,12 +33,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/platform/cpu_info.h"
 
 namespace xla {
 namespace gpu {
@@ -225,7 +228,7 @@ TEST_F(TritonAutotunerTest, VoltaUsesNoMoreThanTwoStages) {
       GetPossibleMatmulAutotuneConfigs(
           *HloInstruction::CreateParameter(
               0, ShapeUtil::MakeShape(F32, {1024, 1024}), ""),
-          compute_capability);
+          compute_capability, GetDebugOptionsForTest());
   EXPECT_FALSE(std::any_of(configs.begin(), configs.end(),
                            [](const AutotuneResult::TritonGemmKey& key) {
                              return key.num_stages() > 2;
@@ -239,7 +242,7 @@ TEST_F(TritonAutotunerTest, AmpereUsesMoreThanTwoStages) {
       GetPossibleMatmulAutotuneConfigs(
           *HloInstruction::CreateParameter(
               0, ShapeUtil::MakeShape(F32, {1024, 1024}), ""),
-          compute_capability);
+          compute_capability, GetDebugOptionsForTest());
   EXPECT_TRUE(std::any_of(configs.begin(), configs.end(),
                           [](const AutotuneResult::TritonGemmKey& key) {
                             return key.num_stages() > 2;
@@ -253,7 +256,7 @@ TEST_F(TritonAutotunerTest, SmallOutputCanUseLargeSplitK) {
       GetPossibleMatmulAutotuneConfigs(
           *HloInstruction::CreateParameter(
               0, ShapeUtil::MakeShape(F32, {1024, 1024}), ""),
-          compute_capability);
+          compute_capability, GetDebugOptionsForTest());
   EXPECT_TRUE(std::any_of(configs.begin(), configs.end(),
                           [](const AutotuneResult::TritonGemmKey& key) {
                             return key.split_k() >= 16;
@@ -267,7 +270,7 @@ TEST_F(TritonAutotunerTest, LargeOutputDoesNotUseLargeSplitK) {
       GetPossibleMatmulAutotuneConfigs(
           *HloInstruction::CreateParameter(
               0, ShapeUtil::MakeShape(F32, {20480, 20480}), ""),
-          compute_capability);
+          compute_capability, GetDebugOptionsForTest());
   EXPECT_FALSE(std::any_of(configs.begin(), configs.end(),
                            [](const AutotuneResult::TritonGemmKey& key) {
                              return key.split_k() > 1;
@@ -492,6 +495,29 @@ ENTRY e {
 )";
 
   CheckTritonAutotuningDeviceless(hlo);
+}
+
+class TritonAutotunerDisableSplitK : public TritonAutotunerTest {
+ public:
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_enable_split_k_autotuning(false);
+    return debug_options;
+  }
+};
+
+TEST_F(TritonAutotunerDisableSplitK, SplitKIsDisabled) {
+  const se::CudaComputeCapability compute_capability{
+      se::CudaComputeCapability::AMPERE, /*minor=*/0};
+  const std::vector<AutotuneResult::TritonGemmKey> configs =
+      GetPossibleMatmulAutotuneConfigs(
+          *HloInstruction::CreateParameter(
+              0, ShapeUtil::MakeShape(F32, {1024, 1024}), ""),
+          compute_capability, GetDebugOptionsForTest());
+  EXPECT_TRUE(std::all_of(configs.begin(), configs.end(),
+                          [](const AutotuneResult::TritonGemmKey& key) {
+                            return key.split_k() == 1;
+                          }));
 }
 
 }  // namespace

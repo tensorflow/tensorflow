@@ -29,6 +29,7 @@ limitations under the License.
 #include "pybind11/stl.h"  // from @pybind11
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/python/ifrt/dtype.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -43,6 +44,9 @@ StatusOr<PrimitiveType> DtypeToPrimitiveType(const pybind11::dtype& np_type);
 
 // Converts a PrimitiveType to a Numpy dtype.
 StatusOr<pybind11::dtype> PrimitiveTypeToDtype(PrimitiveType type);
+
+// Converts an IFRT dtype to a NumPy dtype.
+StatusOr<pybind11::dtype> IfrtDtypeToDtype(ifrt::DType dtype);
 
 // Returns a Python buffer protocol (PEP 3118) format descriptor string for
 // `type`. Return nullptr if there is no suitable choice of format string.

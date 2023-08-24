@@ -344,6 +344,20 @@ int IsEagerTensorHelper(PyObject* o) {
   return check_cache->CachedLookup(o);
 }
 
+int IsTensorProtocolHelper(PyObject* o) {
+  static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
+    return IsInstanceOfRegisteredType(to_check, "TensorProtocol");
+  });
+  return check_cache->CachedLookup(o);
+}
+
+int IsCoreTypeValueHelper(PyObject* o) {
+  static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
+    return IsInstanceOfRegisteredType(to_check, "CoreTypeValue");
+  });
+  return check_cache->CachedLookup(o);
+}
+
 // Returns 1 if `o` is a ResourceVariable.
 // Returns 0 otherwise.
 // Returns -1 if an error occurred.
@@ -1005,6 +1019,8 @@ bool IsOwnedIterator(PyObject* o) { return IsOwnedIteratorHelper(o) == 1; }
 bool IsVariable(PyObject* o) { return IsVariableHelper(o) == 1; }
 bool IsIndexedSlices(PyObject* o) { return IsIndexedSlicesHelper(o) == 1; }
 bool IsDispatchable(PyObject* o) { return IsDispatchableHelper(o) == 1; }
+bool IsTensorProtocol(PyObject* o) { return IsTensorProtocolHelper(o) == 1; }
+bool IsCoreTypeValue(PyObject* o) { return IsCoreTypeValueHelper(o) == 1; }
 
 bool IsTuple(PyObject* o) {
   tensorflow::Safe_PyObjectPtr wrapped;

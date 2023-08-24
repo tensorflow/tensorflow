@@ -1115,7 +1115,7 @@ void TransposePlan::Initialize() {
         max_inner_block_elems = 16;
         break;
       case 2:
-        min_inner_block_elems = 8;
+        min_inner_block_elems = 4;
         max_inner_block_elems = 8;
         break;
       case 4:

@@ -35,7 +35,7 @@ func.func @compute(%a: memref<2x6x2x2xf32>,
        rhs_contracting_dimensions = [2]>,
      epilogue = #lmhlo_gpu<epilogue Default>,
      precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>],
-     operand_segment_sizes = array<i32: 1, 1, 1, 1, 0, 0>
+     operandSegmentSizes = array<i32: 1, 1, 1, 1, 0, 0>
    } : (memref<2x6x2x2xf32>, memref<2x6x2x2xf32>,
         memref<2x6x2x2xf32>, memref<2x6x2x2xf32>) -> ()
 
@@ -86,7 +86,7 @@ func.func @compute(%a: memref<2x6x2x2xf32>,
        rhs_contracting_dimensions = [2]>,
      epilogue = #lmhlo_gpu<epilogue Bias>,
      precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>],
-     operand_segment_sizes = array<i32: 1, 1, 1, 1, 1, 0>
+     operandSegmentSizes = array<i32: 1, 1, 1, 1, 1, 0>
    } : (memref<2x6x2x2xf32>, memref<2x6x2x2xf32>, memref<2x6x2x2xf32>,
         memref<2x6x2x2xf32>, memref<2x6x2x2xf32>) -> ()
 

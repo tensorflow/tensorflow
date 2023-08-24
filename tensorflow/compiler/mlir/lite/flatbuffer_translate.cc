@@ -37,6 +37,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_import.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
@@ -205,5 +206,6 @@ static TranslateFromMLIRRegistration MLIRToFlatBufferTranslate(
       registry.insert<TFL::TensorFlowLiteDialect>();
       registry.insert<arith::ArithDialect>();
       registry.insert<func::FuncDialect>();
+      registry.insert<mlir::stablehlo::StablehloDialect>();
     });
 }  // namespace mlir

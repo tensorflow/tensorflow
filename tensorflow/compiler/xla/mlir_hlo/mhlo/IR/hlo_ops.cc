@@ -949,69 +949,6 @@ LogicalResult DotGeneralOp::verify() {
       getPrecisionConfig(), getResult());
 }
 
-namespace {
-
-constexpr char kFrontendAttributesAttr[] = "mhlo.frontend_attributes";
-
-// Handle the generic case of DotGeneral and convert to a regulat DotOp.
-struct DotGeneralToDot : public OpRewritePattern<DotGeneralOp> {
-  using OpRewritePattern<DotGeneralOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(DotGeneralOp dot,
-                                PatternRewriter& rewriter) const override {
-    auto lhs = dot.getLhs();
-    auto rhs = dot.getRhs();
-    auto lhsTy = lhs.getType().cast<ShapedType>();
-    auto rhsTy = rhs.getType().cast<ShapedType>();
-
-    int64_t lhsRank = lhsTy.getRank();
-    int64_t rhsRank = rhsTy.getRank();
-    if ((lhsRank != 1 && lhsRank != 2) || (rhsRank != 1 && rhsRank != 2)) {
-      return rewriter.notifyMatchFailure(
-          dot, "input tensors must have rank of 1 or 2");
-    }
-
-    auto nums = dot.getDotDimensionNumbers();
-    if ((!nums.getLhsBatchingDimensions().empty()) ||
-        (!nums.getRhsBatchingDimensions().empty())) {
-      return rewriter.notifyMatchFailure(dot, "cannot have batch dimensions");
-    }
-
-    auto lhsContract = nums.getLhsContractingDimensions();
-    auto rhsContract = nums.getRhsContractingDimensions();
-
-    if (lhsContract.size() != 1 || rhsContract.size() != 1) {
-      return rewriter.notifyMatchFailure(
-          dot, "input tensors must only have 1 contracting dimension");
-    }
-    if (rhsContract.front() != 0) {
-      return rewriter.notifyMatchFailure(
-          dot, "rhs must contract the first dimension");
-    }
-    if (lhsContract.front() != lhsRank - 1) {
-      return rewriter.notifyMatchFailure(
-          dot, "lhs must contract the last dimension");
-    }
-
-    DictionaryAttr frontendAttributes =
-        dot->getAttrOfType<DictionaryAttr>(kFrontendAttributesAttr);
-    auto newDotOp = rewriter.replaceOpWithNewOp<mhlo::DotOp>(
-        dot, dot.getType(), lhs, rhs,
-        dot.getPrecisionConfig().value_or(nullptr));
-    if (frontendAttributes) {
-      newDotOp->setAttr(kFrontendAttributesAttr, frontendAttributes);
-    }
-
-    return success();
-  }
-};
-}  // namespace
-
-void DotGeneralOp::getCanonicalizationPatterns(RewritePatternSet& results,
-                                               MLIRContext* context) {
-  results.add<DotGeneralToDot>(context);
-}
-
 LogicalResult DotGeneralOp::reifyReturnTypeShapes(
     OpBuilder& builder, ValueRange operands,
     SmallVectorImpl<Value>& reifiedReturnShapes) {
@@ -2093,9 +2030,14 @@ LogicalResult AllReduceOp::inferReturnTypeComponents(
   if (adaptor.getOperands().empty())
     return emitOptionalError(location,
                              "AllReduce must have have at least one operand");
+
+  int64_t channelId = 0;
+  if (auto channelHandleAttr = adaptor.getChannelHandleAttr())
+    channelId = channelHandleAttr.getHandle();
+
   for (auto operand : adaptor.getOperands()) {
     if (failed(hlo::verifyAllReduceOp(
-            location, operand, adaptor.getReplicaGroups(),
+            location, operand, adaptor.getReplicaGroups(), channelId,
             adaptor.getUseGlobalDeviceIds(), adaptor.getComputation())))
       return failure();
   }
@@ -7125,70 +7067,6 @@ LogicalResult verifyCrossProgramPrefetchAttr(CrossProgramPrefetchAttr cpp,
   return success();
 }
 
-// Each DynamicParameterBinding specifies a dynamic parameter, a target
-// parameter, a shape index of each and a target dimension.
-// (1) the parameters must be valid
-// (2) there must be a subshape at the given ShapeIndex for each parameter
-// (3) the given subshape for the dynamic parameter must be of type tensor<i32>
-// (4) there must be a dimension at the given dimension number for the given
-// subshape of the target parameter
-// (5) that dimension is dynamic
-LogicalResult verifyDynamicParameterBinding(DynamicParameterBindingAttr bind,
-                                            ModuleOp module) {
-  func::FuncOp main = module.lookupSymbol<func::FuncOp>("main");
-
-  // (1)
-  if (bind.getDynamicParamNum() >= main.getNumArguments() ||
-      bind.getTargetParamNum() >= main.getNumArguments())
-    return module->emitOpError()
-           << "dynamic_parameter_binding: parameters "
-           << bind.getDynamicParamNum() << " and " << bind.getTargetParamNum()
-           << " out of range. main has only " << main.getNumArguments()
-           << " arguments";
-
-  // (2)
-  auto dynamicParamSubshape =
-      getTypeFromTupleIndices(
-          main.getArgument(bind.getDynamicParamNum()).getType(),
-          bind.getDynamicParamIndices())
-          .dyn_cast_or_null<RankedTensorType>();
-  if (!dynamicParamSubshape)
-    return module->emitOpError() << "dynamic_parameter_binding: no ranked "
-                                    "tensor type at dynamic_param_indices: "
-                                 << bind.getDynamicParamIndices();
-  // (3)
-  if (dynamicParamSubshape.getRank() != 0 ||
-      !dynamicParamSubshape.getElementType().isInteger(32))
-    return module->emitOpError()
-           << "dynamic_parameter_binding: dynamic size must be tensor<i32>";
-
-  // (2)
-  auto targetParamSubshape =
-      getTypeFromTupleIndices(
-          main.getArgument(bind.getTargetParamNum()).getType(),
-          bind.getTargetParamIndices())
-          .dyn_cast_or_null<RankedTensorType>();
-  if (!targetParamSubshape)
-    return module->emitOpError() << "dynamic_parameter_binding: no ranked "
-                                    "tensor type at target_param_indices: "
-                                 << bind.getTargetParamIndices();
-  // (4)
-  if (targetParamSubshape.getRank() <= bind.getTargetParamDimNum())
-    return module->emitOpError()
-           << "dynamic_parameter_binding: no dimension number "
-           << bind.getTargetParamDimNum() << " in target subshape "
-           << targetParamSubshape;
-
-  // (5)
-  if (!targetParamSubshape.isDynamicDim(bind.getTargetParamDimNum()))
-    return module->emitOpError()
-           << "dynamic_parameter_binding: dimension number "
-           << bind.getTargetParamDimNum() << " in target subshape "
-           << targetParamSubshape << " is not dynamic";
-
-  return success();
-}
-
 //===----------------------------------------------------------------------===//
 // Builder utilities
 //===----------------------------------------------------------------------===//
@@ -7328,23 +7206,6 @@ LogicalResult MhloDialect::verifyOperationAttribute(Operation* op,
         return op->emitOpError()
                << "has cross_program_prefetches but is not a module";
       auto res = verifyCrossProgramPrefetchAttr(prefetchAttr, module);
-      if (failed(res)) return res;
-    }
-  }
-  if (attr.getName() == "mhlo.dynamic_parameter_bindings") {
-    auto arrayAttr = attr.getValue().dyn_cast<ArrayAttr>();
-    if (!arrayAttr)
-      return op->emitOpError() << "dynamic_parameter_bindings must be an array";
-    auto module = dyn_cast<ModuleOp>(op);
-    if (!module)
-      return op->emitOpError()
-             << "has dynamic_parameter_bindings but is not a module";
-    for (auto attrElt : arrayAttr) {
-      auto bindingAttr = attrElt.dyn_cast<DynamicParameterBindingAttr>();
-      if (!bindingAttr)
-        return op->emitOpError() << "dynamic_parameter_bindings must be an "
-                                    "array of dynamic_parameter_binding attrs";
-      auto res = verifyDynamicParameterBinding(bindingAttr, module);
       if (failed(res)) return res;
     }
   }

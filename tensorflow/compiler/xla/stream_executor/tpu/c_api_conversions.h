@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/host_command_handler.h"
 
 // APIs for converting between internal and external versions of
 // XLA/StreamExecutor data structures.
@@ -137,12 +136,6 @@ void Destroy(XLA_HloModule* c_module);
 XLA_HloModuleConfig ToC(const xla::HloModuleConfig& config);
 xla::HloModuleConfig FromC(const XLA_HloModuleConfig& c_config);
 void Destroy(XLA_HloModuleConfig* c_config);
-
-// TPU HostCommandHandler
-SE_TpuHostCommandHandler* ToC(tensorflow::tpu::HostCommandHandler handler);
-std::unique_ptr<tensorflow::tpu::HostCommandHandler> FromC(
-    SE_TpuHostCommandHandler* c_handler);
-void Destroy(SE_TpuHostCommandHandler* c_handler);
 
 // Helper for managing stack based C -> C++ conversions.
 template <class CType>

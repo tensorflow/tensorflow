@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
@@ -26,9 +27,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -214,5 +217,73 @@ ENTRY main {
       /*output_index=*/{0}, /*param_number=*/1,
       /*param_index=*/{}));
 }
+
+class HloBufferDonorConfigTest : public HloTestBase {};
+
+TEST_F(HloBufferDonorConfigTest, SimpleBufferDonor) {
+  const std::string module_str = R"(
+HloModule TEST
+
+ENTRY main {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT root = (f32[], f32[]) tuple(%a, %b)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
+
+  HloBufferDonorConfig config;
+
+  TF_ASSERT_OK(config.AddBufferDonor(0, {}));
+  EXPECT_TRUE(config.ParameterIsBufferDonor(0, {}));
+  EXPECT_FALSE(config.ParameterIsBufferDonor(1, {}));
+
+  TF_ASSERT_OK(config.AddBufferDonor(1, {}));
+  EXPECT_TRUE(config.ParameterIsBufferDonor(0, {}));
+  EXPECT_TRUE(config.ParameterIsBufferDonor(1, {}));
+
+  TF_ASSERT_OK(config.RemoveBufferDonor(0, {}));
+  EXPECT_FALSE(config.ParameterIsBufferDonor(0, {}));
+  EXPECT_TRUE(config.ParameterIsBufferDonor(1, {}));
+
+  TF_ASSERT_OK(config.Verify(*module));
+  TF_ASSERT_OK(config.AddBufferDonor(2, {}));
+  ASSERT_IS_NOT_OK(config.Verify(*module));
+}
+
+TEST_F(HloBufferDonorConfigTest, SimpleBufferDonorWithTupleInput) {
+  const std::string module_str = R"(
+HloModule TEST
+
+ENTRY main {
+  param = (f32[], f32[]) parameter(0)
+  gte1 = f32[] get-tuple-element(%param), index=0
+  gte2 = f32[] get-tuple-element(%param), index=1
+  ROOT root = (f32[], f32[]) tuple(%gte1, %gte2)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
+
+  HloBufferDonorConfig config;
+
+  TF_ASSERT_OK(config.AddBufferDonor(0, {0}));
+  EXPECT_TRUE(config.ParameterIsBufferDonor(0, {0}));
+  EXPECT_FALSE(config.ParameterIsBufferDonor(0, {1}));
+  EXPECT_FALSE(config.ParameterIsBufferDonor(0, {}));
+  EXPECT_FALSE(config.ParameterIsBufferDonor(1, {}));
+
+  TF_ASSERT_OK(config.AddBufferDonor(0, {1}));
+  EXPECT_TRUE(config.ParameterIsBufferDonor(0, {0}));
+  EXPECT_TRUE(config.ParameterIsBufferDonor(0, {1}));
+  EXPECT_FALSE(config.ParameterIsBufferDonor(0, {}));
+  EXPECT_FALSE(config.ParameterIsBufferDonor(1, {}));
+
+  TF_ASSERT_OK(config.Verify(*module));
+  TF_ASSERT_OK(config.AddBufferDonor(0, {2}));
+  ASSERT_IS_NOT_OK(config.Verify(*module));
+}
+
 }  // namespace
 }  // namespace xla

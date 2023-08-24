@@ -146,6 +146,30 @@ ENTRY R2Window {
 )");
 }
 
+TEST_F(MoveCopyToUsersTest, Reduce) {
+  const char* hlo = R"(
+HloModule R2
+
+mul {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT mul = f32[] multiply(lhs, rhs)
+}
+
+ENTRY R2 {
+  operand = f32[256,384,10]{2,1,0} parameter(0)
+  c = f32[256,384,10]{0,1,2} copy(operand)
+  constant = f32[] constant(1)
+  ROOT reduce = f32[384,10]{0,1} reduce(c, constant), dimensions={0}, to_apply=mul
+}
+)";
+
+  CheckMoveCopyToUsers(hlo, R"(
+// CHECK: [[operand:%[^ ]+]] = f32[256,384,10]{2,1,0} parameter(0)
+// CHECK: ROOT [[reduce:%[^ ]+]] = f32[384,10]{0,1} reduce([[operand]], [[constant_2:%[^ ]+]]), dimensions={0}, to_apply=[[mul_3:%[^ ]+]]
+)");
+}
+
 TEST_F(MoveCopyToUsersTest, Binary) {
   const char* hlo = R"(
 HloModule module

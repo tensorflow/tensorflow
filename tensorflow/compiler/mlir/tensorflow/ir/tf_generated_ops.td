@@ -1159,7 +1159,7 @@ to be batched.}]>:$captured_tensors,
 
     // Gets the argument operands to the called function.
     operand_range getArgOperands() {
-      // Merge `in_tensors` and `captured_tensors`. `operand_segment_sizes`
+      // Merge `in_tensors` and `captured_tensors`. `operandSegmentSizes`
       // has two elements, so it will be merging two operand ranges (the two
       // variadic arguments). Attributes like `batch_timeout_micros` will not
       // make it to the return array.
@@ -2179,6 +2179,12 @@ def TF_CollectiveAllToAllV2Op : TF_Op<"CollectiveAllToAllV2", [DeclareOpInterfac
 Mutually exchanges multiple tensors of identical type and shape.
   }];
 
+  let description = [{
+`is_stateless` means each op does not need control dependencies to other
+collective ops. In this case, keys that are unique at runtime
+(e.g. `instance_key`) should be used to distinguish collective groups.
+  }];
+
   let arguments = (ins
     TF_FpOrI32OrI64Tensor:$input,
     TF_Int32Tensor:$group_size,
@@ -2187,7 +2193,8 @@ Mutually exchanges multiple tensors of identical type and shape.
     Variadic<TF_ResourceTensor>:$ordering_token,
 
     DefaultValuedOptionalAttr<StrAttr, "\"auto\"">:$communication_hint,
-    DefaultValuedOptionalAttr<F32Attr, "0.0f">:$timeout_seconds
+    DefaultValuedOptionalAttr<F32Attr, "0.0f">:$timeout_seconds,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$is_stateless
   );
 
   let results = (outs
@@ -2281,6 +2288,12 @@ def TF_CollectiveGatherV2Op : TF_Op<"CollectiveGatherV2", [DeclareOpInterfaceMet
 Mutually accumulates multiple tensors of identical type and shape.
   }];
 
+  let description = [{
+`is_stateless` means each op does not need control dependencies to other
+collective ops. In this case, keys that are unique at runtime
+(e.g. `instance_key`) should be used to distinguish collective groups.
+  }];
+
   let arguments = (ins
     TensorOf<[TF_Float16, TF_Float32, TF_Float64, TF_Int32, TF_Int64]>:$input,
     TF_Int32Tensor:$group_size,
@@ -2289,7 +2302,8 @@ Mutually accumulates multiple tensors of identical type and shape.
     Variadic<TF_ResourceTensor>:$ordering_token,
 
     DefaultValuedOptionalAttr<StrAttr, "\"auto\"">:$communication_hint,
-    DefaultValuedOptionalAttr<F32Attr, "0.0f">:$timeout_seconds
+    DefaultValuedOptionalAttr<F32Attr, "0.0f">:$timeout_seconds,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$is_stateless
   );
 
   let results = (outs
@@ -2361,6 +2375,12 @@ def TF_CollectiveReduceScatterV2Op : TF_Op<"CollectiveReduceScatterV2", [Declare
 Mutually reduces multiple tensors of identical type and shape and scatters the result.
   }];
 
+  let description = [{
+`is_stateless` means each op does not need control dependencies to other
+collective ops. In this case, keys that are unique at runtime
+(e.g. `instance_key`) should be used to distinguish collective groups.
+  }];
+
   let arguments = (ins
     TF_FpOrI32OrI64Tensor:$input,
     TF_Int32Tensor:$group_size,
@@ -2372,6 +2392,7 @@ Mutually reduces multiple tensors of identical type and shape and scatters the r
     TF_AnyStrAttrOf<["Id", "Div"]>:$final_op,
     DefaultValuedOptionalAttr<StrAttr, "\"auto\"">:$communication_hint,
     DefaultValuedOptionalAttr<F32Attr, "0.0f">:$timeout_seconds,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$is_stateless,
     DefaultValuedOptionalAttr<I64Attr, "-1">:$max_subdivs_per_device
   );
 
@@ -2388,6 +2409,12 @@ def TF_CollectiveReduceV2Op : TF_Op<"CollectiveReduceV2", [DeclareOpInterfaceMet
 Mutually reduces multiple tensors of identical type and shape.
   }];
 
+  let description = [{
+`is_stateless` means each op does not need control dependencies to other
+collective ops. In this case, keys that are unique at runtime
+(e.g. `instance_key`) should be used to distinguish collective groups.
+  }];
+
   let arguments = (ins
     TF_FpOrI32OrI64Tensor:$input,
     TF_Int32Tensor:$group_size,
@@ -2399,6 +2426,7 @@ Mutually reduces multiple tensors of identical type and shape.
     TF_AnyStrAttrOf<["Id", "Div"]>:$final_op,
     DefaultValuedOptionalAttr<StrAttr, "\"auto\"">:$communication_hint,
     DefaultValuedOptionalAttr<F32Attr, "0.0f">:$timeout_seconds,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$is_stateless,
     DefaultValuedOptionalAttr<I64Attr, "-1">:$max_subdivs_per_device
   );
 
@@ -12278,7 +12306,7 @@ The generated values will have mean 0 and standard deviation 1.
   TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
 }
 
-def TF_RandomUniformOp : TF_Op<"RandomUniform", [TF_CannotDuplicate, TF_RandomGeneratorSideEffect]> {
+def TF_RandomUniformOp : TF_Op<"RandomUniform", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, TF_CannotDuplicate, TF_RandomGeneratorSideEffect]> {
   let summary = "Outputs random values from a uniform distribution.";
 
   let description = [{
@@ -12744,7 +12772,7 @@ the outputs of that operation (both work equivalently).}]>:$features
   }];
 }
 
-def TF_RemoteCallOp : TF_Op<"RemoteCall", []> {
+def TF_RemoteCallOp : TF_Op<"RemoteCall", [CallOpInterface]> {
   let summary = "Runs function `f` on a remote device indicated by `target`.";
 
   let arguments = (ins
@@ -12760,6 +12788,27 @@ def TF_RemoteCallOp : TF_Op<"RemoteCall", []> {
 
   TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<1>;
   TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
+
+  let extraClassDeclaration = [{
+    /// Get the argument operands to the called function.
+    operand_range getArgOperands() {
+      return getArgs();
+    }
+
+    MutableOperandRange getArgOperandsMutable() {
+      return getArgsMutable();
+    }
+
+    /// Return the callee of this operation.
+    CallInterfaceCallable getCallableForCallee() {
+      return (*this)->getAttrOfType<SymbolRefAttr>("f");
+    }
+
+    /// Set the callee for this operation.
+    void setCalleeFromCallable(CallInterfaceCallable callee) {
+      (*this)->setAttr("f", callee.get<SymbolRefAttr>());
+    }
+  }];
 }
 
 def TF_RepeatDatasetOp : TF_Op<"RepeatDataset", [Pure]> {

@@ -64,28 +64,6 @@ StatusOr<bool> DispatchLoadI1(const vm::ExecutionContext& ctx,
 // XLA:GPU custom module memcpy API
 //===-----------------------------------------------------------------------===/
 
-// TODO(ezhulenev): We need to find a way to pass original Status back to the
-// caller preserving the location and stack frame. Can we use some diagnostic
-// side channel via the ExecutionContext?
-static iree::Status FromStatus(Status status) {
-  if (status.ok()) return iree_ok_status();
-
-  // TODO(ezhulenev): Convert from ABSL to IREE error code.
-  std::string err = status.ToString();
-  return iree_make_status(IREE_STATUS_INTERNAL, "internal error: %s",
-                          err.c_str());
-}
-
-template <typename T>
-static iree::StatusOr<T> FromStatus(StatusOr<T> status) {
-  if (status.ok()) return *status;
-
-  // TODO(ezhulenev): Convert from ABSL to IREE error code.
-  std::string err = status.status().ToString();
-  return iree_make_status(IREE_STATUS_INTERNAL, "internal error: %s",
-                          err.c_str());
-}
-
 namespace vm {
 
 MemcpyAPI::MemcpyAPI(iree_hal_allocator_t* device_allocator)
@@ -101,7 +79,7 @@ iree::Status MemcpyAPI::MemcpyD2D(iree::vm::ref<ExecutionContext> ctx,
 iree::StatusOr<int32_t> MemcpyAPI::LoadI1(
     iree::vm::ref<ExecutionContext> ctx,
     iree::vm::ref<iree_hal_buffer_view_t> view, int32_t offset) {
-  return FromStatus(
+  return FromStatusOr(
       DispatchLoadI1(*ctx, device_allocator_, view.get(), offset));
 }
 

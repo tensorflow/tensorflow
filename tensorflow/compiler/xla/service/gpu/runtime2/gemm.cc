@@ -78,18 +78,6 @@ Status DispatchGemm(const vm::ExecutionContext& ctx,
 
 namespace vm {
 
-// TODO(ezhulenev): We need to find a way to pass original Status back to the
-// caller preserving the location and stack frame. Can we use some diagnostic
-// side channel via the ExecutionContext?
-static iree::Status FromStatus(Status status) {
-  if (status.ok()) return iree_ok_status();
-
-  // TODO(ezhulenev): Convert from ABSL to IREE error code.
-  std::string err = status.ToString();
-  return iree_make_status(IREE_STATUS_INTERNAL, "internal error: %s",
-                          err.c_str());
-}
-
 GemmAPI::GemmAPI(iree_hal_allocator_t* device_allocator)
     : device_allocator_(device_allocator) {}
 

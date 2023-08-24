@@ -423,7 +423,7 @@ Status GpuRuntimeExecutable::Execute(
   GemmConfigs::Snapshot gemm_configs = gemm_configs_.snapshot();
   FftPlans::Snapshot fft_plans = fft_plans_.snapshot();
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   MatmulPlans::Snapshot matmul_plans = cublas_lt_matmul_plans_.snapshot();
 #endif  // GOOGLE_CUDA
 
@@ -436,12 +436,9 @@ Status GpuRuntimeExecutable::Execute(
       run_options, &executable, &debug_options_, &temp_buffer, &asm_text,
       &ffi_state, &binary, &kernels, &gemm_configs, &conv_runners,
       &collectives_, &fft_plans, &send_recv_events, &gpu_lock,
-#if GOOGLE_CUDA
-      // Auxiliary data that is available only if compiled with CUDA support.
-      &matmul_plans,
-#endif  // GOOGLE_CUDA
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-      &graph_instances, &execution_count,
+      // Auxiliary data that is available only if compiled with CUDA support.
+      &matmul_plans, &graph_instances, &execution_count,
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
       &concurrent_region_status,
       // Null pointer will be interpreted as an absence of async collectives

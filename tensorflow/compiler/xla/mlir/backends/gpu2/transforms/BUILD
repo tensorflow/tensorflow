@@ -29,6 +29,8 @@ package(
 #     name = "passes",
 #     srcs = if_gpu2([
 #         "convert_to_runtime.cc",
+#         "create_graph_regions.cc",
+#         "finalize_graph_dispatches.cc",
 #         "passes.cc",
 #     ]),
 #     hdrs = ["passes.h"],
@@ -48,7 +50,9 @@ package(
 #         "@llvm-project//mlir:Support",
 #         "@llvm-project//mlir:TensorDialect",
 #         "@llvm-project//mlir:Transforms",
+#         "//tensorflow/compiler/xla/mlir/backends/gpu2/conversion:convert_case_op",
 #         "//tensorflow/compiler/xla/mlir/backends/gpu2/conversion:convert_compiled_ops",
+#         "//tensorflow/compiler/xla/mlir/backends/gpu2/conversion:convert_graph_region_op",
 #         "//tensorflow/compiler/xla/mlir/backends/gpu2/conversion:convert_library_ops",
 #         "//tensorflow/compiler/xla/mlir/backends/gpu2/conversion:convert_memref_ops",
 #         "//tensorflow/compiler/xla/mlir/backends/gpu2/conversion:convert_while_op",

@@ -104,8 +104,7 @@ class WarmupStateRegistry {
   // metadata with the model. Returns an RAII handle that unregisters the model
   // at its destruction.
   absl::StatusOr<Handle> Register(const Key& model_key,
-                                  std::unique_ptr<PerModelData> per_model_data =
-                                      std::make_unique<PerModelData>());
+                                  std::unique_ptr<PerModelData> per_model_data);
 
   // Return model data. A nullptr indicates the key was not present.
   const PerModelData* Lookup(const Key& model_key);

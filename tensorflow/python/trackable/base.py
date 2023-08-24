@@ -664,6 +664,11 @@ class Trackable(object):
     save their own values with the key `VARIABLE_VALUE_KEY`, but objects which
     reference variables simply add a dependency.
 
+    **AsyncCheckpoint Support**
+    If your Trackable implements `_gather_saveables_for_checkpoint`,
+    `_copy_trackable_to_cpu` needs to be implemented as well to support
+    asynchronous checkpoint.
+
     Returns:
       The dictionary mapping attribute names to `SaveableObject` factories
       described above. For example:
@@ -720,6 +725,11 @@ class Trackable(object):
     **TF1 Saver Compatibility**
     If your Trackable needs to be comatible with `tf.compat.v1.train.Saver`,
     implement `_gather_saveables_from_checkpoint`.
+
+    **AsyncCheckpoint Support**
+    If your Trackable implements `_serialize_to_tensors`,
+    `_copy_trackable_to_cpu` needs to be implemented as well to support
+    asynchronous checkpoint.
 
     Returns:
       A dictionary mapping names to tensors.
@@ -1049,3 +1059,19 @@ class Trackable(object):
     _, _, _ = object_map, tensor_map, options
     del kwargs
     return []
+
+  def _copy_trackable_to_cpu(self, object_map):
+    """Creates a copy of this object onto CPU, also copies values over.
+
+    Needs to be overridden if the `Trackable` requires AsyncCheckpoint support.
+    The method first checks whether a copy of `self` is already created in
+    `object_map`, and creates one if not already created. Then the method copies
+    the **values** of itself over to its copy mapped by `object_map`.
+
+    Args:
+      object_map: A dictionary that maps original Trackables to the copied
+        Trackables, which reside in the CPU.
+    """
+    del object_map  # Unused
+    raise NotImplementedError("Need to implement _copy_trackable_to_cpu() if "
+                              "the Trackable requires AsyncCheckpoint support.")

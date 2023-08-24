@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
+#include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/tfrt/fallback/device_with_custom_allocator.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
@@ -316,7 +317,7 @@ TEST(KernelTest, CreateExecuteDeviceOp) {
   };
 
   mlrt::Value arg;
-  arg.Set<std::unique_ptr<Device>>(std::make_unique<TestDevice>(
+  arg.Set<std::shared_ptr<Device>>(std::make_shared<TestDevice>(
       fallback_request_state.cpu_device(),
       fallback_request_state.cpu_device()->GetAllocator({})));
   mlrt::Value results[2];

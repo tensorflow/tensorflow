@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/AsmParser/Parser.h"
 #include "llvm/IR/DiagnosticInfo.h"
@@ -49,6 +50,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/gpu/conditional_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/for_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/fusion_wrapper.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_convert_async_collectives_to_sync.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
@@ -143,7 +145,11 @@ static Status LowerToXlaGpu2Runtime(mlir::ModuleOp module,
   RuntimeBackend backend = debug_options.xla_gpu_enable_gpu2_hal()
                                ? RuntimeBackend::kHAL
                                : RuntimeBackend::kStreamExecutor;
-  populateGpu2RuntimePasses(pm, thunk_sequence, backend);
+
+  Gpu2PipelineOpts opts;
+  opts.graph_level = debug_options.xla_gpu_graph_level();
+
+  populateGpu2RuntimePasses(pm, thunk_sequence, backend, opts);
 
   if (pm.run(module).failed()) {
     return InternalError(
@@ -397,6 +403,12 @@ Status CompileModuleToLlvmIrImpl(
     }
   }
 
+  HloPassPipeline pipeline("fusion-wrapper");
+  // Wrap remaining unfused ops that have no LHLO equivalent in single-op
+  // fusions. This needs to happen after rematerialization, because it will
+  // insert additional copies.
+  TF_RETURN_IF_ERROR(FusionWrapper().Run(hlo_module).status());
+
   auto buffer_size_bytes_function =
       [pointer_size](const BufferValue& buffer_value) -> int64_t {
     return GetSizeOfShape(buffer_value.shape(), pointer_size);
@@ -433,11 +445,13 @@ Status CompileModuleToLlvmIrImpl(
       registry, mlir::MLIRContext::Threading::DISABLED);
 
   mlir_context->getDiagEngine().registerHandler(DiagnosticHandler);
-  mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
-      mlir::ModuleOp::create(mlir::Builder(mlir_context.get()).getUnknownLoc());
+  mlir::OwningOpRef<mlir::ModuleOp> mlir_module = mlir::ModuleOp::create(
+      mlir::Builder(mlir_context.get()).getUnknownLoc(), hlo_module->name());
 
-  TF_RETURN_IF_ERROR(
-      HloToLhloModule(*results->buffer_assignment, *hlo_module, *mlir_module));
+  absl::flat_hash_map<const mlir::Operation*, const xla::HloInstruction*>
+      operation_map;
+  TF_RETURN_IF_ERROR(HloToLhloModule(*results->buffer_assignment, *hlo_module,
+                                     *mlir_module, &operation_map));
 
   results->module_name =
       mlir::mhlo::GetDebugNameFromLocation(mlir_module->getLoc());
@@ -466,7 +480,8 @@ Status CompileModuleToLlvmIrImpl(
     XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
         "GpuCompiler::RunBackend - IR emission for ", hlo_module->name()));
 
-    TF_RETURN_IF_ERROR(ir_emitter->EmitLmhloRegion(&entry_function.getBody()));
+    TF_RETURN_IF_ERROR(
+        ir_emitter->EmitLmhloRegion(&entry_function.getBody(), operation_map));
 
     bool supports_runtime_managed_constants =
         // TODO(b/218907125): Implement this feature for ROCm as well.

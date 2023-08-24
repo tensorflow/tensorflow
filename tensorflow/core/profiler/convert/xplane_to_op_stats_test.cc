@@ -414,68 +414,6 @@ TEST(ConvertXPlaneToOpStats, TpuRunEnvironment) {
   EXPECT_EQ(2, run_env.device_core_count());
 }
 
-TEST(ConvertXPlaneToOpStats, TpuStepDbTest) {
-  constexpr int64_t kStepNum = 123;
-  constexpr int64_t kStepId = 0;
-  constexpr int64_t kCorrelationId = 100;
-  constexpr int kCoreCount = 80;
-  constexpr double kDevCapPeakTeraflopsPerSecond = 141.0;
-  constexpr double kDevCapPeakHbmBwGigabytesPerSecond = 1000.0;
-
-  auto space = std::make_unique<XSpace>();
-  XPlaneBuilder host_plane_builder(GetOrCreateHostXPlane(space.get()));
-  host_plane_builder.ReserveLines(2);
-
-  auto main_thread = host_plane_builder.GetOrCreateLine(0);
-  CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kTraceContext,
-               0, 100, {{StatType::kStepNum, kStepNum}});
-  CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kFunctionRun,
-               10, 90,
-               {{StatType::kStepId, kStepId},
-                {StatType::kProducerType, int64_t{1}},
-                {StatType::kProducerId, kStepId}});
-
-  auto tf_executor_thread = host_plane_builder.GetOrCreateLine(1);
-  CreateXEvent(&host_plane_builder, &tf_executor_thread,
-               HostEventType::kExecutorStateProcess, 20, 20,
-               {{StatType::kStepId, kStepId},
-                {StatType::kConsumerType, int64_t{1}},
-                {StatType::kConsumerId, kStepId}});
-  CreateXEvent(&host_plane_builder, &tf_executor_thread, "matmul", 30, 10,
-               {{StatType::kCorrelationId, kCorrelationId}});
-
-  XPlaneBuilder device_plane_builder(GetOrCreateTpuXPlane(
-      space.get(), /*device_ordinal=*/0, "TPU V4",
-      kDevCapPeakTeraflopsPerSecond, kDevCapPeakHbmBwGigabytesPerSecond));
-  device_plane_builder.ReserveLines(1);
-  device_plane_builder.AddStatValue(
-      *device_plane_builder.GetOrCreateStatMetadata("core_count"), kCoreCount);
-
-  auto stream = device_plane_builder.GetOrCreateLine(0);
-  CreateXEvent(&device_plane_builder, &stream, "matmul", 50, 40,
-               {{StatType::kCorrelationId, kCorrelationId}});
-
-  OpStatsOptions options;
-  options.generate_op_metrics_db = true;
-  options.generate_step_db = true;
-  std::vector<std::unique_ptr<XSpace>> xspaces;
-  xspaces.push_back(std::move(space));
-  auto session_snapshot_or =
-      SessionSnapshot::Create({"test_xspace"}, std::move(xspaces));
-  TF_CHECK_OK(session_snapshot_or.status());
-  OpStats op_stats;
-  TF_CHECK_OK(ConvertMultiXSpacesToCombinedOpStats(session_snapshot_or.value(),
-                                                   options, &op_stats));
-  const StepDatabaseResult& step_db = op_stats.step_db();
-
-  EXPECT_EQ(step_db.step_sequence_size(), 1);
-
-  PrecisionStats precision_stats =
-      op_stats.device_op_metrics_db().precision_stats();
-  EXPECT_EQ(precision_stats.compute_16bit_ps(), 0);
-  EXPECT_EQ(precision_stats.compute_32bit_ps(), 40);
-}
-
 TEST(ConvertXPlaneToOpStats, TpuDeviceTraceToStepDb) {
   auto space = std::make_unique<XSpace>();
   constexpr double kDevCapPeakTeraflopsPerSecond = 141.0;

@@ -17,29 +17,25 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_GPU_GPU_GRAPH_H_
 
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <type_traits>
 
 #include "absl/functional/any_invocable.h"
+#include "absl/types/span.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_types.h"
+#include "tensorflow/compiler/xla/stream_executor/kernel.h"
+#include "tensorflow/compiler/xla/stream_executor/launch_dim.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
+#include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
-
-#if TENSORFLOW_USE_ROCM
-#include "tensorflow/compiler/xla/stream_executor/rocm/rocm_driver_wrapper.h"
-#else
-#include "third_party/gpus/cuda/include/driver_types.h"
-#endif
-
-#if TENSORFLOW_USE_ROCM
-using GpuGraphHandle = hipGraph_t;
-using GpuGraphExecHandle = hipGraphExec_t;
-#else
-using GpuGraphHandle = cudaGraph_t;
-using GpuGraphExecHandle = cudaGraphExec_t;
-#endif
 
 namespace stream_executor {
 namespace gpu {
+
+// Forward declare.
+class GpuContext;
 
 class GpuGraphSupport {
  public:
@@ -109,6 +105,21 @@ class OwnedGpuGraphExec
 //===----------------------------------------------------------------------===//
 // Gpu Graph Helpers.
 //===----------------------------------------------------------------------===//
+
+// Creates new empty Gpu graph.
+tsl::StatusOr<OwnedGpuGraph> CreateGpuGraph();
+
+// Adds a kernel node to the graph.
+tsl::StatusOr<GpuGraphNodeHandle> AddKernelNode(
+    GpuGraphHandle graph, absl::Span<GpuGraphNodeHandle> deps,
+    ThreadDim threads, BlockDim blocks, const KernelBase& kernel,
+    const KernelArgsArrayBase& args);
+
+// Adds a memory copy node to the graph.
+tsl::StatusOr<GpuGraphNodeHandle> AddMemcpyD2DNode(
+    GpuContext* context, GpuGraphHandle graph,
+    absl::Span<GpuGraphNodeHandle> deps, const DeviceMemoryBase& dst,
+    const DeviceMemoryBase& src);
 
 // Captures all operations added to a `stream` by the `capture` function into
 // the gpu graph instance.

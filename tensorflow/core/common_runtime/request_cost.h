@@ -16,17 +16,20 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_REQUEST_COST_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_REQUEST_COST_H_
 
+#include <cstdint>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 
 namespace tensorflow {
 
-// RequestCost collects the costs for processing an rpc request.
+// RequestCost collects the costs and metrics for processing an rpc request.
 class RequestCost {
  public:
   // Records costs. The inputs should be pairs of cost type and cost.
@@ -39,11 +42,35 @@ class RequestCost {
   // rpc request, when all the costs have been collected.
   absl::flat_hash_map<std::string, absl::Duration> GetCosts() const;
 
+  // Metrics of each batch that processes this rpc request.
+  struct BatchMetrics {
+    // Size of the batch.
+    int64_t processed_size = 0;
+    // In this batch, input size from this rpc request.
+    int64_t input_size = 0;
+    // In this batch, the padding amount.
+    int64_t padding_size = 0;
+  };
+
+  // Records the metrics of a batch.
+  // It's thread-safe, and can be called from different threads. It may be
+  // called multiple times if a request is processed by more than one batches.
+  void RecordBatchMetrics(const BatchMetrics& batch_metrics);
+
+  // Get metrics of all the batches that process this rpc request.
+  // It's thread-safe. It's expected to be called at the end of processing an
+  // rpc request, when all batch processing has completed.
+  std::vector<BatchMetrics> GetBatchMetrics() const;
+
  private:
   mutable absl::Mutex mutex_;
-  // Map from cost type to cost.
+
+  // Query costs. Map from cost type to cost.
   absl::flat_hash_map<std::string, absl::Duration> cost_map_
       ABSL_GUARDED_BY(mutex_);
+
+  // Metrics of batches that process this rpc request.
+  std::vector<BatchMetrics> batch_metrics_ ABSL_GUARDED_BY(mutex_);
 };
 
 }  // namespace tensorflow

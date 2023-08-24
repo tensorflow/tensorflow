@@ -18,6 +18,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_LAYOUT_UTIL_H_
 #define TENSORFLOW_COMPILER_XLA_LAYOUT_UTIL_H_
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
@@ -28,12 +29,16 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace xla {
 
 // Namespaced collection of (static) Layout utilities.
 class LayoutUtil {
  public:
+  LayoutUtil(const LayoutUtil&) = delete;
+  LayoutUtil& operator=(const LayoutUtil&) = delete;
+
   // Creates a layout with the given minor-to-major dimension order. (This is a
   // convenience function for protobuf construction.)
   static Layout MakeLayout(
@@ -280,10 +285,6 @@ class LayoutUtil {
   static bool ByteStridesIsMajorToMinor(absl::Span<const int64_t> byte_strides,
                                         absl::Span<const int64_t> dims,
                                         PrimitiveType element_type);
-
- private:
-  LayoutUtil(const LayoutUtil&) = delete;
-  LayoutUtil& operator=(const LayoutUtil&) = delete;
 };
 
 }  // namespace xla

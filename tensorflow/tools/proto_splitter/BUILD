@@ -1,7 +1,8 @@
-load("//tensorflow:strict.default.bzl", "py_strict_test")
-
 # Description:
 #   Utilities for splitting and joining large protos > 2GB.
+
+# Placeholder: load py_proto_library
+load("//tensorflow:strict.default.bzl", "py_strict_test")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load(
     "//tensorflow/core/platform:build_config.bzl",

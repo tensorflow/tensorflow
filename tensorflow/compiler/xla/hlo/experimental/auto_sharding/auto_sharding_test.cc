@@ -13,17 +13,24 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <numeric>
 #include <tuple>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/log/log.h"
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_util.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
 #include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace op = xla::testing::opcode_matchers;
 
@@ -946,6 +953,60 @@ ENTRY %entry {
   EXPECT_TRUE(changed);
   LOG(INFO) << module->ToString();
   EXPECT_GT(pass.GetSolverOptimalObjectiveValue(), 0);
+}
+
+TEST_F(AutoShardingTest, AllowAliasToFollowerConversion) {
+  const char* const hlo_string = R"(
+HloModule module, input_output_alias={ {0}: (0, {}, may-alias), {1}: (1, {}, may-alias), {2}: (2, {}, may-alias), {3}: (3, {}, may-alias)}
+
+ENTRY %entry {
+  param.0 = u32[] parameter(0)
+  param.1 = f32[32]{0} parameter(1)
+  param.2 = f32[32]{0} parameter(2)
+  param.3 = f32[32000]{0} parameter(3)
+  ROOT tuple.61 = (u32[], f32[32]{0}, f32[32]{0}, f32[32000]{0}) tuple(param.0, param.1, param.2, param.3)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AutoShardingOption option;
+  option.enable = true;
+  option.device_mesh_shape = {2, 2};
+  option.device_mesh_ids = {0, 1, 2, 3};
+  option.device_mesh_alpha = {1.0, 1.0};
+  option.device_mesh_beta = {0.01, 1.0};
+  option.allow_alias_to_follower_conversion = true;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
+  VLOG(0) << module->ToString();
+  EXPECT_TRUE(changed);
+}
+
+TEST_F(AutoShardingTest, DisallowAliasToFollowerConversion) {
+  const char* const hlo_string = R"(
+HloModule module, input_output_alias={ {0}: (0, {}, may-alias), {1}: (1, {}, may-alias), {2}: (2, {}, may-alias), {3}: (3, {}, may-alias)}
+
+ENTRY %entry {
+  param.0 = u32[] parameter(0)
+  param.1 = f32[32]{0} parameter(1)
+  param.2 = f32[32]{0} parameter(2)
+  param.3 = f32[32000]{0} parameter(3)
+  ROOT tuple.61 = (u32[], f32[32]{0}, f32[32]{0}, f32[32000]{0}) tuple(param.0, param.1, param.2, param.3)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AutoShardingOption option;
+  option.enable = true;
+  option.device_mesh_shape = {2, 2};
+  option.device_mesh_ids = {0, 1, 2, 3};
+  option.device_mesh_alpha = {1.0, 1.0};
+  option.device_mesh_beta = {0.01, 1.0};
+  option.allow_alias_to_follower_conversion = false;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
+  VLOG(0) << module->ToString();
+  EXPECT_TRUE(changed);
 }
 
 }  // namespace

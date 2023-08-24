@@ -107,6 +107,41 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
+using TritonSoftmaxTest = GpuCodegenTest;
+
+TEST_F(TritonSoftmaxTest,
+       CanFuseAndEmitDiamondWithInputNumberOfElementsLargerThanInt32Max) {
+  const std::string hlo_text = R"(
+HloModule softmax, input_output_alias={ {}: (0, {}, must-alias) }
+
+max_computation {
+  arg_0 = f16[] parameter(0)
+  arg_1 = f16[] parameter(1)
+  ROOT maximum = f16[] maximum(arg_0, arg_1)
+}
+
+ENTRY main {
+  param_0 = f16[65538,32768]{1,0} parameter(0)
+  constant_neg_inf = f16[] constant(-inf)
+  reduce = f16[65538]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
+  broadcast = f16[65538,32768]{1,0} broadcast(reduce), dimensions={0}
+  ROOT subtract = f16[65538,32768]{1,0} subtract(param_0, broadcast)
+}
+)";
+
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK:    ENTRY
+; CHECK:      %[[P0:.*]] = f16[65538,32768]{1,0} parameter(0)
+; CHECK:      ROOT
+; CHECK-SAME: fusion(%[[P0]])
+; CHECK-SAME:   kind=kCustom
+; CHECK-SAME:   __triton_softmax
+)");
+
+  // Checking that this does not crash should be enough.
+  EXPECT_TRUE(Run(hlo_text));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

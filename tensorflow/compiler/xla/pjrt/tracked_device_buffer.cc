@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <atomic>
+#include <cinttypes>
 #include <functional>
 #include <iterator>
 #include <memory>
@@ -77,6 +78,20 @@ void BufferSequencingEvent::WaitForEventOnStream(se::Stream* stream) {
 
   stream->ThenWaitFor(event_.event());
   streams_defined_on_.push_back(stream);
+}
+
+Status BufferSequencingEvent::WaitForEventOnExternalStream(
+    std::intptr_t stream) {
+  absl::MutexLock lock(&mu_);
+
+  // We cannot wait for an event until ThenRecordEvent has been called; on GPU
+  // newly created events are deemed to have already happened past.
+  // TODO(skyewm): do we need this? WaitForEventOnExternalStream is only
+  // implemented for GPU.
+  mu_.Await(
+      absl::Condition(this, &BufferSequencingEvent::EventHasBeenRecorded));
+
+  return event_.event()->WaitForEventOnExternalStream(stream);
 }
 
 bool BufferSequencingEvent::DefinedOn(se::Stream* stream) {

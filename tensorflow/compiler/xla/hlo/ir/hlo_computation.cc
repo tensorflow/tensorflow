@@ -308,7 +308,7 @@ Status HloComputation::RemoveInstructionAndUnusedOperands(
   TF_RET_CHECK(root_instruction() != instruction);
 
   TF_RET_CHECK(instruction->IsDead());
-  TF_RET_CHECK(IsSafelyRemovable(instruction))
+  TF_RET_CHECK(IsSafelyRemovable(instruction, ignore_control_dependencies))
       << "Cannot remove instruction: " << instruction->ToString();
   absl::flat_hash_set<HloInstruction*> removed;
   std::queue<HloInstruction*> worklist;

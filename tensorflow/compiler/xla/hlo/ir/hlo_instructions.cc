@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <deque>
 #include <functional>
 #include <iterator>
@@ -31,23 +32,42 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/function_ref.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_clone_context.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_domain_metadata.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding_metadata.h"
+#include "tensorflow/compiler/xla/iterator_util.h"
+#include "tensorflow/compiler/xla/layout.h"
+#include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/lib/gtl/iterator_range.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "tensorflow/tsl/platform/protobuf.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 namespace {
@@ -1756,7 +1776,7 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
     if (in_operand_list) {
       DetachFrom(instruction_to_append);
       // When the instruction_to_append does not have other users, we don't
-      // need to generate a multioutput instruction.
+      // need to generate a multi-output instruction.
       if (instruction_to_append->user_count() == 0) {
         add_output = false;
       }
@@ -1795,7 +1815,10 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
   }
 
   if (add_output) {
-    CHECK_GT(instruction_to_append->user_count(), 0);
+    int64_t user_count = instruction_to_append->user_count();
+    CHECK(user_count > 0 || instruction_to_append->IsRoot())
+        << "Unable to append instruction: " << instruction_to_append->ToString()
+        << ", which has " << user_count << " users.";
     // If this is already a multioutput instruction, expand the root tuple
     // by 1.
     HloInstruction* root = called_computation_root();

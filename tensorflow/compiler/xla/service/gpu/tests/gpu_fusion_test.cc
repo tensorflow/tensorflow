@@ -14,17 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include <optional>
-#include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info_for_tests.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
-#include "tensorflow/compiler/xla/service/hlo_module_config.h"
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
-#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
@@ -56,7 +51,9 @@ TEST_F(GpuFusionTest, FusedReshape) {
 ; CHECK-LABEL: @fusion
 ; CHECK: fadd
 ; CHECK: }
-      )");
+      )",
+                     /*match_optimized_ir=*/false,
+                     /*run_optimization_passes=*/false);
 }
 
 // Check that we limit the number of operands to fusions we create.

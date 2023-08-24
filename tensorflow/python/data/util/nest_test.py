@@ -24,8 +24,8 @@ from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
@@ -35,7 +35,7 @@ from tensorflow.python.platform import test
 @dataclasses.dataclass
 class MaskedTensor:
   mask: bool
-  value: ops.Tensor
+  value: tensor.Tensor
 
   def __tf_flatten__(self):
     metadata = (self.mask,)

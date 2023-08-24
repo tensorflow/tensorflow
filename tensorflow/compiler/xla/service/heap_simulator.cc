@@ -541,13 +541,18 @@ NoFragmentationStatsHeap<BufferType>::Finish() {
 
 template <typename BufferType>
 GlobalDecreasingSizeBestFitHeap<BufferType>::GlobalDecreasingSizeBestFitHeap(
-    int64_t alignment, Type type)
+    int64_t alignment, Type type, BufferIntervalCompare buffer_interval_compare)
     : alignment_(alignment) {
   if (type == kTemporal) {
     buffer_interval_compare_ = GetTemporalBufferIntervalCompare();
-  } else {
-    CHECK(type == kSpatial);
+    CHECK(buffer_interval_compare == nullptr);
+  } else if (type == kSpatial) {
     buffer_interval_compare_ = GetSpatialBufferIntervalCompare();
+    CHECK(buffer_interval_compare == nullptr);
+  } else {
+    CHECK(type == kCustom);
+    CHECK(buffer_interval_compare != nullptr);
+    buffer_interval_compare_ = buffer_interval_compare;
   }
 }
 

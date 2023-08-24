@@ -87,6 +87,7 @@ cc_library(
         "//tensorflow/compiler/jit:pjrt_device_context",
         "//tensorflow/compiler/jit:xla_device_no_jit_rewrite_registration",
         "//tensorflow/compiler/xla/pjrt:pjrt_api",
+        "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_hdrs",
         "//tensorflow/compiler/xla/stream_executor:device_mem_allocator",
         "//tensorflow/compiler/xla/stream_executor:event",
         "//tensorflow/compiler/xla/stream_executor:kernel",

@@ -26,19 +26,16 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-StatusOr<LaunchDimensions> InPlaceDynamicUpdateSliceEmitter::launch_dimensions()
-    const {
+StatusOr<LaunchDimensions> InPlaceDynamicUpdateSliceEmitter::launch_dimensions(
+    IrEmitterContext& ir_emitter_context, int kernel_index) const {
   const auto& update_shape = dus_ops_.front()->operand(1)->shape();
-  return CalculateLaunchDimensions(
-      update_shape, ir_emitter_context().gpu_device_info(),
-      ir_emitter_context()
-          .hlo_module()
-          .config()
-          .debug_options()
-          .xla_gpu_enable_experimental_block_size());
+  return CalculateLaunchDimensions(update_shape,
+                                   ir_emitter_context.gpu_device_info());
 }
 
 Status InPlaceDynamicUpdateSliceEmitter::EmitKernel(
+    IrEmitterContext& ir_emitter_context, ElementalIrEmitter& elemental_emitter,
+    mlir::lmhlo::FusionOp fusion_op, const HloFusionInstruction& fusion,
     const LaunchDimensions& launch_dims, std::vector<llvm_ir::IrArray> inputs,
     std::vector<llvm_ir::IrArray> outputs, llvm::IRBuilder<>* builder,
     int kernel_index) const {
@@ -53,8 +50,8 @@ Status InPlaceDynamicUpdateSliceEmitter::EmitKernel(
     output = output.CastToShape(op->shape(), builder);
   }
 
-  auto* fused_computation = fusion().fused_instructions_computation();
-  FusedIrEmitter fused_emitter(elemental_emitter());
+  auto* fused_computation = fusion.fused_instructions_computation();
+  FusedIrEmitter fused_emitter(elemental_emitter);
   for (auto [index, input] : llvm::enumerate(inputs)) {
     auto fused_operand = fused_computation->parameter_instruction(index);
     fused_emitter.BindGenerator(

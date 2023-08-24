@@ -31,15 +31,16 @@ xla::Status SetPjrtApi(absl::string_view device_type, const PJRT_Api* api);
 // Loads a PJRT plugin. The library provided by library_path must export a
 // symbol called `GetPjrtApi` with function signature `const PJRT_Api*
 // GetPjrtApi()`. This method dlopen the plugin library, dlsym `GetPjrtApi`,
-// calls `GetPjrtApi`, `SetPjrtApi`, and `PJRT_Plugin_Initialize`.
+// calls `GetPjrtApi` and `SetPjrtApi`.
 xla::Status LoadPjrtPlugin(absl::string_view device_type,
                            absl::string_view library_path);
 
-// Initializes PJRT with a PjrtApiInitFn which is dynamically loaded. This
-// method calls init_fn, `SetPjrtApi` and `PJRT_Plugin_Initialize`.
-typedef const PJRT_Api* (*PjrtApiInitFn)();
-xla::Status InitPjrtPlugin(PjrtApiInitFn init_fn,
-                           absl::string_view device_type);
+// Requires that SetPjrtApi has been successfully called on `device_type` before
+// calling this method.
+xla::StatusOr<bool> IsPjrtPluginInitialized(absl::string_view device_type);
+// Initializes a PJRT plugin with `PJRT_Plugin_Initialize`.
+xla::Status InitializePjrtPlugin(absl::string_view device_type);
+
 }  // namespace pjrt
 
 #endif  // TENSORFLOW_COMPILER_XLA_PJRT_PJRT_API_H_

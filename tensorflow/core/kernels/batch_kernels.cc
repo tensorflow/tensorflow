@@ -338,7 +338,6 @@ void BatchFunctionKernel::ComputeAsync(OpKernelContext* c, DoneCallback done) {
                             ? std::make_optional(enable_large_batch_splitting_)
                             : std::nullopt,
                         GetModelName(c));
-  // TODO(b/173255290): Add num_batch_threads_ parameter to TFRT batch kernel.
   RecordBatchParamNumBatchThreads(num_batch_threads_, GetModelName(c));
 
   std::function<Status(BatchResource**)> creator;

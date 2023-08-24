@@ -1,8 +1,12 @@
 load("@bazel_skylib//lib:selects.bzl", "selects")
-load("//tensorflow/lite:special_rules.bzl", "tflite_extra_gles_deps")
+load("//tensorflow/lite:special_rules.bzl", "tflite_extra_gles_deps", "tflite_portable_test_suite")
 load("//tensorflow/lite/delegates/gpu:build_defs.bzl", "gpu_delegate_linkopts")
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_static_framework")
 load("@build_bazel_rules_apple//apple:macos.bzl", "macos_dylib")
+load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "tf_gpu_tests_tags",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -243,7 +247,7 @@ cc_library(
         ":tflite_profile",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
-        "//tensorflow/lite/core/async:backend_async_kernel_interface",
+        "//tensorflow/lite/async:backend_async_kernel_interface",
         "//tensorflow/lite/core/async/c:task",
         "//tensorflow/lite/core/async/interop/c:attribute_map",
         "//tensorflow/lite/core/async/interop/c:constants",
@@ -279,3 +283,34 @@ cc_library(
         "@com_google_absl//absl/time",
     ],
 )
+
+cc_library(
+    name = "async_buffers",
+    srcs = ["async_buffers.cc"],
+    hdrs = ["async_buffers.h"],
+    deps = [
+        ":api",
+        "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/gl:gl_errors",
+        "//third_party/GL:EGL_headers",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+cc_test(
+    name = "async_buffers_test",
+    srcs = ["async_buffers_test.cc"],
+    tags = tf_gpu_tests_tags() + [
+        "local",
+        "nobuilder",
+        "notap",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":async_buffers",
+        ":delegate",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+tflite_portable_test_suite()

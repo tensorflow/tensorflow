@@ -131,6 +131,12 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
   // Returns data service config of the data service cluster.
   Status GetDataServiceConfig(DataServiceConfig& config);
 
+  // Returns information about the decision to disable compression at runtime
+  // for a given dataset.
+  Status DisableCompressionAtRuntime(
+      const DisableCompressionAtRuntimeRequest& request,
+      DisableCompressionAtRuntimeResponse& response);
+
  protected:
   Status EnsureInitialized() override;
 

@@ -152,8 +152,7 @@ class DistributedRuntimeClient {
 // Creates a distributed runtime client.
 std::unique_ptr<DistributedRuntimeClient> GetDistributedRuntimeClient(
     std::shared_ptr<::grpc::Channel> channel,
-    const DistributedRuntimeClient::Options& options,
-    bool use_coordination_service);
+    const DistributedRuntimeClient::Options& options);
 
 }  // namespace xla
 

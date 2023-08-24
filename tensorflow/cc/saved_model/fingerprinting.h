@@ -40,7 +40,7 @@ std::string Singleprint(uint64_t graph_def_program_hash,
                         uint64_t saved_object_graph_hash,
                         uint64_t checkpoint_hash);
 std::string Singleprint(const FingerprintDef& fingerprint);
-std::string Singleprint(absl::string_view export_dir);
+absl::StatusOr<std::string> Singleprint(absl::string_view export_dir);
 
 }  // namespace tensorflow::saved_model::fingerprinting
 

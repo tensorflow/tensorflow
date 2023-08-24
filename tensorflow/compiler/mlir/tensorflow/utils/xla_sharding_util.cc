@@ -244,7 +244,8 @@ mlir::LogicalResult DecodeShardingAttribute(const std::string& shard_str,
     sharding = sharding_hlo->ToProto();
     return mlir::success();
   }
-  if (report_error) llvm::errs() << sharding_hlo.status().message() << "\n";
+  if (report_error)
+    llvm::errs() << std::string(sharding_hlo.status().message()) << "\n";
   return mlir::failure();
 }
 
@@ -257,7 +258,7 @@ mlir::LogicalResult DecodeShardingAttribute(mlir::Attribute shard_attr,
   return DecodeShardingAttribute(shard_str, sharding, report_error);
 }
 
-void EncodeSharding(mlir::Operation* op, absl::string_view shard_str) {
+void EncodeSharding(mlir::Operation* op, llvm::StringRef shard_str) {
   if (!op->hasAttrOfType<mlir::StringAttr>(shard_str)) return;
 
   ::xla::OpSharding sharding;

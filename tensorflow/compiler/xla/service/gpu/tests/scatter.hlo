@@ -99,8 +99,8 @@
 // CHECK-GCN:      %[[VAL_43_2:.*]] = addrspacecast ptr addrspace(5) %[[VAL_43]] to ptr
 // CHECK-GCN:      %[[VAL_45_2:.*]] = addrspacecast ptr addrspace(5) %[[VAL_45]] to ptr
 // CHECK-GCN:      %[[VAL_43_3:.*]] = addrspacecast ptr addrspace(5) %[[VAL_43]] to ptr
-// CHECK-GCN:     call void @region_0_4_{{.*}}(ptr %[[VAL_43_2]], ptr %[[VAL_45_2]], ptr %[[VAL_43_3]])
-// CHECK-PTX:     call void @region_0_4_{{.*}}(ptr %[[VAL_43]], ptr %[[VAL_45]], ptr %[[VAL_43]])
+// CHECK-GCN:     call void @mul_{{.*}}(ptr %[[VAL_43_2]], ptr %[[VAL_45_2]], ptr %[[VAL_43_3]])
+// CHECK-PTX:     call void @mul_{{.*}}(ptr %[[VAL_43]], ptr %[[VAL_45]], ptr %[[VAL_43]])
 // CHECK:         %[[VAL_77:.*]] = load i32, ptr [[ADDRSPACE_ANNOTATION]]%[[VAL_43]], align 4
 // CHECK:         %[[VAL_78:.*]] = icmp eq i32 %[[VAL_76]], %[[VAL_77]]
 // CHECK:         br i1 %[[VAL_78]], label %[[VAL_66]], label %[[VAL_75]]

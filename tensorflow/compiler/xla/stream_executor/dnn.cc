@@ -158,7 +158,7 @@ tsl::Status DnnSupport::GetGraphConvolveRunners(
     const dnn::ConvolutionDescriptor& /*convolution_descriptor*/,
     bool /*use_fallback*/, const NumericOptions& /*numeric_options*/,
     std::vector<std::unique_ptr<const dnn::GraphConvRunner>>* /*exec_plans*/,
-    std::string serialized_graph) {
+    std::string /*serialized_graph*/) {
   return tsl::errors::Unimplemented("GetGraphConvolveRunners not implemented.");
 }
 

@@ -11,6 +11,7 @@ package_group(
     name = "friends",
     packages = [
         # copybara:uncomment "//learning/brain/experimental/tfrt/...",
+        "//learning/brain/google/xla/kernels/...",
         # copybara:uncomment "//learning/brain/research/pjrt/...",
         # copybara:uncomment "//learning/brain/tfrt/...",
         # copybara:uncomment "//learning/infra/mira/distributed/...",
@@ -265,6 +266,7 @@ tf_cc_test(
     tags = ["no_oss"],
     deps = [
         ":fallback_tensor",
+        "//tensorflow/core/common_runtime:dma_helper",
         "@com_google_googletest//:gtest_main",
     ],
 )

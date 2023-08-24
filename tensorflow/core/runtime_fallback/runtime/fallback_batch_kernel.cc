@@ -14,10 +14,15 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/runtime_fallback/runtime/fallback_batch_kernel.h"
 
+#include <cstdint>
 #include <cstdlib>
 #include <string>
 
+#include "absl/strings/string_view.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/kernels/batching_util/bounded_executor.h"
+#include "tensorflow/core/lib/monitoring/gauge.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
 #include "tensorflow/core/tfrt/utils/error_util.h"
@@ -40,6 +45,23 @@ constexpr char kBatchesToAverageOverAttr[] = "_batches_to_average_over";
 // The value is the same as the TF batch kernel BatchKernel.
 
 }  // namespace
+
+void BatchFunctionFallbackKernelBase::RecordBatchParamNumBatchThreads(
+    int64_t num_batch_threads, absl::string_view model_name) {
+  static auto* cell = monitoring::Gauge<int64_t, 1>::New(
+      "/tensorflow/serving/batching/num_batch_threads",
+      "Tracks the number of batch threads of a model.", "model_name");
+  cell->GetCell(std::string(model_name))->Set(num_batch_threads);
+}
+
+absl::string_view BatchFunctionFallbackKernelBase::GetModelName(
+    OpKernelContext* ctx) {
+  if (ctx->session_metadata() == nullptr ||
+      ctx->session_metadata()->name().empty()) {
+    return "model_name_unset";
+  }
+  return ctx->session_metadata()->name();
+}
 
 int32 BatchFunctionFallbackKernelBase::
     NumBatchThreadsFromEnvironmentWithDefault(int default_num_batch_threads) {

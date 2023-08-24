@@ -40,6 +40,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop as while_loop_ops
 from tensorflow.python.ops.ragged import ragged_string_ops
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
@@ -1535,3 +1536,37 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       )
 
     return in_placeholder
+
+  def _create_while_model(self, input_shape: Sequence[int] = (1, 32, 32, 512)):
+    class WhileModel(module.Module):
+      """A model with a while op."""
+
+      def __init__(self):
+        w_shape = [3, 3] + [input_shape[-1], input_shape[-1]]
+        self.w = np.random.uniform(low=-2, high=2, size=w_shape).astype('f4')
+
+      @def_function.function
+      def condition(self, x, w):
+        return math_ops.reduce_sum(x, keepdims=False) < 100
+
+      @def_function.function
+      def body(self, x, w):
+        z = nn_ops.conv2d(x, w, padding='SAME')
+        return z, w
+
+      @def_function.function(
+          input_signature=[
+              tensor_spec.TensorSpec(
+                  shape=input_shape, dtype=dtypes.float32, name='input_tensor'
+              )
+          ]
+      )
+      def main(self, x):
+        x1 = nn_ops.conv2d(x, self.w, padding='SAME')
+        x2, _ = while_loop_ops.while_loop(
+            self.condition, self.body, [x, self.w]
+        )
+        result = x1 + x2
+        return {'output': result}
+
+    return WhileModel()

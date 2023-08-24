@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_HLO_IR_HLO_INPUT_OUTPUT_ALIAS_CONFIG_H_
 #define TENSORFLOW_COMPILER_XLA_HLO_IR_HLO_INPUT_OUTPUT_ALIAS_CONFIG_H_
 
+#include <cstdint>
 #include <optional>
 #include <ostream>
 #include <string>
@@ -144,8 +145,74 @@ class HloInputOutputAliasConfig {
   ShapeTree<std::optional<Alias>> alias_;
 };
 
+// This class specifies donors of the input buffer (specified by parameter
+// number and parameter index in the entry computation). The donated buffer can
+// be matched with any valid output tensor, which differs from
+// HloInputOutputAliasConfig.
+class HloBufferDonorConfig {
+ public:
+  // Defines a input buffer donor. In real world, organ donors refer to the
+  // persons agreeing to remove their organs (usually after death). Similarly, a
+  // registered buffer donor indicates that the input parameter can be removed
+  // when there is no dependency. Therefore, the memory buffer can be reused by
+  // a matched output.
+  struct BufferDonor {
+    BufferDonor(int64_t param_number, ShapeIndex param_index)
+        : param_number(param_number), param_index(std::move(param_index)) {}
+
+    int64_t param_number;
+    ShapeIndex param_index;
+
+    bool operator==(const BufferDonor& other) const {
+      return param_number == other.param_number &&
+             param_index == other.param_index;
+    }
+
+    // A hash function borrowed from go/absl-hash.
+    template <typename H>
+    friend H AbslHashValue(H h, const BufferDonor& donor) {
+      return H::combine(std::move(h), donor.param_number, donor.param_index);
+    }
+  };
+
+  HloBufferDonorConfig() = default;
+  virtual ~HloBufferDonorConfig() = default;
+
+  // Register and unregister the parameter with `param_index` at `param_number`
+  // as a buffer donor.
+  Status AddBufferDonor(int64_t param_number, const ShapeIndex& param_index);
+  Status RemoveBufferDonor(int64_t param_number, const ShapeIndex& param_index);
+
+  // Returns true if the given parameter is registered as a buffer donor.
+  bool ParameterIsBufferDonor(int64_t param_number,
+                              const ShapeIndex& param_index) const;
+
+  // (De)Serializes an HloBufferDonorConfig to/from an HloBufferDonorProto.
+  HloBufferDonorProto ToProto() const;
+  static StatusOr<HloBufferDonorConfig> CreateFromProto(
+      const HloBufferDonorProto& proto);
+
+  // Verifies that the given config is valid for the given module.
+  // Specifically, the config's input should be in-bound.
+  Status Verify(const HloModule& module) const;
+
+  // Returns the registered buffer donors
+  const absl::flat_hash_set<BufferDonor>& buffer_donor() const {
+    return buffer_donor_;
+  }
+
+  std::string ToString() const;
+
+  std::string ToShortString() const;
+
+ private:
+  // A set recording the registered buffer donors.
+  absl::flat_hash_set<BufferDonor> buffer_donor_;
+};
+
 std::ostream& operator<<(std::ostream& out,
                          const HloInputOutputAliasConfig& config);
+std::ostream& operator<<(std::ostream& out, const HloBufferDonorConfig& config);
 
 }  // namespace xla
 

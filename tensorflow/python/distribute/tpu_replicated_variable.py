@@ -180,8 +180,27 @@ class TPUReplicatedVariable(variables_lib.Variable):
     resource_list.append(self)
     return resource_list
 
-  def _gather_saveables_for_saved_model(self):
+  def _serialize_to_tensors(self):
     return {trackable.VARIABLE_VALUE_KEY: self._vars[0]}
+
+  def _restore_from_tensors(self, restored_tensors):
+    restored_tensor = restored_tensors[trackable.VARIABLE_VALUE_KEY]
+    return self.assign(restored_tensor)
+
+  def _copy_trackable_to_cpu(self, object_map):
+    """For implementing `Trackable`."""
+    if self in object_map:
+      # If populated already, just update the values to the copy.
+      for v in self._vars:
+        v._copy_trackable_to_cpu(object_map)  # pylint: disable=protected-access
+    else:
+      # If not populated, populate first, then copy over the values.
+      copied_vars = []
+      for v in self._vars:
+        v._copy_trackable_to_cpu(object_map)  # pylint: disable=protected-access
+        copied_vars.append(object_map[v])
+      new_var = TPUReplicatedVariable(copied_vars, name=self.name)
+      object_map[self] = new_var
 
   @property
   def shape(self):

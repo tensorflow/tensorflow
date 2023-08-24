@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/xla/python/custom_call_sharding.h"
 
+#include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -25,11 +27,16 @@ limitations under the License.
 #include "pybind11/stl.h"  // from @pybind11
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/utils/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/python/inspect_sharding.h"
 #include "tensorflow/compiler/xla/python/status_casters.h"
+#include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/custom_call_sharding_helper.h"
+#include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/spmd/spmd_partitioner_util.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 
@@ -62,6 +69,7 @@ HloInstruction* InlineHloComputation(HloInstruction* instruction,
                                      HloComputation* computation,
                                      HloComputation::Builder* builder,
                                      std::vector<HloInstruction*> operands,
+                                     std::function<int64_t()> new_channel,
                                      const std::string& suffix) {
   HloCloneContext context(instruction->GetModule(), suffix);
 
@@ -84,9 +92,14 @@ HloInstruction* InlineHloComputation(HloInstruction* instruction,
       for (HloInstruction* operand : inst->mutable_operands()) {
         new_operands.push_back(resolve(operand));
       }
-      replacements.emplace(inst,
-                           builder->AddInstruction(inst->CloneWithNewOperands(
-                               inst->shape(), new_operands, &context)));
+      auto* new_inst = builder->AddInstruction(
+          inst->CloneWithNewOperands(inst->shape(), new_operands, &context));
+      HloChannelInstruction* channel_instr =
+          DynCast<HloChannelInstruction>(new_inst);
+      if (channel_instr && channel_instr->channel_id().has_value()) {
+        new_inst->set_channel_id(new_channel());
+      }
+      replacements.emplace(inst, new_inst);
     }
   }
   return resolve(computation->root_instruction());
@@ -146,9 +159,16 @@ class PyCustomCallPartitioner : public CustomCallPartitioner {
                 .hlo());
       }
 
+      // The custom call module does not go through the main compiler pipeline,
+      // so inline all calls here explicitly, since some targets require it.
+      HloPassPipeline pipeline("custom-call-inliner");
+      pipeline.AddPass<CallInliner>();
+      TF_RETURN_IF_ERROR(pipeline.Run(hlo_module.get(), {}).status());
+
       auto* partitioned_hlo = InlineHloComputation(
           instruction, hlo_module->entry_computation(), partitioner->builder(),
-          operands, "_custom_call_lowering_rule");
+          operands, [partitioner]() { return partitioner->NewChannel(); },
+          "_custom_call_lowering_rule");
       partitioned_hlo->set_sharding(result_sharding.value());
 
       spmd::PartitionedHlo result_partitioned =

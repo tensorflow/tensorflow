@@ -114,9 +114,11 @@ Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
 Status AMDGPUCompiler::OptimizeHloPostLayoutAssignment(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
-    const AutotuneResults* autotune_results) {
+    const AutotuneResults* autotune_results,
+    tsl::thread::ThreadPool* thread_pool) {
   TF_RETURN_IF_ERROR(GpuCompiler::OptimizeHloPostLayoutAssignment(
-      hlo_module, stream_exec, options, gpu_target_config, autotune_results));
+      hlo_module, stream_exec, options, gpu_target_config, autotune_results,
+      thread_pool));
 
   HloPassPipeline post_pipeline("AMDGPU post-layout_assignment");
 
@@ -129,15 +131,13 @@ Status AMDGPUCompiler::OptimizeHloPostLayoutAssignment(
   return OkStatus();
 }
 
-bool AMDGPUCompiler::EnableCollectiveScheduleLinearizerForSpmd(
-    HloModule* hlo_module, se::StreamExecutor* stream_exec) {
-  return hlo_module->config().use_spmd_partitioning() &&
-         stream_exec != nullptr &&
-         GpuConvAlgorithmPicker::IsEnabled(hlo_module);
-}
-
+// Linearize collective schedule under if online autotuning of convolutions is
+// enabled.
 bool AMDGPUCompiler::RequiresCollectiveScheduleLinearizer(
-    const HloModule* module) {
+    const HloModule* module, se::StreamExecutor* stream_exec) {
+  if (stream_exec == nullptr || !GpuConvAlgorithmPicker::IsEnabled(module)) {
+    return false;
+  }
   for (const HloComputation* comp : module->MakeNonfusionComputations()) {
     for (const HloInstruction* inst : comp->instructions()) {
       if (GpuConvAlgorithmPicker::IsCandidate(inst)) {
@@ -151,21 +151,7 @@ bool AMDGPUCompiler::RequiresCollectiveScheduleLinearizer(
 
 Status AMDGPUCompiler::AddAutotuningPasses(
     HloPassPipeline* pipeline, HloModule* hlo_module,
-    se::StreamExecutor* stream_exec, const DebugOptions& debug_options,
-    const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
-    const AutotuneResults* autotune_results,
-    tsl::thread::ThreadPool* thread_pool) {
-  AutotuneConfig autotune_config =
-      stream_exec
-          ? AutotuneConfig{DeviceConfig{stream_exec, options.device_allocator},
-                           debug_options}
-          : AutotuneConfig{
-                DevicelessConfig{gpu_target_config.device_description_str},
-                debug_options};
-  if (autotune_config.IsDeviceless()) {
-    AutotunerUtil::ClearAutotuneResults();
-    TF_RETURN_IF_ERROR(AutotunerUtil::LoadAutotuneResults(*autotune_results));
-  }
+    AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool) {
   if (GpuConvAlgorithmPicker::IsEnabled(hlo_module)) {
     pipeline->AddPass<GpuConvAlgorithmPicker>(autotune_config);
   }

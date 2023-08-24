@@ -138,6 +138,12 @@ class PjRtClient final
     return pjrt_client_->LookupDevice(device_id);
   }
 
+  StatusOr<Device*> LookupAddressableDevice(
+      int local_hardware_id) const override {
+    DCHECK(this);
+    return pjrt_client_->LookupAddressableDevice(local_hardware_id);
+  }
+
   Compiler* GetDefaultCompiler() override {
     DCHECK(this);
     return &default_compiler_;

@@ -238,16 +238,50 @@ class RepresentativeDatasetSaverTest(test.TestCase):
       saver.save(repr_ds)
 
 
-class RepresentativeDatasetLoaderTest(test.TestCase):
+class TfRecordRepresentativeDatasetTest(test.TestCase):
   """Test cases for RepresentativeDatasetLoader."""
 
-  def test_load_raises_error(self):
-    loader = repr_dataset.RepresentativeDatasetLoader()
+  def test_tf_record_saver_with_generator_dataset(self):
+    tf_record_path = self.create_tempfile().full_path
+    path_map = {'serving_default': tf_record_path}
+    num_samples = 2
+
+    def data_gen():
+      for _ in range(num_samples):
+        yield {'x': [1, 2]}
+
+    repr_ds_map = {'serving_default': data_gen()}
+    saver = repr_dataset.TfRecordRepresentativeDatasetSaver(path_map)
+    dataset_file_map = saver.save(repr_ds_map)
+    self.assertCountEqual(dataset_file_map.keys(), ['serving_default'])
+
+    dataset_map = repr_dataset.RepresentativeDatasetLoader(
+        dataset_file_map
+    ).load()
+    self.assertCountEqual(dataset_map.keys(), ['serving_default'])
+    samples = dataset_map['serving_default']
+    for sample in samples:
+      self.assertCountEqual(sample.keys(), {'x'})
+      self.assertAllEqual(sample['x'], np.array([1, 2]))
+
+    self.assertLen(samples, num_samples)
+
+  def test_tf_record_saver_when_signature_def_key_mismatch_raises_error(self):
+    tf_record_path = self.create_tempfile().full_path
+    representative_dataset = [{'x': [2]}]
+    repr_ds_map = {'my_signature_key': representative_dataset}
+
+    path_map = {'different_signature_key': tf_record_path}
+    saver = repr_dataset.TfRecordRepresentativeDatasetSaver(path_map)
 
     with self.assertRaisesRegex(
-        NotImplementedError, 'Method "load" is not implemented.'
+        ValueError,
+        (
+            'SignatureDef key does not exist in the provided path_map:'
+            ' my_signature_key'
+        ),
     ):
-      loader.load()
+      saver.save(repr_ds_map)
 
 
 if __name__ == '__main__':

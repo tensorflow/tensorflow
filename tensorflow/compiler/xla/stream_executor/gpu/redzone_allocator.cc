@@ -319,7 +319,7 @@ tsl::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones() const {
   } else {
     static absl::once_flag ptxas_not_found_logged;
     absl::call_once(ptxas_not_found_logged, [&]() {
-      LOG(WARNING) << compiled_ptx_or.status().ToString()
+      LOG(WARNING) << compiled_ptx_or.status()
                    << "\nRelying on driver to perform ptx compilation. "
                    << "\nModify $PATH to customize ptxas location."
                    << "\nThis message will be only logged once.";

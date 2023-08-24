@@ -15,26 +15,37 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_transfer_manager.h"
 
+#include <atomic>
+#include <cstdint>
+#include <cstring>
 #include <deque>
 #include <functional>
 #include <utility>
 #include <vector>
 
 #include "absl/cleanup/cleanup.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/service/shaped_buffer.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
+#include "tensorflow/compiler/xla/stream_executor/platform.h"
+#include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/noncopyable_buffer.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/proto_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_c_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_id.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/platform/casts.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -317,10 +328,12 @@ tsl::Status TpuTransferManager::WriteSingleTupleIndexTable(
 }
 
 tsl::Status TpuTransferManager::LinearizeToBuffers(
-    const xla::LiteralSlice& literal,
+    const xla::LiteralSlice& literal, const xla::Shape& device_shape,
     std::deque<tensorflow::tpu::NoncopyableBuffer>* buffers) {
   XLA_Literal c_literal;
   ApiConverter::ToC(literal, &c_literal);
+  XLA_Shape c_device_shape;
+  ApiConverter::ToC(device_shape, &c_device_shape);
 
   char** buffers_array;
   int64_t* buffers_size;
@@ -329,7 +342,7 @@ tsl::Status TpuTransferManager::LinearizeToBuffers(
 
   stream_executor::tpu::ExecutorApiFn()
       ->TpuTransferManager_LinearizeToBuffersFn(
-          manager_, &c_literal, &buffers_array, &buffers_size,
+          manager_, &c_literal, &c_device_shape, &buffers_array, &buffers_size,
           &buffers_array_size, status.c_status);
 
   for (int64_t i = 0; i < buffers_array_size; ++i) {
@@ -342,6 +355,7 @@ tsl::Status TpuTransferManager::LinearizeToBuffers(
   stream_executor::tpu::ExecutorApiFn()->TpuTransferManager_FreeBuffersFn(
       buffers_array, buffers_size, buffers_array_size);
 
+  ApiConverter::Destroy(&c_device_shape);
   ApiConverter::Destroy(&c_literal);
   return status.status();
 }

@@ -36,16 +36,25 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/Utils/Utils.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/Utils/QuantUtils.h"  // from @llvm-project
+#include "mlir/Dialect/Utils/StaticValueUtils.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
+#include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_utils.h"
@@ -70,11 +79,58 @@ static int64_t multiply_dims(llvm::ArrayRef<int64_t> dims, int64_t res = 1) {
   return res;
 }
 
-static int64_t count_dynamic_dims(llvm::ArrayRef<int64_t> dims) {
-  int64_t count = 0;
-  for (auto dim : dims)
-    if (ShapedType::isDynamic(dim)) ++count;
-  return count;
+static OpFoldResult multiplyDims(ImplicitLocOpBuilder& builder,
+                                 OpFoldResult lhs, OpFoldResult rhs) {
+  auto val_x = getValueOrCreateConstantIndexOp(builder, builder.getLoc(), lhs);
+  auto val_y = getValueOrCreateConstantIndexOp(builder, builder.getLoc(), rhs);
+  return getAsOpFoldResult(builder.createOrFold<arith::MulIOp>(val_x, val_y));
+}
+
+static OpFoldResult multiplyDims(ImplicitLocOpBuilder& builder,
+                                 ArrayRef<OpFoldResult> dims) {
+  if (dims.empty()) {
+    return OpFoldResult{builder.getIndexAttr(1)};
+  }
+
+  // Use the first value as the initial value
+  auto init = dims.front();
+  dims = dims.drop_front();
+
+  return std::accumulate(
+      dims.begin(), dims.end(), init,
+      [&](auto lhs, auto rhs) { return multiplyDims(builder, lhs, rhs); });
+}
+
+// Try to extract the known integer value for the given OpFoldResult
+// with the intention of interpreting it as a tensor dimension.
+// When the value is not statically known, produce ShapedType::kDynamic.
+static int64_t extractStaticDimension(OpFoldResult value) {
+  return getConstantIntValue(value).value_or(ShapedType::kDynamic);
+}
+
+// Reshape the given tensor value based the new shape described by the
+// shape parameter. Attempts to use tosa.reshape when at most one value is
+// dynamic, otherwise generates a full tensor.reshape operation using a runtime
+// representation of the desired shape.
+static Value buildReshape(ImplicitLocOpBuilder& builder, Value value,
+                          ArrayRef<OpFoldResult> shape) {
+  auto staticShape = llvm::map_to_vector(shape, extractStaticDimension);
+  auto elementType = getElementTypeOrSelf(value.getType());
+
+  if (llvm::count_if(staticShape, ShapedType::isDynamic) > 1) {
+    auto runtimeShape = builder.create<tensor::FromElementsOp>(
+        getValueOrCreateConstantIndexOp(builder, builder.getLoc(), shape));
+
+    return builder.create<tensor::ReshapeOp>(
+        tensorflow::GetTypeFromTFTensorShape(staticShape, elementType), value,
+        runtimeShape);
+  }
+
+  return CreateOpAndInfer<tosa::ReshapeOp>(
+      builder, tensorflow::GetTypeFromTFTensorShape(staticShape, elementType),
+      value,
+      builder.getDenseI64ArrayAttr(
+          tensorflow::ConvertMlirShapeToTF(staticShape)));
 }
 
 namespace {
@@ -285,7 +341,7 @@ std::optional<Value> convertPackOp(PatternRewriter& rewriter, Operation* op,
     reshape_output_shape.assign(output_shape_vals.begin(),
                                 output_shape_vals.end());
   }
-  IntegerAttr concat_axis_attr = rewriter.getI64IntegerAttr(concat_axis);
+  IntegerAttr concat_axis_attr = rewriter.getI32IntegerAttr(concat_axis);
   DenseI64ArrayAttr shape_attr = rewriter.getDenseI64ArrayAttr(
       tensorflow::ConvertMlirShapeToTF(reshape_output_shape));
 
@@ -771,7 +827,7 @@ std::optional<Value> convertConcatV2Op(PatternRewriter& rewriter, Operation* op,
 
   auto concat_op = CreateOpAndInfer<tosa::ConcatOp>(
       rewriter, op->getLoc(), result_type, values_rescaled,
-      rewriter.getI64IntegerAttr(axis));
+      rewriter.getI32IntegerAttr(axis));
 
   return concat_op.getResult();
 }
@@ -1554,7 +1610,7 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
 
       auto op2_reducemax_op1 = CreateOpAndInfer<tosa::ReduceMaxOp>(
           rewriter, op->getLoc(), int32_rsum_type, op1_rescale_in,
-          rewriter.getI64IntegerAttr(input_rank - 1));
+          rewriter.getI32IntegerAttr(input_rank - 1));
 
       auto op3_sub_op1_op2 = CreateOpAndInfer<tosa::SubOp>(
           rewriter, op->getLoc(), int32_logits_type, op1_rescale_in,
@@ -1648,7 +1704,7 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
       auto op15_reducesum_op14 = CreateOpAndInfer<tosa::ReduceSumOp>(
           rewriter, op->getLoc(), int32_rsum_type,
           op14_rshift_op13_12.getResult(),
-          rewriter.getI64IntegerAttr(input_rank - 1));
+          rewriter.getI32IntegerAttr(input_rank - 1));
 
       // Step 4. calculate reciprocal(sum(exp()))
       // CLZ returns the number of leading zeros which equals to headroom + 1
@@ -1755,7 +1811,7 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
 
       auto op2_reducemax_op1 = CreateOpAndInfer<tosa::ReduceMaxOp>(
           rewriter, op->getLoc(), int32_rsum_type, op1_rescale_in,
-          rewriter.getI64IntegerAttr(input_rank - 1));
+          rewriter.getI32IntegerAttr(input_rank - 1));
 
       // output range is [-65535, 0]
       auto op3_sub_op1_op2 = CreateOpAndInfer<tosa::SubOp>(
@@ -1799,7 +1855,7 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
       // Step 4. get sum(exp()). output 16.15
       auto op9_reducesum_op8 = CreateOpAndInfer<tosa::ReduceSumOp>(
           rewriter, op->getLoc(), int32_rsum_type, op8_rshift_op7.getResult(),
-          rewriter.getI64IntegerAttr(input_rank - 1));
+          rewriter.getI32IntegerAttr(input_rank - 1));
 
       // Step 5. calculate reciprocal(sum(exp()))
       // CLZ returns 32 - first non zero bit
@@ -1900,7 +1956,7 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
     // Step 1. get x - max(x)
     auto max_logits = CreateOpAndInfer<tosa::ReduceMaxOp>(
         rewriter, op->getLoc(), rsum_type, logits_value,
-        rewriter.getI64IntegerAttr(input_rank - 1));
+        rewriter.getI32IntegerAttr(input_rank - 1));
     auto normalized_logits =
         CreateOpAndInfer<tosa::SubOp>(rewriter, op->getLoc(), logits_type,
                                       logits_value, max_logits.getResult());
@@ -1913,7 +1969,7 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
     // Keep dims so we don't need to reshape later
     auto reducesum = CreateOpAndInfer<tosa::ReduceSumOp>(
         rewriter, op->getLoc(), rsum_type, exp_norm_logits.getResult(),
-        rewriter.getI64IntegerAttr(input_rank - 1));
+        rewriter.getI32IntegerAttr(input_rank - 1));
     auto denominator = CreateOpAndInfer<tosa::ReciprocalOp>(
         rewriter, op->getLoc(), reducesum.getType(), reducesum.getResult());
 
@@ -1970,7 +2026,7 @@ std::optional<Value> convertLogSoftmaxOp(PatternRewriter& rewriter,
   auto op2_reducesum_op1 = CreateOpAndInfer<tosa::ReduceSumOp>(
       rewriter, op->getLoc(),
       UnrankedTensorType::get(output_type.getElementType()),
-      op1_exp_in.getResult(), rewriter.getI64IntegerAttr(input_rank - 1));
+      op1_exp_in.getResult(), rewriter.getI32IntegerAttr(input_rank - 1));
   auto op3_reciprocal_op2 = CreateOpAndInfer<tosa::ReciprocalOp>(
       rewriter, op->getLoc(), op2_reducesum_op1.getType(),
       op2_reducesum_op1.getResult());
@@ -2350,7 +2406,7 @@ static Value reverseNegativeStride(PatternRewriter& rewriter, Operation* op,
 
     input = CreateOpAndInfer<tosa::ReverseOp>(rewriter, op->getLoc(),
                                               input.getType(), input,
-                                              rewriter.getI64IntegerAttr(axis))
+                                              rewriter.getI32IntegerAttr(axis))
                 .getResult();
   }
 
@@ -2837,7 +2893,7 @@ static Value convertGenericReduceOp(PatternRewriter& rewriter, Operation* op,
 
   return CreateOpAndInfer<T>(rewriter, loc,
                              UnrankedTensorType::get(reduce_etype), reshape_op,
-                             rewriter.getI64IntegerAttr(1));
+                             rewriter.getI32IntegerAttr(1));
 }
 
 // Common function for lowering reduce operations to TOSA ops.
@@ -2898,7 +2954,7 @@ std::optional<Value> convertReduceOpCommon(
     }
 
     for (auto axis_val : axes) {
-      auto axis_attr = rewriter.getI64IntegerAttr(axis_val);
+      auto axis_attr = rewriter.getI32IntegerAttr(axis_val);
 
       shape_vec[axis_val] = 1;
       RankedTensorType reduce_type =
@@ -3688,7 +3744,7 @@ std::optional<Value> convertMirrorPadCommon(PatternRewriter& rewriter,
       } else {
         auto reverse_before_op = CreateOpAndInfer<tosa::ReverseOp>(
             rewriter, op->getLoc(), slice_before_op.getType(), slice_before_op,
-            rewriter.getI64IntegerAttr(axis));
+            rewriter.getI32IntegerAttr(axis));
         slices.push_back(reverse_before_op);
       }
     }
@@ -3710,7 +3766,7 @@ std::optional<Value> convertMirrorPadCommon(PatternRewriter& rewriter,
       } else {
         auto reverse_after_op = CreateOpAndInfer<tosa::ReverseOp>(
             rewriter, op->getLoc(), slice_after_op.getType(), slice_after_op,
-            rewriter.getI64IntegerAttr(axis));
+            rewriter.getI32IntegerAttr(axis));
         slices.push_back(reverse_after_op);
       }
     }
@@ -3926,10 +3982,10 @@ std::optional<Value> convertTFConv3DCommon(
 
 // Lowers Gather operators to a sequence of TOSA ops.
 std::optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
-                                     Value result_value, Value params_value,
-                                     Value indices_value, int32_t batch_dims,
-                                     int32_t axis) {
-  auto result_type = dyn_cast<ShapedType>(result_value.getType());
+                                     Value params_value, Value indices_value,
+                                     int32_t batch_dims, int32_t axis,
+                                     bool tosaOnly) {
+  auto result_type = dyn_cast<ShapedType>(op->getResult(0).getType());
   auto params_type = dyn_cast<RankedTensorType>(params_value.getType());
   auto indices_type = dyn_cast<RankedTensorType>(indices_value.getType());
 
@@ -4024,42 +4080,57 @@ std::optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
   }
 
   // Sizes for each of these fields.
-  SmallVector<int64_t> params_batch, params_indices, params_left_channels,
+  SmallVector<OpFoldResult> params_batch, params_indices, params_left_channels,
       params_right_channels;
 
   // Dimension indices for each of these fields.
   SmallVector<int64_t> params_idx_batch, params_idx_indices,
       params_idx_left_channels, params_idx_right_channels;
 
+  auto params_shape =
+      tensor::getMixedSizes(rewriter, op->getLoc(), params_value);
+  auto indices_shape =
+      tensor::getMixedSizes(rewriter, op->getLoc(), indices_value);
+
   // Read through the params tensor dimensions left-to-right and extract the
   // different fields.
   for (int i = 0; i < params_rank; i++) {
     // When batch_dims == axis, the batch dimension gets replaced.
     if (i < batch_dims && i < axis) {
-      params_batch.push_back(params_type.getShape()[i]);
+      params_batch.push_back(params_shape[i]);
       params_idx_batch.push_back(i);
     } else if (i < axis) {
-      params_left_channels.push_back(params_type.getShape()[i]);
+      params_left_channels.push_back(params_shape[i]);
       params_idx_left_channels.push_back(i);
     } else if (i < (axis + 1)) {
-      params_indices.push_back(params_type.getShape()[i]);
+      params_indices.push_back(params_shape[i]);
       params_idx_indices.push_back(i);
     } else {
-      params_right_channels.push_back(params_type.getShape()[i]);
+      params_right_channels.push_back(params_shape[i]);
       params_idx_right_channels.push_back(i);
     }
   }
 
   // Calculate N, K, W, C
-  int64_t N = multiply_dims(params_type.getShape().take_front(batch_dims));
-  int64_t W = multiply_dims(
-      indices_type.getShape().slice(batch_dims, indices_rank - batch_dims));
-  int64_t K = params_type.getShape()[axis];
+  auto paramsLow = llvm::ArrayRef(params_shape).take_front(batch_dims);
 
-  int64_t C = multiply_dims(
-      params_type.getShape().slice(batch_dims, axis - batch_dims));
-  C = multiply_dims(
-      params_type.getShape().slice(axis + 1, params_rank - axis - 1), C);
+  auto paramsMid =
+      llvm::ArrayRef(params_shape).slice(batch_dims, axis - batch_dims);
+
+  auto paramsHigh =
+      llvm::ArrayRef(params_shape).slice(axis + 1, params_rank - axis - 1);
+
+  auto indicesMid = llvm::ArrayRef(indices_shape)
+                        .slice(batch_dims, indices_rank - batch_dims);
+
+  ImplicitLocOpBuilder builder(op->getLoc(), rewriter);
+  OpFoldResult lowProduct = multiplyDims(builder, paramsMid);
+  OpFoldResult highProduct = multiplyDims(builder, paramsHigh);
+
+  OpFoldResult N = multiplyDims(builder, paramsLow);
+  OpFoldResult W = multiplyDims(builder, indicesMid);
+  OpFoldResult K = params_shape[axis];
+  OpFoldResult C = multiplyDims(builder, lowProduct, highProduct);
 
   /////////////////////////////////////////////
   // Build up the params transpose operator
@@ -4069,46 +4140,42 @@ std::optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
   // Batch
   for (int i = 0; i < params_batch.size(); i++) {
     params_transpose_perm.push_back(params_idx_batch[i]);
-    params_transpose_shape.push_back(params_batch[i]);
+    params_transpose_shape.push_back(extractStaticDimension(params_batch[i]));
   }
 
   // Indices
   for (int i = 0; i < params_indices.size(); i++) {
     params_transpose_perm.push_back(params_idx_indices[i]);
-    params_transpose_shape.push_back(params_indices[i]);
+    params_transpose_shape.push_back(extractStaticDimension(params_indices[i]));
   }
 
   // LeftChannels
   for (int i = 0; i < params_left_channels.size(); i++) {
     params_transpose_perm.push_back(params_idx_left_channels[i]);
-    params_transpose_shape.push_back(params_left_channels[i]);
+    params_transpose_shape.push_back(
+        extractStaticDimension(params_left_channels[i]));
   }
 
   // RightChannels
   for (int i = 0; i < params_right_channels.size(); i++) {
     params_transpose_perm.push_back(params_idx_right_channels[i]);
-    params_transpose_shape.push_back(params_right_channels[i]);
+    params_transpose_shape.push_back(
+        extractStaticDimension(params_right_channels[i]));
   }
 
   /////////////////////////////////////////////
   // Build up the result reshape, in prepration for transpose
   // [N, W, C] -> [ Batch, Indices, LeftChannels, RightChannels ]
-  SmallVector<int64_t> result_reshape_shape;
+  SmallVector<OpFoldResult> result_reshape_shape;
 
   // Indices
-  for (int i = 0; i < indices_type.getShape().size(); i++) {
-    result_reshape_shape.push_back(indices_type.getShape()[i]);
-  }
+  result_reshape_shape.append(indices_shape);
 
   // Left channels
-  for (int i = 0; i < params_left_channels.size(); i++) {
-    result_reshape_shape.push_back(params_left_channels[i]);
-  }
+  result_reshape_shape.append(params_left_channels);
 
-  // Right channels.  But remove the axis dimension.
-  for (int i = 0; i < params_right_channels.size(); i++) {
-    result_reshape_shape.push_back(params_right_channels[i]);
-  }
+  // Right channels
+  result_reshape_shape.append(params_right_channels);
 
   /////////////////////////////////////////////
   // Build up the result transpose operator.
@@ -4135,9 +4202,9 @@ std::optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
                                     params_left_channels.size());
   }
 
-  SmallVector<int64_t> tosa_values_shape = {N, K, C};
-  SmallVector<int64_t> tosa_indices_shape = {N, W};
-  SmallVector<int64_t> tosa_gather_result_shape = {N, W, C};
+  SmallVector<OpFoldResult> tosa_values_shape = {N, K, C};
+  SmallVector<OpFoldResult> tosa_indices_shape = {N, W};
+  SmallVector<OpFoldResult> tosa_gather_result_shape = {N, W, C};
 
   std::optional<Value> params_transpose_perm_val = getConstTensor<int32_t>(
       rewriter, op, params_transpose_perm,
@@ -4151,67 +4218,30 @@ std::optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
     return std::nullopt;
 
   auto params_transpose_op = CreateOpAndInfer<tosa::TransposeOp>(
-      rewriter, op->getLoc(),
+      builder,
       tensorflow::GetTypeFromTFTensorShape(params_transpose_shape,
                                            params_type.getElementType()),
       params_value, params_transpose_perm_val.value());
 
-  if (count_dynamic_dims(tosa_values_shape) > 1) {
-    return (void)rewriter.notifyMatchFailure(
-               op,
-               "multiply dynamic shapes when reshaping values down to "
-               "tosa.gather"),
-           std::nullopt;
-  }
+  Value tosa_values_reshape_op =
+      buildReshape(builder, params_transpose_op, {N, K, C});
 
-  auto tosa_values_reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
-      rewriter, op->getLoc(),
-      tensorflow::GetTypeFromTFTensorShape(tosa_values_shape,
-                                           params_type.getElementType()),
-      params_transpose_op.getResult(),
-      rewriter.getDenseI64ArrayAttr(
-          tensorflow::ConvertMlirShapeToTF(tosa_values_shape)));
+  Value tosa_indices_reshape_op = buildReshape(builder, indices_value, {N, W});
 
-  if (count_dynamic_dims(tosa_indices_shape) > 1) {
-    return (void)rewriter.notifyMatchFailure(
-               op,
-               "multiply dynamic shapes when reshaping indices down to "
-               "tosa.gather"),
-           std::nullopt;
-  }
-
-  auto tosa_indices_reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
-      rewriter, op->getLoc(),
-      tensorflow::GetTypeFromTFTensorShape(tosa_indices_shape,
-                                           indices_type.getElementType()),
-      indices_value,
-      rewriter.getDenseI64ArrayAttr(
-          tensorflow::ConvertMlirShapeToTF(tosa_indices_shape)));
+  auto tosa_gather_static_shape =
+      llvm::map_to_vector(tosa_gather_result_shape, extractStaticDimension);
 
   auto tosa_gather_op = CreateOpAndInfer<tosa::GatherOp>(
-      rewriter, op->getLoc(),
-      tensorflow::GetTypeFromTFTensorShape(tosa_gather_result_shape,
+      builder,
+      tensorflow::GetTypeFromTFTensorShape(tosa_gather_static_shape,
                                            result_type.getElementType()),
-      tosa_values_reshape_op.getResult(), tosa_indices_reshape_op.getResult());
+      tosa_values_reshape_op, tosa_indices_reshape_op);
 
-  if (count_dynamic_dims(result_reshape_shape) > 1) {
-    return (void)rewriter.notifyMatchFailure(
-               op,
-               "multiply dynamic shapes when reshaping tosa.gather result up"),
-           std::nullopt;
-  }
+  Value tosa_result_reshape_op =
+      buildReshape(builder, tosa_gather_op, result_reshape_shape);
 
-  auto tosa_result_reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
-      rewriter, op->getLoc(),
-      tensorflow::GetTypeFromTFTensorShape(result_reshape_shape,
-                                           params_type.getElementType()),
-      tosa_gather_op.getResult(),
-      rewriter.getDenseI64ArrayAttr(
-          tensorflow::ConvertMlirShapeToTF(result_reshape_shape)));
-
-  return CreateOpAndInfer<tosa::TransposeOp>(rewriter, op->getLoc(),
-                                             result_type,
-                                             tosa_result_reshape_op.getResult(),
+  return CreateOpAndInfer<tosa::TransposeOp>(builder, result_type,
+                                             tosa_result_reshape_op,
                                              result_transpose_perm_val.value())
       .getResult();
 }
@@ -4367,7 +4397,7 @@ std::optional<Value> convertGatherNdOp(PatternRewriter& rewriter, Operation* op,
       rewriter, op->getLoc(),
       tensorflow::GetTypeFromTFTensorShape(tosa_indices_shape,
                                            indices_type.getElementType()),
-      flattened_indices_mul_op.getResult(), rewriter.getI64IntegerAttr(1));
+      flattened_indices_mul_op.getResult(), rewriter.getI32IntegerAttr(1));
 
   // And reshape to [N, W]
   auto tosa_indices_reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(

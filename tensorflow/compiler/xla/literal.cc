@@ -17,11 +17,12 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <complex>
+#include <cstdint>
 #include <cstring>
 #include <functional>
 #include <limits>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <ostream>
 #include <string>
@@ -31,23 +32,34 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/casts.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/functional/function_ref.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/compiler/xla/index_util.h"
+#include "tensorflow/compiler/xla/layout.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/printer.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/lib/core/bitmap.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/float8.h"
-#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tensorflow/tsl/platform/mem.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/util/byte_swap_array.h"
 
 namespace xla {
@@ -1781,6 +1793,12 @@ void LiteralBase::Piece::CopyElementsWithDynamicBound(
   if (ShapeUtil::IsZeroElementArray(dest_shape)) {
     return;
   }
+  if (dest_shape.rank() == 1) {
+    // Fast path for rank 1 arrays.
+    int64_t count = std::min(GetDynamicSize(0), src.GetDynamicSize(0));
+    std::copy_n(src.data<NativeT>().begin(), count, data<NativeT>().begin());
+    return;
+  }
   std::vector<int64_t> index(dest_shape.rank());
   do {
     bool out_of_bound = false;
@@ -1891,11 +1909,13 @@ bool LiteralBase::operator==(const LiteralBase& other) const {
 
 template <typename NativeT>
 static bool EqualIncludingNan(NativeT a, NativeT b) {
-  // msvc can't compile std::isnan(a) where `a` is uint8_t.  This is a bug
-  // according to https://en.cppreference.com/w/cpp/numeric/math/isnan, but it's
-  // easy to work around.
-  return a == b || (std::isnan(static_cast<double>(a)) &&
-                    std::isnan(static_cast<double>(b)));
+  if constexpr (std::numeric_limits<NativeT>::has_quiet_NaN ||
+                std::numeric_limits<NativeT>::has_signaling_NaN) {
+    if (Eigen::numext::isnan(a) && Eigen::numext::isnan(b)) {
+      return true;
+    }
+  }
+  return a == b;
 }
 
 template <typename T>

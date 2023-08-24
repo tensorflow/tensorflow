@@ -111,6 +111,9 @@ class PresetAssignments {
   // Get debugging information.
   std::string buffer_info_str() const { return buffer_info_str_; }
   std::string allocation_info_str() const { return allocation_info_str_; }
+  std::string instruction_schedule_str() const {
+    return instruction_schedule_str_;
+  }
 
  private:
   std::vector<std::pair<HloPosition, HeapSimulator::Chunk>> chunks_;
@@ -119,6 +122,7 @@ class PresetAssignments {
   std::vector<std::pair<int64_t, AssignmentInformation>> assignment_info_;
   std::string buffer_info_str_;
   std::string allocation_info_str_;
+  std::string instruction_schedule_str_;
 };
 
 // A wrapper class around HloCostAnalysis with additional knowledge about the
@@ -563,8 +567,11 @@ class MemorySpaceAssignment {
       std::function<bool(const HloUse&)>;
   using IsPositionAllowedInAlternateMemoryFunction =
       std::function<bool(const HloPosition&)>;
-  using ReservedScopedMemoryFunction =
-      std::function<int64_t(const HloInstruction*)>;
+  using ReservedScopedMemoryFunction = std::function<int64_t(
+      const HloInstruction*,
+      const absl::flat_hash_set<
+          std::pair<int, ShapeIndex>>& /*operands_in_alternate_memory*/,
+      const absl::flat_hash_set<ShapeIndex>& /*outputs_in_alternate_memory*/)>;
   using UpdateLayoutFunction = std::function<void(Shape*)>;
 
   // MemorySpaceAssignment uses a notion of a slow and large default memory
@@ -633,7 +640,7 @@ class MemorySpaceAssignment {
     void AddUse(HloUse use);
 
     // Extends the end time of this allocation.
-    void Extend(int64_t end_time) { end_time_ = end_time; }
+    void Extend(int64_t end_time) { end_time_ = std::max(end_time_, end_time); }
 
     // After all of the time ranges for the allocations have been assigned,
     // Process morphs the instructions affected to assign the memory spaces and
@@ -663,6 +670,7 @@ class MemorySpaceAssignment {
     virtual int64_t earliest_available_time() const { return start_time_; }
 
     const std::vector<HloUse>& uses() const { return uses_; }
+    void clear_uses() { uses_.clear(); }
     MemorySpace memory_space() const { return memory_space_; }
     // Returns the associated chunk that may be a nullopt if the allocation is
     // in the default memory space.
@@ -673,8 +681,10 @@ class MemorySpaceAssignment {
       CHECK(chunk_.has_value());
       return *chunk_;
     }
+    Chunk* mutable_chunk() { return &*chunk_; }
     virtual void ReplaceOffset(int64_t offset);
     void set_start_time(int64_t start_time) { start_time_ = start_time; }
+    void set_end_time(int64_t end_time) { end_time_ = end_time; }
     int64_t start_time() const { return start_time_; }
     int64_t end_time() const { return end_time_; }
     bool is_scoped_allocation() const { return is_scoped_allocation_; }
@@ -684,6 +694,13 @@ class MemorySpaceAssignment {
 
     bool operator==(const Allocation& other) const;
     virtual std::string ToString() const;
+
+    bool is_in_alternate_mem() const {
+      return memory_space_ == MemorySpace::kAlternate;
+    }
+    bool is_in_default_mem() const {
+      return memory_space_ == MemorySpace::kDefault;
+    }
 
    protected:
     // Recursively create kGetTupleElement instructions if the defining position
@@ -706,7 +723,7 @@ class MemorySpaceAssignment {
   class CopyAllocation : public Allocation {
    public:
     CopyAllocation(
-        const Allocation& prev_allocation, MemorySpace memory_space,
+        Allocation& prev_allocation, MemorySpace memory_space,
         std::optional<Chunk> chunk, int64_t start_time, int64_t end_time,
         int64_t copy_done_schedule_before_time,
         std::optional<int64_t> cross_program_prefetch_index = std::nullopt)
@@ -768,8 +785,11 @@ class MemorySpaceAssignment {
     bool operator==(const CopyAllocation& other) const;
     std::string ToString() const override;
 
+    const Allocation& prev_allocation() { return prev_allocation_; }
+    Allocation& mutable_prev_allocation() { return prev_allocation_; }
+
    private:
-    const Allocation& prev_allocation_;
+    Allocation& prev_allocation_;
     // These variables define the scheduling boundaries where CopyStart and
     // CopyDone can be scheduled. The earliest CopyStart can be scheduled is
     // after copy_start_schedule_after_ and the latest CopyDone can be scheduled
@@ -1213,7 +1233,7 @@ class MemorySpaceAssignment {
  private:
   // Process calls Process methods of the allocations after the allocations have
   // been finalized.
-  Status Process();
+  Status Process(const HloLiveRange& hlo_live_range);
 
   // Process() might have altered the computation graph by inserting kTuple and
   // kGetTupleElement instructions. SimplifyGraph performs a simple DCE and
@@ -1383,7 +1403,16 @@ struct Options {
   // This function returns the amount of scoped memory in bytes that should be
   // reserved during the execution of this instruction.
   MemorySpaceAssignment::ReservedScopedMemoryFunction
-      reserved_scoped_memory_fn = [](const HloInstruction*) { return 0; };
+      reserved_scoped_memory_fn =
+          [](const HloInstruction*,
+             const absl::flat_hash_set<
+                 std::pair<int, ShapeIndex>>& /*operands_in_alternate_memory*/,
+             const absl::flat_hash_set<
+                 ShapeIndex>& /*outputs_in_alternate_memory*/) { return 0; };
+
+  // If true, we will try to reduce scoped VMEM buffer size for all instructions
+  // if their operand/output has been allocated in VMEM.
+  bool reduce_scoped_vmem_limit = false;
 
   // If true, we allocate the reserved scoped memory at the same offset. This
   // is useful to enable more deduplication between HLOs that have reserved
@@ -1519,6 +1548,10 @@ struct Options {
       -> xla::StatusOr<MemorySpaceAssignment::SliceProposalCollection> {
     return UnimplementedStrCat("Generation of SliceProposals unimplemented");
   };
+
+  // Option to always spill buffers from alternate memory to default memory
+  // and prefetching back to alternate memory(if needed) just in time for use.
+  bool always_spill_to_default_memory = false;
 };
 
 // A struct representing an asynchronous copy with its logical start and end
@@ -1652,14 +1685,10 @@ class AsynchronousCopyResource {
   // Internal helper method to implement adding/removing/checking resources.
   // ConsumeResource() may modify delay_. If delay_change_map is not null,
   // for any change to delay_[i], {i, delay_[i]} will be added to
-  // delay_change_map, allowing callers to undo any modifications. The
-  // current_copy points to an iterator in async_copies_ and this indicates the
-  // copy that we are processing, which is only used when recursing, to
-  // propagate the delay to the next copy.
+  // delay_change_map, allowing callers to undo any modifications.
   bool ConsumeResource(
       int64_t start_time, int64_t end_time, float resource,
       absl::flat_hash_map<int64_t, float>* delay_change_map = nullptr,
-      const std::list<AsynchronousCopy>::iterator* current_copy = nullptr,
       float resource_to_free = 0.0);
 
   // Same as the public RemoveCopy except it works on the async_copies_
@@ -2164,7 +2193,7 @@ class AlternateMemoryBestFitHeap
 
     // Parameters to Prefetch().
     const AllocationRequest* request;
-    const MemorySpaceAssignment::Allocation* prev_allocation_in_default_mem;
+    MemorySpaceAssignment::Allocation* prev_allocation_in_default_mem;
 
     // Intermediate calculations common to both the sliced and unsliced
     // solutions.
@@ -2323,7 +2352,7 @@ class AlternateMemoryBestFitHeap
   // Try prefetching to alternate memory space.
   Result Prefetch(
       const AllocationRequest& request,
-      const MemorySpaceAssignment::Allocation& prev_allocation_in_default_mem);
+      MemorySpaceAssignment::Allocation& prev_allocation_in_default_mem);
 
   // Helper methods used to implement Prefetch().
   //
@@ -2441,6 +2470,10 @@ class AlternateMemoryBestFitHeap
   // Since the allocations are recorded to the AllocationSequence, we don't
   // maintain result_ in GlobalDecreasingSizeBestFitHeap. Override AddToChunkMap
   // to avoid unnecessarily adding the chunk to the chunk map.
+  //
+  // Sliced prefetching requires that we override this method because we
+  // associate more than one chunk with a buffer (i.e., 1 chunk per slice),
+  // which would cause the original implementation of this method to CHECK fail.
   void AddToChunkMap(const HloValue* buffer, Chunk chunk) override {}
 
   // Returns true if the addition of num_additional_copies asynchronous copies
@@ -2458,13 +2491,18 @@ class AlternateMemoryBestFitHeap
       std::vector<MemorySpaceAssignmentRepacker::AllocationBlock*>&
           allocations);
 
+  // Update reserved scoped allocation size for instructions when their
+  // operand/output has been allocated in alternate memory by invoking
+  // reserved_scoped_memory_fn
+  void UpdateReservedScopedVmemSize();
+
   // Imports repacked allocations and updates the internal data structures
   // consistent with the new packing.
   void ImportRepackedAllocations();
 
   // Adds an asynchronous copy to allocations.
   void AddAsyncCopy(
-      const MemorySpaceAssignment::Allocation& prev_allocation,
+      MemorySpaceAssignment::Allocation& prev_allocation,
       MemorySpace memory_space, std::optional<Chunk> chunk, int64_t start_time,
       int64_t end_time, int64_t copy_done_schedule_before_time,
       MemorySpaceAssignment::AllocationSequence* allocations,
@@ -2603,9 +2641,19 @@ class AlternateMemoryBestFitHeap
   // A map to look up the loop-optimized allocation info by use.
   absl::flat_hash_map<HloUse, LoopOptimizedAllocationInfo>
       loop_optimized_allocations_map_;
+  // A map to look the operands of each instruction that are assigned in
+  // alternate memory.
+  absl::flat_hash_map<const HloInstruction*,
+                      absl::flat_hash_set<std::pair<int, ShapeIndex>>>
+      operands_in_alternate_memory_map_;
+  // A map to look the outputs of each instruction that are assigned in
+  // alternate memory.
+  absl::flat_hash_map<const HloInstruction*, absl::flat_hash_set<ShapeIndex>>
+      outputs_in_alternate_memory_map_;
   // Debug strings.
   std::string buffer_info_str_;
   std::string allocation_info_str_;
+  std::string instruction_schedule_str_;
 };
 }  // namespace memory_space_assignment
 }  // namespace xla

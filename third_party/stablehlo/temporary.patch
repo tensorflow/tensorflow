@@ -26,33 +26,7 @@ diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
      name = "interpreter_ops",
      srcs = [
          "stablehlo/reference/InterpreterOps.cpp",
-@@ -297,6 +315,7 @@
- 
- gentbl_cc_library(
-     name = "interpreter_ops_inc_gen",
-+    strip_include_prefix = ".",
-     tbl_outs = [
-         (
-             ["-gen-op-decls"],
-@@ -309,7 +328,6 @@
-     ],
-     tblgen = "@llvm-project//mlir:mlir-tblgen",
-     td_file = "stablehlo/reference/InterpreterOps.td",
--    strip_include_prefix = ".",
-     deps = [
-         ":interpreter_ops_td_files",
-     ],
-@@ -419,8 +437,8 @@
-         ":reference_element",
-         ":reference_errors",
-         ":reference_index",
-+        ":reference_interpretervalue",
-         ":reference_scope",
--        ":reference_interpretervalue",
-         ":reference_tensor",
-         ":reference_token",
-         ":reference_types",
-@@ -725,6 +743,7 @@
+@@ -763,6 +781,7 @@
      deps = [
          ":base",
          ":chlo_ops",
@@ -60,26 +34,6 @@ diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
          ":stablehlo_ops",
          ":stablehlo_ops_inc_gen",
          ":stablehlo_pass_inc_gen",
-@@ -850,8 +869,8 @@
-     ],
-     deps = [
-         ":register",
-+        "@llvm-project//mlir:AllExtensions",
-         "@llvm-project//mlir:AllPassesAndDialects",
--        "@llvm-project//mlir:AllExtensions",
-         "@llvm-project//mlir:MlirLspServerLib",
-     ],
- )
-@@ -862,8 +881,8 @@
-         "stablehlo/tools/StablehloTranslateMain.cpp",
-     ],
-     deps = [
-+        ":interpreter_ops",
-         ":reference_errors",
--        ":interpreter_ops",
-         ":reference_ops",
-         ":reference_scope",
-         ":reference_tensor",
 diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 --- stablehlo/CMakeLists.txt
 +++ stablehlo/CMakeLists.txt
@@ -1026,32 +980,6 @@ diff --ruN a/stablehlo/stablehlo/dialect/ExperimentalOps.h b/stablehlo/stablehlo
 +}  // namespace mlir
 +
 +#endif  // STABLEHLO_DIALECT_EXPERIMENTAL_OPS_H
-diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo.mlir b/stablehlo/stablehlo/tests/ops_stablehlo.mlir
---- stablehlo/stablehlo/tests/ops_stablehlo.mlir
-+++ stablehlo/stablehlo/tests/ops_stablehlo.mlir
-@@ -894,6 +894,22 @@
-   %0 = stablehlo.constant dense<[1, 4]> : tensor<2xi64>
-   %1 = stablehlo.dynamic_broadcast_in_dim %arg0, %0, dims = [1] : (tensor<4xf32>, tensor<2xi64>) -> tensor<3x4xf32>
-   return %1 : tensor<3x4xf32>
-+}
-+
-+// -----
-+
-+func.func @dynamic_broadcast_in_dim_negative_size(%arg0: tensor<1xf32>, %shape: tensor<3xi64>) -> tensor<7x8x9xf32> {
-+  // expected-error@+1 {{broadcast_dimensions contains invalid value -1 for result with rank 3}}
-+  %0 = "stablehlo.dynamic_broadcast_in_dim"(%arg0, %shape) {broadcast_dimensions = dense<[-1]> : tensor<1xi64>} : (tensor<1xf32>, tensor<3xi64>) -> tensor<7x8x9xf32>
-+  func.return %0 : tensor<7x8x9xf32>
-+}
-+
-+// -----
-+
-+func.func @dynamic_broadcast_in_dim_too_large(%arg0: tensor<1xf32>, %shape: tensor<3xi64>) -> tensor<7x8x9xf32> {
-+  // expected-error@+1 {{broadcast_dimensions contains invalid value 3 for result with rank 3}}
-+  %0 = "stablehlo.dynamic_broadcast_in_dim"(%arg0, %shape) {broadcast_dimensions = dense<[3]> : tensor<1xi64>} : (tensor<1xf32>, tensor<3xi64>) -> tensor<7x8x9xf32>
-+  func.return %0 : tensor<7x8x9xf32>
- }
- 
- // -----
 diff --ruN a/stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir b/stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir
 --- stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir
 +++ stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir

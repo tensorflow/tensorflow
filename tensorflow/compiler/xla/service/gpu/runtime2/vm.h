@@ -21,6 +21,8 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "third_party/iree/runtime/src/iree/hal/api.h"  // IWYU pragma: keep
 #include "third_party/iree/runtime/src/iree/vm/api.h"   // IWYU pragma: keep
+#include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
 
@@ -80,6 +82,33 @@ GetBufferViewVector(iree_vm_list_t* list);
 
 iree::StatusOr<absl::InlinedVector<int64_t, 4>> GetI64Vector(
     iree_vm_list_t* list);
+
+//===----------------------------------------------------------------------===//
+// Helper functions to convert between xla::Status(Or) and iree::Status(Or)
+//===----------------------------------------------------------------------===//
+
+// TODO(ezhulenev): Pass original xla::Status location and call stack through
+// iree::Status and recover it in the executable when returning error back to
+// XLA from the IREE VM.
+
+// TODO(ezhulenev): Convert from ABSL to IREE error code.
+
+inline iree::Status FromStatus(Status status) {
+  if (IREE_LIKELY(status.ok())) return iree_ok_status();
+
+  std::string err = status.ToString();
+  return iree_make_status(IREE_STATUS_INTERNAL, "internal error: %s",
+                          err.c_str());
+}
+
+template <typename T>
+iree::StatusOr<T> FromStatusOr(StatusOr<T> statusor) {
+  if (IREE_LIKELY(statusor.ok())) return *statusor;
+
+  std::string err = statusor.status().ToString();
+  return iree_make_status(IREE_STATUS_INTERNAL, "internal error: %s",
+                          err.c_str());
+}
 
 }  // namespace gpu::vm
 }  // namespace xla

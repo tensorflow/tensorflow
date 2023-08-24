@@ -12,18 +12,8 @@ func.func @main(%arg0: memref<12xi8>) {
 // CHECK:   %[[CTX:.*]]: !xla_gpu.execution_context,
 // CHECK:   %[[ARG0:.*]]: tensor<12xi8>
 // CHECK: ) {
-// CHECK:   %[[C0:.*]] = arith.constant 0 : index
 // CHECK:   %[[BUF:.*]] = iree_input.tensor.export %[[ARG0]]
-// CHECK:   %[[C3:.*]] = arith.constant 3 : index
-// CHECK:   %[[C12:.*]] = arith.constant 12 : index
-// CHECK:   %[[TYPE:.*]] = arith.constant 553648160 : i32
-// CHECK:   %[[ENCODING:.*]] = arith.constant 1 : i32
-// CHECK:   %[[VIEW:.*]] = iree_input.buffer_view.create
-// CHECK:       buffer(%[[BUF]] : !iree_input.buffer)[%[[C0]], %[[C12]]]
-// CHECK:       shape([%[[C3]]])
-// CHECK:       type(%[[TYPE]])
-// CHECK:       encoding(%[[ENCODING]]) : !iree_input.buffer_view
-// CHECK:   iree_input.tensor.import %[[VIEW]] {{.*}} -> tensor<3xf32>
+// CHECK:   iree_input.tensor.import %[[BUF]] {{.*}} -> tensor<3xf32>
 // CHECK: }
 
 // -----
@@ -38,18 +28,12 @@ func.func @main(%arg0: memref<12xi8>) {
 // CHECK:   %[[CTX:.*]]: !xla_gpu.execution_context,
 // CHECK:   %[[ARG0:.*]]: tensor<12xi8>
 // CHECK: ) {
-// CHECK:   %[[C8:.*]] = arith.constant 8 : index
 // CHECK:   %[[BUF:.*]] = iree_input.tensor.export %[[ARG0]]
-// CHECK:   %[[C1:.*]] = arith.constant 1 : index
+// CHECK:   %[[C8:.*]] = arith.constant 8 : index
 // CHECK:   %[[C4:.*]] = arith.constant 4 : index
-// CHECK:   %[[TYPE:.*]] = arith.constant 553648160 : i32
-// CHECK:   %[[ENCODING:.*]] = arith.constant 1 : i32
-// CHECK:   %[[VIEW:.*]] = iree_input.buffer_view.create
-// CHECK:       buffer(%[[BUF]] : !iree_input.buffer)[%[[C8]], %[[C4]]]
-// CHECK:       shape([%[[C1]]])
-// CHECK:       type(%[[TYPE]])
-// CHECK:       encoding(%[[ENCODING]]) : !iree_input.buffer_view
-// CHECK:   iree_input.tensor.import %[[VIEW]] {{.*}} -> tensor<1xf32>
+// CHECK:   %[[SPAN:.*]] = iree_input.buffer.subspan
+// CHECK:     <%[[BUF]] : !iree_input.buffer>[%[[C8]], %[[C4]]]
+// CHECK:   iree_input.tensor.import %[[SPAN]] {{.*}} -> tensor<1xf32>
 // CHECK: }
 
 // -----
@@ -69,9 +53,7 @@ func.func @main(%arg0: memref<8xi8> {lmhlo.constant_name = "cst"}) {
 // CHECK:   %[[ARG0:.*]]: tensor<8xi8>
 // CHECK: ) {
 // CHECK:   %[[BUF:.*]] = iree_input.tensor.export %[[ARG0]]
-// CHECK:   %[[VIEW:.*]] = iree_input.buffer_view.create
-// CHECK:       buffer(%[[BUF]] : !iree_input.buffer)
-// CHECK:   iree_input.tensor.import %[[VIEW]] {{.*}} -> tensor<1xi64>
+// CHECK:   iree_input.tensor.import %[[BUF]] {{.*}} -> tensor<1xi64>
 // CHECK: }
 
 // -----
@@ -96,14 +78,6 @@ func.func @main(%arg0: memref<66560xi8>) {
 // CHECK:   %[[CTX:.*]]: !xla_gpu.execution_context,
 // CHECK:   %[[ARG0:.*]]: tensor<66560xi8>
 // CHECK: ) {
-// CHECK:   %[[C0:.*]] = arith.constant 0 : index
 // CHECK:   %[[BUF:.*]] = iree_input.tensor.export %[[ARG0]]
-// CHECK:   %[[C1:.*]] = arith.constant 1 : index
-// CHECK:   %[[C4:.*]] = arith.constant 4 : index
-// CHECK:   %[[C128:.*]] = arith.constant 128 : index
-// CHECK:   %[[C65:.*]] = arith.constant 65 : index
-// CHECK:   %[[C66560:.*]] = arith.constant 66560 : index
-// CHECK:   %[[VIEW:.*]] = iree_input.buffer_view.create
-// CHECK:     buffer(%[[BUF]] : !iree_input.buffer)[%c0, %[[C66560]]]
-// CHECK:     shape([%[[C1]], %[[C4]], %[[C128]], %[[C65]]])
+// CHECK:   iree_input.tensor.import %[[BUF]] {{.*}} -> tensor<1x4x128x65xbf16>
 // CHECK: }

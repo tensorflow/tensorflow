@@ -19,7 +19,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/compiler/mlir/tf2xla/api/v0/compile_mlir_util.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 namespace tf2xla {
@@ -45,11 +45,11 @@ TEST(LegalizeTFQuantTest, LegalizesModuleWithTFUniformQuantization) {
   std::vector<tensorflow::TensorShape> arg_shapes = {{1}};
   XlaCompilationResult compilation_result;
 
-  // TODO: b/288215766 - Fix passes so that enable_op_fallback can be set true.
-  EXPECT_OK(CompileSerializedMlirToXlaHlo(
-      legalization, arg_shapes, /*device_type=*/"XLA_TPU_JIT",
-      /*use_tuple_args=*/true, /*enable_op_fallback=*/false,
-      /*shape_determination_fns=*/{}, &compilation_result));
+  TF_EXPECT_OK(CompileSerializedMlirToXlaHlo(
+                   legalization, arg_shapes, /*device_type=*/"XLA_TPU_JIT",
+                   /*use_tuple_args=*/true, /*enable_op_fallback=*/true,
+                   /*shape_determination_fns=*/{}, &compilation_result)
+                   .status());
 
   const xla::HloModuleProto& hlo_module =
       compilation_result.computation->proto();

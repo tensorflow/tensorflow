@@ -89,6 +89,12 @@ class DataTransferClient {
   static Status Build(std::string name, Config config,
                       std::unique_ptr<DataTransferClient>* out);
 
+  // Returns a string describing properties of the client relevant for checking
+  // compatibility with a server for a given protocol.
+  virtual StatusOr<std::string> GetCompatibilityInfo() const {
+    return std::string();
+  }
+
   // Returns an error if the client is incompatible with a server which has the
   // properties described in `server_compatibility_info`.
   virtual Status CheckCompatibility(

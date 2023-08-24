@@ -315,6 +315,8 @@ typedef struct TFE_CancelCallback {
 TF_CAPI_EXPORT extern TFE_CancellationManager* TFE_NewCancellationManager();
 TF_CAPI_EXPORT extern bool TFE_CancellationManagerIsCancelled(
     TFE_CancellationManager*);
+TF_CAPI_EXPORT extern bool TFE_CancellationManagerIsCancelling(
+    TFE_CancellationManager*);
 TF_CAPI_EXPORT extern void TFE_CancellationManagerStartCancel(
     TFE_CancellationManager*);
 TF_CAPI_EXPORT extern TFE_CancellationToken TFE_CancellationManagerGetToken(

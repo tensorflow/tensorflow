@@ -150,15 +150,12 @@ struct ConvertGemmOp : public OpConversionPattern<lmhlo_gpu::GEMMOp> {
     }
 
     // Arguments to a gemm dispatch.
-    SmallVector<Value> args = {getExecutionContext(op)};
-    for (TypedValue<TensorType> src : {lhs, rhs, out}) {
-      auto export_op = b.create<IREE::Input::TensorExportOp>(
-          b.getType<IREE::Input::BufferViewType>(), src,
-          /*source_dims=*/ValueRange());
-      args.push_back(export_op.getResult());
-    }
-    args.push_back(dot_config);
-    args.push_back(trace);
+    SmallVector<Value> args = {getExecutionContext(op),
+                               api.getBufferView(b, lhs),
+                               api.getBufferView(b, rhs),
+                               api.getBufferView(b, out),
+                               dot_config,
+                               trace};
 
     // TODO(ezhulenev): Should we import buffer view back and update remapping?
     auto api_func = api.getDispatchGemm(b, module);

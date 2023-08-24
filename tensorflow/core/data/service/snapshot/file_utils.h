@@ -18,43 +18,44 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/protobuf.h"
-#include "tensorflow/tsl/platform/status.h"
 
 namespace tensorflow {
 namespace data {
 
 // Atomically writes `str` to `filename`. Overwrites existing contents if the
 // file already exists.
-tsl::Status AtomicallyWriteStringToFile(absl::string_view filename,
-                                        absl::string_view str, tsl::Env* env);
+absl::Status AtomicallyWriteStringToFile(absl::string_view filename,
+                                         absl::string_view str, tsl::Env* env);
 
 // Atomically writes the binary representation of `proto` to `filename`.
 // Overwrites existing contents if the file already exists.
-tsl::Status AtomicallyWriteBinaryProto(absl::string_view filename,
-                                       const tsl::protobuf::Message& proto,
-                                       tsl::Env* env);
+absl::Status AtomicallyWriteBinaryProto(absl::string_view filename,
+                                        const tsl::protobuf::Message& proto,
+                                        tsl::Env* env);
 
 // Atomically writes the text representation of `proto` to `filename`.
 // Overwrites existing contents if the file already exists.
-tsl::Status AtomicallyWriteTextProto(absl::string_view filename,
-                                     const tsl::protobuf::Message& proto,
-                                     tsl::Env* env);
+absl::Status AtomicallyWriteTextProto(absl::string_view filename,
+                                      const tsl::protobuf::Message& proto,
+                                      tsl::Env* env);
 
 // Atomically writes `tensor` to `filename` in TFRecord format. Overwrites
 // existing contents if the file already exists.
-tsl::Status AtomicallyWriteTFRecords(absl::string_view filename,
-                                     const std::vector<Tensor>& tensors,
-                                     absl::string_view compression,
-                                     tsl::Env* env);
+absl::Status AtomicallyWriteTFRecords(absl::string_view filename,
+                                      const std::vector<Tensor>& tensors,
+                                      absl::string_view compression,
+                                      tsl::Env* env);
 
 // Returns the relative paths of the children of `directory`, ignoring temporary
 // files. Returns an empty vector if the directory does not have any children.
-tsl::StatusOr<std::vector<std::string>> GetChildren(absl::string_view directory,
-                                                    tsl::Env* env);
+absl::StatusOr<std::vector<std::string>> GetChildren(
+    absl::string_view directory, tsl::Env* env);
 
 // Returns true if `filename` is a temporary file and should be ignored in
 // normal data processing.

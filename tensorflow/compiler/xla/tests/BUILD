@@ -2294,7 +2294,7 @@ xla_cc_test(
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
         "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
         "//tensorflow/compiler/xla/stream_executor",
-        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:test_main",
     ]),
 )

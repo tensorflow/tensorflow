@@ -1084,10 +1084,14 @@ def pad_to_bounding_box_internal(image, offset_height, offset_width,
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
       of shape `[height, width, channels]`.
-    offset_height: Number of rows of zeros to add on top.
-    offset_width: Number of columns of zeros to add on the left.
-    target_height: Height of output image.
-    target_width: Width of output image.
+    offset_height: Number of rows of zeros to add on top.Must be 0-D `Tensor` of
+      dtype int32 or int64. Can also a python integer.
+    offset_width: Number of columns of zeros to add on the left.Must be 0-D
+      `Tensor` of dtype int32 or int64. Can also a python integer.
+    target_height: Height of output image.Must be 0-D `Tensor` of dtype int32 or
+      int64. Can also a python integer.
+    target_width: Width of output image.Must be 0-D `Tensor` of dtype int32 or
+      int64. Can also a python integer.
     check_dims: If True, assert that dimensions are non-negative and in range.
       In multi-GPU distributed settings, assertions can cause program slowdown.
       Setting this parameter to `False` avoids this, resulting in faster speed
@@ -1189,11 +1193,13 @@ def crop_to_bounding_box(image, offset_height, offset_width, target_height,
     image: 4-D `Tensor` of shape `[batch, height, width, channels]` or 3-D
       `Tensor` of shape `[height, width, channels]`.
     offset_height: Vertical coordinate of the top-left corner of the bounding
-      box in `image`.
+      box in `image`. Must be 0-D int32 `Tensor` or python integer.
     offset_width: Horizontal coordinate of the top-left corner of the bounding
-      box in `image`.
-    target_height: Height of the bounding box.
-    target_width: Width of the bounding box.
+      box in `image`. Must be 0-D int32 `Tensor` or python integer.
+    target_height: Height of the bounding box. Must be 0-D int32 `Tensor` or
+      python integer.
+    target_width: Width of the bounding box. Must be 0-D int32 `Tensor` or
+      python integer.
 
   Returns:
     If `image` was 4-D, a 4-D `Tensor` of shape

@@ -63,13 +63,6 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     func.return %output : tensor<3x2xf32>
   }
 
-  // CHECK-LABEL: func @random_uniform_uses_mlir
-  func.func @random_uniform_uses_mlir(%arg0: tensor<3xi32>) -> tensor<12x?x64xf32> {
-    // CHECK-NOT: tf.RandomUniform
-    %0 = "tf.RandomUniform"(%arg0) : (tensor<3xi32>) -> tensor<12x?x64xf32>
-    func.return %0 : tensor<12x?x64xf32>
-  }
-
   // CHECK-LABEL: unknown_op
   func.func @unknown_op(%arg0: tensor<2xf32>) -> tensor<2xf32> {
     // CHECK: tf.CustomTestOp
@@ -719,8 +712,9 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 
   // Verifies that the following functions are added from xla_call_module. Note this must be at the end of the file.
   // CHECK: func.func private @main.2(%arg0: tensor<f32> {mhlo.sharding = "{replicated}"}) -> tensor<f32> {
-  // CHECK:   %0 = mhlo.sine %arg0 : tensor<f32>
-  // CHECK:   return %0 : tensor<f32>
+  // CHECK:   %0 = mhlo.bitcast_convert %arg0 : (tensor<f32>) -> tensor<f32> 
+  // CHECK:   %1 = mhlo.sine %0 : tensor<f32>
+  // CHECK:   return %1 : tensor<f32>
   // CHECK: }
 
 }

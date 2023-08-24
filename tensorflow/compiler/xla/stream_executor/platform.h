@@ -35,46 +35,12 @@ namespace stream_executor {
 class StreamExecutor;
 class DeviceDescription;
 
-// Describes the platform for a StreamExecutor instantiation to act upon.
-//
-// Implementors: if you add a value here be sure to update PlatformKindString
-// and CheckPlatformKindIsValid.
-enum class PlatformKind {
-  kInvalid,
-  kCuda,
-  kROCm,
-  kOpenCL,
-  kHost,
-  kMock,
-  kSize,
-};
-
 // An enum to represent different levels of stream priorities.
 // This is to avoid platform-specific representations in abstractions.
 enum class StreamPriority { Default = 0, Lowest, Highest };
 
-// Returns true if kind represents a valid platform capable of enqueuing items
-// on a stream, but not necessarily on an accelerator device.
-// Returns false for kMock and any invalid PlatformKind values.
-bool PlatformIsRunnable(PlatformKind kind);
-
-// Returns true if kind represents a valid platform capable of running kernels
-// on an accelerator device. Returns false for kHost*, kMock and any invalid
-// PlatformKind values.
-bool PlatformIsRunnableOnDevice(PlatformKind kind);
-
-// Returns a printable description of a PlatformKind.
-std::string PlatformKindString(PlatformKind kind);
-
 // Returns a printable description of StreamPriority.
 std::string StreamPriorityToString(StreamPriority priority);
-
-// Returns the PlatformKind corresponding to the input string; returns kInvalid
-// in the case of no match.
-PlatformKind PlatformKindFromString(std::string platform_string);
-
-// Checks that kind takes on a valid value.
-void CheckPlatformKindIsValid(PlatformKind kind);
 
 // StreamExecutorConfig encapsulates the set of options for constructing a
 // StreamExecutor for a given platform.

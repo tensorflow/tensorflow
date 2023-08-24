@@ -42,6 +42,7 @@ tf_proto_library(
     cc_api_version = 2,
     create_grpc_library = True,
     create_java_proto = False,
+    create_kotlin_proto = False,
     make_default_target_header_only = True,
     protodeps = [
         ":profiler_options_proto",
@@ -58,6 +59,7 @@ tf_proto_library(
     cc_api_version = 2,
     create_grpc_library = True,
     create_java_proto = False,
+    create_kotlin_proto = False,
     make_default_target_header_only = True,
     protodeps = [":profiler_service_proto"],
     use_grpc_namespace = True,
@@ -102,6 +104,8 @@ tf_proto_library(
 tf_proto_library(
     name = "protos_all",
     create_go_proto = False,
+    create_java_proto = False,
+    create_kotlin_proto = False,
     make_default_target_header_only = True,
     protodeps = [
         ":xplane_proto",

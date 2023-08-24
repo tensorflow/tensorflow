@@ -20,7 +20,11 @@ package_group(
 tf_python_pybind_extension(
     name = "_pywrap_graph_execution_options",
     srcs = ["graph_execution_options.cc"],
+    enable_stub_generation = True,
     module_name = "_pywrap_graph_execution_options",
+    pytype_srcs = [
+        "_pywrap_graph_execution_options.pyi",
+    ],
     deps = [
         "//tensorflow/core/tfrt/graph_executor",
         "//tensorflow/core/tfrt/graph_executor:graph_execution_options",

@@ -309,8 +309,13 @@ else_branch: A function that takes 'inputs' and returns a list of
 }
 
 def TF_YieldOp : TF_Op<"Yield",
-      [Pure, ReturnLike, Terminator,
-       ParentOneOf<["CaseRegionOp", "IfRegionOp", "WhileRegionOp"]>]> {
+      [Terminator,
+       Pure,
+       NativeOpTrait<"ReturnLike", [], "", "">,
+       ParentOneOf<["CaseRegionOp", "IfRegionOp", "WhileRegionOp"]>,
+       DeclareOpInterfaceMethods<RegionBranchTerminatorOpInterface,
+           ["getMutableSuccessorOperands"]>,
+      ]> {
   let summary = "Yield operation";
 
   let description = [{
@@ -325,7 +330,14 @@ def TF_YieldOp : TF_Op<"Yield",
 }
 
 def TF_IfRegionOp : TF_Op<"IfRegion",
-      [SingleBlockImplicitTerminator<"YieldOp">, NoRegionArguments]> {
+      [SingleBlockImplicitTerminator<"YieldOp">, NoRegionArguments,
+       DeclareOpInterfaceMethods<RegionBranchOpInterface, [
+           "areTypesCompatible",
+           "getEntrySuccessorOperands",
+           "getRegionInvocationBounds",
+           "getSuccessorRegions"
+       ]>
+      ]> {
   let summary = "output = cond ? then_branch output : else_branch output";
 
   let description = [{
@@ -444,8 +456,8 @@ def TF_ParseExampleOp : TF_Op<"ParseExample",
     Variadic<TensorOf<[TF_Float32, TF_Int64, TF_Str]>>:$dense_defaults,
 
     TF_ShapeAttrArray:$dense_shapes,
-    DenseI32ArrayAttr:$result_segment_sizes,
-    DenseI32ArrayAttr:$operand_segment_sizes
+    DenseI32ArrayAttr:$resultSegmentSizes,
+    DenseI32ArrayAttr:$operandSegmentSizes
   );
 
   let results = (outs
@@ -480,7 +492,7 @@ def TF_ParseExampleV2Op : TF_Op<"ParseExampleV2",
 
     ConfinedAttr<I64Attr, [IntMinValue<0>]>:$num_sparse,
     TF_ShapeAttrArray:$dense_shapes,
-    DenseI32ArrayAttr:$result_segment_sizes
+    DenseI32ArrayAttr:$resultSegmentSizes
   );
 
   let results = (outs
@@ -675,6 +687,9 @@ body: A function that takes a list of tensors and returns another
 
 def TF_WhileRegionOp : TF_Op<"WhileRegion",
       [DeclareOpInterfaceMethods<LoopLikeOpInterface>,
+       DeclareOpInterfaceMethods<RegionBranchOpInterface, [
+           "getRegionInvocationBounds", "getEntrySuccessorOperands",
+           "areTypesCompatible"]>,
        SingleBlockImplicitTerminator<"YieldOp">]> {
   let summary = "while operation";
   let description = [{
@@ -694,10 +709,15 @@ def TF_WhileRegionOp : TF_Op<"WhileRegion",
   ```
 
   `cond` is the condition region and `body` is the body region. Both these
-  regions accept the current value of the iteration variables as inputs. The
-  condition region returns a tensor<i1> which, if false, will exit the loop.
-  The body region computes new values of the iteration variables. The iteration
-  variables are initialized to the Op input, and the results of the
+  regions accept the current value of the iteration variables as inputs.
+
+  The condition region yields a tensor<i1> which, if false, will exit the loop.
+  It can also, optionally and additionally, yield the iteration variables, which
+  must be unchanged.
+
+  The body region always has to yield the (possibly updated) iteration variables.
+
+  The iteration variables are initialized to the Op input, and the results of the
   tf.WhileRegion op are the final values of the iteration variables.
 
   This implies that the operand and result types for tf.WhileRegion should be
@@ -1960,6 +1980,22 @@ format which contains three 1D tensors.
     TF_Int32Tensor:$row_ids,
     TF_Int32Tensor:$col_ids,
     TF_Float32Tensor:$gains
+  );
+}
+
+def TF_GlobalIterIdOp : TF_Op<"GlobalIterId", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, TF_GlobalIterIdEffect]> {
+  let summary = [{
+Op that gets the global step id.
+  }];
+
+  let description = [{
+This op gets the step id for each loop iteration.
+  }];
+
+  let arguments = (ins);
+
+  let results = (outs
+    TF_Int64Tensor:$iter_id
   );
 }
 

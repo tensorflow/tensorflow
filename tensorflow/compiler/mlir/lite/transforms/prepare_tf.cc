@@ -33,6 +33,7 @@ limitations under the License.
 #include <cstdint>
 #include <utility>
 
+#include "absl/algorithm/container.h"
 #include "absl/memory/memory.h"
 #include "absl/numeric/bits.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -45,10 +46,14 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -1193,6 +1198,172 @@ struct FusedBatchNormV3Pat : public ::mlir::RewritePattern {
   };
 };
 
+static LogicalResult static_dag_matcher(
+    PatternRewriter &rewriter, Operation *op,
+    ::llvm::SmallVector<Operation *, 4> &target_ops,
+    Operation::operand_range &max, Operation::operand_range &min,
+    Operation::operand_range &input, IntegerAttr &num_bits,
+    BoolAttr &narrow_range) {
+  auto fakequant_op = ::llvm::dyn_cast<TF::FakeQuantWithMinMaxVarsOp>(op);
+  if (!(fakequant_op)) {
+    return rewriter.notifyMatchFailure(op, [&](Diagnostic &diag) {
+      diag << "fakequant_op is not TF::FakeQuantWithMinMaxVarsOp type";
+    });
+  }
+  input = fakequant_op.getODSOperands(0);
+  min = fakequant_op.getODSOperands(1);
+  max = fakequant_op.getODSOperands(2);
+  {
+    auto target_attr = op->getAttrOfType<IntegerAttr>("num_bits");
+    if (!target_attr)
+      target_attr = rewriter.getIntegerAttr(rewriter.getIntegerType(64), 8);
+    num_bits = target_attr;
+  }
+  {
+    auto target_attr = op->getAttrOfType<BoolAttr>("narrow_range");
+    if (!target_attr) target_attr = rewriter.getBoolAttr(false);
+    narrow_range = target_attr;
+  }
+  {
+    for (auto user : fakequant_op->getResult(0).getUsers()) {
+      if (!absl::c_linear_search(target_ops, user)) {
+        return rewriter.notifyMatchFailure(op, [&](Diagnostic &diag) {
+          diag << "Skipping reordering between FakeQuant and "
+               << (*target_ops.begin())->getName()
+               << ", since there are other ops using the FakeQuant result.";
+        });
+      }
+    }
+  }
+  return ::mlir::success();
+}
+
+// Reorder the FakeQuant operation for specific ops (ReorderOp).
+// The transformation pattern looks like below:
+//
+//    <allowed>               <not allowed>
+//
+//    fakequant                 fakequant
+//        |                         |
+//    reorder_op                   / \
+//                       reorder_op   other_op
+//
+//       ||
+//       \/
+//
+//    reorder_op
+//        |
+//    fakequant
+template <typename ReorderOp>
+struct ReorderFakeQuantPattern : public RewritePattern {
+  explicit ReorderFakeQuantPattern(MLIRContext *context)
+      : RewritePattern(
+            ReorderOp::getOperationName(), 2, context,
+            {"tf.FakeQuantWithMinMaxVars", ReorderOp::getOperationName()}) {}
+  LogicalResult findTargetOps(
+      ReorderOp &casted_op, PatternRewriter &rewriter,
+      Operation::operand_range &max, Operation::operand_range &min,
+      Operation::operand_range &input, IntegerAttr &num_bits,
+      BoolAttr &narrow_range,
+      ::llvm::SmallVector<Operation *, 4> &target_ops) const {
+    auto *defining_op = (*casted_op.getODSOperands(0).begin()).getDefiningOp();
+    if (!(defining_op)) {
+      return rewriter.notifyMatchFailure(casted_op, [&](Diagnostic &diag) {
+        diag << "There's no operation that defines operand 0 of casted_op";
+      });
+    }
+    if (failed(static_dag_matcher(rewriter, defining_op, target_ops, max, min,
+                                  input, num_bits, narrow_range))) {
+      return failure();
+    }
+    target_ops.push_back(defining_op);
+    return success();
+  }
+
+  LogicalResult CreateReorderOp(PatternRewriter &rewriter,
+                                Operation::operand_range &input,
+                                Operation::operand_range &shape,
+                                Location &ods_loc,
+                                ReorderOp &new_reorder_op) const {
+    Value tensor_value = (*input.begin());
+    Value shape_value = (*shape.begin());
+    new_reorder_op = rewriter.create<ReorderOp>(ods_loc,
+                                                /*tensor=*/tensor_value,
+                                                /*shape=*/shape_value);
+    return success();
+  }
+
+  LogicalResult createFakeQuantOp(
+      ReorderOp &casted_op, PatternRewriter &rewriter,
+      ReorderOp &new_reorder_op, Operation::operand_range &max,
+      Operation::operand_range &min, IntegerAttr &num_bits,
+      BoolAttr &narrow_range, Location &ods_loc,
+      TF::FakeQuantWithMinMaxVarsOp &fakequant_op) const {
+    ::llvm::SmallVector<Value, 4> target_values;
+    ::llvm::SmallVector<NamedAttribute, 4> target_attrs;
+    target_values.push_back((*new_reorder_op.getODSResults(0).begin()));
+    target_values.push_back((*min.begin()));
+    target_values.push_back((*max.begin()));
+    if (auto tmpAttr = num_bits) {
+      target_attrs.emplace_back(rewriter.getStringAttr("num_bits"), tmpAttr);
+    }
+    if (auto tmpAttr = narrow_range) {
+      target_attrs.emplace_back(rewriter.getStringAttr("narrow_range"),
+                                tmpAttr);
+    }
+    ::llvm::SmallVector<Type, 4> target_types;
+    for (auto v : casted_op.getODSResults(0)) {
+      target_types.push_back(v.getType());
+    }
+    fakequant_op = rewriter.create<TF::FakeQuantWithMinMaxVarsOp>(
+        ods_loc, target_types, target_values, target_attrs);
+    return success();
+  }
+
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
+    // Variables for capturing values and attributes used while creating ops
+    Operation::operand_range max(op->getOperands());
+    Operation::operand_range min(op->getOperands());
+    Operation::operand_range input(op->getOperands());
+    Operation::operand_range shape(op->getOperands());
+    IntegerAttr num_bits;
+    BoolAttr narrow_range;
+    ::llvm::SmallVector<Operation *, 4> target_ops;
+
+    target_ops.push_back(op);
+    ReorderOp old_reorder_op = ::llvm::dyn_cast<ReorderOp>(op);
+    if (failed(findTargetOps(old_reorder_op, rewriter, max, min, input,
+                             num_bits, narrow_range, target_ops))) {
+      return failure();
+    }
+    shape = old_reorder_op.getODSOperands(1);
+
+    // Rewrite
+    auto ods_loc = rewriter.getFusedLoc(
+        {target_ops[0]->getLoc(), target_ops[1]->getLoc()});
+    ReorderOp new_reorder_op;
+    if (failed(
+            CreateReorderOp(rewriter, input, shape, ods_loc, new_reorder_op))) {
+      return failure();
+    }
+    ::llvm::SmallVector<Value, 4> target_repl_values;
+    TF::FakeQuantWithMinMaxVarsOp new_fakequant_op;
+    if (failed(createFakeQuantOp(old_reorder_op, rewriter, new_reorder_op, max,
+                                 min, num_bits, narrow_range, ods_loc,
+                                 new_fakequant_op))) {
+      return failure();
+    }
+    for (auto v :
+         ::llvm::SmallVector<Value, 4>{new_fakequant_op.getODSResults(0)}) {
+      target_repl_values.push_back(v);
+    }
+
+    rewriter.replaceOp(old_reorder_op, target_repl_values);
+    return success();
+  };
+};
+
 #include "tensorflow/compiler/mlir/lite/transforms/generated_prepare_tf.inc"
 
 // Returns success if all the operations in the `op`'s regions including `op`
@@ -1386,6 +1557,10 @@ void PrepareTFPass::runOnOperation() {
 
   patterns.add<RemoveIdentity>(ctx);
   TFL::populateWithGenerated(patterns);
+  // TODO(fengliuai): Implement similar rule in the QuantizePass if the constant
+  // folding hook of tfl.transpose and tfl.reshape are implemented.
+  patterns.add<ReorderFakeQuantPattern<TF::ReshapeOp>,
+               ReorderFakeQuantPattern<TF::TransposeOp>>(ctx);
   // Remove redundant reshape ops.
   TF::ReshapeOp::getCanonicalizationPatterns(patterns, ctx);
   // TODO(karimnosseir): Split to separate pass probably after
@@ -1409,6 +1584,10 @@ void PrepareTFPass::runOnOperation() {
   // Load the generated pattern again, so new quantization pass-through
   // will be applied.
   TFL::populateWithGenerated(phase_2_patterns);
+  // TODO(fengliuai): Implement similar rule in the QuantizePass if the constant
+  // folding hook of tfl.transpose and tfl.reshape are implemented.
+  phase_2_patterns.add<ReorderFakeQuantPattern<TF::ReshapeOp>,
+                       ReorderFakeQuantPattern<TF::TransposeOp>>(ctx);
   if (unfold_batch_matmul_) {
     TF::PopulateUnrollTfBatchMatMul(ctx, phase_2_patterns);
   }

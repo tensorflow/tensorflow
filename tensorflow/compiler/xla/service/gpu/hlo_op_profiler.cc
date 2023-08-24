@@ -33,67 +33,121 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
+#ifdef GOOGLE_CUDA
+#include "tensorflow/compiler/xla/backends/profiler/gpu/cupti_collector.h"
+#include "tensorflow/compiler/xla/backends/profiler/gpu/cupti_tracer.h"
+#endif
+
 namespace xla {
 namespace gpu {
 
-/*static*/ std::unique_ptr<HloModule> HloOpProfiler::MakeModuleForMeasurements(
-    HloOpcode op, PrimitiveType data_type, int64_t n_elements,
-    int chain_length) {
-  const Shape shape = ShapeUtil::MakeShape(data_type, {n_elements});
-  auto module = std::make_unique<HloModule>("m", HloModuleConfig{});
-  HloComputation::Builder entry_builder("b");
-  HloComputation::Builder fusion_builder("sb");
-
-  if (HloOpcodeArity(op) == 2) {
-    HloInstruction* pf0 = fusion_builder.AddInstruction(
-        HloInstruction::CreateParameter(0, shape, "pf0"));
-    HloInstruction* pf1 = fusion_builder.AddInstruction(
-        HloInstruction::CreateParameter(1, shape, "pf1"));
-    HloInstruction* last = pf0;
-    for (int i = 0; i < chain_length; ++i) {
-      last = fusion_builder.AddInstruction(
-          HloInstruction::CreateBinary(shape, op, last, pf1));
-    }
-    HloComputation* subcomp =
-        module->AddEmbeddedComputation(fusion_builder.Build());
-    HloInstruction* p0 = entry_builder.AddInstruction(
-        HloInstruction::CreateParameter(0, shape, "p0"));
-    HloInstruction* p1 = entry_builder.AddInstruction(
-        HloInstruction::CreateParameter(1, shape, "p1"));
-    entry_builder.AddInstruction(HloInstruction::CreateFusion(
-        shape, HloInstruction::FusionKind::kLoop, {p0, p1}, subcomp));
-  } else if (HloOpcodeArity(op) == 1) {
-    HloInstruction* pf = fusion_builder.AddInstruction(
-        HloInstruction::CreateParameter(0, shape, "pf"));
-    HloInstruction* last = pf;
-    for (int i = 0; i < chain_length; ++i) {
-      last = fusion_builder.AddInstruction(
-          HloInstruction::CreateUnary(shape, op, last));
-    }
-    HloComputation* subcomp =
-        module->AddEmbeddedComputation(fusion_builder.Build());
-    HloInstruction* p0 = entry_builder.AddInstruction(
-        HloInstruction::CreateParameter(0, shape, "p0"));
-    entry_builder.AddInstruction(HloInstruction::CreateFusion(
-        shape, HloInstruction::FusionKind::kLoop, {p0}, subcomp));
-  } else {
-    LOG(FATAL) << "Unsupported opcode: " << HloOpcodeString(op);
+#ifdef GOOGLE_CUDA
+class CuptiKernelTracer : public profiler::CuptiTraceCollector {
+ public:
+  CuptiKernelTracer()
+      : profiler::CuptiTraceCollector({}),
+        cupti_tracer_(profiler::CuptiTracer::GetCuptiTracerSingleton()) {
+    CHECK(cupti_tracer_->IsAvailable());
+    profiler::CuptiTracerOptions options;
+    options.cbids_selected.push_back(
+        // Not interested in API callbacks, but empty list enables them all.
+        CUPTI_DRIVER_TRACE_CBID_cu64GLMapBufferObject);
+    options.activities_selected.push_back(CUPTI_ACTIVITY_KIND_KERNEL);
+    cupti_tracer_->Enable(options, this);
   }
+
+  uint64_t getMedianKernelTimeNs() && {
+    cupti_tracer_->Disable();  // Also flushes buffer.
+    if (kernel_times_ns_.empty()) {
+      LOG(ERROR) << "No kernel events";
+      return 0;
+    }
+    std::sort(kernel_times_ns_.begin(), kernel_times_ns_.end());
+    size_t i = kernel_times_ns_.size() / 2;
+    // Return median value if number of values is odd.
+    if (kernel_times_ns_.size() % 2 != 0) kernel_times_ns_[i];
+    // Return average of the two middle values if the number of values is even.
+    return (kernel_times_ns_[i - 1] + kernel_times_ns_[i] + 1) / 2;
+  }
+
+ private:
+  // CuptiTraceCollector
+  void AddEvent(profiler::CuptiTracerEvent&& event) override {
+    if (event.type == profiler::CuptiTracerEventType::Kernel) {
+      kernel_times_ns_.push_back(event.end_time_ns - event.start_time_ns);
+    }
+    VLOG(5) << "CuptiTracerEvent: " << event.name << ", "
+            << event.end_time_ns - event.start_time_ns << "ns";
+  }
+  void OnEventsDropped(const std::string& reason,
+                       uint32_t num_events) override {
+    LOG(WARNING) << "Dropped " << num_events << " events: " << reason;
+  }
+  void Flush() override {}
+
+  profiler::CuptiTracer* cupti_tracer_;
+  std::vector<uint64_t> kernel_times_ns_;
+};
+#else
+class CuptiKernelTracer {
+ public:
+  uint64_t getMedianKernelTimeNs() && {
+    LOG(FATAL) << "Not built with --config=cuda";
+  }
+};
+#endif
+
+/*static*/ std::unique_ptr<HloModule> HloOpProfiler::MakeModuleForMeasurements(
+    HloOpcode op, PrimitiveType data_type, int chain_length) {
+  constexpr int64_t kInputSize = 1;
+  const Shape shape = ShapeUtil::MakeShape(data_type, {kInputSize});
+  HloModuleConfig config;
+  config.set_debug_options(GetDebugOptionsFromFlags());
+  auto module = std::make_unique<HloModule>("module", config);
+
+  HloComputation::Builder entry_builder("entry");
+  HloComputation::Builder fusion_builder("fusion");
+
+  HloInstruction* pf = fusion_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "pf"));
+  HloInstruction* last = pf;
+  for (int i = 0; i < chain_length; ++i) {
+    switch (HloOpcodeArity(op).value_or(0)) {
+      case 1:
+        last = fusion_builder.AddInstruction(
+            HloInstruction::CreateUnary(shape, op, last));
+        break;
+      case 2:
+        last = fusion_builder.AddInstruction(
+            HloInstruction::CreateBinary(shape, op, last, pf));
+        break;
+      default:
+        LOG(FATAL) << "Unsupported opcode: " << HloOpcodeString(op);
+    }
+  }
+  HloComputation* subcomp =
+      module->AddEmbeddedComputation(fusion_builder.Build());
+  HloInstruction* p0 = entry_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "p0"));
+  entry_builder.AddInstruction(HloInstruction::CreateFusion(
+      shape, HloInstruction::FusionKind::kLoop, {p0}, subcomp));
   module->AddEntryComputation(entry_builder.Build());
   VLOG(9) << module->ToString();
   return module;
 }
 
 StatusOr<absl::Duration> HloOpProfiler::MeasureOpChainDuration(
-    HloOpcode op, PrimitiveType data_type, int64_t input_size,
-    int chain_length) {
+    HloOpcode op, PrimitiveType data_type, int chain_length) {
+#ifndef GOOGLE_CUDA
+  return FailedPrecondition("Not built with --config=cuda");
+#endif
+
   std::unique_ptr<HloModule> module =
-      MakeModuleForMeasurements(op, data_type, input_size, chain_length);
+      MakeModuleForMeasurements(op, data_type, chain_length);
 
   std::minstd_rand0 engine;
   // Some operations have dynamic duration that depends on the input values.
@@ -116,53 +170,54 @@ StatusOr<absl::Duration> HloOpProfiler::MeasureOpChainDuration(
   TF_RETURN_IF_ERROR(
       runner_.ExecuteWithExecutable(ex.get(), args_small).status());
 
-  absl::Duration sum = absl::ZeroDuration();
-  constexpr int kIterations = 10;
-  for (int i = 0; i < kIterations; ++i) {
-    ExecutionProfile profile_small;
+  CuptiKernelTracer cupti_tracer;
+  for (int i = 0; i < 10; ++i) {  // Run a few times to reduce noise.
     TF_RETURN_IF_ERROR(
-        runner_.ExecuteWithExecutable(ex.get(), args_small, &profile_small)
-            .status());
-    ExecutionProfile profile_large;
+        runner_.ExecuteWithExecutable(ex.get(), args_small).status());
     TF_RETURN_IF_ERROR(
-        runner_.ExecuteWithExecutable(ex.get(), args_large, &profile_large)
-            .status());
-    sum += absl::Nanoseconds(
-        (profile_small.compute_time_ns() + profile_large.compute_time_ns()) /
-        2);
+        runner_.ExecuteWithExecutable(ex.get(), args_large).status());
   }
-  return sum / kIterations;
+
+  return absl::Nanoseconds(std::move(cupti_tracer).getMedianKernelTimeNs());
+}
+
+HloOpProfiler::HloOpProfiler(HloRunner& runner)
+    : runner_(runner),
+      dev_info_(GetGpuDeviceInfo(runner.backend().stream_executors()[0])),
+      // Twice the runtime of a copy (chain_length = 0) kernel.
+      min_duration_(2 * MeasureOpChainDuration(HloOpcode::kNegate, F32, 0)
+                            .value_or(absl::ZeroDuration())) {
+  VLOG(3) << "Minimum kernel duration: " << min_duration_;
+  CHECK_GT(min_duration_, absl::ZeroDuration())
+      << "Failed to measure kernel runtime";
 }
 
 StatusOr<HloInstructionProfile> HloOpProfiler::MeasureClockCyclesPerOp(
-    HloOpcode op, bool is_binary, PrimitiveType data_type, int64_t input_size) {
+    HloOpcode op, PrimitiveType data_type) {
   VLOG(2) << "Measuring " << HloOpcodeString(op) << " "
           << primitive_util::LowercasePrimitiveTypeName(data_type);
 
-  const absl::Duration overheads =
-      MeasureOpChainDuration(HloOpcode::kNegate, data_type, input_size,
-                             /*chain_length=*/1)
-          .value();
-  VLOG(3) << "Overheads: " << overheads;
+  // Longer chains are too slow to compile.
+  constexpr int kMinOpChainLength = 16;
+  constexpr int kMaxOpChainLength = 8192;
 
   absl::Duration duration = absl::ZeroDuration();
-  int chain_length = 1;
+  int chain_length = kMinOpChainLength;
   // Double the length of the operation chain until it becomes measurable
-  // compared to the overheads.
-  while (duration < 5 * overheads) {
-    TF_ASSIGN_OR_RETURN(duration, MeasureOpChainDuration(
-                                      op, data_type, input_size, chain_length));
+  // compared to the overhead.
+  do {
+    if (chain_length * 2 > kMaxOpChainLength) {
+      return FailedPrecondition("%s is too fast to measure",
+                                HloOpcodeString(op));
+    }
+    TF_ASSIGN_OR_RETURN(duration,
+                        MeasureOpChainDuration(op, data_type, chain_length));
     VLOG(3) << chain_length << "\t" << duration;
     chain_length *= 2;
-    if (chain_length > kMaxOpChainLength) {
-      VLOG(2) << "The op is too fast to be measured with this method";
-      return Unimplemented("op is too fast");
-    }
-  }
+  } while (duration < min_duration_);
 
-  TF_ASSIGN_OR_RETURN(
-      absl::Duration double_duration,
-      MeasureOpChainDuration(op, data_type, input_size, chain_length));
+  TF_ASSIGN_OR_RETURN(absl::Duration double_duration,
+                      MeasureOpChainDuration(op, data_type, chain_length));
   VLOG(3) << chain_length << "\t" << double_duration;
 
   // The difference between t_double and t corresponds to half of chain_length.

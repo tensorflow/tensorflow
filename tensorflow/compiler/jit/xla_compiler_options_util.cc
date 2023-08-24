@@ -117,10 +117,21 @@ XlaCompiler::Options GenerateCompilerOptionsForPjRt(
   // TODO(b/255826209): Confirm below options are correctly set after testing.
   options.allow_cpu_custom_calls = false;
   options.alias_passthrough_params = false;
-  options.detailed_logging = false;
 
   LogOptions(options);
   return options;
+}
+
+XlaCompiler::CompileOptions GenerateCompileOptions(
+    bool has_ref_vars, bool may_alias_resource_update) {
+  XlaCompiler::CompileOptions compile_options;
+  compile_options.is_entry_computation = true;
+  // Optimization: where possible, have the computation return a naked array
+  // rather than a one-element tuple.
+  compile_options.always_return_tuple = false;
+  compile_options.alias_resource_update =
+      !has_ref_vars && may_alias_resource_update;
+  return compile_options;
 }
 
 }  // namespace tensorflow
