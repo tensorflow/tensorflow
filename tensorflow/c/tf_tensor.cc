@@ -37,6 +37,8 @@ using tensorflow::TensorBuffer;
 using tensorflow::errors::FailedPrecondition;
 using tensorflow::errors::InvalidArgument;
 
+#ifndef LIBTPU_EXCLUDE_C_API_IMPL
+
 namespace tensorflow {
 void* allocate_tensor(const char* operation, size_t len, Allocator* allocator) {
   void* data = allocator->AllocateRaw(EIGEN_MAX_ALIGN_BYTES, len);
@@ -266,6 +268,8 @@ static void DeleteArray(void* data, size_t size, void* arg) {
   DCHECK_EQ(data, arg);
   delete[] reinterpret_cast<char*>(arg);
 }
+
+#endif  // LIBTPU_EXCLUDE_C_API_IMPL
 
 // Create an empty tensor of type 'dtype'. 'shape' can be arbitrary, but has to
 // result in a zero-sized tensor.
