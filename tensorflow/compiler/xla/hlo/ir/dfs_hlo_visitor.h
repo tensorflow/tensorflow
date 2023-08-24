@@ -42,6 +42,14 @@ class HloInstruction;
 // No instruction will ever be visited twice; however, the root instruction will
 // be reported again when the traversal is done via a call to FinishVisit.
 //
+// If new HloInstructions are added during the traversal (e.g. by replacing an
+// instruction), they will also be visited if they are the operand of an
+// instruction that has not been visited yet (i.e. the instruction is in state
+// kNotVisited). If you want to avoid that a newly added instruction 'hlo' is
+// visited, you can call SetVisited(hlo). This may be necessary in normalization
+// passes that replace all instructions, otherwise already replaced instructions
+// might be visited (and replaced) again.
+//
 // A subclass must override at least
 // (either HandleElementwiseUnary or all the Handle methods for unary ops) and
 // (either HandleElementwiseBinary or all the Handle methods for binary ops)).
