@@ -138,6 +138,10 @@ class LatencyEstimator {
 // Implementation of LatencyEstimator using an approximate cost model.
 class ApproximateLatencyEstimator : public LatencyEstimator {
  public:
+  explicit ApproximateLatencyEstimator(
+      GetCanonicalAsyncOpFunc func = DefaultGetCanonicalAsyncOp)
+      : LatencyEstimator(func) {}
+
   // Returns a latency estimation between two instructions.
   // Currently this is in abstract units. When the real/accurate cost model is
   // implemented this will be in cycles.
