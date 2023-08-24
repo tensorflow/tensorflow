@@ -611,6 +611,8 @@ xla_test(
         "//tensorflow/compiler/xla/stream_executor/cuda:cublas_plugin",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//tensorflow/tsl/platform:tensor_float_32_hdr_lib",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
     ],
 )
