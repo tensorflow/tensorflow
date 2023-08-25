@@ -154,9 +154,13 @@ inline void AddElementwiseInt8(int size, const ArithmeticParams& params,
             shifted_input2_val, params.input2_multiplier, params.input2_shift);
     const int32 raw_sum = scaled_input1_val + scaled_input2_val;
     const int32 raw_output =
-        MultiplyByQuantizedMultiplierSmallerThanOneExp(
-            raw_sum, params.output_multiplier, params.output_shift) +
-        params.output_offset;
+        (params.output_shift <= 0)
+            ? MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                  raw_sum, params.output_multiplier, params.output_shift) +
+                  params.output_offset
+            : MultiplyByQuantizedMultiplierGreaterThanOne(
+                  raw_sum, params.output_multiplier, params.output_shift) +
+                  params.output_offset;
     const int32 clamped_output =
         std::min(params.quantized_activation_max,
                  std::max(params.quantized_activation_min, raw_output));
@@ -344,9 +348,13 @@ inline void AddElementwiseInt16(int size, const ArithmeticParams& params,
             shifted_input2_val, params.input2_multiplier, params.input2_shift);
     const int32 raw_sum = scaled_input1_val + scaled_input2_val;
     const int32 raw_output =
-        MultiplyByQuantizedMultiplierSmallerThanOneExp(
-            raw_sum, params.output_multiplier, params.output_shift) +
-        params.output_offset;
+        (params.output_shift <= 0)
+            ? MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                  raw_sum, params.output_multiplier, params.output_shift) +
+                  params.output_offset
+            : MultiplyByQuantizedMultiplierGreaterThanOne(
+                  raw_sum, params.output_multiplier, params.output_shift) +
+                  params.output_offset;
     const int32 clamped_output =
         std::min(params.quantized_activation_max,
                  std::max(params.quantized_activation_min, raw_output));
@@ -444,9 +452,13 @@ inline void AddScalarBroadcast(int size, const ArithmeticParams& params,
               params.input2_shift);
       const int32 raw_sum = scaled_input1_val + scaled_input2_val;
       const int32 raw_output =
-          MultiplyByQuantizedMultiplierSmallerThanOneExp(
-              raw_sum, params.output_multiplier, params.output_shift) +
-          params.output_offset;
+          (params.output_shift <= 0)
+              ? MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                    raw_sum, params.output_multiplier, params.output_shift) +
+                    params.output_offset
+              : MultiplyByQuantizedMultiplierGreaterThanOne(
+                    raw_sum, params.output_multiplier, params.output_shift) +
+                    params.output_offset;
       const int32 clamped_output =
           std::min(params.quantized_activation_max,
                    std::max(params.quantized_activation_min, raw_output));
