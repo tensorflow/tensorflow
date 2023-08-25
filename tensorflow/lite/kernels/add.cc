@@ -194,8 +194,15 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     QuantizeMultiplierSmallerThanOneExp(
         real_input2_multiplier, &data->input2_multiplier, &data->input2_shift);
 
-    QuantizeMultiplierSmallerThanOneExp(
-        real_output_multiplier, &data->output_multiplier, &data->output_shift);
+    if (real_output_multiplier < 1.0) {
+      QuantizeMultiplierSmallerThanOneExp(real_output_multiplier,
+                                          &data->output_multiplier,
+                                          &data->output_shift);
+    } else {
+      QuantizeMultiplierGreaterThanOne(real_output_multiplier,
+                                       &data->output_multiplier,
+                                       &data->output_shift);
+    }
 
     TF_LITE_ENSURE_STATUS(CalculateActivationRangeQuantized(
         context, params->activation, output, &data->output_activation_min,

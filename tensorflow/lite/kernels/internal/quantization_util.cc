@@ -106,7 +106,7 @@ void QuantizeMultiplier(double double_multiplier, int32_t* quantized_multiplier,
 void QuantizeMultiplierGreaterThanOne(double double_multiplier,
                                       int32_t* quantized_multiplier,
                                       int* left_shift) {
-  TFLITE_CHECK_GT(double_multiplier, 1.);
+  TFLITE_CHECK_GE(double_multiplier, 1.);
   QuantizeMultiplier(double_multiplier, quantized_multiplier, left_shift);
   TFLITE_CHECK_GE(*left_shift, 0);
 }
