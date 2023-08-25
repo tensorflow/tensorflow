@@ -196,9 +196,9 @@ importlib-metadata==6.8.0 \
 jax==0.4.7 \
     --hash=sha256:5e7002d74db25f97c99b979d4ba1233b1ef26e1597e5fc468ad11d1c8a9dc4f8
     # via -r ./requirements.in
-keras-nightly==2.14.0.dev2023080207 \
-    --hash=sha256:0b31c7006b50fa1ca4682af03335d29a9edc8dc599452ff74184bfdb66bdb553 \
-    --hash=sha256:6662fe3d915081d573cc479d7b7e32ce3a4eb6b2a1f53d47b4164073f1f58325
+keras-nightly==2.15.0.dev2023082507 \
+    --hash=sha256:042790a7f444dc996b3e390c6f8bdf48a60f1cdd712dec22b5763e0a9d5527b7 \
+    --hash=sha256:3cae92b3ce9effcb250ef863efa38de38b2163e75b732f44fffb661aa534513a
     # via -r ./requirements.in
 lit==16.0.5.post0 \
     --hash=sha256:71745d9e58dad3717735d27e2a9cca0e9ca6861d067da73c307e02fd38c98479
@@ -423,31 +423,17 @@ setuptools==67.6.1 \
 six==1.16.0 \
     --hash=sha256:1e61c37477a1626458e36f7b1d82aa5c9b094fa4802892072e49de9c60c4c926 \
     --hash=sha256:8abb2f1d86890a2dfb989f9a77cfcfd3e47c2a354b01111771326f8aa26e0254
-    # via
-    #   astunparse
-    #   google-auth
-tb-nightly==2.14.0a20230808 \
-    --hash=sha256:a9321e17b3fa4629dbf3e3c46d0f40d4169c133e5341c816c11638bc70c77e5c
-    # via -r ./requirements.in
-tblib==1.7.0 \
-    --hash=sha256:059bd77306ea7b419d4f76016aef6d7027cc8a0785579b5aad198803435f882c \
-    --hash=sha256:289fa7359e580950e7d9743eab36b0691f0310fce64dee7d9c31065b8f723e23
+    # via google-auth
+tb-nightly==2.15.0a20230825 \
+    --hash=sha256:e4fa42d978a4e14473bb58a4bc978933aced742d5ffdb7f7c1d8a1b23ec3b5ad
     # via -r ./requirements.in
 tensorboard-data-server==0.7.1 \
     --hash=sha256:255c02b7f5b03dd5c0a88c928e563441ff39e1d4b4a234cdbe09f016e53d9594 \
     --hash=sha256:9938bd39f5041797b33921066fba0eab03a0dd10d1887a05e62ae58841ad4c3f \
     --hash=sha256:be8d016a1aa394e6198280d4a3dc37898f56467310c5f5e617cac10a783e055a
     # via tb-nightly
-termcolor==2.3.0 \
-    --hash=sha256:3afb05607b89aed0ffe25202399ee0867ad4d3cb4180d98aaf8eefa6a5f7d475 \
-    --hash=sha256:b5b08f68937f138fe92f6c089b99f1e2da0ae56c52b78bf7075fd95420fd9a5a
-    # via -r ./requirements.in
-tf-estimator-nightly==2.14.0.dev2023080308 \
-    --hash=sha256:3729ea3b8b93989e56a6bdaf3c04eed94f643b66ae6166a08de45e7b45a68c3a
-    # via -r ./requirements.in
-typing-extensions==4.2.0 \
-    --hash=sha256:6657594ee297170d19f67d55c05852a874e7eb634f4f753dbd667855e07c1708 \
-    --hash=sha256:f1c24655a0da0d1b67f07e17a5e6b2a105894e6824b92096378bb3668ef02376
+tf-estimator-nightly==2.15.0.dev2023082508 \
+    --hash=sha256:c53641a8593952dfe89ae268a3be7f6c20a8ce43befb3fef1adf7a9a0389f6fe
     # via -r ./requirements.in
 urllib3==1.26.16 \
     --hash=sha256:8d36afa7616d8ab714608411b4a3b13e58f463aee519024578e062e141dce20f \
