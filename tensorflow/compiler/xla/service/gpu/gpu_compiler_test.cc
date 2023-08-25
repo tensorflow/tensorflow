@@ -97,6 +97,7 @@ ENTRY main {
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_text).value();
+  int module_id = module->unique_id();
   std::unique_ptr<Executable> executable =
       backend()
           .compiler()
@@ -106,8 +107,7 @@ ENTRY main {
                         /*layout_canonicalization_callback=*/{},
                         /*is_autotuning_compilation=*/true})
           .value();
-  EXPECT_FALSE(XlaDebugInfoManager::Get()->TracksModule(
-      executable->module().unique_id()));
+  EXPECT_FALSE(XlaDebugInfoManager::Get()->TracksModule(module_id));
 }
 
 TEST_F(GpuCompilerTest, CopyInsertionFusion) {
