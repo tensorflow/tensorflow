@@ -661,6 +661,11 @@ TEST_P(MemorySpaceAssignmentTest, AlwaysSpillJitPrefetchTest) {
   // just in time for uses other than immediate use (if any) and make all
   // prefetches single use for first use and create new prefetches for all
   // subsequent uses.
+
+  // We expect MSA to start prefetching p1 immediately the parameter(1)
+  // instruction and to finish immediately before add. The
+  // always_spill_to_default_memory option will move the start of the prefetch
+  // from just after parameter(1) to just before its completion.
   absl::string_view hlo_string = R"(
 HloModule module, is_scheduled=true
 
@@ -711,10 +716,12 @@ ENTRY entry {
 TEST_P(MemorySpaceAssignmentTest, AlwaysSpillPrefetchForSecondUseTest) {
   // The negate chain is long enough for asynchronous copy to be inserted
   // between p1 and add.
-  // For buffers produced in alternate memory spill to default and prefetch
-  // just in time for uses other than immediate use (if any) and make all
-  // prefetches single use for first use and create new prefetches for all
-  // subsequent uses.
+  //
+  // Setting always_spill_to_default_memory option to true makes sure the
+  // negate0 buffer is copied to default memory between negate0 and negate1,
+  // so that version can be prefetched just before it is used at add0.
+  // Additionally, we leave a copy of negate0 in alternate memory for use at
+  // negate1.
   absl::string_view hlo_string = R"(
 HloModule module, is_scheduled=true
 
@@ -784,9 +791,14 @@ ENTRY entry {
 }
 
 TEST_P(MemorySpaceAssignmentTest, AlwaysSpillEvictionTest) {
-  // tanh0 buffer is not kept in alt for too long and evicted.
-  // The eviction is immediate and following prefetch from the eviction just in
-  // time for use.
+  // tanh0 buffer is produced in alternate memory and it has two uses that are
+  // sufficiently far apart for an eviction to be scheduled. When the
+  // always_spill_to_default_memory option is not true, the buffer stays in
+  // alternate memory to serve the first use, is evicted and prefetched again
+  // for second use. Setting always_spill_to_default_memory option to true makes
+  // the eviction immediate, right after tanh0, the first use at add5 and second
+  // use at tuple are served from separate, just-in-time prefetches that copy
+  // from the eviction that previously occurred.
   absl::string_view hlo_string = R"(
 HloModule module, is_scheduled=true
 
