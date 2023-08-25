@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GEMM_REWRITER_TRITON_H_
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -87,14 +88,11 @@ class TensorIterationSpec {
     return dim_iteration_specs_[dimension];
   }
   const StorageType& Storage() const { return dim_iteration_specs_; }
-  StorageType::iterator begin() { return dim_iteration_specs_.begin(); }
-  StorageType::iterator end() { return dim_iteration_specs_.end(); }
-  StorageType::const_iterator cbegin() const {
-    return dim_iteration_specs_.cbegin();
+  void RemoveEmptyDimensions() {
+    absl::erase_if(dim_iteration_specs_,
+                   [](const auto& it) { return it.second.empty(); });
   }
-  StorageType::const_iterator cend() const {
-    return dim_iteration_specs_.cend();
-  }
+  std::string ToString() const;
 
   // Compares physical layouts of tensors ignoring subfragments of dimensions.
   bool operator==(const TensorIterationSpec& other) const;
@@ -106,8 +104,8 @@ class TensorIterationSpec {
 // Analysis of tensor iteration orders within tiled fusions.
 class TritonFusionAnalysis {
   TritonFusionAnalysis() {}
-
   Status ExecuteForDotFusion(const HloInstruction& dot, int split_k);
+  Status ExecuteForSoftmaxFusion(const HloInstruction& root);
 
  public:
   // Execute the analysis of a fusion computation.

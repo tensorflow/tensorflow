@@ -125,23 +125,6 @@ ENTRY e {
               GmockMatch(m::Fusion(m::Parameter(), m::Parameter())));
 }
 
-TEST_F(GemmRewriterTritonTest, DoNotFuseVectorConstants) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
-HloModule m
-
-ENTRY e {
-  p0 = s8[60,5] parameter(0)
-  c0 = f16[60,5] convert(p0)
-  cst1 = f16[5] constant({...})
-  r1 = f16[5,120] broadcast(cst1), dimensions={0}
-  ROOT d = f16[60,120] dot(c0, r1),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
-})"));
-  EXPECT_TRUE(GemmRewriterTriton(gpu_version_).Run(module.get()).value());
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::Fusion(m::Parameter(), m::Broadcast())));
-}
 
 TEST_F(GemmRewriterTritonTest, DoNotTriggerOnUnsupportedOutputConversions) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
@@ -657,6 +640,45 @@ ENTRY e {
                                     /*subfragments=*/ElementsAre(30))));
 }
 
+using TritonSoftmaxAnalysisTest = HloTestBase;
+
+TEST_F(TritonSoftmaxAnalysisTest, DegenerateBatchDimensionIsSupported) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+max {
+  p1 = f32[] parameter(1)
+  p0 = f32[] parameter(0)
+  ROOT m = f32[] maximum(p0, p1)
+}
+
+triton_softmax_computation {
+  p0 = f32[1,97]{1,0} parameter(0)
+  bitcast = f32[97]{0} bitcast(p0)
+  constant = f32[] constant(-inf)
+  reduce = f32[] reduce(bitcast, constant), dimensions={0}, to_apply=max
+  broadcast = f32[1,97]{1,0} broadcast(reduce), dimensions={}
+  ROOT subtract = f32[1,97]{1,0} subtract(p0, broadcast)
+}
+
+ENTRY e {
+  p0 = f32[1,97]{1,0} parameter(0)
+  ROOT r = f32[1,97]{1,0} fusion(p0), kind=kCustom,
+    calls=triton_softmax_computation,
+    backend_config={"kind":"__triton_softmax"}
+})"));
+  const HloComputation* computation =
+      module->entry_computation()->root_instruction()->called_computations()[0];
+  TF_ASSERT_OK_AND_ASSIGN(const auto analysis,
+                          TritonFusionAnalysis::Execute(*computation));
+  EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::OUTPUT,
+                                 computation->root_instruction(), 0),
+              ElementsAre(FieldsAre(/*stride=*/1, /*count=*/97,
+                                    /*subfragments=*/ElementsAre(97))));
+  EXPECT_EQ(analysis.IterSpec(TritonFusionAnalysis::Scope::OUTPUT,
+                              computation->root_instruction(), 1),
+            nullptr);
+}
+
 using SplitKTest = HloTestBase;
 
 class SplitKTestWithMorePreciseReduction
@@ -1164,25 +1186,27 @@ class GemmRewriterTritonLevel2Test : public GemmRewriterTritonTest {
   }
 };
 
-TEST_F(GemmRewriterTritonLevel2Test, DoNotFuseIncompatibleDimOrders) {
+TEST_F(GemmRewriterTritonLevel2Test, DoNotFuseIncompatibleDimensionSplits) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
-HloModule m
-
 ENTRY e {
-  p0 = f16[5,3] parameter(0)
-  p1 = f16[5,7] parameter(1)
-  p2 = f16[7,5] parameter(2)
-  t = f16[5,7] transpose(p2), dimensions={1,0}
-  a = f16[5,7] add(t, p1)
-  ROOT d = f16[3,7] dot(p0, a),
+  p1 = s8[5,7,2,3]{3,2,1,0} parameter(1)
+  t1 = s8[7,5,2,3]{3,2,1,0} transpose(p1), dimensions={1,0,2,3}
+  r1 = s8[7,30]{1,0} reshape(t1)
+  cvt = f16[7,30]{1,0} convert(r1)
+  p2 = f16[2,7,5,3]{3,2,1,0} parameter(2)
+  t2 = f16[7,2,5,3]{3,2,1,0} transpose(p2), dimensions={1,0,2,3}
+  r2 = f16[7,30]{1,0} reshape(t2)
+  a = f16[7,30]{1,0} add(cvt, r2)
+  p0 = f16[7,79]{1,0} parameter(0)
+  ROOT tmp_6 = f16[30,79]{1,0} dot(a, p0),
     lhs_contracting_dims={0}, rhs_contracting_dims={0}
 })"));
 
   EXPECT_TRUE(GemmRewriterTriton(gpu_version_).Run(module.get()).value());
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
-      GmockMatch(m::Fusion(m::Parameter(), m::Parameter(), m::Transpose())));
+      GmockMatch(m::Fusion(m::Parameter(), m::Transpose(), m::Parameter())));
 }
 
 TEST_F(GemmRewriterTritonLevel2Test, DoNotFuseTooManyParameters) {
