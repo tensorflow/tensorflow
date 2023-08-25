@@ -91,6 +91,8 @@ AutotunerCompileUtil::AutotunerCompileUtil(const AutotuneConfig& config,
   opts_.set_xla_gpu_graph_level(0);
   // Disable experimental XLA:GPU runtime.
   opts_.set_xla_gpu_enable_gpu2_runtime(false);
+  opts_.set_xla_embed_ir_in_executable(false);
+  opts_.set_xla_gpu_enable_persistent_temp_buffers(false);
 }
 
 StatusOr<std::optional<AutotunerCompileUtil::ProfilingOutput>>
