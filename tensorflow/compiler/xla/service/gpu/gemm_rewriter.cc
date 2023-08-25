@@ -240,7 +240,8 @@ bool IsSupportedF8Pattern(HloInstruction *instr, HloInstruction *&x,
                 m::Bitcast().WithPredicate(preserves_element_type),
                 m::Broadcast(), m::Copy(), m::Pad(), m::Reshape(), m::Slice(),
                 m::AllGather().WithPredicate(use_spmd_partitioning),
-                m::AllToAll().WithPredicate(use_spmd_partitioning)))) {
+                m::AllToAll().WithPredicate(use_spmd_partitioning),
+                m::CollectivePermute().WithPredicate(use_spmd_partitioning)))) {
       VLOG(1) << "Possible intended FP8 GEMM operating on "
               << instr->ToShortString()
               << " not rewritten into FP8 Custom Call.";
